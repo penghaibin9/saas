@@ -60,6 +60,8 @@ test('topic detail actually loads and no longer uses the legacy write permission
 test('topic change list and detail require review permission for approve or reject', () => {
   for (const source of [changeList, changeDetail]) {
     assert.match(source, /canTopicReview\(\)[^{]*\{[^}]*topic\.review/)
-    assert.match(source, /if \(!this\.canTopicReview\) return/)
+    assert.match(source, /if \(!this\.canTopicReview[^)]*\) (?:\{|)?\s*(?:this\.[^\n]+\n\s*)?return/)
   }
+  assert.match(changeList, /row\.status !== 'PENDING'/)
+  assert.match(changeList, /beforeRouteLeave[\s\S]*this\.submitting[\s\S]*next\(false\)/)
 })

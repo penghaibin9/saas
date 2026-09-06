@@ -1,20 +1,18 @@
 <template>
   <ModulePageShell
-    title="毕业设计中心"
+    title="毕设总览"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
-    </template>
+    <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar" /></template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <EmptyState
       v-else-if="!hasBatch"
       title="请先选择或创建毕设批次"
-      description="顶部批次条选择当前工作批次后，再查看本批次运营总览。"
+      description="选择当前工作批次后，再查看真实待办、风险和阶段进度。"
     >
       <template #actions>
         <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches?panel=create')">＋ 新增毕设批次</button>
@@ -23,107 +21,89 @@
     </EmptyState>
 
     <div v-else class="mp-stack gdb-page">
-      <section class="mp-card gdb-work" aria-label="今天先做这些">
-        <div class="mp-card__head">
-          <div>
-            <span class="gdb-work__eyebrow">按紧急度与职责排序</span>
-            <span class="mp-card__title">今天先做这些</span>
+      <section class="gdb-overview gdb-work" aria-label="当前最高优先工作">
+        <div v-if="firstWorkItem" class="gdb-focus">
+          <div class="gdb-focus__priority" :class="priorityClass(firstWorkItem.priority)">
+            <span>{{ priorityLabel(firstWorkItem.priority) }}</span><small>现在先处理</small>
           </div>
-          <span class="gdb-work__count">{{ topWorkItems.length }} 项在手</span>
-        </div>
-        <div v-if="topWorkItems.length" class="mp-card__body gdb-work-list">
-          <article v-for="item in topWorkItems" :key="item.id" class="gdb-work-item" :class="'is-' + item.priority.toLowerCase()">
-            <div class="gdb-work-item__priority">{{ priorityLabel(item.priority) }}</div>
-            <div class="gdb-work-item__main">
-              <div class="gdb-work-item__identity">
-                <strong>{{ item.student?.name || '待确认对象' }}</strong>
-                <span>{{ item.business }}</span>
-              </div>
-              <p>{{ item.whyHere }}</p>
-              <div class="gdb-work-item__facts">
-                <span>当前等待：{{ item.waitingOn || '待确认' }}</span>
-                <span>下一棒：{{ item.nextActor || '待确认' }}</span>
-                <span v-if="item.dueAt">要求完成：{{ item.dueAt }}</span>
-                <span>最近变化：{{ item.recentChange || '暂无新变化' }}</span>
-              </div>
+          <div class="gdb-focus__main">
+            <div class="gdb-focus__identity">
+              <strong>{{ firstWorkItem.student?.name || firstWorkItem.business || '毕业设计事项' }}</strong>
+              <span>{{ firstWorkItem.business || '毕业设计事项' }}</span>
+              <small v-if="studentMeta(firstWorkItem.student)">{{ studentMeta(firstWorkItem.student) }}</small>
             </div>
-            <button type="button" class="mp-btn mp-btn--primary" @click="goWorkItem(item)">{{ item.primaryAction?.label || '去处理' }} →</button>
-          </article>
+            <p>{{ firstWorkItem.whyHere || '请进入任务查看当前情况。' }}</p>
+            <div class="gdb-focus__facts">
+              <span><b>当前等待</b>{{ firstWorkItem.waitingOn || '待确认' }}</span>
+              <span><b>下一责任人</b>{{ firstWorkItem.nextActor || '待确认' }}</span>
+              <span v-if="firstWorkItem.dueAt"><b>要求完成</b>{{ firstWorkItem.dueAt }}</span>
+              <span><b>最近变化</b>{{ firstWorkItem.recentChange || '暂无新变化' }}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="mp-btn mp-btn--primary gdb-focus__action"
+            :aria-label="`${firstWorkItem.primaryAction?.label || '去处理'}：${firstWorkItem.student?.name || firstWorkItem.business || '毕业设计事项'}`"
+            @click="goWorkItem(firstWorkItem)"
+          >{{ firstWorkItem.primaryAction?.label || '去处理' }} →</button>
         </div>
-        <div v-else class="mp-card__body gdb-work-empty">
-          <span>✓</span>
-          <div><strong>当前职责范围内没有紧急工作</strong><p>可以继续查看本批次整体进度与后续风险。</p></div>
+        <div v-else class="gdb-focus gdb-focus--empty">
+          <span class="gdb-focus__ok">✓</span>
+          <div><strong>{{ priorityConclusion }}</strong><p>{{ priorityDetail }}</p></div>
         </div>
-      </section>
 
-      <section class="gdb-overview" aria-label="今日毕业设计结论">
-        <div class="gdb-overview__conclusion">
-          <span class="gdb-overview__eyebrow">今日结论</span>
-          <strong>{{ priorityConclusion }}</strong>
-          <p>{{ priorityDetail }}</p>
-        </div>
         <div class="gdb-kpis" aria-label="当前批次关键指标">
           <div v-for="s in keyStats" :key="s.label" class="gdb-kpi">
-            <span class="gdb-kpi__value">{{ s.value }}</span>
-            <span class="gdb-kpi__label">{{ s.label }}</span>
-            <span v-if="s.trend" class="gdb-kpi__trend">{{ s.trend }}</span>
+            <span>{{ s.label }}</span><strong>{{ s.value }}</strong><small v-if="s.trend">{{ s.trend }}</small>
           </div>
         </div>
       </section>
 
-      <div class="mp-grid-2 gdb-priority-grid">
-        <section class="mp-card gdb-priority-card">
+      <section v-if="remainingWorkItems.length" class="mp-card gdb-queue">
+        <div class="mp-card__head">
+          <span class="mp-card__title">后续工作</span>
+          <small>共 {{ workItems.length }} 项 · 按服务端顺序</small>
+        </div>
+        <div class="mp-card__body gdb-queue__rows">
+          <article v-for="(item, index) in remainingWorkItems" :key="workItemKey(item, index + 1)" class="gdb-work-row">
+            <span class="gdb-work-row__priority" :class="priorityClass(item.priority)">{{ priorityLabel(item.priority) }}</span>
+            <div>
+              <strong>{{ item.student?.name || item.business || '毕业设计事项' }} · {{ item.business }}</strong>
+              <p>{{ item.whyHere || item.recentChange || '查看当前任务详情' }}</p>
+            </div>
+            <button type="button" class="mp-link" @click="goWorkItem(item)">{{ item.primaryAction?.label || '处理' }} →</button>
+          </article>
+        </div>
+      </section>
+
+      <div class="mp-grid-2 gdb-action-grid">
+        <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">今日优先</span>
-            <button class="mp-link" @click="goWithBatch('/admin/graduation/students')">毕设学生 →</button>
+            <span class="mp-card__title">队列入口</span>
+            <button class="mp-link" @click="goWithBatch('/admin/graduation/students')">全部学生 →</button>
           </div>
           <div class="mp-card__body gdb-todos">
-            <button
-              v-for="t in hero.todos"
-              :key="t.id"
-              class="gdb-todo"
-              :class="'is-' + t.tone"
-              type="button"
-              @click="goTodo(t)"
-            >
-              <span class="gdb-todo__count">{{ t.count }}</span>
-              <span class="gdb-todo__copy">
-                <span class="gdb-todo__label">{{ t.label }}</span>
-                <span class="gdb-todo__hint">{{ t.hint }}</span>
-              </span>
-              <span class="gdb-todo__action">去处理 <b>→</b></span>
+            <button v-for="t in hero.todos" :key="t.id" class="gdb-todo" :class="'is-' + t.tone" type="button" @click="goTodo(t)">
+              <b>{{ t.count }}</b>
+              <span><strong>{{ t.label }}</strong><small>{{ t.hint }}</small></span>
+              <i>进入 →</i>
             </button>
           </div>
         </section>
 
-        <section class="mp-card gdb-risk-card">
+        <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">滞后与风险提醒</span>
+            <span class="mp-card__title">风险提醒</span>
             <button class="mp-link" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'risk' })">风险台账 →</button>
           </div>
           <div class="mp-card__body">
-            <div v-if="!hero.riskAlerts.length" class="gdb-risk-empty">
-              <span class="gdb-risk-empty__icon">✓</span>
-              <div>
-                <strong>暂未发现待处理风险</strong>
-                <p>风险扫描结果会在这里集中展示。</p>
-              </div>
+            <div v-if="!visibleRiskAlerts.length" class="gdb-risk-empty">
+              <span>✓</span><div><strong>暂无新的风险提醒</strong><p>最高优先任务中已展示的风险不会在这里重复。</p></div>
             </div>
             <div v-else class="gdb-risks">
-              <button
-                v-for="r in hero.riskAlerts"
-                :key="r.id"
-                class="gdb-risk-row"
-                :class="r.level === 'HIGH' ? 'is-danger' : 'is-warning'"
-                type="button"
-                @click="goRisk(r)"
-              >
-                <span class="gdb-risk-row__main">
-                  <span class="gdb-risk-row__title">{{ r.code }} · {{ r.title }}</span>
-                  <span class="gdb-risk-row__detail">{{ r.detail }}</span>
-                </span>
-                <RiskTag :level="r.level" />
-                <span class="gdb-risk-row__action">处置 →</span>
+              <button v-for="r in visibleRiskAlerts" :key="r.id" class="gdb-risk-row" :class="r.level === 'HIGH' ? 'is-danger' : 'is-warning'" type="button" @click="goRisk(r)">
+                <span><strong>{{ r.code }} · {{ r.title }}</strong><small>{{ r.detail }}</small></span>
+                <RiskTag :level="r.level" /><i>处置 →</i>
               </button>
             </div>
           </div>
@@ -132,48 +112,37 @@
 
       <section class="mp-card gdb-progress-card">
         <div class="mp-card__head">
-          <span class="mp-card__title">当前批次整体进度</span>
+          <span class="mp-card__title">批次进度</span>
           <span class="gdb-progress-card__meta">{{ hero.batchName || batchStore.selectedBatchName }} · {{ hero.batchStatus || batchStore.batchStatus || '—' }}</span>
         </div>
         <div class="mp-card__body gdb-flow">
           <div v-for="f in hero.flow" :key="f.label" class="gdb-flow__item" :class="{ 'is-active': f.active }">
-            <span class="gdb-flow__value">{{ f.value }}</span>
-            <span class="gdb-flow__label">{{ f.label }}</span>
+            <strong>{{ f.value }}</strong><span>{{ f.label }}</span>
           </div>
         </div>
       </section>
 
-      <section v-if="hero.moduleStats && hero.moduleStats.length" class="mp-card">
-        <div class="mp-card__head">
-          <span class="mp-card__title">跨模块统计</span>
-          <button class="mp-link" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">完整统计 →</button>
-        </div>
-        <div class="mp-card__body gdb-modstats">
-          <button
-            v-for="s in hero.moduleStats"
-            :key="s.label"
-            class="gdb-modstat"
-            type="button"
-            @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })"
-          >
-            <div class="gdb-modstat__val">{{ s.value }}</div>
-            <div class="gdb-modstat__label">{{ s.label }}</div>
-            <div class="gdb-modstat__hint">{{ s.hint }}</div>
+      <details v-if="hero.moduleStats?.length" class="gdb-more">
+        <summary>跨模块统计</summary>
+        <div class="gdb-modstats">
+          <button v-for="s in hero.moduleStats" :key="s.label" class="gdb-modstat" type="button" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">
+            <strong>{{ s.value }}</strong><span>{{ s.label }}</span><small>{{ s.hint }}</small>
           </button>
         </div>
-      </section>
-
-      <p class="mp-note">看板数字来自当前批次与当前数据范围；待办和风险均可带着 batch/filter 直接下钻到真实处理队列。</p>
+      </details>
     </div>
   </ModulePageShell>
 </template>
 
 <script>
-/** 毕业设计中心 · 管理看板（/admin/graduation）。 */
 import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
+const EMPTY_HERO = () => ({
+  stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [],
+  batchName: '', batchRange: '', batchStatus: ''
+})
 const TODO_TARGETS = {
   t1: { path: '/admin/graduation/proposals', query: { tab: 'PENDING_REVIEW' } },
   t2: { path: '/admin/graduation/proposals', query: { tab: 'NOT_SUBMITTED' } },
@@ -187,134 +156,96 @@ export default {
   components: { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return {
-      batchStore: useGraduationBatchStore(),
-      loading: true,
-      error: '',
-      hero: { stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
-    }
+    return { batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO() }
   },
   computed: {
-    hasBatch() {
-      return !!this.batchStore.selectedBatchId
-    },
+    hasBatch() { return !!this.batchStore.selectedBatchId },
     pageSubtitle() {
-      if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
+      if (!this.hasBatch) return '请先选择或创建毕设批次'
       const name = this.hero.batchName || this.batchStore.selectedBatchName || '当前批次'
       const status = this.hero.batchStatus || this.batchStore.batchStatus || ''
       return status ? `${name} · ${status}` : name
     },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
+      const pa = this.ctx.permissionActions || {}
       return [
         { key: 'createBatch', label: '＋ 新增毕设批次', variant: 'primary' },
         { key: 'importStudents', label: '导入学生名单' },
         { key: 'exportStats', label: '导出进度统计' },
         { key: 'viewAuditLog', label: '操作日志', variant: 'ghost' }
-      ]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({
-          ...a,
-          disabled: !pa[a.key].allowed || (a.key !== 'createBatch' && a.key !== 'viewAuditLog' && !this.hasBatch),
-          disabledReason: pa[a.key].reason
-        }))
+      ].filter((action) => pa[action.key]?.visible).map((action) => ({
+        ...action,
+        disabled: !pa[action.key].allowed || (action.key !== 'createBatch' && action.key !== 'viewAuditLog' && !this.hasBatch),
+        disabledReason: pa[action.key].reason
+      }))
     },
-    keyStats() {
-      return (this.hero.stats || []).slice(0, 5)
-    },
-    topWorkItems() {
-      return (this.hero.todayWorkItems || []).slice(0, 6)
-    },
-    todoLoad() {
-      return (this.hero.todos || []).reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0)
-    },
+    keyStats() { return (Array.isArray(this.hero.stats) ? this.hero.stats : []).slice(0, 5) },
+    workItems() { return Array.isArray(this.hero.todayWorkItems) ? this.hero.todayWorkItems : [] },
+    firstWorkItem() { return this.workItems[0] || null },
+    remainingWorkItems() { return this.workItems.slice(1) },
+    todoLoad() { return (this.hero.todos || []).reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0) },
     highRiskCount() {
       const stat = (this.hero.stats || []).find((item) => item.label === '高风险学生')
       return Math.max(0, Number(stat?.value) || 0)
     },
     priorityTodo() {
-      return (this.hero.todos || [])
-        .filter((item) => Number(item.count) > 0)
-        .slice()
-        .sort((a, b) => Number(b.count) - Number(a.count))[0] || null
+      return (this.hero.todos || []).filter((item) => Number(item.count) > 0).slice().sort((a, b) => Number(b.count) - Number(a.count))[0] || null
     },
     priorityConclusion() {
-      const first = this.topWorkItems[0]
-      if (first) return `先处理「${first.student?.name || first.business} · ${first.business}」。`
-      if (!this.todoLoad && !this.highRiskCount) return '当前批次暂无待处理事项，继续关注过程进度与后续风险。'
-      if (this.highRiskCount) return `今日待办量 ${this.todoLoad}，其中高风险 ${this.highRiskCount} 条；先处理高风险学生。`
-      return this.priorityTodo
-        ? `今日待办量 ${this.todoLoad}；先处理「${this.priorityTodo.label}」。`
-        : `今日待办量 ${this.todoLoad}。`
+      if (!this.todoLoad && !this.highRiskCount) return '当前批次暂无待处理事项'
+      if (this.highRiskCount) return `今日待办 ${this.todoLoad} 项，高风险 ${this.highRiskCount} 条`
+      return this.priorityTodo ? `先处理「${this.priorityTodo.label}」` : `今日待办 ${this.todoLoad} 项`
     },
-    priorityDetail() {
-      const first = this.topWorkItems[0]
-      return first?.whyHere || '全部数字均按当前批次与当前角色数据范围统计；处理完成后返回看板复核待办和风险变化。'
+    priorityDetail() { return '继续关注队列、风险和阶段进度。' },
+    visibleRiskAlerts() {
+      const leadStudent = String(this.firstWorkItem?.student?.id || this.firstWorkItem?.student?.studentId || '')
+      const leadText = `${this.firstWorkItem?.business || ''} ${this.firstWorkItem?.whyHere || ''}`
+      return (this.hero.riskAlerts || []).filter((risk) => {
+        const sameStudent = leadStudent && String(risk.gdStudentId || risk.studentId || '') === leadStudent
+        const sameRiskText = /风险|预警/.test(leadText) && (leadText.includes(risk.title || '') || leadText.includes(risk.code || ''))
+        return !(sameStudent && /风险|预警/.test(leadText)) && !sameRiskText
+      }).slice(0, 4)
     }
   },
-  created() {
-    this.load()
-  },
-  watch: {
-    'batchStore.selectedBatchId'() {
-      this.load()
-    }
-  },
+  created() { this.load() },
+  watch: { 'batchStore.selectedBatchId'() { this.load() } },
   methods: {
     async load() {
-      if (!this.batchStore.selectedBatchId) {
-        this.loading = false
-        this.error = ''
-        this.hero = { stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
-        return
-      }
+      if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); return }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
-      if (res.code === 0) this.hero = res.data
-      else this.error = res.message
-      this.loading = false
+      try {
+        const res = await graduationApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
+        if (res.code === 0) this.hero = { ...EMPTY_HERO(), ...(res.data || {}) }
+        else this.error = res.message || '毕业设计总览加载失败，请稍后重试。'
+      } catch (error) { this.error = error?.message || '毕业设计总览加载失败，请检查网络后重试。' }
+      finally { this.loading = false }
     },
     routeWithBatch(path, query = {}) {
       const [pathname, rawQuery = ''] = String(path || '').split('?')
       const inherited = Object.fromEntries(new URLSearchParams(rawQuery))
       const batchId = this.batchStore.selectedBatchId
-      return {
-        path: pathname,
-        query: { ...inherited, ...query, ...(batchId ? { batchId: String(batchId) } : {}) }
-      }
+      return { path: pathname, query: { ...inherited, ...query, ...(batchId ? { batchId: String(batchId) } : {}) } }
     },
-    goWithBatch(path, query = {}) {
-      this.$router.push(this.routeWithBatch(path, query))
-    },
+    goWithBatch(path, query = {}) { this.$router.push(this.routeWithBatch(path, query)) },
     todoTarget(todo) {
       const target = TODO_TARGETS[todo?.id] || { path: todo?.route || '/admin/graduation', query: {} }
       return this.routeWithBatch(target.path, target.query)
     },
-    goTodo(todo) {
-      this.$router.push(this.todoTarget(todo))
-    },
+    goTodo(todo) { this.$router.push(this.todoTarget(todo)) },
+    workItemKey(item, index) { return item?.id || `${item?.priority || 'NORMAL'}-${item?.student?.id || item?.student?.name || 'item'}-${index}` },
+    priorityClass(priority) { return `is-${String(priority || 'NORMAL').toLowerCase()}` },
     priorityLabel(priority) {
-      return {
-        CRITICAL: '立即处理', HIGH: '高优先', OVERDUE: '已逾期', DUE_24H: '24 小时内',
-        RELEASE_BLOCKER: '阻塞发布', RETURNED: '已退回', WAITING_REVIEW: '等待评阅', NORMAL: '常规'
-      }[priority] || '待处理'
+      return { CRITICAL: '立即处理', HIGH: '高优先', OVERDUE: '已逾期', DUE_24H: '24 小时内', RELEASE_BLOCKER: '阻塞发布', RETURNED: '已退回', WAITING_REVIEW: '等待评阅', NORMAL: '常规' }[priority] || '待处理'
     },
+    studentMeta(student) { return student && typeof student === 'object' ? [student.studentNo, student.className, student.majorName].filter(Boolean).join(' · ') : '' },
     goWorkItem(item) {
       const action = item?.primaryAction || {}
       this.$router.push(this.routeWithBatch(action.path || '/admin/graduation', action.query || {}))
     },
-    goRisk(risk) {
-      this.$router.push(this.routeWithBatch('/admin/graduation/risk-archive', {
-        panel: 'risk',
-        ...(risk?.id ? { rsel: String(risk.id) } : {})
-      }))
-    },
+    goRisk(risk) { this.$router.push(this.routeWithBatch('/admin/graduation/risk-archive', { panel: 'risk', ...(risk?.id ? { rsel: String(risk.id) } : {}) })) },
     onToolbar(key) {
-      if (key === 'createBatch') {
-        this.$router.push('/admin/graduation/batches?panel=create')
-        return
-      }
+      if (key === 'createBatch') { this.$router.push('/admin/graduation/batches?panel=create'); return }
       const map = {
         importStudents: { path: '/admin/graduation/students', query: { panel: 'roster' } },
         exportStats: { path: '/admin/graduation/risk-archive', query: { panel: 'stats' } },
@@ -329,95 +260,6 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gdb-page { gap: var(--space-3); }
-.gdb-work { overflow: hidden; border-color: var(--primary-100, #dbeafe); box-shadow: 0 14px 32px -28px rgba(37, 99, 235, .46); }
-.gdb-work .mp-card__head > div { display: grid; gap: 2px; }
-.gdb-work__eyebrow { color: var(--primary-600, #2563eb); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
-.gdb-work__count { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gdb-work-list { display: grid; gap: 8px; }
-.gdb-work-item { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 12px; border: 1px solid var(--border-light); border-left: 4px solid var(--primary-300, #93c5fd); border-radius: var(--radius-md); background: var(--card); }
-.gdb-work-item.is-critical, .gdb-work-item.is-high { border-left-color: var(--danger-500, #ef4444); background: linear-gradient(90deg, var(--danger-50, #fef2f2), #fff 34%); }
-.gdb-work-item.is-overdue, .gdb-work-item.is-due_24h, .gdb-work-item.is-release_blocker { border-left-color: var(--warning-500, #f59e0b); background: linear-gradient(90deg, var(--warning-50, #fffbeb), #fff 34%); }
-.gdb-work-item__priority { color: var(--text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
-.gdb-work-item__main { min-width: 0; }
-.gdb-work-item__identity { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.gdb-work-item__identity strong { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
-.gdb-work-item__identity span { flex: none; color: var(--primary-700, #1d4ed8); font-size: var(--font-size-xs); font-weight: 600; }
-.gdb-work-item p { margin: 4px 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
-.gdb-work-item__facts { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gdb-work-empty { display: flex; align-items: center; gap: var(--space-3); color: var(--text-secondary); }
-.gdb-work-empty > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--success-50, #ecfdf5); color: var(--success-700, #047857); font-weight: 700; }
-.gdb-work-empty p { margin: 3px 0 0; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gdb-overview {
-  display: grid;
-  grid-template-columns: minmax(280px, .9fr) minmax(0, 1.5fr);
-  gap: var(--space-4);
-  align-items: stretch;
-  padding: var(--space-4);
-  border-radius: var(--radius-lg, 12px);
-  color: #fff;
-  background: linear-gradient(120deg, var(--primary-900, #123a78), var(--primary-600, #2563eb));
-  box-shadow: 0 10px 28px rgba(37, 99, 235, .16);
-}
-.gdb-overview__conclusion { align-self: center; min-width: 0; }
-.gdb-overview__eyebrow { display: block; margin-bottom: 5px; color: rgba(255, 255, 255, .72); font-size: var(--font-size-xs); font-weight: 600; letter-spacing: .08em; }
-.gdb-overview__conclusion strong { display: block; font-size: 18px; line-height: 1.45; }
-.gdb-overview__conclusion p { margin: 7px 0 0; color: rgba(255, 255, 255, .75); font-size: var(--font-size-xs); line-height: 1.55; }
-.gdb-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.gdb-kpi { min-width: 0; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, .16); border-radius: var(--radius-md); background: rgba(255, 255, 255, .08); }
-.gdb-kpi__value { display: block; font-size: 22px; font-weight: 700; line-height: 1.2; }
-.gdb-kpi__label { display: block; margin-top: 4px; color: rgba(255, 255, 255, .86); font-size: var(--font-size-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gdb-kpi__trend { display: block; margin-top: 2px; color: rgba(255, 255, 255, .62); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gdb-priority-grid { align-items: stretch; }
-.gdb-priority-card, .gdb-risk-card { min-height: 0; }
-.gdb-todos { display: grid; gap: 6px; }
-.gdb-todo { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
-.gdb-todo:hover { background: var(--gray-50); border-color: var(--border-light); }
-.gdb-todo:focus-visible, .gdb-modstat:focus-visible, .gdb-risk-row:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
-.gdb-todo__count { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-full); color: var(--primary-700, #1d4ed8); background: var(--primary-50, #eff6ff); font-weight: var(--font-weight-bold); }
-.gdb-todo.is-danger .gdb-todo__count { color: var(--danger-700, #b91c1c); background: var(--danger-50, #fef2f2); }
-.gdb-todo__copy { display: grid; gap: 2px; min-width: 0; }
-.gdb-todo__label { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); }
-.gdb-todo__hint { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
-.gdb-todo__action { color: var(--text-link, var(--pri, #2563eb)); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); white-space: nowrap; }
-.gdb-todo__action b { font-size: 16px; font-weight: 400; }
-.gdb-risks { display: grid; gap: 6px; }
-.gdb-risk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-2); width: 100%; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--card); color: inherit; text-align: left; cursor: pointer; }
-.gdb-risk-row:hover { border-color: var(--primary-200, #bfdbfe); background: var(--gray-50); }
-.gdb-risk-row.is-danger { border-left: 3px solid var(--danger-400, #f87171); }
-.gdb-risk-row.is-warning { border-left: 3px solid var(--warning-400, #fbbf24); }
-.gdb-risk-row__main { display: grid; gap: 2px; min-width: 0; }
-.gdb-risk-row__title { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.gdb-risk-row__detail { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
-.gdb-risk-row__action { color: var(--text-link); font-size: var(--font-size-xs); white-space: nowrap; }
-.gdb-risk-empty { display: flex; align-items: center; gap: var(--space-3); min-height: 142px; color: var(--text-secondary); }
-.gdb-risk-empty__icon { display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--radius-full); background: var(--success-50, #ecfdf5); color: var(--success-700, #047857); font-weight: var(--font-weight-bold); }
-.gdb-risk-empty strong { color: var(--text-primary); font-size: var(--font-size-sm); }
-.gdb-risk-empty p { margin: 4px 0 0; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gdb-progress-card__meta { margin-left: auto; color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
-.gdb-flow { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
-.gdb-flow__item { position: relative; display: grid; justify-items: center; gap: 4px; min-width: 0; padding: 8px 4px; border-radius: var(--radius-md); background: var(--gray-50); }
-.gdb-flow__item.is-active { background: var(--primary-50, #eff6ff); }
-.gdb-flow__value { color: var(--primary-700, #1d4ed8); font-size: 18px; font-weight: 700; }
-.gdb-flow__label { overflow: hidden; max-width: 100%; color: var(--text-secondary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
-.gdb-modstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.gdb-modstat { padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--card); color: inherit; text-align: left; cursor: pointer; }
-.gdb-modstat:hover { background: var(--gray-50); border-color: var(--primary-200, #bfdbfe); }
-.gdb-modstat__val { color: var(--primary-700, #1d4ed8); font-size: 18px; font-weight: 700; }
-.gdb-modstat__label { margin-top: 2px; color: var(--text-primary); font-size: var(--font-size-xs); font-weight: 600; }
-.gdb-modstat__hint { margin-top: 2px; overflow: hidden; color: var(--text-tertiary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 1180px) {
-  .gdb-overview { grid-template-columns: 1fr; }
-  .gdb-kpis { grid-template-columns: repeat(5, minmax(110px, 1fr)); overflow-x: auto; }
-  .gdb-flow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-@media (max-width: 900px) {
-  .gdb-work-item { grid-template-columns: 1fr; }
-  .gdb-work-item > .mp-btn { justify-self: start; }
-  .gdb-priority-grid { grid-template-columns: 1fr; }
-  .gdb-overview { padding: var(--space-3); }
-  .gdb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
-  .gdb-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gdb-modstats { grid-template-columns: 1fr; }
-}
+.gdb-page{gap:10px}.gdb-overview{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(420px,.8fr);gap:12px;align-items:stretch;padding:10px 12px;border:1px solid var(--primary-100);border-radius:11px;background:linear-gradient(110deg,#fff,var(--primary-50));box-shadow:0 10px 24px -24px rgba(37,99,235,.6)}.gdb-focus{display:grid;grid-template-columns:76px minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}.gdb-focus--empty{grid-template-columns:34px minmax(0,1fr)}.gdb-focus__ok{display:grid;width:32px;height:32px;place-items:center;border-radius:50%;background:var(--success-50);color:var(--success-700);font-weight:700}.gdb-focus__priority{display:grid;justify-items:start;gap:2px}.gdb-focus__priority span,.gdb-work-row__priority{padding:3px 6px;border-radius:999px;background:var(--gray-100);color:var(--text-secondary);font-size:9px;font-weight:700;white-space:nowrap}.gdb-focus__priority small{color:var(--primary-600);font-size:8px}.gdb-focus__priority.is-critical span,.gdb-focus__priority.is-high span,.gdb-work-row__priority.is-critical,.gdb-work-row__priority.is-high{background:var(--danger-100);color:var(--danger-700)}.gdb-focus__priority.is-overdue span,.gdb-focus__priority.is-due_24h span,.gdb-focus__priority.is-release_blocker span,.gdb-work-row__priority.is-overdue,.gdb-work-row__priority.is-due_24h,.gdb-work-row__priority.is-release_blocker{background:var(--warning-100);color:var(--warning-800)}.gdb-focus__main{min-width:0}.gdb-focus__identity{display:flex;align-items:baseline;flex-wrap:wrap;gap:3px 7px}.gdb-focus__identity strong{font-size:13px}.gdb-focus__identity span{color:var(--primary-700);font-size:10px;font-weight:700}.gdb-focus__identity small{color:var(--text-tertiary);font-size:9px}.gdb-focus__main>p,.gdb-focus--empty p{margin:2px 0 4px;color:var(--text-secondary);font-size:10px;line-height:1.4}.gdb-focus__facts{display:flex;gap:3px 10px;overflow:hidden;color:var(--text-tertiary);font-size:8px;white-space:nowrap}.gdb-focus__facts span{display:flex;gap:3px;min-width:0;overflow:hidden;text-overflow:ellipsis}.gdb-focus__facts b{flex:none;color:var(--text-secondary)}.gdb-focus__action{white-space:nowrap}.gdb-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}.gdb-kpi{display:grid;align-content:center;min-width:0;padding:3px 8px;border-left:1px solid var(--primary-100)}.gdb-kpi span,.gdb-kpi small{overflow:hidden;color:var(--text-tertiary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-kpi strong{font-size:17px}.gdb-queue .mp-card__head small{margin-left:auto;color:var(--text-tertiary);font-size:9px}.gdb-queue__rows{display:grid;gap:3px}.gdb-work-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:8px;padding:5px 7px;border-bottom:1px solid var(--border-light)}.gdb-work-row:last-child{border-bottom:0}.gdb-work-row>div{min-width:0}.gdb-work-row strong,.gdb-work-row p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gdb-work-row strong{display:block;font-size:10px}.gdb-work-row p{margin:1px 0 0;color:var(--text-tertiary);font-size:9px}.gdb-action-grid{gap:10px;align-items:stretch}.gdb-todos,.gdb-risks{display:grid;gap:3px}.gdb-todo,.gdb-risk-row{display:grid;align-items:center;gap:7px;width:100%;padding:6px 7px;border:1px solid transparent;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer}.gdb-todo{grid-template-columns:30px minmax(0,1fr) auto}.gdb-todo:hover,.gdb-risk-row:hover{border-color:var(--border-light);background:var(--gray-50)}.gdb-todo>b{display:grid;width:28px;height:28px;place-items:center;border-radius:50%;background:var(--primary-50);color:var(--primary-700);font-size:10px}.gdb-todo>span,.gdb-risk-row>span{display:grid;min-width:0;gap:1px}.gdb-todo strong,.gdb-risk-row strong{font-size:10px}.gdb-todo small,.gdb-risk-row small{overflow:hidden;color:var(--text-tertiary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-todo i,.gdb-risk-row i{color:var(--primary-600);font-size:9px;font-style:normal;white-space:nowrap}.gdb-risk-row{grid-template-columns:minmax(0,1fr) auto auto;border-left:3px solid var(--warning-400);background:var(--gray-50)}.gdb-risk-row.is-danger{border-left-color:var(--danger-400)}.gdb-risk-empty{display:flex;align-items:center;gap:9px;min-height:82px}.gdb-risk-empty>span{display:grid;width:30px;height:30px;place-items:center;border-radius:50%;background:var(--success-50);color:var(--success-700)}.gdb-risk-empty strong{font-size:10px}.gdb-risk-empty p{margin:2px 0 0;color:var(--text-tertiary);font-size:8px}.gdb-progress-card__meta{margin-left:auto;color:var(--text-tertiary);font-size:9px;font-weight:400}.gdb-flow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}.gdb-flow__item{display:grid;justify-items:center;gap:1px;padding:6px 3px;border-radius:7px;background:var(--gray-50)}.gdb-flow__item.is-active{background:var(--primary-50)}.gdb-flow__item strong{color:var(--primary-700);font-size:14px}.gdb-flow__item span{overflow:hidden;max-width:100%;color:var(--text-secondary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-more{padding:9px 11px;border:1px solid var(--border-light);border-radius:9px;background:#fff}.gdb-more summary{cursor:pointer;font-size:10px;font-weight:700}.gdb-modstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}.gdb-modstat{display:grid;gap:1px;padding:7px;border:1px solid var(--border-light);border-radius:7px;background:var(--gray-50);text-align:left}.gdb-modstat strong{color:var(--primary-700);font-size:14px}.gdb-modstat span{font-size:9px}.gdb-modstat small{color:var(--text-tertiary);font-size:8px}.mp-btn{padding:7px 13px;border:1px solid var(--border-base);border-radius:8px;background:#fff;font-size:11px}.mp-btn--primary{border-color:var(--primary-600);background:var(--primary-600);color:#fff}.mp-link{border:0;background:transparent;color:var(--primary-600);font-size:9px;cursor:pointer}
+@media(max-width:1180px){.gdb-overview{grid-template-columns:1fr}.gdb-kpis{border-top:1px solid var(--primary-100);padding-top:7px}.gdb-kpi:first-child{border-left:0}.gdb-flow{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:850px){.gdb-focus{grid-template-columns:1fr}.gdb-focus__action{justify-self:start}.gdb-focus__facts{flex-wrap:wrap;white-space:normal}.gdb-action-grid{grid-template-columns:1fr}.gdb-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.gdb-kpi:nth-child(odd){border-left:0}.gdb-work-row{grid-template-columns:1fr}.gdb-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.gdb-modstats{grid-template-columns:1fr}}
 </style>

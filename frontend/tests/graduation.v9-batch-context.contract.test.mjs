@@ -6,6 +6,7 @@ const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url)
 
 const api = read('frontend/src/modules/graduation/api/graduation-taskbook.api.js')
 const helper = read('frontend/src/modules/graduation/api/graduation-batch-context.js')
+const layout = read('frontend/src/modules/graduation/views/AdminGraduationLayout.vue')
 const taskbookRouter = read('backend/app/modules/graduation/routers/graduation_taskbook_sensitive_router.py')
 const processRouter = read('backend/app/modules/graduation/routers/graduation_process_sensitive_router.py')
 const domainBatchApis = [
@@ -61,4 +62,14 @@ test('every taskbook/process/student-eval/midterm request carries batch params',
 test('backend sensitive routers keep batchId mandatory', () => {
   assert.ok((taskbookRouter.match(/batchId: int = Query\(\.\.\., ge=1\)/g) || []).length >= 7)
   assert.ok((processRouter.match(/batchId: int = Query\(\.\.\., ge=1\)/g) || []).length >= 10)
+})
+
+test('graduation layout repairs a missing batch query after generic leaf navigation without overriding explicit batchId', () => {
+  assert.match(layout, /handler\(id\)[\s\S]*const loading = store\.ensureLoaded\(\{ batchIdFromUrl: id \|\| '', force: !store\.initialized \}\)/)
+  assert.match(layout, /if \(!id && this\.\$route\?\.path\?\.startsWith\('\/admin\/graduation'\)\)[\s\S]*Promise\.resolve\(loading\)[\s\S]*this\.syncBatchToUrl\?\.\(\)/)
+  assert.doesNotMatch(layout, /async handler\(id\)/)
+  assert.match(layout, /async syncBatchToUrl\(\)/)
+  assert.match(layout, /const cur = this\.\$route\.query\.batchId \? String\(this\.\$route\.query\.batchId\) : ''/)
+  assert.match(layout, /if \(next && next !== cur\)[\s\S]*router\.replace\(\{ query: \{ \.\.\.this\.\$route\.query, batchId: next \} \}\)/)
+  assert.match(layout, /await this\.syncBatchToUrl\(\)/)
 })

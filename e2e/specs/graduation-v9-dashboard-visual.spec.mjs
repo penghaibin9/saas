@@ -28,6 +28,54 @@ async function expectRoute(page, { path, batchId, tab = null, panel = null, rsel
   }).toEqual({ path, batchId, tab, panel, rsel })
 }
 
+async function expectPrimaryActionRoute(page, { action, batchId }) {
+  const [path, rawQuery = ''] = String(action.path || '').split('?')
+  const expectedQuery = {
+    ...Object.fromEntries(new URLSearchParams(rawQuery)),
+    ...(action.query || {}),
+    batchId: String(batchId)
+  }
+  const expectedKeys = Object.keys(expectedQuery)
+
+  await expect.poll(() => {
+    const url = new URL(page.url())
+    return {
+      path: url.pathname,
+      query: Object.fromEntries(expectedKeys.map((key) => [key, url.searchParams.get(key)]))
+    }
+  }).toEqual({
+    path,
+    query: Object.fromEntries(Object.entries(expectedQuery).map(([key, value]) => [key, String(value)]))
+  })
+}
+
+async function expectProjectedWorkItems(page, todayWorkItems) {
+  await expect(page.locator('.gdb-work')).toBeVisible()
+  await expect(page.locator('.gdb-focus')).toBeVisible()
+
+  if (!todayWorkItems.length) {
+    await expect(page.locator('.gdb-focus--empty')).toBeVisible()
+    await expect(page.locator('.gdb-work-row')).toHaveCount(0)
+    return
+  }
+
+  const first = todayWorkItems[0]
+  const focus = page.locator('.gdb-focus')
+  await expect(focus).toContainText(first.student?.name || first.business)
+  await expect(focus).toContainText(first.business)
+  await expect(focus).toContainText(first.waitingOn)
+  await expect(focus).toContainText(first.nextActor)
+  await expect(focus.locator('.gdb-focus__action')).toContainText(first.primaryAction.label)
+
+  const remaining = todayWorkItems.slice(1)
+  await expect(page.locator('.gdb-work-row')).toHaveCount(remaining.length)
+  if (remaining.length) {
+    const nextRow = page.locator('.gdb-work-row').first()
+    await expect(nextRow).toContainText(remaining[0].student?.name || remaining[0].business)
+    await expect(nextRow).toContainText(remaining[0].business)
+  }
+}
+
 test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
   let fixture
 
@@ -51,12 +99,26 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
     const envelope = await response.json()
     expect(envelope?.code, JSON.stringify(envelope)).toBe(0)
 
+    const todayWorkItems = Array.isArray(envelope?.data?.todayWorkItems)
+      ? envelope.data.todayWorkItems
+      : []
+
     await expect(page.locator('.gdb-page')).toBeVisible()
     await expect(page.locator('.gdb-overview')).toBeVisible()
     await expect(page.locator('.gdb-kpis .gdb-kpi')).toHaveCount(5)
-    await expect(page.getByText('今日优先', { exact: true })).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
+    await expectProjectedWorkItems(page, todayWorkItems)
     await expect(page.locator('body')).not.toContainText(/正在加载毕业设计中心|真实接口不可用|权限上下文加载失败/)
+
+    const firstPageSection = await page.locator('.gdb-page > section').first().getAttribute('class')
+    expect(firstPageSection).toContain('gdb-overview')
+
+    if (todayWorkItems.length) {
+      await page.locator('.gdb-focus__action').click()
+      await expectPrimaryActionRoute(page, { action: todayWorkItems[0].primaryAction, batchId: fixture.batchId })
+      await page.goto(dashboardUrl)
+      await expectProjectedWorkItems(page, todayWorkItems)
+    }
 
     await settleVisual(page)
     const screenshot = testInfo.outputPath('gd-U1-dashboard-B-1440x900.png')
@@ -96,15 +158,23 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
       await expect(page.locator('.gdb-todos')).toBeVisible()
     }
 
-    const firstRisk = envelope?.data?.riskAlerts?.[0]
-    if (firstRisk?.id) {
-      await page.locator('.gdb-risk-row').first().click()
+    const riskRows = page.locator('.gdb-risk-row')
+    if (await riskRows.count()) {
+      const firstRiskRow = riskRows.first()
+      const rowText = await firstRiskRow.innerText()
+      const visibleRisk = (envelope?.data?.riskAlerts || []).find((risk) =>
+        rowText.includes(String(risk.code || '')) && rowText.includes(String(risk.title || ''))
+      )
+      expect(visibleRisk?.id, `visible risk row must map to server risk: ${rowText}`).toBeTruthy()
+      await firstRiskRow.click()
       await expectRoute(page, {
         path: '/admin/graduation/risk-archive',
         batchId,
         panel: 'risk',
-        rsel: String(firstRisk.id)
+        rsel: String(visibleRisk.id)
       })
+    } else {
+      await expect(page.locator('.gdb-risk-empty')).toBeVisible()
     }
 
     const environment = await goldEnvironment(page, testInfo)
@@ -129,6 +199,8 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
       dashboard: {
         batchName: envelope?.data?.batchName || '',
         todoCount: Array.isArray(envelope?.data?.todos) ? envelope.data.todos.length : 0,
+        workItemCount: todayWorkItems.length,
+        workItemFields: todayWorkItems[0] ? Object.keys(todayWorkItems[0]).sort() : [],
         riskCount: Array.isArray(envelope?.data?.riskAlerts) ? envelope.data.riskAlerts.length : 0,
         statCount: Array.isArray(envelope?.data?.stats) ? envelope.data.stats.length : 0
       },

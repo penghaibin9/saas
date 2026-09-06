@@ -48,7 +48,8 @@ test('mentor list separates manage, import, export and assignment permissions', 
 
 test('mentor assignment form fails closed unless manage and assign are both granted', () => {
   assert.match(mentorAssign, /canAssignMentor\(\)\s*\{\s*return this\.canMentorManage && this\.canTopicAssign\s*\}/)
-  assert.match(mentorAssign, /async created\(\)\s*\{\s*if \(!this\.canAssignMentor\) return/)
-  assert.match(mentorAssign, /async submit\(\)\s*\{\s*if \(!this\.canAssignMentor\) return/)
-  assert.match(mentorAssign, /<template v-if="canAssignMentor" #footer>/)
+  assert.match(mentorAssign, /created\(\)\s*\{[\s\S]*?this\.loadStudent\(\)/)
+  assert.match(mentorAssign, /async loadStudent\(\)\s*\{\s*if \(!this\.canAssignMentor\)\s*\{[\s\S]*?return false/)
+  assert.match(mentorAssign, /async submit\(\)\s*\{\s*if \(this\.submitting \|\| !this\.canAssignMentor\) return/)
+  assert.match(mentorAssign, /<template v-if="canAssignMentor && student" #footer>/)
 })

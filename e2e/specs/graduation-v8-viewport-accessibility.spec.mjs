@@ -109,9 +109,14 @@ async function loginMini(page, account, kind) {
   await page.getByText('填写', { exact: true }).click()
   await fields.nth(2).fill(account.tenant)
   await page.getByText('我已阅读并同意', { exact: false }).click()
+  await expect(page.locator('.agreement__box')).toHaveClass(/agreement__box--checked/)
   const action = kind === 'teacher' ? '进入教师工作台' : '进入学生首页'
-  await page.getByText(action, { exact: true }).click()
-  await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 15_000 })
+  const loginButton = page.locator('.account-button').filter({ hasText: action })
+  await expect(loginButton).toBeEnabled()
+  await loginButton.click()
+  await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })
+  await expect(page.locator('body')).not.toContainText(/操作过于频繁|登录失败|验证码加载失败/)
+  if (kind === 'teacher') await expect(page.getByText('当前身份：GD_MENTOR', { exact: false })).toBeVisible()
 }
 
 test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidence', () => {
@@ -125,32 +130,37 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
 
   test('staff PC dashboard is usable at 1920/1440/1280', async ({ browser }) => {
     const evidence = []
+    const context = await browser.newContext({ viewport: VIEWPORTS[0], locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const page = await context.newPage()
+    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+
     for (const viewport of VIEWPORTS) {
-      const context = await browser.newContext({ viewport, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-      const page = await context.newPage()
-      await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+      await page.setViewportSize(viewport)
       await page.goto(`${config.staffBaseUrl}/admin/graduation?batchId=${encodeURIComponent(fixture.batchId)}`)
       await expect(page.locator('.gdb-page')).toBeVisible()
-      await expect(page.getByText('今天先做这些', { exact: true })).toBeVisible()
-      await expect(page.locator('.gdb-work-item').first()).toBeVisible()
+      await expect(page.locator('.gdb-work')).toBeVisible()
+      await expect(page.locator('.gdb-focus')).toBeVisible()
       await expect(page.locator('.gdb-kpi')).toHaveCount(5)
+      await expect(page.locator('.gdb-todos')).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败|加载失败/)
       await settle(page)
       const audit = await auditPage(page, viewport)
       const screenshot = path.join(ARTIFACT_DIR, `staff-dashboard-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', caret: 'hide' })
       evidence.push({ surface: 'staff-pc', route: page.url(), screenshot, ...audit })
-      await context.close()
     }
+    await context.close()
     await fs.writeFile(path.join(ARTIFACT_DIR, 'staff-viewport-accessibility.json'), JSON.stringify(evidence, null, 2), 'utf8')
   })
 
   test('student PC puts the eight-step workbench before low-frequency extensions at 1920/1440/1280', async ({ browser }) => {
     const evidence = []
+    const context = await browser.newContext({ viewport: VIEWPORTS[0], locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const page = await context.newPage()
+    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+
     for (const viewport of VIEWPORTS) {
-      const context = await browser.newContext({ viewport, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-      const page = await context.newPage()
-      await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+      await page.setViewportSize(viewport)
       await page.goto(`${config.studentBaseUrl}/graduation`)
       await expect(page.locator('.gd-workbench')).toBeVisible()
       await expect(page.getByRole('heading', { name: '按步骤完成我的毕业设计' })).toBeVisible()
@@ -169,17 +179,20 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       const screenshot = path.join(ARTIFACT_DIR, `student-pc-workbench-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', caret: 'hide' })
       evidence.push({ surface: 'student-pc', route: page.url(), screenshot, order, ...audit })
-      await context.close()
     }
+    await context.close()
     await fs.writeFile(path.join(ARTIFACT_DIR, 'student-pc-viewport-accessibility.json'), JSON.stringify(evidence, null, 2), 'utf8')
   })
 
   test('teacher miniapp keeps the focused graduation queue and taskbook usable at 390/375', async ({ browser }) => {
     const evidence = []
+    const context = await browser.newContext({ viewport: MOBILE_VIEWPORTS[0], locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const page = await context.newPage()
+    await loginMini(page, u8TeacherAccount, 'teacher')
+
     for (const viewport of MOBILE_VIEWPORTS) {
-      const context = await browser.newContext({ viewport, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-      const page = await context.newPage()
-      await loginMini(page, u8TeacherAccount, 'teacher')
+      await page.setViewportSize(viewport)
+      await page.goto(`${MINI_BASE_URL}/#/pages/teacher/workbench/index`)
       await expect(page.getByText('当前身份：GD_MENTOR', { exact: false })).toBeVisible()
       await expect(page.getByText('批阅开题', { exact: true })).toBeVisible()
       await expect(page.getByText('任务书', { exact: true }).first()).toBeVisible()
@@ -199,17 +212,19 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       const taskbookShot = path.join(ARTIFACT_DIR, `teacher-mini-taskbook-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: taskbookShot, fullPage: false, animations: 'disabled', caret: 'hide' })
       evidence.push({ surface: 'teacher-mini', viewport, workbenchShot, taskbookShot, workbenchAudit, taskbookAudit })
-      await context.close()
     }
+    await context.close()
     await fs.writeFile(path.join(ARTIFACT_DIR, 'teacher-mini-viewport-accessibility.json'), JSON.stringify(evidence, null, 2), 'utf8')
   })
 
   test('student miniapp shows human material states and a truthful retryable topic empty state at 390/375', async ({ browser }) => {
     const evidence = []
+    const context = await browser.newContext({ viewport: MOBILE_VIEWPORTS[0], locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const page = await context.newPage()
+    await loginMini(page, config.student, 'student')
+
     for (const viewport of MOBILE_VIEWPORTS) {
-      const context = await browser.newContext({ viewport, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-      const page = await context.newPage()
-      await loginMini(page, config.student, 'student')
+      await page.setViewportSize(viewport)
       await page.goto(`${MINI_BASE_URL}/#/pages/student/graduation/index`)
       await expect(page.getByText('材料库', { exact: true })).toBeVisible()
       await expect(page.getByText('尚未上传版本', { exact: false }).first()).toBeVisible()
@@ -229,8 +244,8 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       const topicShot = path.join(ARTIFACT_DIR, `student-mini-topics-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: topicShot, fullPage: false, animations: 'disabled', caret: 'hide' })
       evidence.push({ surface: 'student-mini', viewport, overviewShot, topicShot, overviewAudit, topicAudit })
-      await context.close()
     }
+    await context.close()
     await fs.writeFile(path.join(ARTIFACT_DIR, 'student-mini-viewport-accessibility.json'), JSON.stringify(evidence, null, 2), 'utf8')
   })
 })
