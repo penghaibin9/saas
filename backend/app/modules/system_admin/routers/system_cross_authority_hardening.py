@@ -110,6 +110,18 @@ def governed_reset_password(
     ), message="密码已重置")
 
 
+@_routes.put("/system/users/{user_id}/roles", summary="分配学校账号角色（提交/缓存结果分离）")
+def governed_assign_user_roles(
+    user_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.user.assign-role")),
+):
+    from app.services.system_role_assignment_mutation_service import assign_user_roles
+
+    out = assign_user_roles(user_id, dict(body or {}), user=user)
+    return success(out, message="角色已分配；该账号需重新登录")
+
+
 @_routes.put("/system/user-batch-status", summary="批量账号状态变更（逐项缓存结果）")
 def governed_batch_user_status(
     body: dict = Body(...),
