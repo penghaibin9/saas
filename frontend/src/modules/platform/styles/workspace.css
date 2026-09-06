@@ -33,3 +33,7 @@
 /* One focusable scroll owner per list; no nested clipped DataTable scroll region. */
 .platform-workspace :is(.pct__table-region,.pcod__table) .dt { overflow: visible; }
 .platform-workspace :is(.pct__table-region,.pcod__table) .dt__scroll { overflow: visible; }
+
+/* The full-width lifecycle row must not preserve empty auto-fit tracks. */
+.platform-workspace.ptd .ptd__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .platform-workspace.ptd .ptd__cols { grid-template-columns: minmax(0, 1fr); } }

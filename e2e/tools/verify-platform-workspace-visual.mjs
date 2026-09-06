@@ -29,6 +29,22 @@ async function screenshot(name) {
 async function noOverflow() {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'page-level horizontal overflow')
 }
+async function detailColumns(width) {
+  const geometry = await page.locator('.ptd__cols').evaluate(grid => {
+    const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, right: r.right, y: r.y, width: r.width } }
+    return { grid: rect(grid), cards: [...grid.querySelectorAll(':scope > .ptd__panel')].map(rect), lifecycle: rect(grid.querySelector('.tlw')) }
+  })
+  assert.equal(geometry.cards.length, 2)
+  assert.ok(Math.abs(geometry.lifecycle.width - geometry.grid.width) < 2, 'lifecycle should span the whole workspace')
+  if (width > 760) {
+    assert.ok(geometry.cards.every(card => card.width > geometry.grid.width * .45), 'overview cards must use both halves, not leave empty tracks')
+    assert.ok(Math.abs(geometry.cards[0].y - geometry.cards[1].y) < 2, 'desktop overview cards should share one row')
+    assert.ok(Math.abs(geometry.cards[1].right - geometry.grid.right) < 2, 'no unused right-side grid tracks')
+  } else {
+    assert.ok(geometry.cards.every(card => Math.abs(card.width - geometry.grid.width) < 2), 'narrow cards must use the full available width')
+    assert.ok(geometry.cards[1].y > geometry.cards[0].y, 'narrow cards should stack vertically')
+  }
+}
 try {
   server = await createServer({ root: path.join(root, 'frontend'), configFile: path.join(root, 'frontend/vite.config.js'), server: { host: '127.0.0.1', port: 5178, strictPort: true, open: false } })
   await server.listen()
@@ -39,8 +55,8 @@ try {
   // Match the backend root only. Vite serves source modules under /src/.../api/ too.
   await page.route(/^https?:\/\/[^/]+\/api\//, route => { report.blockedApiRequests.push(new URL(route.request().url()).pathname); return route.abort() })
   for (const view of ['overview', 'tenants', 'orders', 'detail']) {
-    await check(`${view}: desktop real-SFC render`, async () => { await open(view); await noOverflow(); await screenshot(`${view}-1440`) })
-    await check(`${view}: narrow and tablet reflow`, async () => { for (const width of [1024, 390]) { await open(view, '', width); await noOverflow(); await screenshot(`${view}-${width}`) } })
+    await check(`${view}: desktop real-SFC render`, async () => { await open(view); await noOverflow(); if (view === 'detail') await detailColumns(1440); await screenshot(`${view}-1440`) })
+    await check(`${view}: narrow and tablet reflow`, async () => { for (const width of [1024, 390]) { await open(view, '', width); await noOverflow(); if (view === 'detail') await detailColumns(width); await screenshot(`${view}-${width}`) } })
   }
   await check('school filters, clear and compact density', async () => {
     await open('tenants')
