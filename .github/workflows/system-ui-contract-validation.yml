@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +42,12 @@ jobs:
           git rev-parse HEAD > artifacts/system-ui/HEAD.txt
           sha256sum frontend/package-lock.json > artifacts/system-ui/frontend-lock.sha256
           echo '853423ae684e5f2dcc6089c4ef545d72ede6cc54f77b8b7344bedfd01b83fb59  backend/app/modules/system_admin/routers/system_bundle.py' | sha256sum --check
+          if [[ "$EXPORT_SOURCE_DELTA" == 'true' ]]; then
+            git diff --binary --full-index 6148a3c56e7de45ff936ee4123312ac4e0a893ed HEAD > artifacts/system-ui/source-delta.patch
+            git ls-tree -r HEAD > artifacts/system-ui/source-tree.txt
+          fi
+        env:
+          EXPORT_SOURCE_DELTA: ${{ contains(github.event.head_commit.message, '[system-ui-source]') }}
       - name: Install exact locked frontend dependencies
         working-directory: frontend
         run: npm ci --no-audit --no-fund

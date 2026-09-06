@@ -1,674 +1,191 @@
 <template>
-  <ModulePageShell
-    title="数据交换任务中心"
-    subtitle="统一治理导入、迁移、错误回执、初始凭据和导出任务；所有写操作以服务器任务与版本为准"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <div class="exchange-page">
-      <section class="hero-panel">
-        <div>
-          <div class="eyebrow">学校数据交换控制台</div>
-          <h3>先看结论，再处理任务</h3>
-          <p>汇总来自独立数据库统计，不受当前页影响；导入确认只提交任务编号、版本和幂等键。</p>
-        </div>
-        <div class="hero-actions">
-          <RouterLink class="link-button" to="/admin/system/identity-import/students">学生导入</RouterLink>
-          <RouterLink class="link-button" to="/admin/system/identity-import/teachers">教师导入</RouterLink>
-          <RouterLink class="link-button secondary" to="/admin/system/migration">老系统迁移</RouterLink>
-        </div>
+  <SystemWorkspaceFrame title="数据交换任务" subtitle="找到任务，核对结果，再继续办理或安全下载。" :ctx="ctx">
+    <template #actions>
+      <button type="button" class="sw-btn" :disabled="locked" @click="refresh">刷新状态</button>
+      <button v-if="rights.migration" type="button" class="sw-btn" :disabled="locked" @click="$router.push('/admin/system/migration')">老系统迁移</button>
+      <button v-if="rights.upload" type="button" class="sw-btn" :disabled="locked" @click="$router.push('/admin/system/identity-import/students')">导入学生</button>
+      <button v-if="rights.upload" type="button" class="sw-btn sw-btn--primary" :disabled="locked" @click="$router.push('/admin/system/identity-import/teachers')">导入教职工</button>
+    </template>
+    <div v-if="!rights.read" class="sw-card sw-state"><h2>当前身份不能查看数据交换任务</h2><p>请核对本人任务或模块任务的查看权限，不需要授予导入权限。</p></div>
+    <template v-else>
+      <section class="sw-card sw-pad dx-viewbar" aria-label="任务可见范围">
+        <div><span class="sw-kicker">任务视图</span><div class="dx-segments">
+          <button v-for="value in visibilityOptions" :key="value" type="button" :aria-pressed="state.view.visibility === value" :disabled="locked" @click="changeView(value)">{{ viewLabels[value] }}</button>
+        </div></div>
+        <label v-if="state.view.visibility === 'MODULE'" class="sw-field">业务模块<select class="sw-input" :value="state.view.moduleCode" :disabled="locked" @change="changeView('MODULE', $event.target.value)"><option v-for="code in state.access?.allowedModules || []" :key="code" :value="code">{{ moduleLabel(code) }}</option></select></label>
+        <p class="sw-muted">{{ state.view.visibility === 'OWN' ? '只读取本人创建的任务' : state.view.visibility === 'MODULE' ? '只读取当前授权模块的任务' : '只读取本校授权任务' }}。查看、确认与下载分别鉴权。</p>
       </section>
+      <section class="dx-metrics" aria-label="独立任务汇总" data-testid="exchange-summary">
+        <article v-for="metric in metrics" :key="metric.key" class="sw-card"><span class="sw-muted">{{ metric.label }}</span><strong>{{ state.summary.loading ? '读取中' : taskCount(state.summary.data?.[metric.key]) }}</strong><small class="sw-muted">{{ metric.key === 'total' ? `导入 ${taskCount(state.summary.data?.imports)} · 导出 ${taskCount(state.summary.data?.exports)}` : metric.note }}</small></article>
+      </section>
+      <div v-if="state.summary.error" class="sw-alert sw-alert--warning" role="alert" data-testid="summary-error"><b>汇总未取得，任务清单仍可独立查看</b><p>{{ state.summary.error }}</p><button type="button" class="sw-btn sw-space" :disabled="locked" @click="controller.loadSummary()">重试汇总</button></div>
+      <p class="sw-muted dx-summary-note">汇总统计当前授权视图，不随下方关键词和状态筛选变化；不同状态统计不应直接相加。扫描解析中 {{ taskCount(state.summary.data?.scanning) }} 项 · 已过期 {{ taskCount(state.summary.data?.expired) }} 项。</p>
+      <div v-if="state.receipt" class="sw-alert" role="status" data-testid="exchange-receipt">{{ state.receipt }}</div>
+      <div v-if="state.operationError || linkError" class="sw-alert sw-alert--error" role="alert">{{ linkError || state.operationError }}</div>
 
-      <section class="view-bar">
-        <div>
-          <label>任务视图</label>
-          <div class="segmented">
-            <button
-              v-for="item in visibilityOptions"
-              :key="item.value"
-              :class="{ active: visibility === item.value }"
-              :disabled="loading"
-              @click="changeVisibility(item.value)"
-            >{{ item.label }}</button>
+      <section v-if="state.detail.ref || state.detail.error" class="sw-card sw-pad sw-stack" data-testid="exchange-detail">
+        <div class="sw-between"><div><span class="sw-kicker">当前任务 · {{ state.detail.ref?.jobType === 'EXPORT' ? '导出与回执' : '导入' }}</span><h2>{{ state.detail.item ? taskLabel(state.detail.item) : '任务详情' }}</h2></div>
+          <div class="sw-row"><button type="button" class="sw-btn" :disabled="locked || state.detail.loading" @click="reloadDetail">重新读取任务</button><button type="button" class="sw-btn" :disabled="locked" @click="closeDetail">返回任务清单</button></div></div>
+        <p v-if="state.detail.loading" class="sw-state" role="status">正在读取任务、版本与执行结果…</p>
+        <div v-else-if="state.detail.error" class="sw-alert sw-alert--error" role="alert">{{ state.detail.error }}<p>没有取得详情，不能执行本任务的写操作。</p></div>
+        <template v-else-if="state.detail.item">
+          <div class="dx-detail-layout">
+            <div class="sw-stack">
+              <div class="dx-task-heading"><span class="sw-symbol"><AppIcon :name="state.detail.item.jobType === 'IMPORT' ? 'records' : 'reports'" :size="23" /></span><div><h3>{{ taskLabel(state.detail.item) }}</h3><p class="sw-code">{{ state.detail.item.jobType }} #{{ state.detail.item.id }} · 版本 {{ state.detail.item.version }}</p></div><span class="sw-tag" :class="tone(state.detail.item)">{{ taskStatus(state.detail.item) }}</span></div>
+              <div v-if="unresolved(state.detail.item)" class="sw-alert sw-alert--warning"><b>上次请求结果尚未核实</b><p>只允许重新读取；不会因关闭确认框或再次点击而重复执行。</p></div>
+              <div v-if="state.detail.item.strongSensitive" class="sw-alert sw-alert--warning"><b>强敏感回执，下载前请核对交接对象</b><p>有效期以服务器返回值为准；一次性票据只能消费一次，文件内容不在页面预览。</p></div>
+              <dl class="dx-facts"><div><dt>业务模块</dt><dd>{{ moduleLabel(state.detail.item.moduleCode) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatTime(state.detail.item.createdAt) }}</dd></div><div><dt>当前版本</dt><dd>{{ state.detail.item.version }}</dd></div><div><dt>有效截止时间</dt><dd>{{ formatTime(state.detail.item.expiresAt) }}</dd></div></dl>
+              <template v-if="state.detail.item.jobType === 'IMPORT'">
+                <div class="dx-counts"><div v-for="(label, key) in countLabels" :key="key"><small class="sw-muted">{{ label }}</small><strong>{{ taskCount(taskCounts(state.detail.item)[key]) }}</strong></div></div>
+                <div v-if="isProcessing(state.detail.item)" class="sw-alert"><b>文件已登记，尚未形成最终预检结果</b><p>扫描、领取、解析阶段的行数显示“未取得”；后台继续处理，不需要重新上传。</p></div>
+                <div v-if="state.detail.item.sourceFile" class="dx-source"><h3>源文件与安全状态</h3><p>{{ state.detail.item.sourceFile.fileName || '文件名称未取得' }}</p><p class="sw-muted">{{ fileState(state.detail.item.sourceFile.status) }} · {{ fileState(state.detail.item.sourceFile.scanStatus) }}</p></div>
+                <section class="sw-stack" aria-label="错误条目">
+                  <div class="sw-between"><h3>预检错误明细</h3><button type="button" class="sw-btn" :disabled="locked || state.errors.loading" @click="controller.loadErrors(1)">读取错误明细</button></div>
+                  <p v-if="state.errors.loading" role="status">正在读取错误条目…</p>
+                  <p v-else-if="state.errors.error" class="sw-alert sw-alert--error" role="alert">{{ state.errors.error }}</p>
+                  <p v-else-if="state.errors.total === null" class="sw-muted">错误条目按需分页读取，未读取不代表没有错误。</p>
+                  <p v-else-if="!state.errors.rows.length" class="sw-muted">当前查询没有返回错误条目；是否可确认仍以任务的最终预检状态为准。</p>
+                  <div v-else class="sw-table-wrap"><table class="sw-table"><thead><tr><th>工作表 / 行号</th><th>字段</th><th>错误说明</th></tr></thead><tbody><tr v-for="(row, i) in state.errors.rows" :key="row.id || i"><td>{{ row.sheetName || '未标注' }}<small>第 {{ taskCount(row.rowNo) }} 行</small></td><td>{{ fieldLabel(row.fieldCode) }}</td><td>{{ row.message }}</td></tr></tbody></table></div>
+                  <div v-if="state.errors.total !== null && !state.errors.error" class="sw-pager"><span>共 {{ state.errors.total }} 条错误 · 第 {{ state.errors.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page <= 1" @click="controller.loadErrors(state.errors.page - 1)">上一页错误</button><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page * state.errors.pageSize >= state.errors.total" @click="controller.loadErrors(state.errors.page + 1)">下一页错误</button></div></div>
+                </section>
+                <section class="sw-stack" data-testid="related-receipts"><h3>本任务的回执文件</h3>
+                  <p v-if="!state.detail.item.receiptJobs" class="sw-muted">本接口尚未返回关联回执清单，请在导出任务中核对；不能把文件编号当作下载任务编号。</p>
+                  <template v-else>
+                    <p v-if="!state.detail.item.receiptJobs.list.length" class="sw-muted">当前授权视图未返回关联回执。</p>
+                    <div v-for="receipt in state.detail.item.receiptJobs.list" :key="taskKey(receipt)" class="dx-receipt-row"><div><b>{{ taskLabel(receipt) }}</b><p class="sw-muted">导出 #{{ receipt.id }} · {{ taskStatus(receipt) }}</p></div><button type="button" class="sw-btn" :disabled="locked" @click="openDetail(receipt)">核对并下载</button></div>
+                    <p v-if="state.detail.item.receiptJobs.total > state.detail.item.receiptJobs.list.length" class="sw-muted">共 {{ state.detail.item.receiptJobs.total }} 项，当前展示最近 {{ state.detail.item.receiptJobs.list.length }} 项；其余请在导出清单核对。</p>
+                  </template>
+                </section>
+              </template>
+              <div v-else class="dx-counts"><div><small class="sw-muted">文件行数</small><strong>{{ taskCount(taskCounts(state.detail.item).rowCount) }}</strong></div><div><small class="sw-muted">下载次数</small><strong>{{ taskCount(taskCounts(state.detail.item).downloadedCount) }}</strong></div></div>
+              <div v-if="state.detail.item.errorMessage" class="sw-alert sw-alert--error" role="alert">{{ state.detail.item.errorMessage }}</div>
+              <div class="sw-savebar"><p class="sw-muted">操作前重新读取最新任务，版本变化时必须重新核对。</p><div class="sw-row">
+                <button v-for="type in available(state.detail.item)" :key="type" type="button" class="sw-btn" :class="type === 'confirm' || type === 'download' ? 'sw-btn--primary' : ''" :disabled="locked" :data-testid="`task-${type}`" @click="controller.prepare(type, state.detail.item)">{{ actionLabels[type] }}</button>
+              </div></div>
+            </div>
+            <aside class="dx-timeline sw-stack"><h3>执行留痕</h3>
+              <div v-for="(event, i) in state.detail.item.timeline || []" :key="i"><b>{{ eventLabel(event.event) }}</b><p class="sw-muted">{{ formatTime(event.at) }}</p></div>
+              <p v-if="!state.detail.item.timeline?.length" class="sw-muted">未返回更多执行事件。</p>
+              <details v-if="state.detail.item.adapter || state.detail.item.adapterType"><summary>任务来源标识</summary><p class="sw-code">{{ state.detail.item.adapter?.type || state.detail.item.adapterType }}</p><p class="sw-code">{{ state.detail.item.adapter?.ref || state.detail.item.adapterRef }}</p></details>
+            </aside>
           </div>
-        </div>
-        <div v-if="visibility === 'MODULE'" class="module-select">
-          <label for="module-code">业务模块</label>
-          <select id="module-code" v-model="moduleCode" :disabled="loading" @change="search">
-            <option v-for="code in allowedModules" :key="code" :value="code">{{ moduleLabel(code) }}</option>
-          </select>
-        </div>
-        <div class="view-note">
-          <strong>{{ visibilityLabel }}</strong>
-          <span>{{ visibilityDescription }}</span>
-        </div>
+        </template>
       </section>
 
-      <section class="summary-grid" aria-label="数据交换汇总">
-        <article>
-          <span>全部任务</span>
-          <strong>{{ summary.total }}</strong>
-          <small>导入 {{ summary.imports }} · 导出 {{ summary.exports }}</small>
-        </article>
-        <article>
-          <span>待处理</span>
-          <strong>{{ summary.pending }}</strong>
-          <small>待确认或生成中</small>
-        </article>
-        <article>
-          <span>扫描解析中</span>
-          <strong>{{ summary.scanning }}</strong>
-          <small>未通过安全门前不能确认</small>
-        </article>
-        <article :class="{ alert: summary.failed > 0 }">
-          <span>异常任务</span>
-          <strong>{{ summary.failed }}</strong>
-          <small>预检或执行失败</small>
-        </article>
-        <article :class="{ alert: summary.expired > 0 }">
-          <span>已过期</span>
-          <strong>{{ summary.expired }}</strong>
-          <small>需重新发起或上传</small>
-        </article>
-        <article>
-          <span>可下载回执</span>
-          <strong>{{ summary.receipts }}</strong>
-          <small>均使用短时一次性票据</small>
-        </article>
+      <section v-else class="sw-card sw-stack dx-catalog" data-testid="exchange-catalog">
+        <form class="sw-row dx-toolbar" @submit.prevent="controller.search()">
+          <input v-model="state.filters.keyword" class="sw-input dx-search" :disabled="locked" aria-label="查找数据交换任务" placeholder="任务类型编码、批次号、模块或操作人" />
+          <select v-model="state.filters.jobType" class="sw-input" :disabled="locked" aria-label="任务类型"><option value="">全部类型</option><option value="IMPORT">导入任务</option><option value="EXPORT">导出与回执</option></select>
+          <select v-model="state.filters.status" class="sw-input" :disabled="locked" aria-label="任务状态"><option value="">全部状态</option><option v-for="(label, status) in statuses" :key="status" :value="status">{{ label }}</option></select>
+          <button type="submit" class="sw-btn" :disabled="locked || state.list.loading">查询</button><button type="button" class="sw-btn" :disabled="locked" @click="resetFilters">重置</button>
+        </form>
+        <div v-if="state.list.loading" class="sw-state" role="status">正在读取任务清单…</div>
+        <div v-else-if="state.list.error" class="sw-alert sw-alert--error dx-margin" role="alert" data-testid="task-list-error"><b>任务清单未取得</b><p>{{ state.list.error }}</p><button type="button" class="sw-btn sw-space" @click="controller.loadList()">重试清单</button></div>
+        <div v-else-if="!state.list.rows.length" class="sw-state"><h3>当前筛选没有任务</h3><p>清除筛选或切换已授权视图；不会因没有记录自动创建任务。</p></div>
+        <div v-else class="sw-table-wrap dx-table" tabindex="0" role="region" aria-label="数据交换任务清单"><table class="sw-table"><thead><tr><th>任务与来源</th><th>当前状态</th><th>数据量</th><th>创建时间 / 有效期</th><th>下一步</th></tr></thead><tbody>
+          <tr v-for="row in state.list.rows" :key="taskKey(row)" :data-testid="`task-row-${row.jobType}-${row.id}`"><td><div class="sw-person"><span class="sw-symbol"><AppIcon :name="row.jobType === 'IMPORT' ? 'records' : 'reports'" :size="21" /></span><span><b>{{ taskLabel(row) }}</b><small>{{ moduleLabel(row.moduleCode) }} · {{ row.jobType === 'IMPORT' ? '导入' : '导出' }} #{{ row.id }}</small></span></div><span v-if="row.strongSensitive" class="sw-tag sw-tag--orange dx-sensitive">强敏感回执 · 下载独立授权</span></td>
+            <td><span class="sw-tag" :class="tone(row)">{{ taskStatus(row) }}</span><small v-if="unresolved(row)">上次操作结果待核对</small></td>
+            <td v-if="row.jobType === 'IMPORT'">总行数 {{ taskCount(taskCounts(row).totalRows) }}<small>有效 {{ taskCount(taskCounts(row).validRows) }} · 错误 {{ taskCount(taskCounts(row).invalidRows) }}</small></td>
+            <td v-else>{{ taskCount(taskCounts(row).rowCount) }} 行<small>已下载 {{ taskCount(taskCounts(row).downloadedCount) }} 次</small></td>
+            <td>{{ formatTime(row.createdAt) }}<small>{{ row.expiresAt ? '有效至 ' + formatTime(row.expiresAt) : '未设置单独有效期' }}</small></td>
+            <td><button type="button" class="sw-link" :disabled="locked" @click="openDetail(row)">{{ row.jobType === 'EXPORT' ? '核对回执' : row.status === 'VALIDATION_FAILED' ? '查看错误' : isProcessing(row) ? '查看进度' : '继续办理' }} →</button></td>
+          </tr></tbody></table></div>
+        <footer v-if="state.list.total !== null && !state.list.error" class="sw-pager dx-pager"><span>共 {{ state.list.total }} 个任务 · 每页 {{ state.list.pageSize }} 项 · 第 {{ state.list.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="locked || state.list.loading || state.list.page <= 1" @click="controller.loadList(state.list.page - 1)">上一页</button><button type="button" class="sw-btn" :disabled="locked || state.list.loading || state.list.page * state.list.pageSize >= state.list.total" @click="controller.loadList(state.list.page + 1)">下一页</button></div></footer>
       </section>
-
-      <section class="toolbar">
-        <select v-model="filters.jobType" @change="search">
-          <option value="">全部类型</option>
-          <option value="IMPORT">导入任务</option>
-          <option value="EXPORT">导出与回执</option>
-        </select>
-        <select v-model="filters.status" @change="search">
-          <option value="">全部状态</option>
-          <option value="SCANNING">安全扫描中</option>
-          <option value="PARSING">解析中</option>
-          <option value="VALIDATED">待确认</option>
-          <option value="VALIDATION_FAILED">预检失败</option>
-          <option value="CONFIRMING">确认中</option>
-          <option value="CREATED">待生成</option>
-          <option value="RUNNING">生成中</option>
-          <option value="SUCCEEDED">已完成</option>
-          <option value="FAILED">失败</option>
-          <option value="CANCELLED">已取消</option>
-          <option value="EXPIRED">已过期</option>
-          <option value="REVOKED">已撤销</option>
-        </select>
-        <input v-model.trim="filters.keyword" placeholder="任务类型、批次号、模块或操作人" @keyup.enter="search">
-        <button class="primary" :disabled="loading" @click="search">查询</button>
-        <button :disabled="loading" @click="reset">重置</button>
-      </section>
-
-      <div v-if="error" class="state error-state">
-        <strong>任务加载失败</strong>
-        <span>{{ error }}</span>
-        <button @click="load">重新加载</button>
+    </template>
+    <WorkspaceConfirmDialog :visible="!!state.pending" :title="state.pending ? actionLabels[state.pending.type] : '核对任务操作'" :type="['cancel', 'revoke'].includes(state.pending?.type) ? 'danger' : 'warning'"
+      :submitting="state.busy" :confirm-disabled="!state.pending?.acknowledged" confirm-text="核对无误，继续办理" @update:visible="controller.closeAction()" @confirm="controller.perform()">
+      <div v-if="state.pending" class="sw-stack" data-testid="task-action-review"><p><b>{{ taskLabel(state.pending.row) }}</b> · #{{ state.pending.row.id }} · 版本 {{ state.pending.row.version }}</p>
+        <p>{{ actionDescriptions[state.pending.type] }}</p>
+        <div v-if="state.pending.type === 'download' && state.pending.row.strongSensitive" class="sw-alert sw-alert--warning">初始账号凭据仅交给授权人员。下载文件后请转入学校安全保管流程；页面不展示票据或凭据内容。</div>
+        <label v-if="['cancel', 'revoke'].includes(state.pending.type)" class="sw-field">业务原因<textarea v-model="state.pending.reason" class="sw-input" :disabled="state.busy" minlength="5" maxlength="500" aria-label="任务操作原因" /></label>
+        <p v-if="state.operationError" class="sw-alert sw-alert--error" role="alert">{{ state.operationError }}</p>
+        <label class="sw-row"><input v-model="state.pending.acknowledged" class="sw-check" type="checkbox" :disabled="state.busy" aria-label="我已核对当前任务与本次操作" />我已核对任务、操作范围和当前版本</label>
       </div>
-      <div v-else-if="loading" class="state">正在读取真实任务记录与独立汇总…</div>
-      <div v-else-if="!rows.length" class="state">
-        <strong>当前视图暂无任务</strong>
-        <span>可切换本人、模块或全校视图，或者从学生导入、教师导入、老系统迁移入口创建任务。</span>
-      </div>
-
-      <div v-else class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>任务</th>
-              <th>状态</th>
-              <th>数据量</th>
-              <th>文件与时效</th>
-              <th>创建人 / 时间</th>
-              <th class="action-col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="keyOf(row)">
-              <td>
-                <button class="task-link" @click="openDetail(row)">{{ taskLabel(row) }}</button>
-                <div class="muted">{{ moduleLabel(row.moduleCode) }} · {{ row.jobType === 'IMPORT' ? `导入 #${row.id}` : `导出 #${row.id}` }}</div>
-                <div v-if="row.strongSensitive" class="sensitive-mark">强敏感 · 一次性凭据回执</div>
-              </td>
-              <td><span class="status-tag" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span></td>
-              <td>
-                <template v-if="row.jobType === 'IMPORT'">
-                  <div>总计 {{ row.totalRows || 0 }}</div>
-                  <div class="muted">有效 {{ row.validRows || 0 }} · 错误 {{ row.invalidRows || 0 }}</div>
-                </template>
-                <template v-else>
-                  <div>{{ row.rowCount || 0 }} 行</div>
-                  <div class="muted">已下载 {{ row.downloadedCount || 0 }} 次</div>
-                </template>
-              </td>
-              <td>
-                <div>{{ row.jobType === 'IMPORT' ? sourceFileLabel(row) : exportFileLabel(row) }}</div>
-                <div class="muted">{{ expiryLabel(row) }}</div>
-              </td>
-              <td>
-                <div>{{ row.operatorName || '系统任务' }}</div>
-                <div class="muted">{{ formatTime(row.createdAt) }}</div>
-              </td>
-              <td class="actions">
-                <button class="small" @click="openDetail(row)">详情</button>
-                <button
-                  v-if="canConfirm(row)"
-                  class="primary small"
-                  :disabled="busyKey === keyOf(row)"
-                  @click="openAction('confirm', row)"
-                >确认导入</button>
-                <button
-                  v-if="row.retryable"
-                  class="small"
-                  :disabled="busyKey === keyOf(row)"
-                  @click="openAction('retry', row)"
-                >重试扫描</button>
-                <button
-                  v-if="row.cancellable"
-                  class="small danger-quiet"
-                  :disabled="busyKey === keyOf(row)"
-                  @click="openAction('cancel', row)"
-                >取消</button>
-                <button
-                  v-if="canDownload(row)"
-                  class="small"
-                  :class="{ sensitive: row.strongSensitive }"
-                  :disabled="busyKey === keyOf(row)"
-                  @click="downloadRow(row)"
-                >{{ row.strongSensitive ? '安全下载' : '下载文件' }}</button>
-                <button
-                  v-if="canRevoke(row)"
-                  class="small danger"
-                  :disabled="busyKey === keyOf(row)"
-                  @click="openAction('revoke', row)"
-                >撤销</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <footer v-if="pagination.total > pagination.pageSize" class="pagination">
-        <button :disabled="pagination.page <= 1 || loading" @click="turnPage(-1)">上一页</button>
-        <span>第 {{ pagination.page }} 页 · 共 {{ pagination.total }} 条</span>
-        <button
-          :disabled="pagination.page * pagination.pageSize >= pagination.total || loading"
-          @click="turnPage(1)"
-        >下一页</button>
-      </footer>
-    </div>
-
-    <div v-if="detail.open" class="modal-mask" @click.self="closeDetail">
-      <section class="modal-card detail-card" role="dialog" aria-modal="true" aria-label="任务详情">
-        <header class="modal-header">
-          <div>
-            <div class="eyebrow">{{ detail.item?.jobType === 'IMPORT' ? '导入任务详情' : '导出任务详情' }}</div>
-            <h3>{{ taskLabel(detail.item || {}) }}</h3>
-          </div>
-          <button class="icon-button" aria-label="关闭" @click="closeDetail">×</button>
-        </header>
-        <div v-if="detail.loading" class="state compact">正在读取任务详情…</div>
-        <div v-else-if="detail.error" class="state compact error-state">{{ detail.error }}</div>
-        <div v-else-if="detail.item" class="detail-body">
-          <div v-if="detail.item.strongSensitive" class="credential-warning">
-            <strong>这是初始账号凭据回执</strong>
-            <span>强敏感、24 小时有效、一次性下载。请仅交给授权人员，下载后立即转入学校安全保管流程。</span>
-          </div>
-          <section class="detail-grid">
-            <article><span>任务编号</span><strong>#{{ detail.item.id }}</strong></article>
-            <article><span>状态</span><strong>{{ statusLabel(detail.item.status) }}</strong></article>
-            <article><span>模块</span><strong>{{ moduleLabel(detail.item.moduleCode) }}</strong></article>
-            <article><span>版本</span><strong>v{{ detail.item.version }}</strong></article>
-            <article><span>创建时间</span><strong>{{ formatTime(detail.item.createdAt) }}</strong></article>
-            <article><span>有效期</span><strong>{{ expiryLabel(detail.item) }}</strong></article>
-          </section>
-
-          <section v-if="detail.item.jobType === 'IMPORT'" class="detail-section">
-            <h4>原始文件与安全状态</h4>
-            <div v-if="detail.item.sourceFile" class="kv-list">
-              <div><span>文件</span><strong>{{ detail.item.sourceFile.fileName || `#${detail.item.sourceFile.id}` }}</strong></div>
-              <div><span>文件状态</span><strong>{{ detail.item.sourceFile.status || '未知' }}</strong></div>
-              <div><span>扫描状态</span><strong>{{ detail.item.sourceFile.scanStatus || '未知' }}</strong></div>
-              <div><span>安全级别</span><strong>{{ detail.item.sourceFile.securityLevel || '未知' }}</strong></div>
-            </div>
-            <div v-else class="muted">该历史 adapter 任务没有独立源文件投影。</div>
-          </section>
-
-          <section v-if="detail.item.jobType === 'IMPORT'" class="detail-section">
-            <div class="section-title-row">
-              <h4>预检结果与错误行</h4>
-              <span>{{ detail.item.errorCount || 0 }} 条错误</span>
-            </div>
-            <div class="count-row">
-              <span>总计 {{ detail.item.totalRows || 0 }}</span>
-              <span>有效 {{ detail.item.validRows || 0 }}</span>
-              <span>错误 {{ detail.item.invalidRows || 0 }}</span>
-              <span>已确认 {{ detail.item.confirmedRows || 0 }}</span>
-            </div>
-            <div v-if="detail.errorsLoading" class="muted">正在读取错误明细…</div>
-            <div v-else-if="detail.errors.length" class="error-table-wrap">
-              <table class="error-table">
-                <thead><tr><th>工作表</th><th>行</th><th>字段</th><th>错误</th></tr></thead>
-                <tbody>
-                  <tr v-for="item in detail.errors" :key="item.id">
-                    <td>{{ item.sheetName || '—' }}</td>
-                    <td>{{ item.rowNo || '—' }}</td>
-                    <td>{{ item.fieldCode || '—' }}</td>
-                    <td>{{ item.message }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else class="muted">没有错误行。</div>
-          </section>
-
-          <section class="detail-section">
-            <h4>Adapter 与执行时间线</h4>
-            <div v-if="detail.item.adapter" class="adapter-line">
-              {{ detail.item.adapter.type }} · {{ detail.item.adapter.ref }}
-            </div>
-            <ol v-if="detail.item.timeline?.length" class="timeline">
-              <li v-for="event in detail.item.timeline" :key="`${event.event}-${event.at}`">
-                <span>{{ timelineLabel(event.event) }}</span><time>{{ formatTime(event.at) }}</time>
-              </li>
-            </ol>
-            <div v-else class="muted">暂无更多执行事件。</div>
-          </section>
-
-          <section v-if="detail.item.errorMessage" class="detail-section error-message">
-            <h4>任务异常</h4>
-            <p>{{ detail.item.errorMessage }}</p>
-          </section>
-        </div>
-        <footer class="modal-footer">
-          <button @click="closeDetail">关闭</button>
-        </footer>
-      </section>
-    </div>
-
-    <div v-if="actionDialog.open" class="modal-mask" @click.self="closeAction">
-      <section class="modal-card action-card" role="dialog" aria-modal="true" :aria-label="actionDialog.title">
-        <header class="modal-header">
-          <div>
-            <div class="eyebrow">高风险操作确认</div>
-            <h3>{{ actionDialog.title }}</h3>
-          </div>
-          <button class="icon-button" aria-label="关闭" @click="closeAction">×</button>
-        </header>
-        <div class="action-content">
-          <p>{{ actionDialog.description }}</p>
-          <div class="impact-box">
-            <span>任务</span><strong>{{ taskLabel(actionDialog.row || {}) }} #{{ actionDialog.row?.id }}</strong>
-            <span>当前版本</span><strong>v{{ actionDialog.row?.version }}</strong>
-            <span>当前状态</span><strong>{{ statusLabel(actionDialog.row?.status) }}</strong>
-          </div>
-          <label v-if="actionDialog.requiresReason" class="reason-field">
-            <span>操作原因（不少于 5 个字）</span>
-            <textarea v-model.trim="actionDialog.reason" rows="4" maxlength="500" placeholder="说明为什么需要执行此操作，记录将进入审计"></textarea>
-          </label>
-        </div>
-        <footer class="modal-footer">
-          <button :disabled="actionDialog.submitting" @click="closeAction">取消</button>
-          <button
-            class="primary"
-            :disabled="actionDialog.submitting || (actionDialog.requiresReason && actionDialog.reason.length < 5)"
-            @click="submitAction"
-          >{{ actionDialog.submitting ? '正在执行…' : actionDialog.confirmLabel }}</button>
-        </footer>
-      </section>
-    </div>
-  </ModulePageShell>
+    </WorkspaceConfirmDialog>
+  </SystemWorkspaceFrame>
 </template>
-
 <script>
-import { ModulePageShell } from '@/components/business'
-import { toast } from '@/utils/toast'
-import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
-
-const EMPTY_FILTERS = () => ({ jobType: '', status: '', keyword: '' })
-const EMPTY_SUMMARY = () => ({ total: 0, imports: 0, exports: 0, pending: 0, scanning: 0, failed: 0, expired: 0, receipts: 0 })
-const EMPTY_DETAIL = () => ({ open: false, loading: false, error: '', item: null, errors: [], errorsLoading: false })
-const EMPTY_ACTION = () => ({
-  open: false,
-  type: '',
-  title: '',
-  description: '',
-  confirmLabel: '确认执行',
-  requiresReason: false,
-  reason: '',
-  row: null,
-  submitting: false
-})
-
+import { markRaw } from 'vue'
+import AppIcon from '@/components/ui/AppIcon.vue'
+import SystemWorkspaceFrame from '../components/workspace/SystemWorkspaceFrame.vue'
+import WorkspaceConfirmDialog from '../components/workspace/WorkspaceConfirmDialog.vue'
+import { dataExchangeApi } from '../api/dataExchange.api'
+import { matchPermission } from '@/config/navPlan'
+import { contextFingerprint } from '../utils/workspaceContract'
+import { exchangeRights, createExchangeState, createExchangeController, TASK_STATUSES,
+  taskRef, taskKey, taskCount, taskCounts, taskLabel, taskStatus, actionAvailable } from '../utils/dataExchangeWorkspace'
+const ACTION_LABELS = { confirm: '确认导入', retry: '重试扫描', cancel: '取消任务', download: '安全下载', revoke: '撤销回执' }
 export default {
-  name: 'SystemDataExchangeView',
-  components: { ModulePageShell },
+  name: 'SystemDataExchangeView', components: { AppIcon, SystemWorkspaceFrame, WorkspaceConfirmDialog },
   props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: false,
-      error: '',
-      rows: [],
-      summary: EMPTY_SUMMARY(),
-      busyKey: '',
-      filters: EMPTY_FILTERS(),
-      pagination: { page: 1, pageSize: 20, total: 0 },
-      visibility: 'OWN',
-      moduleCode: '',
-      allowedVisibilities: ['OWN'],
-      allowedModules: [],
-      detail: EMPTY_DETAIL(),
-      actionDialog: EMPTY_ACTION()
-    }
-  },
+  data() { return { state: createExchangeState(), controller: null, linkError: '', statuses: TASK_STATUSES,
+    viewLabels: { OWN: '本人任务', MODULE: '模块任务', TENANT: '全校任务' }, actionLabels: ACTION_LABELS,
+    actionDescriptions: { confirm: '仅提交服务端保存的预检任务与版本，不重新发送名单。', retry: '仅重新执行允许重试的安全扫描与解析，不重放已完成的导入。', cancel: '取消后不再执行此任务；历史记录和原因仍保留。', download: '重新校验版本，再申请短时一次性票据。实际下载权限由后端检查。', revoke: '撤销后现有下载票据失效，任务及审计记录仍保留。' },
+    metrics: [{ key: 'total', label: '全部任务', note: '' }, { key: 'pending', label: '待处理', note: '待确认或生成中' }, { key: 'failed', label: '异常任务', note: '预检或执行失败' }, { key: 'receipts', label: '有效导出文件', note: '不代表当前身份有下载权限' }],
+    countLabels: { totalRows: '文件行数', validRows: '有效行', invalidRows: '需修正行' } } },
   computed: {
-    visibilityOptions() {
-      const labels = { OWN: '本人任务', MODULE: '本模块任务', TENANT: '全校任务' }
-      return this.allowedVisibilities.map((value) => ({ value, label: labels[value] || (value ? '待确认' : '—') }))
-    },
-    visibilityLabel() {
-      return { OWN: '仅本人创建', MODULE: `模块：${this.moduleLabel(this.moduleCode)}`, TENANT: '全校授权视图' }[this.visibility]
-    },
-    visibilityDescription() {
-      return {
-        OWN: '只显示由当前账号创建的导入与导出任务。',
-        MODULE: '只显示当前有管理职责的业务模块任务。',
-        TENANT: '显示本校全部任务，不包含其他学校数据。'
-      }[this.visibility]
-    }
+    contextKey() { return contextFingerprint(this.ctx) },
+    rights() { return exchangeRights(code => Array.isArray(this.ctx.permissionPatterns) && matchPermission(this.ctx.permissionPatterns, code)) },
+    locked() { return this.state.busy || !!this.state.pending },
+    visibilityOptions() { return this.state.access?.allowedVisibilities || [this.state.view.visibility] }
   },
-  created() { this.load() },
+  watch: { contextKey() { this.recreate() }, '$route.query': { deep: true, handler() { this.syncRoute() } } },
+  created() { this.recreate() },
+  mounted() { window.addEventListener('beforeunload', this.beforeUnload) },
+  beforeUnmount() { this.controller?.dispose(); window.removeEventListener('beforeunload', this.beforeUnload) },
+  beforeRouteLeave() { return this.canLeave() }, beforeRouteUpdate() { return this.canLeave() },
   methods: {
-    keyOf(row) { return `${row.jobType}-${row.id}` },
-    viewContext() { return { visibility: this.visibility, moduleCode: this.visibility === 'MODULE' ? this.moduleCode : '' } },
-    taskLabel(row) {
-      const labels = {
-        IDENTITY_STUDENT: '学生导入与账号开通',
-        IDENTITY_TEACHER: '教师导入',
-        ACADEMIC_ROSTER: '教务名册导入',
-        ACADEMIC_GRADE: '教务成绩导入',
-        ACADEMIC_SCHEDULE: '教务排课导入',
-        IMPORT_ERROR_RECEIPT: '导入错误回执',
-        INITIAL_CREDENTIAL_RECEIPT: '初始账号凭据回执'
-      }
-      return labels[row.importType || row.exportType] || row.importType || row.exportType || '数据交换任务'
+    taskKey, taskCount, taskCounts, taskLabel, taskStatus,
+    moduleLabel(code) { return { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', GRADUATION: '毕业设计', INTERNSHIP: '岗位实习', STUDENT_AFFAIRS: '学工中心' }[code] || '其他授权模块' },
+    formatTime(value) { return value ? String(value).replace('T', ' ').replace(/Z$/, ' UTC') : '未返回' },
+    fieldLabel(code) { return { name: '姓名', userNo: '工号', studentNo: '学号', collegeName: '学院', className: '班级', roleCode: '角色', scopeType: '数据范围' }[code] || (/[\u4e00-\u9fff]/.test(code || '') ? code : '其他字段') },
+    fileState(code) { return { AVAILABLE: '文件可用', PENDING: '等待扫描', CLEAN: '扫描通过', PASSED: '扫描通过', ERROR: '扫描异常', INFECTED: '安全检查未通过', REJECTED: '文件已拒绝', SCANNING: '扫描中' }[code] || '安全状态待核对' },
+    eventLabel(code) { return { CREATED: '任务创建', PARSING_STARTED: '开始预检', PARSING_FINISHED: '预检完成', CONFIRMED: '确认完成', FINISHED: '文件生成完成', REVOKED: '回执已撤销' }[code] || '后台处理事件' },
+    isProcessing(row) { return ['SCANNING', 'WORKER_CLAIMED', 'PARSING'].includes(row.status) },
+    tone(row) { return row.status === 'SUCCEEDED' ? 'sw-tag--green' : ['VALIDATION_FAILED', 'FAILED', 'EXPIRED'].includes(row.status) ? 'sw-tag--orange' : ['SCANNING', 'WORKER_CLAIMED', 'PARSING', 'VALIDATED', 'CONFIRMING', 'CREATED', 'RUNNING'].includes(row.status) ? 'sw-tag--blue' : '' },
+    unresolved(row) { return !!this.state.unresolved[taskKey(row)] },
+    available(row) { return this.unresolved(row) ? [] : Object.keys(ACTION_LABELS).filter(type => actionAvailable(type, row, this.rights)) },
+    async recreate() {
+      this.controller?.dispose(); this.state = createExchangeState(this.rights.initialVisibility); this.linkError = ''
+      const controller = createExchangeController({ state: this.state, api: dataExchangeApi, rights: () => this.rights })
+      this.controller = markRaw(controller)
+      if (this.rights.read) { await controller.refresh(); if (this.controller === controller) await this.syncRoute() }
     },
-    moduleLabel(code) {
-      return { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心' }[code] || (code ? '待确认' : '未标注模块')
-    },
-    statusLabel(status) {
-      return {
-        SCANNING: '安全扫描中', PARSING: '解析中', VALIDATED: '待确认',
-        VALIDATION_FAILED: '预检失败', CONFIRMING: '确认中', CREATED: '待生成',
-        RUNNING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消',
-        EXPIRED: '已过期', REVOKED: '已撤销'
-      }[status] || (status ? '状态待确认' : '未知')
-    },
-    statusClass(status) {
-      if (status === 'SUCCEEDED') return 'success'
-      if (['SCANNING', 'PARSING', 'VALIDATED', 'CONFIRMING', 'CREATED', 'RUNNING'].includes(status)) return 'warning'
-      if (['VALIDATION_FAILED', 'FAILED'].includes(status)) return 'danger'
-      return 'neutral'
-    },
-    timelineLabel(event) {
-      return {
-        CREATED: '任务创建', PARSING_STARTED: '开始解析', PARSING_FINISHED: '解析完成',
-        CONFIRMED: '确认完成', FINISHED: '文件生成完成', REVOKED: '已撤销'
-      }[event] || event
-    },
-    formatTime(value) { return value ? String(value).replace('T', ' ').replace('Z', '').slice(0, 19) : '—' },
-    expiryLabel(row) {
-      if (!row.expiresAt) return '无单独有效期'
-      if (['EXPIRED', 'REVOKED'].includes(row.status)) return this.statusLabel(row.status)
-      return `有效至 ${this.formatTime(row.expiresAt)}`
-    },
-    sourceFileLabel(row) { return row.sourceFileId ? `原始文件 #${row.sourceFileId}` : '历史 adapter 任务' },
-    exportFileLabel(row) { return row.fileObjectId ? `文件 #${row.fileObjectId}` : '文件尚未生成' },
-    canConfirm(row) {
-      return row.jobType === 'IMPORT' && row.status === 'VALIDATED' && Number(row.invalidRows || 0) === 0
-    },
-    canDownload(row) {
-      return row.jobType === 'EXPORT' && row.status === 'SUCCEEDED' && !!row.fileObjectId && row.downloadable !== false
-    },
-    canRevoke(row) { return row.jobType === 'EXPORT' && row.status === 'SUCCEEDED' },
-    applyAccessContext(data) {
-      if (Array.isArray(data.allowedVisibilities) && data.allowedVisibilities.length) {
-        this.allowedVisibilities = data.allowedVisibilities
-      }
-      if (Array.isArray(data.allowedModules)) this.allowedModules = data.allowedModules
-      if (!this.allowedVisibilities.includes(this.visibility)) {
-        this.visibility = data.defaultVisibility || this.allowedVisibilities[0] || 'OWN'
-      }
-      if (this.visibility === 'MODULE' && !this.allowedModules.includes(this.moduleCode)) {
-        this.moduleCode = this.allowedModules[0] || ''
-      }
-    },
-    async load() {
-      this.loading = true
-      this.error = ''
+    async syncRoute() {
+      if (!this.controller || !this.rights.read || this.locked) return
+      const query = this.$route.query; this.linkError = ''
       try {
-        const context = this.viewContext()
-        const [summary, data] = await Promise.all([
-          dataExchangeApi.summary(context),
-          dataExchangeApi.list({
-            ...this.filters,
-            ...context,
-            page: this.pagination.page,
-            pageSize: this.pagination.pageSize
-          })
-        ])
-        this.applyAccessContext(summary)
-        this.applyAccessContext(data)
-        this.summary = { ...EMPTY_SUMMARY(), ...summary }
-        this.rows = data.list || []
-        this.pagination.total = Number(data.total || 0)
-      } catch (error) {
-        this.error = error.message || '数据交换任务加载失败'
-        this.rows = []
-        this.summary = EMPTY_SUMMARY()
-      } finally {
-        this.loading = false
-      }
-    },
-    changeVisibility(value) {
-      this.visibility = value
-      if (value === 'MODULE' && !this.moduleCode) this.moduleCode = this.allowedModules[0] || ''
-      this.search()
-    },
-    search() { this.pagination.page = 1; this.load() },
-    reset() { this.filters = EMPTY_FILTERS(); this.search() },
-    turnPage(step) { this.pagination.page += step; this.load() },
-    async openDetail(row) {
-      this.detail = { ...EMPTY_DETAIL(), open: true, loading: true, item: row }
-      try {
-        const context = this.viewContext()
-        const item = row.jobType === 'IMPORT'
-          ? await dataExchangeApi.getImport(row.id, context)
-          : await dataExchangeApi.getExport(row.id, context)
-        this.detail.item = item
-        this.detail.loading = false
-        if (item.jobType === 'IMPORT' && Number(item.errorCount || 0) > 0) {
-          this.detail.errorsLoading = true
-          try {
-            const errors = await dataExchangeApi.getImportErrors(row.id, { ...context, page: 1, pageSize: 100 })
-            this.detail.errors = errors.list || []
-          } finally {
-            this.detail.errorsLoading = false
-          }
+        if (query.visibility && (query.visibility !== this.state.view.visibility || (query.visibility === 'MODULE' && String(query.moduleCode || '') !== this.state.view.moduleCode))) {
+          if (!await this.controller.changeView(String(query.visibility), String(query.moduleCode || ''))) throw new Error('任务链接中的可见范围未获授权，请从本页选择合法视图')
         }
-      } catch (error) {
-        this.detail.loading = false
-        this.detail.error = error.message || '任务详情加载失败'
-      }
+        if (!query.jobId) { this.controller.closeDetail(); return }
+        let ref
+        try { ref = taskRef({ id: String(query.jobId), jobType: String(query.jobType || '') }) }
+        catch (error) { this.controller.closeDetail(); throw error }
+        if (this.state.detail.ref && taskKey(ref) === taskKey(this.state.detail.ref)) return
+        await this.controller.openDetail(ref)
+      } catch (error) { this.linkError = error.message }
     },
-    closeDetail() { if (!this.detail.loading) this.detail = EMPTY_DETAIL() },
-    openAction(type, row) {
-      const config = {
-        confirm: {
-          title: '确认整批导入',
-          description: '系统将按服务器保存的预检结果执行整批写入。重复点击会由幂等键和任务租约阻止重复业务写入。',
-          confirmLabel: '确认并执行', requiresReason: false
-        },
-        retry: {
-          title: '重试安全扫描或解析',
-          description: '仅重新执行可安全重放的身份文件扫描与解析；业务数据错误不会被伪装为重试成功。',
-          confirmLabel: '确认重试', requiresReason: false
-        },
-        cancel: {
-          title: '取消导入任务',
-          description: '仅可取消尚未进入不可逆业务写入的任务。取消原因会写入任务记录与审计。',
-          confirmLabel: '确认取消', requiresReason: true
-        },
-        revoke: {
-          title: '撤销导出文件',
-          description: '撤销后现有下载票据立即失效，任务仍保留审计元数据。',
-          confirmLabel: '确认撤销', requiresReason: true
-        }
-      }[type]
-      this.actionDialog = { ...EMPTY_ACTION(), ...config, open: true, type, row }
+    openDetail(row) { if (!this.locked) this.$router.push({ path: this.$route.path, query: { ...this.$route.query, jobId: taskRef(row).id, jobType: row.jobType, visibility: this.state.view.visibility, moduleCode: this.state.view.moduleCode || undefined } }) },
+    closeDetail() { if (this.locked) return; const query = { ...this.$route.query }; delete query.jobId; delete query.jobType; this.$router.push({ path: this.$route.path, query }) },
+    reloadDetail() { if (this.state.detail.ref && !this.locked) this.controller.openDetail(this.state.detail.ref) },
+    async refresh() { if (this.locked) return; await this.controller.refresh(); this.reloadDetail() },
+    async changeView(value, moduleCode) {
+      if (this.locked) return
+      const module = moduleCode || (value === 'MODULE' ? this.state.access?.allowedModules[0] : '') || ''
+      if (await this.controller.changeView(value, module)) this.$router.replace({ path: this.$route.path, query: { visibility: value, ...(module ? { moduleCode: module } : {}) } })
     },
-    closeAction() { if (!this.actionDialog.submitting) this.actionDialog = EMPTY_ACTION() },
-    async submitAction() {
-      const dialog = this.actionDialog
-      const row = dialog.row
-      if (!row) return
-      dialog.submitting = true
-      this.busyKey = this.keyOf(row)
-      try {
-        if (dialog.type === 'confirm') {
-          await dataExchangeApi.confirmImport(row.id, row.version)
-          toast.success('导入任务已确认完成')
-        } else if (dialog.type === 'retry') {
-          await dataExchangeApi.retryImport(row.id, row.version)
-          toast.success('任务已重新进入安全扫描队列')
-        } else if (dialog.type === 'cancel') {
-          await dataExchangeApi.cancelImport(row.id, row.version, dialog.reason)
-          toast.success('导入任务已取消')
-        } else if (dialog.type === 'revoke') {
-          await dataExchangeApi.revokeExport(row.id, row.version, dialog.reason)
-          toast.success('导出文件已撤销')
-        }
-        this.actionDialog = EMPTY_ACTION()
-        await this.load()
-      } catch (error) {
-        toast.error(error.message || '操作失败')
-      } finally {
-        dialog.submitting = false
-        this.busyKey = ''
-      }
-    },
-    async downloadRow(row) {
-      this.busyKey = this.keyOf(row)
-      try {
-        await dataExchangeApi.downloadExport(row)
-        toast.success(row.strongSensitive ? '强敏感回执已通过一次性票据下载' : '安全下载已开始；一次性票据已消耗')
-        await this.load()
-      } catch (error) {
-        toast.error(error.message || '下载失败')
-      } finally {
-        this.busyKey = ''
-      }
-    }
+    resetFilters() { if (!this.locked) { this.state.filters = { keyword: '', jobType: '', status: '' }; this.controller.search() } },
+    canLeave() { if (this.locked) { this.state.operationError = this.state.busy ? '当前请求尚未返回，请等待结果后再离开。' : '请先完成或取消当前操作核对。'; return false }; return true },
+    beforeUnload(event) { if (this.state.busy) { event.preventDefault(); event.returnValue = '' } }
   }
 }
 </script>
-
 <style scoped>
-@import '@/styles/module-page.css';
-.exchange-page { display: grid; gap: 16px; }
-.hero-panel { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 24px; border: 1px solid #dbe7f5; border-radius: 18px; background: linear-gradient(135deg, #f2f7ff, #fff); }
-.hero-panel h3 { margin: 4px 0 8px; font-size: 22px; color: #0f172a; }
-.hero-panel p { max-width: 720px; margin: 0; color: #64748b; line-height: 1.65; }
-.eyebrow { color: #2563eb; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.link-button, button { border: 1px solid #cbd5e1; border-radius: 9px; padding: 8px 13px; background: #fff; color: #334155; cursor: pointer; text-decoration: none; font-size: 14px; }
-.link-button:not(.secondary), button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-button:disabled { opacity: .55; cursor: not-allowed; }
-.view-bar { display: grid; grid-template-columns: auto auto minmax(220px, 1fr); gap: 18px; align-items: end; padding: 16px; border: 1px solid #dbe5f0; border-radius: 14px; background: #fff; }
-.view-bar label, .reason-field > span { display: block; margin-bottom: 7px; color: #64748b; font-size: 12px; font-weight: 600; }
-.segmented { display: flex; padding: 3px; border-radius: 10px; background: #f1f5f9; }
-.segmented button { border: 0; background: transparent; }
-.segmented button.active { color: #1d4ed8; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / 12%); }
-.module-select select { min-height: 39px; min-width: 170px; border: 1px solid #cbd5e1; border-radius: 9px; padding: 0 10px; background: #fff; }
-.view-note { display: grid; gap: 3px; justify-self: end; text-align: right; }
-.view-note strong { color: #0f172a; }
-.view-note span { color: #64748b; font-size: 12px; }
-.summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.summary-grid article { display: grid; gap: 4px; min-height: 112px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 13px; background: #fff; }
-.summary-grid article.alert { border-color: #fecaca; background: #fffafa; }
-.summary-grid span { color: #64748b; font-size: 13px; }
-.summary-grid strong { font-size: 27px; color: #0f172a; }
-.summary-grid small { color: #94a3b8; line-height: 1.4; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
-.toolbar select, .toolbar input { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 10px; background: #fff; }
-.toolbar input { min-width: 260px; flex: 1; }
-.state { min-height: 180px; display: grid; place-content: center; gap: 8px; text-align: center; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; }
-.state.compact { min-height: 130px; }
-.error-state { color: #b91c1c; background: #fff7f7; }
-.table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
-table { width: 100%; border-collapse: collapse; min-width: 1080px; }
-th, td { padding: 13px 14px; text-align: left; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
-th { position: sticky; top: 0; background: #f8fafc; color: #475569; font-size: 13px; }
-tr:last-child td { border-bottom: none; }
-.task-link { border: 0; padding: 0; color: #0f172a; background: transparent; font-weight: 650; text-align: left; }
-.task-link:hover { color: #2563eb; }
-.muted { color: #94a3b8; font-size: 12px; margin-top: 3px; }
-.sensitive-mark { width: fit-content; margin-top: 6px; padding: 3px 7px; border-radius: 999px; color: #9f1239; background: #fff1f2; font-size: 11px; font-weight: 650; }
-.status-tag { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 12px; }
-.status-tag.success { color: #047857; background: #ecfdf5; }
-.status-tag.warning { color: #b45309; background: #fffbeb; }
-.status-tag.danger { color: #b91c1c; background: #fef2f2; }
-.status-tag.neutral { color: #475569; background: #f1f5f9; }
-.actions { display: flex; flex-wrap: wrap; gap: 7px; min-width: 260px; }
-button.small { padding: 6px 9px; font-size: 12px; }
-button.danger { color: #b91c1c; border-color: #fecaca; background: #fff7f7; }
-button.danger-quiet { color: #9a3412; border-color: #fed7aa; background: #fffaf5; }
-button.sensitive { color: #9f1239; border-color: #fecdd3; background: #fff1f2; }
-.pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; color: #64748b; }
-.modal-mask { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 48%); }
-.modal-card { width: min(680px, 100%); max-height: calc(100vh - 48px); overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgb(15 23 42 / 28%); }
-.detail-card { width: min(920px, 100%); }
-.modal-header, .modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e2e8f0; }
-.modal-header h3 { margin: 4px 0 0; color: #0f172a; }
-.modal-footer { justify-content: flex-end; border-top: 1px solid #e2e8f0; border-bottom: 0; }
-.icon-button { border: 0; padding: 2px 8px; background: transparent; font-size: 26px; line-height: 1; }
-.detail-body, .action-content { overflow-y: auto; padding: 20px; }
-.credential-warning { display: grid; gap: 5px; margin-bottom: 16px; padding: 14px; border: 1px solid #fecdd3; border-radius: 12px; color: #9f1239; background: #fff1f2; }
-.credential-warning span { font-size: 13px; line-height: 1.6; }
-.detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.detail-grid article { display: grid; gap: 5px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; }
-.detail-grid span, .kv-list span, .impact-box span { color: #64748b; font-size: 12px; }
-.detail-grid strong { font-size: 14px; overflow-wrap: anywhere; }
-.detail-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
-.detail-section h4 { margin: 0 0 12px; color: #0f172a; }
-.kv-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.kv-list div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 9px; background: #f8fafc; }
-.section-title-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
-.section-title-row span { color: #64748b; font-size: 13px; }
-.count-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.count-row span { padding: 5px 9px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; }
-.error-table-wrap { max-height: 260px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
-.error-table { min-width: 680px; }
-.error-table th, .error-table td { padding: 9px 10px; font-size: 12px; }
-.adapter-line { padding: 10px 12px; border-radius: 9px; color: #475569; background: #f8fafc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-.timeline { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 22px; }
-.timeline li { display: flex; justify-content: space-between; gap: 20px; color: #334155; }
-.timeline time { color: #94a3b8; font-size: 12px; }
-.error-message { color: #991b1b; }
-.error-message p { margin: 0; padding: 12px; border-radius: 9px; background: #fef2f2; white-space: pre-wrap; }
-.action-content > p { margin: 0 0 16px; color: #475569; line-height: 1.7; }
-.impact-box { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px 16px; padding: 14px; border-radius: 12px; background: #f8fafc; }
-.reason-field { display: block; margin-top: 16px; }
-.reason-field textarea { width: 100%; resize: vertical; border: 1px solid #cbd5e1; border-radius: 9px; padding: 10px; font: inherit; box-sizing: border-box; }
-@media (max-width: 1180px) { .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 820px) {
-  .hero-panel { align-items: flex-start; flex-direction: column; }
-  .view-bar { grid-template-columns: 1fr; align-items: stretch; }
-  .view-note { justify-self: start; text-align: left; }
-  .summary-grid, .detail-grid, .kv-list { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 560px) { .summary-grid, .detail-grid, .kv-list { grid-template-columns: 1fr; } }
+.dx-viewbar{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}.dx-viewbar .sw-field{min-width:160px}.dx-viewbar>p{max-width:360px}.dx-segments{display:flex;gap:4px;margin-top:10px;background:var(--sw-bg);border-radius:9px;padding:4px}.dx-segments button{font:inherit;font-size:12px;padding:7px 13px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--sw-muted);cursor:pointer}.dx-segments button[aria-pressed=true]{background:var(--sw-surface);border-color:var(--sw-line);color:var(--sw-accent)}.dx-segments button:disabled{cursor:not-allowed;opacity:.6}
+.dx-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.dx-metrics article{display:grid;gap:7px;padding:20px}.dx-metrics strong{font-size:27px;line-height:1.5;font-variant-numeric:tabular-nums}.dx-metrics small{font-size:11px}.dx-summary-note{margin-top:-4px}.dx-toolbar{padding:18px 20px;border-bottom:1px solid var(--sw-line)}.dx-toolbar select{width:auto;max-width:200px}.dx-search{flex:1;min-width:200px}.dx-margin{margin:0 20px 20px}.dx-catalog{gap:0;overflow:hidden}.dx-table{border:0;border-radius:0}.dx-table table{min-width:810px}.dx-table .sw-symbol{width:35px;height:35px;flex-basis:35px}.dx-sensitive{margin:8px 0 0 46px}.dx-pager{padding:15px 20px;border-top:1px solid var(--sw-line)}
+.dx-detail-layout{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:24px}.dx-task-heading{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.dx-task-heading>div{flex:1;min-width:0}.dx-facts{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0;padding:18px;border:1px solid var(--sw-line);border-radius:10px}.dx-facts dt{font-size:11px;color:var(--sw-muted)}.dx-facts dd{margin:6px 0 0;font-size:13px;overflow-wrap:anywhere}.dx-counts{display:flex;border:1px solid var(--sw-line);border-radius:10px;padding:17px 0}.dx-counts>div{flex:1;padding:0 20px;border-right:1px solid var(--sw-line);min-width:0}.dx-counts>div:last-child{border:0}.dx-counts strong{display:block;font-size:23px;margin-top:6px}.dx-timeline{align-content:start;padding:20px;border:1px solid var(--sw-line);border-radius:11px;background:var(--sw-bg)}.dx-timeline>div{padding-left:14px;border-left:2px solid var(--sw-line)}.dx-timeline b{font-size:12px}.dx-source{padding:16px;background:var(--sw-bg);border-radius:9px}.dx-source>p{overflow-wrap:anywhere;font-size:12px}.dx-receipt-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--sw-line);border-radius:9px}.dx-receipt-row b{font-size:12px}
+@container system-workspace (max-width:1000px){.dx-detail-layout{grid-template-columns:minmax(0,1fr)}.dx-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.dx-detail-layout{grid-template-columns:minmax(0,1fr)}.dx-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.dx-viewbar{align-items:flex-start}.dx-facts{grid-template-columns:1fr}.dx-toolbar{padding:14px}.dx-toolbar select{max-width:100%}.dx-search{flex-basis:100%}.dx-counts>div{padding:0 10px}.dx-counts strong{font-size:19px}.dx-metrics article{padding:15px}}
 </style>
