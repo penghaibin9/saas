@@ -76,8 +76,10 @@ def test_batch_commits_both_accounts_and_exact_summary_audit(batch_accounts_case
 
     ids = batch_accounts_case
     _prepare(ids, action)
-    monkeypatch.setattr(auth_service_db, "invalidate_tenant_subject_caches", lambda *_a, **_k: 0)
-    result = mutation.batch_accounts(ids, action=action, reason="批量账号同事务验收")
+    monkeypatch.setattr(auth_service_db, "invalidate_subject_cache", lambda *_a, **_k: 0)
+    result = mutation.batch_set_user_status({"ids": [str(uid) for uid in ids], "action": action, "reason": "批量账号同事务验收"})
+    assert result["succeeded"] == 2
+    assert result["failed"] == 0
     assert result["runtimeMaterialized"] is True
     assert result["cacheInvalidated"] is True
     assert result["cacheRecoveryRequired"] is False
@@ -95,7 +97,7 @@ def test_batch_audit_failure_rolls_back_all_accounts_and_versions(batch_accounts
     _prepare(ids, action)
     before = _state(ids)
     cache_calls = []
-    monkeypatch.setattr(auth_service_db, "invalidate_tenant_subject_caches",
+    monkeypatch.setattr(auth_service_db, "invalidate_subject_cache",
                         lambda *_a, **_k: cache_calls.append("tenant"))
     original = db_service.audit_insert_in_session
 
@@ -107,7 +109,7 @@ def test_batch_audit_failure_rolls_back_all_accounts_and_versions(batch_accounts
 
     monkeypatch.setattr(db_service, "audit_insert_in_session", fail_after_flush)
     with pytest.raises(audit_log.AuditPersistenceError):
-        mutation.batch_accounts(ids, action=action, reason="批量失败回滚验收")
+        mutation.batch_set_user_status({"ids": [str(uid) for uid in ids], "action": action, "reason": "批量失败回滚验收"})
     assert _state(ids) == before
     assert _audit_count(action) == 0
     assert cache_calls == []

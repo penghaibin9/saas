@@ -95,8 +95,8 @@ export default {
   methods: {
     ruleValueLabel,
     mayWrite() { return isPlatformRoot() && Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() },
-    groupLabel(group) { return PLATFORM_RULE_GROUP_LABELS[group] || `规则组 ${group}` },
-    fieldLabel(key) { return PLATFORM_RULE_LABELS[key] || `规则 ${key}` },
+    groupLabel(group) { return PLATFORM_RULE_GROUP_LABELS[group] || '其他规则' },
+    fieldLabel(key) { return PLATFORM_RULE_LABELS[key] || '待命名规则项' },
     hasOverride(field) { return Object.hasOwn(this.base.override[field.group] || {}, field.key) },
     isChanged(path) { return this.delta.changes.some(item => `${item.group}.${item.key}` === path) },
     beforeUnload(event) { if (this.protectNavigation) { event.preventDefault(); event.returnValue = '' } },

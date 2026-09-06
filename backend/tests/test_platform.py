@@ -100,6 +100,33 @@ def _buy_package(client, headers: dict, tenant_id: int | str, package_code: str)
     return paid["data"]
 
 
+def _put_rules(client, headers, tenant_id, rules):
+    snapshot = client.get(f"/api/v1/platform/tenants/{tenant_id}/rules", headers=headers).json()
+    assert snapshot["code"] == 0, snapshot
+    return client.put(f"/api/v1/platform/tenants/{tenant_id}/rules", headers=headers, json={
+        "rules": rules, "expectedVersion": snapshot["data"]["overrideVersion"],
+        "reason": "平台规则真实消费验收",
+    }).json()
+
+
+def _set_paid_package_feature(client, headers, feature, enabled):
+    # The test school already owns an activated paid professional order. Change
+    # its package catalog through the real governed endpoint, not tenant FEATURES.
+    projection = client.get(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=headers).json()
+    assert projection["code"] == 0, projection
+    assert projection["data"]["authoritySource"] == "PAID_ORDER", projection
+    code = projection["data"]["packageCode"]
+    packages = client.get("/api/v1/platform/packages", headers=headers).json()
+    assert packages["code"] == 0, packages
+    package = next(row for row in packages["data"]["list"] if row["packageCode"] == code)
+    changed = client.put(f"/api/v1/platform/packages/{code}", headers=headers, json={
+        "features": {feature: enabled}, "expectedVersion": package["version"],
+        "reason": "已购套餐功能闸门消费验收",
+    }).json()
+    assert changed["code"] == 0, changed
+    assert changed["data"]["features"][feature] is enabled, changed
+
+
 # ── §一 强校验：非平台超管一律 403，拒绝写审计 ──
 
 def test_platform_requires_login(client):
@@ -159,8 +186,12 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
     assert paid["code"] == 0 and paid["data"]["status"] == "active" \
         and paid["data"]["packageCode"] == "standard"
 
+    quota_before = paid["data"]["maxStudents"]
     quota = _tenant_action(client, h, tid, "quota", maxStudents=500).json()
-    assert quota["code"] == 0 and quota["data"]["maxStudents"] == 500
+    assert quota["bizCode"] == "COMMERCIAL_ORDER_REQUIRED", quota
+    unchanged = client.get(f"/api/v1/platform/tenants/{tid}", headers=h).json()
+    assert unchanged["code"] == 0, unchanged
+    assert unchanged["data"]["maxStudents"] == quota_before
 
     off = _tenant_action(client, h, tid, "disable").json()
     assert off["code"] == 0 and off["data"]["status"] == "disabled"
@@ -237,14 +268,14 @@ def test_feature_toggle_blocks_import(client, auth_headers, db_mode):
 
     put = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
                      json={"studentImport": False}).json()
-    assert put["code"] == 0 and put["data"]["features"]["studentImport"] is False
+    assert put["bizCode"] == "COMMERCIAL_AUTHORITY_REQUIRED", put
+    _set_paid_package_feature(client, h, "studentImport", False)
 
     denied = client.post("/api/v1/system/identity-import/students/validate-file",
                          headers=auth_headers, files=files).json()
     assert denied["code"] == 403001 and denied["bizCode"] == "MODULE_NOT_AUTHORIZED"
 
-    client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
-               json={"studentImport": True})
+    _set_paid_package_feature(client, h, "studentImport", True)
     files = {"file": ("students.xlsx", _student_xlsx(),
                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     ok = client.post("/api/v1/system/identity-import/students/validate-file",
@@ -259,8 +290,7 @@ def test_rules_reject_reason_min_length(client, auth_headers, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
     tid_task = db_mode["task"]
-    put = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-                     json={"approval": {"rejectReasonMinLength": 10}}).json()
+    put = _put_rules(client, h, MAIN_TID, {"approval": {"rejectReasonMinLength": 10}})
     assert put["code"] == 0 and put["data"]["rules"]["approval"]["rejectReasonMinLength"] == 10
 
     task = client.get(f"/api/v1/approvals/tasks/{tid_task}", headers=auth_headers).json()
@@ -279,8 +309,8 @@ def test_rules_reject_reason_min_length(client, auth_headers, db_mode):
 def test_rules_export_purpose_min_length(client, auth_headers, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
-    client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-               json={"export": {"exportPurposeMinLength": 12}})
+    put = _put_rules(client, h, MAIN_TID, {"export": {"exportPurposeMinLength": 12}})
+    assert put["code"] == 0, put
     short = client.post("/api/v1/export/students", headers=auth_headers,
                         json={"purpose": "迎新名册用途"}).json()
     assert short["code"] == 422001 and "12" in short["message"]
@@ -289,8 +319,7 @@ def test_rules_export_purpose_min_length(client, auth_headers, db_mode):
 def test_rules_validation_rejects_unknown(client, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
-    bad = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-                     json={"approval": {"noSuchRule": 1}}).json()
+    bad = _put_rules(client, h, MAIN_TID, {"approval": {"noSuchRule": 1}})
     assert bad["code"] == 422001
 
 
