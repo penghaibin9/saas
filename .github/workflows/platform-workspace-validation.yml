@@ -1,0 +1,72 @@
+name: Platform Workspace Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/src/modules/platform/**'
+      - 'frontend/tests/platform-*.mjs'
+      - 'frontend/package*.json'
+      - '.github/workflows/platform-workspace-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-workspace-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Record exact source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          mkdir -p artifacts/platform-workspace
+          git rev-parse HEAD > artifacts/platform-workspace/revision.txt
+          # Reproduction evidence contains committed source only, never the runner
+          # environment, credentials, databases, node_modules or generated fixtures.
+          git archive --format=tar.gz HEAD frontend backend shared scripts miniapp student-portal enterprise-portal e2e .github CLAUDE.md > artifacts/platform-workspace/committed-source.tar.gz
+          sha256sum artifacts/platform-workspace/committed-source.tar.gz > artifacts/platform-workspace/source-sha256.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Full frontend lint
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee ../artifacts/platform-workspace/lint.log
+      - name: Full frontend behavior and source-contract tests
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm test -- --test-reporter=tap 2>&1 | tee ../artifacts/platform-workspace/frontend-tests.tap
+      - name: Production SFC build
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ../artifacts/platform-workspace/build.log
+      - name: Upload exact-head validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-workspace-${{ github.event.pull_request.head.sha }}
+          path: artifacts/platform-workspace/
+          if-no-files-found: error
+          retention-days: 3
