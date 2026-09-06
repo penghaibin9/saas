@@ -1,16 +1,16 @@
 <template>
   <view class="fund-evidence">
-    <view class="fund-evidence__head"><text>申请佐证材料</text><button size="mini" :disabled="loading" @click="refresh">刷新</button></view>
+    <view class="fund-evidence__head"><text>申请佐证材料</text><button class="fund-evidence__action" size="mini" :disabled="loading" @click="refresh">刷新</button></view>
     <text v-if="loading" class="fund-evidence__hint">正在读取材料…</text>
     <MobileInlineAlert v-else-if="error" type="warning" title="材料暂不可用" :description="error" />
     <text v-else-if="!items.length" class="fund-evidence__hint">这份申请没有已提交的佐证材料。</text>
     <FilePreviewer v-for="item in items" :key="item.fileId" :file="item" @error="showError" />
 
     <view class="fund-evidence__requirements">
-      <view class="fund-evidence__head"><text>补交与验收</text><button size="mini" @click="openMaterials()">查看办理</button></view>
+      <view class="fund-evidence__head"><text>补交与验收</text><button class="fund-evidence__action" size="mini" @click="openMaterials()">查看办理</button></view>
       <text class="fund-evidence__hint">材料验收与奖助评审分别办理，请以各自进度为准。</text>
       <text v-if="requirementsLoading" class="fund-evidence__hint">正在读取补交要求…</text>
-      <view v-if="requirementsError"><text class="fund-evidence__hint">{{ requirementsError }}</text><button size="mini" @click="loadRequirements(requirementsTargetPage)">重试补交清单</button></view>
+      <view v-if="requirementsError"><text class="fund-evidence__hint">{{ requirementsError }}</text><button class="fund-evidence__action" size="mini" @click="loadRequirements(requirementsTargetPage)">重试补交清单</button></view>
       <text v-else-if="!requirementsLoading && !requirements.length" class="fund-evidence__hint">{{ requirementsTotal ? '本页暂无补交项，请返回上一页或刷新。' : '学校尚未对这份申请登记补交要求。' }}</text>
       <view v-for="row in requirements" :key="row.requirementId" class="fund-evidence__requirement">
         <view class="fund-evidence__head"><text>{{ row.itemName }}</text><MobileStatusTag :status="row.status" :label="row.statusLabel" /></view>
@@ -18,7 +18,7 @@
         <text v-if="row.dueAt" class="fund-evidence__hint">{{ row.overdue ? '已逾期 · ' : '' }}截止 {{ materialTime(row.dueAt) }}</text>
         <text v-if="row.currentSubmission" class="fund-evidence__hint">已提交 {{ row.versionCount }} 个版本 · {{ row.currentSubmission.fileName || '查看当前提交材料' }}</text>
         <text v-if="row.currentSubmission?.reviewNote" class="fund-evidence__opinion">验收意见：{{ row.currentSubmission.reviewNote }}</text>
-        <button size="mini" @click="openMaterials(row.requirementId)">查看办理 · {{ row.itemName }}</button>
+        <button class="fund-evidence__requirement-action" size="mini" @click="openMaterials(row.requirementId)">查看办理 · {{ row.itemName }}</button>
       </view>
       <view v-if="requirementsTotal" class="fund-evidence__pages"><button size="mini" :disabled="requirementsLoading || requirementsPage <= 1" @click="loadRequirements(requirementsPage - 1)">上一页</button><text>第 {{ requirementsPage }} 页 · 共 {{ requirementsTotal }} 项</text><button size="mini" :disabled="requirementsLoading || requirementsPage * 10 >= requirementsTotal" @click="loadRequirements(requirementsPage + 1)">下一页</button></view>
     </view>
@@ -72,12 +72,12 @@ onUnmounted(() => { requirementSeq++ })
 <style scoped>
 .fund-evidence { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--border-light, #e5e7eb); }
 .fund-evidence__head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; }
-.fund-evidence__head button { margin: 0; background: transparent; color: var(--brand-primary); font-size: 12px; }
+.fund-evidence__action { margin: 0; background: transparent; color: var(--brand-primary); font-size: 12px; }
 .fund-evidence__hint { font-size: 12px; color: var(--text-secondary); }
 
 .fund-evidence__requirements { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-light, #e2e8f0); }
 .fund-evidence__requirement { display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid var(--border-light, #e2e8f0); border-radius: 10px; overflow-wrap: anywhere; }
-.fund-evidence__requirement button { justify-self: start; margin: 0; font-size: 12px; }
+.fund-evidence__requirement-action { justify-self: start; margin: 0; font-size: 12px; }
 .fund-evidence__opinion { color: var(--text-primary, #243c31) !important; font-size: 13px; line-height: 1.6; }
 .fund-evidence__pages { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary, #64748b); }
 </style>
