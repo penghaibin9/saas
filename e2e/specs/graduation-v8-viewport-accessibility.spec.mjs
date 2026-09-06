@@ -109,17 +109,14 @@ async function loginMini(page, account, kind) {
   await page.getByText('填写', { exact: true }).click()
   await fields.nth(2).fill(account.tenant)
   await page.getByText('我已阅读并同意', { exact: false }).click()
+  await expect(page.locator('.agreement__box')).toHaveClass(/agreement__box--checked/)
   const action = kind === 'teacher' ? '进入教师工作台' : '进入学生首页'
-  const responsePromise = page.waitForResponse((response) => {
-    const target = new URL(response.url())
-    return response.request().method() === 'POST' && target.pathname.endsWith('/api/v1/auth/login')
-  })
-  await page.getByText(action, { exact: true }).click()
-  const response = await responsePromise
-  const body = await response.json().catch(() => null)
-  expect(response.ok(), `mini ${kind} login HTTP ${response.status()}: ${JSON.stringify(body).slice(0, 600)}`).toBeTruthy()
-  expect(body?.code, `mini ${kind} login business error: ${JSON.stringify(body).slice(0, 600)}`).toBe(0)
+  const loginButton = page.locator('.account-button').filter({ hasText: action })
+  await expect(loginButton).toBeEnabled()
+  await loginButton.click()
   await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })
+  await expect(page.locator('body')).not.toContainText(/操作过于频繁|登录失败|验证码加载失败/)
+  if (kind === 'teacher') await expect(page.getByText('当前身份：GD_MENTOR', { exact: false })).toBeVisible()
 }
 
 test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidence', () => {

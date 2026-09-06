@@ -183,7 +183,7 @@ test.describe.serial('V6 · defense secretary confirmation writes the complete r
     expect(expertPersisted?.judgeName).toBe(expertReceipt.judgeName)
     expect(String(chairPersisted?.defenseGroupId)).toBe(String(scoringFixture.defenseGroupId))
     expect(String(expertPersisted?.defenseGroupId)).toBe(String(scoringFixture.defenseGroupId))
-    await expect(page.getByText('本轮成绩已确认', { exact: true })).toBeVisible()
+    await expect(page.locator('.dg-receipt').getByText('本轮成绩已确认', { exact: true })).toBeVisible()
 
     await page.reload()
     await dismissGuide(page)
