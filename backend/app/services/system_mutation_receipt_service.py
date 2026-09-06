@@ -544,7 +544,9 @@ def recover_subject_cache(user_id: int) -> dict:
     receipt = _subject_cache_receipt(int(user_id), tenant_id)
     db = get_sessionmaker()()
     try:
-        row = db.get(User, int(user_id))
+        row = db.scalars(select(User).where(
+            User.id == int(user_id), User.tenant_id == tenant_id, User.is_deleted.is_(False),
+        )).first()
         version_after = int(row.version or 0) if row is not None else -1
     finally:
         db.close()
