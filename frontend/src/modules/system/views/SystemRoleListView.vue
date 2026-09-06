@@ -3,7 +3,7 @@
     <template #actions>
       <button type="button" class="sw-btn" :disabled="busy" @click="$router.push('/admin/system/iam?surface=diagnostics')">治理概览</button>
       <button type="button" class="sw-btn" :disabled="busy" @click="refresh">刷新目录</button>
-      <button v-if="can('createRole')" type="button" class="sw-btn sw-btn--primary" :disabled="busy" data-testid="A012-open" @click="openCreate">＋ 新增角色</button>
+      <button v-if="can('createRole')" type="button" class="sw-btn sw-btn--primary" :disabled="busy" data-testid="A012-open" @click="openCreate"><AppIcon name="lifecycle" :size="16" />新增角色</button>
     </template>
     <div v-if="flash" class="sw-alert" :class="mutationBlocked ? 'sw-alert--warning' : ''" role="status">{{ flash }}
       <button v-if="mutationBlocked" type="button" class="sw-btn sw-space" @click="recheckMutation">重新读取角色目录</button>
@@ -12,12 +12,12 @@
       <div class="sw-between"><div><h2>{{ form.id ? '修改角色名称' : '创建学校自定义角色' }}</h2><p class="sw-muted">{{ form.id ? '角色编码、权限与数据范围分别管理，此处只保存名称。' : '选择已发布的学校模板作为来源；创建后继续配置权限，不自动授予模板全部权限。' }}</p></div>
         <button type="button" class="sw-btn" :disabled="busy" @click="closeForm">返回</button></div>
       <div class="sw-form">
-        <label class="sw-field">角色名称<input v-model="form.name" class="sw-input" maxlength="100" aria-label="角色名称" :disabled="busy" /></label>
-        <label class="sw-field">角色编码<input v-model="form.code" class="sw-input" maxlength="50" :readonly="!!form.id" :disabled="busy" placeholder="留空由系统生成" /></label>
+        <div class="sw-field"><label for="system-role-name">角色名称</label><input id="system-role-name" v-model="form.name" class="sw-input" maxlength="100" aria-label="角色名称" :disabled="busy" /></div>
+        <div class="sw-field"><label for="system-role-code">角色编码</label><input id="system-role-code" v-model="form.code" class="sw-input" maxlength="50" :readonly="!!form.id" :disabled="busy" placeholder="留空由系统生成" /></div>
         <template v-if="!form.id">
-          <label class="sw-field">已发布来源模板<select v-model="form.sourceTemplateCode" aria-label="已发布来源模板" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
-            <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ item.templateName || item.templateCode }} · 第 {{ item.templateVersion }} 版</option></select></label>
-          <label class="sw-field">默认数据范围<select v-model="form.scopeCode" aria-label="默认数据范围" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+          <div class="sw-field"><label for="system-role-source-template">已发布来源模板</label><select id="system-role-source-template" v-model="form.sourceTemplateCode" aria-label="已发布来源模板" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
+            <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ item.templateName || item.templateCode }} · 第 {{ item.templateVersion }} 版</option></select></div>
+          <div class="sw-field"><label for="system-role-default-scope">默认数据范围</label><select id="system-role-default-scope" v-model="form.scopeCode" aria-label="默认数据范围" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></div>
         </template>
       </div>
       <p v-if="formError" class="sw-alert sw-alert--error" role="alert">{{ formError }}</p>
@@ -31,8 +31,8 @@
       </div>
       <RoleTemplatesPanel v-if="mode === 'templates'" :ctx="ctx" @create="openCreate" @busy="auxBusy = $event" />
       <template v-else-if="mode === 'roles'">
-        <form class="sw-card sw-pad sw-row" @submit.prevent="search">
-          <input v-model="filters.keyword" class="sw-input" style="flex:1;min-width:180px" placeholder="搜索角色名称 / 编码" aria-label="搜索学校角色" />
+        <form class="sw-card sw-pad sw-row sw-catalog-toolbar" @submit.prevent="search">
+          <input v-model="filters.keyword" class="sw-input sw-search-input" placeholder="搜索角色名称 / 编码" aria-label="搜索学校角色" />
           <select v-model="filters.type" class="sw-input" style="width:auto" aria-label="角色类型"><option value="">全部角色</option><option value="CUSTOM">自定义角色</option><option value="BUILTIN">预设角色</option></select>
           <select v-model="filters.status" class="sw-input" style="width:auto" aria-label="角色状态"><option value="">全部状态</option><option value="ENABLED">启用中</option><option value="DEPRECATED">已停用</option></select>
           <button type="submit" class="sw-btn" :disabled="busy || listing.loading">查询</button><button type="button" class="sw-btn" :disabled="busy" @click="clearFilters">重置</button>
@@ -42,10 +42,10 @@
         <div v-else-if="!listing.rows.length" class="sw-card sw-state"><h2>没有符合条件的角色</h2><p class="sw-muted">调整筛选，或从已发布模板建立本校角色。</p></div>
         <div v-else class="sw-role-grid">
           <article v-for="row in listing.rows" :key="row.id" class="sw-card sw-role-card" :data-role-id="row.id" data-testid="role-card">
-            <div class="sw-between"><div class="sw-row"><span class="sw-symbol" aria-hidden="true">◇</span><div><h3>{{ row.name }}</h3><p class="sw-muted">{{ row.statusLabel }}</p></div></div><span class="sw-tag" :class="row.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ row.typeLabel }}</span></div>
+            <div class="sw-role-card-head"><span class="sw-symbol"><AppIcon :name="row.type === 'CUSTOM' ? 'workbench' : 'students'" :size="21" /></span><div class="sw-role-identity"><h3>{{ row.name }}</h3><p class="sw-muted">{{ row.statusLabel }}</p></div><span class="sw-tag" :class="row.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ row.typeLabel }}</span></div>
             <div class="sw-code">{{ row.code }}</div>
-            <div class="sw-role-stats"><div><strong>{{ countLabel(row.memberCount) }}</strong><small>角色成员</small></div><div><strong style="font-size:15px;padding-top:5px">{{ scopeLabel(row.scopeCode) }}</strong><small>默认范围</small></div><div><strong>{{ countLabel(row.version) }}</strong><small>当前版本</small></div></div>
-            <div class="sw-row"><button type="button" class="sw-btn" :class="row.type === 'CUSTOM' ? 'sw-btn--primary' : ''" @click="openRole(row.id, 'permissions')">{{ row.type === 'CUSTOM' ? '配置权限' : '查看权限' }}</button><button type="button" class="sw-btn" @click="openRole(row.id, 'members')">管理成员</button><button type="button" class="sw-link" @click="openRole(row.id, 'details')">详情与维护</button></div>
+            <div class="sw-role-stats"><div><strong>{{ countLabel(row.memberCount) }}</strong><small>角色成员</small></div><div><strong class="sw-scope-value">{{ scopeLabel(row.scopeCode) }}</strong><small>默认范围</small></div><div><strong>{{ countLabel(row.version) }}</strong><small>当前版本</small></div></div>
+            <div class="sw-row sw-role-actions"><button type="button" class="sw-btn" :class="row.type === 'CUSTOM' ? 'sw-btn--primary' : ''" @click="openRole(row.id, 'permissions')">{{ row.type === 'CUSTOM' ? '配置权限' : '查看权限' }}</button><button type="button" class="sw-btn" @click="openRole(row.id, 'members')">管理成员</button><button type="button" class="sw-link" @click="openRole(row.id, 'details')">详情与维护</button></div>
           </article>
         </div>
         <div v-if="!listing.loading && !listing.error" class="sw-pager"><span>共 {{ listing.total }} 个角色 · 第 {{ listing.page }} 页</span><div class="sw-row">
@@ -53,7 +53,7 @@
       </template>
       <section v-else class="sw-card sw-workbench" data-testid="role-workbench">
         <aside class="sw-context" aria-label="选择学校角色">
-          <div class="sw-kicker">选择学校角色</div>
+          <div class="sw-kicker"><AppIcon name="students" :size="15" />选择学校角色</div>
           <form @submit.prevent="search"><input v-model="filters.keyword" class="sw-input" placeholder="角色名称 / 编码" aria-label="工作区查找角色" :disabled="busy" /><button type="submit" class="sw-link sw-space" :disabled="busy">查询角色</button></form>
           <p v-if="listing.loading" class="sw-muted sw-space" role="status">正在读取角色目录…</p>
           <p v-else-if="listing.error" class="sw-alert sw-alert--error" role="alert">{{ listing.error }}<button type="button" class="sw-link" @click="loadRoles">重试</button></p>
@@ -67,7 +67,7 @@
         </aside>
         <div class="sw-workcontent">
           <template v-if="selectedId">
-            <div class="sw-worktitle"><div><h2>{{ selectedRole?.name || '正在读取当前角色' }}</h2><p>{{ selectedRole?.code || selectedId }}<span v-if="selectedRole?.version != null"> · 当前版本 {{ selectedRole.version }}</span></p></div><span v-if="selectedRole" class="sw-tag" :class="selectedRole.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ selectedRole.typeLabel }}</span></div>
+            <div class="sw-worktitle"><div class="sw-current-role"><span class="sw-symbol"><AppIcon name="workbench" :size="21" /></span><div><h2>{{ selectedRole?.name || '正在读取当前角色' }}</h2><p>{{ selectedRole?.code || selectedId }}<span v-if="selectedRole?.version != null"> · 当前版本 {{ selectedRole.version }}</span></p></div></div><span v-if="selectedRole" class="sw-tag" :class="selectedRole.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ selectedRole.typeLabel }}</span></div>
             <div class="sw-tabs" role="tablist" aria-label="角色办理步骤" style="margin-bottom:20px">
               <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :aria-selected="activeTab === tab.key" :disabled="busy" @click="openRole(selectedId, tab.key)">{{ tab.label }}<span v-if="tab.key === 'members' && selectedRole?.memberCount != null" class="sw-tag">{{ selectedRole.memberCount }}</span></button>
             </div>
@@ -101,6 +101,7 @@
 </template>
 
 <script>
+import AppIcon from '@/components/ui/AppIcon.vue'
 import SystemWorkspaceFrame from '@/modules/system/components/workspace/SystemWorkspaceFrame.vue'
 import RolePermissionPanel from '@/modules/system/components/workspace/RolePermissionPanel.vue'
 import RoleMembersPanel from '@/modules/system/components/workspace/RoleMembersPanel.vue'
@@ -112,7 +113,7 @@ import * as wc from '@/modules/system/utils/workspaceContract'
 const WORK_TABS = ['permissions', 'scope', 'members', 'audit', 'details']
 export default {
   name: 'SystemRoleListView',
-  components: { SystemWorkspaceFrame, RolePermissionPanel, RoleMembersPanel, RoleTemplatesPanel, AppConfirmDialog },
+  components: { AppIcon, SystemWorkspaceFrame, RolePermissionPanel, RoleMembersPanel, RoleTemplatesPanel, AppConfirmDialog },
   props: { ctx: { type: Object, required: true }, surface: { type: String, default: 'roles' } },
   data() { return { fence: null, listing: { rows: [], total: 0, page: 1, pageSize: 9, loading: true, error: '' }, filters: { keyword: '', type: '', status: '' }, appliedFilters: { keyword: '', type: '', status: '' }, detail: null, form: null, formOriginal: '', formError: '', sourceTemplates: [], sourceLoading: false, permissionDirty: false, memberDirty: false, permissionBusy: false, memberBusy: false, mutationBusy: false, auxBusy: false, mutationBlocked: false, pendingMutation: '', flash: '', membersVisited: false } },
   computed: {

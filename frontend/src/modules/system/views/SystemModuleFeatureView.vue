@@ -7,11 +7,11 @@
     <div v-else-if="error" class="sw-alert sw-alert--error" role="alert">{{ error }}<button type="button" class="sw-btn" @click="load">重新读取</button></div>
     <div v-else-if="!items.length" class="sw-card sw-state">当前没有返回学校可见模块。</div>
     <div v-else class="sw-role-grid" data-testid="capability-grid">
-      <article v-for="item in items" :key="item.capabilityKey" class="sw-card sw-pad sw-stack" :data-capability="item.capabilityKey">
-        <div class="sw-between"><h2>{{ item.label }}</h2><span class="sw-tag" :class="item.allowed ? 'sw-tag--green' : 'sw-tag--orange'">{{ item.allowed ? '当前可用' : '当前不可用' }}</span></div>
+      <article v-for="item in items" :key="item.capabilityKey" class="sw-card sw-pad sw-stack sw-capability-card" :data-capability="item.capabilityKey">
+        <div class="sw-capability-head"><span class="sw-symbol"><AppIcon name="workbench" :size="22" /></span><h2>{{ item.label }}</h2><span class="sw-tag" :class="item.allowed ? 'sw-tag--green' : 'sw-tag--orange'">{{ item.allowed ? '当前可用' : '当前不可用' }}</span></div>
         <p class="sw-code">{{ item.capabilityKey }} · 版本 {{ countLabel(item.version) }}</p>
         <dl class="cap-state-grid"><div><dt>平台授权</dt><dd>{{ boolLabel(item.entitled) }}</dd></div><div><dt>学校开关</dt><dd>{{ boolLabel(item.schoolEnabled, '已启用', '已关闭') }}</dd></div><div><dt>准备就绪</dt><dd>{{ boolLabel(item.ready) }}</dd></div><div><dt>当前可用</dt><dd>{{ boolLabel(item.allowed) }}</dd></div></dl>
-        <p class="sw-muted">{{ item.reasonText || (item.expiresAt ? `启用至 ${item.expiresAt}` : item.reasonCode === 'OK' ? '各项状态正常' : item.reasonCode || '状态待核对') }}</p>
+        <p class="sw-muted" :title="item.reasonCode || ''">{{ item.reasonText || (item.expiresAt ? `启用至 ${item.expiresAt}` : item.reasonCode === 'OK' ? '各项状态正常' : '状态说明未取得，请刷新核对') }}</p>
         <div class="sw-between cap-footer"><span class="sw-muted">学校开关</span><button type="button" class="cap-switch" role="switch" :aria-checked="item.schoolEnabled === true"
           :aria-label="`${item.label}学校开关`" :disabled="!canWrite || submitting || uncertain || !validItem(item) || (!item.schoolEnabled && (!item.entitled || (item.dependencyUnmet || []).length > 0))"
           :title="!canWrite ? '只读身份' : !item.entitled ? '未授权，不能由学校开通' : ''" @click="prepare(item)"><span /></button></div>
@@ -39,13 +39,14 @@
   </SystemWorkspaceFrame>
 </template>
 <script>
+import AppIcon from '@/components/ui/AppIcon.vue'
 import SystemWorkspaceFrame from '../components/workspace/SystemWorkspaceFrame.vue'
 import WorkspaceConfirmDialog from '../components/workspace/WorkspaceConfirmDialog.vue'
 import { systemApi } from '../api/system.api'
 import { matchPermission } from '@/config/navPlan'
 import { contextFingerprint, createRequestFence, unwrap, capabilityCanConfirm, countLabel } from '../utils/workspaceContract'
 export default {
-  name: 'SystemModuleFeatureView', components: { SystemWorkspaceFrame, WorkspaceConfirmDialog }, props: { ctx: { type: Object, required: true } },
+  name: 'SystemModuleFeatureView', components: { AppIcon, SystemWorkspaceFrame, WorkspaceConfirmDialog }, props: { ctx: { type: Object, required: true } },
   data() { return { items: [], loading: true, error: '', fence: null, pending: null, pendingEnabled: false, pendingContext: '', impact: null, impactState: 'idle', impactError: '', submitting: false, uncertain: false, writeError: '', receipt: '', lastReason: '', reconcileNote: '', countLabels: { affectedUsers: '受影响用户', runningWorkflows: '进行中流程', pendingTodos: '待办任务', fileBindings: '关联文件' } } },
   computed: {
     contextKey() { return contextFingerprint(this.ctx) },
@@ -107,13 +108,4 @@ export default {
   }
 }
 </script>
-<style scoped>
-.cap-state-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:0; font-size:12px; }
-.cap-state-grid div { display:flex; justify-content:space-between; gap:8px; }
-.cap-state-grid dt { color:var(--sw-muted); }.cap-state-grid dd { margin:0; }
-.cap-footer { border-top:1px solid var(--sw-line);padding-top:14px; }
-.cap-switch { width:36px;height:21px;padding:3px;border:0;border-radius:20px;background:#d3dbea;cursor:pointer; }
-.cap-switch span { display:block;width:15px;height:15px;border-radius:50%;background:#fff; }
-.cap-switch[aria-checked=true] { background:var(--sw-accent); }.cap-switch[aria-checked=true] span { margin-left:15px; }
-.cap-switch:disabled { opacity:.5;cursor:not-allowed; }
-</style>
+<!-- Capability presentation is scoped in workspace.css; write guards remain above. -->

@@ -33,11 +33,11 @@
         <div class="sw-alert">具体范围目标未编辑，本次保存保留原有目标。需要调整任职范围时，请到角色成员与业务身份核对。</div>
       </template>
       <template v-else>
-        <div class="sw-between">
-          <label class="sw-field" style="flex:1;max-width:340px">查找权限
+        <div class="sw-between sw-permission-toolbar">
+          <label class="sw-field sw-permission-search">查找权限
             <input v-model="keyword" class="sw-input" placeholder="功能名称或权限编码" aria-label="查找权限" />
           </label>
-          <span class="sw-muted">{{ editable ? '已选' : '已生效' }} {{ selection.length }} 项权限</span>
+          <span class="sw-selection-count">{{ editable ? '已选' : '已生效' }} <b>{{ selection.length }}</b> 项权限</span>
         </div>
         <div class="sw-permission-layout">
           <div>
@@ -58,9 +58,9 @@
             <div v-if="!filteredGroups.length" class="sw-state"><b>没有匹配的权限</b><p class="sw-muted">搜索只影响显示，不改变已选权限。</p></div>
           </div>
           <aside class="sw-preview" aria-label="角色菜单样式预览">
-            <h3>老师将看到的入口</h3>
+            <h3 class="sw-preview-title"><AppIcon name="overview" :size="17" />老师将看到的入口</h3>
             <p>此处只预览选中的导航入口；实际可用性仍由服务端授权与业务范围决定。</p>
-            <div class="sw-preview-menus">
+            <div class="sw-preview-menus" tabindex="0" role="region" aria-label="选中角色的菜单入口">
               <div v-for="node in previewMenus" :key="node.key" class="sw-preview-menu">{{ node.label }}</div>
               <div v-if="!previewMenus.length" class="sw-preview-menu">未选择常规菜单入口</div>
             </div>
@@ -68,7 +68,7 @@
           </aside>
         </div>
       </template>
-      <details v-if="preserved.length" class="sw-card sw-pad" data-testid="readonly-preserved-permissions">
+      <details v-if="preserved.length" class="sw-card sw-pad sw-preserved" data-testid="readonly-preserved-permissions">
         <summary>只读保留 {{ preserved.length }} 项权限</summary>
         <div v-for="item in preserved" :key="item.permissionCode" class="sw-space">
           <b>{{ item.label || item.permissionCode }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
@@ -101,13 +101,14 @@
 </template>
 
 <script>
+import AppIcon from '@/components/ui/AppIcon.vue'
 import AppConfirmDialog from './WorkspaceConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import * as wc from '@/modules/system/utils/workspaceContract'
 
 export default {
   name: 'RolePermissionPanel',
-  components: { AppConfirmDialog },
+  components: { AppIcon, AppConfirmDialog },
   props: { ctx: { type: Object, required: true }, roleId: { type: String, required: true }, tab: { type: String, default: 'permissions' }, locked: { type: Boolean, default: false } },
   emits: ['loaded', 'saved', 'dirty', 'busy'],
   data() {

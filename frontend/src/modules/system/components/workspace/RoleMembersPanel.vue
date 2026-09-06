@@ -20,7 +20,7 @@
       </template>
     </template>
     <template v-else>
-      <div class="sw-between"><div><h3>{{ adding ? '选择要添加的老师' : '角色成员' }}</h3><p class="sw-muted">{{ adding ? '只添加选中的成员，不替换老师已有的其他角色。' : '分页读取全部成员，不把角色详情中的预览当成总数。' }}</p></div>
+      <div class="sw-between sw-members-heading"><div><h3>{{ adding ? '选择要添加的老师' : '角色成员' }}</h3><p class="sw-muted">{{ adding ? '只添加选中的成员，不替换老师已有的其他角色。' : '分页读取全部成员，不把角色详情中的预览当成总数。' }}</p></div>
         <div class="sw-row"><button type="button" class="sw-btn" :disabled="busy" @click="loadMembers(1)">刷新成员</button>
           <button v-if="canAdd && !adding" type="button" class="sw-btn sw-btn--primary" :disabled="busy || locked" data-testid="A022-open" @click="openAdd">＋ 添加成员</button></div>
       </div>
@@ -39,7 +39,7 @@
         <div v-else class="sw-table-wrap"><table class="sw-table"><thead><tr><th>选择</th><th>老师 / 工号</th><th>账号状态</th></tr></thead><tbody>
           <tr v-for="row in candidates.rows" :key="row.id"><td><input class="sw-check" type="checkbox" :aria-label="`选择${row.name}`" :checked="selected.some(item => item.id === row.id)"
             :disabled="busy || locked || !canAdd || row.status !== 'ACTIVE' || row.userType === 'STUDENT' || (selected.length >= 100 && !selected.some(item => item.id === row.id))" @change="choose(row, $event.target.checked)" /></td>
-            <td><b>{{ row.name }}</b><small>{{ row.loginName }}</small></td><td>{{ statusLabel(row.status) }}</td></tr>
+            <td><div class="sw-person"><span class="sw-avatar" aria-hidden="true">{{ String(row.name || '').slice(0, 1) }}</span><span><b>{{ row.name }}</b><small>{{ row.loginName }}</small></span></div></td><td>{{ statusLabel(row.status) }}</td></tr>
           <tr v-if="!candidates.rows.length"><td colspan="3">没有可添加的老师；已排除当前成员及不可用账号。</td></tr>
         </tbody></table></div>
         <div v-if="!candidates.loading && !candidates.error" class="sw-pager"><span>共 {{ candidates.total }} 位候选 · 第 {{ candidates.page }} 页</span><div class="sw-row">
@@ -56,8 +56,8 @@
       <template v-else>
         <div v-if="members.loading" class="sw-state" role="status">正在读取成员…</div>
         <div v-else-if="members.error" class="sw-alert sw-alert--error" role="alert">{{ members.error }}<button type="button" class="sw-btn" @click="loadMembers(members.page)">重试</button></div>
-        <div v-else class="sw-table-wrap"><table class="sw-table"><thead><tr><th>成员 / 工号</th><th>账号状态</th><th>下一步</th></tr></thead><tbody>
-          <tr v-for="row in members.rows" :key="row.id"><td><b>{{ row.name }}</b><small>{{ row.loginName }}</small></td><td><span class="sw-tag" :class="row.status === 'ACTIVE' ? 'sw-tag--green' : ''">{{ statusLabel(row.status) }}</span></td>
+        <div v-else class="sw-table-wrap" tabindex="0" role="region" aria-label="当前角色成员清单"><table class="sw-table"><thead><tr><th>成员 / 工号</th><th>账号状态</th><th>下一步</th></tr></thead><tbody>
+          <tr v-for="row in members.rows" :key="row.id"><td><div class="sw-person"><span class="sw-avatar" aria-hidden="true">{{ String(row.name || '').slice(0, 1) }}</span><span><b>{{ row.name }}</b><small>{{ row.loginName }}</small></span></div></td><td><span class="sw-tag" :class="row.status === 'ACTIVE' ? 'sw-tag--green' : ''">{{ statusLabel(row.status) }}</span></td>
             <td><button type="button" class="sw-link" @click="inspect(row)">访问排查</button></td></tr>
           <tr v-if="!members.rows.length"><td colspan="3">此角色当前没有成员。</td></tr>
         </tbody></table></div>
