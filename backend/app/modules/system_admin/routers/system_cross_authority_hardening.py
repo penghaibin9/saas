@@ -11,6 +11,18 @@ from app.core.response import success
 _routes = APIRouter()
 
 
+def _capability_write_moved(*args, **kwargs):
+    raise AppException(
+        "CAPABILITY_AUTHORITY_MOVED",
+        "模块启停已按能力键独立版本治理；请逐项调用 /system/capability-settings/{key} 并携带 expectedVersion",
+        http_status=409,
+        details={
+            "writeSurface": "/api/v1/system/capability-settings/{key}",
+            "legacyBulkWriteDisabled": True,
+        },
+    )
+
+
 @_routes.get("/system/brand", summary="学校品牌唯一真值（TenantBrandConfig）")
 def governed_system_brand_get(user=Depends(require_permission("systemAdmin.config.view"))):
     from app.services.tenant_brand_authority_service import brand_projection
@@ -35,7 +47,7 @@ def governed_system_brand_put(
     ), message="品牌配置已保存并生效")
 
 
-@_routes.post("/system/brand/reset", summary="恢复学校品牌默认值（行锁+版本校验兼容）")
+@_routes.post("/system/brand/reset", summary="恢复学校品牌默认值（强制 expectedVersion）")
 def governed_system_brand_reset(
     body: dict = Body(...),
     user=Depends(require_permission("systemAdmin.config.manage")),
@@ -45,7 +57,7 @@ def governed_system_brand_reset(
     payload = dict(body or {})
     return success(reset_school_brand(
         int(current_tenant_id() or 0),
-        expected_version=payload.get("expectedVersion"),
+        expected_version=payload.get("expectedVersion", payload.get("version")),
         reason=payload.get("reason") or "",
         user=user,
     ), message="品牌配置已恢复默认值")
@@ -56,16 +68,7 @@ def governed_legacy_module_features_put(
     body: dict = Body(...),
     user=Depends(require_permission("systemAdmin.config.manage")),
 ):
-    raise AppException(
-        "CAPABILITY_AUTHORITY_MOVED",
-        "模块启停已按能力键独立版本治理；请逐项调用 /system/capability-settings/{key} 并携带 expectedVersion",
-        http_status=409,
-        details={
-            "writeSurface": "/api/v1/system/capability-settings/{key}",
-            "legacyBulkWriteDisabled": True,
-            "requestedKeys": sorted(str(key) for key in ((body or {}).get("features") or {}).keys()),
-        },
-    )
+    _capability_write_moved(body, user=user)
 
 
 def _route_key(route) -> tuple[str, str]:
@@ -74,6 +77,13 @@ def _route_key(route) -> tuple[str, str]:
 
 
 def install_into_system_router(target: APIRouter) -> None:
+    # Frozen bundle functions may be called directly by internal compatibility
+    # code/tests. Retire the service writer as well as the HTTP route so there is
+    # one write Authority at every layer.
+    from app.services import system_governance_service as governance
+
+    governance.save_module_features = _capability_write_moved
+
     replacement = {_route_key(route): route for route in _routes.routes}
     routes = []
     for route in target.routes:
