@@ -5,15 +5,30 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - '!backend/app/modules/graduation/**'
+      - '!backend/tests/test_graduation*'
+      - '!backend/scripts/e2e_*graduation*'
       - 'frontend/**'
+      - '!frontend/src/modules/graduation/**'
+      - '!frontend/tests/graduation*'
       - 'student-portal/**'
+      - '!student-portal/src/views/graduation/**'
       - 'enterprise-portal/**'
       - 'miniapp/**'
+      - '!miniapp/src/pages/student/graduation/**'
+      - '!miniapp/src/pages/teacher/graduation-*/**'
+      - '!miniapp/src/services/graduation*'
       - 'e2e/**'
+      - '!e2e/specs/graduation*.spec.mjs'
+      - '!e2e/lib/graduation*.mjs'
+      - '!e2e/pages/graduation.page.mjs'
+      - '.github/actions/browser-runtime/**'
+      - 'scripts/e2e/bootstrap-browser-runtime.sh'
+      - 'scripts/e2e/run-browser-suite.sh'
       - '.github/workflows/playwright-production-e2e.yml'
 
 concurrency:
-  group: playwright-e2e-${{ github.workflow }}-${{ github.ref }}
+  group: playwright-functional-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,7 +38,7 @@ jobs:
   browser-e2e:
     name: real browser / real API / isolated MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     services:
       mysql:
@@ -63,7 +78,7 @@ jobs:
       DB_PASSWORD: e2e_root
       DB_NAME: student_lifecycle_e2e
       REDIS_URL: redis://127.0.0.1:6379/14
-      REDIS_KEY_PREFIX: playwright-interaction-e2e
+      REDIS_KEY_PREFIX: playwright-functional-${{ github.run_id }}
       REDIS_CONNECT_TIMEOUT: '2'
       REDIS_SOCKET_TIMEOUT: '2'
       JWT_SECRET: playwright-e2e-only-not-production
@@ -82,17 +97,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.E2E_EXPECTED_SHA }}
           fetch-depth: 0
-
-      - name: Exact branch HEAD assertion
-        run: |
-          set -euo pipefail
-          ACTUAL="$(git rev-parse HEAD)"
-          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
-          echo "actual=$ACTUAL"
-          echo "expected=$EXPECTED"
-          test "$ACTUAL" = "$EXPECTED"
 
       - uses: actions/setup-python@v5
         with:
@@ -109,172 +115,25 @@ jobs:
             student-portal/package-lock.json
             enterprise-portal/package-lock.json
             miniapp/package-lock.json
+            e2e/package-lock.json
 
-      - name: Install backend
-        working-directory: backend
-        run: pip install -r requirements.txt
+      - name: Bootstrap unified full browser runtime
+        uses: ./.github/actions/browser-runtime
+        with:
+          profile: full
+          head_sha: ${{ env.E2E_EXPECTED_SHA }}
+          verify_gold_manifest: 'false'
 
-      - name: Enforce E2E artifact safety contract
-        working-directory: backend
-        run: pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+      - name: Run non-graduation functional browser suite
+        run: bash scripts/e2e/run-browser-suite.sh production-non-graduation
 
-      - name: Migrate isolated database
-        working-directory: backend
-        run: alembic upgrade head
-
-      - name: Replay production School IAM Authority
-        working-directory: backend
-        run: python scripts/bootstrap_control_plane_school_iam_authority.py
-
-      - name: Seed minimal isolated E2E tenants
-        working-directory: backend
-        run: python scripts/e2e_seed_playwright_tenants.py
-
-      - name: Seed real School IAM runtime fixture
-        working-directory: backend
-        run: python scripts/e2e_seed_control_plane_school_iam.py
-
-      - name: Seed Academic B staff-browser fixtures
-        working-directory: backend
+      - name: Publish browser gate summary
+        if: always()
         run: |
-          set -euo pipefail
-          python scripts/e2e_seed_academic_b_selection.py
-          python scripts/e2e_seed_academic_b_w3_schedule.py
-          python scripts/e2e_seed_academic_b_w4_selection.py
-          python scripts/e2e_seed_academic_b_w4_formation.py
-          test -s ../e2e/academic-b-w3-fixture.json
-          test -s ../e2e/academic-b-w4-fixture.json
-          test -s ../e2e/academic-b-w4-formation-fixture.json
-
-      - name: Seed Academic W1 and W2 browser fixtures
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python scripts/e2e_seed_academic_archive_correction_w1.py
-          python - <<'PY'
-          from app.services.school_iam_authority_service import converge_school_iam_authority
-          converge_school_iam_authority(
-              source='playwright-production-e2e-w2',
-              source_commit_sha='${{ github.event.pull_request.head.sha || github.sha }}',
-              actor_user_id=None,
-          )
-          print('[playwright-e2e] school IAM authority converged for W2')
-          PY
-          python scripts/e2e_seed_academic_exam_incident_w2.py
-          test -s ../e2e/academic-archive-correction-w1-fixture.json
-          test -s ../e2e/academic-exam-incident-w2-fixture.json
-
-      - name: Start backend
-        run: |
-          mkdir -p e2e/runtime-logs
-          cd backend
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/backend.pid
-          for i in {1..60}; do
-            curl -fsS http://127.0.0.1:8000/health && exit 0
-            sleep 2
-          done
-          cat ../e2e/runtime-logs/backend.log
-          exit 1
-
-      - name: Start isolated message delivery worker
-        run: |
-          set -euo pipefail
-          cd backend
-          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/message-delivery.pid
-
-      - name: Import and normalize dedicated interaction accounts
-        working-directory: backend
-        run: |
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
-          python scripts/e2e_bootstrap_affairs_counselor_ci.py
-
-      - name: Seed Academic B student projection fixture
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python scripts/e2e_seed_academic_b_w5_selection.py
-          test -s ../e2e/academic-b-w5-fixture.json
-
-      - name: Seed isolated internship prerequisites
-        working-directory: backend
-        run: python scripts/e2e_seed_internship_sandbox.py
-
-      - name: Install and start staff PC
-        run: |
-          cd frontend
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/frontend.pid
-
-      - name: Install and start student PC
-        env:
-          VITE_BASE: /portal/
-          VITE_API_BASE_URL: /
-          VITE_PROXY_TARGET: http://127.0.0.1:8000
-        run: |
-          cd student-portal
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/student-portal.pid
-
-      - name: Install and start enterprise portal
-        env:
-          VITE_BASE: /enterprise/
-          VITE_API_BASE_URL: /
-          VITE_PROXY_TARGET: http://127.0.0.1:8000
-        run: |
-          cd enterprise-portal
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5202 > ../e2e/runtime-logs/enterprise-portal.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/enterprise-portal.pid
-
-      - name: Install and start teacher miniapp H5
-        env:
-          VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
-        run: |
-          cd miniapp
-          npm ci
-          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/miniapp.pid
-
-      - name: Wait for browser applications
-        run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5202/enterprise/login http://127.0.0.1:5188/; do
-            ok=''
-            for i in {1..60}; do
-              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
-              sleep 2
-            done
-            if [ -z "$ok" ]; then
-              echo "Application not ready: $url"
-              cat e2e/runtime-logs/*.log
-              exit 1
-            fi
-          done
-
-      - name: Install Playwright
-        working-directory: e2e
-        run: |
-          npm install
-          npx playwright install --with-deps chromium
-
-      - name: Run interaction E2E
-        working-directory: e2e
-        run: |
-          set -euo pipefail
-          mapfile -t SPECS < <(find specs -maxdepth 1 -type f -name '*.spec.mjs' \
-            ! -name 'control-plane-role-menu-projection.spec.mjs' \
-            ! -name 'internship-s1-production-runtime.spec.mjs' \
-            ! -name 'internship-leave-lifecycle.spec.mjs' \
-            ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \
-            ! -name 'internship-placement-assignment-audit.spec.mjs' -print | sort)
-          test "${#SPECS[@]}" -gt 0
-          npx playwright test "${SPECS[@]}"
+          echo '## Production browser gate' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Runtime: one exact-head MySQL/Redis environment' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Scope: non-graduation functional specs; visual and graduation suites are separate gates' >> "$GITHUB_STEP_SUMMARY"
+          test ! -f e2e/gate-results/production-non-graduation.json || cat e2e/gate-results/production-non-graduation.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright HTML report
         if: always()
@@ -285,16 +144,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload screenshots, video, traces and redacted API logs
+      - name: Upload screenshots, video, traces and gate results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-evidence-${{ github.run_id }}
-          path: e2e/test-results/
+          path: |
+            e2e/test-results/
+            e2e/gate-results/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload service logs
+      - name: Upload service logs and provenance
         if: always()
         uses: actions/upload-artifact@v4
         with:

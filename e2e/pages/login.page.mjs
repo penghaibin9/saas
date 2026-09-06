@@ -1,8 +1,41 @@
 import { createHash } from 'node:crypto'
 import { expect } from '../lib/observability.mjs'
 
+const BROWSER_LOGIN_WINDOW_MS = 60_000
+const BROWSER_LOGIN_SAFE_LIMIT = 9
+const BROWSER_LOGIN_HEADROOM_MS = 500
+const browserLoginStarts = []
+let browserLoginPace = Promise.resolve()
+
 function accessTokenFromEnvelope(payload) {
   return String(payload?.data?.accessToken || '')
+}
+
+export async function paceBrowserLogin(page) {
+  let release
+  const previous = browserLoginPace
+  browserLoginPace = new Promise((resolve) => { release = resolve })
+  await previous
+  try {
+    const pruneExpired = () => {
+      const now = Date.now()
+      while (browserLoginStarts.length && now - browserLoginStarts[0] >= BROWSER_LOGIN_WINDOW_MS) {
+        browserLoginStarts.shift()
+      }
+    }
+    pruneExpired()
+    if (browserLoginStarts.length >= BROWSER_LOGIN_SAFE_LIMIT) {
+      const waitMs = Math.max(
+        0,
+        BROWSER_LOGIN_WINDOW_MS - (Date.now() - browserLoginStarts[0]) + BROWSER_LOGIN_HEADROOM_MS
+      )
+      if (waitMs > 0) await page.waitForTimeout(waitMs)
+      pruneExpired()
+    }
+    browserLoginStarts.push(Date.now())
+  } finally {
+    release()
+  }
 }
 
 async function browserRefreshCookie(page, channel = 'staff') {
@@ -46,6 +79,10 @@ export class StaffLoginPage {
     const agreement = this.page.locator('label.agreement input[type=checkbox]')
     if (await agreement.count() && !(await agreement.isChecked())) await agreement.check()
 
+    // The production auth contract intentionally limits one client IP to 10 login attempts per
+    // rolling minute. Browser E2E exercises many real roles from one runner IP, so respect that
+    // contract with headroom instead of spoofing X-Forwarded-For or weakening the backend limit.
+    await paceBrowserLogin(this.page)
     const responsePromise = this.page.waitForResponse((response) =>
       response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
     )
@@ -139,6 +176,7 @@ export class StudentLoginPage {
     const agreement = this.page.locator('label.agreement input[type=checkbox]')
     if (!(await agreement.isChecked())) await agreement.check()
 
+    await paceBrowserLogin(this.page)
     const responsePromise = this.page.waitForResponse((response) =>
       response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
     )

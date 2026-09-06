@@ -1,57 +1,26 @@
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
-import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
-import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
+import {
+  dismissGraduationGuide,
+  ensureFinalPending,
+  expectRenderedPdfCanvas
+} from '../lib/graduation-scenario-fixture.mjs'
+import { StaffLoginPage } from '../pages/login.page.mjs'
 
-const BACKEND_DIR = fileURLToPath(new URL('../../backend/', import.meta.url))
+const VIEWPORTS = [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 800 }
+]
 
-async function dismissGuide(page) {
-  for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
-    if (await mask.isVisible().catch(() => false)) {
-      const skip = page.getByRole('button', { name: /跳过引导|跳过/ }).first()
-      if (await skip.isVisible().catch(() => false)) await skip.click()
-      await mask.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})
-    }
-  }
-}
-
-async function expectBrowserApiSuccess(response, action) {
-  const body = await response.json()
-  expect(response.ok(), `${action} HTTP ${response.status()}: ${JSON.stringify(body).slice(0, 800)}`).toBeTruthy()
-  expect(body.code, `${action} business error: ${JSON.stringify(body).slice(0, 800)}`).toBe(0)
-  return body.data
-}
-
-function buildPreviewablePdf(label) {
-  const safeLabel = String(label).replace(/[()\\]/g, '')
-  const stream = `BT /F1 14 Tf 54 720 Td (YUEKE E2E ${safeLabel}) Tj ET\n`
-  const objects = [
-    null,
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [4 0 R] /Count 1 >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>',
-    `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`,
-  ]
-  let body = '%PDF-1.4\n%YUEKE E2E SYNTHETIC DOCUMENT\n'
-  const offsets = [0]
-  for (let id = 1; id < objects.length; id += 1) {
-    offsets[id] = Buffer.byteLength(body, 'ascii')
-    body += `${id} 0 obj\n${objects[id]}\nendobj\n`
-  }
-  const xrefOffset = Buffer.byteLength(body, 'ascii')
-  body += `xref\n0 ${objects.length}\n0000000000 65535 f \n`
-  for (let id = 1; id < objects.length; id += 1) {
-    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
-  }
-  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
-  return Buffer.from(body, 'ascii')
+async function settleVisual(page) {
+  await page.evaluate(async () => {
+    if (document.fonts?.ready) await document.fonts.ready
+  })
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 }
 
 async function expectDecisionAboveFold(page) {
@@ -59,33 +28,43 @@ async function expectDecisionAboveFold(page) {
   expect(viewport).toBeTruthy()
   const review = page.locator('.gd-review-workspace__review')
   const targets = [
-    ['审核材料', review.getByText('本次审核材料', { exact: true })],
-    ['当前提交版本', review.getByText(/当前提交第 \d+ 版/).first()],
-    ['校验证据入口', review.getByText(/查看文件校验证据与历史版本/).first()],
-    ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
-    ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
+    ['审核命令合同', review.locator('[data-testid="review-command-contract"]')],
+    ['提交版本', review.getByText('提交版本', { exact: true })],
+    ['文件版本', review.getByText('文件版本', { exact: true })],
+    ['文件状态', review.getByText('文件状态', { exact: true })],
+    ['文件证据入口', review.locator('.gd-review-workspace__evidence > summary')],
+    ['通过当前版本', review.getByRole('button', { name: /通过当前版本/ })],
+    ['退回当前版本', review.getByRole('button', { name: /退回当前版本/ })]
   ]
   for (const [label, locator] of targets) {
     await expect(locator, `${label} must be visible`).toBeVisible()
     const box = await locator.boundingBox()
     expect(box, `${label} must have a rendered box`).toBeTruthy()
-    expect(box.x >= 0, `${label} must start inside the viewport width`).toBeTruthy()
-    expect(box.x + box.width <= viewport.width, `${label} must stay inside the ${viewport.width}px viewport width`).toBeTruthy()
-    expect(box.y >= 0, `${label} must start inside the viewport`).toBeTruthy()
-    expect(box.y + box.height <= viewport.height, `${label} must stay above the ${viewport.height}px fold`).toBeTruthy()
+    expect(box.x >= 0, `${label} must start inside viewport`).toBeTruthy()
+    expect(box.x + box.width <= viewport.width, `${label} must stay inside viewport width`).toBeTruthy()
+    expect(box.y >= 0, `${label} must start inside viewport`).toBeTruthy()
+    expect(box.y + box.height <= viewport.height, `${label} must stay above fold`).toBeTruthy()
   }
 }
 
-async function attachScreenshot(page, testInfo, name, width, height, goldMasks = []) {
+async function capture(page, testInfo, fixture, width, height) {
   await page.setViewportSize({ width, height })
-  await dismissGuide(page)
-  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
+  await dismissGraduationGuide(page)
+  await settleVisual(page)
   await expectDecisionAboveFold(page)
-  const output = testInfo.outputPath(`${name}-${width}x${height}.png`)
-  await page.screenshot({ path: output, fullPage: false, animations: 'disabled', caret: 'hide' })
-  await testInfo.attach(`${name}-${width}x${height}`, { path: output, contentType: 'image/png' })
+
+  const screenshot = testInfo.outputPath(`gd-U3-final-B-${width}x${height}.png`)
+  await page.screenshot({ path: screenshot, fullPage: false, animations: 'disabled', caret: 'hide' })
+  await testInfo.attach(`gd-U3-final-B-${width}x${height}`, { path: screenshot, contentType: 'image/png' })
+
   await captureGoldCandidate(page, testInfo, {
-    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+    name: 'gd-U3-final-GoldCandidate',
+    width,
+    height,
+    masks: [
+      page.locator('.gbs__select'),
+      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
+    ]
   })
 }
 
@@ -97,96 +76,16 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
   })
 
   test('real final/FileVersion review workspace · Screenshot B 1440 + 1280', async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 1440, height: 900 })
-
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    const student = new StudentGraduationPage(page, config.studentBaseUrl)
-    await student.open()
-    await student.signTaskbookIfNeeded()
-
-    // The full interaction suite may already have completed the same run-scoped
-    // proposal before this visual test starts. Reuse that canonical state instead
-    // of trying to submit an already-approved proposal a second time.
-    const proposalStep = student.step('开题')
-    const alreadyApproved = await proposalStep.getByText(/已通过|通过/).count() > 0
-    if (!alreadyApproved) {
-      await student.submitProposal({
-        suffix: `${fixture.runId}-u3`,
-        fileName: `u3-proposal-${fixture.runId}.pdf`
-      })
-
-      await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
-      const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
-      await staff.openProposals('PENDING_REVIEW')
-      await staff.selectStudent()
-      await staff.approve()
-    }
-
-    execFileSync(
-      'python',
-      ['scripts/e2e_seed_graduation_final_prerequisite.py', fixture.gdStudentId],
-      {
-        cwd: BACKEND_DIR,
-        env: { ...process.env, PYTHONPATH: BACKEND_DIR },
-        encoding: 'utf8'
-      }
-    )
-
-    // Re-enter through the real student UI after the isolated prerequisite update.
-    // The file upload and final submit below both travel through the production
-    // student-portal request layer; no final/file/review record is seeded here.
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await student.open()
-    const finalStep = page.locator('.gd-step').filter({
-      has: page.getByRole('heading', { name: /成果/ })
-    }).first()
-    await expect(finalStep).toBeVisible()
-
-    // A Playwright retry reuses this run's isolated MySQL database. If the first
-    // attempt already completed the real upload + submit and only the later visual
-    // assertion failed, the canonical final is now pending review. Reuse that state
-    // rather than creating a duplicate final/FileVersion on retry.
-    const finalStateText = await finalStep.innerText()
-    const alreadySubmitted = /待.*审|已提交/.test(finalStateText)
-    if (!alreadySubmitted) {
-      let fileInput = finalStep.locator('input[type=file]')
-      if (!(await fileInput.count())) {
-        const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
-        await expect(openFinal).toBeVisible()
-        await openFinal.click()
-        fileInput = finalStep.locator('input[type=file]')
-      }
-      await expect(fileInput).toHaveCount(1)
-
-      const uploadResponsePromise = page.waitForResponse((response) => {
-        const target = new URL(response.url())
-        return response.request().method() === 'POST' && target.pathname.endsWith('/files')
-      })
-      await fileInput.setInputFiles({
-        name: `u3-final-${fixture.runId}.pdf`,
-        mimeType: 'application/pdf',
-        buffer: buildPreviewablePdf(`${fixture.runId}-u3-final`)
-      })
-      const uploaded = await expectBrowserApiSuccess(await uploadResponsePromise, '学生上传成果文件')
-      expect(uploaded?.fileId).toBeTruthy()
-
-      const submitFinal = finalStep.getByRole('button', { name: /提交论文成果/ })
-      await expect(submitFinal).toBeEnabled()
-      const [submitResponse] = await Promise.all([
-        page.waitForResponse((response) =>
-          response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')
-        ),
-        submitFinal.click()
-      ])
-      const submitted = await expectBrowserApiSuccess(submitResponse, '学生提交论文成果')
-      expect(submitted?.status).toBe('PENDING_REVIEW')
-    } else {
-      expect(finalStateText).toMatch(/待.*审|已提交/)
-    }
+    test.setTimeout(8 * 60_000)
+    await page.setViewportSize(VIEWPORTS[0])
+    await ensureFinalPending(page, fixture, {
+      suffix: `u3-${testInfo.retry || 0}`,
+      documentPages: 20
+    })
 
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
-    await dismissGuide(page)
+    await dismissGraduationGuide(page)
 
     await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
     const workspace = page.locator('.gd-review-workspace')
@@ -196,24 +95,23 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await expect(workspace).toBeVisible()
     await expect(queue).toContainText(fixture.topicTitle)
     await expect(document).toContainText(fixture.topicTitle)
-    await expect(review).toContainText('本次审核材料')
-    await expect(review).toContainText(/当前提交第 \d+ 版/)
-    await expect(review).toContainText('校验证据与历史版本')
+    await expect(review.locator('[data-testid="review-command-contract"]')).toBeVisible()
+    await expect(review).toContainText('提交版本')
+    await expect(review).toContainText('文件版本')
+    await expect(review).toContainText('文件状态')
+    await expect(review.locator('.gd-review-workspace__evidence > summary')).toBeVisible()
     await expect(review).toContainText('SHA-256')
     await expect(review).toContainText('查重')
-    await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
+    await expect(review.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
+    await expect(review.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
+    await expectRenderedPdfCanvas(page)
 
-    const goldMasks = [
-      page.locator('.gbs__select'),
-      ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle]),
-    ]
-    const goldCandidateFailures = []
-    for (const [width, height] of [[1440, 900], [1280, 800]]) {
+    const failures = []
+    for (const viewport of VIEWPORTS) {
       try {
-        await attachScreenshot(page, testInfo, 'gd-U3-final-B', width, height, goldMasks)
+        await capture(page, testInfo, fixture, viewport.width, viewport.height)
       } catch (error) {
-        goldCandidateFailures.push(`${width}x${height}: ${error instanceof Error ? error.message : String(error)}`)
+        failures.push(`${viewport.width}x${viewport.height}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
@@ -228,19 +126,21 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       role: 'GD_MENTOR',
       batchId: fixture.batchId,
       route: `/admin/graduation/finals?batchId=${fixture.batchId}&tab=PENDING_REVIEW`,
+      scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending',
       fixtureVersion: {
         runId: fixture.runId,
         gdStudentId: fixture.gdStudentId,
         studentNo: fixture.studentNo,
+        documentPages: 20
       },
       browserProject: environment.browserProject,
       deviceScaleFactor: environment.deviceScaleFactor,
       language: environment.language,
       fontEnvironment: environment.fontEnvironment,
       dynamicZones: ['security-watermark', 'run-scoped-batch-label', 'run-scoped-topic-title'],
-      viewports: [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]
+      viewports: VIEWPORTS
     }, null, 2), 'utf8')
     await testInfo.attach('gd-U3-final-B-meta', { path: metaPath, contentType: 'application/json' })
-    expect(goldCandidateFailures, 'all U3 Gold Candidate viewports must match').toEqual([])
+    expect(failures, 'all U3 Gold Candidate viewports must match').toEqual([])
   })
 })

@@ -233,15 +233,17 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
 
   test('Graduation risk workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/graduation/risk-archive?tab=risk')
+    await openWithApiSession(page, adminApi, '/admin/graduation/risk-archive?panel=risk')
     await setBatchStorage(page, 'graduation.selectedBatchId', graduationFixture.batchId)
-    await page.goto(`${config.staffBaseUrl}/admin/graduation/risk-archive?tab=risk&batchId=${encodeURIComponent(graduationFixture.batchId)}`)
+    await page.goto(`${config.staffBaseUrl}/admin/graduation/risk-archive?panel=risk&batchId=${encodeURIComponent(graduationFixture.batchId)}`)
 
     await expect(page).toHaveURL(/\/admin\/graduation\/risk-archive/)
     await expect(page.locator('.gp-tabs')).toBeVisible()
-    await expect(page.locator('.rk-scan-bar')).toBeVisible()
+    await expect(page.locator('.rk-command')).toBeVisible()
+    await expect(page.locator('.rk-rules')).toBeVisible()
     await expect(page.locator('.rk-split')).toBeVisible()
     await expect(page.locator('.rk-row').first()).toBeVisible()
+    await dismissGuide(page)
 
     await capture(page, testInfo, 'rollout-risk-graduation-b')
   })
