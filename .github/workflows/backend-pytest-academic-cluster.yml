@@ -128,7 +128,7 @@ jobs:
           exit 0
       - name: Upload secret-safe diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-debt-mainline-${{ matrix.lane }}
           path: backend/test-results/academic-debt/${{ matrix.lane }}/

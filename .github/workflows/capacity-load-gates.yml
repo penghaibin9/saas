@@ -299,7 +299,7 @@ jobs:
             --output performance/results/capacity-verdict.json
       - name: 上传本地容量结果
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-local-${{ matrix.profile }}-${{ matrix.identityMode }}-${{ github.run_id }}
           path: performance/results/
@@ -436,7 +436,7 @@ jobs:
             --output performance/results/capacity-verdict.json
       - name: 上传容量结果
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ env.IDENTITY_MODE }}-${{ github.run_id }}
           path: performance/results/

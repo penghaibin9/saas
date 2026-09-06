@@ -142,7 +142,7 @@ jobs:
         run: npx playwright test specs/academic-b-selection-w4-final.spec.mjs --reporter=line
       - name: Upload W4 screenshots/traces
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w4-evidence-${{ github.sha }}
           path: e2e/test-results/
@@ -150,7 +150,7 @@ jobs:
           retention-days: 14
       - name: Upload W4 service logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w4-logs-${{ github.sha }}
           path: e2e/runtime-logs/

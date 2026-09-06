@@ -321,7 +321,7 @@ jobs:
         run: python ../scripts/check/check-migration-time-travel.py
       - name: 上传全新安装的结构快照
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fresh-install-schema-${{ matrix.shard }}-${{ github.sha }}
           path: /tmp/schema-fresh.txt
@@ -331,7 +331,7 @@ jobs:
         run: python scripts/audit_stage_c1_academic_facts.py
       - name: 上传 Stage C1 reconciliation 证据
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stage-c1-reconciliation-${{ matrix.shard }}-${{ github.sha }}
           path: backend/test-results/stage-c1-reconciliation.json
@@ -463,7 +463,7 @@ jobs:
             --upgraded /tmp/schema-upgraded.txt --fresh /tmp/schema-fresh.txt
       - name: 上传两条路径的结构快照
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: migration-path-schemas-${{ github.sha }}
           path: |
