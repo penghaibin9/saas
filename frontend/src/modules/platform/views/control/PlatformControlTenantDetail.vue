@@ -1,20 +1,25 @@
 <template>
-  <ModulePageShell :title="tenant ? tenant.tenantName : '学校详情'" :subtitle="tenant ? tenant.tenantCode + ' · ' + pkgLabel : ''" :role-name="roleName" data-scope-name="当前学校对象">
+  <ModulePageShell class="platform-workspace ptd" :title="tenant ? tenant.tenantName : '学校详情'" :subtitle="tenant ? tenant.tenantCode + ' · ' + pkgLabel : ''" :role-name="roleName" data-scope-name="当前学校对象">
     <template #actions>
       <AppButton variant="ghost" @click="backToList">← 返回学校清单</AppButton>
     </template>
     <LoadingState v-if="loading" text="正在加载学校详情…" />
     <template v-else-if="tenant">
+      <section class="ptd__object" aria-label="当前学校与办理入口">
+        <div class="ptd__object-avatar" aria-hidden="true">{{ (tenant.tenantName || '校').slice(0, 1) }}</div>
+        <div class="ptd__object-copy"><span class="pw-eyebrow">学校服务工作区</span><h2>{{ schoolNextStep }}</h2><p><StatusTag :type="statusType" :label="statusLabel" /><span>{{ environmentLabel(tenant.environment) }}</span><span>{{ tenant.tenantCode }}</span></p></div>
+        <RouterLink v-if="can('platform.order.view')" class="pw-button" :to="{ path: '/admin/platform/orders', query: { tenantId: tid } }">查看该校合同订单 <span aria-hidden="true">→</span></RouterLink>
+      </section>
       <nav class="ptd__tabs" aria-label="学校工作区">
         <button v-for="t in tabs" :key="t.key" type="button" class="ptd__tab" :class="{ 'is-active': tab === t.key }" :aria-pressed="tab === t.key" @click="switchTab(t.key)">{{ t.label }}</button>
       </nav>
       <div v-if="pendingRulesNavigation" class="ptd__leave-rules" role="alert">
-        <strong>规则草稿或本次提交记录尚未处理</strong>
-        <p>{{ rulesActivity.busy ? '正在请求服务器，暂不能离开；请勿重复提交。' : '离开会清除本页草稿和核验记录。已经发送的请求不会因此撤销；结果未确认时，请先核对配置和审计。' }}</p>
-        <div class="ptd__ops"><AppButton variant="primary" @click="pendingRulesNavigation = null">继续办理</AppButton><AppButton variant="ghost" :disabled="rulesActivity.busy || rulesLeaveApproved" @click="leaveRules">清除本页记录并离开</AppButton></div>
+        <strong>{{ tab === 'rules' ? '规则草稿或本次提交记录尚未处理' : '学校变更尚未办理完毕' }}</strong>
+        <p>{{ workspaceBusy ? '正在请求服务器，暂不能离开；请勿重复提交。' : '离开会清除本页草稿和核验记录。已经发送的请求不会因此撤销；结果未确认时，请先核对配置和审计。' }}</p>
+        <div class="ptd__ops"><AppButton variant="primary" @click="pendingRulesNavigation = null">继续办理</AppButton><AppButton variant="ghost" :disabled="workspaceBusy || rulesLeaveApproved" @click="leaveRules">清除本页记录并离开</AppButton></div>
       </div>
       <LoadingState v-if="tabLoading" text="正在读取当前工作区…" />
-      <ErrorState v-else-if="tabError" :description="tabError" @retry="loadTab(tab)" />
+      <ErrorState v-else-if="tabError" :description="tabError" @retry="loadTab(tab)" @back="backToList" />
       <template v-else>
         <div v-if="tab === 'info'" class="ptd__cols">
           <AppCard class="ptd__panel">
@@ -40,7 +45,7 @@
             </ul>
             <p class="ptd__authority-note">商业套餐与商业额度由已支付订单或受控特批决定；本页不再提供普通直改入口。</p>
           </AppCard>
-          <TenantLifecycleWorkspace :key="tid" class="ptd__full" :tenant="tenant" :tenant360="tenant360" @changed="load" />
+          <TenantLifecycleWorkspace ref="lifecycleWorkspace" :key="tid" class="ptd__full" :tenant="tenant" :tenant360="tenant360" @activity="lifecycleActivity = $event" @changed="load" />
         </div>
 
         <AppCard v-else-if="tab === 'features'" class="ptd__panel">
@@ -49,7 +54,7 @@
           <div class="ptd__switches">
             <label v-for="k in featureKeys" :key="k" class="ptd__switch"><input :checked="Boolean(features[k])" type="checkbox" disabled /><span>{{ featureLabels[k] || '待命名功能' }}</span></label>
           </div>
-          <EmptyState v-if="!featureKeys.length" text="接口未返回可展示的授权项" compact />
+          <EmptyState v-if="!featureKeys.length" title="接口未返回可展示的授权项" description="请先核对当前学校的合同订单与套餐证据，不在此处直接授予商业权限。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
 
         <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
@@ -68,7 +73,7 @@
             <template #cell-approverRoleCodes="{ row }"><span class="ptd__roles">{{ roleLabels(row.approverRoleCodes) }}</span></template>
             <template #cell-timeoutHours="{ row }"><span>{{ row.timeoutHours || '—' }}</span></template>
           </DataTable>
-          <EmptyState v-if="!workflowRows.length" text="当前学校暂无运行流程定义" compact />
+          <EmptyState v-if="!workflowRows.length" title="当前学校暂无运行流程定义" description="正式流程由学校系统管理的流程治理工作区维护。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
 
         <AppCard v-else-if="tab === 'brand'" class="ptd__panel">
@@ -89,12 +94,12 @@
             <template #cell-lastLoginAt="{ row }">{{ fmt(row.lastLoginAt) || '从未登录' }}</template>
             <template #cell-actions="{ row }"><div class="ptd__ops ptd__ops--row"><AppButton v-if="row.status !== 'ACTIVE'" variant="ghost" :disabled="saving" @click="userAct(row, 'enable')">启用</AppButton><AppButton v-else variant="danger" :disabled="saving" @click="userAct(row, 'disable')">停用</AppButton><AppButton variant="warning" :disabled="saving" @click="userAct(row, 'reset-password')">重置密码</AppButton></div></template>
           </DataTable>
-          <EmptyState v-if="!users.length" text="该学校暂无账号" compact />
+          <EmptyState v-if="!users.length" title="该学校暂无账号" description="当前接口已返回空清单；已有账号不受本页面筛选影响。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
         <TenantOffboardingPanel v-else-if="tab === 'offboarding'" :tenant-id="tid" :tenant="tenant" :tenant360="tenant360" @changed="load" />
       </template>
     </template>
-    <ErrorState v-else :description="error || '学校详情未取得'" @retry="load" />
+    <ErrorState v-else :description="error || '学校详情未取得'" @retry="load" @back="backToList" />
   </ModulePageShell>
 </template>
 
@@ -109,6 +114,7 @@ import TenantRulesWorkspace from '@/modules/platform/components/TenantRulesWorks
 import { rulesSnapshot } from '@/modules/platform/utils/tenantRuleDraft.mjs'
 import { countLabel, environmentLabel, wholeNumber, returnLocation } from '@/modules/platform/utils/tenantWorkspace.mjs'
 import { toPlatformUiContext } from '@/security/platformAccessGate'
+import { canEnterRoute, getPermissionPatterns, getRbacLoadFailed } from '@/security/permissionGate'
 import {
   PLATFORM_FEATURE_LABELS,
   platformRoleLabel
@@ -132,6 +138,7 @@ export default {
       ],
       quota: { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 },
       features: {}, featureKeys: [], featureLabels: PLATFORM_FEATURE_LABELS, featuresMeta: {},
+      lifecycleActivity: { protected: false, busy: false, phase: 'edit' },
       rulesProjection: null, rulesActivity: { protected: false, busy: false, phase: 'edit' }, pendingRulesNavigation: null, rulesLeaveApproved: false,
       workflowRows: [], workflowMeta: {},
       wfColumns: [
@@ -156,6 +163,8 @@ export default {
     }
   },
   computed: {
+    schoolNextStep() { return ({ trial: '核对试用安排，再推进正式开通', expired: '核对续费与授权激活', disabled: '先核对停用原因，再办理恢复', active: '查看学校服务，按事项进入办理' })[this.tenant?.status] || '先核实当前学校状态' },
+    workspaceBusy() { return this.saving || (this.tab === 'rules' ? this.rulesActivity.busy : this.tab === 'info' && this.lifecycleActivity.busy) },
     tid() { return this.$route.params.tenantId || this.$route.params.id },
     roleName() { return platformRoleLabel(toPlatformUiContext()?.currentRole?.roleCode || 'PLATFORM') },
     pkgLabel() { return this.tenant ? (this.tenant.packageName || '套餐未取得') + ' · 服务至 ' + (this.fmt(this.tenant.expireAt) || '未取得') : '' },
@@ -191,13 +200,15 @@ export default {
   beforeUnmount() { this.requestEpoch += 1; this.tabRequestEpoch += 1; this.mutationEpoch += 1; this.oneTimeSecret = '' },
   methods: {
     countLabel, environmentLabel,
+    can(key) { return Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() && canEnterRoute({ moduleCode: 'PLATFORM', permissionKey: key }) },
+    protectedWorkspace() { return this.tab === 'rules' ? this.$refs?.rulesWorkspace : this.tab === 'info' ? this.$refs?.lifecycleWorkspace : null },
     blockRulesNavigation(destination) {
-      if (this.rulesLeaveApproved || this.tab !== 'rules' || !this.$refs?.rulesWorkspace?.protectNavigation) return false
+      if (this.rulesLeaveApproved || !this.protectedWorkspace()?.protectNavigation) return false
       this.pendingRulesNavigation = destination
       return true
     },
     async leaveRules() {
-      if (this.rulesLeaveApproved || !this.pendingRulesNavigation || this.$refs?.rulesWorkspace?.busy) return
+      if (this.rulesLeaveApproved || !this.pendingRulesNavigation || this.protectedWorkspace()?.busy) return
       const destination = this.pendingRulesNavigation
       this.rulesLeaveApproved = true
       try {
@@ -216,6 +227,7 @@ export default {
       this.tenant = null; this.tenant360 = {}; this.saving = false
       this.quota = { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 }
       this.features = {}; this.featureKeys = []; this.featuresMeta = {}
+      this.lifecycleActivity = { protected: false, busy: false, phase: 'edit' }
       this.rulesProjection = null; this.pendingRulesNavigation = null; this.rulesActivity = { protected: false, busy: false, phase: 'edit' }
       this.workflowRows = []; this.workflowMeta = {}
       this.brand = {}; this.brandVersion = 0; this.brandMeta = {}
@@ -244,7 +256,7 @@ export default {
     switchTab(key) {
       if (!this.tabs.some(item => item.key === key) || this.saving) return
       if (key !== this.tab && this.blockRulesNavigation({ path: this.$route.path, query: { ...this.$route.query, tab: key } })) return
-      if (key === this.tab && this.$refs?.rulesWorkspace?.protectNavigation) return
+      if (key === this.tab && this.protectedWorkspace()?.protectNavigation) return
       this.tab = key; this.oneTimeSecret = ''
       this.$router.replace({ query: { ...this.$route.query, tab: key } })
       this.loadTab(key)
@@ -304,7 +316,18 @@ export default {
 }
 </script>
 
+<style src="../../styles/workspace.css"></style>
 <style scoped>
+.ptd__object { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); padding: var(--space-5); background: linear-gradient(120deg, var(--pri-bg), var(--bg-card)); border: 1px solid var(--card-b); border-radius: var(--r); }
+.ptd__object-avatar { display: grid; place-items: center; flex: none; width: 56px; height: 56px; border-radius: 16px; background: var(--bg-card); color: var(--pri); border: 1px solid var(--card-b); font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); }
+.ptd__object-copy { flex: 1; min-width: 180px; }
+.ptd__object h2 { margin: var(--space-2) 0; font-size: var(--font-size-lg); color: var(--t1); line-height: 1.6; }
+.ptd__object p { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin: 0; color: var(--t2); font-size: var(--font-size-xs); overflow-wrap: anywhere; }
+.ptd__object > .pw-button { flex: none; }
+.ptd__tabs { padding: var(--space-2); border: 1px solid var(--card-b); border-radius: var(--r); background: var(--bg-card); }
+@media(max-width:600px) { .ptd__object { padding: var(--space-4); }.ptd__object-copy { min-width: 0; flex-basis: calc(100% - 80px); }.ptd__object > .pw-button { width: 100%; }.ptd__kv li { align-items: flex-start; } }
+
 .ptd__leave-rules{padding:14px 16px;border:1px solid var(--warning-700,#96530b);border-radius:9px;background:var(--warn-l,#fff5e5);color:var(--t1,#1c2844);font-size:13px;line-height:1.65}.ptd__leave-rules p{margin:6px 0 0}.ptd__leave-rules .ptd__ops{margin-top:10px}
 .ptd__tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px}.ptd__tab{flex:none;height:38px;padding:0 14px;border:1px solid var(--card-b,#e5eaf2);border-radius:8px;background:var(--bg-card,#fff);color:var(--t2,#526176);font-size:13px;font-family:inherit;cursor:pointer}.ptd__tab.is-active{background:var(--pri-bg,#edf1ff);border-color:var(--pri,#3c5cdb);color:var(--pri,#3c5cdb);font-weight:650}.ptd__tab:focus-visible{outline:2px solid var(--pri,#3c5cdb);outline-offset:2px}.ptd__cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:var(--space-3,16px)}.ptd__full{grid-column:1/-1}.ptd__panel{padding:var(--space-4,20px);min-width:0}.ptd__kv{list-style:none;margin:var(--space-2,8px) 0 0;padding:0;display:flex;flex-direction:column;gap:12px}.ptd__kv li{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:var(--font-size-sm,13px);color:var(--text-secondary,#728098)}.ptd__kv li span{flex:none}.ptd__kv b{color:var(--t1,#1c2844);font-weight:550;overflow-wrap:anywhere;text-align:right}.ptd__danger{color:var(--danger-600,#b42318)!important}.ptd__ops{display:flex;gap:var(--space-2,8px);flex-wrap:wrap;margin-top:var(--space-3,16px)}.ptd__ops--row{margin-top:0}.ptd__input{height:36px;padding:0 10px;border:1px solid var(--card-b,#e5eaf2);border-radius:8px;background:var(--bg-input,#fff);color:var(--t1,#1c2844);font-size:13px;font-family:inherit;min-width:0}.ptd__input:focus-visible{outline:2px solid var(--pri,#3c5cdb);outline-offset:2px}.ptd__switches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-2,8px);margin-top:var(--space-3,16px)}.ptd__switch{display:flex;align-items:center;gap:var(--space-2,8px);font-size:var(--font-size-sm,13px);color:var(--t2,#526176)}.ptd__roles{font-size:12px;color:var(--text-secondary,#728098)}.ptd__brand{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:20px;margin-top:20px}.ptd__brand dt,.ptd__brand-source{font-size:12px;color:var(--text-secondary,#728098)}.ptd__brand dd{margin:6px 0 0;font-size:14px;color:var(--t1,#1c2844);overflow-wrap:anywhere}.ptd__user-create{display:flex;gap:var(--space-2,8px);flex-wrap:wrap;margin:var(--space-3,16px) 0}.ptd__secret{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2,8px);padding:var(--space-2,8px) var(--space-3,16px);border-radius:9px;background:var(--warn-l,#fff5e5);color:var(--warning-700,#96530b);font-size:var(--font-size-sm,13px);margin-bottom:var(--space-3,16px);overflow-wrap:anywhere}.ptd__authority-note{margin:var(--space-3,16px) 0 0;padding:var(--space-2,8px) var(--space-3,16px);border-radius:9px;background:var(--pri-bg,#edf1ff);color:var(--text-secondary,#728098);font-size:var(--font-size-sm,13px);line-height:1.6}
+.ptd__tabs { padding: var(--space-2); gap: var(--space-1); }.ptd__tab { border-color: transparent; min-height: 40px; }.ptd__tab.is-active { border-color: transparent; }
 </style>

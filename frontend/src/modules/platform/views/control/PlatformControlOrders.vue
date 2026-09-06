@@ -47,10 +47,17 @@
       <form class="pcod__toolbar" role="search" @submit.prevent="searchOrders"><label>学校名称或订单号<input v-model="keywordInput" placeholder="搜索学校名称 / 订单号" maxlength="100" /></label><label>支付状态<select v-model="statusInput"><option value="">全部</option><option value="unpaid">待支付</option><option value="paid">已支付</option><option value="cancelled">已取消</option><option value="refunded">已退款</option></select></label><button type="submit" class="pcod__primary">查询</button><button type="button" :disabled="loading" @click="load">刷新</button><button v-if="scope.tenantId || scope.status || scope.keyword" type="button" @click="clearScope">清除筛选</button></form>
       <p v-if="scope.tenantId" class="pcod__note">学校范围：{{ rows[0]?.tenantName || '当前选定学校' }} · 本页仅展示该校订单</p><div class="pcod__summary" role="status" aria-live="polite"><template v-if="!loading && !error"><span>找到 <b>{{ filteredRows.length }}</b> 笔订单<span v-if="focus !== 'all'"> · {{ focusOptions.find(item => item.value === focus)?.label }}</span></span><small>本次读取 {{ loadedAt }}</small></template><span v-else>{{ loading ? '正在读取订单' : '本次读取失败，未展示旧结果' }}</span></div>
       <LoadingState v-if="loading" text="正在加载订单…" />
-      <ErrorState v-else-if="error" :description="error" @retry="load" />
-      <EmptyState v-else-if="!filteredRows.length" text="当前条件下没有订单" />
+      <ErrorState v-else-if="error" :description="error" @retry="load" @back="$router.push('/admin/platform/overview')" />
+      <EmptyState v-else-if="!filteredRows.length" title="当前条件下没有订单" :description="scope.tenantId || scope.status || scope.keyword || focus !== 'all' ? '支付状态、办理事项和学校范围都会影响查询结果。清除筛选后可重新核对。' : '录入合同后，从待支付开始办理；本页不会把录单当作收款或授权成功。'">
+        <template #actions>
+          <button v-if="scope.tenantId || scope.status || scope.keyword || focus !== 'all'" type="button" class="pcod__primary" @click="clearScope">清除筛选，查看订单清单</button>
+          <button v-else-if="can('platform.order.manage')" type="button" class="pcod__primary" @click="startCreate">录入首笔订单</button>
+          <span v-else class="pw-empty-note">暂无可核对记录；订单录入由具备商业管理权限的人员办理。</span>
+        </template>
+      </EmptyState>
       <template v-else>
-        <div class="pcod__table" tabindex="0" role="region" aria-label="合同订单，可横向滚动">
+        <p id="pcod-table-help" class="pw-scroll-hint">左右滚动可查看支付、授权激活状态与办理入口。</p>
+        <div class="pcod__table" aria-describedby="pcod-table-help" tabindex="0" role="region" aria-label="合同订单，可横向滚动">
           <DataTable :columns="columns" :rows="visibleRows" row-key="orderNo">
             <template #cell-tenantName="{ row }"><div class="pcod__school"><span class="pcod__avatar" aria-hidden="true">{{ (row.tenantName || '校').slice(0, 1) }}</span><strong>{{ row.tenantName || '学校名称未取得' }}</strong></div></template>
             <template #cell-orderNo="{ row }"><span class="pcod__order-no">{{ row.orderNo }}</span><small>{{ orderTypeLabel(row.orderType) }}</small></template>
@@ -153,7 +160,11 @@ export default {
       try { const scope = orderScope({ tenantId: this.scope.tenantId, status: this.statusInput, keyword: this.keywordInput }); this.$router.replace({ path: this.$route.path, query: Object.fromEntries(Object.entries(scope).filter(([, value]) => value)) }) }
       catch (error) { this.rows = []; this.loadedAt = ''; this.error = error.message }
     },
-    clearScope() { this.$router.replace({ path: this.$route.path, query: {} }) },
+    clearScope() {
+      this.focus = 'all'; this.keywordInput = ''; this.statusInput = ''; this.page = 1
+      if (!Object.keys(this.$route.query).length) return this.load()
+      return this.$router.replace({ path: this.$route.path, query: {} })
+    },
     async startCreate() {
       if (this.work || !this.can('platform.order.manage')) return
       this.work = { kind: 'create', schoolName: '' }; this.phase = 'edit'; this.optionsLoading = true; this.workError = ''; this.tenants = []; this.packages = []

@@ -1,4 +1,4 @@
-/* Opt-in to these three platform views only. Shared shells and other centers stay unchanged. */
+/* Opt-in to the selected platform workspaces only. Shared shells and other centers stay unchanged. */
 .platform-workspace { gap: var(--space-5); color: var(--t1); }
 .platform-workspace .mps__head { align-items: center; row-gap: var(--space-3); }
 .platform-workspace .mps__title { font-size: var(--font-size-2xl); letter-spacing: -.025em; }
@@ -22,3 +22,14 @@
 .platform-workspace .pw-eyebrow { display: flex; align-items: center; gap: var(--space-2); color: var(--pri); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); letter-spacing: .06em; }
 .platform-workspace .pw-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (prefers-reduced-motion: reduce) { .platform-workspace *, .platform-workspace *::before, .platform-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* Empty states have contextual actions; native scrolling stays available on narrow screens. */
+.platform-workspace .pw-empty-note { color: var(--t2); font-size: var(--font-size-xs); line-height: 1.7; }
+.platform-workspace .pw-scroll-hint { display: none; margin: 0; padding: var(--space-2) var(--space-4); color: var(--t2); background: var(--bg-section); font-size: var(--font-size-xs); line-height: 1.7; }
+.platform-workspace .pco__panel .ags-panel { padding: var(--space-4) var(--space-2); min-height: 0; }
+.platform-workspace .pco__panel .ags-icon { font-size: 28px; margin-bottom: var(--space-2); }
+@media(max-width:1100px) { .platform-workspace .pw-scroll-hint { display: block; } }
+
+/* One focusable scroll owner per list; no nested clipped DataTable scroll region. */
+.platform-workspace :is(.pct__table-region,.pcod__table) .dt { overflow: visible; }
+.platform-workspace :is(.pct__table-region,.pcod__table) .dt__scroll { overflow: visible; }

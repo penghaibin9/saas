@@ -38,7 +38,7 @@ try {
   page.on('dialog', dialog => dialog.accept())
   // Match the backend root only. Vite serves source modules under /src/.../api/ too.
   await page.route(/^https?:\/\/[^/]+\/api\//, route => { report.blockedApiRequests.push(new URL(route.request().url()).pathname); return route.abort() })
-  for (const view of ['overview', 'tenants', 'orders']) {
+  for (const view of ['overview', 'tenants', 'orders', 'detail']) {
     await check(`${view}: desktop real-SFC render`, async () => { await open(view); await noOverflow(); await screenshot(`${view}-1440`) })
     await check(`${view}: narrow and tablet reflow`, async () => { for (const width of [1024, 390]) { await open(view, '', width); await noOverflow(); await screenshot(`${view}-${width}`) } })
   }
@@ -53,6 +53,8 @@ try {
     await page.getByPlaceholder('搜索学校名称 / 编码').fill('不存在的学校')
     await page.getByRole('button', { name: '查询', exact: true }).click()
     await expect(page.getByText('没有符合条件的学校', { exact: true })).toBeVisible()
+    await expect(page.locator('.pct__empty').getByRole('button', { name: '返回', exact: true })).toHaveCount(0)
+    await screenshot('tenants-empty-recovery')
     await page.getByRole('button', { name: '清除筛选，查看学校清单', exact: true }).click()
     await expect(page.locator('.dt__table tbody tr')).toHaveCount(6)
   })
@@ -101,7 +103,7 @@ try {
     await screenshot('overview-missing')
   })
   await check('failed reads do not masquerade as zero or empty success', async () => {
-    for (const view of ['overview', 'tenants', 'orders']) {
+    for (const view of ['overview', 'tenants', 'orders', 'detail']) {
       await open(view, '&case=error'); await expect(page.locator('.platform-workspace')).toContainText('读取失败')
       await expect(page.locator('.dt__table')).toHaveCount(0)
     }
@@ -110,8 +112,83 @@ try {
   await check('overview school shortcut reaches the existing exact route', async () => {
     await open('overview')
     await page.getByRole('link', { name: '跟进明德职业技术学校', exact: true }).click()
-    await expect(page.getByTestId('destination')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '明德职业技术学校', exact: true })).toBeVisible()
     assert.equal(await page.evaluate(() => window.__platformVisual.route()), '/admin/platform/tenants/1000000000000000005')
+  })
+  await check('orders have a recoverable empty search including the local work-item filter', async () => {
+    await open('orders')
+    await page.getByRole('button', { name: '激活待修复', exact: true }).click()
+    await page.getByPlaceholder('搜索学校名称 / 订单号').fill('不存在的订单')
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect(page.getByText('当前条件下没有订单', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '返回', exact: true })).toHaveCount(0)
+    await screenshot('orders-empty-recovery')
+    await page.getByRole('button', { name: '清除筛选，查看订单清单', exact: true }).click()
+    await expect(page.locator('.dt__table tbody tr')).toHaveCount(6)
+    assert.equal((await page.evaluate(() => window.__platformVisual.calls)).length, 0)
+  })
+  await check('empty read-only orders do not invent create or back actions', async () => {
+    await open('orders', '&case=empty&readonly=1')
+    await expect(page.getByText('当前条件下没有订单', { exact: true })).toBeVisible()
+    for (const name of ['返回', '录入首笔订单', '录入订单']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+  })
+  await check('narrow school table has a useful scroll hint and a styled usage meter', async () => {
+    await open('tenants', '', 390)
+    await expect(page.locator('#pct-table-help')).toBeVisible()
+    await expect(page.locator('.pct__table-region')).toHaveAttribute('aria-describedby', 'pct-table-help')
+    assert.equal(await page.locator('progress').first().evaluate(node => getComputedStyle(node).appearance), 'none')
+    await page.locator('.pct__table-region').focus()
+    await noOverflow()
+  })
+  await check('school lifecycle cannot lose its preview or draft through a tab switch', async () => {
+    await open('detail')
+    await page.getByRole('button', { name: '停用学校', exact: true }).click()
+    await page.locator('.tlw textarea').fill('学校维护期间临时停用服务')
+    await page.getByRole('button', { name: '品牌（只读）', exact: true }).click()
+    await expect(page.locator('.ptd__leave-rules')).toContainText('学校变更尚未办理完毕')
+    await page.getByRole('button', { name: '继续办理', exact: true }).click()
+    await expect(page.locator('.tlw textarea')).toHaveValue('学校维护期间临时停用服务')
+    await page.getByRole('button', { name: '查看变更影响', exact: true }).click()
+    await expect(page.getByRole('button', { name: '确认停用学校', exact: true })).toBeDisabled()
+    await screenshot('detail-lifecycle-review')
+    await page.locator('.tlw__preview input').fill('VISUAL-1')
+    await page.getByRole('button', { name: '确认停用学校', exact: true }).click()
+    await expect(page.locator('.tlw__receipt')).toContainText('变更已生效')
+    assert.equal((await page.evaluate(() => window.__platformVisual.calls)).length, 1)
+  })
+  await check('rule workspace renders real typed fields, draft protection and sparse save', async () => {
+    await open('detail', '&tab=rules')
+    await page.locator('.trw__search input').fill('uploadMaxSizeMb')
+    await page.locator('.trw input[type=number]').fill('30')
+    await page.locator('#rules-change-reason').fill('学校文件容量上限调整说明')
+    await page.getByRole('button', { name: '品牌（只读）', exact: true }).click()
+    await expect(page.locator('.ptd__leave-rules')).toBeVisible()
+    await page.getByRole('button', { name: '继续办理', exact: true }).click()
+    await page.getByRole('button', { name: '核对 1 项修改', exact: true }).click()
+    await screenshot('detail-rules-review')
+    await page.getByRole('button', { name: '确认保存规则', exact: true }).click()
+    await expect(page.locator('.trw__success')).toContainText('规则保存成功')
+    const calls = await page.evaluate(() => window.__platformVisual.calls)
+    assert.equal(calls.length, 1); assert.deepEqual(calls[0].patch, { file: { uploadMaxSizeMb: 30 } }); assert.equal(calls[0].expectedVersion, 4)
+  })
+  await check('read-only rules and canonical brand remain non-writable', async () => {
+    await open('detail', '&tab=rules&readonly=1', 390)
+    await expect(page.locator('.trw')).toContainText('当前身份只读')
+    await expect(page.locator('#student\\.studentNoRequired')).toBeDisabled()
+    await noOverflow(); await screenshot('detail-rules-readonly-390')
+    await page.getByRole('button', { name: '品牌（只读）', exact: true }).click()
+    await expect(page.locator('.ptd__brand')).toContainText('学校数字服务')
+    await expect(page.locator('.ptd__brand input')).toHaveCount(0)
+    await noOverflow(); await screenshot('detail-brand-390')
+  })
+  await check('empty school tabs show exact contextual titles with working recovery', async () => {
+    for (const [tab, title] of [['features', '接口未返回可展示的授权项'], ['workflows', '当前学校暂无运行流程定义'], ['users', '该学校暂无账号']]) {
+      await open('detail', `&tab=${tab}&case=empty`)
+      await expect(page.getByText(title, { exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: '返回', exact: true })).toHaveCount(0)
+      await page.getByRole('button', { name: '返回学校概况', exact: true }).click()
+      await expect(page.locator('.tlw')).toBeVisible()
+    }
   })
   await check('no runtime exceptions or live API traffic', async () => { assert.deepEqual(report.pageErrors, []); assert.deepEqual(report.blockedApiRequests, []) })
 } finally {

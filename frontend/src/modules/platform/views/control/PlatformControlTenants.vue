@@ -23,10 +23,19 @@
         <span v-if="loadedAt && !loading && !error" class="pct__read-time">本次读取 {{ loadedAt }}</span>
       </div>
       <LoadingState v-if="loading" text="正在加载学校清单…" />
-      <ErrorState v-else-if="error" :description="error" @retry="load" />
-      <div v-else-if="!rows.length" class="pct__empty"><EmptyState text="没有符合条件的学校" /><button v-if="applied.keyword || applied.status" type="button" class="pw-button" @click="clearFilters">清除筛选，查看学校清单</button></div>
+      <ErrorState v-else-if="error" :description="error" @retry="load" @back="$router.push('/admin/platform/overview')" />
+      <div v-else-if="!rows.length" class="pct__empty">
+        <EmptyState title="没有符合条件的学校" :description="applied.keyword || applied.status ? '可以调整学校名称、编码或生命周期筛选，已有学校不会因筛选被删除。' : '当前已授权范围尚无学校记录。开通完成后，学校会出现在这里。'">
+          <template #actions>
+            <button v-if="applied.keyword || applied.status" type="button" class="pw-button pw-button--primary" @click="clearFilters">清除筛选，查看学校清单</button>
+            <button v-else-if="can('platform.provision.run.view')" type="button" class="pw-button pw-button--primary" @click="goProvisioning">开通学校</button>
+            <span v-else class="pw-empty-note">学校开通由具备交付权限的人员办理。</span>
+          </template>
+        </EmptyState>
+      </div>
       <template v-else>
-        <div class="pct__table-region" :class="{ 'pct__table-region--compact': density === 'compact' }" tabindex="0" role="region" aria-label="学校清单，可横向滚动">
+        <p id="pct-table-help" class="pw-scroll-hint">左右滚动可查看容量、授权与办理入口；键盘可聚焦表格后按方向键浏览。</p>
+        <div aria-describedby="pct-table-help" class="pct__table-region" :class="{ 'pct__table-region--compact': density === 'compact' }" tabindex="0" role="region" aria-label="学校清单，可横向滚动">
           <DataTable :columns="columns" :rows="visibleRows" row-key="tenantId" :row-class="rowTone">
             <template #cell-tenantName="{ row }">
               <div class="pct__identity"><span class="pct__avatar" :data-status="row.status" aria-hidden="true">{{ (row.tenantName || '校').slice(0, 1) }}</span><div class="pct__identity-text"><RouterLink class="pct__name" :to="detailLocation(row)">{{ row.tenantName || '学校名称未取得' }}</RouterLink><div class="pct__code">{{ row.tenantCode || '编码未取得' }}</div></div></div>
@@ -163,4 +172,11 @@ export default {
 .pct__toolbar { padding-block: var(--space-4); }.pct__search { max-width: 460px; }.pct__refresh { min-height: 40px; }.pct__table-region :deep(.dt__table) { min-width: 1030px; }.pct__table-region :deep(.pct__service-attention .dt__td:first-child) { box-shadow: inset 3px 0 0 var(--warn); }.pct__table-region--compact :deep(.dt__td) { padding-block: var(--space-2); }.pct__table-region--compact .pct__code { margin-top: 2px; }.pct__avatar { width: 42px; height: 42px; border-radius: var(--rs); }.pct__avatar[data-status="active"] { background: var(--ok-l); color: var(--success-700); }.pct__avatar[data-status="expired"] { background: var(--warn-l); color: var(--warning-700); }.pct__avatar[data-status="disabled"] { background: var(--bg-section); color: var(--t2); }.pct__code,.pct__safety-note { color: var(--t2); }.pct__usage,.pct__pagination { font-variant-numeric: tabular-nums; }.pct__meter { height: 5px; border: 0; border-radius: var(--rs); overflow: hidden; }.pct__meter--high { accent-color: var(--warn); }
 .pct__detail-link { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: var(--space-1) var(--space-2); border-radius: var(--rs); background: var(--pri-bg); font-weight: var(--font-weight-medium); }.pct__secondary-link { display: inline-flex; align-items: center; min-height: 30px; padding-inline: var(--space-2); }.pct__ops { gap: var(--space-1); }.pct__pagination select,.pct__page-buttons button { min-height: 34px; }.pct__empty { display: flex; flex-direction: column; align-items: center; padding-bottom: var(--space-5); }.pct__safety-note { padding: var(--space-3) var(--space-4); border-left: 2px solid var(--card-b); background: var(--bg-card); border-radius: var(--rs); }
 @media (max-width: 700px) { .pct__list-head { padding: var(--space-4) var(--space-3) var(--space-2); }.pct__status-tabs { gap: var(--space-2); }.pct__search { min-width: 100%; max-width: none; }.pct__refresh { margin-left: 0; } }
+/* Native progress rendering is explicit in both browser engines. */
+.pct__meter { appearance: none; border: 0; border-radius: 999px; overflow: hidden; background: var(--bg-section); }
+.pct__meter::-webkit-progress-bar { border-radius: 999px; background: var(--bg-section); }
+.pct__meter::-webkit-progress-value { border-radius: 999px; background: var(--pri); }
+.pct__meter::-moz-progress-bar { border-radius: 999px; background: var(--pri); }
+.pct__meter--high::-webkit-progress-value { background: var(--warn); }
+.pct__meter--high::-moz-progress-bar { background: var(--warn); }
 </style>

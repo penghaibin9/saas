@@ -43,13 +43,15 @@ const ACTIONS = { enable: '启用学校', disable: '停用学校', 'extend-trial
 export default {
   name: 'TenantLifecycleWorkspace',
   props: { tenant: { type: Object, required: true }, tenant360: { type: Object, default: () => ({}) } },
-  emits: ['changed'],
+  emits: ['changed', 'activity'],
   data() { return { action: '', reason: '', days: 7, confirmation: '', phase: 'edit', busy: false, preview: null, preparedBody: null, error: '', receipt: null, requestEpoch: 0, attempted: false } },
   computed: {
     version() { return wholeNumber(this.tenant360.version ?? this.tenant.version) },
     maintenance() { return this.action === 'reset-demo-data' || this.action === 'reset-sandbox-data' },
     selectedLabel() { return ACTIONS[this.action] || '' },
     locked() { return this.busy || this.attempted },
+    protectNavigation() { return this.busy || Boolean(this.action && (!this.receipt || this.receipt.cacheRecoveryRequired)) },
+    activity() { return { protected: this.protectNavigation, busy: this.busy, phase: this.phase } },
     choices() {
       const keys = []
       if (this.can('platform.commercial.manage') && ['active', 'trial', 'expired', 'disabled'].includes(this.tenant.status)) {
@@ -64,10 +66,12 @@ export default {
       return keys.map(key => ({ key, label: ACTIONS[key] }))
     }
   },
-  watch: { 'tenant.tenantId'() { this.cancel(true) }, 'tenant.version'() { if (!this.locked) this.invalidatePreview() }, 'tenant360.version'() { if (!this.locked) this.invalidatePreview() } },
-  beforeUnmount() { this.requestEpoch += 1 },
+  watch: { activity: { immediate: true, handler(value) { this.$emit('activity', value) } }, 'tenant.tenantId'() { this.cancel(true) }, 'tenant.version'() { if (!this.locked) this.invalidatePreview() }, 'tenant360.version'() { if (!this.locked) this.invalidatePreview() } },
+  mounted() { window.addEventListener('beforeunload', this.beforeUnload) },
+  beforeUnmount() { this.requestEpoch += 1; window.removeEventListener('beforeunload', this.beforeUnload) },
   methods: {
     statusLabel,
+    beforeUnload(event) { if (this.protectNavigation) { event.preventDefault(); event.returnValue = '' } },
     can(key) { return Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() && canEnterRoute({ moduleCode: 'PLATFORM', permissionKey: key }) },
     rootMaintenanceAllowed() { return isPlatformRoot() && Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() },
     allowed() {
