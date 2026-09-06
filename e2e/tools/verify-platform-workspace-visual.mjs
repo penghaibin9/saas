@@ -36,7 +36,8 @@ try {
   page = await browser.newPage({ reducedMotion: 'reduce' })
   page.on('pageerror', error => report.pageErrors.push(String(error)))
   page.on('dialog', dialog => dialog.accept())
-  await page.route('**/api/**', route => { report.blockedApiRequests.push(new URL(route.request().url()).pathname); return route.abort() })
+  // Match the backend root only. Vite serves source modules under /src/.../api/ too.
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => { report.blockedApiRequests.push(new URL(route.request().url()).pathname); return route.abort() })
   for (const view of ['overview', 'tenants', 'orders']) {
     await check(`${view}: desktop real-SFC render`, async () => { await open(view); await noOverflow(); await screenshot(`${view}-1440`) })
     await check(`${view}: narrow and tablet reflow`, async () => { for (const width of [1024, 390]) { await open(view, '', width); await noOverflow(); await screenshot(`${view}-${width}`) } })
