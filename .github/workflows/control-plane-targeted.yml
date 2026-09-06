@@ -66,6 +66,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: control-plane-targeted-${{ github.ref }}
@@ -79,6 +80,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - name: Exact branch HEAD assertion
         run: |
           ACTUAL="$(git rev-parse HEAD)"
@@ -99,6 +101,24 @@ jobs:
         run: python scripts/check/check-control-plane-g0.py --write artifacts/control-plane/g0.json
       - name: Permission Catalog reconciliation
         run: python scripts/check/check-permission-catalog.py --write artifacts/control-plane/permission-catalog.json
+      - name: W0 exact-head authority inventory
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" > "$W0_OPEN_PRS_PATH"
+          node scripts/generate-control-plane-iam-inventory.mjs
+          node - <<'NODE'
+          const fs = require('fs')
+          const head = process.env.GITHUB_EVENT_NAME === 'pull_request'
+            ? process.env.PR_HEAD_SHA
+            : process.env.GITHUB_SHA
+          const w0 = JSON.parse(fs.readFileSync('artifacts/control-plane-iam-w0.json', 'utf8'))
+          const dag = JSON.parse(fs.readFileSync('artifacts/migration-dag.json', 'utf8'))
+          if (w0.exactHead !== head || !w0.basedOnLatestMain || !dag.singleHead) process.exit(1)
+          NODE
+        env:
+          GH_TOKEN: ${{ github.token }}
+          W0_OPEN_PRS_PATH: ${{ runner.temp }}/control-plane-open-prs.json
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - name: B0-I4 Python syntax gate
         run: |
           python -m compileall -q \
@@ -195,6 +215,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: control-plane-contracts-${{ github.sha }}
-          path: artifacts/control-plane/*.json
+          path: |
+            artifacts/control-plane/*.json
+            artifacts/control-plane-iam-w0.json
+            artifacts/shared-owner-lock.json
+            artifacts/open-pr-overlay.json
+            artifacts/migration-dag.json
+            artifacts/navigation-inventory.json
+            artifacts/permission-inventory.json
+            artifacts/role-template-inventory.json
           if-no-files-found: error
           retention-days: 14

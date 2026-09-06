@@ -7,7 +7,7 @@
       <AppCard class="top__panel top__panel--summary">
         <div class="top__header">
           <div>
-            <div class="top__eyebrow">TENANT OFFBOARDING</div>
+            <div class="top__eyebrow">租户退出服务</div>
             <h3>退租与数据销毁</h3>
             <p>从影响预演、冻结只读、最终导出、保留期到永久销毁。所有危险动作都以后端状态机和安全门禁为准。</p>
           </div>
@@ -19,23 +19,23 @@
           <div><span>账号</span><b>{{ preview?.counts?.userCount ?? '—' }}</b></div>
           <div><span>文件</span><b>{{ preview?.counts?.fileCount ?? '—' }}</b></div>
           <div><span>文件容量</span><b>{{ formatBytes(preview?.counts?.fileBytes) }}</b></div>
-          <div><span>Legal Hold</span><b :class="{ 'top__danger': Number(preview?.counts?.legalHoldFileCount || 0) > 0 }">{{ preview?.counts?.legalHoldFileCount ?? '—' }}</b></div>
+          <div><span>司法保全文件</span><b :class="{ 'top__danger': Number(preview?.counts?.legalHoldFileCount || 0) > 0 }">{{ preview?.counts?.legalHoldFileCount ?? '—' }}</b></div>
           <div><span>运行中文件任务</span><b :class="{ 'top__danger': Number(preview?.counts?.activeFileJobCount || 0) > 0 }">{{ preview?.counts?.activeFileJobCount ?? '—' }}</b></div>
         </div>
 
         <div class="top__registry" :class="preview?.registry?.complete ? 'is-ok' : 'is-bad'">
-          <b>Purge Registry：{{ preview?.registry?.complete ? '完整' : '存在未分类表，禁止销毁' }}</b>
+          <b>销毁登记表：{{ preview?.registry?.complete ? '完整' : '存在未分类表，禁止销毁' }}</b>
           <span>版本 {{ preview?.registry?.registryVersion || '—' }} · 可销毁表 {{ preview?.registry?.purgeTableCount ?? '—' }} · 保留证据表 {{ preview?.registry?.retainTableCount ?? '—' }}</span>
         </div>
 
         <ul v-if="preview?.blockers?.length" class="top__blockers">
-          <li v-for="item in preview.blockers" :key="item.code"><b>{{ item.code }}</b>：{{ item.message }}</li>
+          <li v-for="item in preview.blockers" :key="item.code">{{ item.message || '存在尚未处理的销毁阻断项' }}</li>
         </ul>
       </AppCard>
 
       <AppCard v-if="canStartNew" class="top__panel">
         <AppSectionHeader title="1 · 发起退租并冻结业务写入" />
-        <p class="top__note">提交后租户会立即进入 readonly，普通交互式登录和业务写入将被拒绝。生产租户保留期至少 1 天。</p>
+        <p class="top__note">提交后租户会立即进入只读状态，普通交互式登录和业务写入将被拒绝。生产租户保留期至少 1 天。</p>
         <div class="top__form-grid">
           <label class="top__field top__field--wide">
             <span>退租原因（至少 10 个字符）</span>
@@ -70,7 +70,7 @@
               <span class="top__step-dot" :class="`is-${String(step.status || '').toLowerCase()}`"></span>
               <div>
                 <b>{{ stepLabel(step.stepCode) }}</b>
-                <small>{{ step.status }} · 尝试 {{ step.attempts }} 次<span v-if="step.lastError"> · {{ step.lastError }}</span></small>
+                <small>{{ platformStatusLabel(step.status) }} · 尝试 {{ step.attempts }} 次<span v-if="step.lastError"> · {{ step.lastError }}</span></small>
               </div>
             </div>
           </div>
@@ -99,20 +99,20 @@
           <div class="top__gates">
             <div :class="job.finalExportSha256 ? 'is-ok' : 'is-bad'"><b>最终导出</b><span>{{ job.finalExportSha256 ? '已确认 SHA-256' : '未确认' }}</span></div>
             <div :class="retentionExpired ? 'is-ok' : 'is-warn'"><b>保留期</b><span>{{ retentionExpired ? '已结束' : `截止 ${fmt(job.retentionUntil)}` }}</span></div>
-            <div :class="Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? 'is-ok' : 'is-bad'"><b>Legal Hold</b><span>{{ Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? '无阻断' : `${preview.counts.legalHoldFileCount} 个文件被保护` }}</span></div>
-            <div :class="preview?.registry?.complete ? 'is-ok' : 'is-bad'"><b>Purge Registry</b><span>{{ preview?.registry?.complete ? '完整' : '不完整' }}</span></div>
-            <div :class="mfaStatus.enabled ? 'is-ok' : 'is-bad'"><b>平台主管 MFA</b><span>{{ mfaStatus.enabled ? 'TOTP 已启用' : '尚未绑定' }}</span></div>
+            <div :class="Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? 'is-ok' : 'is-bad'"><b>司法保全</b><span>{{ Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? '无阻断' : `${preview.counts.legalHoldFileCount} 个文件被保护` }}</span></div>
+            <div :class="preview?.registry?.complete ? 'is-ok' : 'is-bad'"><b>销毁登记表</b><span>{{ preview?.registry?.complete ? '完整' : '不完整' }}</span></div>
+            <div :class="mfaStatus.enabled ? 'is-ok' : 'is-bad'"><b>平台主管二次认证</b><span>{{ mfaStatus.enabled ? '动态口令已启用' : '尚未绑定' }}</span></div>
           </div>
 
           <div v-if="!mfaStatus.enabled" class="top__mfa-missing">
-            <span>永久销毁必须使用真实 MFA 二次认证。</span>
-            <AppButton variant="primary" @click="$router.push('/admin/platform/security')">前往安全策略绑定 MFA</AppButton>
+            <span>永久销毁必须使用真实的二次认证。</span>
+            <AppButton variant="primary" @click="$router.push('/admin/platform/security')">前往安全策略绑定二次认证</AppButton>
           </div>
 
           <template v-else-if="job.state !== 'PURGED'">
             <div class="top__danger-box">
               <b>不可逆操作</b>
-              <p>销毁会删除该租户的业务数据和受治理文件字节，仅保留合规控制面证据与 tombstone。失败后只能按同一任务幂等续跑。</p>
+              <p>销毁会删除该租户的业务数据和受治理文件字节，仅保留合规控制面证据与删除凭证。失败后只能按同一任务继续执行。</p>
             </div>
 
             <div class="top__mfa-row">
@@ -120,8 +120,8 @@
                 <span>认证器 6 位动态码</span>
                 <input v-model.trim="mfaCode" inputmode="numeric" maxlength="6" class="top__input top__input--code" placeholder="000000" @keyup.enter="stepUpMfa" />
               </label>
-              <AppButton variant="primary" :loading="mfaWorking" :disabled="mfaCode.length !== 6" @click="stepUpMfa">完成 MFA 二次认证</AppButton>
-              <StatusTag v-if="mfaGrantValid" type="success" label="MFA 已验证 · 本页内存临时授权" />
+              <AppButton variant="primary" :loading="mfaWorking" :disabled="mfaCode.length !== 6" @click="stepUpMfa">完成二次认证</AppButton>
+              <StatusTag v-if="mfaGrantValid" type="success" label="二次认证已通过 · 本页临时授权" />
             </div>
 
             <label class="top__field top__confirm-field">
@@ -131,7 +131,7 @@
 
             <div class="top__ops">
               <AppButton variant="danger" :loading="working" :disabled="!canExecutePurge" @click="approvePurge">永久销毁租户数据</AppButton>
-              <span class="top__hint">MFA step-up Token 不写入任何浏览器持久存储，到期或提交销毁后立即从页面内存清除。</span>
+              <span class="top__hint">二次认证临时凭证不会写入浏览器持久存储，到期或提交销毁后会立即从页面内存清除。</span>
             </div>
           </template>
 
@@ -149,6 +149,7 @@
 import { AppButton, AppCard, AppSectionHeader } from '@/components/ui'
 import { ErrorState, LoadingState, StatusTag } from '@/components/business'
 import { platformSecurityOpsApi } from '@/modules/platform/api/platformSecurityOps.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const STATE_LABELS = {
@@ -238,11 +239,12 @@ export default {
     this.clearMfaGrant()
   },
   methods: {
+    platformStatusLabel,
     stateLabel(state) {
-      return STATE_LABELS[state] || state || '未知状态'
+      return STATE_LABELS[state] || '未知状态'
     },
     stepLabel(code) {
-      return STEP_LABELS[code] || code
+      return STEP_LABELS[code] || '其他处理步骤'
     },
     serverUtcEpoch(value) {
       if (!value) return NaN
@@ -258,9 +260,9 @@ export default {
     formatBytes(value) {
       if (value === null || value === undefined) return '—'
       const bytes = Number(value || 0)
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-      if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`
-      return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} 千字节`
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} 兆字节`
+      return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} 吉字节`
     },
     clearMfaGrant() {
       if (this.mfaExpiryTimer) clearTimeout(this.mfaExpiryTimer)
@@ -354,9 +356,9 @@ export default {
           this.mfaGrant = null
           this.mfaExpiryTimer = null
         }, ttlSeconds * 1000)
-        toast.success('MFA 二次认证通过；临时授权只保存在本页内存中')
+        toast.success('二次认证通过；临时授权只保存在本页内存中')
       } catch (error) {
-        toast.error(error.message || 'MFA 二次认证失败')
+        toast.error(error.message || '二次认证失败')
       } finally {
         this.mfaWorking = false
       }

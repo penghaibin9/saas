@@ -7,6 +7,7 @@
     "test": "playwright test",
     "test:auth": "playwright test specs/auth-tenant-role.spec.mjs",
     "test:graduation": "playwright test specs/graduation-lifecycle.spec.mjs",
+    "verify:internship-v8-journeys": "node tools/verify-internship-v8-golden-journeys.mjs",
     "report": "playwright show-report playwright-report"
   },
   "devDependencies": {

@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from app.services.db_service import _tid
 
 from .academic_affairs_archive_term_scope import cohort_term_scope
+from .academic_affairs_program_activation_service import resolve_program_for_scope
 from .academic_affairs_program_binding_quality_service import validate_program_db
 from .student_program_resolution_service import resolve_student_program
 
@@ -64,7 +65,8 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     """指定学期范围内在读学生均能解析到方案，且涉及方案的BLOCKER为0。
 
     历史归档只核当时处于1..12培养学期范围的 cohort；合法未来届/已超学制届属于
-    OUT_OF_SCOPE，不应阻断该历史学期。年级格式异常仍 fail-closed。
+    OUT_OF_SCOPE，不应阻断该历史学期。方案绑定按学期结束时点回放，避免归档后的
+    新版本反向改写历史结论；年级格式异常仍 fail-closed。
     """
     from app.models import StudentProfile
     from .academic_affairs_status_service import is_enrolled
@@ -109,8 +111,20 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
 
     unresolved = []
     resolved = []
+    replay_as_of = getattr(term, "end_date", None) if term is not None else None
+    resolution_cache = {}
     for student in students:
-        resolution = resolve_student_program(db, student, tenant_id=_tid())
+        resolution_key = (
+            int(getattr(student, "major_id", 0) or 0),
+            str(getattr(student, "grade", None) or "").strip(),
+            int(getattr(student, "class_id", 0) or 0),
+        )
+        resolution = resolution_cache.get(resolution_key)
+        if resolution is None:
+            resolution = resolve_student_program(
+                db, student, tenant_id=_tid(), as_of=replay_as_of
+            )
+            resolution_cache[resolution_key] = resolution
         if resolution.status != "RESOLVED" or not resolution.program:
             unresolved.append({
                 "studentId": str(student.id),
@@ -172,81 +186,79 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
 
 
 def _expected_opening(db, term, *, college_ids=None):
-    from app.models import AaProgram, AaProgramBinding, AaProgramCourse, SchoolClass
+    """按班级和学期结束时点解析唯一方案，再投影应开课程。"""
+    from app.models import AaProgramCourse, SchoolClass
 
-    programs = db.query(AaProgram).filter(
-        AaProgram.tenant_id == _tid(),
-        AaProgram.status.in_(["PUBLISHED", "ENABLED", "FROZEN"]),
-        AaProgram.is_deleted.is_(False),
+    classes = db.query(SchoolClass).filter(
+        SchoolClass.tenant_id == _tid(),
+        SchoolClass.class_status == "NORMAL",
+        SchoolClass.is_deleted.is_(False),
     ).all()
-    bindings = db.query(AaProgramBinding).filter(
-        AaProgramBinding.tenant_id == _tid(),
-        AaProgramBinding.status == "ACTIVE",
-        AaProgramBinding.is_deleted.is_(False),
-    ).all()
-    binding_by_program = defaultdict(list)
-    for binding in bindings:
-        binding_by_program[int(binding.program_id)].append(binding)
+    if college_ids:
+        allowed_colleges = set(college_ids)
+        classes = [
+            row for row in classes
+            if getattr(row, "college_id", None) in allowed_colleges
+        ]
 
     expected = []
     structural = []
-    for program in programs:
-        for binding in binding_by_program.get(int(program.id), []):
-            grade = binding.grade_year or program.grade_year
-            scope = cohort_term_scope(term.year_code, term.term_no, grade)
-            if scope["state"] == "OUT_OF_SCOPE":
-                continue
-            if scope["state"] == "INVALID":
-                structural.append({
-                    "type": "TERM_UNRESOLVED", "reason": "INVALID_COHORT_TERM_SCOPE",
-                    "programId": str(program.id), "bindingId": str(binding.id), "gradeYear": grade,
-                })
-                continue
-            plan_term = int(scope["planTerm"])
-            if binding.class_id:
-                classes = db.query(SchoolClass).filter(
-                    SchoolClass.id == int(binding.class_id),
-                    SchoolClass.tenant_id == _tid(),
-                    SchoolClass.class_status == "NORMAL",
-                    SchoolClass.is_deleted.is_(False),
-                ).all()
-            else:
-                classes = db.query(SchoolClass).filter(
-                    SchoolClass.tenant_id == _tid(),
-                    SchoolClass.major_id == binding.major_id,
-                    SchoolClass.grade == grade,
-                    SchoolClass.class_status == "NORMAL",
-                    SchoolClass.is_deleted.is_(False),
-                ).all()
-            if college_ids:
-                classes = [row for row in classes if getattr(row, "college_id", None) in set(college_ids)]
-            if not classes:
-                structural.append({
-                    "type": "NO_CLASS", "programId": str(program.id),
-                    "bindingId": str(binding.id), "gradeYear": grade,
-                })
-                continue
+    replay_as_of = getattr(term, "end_date", None)
+    course_cache = {}
+    for clazz in classes:
+        grade = str(getattr(clazz, "grade", None) or "").strip()
+        scope = cohort_term_scope(term.year_code, term.term_no, grade)
+        if scope["state"] == "OUT_OF_SCOPE":
+            continue
+        if scope["state"] == "INVALID":
+            structural.append({
+                "type": "TERM_UNRESOLVED", "reason": "INVALID_COHORT_TERM_SCOPE",
+                "classId": str(clazz.id), "gradeYear": grade,
+            })
+            continue
+        resolution = resolve_program_for_scope(
+            db,
+            tenant_id=_tid(),
+            major_id=getattr(clazz, "major_id", None),
+            grade_year=grade,
+            class_id=int(clazz.id),
+            as_of=replay_as_of,
+        )
+        if resolution.status != "RESOLVED" or not resolution.program:
+            structural.append({
+                "type": "PROGRAM_UNRESOLVED",
+                "reason": resolution.rule,
+                "message": resolution.message,
+                "classId": str(clazz.id),
+                "gradeYear": grade,
+            })
+            continue
+        program = resolution.program
+        plan_term = int(scope["planTerm"])
+        course_key = (int(program.id), plan_term)
+        courses = course_cache.get(course_key)
+        if courses is None:
             courses = db.query(AaProgramCourse).filter(
                 AaProgramCourse.tenant_id == _tid(),
                 AaProgramCourse.program_id == int(program.id),
                 AaProgramCourse.open_term_no == plan_term,
                 AaProgramCourse.is_deleted.is_(False),
             ).all()
-            for clazz in classes:
-                for course in courses:
-                    if not course.course_id:
-                        structural.append({
-                            "type": "COURSE_UNRESOLVED", "programId": str(program.id),
-                            "programCourseId": str(course.id), "classId": str(clazz.id),
-                        })
-                        continue
-                    expected.append({
-                        "key": (int(course.course_id), int(clazz.id)),
-                        "programId": str(program.id),
-                        "programCourseId": str(course.id),
-                        "courseId": str(course.course_id),
-                        "classId": str(clazz.id),
-                    })
+            course_cache[course_key] = courses
+        for course in courses:
+            if not course.course_id:
+                structural.append({
+                    "type": "COURSE_UNRESOLVED", "programId": str(program.id),
+                    "programCourseId": str(course.id), "classId": str(clazz.id),
+                })
+                continue
+            expected.append({
+                "key": (int(course.course_id), int(clazz.id)),
+                "programId": str(program.id),
+                "programCourseId": str(course.id),
+                "courseId": str(course.course_id),
+                "classId": str(clazz.id),
+            })
     return expected, structural
 
 

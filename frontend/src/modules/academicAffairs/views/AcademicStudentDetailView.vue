@@ -99,7 +99,7 @@
                   <td class="is-who">{{ e.courseName }}</td>
                   <td>{{ examTypeLabel(e.examType) }}</td>
                   <td>{{ e.examDate }}</td>
-                  <td>{{ e.result }}</td>
+                  <td>{{ examResultLabel(e.result) }}</td>
                 </tr>
                 <tr v-if="!detail.exams.length"><td colspan="4" class="mp-note">暂无考试记录</td></tr>
               </tbody>
@@ -149,7 +149,7 @@
                 <tr v-for="a in detail.auditLogs" :key="a.id">
                   <td class="is-who">{{ a.operator }}<div class="mp-cell-sub">{{ a.roleName }}</div></td>
                   <td>{{ a.time }}</td>
-                  <td>{{ a.action }}</td>
+                  <td>{{ auditActionLabel(a) }}</td>
                   <td>{{ a.detail }}</td>
                 </tr>
                 <tr v-if="!detail.auditLogs.length"><td colspan="4" class="mp-note">暂无审计记录</td></tr>
@@ -168,6 +168,7 @@ import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, LoadingState, Error
 import { AppDescriptionList } from '@/components/common'
 import { getStudentAcademicDetail, batchRemindStudents } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
 
 export default {
   name: 'AcademicStudentDetailView',
@@ -216,26 +217,28 @@ export default {
     this.load()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
+    examResultLabel(value) { return safeLocalizedText({ value, dictionary: { PASS: '通过', PASSED: '通过', FAIL: '不通过', FAILED: '不通过', ABSENT: '缺考', CHEATING: '违纪', PENDING: '待确认', NORMAL: '正常' }, unknownLabel: '结果待确认' }) },
     maskNo(v) {
       return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
     },
     statusLabel(v) {
-      return (this.ctx.statusOptions.academicStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.academicStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     typeLabel(v) {
-      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     warnStatusLabel(v) {
-      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     examTypeLabel(v) {
-      return (this.ctx.statusOptions.examType.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.examType.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     makeupLabel(v) {
-      return (this.ctx.statusOptions.makeupStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.makeupStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     retakeLabel(v) {
-      return (this.ctx.statusOptions.retakeStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.retakeStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     async onToolbar(key) {
       if (key === 'remind') {

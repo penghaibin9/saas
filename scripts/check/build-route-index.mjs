@@ -140,7 +140,7 @@ function extractFromFile(file) {
 
 export function buildRouteIndex() {
   const files = [
-    path.join(ROOT, 'frontend/src/router/index.js'),
+    ...walkRouteFiles(path.join(ROOT, 'frontend/src/router')),
     ...walkRouteFiles(path.join(ROOT, 'frontend/src/modules')),
   ]
   const exact = new Set()

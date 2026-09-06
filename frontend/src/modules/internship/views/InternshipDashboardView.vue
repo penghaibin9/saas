@@ -9,9 +9,53 @@
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
-    <ErrorState v-if="error" :description="error" @retry="load" />
-    <LoadingState v-else-if="loading" />
+    <LoadingState v-if="loading" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
+    <div v-else-if="needsBatch" class="mp-card idb-setup">
+      <EmptyState
+        title="先确定今天要处理的实习批次"
+        :description="batchStore.needsExplicitSelect ? '当前有多个进行中批次，请从顶部批次条选择一个后继续。' : '当前没有可用工作批次，可先创建批次并配置学生范围。'"
+      >
+        <template #actions>
+          <AppButton variant="primary" @click="$router.push('/admin/internship/batches')">前往批次管理</AppButton>
+          <AppButton variant="ghost" @click="load">重新检查</AppButton>
+        </template>
+      </EmptyState>
+    </div>
     <div v-else class="mp-stack">
+      <section id="idb-todos" class="mp-card idb-today">
+        <div class="mp-card__head idb-today__head">
+          <div>
+            <span class="idb-eyebrow">TODAY FIRST</span>
+            <span class="mp-card__title">待我处理 · {{ hero.workItemTotal || workItems.length }} 项</span>
+            <p>先展示最紧急的 {{ hero.workItemLimit || 8 }} 个真实对象；处理动作仍在原业务详情页完成。</p>
+          </div>
+          <button type="button" class="mp-link" @click="goWithBatch('/admin/internship/risk-disposal')">查看全部工作队列 →</button>
+        </div>
+        <div class="mp-card__body idb-work-list">
+          <EmptyState v-if="!workItems.length" title="今天没有待处理对象" description="当前权限与数据范围内没有开放风险、待核实异常或待批阅周报。" />
+          <article v-for="item in workItems" :key="item.id" class="idb-work" :class="`is-${item.tone || 'warning'}`">
+            <header class="idb-work__header">
+              <div>
+                <span class="idb-work__kind">{{ workKindLabel(item.kind) }}</span>
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.summary }}</p>
+              </div>
+              <AppStatusTag :type="item.tone === 'danger' ? 'danger' : 'warning'" dot>{{ item.waitingOn }}</AppStatusTag>
+            </header>
+            <dl class="idb-work__facts">
+              <div><dt>为什么到我这里</dt><dd>{{ item.whyHere }}</dd></div>
+              <div><dt>最近发生了什么</dt><dd>{{ item.recentChange }}</dd></div>
+              <div><dt>办完交给谁</dt><dd>{{ item.nextActor }}</dd></div>
+            </dl>
+            <footer class="idb-work__footer">
+              <span><b>办理回执：</b>{{ item.receipt }}</span>
+              <AppButton variant="primary" size="sm" @click="openWorkItem(item)">{{ item.primaryActionLabel || '继续办理' }} →</AppButton>
+            </footer>
+          </article>
+        </div>
+      </section>
+
       <ModuleHero
         id="idb-trends"
         :title="ctx.tenantBrandConfig.schoolName + ' · 实习总览'"
@@ -48,12 +92,12 @@
       <section id="idb-batch-progress" class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">当前批次进度</span>
-          <button class="mp-link" @click="$router.push('/admin/internship/batches')">批次管理 →</button>
+          <button type="button" class="mp-link" @click="$router.push('/admin/internship/batches')">批次管理 →</button>
         </div>
         <div class="mp-card__body">
           <div class="idb-progress-wrap">
             <div class="idb-progress">
-              <div class="idb-progress__bar">
+              <div class="idb-progress__bar" role="progressbar" aria-label="当前在岗率" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="batchProgress">
                 <span class="idb-progress__fill" :style="{ width: batchProgress + '%' }"></span>
               </div>
               <span class="idb-progress__text">在岗 {{ hero.flow.find(f => f.active)?.value || 0 }} 人 · 在岗率 {{ batchProgress }}%</span>
@@ -69,28 +113,11 @@
         </div>
       </section>
 
-      <div class="mp-grid-2">
-        <section id="idb-todos" class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">我的待办</span>
-            <button class="mp-link" @click="goWithBatch('/admin/internship/students')">实习学生 →</button>
-          </div>
-          <div class="mp-card__body mp-stack">
-            <EmptyState v-if="!hero.todos.length" title="暂无待办" description="当前批次没有待处理事项" />
-            <div v-for="t in hero.todos" :key="t.id" class="mp-kv idb-todo" :class="{ 'is-danger': t.tone === 'danger' }">
-              <span class="mp-kv__k">
-                <AppStatusTag :type="t.tone === 'danger' ? 'danger' : 'warning'" dot>{{ t.count }}</AppStatusTag>
-                <span class="idb-todo-label">{{ t.label }}</span>
-              </span>
-              <button class="mp-link" @click="$router.push(t.route)">去处理</button>
-            </div>
-          </div>
-        </section>
-
+      <div class="mp-grid-2 idb-afterwork">
         <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">风险提醒</span>
-            <button class="mp-link" @click="goWithBatch('/admin/internship/risk-disposal')">风险处置 →</button>
+            <span class="mp-card__title">开放风险摘要</span>
+            <button type="button" class="mp-link" @click="goWithBatch('/admin/internship/risk-disposal')">风险处置 →</button>
           </div>
           <div class="mp-card__body">
             <EmptyState v-if="!hero.riskAlerts.length" title="暂无开放风险" description="系统预警与人工创建的风险单将在此展示" />
@@ -100,9 +127,17 @@
                   {{ r.studentName }} · {{ r.title }}
                   <AppRiskTag :level="r.level" />
                 </div>
-                <button class="mp-link" @click="$router.push(r.route || goRiskRoute(r))">去处置</button>
+                <button type="button" class="mp-link" @click="$router.push(r.route || goRiskRoute(r))">去处置</button>
               </li>
             </ul>
+          </div>
+        </section>
+        <section class="mp-card idb-queue-note">
+          <div class="mp-card__head"><span class="mp-card__title">连续办理规则</span></div>
+          <div class="mp-card__body">
+            <p><strong>一个对象，一次判断。</strong>进入周报或考勤详情后，队列会保留同类对象顺序。</p>
+            <p>处理成功自动给出下一条；版本冲突会停在当前对象，保留输入并要求刷新事实。</p>
+            <p>风险、周报、考勤分别沿用原状态机、原权限和原审计，不在工作台复制写操作。</p>
           </div>
         </section>
       </div>
@@ -116,8 +151,10 @@
 /** 岗位实习中心 · 管理看板（/admin/internship）。数据全部来自 internshipApi。 */
 import { ModulePageShell, ModuleHero, ModuleToolbar, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppRiskTag, AppMetricCard } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 
 const PANEL_ANCHORS = {
   'batch-progress': 'idb-batch-progress',
@@ -127,10 +164,10 @@ const PANEL_ANCHORS = {
 
 export default {
   name: 'InternshipDashboardView',
-  components: { ModulePageShell, ModuleHero, ModuleToolbar, AppStatusTag, AppRiskTag, AppMetricCard, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, ModuleHero, ModuleToolbar, AppStatusTag, AppRiskTag, AppMetricCard, AppButton, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', hero: { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 } }
+    return { loading: true, error: '', needsBatch: false, hero: { stats: [], flow: [], todos: [], workItems: [], workItemTotal: 0, workItemLimit: 8, riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 } }
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
@@ -148,6 +185,9 @@ export default {
     },
     batchProgress() {
       return this.hero.batchProgress ?? 0
+    },
+    workItems() {
+      return Array.isArray(this.hero.workItems) ? this.hero.workItems : []
     },
     toolbarActions() {
       const pa = this.ctx.permissionActions
@@ -180,6 +220,23 @@ export default {
     this.load()
   },
   methods: {
+    workKindLabel(kind) {
+      return ({ RISK: '开放风险', ATTENDANCE_EXCEPTION: '考勤异常', WEEKLY_REPORT: '过程报告' })[kind] || '待办对象'
+    },
+    openWorkItem(item) {
+      const queueKind = ({ WEEKLY_REPORT: 'weekly-report', ATTENDANCE_EXCEPTION: 'attendance-exception' })[item.kind]
+      if (queueKind) {
+        const peers = this.workItems.filter((row) => row.kind === item.kind).map((row) => row.objectId)
+        saveReviewQueue({
+          kind: queueKind,
+          title: item.kind === 'WEEKLY_REPORT' ? '今日待批阅周报' : '今日待核实异常',
+          listPath: '/admin/internship',
+          listQuery: this.batchStore.withBatchQuery({ panel: 'todos' }),
+          ids: peers
+        })
+      }
+      this.$router.push(item.route)
+    },
     goWithBatch(path) {
       const q = this.batchStore.withBatchQuery({})
       this.$router.push({ path, query: q })
@@ -196,14 +253,14 @@ export default {
     async load() {
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
-        this.error = this.batchStore.needsExplicitSelect
-          ? '存在多个进行中批次，请先在顶部选择当前工作批次'
-          : '请先选择实习批次后再查看工作台'
-        this.hero = { stats: [], flow: [], todos: [], riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 }
+        this.error = ''
+        this.needsBatch = true
+        this.hero = { stats: [], flow: [], todos: [], workItems: [], workItemTotal: 0, workItemLimit: 8, riskAlerts: [], batchName: '', batchRange: '', batchStatus: '', batchProgress: 0 }
         return
       }
       this.loading = true
       this.error = ''
+      this.needsBatch = false
       const res = await internshipApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.hero = res.data
       else this.error = res.message
@@ -226,6 +283,28 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.idb-setup { padding: clamp(24px, 5vw, 64px); }
+.idb-today { overflow: hidden; border-color: color-mix(in srgb, var(--pri, #2563eb) 24%, var(--card-b, #e5e7eb)); box-shadow: 0 14px 40px rgba(30, 64, 175, .08); }
+.idb-today__head { align-items: flex-end; padding: 18px 20px; background: linear-gradient(120deg, color-mix(in srgb, var(--pri, #2563eb) 8%, white), white 68%); }
+.idb-today__head > div { display: grid; gap: 3px; }
+.idb-today__head .mp-card__title { font-size: 18px; }
+.idb-today__head p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.idb-work-list { display: grid; gap: 12px; }
+.idb-work { overflow: hidden; border: 1px solid var(--card-b, #e5e7eb); border-left: 4px solid var(--warning-500, #f59e0b); border-radius: 12px; background: var(--card, #fff); }
+.idb-work.is-danger { border-left-color: var(--danger-500, #ef4444); }
+.idb-work__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 14px 16px 10px; }
+.idb-work__header h3 { margin: 3px 0; color: var(--text-primary); font-size: 15px; }
+.idb-work__header p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.idb-work__kind { color: var(--pri, #2563eb); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.idb-work__facts { display: grid; grid-template-columns: 1.2fr 1fr 1fr; margin: 0; padding: 0 16px 12px; gap: 12px; }
+.idb-work__facts div { min-width: 0; padding: 10px 12px; border-radius: 9px; background: var(--fill-2, #f8fafc); }
+.idb-work__facts dt { margin-bottom: 4px; color: var(--text-tertiary); font-size: 10px; font-weight: 700; }
+.idb-work__facts dd { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.idb-work__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 16px; border-top: 1px solid var(--card-b, #eef0f3); background: color-mix(in srgb, var(--fill-2, #f8fafc) 72%, white); }
+.idb-work__footer > span { color: var(--text-tertiary); font-size: 11px; line-height: 1.5; }
+.idb-work__footer b { color: var(--text-secondary); }
+.idb-queue-note p { margin: 0 0 10px; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.idb-queue-note p:last-child { margin-bottom: 0; }
 .idb-todo-label {
   color: var(--text-primary);
   font-weight: var(--font-weight-medium);
@@ -268,5 +347,6 @@ export default {
 .idb-risk-list :deep(.mp-timeline__item:hover) { background: var(--fill-2, #f8fafc); }
 @media (max-width: 1280px) { .idb-path { align-items: flex-start; flex-direction: column; gap: 10px; } .idb-path__intro { flex-basis: auto; } .idb-path__steps { width: 100%; } }
 @media (max-width: 940px) { .idb-path__steps { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 640px) { .idb-path__steps { grid-template-columns: repeat(2, 1fr); } .idb-progress-wrap { grid-template-columns: 1fr; } .idb-progress__rate { align-items: flex-start; padding: 10px 0 0; border-top: 1px solid var(--card-b, #e5e7eb); border-left: 0; } }
+@media (max-width: 940px) { .idb-work__facts { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .idb-path__steps { grid-template-columns: repeat(2, 1fr); } .idb-progress-wrap { grid-template-columns: 1fr; } .idb-progress__rate { align-items: flex-start; padding: 10px 0 0; border-top: 1px solid var(--card-b, #e5e7eb); border-left: 0; } .idb-work__header, .idb-work__footer { align-items: stretch; flex-direction: column; } }
 </style>

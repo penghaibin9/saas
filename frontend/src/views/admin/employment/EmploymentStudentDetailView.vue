@@ -263,7 +263,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     async load() {
       this.loading = true

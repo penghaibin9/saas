@@ -36,7 +36,10 @@ _EXT_MIME: dict[str, set[str]] = {
 }
 
 _SCAN_REQUIRED_EXT = frozenset({"zip", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "txt", "csv"})
-_SYSTEM_ZIP_BIZ = frozenset({"COMPLIANCE_EVIDENCE", "ARCHIVE_PACKAGE", "GRADUATION_MATERIAL", "INTERNSHIP"})
+_SYSTEM_ZIP_BIZ = frozenset({
+    "COMPLIANCE_EVIDENCE", "ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE",
+    "GRADUATION_MATERIAL", "INTERNSHIP",
+})
 
 
 def sanitize_filename(filename: str | None) -> str:

@@ -253,7 +253,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
     "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
-    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
+    # 本班范围内广读 + 操作班级/请假/风险/谈话/家校；资助仅开放本人 COUNSELOR_REVIEW 初审节点。
+    # 资助后续学院/学校节点仍由 service 的 scope + WorkflowTask assignee 双重收敛；处分仅冻结解除子流程初审例外。
     "COUNSELOR": {
         *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view",
@@ -261,8 +262,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.student.view",
         "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
         "studentAffairs.homeSchool.*",
-        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
+        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.funding.approve", "studentAffairs.discipline.view",
+        "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 宿舍调宿：仅开放本班学生调宿入口/发起/审批能力；列表范围与审批节点仍由
+        # affairs_dorm_transfer_scope_guard + affairs_dorm_node_guard 双重 fail-closed 收敛。
+        "studentAffairs.dorm.view", "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
         # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
         # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
@@ -350,7 +355,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,
-        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予批次配置或写操作。
+        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予任何批次配置或写操作。
         "internship.guide.*", "internship.dashboard.view", "internship.batch.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
@@ -384,7 +389,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
         *_WORKBENCH_SELF,
-        "employment.*", "internship.dashboard.view",
+        "employment.*", "internship.dashboard.view", "internship.batch.view",
         "internship.employment.view", "internship.archive.view", "internship.archive.package",
         "internship.stats.view", "internship.stats.enterprise.view",
         "internship.stats.position.view", "internship.stats.score.view",
@@ -580,8 +585,12 @@ def has_permission(user: dict, code: str) -> bool:
     return _match(code, patterns)
 
 
-def get_effective_access_context(user: dict) -> dict:
-    """前后端共用的访问上下文：权限模式 + 模块四态摘要 + 版本戳。"""
+def get_effective_access_context(
+    user: dict,
+    *,
+    module_keys: Iterable[str] | None = None,
+) -> dict:
+    """前后端共用的访问上下文；Access Explain 可只读取目标模块。"""
     patterns = get_effective_permission_patterns(user)
     role = _role_of(user)
     tenant_id = int(user.get("tenantId") or 0) or None
@@ -598,7 +607,12 @@ def get_effective_access_context(user: dict) -> dict:
         try:
             from app.core.module_registry import all_module_keys
             from app.services.module_access_service import module_access_state
-            for mk in all_module_keys():
+            requested_module_keys = (
+                tuple(sorted({str(key).strip() for key in module_keys if str(key).strip()}))
+                if module_keys is not None
+                else tuple(all_module_keys())
+            )
+            for mk in requested_module_keys:
                 st = module_access_state(tenant_id, mk)
                 module_states[mk] = st
                 if st.get("entitled") and st.get("enabled"):

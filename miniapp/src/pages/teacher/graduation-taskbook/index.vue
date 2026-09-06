@@ -117,7 +117,8 @@ export default {
       submitting: false
     }
   },
-  onLoad() { this.load() },
+  onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
+  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -126,6 +127,7 @@ export default {
     studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.topicTitle || '未选题'}`) }
   },
   methods: {
+    onBatchReady() { this.load() },
     load(done, append = false) {
       if (!append) this.state = 'loading'
       const targetPage = append ? this.page + 1 : 1
@@ -149,7 +151,10 @@ export default {
     onIssueTab() {
       this.tab = 'issue'
       if (!this.students.length) {
-        teacherApi.getGraduationMyStudents().then((d) => { this.students = d || [] }).catch(() => {})
+        teacherApi.getGraduationMyStudents().then((d) => { this.students = d || [] }).catch((e) => {
+          toast((e && e.message) || '指导学生加载失败，请稍后重试')
+          this.tab = 'list'
+        })
       }
     },
     toggle(t) {
@@ -159,7 +164,7 @@ export default {
       if (!this.drafts[t.id]) {
         const draft = { content: t.content || '', progressPlan: t.progressPlan || '',
           outcomeRequirement: t.outcomeRequirement || '', reason: '' }
-        this.$set ? this.$set(this.drafts, t.id, draft) : (this.drafts[t.id] = draft)
+        this.drafts[t.id] = draft
       }
     },
     submitChange(t) {

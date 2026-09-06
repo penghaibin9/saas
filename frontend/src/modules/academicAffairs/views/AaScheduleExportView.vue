@@ -23,7 +23,7 @@
           </label>
           <label v-else-if="scope === 'TEACHER'" class="aa-form__item">
             教师
-            <AppTeacherPicker v-model="identifier" placeholder="搜索教师姓名/工号" />
+            <AppTeacherPicker v-model="identifier" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" />
           </label>
           <label v-else class="aa-form__item aa-form__item--grow">
             教室
@@ -76,7 +76,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      scope: 'CLASS', identifier: '', termId: '', weekStart: null, weekEnd: null, purpose: '',
+      scope: 'CLASS', identifier: '', teacherKeyQuery: { valueField: 'loginName' }, termId: '', weekStart: null, weekEnd: null, purpose: '',
       exporting: false
     }
   },

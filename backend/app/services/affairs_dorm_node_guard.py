@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 _INSTALLED = False
@@ -36,6 +37,24 @@ def _require_pending_assignee(db, transfer_id: int, user, todo_type: str) -> Non
         raise AppException("NO_PERMISSION", "当前调宿待办未指派给您")
 
 
+def _has_active_dorm_manager_role(db, user_id: int) -> bool:
+    """绑定到楼栋的账号必须在当前租户真实持有 ACTIVE DORM_MANAGER 角色。"""
+    from app.models import Role, UserRole
+    hit = db.scalar(select(Role.id).join(
+        UserRole, UserRole.role_id == Role.id,
+    ).where(
+        Role.tenant_id == _tid(),
+        Role.role_code == "DORM_MANAGER",
+        Role.status == "ACTIVE",
+        Role.is_deleted.is_(False),
+        UserRole.tenant_id == _tid(),
+        UserRole.user_id == int(user_id),
+        UserRole.status == "ACTIVE",
+        UserRole.is_deleted.is_(False),
+    ).limit(1))
+    return bool(hit)
+
+
 def _notify(db, student_id: int, transfer_id: int, title: str, content: str, event_code: str) -> None:
     from app.services.message_event_outbox_service import emit_receiver_notice
     emit_receiver_notice(
@@ -55,6 +74,26 @@ def install() -> None:
     )
     from app.services import affairs_dorm_service as dorm
 
+    original_resolve_manager = dorm._resolve_user_by_manager_key
+    original_create_building = dorm.create_building
+
+    def resolve_user_by_manager_key(db, key: str) -> int:
+        """历史楼栋也 fail-closed：账号存在但未持宿管角色时不得成为审批受理人。"""
+        manager_id = int(original_resolve_manager(db, key) or 0)
+        if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+            return 0
+        return manager_id
+
+    def create_building(body, user):
+        """允许先建房源后绑定宿管；一旦指定宿管，服务端必须核验真实 DORM_MANAGER 角色。"""
+        key = str(getattr(body, "managerTeacherKey", None) or "").strip()
+        if key:
+            with session() as db:
+                manager_id = int(original_resolve_manager(db, key) or 0)
+                if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+                    raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
+        return original_create_building(body, user)
+
     def submit_transfer(user, student_id, to_bed_id, reason=""):
         reason = str(reason or "").strip()
         if not 5 <= len(reason) <= 500:
@@ -73,8 +112,10 @@ def install() -> None:
                 own = resolve_student(db, user or {})
                 if not own or int(own.id) != int(student.id):
                     raise AppException("NO_PERMISSION", "学生只能提交本人的调宿申请")
-            elif context.scope_type in ("CLASS", "COLLEGE", "TENANT_ALL"):
+            elif context.scope_type == "CLASS":
                 context.require_student(db, int(student.id))
+            else:
+                raise AppException("NO_PERMISSION", "仅学生本人或负责辅导员可发起调宿")
 
             current_beds = db.scalars(select(DormBed).where(
                 DormBed.tenant_id == _tid(), DormBed.student_id == int(student.id),
@@ -91,17 +132,11 @@ def install() -> None:
                 raise not_found("目标床位不存在")
             if int(target.id) == int(current.id):
                 raise AppException("DATA_CONFLICT", "目标床位不能与当前床位相同")
-            if context.scope_type == "DORM_BUILDING":
-                dorm._require_dorm_scope(db, current.building_id, user)
-                dorm._require_dorm_scope(db, target.building_id, user)
-            elif context.scope_type not in ("SELF", "CLASS", "COLLEGE", "TENANT_ALL"):
-                raise AppException("NO_PERMISSION", "当前身份无权发起调宿")
             if target.status != "VACANT" or target.student_id is not None:
                 raise AppException("DATA_CONFLICT", "目标床位已被占用或锁定")
-            building = db.get(DormBuilding, int(target.building_id))
-            room = db.get(DormRoom, int(target.room_id))
-            if not building or building.is_deleted or building.tenant_id != _tid() \
-                    or not room or room.is_deleted or room.tenant_id != _tid():
+            building = tenant_get(db, DormBuilding, int(target.building_id))
+            room = tenant_get(db, DormRoom, int(target.room_id))
+            if not building or building.is_deleted or not room or room.is_deleted:
                 raise AppException("DATA_INCONSISTENT", "目标房源信息不完整")
             if not dorm._gender_ok(building.gender_limit, student.gender):
                 raise AppException("DATA_CONFLICT", "学生性别与目标楼栋限制不符")
@@ -156,17 +191,16 @@ def install() -> None:
                 raise not_found("目标床位不存在")
             from app.core.affairs_security import build_affairs_context
             context = build_affairs_context(user, db)
-            if context.scope_type != "TENANT_ALL":
-                if node == "COUNSELOR_REVIEW":
-                    if context.scope_type not in ("CLASS", "COLLEGE"):
-                        raise AppException("NO_PERMISSION", "当前节点仅辅导员/学院学工可审批")
-                    context.require_student(db, int(student.id))
-                    _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
-                elif node == "DORM_MANAGER_REVIEW":
-                    if context.scope_type != "DORM_BUILDING":
-                        raise AppException("NO_PERMISSION", "当前节点仅目标楼栋宿管可审批")
-                    dorm._require_dorm_scope(db, target.building_id, user)
-                    _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
+            if node == "COUNSELOR_REVIEW":
+                if context.scope_type != "CLASS":
+                    raise AppException("NO_PERMISSION", "当前节点仅负责辅导员可审批")
+                context.require_student(db, int(student.id))
+                _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
+            elif node == "DORM_MANAGER_REVIEW":
+                if context.scope_type != "DORM_BUILDING":
+                    raise AppException("NO_PERMISSION", "当前节点仅目标楼栋宿管可审批")
+                dorm._require_dorm_scope(db, target.building_id, user)
+                _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
 
             if action == "REJECT":
                 text = str(reason or "").strip()
@@ -191,10 +225,9 @@ def install() -> None:
             else:
                 if target.status != "VACANT" or target.student_id is not None:
                     raise AppException("DATA_CONFLICT", "目标床位已被占用，调宿无法执行")
-                building = db.get(DormBuilding, int(target.building_id))
-                room = db.get(DormRoom, int(target.room_id))
-                if not building or building.is_deleted or building.tenant_id != _tid() \
-                        or not room or room.is_deleted or room.tenant_id != _tid():
+                building = tenant_get(db, DormBuilding, int(target.building_id))
+                room = tenant_get(db, DormRoom, int(target.room_id))
+                if not building or building.is_deleted or not room or room.is_deleted:
                     raise AppException("DATA_INCONSISTENT", "目标房源信息不完整")
                 if not dorm._gender_ok(building.gender_limit, student.gender):
                     raise AppException("DATA_CONFLICT", "学生性别与目标楼栋限制不符")
@@ -205,6 +238,11 @@ def install() -> None:
                 if len(current_beds) != 1 or int(current_beds[0].id) != int(transfer.from_bed_id):
                     raise AppException("DATA_CONFLICT", "学生当前床位已变化，请重新申请")
                 old_bed = current_beds[0]
+                from app.services.affairs_dorm_stay_service import execute_transfer
+                execute_transfer(
+                    db, transfer=transfer, student=student,
+                    old_bed=old_bed, target_bed=target, user=user,
+                )
                 target.student_id, target.status, target.occupied_at = int(student.id), "OCCUPIED", datetime.utcnow()
                 target.version = int(target.version or 0) + 1
                 target.cs_dorm_record_id = dorm._writeback_dorm_record(
@@ -230,6 +268,8 @@ def install() -> None:
             db.commit(); db.refresh(transfer)
             return dorm._transfer_row(transfer)
 
+    dorm._resolve_user_by_manager_key = resolve_user_by_manager_key
+    dorm.create_building = create_building
     dorm.submit_transfer = submit_transfer
     dorm.review_transfer = review_transfer
     _INSTALLED = True

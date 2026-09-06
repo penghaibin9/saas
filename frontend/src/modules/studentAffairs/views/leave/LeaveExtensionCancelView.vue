@@ -6,6 +6,7 @@
     </template>
 
     <div class="mp-stack">
+      <AppInlineAlert v-if="focusNotice" type="warning" :description="focusNotice" />
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
         <AppQuickFilterChips v-model="statusFilter" :options="statusOptions" allow-clear @change="reload" />
@@ -164,7 +165,7 @@ export default {
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
-      keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS,
+      keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS, focusNotice: '',
       selectedId: '', doneHint: false, scanning: false,
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: null },
@@ -246,15 +247,50 @@ export default {
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
     }
   },
-  created() {
-    if (this.$route.query.status) this.statusFilter = String(this.$route.query.status)
-    this.load()
+  created() { this.initRouteFocus() },
+  watch: {
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId || String(value?.status || '') !== String(previous?.status || '')) this.initRouteFocus()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      const valid = new Set(['EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'APPROVED'])
+      const requested = String(this.$route.query?.status || '').trim()
+      this.statusFilter = valid.has(requested) ? requested : ''
+      this.focusNotice = ''
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      if (!recordId) {
+        this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        await this.load()
+        return
+      }
+      await this.focusRecordFromRoute(recordId, valid)
+    },
+    async focusRecordFromRoute(recordId, validStatuses = new Set(['EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'APPROVED'])) {
+      this.loading = true; this.error = ''
+      const res = await leaveApi.detail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.loading = false; this.rows = []; this.total = 0; this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        this.error = res.message || '该请假后续记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      const detail = res.data
+      const actual = String(detail.affairsStatus || '')
+      if (validStatuses.has(actual)) this.statusFilter = actual
+      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || actual || '未知状态'}，仅展示最新事实。`
+      this.selectedId = String(recordId)
+      this.detail = { loading: false, error: '', data: detail }
+      await this.load()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
-    extLabel(v) { return EXT_LABEL[v] || v },
-    cancelLabel(v) { return CANCEL_LABEL[v] || v },
+    extLabel(v) { return EXT_LABEL[v] || (v ? '待确认' : '—') },
+    cancelLabel(v) { return CANCEL_LABEL[v] || (v ? '待确认' : '—') },
     itemIndex(id) {
       const index = this.rows.findIndex((row) => String(row.id) === String(id))
       return (this.page - 1) * this.pageSize + index + 1

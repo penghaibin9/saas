@@ -27,6 +27,7 @@ from app.models.idempotency import IdempotencyRecord  # noqa: F401
 from app.models.system_config import DataScopeRule, MenuNode, SysConfig  # noqa: F401  (系统管理·可编辑配置)
 from app.models.system_governance import SystemJsonDoc  # noqa: F401  (系统管理·治理 JSON 文档)
 from app.models.file import FileObject  # noqa: F401
+from app.models.platform_integrity import IntegrityException  # noqa: F401
 from app.models.data_exchange import ExportJob, ImportJob, ImportRowError  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
@@ -60,11 +61,16 @@ from app.models.identity_import_batch import IdentityImportBatch  # noqa: F401
 from app.models.shared_import_batch import SharedImportBatch  # noqa: F401
 from app.models.internship_agreement_template import InternshipAgreementTemplate  # noqa: F401  (实习协议模板库·独立文件)
 from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
-                                     OrientationAuditTrail, OrientationBatch,
-                                     OrientationCheckinPoint, OrientationException,
+                                     OrientationActivationChallenge, OrientationAuditTrail, OrientationBatch,
+                                     OrientationCheckinPoint, OrientationCheckinRecord,
+                                     OrientationCheckinToken, OrientationEnrollmentFinalize,
+                                     OrientationException,
                                      OrientationExceptionFollowup, OrientationFlowConfig,
-                                     OrientationMaterial, OrientationNoticeTask,
-                                     OrientationStudent)
+                                     OrientationArrivalPlan, OrientationFlowStep, OrientationFlowVersion,
+                                     OrientationMaterial, OrientationMaterialRequirement,
+                                     OrientationNoticeTask, OrientationO1BackfillIssue,
+                                     OrientationPaymentAccount, OrientationQualificationDecision,
+                                     OrientationStudent, OrientationStudentStep)
 from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormException,  # noqa: F401
                                         CsDormRecord, CsGrant, CsLeave, CsMentalRecord,
                                         CsServiceStudent, CsWorkOrder)
@@ -115,9 +121,12 @@ from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
                                      TalkRecord)
 from app.models.affairs_mental import PsyReferral  # noqa: F401
 from app.models.affairs_psy_survey import PsySurveySubmission  # noqa: F401  (心理健康自评·独立新文件)
-from app.models.affairs_dorm import (DormBed, DormBuilding,  # noqa: F401
-                                     DormCheckRecord, DormCheckTask, DormRoom,
-                                     DormTransfer)
+from app.models.affairs_dorm import (DormAccessEvent, DormAllocationBatch,  # noqa: F401
+                                     DormAllocationItem, DormBed, DormBuilding,
+                                     DormCheckoutRequest,
+                                     DormCheckRecord, DormCheckTask,
+                                     DormRectification, DormRoom,
+                                     DormStay, DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
 from app.models.affairs_activity import (AffairsActivity,  # noqa: F401
                                          AffairsActivityCredit,
@@ -198,7 +207,8 @@ from app.models.config_governance import (ConfigActivation,  # noqa: F401  (SYS-
 from app.models.permission_governance import (CustomRoleSource,  # noqa: F401  (SYS-06 权限包与角色模板)
                                               PermissionBundle,
                                               PermissionBundleItem,
-                                              RoleTemplate, WildcardRetirement)
+                                              RoleTemplate, RoleTemplatePermission,
+                                              WildcardRetirement)
 from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS-08 组织安全树与显式DENY)
                                      ScopePolicyTarget)
 from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-09 安全变更与激活)
@@ -208,6 +218,7 @@ from app.models.access_governance import (AccessDecisionTrace,  # noqa: F401  (S
                                           EmergencyAccessSession, SodRule, SodViolation)
 from app.models.tenant_capability import TenantCapabilitySetting  # noqa: F401  (SYS-13 学校能力启用)
 from app.models.role_assignment import RoleAssignmentValidity  # noqa: F401  (SYS-07 角色成员有效期)
+from app.models.role_assignment_scope import RoleAssignmentScope  # noqa: F401
 from app.models.master_data_governance import (DataDomain,  # noqa: F401  (SYS-17 主数据治理)
                                                DataOwner, DataQualityIssue,
                                                DataQualityRule, MasterMergeEvent)
@@ -231,3 +242,12 @@ from app.models.national_standard import (NationalMajorCatalog, NationalStandard
 
 from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)
 from app.models.password_reset import PasswordResetSmsJob  # noqa: F401
+from app.modules.platform.business_forms.models import (  # noqa: F401
+    BusinessFormDefinition,
+    BusinessFormVersion,
+)
+from app.modules.platform.document_lifecycle.models import (  # noqa: F401
+    DocumentCompareResult,
+    FileDerivedArtifact,
+    StudentLifecycleFact,
+)

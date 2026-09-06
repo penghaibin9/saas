@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="ad-focus-note">{{ focusNotice }}</p>
     <!-- 批次上下文 -->
     <div class="ad-batchbar">
       <label class="ad-batchsel">
@@ -90,7 +91,7 @@
               <h3 class="ad-dname">{{ selected.realName || ('学生#' + selected.studentId) }}</h3>
               <StatusTag :type="statusType(selected.status)" :label="selected.statusLabel" dot />
             </div>
-            <button type="button" class="ad-refresh" title="刷新详情" @click="reloadDetail">↻</button>
+            <button type="button" class="ad-refresh" title="刷新详情" :disabled="acting" @click="reloadDetail">↻</button>
           </div>
 
           <dl class="ad-kv">
@@ -99,6 +100,11 @@
             <div><dt>核定等级</dt><dd>{{ levelLabel(selected.finalLevel) || '—' }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
           </dl>
+
+          <section class="ad-statement" aria-label="困难情况说明">
+            <div class="ad-statement__title">困难情况说明</div>
+            <p>{{ selected.statement || '—' }}</p>
+          </section>
 
           <!-- 家庭经济（强敏感，默认脱敏） -->
           <section class="ad-family">
@@ -297,9 +303,10 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, scanning: false,
       revealed: false, revealedFam: {}, revealing: false,
+      listRequestSeq: 0, detailRequestSeq: 0, revealRequestSeq: 0,
       activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
-      routeIntentConsumed: false,
+      routeIntentConsumed: false, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       revealModal: { visible: false, reason: '', error: '' },
@@ -430,14 +437,41 @@ export default {
       return []
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadBatches()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) {
+        this.selected = null; this.batchId = ''
+        await this.loadBatches()
+        return
+      }
+      const res = await studentAffairsApi.getAidDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.batchId = ''; this.batches = []; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该困难认定申请不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      this.batchId = String(res.data.batchId || '')
+      if (!this.batchId) { this.listError = '该申请缺少真实批次上下文，无法安全定位'; return }
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadBatches()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.clearStudentFilter()
@@ -506,16 +540,24 @@ export default {
       return STATUS_TYPE[s] || 'default'
     },
     batchStatusLabel(s) {
-      return BATCH_STATUS[s] || s
+      return BATCH_STATUS[s] || (s ? '状态待确认' : '—')
     },
     async loadBatches() {
       const res = await studentAffairsApi.getAidBatches({ page: 1, pageSize: 100 })
       if (res.code === 0 && res.data) {
         this.batches = res.data.items || []
-        if (!this.batchId && this.batches.length) {
+        if (this.batchId) {
+          const visible = this.batches.some((batch) => String(batch.batchId) === String(this.batchId))
+          if (!visible) {
+            this.listError = '该申请所属认定批次当前不可见，已停止自动回退到其他批次'
+            this.list = []; this.pagination.total = 0
+            return
+          }
+          await this.loadApplications()
+        } else if (this.batches.length) {
           const candidate = this.batches.find((batch) => batch.status === 'OPEN') || this.batches[0]
           this.batchId = candidate.batchId
-          this.loadApplications()
+          await this.loadApplications()
         }
         this.consumeRouteIntent()
       } else {
@@ -524,22 +566,38 @@ export default {
     },
     onBatchChange() {
       this.selected = null
+      this.detailRequestSeq += 1
+      this.revealRequestSeq += 1
+      this.revealModal.visible = false
+      this.revealing = false
       this.revealed = false
+      this.revealedFam = {}
       this.pagination.page = 1
       if (this.batchId) this.loadApplications()
-      else { this.list = []; this.pagination.total = 0 }
+      else {
+        this.listRequestSeq += 1
+        this.loading = false
+        this.list = []
+        this.pagination.total = 0
+      }
     },
     async loadApplications() {
       if (!this.batchId) return
+      const requestSeq = ++this.listRequestSeq
+      const requestBatchId = String(this.batchId)
+      const requestPage = this.pagination.page
+      const requestPageSize = this.pagination.pageSize
+      const requestStatus = this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : ''
+      const sid = this.studentFilter && this.studentFilter.studentId
+      const requestStudentId = sid || ''
       this.loading = true
       this.listError = ''
       this.statusCounts = null
-      const sid = this.studentFilter && this.studentFilter.studentId
       const res = await studentAffairsApi.getAidApplications({
-        batchId: this.batchId, page: this.pagination.page, pageSize: this.pagination.pageSize,
-        status: this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : '',
-        studentId: sid || ''
+        batchId: requestBatchId, page: requestPage, pageSize: requestPageSize,
+        status: requestStatus, studentId: requestStudentId
       })
+      if (requestSeq !== this.listRequestSeq || String(this.batchId) !== requestBatchId) return
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
@@ -547,20 +605,27 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applyId === this.selected.applyId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '申请加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      this.revealRequestSeq += 1
+      this.revealModal.visible = false
+      this.revealing = false
       this.revealed = false
       this.revealedFam = {}
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
-      const res = await studentAffairsApi.getAidDetail(this.selected.applyId)
+      const requestSeq = ++this.detailRequestSeq
+      const requestApplyId = String(this.selected.applyId)
+      const res = await studentAffairsApi.getAidDetail(requestApplyId)
+      if (requestSeq !== this.detailRequestSeq || !this.selected || String(this.selected.applyId) !== requestApplyId) return
       if (res.code === 0 && res.data) this.selected = res.data
       else toast.error(res.message || '刷新详情失败')
     },
@@ -608,8 +673,12 @@ export default {
     async submitReveal() {
       const reason = (this.revealModal.reason || '').trim()
       if (!reason || reason.length < 5) { this.revealModal.error = '查看原因不少于 5 字'; return }
+      if (!this.selected) return
+      const requestSeq = ++this.revealRequestSeq
+      const requestApplyId = String(this.selected.applyId)
       this.revealing = true
-      const res = await studentAffairsApi.revealAidFamily(this.selected.applyId, reason)
+      const res = await studentAffairsApi.revealAidFamily(requestApplyId, reason)
+      if (requestSeq !== this.revealRequestSeq || !this.selected || String(this.selected.applyId) !== requestApplyId) return
       this.revealing = false
       if (res.code === 0 && res.data) {
         this.revealed = true
@@ -696,8 +765,10 @@ export default {
       this._lastErr = ''
       const res = await call()
       if (res.code === 0) {
+        this.detailRequestSeq += 1
+        this.revealRequestSeq += 1
         toast.success(okMsg)
-        if (res.data && res.data.applyId) { this.selected = res.data; this.revealed = false }
+        if (res.data && res.data.applyId) { this.selected = res.data; this.revealed = false; this.revealedFam = {} }
         else await this.reloadDetail()
         await this.loadApplications()
         this.acting = false
@@ -721,6 +792,7 @@ export default {
 </script>
 
 <style scoped>
+.ad-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .ad-batchbar {
   display: flex;
   align-items: center;
@@ -920,6 +992,26 @@ export default {
 .ad-kv dd {
   margin: 0;
   font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.ad-statement {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-subtle, var(--bg-card));
+}
+.ad-statement__title {
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ad-statement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
   color: var(--text-primary);
 }
 .ad-family {

@@ -126,7 +126,7 @@
           <tr v-for="a in auditRows" :key="a.id">
             <td>{{ a.time }}</td>
             <td class="is-who">{{ a.operator }}<div class="mp-cell-sub">{{ a.roleName }}</div></td>
-            <td>{{ a.action }}</td>
+            <td>{{ auditActionLabel(a) }}</td>
             <td>{{ a.detail }}</td>
           </tr>
         </tbody>
@@ -150,6 +150,7 @@ import {
   getFieldColumns, getBatchActions, getImportTemplate, getExportOptions, validateImport, confirmImport, createExport, getAuditLogs
 } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 const EMPTY_FILTERS = () => ({ keyword: '', classId: '', warningLevel: '', academicStatus: '', recordStatus: '' })
 
@@ -240,6 +241,7 @@ export default {
     if (this.$route.query.tab === 'audit') this.onToolbar('audit')
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)
@@ -253,7 +255,7 @@ export default {
       return pa && !pa.allowed ? pa.reason : ''
     },
     statusLabel(v) {
-      return (this.ctx.statusOptions.academicStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.academicStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     maskNo(v) {
       return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''

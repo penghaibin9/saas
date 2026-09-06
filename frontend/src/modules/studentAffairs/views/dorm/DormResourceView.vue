@@ -7,9 +7,19 @@
     watermark-purpose="宿舍房源管理"
   >
     <template #actions>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" variant="secondary" :loading="actioning" @click="downloadTemplate">
+        下载房源模板
+      </AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" variant="secondary" :loading="actioning" @click="$refs.resourceFile.click()">
+        导入房源 xlsx
+      </AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.export')" code="studentAffairs.dorm.export" variant="secondary" :loading="actioning" @click="exportDlg.visible = true">
+        导出房源台账
+      </AppPermissionButton>
       <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">
         新建楼栋（可一键铺床）
       </AppPermissionButton>
+      <input ref="resourceFile" class="dorm-file-input" type="file" accept=".xlsx" @change="onResourceFile" />
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载房源台账..." @retry="load"
@@ -18,7 +28,7 @@
         <div class="sa-summary-strip__content">
           <span class="sa-summary-strip__eyebrow">当前房源结论</span>
           <h2 class="sa-summary-strip__title">{{ buildings.length }} 栋楼、{{ occ.totalBeds || 0 }} 张床位，当前空床 {{ occ.vacantBeds || 0 }} 张</h2>
-          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、层数、房间数和每间床位数。</p>
+          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、负责宿管、层数、房间数和每间床位数。</p>
         </div>
         <div class="sa-summary-strip__actions">
           <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">新建楼栋</AppPermissionButton>
@@ -83,11 +93,26 @@
       </AppSectionCard>
 
       <AppSectionCard v-if="curRoom" :title="`三、床位 · ${curRoomNo}`">
+        <div v-if="selectedRoom" class="dorm-room-detail" aria-label="当前房间详情">
+          <div><span>房间</span><strong>{{ selectedRoom.roomNo }}</strong></div>
+          <div><span>楼层</span><strong>{{ selectedRoom.floorNo }} 层</strong></div>
+          <div><span>入住</span><strong>{{ roomOccupiedBeds }} / {{ selectedRoom.capacity || beds.length }}</strong></div>
+          <div><span>状态</span><strong>{{ roomStatusLabel(selectedRoom.status) }}</strong></div>
+        </div>
         <div class="bed-legend"><span class="is-vacant">空床</span><span class="is-occupied">已入住</span></div>
         <div class="sa-beds">
-          <span v-for="bd in beds" :key="bd.bedId" class="sa-bed" :class="bd.status === 'OCCUPIED' ? 'sa-bed--occ' : 'sa-bed--vac'">
-            <strong>{{ bd.bedNo }}</strong><small>{{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}</small>
-          </span>
+          <button
+            v-for="bd in beds"
+            :key="bd.bedId"
+            type="button"
+            class="sa-bed"
+            :class="bd.status === 'OCCUPIED' ? 'sa-bed--occ' : 'sa-bed--vac'"
+            @click="openBedAction(bd)"
+          >
+            <strong>{{ bd.bedNo }} 号床</strong>
+            <small>{{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}</small>
+            <small class="sa-bed__action">{{ bd.status === 'OCCUPIED' ? '查看入住与退宿 →' : '办理入住 →' }}</small>
+          </button>
           <span v-if="!beds.length" class="sa-empty">该房暂无床位。</span>
         </div>
       </AppSectionCard>
@@ -95,13 +120,23 @@
 
     <AppDrawer :visible="buildDlg.visible" title="新增楼栋" mode="modal" size="large" @close="buildDlg.visible = false">
       <div class="dr-form">
-        <div class="dorm-form-note">新建楼栋后可选择一键铺满。提交前请核对性别限制和容量参数，避免生成错误房间结构。</div>
+        <div class="dorm-form-note">新建楼栋后可选择一键铺满。负责宿管会承接该楼栋后续调宿终审与宿舍待办，请先完成真实指派。</div>
         <AppFormItem label="楼栋名称" required>
           <AppTextInput v-model="buildDlg.name" placeholder="如：1 号楼 / 西苑 3 栋" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="性别限制" required>
           <AppSelect v-model="buildDlg.gender" :options="GENDER_LIMITS" :disabled="actioning" />
         </AppFormItem>
+        <AppFormItem label="负责宿管" required>
+          <AppTeacherPicker
+            v-model="buildDlg.managerTeacherKey"
+            :query="{ roleCode: 'DORM_MANAGER' }"
+            placeholder="选择负责宿管"
+            data-scope-hint="仅显示已分配宿管角色的在职人员"
+            :disabled="actioning"
+          />
+        </AppFormItem>
+        <p class="dr-hint">这里只列 DORM_MANAGER 角色；提交后写入楼栋宿管范围，调宿终审无需再靠数据库补绑定。</p>
         <label class="dr-check" :class="{ 'is-on': buildDlg.autoFill }">
           <input v-model="buildDlg.autoFill" type="checkbox" :disabled="actioning" />
           <span><strong>一键铺满整栋</strong><small>按层数 × 每层房数 × 每间床位自动建房间与床位</small></span>
@@ -134,12 +169,34 @@
         <AppButton variant="primary" :loading="actioning" @click="submitGenerate">铺满</AppButton>
       </template>
     </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="importConfirmVisible"
+      title="确认导入宿舍房源"
+      :message="importPreview ? `Dry Run 已通过 ${importPreview.okRows} 行。确认后将在一个事务内创建楼栋、房间和床位。` : ''"
+      confirm-text="确认写入房源"
+      :submitting="actioning"
+      @confirm="confirmResourceImport"
+    />
+
+    <AppDrawer :visible="exportDlg.visible" title="导出房源台账" mode="modal" size="medium" @close="exportDlg.visible = false">
+      <div class="dr-form">
+        <div class="dorm-form-note">导出只包含当前账号楼栋数据范围，文件带操作人、用途、时间水印并写入审计。</div>
+        <AppFormItem label="导出用途" required>
+          <AppTextInput v-model="exportDlg.purpose" placeholder="例如：2026年秋季宿舍房源核对" :disabled="actioning" />
+        </AppFormItem>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="exportDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :disabled="exportDlg.purpose.trim().length < 5" :loading="actioning" @click="exportResources">生成并下载</AppButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+import { AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
+  AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
@@ -172,8 +229,8 @@ const ROOM_COLUMNS = [
 export default {
   name: 'DormResourceView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, DataTable },
+  components: { AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput, DataTable },
   data() {
     return {
       buildingColumns: BUILDING_COLUMNS,
@@ -181,8 +238,10 @@ export default {
       GENDER_LIMITS,
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
       curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
-      buildDlg: { visible: false, name: '', gender: 'MIXED', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
-      genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
+      buildDlg: { visible: false, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
+      genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
+      importConfirmVisible: false, importPreview: null,
+      exportDlg: { visible: false, purpose: '' }
     }
   },
   computed: {
@@ -190,21 +249,78 @@ export default {
     metricCards() {
       return [
         { key: 'b', label: '楼栋数', value: this.buildings.length, accent: 'primary' },
-        { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'info' },
+        { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'primary' },
         { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'primary' },
         { key: 'v', label: '空床', value: this.occ.vacantBeds || 0, accent: (this.occ.vacantBeds || 0) ? 'success' : 'warning' }
       ]
+    },
+    selectedRoom() {
+      return this.rooms.find((row) => String(row.roomId) === String(this.curRoom)) || null
+    },
+    roomOccupiedBeds() {
+      return this.beds.filter((bed) => bed.status === 'OCCUPIED').length
     }
   },
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    async downloadTemplate() {
+      this.actioning = true
+      try { await studentAffairsApi.downloadDormResourceTemplate() }
+      catch (e) { this.errorMessage = e.message || '模板下载失败' }
+      finally { this.actioning = false }
+    },
+    async onResourceFile(event) {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+      this.actioning = true; this.errorMessage = ''
+      try {
+        const result = await studentAffairsApi.validateDormResourceFile(file)
+        this.importPreview = result.data
+        if (result.data.status === 'DRY_RUN_PASSED' && result.data.okRows > 0) {
+          this.importConfirmVisible = true
+        } else {
+          this.errorMessage = `Dry Run 未通过：${result.data.errorRows || 0} 项错误，已下载错误工作簿。`
+          if (result.data.batchNo) await studentAffairsApi.downloadDormImportErrors(result.data.batchNo)
+        }
+      } catch (e) { this.errorMessage = e.message || '房源预检失败' }
+      finally { this.actioning = false }
+    },
+    async confirmResourceImport() {
+      if (!this.importPreview?.batchNo) return
+      this.actioning = true
+      try {
+        await studentAffairsApi.confirmDormResourceImport(this.importPreview.batchNo)
+        this.importConfirmVisible = false; this.importPreview = null
+        await this.load()
+      } catch (e) { this.errorMessage = e.message || '房源导入失败' }
+      finally { this.actioning = false }
+    },
+    async exportResources() {
+      this.actioning = true
+      try {
+        await studentAffairsApi.exportDormLedger('resources', this.exportDlg.purpose.trim())
+        this.exportDlg.visible = false; this.exportDlg.purpose = ''
+      } catch (e) { this.errorMessage = e.message || '房源台账导出失败' }
+      finally { this.actioning = false }
+    },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {
         const [bs, oc] = await Promise.all([studentAffairsApi.listDormBuildings(), studentAffairsApi.getDormOccupancy()])
         this.buildings = bs.data.items || []; this.occ = oc.data || {}
+        await this.applyRouteSelection()
       } catch (e) { this.errorMessage = e.message || '房源加载失败' } finally { this.loading = false }
+    },
+    async applyRouteSelection() {
+      const buildingId = String(this.$route.query.buildingId || '')
+      const building = this.buildings.find((row) => String(row.buildingId) === buildingId)
+      if (!building) return
+      await this.openBuilding(building)
+      const roomId = String(this.$route.query.roomId || '')
+      const room = this.rooms.find((row) => String(row.roomId) === roomId)
+      if (room) await this.openRoom(room)
     },
     async openBuilding(b) {
       this.curBuilding = b.buildingId; this.curBuildingName = b.buildingName; this.curRoom = ''; this.beds = []
@@ -216,14 +332,25 @@ export default {
       try { this.beds = (await studentAffairsApi.listDormBeds(r.roomId)).data.items || [] }
       catch (e) { this.errorMessage = e.message || '床位加载失败' }
     },
+    openBedAction(bed) {
+      this.$router.push({
+        name: 'student-affairs-dorm-checkin',
+        query: {
+          buildingId: String(this.curBuilding),
+          roomId: String(this.curRoom),
+          bedId: String(bed.bedId)
+        }
+      })
+    },
     createBuilding() {
-      this.buildDlg = { visible: true, name: '', gender: 'MIXED', autoFill: false,
+      this.buildDlg = { visible: true, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false,
         floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     },
     async submitBuilding() {
       const d = this.buildDlg
       if (!d.name.trim()) { d.error = '请填写楼栋名称'; return }
-      const body = { buildingName: d.name.trim(), genderLimit: d.gender }
+      if (!d.managerTeacherKey) { d.error = '请选择负责宿管'; return }
+      const body = { buildingName: d.name.trim(), genderLimit: d.gender, managerTeacherKey: String(d.managerTeacherKey) }
       if (d.autoFill) {
         if (!(d.floors > 0 && d.roomsPerFloor > 0 && d.bedsPerRoom > 0)) {
           d.error = '一键铺满时，层数 / 每层房数 / 每间床位均须大于 0'
@@ -260,12 +387,13 @@ export default {
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g },
     /** 房间状态：建房时写入 ENABLED（见 affairs_dorm_service 铺床逻辑）；
      *  未收录取值原样显示，避免后端新增状态时显示成空白 */
-    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTENANCE: '维修中' })[s] || s || '—' }
+    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTAIN: '维修中', MAINTENANCE: '维修中' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>
 
 <style scoped>
+.dorm-file-input { display: none; }
 .dr-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .dorm-form-note { padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .dr-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-sm); }
@@ -276,6 +404,9 @@ export default {
 .dr-hint { margin: 0; padding: 9px 11px; border-radius: var(--radius-md); background: var(--bg-section); color: var(--text-secondary); font-size: var(--font-size-xs); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .dorm-resource-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.dorm-room-detail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.dorm-room-detail > div { display: grid; gap: 3px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-section); }
+.dorm-room-detail span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 :deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }
 :deep(.dt__tr.sa-sel) .dt__td:first-child { box-shadow: inset 3px 0 0 var(--primary-500); }
@@ -288,12 +419,13 @@ export default {
 .bed-legend .is-vacant::before { background: var(--success-500, #22c55e); }
 .bed-legend .is-occupied::before { background: var(--warning-500, #f59e0b); }
 .sa-beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-2); }
-.sa-bed { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font-size: var(--font-size-sm); }
+.sa-bed { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font: inherit; font-size: var(--font-size-sm); text-align: left; cursor: pointer; }
 .sa-bed strong { font-size: var(--font-size-base); }
 .sa-bed small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-bed__action { margin-top: 4px; font-weight: 600; }
 .sa-bed--occ { background: var(--warning-50); color: var(--warning-700); }
 .sa-bed--vac { background: var(--success-50); color: var(--success-700); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .sa-grid--metrics, .dorm-room-detail { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @import '@/styles/module-page.css';
 </style>

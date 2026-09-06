@@ -5,6 +5,9 @@
   "description": "职校学生全生命周期 SaaS 平台 - PC 管理端（Vue3 + Vite）",
   "type": "module",
   "scripts": {
+    "contract:navigation:generate": "node ../scripts/generate-navigation-surface-contract.mjs",
+    "contract:navigation:check": "node ../scripts/generate-navigation-surface-contract.mjs --check",
+    "contract:navigation:routes": "node scripts/check-navigation-route-parity.mjs",
     "dev": "vite",
     "build": "vite build && node scripts/prerender-official-site.mjs",
     "preview": "vite preview",

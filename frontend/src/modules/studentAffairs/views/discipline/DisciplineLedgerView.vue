@@ -132,7 +132,7 @@ export default {
       this.paging.page = 1
       this.loadPage()
     },
-    discTypeLabel(t) { return DISC_TYPES[t] || t || '—' },
+    discTypeLabel(t) { return DISC_TYPES[t] || (t ? '类型待确认' : '—') },
     statusType(s) {
       if (s === 'EFFECTIVE') return 'danger'
       if (s === 'REMOVED') return 'success'

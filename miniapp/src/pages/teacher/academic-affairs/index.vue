@@ -104,6 +104,7 @@
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
 import { go, toast } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
 const ENTRIES = [
@@ -228,7 +229,7 @@ export default {
     }
   },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
   },
   onShow() {
     this.load()

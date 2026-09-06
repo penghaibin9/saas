@@ -34,7 +34,9 @@ async function loginTeacherMini(page, account) {
   const fields = page.getByRole('textbox')
   await fields.nth(0).fill(account.username)
   await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
+  if ((await fields.count()) < 3) {
+    await page.getByText('填写', { exact: true }).click()
+  }
   await fields.nth(2).fill(account.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
   await page.getByText('进入教师工作台', { exact: true }).click()
@@ -140,6 +142,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     await expect(reloginRow.locator('.at__seg-item.is-active')).toHaveText('缺勤')
 
     const otherTeacherLogin = await request.post(`${config.apiBaseUrl}/auth/login`, {
+      headers: { 'X-Forwarded-For': '10.255.0.42' },
       data: {
         loginName: otherTeacher.username,
         password: otherTeacher.password,
@@ -159,6 +162,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     expect(blockedPayload.code, JSON.stringify(blockedPayload)).not.toBe(0)
 
     const studentLogin = await request.post(`${config.apiBaseUrl}/auth/login`, {
+      headers: { 'X-Forwarded-For': '10.255.0.43' },
       data: {
         loginName: config.student.username,
         password: config.student.password,

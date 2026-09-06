@@ -1,6 +1,6 @@
 <template>
   <div class="wf-page">
-    <AppSectionHeader title="角色管理" subtitle="七类基础角色与数据范围绑定（编辑为 mock 操作，P8 接真实权限中心）" />
+    <AppSectionHeader title="角色管理" subtitle="七类基础角色与数据范围绑定（当前为演示编辑，后续接入真实权限中心）" />
 
     <div class="wf-page__filters">
       <input v-model.trim="keyword" placeholder="搜索角色名称 / 编码" @keyup.enter="load" />
@@ -119,7 +119,7 @@ export default {
       try {
         const res = await workflowProvider.updateRolePermissions(roleId, { permissionKeys, dataScope })
         if (res.code === 0) {
-          toast.success('角色权限已更新（mock），操作已写入审计')
+          toast.success('角色权限演示数据已更新，操作已写入审计')
           this.activeRole = res.data
           await this.load()
         } else {

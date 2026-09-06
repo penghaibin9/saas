@@ -153,7 +153,7 @@ export default {
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('回执已登记'); this.load() } else toast.error(res.message || '登记失败')
     },
-    typeLabel(t) { return TYPE[t] || t }
+    typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') }
   }
 }
 </script>

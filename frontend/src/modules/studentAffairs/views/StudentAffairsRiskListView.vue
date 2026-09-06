@@ -694,7 +694,7 @@ export default {
         DORM: '宿舍异常',
         MENTAL: '心理关注',
         MANUAL: '人工建单'
-      })[source] || source || '未设置'
+      })[source] || (source ? '来源待确认' : '未设置')
     },
     statusKind(status) {
       if (status === 'CLOSED') return 'success'

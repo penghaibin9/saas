@@ -11,7 +11,6 @@ official fact:
   supersedes the prior decision.  The archived result row remains an ARCHIVED
   projection; StudentAcademicFact is advanced only when the corrected final status
   actually changes.
-
 The caller owns commit/rollback and Manifest V2+ creation, so domain fact + correction
 case + manifest revision are atomic.
 """

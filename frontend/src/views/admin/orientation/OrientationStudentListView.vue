@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="新生报到学生列表" subtitle="2026 级新生报到台账 · 敏感字段默认脱敏展示" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生台账查阅">
+  <ModulePageShell title="新生报到学生列表" subtitle="按迎新批次管理录取名单 · 敏感字段默认脱敏展示" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生台账查阅">
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
       <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名新生 · 操作全程留痕`" @action="onToolbar">
@@ -84,7 +84,14 @@
         <AppTextInput v-model="assignCounselor" placeholder="请输入辅导员姓名" />
       </AppConfirmDialog>
 
-      <ImportDialog v-model:visible="importVisible" :template="importTemplate" :validate-fn="validateImportFn" :import-fn="confirmImportFn" @imported="load" />
+      <ImportDialog
+        v-model:visible="importVisible"
+        :template="importTemplate"
+        :download-template-fn="downloadImportTemplateFn"
+        :validate-fn="validateImportFn"
+        :import-fn="confirmImportFn"
+        @imported="load"
+      />
       <ExportDialog
         v-model:visible="exportVisible"
         title="导出报到台账"
@@ -125,7 +132,7 @@ import * as api from '@/modules/orientation/api/orientation.api'
 import { STAGE_TAG_TYPE, REPORT_TAG_TYPE, PAYMENT_TAG_TYPE, MATERIAL_TAG_TYPE, DORM_TAG_TYPE, toLabelMap } from '@/modules/orientation/constants/orientation.constants'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', classId: '', stage: '', reportStatus: '', paymentStatus: '', riskLevel: '' })
+const EMPTY_FILTERS = () => ({ batchId: '', keyword: '', classId: '', stage: '', reportStatus: '', paymentStatus: '', riskLevel: '' })
 
 export default {
   name: 'OrientationStudentListView',
@@ -169,6 +176,7 @@ export default {
       allColumns: [],
       visibleColumnKeys: [],
       batchDefs: [],
+      batches: [],
       importTemplate: null,
       exportOpts: {},
       editVisible: false,
@@ -207,6 +215,7 @@ export default {
     },
     filterFields() {
       return [
+        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions },
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
         { key: 'classId', label: '班级', type: 'select', options: this.filterOptions.classes || [] },
         { key: 'stage', label: '学生阶段', type: 'select', options: this.statusOptions.stage || [] },
@@ -239,13 +248,21 @@ export default {
       return [
         { key: 'name', label: '姓名', type: 'text', required: true, disabled: !!this.editing },
         { key: 'admissionNo', label: '录取编号', type: 'text', required: true, disabled: !!this.editing },
-        { key: 'classId', label: '班级', type: 'select', options: this.filterOptions.classes || [], required: true },
-        { key: 'majorName', label: '录取专业', type: 'text' },
+        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions, required: true, disabled: !!this.editing },
+        { key: 'classId', label: '录取班级（自动确定学院/专业）', type: 'select', options: this.filterOptions.classes || [], required: true },
+        { key: 'admissionType', label: '录取类型', type: 'text' },
         { key: 'reportStatus', label: '报到状态', type: 'select', options: this.statusOptions.reportStatus || [] },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text', placeholder: '敏感字段，列表脱敏展示' },
         { key: 'origin', label: '生源地', type: 'region' }
       ]
+    },
+    batchOptions() {
+      return this.batches.map((row) => ({
+        value: String(row.id),
+        label: `${row.batchName} · ${row.batchNo}${row.status === 'CLOSED' ? '（已结束）' : ''}`,
+        disabled: row.status === 'CLOSED'
+      }))
     }
   },
   async created() {
@@ -258,17 +275,18 @@ export default {
       return { ...action, disabled: p ? !p.allowed : false, disabledReason: p?.reason }
     },
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     async init() {
-      const [ctx, status, filter, cols, batch, tpl, exp] = await Promise.all([
+      const [ctx, status, filter, cols, batch, tpl, exp, batches] = await Promise.all([
         api.getOrientationContext(),
         api.getStatusOptions(),
         api.getFilterOptions(),
         api.getFieldColumns('studentList'),
         api.getBatchActions('studentList'),
         api.getImportTemplate('studentList'),
-        api.getExportOptions('studentList')
+        api.getExportOptions('studentList'),
+        api.getOrientationBatches({ page: 1, pageSize: 200 })
       ])
       if (ctx.code === 0) this.ctx = ctx.data
       if (status.code === 0) this.statusOptions = status.data
@@ -280,6 +298,11 @@ export default {
       if (batch.code === 0) this.batchDefs = batch.data
       if (tpl.code === 0) this.importTemplate = tpl.data
       if (exp.code === 0) this.exportOpts = exp.data
+      if (batches.code === 0) this.batches = batches.data.list || []
+      if (!this.filters.batchId) {
+        const activeBatch = this.batches.find((row) => row.status !== 'CLOSED')
+        if (activeBatch) this.filters.batchId = String(activeBatch.id)
+      }
       await this.load()
     },
     async load() {
@@ -304,6 +327,8 @@ export default {
     },
     reset() {
       this.filters = EMPTY_FILTERS()
+      const activeBatch = this.batches.find((row) => row.status !== 'CLOSED')
+      if (activeBatch) this.filters.batchId = String(activeBatch.id)
       this.page = 1
       this.load()
     },
@@ -347,7 +372,13 @@ export default {
         this.editVisible = true
       }
       if (key === 'import') this.importVisible = true
-      if (key === 'export') this.exportVisible = true
+      if (key === 'export') {
+        if (!this.filters.batchId) {
+          toast.error('请先在筛选条件中选择一个迎新批次，再导出该批次台账')
+        } else {
+          this.exportVisible = true
+        }
+      }
       if (key === 'audit') this.openAudit()
     },
     async openAudit() {
@@ -389,7 +420,10 @@ export default {
         this.assignCounselor = ''
         this.assignVisible = true
       }
-      if (key === 'batchExport') this.exportVisible = true
+      if (key === 'batchExport') {
+        if (!this.filters.batchId) toast.error('请先选择迎新批次，再导出勾选名单')
+        else this.exportVisible = true
+      }
     },
     async doBatchRemind() {
       const res = await api.batchRemindStudents(this.selected, '报到提醒')
@@ -412,14 +446,17 @@ export default {
         this.submitting = false
       }
     },
-    validateImportFn(fileName) {
-      return api.validateImport('studentList', fileName)
+    downloadImportTemplateFn() {
+      return api.downloadImportTemplate('studentList')
+    },
+    validateImportFn(file) {
+      return api.validateImport('studentList', file)
     },
     confirmImportFn(payload) {
       return api.confirmImport('studentList', payload)
     },
     exportFn(payload) {
-      return api.createExport('studentList', payload)
+      return api.createExport('studentList', { ...payload, batchId: this.filters.batchId })
     }
   }
 }

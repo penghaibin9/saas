@@ -329,10 +329,10 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     stepLabel(key) {
-      return this.detail?.steps?.find((s) => s.key === key)?.label || key
+      return this.detail?.steps?.find((s) => s.key === key)?.label || (key ? '项目待确认' : '—')
     },
     stepStateLabel(state) {
       return STEP_STATE_LABEL[state || 'TODO']

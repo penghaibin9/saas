@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="fd-focus-note">{{ focusNotice }}</p>
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
         <AppFundingProjectPicker v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
@@ -26,6 +27,7 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :disabled="!batchId || !projectId" @click="goPublicity">公示待办</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.create')" code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
@@ -95,6 +97,10 @@
             <div><dt>金额</dt><dd>{{ amountText(selected.amount) }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
           </dl>
+          <div class="fd-statement">
+            <strong>申请说明</strong>
+            <p>{{ selected.statement || '—' }}</p>
+          </div>
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
 
           <div v-if="detailActions.length" class="fd-actions">
@@ -236,7 +242,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       acting: false, scanning: false, activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
-      routeIntentConsumed: false,
+      routeIntentConsumed: false, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       projectModal: { visible: false, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' },
@@ -358,14 +364,41 @@ export default {
       return []
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadProjects()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) {
+        this.selected = null; this.projectId = ''; this.batchId = ''
+        await this.loadProjects()
+        return
+      }
+      const res = await studentAffairsApi.getFundingDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.projectId = ''; this.batchId = ''; this.projects = []; this.batches = []; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该资助申请不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      this.batchId = String(res.data.batchId || '')
+      if (!this.batchId) { this.listError = '该资助申请缺少真实批次上下文，无法安全定位'; return }
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadProjects()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.clearStudentFilter()
@@ -415,10 +448,10 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     projectTypeLabel(t) {
-      return PROJECT_TYPE[t] || t || '—'
+      return PROJECT_TYPE[t] || (t ? '类型待确认' : '—')
     },
     batchStatusLabel(s) {
-      return BATCH_STATUS[s] || s
+      return BATCH_STATUS[s] || (s ? '状态待确认' : '—')
     },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'
@@ -438,12 +471,33 @@ export default {
     },
     async loadProjects() {
       const res = await studentAffairsApi.getFundingProjects({ page: 1, pageSize: 100 })
-      if (res.code === 0 && res.data) {
-        this.projects = res.data.items || []
-        await this.loadBatches()
-        if (!this.projectId && this.projects.length) { this.projectId = this.projects[0].projectId; this.autoPickBatch() }
-      } else {
+      if (res.code !== 0 || !res.data) {
         this.listError = res.message || '项目加载失败'
+        return
+      }
+      this.projects = res.data.items || []
+      await this.loadBatches()
+      if (this.batchId) {
+        const batch = this.batches.find((item) => String(item.batchId) === String(this.batchId))
+        if (!batch) {
+          this.listError = '该资助申请所属批次当前不可见，已停止自动回退到其他批次'
+          this.list = []; this.pagination.total = 0
+          return
+        }
+        const projectId = String(batch.projectId || '')
+        if (!projectId || !this.projects.some((item) => String(item.projectId) === projectId)) {
+          this.listError = '该资助批次所属项目当前不可见，已停止自动回退到其他项目'
+          this.list = []; this.pagination.total = 0
+          return
+        }
+        this.projectId = projectId
+        await this.loadApplications()
+        this.consumeRouteIntent()
+        return
+      }
+      if (!this.projectId && this.projects.length) {
+        this.projectId = this.projects[0].projectId
+        this.autoPickBatch()
       }
     },
     async loadBatches() {
@@ -490,18 +544,21 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applicationId === this.selected.applicationId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '申请加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
-      const res = await studentAffairsApi.getFundingDetail(this.selected.applicationId)
+      const selectedId = this.selected.applicationId
+      const res = await studentAffairsApi.getFundingDetail(selectedId)
+      if (String(this.selected?.applicationId) !== String(selectedId)) return
       if (res.code === 0 && res.data) this.selected = res.data
       else toast.error(res.message || '刷新详情失败')
     },
@@ -594,6 +651,13 @@ export default {
       if (ok) this.applyModal.visible = false
       else this.applyModal.error = this._lastErr || '受理失败（可能资格校验未通过）'
     },
+    goPublicity() {
+      if (!this.batchId || !this.projectId) return
+      this.$router.push({
+        path: '/admin/student-affairs/funding/publicity',
+        query: { batchId: String(this.batchId), projectId: String(this.projectId), source: 'funding-workbench' }
+      })
+    },
     async onScan() {
       this.scanning = true
       const res = await studentAffairsApi.scanFundingPublicity()
@@ -631,6 +695,7 @@ export default {
 </script>
 
 <style scoped>
+.fd-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .fd-ctxbar {
   display: flex;
   align-items: center;
@@ -817,6 +882,26 @@ export default {
 }
 .fd-kv dd {
   margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.fd-statement {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-subtle);
+}
+.fd-statement strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.fd-statement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: var(--font-size-sm);
   color: var(--text-primary);
 }

@@ -11,7 +11,7 @@
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || row.studentName || ('#'+row.studentId) }}</span></template>
           <template #cell-topic="{ row }"><span class="ks-topic">{{ row.topic || row.topicType || '—' }}</span></template>
           <template #cell-status="{ row }"><StatusTag type="warning" :label="row.statusLabel || row.status" dot /></template>
-          <template #cell-actions="{ row }">
+          <template #cell-actions>
             <button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/talk')">去处理</button>
           </template>
         </DataTable>
@@ -81,7 +81,7 @@ export default {
       else this.errorMessage = rk.message || '加载失败'
       this.loading = false
     },
-    sourceLabel(s) { return SRC[s] || s || '—' },
+    sourceLabel(s) { return SRC[s] || (s ? '状态待确认' : '—') },
     levelLabel(l) { return LEVEL[l] || l || '—' }
   }
 }

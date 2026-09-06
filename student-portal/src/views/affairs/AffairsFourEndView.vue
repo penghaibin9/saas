@@ -75,22 +75,45 @@
 
       <section v-else-if="tab === 'dorm'" class="sp-card">
         <div class="sp-panel__head">我的宿舍</div>
-        <StateBlock v-if="!dorm.hasBed" type="empty" :text="dorm.studentNotice || '暂无入住床位'" />
-        <template v-else>
+        <div class="presence-card">
+          <div><span>归寝状态</span><strong>{{ dorm.presence?.statusLabel || '未知' }}</strong></div>
+          <div><span>最近可靠事件</span><strong>{{ fmtTime(dorm.presence?.lastEventAt) }}</strong></div>
+          <div><span>Provider</span><strong>{{ dorm.presenceProvider?.providerLabel || '未配置' }} · {{ dorm.presenceProvider?.healthStatus || 'DISABLED' }}</strong></div>
+          <p>{{ dorm.presence?.summary || '暂无可靠归寝数据' }}<template v-if="dorm.presence?.status === 'UNKNOWN'">。“未知”不等同于“未归”。</template></p>
+        </div>
+        <div v-if="!dorm.hasBed && dorm.hasAllocation" class="allocation-card">
+          <strong>{{ dorm.allocation?.hiddenUntilCheckin ? '宿舍已安排' : '床位已确认' }}</strong>
+          <p v-if="!dorm.allocation?.hiddenUntilCheckin">{{ [dorm.allocation?.building, dorm.allocation?.room && `${dorm.allocation.room}室`, dorm.allocation?.bedNo && `${dorm.allocation.bedNo}床`].filter(Boolean).join(' / ') }}</p>
+          <p class="sp-muted">{{ dorm.studentNotice }}</p>
+        </div>
+        <StateBlock v-else-if="!dorm.hasBed" type="empty" :text="dorm.studentNotice || '暂无住宿安排'" />
+        <template v-if="dorm.hasBed">
           <div class="bed-grid"><div><span>楼栋</span><strong>{{ dorm.myBed?.building }}</strong></div><div><span>房间</span><strong>{{ dorm.myBed?.room }}</strong></div><div><span>床位</span><strong>{{ dorm.myBed?.bedNo }}</strong></div><div><span>入住时间</span><strong>{{ fmt(dorm.myBed?.occupiedAt) }}</strong></div></div>
           <p class="sp-muted">已有床位时只能提交正式调宿申请；审批完成前原床保持不变。</p>
           <p v-if="pendingDormTransfer" class="warn">已有调宿申请处理中：{{ enumText(pendingDormTransfer.statusLabel || pendingDormTransfer.status || pendingDormTransfer.currentNode) }}</p>
           <button v-else class="sp-btn sp-btn--ghost" :disabled="busy" @click="loadDormOptions">申请调宿</button>
         </template>
+        <button v-else-if="dorm.canSelfSelect" class="sp-btn" :disabled="busy" @click="loadDormOptions">首次选床</button>
         <div v-if="dormForm.visible" class="inline-form dorm-form">
           <select v-model="dormForm.buildingId" class="sp-inp" @change="loadRooms"><option value="">选择目标楼栋</option><option v-for="b in dormBuildings" :key="b.buildingId" :value="b.buildingId">{{ b.buildingName }}（空{{ b.vacantBeds }}）</option></select>
           <select v-model="dormForm.roomId" class="sp-inp" :disabled="!dormForm.buildingId" @change="loadBeds"><option value="">选择房间</option><option v-for="r in dormRooms" :key="r.roomId" :value="r.roomId">{{ r.floorNo }}层 {{ r.roomNo }}（空{{ r.vacantBeds }}）</option></select>
           <select v-model="dormForm.bedId" class="sp-inp" :disabled="!dormForm.roomId"><option value="">选择床位</option><option v-for="b in availableDormBeds" :key="b.bedId" :value="b.bedId">{{ b.bedNo }}</option></select>
           <p v-if="dormForm.bedId" class="selected-target">目标床位：{{ selectedDormTarget }}</p>
-          <textarea v-model.trim="dormForm.reason" maxlength="300" class="sp-inp" placeholder="调宿原因（5-300字）" />
-          <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeDormForm">取消</button><button class="sp-btn" :disabled="busy || !validDormTransfer" @click="submitDormTransfer">核对并提交调宿</button></div>
+          <textarea v-if="dorm.hasBed" v-model.trim="dormForm.reason" maxlength="300" class="sp-inp" placeholder="调宿原因（5-300字）" />
+          <p v-else class="warn">确认后床位将为你预留，不能自行更换；如需调整必须走正式调宿。</p>
+          <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeDormForm">取消</button><button class="sp-btn" :disabled="busy || !validDormAction" @click="submitDormAction">{{ dorm.hasBed ? '核对并提交调宿' : '核对并确认床位' }}</button></div>
         </div>
         <div class="section-title">调宿申请记录</div><p v-if="dormTransferError" class="sp-notice">{{ dormTransferError }}</p><AutoTable v-else :rows="dormTransfers" :columns="DORM_TRANSFER_COLS" empty="暂无调宿申请" />
+        <div class="section-title">住宿历史</div><AutoTable :rows="dormStays" :columns="DORM_STAY_COLS" empty="暂无住宿历史" />
+        <div class="section-title">我的检查整改</div>
+        <StateBlock v-if="!dormRectifications.length" type="empty" text="暂无宿舍整改任务" />
+        <article v-for="item in dormRectifications" :key="item.rectificationId" class="record rect-card">
+          <div class="record-head"><div><strong>{{ item.buildingName }} · {{ item.roomNo }}室</strong><div class="sp-muted">{{ item.taskName }} · {{ severityText(item.severity) }} · 截止 {{ fmtTime(item.deadlineAt) }}</div><p class="rect-requirement">{{ item.requirement }}</p></div><StatusTag :text="rectStatusText(item.status)" :tone="item.overdue ? 'warn' : (item.status === 'CLOSED' ? 'success' : 'default')" /></div>
+          <div v-if="item.allowedActions?.includes('START')" class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="startDormRectification(item)">开始整改</button></div>
+          <div v-if="item.allowedActions?.includes('SUBMIT')" class="inline-form"><textarea v-model.trim="rectNotes[item.rectificationId]" maxlength="1000" class="sp-inp" placeholder="整改说明（5-1000字）" /><label class="file-pick"><span>整改照片证据（必填）</span><input type="file" accept="image/*" :disabled="busy" @change="pickRectFile(item, $event)" /></label><p v-if="rectFiles[item.rectificationId]" class="selected-target">已上传：{{ rectFiles[item.rectificationId].fileName }}</p><button class="sp-btn" :disabled="busy || !validReason(rectNotes[item.rectificationId], 5, 1000) || !rectFiles[item.rectificationId]" @click="submitDormRectification(item)">提交复检</button></div>
+          <p v-if="item.status === 'WAITING_RECHECK'" class="sp-muted">整改证据已提交，等待宿管现场复检。</p>
+          <p v-if="item.recheckNote" class="sp-muted">复检意见：{{ item.recheckNote }}</p>
+        </article>
       </section>
 
       <section v-else-if="tab === 'discipline'" class="sp-card">
@@ -117,8 +140,10 @@
         <template v-else-if="modal.type === 'aid'"><div class="form-grid"><label><span>等级</span><select v-model="modal.form.applyLevel" class="sp-inp"><option value="GENERAL">一般困难</option><option value="DIFFICULT">困难</option><option value="SPECIAL">特别困难</option></select></label><label><span>成员数（1-30）</span><input v-model.number="modal.form.memberCount" type="number" min="1" max="30" step="1" class="sp-inp" /></label><label><span>年收入</span><input v-model.number="modal.form.annualIncome" type="number" min="0" step="0.01" class="sp-inp" /></label><label><span>债务</span><input v-model.number="modal.form.debt" type="number" min="0" step="0.01" class="sp-inp" /></label><label class="wide"><span>特殊情况标签</span><input v-model.trim="modal.form.specialTags" maxlength="200" class="sp-inp" /></label><label class="wide"><span>情况说明（10-500字）</span><textarea v-model.trim="modal.form.statement" maxlength="500" class="sp-inp" /></label></div></template>
         <template v-else-if="modal.type === 'funding'"><label><span>申请理由（5-1000字）</span><textarea v-model.trim="modal.form.statement" maxlength="1000" class="sp-inp" /></label></template>
         <template v-else-if="modal.type === 'credit'"><p class="sp-muted">{{ modal.form.activityName ? `涉及活动：${modal.form.activityName}` : '缺记申诉可不指定活动' }}</p><select v-model="modal.form.claimCreditType" class="sp-inp"><option value="SECOND_CLASS">第二课堂</option><option value="MORAL">德育积分</option><option value="VOLUNTEER_HOUR">志愿时长</option></select><input v-model="modal.form.claimValue" type="number" min="0.01" max="9999.99" step="0.01" class="sp-inp" placeholder="主张数值（必填，0.01-9999.99）" /><p v-if="creditClaimError" class="field-error">{{ creditClaimError }}</p><textarea v-model.trim="modal.form.reason" maxlength="1000" class="sp-inp" placeholder="申诉理由（5-1000字）" /></template>
+        <template v-else-if="modal.type === 'dormConfirm'"><div class="confirm-summary"><strong>目标床位</strong><span>{{ modal.form.target }}</span><p>{{ dorm.hasBed ? '提交后进入正式调宿审批，完成前原床保持不变。' : '确认后床位将为你预留，后续变更须走正式调宿。' }}</p></div></template>
+        <template v-else-if="modal.type === 'leaveCancel'"><div class="confirm-summary"><strong>销假确认</strong><span>{{ modal.form.period }}</span><p>请确认你已返校或请假事项已结束。提交后将进入销假流程。</p></div></template>
         <p v-if="modalValidationError" class="field-error">{{ modalValidationError }}</p>
-        <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeModal">取消</button><button class="sp-btn" :disabled="busy || !modalValid" @click="submitModal">保存并提交</button></div>
+        <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeModal">取消</button><button class="sp-btn" :disabled="busy || !modalValid" @click="submitModal">{{ modal.type === 'dormConfirm' ? (dorm.hasBed ? '确认提交调宿' : '确认选择床位') : (modal.type === 'leaveCancel' ? '确认提交销假' : '保存并提交') }}</button></div>
       </section>
     </div>
   </div>
@@ -142,6 +167,17 @@ const DORM_TRANSFER_COLS = [
   { key: 'fromBedLabel', label: '原床位' }, { key: 'toBedLabel', label: '目标床位' },
   { key: 'createdAt', label: '申请时间' }, { key: 'status', label: '状态' },
   { key: 'reviewNote', label: '审核意见' }
+]
+const DORM_STAY_STATUS = {
+  RESERVED: '待入住',
+  ACTIVE: '当前在住',
+  ENDED: '已退宿',
+  CANCELLED: '已取消'
+}
+const DORM_STAY_COLS = [
+  { key: 'bedLabel', label: '楼 / 房 / 床' }, { key: 'checkinAt', label: '入住时间' },
+  { key: 'checkoutAt', label: '退宿时间' },
+  { key: 'status', label: '状态', formatter: (value) => DORM_STAY_STATUS[String(value || '').toUpperCase()] || '状态待确认' }
 ]
 const PSY_HISTORY_COLS = [
   { key: 'submittedAt', label: '测评时间' }, { key: 'resultLevel', label: '结果等级' },
@@ -170,12 +206,13 @@ const tabError = computed(() => errors[tab.value] || '')
 const loading = computed(() => !!loadingTabs[tab.value])
 const activeTabLabel = computed(() => tabs.find((item) => item.key === tab.value)?.label || '学工数据')
 
-const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([]); const dormTransferError = ref('')
+const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([]); const dormStays = ref([]); const dormRectifications = ref([]); const dormTransferError = ref(''); const rectNotes = reactive({}); const rectFiles = reactive({})
 const leaveForm = reactive({ leaveType: 'PERSONAL', startTime: '', endTime: '', reason: '' }); const extendId = ref(''); const extendForm = reactive({ newEndTime: '', reason: '' }); const aidForm = reactive({ batchId: '', applyLevel: 'GENERAL', memberCount: null, annualIncome: null, debt: null, specialTags: '', statement: '', confirm: false }); const fundForm = reactive({ projectType: 'SCHOLARSHIP', batchId: '', statement: '', confirm: false }); const aidObjections = reactive({}); const fundAppeals = reactive({}); const disciplineAppeals = reactive({}); const psyAnswers = reactive({}); const dormBuildings = ref([]); const dormRooms = ref([]); const dormBeds = ref([]); const dormForm = reactive({ visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }); const modal = reactive({ type: '', title: '', notice: '', item: null, form: {} })
 
 const dateText = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const today = dateText()
 const fmt = (value) => (value || '').slice(0, 10)
+const fmtTime = (value) => String(value || '').slice(0, 16).replace('T', ' ') || '—'
 const enumText = (value) => localizeVisibleEnumText(value)
 const dayAfter = (value) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return ''; const d = new Date(`${value}T00:00:00`); if (Number.isNaN(d.getTime())) return ''; d.setDate(d.getDate() + 1); return dateText(d) }
 const validReason = (value, min, max) => { const n = String(value || '').trim().length; return n >= min && n <= max }
@@ -189,7 +226,7 @@ const psyComplete = computed(() => (psy.value.questions || []).length > 0 && (ps
 const pendingDormTransfer = computed(() => dormTransfers.value.find((x) => ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_REVIEW', 'PENDING'].includes(x.status || x.currentNode)) || null)
 const availableDormBeds = computed(() => dormBeds.value.filter((x) => x.status === 'VACANT' && !x.isCurrent))
 const selectedDormTarget = computed(() => { const b = dormBuildings.value.find((x) => String(x.buildingId) === String(dormForm.buildingId)) || {}; const r = dormRooms.value.find((x) => String(x.roomId) === String(dormForm.roomId)) || {}; const bd = dormBeds.value.find((x) => String(x.bedId) === String(dormForm.bedId)) || {}; return [b.buildingName, r.roomNo && `${r.roomNo}室`, bd.bedNo && `${bd.bedNo}床`].filter(Boolean).join(' / ') || `床位 #${dormForm.bedId}` })
-const validDormTransfer = computed(() => !!dormForm.bedId && validReason(dormForm.reason, 5, 300) && !pendingDormTransfer.value)
+const validDormAction = computed(() => !!dormForm.bedId && !pendingDormTransfer.value && (!dorm.value.hasBed || validReason(dormForm.reason, 5, 300)))
 const creditClaimError = computed(() => { if (modal.type !== 'credit') return ''; const value = Number(modal.form.claimValue); if (!Number.isFinite(value) || value <= 0) return '主张数值必须大于0'; if (value > 9999.99) return '主张数值不得超过9999.99'; if (Math.abs(Math.round(value * 100) - value * 100) > 1e-8) return '主张数值最多保留2位小数'; return '' })
 const modalValidationError = computed(() => { const f = modal.form || {}; if (modal.type === 'leave') return (!f.startTime || !f.endTime || f.endTime < f.startTime || !validReason(f.reason, 5, 300)) ? '请填写有效起止日期和5-300字事由' : ''; if (modal.type === 'aid') { if (!Number.isInteger(Number(f.memberCount)) || Number(f.memberCount) < 1 || Number(f.memberCount) > 30) return '家庭成员数应为1-30人的整数'; if (!nonNegativeOrBlank(f.annualIncome) || !nonNegativeOrBlank(f.debt)) return '年收入和债务不得为负数'; return validReason(f.statement, 10, 500) ? '' : '困难情况说明需10-500字' } if (modal.type === 'funding') return validReason(f.statement, 5, 1000) ? '' : '申请理由需5-1000字'; if (modal.type === 'credit') return creditClaimError.value || (validReason(f.reason, 5, 1000) ? '' : '申诉理由需5-1000字'); return '' })
 const modalValid = computed(() => !!modal.type && !modalValidationError.value)
@@ -200,13 +237,16 @@ watch(aidBatches, (list) => { if (!list.some((x) => x.batchId === aidForm.batchI
 const fundingLabel = (type) => ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' }[type] || type)
 const appealLabel = (status) => ({ SUBMITTED: '申诉已提交', REVIEWING: '复核中', UPHELD: '维持原处分', REVISED: '处分已变更', REVOKED: '处分已撤销' }[status] || status || '未申诉')
 const creditLabel = (type) => ({ SECOND_CLASS: '第二课堂', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }[type] || type)
+const severityText = (value) => ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' }[value] || value)
+const rectStatusText = (value) => ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' }[value] || value)
+const clientRequestId = () => `dorm-rectify-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`.slice(0, 100)
 const notifyError = (e, fallback) => ui.notify(e?.message || fallback)
 
 const TAB_LOADERS = {
   leave: [{ load: () => portalApi.affairsLeave(), apply: (value) => { leave.value = value || { items: [] } } }],
   aid: [{ load: () => portalApi.affairsAid(), apply: (value) => { aid.value = value || { items: [] } } }, { load: () => portalApi.affairsAidBatches(), apply: (value) => { aidBatches.value = value?.items || [] } }],
   funding: [{ load: () => portalApi.affairsFunding(), apply: (value) => { funding.value = value || { items: [] } } }, { load: () => portalApi.affairsFundingBatches(), apply: (value) => { fundingBatches.value = value?.items || [] } }],
-  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }],
+  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }, { load: () => affairsFourEndApi.myDormStays(), apply: (value) => { dormStays.value = value?.items || [] } }, { load: () => affairsFourEndApi.myDormRectifications({ pageSize: 200 }), apply: (value) => { dormRectifications.value = value?.items || [] } }],
   discipline: [{ load: () => portalApi.affairsDiscipline(), apply: (value) => { discipline.value = value || { items: [] } } }],
   psy: [{ load: () => portalApi.affairsPsyQuestions(), apply: (value) => { psy.value = value || { questions: [] } } }, { load: () => portalApi.affairsPsyHistory(), apply: (value) => { psyHistory.value = value || { items: [] } } }],
   activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: (value) => { activities.value = value || { available: [], mine: [] } } }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
@@ -260,7 +300,7 @@ async function run(task, success, fallback, refreshKey = tab.value) {
 }
 
 async function applyLeave() { if (!validLeave.value) return ui.notify('请填写有效日期和5-300字事由'); const result = await run(() => portalApi.affairsLeaveApply({ ...leaveForm }), '请假已提交', '请假提交失败', 'leave'); if (result.ok) leaveForm.reason = '' }
-async function cancelLeave(item) { if (!window.confirm('确认已返校或请假事项已结束，并提交销假申请？')) return; await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败', 'leave') }
+function cancelLeave(item) { Object.assign(modal, { type: 'leaveCancel', title: '确认提交销假', notice: '', item, form: { period: `${fmt(item.startTime)} 至 ${fmt(item.endTime)}` } }) }
 function openExtend(item) { extendId.value = item.leaveId; extendForm.newEndTime = dayAfter(fmt(item.endTime)); extendForm.reason = '' }
 function validExtend(item) { return !!extendForm.newEndTime && extendForm.newEndTime > fmt(item.endTime) && validReason(extendForm.reason, 5, 300) }
 async function submitExtend(item) { if (!validExtend(item)) return ui.notify('新结束日期必须晚于原结束日期，续假事由需5-300字'); const result = await run(() => affairsFourEndApi.extendLeave(item.leaveId, item.version, extendForm.newEndTime, extendForm.reason), '续假申请已提交', '续假提交失败', 'leave'); if (result.ok) extendId.value = '' }
@@ -271,11 +311,14 @@ async function submitAidObjection(item) { if (!validReason(aidObjections[item.ap
 async function submitFunding() { if (!validFunding.value) return ui.notify('请选择批次、填写5-1000字申请理由并确认'); const result = await run(() => portalApi.affairsFundingApply({ batchId: fundForm.batchId, statement: fundForm.statement, confirm: true }), '奖助申请已提交', '提交失败', 'funding'); if (result.ok) { fundForm.statement = ''; fundForm.confirm = false } }
 async function editFunding(item) { busy.value = true; try { const data = await affairsFourEndApi.getReturnedFunding(item.applicationId); Object.assign(modal, { type: 'funding', title: '修改退回奖助申请', notice: item.returnReason, item: data, form: { statement: data.statement || '' } }) } catch (e) { notifyError(e, '加载失败') } finally { busy.value = false } }
 async function submitFundingAppeal(item) { if (!validReason(fundAppeals[item.applicationId], 5, 1000)) return ui.notify('申诉理由需5-1000字'); const result = await run(() => portalApi.affairsFundingAppeal({ applicationId: item.applicationId, reason: fundAppeals[item.applicationId] }), '申诉已提交并进入老师待办', '申诉提交失败', 'funding'); if (result.ok) fundAppeals[item.applicationId] = '' }
-async function loadDormOptions() { if (pendingDormTransfer.value) return ui.notify('已有调宿申请处理中，不能重复提交'); busy.value = true; try { const data = await affairsFourEndApi.dormTransferOptions(); dormBuildings.value = data.items || []; dormForm.visible = true } catch (e) { notifyError(e, '调宿选项加载失败') } finally { busy.value = false } }
-async function loadRooms() { dormForm.roomId = ''; dormForm.bedId = ''; dormRooms.value = []; dormBeds.value = []; if (!dormForm.buildingId) return; try { const data = await affairsFourEndApi.dormTransferRooms(dormForm.buildingId); dormRooms.value = data.items || [] } catch (e) { notifyError(e, '房间加载失败') } }
-async function loadBeds() { dormForm.bedId = ''; dormBeds.value = []; if (!dormForm.roomId) return; try { const data = await affairsFourEndApi.dormTransferBeds(dormForm.roomId); dormBeds.value = data.items || [] } catch (e) { notifyError(e, '床位加载失败') } }
+async function loadDormOptions() { if (pendingDormTransfer.value) return ui.notify('已有调宿申请处理中，不能重复提交'); busy.value = true; try { const data = await (dorm.value.hasBed ? affairsFourEndApi.dormTransferOptions() : affairsFourEndApi.dormSelectOptions()); dormBuildings.value = data.items || data.buildings || []; dormForm.visible = true } catch (e) { notifyError(e, dorm.value.hasBed ? '调宿选项加载失败' : '可选床位加载失败') } finally { busy.value = false } }
+async function loadRooms() { dormForm.roomId = ''; dormForm.bedId = ''; dormRooms.value = []; dormBeds.value = []; if (!dormForm.buildingId) return; try { const data = await (dorm.value.hasBed ? affairsFourEndApi.dormTransferRooms(dormForm.buildingId) : affairsFourEndApi.dormSelectRooms(dormForm.buildingId)); dormRooms.value = data.items || [] } catch (e) { notifyError(e, '房间加载失败') } }
+async function loadBeds() { dormForm.bedId = ''; dormBeds.value = []; if (!dormForm.roomId) return; try { const data = await (dorm.value.hasBed ? affairsFourEndApi.dormTransferBeds(dormForm.roomId) : affairsFourEndApi.dormSelectBeds(dormForm.roomId)); dormBeds.value = data.items || [] } catch (e) { notifyError(e, '床位加载失败') } }
 function closeDormForm() { if (!busy.value) Object.assign(dormForm, { visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }) }
-async function submitDormTransfer() { if (!validDormTransfer.value) return ui.notify('请选择目标床位并填写5-300字调宿原因'); if (!window.confirm(`确认提交调宿？\n目标：${selectedDormTarget.value}\n审批完成前原床保持不变。`)) return; const result = await run(() => affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason), '调宿申请已提交', '调宿提交失败', 'dorm'); if (result.ok) closeDormForm() }
+function submitDormAction() { if (!validDormAction.value) return ui.notify(dorm.value.hasBed ? '请选择目标床位并填写5-300字调宿原因' : '请选择床位'); Object.assign(modal, { type: 'dormConfirm', title: dorm.value.hasBed ? '确认提交调宿' : '确认选择床位', notice: '', item: null, form: { target: selectedDormTarget.value } }) }
+async function startDormRectification(item) { await run(() => affairsFourEndApi.startDormRectification(item.rectificationId, item.version), '整改已开始', '开始整改失败', 'dorm') }
+async function pickRectFile(item, event) { const file = event.target?.files?.[0]; if (!file) return; busy.value = true; try { const uploaded = await affairsFourEndApi.uploadDormEvidence(file); rectFiles[item.rectificationId] = { fileId: String(uploaded.fileId || uploaded.id), fileName: uploaded.fileName || file.name } } catch (e) { notifyError(e, '整改照片上传失败') } finally { busy.value = false; event.target.value = '' } }
+async function submitDormRectification(item) { const note = String(rectNotes[item.rectificationId] || '').trim(); const file = rectFiles[item.rectificationId]; if (!validReason(note, 5, 1000) || !file) return ui.notify('请填写5-1000字整改说明并上传照片'); const result = await run(() => affairsFourEndApi.submitDormRectification(item.rectificationId, { expectedVersion: item.version, note, fileIds: [file.fileId], clientRequestId: clientRequestId() }), '整改已提交复检', '整改提交失败', 'dorm'); if (result.ok) { rectNotes[item.rectificationId] = ''; delete rectFiles[item.rectificationId] } }
 async function submitDisciplineAppeal(item) { if (!validReason(disciplineAppeals[item.caseId], 5, 1000)) return ui.notify('处分申诉理由需5-1000字'); const result = await run(() => portalApi.affairsDisciplineAppeal({ caseId: item.caseId, reason: disciplineAppeals[item.caseId] }), '处分申诉已提交', '申诉提交失败', 'discipline'); if (result.ok) disciplineAppeals[item.caseId] = '' }
 async function submitPsy() { const answers = (psy.value.questions || []).map((q) => ({ qKey: q.key, score: psyAnswers[q.key] })); await run(() => portalApi.affairsPsySubmit({ answers }), '心理自评已提交', '自评提交失败', 'psy') }
 async function enroll(item) { await run(() => portalApi.affairsActivityEnroll(item.activityId), '报名成功', '报名失败', 'activity') }
@@ -288,6 +331,8 @@ async function submitModal() {
   else if (modal.type === 'aid') { const id = modal.item.applyId; const body = { ...modal.form, memberCount: Number(modal.form.memberCount), annualIncome: modal.form.annualIncome === '' || modal.form.annualIncome == null ? null : Number(modal.form.annualIncome), debt: modal.form.debt === '' || modal.form.debt == null ? null : Number(modal.form.debt), specialTags: String(modal.form.specialTags || '').split(/[,，]/).map((x) => x.trim()).filter(Boolean), version: modal.item.version }; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedAid(id, body), resubmit: (version) => affairsFourEndApi.resubmitAid(id, version), success: '认定申请已修改并重新提交', refreshKey: 'aid' }) }
   else if (modal.type === 'funding') { const id = modal.item.applicationId; await submitUpdatedAndResubmit({ update: () => affairsFourEndApi.updateReturnedFunding(id, { ...modal.form, version: modal.item.version }), resubmit: (version) => affairsFourEndApi.resubmitFunding(id, version), success: '奖助申请已修改并重新提交', refreshKey: 'funding' }) }
   else if (modal.type === 'credit') { const result = await run(() => affairsFourEndApi.submitCreditAppeal({ ...modal.form, claimValue: Number(modal.form.claimValue) }), '积分申诉已提交', '申诉提交失败', 'activity'); if (result.ok) setTimeout(() => closeModal(), 0) }
+  else if (modal.type === 'dormConfirm') { const result = await run(() => dorm.value.hasBed ? affairsFourEndApi.submitDormTransfer(dormForm.bedId, dormForm.reason) : affairsFourEndApi.selfSelectDormBed(dormForm.bedId), dorm.value.hasBed ? '调宿申请已提交' : '床位已确认', dorm.value.hasBed ? '调宿提交失败' : '选床失败', 'dorm'); if (result.ok) { closeModal(); closeDormForm() } }
+  else if (modal.type === 'leaveCancel') { const item = modal.item; const result = await run(() => affairsFourEndApi.cancelLeave(item.leaveId, item.version, '学生本人申请销假'), '销假申请已提交', '销假提交失败', 'leave'); if (result.ok) closeModal() }
 }
 
 watch(tab, (key) => { loadTab(key) }, { immediate: true })
@@ -299,6 +344,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.allocation-card { margin:12px 0;padding:14px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe }.allocation-card p { margin:6px 0 0 }
+.presence-card { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0;padding:14px;border:1px solid #dbeafe;border-radius:10px;background:#f8fafc }.presence-card span,.presence-card strong { display:block }.presence-card span { color:var(--t3);font-size:12px;margin-bottom:4px }.presence-card p { grid-column:1/-1;margin:0;color:var(--t2);font-size:12.5px }
+.rect-card { border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-top:10px }.rect-requirement { margin:7px 0 0;color:var(--t2);line-height:1.6 }.file-pick { display:grid;gap:6px;color:var(--t3);font-size:12px }.file-pick input { padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#fff }
+.confirm-summary { display:grid;gap:8px;padding:14px;border-radius:10px;background:#f8fafc }.confirm-summary strong { color:var(--t3);font-size:12px }.confirm-summary span { color:var(--t1);font-weight:700 }.confirm-summary p { margin:4px 0 0;color:#b45309;font-size:12.5px }
 .two { display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start }.form-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px }.form-grid.compact { max-width:760px }.form-grid label span,.inline-form label span { display:block;font-size:12px;color:var(--t3);margin-bottom:5px }.wide { grid-column:1/-1 }.record { padding:13px 0;border-bottom:1px solid #edf0f4 }.record-head { display:flex;justify-content:space-between;align-items:flex-start;gap:12px }.actions { display:flex;gap:8px;flex-wrap:wrap;margin-top:10px }.inline-form { margin-top:10px;padding:12px;background:#f8fafc;border-radius:10px;display:grid;gap:9px }.check { display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--t2);margin:10px 0 }.warn { color:#b45309;font-size:12.5px;margin-top:5px }.field-error { color:#dc2626;font-size:12.5px;margin:5px 0 }.selected-target { padding:9px 11px;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-weight:600 }.section-title { font-size:15px;font-weight:650;margin:24px 0 8px }.domain-error { display:flex;gap:12px;align-items:center;padding:12px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;margin-bottom:16px }.bed-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0 }.bed-grid div { background:#f8fafc;padding:12px;border-radius:9px }.bed-grid span,.bed-grid strong { display:block }.bed-grid span { font-size:12px;color:var(--t3);margin-bottom:4px }.question { padding:12px 0;border-bottom:1px solid #edf0f4 }.options { display:flex;gap:8px;flex-wrap:wrap;margin-top:8px }.seg { all:unset;cursor:pointer;padding:7px 12px;border-radius:8px;background:#f1f5f9;font-size:12.5px }.seg.on { background:var(--pri-50);color:var(--pri);font-weight:600 }.score-card { display:flex;justify-content:space-between;align-items:center;margin-bottom:16px }.score { display:flex;gap:18px;font-size:18px;font-weight:700;color:var(--pri) }.link { all:unset;display:block;cursor:pointer;color:var(--pri);font-size:12px;margin-top:5px }.mask { position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px }.modal { width:min(680px,100%);max-height:88vh;overflow:auto }.dorm-form { max-width:700px }
-@media(max-width:900px){.two,.form-grid{grid-template-columns:1fr}.wide{grid-column:auto}.bed-grid{grid-template-columns:1fr 1fr}.score-card{align-items:flex-start;gap:14px;flex-direction:column}}
+@media(max-width:900px){.two,.form-grid,.presence-card{grid-template-columns:1fr}.presence-card p{grid-column:auto}.wide{grid-column:auto}.bed-grid{grid-template-columns:1fr 1fr}.score-card{align-items:flex-start;gap:14px;flex-direction:column}}
 </style>

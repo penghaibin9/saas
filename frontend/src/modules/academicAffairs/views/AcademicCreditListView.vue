@@ -117,7 +117,7 @@ export default {
       return pa && !pa.allowed ? pa.reason : ''
     },
     statusLabel(v) {
-      return (this.ctx.statusOptions.creditStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.creditStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     onPageChange(page) {
       this.pagination.page = page

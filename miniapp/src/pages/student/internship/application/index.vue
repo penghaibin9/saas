@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap app">
+    <MobilePrivacyGate />
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack">
         <view class="card">

@@ -20,7 +20,7 @@
         <ul class="pco__list">
           <li v-for="(r, i) in ov.operationalRisks" :key="i">
             <span class="pco__list-name">{{ r.text }}</span>
-            <StatusTag :type="r.level === 'HIGH' ? 'danger' : 'warning'" :label="r.sourceCard" />
+            <StatusTag :type="r.level === 'HIGH' ? 'danger' : 'warning'" :label="riskSourceLabel(r.sourceCard)" />
           </li>
         </ul>
       </AppCard>
@@ -57,16 +57,16 @@
         <AppCard class="pco__panel">
           <AppSectionHeader title="系统健康" />
           <ul class="pco__kv">
-            <li><span>服务状态</span><StatusTag :type="ov.systemHealth === 'UP' ? 'success' : 'danger'" :label="ov.systemHealth" /></li>
-            <li><span>数据库</span><StatusTag :type="ov.dbStatus === 'OK' ? 'success' : 'danger'" :label="ov.dbStatus" /></li>
-            <li><span>文件目录</span><StatusTag :type="ov.fileDirStatus === 'OK' ? 'success' : 'warning'" :label="ov.fileDirStatus" /></li>
-            <li><span>存储占用</span><b>{{ ov.storageUsedMb }} MB</b></li>
+            <li><span>服务状态</span><StatusTag :type="ov.systemHealth === 'UP' ? 'success' : 'danger'" :label="platformStatusLabel(ov.systemHealth)" /></li>
+            <li><span>数据库</span><StatusTag :type="ov.dbStatus === 'OK' ? 'success' : 'danger'" :label="platformStatusLabel(ov.dbStatus)" /></li>
+            <li><span>文件目录</span><StatusTag :type="ov.fileDirStatus === 'OK' ? 'success' : 'warning'" :label="platformStatusLabel(ov.fileDirStatus)" /></li>
+            <li><span>存储占用</span><b>{{ ov.storageUsedMb }} 兆字节</b></li>
           </ul>
           <AppSectionHeader title="最近平台审计" class="pco__gap" />
           <EmptyState v-if="!ov.recentAudits || !ov.recentAudits.length" text="暂无平台审计记录" compact />
           <ul v-else class="pco__list">
             <li v-for="(a, i) in ov.recentAudits" :key="i">
-              <span class="pco__list-name">{{ a.action }} · {{ a.operator }}</span>
+              <span class="pco__list-name">{{ auditActionLabel(a.action) }} · {{ a.operator }}</span>
               <span class="pco__list-time">{{ (a.at || '').replace('T', ' ').slice(5, 16) }}</span>
             </li>
           </ul>
@@ -80,6 +80,8 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'PlatformControlOverview',
@@ -105,6 +107,14 @@ export default {
     this.load()
   },
   methods: {
+    platformStatusLabel,
+    auditActionLabel(action) {
+      return presentAuditRecord({ action }).displayAction
+    },
+    riskSourceLabel(value) {
+      const labels = { SERVICE_CATALOG: '服务目录', INCIDENT: '事件中心', CHANGE: '变更中心' }
+      return labels[String(value || '').toUpperCase()] || '运行风险'
+    },
     async load() {
       this.loading = true
       this.error = ''

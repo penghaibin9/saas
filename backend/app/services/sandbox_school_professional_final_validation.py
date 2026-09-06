@@ -52,6 +52,7 @@ def _expected_major_course_catalog() -> dict[str, tuple[str, str, str]]:
 def validate_professional_school_final_20k(db, tenant_id: int) -> dict:
     from app.models import (
         AaCourse,
+        GraduationBatch,
         GraduationMentor,
         GraduationStudent,
         GraduationTopic,
@@ -62,6 +63,13 @@ def validate_professional_school_final_20k(db, tenant_id: int) -> dict:
     )
 
     expected_catalog = _expected_major_course_catalog()
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if current_graduation_batch_id is None:
+        raise RuntimeError("007 当前毕设批次 GD-2027 不存在")
     courses = list(db.execute(select(
         AaCourse.course_code,
         AaCourse.course_name,
@@ -149,6 +157,7 @@ def validate_professional_school_final_20k(db, tenant_id: int) -> dict:
         int(tid): str(mid)
         for tid, mid in db.execute(select(GraduationTopic.id, GraduationTopic.major_id).where(
             GraduationTopic.tenant_id == tenant_id,
+            GraduationTopic.batch_id == int(current_graduation_batch_id),
             GraduationTopic.is_deleted.is_(False),
         )).all()
     }
@@ -171,6 +180,7 @@ def validate_professional_school_final_20k(db, tenant_id: int) -> dict:
         GraduationStudent.major_id,
     ).where(
         GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == int(current_graduation_batch_id),
         GraduationStudent.is_deleted.is_(False),
     )).all():
         major_name = major_name_by_id.get(int(major_id))

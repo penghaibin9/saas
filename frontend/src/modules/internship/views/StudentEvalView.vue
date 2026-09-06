@@ -7,6 +7,7 @@
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
       <div class="bar">
@@ -110,6 +111,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
   AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTemplateChips, AppTextarea, AppFormItem, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { studentEvalApi } from '@/modules/internship/api/student-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -134,7 +136,8 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTemplateChips, AppTextarea, AppFormItem, AppPagination },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppTemplateChips, AppTextarea, AppFormItem, AppPagination,
+    ActionReceipt },
   data() {
     return {
       ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT,
@@ -145,6 +148,7 @@ export default {
       cmtForm: { advisorOpinion: '', mentorOpinion: '' }, cmtSubmitting: false,
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
+      lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -268,24 +272,34 @@ export default {
     async submitComment() {
       if (!this.cmtForm.advisorOpinion.trim()) return toast.error('请填写指导教师意见')
       this.cmtSubmitting = true
-      const res = await studentEvalApi.advisorComment(this.detail.data.id, this.cmtForm)
+      const res = await studentEvalApi.advisorComment(this.detail.data.id, {
+        ...this.cmtForm, expectedVersion: this.detail.data.version
+      })
       this.cmtSubmitting = false
       if (res.code !== 0) return toast.error(res.message || '保存失败')
+      this.lastReceipt = { actionLabel: '导师评价已保存', objectLabel: this.detail.data.studentName,
+        id: res.data.id, version: res.data.version, statusLabel: '待学校审核',
+        auditText: '导师意见与学生自评版本已关联', nextStep: '由学校管理员按新版本完成审核' }
       toast.success('已保存意见')
       await Promise.all([this.loadDetail(this.selectedId), this.load()])
     },
     openReview(r, action) {
       const ap = action === 'APPROVE'
-      this.pending = { id: r.id, action }
+      this.pending = { id: r.id, action, version: r.version, studentName: r.studentName }
       this.cd = { visible: true, title: ap ? '鉴定 · 通过' : '鉴定 · 退回',
         content: `${ap ? '通过' : '退回'}「${r.studentName}」的实习鉴定，意见将写入审计。`,
         danger: !ap, confirmText: ap ? '通过' : '退回', requireReason: !ap, submitting: false }
     },
     async onConfirm({ reason }) {
       this.cd.submitting = true
-      const res = await studentEvalApi.review(this.pending.id, { action: this.pending.action, comment: reason || '' })
+      const res = await studentEvalApi.review(this.pending.id, { action: this.pending.action,
+        comment: reason || '', expectedVersion: this.pending.version })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
+      this.lastReceipt = { actionLabel: this.pending.action === 'APPROVE' ? '学生鉴定已通过' : '学生鉴定已退回',
+        objectLabel: this.pending.studentName, id: res.data.id, version: res.data.version,
+        statusLabel: res.data.reviewStatusLabel || res.data.reviewStatus,
+        auditText: '审核动作与版本已提交', nextStep: this.pending.action === 'APPROVE' ? '成绩核算将读取该评价版本' : '等待学生修改后重交' }
       this.cd.visible = false; toast.success('审核完成，已写审计')
       await this.advanceAfterReview(this.pending.id)
     },

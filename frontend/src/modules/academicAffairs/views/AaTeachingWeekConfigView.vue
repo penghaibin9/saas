@@ -98,7 +98,7 @@ export default {
     this.refreshTermCatalog()
   },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     isResolvedCurrent(term) {
       return Boolean(term && this.currentContext?.termId) && String(term.termId) === String(this.currentContext.termId)
     },

@@ -504,7 +504,10 @@ export default {
       // 其首叶「我的工作台」指向 /workbench；不再额外合成 home，避免出现两个「工作台」）。
       if (!this.ctx) return []
       if (this.isPlatformMode) {
-        return [{ key: 'platform', label: '平台运营', path: '/admin/platform/overview' }]
+        // 平台职责账号必须落到过滤后的首个可用工作区；overview 仅 root/control duty 可进。
+        // 禁止把一级轨点击写死到 overview，否则 PLATFORM_COMMERCIAL 等受限职责会被送进 403。
+        const firstAllowed = this.menus.find((item) => item?.path)?.path
+        return [{ key: 'platform', label: '平台运营', path: firstAllowed || this.$route?.path || '/security/403' }]
       }
       return getVisibleAdminMenu(this.ctx).map((group) => {
         const first = group.children[0]

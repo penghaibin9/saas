@@ -76,6 +76,14 @@ test('teacher login accepts the backend academic role codes', () => {
   assert.match(roles, /ACADEMIC_ADMIN: ROLE\.ACADEMIC/)
 })
 
+test('teacher login accepts dorm managers and preserves the building data scope', () => {
+  const roles = read('src/config/roles.config.js')
+  assert.match(roles, /DORM_MANAGER: ROLE\.DORM_MANAGER/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?dataScope: 'DORM_BUILDING'/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?key: 'dormReview'/)
+  assert.match(roles, /teacherIdentities = \[[\s\S]*?ROLE\.DORM_MANAGER/)
+})
+
 test('real teacher contexts drive identity switching with canonical role keys', () => {
   const roles = read('src/config/roles.config.js')
   const session = read('src/stores/session.js')
@@ -163,6 +171,44 @@ test('release script never writes an empty appid and can resolve it from .env.pr
   assert.match(release, /uploadReady/)
   // AppID 必须校验格式，避免把错值写进产物后到工具里才发现
   assert.match(release, /APPID_PATTERN = \/\^wx\[0-9a-fA-F\]\{16\}\$\//)
+})
+
+test('release script forces legal-domain checks in private DevTools config', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PROJECT_PRIVATE_JSON/)
+  assert.match(release, /privateConfig\.setting\s*=\s*\{[\s\S]*urlCheck:\s*true/)
+})
+
+test('WeChat permission descriptions stay within the 30-character upload limit', () => {
+  const manifest = JSON.parse(read('src/manifest.json'))
+  const permissions = manifest['mp-weixin']?.permission || {}
+  for (const [scope, config] of Object.entries(permissions)) {
+    const length = Array.from(String(config?.desc || '').trim()).length
+    assert.ok(length <= 30, `${scope}.desc is ${length} characters; WeChat allows at most 30`)
+  }
+
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PERMISSION_DESC_MAX_LENGTH = 30/)
+  assert.match(release, /Object\.entries\(appConfig\.permission \|\| \{\}\)/)
+})
+
+test('release build rejects unsupported selectors in custom component WXSS', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /findUnsupportedComponentSelectors/)
+  assert.match(release, /config\.component !== true/)
+  assert.match(release, /标签、ID、属性或伪类选择器/)
+})
+
+test('release build rejects mock payload files left in the production output', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /normalizeRelative\(item\)\.startsWith\('mock\/'\)/)
+  assert.match(release, /生产包仍包含未剥离的 mock 数据体/)
+})
+
+test('release build rejects leaked local build paths', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /VITE_ROOT_DIR/)
+  assert.match(release, /构建产物泄露本机绝对路径/)
 })
 
 test('release build fails at the proactive 1.80 MiB split threshold', () => {

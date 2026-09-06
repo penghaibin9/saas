@@ -204,7 +204,7 @@ export default {
       return trail.map((t) => ({
         id: t.id,
         action: t.action,
-        actionLabel: ACTION_LABEL[t.action] || t.action,
+        actionLabel: ACTION_LABEL[t.action] || (t.action ? '业务操作' : '—'),
         actor: t.operator,
         at: t.time,
         reason: t.detail

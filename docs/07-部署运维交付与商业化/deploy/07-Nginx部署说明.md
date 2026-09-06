@@ -1,5 +1,7 @@
 # 07 · Nginx 部署说明
 
+> **历史材料，不是当前发布入口。** 当前 Nginx/TLS/四客户端验证请从 [`README.md`](./README.md) 进入。
+
 > Nginx 负责：把你 build 出来的静态网站「挂到网上」，并处理刷新 404、开启压缩、缓存静态资源、加基础安全头，将来还负责把 `/api/` 转发给后端。
 > 完整可复制的示例文件：`deploy/nginx/pc-frontend.conf.example`、`deploy/nginx/miniapp-h5.conf.example`。
 

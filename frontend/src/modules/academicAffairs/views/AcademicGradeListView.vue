@@ -228,10 +228,10 @@ export default {
       return pa && !pa.allowed ? pa.reason : ''
     },
     natureLabel(v) {
-      return (this.ctx.statusOptions.courseNature.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.courseNature.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     examTypeLabel(v) {
-      return (this.ctx.statusOptions.examType.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.examType.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     onPageChange(page) {
       this.pagination.page = page

@@ -39,6 +39,17 @@ def normalize_scope(code: str) -> str:
     return _SCOPE_ALIASES.get(raw, raw)
 
 
+def _validate_scope_targets(scope: str, targets: dict) -> None:
+    if scope != "CUSTOM":
+        return
+    college_ids = targets.get("collegeIds") or targets.get("college_ids") or []
+    major_ids = targets.get("majorIds") or targets.get("major_ids") or []
+    class_ids = targets.get("classIds") or targets.get("class_ids") or []
+    object_ids = targets.get("objectIds") or targets.get("object_ids") or []
+    if not any([college_ids, major_ids, class_ids, object_ids]):
+        raise AppException("VALIDATION_ERROR", "CUSTOM 范围必须指定学院/专业/班级或对象目标，禁止扩大为全校")
+
+
 def resolve_role_scope_code(role) -> str | None:
     """从 t_data_scope_rule 读取角色范围；无则 None（调用方回落 remark 只读）。"""
     try:
@@ -74,75 +85,128 @@ def resolve_scope_by_role_code(tenant_id: int, role_code: str) -> str | None:
         db.close()
 
 
-def save_role_scope(role, scope_code: str, *, target_json: dict | None = None,
-                    actor: dict | None = None, expected_version: int | None = None) -> dict:
+def save_role_scope_in_session(db, role, scope_code: str | None, *,
+                               target_json: dict | None = None,
+                               expected_version: int | None = None) -> dict:
+    """Persist a role scope in the caller's transaction.
+
+    Control-plane role mutations lock ``t_role`` and must update permissions,
+    scope, provenance, and critical audit atomically. Opening a second session
+    here would wait on the caller's row lock and eventually time out.
+    """
     from app.models import DataScopeRule
 
-    scope = normalize_scope(scope_code)
+    tid = int(getattr(role, "tenant_id", 0) or current_tenant_id() or 0)
+    row = db.scalars(select(DataScopeRule).where(
+        DataScopeRule.tenant_id == tid,
+        DataScopeRule.role_code == role.role_code,
+        DataScopeRule.is_deleted.is_(False),
+    ).order_by(DataScopeRule.id.desc()).with_for_update()).first()
+    if row is not None and expected_version is not None:
+        if int(row.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "数据范围已被他人修改，请刷新后重试")
+
+    if scope_code:
+        scope = normalize_scope(scope_code)
+    elif row is not None:
+        scope = normalize_scope(row.scope_type)
+    else:
+        marker = str(getattr(role, "remark", "") or "")
+        legacy = marker.split(";scope=", 1)[1].split(";", 1)[0] if ";scope=" in marker else "ASSIGNED"
+        scope = normalize_scope(legacy)
     if scope not in SUPPORTED_SCOPES and scope not in _SCOPE_ALIASES.values():
         raise AppException("VALIDATION_ERROR", f"不支持的数据范围：{scope}")
-    targets = target_json if isinstance(target_json, dict) else {}
-    if scope == "CUSTOM":
-        college_ids = targets.get("collegeIds") or targets.get("college_ids") or []
-        major_ids = targets.get("majorIds") or targets.get("major_ids") or []
-        class_ids = targets.get("classIds") or targets.get("class_ids") or []
-        object_ids = targets.get("objectIds") or targets.get("object_ids") or []
-        if not any([college_ids, major_ids, class_ids, object_ids]):
-            raise AppException("VALIDATION_ERROR", "CUSTOM 范围必须指定学院/专业/班级或对象目标，禁止扩大为全校")
 
+    targets = (
+        target_json if isinstance(target_json, dict)
+        else dict(row.target_json or {}) if row is not None
+        else {}
+    )
+    _validate_scope_targets(scope, targets)
+
+    before = (
+        {"scopeCode": normalize_scope(row.scope_type), "scopeTarget": row.target_json or {}, "version": int(row.version or 0)}
+        if row is not None
+        else None
+    )
+    if row is None:
+        row = DataScopeRule(
+            tenant_id=tid,
+            rule_name=f"{role.role_code}-scope",
+            role_code=role.role_code,
+            scope_type=scope,
+            target_json=targets or None,
+            status="ACTIVE",
+            remark="structured-scope",
+        )
+        db.add(row)
+    else:
+        row.scope_type = scope
+        row.target_json = targets or None
+        row.status = "ACTIVE"
+        row.is_deleted = False
+        row.version = int(row.version or 0) + 1
+
+    # 历史 remark 仅保留兼容标记，不再作为主写入。
+    remark = str(getattr(role, "remark", "") or "")
+    remark = re.sub(r";scope=[^;]*", "", remark)
+    remark = re.sub(r";permMode=[^;]*", "", remark).rstrip(";")
+    role.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
+    db.flush()
+    return {
+        "scopeCode": scope,
+        "scopeTarget": targets,
+        "version": int(row.version or 0),
+        "before": before,
+    }
+
+
+def save_role_scope(role, scope_code: str, *, target_json: dict | None = None,
+                    actor: dict | None = None, expected_version: int | None = None) -> dict:
+    from app.models import Role as RoleModel
+
+    requested_scope = normalize_scope(scope_code)
+    requested_targets = target_json if isinstance(target_json, dict) else {}
+    _validate_scope_targets(requested_scope, requested_targets)
     tid = int(getattr(role, "tenant_id", 0) or current_tenant_id() or 0)
     db = get_sessionmaker()()
     try:
-        row = db.scalars(select(DataScopeRule).where(
-            DataScopeRule.tenant_id == tid,
-            DataScopeRule.role_code == role.role_code,
-            DataScopeRule.is_deleted.is_(False),
-        ).order_by(DataScopeRule.id.desc())).first()
-        if row is not None and expected_version is not None:
-            if int(row.version or 0) != int(expected_version):
-                raise AppException("DATA_CONFLICT", "数据范围已被他人修改，请刷新后重试")
-        before = None
-        if row is None:
-            row = DataScopeRule(
-                tenant_id=tid,
-                rule_name=f"{role.role_code}-scope",
-                role_code=role.role_code,
-                scope_type=scope,
-                target_json=targets or None,
-                status="ACTIVE",
-                remark="structured-scope",
-            )
-            db.add(row)
-        else:
-            before = {"scopeType": row.scope_type, "target": row.target_json, "version": row.version}
-            row.scope_type = scope
-            row.target_json = targets or None
-            row.status = "ACTIVE"
-            row.version = int(row.version or 0) + 1
-        # 历史 remark 仅保留兼容标记，不再作为主写入（在本会话内更新 Role）
-        from app.models import Role as RoleModel
         role_row = db.scalars(select(RoleModel).where(
-            RoleModel.tenant_id == tid, RoleModel.role_code == role.role_code,
-            RoleModel.is_deleted.is_(False))).first()
-        if role_row is not None:
-            remark = str(role_row.remark or "")
-            remark = re.sub(r";scope=[^;]*", "", remark)
-            remark = re.sub(r";permMode=[^;]*", "", remark).rstrip(";")
-            role_row.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
+            RoleModel.tenant_id == tid,
+            RoleModel.role_code == role.role_code,
+            RoleModel.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if role_row is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        result = save_role_scope_in_session(
+            db,
+            role_row,
+            scope_code,
+            target_json=target_json,
+            expected_version=expected_version,
+        )
         db.commit()
-        db.refresh(row)
         from app.services import audit_log
         audit_log.record(
             "DATA_SCOPE_SAVE",
             f"role:{role.role_code}",
             detail={
-                "before": before,
-                "after": {"scopeType": scope, "target": targets, "version": row.version},
+                "before": result["before"],
+                "after": {
+                    "scopeCode": result["scopeCode"],
+                    "scopeTarget": result["scopeTarget"],
+                    "version": result["version"],
+                },
                 "moduleCode": "systemAdmin",
                 "actor": (actor or {}).get("userId"),
             },
         )
-        return {"scopeCode": scope, "target": targets, "version": int(row.version or 0)}
+        role.remark = role_row.remark
+        return {
+            "scopeCode": result["scopeCode"],
+            "target": result["scopeTarget"],
+            "version": result["version"],
+        }
     except Exception:
         db.rollback()
         raise
@@ -230,6 +294,9 @@ def _provider_counselor_classes(user, resource_type, resource) -> bool:
     """辅导员班级关系提供器。"""
     login = str(user.get("loginName") or "")
     class_id = resource.get("classId")
+    assigned = {str(value) for value in (user.get("classIds") or [])}
+    if assigned:
+        return bool(class_id) and str(class_id) in assigned
     if not login or not class_id:
         return False
     from app.models import SchoolClass

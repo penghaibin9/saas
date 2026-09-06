@@ -44,15 +44,24 @@ def _owner_role_user_ids(db) -> set[int]:
         User.tenant_id == _tid(), User.is_deleted.is_(False), User.status == "ACTIVE",
     )).all()
     eligible: set[int] = set()
+    # 权限属于角色，不属于用户角色关系行。原实现对 1,280 名教职工的
+    # 每一条 UserRole 都调 has_permission，而自定义角色判定会访问数据库，
+    # 风险列表因此出现数千次重复查询并超过前端 10 秒阈值。同一角色
+    # 只需判定一次；临时授权不会把账号变成可分派的永久风险责任人。
+    role_can_handle: dict[int, bool] = {}
     tenant_id = str(_tid())
     for user_id, role in rows:
-        fake_user_ctx = {
-            "userId": str(user_id),
-            "currentRoleCode": role.role_code,
-            "tenantId": tenant_id,
-            "activeContextId": f"role:{role.id}",
-        }
-        if has_permission(fake_user_ctx, "studentAffairs.risk.handle"):
+        can_handle = role_can_handle.get(int(role.id))
+        if can_handle is None:
+            fake_user_ctx = {
+                "userId": str(user_id),
+                "currentRoleCode": role.role_code,
+                "tenantId": tenant_id,
+                "activeContextId": f"role:{role.id}",
+            }
+            can_handle = has_permission(fake_user_ctx, "studentAffairs.risk.handle")
+            role_can_handle[int(role.id)] = can_handle
+        if can_handle:
             eligible.add(int(user_id))
     return eligible
 
@@ -601,7 +610,10 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
                                  to_stage="RISK_CLOSED", reason=f"风险处置关闭（{x.source}）",
                                  source_module="student-affairs"))
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "风险已关闭", "相关风险已处置关闭", "STATUS_CHANGED", x.id)
+        # 每次真实 CLOSE 都必须产生独立的学生结果通知。重开后再次关闭时，
+        # 若继续使用固定 STATUS_CHANGED 去重键，Outbox 会把第二次关闭误判成重复事件。
+        _msg(db, x.student_id, "风险已关闭", "相关风险已处置关闭",
+             f"STATUS_CHANGED:CLOSE:v{x.version}", x.id)
         _audit(db, x.id, "CLOSE")
         db.commit()
         _drain_message_outbox()

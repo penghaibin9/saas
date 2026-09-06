@@ -86,6 +86,10 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_class",
         "t_green_channel_application",
         "t_emp_recommendation",
+        "t_business_form_definition",
+        "t_business_form_version",
+        "t_document_compare_result",
+        "t_integrity_exception",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
@@ -165,6 +169,36 @@ def test_p0_manual_dr_records_can_never_make_health_green(db_mode):
     assert board["machineHealth"]["status"] == "UNKNOWN"
     assert board["restoreDrill"]["hasPassedDrill"] is False
     assert board["restoreDrill"]["healthAuthority"] == "MACHINE_ONLY"
+
+
+def test_p0_missing_recovery_schema_fails_closed_without_breaking_overview(monkeypatch):
+    from app.services import machine_recovery_evidence_service as machine
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get_bind(self):
+            return object()
+
+    class FakeInspector:
+        @staticmethod
+        def has_table(table_name):
+            assert table_name == "t_recovery_run"
+            return False
+
+    monkeypatch.setattr(machine, "_session", lambda: FakeSession())
+    monkeypatch.setattr(machine, "inspect", lambda _bind: FakeInspector())
+
+    health = machine.machine_health()
+    assert health["status"] == "UNKNOWN"
+    assert health["schemaReady"] is False
+    assert health["reasonCode"] == "RECOVERY_EVIDENCE_SCHEMA_MISSING"
+    assert health["backup"]["status"] == "UNKNOWN"
+    assert health["restore"]["status"] == "UNKNOWN"
 
 
 def test_p0_machine_restore_green_requires_complete_file_hash_verification():

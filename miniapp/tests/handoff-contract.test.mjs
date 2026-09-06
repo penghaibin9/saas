@@ -8,6 +8,7 @@ import { buildHandoff } from '../scripts/generate-v3-handoff.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const repo = resolve(root, '..')
+const handoffPath = 'artifacts/release-seals/miniapp-v3-handoff.json'
 const read = (path) => readFileSync(resolve(repo, path), 'utf8')
 
 const REQUIRED_FIELDS = [
@@ -21,7 +22,7 @@ const DOWNSTREAM_SHARED_FIELDS = [
 ]
 
 test('S9 handoff 覆盖手册要求的全部共享契约字段', () => {
-  const stored = JSON.parse(read('miniapp-v3-handoff.json'))
+  const stored = JSON.parse(read(handoffPath))
   for (const field of REQUIRED_FIELDS) {
     assert.ok(field in stored, `handoff 缺少 ${field}`)
   }
@@ -54,8 +55,8 @@ test('S9 / T8 当前 alembic 必须继续保持单头', () => {
 })
 
 test('T8 落盘 Student handoff 与当前共享前端合同一致，允许下游业务迁移继续前进', () => {
-  const path = resolve(repo, 'miniapp-v3-handoff.json')
-  assert.ok(existsSync(path), '仓库里必须有 miniapp-v3-handoff.json')
+  const path = resolve(repo, handoffPath)
+  assert.ok(existsSync(path), `仓库里必须有 ${handoffPath}`)
   const stored = JSON.parse(readFileSync(path, 'utf8'))
   const current = buildHandoff()
   for (const field of DOWNSTREAM_SHARED_FIELDS) {

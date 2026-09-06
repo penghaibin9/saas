@@ -51,9 +51,19 @@
             </view>
           </view>
         </view>
+        <view class="home__core-actions">
+          <view class="home__core-action" @click="go('/pages/student/academic-affairs/schedule')">
+            <text class="home__core-title">今日课表</text>
+            <text class="home__core-desc">查看今天上什么课 ›</text>
+          </view>
+          <view class="home__core-action" @click="go('/pages/student/academic-affairs/selection')">
+            <text class="home__core-title">网上选课</text>
+            <text class="home__core-desc">查看当前可办理批次 ›</text>
+          </view>
+        </view>
         <view class="home__locked">
           <text class="home__locked-icon">🔒</text>
-          <text class="home__locked-tx">完成报到后，课表、成绩、校园服务等{{ '\n' }}功能将自动解锁</text>
+          <text class="home__locked-tx">课表与选课始终可查看；完成报到后，成绩与其他校园服务将自动解锁</text>
         </view>
       </view>
 
@@ -193,6 +203,7 @@ import { getStudentHomeVersion } from '@/utils/viewFreshness'
 import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
@@ -276,7 +287,7 @@ export default {
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load({ force: true })
   },
   onShow() {
@@ -426,6 +437,10 @@ export default {
 .home__guide-step-st { margin-left: auto; font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--text-tertiary); }
 .home__guide-step.done .home__guide-step-st { color: var(--success-600); }
 .home__guide-step.now .home__guide-step-st { color: var(--orientation-700); }
+.home__core-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.home__core-action { padding: var(--space-4); border: 1px solid rgba(37,99,235,.16); border-radius: var(--radius-lg); background: var(--bg-card); box-shadow: var(--shadow-card); }
+.home__core-title { display: block; font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+.home__core-desc { display: block; margin-top: var(--space-2); font-size: var(--font-size-xs); line-height: 1.5; color: var(--brand-primary); }
 .home__locked { margin-top: var(--card-gap-mobile); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-6) var(--space-4); box-shadow: var(--shadow-card); text-align: center; }
 .home__locked-icon { display: block; font-size: 28px; }
 .home__locked-tx { display: block; margin-top: var(--space-2); font-size: var(--font-size-sm); color: var(--text-tertiary); line-height: 1.6; white-space: pre-line; }

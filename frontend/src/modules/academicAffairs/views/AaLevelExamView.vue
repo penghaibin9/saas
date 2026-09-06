@@ -137,7 +137,7 @@ export default {
     this.load()
   },
   methods: {
-    stLabel(s) { return _L[s] || s },
+    stLabel(s) { return _L[s] || '状态待确认' },
     stType(s) { return s === 'OPEN' ? 'success' : s === 'FINISHED' ? 'default' : s === 'CLOSED' ? 'warning' : 'primary' },
     catLabel(c) { return _CAT[c] || c },
     async load() {

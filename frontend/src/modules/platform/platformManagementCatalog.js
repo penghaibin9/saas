@@ -30,8 +30,8 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-tenancy', label: '租户生命周期', icon: '♜', description: '学校从试用、开通、运营、到期、停用到归档的全生命周期管理。',
     items: [
-      { key: 'plt-tenants', label: '租户学校', path: '/admin/platform/tenants', permissionKey: 'platform.tenant.view', view: 'tenants', actions: [action('tenant:create', '创建租户', 'HIGH'), action('tenant:update', '修改租户'), action('tenant:suspend', '停用租户', 'HIGH')] },
-      { key: 'plt-trials', label: '试用与线索', path: '/admin/platform/tenants?status=trial', permissionKey: 'platform.tenant.trial.manage', view: 'tenants', actions: [action('tenant:trial:create', '创建试用租户', 'HIGH'), action('tenant:trial:extend', '延长试用', 'HIGH'), action('tenant:trial:convert', '转为正式', 'HIGH')] },
+      { key: 'plt-tenants', label: '租户学校', path: '/admin/platform/tenants', permissionKey: 'platform.tenant.view', view: 'tenants', actions: [action('tenant:provision', '发起自动开户', 'HIGH'), action('tenant:update', '修改租户'), action('tenant:suspend', '停用租户', 'HIGH')] },
+      { key: 'plt-trials', label: '试用与线索', path: '/admin/platform/tenants?status=trial', permissionKey: 'platform.tenant.trial.manage', view: 'tenants', actions: [action('tenant:trial:provision', '发起试用开户', 'HIGH'), action('tenant:trial:extend', '延长试用', 'HIGH'), action('order:create', '录入正式订单', 'HIGH')] },
       { key: 'plt-tenant-transitions', label: '开通、停用与归档', path: '/admin/platform/tenant-transitions', permissionKey: 'platform.tenant.lifecycle.manage', view: 'capability', actions: [action('tenant:activate', '正式开通', 'HIGH'), action('tenant:readonly', '切换只读', 'HIGH'), action('tenant:archive', '归档租户', 'HIGH')] },
       { key: 'plt-tenant-contacts', label: '学校联系人与平台主管理员', path: '/admin/platform/tenant-contacts', permissionKey: 'platform.tenant.contact.manage', view: 'capability', actions: [action('tenant:contact:manage', '维护联系人'), action('tenant:admin:reset', '重置学校管理员', 'HIGH')] }
     ]
@@ -58,6 +58,7 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-standards', label: '全局标准与发布', icon: '☲', description: '统一角色模板、全局规则和版本发布，学校只能在受控范围内使用。',
     items: [
+      { key: 'plt-product-iam', label: '产品身份与权限', path: '/admin/platform/product-iam', permissionKey: 'platform.productIam.view', view: 'product-iam', actions: [action('platform.productIam.manage', '管理角色模板草稿', 'HIGH'), action('platform.productIam.publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-role-templates', label: '平台角色模板', path: '/admin/platform/role-templates', permissionKey: 'platform.role-template.manage', view: 'capability', actions: [action('role-template:publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-global-rules', label: '全局字典与规则', path: '/admin/platform/dictionaries', permissionKey: 'platform.dict.view', view: 'dictionaries', actions: [action('rule:global:update', '更新全局规则', 'HIGH')] },
       { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] },
@@ -76,7 +77,7 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
     key: 'plt-reliability', label: '集成与运行保障', icon: '↔', description: '平台连接、密钥、同步、存储和运行健康必须可观测、可重试、可审计。',
     items: [
       { key: 'plt-integrations', label: '平台级接口与连接', path: '/admin/platform/integrations', permissionKey: 'platform.integration.view', view: 'integrations', actions: [action('integration:connection:manage', '维护接口连接', 'HIGH'), action('integration:test', '测试连接')] },
-      { key: 'plt-api-access', label: 'API、密钥与 Webhook', path: '/admin/platform/api-access', permissionKey: 'platform.api.view', view: 'api-access', actions: [action('api:credential:rotate', '轮换密钥', 'HIGH'), action('webhook:redeliver', '重新投递 Webhook')] },
+      { key: 'plt-api-access', label: '接口、密钥与回调通知', path: '/admin/platform/api-access', permissionKey: 'platform.api.view', view: 'api-access', actions: [action('api:credential:rotate', '轮换密钥', 'HIGH'), action('webhook:redeliver', '重新投递回调通知')] },
       { key: 'plt-operations', label: '同步任务、资源与服务健康', path: '/admin/platform/sync', permissionKey: 'platform.sync.view', view: 'sync', actions: [action('operation:job:retry', '重试运行任务', 'HIGH'), action('operation:storage:test', '测试文件存储', 'HIGH')] }
     ]
   },

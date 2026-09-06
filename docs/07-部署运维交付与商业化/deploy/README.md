@@ -1,72 +1,51 @@
-# 部署文档（docs/07-部署运维交付与商业化/deploy/）
+# 部署与上线：当前唯一入口
 
-> 面向对象：完全不会数据库、不会部署、不懂工程细节的新手。
-> 目标：照着做就能把「现在能真实部署的部分」上线，并知道「现在还不能上线的部分」是哪些。
-> 初版日期：2026-07-04
-> 当前部署基线：2026-07-18
+> 更新：2026-08-31。当前系统已有 FastAPI、MySQL、Redis、Alembic、后台任务、备份恢复和四个客户端交付面；“后端预留”“只部署静态演示站”“固定迁移号 0111”等旧口径均已失效。
 
-> **状态更新**：2026-07-04 的“只有前端、后端和数据库仍是预留”判断已经失效。当前 FastAPI、MySQL、Redis、多租户鉴权、Alembic、真实业务主表、调度、备份与健康检查均已具备部署实现。2U4G Linux 优先使用 systemd 非容器方案，见 `10-2U4G非容器部署准备与执行手册.md`；旧 01—09 文档只用于理解基础概念，遇到冲突以新手册和实际脚本为准。
+## 上线红线
 
----
+先查看 [`../../00-项目入口与总控/project-status.json`](../../00-项目入口与总控/project-status.json)。只有 `deliverable=true` 才允许执行生产发布。`integration_candidate`、`pending`、`partial` 或 `blocked_environment` 都不等于可上线。
 
-## 这份文档现在能帮你做什么
+再运行只读检查：
 
-**能真实部署（准备完成，按用户要求本次尚未上服务器）**
+```powershell
+python scripts\check\check-release-readiness.py
+```
 
-- PC 管理端前端静态站点（`frontend/`，构建产物 `frontend/dist/`）
-- 小程序 H5 版（`miniapp/`，构建产物 `miniapp/dist/build/h5/`）
-- 微信小程序构建产物（`miniapp/dist/build/mp-weixin/`，用微信开发者工具上传）
-- FastAPI 后端（systemd 2 workers 或 Docker）
-- MySQL 8 + Alembic `0111` 迁移链
-- Redis 多实例缓存/限流、独立 scheduler、备份恢复、就绪检查
+任何 `BLOCK` 都必须先解决。检查不会部署、删除文件、重启服务或访问生产数据库。
 
-**仍需在真实服务器现场完成**
+## 当前权威文档
 
-- 核实服务器操作系统和现有 Nginx/MySQL/Redis，不覆盖未知现网；
-- 填写真实域名、HTTPS 证书、强密钥和数据库密码；
-- 先做生产备份，再迁移、切换版本并跑冒烟；
-- 短信、微信和对象存储等第三方能力按学校采购账号接入。
-
-> 一句话：代码与非容器发布包已准备好，但“已准备”不等于“已部署”；2026-07-18 验收没有连接或修改真实服务器。
-
----
-
-## 阅读顺序（建议新手从上往下看）
-
-| 序号 | 文件 | 说明 |
+| 顺序 | 文档 | 用途 |
 |---|---|---|
-| 00 | `README.md`（本文件） | 总入口，先看这里 |
-| 01 | `01-部署总览.md` | 整个系统由哪几块组成、每块现在什么状态 |
-| 02 | `02-服务器环境准备.md` | 一台新服务器要装什么，一步步来 |
-| 03 | `03-PC前端部署.md` | PC 管理端怎么 build、dist 在哪、Nginx 怎么指 |
-| 04 | `04-miniapp小程序部署.md` | 小程序 H5 与微信小程序怎么构建、怎么发布 |
-| 05 | `05-后端预留部署说明.md` | 后端现在是预留状态，将来怎么接（先了解即可） |
-| 06 | `06-数据库冻结文档引用说明.md` | 数据库设计冻结文档在哪、为什么现在不动它 |
-| 07 | `07-Nginx部署说明.md` | Nginx 完整配置讲解（含刷新 404、缓存、安全头） |
-| 08 | `08-环境变量说明.md` | 各端环境变量都是干什么的，示例文件在哪 |
-| 09 | `09-发布与回滚流程.md` | 正式发版的标准步骤，出问题怎么退回上一版 |
-| 10 | `10-2U4G非容器部署准备与执行手册.md` | **当前主手册**：systemd、Nginx、备份、迁移、原子切换和验收 |
+| 1 | [`上线候选版本检查.md`](./上线候选版本检查.md) | 确认正在看的 commit 能否进入生产流程 |
+| 2 | [`生产环境变量清单.md`](./生产环境变量清单.md) | 准备生产配置，真实秘密不入 Git |
+| 3 | [`生产上线runbook.md`](./生产上线runbook.md) | 正式发布、验收和失败处置 |
+| 4 | [`../../../deploy/README-data-governance.md`](../../../deploy/README-data-governance.md) | MySQL、uploads、异地备份与恢复唯一口径 |
+| 5 | [`学校试点部署Runbook.md`](./学校试点部署Runbook.md) | 第一所学校的分阶段执行顺序 |
+| 6 | [`10-2U4G非容器部署准备与执行手册.md`](./10-2U4G非容器部署准备与执行手册.md) | 2U4G Linux/systemd 现场准备 |
 
-配套示例文件在项目根目录 `deploy/`：
+实际执行脚本以仓库当前版本为准：
 
-```
-deploy/
-├── nginx/
-│   ├── pc-frontend.conf.example      # PC 前端 Nginx 站点示例
-│   └── miniapp-h5.conf.example       # 小程序 H5 Nginx 站点示例
-└── env/
-    ├── pc-frontend.env.example       # PC 前端环境变量示例
-    ├── miniapp.env.example           # 小程序环境变量示例
-    ├── backend.env.example           # 后端环境变量示例（预留）
-    └── database.env.example          # 数据库环境变量示例（预留）
-```
+- `scripts/check/preflight-school-trial.sh`：环境静态预检。
+- `scripts/deploy/install-systemd-release.sh --check`：发布前只读/检查模式。
+- `scripts/deploy/install-systemd-release.sh --apply`：生产发布，仅在全部门禁通过后执行。
+- `scripts/deploy/verify-systemd-release.sh`：发布后验证。
+- `deploy/backup/restore-backup-set.sh`：受治理恢复点的恢复原语。
 
-> `.example` 结尾表示「示例模板」。真实部署时复制一份、去掉 `.example`、按注释填好，再使用。**不要把真实密码提交到 git。**
+## 当前交付组成
 
----
+- 后端服务：FastAPI + MySQL 8 + Redis。
+- 管理 PC：`frontend/`。
+- 学生 PC：`student-portal/`。
+- 移动端 H5/微信构建：`miniapp/`。
+- 企业协同 PC：`enterprise-portal/`。
+- 后台进程：scheduler、file-scan worker、backup watchdog。
 
-## 三条新手红线（务必遵守）
+systemd 发布脚本必须构建并验证四个客户端目录，同时发布后端与后台进程。微信小程序审核/发布属于微信平台流程，不等于服务器 H5 发布。
 
-1. **不要改业务代码**：部署只做「构建 + 拷贝 dist + 配 Nginx」，不改 `frontend/src/`、不改 `miniapp/`、不改 `backend/`。
-2. **不要重设计数据库**：数据库以 `docs/05-数据接口权限与安全/database/00-数据库设计冻结总册.md` 为唯一依据，本阶段只引用、不改、不建表。
-3. **不要把 dist 当源码改**：`frontend/dist/` 和 `miniapp/dist/` 是机器生成的产物，改错了下次 build 就被覆盖。要改就改源码后重新 build。
+## 旧文档怎么处理
+
+本目录 `01`—`09` 是 2026-07 的新手阶段材料，其中多份仍描述“后端预留”或静态站点手工覆盖。为保留历史链接暂不删除，但已经在文档清单中标记为 `superseded`，不得用于正式上线。
+
+若旧文档与本页、生产 Runbook、数据治理文档或当前脚本冲突，以后四者为准。不要手工覆盖 `dist`，不要用 `metadata.create_all` 建生产库，不要用固定迁移编号判断数据库状态，也不要用自动 `alembic downgrade` 代替受治理恢复。

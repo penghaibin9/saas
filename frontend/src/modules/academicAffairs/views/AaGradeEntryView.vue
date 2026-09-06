@@ -11,6 +11,12 @@
     </template>
 
     <div class="mp-stack">
+      <section v-if="submitReceipt" class="aa-action-receipt" role="status">
+        <div><strong>✓ 已提交学院审核</strong><span>{{ submitReceipt.courseName }} · 任务 {{ submitReceipt.taskId }}</span></div>
+        <div><small>当前状态</small><b>{{ statusLabel(submitReceipt.status) }}</b></div>
+        <div><small>下一责任</small><b>学院成绩审核人</b></div>
+        <AppButton size="small" variant="ghost" @click="closeTask">继续下一门</AppButton>
+      </section>
       <AppSectionCard v-if="!task" title="新建成绩录入任务">
         <AppInlineAlert
           v-if="isAdminRole && !form.teachingTaskId"
@@ -96,7 +102,7 @@
           </div>
           <div class="aa-actions">
             <AppButton variant="primary" :loading="deadlineSaving" @click="saveDeadline">{{ task.deadlineReady ? '延长截止时间' : '设置截止时间' }}</AppButton>
-            <span class="mp-note">截止时间是 GradeTask 持久化事实；不会拿学期结束时间代替。逾期提交由应用预检 + MySQL 原子门禁双重阻断。</span>
+            <span class="mp-note">截止时间以成绩录入任务中的持久化记录为准，不使用学期结束时间替代。逾期提交由应用预检与数据库原子门禁双重阻断。</span>
           </div>
         </AppSectionCard>
 
@@ -167,7 +173,7 @@
                 <AppButton :disabled="schemeDraft.length >= 12" @click="addComponent">新增成绩项</AppButton>
                 <AppButton variant="primary" :loading="schemeSaving" @click="saveScheme">保存方案</AppButton>
               </div>
-              <p v-else class="mp-note">方案状态：{{ dynamicData.scheme?.status }}。已开始录分或任务状态已变化，当前只读。</p>
+              <p v-else class="mp-note">方案状态：{{ schemeStatusLabel(dynamicData.scheme?.status) }}。已开始录分或任务状态已变化，当前只读。</p>
             </template>
           </AppSectionCard>
 
@@ -279,6 +285,7 @@ export default {
       },
       creating: false, task: null, myTasks: [],
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
+      submitReceipt: null,
       importVisible: false,
       reminderVisible: false, reminderTask: null, reminding: false,
       deadlineForm: { deadlineLocal: '', reason: '' }, deadlineSaving: false,
@@ -316,7 +323,8 @@ export default {
   },
   created() { this.loadTasks() },
   methods: {
-    statusLabel(status) { return TASK_STATUS[status] || status || '未知' },
+    schemeStatusLabel(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', ACTIVE: '生效中', LOCKED: '已锁定', ARCHIVED: '已归档' })[value] || (value ? '状态待确认' : '未设置') },
+    statusLabel(status) { return TASK_STATUS[status] || (status ? '状态待确认' : '未知') },
     statusColor(status) {
       if (['PUBLISHED', 'ARCHIVED'].includes(status)) return 'success'
       if (['RETURNED'].includes(status)) return 'warning'
@@ -575,7 +583,12 @@ export default {
       this.submitting = true
       const res = await academicAffairsApi.submitGradeTask(this.task.gradeTaskId)
       this.submitting = false
-      if (res.code === 0) { this.task.status = res.data.status; toast.success('已提交，进入学院审核'); this.loadTasks() }
+      if (res.code === 0) {
+        this.task.status = res.data.status
+        this.submitReceipt = { taskId: this.task.gradeTaskId, courseName: this.task.courseName, status: res.data.status }
+        toast.success('已提交，进入学院审核')
+        this.loadTasks()
+      }
       else toast.error(res.message || '提交失败')
     }
   }
@@ -602,5 +615,8 @@ export default {
 .aa-my-tasks { margin-top: 20px; border-top: 1px solid var(--border-100, #f0f1f2); padding-top: 16px; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
 .aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
 .aa-remind-link { color: var(--warning-700, #b45309); }.aa-overdue-text { color: var(--danger-600, #dc2626); font-weight: 600; }
-@media (max-width: 760px) { .aa-grid2 { grid-template-columns: 1fr; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
+.aa-action-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.aa-action-receipt strong, .aa-action-receipt span, .aa-action-receipt small, .aa-action-receipt b { display: block; }
+.aa-action-receipt strong { color: #15803d; font-size: 14px; }.aa-action-receipt span { margin-top: 3px; color: #64748b; font-size: 11px; }.aa-action-receipt small { color: #94a3b8; font-size: 10px; }.aa-action-receipt b { margin-top: 3px; color: #334155; font-size: 12px; }
+@media (max-width: 760px) { .aa-grid2, .aa-action-receipt { grid-template-columns: 1fr; }.aa-action-receipt { align-items: stretch; gap: 10px; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
 </style>

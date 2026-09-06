@@ -1,0 +1,23 @@
+{
+  "schema": "miniapp-v3-handoff/1",
+  "generatedAt": "2026-09-01T14:24:00.000Z",
+  "studentMergeSha": "d2a46ed51e7949a8bed6d3262e0d73d3d96ea912",
+  "actionSchemaVersion": "1.0.0",
+  "routeInventoryHash": "b0d60714e644d66341a58732404fb1e3388d72198fd66d947b799dfde8e484e6",
+  "routeCount": 143,
+  "subpackageHash": "dfebb53d7174c65745c3a5801b31041c5bf18e9fcd8ef2aafa258a019ffedf86",
+  "subpackages": [
+    {
+      "root": "pages/student",
+      "pages": 72
+    },
+    {
+      "root": "pages/teacher",
+      "pages": 58
+    }
+  ],
+  "networkPagerVersion": "1.0.0",
+  "attachmentPickerVersion": "1.0.0",
+  "alembicHead": "20260901_orientation_self_activate_o6",
+  "packageReportSha": "b423d42239345f93f6f964494367566a98e562c2aacb4ae36205e74163b8ffd0"
+}

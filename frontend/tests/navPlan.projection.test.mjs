@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchPermission, getVisibleNavPlan, searchNavPlan } from '../src/config/navPlan.js'
+import { NAV_PLAN, matchPermission, getVisibleNavPlan, navPlanStats, searchNavPlan } from '../src/config/navPlan.js'
 
 function internshipLeaves(plan) {
   const g = plan.find((x) => x.key === 'internship')
@@ -43,14 +43,17 @@ test('学生/空权限集：实习中心不出现在日常侧栏', () => {
   assert.equal(plan.find((g) => g.key === 'internship'), undefined)
 })
 
-test('校管 *：实习 12 个二级域全部可见', () => {
+test('校管 *：V8 实习 11 个工作区全部可见', () => {
   const plan = getVisibleNavPlan({ includePlanned: false, permissionPatterns: ['*'], ctxKey: 'admin' })
-  assert.equal(plan.find((x) => x.key === 'internship').children.length, 12)
+  const internship = plan.find((x) => x.key === 'internship')
+  assert.equal(internship.children.length, 11)
+  const visibleLeafCount = internship.children.flatMap((m) => m.children).length
+  assert.ok(visibleLeafCount >= 32 && visibleLeafCount <= 36, '宽权限日常入口必须保持 32～36 个')
 })
 
 test('planner 视角不做权限投影：空权限集仍见完整能力目录', () => {
   const plan = getVisibleNavPlan({ includePlanned: true, permissionPatterns: [], ctxKey: 'planner' })
-  assert.equal(plan.find((x) => x.key === 'internship').children.length, 12)
+  assert.equal(plan.find((x) => x.key === 'internship').children.length, 11)
 })
 
 test('详情/动作型(hidden)不进日常侧栏', () => {
@@ -60,18 +63,38 @@ test('详情/动作型(hidden)不进日常侧栏', () => {
   assert.ok(!leaves.some((l) => l.label === '实习档案包'))
 })
 
-test('搜索按权限过滤：无权限页面不被搜索命中，有权限则命中', () => {
+test('搜索只暴露 Primary Command Owner：隐藏动作不命中，主工作台按权限命中', () => {
   const noPerm = searchNavPlan('成绩发布', [])
   assert.ok(!noPerm.some((r) => r.path && r.path.includes('/internship/scores')), '空权限集不应搜到成绩发布')
-  const withPerm = searchNavPlan('成绩发布', ['internship.score.publish'])
-  assert.ok(withPerm.some((r) => r.path && r.path.includes('/internship/scores')), '有 publish 权限应搜到成绩发布')
+  const hiddenCommand = searchNavPlan('成绩发布', ['internship.score.publish'])
+  assert.ok(!hiddenCommand.some((r) => r.path && r.path.includes('/internship/scores')), '页内成绩发布动作不应回到全局搜索')
+  const primary = searchNavPlan('成绩工作台', ['internship.score.view'])
+  assert.ok(primary.some((r) => r.path && r.path.includes('/internship/scores')), '有 view 权限应搜到成绩工作台')
 })
 
 test('ctxKey 不同 → 缓存不串味（不同身份得到不同投影）', () => {
   const a = getVisibleNavPlan({ includePlanned: false, permissionPatterns: ['*'], ctxKey: 'k1' })
   const b = getVisibleNavPlan({ includePlanned: false, permissionPatterns: [], ctxKey: 'k2' })
-  assert.equal(a.find((g) => g.key === 'internship').children.length, 12)
+  assert.equal(a.find((g) => g.key === 'internship').children.length, 11)
   assert.equal(b.find((g) => g.key === 'internship'), undefined)
+})
+
+test('无独立入口但已有真实子页的学工二级模块是可展开容器，不再误报待施工', () => {
+  const studentAffairs = NAV_PLAN.find((group) => group.key === 'student-affairs')
+  const workbench = studentAffairs.children.find((mod) => mod.key === 'sa-workbench')
+  assert.equal(workbench.path, undefined)
+  assert.equal(workbench.entryType, 'CONTAINER')
+  assert.equal(workbench.status, 'implemented')
+  assert.equal(workbench.disabled, false)
+})
+
+test('navPlanStats 分开统计 implemented/partial/planned/unauthorized，并保留兼容字段', () => {
+  const row = navPlanStats().find((item) => item.key === 'student-affairs')
+  for (const key of ['implemented', 'partial', 'planned', 'unauthorized', 'containers', 'total']) {
+    assert.equal(Number.isInteger(row[key]), true, `${key} 应为整数`)
+  }
+  assert.ok(row.containers > 0, '学工应包含无独立入口的可展开容器')
+  assert.equal(row.total, row.implemented + row.partial + row.planned + row.unauthorized)
 })
 
 // ── P6 §11.3 全角色菜单快照矩阵（权限集对齐后端 ROLE_PERMISSIONS 实习模板）──
@@ -105,12 +128,12 @@ function internshipMods(patterns, key) {
 test('全角色菜单快照：各角色可见实习二级域数量按权限收敛', () => {
   const snap = {}
   for (const [role, patterns] of Object.entries(ROLE_PATTERNS)) snap[role] = internshipMods(patterns, role).length
-  assert.equal(snap['校级管理员'], 12, '校管见全 12 二级')
-  assert.equal(snap['学院负责人'], 12, '院管见全 12 二级')
-  assert.ok(snap['指导教师'] > 0 && snap['指导教师'] <= 12)
+  assert.equal(snap['校级管理员'], 11, '校管见全 11 工作区')
+  assert.equal(snap['学院负责人'], 11, '院管见全 11 工作区')
+  assert.ok(snap['指导教师'] > 0 && snap['指导教师'] <= 11)
   assert.ok(snap['辅导员'] < snap['校级管理员'], '辅导员菜单严格少于校管')
-  assert.ok(snap['就业教师'] < 12 && snap['就业教师'] > 0)
-  assert.ok(snap['督导审计'] < 12 && snap['督导审计'] > 0)
+  assert.ok(snap['就业教师'] < 11 && snap['就业教师'] > 0)
+  assert.ok(snap['督导审计'] < 11 && snap['督导审计'] > 0)
 })
 
 test('领导只读：见 view 叶子但不见成绩发布等高危操作项', () => {

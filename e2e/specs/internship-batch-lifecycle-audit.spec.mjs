@@ -71,6 +71,11 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
   const endDate = isoDay(120)
 
   test.beforeAll(async () => {
+    execFileSync('python', ['../backend/scripts/e2e_seed_internship_sandbox.py'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: 'inherit'
+    })
     fixture = await loadInternshipFixture()
     batchName = `${PREFIX}-${fixture.runId}-真实批次`
     batchNo = `IX-${String(fixture.runId).slice(-10)}`

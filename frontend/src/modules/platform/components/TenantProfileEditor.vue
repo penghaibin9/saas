@@ -3,7 +3,7 @@
     <div class="tenant-profile__head">
       <div>
         <strong>学校基础资料维护</strong>
-        <p>联系人、地区、学校类型属于基础资料；运行环境只读，不能从这里把 production 改成 demo。</p>
+        <p>联系人、地区、学校类型属于基础资料；运行环境只读，不能从这里把生产环境改成演示环境。</p>
       </div>
       <AppButton v-if="tenant?.canEdit && !editing" variant="secondary" @click="editing = true">编辑基础资料</AppButton>
       <span v-else-if="tenant && !tenant.canEdit" class="tenant-profile__readonly">当前职责仅可查看</span>
@@ -13,22 +13,22 @@
     <div v-else-if="error" class="tenant-profile__error">{{ error }}</div>
     <template v-else-if="tenant">
       <div v-if="!editing" class="tenant-profile__summary">
-        <span><b>学校类型</b>{{ tenant.schoolType || '—' }}</span>
+        <span><b>学校类型</b>{{ schoolTypeLabel(tenant.schoolType) }}</span>
         <span><b>地区</b>{{ [tenant.province, tenant.city].filter(Boolean).join(' / ') || '—' }}</span>
         <span><b>联系人</b>{{ tenant.contactName || '—' }}</span>
         <span><b>联系电话</b>{{ tenant.contactPhone || '—' }}</span>
         <span><b>微信</b>{{ tenant.contactWechat || '—' }}</span>
-        <span><b>运行环境（只读）</b>{{ tenant.environment || 'production' }}</span>
+        <span><b>运行环境（只读）</b>{{ environmentLabel(tenant.environment) }}</span>
       </div>
 
       <div v-else class="tenant-profile__form">
-        <label><span>学校类型</span><input v-model.trim="form.schoolType" maxlength="50" /></label>
+        <label><span>学校类型</span><select v-model="form.schoolType"><option value="VOCATIONAL">高职院校</option><option value="UNDERGRAD">本科院校</option><option value="TECHNICIAN">技师学院</option></select></label>
         <label><span>省份</span><input v-model.trim="form.province" maxlength="64" /></label>
         <label><span>城市</span><input v-model.trim="form.city" maxlength="64" /></label>
         <label><span>联系人</span><input v-model.trim="form.contactName" maxlength="64" /></label>
         <label><span>联系电话</span><input v-model.trim="form.contactPhone" inputmode="tel" maxlength="32" /></label>
         <label><span>联系微信</span><input v-model.trim="form.contactWechat" maxlength="64" /></label>
-        <label><span>运行环境</span><input :value="tenant.environment || 'production'" disabled /></label>
+        <label><span>运行环境</span><input :value="environmentLabel(tenant.environment)" disabled /></label>
         <label class="tenant-profile__wide"><span>备注</span><textarea v-model.trim="form.remark" rows="2" maxlength="1000" /></label>
         <label class="tenant-profile__wide"><span>变更原因（必填）</span><input v-model.trim="reason" maxlength="200" placeholder="至少 5 个字，用于审计追溯" /></label>
         <div class="tenant-profile__actions">
@@ -66,6 +66,12 @@ export default {
   created() { this.load() },
   watch: { tenantId() { this.editing = false; this.reason = ''; this.load() } },
   methods: {
+    schoolTypeLabel(value) {
+      return ({ VOCATIONAL: '高职院校', UNDERGRAD: '本科院校', TECHNICIAN: '技师学院' })[String(value || '').toUpperCase()] || '学校类型待确认'
+    },
+    environmentLabel(value) {
+      return ({ production: '生产环境', prod: '生产环境', demo: '演示环境', test: '测试环境' })[String(value || '').toLowerCase()] || '生产环境'
+    },
     async load() {
       this.loading = true
       this.error = ''

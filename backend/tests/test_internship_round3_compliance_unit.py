@@ -7,6 +7,11 @@ from pydantic import ValidationError
 from app.modules.internship.services.internship_position_rights import (
     evaluate_position_publishability,
 )
+from app.modules.internship.services.internship_compliance_service import (
+    _is_adult,
+    _student_birth_date,
+)
+from app.core.field_crypto import encrypt_sensitive
 from app.modules.internship.schemas.internship_position import (
     PositionCreate,
     PositionImport,
@@ -103,3 +108,27 @@ def test_position_update_requires_expected_version():
 def test_old_import_template_is_rejected_by_contract():
     with pytest.raises(ValidationError):
         PositionImport(templateVersion="POSITION_IMPORT_V1", rows=[])
+
+
+def test_birth_date_is_derived_from_encrypted_resident_id():
+    encrypted = encrypt_sensitive("430102200001010011", "id_card")
+    assert _student_birth_date(SimpleNamespace(id_card_encrypted=encrypted)) == date(2000, 1, 1)
+
+
+@pytest.mark.parametrize("stored", [None, "43010220000101001X", "430102200013010011"])
+def test_unknown_or_malformed_resident_id_stays_fail_closed(stored):
+    assert _student_birth_date(SimpleNamespace(id_card_encrypted=stored)) is None
+
+
+def test_resident_id_decryption_failure_stays_fail_closed(monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.internship.services.internship_compliance_service.decrypt_sensitive",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("ciphertext corrupt")),
+    )
+    assert _student_birth_date(SimpleNamespace(id_card_encrypted="gAAAAinvalid")) is None
+
+
+def test_adult_boundary_uses_exact_calendar_date_including_leap_day():
+    assert not _is_adult(date(2008, 9, 1), today=date(2026, 8, 31))
+    assert _is_adult(date(2008, 9, 1), today=date(2026, 9, 1))
+    assert _is_adult(date(2008, 2, 29), today=date(2026, 2, 28))

@@ -66,7 +66,7 @@ export default {
   created() { this.load() },
   methods: {
     taskBatchColor,
-    statusLabel(s) { return TASK_BATCH_STATUS[s] || s || '' },
+    statusLabel(s) { return TASK_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
     onPageChange(p) { this.pagination.page = p; this.load() },
     async load() {
       this.loading = true

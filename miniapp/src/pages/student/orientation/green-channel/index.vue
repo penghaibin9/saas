@@ -62,6 +62,7 @@
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast, back } from '@/utils/nav'
+import { createClientRequestId } from '@/utils/clientRequestId'
 
 const submitLock = createSubmitLock(1500)
 const TYPE_OPTIONS = ['助学贷款', '缓缴学费', '减免学费', '分期缴纳']
@@ -73,12 +74,12 @@ const STATUS_TEXT = {
   REJECTED: '申请未通过，如有疑问请联系资助中心。',
   WITHDRAWN: '申请已撤回。'
 }
-
 export default {
   data() {
     return {
       o: null, state: 'loading', typeOptions: TYPE_OPTIONS,
       applyType: TYPE_OPTIONS[0], amount: '', remark: '', submitting: false,
+      clientRequestId: createClientRequestId('orientation-green'),
       // V3 §8.1：只保存 TEMP_PRIVATE fileId，正式绑定在服务端业务事务里完成。
       fileIds: [], attachmentsReady: true
     }
@@ -109,7 +110,7 @@ export default {
       this.submitting = true
       submitLock.run(() => studentApi.submitOrientationGreenChannel({
         applyType: this.applyType, applyAmount: Number(this.amount) || 0, remark: this.remark.trim(),
-        fileIds: this.fileIds
+        fileIds: this.fileIds, clientRequestId: this.clientRequestId
       })).then(() => {
         uni.showToast({ title: '提交成功', icon: 'success' })
         setTimeout(() => back(), 700)

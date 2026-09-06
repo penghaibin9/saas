@@ -212,7 +212,7 @@ export default {
       } catch (e) { toast.error(e.message || '审核失败') }
       finally { this.acting = '' }
     },
-    ctypeLabel(t) { return CTYPE[t] || t },
+    ctypeLabel(t) { return CTYPE[t] || (t ? '类型待确认' : '—') },
     statusType(s) { return ({ SUBMITTED: 'warning', APPROVED: 'success', REJECTED: 'default' })[s] || 'default' }
   }
 }

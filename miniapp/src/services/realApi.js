@@ -173,10 +173,17 @@ const NEUTRAL_ORIENTATION = {
   hasData: false, _real: true,
   batch: '', overallStatus: 'NOT_REPORTED', overallText: '暂无迎新报到记录',
   reportCode: { code: '', valid: false, note: '暂无迎新报到记录，如需办理请联系辅导员' },
+  selfService: { available: false, information: {}, arrivalPlan: null, materials: [] },
   greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
-  payStatus: '', materialStatus: '', blocked: null, steps: [], contacts: [],
-  identity: { name: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
+  payStatus: '', payment: {}, materialStatus: '', qualification: null, blocked: null, steps: [], contacts: [],
+  checkin: { completedAt: '', pointName: '' },
+  identity: { name: '', admissionNo: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
     origin: '', phoneMasked: '' }
+}
+
+const ORIENTATION_STEP_LABELS = {
+  ACTIVATE: '账号激活', INFO: '信息核对', MATERIAL: '材料审核', PAYMENT: '缴费 / 绿色通道',
+  DORM: '宿舍安排', CHECKIN: '现场报到', CONFIRM: '学院确认'
 }
 
 export async function enrichOrientation() {
@@ -184,22 +191,38 @@ export async function enrichOrientation() {
   if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
     COLLEGE_CONFIRMED: '学院已确认' }
+  const rawSteps = r.steps || []
+  const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
     hasData: true, _real: true,
-    batch: r.batchName || '迎新报到',
+    batch: r.batchName || r.selfService?.batch?.name || '迎新报到',
     overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
-    dorm: { building: r.building || '', room: r.room || '', status: r.dormStatus || '' },
-    payStatus: r.paymentStatus || '', materialStatus: r.materialStatus || '',
+    dorm: {
+      building: r.building || '', room: r.room || '', status: r.dorm?.status || r.dormStatus || '',
+      label: r.dorm?.label || [r.building, r.room].filter(Boolean).join(' / '),
+      buildingId: r.dorm?.buildingId || '', roomId: r.dorm?.roomId || '', bedId: r.dorm?.bedId || ''
+    },
+    payStatus: r.paymentStatus || '', payment: r.payment || {}, materialStatus: r.materialStatus || '',
+    qualification: r.qualification || null,
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
-    steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
-    reportCode: { code: r.admissionNo || '',
-      valid: !!r.reportCodeValid, note: r.reportCodeValid ? '现场核验时出示' : '已完成现场报到，二维码已失效' },
-    identity: { name: r.name || '', gender: r.gender || '', collegeName: r.collegeName || '',
+    steps: rawSteps.map((s, index) => ({
+      key: s.key, title: ORIENTATION_STEP_LABELS[s.key] || '报到事项', status: s.status,
+      current: index === currentStepIndex
+    })),
+    reportCode: {
+      code: '', valid: r.reportCodeStatus === 'ISSUED',
+      status: r.reportCodeStatus || 'BLOCKED',
+      canIssue: !!r.checkinCredential?.canIssue,
+      expiresAt: r.checkinCredential?.expiresAt || '',
+      note: r.checkinCredential?.note || '正式电子报到凭证尚未签发'
+    },
+    checkin: r.checkin || { completedAt: '', pointName: '' },
+    selfService: r.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] },
+    identity: { name: r.name || '', admissionNo: r.admissionNo || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
       origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
-    // 后端暂不下发辅导员/招生办联系人，绝不用示例姓名电话冒充真实联系人
-    contacts: []
+    contacts: Array.isArray(r.contacts) ? r.contacts : []
   }
 }
 
@@ -210,12 +233,22 @@ export const orientationBatchStatus = () =>
 /** 预报到信息采集 / 绿色通道申请（本人提交，业务错误透出不兜底） */
 export const orientationCollectSubmit = (body) =>
   realRequest('/mobile/orientation/collect', { method: 'POST', data: body || {} })
+export const orientationArrivalSubmit = (body) =>
+  realRequest('/mobile/orientation/arrival', { method: 'PUT', data: body || {} })
+export const orientationMaterialSubmit = (body) =>
+  realRequest('/mobile/orientation/materials', { method: 'POST', data: body || {} })
 export const orientationGreenChannelSubmit = (body) =>
   realRequest('/mobile/orientation/green-channel', { method: 'POST', data: body })
+export const orientationCheckinToken = () =>
+  realRequest('/mobile/orientation/checkin-token', { method: 'POST' })
 
-/** 迎新老师·现场报到核验 / 今日已核验列表 */
-export const teacherOrientationCheckin = (admissionNo) =>
-  realRequest('/mobile/teacher/orientation/checkin', { method: 'POST', data: { admissionNo } })
+/** 迎新老师·签名凭证 preflight → confirm / 今日已核验列表 */
+export const teacherOrientationCheckinPoints = () =>
+  realRequest('/mobile/teacher/orientation/checkin-points')
+export const teacherOrientationCheckinPreflight = (token) =>
+  realRequest('/mobile/teacher/orientation/checkin/preflight', { method: 'POST', data: { token } })
+export const teacherOrientationCheckinConfirm = (token, checkinPointId) =>
+  realRequest('/mobile/teacher/orientation/checkin/confirm', { method: 'POST', data: { token, checkinPointId } })
 export const teacherOrientationTodayCheckins = () =>
   realRequest('/mobile/teacher/orientation/today-checkins')
 export const teacherOrientationDashboard = () =>
@@ -244,8 +277,8 @@ export const teacherLeaveAckReturn = (leaveId, note) =>
 export const teacherInternshipRisks = () => realRequest('/mobile/teacher/internship/risks')
 export const teacherInternshipRiskHandle = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/handle`, { method: 'POST', data: body || {} })
-export const teacherInternshipRiskFollow = (riskId, note) =>
-  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: { note } })
+export const teacherInternshipRiskFollow = (riskId, body) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: body || {} })
 export const teacherInternshipRiskClose = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/close`, { method: 'POST', data: body || {} })
 
@@ -408,7 +441,12 @@ export const teacherAcademicTaskAct = (taskId, action, reason) =>
   realRequest(`/mobile/teacher/academic/tasks/${taskId}/act`, { method: 'POST', data: { action, reason: reason || '' } })
 
 export const teacherAcademicMySchedule = (termId, week) =>
-  realRequest('/mobile/teacher/academic/schedule/mine', { data: { termId: termId || '', week: week || '' } })
+  realRequest('/mobile/teacher/academic/schedule/mine', {
+    data: {
+      ...(termId ? { termId } : {}),
+      ...(week ? { week } : {})
+    }
+  })
 export const teacherAcademicScheduleConflictCheck = (body) =>
   realRequest('/mobile/teacher/academic/schedule-changes/conflict-check', { method: 'POST', data: body })
 export const teacherAcademicScheduleSubmit = (body) =>
@@ -597,9 +635,13 @@ export async function enrichGraduation(_unused) {
 
 /* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */
 
-export const gdTopics = (batchId) => realRequest(
-  '/mobile/graduation/topics' + (batchId ? `?batchId=${encodeURIComponent(batchId)}` : '')
-)
+export const gdTopics = (batchOrParams = {}) => {
+  const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+  const query = Object.entries({ pageSize: 20, ...params })
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/graduation/topics${query ? `?${query}` : ''}`)
+}
 export const gdActiveRound = () => realRequest('/mobile/graduation/active-round')
 export const gdSubmitChoices = (roundId, choices) =>
   realRequest('/mobile/graduation/choices', { method: 'POST', data: { roundId, choices } })

@@ -11,11 +11,11 @@ import {
 } from '../constants/workflow.constants'
 
 export function getModuleLabel(moduleCode) {
-  return MODULE_LABELS[moduleCode] || moduleCode || '—'
+  return MODULE_LABELS[moduleCode] || (moduleCode ? '其他业务模块' : '—')
 }
 
 export function getProcessStatusText(status) {
-  return PROCESS_STATUS_LABELS[status] || status
+  return PROCESS_STATUS_LABELS[status] || '流程状态待确认'
 }
 
 /** 流程模板状态 → AppBadge type */
@@ -26,11 +26,11 @@ export function getProcessStatusType(status) {
 }
 
 export function getInstanceStatusText(status) {
-  return PROCESS_INSTANCE_STATUS_LABELS[status] || status
+  return PROCESS_INSTANCE_STATUS_LABELS[status] || '流程状态待确认'
 }
 
 export function getNodeTypeLabel(nodeType) {
-  return NODE_TYPE_LABELS[nodeType] || nodeType
+  return NODE_TYPE_LABELS[nodeType] || '其他流程节点'
 }
 
 /**

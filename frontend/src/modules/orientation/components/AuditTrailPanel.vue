@@ -6,7 +6,7 @@
         <span class="atp__dot" />
         <div class="atp__main">
           <div class="atp__head">
-            <span class="atp__action">{{ log.action }}</span>
+            <span class="atp__action">{{ actionLabel(log) }}</span>
             <span class="atp__time">{{ log.time }}</span>
           </div>
           <div class="atp__detail">{{ log.detail }}</div>
@@ -21,14 +21,23 @@
 </template>
 
 <script>
+import { safeLocalizedText } from '@/utils/presentationSafety'
+
+const ACTION_LABELS = { CREATE: '创建', UPDATE: '修改', DELETE: '删除', SUBMIT: '提交', APPROVE: '审核通过', REJECT: '审核驳回', RETURN: '退回修改', PUBLISH: '发布', ARCHIVE: '归档', CANCEL: '取消', CLOSE: '关闭' }
+
 /**
  * AuditTrailPanel — 操作留痕时间线（模块局部组件）。
- * Props: logs [{ id, time, operator, roleName?, action, detail, before?, after? }]（来自 mock/api auditLogs）
+ * Props: logs [{ id, time, operator, roleName?, action, detail, before?, after? }]（来自迎新审计 API）
  */
 export default {
   name: 'AuditTrailPanel',
   props: {
     logs: { type: Array, default: () => [] }
+  },
+  methods: {
+    actionLabel(log) {
+      return log?.actionLabel || safeLocalizedText({ value: log?.action, dictionary: ACTION_LABELS, unknownLabel: '业务操作' })
+    }
   }
 }
 </script>

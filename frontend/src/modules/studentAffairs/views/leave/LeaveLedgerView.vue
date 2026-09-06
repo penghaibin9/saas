@@ -57,13 +57,13 @@
         <template v-if="detail.extensions && detail.extensions.length">
           <div class="sec-t">续假记录</div>
           <ul class="rec-list">
-            <li v-for="e in detail.extensions" :key="e.id">{{ fmt(e.oldEndTime) }} → {{ fmt(e.newEndTime) }}（+{{ e.extendDays }}天）· {{ e.status }}</li>
+            <li v-for="e in detail.extensions" :key="e.id">{{ fmt(e.oldEndTime) }} → {{ fmt(e.newEndTime) }}（+{{ e.extendDays }}天）· {{ operationStatusLabel(e.status) }}</li>
           </ul>
         </template>
         <template v-if="detail.cancelRecords && detail.cancelRecords.length">
           <div class="sec-t">销假记录</div>
           <ul class="rec-list">
-            <li v-for="c in detail.cancelRecords" :key="c.id">实际返校 {{ fmt(c.actualReturnAt) }} · {{ c.status }}<span v-if="c.confirmBy"> · {{ c.confirmBy }}</span></li>
+            <li v-for="c in detail.cancelRecords" :key="c.id">实际返校 {{ fmt(c.actualReturnAt) }} · {{ operationStatusLabel(c.status) }}<span v-if="c.confirmBy"> · {{ c.confirmBy }}</span></li>
           </ul>
         </template>
         <div class="sec-t">审批留痕</div>
@@ -144,7 +144,7 @@ export default {
     },
     exportStatusText() {
       const status = (this.exportJob && this.exportJob.status) || 'CREATED'
-      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || status
+      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || (status ? '状态待确认' : '—')
     },
     detailItems() {
       const d = this.detail || {}
@@ -172,6 +172,7 @@ export default {
   },
   beforeUnmount() { this.stopExportPolling() },
   methods: {
+    operationStatusLabel(value) { return ({ PENDING: '待处理', SUBMITTED: '已提交', APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已取消', COMPLETED: '已完成', CONFIRMED: '已确认' })[value] || (value ? '状态待确认' : '—') },
     fmt(v) { return v ? formatDateTime(v) : '' },
     applyRouteFilters() {
       const q = this.$route.query || {}

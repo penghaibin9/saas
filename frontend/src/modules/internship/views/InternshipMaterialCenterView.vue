@@ -20,7 +20,7 @@
       <article><span>当前学生</span><strong>{{ total }}</strong></article>
       <article><span>安全可用材料</span><strong>{{ summary.ready }}</strong></article>
       <article><span>待处理材料</span><strong :class="{ danger: summary.unsafe > 0 }">{{ summary.unsafe }}</strong></article>
-      <article><span>真实版本累计</span><strong>{{ summary.versionCount }}</strong></article>
+      <article><span>已登记安全版本</span><strong>{{ summary.versionCount }}</strong></article>
     </section>
 
     <section class="filter-bar">
@@ -88,7 +88,7 @@
             <div class="section-title">
               <div>
                 <strong>站内材料 Reader</strong>
-                <span>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</span>
+                <span>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前安全版本</span>
               </div>
               <AppStatusTag type="success" size="sm">只读当前安全版本</AppStatusTag>
             </div>
@@ -109,6 +109,8 @@
             />
           </section>
 
+          <details class="technical-evidence">
+            <summary>展开 FileVersion / Manifest 技术证据</summary>
           <section class="section-card">
             <div class="section-title">
               <div><strong>安全文件</strong><span>仅扫描通过且当前版本有效的材料允许站内预览或独立下载</span></div>
@@ -148,28 +150,29 @@
 
           <section class="section-card manifest-card">
             <div class="section-title">
-              <div><strong>归档 Manifest</strong><span>归档时冻结文件名、大小、哈希、扫描结论和真实版本号</span></div>
+              <div><strong>归档清单</strong><span>归档时冻结文件名、大小、文件摘要、扫描结论和真实版本号</span></div>
               <AppStatusTag v-if="selected.manifest" :type="manifestTone(selected.manifest.status)">
-                {{ selected.manifest.status }}
+                {{ manifestStatusLabel(selected.manifest.status) }}
               </AppStatusTag>
             </div>
             <div v-if="!selected.manifest" class="state compact">尚未生成归档版本清单</div>
             <template v-else>
               <dl class="manifest-meta">
-                <div><dt>清单版本</dt><dd>revision {{ selected.manifest.revision }}</dd></div>
-                <div><dt>Manifest ID</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
+                <div><dt>清单版本</dt><dd>第 {{ selected.manifest.revision }} 次修订</dd></div>
+                <div><dt>清单编号</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
                 <div><dt>文件版本数</dt><dd>{{ selected.manifest.items.length }}</dd></div>
-                <div><dt>Manifest SHA-256</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
+                <div><dt>清单文件摘要（SHA-256）</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
               </dl>
               <div class="manifest-list">
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
                   <span>{{ item.materialCode }}</span>
-                  <strong>v{{ item.versionId }}</strong>
-                  <small>{{ item.scanResult }} · {{ shortHash(item.sha256) }}</small>
+                  <strong>第 {{ item.versionId }} 版</strong>
+                  <small>{{ scanResultLabel(item.scanResult) }} · 摘要 {{ shortHash(item.sha256) }}</small>
                 </div>
               </div>
             </template>
           </section>
+          </details>
         </template>
       </div>
     </section>
@@ -307,14 +310,16 @@ export default {
       return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-'
     },
     statusText(value) {
-      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || value || '未知'
+      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || (value ? '待确认' : '未知')
     },
     statusTone(value) {
       return { READY: 'success', UNSAFE: 'danger', NOT_SYNCED: 'default' }[value] || 'default'
     },
     manifestTone(value) {
       return ['FROZEN', 'PACKAGED'].includes(value) ? 'success' : (value === 'REVOKED' ? 'danger' : 'warning')
-    }
+    },
+    manifestStatusLabel(value) { return ({ DRAFT: '草稿', FROZEN: '已冻结', PACKAGED: '已打包', REVOKED: '已撤销', PENDING: '生成中' })[value] || (value ? '状态待确认' : '—') },
+    scanResultLabel(value) { return ({ CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' })[value] || (value ? '扫描结果待确认' : '—') }
   }
 }
 </script>
@@ -363,6 +368,9 @@ td { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: n
 .manifest-list { display: grid; gap: 7px; margin-top: 12px; }
 .manifest-list div { display: grid; grid-template-columns: minmax(0, 1fr) 90px 190px; gap: 12px; padding: 9px 10px; border: 1px solid #e7edf5; border-radius: 8px; }
 .manifest-list small { color: #758197; }
+.technical-evidence { margin-top: 14px; padding: 12px 14px; border: 1px dashed #cbd6e5; border-radius: 12px; background: #fff; color: #637086; }
+.technical-evidence > summary { cursor: pointer; font-weight: 700; }
+.technical-evidence > .section-card { margin-top: 12px; }
 .state { padding: 40px 20px; text-align: center; color: #758197; }
 .state.compact { padding: 22px; }
 .error-state { border: 1px solid #f1c7c7; border-radius: 12px; background: #fff7f7; color: #b42b2b; }

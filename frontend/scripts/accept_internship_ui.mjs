@@ -1,4 +1,3 @@
-/* eslint-env node */
 /**
  * 岗位实习 PC 页面多角色点击验收（Playwright）
  * 用法：cd frontend && node scripts/accept_internship_ui.mjs

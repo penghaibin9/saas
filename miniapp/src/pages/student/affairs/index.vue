@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <view class="af__hero hero-band is-brand">
       <view class="hero-band__orb" />
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
@@ -92,6 +93,7 @@ import { studentApi } from '@/services/studentApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
 import { go, toast } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
 const ENTRIES = [
@@ -126,7 +128,7 @@ export default {
     }
   },
   onLoad(query) {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.focusMaterialId = String((query && (query.materialRequirementId || query.requirementId)) || '')
     this.load()
   },
@@ -208,10 +210,10 @@ export default {
       const done = (res) => {
         const file = (res && res.tempFiles && res.tempFiles[0]) || null
         if (!file) return
-        this.$set(this.selectedFiles, item.requirementId, {
+        this.selectedFiles = { ...this.selectedFiles, [item.requirementId]: {
           path: file.path || file.tempFilePath,
           name: file.name || `补交材料-${Date.now()}`
-        })
+        } }
       }
       if (typeof uni.chooseMessageFile === 'function') {
         uni.chooseMessageFile({ count: 1, type: 'file', success: done, fail: () => {} })
@@ -234,8 +236,10 @@ export default {
         ))
         .then(() => {
           toast('材料已补交，等待老师审核')
-          this.$delete(this.selectedFiles, item.requirementId)
-          this.$set(this.materialNotes, item.requirementId, '')
+          const selectedFiles = { ...this.selectedFiles }
+          delete selectedFiles[item.requirementId]
+          this.selectedFiles = selectedFiles
+          this.materialNotes = { ...this.materialNotes, [item.requirementId]: '' }
           return this.loadMaterials(false)
         })
         .catch((e) => toast(normalizeError(e).text || '材料补交失败'))

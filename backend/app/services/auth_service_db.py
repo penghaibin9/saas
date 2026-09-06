@@ -275,6 +275,55 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
     配置后须重新登录或切换身份才会进入新令牌。
     """
     role = (claims.get("currentRoleCode") or "").strip().upper()
+    # 新授权链：直接读取与当前 user-role 绑定的稳定范围主键。
+    # 先沿五级树补齐祖先 ID，供各业务域统一做范围判断；没有新范围时再回落历史表。
+    from app.models import Major, RoleAssignmentScope, SchoolClass, StudentProfile
+    now = datetime.now()
+    assigned = db.scalars(select(RoleAssignmentScope).where(
+        RoleAssignmentScope.tenant_id == user.tenant_id,
+        RoleAssignmentScope.user_id == user.id,
+        RoleAssignmentScope.role_code == role,
+        RoleAssignmentScope.status == "ACTIVE",
+        RoleAssignmentScope.is_deleted.is_(False),
+        RoleAssignmentScope.effective_at <= now,
+        (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > now)),
+    )).all()
+    if assigned:
+        college_ids = {int(row.scope_id) for row in assigned if row.scope_type == "COLLEGE"}
+        major_ids = {int(row.scope_id) for row in assigned if row.scope_type == "MAJOR"}
+        class_ids = {int(row.scope_id) for row in assigned if row.scope_type == "CLASS"}
+        student_ids = {int(row.scope_id) for row in assigned if row.scope_type == "STUDENT"}
+        if major_ids:
+            college_ids |= {int(value) for value in db.scalars(select(Major.college_id).where(
+                Major.tenant_id == user.tenant_id, Major.id.in_(major_ids))).all() if value}
+        if class_ids:
+            class_rows = db.execute(select(SchoolClass.id, Major.id, Major.college_id).join(
+                Major, Major.id == SchoolClass.major_id
+            ).where(SchoolClass.tenant_id == user.tenant_id, SchoolClass.id.in_(class_ids))).all()
+            major_ids |= {int(major_id) for _, major_id, _ in class_rows if major_id}
+            college_ids |= {int(college_id) for _, _, college_id in class_rows if college_id}
+        if student_ids:
+            student_rows = db.execute(select(
+                StudentProfile.class_id, StudentProfile.major_id, StudentProfile.college_id
+            ).where(
+                StudentProfile.tenant_id == user.tenant_id,
+                StudentProfile.id.in_(student_ids),
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+            class_ids |= {int(class_id) for class_id, _, _ in student_rows if class_id}
+            major_ids |= {int(major_id) for _, major_id, _ in student_rows if major_id}
+            college_ids |= {int(college_id) for _, _, college_id in student_rows if college_id}
+        for plural, singular, values in (
+            ("collegeIds", "collegeId", college_ids),
+            ("majorIds", "majorId", major_ids),
+            ("classIds", "classId", class_ids),
+            ("studentIds", "studentScopeId", student_ids),
+        ):
+            if values:
+                claims[plural] = [str(value) for value in sorted(values)]
+                claims[singular] = str(sorted(values)[0])
+        return
+
     if role not in {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}:
         return
     from app.models import College, Major, TeacherStudentScope

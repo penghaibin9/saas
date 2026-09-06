@@ -30,9 +30,11 @@ _P_PACKAGE = "internship.archive.package"
 @router.get("/archive", summary="归档台账列表（材料完整度/缺失，按数据范围）")
 def archive_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                  keyword: Optional[str] = None, batchId: Optional[str] = None,
-                 onlyIncomplete: bool = False, user=Depends(require_permission(_P_VIEW))):
+                 onlyIncomplete: bool = False, onlyPending: bool = False,
+                 user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_by_student(page, pageSize, keyword=keyword, batch_id=batchId,
-                                       only_incomplete=onlyIncomplete, user=user)
+                                       only_incomplete=onlyIncomplete,
+                                       only_pending=onlyPending, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

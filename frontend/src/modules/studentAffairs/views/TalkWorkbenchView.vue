@@ -111,8 +111,8 @@
               <div class="tk-content__title">谈话内容</div>
               <p class="tk-content__body" :class="{ 'tk-masked': selected.psyMasked }">{{ selected.content || '（无）' }}</p>
               <p v-if="selected.result" class="tk-content__result">小结：{{ selected.result }}</p>
-              <p v-if="selected.relatedRiskId" class="tk-linked">已转风险单 #{{ selected.relatedRiskId }}</p>
-              <p v-if="selected.relatedContactId" class="tk-linked">已转家校联系 #{{ selected.relatedContactId }}</p>
+              <button v-if="selected.relatedRiskId" type="button" class="tk-linked" @click="goRelatedRisk">已转风险单 #{{ selected.relatedRiskId }} → 查看风险处置</button>
+              <button v-if="selected.relatedContactId" type="button" class="tk-linked" @click="goRelatedFamily">已转家校联系 #{{ selected.relatedContactId }} → 查看联系记录</button>
             </section>
             <div v-if="detailActions.length" class="tk-actions">
               <AppPermissionButton :allowed="canBtn('studentAffairs.talk.create')"
@@ -349,7 +349,7 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     talkTypeLabel(t) {
-      return TALK_TYPE[t] || t || '—'
+      return TALK_TYPE[t] || (t ? '类型待确认' : '—')
     },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'
@@ -418,6 +418,14 @@ export default {
         '谈话记录已提交（已进 360）'
       )
       if (!ok) this.recordForm.error = this._lastErr || '提交失败'
+    },
+    goRelatedRisk() {
+      if (!this.selected?.relatedRiskId) return
+      this.$router.push({ name: 'student-affairs-risk-detail', params: { riskId: String(this.selected.relatedRiskId) }, query: { studentId: String(this.selected.studentId || ''), from: 'talk', talkId: String(this.selected.talkId || '') } })
+    },
+    goRelatedFamily() {
+      if (!this.selected?.relatedContactId || !this.selected?.studentId) return
+      this.$router.push({ path: '/admin/student-affairs/family', query: { studentId: String(this.selected.studentId), contactId: String(this.selected.relatedContactId), from: 'talk', talkId: String(this.selected.talkId || '') } })
     },
     onAction(key) {
       const map = {
@@ -712,11 +720,8 @@ export default {
   color: var(--text-secondary);
   margin: 0 0 var(--space-2);
 }
-.tk-linked {
-  font-size: var(--font-size-xs);
-  color: var(--primary-600);
-  margin: 0 0 var(--space-1);
-}
+.tk-linked { display: block; border: 0; background: transparent; padding: 0; font: inherit; font-size: var(--font-size-xs); color: var(--primary-600); margin: 0 0 var(--space-1); cursor: pointer; text-align: left; }
+.tk-linked:hover { text-decoration: underline; }
 .tk-actions {
   display: flex;
   gap: var(--space-2);

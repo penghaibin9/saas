@@ -189,9 +189,9 @@ export default {
   created() { this.load() },
   methods: {
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-    assignmentLabel(t) { return (ASSIGNMENT_TYPES.find((x) => x.value === t) || {}).label || t },
-    sourceLabel(s) { return SOURCE_LABEL[s] || s },
-    statusLabel(s) { return STATUS_LABEL[s] || s },
+    assignmentLabel(t) { return (ASSIGNMENT_TYPES.find((x) => x.value === t) || {}).label || (t ? '类型待确认' : '—') },
+    sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
     orgName(type, id) { return this.orgNameMap[`${type}:${id}`] || `${type}:${id}` },
 
     async load() {

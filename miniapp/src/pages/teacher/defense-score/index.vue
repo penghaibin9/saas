@@ -1,6 +1,12 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="答辩评分" subtitle="本人担任评委的答辩学生" show-back />
+    <view v-if="actionReceipt" class="page-pad ds__receipt">
+      <text class="ds__receipt-title">{{ actionReceipt.title }}</text>
+      <text class="ds__receipt-line">{{ actionReceipt.result }}</text>
+      <text class="ds__receipt-next">{{ actionReceipt.next }}</text>
+      <button v-if="actionReceipt.nextId" class="btn btn-primary" @click="continueNext">继续下一名：{{ actionReceipt.nextName }}</button>
+    </view>
     <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待评分学生"
@@ -66,22 +72,23 @@ export default {
   data() {
     return {
       list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false,
-      loadToken: 0
+      loadToken: 0, actionReceipt: null
     }
   },
-  onLoad() { this.load() },
-  onUnload() { ++this.loadToken },
+  onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
+  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady); ++this.loadToken },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    onBatchReady() { this.load() },
     statusTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'SCORED' ? 'warning' : 'default' },
     load(done) {
       const token = ++this.loadToken
       this.state = 'loading'
       this.loadError = ''
-      teacherApi.getGraduationDefenseScorePending()
+      return teacherApi.getGraduationDefenseScorePending()
         .then((d) => {
           if (token !== this.loadToken) return
           this.list = Array.isArray(d) ? d : []
@@ -106,7 +113,7 @@ export default {
           absent: !!d.myAbsent,
           absentReason: d.myAbsentReason || ''
         }
-        this.$set ? this.$set(this.drafts, d.gdStudentId, draft) : (this.drafts[d.gdStudentId] = draft)
+        this.drafts[d.gdStudentId] = draft
       }
     },
     submit(d) {
@@ -126,10 +133,19 @@ export default {
       this.acting = true
       teacherApi.submitGraduationDefenseScore(d.gdStudentId, body)
         .then(() => {
-          toast('已保存')
           this.expanded = null
           delete this.drafts[d.gdStudentId]
-          this.load()
+          return this.load().then(() => {
+            const saved = (this.list || []).find((item) => String(item.gdStudentId) === String(d.gdStudentId))
+            const next = (this.list || []).find((item) => item.myStatus === 'PENDING' && String(item.gdStudentId) !== String(d.gdStudentId))
+            this.actionReceipt = {
+              title: `${d.studentName || '当前学生'}的答辩评分已保存`,
+              result: `服务器最新状态：${saved?.myStatusLabel || '已评分'}`,
+              next: next ? `下一位待评分学生：${next.studentName}` : '当前队列已处理完，无需继续操作。',
+              nextId: next?.gdStudentId || '', nextName: next?.studentName || ''
+            }
+            toast('评分已保存，服务器状态已回读')
+          })
         })
         .catch((e) => {
           const code = String(e?.code || '')
@@ -143,6 +159,13 @@ export default {
           }
         })
         .finally(() => { this.acting = false })
+    },
+    continueNext() {
+      const id = this.actionReceipt?.nextId
+      const next = (this.list || []).find((item) => String(item.gdStudentId) === String(id))
+      if (!next) { this.actionReceipt = null; return }
+      this.actionReceipt = null
+      this.toggle(next)
     }
   }
 }
@@ -159,4 +182,5 @@ export default {
 .ds__textarea { min-height: 56px; font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.6; background: var(--gray-50); border-radius: var(--radius-md); padding: var(--space-2); }
 .ds__textarea--sm { min-height: 44px; }
 .ds__ph { color: var(--text-tertiary); }
+.ds__receipt{display:flex;flex-direction:column;gap:4px;margin-top:var(--space-2);background:var(--success-50,#f0fdf4);border:1px solid var(--success-200,#bbf7d0);border-radius:var(--radius-lg);padding:var(--space-3)}.ds__receipt-title{font-weight:var(--font-weight-semibold);color:var(--success-700,#15803d)}.ds__receipt-line{font-size:var(--font-size-sm);color:var(--text-primary)}.ds__receipt-next{font-size:var(--font-size-xs);color:var(--text-tertiary)}.ds__receipt .btn{margin-top:var(--space-2)}
 </style>

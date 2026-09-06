@@ -106,7 +106,7 @@ export default {
         overdue: '逾期', highCritical: '高危/危急', open: '未关闭',
         completed: '已完成', openCrisis: '未关闭危机', granted: '已获资助',
         approved: '已认定', creditStudents: '获学分学生'
-      }[key] || key
+      }[key] || (key ? '项目待确认' : '—')
     },
     async load() {
       this.loading = true; this.errorMessage = ''

@@ -1,31 +1,42 @@
 <template>
-  <div v-if="product" class="yk-site yk-product-page yk-story-site">
+  <div v-if="product" class="yk-site yk-product-page yk-story-site" :style="{ '--yk-product-accent': product.accent, '--yk-product-soft': product.soft }">
     <header class="yk-header"><div class="yk-shell yk-nav">
       <router-link class="yk-brand" to="/" aria-label="返回跃科官网首页"><span class="yk-brand-dot" aria-hidden="true">跃</span><span class="yk-brand-copy"><strong>跃科 · {{ product.name }}</strong><small>职业院校学生全生命周期数字化平台</small></span></router-link>
-      <nav class="yk-nav-links" aria-label="产品页导航"><a href="#capabilities">解决什么</a><a href="#roles">谁怎么用</a><a href="#screens">产品界面</a><a href="#evidence">沉淀什么</a><router-link :to="contactRoute">预约产品演示</router-link></nav>
+      <nav class="yk-nav-links" aria-label="产品页导航"><a :href="concerns.length ? '#concerns' : '#capabilities'">解决什么</a><a href="#capabilities">全过程能力</a><a href="#roles">谁怎么用</a><a href="#screens">产品界面</a><a href="#evidence">沉淀什么</a><router-link :to="contactRoute">预约产品演示</router-link></nav>
       <router-link class="yk-nav-home" to="/" aria-label="返回跃科官网首页"><span aria-hidden="true">⌂</span> 返回首页</router-link>
       <router-link class="yk-nav-cta" :to="contactRoute">预约产品演示</router-link>
     </div></header>
 
     <main>
       <section class="yk-detail-hero"><div class="yk-shell yk-detail-hero-grid">
-        <div class="yk-detail-hero-copy"><router-link class="yk-back-link" to="/products">← 返回产品中心</router-link><p class="yk-kicker">{{ product.eyebrow }}</p><div class="yk-detail-title-row"><span class="yk-detail-mark" :style="{ color: product.accent, background: product.soft }">{{ product.mark }}</span><h1>{{ product.name }}</h1></div><h2>{{ product.heroTitle }}</h2><p class="yk-detail-lead">{{ product.summary }}</p>
+        <div class="yk-detail-hero-copy"><router-link class="yk-back-link" to="/products">← 返回产品中心</router-link><p class="yk-kicker">{{ product.eyebrow }}</p><div class="yk-detail-title-row"><span class="yk-detail-mark" :style="{ color: product.accent, background: product.soft }">{{ product.mark }}</span><h1>{{ product.name }}</h1></div><h2>{{ product.heroTitle }}</h2><p class="yk-detail-lead">{{ product.summary }}</p><p v-if="product.promise" class="yk-detail-promise">{{ product.promise }}</p>
           <div class="yk-role-row" aria-label="适用角色"><span v-for="role in product.roles" :key="role">{{ role }}</span></div>
           <div class="yk-hero-actions yk-detail-actions"><a class="yk-button yk-button-primary" href="#screens">看真实系统界面 →</a><router-link class="yk-button yk-button-ghost" :to="contactRoute">预约产品演示</router-link><a class="yk-button yk-button-ghost" :href="contact.phoneHref">电话 {{ contact.phone }}</a></div>
         </div>
         <figure class="yk-detail-hero-shot"><OfficialImageZoom :src="product.screenshots[0].src" :alt="`${product.name}产品运行界面`" loading="eager" :caption="product.screenshots[0].title" /><figcaption><strong>{{ product.screenshots[0].title }}</strong><span>{{ product.screenshots[0].tag }}</span></figcaption></figure>
       </div></section>
 
+      <section v-if="concerns.length" id="concerns" class="yk-section yk-product-concern-section"><div class="yk-shell">
+        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">{{ marketing.concernKicker }}</p><h2>{{ marketing.concernTitle }}</h2><p>{{ marketing.concernLead }}</p></div>
+        <ul class="yk-product-concern-grid"><li v-for="(item, index) in concerns" :key="item"><span>0{{ index + 1 }}</span><strong>{{ item }}</strong></li></ul>
+        <div class="yk-product-answer"><span>系统给学校的答案</span><strong>{{ marketing.answer }}</strong></div>
+      </div></section>
+
       <section id="capabilities" class="yk-section yk-detail-capability-section"><div class="yk-shell">
-        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">客户先看懂解决什么问题</p><h2>{{ product.name }}不是菜单集合，而是一条连续业务链</h2><p>从学校角色、流程状态与下一步动作出发，理解产品如何进入日常工作。</p></div>
+        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">{{ marketing.capabilityKicker || '客户先看懂解决什么问题' }}</p><h2>{{ marketing.capabilityTitle || `${product.name}不是菜单集合，而是一条连续业务链` }}</h2><p>{{ marketing.capabilityLead || '从学校角色、流程状态与下一步动作出发，理解产品如何进入日常工作。' }}</p></div>
         <div class="yk-detail-highlight-grid"><article v-for="item in product.highlights" :key="item.title"><span class="yk-highlight-index">0{{ product.highlights.indexOf(item) + 1 }}</span><h3>{{ item.title }}</h3><p>{{ item.desc }}</p></article></div>
-        <div class="yk-workflow-band"><div class="yk-workflow-band-copy"><p class="yk-kicker">业务闭环</p><h3>从前置准备到最终结果，阶段之间持续传递同一业务事实</h3></div><ol><li v-for="(step, index) in product.workflow" :key="step"><span>{{ index + 1 }}</span><strong>{{ step }}</strong></li></ol></div>
+        <div class="yk-workflow-band"><div class="yk-workflow-band-copy"><p class="yk-kicker">一条业务主线</p><h3>{{ marketing.workflowTitle || '从前置准备到最终结果，阶段之间持续传递同一业务事实' }}</h3></div><ol><li v-for="(step, index) in product.workflow" :key="step"><span>{{ index + 1 }}</span><strong>{{ step }}</strong></li></ol><p v-if="marketing.workflowSummary" class="yk-workflow-summary">{{ marketing.workflowSummary }}</p></div>
         <p v-if="story?.fact" class="yk-story-fact"><strong>业务范围：</strong>{{ story.fact }} <template v-if="product.relationMap">还可以查看完整业务地图。</template></p>
       </div></section>
 
       <section id="roles" class="yk-section yk-story-section"><div class="yk-shell">
-        <div class="yk-section-heading"><p class="yk-kicker">谁在什么场景完成什么事情</p><h2>同一个产品，不同角色看到的是自己的工作</h2><p>管理人员负责规则和治理，老师围绕待办与学生工作，学生处理本人事项；企业只在被授权的实习协同范围内参与。</p></div>
+        <div class="yk-section-heading"><p class="yk-kicker">谁在什么场景完成什么事情</p><h2>同一个产品，不同角色看到的是自己的工作</h2><p>{{ marketing.roleLead || '管理人员负责规则和治理，老师围绕待办与学生工作，学生处理本人事项。' }}</p></div>
         <div class="yk-role-journey-grid"><article v-for="item in roleJourneys" :key="item.role"><h3>{{ item.role }}</h3><p>{{ item.work }}</p></article></div>
+      </div></section>
+
+      <section v-if="visibility.length" class="yk-section yk-product-visibility-section"><div class="yk-shell yk-product-visibility-layout">
+        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">{{ marketing.visibilityKicker }}</p><h2>{{ marketing.visibilityTitle }}</h2><p>{{ marketing.visibilityLead }}</p></div>
+        <div class="yk-product-visibility-grid"><article v-for="(item, index) in visibility" :key="item.title"><span>0{{ index + 1 }}</span><div><h3>{{ item.title }}</h3><p>{{ item.desc }}</p></div></article></div>
       </div></section>
 
       <section id="screens" class="yk-section yk-detail-screens-section"><div class="yk-shell">
@@ -39,7 +50,7 @@
       </div></section>
 
       <section id="evidence" class="yk-section yk-story-section"><div class="yk-shell">
-        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">最终沉淀什么</p><h2>学校买的不是“页面数量”，而是过程、结果和证据都能留下来</h2><p>不同产品沉淀的对象不同，但共同目标是让状态、材料、责任、异常、结果和归档有迹可循。</p></div>
+        <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">最终沉淀什么</p><h2>{{ marketing.evidenceTitle || '学校买的不是“页面数量”，而是过程、结果和证据都能留下来' }}</h2><p>{{ marketing.evidenceLead || '不同产品沉淀的对象不同，但共同目标是让状态、材料、责任、异常、结果和归档有迹可循。' }}</p></div>
         <ul class="yk-outcome-grid"><li v-for="item in outcomes" :key="item">{{ item }}</li></ul>
         <div class="yk-evidence-note"><strong>数据说明</strong><p>产品截图使用演示数据，不包含真实学生、教师或学校敏感信息。</p></div>
       </div></section>
@@ -48,7 +59,7 @@
 
       <section id="access" class="yk-section yk-access-section yk-access-secondary"><div class="yk-shell"><div class="yk-section-heading yk-access-heading"><p class="yk-kicker">已经是系统用户？</p><h2>看懂产品之后，再按身份进入正式业务系统</h2></div><div class="yk-access-grid yk-access-grid-three"><a v-if="teacherLoginUrl" :href="teacherLoginUrl" class="yk-access-card yk-access-primary"><span>教师 / 管理人员</span><strong>进入教师与管理工作台</strong><small>{{ product.name }}管理、审核、指导与业务办理</small><b aria-hidden="true">→</b></a><a v-if="studentLoginUrl" :href="studentLoginUrl" class="yk-access-card"><span>学生</span><strong>进入学生门户</strong><small>查看本人事项、提交材料、查询进度与结果</small><b aria-hidden="true">→</b></a><a v-if="enterpriseLoginUrl && product.slug === 'internship'" :href="enterpriseLoginUrl" class="yk-access-card"><span>企业协同</span><strong>企业注册 / 登录</strong><small>首次注册由学校邀请激活，不开放自由注册</small><b aria-hidden="true">→</b></a></div><div class="yk-detail-secondary-actions"><router-link to="/">返回官网首页</router-link><router-link to="/products">返回产品中心</router-link><router-link :to="contactRoute">预约产品演示</router-link><a v-if="product.relationMap" :href="product.relationMap" target="_blank" rel="noopener noreferrer">查看{{ product.name }}完整业务地图</a></div></div></section>
 
-      <section class="yk-final-cta"><div class="yk-shell yk-final-inner"><p class="yk-final-kicker">{{ product.name }}</p><h2>想把这套能力落到学校真实业务里？</h2><p>填写学校和联系电话即可预约产品演示；表单只用于把本次咨询短信通知给跃科商务联系人，不进入业务数据库。</p><div class="yk-final-actions"><router-link class="yk-button yk-button-light" :to="contactRoute">预约产品演示</router-link><a class="yk-button yk-button-ghost" :href="contact.phoneHref">拨打 {{ contact.phone }}</a></div></div></section>
+      <section class="yk-final-cta"><div class="yk-shell yk-final-inner"><p class="yk-final-kicker">{{ product.name }}</p><h2>{{ marketing.finalTitle || '想把这套能力落到学校真实业务里？' }}</h2><p>{{ marketing.finalLead || '填写学校和联系电话即可预约产品演示；表单只用于把本次咨询短信通知给跃科商务联系人，不进入业务数据库。' }}</p><div class="yk-final-actions"><router-link class="yk-button yk-button-light" :to="contactRoute">预约产品演示</router-link><a class="yk-button yk-button-ghost" :href="contact.phoneHref">拨打 {{ contact.phone }}</a></div></div></section>
     </main>
 
     <footer class="yk-footer"><div class="yk-shell yk-footer-inner"><div><strong>{{ companyName }}</strong><span>职业院校学生全生命周期数字化平台</span></div><div class="yk-footer-links"><router-link to="/">官网首页</router-link><router-link to="/products">产品中心</router-link><router-link to="/platform">平台能力</router-link><router-link to="/privacy">隐私政策</router-link><router-link to="/support">技术支持</router-link><a :href="contact.phoneHref">{{ contact.phone }}</a><a v-if="icpNumber" :href="icpQueryUrl" target="_blank" rel="noopener noreferrer">{{ icpNumber }}</a><span>© {{ year }}</span></div></div></footer>
@@ -71,6 +82,7 @@ export default {
   computed: {
     product() { return getOfficialProduct(this.$route.params.slug) }, contact() { return OFFICIAL_SITE_CONTACT },
     story() { return PRODUCT_STORIES[this.product?.slug] || null }, roleJourneys() { return this.story?.roles || [] }, outcomes() { return this.story?.outcomes || [] }, faqs() { return this.story?.faqs || [] },
+    concerns() { return this.product?.concerns || [] }, visibility() { return this.product?.visibility || [] }, marketing() { return this.product?.marketing || {} },
     contactRoute() { return { path: '/contact', query: { product: this.product?.slug || '' } } }, year() { return new Date().getFullYear() }
   },
   watch: { '$route.params.slug': { immediate: true, handler() { this.syncDocumentMeta() } } },

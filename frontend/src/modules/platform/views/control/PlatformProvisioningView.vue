@@ -20,13 +20,14 @@
       <AppCard v-if="showCreate" class="psc__panel">
         <AppSectionHeader title="新建开通任务" />
         <div class="pcp__form">
-          <input v-model.trim="form.idempotencyKey" class="pcp__input" placeholder="幂等键（同一次开通请求保持不变）" />
-          <input v-model.trim="form.tenantCode" class="pcp__input" placeholder="租户代码 tenantCode" />
+          <span class="pcp__request-key">请求号 {{ form.idempotencyKey }}</span>
+          <input v-model.trim="form.tenantCode" class="pcp__input" placeholder="租户代码" />
           <input v-model.trim="form.tenantName" class="pcp__input" placeholder="学校名称" />
-          <select v-model="form.packageCode" class="pcp__input">
+          <select v-model="form.targetPackageCode" class="pcp__input" aria-label="意向套餐">
             <option value="trial">试用版</option><option value="basic">基础版</option>
             <option value="standard">标准版</option><option value="professional">专业版</option>
           </select>
+          <span class="pcp__authority-note">意向套餐仅用于交付规划；新校先以试用状态开户，正式授权必须由已支付订单生效。</span>
           <input v-model.trim="form.adminLoginName" class="pcp__input" placeholder="首位管理员账号" />
           <input v-model.trim="form.adminRealName" class="pcp__input" placeholder="首位管理员姓名" />
           <button class="mp-link" @click="submitCreate">提交开通</button>
@@ -35,7 +36,13 @@
 
       <AppCard v-if="revealedPassword" class="psc__panel pcp__reveal">
         <AppSectionHeader title="首位管理员临时密码（仅显示一次，请立即转告学校）" />
-        <p class="pcp__reveal-text">{{ revealedPassword }}</p>
+        <p class="pcp__reveal-text">{{ credentialRevealed ? revealedPassword : '••••••••••••••••' }}</p>
+        <div class="pcp__form">
+          <button class="mp-link" @click="credentialRevealed = !credentialRevealed">{{ credentialRevealed ? '隐藏密码' : '临时显示' }}</button>
+          <button class="mp-link" @click="copyCredential">复制凭据</button>
+          <button class="mp-link" @click="clearCredential">我已安全保存</button>
+        </div>
+        <small>截图、日志与任务详情不会保存明文；后续再次打开任务也不会重新显示。</small>
       </AppCard>
 
       <AppCard class="psc__panel">
@@ -55,18 +62,19 @@
         <AppSectionHeader :title="`任务详情：${selected.tenantCode}（${selected.jobId}）`" />
         <p v-if="selected.lastError" class="pcp__error">最近错误：{{ selected.lastError }}</p>
         <DataTable :columns="stepColumns" :rows="selected.steps" row-key="stepCode">
+          <template #cell-stepCode="{ row }">{{ stepLabel(row.stepCode) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
           <template #cell-ops="{ row }">
-            <button v-if="row.status === 'FAILED'" class="mp-link" @click="retryStep(row)">重试</button>
-            <button v-if="row.status === 'FAILED'" class="mp-link" @click="compensateStep(row)">补偿</button>
-            <button v-if="row.status === 'FAILED' || row.status === 'COMPENSATED'" class="mp-link" @click="flagManual(row)">转人工</button>
+            <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="retryStep(row)">重试</button>
+            <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="compensateStep(row)">补偿</button>
+            <button v-if="row.status === 'FAILED' || row.status === 'COMPENSATED'" class="mp-link" @click.stop="flagManual(row)">转人工</button>
           </template>
         </DataTable>
         <div class="pcp__form">
-          <button v-if="selected.status !== 'SUCCEEDED' && selected.status !== 'CANCELLED'" class="mp-link" @click="resumeJob">续跑</button>
-          <button v-if="selected.status !== 'SUCCEEDED' && selected.status !== 'CANCELLED'" class="mp-link" @click="cancelJob">取消任务</button>
+          <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="resumeJob">续跑</button>
+          <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="cancelJob">取消任务</button>
         </div>
       </AppCard>
     </template>
@@ -92,7 +100,8 @@ export default {
       selected: null,
       showCreate: false,
       revealedPassword: '',
-      form: { idempotencyKey: '', tenantCode: '', tenantName: '', packageCode: 'trial', adminLoginName: '', adminRealName: '' },
+      credentialRevealed: false,
+      form: { idempotencyKey: '', tenantCode: '', tenantName: '', targetPackageCode: 'trial', adminLoginName: '', adminRealName: '' },
       jobColumns: [
         { key: 'scope', title: '任务' },
         { key: 'status', title: '状态' }
@@ -106,9 +115,18 @@ export default {
       ]
     }
   },
-  created() { this.load() },
+  created() {
+    if (String(this.$route.query.create || '') === '1') this.openCreate()
+    this.load()
+  },
   methods: {
     platformStatusLabel,
+    stepLabel(code) {
+      return ({
+        TENANT: '创建租户', ROLES: '初始化角色', FIRST_ADMIN: '创建首位管理员',
+        CAPABILITIES: '开通功能能力', IMPLEMENTATION_PROJECT: '创建实施项目', HEALTH_CHECK: '运行健康检查'
+      })[code] || '其他开户步骤'
+    },
     statusTone(s) {
       return { RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', COMPENSATING: 'warning', CANCELLED: 'default', PENDING: 'default', WAITING_INPUT: 'warning' }[s] || 'default'
     },
@@ -116,7 +134,7 @@ export default {
       return { SUCCEEDED: 'success', FAILED: 'danger', RUNNING: 'warning', NEEDS_MANUAL_REVIEW: 'danger', COMPENSATED: 'default', PENDING: 'default' }[s] || 'default'
     },
     onToolbarAction(action) {
-      if (action === 'create') this.showCreate = !this.showCreate
+      if (action === 'create') this.openCreate()
       if (action === 'refresh') this.load()
     },
     async submitCreate() {
@@ -125,12 +143,32 @@ export default {
       }
       const res = await platformControlApi.startProvisioningJob({ ...this.form })
       if (res.code === 0) {
-        toast.success('开通任务已受理：' + res.data.status)
+        toast.success(res.data.provisioningState === 'BOOTSTRAP_READY' ? '基础开户已完成；学校实施与验收仍需继续' : '开通任务已受理：' + platformStatusLabel(res.data.status))
         this.revealedPassword = res.data.revealOnce?.FIRST_ADMIN?.initialPassword || ''
+        this.credentialRevealed = false
         this.showCreate = false
         await this.load()
         this.selected = res.data
       } else toast.error(res.message)
+    },
+    openCreate() {
+      const generated = globalThis.crypto?.randomUUID?.() || `provision-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      this.form = { idempotencyKey: generated, tenantCode: '', tenantName: '', targetPackageCode: 'trial', adminLoginName: 'admin', adminRealName: '' }
+      this.showCreate = true
+    },
+    async copyCredential() {
+      if (!this.revealedPassword) return
+      const value = `学校编码：${this.selected?.tenantCode || this.form.tenantCode}\n管理员账号：${this.form.adminLoginName}\n临时密码：${this.revealedPassword}`
+      try {
+        await navigator.clipboard.writeText(value)
+        toast.success('一次性凭据已复制，请通过安全渠道交付')
+      } catch {
+        toast.info('浏览器未允许复制，可临时显示后手动保存')
+      }
+    },
+    clearCredential() {
+      this.revealedPassword = ''
+      this.credentialRevealed = false
     },
     async selectJob(row) {
       const res = await platformControlApi.getProvisioningJob(row.jobId)
@@ -196,4 +234,6 @@ export default {
 .pcp__error { color: var(--color-danger); font-size: var(--font-size-sm); }
 .pcp__reveal { border-color: var(--color-warning, #d97706); }
 .pcp__reveal-text { font-family: monospace; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.pcp__request-key { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.pcp__authority-note { flex-basis: 100%; font-size: var(--font-size-xs); color: var(--color-warning, #9a6700); }
 </style>

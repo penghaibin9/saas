@@ -151,9 +151,9 @@ export default {
     itemLabel(i) { return GRAD_ITEM_LABEL[i] || i },
     itemResult(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '' },
-    statusLabel(s) { return GRAD_STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
-    sourceLabel(value) { return SOURCE_LABELS[value] || value || '—' },
+    sourceLabel(value) { return SOURCE_LABELS[value] || (value ? '待确认' : '—') },
     shortHash(value) { return value ? `${String(value).slice(0, 10)}…` : '—' },
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '—' },
     drillEvidence(item) {

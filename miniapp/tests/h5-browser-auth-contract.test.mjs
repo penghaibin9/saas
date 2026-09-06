@@ -6,6 +6,8 @@ const read=(p)=>fs.readFileSync(new URL(p,import.meta.url),'utf8')
 const installer=read('../src/services/h5BrowserAuthInstaller.js')
 const main=read('../src/main.js')
 const request=read('../src/services/request.js')
+const env=read('../src/config/env.js')
+const vite=read('../vite.config.js')
 
 test('H5 browser auth installer loads before App and request consumers',()=>{
   const installerAt=main.indexOf("import './services/h5BrowserAuthInstaller'")
@@ -45,8 +47,11 @@ test('student H5 password CAPTCHA uses the same browser clientType as final logi
 })
 
 test('native miniapp request implementation remains available and installer is H5 gated',()=>{
+  assert.match(installer,/import \{ uni as h5Uni \} from '@dcloudio\/uni-h5'/)
   assert.match(installer,/typeof window !== 'undefined'/)
   assert.match(installer,/typeof document !== 'undefined'/)
+  assert.match(installer,/typeof h5Uni !== 'undefined'/)
+  assert.match(installer,/const runtimeUni = h5Uni/)
   assert.match(installer,/if \(isH5\)/)
   assert.match(request,/realRequest\('\/auth\/refresh'/)
   assert.match(request,/setRefreshToken/)
@@ -57,4 +62,22 @@ test('H5 refresh sentinel is non-secret and only preserves the existing single-f
   assert.match(installer,/if \(isRefresh\) next\.data = \{\}/)
   assert.match(request,/if \(!snapshot\.refreshToken\)/)
   assert.match(request,/if \(_refreshing && _refreshing\.generation === expectedGeneration\)/)
+  assert.match(request,/!getToken\(\) && getRefreshToken\(\)/)
+  assert.match(request,/return _refreshOnce\(expectedGeneration\)\.then/)
+})
+
+test('shared request layer accepts valid JSON text from H5 but keeps malformed responses fail-closed',()=>{
+  assert.match(request,/function normalizeJsonResponseBody\(value\)/)
+  assert.match(request,/return JSON\.parse\(text\)/)
+  assert.match(request,/const body = normalizeJsonResponseBody\(res\.data\)/)
+  assert.match(request,/code: 'BAD_RESPONSE'/)
+})
+
+test('local H5 uses a same-origin API proxy while native miniapp keeps its explicit origin',()=>{
+  assert.match(env,/BUILD_DEV && typeof window !== 'undefined'/)
+  assert.doesNotMatch(env,/(?<![\w.])env\.DEV\b/)
+  assert.match(env,/localhost\|127\\\.0\\\.0\\\.1/)
+  assert.match(vite,/['"]\/api['"]\s*:/)
+  assert.match(vite,/VITE_DEV_API_PROXY_TARGET/)
+  assert.match(vite,/http:\/\/127\.0\.0\.1:8000/)
 })

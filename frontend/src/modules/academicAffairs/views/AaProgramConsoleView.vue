@@ -426,9 +426,9 @@ export default {
   },
   methods: {
     reviewStatusColor, canNewVersion, availableChangeActions,
-    statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
+    statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
     gradCategoryLabel(c) { return GRADUATION_REQUIREMENT_CATEGORY[c] || c || '' },
-    practiceSegmentTypeLabel(t) { return PRACTICE_SEGMENT_TYPE[t] || t || '' },
+    practiceSegmentTypeLabel(t) { return PRACTICE_SEGMENT_TYPE[t] || (t ? '类型待确认' : '') },
     orgModeLabel(m) { return PRACTICE_ORG_MODE[m] || m || '' },
     archiveReasonLabel(r) { return ARCHIVE_REASON_LABEL[r] || r || '' },
     changeActionLabel(a) { return PROGRAM_CHANGE_ACTION[a] || a || '' },

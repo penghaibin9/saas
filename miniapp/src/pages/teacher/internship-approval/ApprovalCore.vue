@@ -70,7 +70,9 @@
             <view class="detail"><text class="key">数据版本</text><text>v{{ item.version }}</text></view>
             <button
               class="approve"
+              :class="{ 'is-disabled': isActing('return', item.id) || !canReviewLeave }"
               :disabled="isActing('return', item.id) || !canReviewLeave"
+              plain
               @click="ackReturn(item)"
             >{{ isActing('return', item.id) ? '办结中…' : (canReviewLeave ? '确认办结并同步风险' : '无办结权限') }}</button>
           </view>
@@ -296,5 +298,5 @@ export default {
 .detail { display: flex; gap: 12px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.55; }
 .key { width: 68px; flex: 0 0 68px; color: var(--text-tertiary); }
 .approve { margin: 4px 0 0; background: var(--brand-primary); color: #fff; border: 0; }
-.approve[disabled] { background: var(--gray-300); color: var(--text-tertiary); }
+.approve.is-disabled { background: var(--gray-300); color: var(--text-tertiary); }
 </style>

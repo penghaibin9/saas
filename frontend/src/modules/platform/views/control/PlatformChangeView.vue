@@ -49,7 +49,7 @@
         <DataTable :columns="listColumns" :rows="changes" row-key="changeId" row-clickable @row-click="selectChange">
           <template #cell-scope="{ row }">
             <div class="pch__cell-main">{{ row.title }}</div>
-            <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ row.affectedServiceCodes.join('、') }}</div>
+            <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ serviceLabels(row.affectedServiceCodes) }}</div>
           </template>
           <template #cell-status="{ row }">
             <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
@@ -58,7 +58,7 @@
       </AppCard>
 
       <AppCard v-if="selected" class="pch__panel">
-        <AppSectionHeader :title="`变更详情：${selected.title}（${selected.status}）`" />
+        <AppSectionHeader :title="`变更详情：${selected.title}（${platformStatusLabel(selected.status)}）`" />
         <div class="pch__form">
           <button v-if="selected.status === 'DRAFT'" class="mp-link" @click="doAssess">评估</button>
           <button v-if="selected.status === 'ASSESSED'" class="mp-link" @click="doApprove">审批通过</button>
@@ -94,7 +94,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
-import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
+import { platformServiceLabel, platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -120,12 +120,13 @@ export default {
   created() { this.load() },
   methods: {
     platformStatusLabel,
-    /** 变更类型中文名；与上方下拉选项同一口径，未收录取值原样显示 */
+    serviceLabels(values) { return (values || []).map((value) => platformServiceLabel(value)).join('、') || '未指定服务' },
+    /** 变更类型中文名；与上方下拉选项同一口径。 */
     changeTypeLabel(t) {
       return ({
         CODE: '代码发布', MIGRATION: '数据库迁移', PLATFORM_CONFIG: '平台配置',
         PACKAGE: '套餐调整', COMMON_FOUNDATION: '公共底座', HOTFIX: '紧急修复'
-      })[t] || t || '—'
+      })[t] || '变更类型待确认'
     },
     statusTone(s) {
       return { DRAFT: 'default', ASSESSED: 'default', APPROVED: 'warning', SCHEDULED: 'warning', IMPLEMENTING: 'warning', VERIFIED: 'success', FAILED: 'danger', ROLLED_BACK: 'danger' }[s] || 'default'
@@ -177,7 +178,7 @@ export default {
     },
     async doStartWave() {
       const waveNo = (this.selected.waves?.length || 0) + 1
-      const tenantIdsText = window.prompt('本批次租户ID，逗号分隔')
+      const tenantIdsText = window.prompt('本批次租户编号，逗号分隔')
       if (!tenantIdsText) return
       const tenantIds = tenantIdsText.split(',').map((s) => s.trim()).filter(Boolean)
       const res = await platformControlApi.startChangeWave(this.selected.changeId, waveNo, tenantIds)

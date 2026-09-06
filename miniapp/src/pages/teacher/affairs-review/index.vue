@@ -26,8 +26,8 @@
               <button v-if="canAction(x, 'PROCESS')" class="btn btn-ghost flex-1" :disabled="acting || !hasVersion(x)" @click="doRiskProcess(x)">填写处置</button>
               <button v-if="canAction(x, 'CLOSE')" class="ar__ok flex-1" :disabled="acting || !hasVersion(x)" @click="doRiskClose(x)">关闭</button>
             </view>
-            <view class="ar__actions ar__appeal-actions" v-else-if="isAppeal">
-              <button v-for="a in appealActions" :key="a.value" class="btn flex-1" :class="a.danger ? 'ar__no' : (a.primary ? 'ar__ok' : 'btn-ghost')" :disabled="acting || !hasVersion(x)" @click="reviewAppeal(x, a)">{{ a.label }}</button>
+            <view class="ar__actions ar__appeal-actions" v-else-if="isAppeal && visibleAppealActions(x).length">
+              <button v-for="a in visibleAppealActions(x)" :key="a.value" class="btn flex-1" :class="a.danger ? 'ar__no' : (a.primary ? 'ar__ok' : 'btn-ghost')" :disabled="acting || !hasVersion(x)" @click="reviewAppeal(x, a)">{{ a.label }}</button>
             </view>
             <view class="ar__actions" v-else-if="availableReviewActions(x).length">
               <button v-if="canAction(x, 'REJECT')" class="ar__no flex-1" :disabled="acting || !hasVersion(x)" @click="doReview(x, 'REJECT')">驳回</button>
@@ -73,6 +73,11 @@ const DISC_TYPES = [
   { label: '记过', value: 'DEMERIT' }, { label: '留校察看', value: 'PROBATION' },
   { label: '开除学籍', value: 'EXPEL' }
 ]
+const HIGH_RISK_KINDS = new Set([
+  'AID_APPROVAL', 'AID_ADJUST', 'FUNDING_APPROVAL', 'DISCIPLINE_APPROVAL',
+  'DISCIPLINE_REMOVE', 'RISK_HANDLE', 'AID_OBJECTION_REVIEW',
+  'FUNDING_APPEAL_REVIEW', 'DISCIPLINE_APPEAL_REVIEW', 'SECOND_CLASS_APPEAL_REVIEW'
+])
 
 export default {
   data() { return { kind: 'AID_APPROVAL', list: [], state: 'loading', acting: false, expandedId: '', detailMap: {}, detailLoading: '' } },
@@ -85,13 +90,16 @@ export default {
     rowKey(x) { return String(x.objectionId || x.appealId || x.applyId || x.applicationId || x.caseId || x.riskId || x.id || '') },
     summary(x) { return x.title || x.topic || x.statement || x.applyLevel || x.claimCreditType || x.discTypeLabel || '' },
     hasVersion(x) { return x && x.version !== undefined && x.version !== null && x.version !== '' },
-    fallbackActions(x) {
-      if (this.kind === 'RISK_HANDLE') return ['PROCESS', 'CLOSE']
-      if (this.isAppeal) return this.appealActions.map((a) => a.value)
-      if (this.kind === 'AID_ADJUST') return ['APPROVE', 'REJECT']
+    fallbackActions() {
+      if (HIGH_RISK_KINDS.has(this.kind)) return []
       return ['APPROVE', 'RETURN', 'REJECT']
     },
-    canAction(x, action) { const list = Array.isArray(x.allowedActions) ? x.allowedActions : this.fallbackActions(x); return list.includes(action) },
+    canAction(x, action) { const list = Array.isArray(x.allowedActions) ? x.allowedActions : this.fallbackActions(); return list.includes(action) },
+    visibleAppealActions(x) {
+      if (!Array.isArray(x && x.allowedActions)) return []
+      if (x.allowedActions.includes('REVIEW')) return this.appealActions
+      return this.appealActions.filter((action) => x.allowedActions.includes(action.value))
+    },
     availableReviewActions(x) { return ['APPROVE', 'RETURN', 'REJECT'].filter((a) => this.canAction(x, a)) },
     load() {
       this.state = 'loading'; this.expandedId = ''; this.detailMap = {}
@@ -147,6 +155,9 @@ export default {
     promptText({ title, initial = '', invalid, submit }) {
       uni.showModal({ title, editable: true, placeholderText: '不少于5字', content: initial, success: (r) => { if (!r.confirm) return; const value = (r.content || '').trim(); if (value.length < 5) return toast(invalid); submit(value) } })
     },
+    promptOptionalText({ title, initial = '', placeholderText = '可留空', submit }) {
+      uni.showModal({ title, editable: true, placeholderText, content: initial, success: (r) => { if (!r.confirm) return; submit((r.content || '').trim()) } })
+    },
     doReview(x, action, previous = '') {
       const id = this.rowKey(x); if (!id || this.acting || !this.canAction(x, action)) return
       if (this.kind === 'AID_ADJUST' && action === 'APPROVE') return this.chooseAdjustLevel(x)
@@ -169,24 +180,52 @@ export default {
         } })
       } })
     },
-    reviewAppeal(x, action, previous = '', revisedDiscType = '') {
+    reviewAppeal(x, action, previous = '', revisedDiscType = '', revisedReason = '', revisedDocNo = null) {
       const id = this.rowKey(x); const version = this.versionOf(x)
       if (!id || version === null || this.acting) return
-      if (this.meta.appealKind === 'DISCIPLINE_APPEAL' && action.value === 'REVISED' && !revisedDiscType) {
-        const options = DISC_TYPES.filter((item) => item.value !== x.discType)
-        uni.showActionSheet({ itemList: options.map((item) => item.label), success: (r) => {
-          const selected = options[r.tapIndex]
-          if (selected) this.reviewAppeal(x, action, previous, selected.value)
-        } })
-        return
+      if (!this.visibleAppealActions(x).some((candidate) => candidate.value === action.value)) return
+      if (this.meta.appealKind === 'DISCIPLINE_APPEAL' && action.value === 'REVISED') {
+        if (!revisedDiscType) {
+          const options = DISC_TYPES.filter((item) => item.value !== x.discType)
+          uni.showActionSheet({ itemList: options.map((item) => item.label), success: (r) => {
+            const selected = options[r.tapIndex]
+            if (selected) this.reviewAppeal(x, action, previous, selected.value, revisedReason, revisedDocNo)
+          } })
+          return
+        }
+        if (!revisedReason) {
+          this.promptText({
+            title: '变更后的处分事实',
+            initial: '',
+            invalid: '变更后的处分事实至少5字',
+            submit: (value) => this.reviewAppeal(x, action, previous, revisedDiscType, value, revisedDocNo)
+          })
+          return
+        }
+        if (revisedDocNo === null) {
+          this.promptOptionalText({
+            title: '变更后的文号',
+            placeholderText: '可留空；留空表示新决定无文号',
+            submit: (value) => this.reviewAppeal(x, action, previous, revisedDiscType, revisedReason, value)
+          })
+          return
+        }
       }
       this.promptText({ title: action.label, initial: previous, invalid: '复核意见至少5字', submit: (opinion) => {
         const payload = this.meta.appealKind === 'SECOND_CLASS_APPEAL'
           ? { action: action.value, opinion, version }
-          : { result: action.value, opinion, version, ...(revisedDiscType ? { revisedDiscType } : {}) }
+          : {
+              result: action.value,
+              opinion,
+              version,
+              ...(revisedDiscType ? { revisedDiscType, revisedReason, revisedDocNo: revisedDocNo || '' } : {})
+            }
         this.acting = true
         affairsAppealApi.review(this.meta.appealKind, id, payload).then(() => { toast('复核完成'); this.load() })
-          .catch((e) => { const n = this._err(e, '复核'); if (n.kind !== 'conflict') setTimeout(() => this.reviewAppeal(x, action, opinion, revisedDiscType), 0) }).finally(() => { this.acting = false })
+          .catch((e) => {
+            const n = this._err(e, '复核')
+            if (n.kind !== 'conflict') setTimeout(() => this.reviewAppeal(x, action, opinion, revisedDiscType, revisedReason, revisedDocNo), 0)
+          }).finally(() => { this.acting = false })
       } })
     },
     doRiskProcess(x, previous = '') {

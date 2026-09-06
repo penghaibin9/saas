@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-21.p0.6"
+REGISTRY_VERSION = "2026-08-30.plat-abc.1"
 REVIEWED_ALEMBIC_HEAD = "20260821_ctrl_teacher_merge"
 
 PURGE = "PURGE"
@@ -60,6 +60,14 @@ _PURGE_EXACT = {
     "t_attendance_exception",  # tenant attendance/business exception record
     "t_class",  # tenant organization master data
     "t_green_channel_application",  # orientation business application
+    # PLAT-A/B/C tenant-owned operational/configuration records.  None is
+    # minimum cross-tenant compliance evidence; retaining them after tenant
+    # destruction would preserve form schemas, file-derived metadata, or
+    # integrity details that still identify the removed tenant's business data.
+    "t_business_form_definition",
+    "t_business_form_version",
+    "t_document_compare_result",
+    "t_integrity_exception",
     # Teacher V3 recommendation fact is tenant business data.  Keep it explicit
     # even though the t_emp_ family below would also classify it: advancing the
     # reviewed schema head is a deliberate destructive-data review decision.

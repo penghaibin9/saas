@@ -123,8 +123,8 @@ export default {
       if (res.code === 0 && res.data) this.report = res.data
       else this.errorMessage = res.message || '成绩单加载失败'
     },
-    typeLabel(t) { return TYPE[t] || t },
-    sourceLabel(s) { return ({ ACTIVITY: '活动确认', MANUAL_ADJUST: '手工调整', VOLUNTEER_RECORD: '志愿补录' })[s] || s || '—' }
+    typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') },
+    sourceLabel(s) { return ({ ACTIVITY: '活动确认', MANUAL_ADJUST: '手工调整', VOLUNTEER_RECORD: '志愿补录' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>

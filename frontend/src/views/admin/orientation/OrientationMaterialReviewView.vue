@@ -42,7 +42,7 @@
             <span class="ori-preview__icon">▤</span>
             <b>{{ viewTarget.fileName }}</b>
             <span>{{ labelOf('materialType', viewTarget.materialType) }} · 提交于 {{ viewTarget.submitTime }}</span>
-            <span class="ori-inline-note">演示环境为材料预览占位</span>
+            <span class="ori-inline-note">当前记录仅包含文件名，原文件在线预览尚未配置；请按学校线下核验流程确认原件。</span>
           </div>
           <div v-if="viewTarget.returnReason" class="ori-reject-box">最近退回原因：{{ viewTarget.returnReason }}</div>
         </template>
@@ -217,7 +217,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     canOperate(target) {
       if (!target || target.status !== 'UPLOADED') return false

@@ -20,40 +20,59 @@ export const schoolIamApi = {
   summary: () => call('/system/iam/summary', {}, '学校 IAM 总览加载失败'),
   permissionCatalog: () => call('/system/iam/permission-catalog', {}, '学校可分配权限目录加载失败'),
   roleTemplates: () => call('/system/iam/role-templates', {}, '学校角色模板加载失败'),
-  templateImpact: (templateId) => call(
-    `/system/iam/role-templates/${encodeURIComponent(templateId)}/impact`,
-    {},
-    '角色模板影响分析失败'
-  ),
-  roleMembers: (roleId, page = 1, pageSize = 50) => call(
-    `/system/roles/${encodeURIComponent(roleId)}/members`,
-    { params: { page, pageSize } },
-    '角色成员分页加载失败'
-  ),
-  roleAudit: (roleId, page = 1, pageSize = 50) => call(
-    `/system/roles/${encodeURIComponent(roleId)}/audit`,
-    { params: { page, pageSize } },
-    '角色审计分页加载失败'
-  ),
-  accessExplain: (userId, {
-    moduleKey = 'internship',
-    permissionCode = 'internship.recruitment.manage',
-    scopeTargetType = '',
-    scopeTargetId = '',
-    resourceType = '',
-    resourceId = ''
-  } = {}) => call(
-    `/system/iam/access-explain/${encodeURIComponent(userId)}`,
+  templateImpact: (templateId) =>
+    call(
+      `/system/iam/role-templates/${encodeURIComponent(templateId)}/impact`,
+      {},
+      '角色模板影响分析失败'
+    ),
+  roleMembers: (roleId, page = 1, pageSize = 50) =>
+    call(
+      `/system/roles/${encodeURIComponent(roleId)}/members`,
+      { params: { page, pageSize } },
+      '角色成员分页加载失败'
+    ),
+  roleMemberCandidates: (roleId, { keyword = '', page = 1, pageSize = 20 } = {}) =>
+    call(
+      `/system/roles/${encodeURIComponent(roleId)}/member-candidates`,
+      { params: { keyword: keyword || undefined, page, pageSize } },
+      '候选老师加载失败'
+    ),
+  batchAddRoleMembers: (roleId, payload) =>
+    call(
+      `/system/roles/${encodeURIComponent(roleId)}/members/batch`,
+      { method: 'POST', body: payload },
+      '角色成员添加失败'
+    ),
+  roleAudit: (roleId, page = 1, pageSize = 50) =>
+    call(
+      `/system/roles/${encodeURIComponent(roleId)}/audit`,
+      { params: { page, pageSize } },
+      '角色审计分页加载失败'
+    ),
+  accessExplain: (
+    userId,
     {
-      params: {
-        moduleKey,
-        permissionCode,
-        ...(scopeTargetType ? { scopeTargetType } : {}),
-        ...(scopeTargetId ? { scopeTargetId } : {}),
-        ...(resourceType ? { resourceType } : {}),
-        ...(resourceId ? { resourceId } : {})
-      }
-    },
-    '访问解释失败'
-  )
+      moduleKey = 'internship',
+      permissionCode = 'internship.recruitment.manage',
+      scopeTargetType = '',
+      scopeTargetId = '',
+      resourceType = '',
+      resourceId = ''
+    } = {}
+  ) =>
+    call(
+      `/system/iam/access-explain/${encodeURIComponent(userId)}`,
+      {
+        params: {
+          moduleKey,
+          permissionCode,
+          ...(scopeTargetType ? { scopeTargetType } : {}),
+          ...(scopeTargetId ? { scopeTargetId } : {}),
+          ...(resourceType ? { resourceType } : {}),
+          ...(resourceId ? { resourceId } : {})
+        }
+      },
+      '访问解释失败'
+    )
 }

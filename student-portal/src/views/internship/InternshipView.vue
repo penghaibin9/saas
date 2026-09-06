@@ -1,17 +1,50 @@
 <template>
   <div class="sp-page">
-    <nav class="sp-tabs">
-      <button v-for="t in tabs" :key="t.key" class="sp-tab" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
+    <section v-if="!loading && !error && my.hasData" class="sp-card sp-now" aria-labelledby="sp-now-title">
+      <div class="sp-now__copy">
+        <span class="sp-now__eyebrow">NOW ACTION</span>
+        <h2 id="sp-now-title">{{ currentAction.title }}</h2>
+        <p>{{ currentAction.reason }}</p>
+        <div class="sp-now__meta">
+          <span>最近变化：{{ currentAction.recentChange }}</span>
+          <span>完成后：{{ currentAction.nextActor }}</span>
+        </div>
+      </div>
+      <button type="button" class="sp-btn" @click="selectTab(currentAction.tab)">{{ currentAction.action }} →</button>
+    </section>
+
+    <nav class="sp-process-nav" aria-label="实习办理分组">
+      <details v-for="group in tabGroups" :key="group.key" class="sp-process-group" :open="groupOpen(group)">
+        <summary>
+          <span><b>{{ group.label }}</b><small>{{ group.hint }}</small></span>
+          <span class="sp-process-group__current">{{ activeGroupLabel(group) }}</span>
+        </summary>
+        <div class="sp-process-group__items">
+          <button v-for="item in group.tabs" :key="item.key" type="button" :class="{ 'is-active': tab === item.key }"
+            :aria-current="tab === item.key ? 'page' : undefined" @click="selectTab(item.key)">{{ item.label }}</button>
+        </div>
+      </details>
     </nav>
 
     <StateBlock v-if="loading" type="loading" text="正在加载实习信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
     <template v-else>
+      <section v-if="my.hasData && currentSource.status === 'loading'" class="sp-source-state" aria-live="polite">
+        <StateBlock type="loading" :text="`${currentSource.label}正在加载…`" />
+      </section>
+      <section v-else-if="my.hasData && currentSource.status === 'error'" class="sp-source-state sp-source-state--error" aria-live="assertive">
+        <StateBlock type="error" :text="currentSource.message" />
+        <button class="sp-btn sp-btn--ghost" type="button" @click="retryCurrentSource">重试当前内容</button>
+      </section>
+      <section v-else-if="my.hasData && currentSource.status === 'empty'" class="sp-source-state" aria-live="polite">
+        <StateBlock type="empty" :text="`${currentSource.label}暂无历史记录；如有可办理事项，仍可在下方发起。`" />
+      </section>
+
       <section v-if="my.needSelect && internshipCandidates.length" class="sp-card" style="margin-bottom:16px">
         <div class="sp-panel__head">请选择要办理的实习批次</div>
         <p class="sp-muted" style="margin-bottom:12px">你有多条进行中的实习记录。系统不会替你猜测；选择后，本页后续查询与办理都会固定使用同一批次。</p>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <button v-for="candidate in internshipCandidates" :key="candidate.recordId" class="sp-btn sp-btn--ghost" style="display:flex;justify-content:space-between;align-items:center;text-align:left" @click="selectInternshipBatch(candidate.batchId)">
+          <button v-for="candidate in internshipCandidates" :key="candidate.recordId" type="button" class="sp-btn sp-btn--ghost" style="display:flex;justify-content:space-between;align-items:center;text-align:left" @click="selectInternshipBatch(candidate.batchId)">
             <span><strong>{{ candidate.batchName || `批次 ${candidate.batchId}` }}</strong><small style="display:block;margin-top:4px">状态 {{ statusText(candidate.status) }} · 记录 {{ candidate.recordId }}</small></span>
             <span>选择 ›</span>
           </button>
@@ -383,12 +416,24 @@
 
       <!-- 实习成绩/自评 -->
       <template v-else-if="tab === 'eval'">
+        <div v-if="evalReceipt" class="eval-receipt" role="status">
+          <strong>✓ {{ evalReceipt.actionLabel }}</strong>
+          <span>#{{ evalReceipt.id }} · v{{ evalReceipt.version }} · {{ evalReceipt.statusLabel }}</span>
+          <span>{{ evalReceipt.nextStep }}</span>
+          <button type="button" @click="evalReceipt = null">关闭</button>
+        </div>
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">实习自评 / 鉴定</div>
             <div class="sp-fieldlabel">工作表现自评</div><textarea v-model.trim="evalForm.performance" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习期间的工作表现" />
             <div class="sp-fieldlabel">收获与反思</div><textarea v-model.trim="evalForm.reflection" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习收获与不足" />
             <div class="sp-fieldlabel">存在问题</div><textarea v-model.trim="evalForm.problems" class="sp-inp" style="margin-bottom:12px" placeholder="实习中遇到的问题与改进方向" />
+            <div class="score-grid" style="margin-bottom:12px">
+              <label><span class="sp-fieldlabel">对企业评分</span><select v-model.number="evalForm.enterpriseRating" class="sp-inp"><option :value="null">请选择</option><option v-for="n in 5" :key="'e'+n" :value="n">{{ n }} 分</option></select></label>
+              <label><span class="sp-fieldlabel">对岗位评分</span><select v-model.number="evalForm.positionRating" class="sp-inp"><option :value="null">请选择</option><option v-for="n in 5" :key="'p'+n" :value="n">{{ n }} 分</option></select></label>
+            </div>
+            <div class="sp-fieldlabel">对企业评价</div><textarea v-model.trim="evalForm.enterpriseFeedback" class="sp-inp" style="margin-bottom:12px" placeholder="可填写企业管理、培养和保障体验" />
+            <div class="sp-fieldlabel">对岗位评价</div><textarea v-model.trim="evalForm.positionFeedback" class="sp-inp" style="margin-bottom:12px" placeholder="可填写岗位内容与专业匹配体验" />
             <button class="sp-btn" :disabled="busy || !evalForm.performance" @click="submitSelfEval">提交自评</button>
           </section>
           <section class="sp-card">
@@ -399,7 +444,7 @@
                 <StatusTag v-if="my.score.gradeLevel" :text="my.score.gradeLevel" tone="warn" />
                 <StatusTag :text="my.score.isPass ? '合格' : '不合格'" :tone="my.score.isPass ? 'success' : 'danger'" />
               </div>
-              <p class="sp-muted" style="margin-bottom:8px">企业评价分来自「学校录入」企业纸质评价（非企业端登录）。等次为百分制派生展示。</p>
+              <p class="sp-muted" style="margin-bottom:8px">企业评价分只读取当前正式安置下已审核的企业在线评价或学校代录纸质证据；等次为百分制派生展示。</p>
               <dl class="score-grid">
                 <div><dt>打卡</dt><dd>{{ my.score.checkinScore ?? '—' }}</dd></div>
                 <div><dt>周报</dt><dd>{{ my.score.weeklyScore ?? '—' }}</dd></div>
@@ -428,7 +473,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -443,6 +489,8 @@ import { useUiStore } from '../../stores/ui'
 const ui = useUiStore()
 const cfg = usePortalConfigStore()
 const session = useSessionStore()
+const route = useRoute()
+const router = useRouter()
 const tabs = [
   { key: 'overview', label: '我的实习' }, { key: 'agreement', label: '三方协议' },
   { key: 'checkin', label: '每日打卡' }, { key: 'leave', label: '实习请假' },
@@ -453,18 +501,29 @@ const tabs = [
   { key: 'report', label: '周报/月报/总结' }, { key: 'eval', label: '实习成绩/自评' }
 ]
 const tab = ref('overview')
+const tabGroups = [
+  { key: 'onboard', label: '安排与入岗', hint: '确认实习安排与上岗前条件', tabs: tabs.filter((item) => ['overview', 'plan', 'insurance', 'agreement'].includes(item.key)) },
+  { key: 'selection', label: '选岗与申请', hint: '查岗位、填意向、提交正式申请', tabs: tabs.filter((item) => ['enterprises', 'intention', 'application'].includes(item.key)) },
+  { key: 'process', label: '在岗办理', hint: '打卡、补卡、请假与过程报告', tabs: tabs.filter((item) => ['checkin', 'makeup', 'leave', 'report'].includes(item.key)) },
+  { key: 'change-result', label: '变更与结果', hint: '调岗退岗、求助、评价与成绩', tabs: tabs.filter((item) => ['change', 'help', 'eval'].includes(item.key)) }
+]
 const reportTab = ref('周报')
 const reportTabs = ['周报', '月报', '实习总结']
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const my = ref({})
+const sourceStates = reactive(Object.fromEntries(tabs.map((item) => [item.key, {
+  label: item.label, status: 'idle', message: '',
+}])))
+const currentSource = computed(() => sourceStates[tab.value] || { label: '当前内容', status: 'idle', message: '' })
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const selectedBatchId = ref('')
 const internshipCandidates = ref([])
 const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '' })
 const reportForm = reactive({ title: '', content: '' })
-const evalForm = reactive({ performance: '', reflection: '', problems: '' })
+const evalForm = reactive({ performance: '', reflection: '', problems: '', enterpriseRating: null,
+  enterpriseFeedback: '', positionRating: null, positionFeedback: '' })
 const leaveForm = reactive({ leaveType: 'SICK', startDate: '', endDate: '', reason: '' })
 const leaves = ref([])
 const makeupForm = reactive({ checkinDate: '', reason: '' })
@@ -495,6 +554,7 @@ const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
 const appealMeta = ref(null)
 const selfEvalMeta = ref(null)
+const evalReceipt = ref(null)
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
@@ -514,6 +574,75 @@ const agreementTone = computed(() => ((my.value.agreementStatus || activeAgreeme
 const intentionCanEdit = computed(() => intentionFlags.value.canEdit !== false && (intentionMeta.value.status || 'DRAFT') !== 'SUBMITTED')
 const intentionCanSubmit = computed(() => intentionFlags.value.canSubmit || ['DRAFT', '', undefined, null].includes(intentionMeta.value.status))
 const intentionCanWithdraw = computed(() => intentionFlags.value.canWithdraw || intentionMeta.value.status === 'SUBMITTED')
+
+const currentAction = computed(() => {
+  const agreementStatus = my.value.agreementStatus || activeAgreement.value?.status
+  if (agreementStatus === 'PENDING_STUDENT') return {
+    tab: 'agreement', title: '确认三方协议', action: '核对并确认',
+    reason: '协议正在等待你确认。请先核对学校、企业、岗位和纸质签署来源，再决定确认或驳回。',
+    recentChange: activeAgreement.value?.updatedAt ? fmt(activeAgreement.value.updatedAt) : '协议已进入学生确认节点',
+    nextActor: '确认后交由企业或学校继续办理；驳回则返回经办人修正'
+  }
+  if (sourceStates.insurance.status === 'empty' && ['PREPARING', 'READY'].includes(my.value.status)) return {
+    tab: 'insurance', title: '补齐实习保险', action: '提交保险信息',
+    reason: '当前实习记录还没有可核验的保险信息，上岗前需要补齐保单与有效期。',
+    recentChange: '尚未取得有效保险记录', nextActor: '提交后等待学校核验'
+  }
+  if (sourceStates.plan.status === 'data' && planMeta.value && !['ACKNOWLEDGED', 'CONFIRMED'].includes(planMeta.value.ackStatus || planMeta.value.status)) return {
+    tab: 'plan', title: '确认实习计划', action: '查看计划',
+    reason: '学校已下发实习计划，确认前请阅读任务、时间和指导要求。',
+    recentChange: planMeta.value.updatedAt ? fmt(planMeta.value.updatedAt) : '计划已下发',
+    nextActor: '确认后进入在岗执行与过程记录'
+  }
+  if (my.value.status === 'ONBOARD' && !my.value.todayCheckin?.done) return {
+    tab: 'checkin', title: '完成今日打卡', action: '去打卡',
+    reason: '今天尚未留下出勤记录。PC 可登记打卡，精确地理围栏核验仍在学生小程序完成。',
+    recentChange: `累计出勤 ${my.value.todayCheckin?.totalDays ?? 0} 天`,
+    nextActor: '打卡后形成服务端时间记录；异常只作为人工核实信号'
+  }
+  if (my.value.status === 'ASSESSING') return {
+    tab: 'eval', title: '完成实习自评', action: '填写自评',
+    reason: '实习已进入考核评价阶段，请核对成绩构成并完成本人自评。',
+    recentChange: '实习状态已进入考核中', nextActor: '提交后等待指导教师与学校审核'
+  }
+  if (!my.value.enterpriseName || !my.value.positionName) return {
+    tab: 'enterprises', title: '选择合适岗位', action: '查看岗位',
+    reason: '当前记录还没有已确认的企业岗位，可先查看已发布岗位，再填写意向或申请。',
+    recentChange: '岗位尚未落实', nextActor: '提交申请后进入学校与企业审核'
+  }
+  return {
+    tab: 'report', title: '继续记录实习过程', action: '写周报 / 总结',
+    reason: '岗位与上岗条件已建立，下一步是持续提交周报、月报和实习总结。',
+    recentChange: `已提交 ${(my.value.weeklyReports || []).length} 篇周报`,
+    nextActor: '提交后等待指导教师批阅；退回后按原因修订重交'
+  }
+})
+
+function activeGroupLabel(group) {
+  return group.tabs.find((item) => item.key === tab.value)?.label || `${group.tabs.length} 项`
+}
+
+function groupOpen(group) {
+  return group.tabs.some((item) => item.key === tab.value)
+}
+
+function selectTab(key) {
+  if (!tabs.some((item) => item.key === key)) return
+  if (key === 'enterprises') {
+    router.push('/internship/selection')
+    return
+  }
+  tab.value = key
+  router.replace({ query: { ...route.query, view: key } })
+  if (my.value.hasData) loadTab(key)
+}
+
+watch(() => route.query.view, (value) => {
+  if (typeof value === 'string' && tabs.some((item) => item.key === value)) {
+    tab.value = value
+    if (my.value.hasData) loadTab(value)
+  }
+}, { immediate: true })
 
 function persistInternshipBatch(batchId) {
   const value = String(batchId || '').trim()
@@ -555,84 +684,136 @@ const metrics = computed(() => [
   { t: '风险等级', v: riskText(my.value.riskLevel), u: '', c: my.value.riskLevel === 'HIGH' ? 'var(--danger-fg)' : 'var(--ok-fg)' }
 ])
 
-async function loadLeaves() {
-  try {
-    const d = await internshipCoreApi.leaves(currentInternshipContext())
-    leaves.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
-  } catch { leaves.value = [] }
+function resetSourceStates() {
+  Object.values(sourceStates).forEach((state) => Object.assign(state, { status: 'idle', message: '' }))
+  leaves.value = []
+  makeups.value = []
+  intentionMeta.value = {}
+  intentionFlags.value = { canEdit: true, canSubmit: false, canWithdraw: false }
+  applications.value = []
+  changes.value = []
+  agreements.value = []
+  activeAgreement.value = null
+  enterprises.value = []
+  insuranceMeta.value = null
+  planMeta.value = null
+  selfEvalMeta.value = null
+  appealMeta.value = null
 }
-async function loadExtras() {
-  try {
-    const mk = await internshipCoreApi.makeups(currentInternshipContext())
-    makeups.value = mk?.items || mk?.list || (Array.isArray(mk) ? mk : [])
-  } catch { makeups.value = [] }
-  try {
-    const it = await portalApi.internshipIntentionMy()
+
+function rowsFrom(data) {
+  return data?.items || data?.list || (Array.isArray(data) ? data : [])
+}
+
+async function fetchTabSource(key) {
+  const context = () => currentInternshipContext()
+  if (['overview', 'checkin', 'help'].includes(key)) return true
+  if (key === 'leave') {
+    leaves.value = rowsFrom(await internshipCoreApi.leaves(context()))
+    return leaves.value.length > 0
+  }
+  if (key === 'makeup') {
+    makeups.value = rowsFrom(await internshipCoreApi.makeups(context()))
+    return makeups.value.length > 0
+  }
+  if (key === 'intention') {
+    const data = await portalApi.internshipIntentionMy()
     intentionFlags.value = {
-      canEdit: it?.canEdit !== false,
-      canSubmit: !!it?.canSubmit,
-      canWithdraw: !!it?.canWithdraw
+      canEdit: data?.canEdit !== false,
+      canSubmit: !!data?.canSubmit,
+      canWithdraw: !!data?.canWithdraw,
     }
-    intentionMeta.value = it?.intention || it || {}
+    intentionMeta.value = data?.intention || data || {}
     intentionForm.preferredCity = intentionMeta.value.preferredCity || ''
     intentionForm.preferredIndustry = intentionMeta.value.preferredIndustry || ''
     intentionForm.intentionNote = intentionMeta.value.intentionNote || ''
-  } catch { intentionMeta.value = {}; intentionFlags.value = { canEdit: true, canSubmit: true, canWithdraw: false } }
-  try {
-    const apps = await internshipCoreApi.applications(currentInternshipContext())
-    applications.value = apps?.items || (Array.isArray(apps) ? apps : [])
-  } catch { applications.value = [] }
-  try {
-    const ch = await internshipCoreApi.changes(currentInternshipContext())
-    changes.value = ch?.items || []
-  } catch { changes.value = [] }
-  try {
-    const [weekly, reports] = await Promise.all([
-      internshipCoreApi.weeklyReports(currentInternshipContext()),
-      internshipCoreApi.reports(currentInternshipContext())
-    ])
-    my.value.weeklyReports = weekly?.items || []
-    my.value.processReports = reports?.items || []
-  } catch {
-    my.value.weeklyReports = []
-    my.value.processReports = []
+    return Object.keys(intentionMeta.value).length > 0
   }
-  try {
-    const ag = await internshipCoreApi.agreements()
-    agreements.value = ag?.items || (Array.isArray(ag) ? ag : [])
-    activeAgreement.value = agreements.value.find((x) => x.status === 'PENDING_STUDENT') || agreements.value[0] || null
-  } catch { agreements.value = []; activeAgreement.value = null }
-  try {
+  if (key === 'application') {
+    applications.value = rowsFrom(await internshipCoreApi.applications(context()))
+    return applications.value.length > 0
+  }
+  if (key === 'change') {
+    const [changeRows, positionRows] = await Promise.all([
+      internshipCoreApi.changes(context()),
+      portalApi.internshipEnterprises(enterpriseCity.value),
+    ])
+    changes.value = rowsFrom(changeRows)
+    enterprises.value = rowsFrom(positionRows)
+    return changes.value.length > 0 || enterprises.value.length > 0
+  }
+  if (key === 'report') {
+    const [weekly, reports] = await Promise.all([
+      internshipCoreApi.weeklyReports(context()),
+      internshipCoreApi.reports(context()),
+    ])
+    my.value.weeklyReports = rowsFrom(weekly)
+    my.value.processReports = rowsFrom(reports)
+    return my.value.weeklyReports.length > 0 || my.value.processReports.length > 0
+  }
+  if (key === 'agreement') {
+    agreements.value = rowsFrom(await internshipCoreApi.agreements())
+    activeAgreement.value = agreements.value.find((item) => item.status === 'PENDING_STUDENT') || agreements.value[0] || null
+    return agreements.value.length > 0
+  }
+  if (key === 'insurance') {
     insuranceMeta.value = await internshipCoreApi.insurance()
-    if (insuranceMeta.value) {
-      insForm.policyNo = insuranceMeta.value.policyNo || ''
-      insForm.insurerName = insuranceMeta.value.insurerName || ''
-      insForm.coverageType = insuranceMeta.value.coverageType || ''
-      insForm.effectiveDate = insuranceMeta.value.effectiveDate || ''
-      insForm.expiryDate = insuranceMeta.value.expiryDate || ''
-      insForm.fileId = insuranceMeta.value.fileId || ''
-    }
-  } catch { insuranceMeta.value = null }
-  try {
+    if (!insuranceMeta.value) return false
+    Object.assign(insForm, {
+      policyNo: insuranceMeta.value.policyNo || '',
+      insurerName: insuranceMeta.value.insurerName || '',
+      coverageType: insuranceMeta.value.coverageType || '',
+      effectiveDate: insuranceMeta.value.effectiveDate || '',
+      expiryDate: insuranceMeta.value.expiryDate || '',
+      fileId: insuranceMeta.value.fileId || '',
+    })
+    return true
+  }
+  if (key === 'plan') {
     planMeta.value = await internshipCoreApi.plan()
-  } catch { planMeta.value = null }
-  try {
-    selfEvalMeta.value = await internshipCoreApi.selfEval()
-  } catch { selfEvalMeta.value = null }
-  try {
-    appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
-  } catch { appealMeta.value = null }
-  await loadEnterprises()
+    return !!planMeta.value
+  }
+  if (key === 'eval') {
+    const [selfEval, appeal] = await Promise.all([
+      internshipCoreApi.selfEval(),
+      portalApi.internshipScoreAppealStatus(context()),
+    ])
+    selfEvalMeta.value = selfEval || null
+    appealMeta.value = appeal || null
+    return !!selfEvalMeta.value || !!appealMeta.value || !!my.value.score
+  }
+  if (key === 'enterprises') {
+    enterprises.value = rowsFrom(await portalApi.internshipEnterprises(enterpriseCity.value))
+    return enterprises.value.length > 0
+  }
+  return true
 }
-async function loadEnterprises() {
+
+async function loadTab(key, force = false) {
+  const state = sourceStates[key]
+  if (!state || !my.value.hasData) return
+  if (!force && ['loading', 'data', 'empty'].includes(state.status)) return
+  state.status = 'loading'
+  state.message = ''
   try {
-    const d = await portalApi.internshipEnterprises(enterpriseCity.value)
-    enterprises.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
-  } catch { enterprises.value = [] }
+    state.status = await fetchTabSource(key) ? 'data' : 'empty'
+  } catch (e) {
+    state.status = 'error'
+    state.message = e?.message || `${state.label}加载失败，请重试`
+  }
+}
+
+async function retryCurrentSource() {
+  await loadTab(tab.value, true)
+}
+
+async function loadEnterprises() {
+  await loadTab('enterprises', true)
 }
 
 async function load() {
   loading.value = true; error.value = ''
+  resetSourceStates()
   try {
     try { selectedBatchId.value = String(sessionStorage.getItem(INTERNSHIP_BATCH_KEY) || '') } catch { selectedBatchId.value = '' }
     const data = await portalApi.internshipMy() || {}
@@ -644,8 +825,8 @@ async function load() {
     }
     if (data.batchId) persistInternshipBatch(data.batchId)
     if (!data.hasData) return
-    await loadLeaves()
-    await loadExtras()
+    const initialSources = [...new Set(['agreement', 'insurance', 'plan', tab.value])]
+    await Promise.all(initialSources.map((key) => loadTab(key, true)))
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }
 }
 async function doCheckin() {
@@ -669,7 +850,7 @@ async function submitMakeup() {
     })
     ui.notify('补卡申请已提交')
     makeupForm.reason = ''
-    await loadExtras()
+    await loadTab('makeup', true)
   } catch (e) { ui.notify(e?.message || '补卡失败') } finally { busy.value = false }
 }
 async function withdrawMakeup(item) {
@@ -679,14 +860,14 @@ async function withdrawMakeup(item) {
       ...currentInternshipContext(),
       expectedVersion: item.version
     })
-    ui.notify('已撤回'); await loadExtras()
+    ui.notify('已撤回'); await loadTab('makeup', true)
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function saveIntention() {
   busy.value = true
   try {
     await portalApi.internshipIntentionSave({ ...intentionForm })
-    ui.notify('意向草稿已保存'); await loadExtras()
+    ui.notify('意向草稿已保存'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '意向保存失败') } finally { busy.value = false }
 }
 async function submitIntention() {
@@ -694,14 +875,14 @@ async function submitIntention() {
   try {
     await portalApi.internshipIntentionSave({ ...intentionForm })
     await portalApi.internshipIntentionSubmit()
-    ui.notify('意向已提交'); await loadExtras()
+    ui.notify('意向已提交'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '意向提交失败') } finally { busy.value = false }
 }
 async function withdrawIntention() {
   busy.value = true
   try {
     await portalApi.internshipIntentionWithdraw()
-    ui.notify('意向已撤回'); await loadExtras()
+    ui.notify('意向已撤回'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function uploadApplicationEvidence(event) {
@@ -755,7 +936,7 @@ async function submitApplication() {
       ...currentInternshipContext(),
       expectedVersion: saved.version
     })
-    ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
+    ui.notify('申请已提交'); appForm.applicationNote = ''; await loadTab('application', true)
   } catch (e) { ui.notify(e?.message || '申请失败') } finally { busy.value = false }
 }
 async function submitChange() {
@@ -779,7 +960,7 @@ async function submitChange() {
       targetEnterpriseName: selected?.companyName || changeForm.targetEnterpriseName,
       targetPositionName: selected?.title || changeForm.targetPositionName
     })
-    ui.notify('变更申请已提交'); changeForm.reason = ''; await loadExtras()
+    ui.notify('变更申请已提交'); changeForm.reason = ''; await loadTab('change', true)
   } catch (e) { ui.notify(e?.message || '变更申请失败') } finally { busy.value = false }
 }
 async function submitLeave() {
@@ -791,7 +972,7 @@ async function submitLeave() {
     })
     ui.notify('请假申请已提交')
     Object.assign(leaveForm, { reason: '' })
-    await loadLeaves()
+    await loadTab('leave', true)
   } catch (e) { ui.notify(e?.message || '请假提交失败') } finally { busy.value = false }
 }
 async function withdrawLeave(item) {
@@ -801,7 +982,7 @@ async function withdrawLeave(item) {
       ...currentInternshipContext(),
       expectedVersion: item.version
     })
-    ui.notify('已撤回'); await loadLeaves()
+    ui.notify('已撤回'); await loadTab('leave', true)
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function returnLeave(id) {
@@ -815,7 +996,7 @@ async function returnLeave(id) {
       note,
       expectedVersion: item?.version
     })
-    ui.notify('销假已登记'); await loadLeaves()
+    ui.notify('销假已登记'); await loadTab('leave', true)
   } catch (e) { ui.notify(e?.message || '销假失败') } finally { busy.value = false }
 }
 async function confirmAgreement(action) {
@@ -835,7 +1016,7 @@ async function confirmAgreement(action) {
       expectedVersion: detail.version
     })
     ui.notify(action === 'CONFIRM' ? '协议已确认' : '协议已驳回')
-    await loadExtras(); await load()
+    await load()
   } catch (e) { ui.notify(e?.message || '协议操作失败') } finally { busy.value = false }
 }
 async function uploadInsurancePolicy(event) {
@@ -859,7 +1040,7 @@ async function saveInsurance() {
   busy.value = true
   try {
     await internshipCoreApi.saveInsurance({ ...insForm })
-    ui.notify('保险信息已提交'); await loadExtras()
+    ui.notify('保险信息已提交'); await loadTab('insurance', true)
   } catch (e) { ui.notify(e?.message || '保险提交失败') } finally { busy.value = false }
 }
 async function ackPlan() {
@@ -870,7 +1051,7 @@ async function ackPlan() {
       planVersion: planMeta.value?.version,
       expectedVersion: planMeta.value?.ackVersion
     })
-    ui.notify('已确认实习计划'); await loadExtras()
+    ui.notify('已确认实习计划'); await loadTab('plan', true)
   } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
 }
 async function submitHelp() {
@@ -900,7 +1081,7 @@ async function submitWeekly() {
     })
     ui.notify('周报已提交')
     Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' })
-    await load()
+    await loadTab('report', true)
   }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
@@ -922,27 +1103,37 @@ async function submitReport() {
     })
     ui.notify(reportTab.value + '已提交')
     Object.assign(reportForm, { title: '', content: '' })
-    await load()
+    await loadTab('report', true)
   }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function submitSelfEval() {
   busy.value = true
   try {
-    await internshipCoreApi.submitSelfEval({
+    const result = await internshipCoreApi.submitSelfEval({
       ...currentInternshipContext(),
       expectedVersion: selfEvalMeta.value?.version ?? 0,
       selfSummary: evalForm.performance,
       selfHarvest: evalForm.reflection,
-      selfProblem: evalForm.problems
+      selfProblem: evalForm.problems,
+      enterpriseRating: evalForm.enterpriseRating,
+      enterpriseFeedback: evalForm.enterpriseFeedback,
+      positionRating: evalForm.positionRating,
+      positionFeedback: evalForm.positionFeedback
     })
-    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '' }); load()
+    evalReceipt.value = { actionLabel: '学生自评已提交', id: result?.id || '', version: result?.version,
+      statusLabel: result?.reviewStatusLabel || result?.reviewStatus || '待审核', nextStep: '等待导师填写评价并由学校审核' }
+    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '', enterpriseRating: null,
+      enterpriseFeedback: '', positionRating: null, positionFeedback: '' }); await loadTab('eval', true)
   } catch (e) { ui.notify(e?.message || '自评提交失败') } finally { busy.value = false }
 }
 async function submitAppeal() {
   busy.value = true
   try {
-    await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
+    const result = await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
+    evalReceipt.value = { actionLabel: '成绩申诉已提交', id: result?.id || '', version: result?.version,
+      statusLabel: result?.statusLabel || result?.status || '待处理',
+      nextStep: `学校处理时将校验成绩 #${result?.scoreId || '—'} 的 v${result?.scoreVersion ?? '—'} 快照` }
     ui.notify('成绩申诉已提交')
     appealReason.value = ''
     appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
@@ -958,6 +1149,28 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sp-now { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 14px; padding: 20px 22px; border-color: color-mix(in srgb, var(--pri) 28%, var(--line)); background: linear-gradient(120deg, color-mix(in srgb, var(--pri) 8%, white), white 68%); box-shadow: 0 12px 32px rgba(30, 64, 175, .08); }
+.sp-now__copy { min-width: 0; }
+.sp-now__eyebrow { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.sp-now h2 { margin: 4px 0 5px; color: var(--t1); font-size: 19px; }
+.sp-now p { margin: 0; color: var(--t2); font-size: 13px; line-height: 1.6; }
+.sp-now__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 9px; color: var(--t4); font-size: 12px; }
+.sp-source-state { margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card, #fff); overflow: hidden; }
+.sp-source-state--error { padding-bottom: 14px; border-color: color-mix(in srgb, var(--danger-fg) 28%, var(--line)); }
+.sp-source-state--error .sp-btn { margin-left: 16px; }
+.sp-process-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.sp-process-group { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--card, #fff); }
+.sp-process-group[open] { grid-column: span 2; border-color: color-mix(in srgb, var(--pri) 28%, var(--line)); box-shadow: 0 8px 20px rgba(15, 23, 42, .05); }
+.sp-process-group summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 58px; padding: 10px 12px; cursor: pointer; list-style: none; }
+.sp-process-group summary::-webkit-details-marker { display: none; }
+.sp-process-group summary span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.sp-process-group summary b { color: var(--t1); font-size: 13px; }
+.sp-process-group summary small { overflow: hidden; margin-top: 2px; color: var(--t4); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.sp-process-group__current { flex: none; color: var(--pri); font-size: 11px; font-weight: 600; }
+.sp-process-group__items { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 10px 10px; }
+.sp-process-group__items button { min-height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--t2); cursor: pointer; }
+.sp-process-group__items button:hover { border-color: var(--pri); color: var(--pri); }
+.sp-process-group__items button.is-active { border-color: color-mix(in srgb, var(--pri) 35%, white); background: var(--pri-50); color: var(--pri); font-weight: 600; }
 .pill { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: #F5F7FA; border: 1px solid #EDEFF3; border-radius: 7px; font-size: 12.5px; color: var(--t2); }
 .statepill { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; background: var(--pri-50); border-radius: 9px; color: var(--pri); font-weight: 600; font-size: 13.5px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pri); }
@@ -966,10 +1179,12 @@ onMounted(load)
 .two2 { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; align-items: start; }
 .agreement { border: 1px solid var(--line); border-radius: 11px; padding: 18px; font-size: 13.5px; color: var(--t2); line-height: 2; }
 .notebox { margin-top: 14px; padding: 12px 14px; background: #F2F7FF; border-radius: 10px; font-size: 12.5px; color: var(--t2); line-height: 1.6; }
+.eval-receipt { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #86efac; border-radius: 10px; background: #f0fdf4; color: #166534; font-size: 12px; }.eval-receipt button { border: 0; background: transparent; color: inherit; }
 .repitem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; }
 .score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 .score-grid dt { font-size: 12px; color: var(--t3); margin-bottom: 4px; }
 .score-grid dd { margin: 0; font-size: 15px; font-weight: 600; color: var(--t1); }
 @media (max-width: 900px) { .score-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .m4 { grid-template-columns: repeat(2,1fr); } .two, .two2 { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .sp-process-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sp-process-group[open] { grid-column: span 2; } .m4 { grid-template-columns: repeat(2,1fr); } .two, .two2 { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .sp-now { align-items: stretch; flex-direction: column; gap: 14px; } .sp-process-nav { grid-template-columns: 1fr; } .sp-process-group[open] { grid-column: span 1; } }
 </style>
