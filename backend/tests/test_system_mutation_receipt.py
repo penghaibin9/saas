@@ -118,6 +118,23 @@ def _role_state(role_id: int) -> tuple[str, int]:
         db.close()
 
 
+def _has_role(user_id: int, role_id: int) -> bool:
+    from app.models import UserRole
+
+    db = _db()
+    try:
+        row = db.query(UserRole).filter(
+            UserRole.tenant_id == TENANT,
+            UserRole.user_id == user_id,
+            UserRole.role_id == role_id,
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+        ).first()
+        return row is not None
+    finally:
+        db.close()
+
+
 @pytest.fixture(autouse=True)
 def _tenant_ctx(db_mode):
     _ensure_tenant()
@@ -237,6 +254,58 @@ def test_role_status_commit_survives_tenant_cache_failure(monkeypatch):
     assert out["runtimeMaterialized"] is True
     assert out["cacheInvalidated"] is False
     assert out["cacheRecoveryRequired"] is True
+
+
+def test_role_assignment_commit_survives_subject_cache_failure(monkeypatch):
+    from app.modules.system_admin.routers import system_router
+    from app.services import system_role_assignment_mutation_service as svc
+
+    uid = _user("receipt-role-assignment")
+    rid = _role("RECEIPT_ASSIGN_ROLE")
+    before = _user_state(uid)
+
+    # This test targets the mutation receipt, not the already-covered catalog
+    # projection; keep the custom role's permission universe empty here.
+    monkeypatch.setattr(system_router, "_runtime_role_permission_codes", lambda *_a, **_k: set())
+
+    def _cache_down(*_a, **_k):
+        raise RuntimeError("redis unavailable after role assignment commit")
+
+    monkeypatch.setattr("app.services.auth_service_db.invalidate_subject_cache", _cache_down)
+    out = svc.assign_user_roles(
+        uid,
+        {"roleCodes": ["RECEIPT_ASSIGN_ROLE"], "expectedVersion": before[1]},
+        user=ACTOR,
+    )
+    after = _user_state(uid)
+
+    assert _has_role(uid, rid) is True
+    assert after[1] == before[1] + 1
+    assert out["runtimeMaterialized"] is True
+    assert out["cacheInvalidated"] is False
+    assert out["cacheRecoveryRequired"] is True
+    assert out["optimisticLockEnforced"] is True
+
+
+def test_role_assignment_stale_version_rejects_before_membership_write(monkeypatch):
+    from app.modules.system_admin.routers import system_router
+    from app.services import system_role_assignment_mutation_service as svc
+
+    uid = _user("receipt-role-assignment-stale")
+    rid = _role("RECEIPT_ASSIGN_STALE")
+    before = _user_state(uid)
+    monkeypatch.setattr(system_router, "_runtime_role_permission_codes", lambda *_a, **_k: set())
+    monkeypatch.setattr("app.services.auth_service_db.invalidate_subject_cache", lambda *_a, **_k: 1)
+
+    with pytest.raises(AppException) as caught:
+        svc.assign_user_roles(
+            uid,
+            {"roleCodes": ["RECEIPT_ASSIGN_STALE"], "expectedVersion": before[1] - 1},
+            user=ACTOR,
+        )
+    assert caught.value.code == "DATA_CONFLICT"
+    assert _has_role(uid, rid) is False
+    assert _user_state(uid)[1] == before[1]
 
 
 def test_subject_cache_recovery_never_changes_user_version(monkeypatch):
