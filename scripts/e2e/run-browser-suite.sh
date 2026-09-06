@@ -286,7 +286,7 @@ case "$SUITE" in
     fi
 
     echo '[browser-suite] core passed; archive isolation and formal filing now run as a separate terminal phase'
-    run_phase archive "$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC"
+    run_phase archive "$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC" --retries=0
     archive_code=$?
     publish_phase_result archive
     if [[ "$archive_code" -eq 0 ]]; then
