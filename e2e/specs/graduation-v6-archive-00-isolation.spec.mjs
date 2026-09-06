@@ -74,7 +74,7 @@ test.describe.serial('V6 · archive filing isolation preflight', () => {
     })
   })
 
-  test('builds three real guidance records and closes only the now-inactive GD-R06 blocker', async ({ page }, testInfo) => {
+  test('builds three real guidance records and closes only scan-proven inactive archive risks', async ({ page }, testInfo) => {
     test.setTimeout(6 * 60_000)
     const adminApi = await loginApi(config.sandboxAdmin)
     const fixture = await prepareGraduationFixture({
@@ -127,30 +127,40 @@ test.describe.serial('V6 · archive filing isolation preflight', () => {
       pageSize: 200
     }))
     const risksAfterScan = await readRisks()
-    const blockingAfterScan = risksAfterScan.filter(row =>
-      row.riskCode !== 'GD-R12' && ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
+    const openRisks = risksAfterScan.filter(row =>
+      ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
     )
+    const activeBlockers = openRisks.filter(row => row.conditionActive !== false)
     expect(
-      blockingAfterScan.every(row => row.riskCode === 'GD-R06' && row.conditionActive === false),
-      `archive readiness may only close an inactive GD-R06, got ${JSON.stringify(blockingAfterScan)}`
-    ).toBe(true)
+      activeBlockers,
+      `archive preflight must never close an active risk: ${JSON.stringify(activeBlockers).slice(0, 2500)}`
+    ).toEqual([])
 
-    const closedRiskIds = []
-    for (const risk of blockingAfterScan) {
-      const closed = await adminApi.post(`/graduation/gd-risks/${risk.id}/close`, {
-        reason: '已完成三次真实指导记录，重新扫描确认指导不足条件已消失'
-      })
-      expect(closed.status).toBe('CLOSED')
+    const inactiveRisks = openRisks.filter(row => row.conditionActive === false)
+    const closedRisks = []
+    for (const risk of inactiveRisks) {
+      const reason = `归档隔离：扫描确认 ${risk.riskCode || '风险'} 触发条件已消失，关闭失效风险`
+      const closed = await adminApi.post(`/graduation/gd-risks/${risk.id}/close`, { reason })
+      expect(String(closed.status || '').toUpperCase()).toBe('CLOSED')
       expect(closed.conditionActive).toBe(false)
-      closedRiskIds.push(String(risk.id))
+      closedRisks.push({
+        id: String(risk.id),
+        riskCode: risk.riskCode,
+        previousStatus: risk.status,
+        conditionSummary: risk.conditionSummary,
+        closedStatus: closed.status
+      })
     }
 
     await adminApi.post('/graduation/gd-risks/scan', {}, { batchId: fixture.batchId })
     const finalRisks = await readRisks()
-    const remainingBlockers = finalRisks.filter(row =>
-      row.riskCode !== 'GD-R12' && ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
+    const remainingOpenRisks = finalRisks.filter(row =>
+      ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
     )
-    expect(remainingBlockers, 'formal archive must start with zero non-GD-R12 open risks').toEqual([])
+    expect(
+      remainingOpenRisks,
+      `formal archive requires zero unclosed risks, got ${JSON.stringify(remainingOpenRisks).slice(0, 2500)}`
+    ).toEqual([])
 
     await testInfo.attach('graduation-archive-guidance-risk-readiness', {
       body: Buffer.from(JSON.stringify({
@@ -161,12 +171,16 @@ test.describe.serial('V6 · archive filing isolation preflight', () => {
         guidanceIds: exactGuidance.map(row => String(row.id)),
         guidanceCount: exactGuidance.length,
         scan,
-        blockersAfterScan: blockingAfterScan.map(row => ({
-          id: String(row.id), riskCode: row.riskCode, status: row.status,
-          conditionActive: row.conditionActive, conditionSummary: row.conditionSummary
+        openRisksAfterScan: openRisks.map(row => ({
+          id: String(row.id),
+          riskCode: row.riskCode,
+          status: row.status,
+          conditionActive: row.conditionActive,
+          conditionSummary: row.conditionSummary
         })),
-        closedRiskIds,
-        remainingBlockers: []
+        activeBlockers: [],
+        closedRisks,
+        remainingOpenRisks: []
       }, null, 2)),
       contentType: 'application/json'
     })
