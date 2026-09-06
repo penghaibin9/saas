@@ -29,6 +29,33 @@ def _package_features(package: dict) -> dict[str, bool]:
     return {key: bool(merged.get(key, False)) for key in D.FEATURE_KEYS}
 
 
+def _tenant_snapshot(tenant_id: int) -> dict:
+    """Read tenant identity without calling platform_service.get_tenant().
+
+    ``get_tenant`` renders allowX fields and therefore calls effective_features;
+    using it inside the entitlement authority would recurse after the adapter is
+    installed.
+    """
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+
+    db = get_sessionmaker()()
+    try:
+        tenant = db.scalars(select(Tenant).where(
+            Tenant.id == int(tenant_id), Tenant.is_deleted.is_(False),
+        )).first()
+        if tenant is None:
+            raise AppException("DATA_NOT_FOUND", "租户不存在", http_status=404)
+        return {
+            "tenantId": int(tenant.id),
+            "tenantName": tenant.school_name,
+            "tenantStatus": str(tenant.status or ""),
+        }
+    finally:
+        db.close()
+
+
 def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
     """Return the paid order that actually authorizes the materialized package.
 
@@ -95,7 +122,7 @@ def commercial_state(tenant_id: int) -> dict:
     from app.services import platform_service
 
     tid = int(tenant_id)
-    platform_service.get_tenant(tid)
+    _tenant_snapshot(tid)  # existence check without rendering entitlement fields
     meta = platform_service.tenant_meta(tid)
     package_code = str(meta.get("packageCode") or "trial").strip()
     package = platform_service.get_package(package_code)
@@ -220,10 +247,8 @@ def legacy_override_snapshot(tenant_id: int) -> dict:
 
 
 def features_projection(tenant_id: int) -> dict:
-    from app.services import platform_service
-
     tid = int(tenant_id)
-    tenant = platform_service.get_tenant(tid)
+    tenant = _tenant_snapshot(tid)
     state = commercial_state(tid)
     canonical = dict(state["features"])
     legacy = legacy_override_snapshot(tid)
@@ -234,7 +259,7 @@ def features_projection(tenant_id: int) -> dict:
     }
     return {
         "tenantId": str(tid),
-        "tenantName": tenant.get("tenantName"),
+        "tenantName": tenant["tenantName"],
         "packageCode": state["packageCode"],
         "packageVersion": state.get("packageVersion", 0),
         "features": canonical,
