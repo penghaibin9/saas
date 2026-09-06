@@ -365,7 +365,7 @@ test.describe.serial('V6 · grade calculation, review, publication and student r
     expect(reviewed.status).toBe('REVIEWED')
     expect(reviewed.totalScore).toBe(87)
     expect(String(reviewed.sourceSnapshotHash || '')).toBe(String(calculated.sourceSnapshotHash))
-    await expect(page.getByText('成绩复核已通过', { exact: true })).toBeVisible()
+    await expect(page.locator('.dg-receipt').getByText('成绩复核已通过', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '发布成绩', exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: '发布成绩', exact: true }).click()
@@ -383,7 +383,7 @@ test.describe.serial('V6 · grade calculation, review, publication and student r
     expect(published.gradeLevel).toBe('良好')
     expect(published.publishedAt).toBeTruthy()
     expect(String(published.sourceSnapshotHash || '')).toBe(String(calculated.sourceSnapshotHash))
-    await expect(page.getByText('成绩已发布', { exact: true })).toBeVisible()
+    await expect(page.locator('.dg-receipt').getByText('成绩已发布', { exact: true })).toBeVisible()
 
     let serverGrade
     await expect.poll(async () => {
