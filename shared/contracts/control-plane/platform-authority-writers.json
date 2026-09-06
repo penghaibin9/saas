@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "6810bd6284b4d5c69a78947560f808cd7738327e",
+  "frozenBundlePath": "backend/app/modules/platform/routers/platform_bundle.py",
+  "frozenBundleSha": "ecdc56fb30ae3a31432fa563896eb7ea0ec2d229",
+  "legacyPlatformConfigWriters": {
+    "FEATURES": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ],
+    "RULES": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ],
+    "WORKFLOWS": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ],
+    "BRAND": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ]
+  },
+  "workflowDefinitionAuthorities": [
+    "backend/app/services/runtime_preset_install_service.py",
+    "backend/app/services/approval_template_service.py"
+  ],
+  "notes": [
+    "The four legacy PlatformConfig writers live only in the byte-frozen platform bundle at this baseline.",
+    "W1-W4 must replace their runtime routes in platform_router.py instead of editing the frozen source.",
+    "WorkflowDefinition is already written by canonical workflow/implementation services; PlatformConfig WORKFLOWS is legacy configuration evidence, not a second runtime authority."
+  ]
+}
