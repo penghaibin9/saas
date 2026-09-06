@@ -1,9 +1,8 @@
-"""Code-first authority projections for the platform control plane.
+"""Code-first authority projections and governed shared-config writes.
 
 This module is deliberately outside the byte-frozen platform bundle. It owns
-read-only authority projections used by exact route replacements during W1-W4.
-Legacy PlatformConfig rows are evidence/compatibility inputs, not a license for
-new side writes.
+read-only authority projections used by exact route replacements during W1-W4
+and the only new governed RULES/BRAND writers introduced by W4.
 """
 from __future__ import annotations
 
@@ -34,14 +33,31 @@ def config_snapshot(tenant_id: int, config_type: str, key: str = "-") -> dict:
         db.close()
 
 
-def features_projection(tenant_id: int) -> dict:
-    """Expose commercial entitlement plus any grandfathered legacy override.
+def _required_version(value, *, label: str) -> int:
+    from app.core.exceptions import AppException
 
-    W1 freezes the legacy FEATURES writer. Existing rows remain readable and
-    visible in reconciliation so an operator can migrate/resolve them without
-    destroying evidence. New normal entitlement changes must come from a paid
-    order (packageCode on TENANT_META); controlled exceptions stay explicit.
-    """
+    if value is None:
+        raise AppException("VALIDATION_ERROR", f"{label}必须提供 expectedVersion", http_status=422)
+    try:
+        version = int(value)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{label} expectedVersion 必须为整数", http_status=422) from None
+    if version < 0:
+        raise AppException("VALIDATION_ERROR", f"{label} expectedVersion 不能为负数", http_status=422)
+    return version
+
+
+def _required_reason(value, *, label: str) -> str:
+    from app.core.exceptions import AppException
+
+    reason = str(value or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", f"{label}变更原因至少5个字符", http_status=422)
+    return reason
+
+
+def features_projection(tenant_id: int) -> dict:
+    """Expose commercial entitlement plus any grandfathered legacy override."""
     from app.services import platform_service
 
     tenant = platform_service.get_tenant(int(tenant_id))
@@ -100,11 +116,7 @@ def _workflow_row(definition, nodes: list) -> dict:
 
 
 def workflow_projection(tenant_id: int) -> dict:
-    """Project WorkflowDefinition as the only runtime workflow authority.
-
-    Legacy PlatformConfig(WORKFLOWS) is returned only as drift evidence. It is
-    never merged into the authoritative ``workflows`` result here.
-    """
+    """Project WorkflowDefinition as the only runtime workflow authority."""
     from app.models import WorkflowDefinition, WorkflowNodeDefinition
     from app.services import platform_service
 
@@ -164,4 +176,108 @@ def workflow_projection(tenant_id: int) -> dict:
         "legacyOverrideReadOnly": bool(legacy_rows),
         "drift": drift,
         "writeSurface": "/admin/system/workflow-governance",
+    }
+
+
+def rules_projection(tenant_id: int) -> dict:
+    from app.services import platform_service
+
+    platform_service.get_tenant(int(tenant_id))
+    snapshot = config_snapshot(int(tenant_id), "RULES")
+    return {
+        "tenantId": str(tenant_id),
+        "rules": platform_service.effective_rules(int(tenant_id)),
+        "override": snapshot["payload"],
+        "overrideVersion": snapshot["version"],
+    }
+
+
+def update_rules(tenant_id: int, *, rules: dict, expected_version, reason: str) -> dict:
+    from app.services import audit_log, platform_service
+
+    tid = int(tenant_id)
+    platform_service.get_tenant(tid)
+    version = _required_version(expected_version, label="规则")
+    reason_text = _required_reason(reason, label="规则")
+    patch = platform_service.validate_rules(dict(rules or {}))
+    before = config_snapshot(tid, "RULES")
+    merged = dict(before["payload"])
+    for group, values in patch.items():
+        merged.setdefault(group, {}).update(values)
+    platform_service.put_config_json(
+        tid, "RULES", "-", merged, expected_version=version,
+    )
+    after = config_snapshot(tid, "RULES")
+    audit_log.record(
+        "PLATFORM_RULES_UPDATE",
+        f"tenant:{tid}",
+        detail={
+            "groups": sorted(patch),
+            "reason": reason_text,
+            "expectedVersion": version,
+            "currentVersion": after["version"],
+            "before": before["payload"],
+            "after": patch,
+        },
+        result="SUCCESS",
+        tenant_id=tid,
+    )
+    return {
+        "tenantId": str(tid),
+        "rules": platform_service.effective_rules(tid),
+        "override": after["payload"],
+        "overrideVersion": after["version"],
+    }
+
+
+def brand_projection(tenant_id: int) -> dict:
+    from app.services import platform_service
+
+    platform_service.get_tenant(int(tenant_id))
+    snapshot = config_snapshot(int(tenant_id), "BRAND")
+    return {
+        "tenantId": str(tenant_id),
+        "brand": platform_service.effective_brand(int(tenant_id)),
+        "override": snapshot["payload"],
+        "overrideVersion": snapshot["version"],
+    }
+
+
+def update_brand(tenant_id: int, *, brand: dict, expected_version, reason: str) -> dict:
+    from app.core.exceptions import AppException
+    from app.services import audit_log, platform_service
+
+    tid = int(tenant_id)
+    platform_service.get_tenant(tid)
+    version = _required_version(expected_version, label="品牌")
+    reason_text = _required_reason(reason, label="品牌")
+    allow = set(D.DEFAULT_BRAND)
+    patch = {key: str(value) for key, value in dict(brand or {}).items() if key in allow}
+    if not patch:
+        raise AppException("VALIDATION_ERROR", "没有可更新的品牌字段", http_status=422)
+    before = config_snapshot(tid, "BRAND")
+    merged = {**before["payload"], **patch}
+    platform_service.put_config_json(
+        tid, "BRAND", "-", merged, expected_version=version,
+    )
+    after = config_snapshot(tid, "BRAND")
+    audit_log.record(
+        "PLATFORM_BRAND_UPDATE",
+        f"tenant:{tid}",
+        detail={
+            "keys": sorted(patch),
+            "reason": reason_text,
+            "expectedVersion": version,
+            "currentVersion": after["version"],
+            "before": before["payload"],
+            "after": patch,
+        },
+        result="SUCCESS",
+        tenant_id=tid,
+    )
+    return {
+        "tenantId": str(tid),
+        "brand": platform_service.effective_brand(tid),
+        "override": after["payload"],
+        "overrideVersion": after["version"],
     }
