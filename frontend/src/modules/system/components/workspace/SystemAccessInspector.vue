@@ -81,7 +81,7 @@ export default {
   },
   created() { this.fence = wc.createRequestFence(); this.loadCatalog(); this.loadOrganizations(); this.loadInitialActor() }, beforeUnmount() { this.fence.invalidate() },
   methods: {
-    typeLabel(type) { return { CLASS: '班级', MAJOR: '专业', COLLEGE: '学院' }[type] || type },
+    typeLabel(type) { return { CLASS: '班级', MAJOR: '专业', COLLEGE: '学院' }[type] || '类型待核对' },
     evidence(value) { return JSON.stringify(value || {}, null, 2) },
     invalidateResult() { if (this.result || this.querying) this.stale = true; this.fence.start('explain'); this.result = null; this.querying = false; this.queryError = ''; this.validationError = '' },
     reset() { this.fence.invalidate(); this.actor = null; this.resource = null; this.resourceRow = null; this.actorKeyword = ''; this.resourceKeyword = ''; this.actors = emptySearch(); this.resources = emptySearch(); this.permissions = []; this.permissionCode = ''; this.organizations = []; this.targetKey = ''; this.result = null; this.querying = false; this.queryError = ''; this.stale = false; this.loadCatalog(); this.loadOrganizations() },

@@ -98,7 +98,7 @@ export default {
   beforeUnmount() { this.fence.invalidate() },
   methods: {
     auditLabel: presentAuditRecord,
-    statusLabel(value) { return { ACTIVE: '启用中', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[value] || value || '未取得' },
+    statusLabel(value) { return { ACTIVE: '启用中', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[value] || '状态待核对' },
     resetContext() {
       this.fence.invalidate(); this.members = emptyPage(50); this.candidates = emptyPage(20); this.audit = emptyPage(50)
       this.selected = []; this.adding = false; this.reason = ''; this.expiresAt = ''; this.receipt = ''; this.busy = false; this.uncertain = false

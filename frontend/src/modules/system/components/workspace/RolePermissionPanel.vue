@@ -139,9 +139,9 @@ export default {
   beforeUnmount() { this.fence.invalidate() },
   methods: {
     countLabel: wc.countLabel,
-    scopeLabel(code) { return this.scopeOptions.find(option => option.value === code)?.label || code || '未取得' },
+    scopeLabel(code) { return this.scopeOptions.find(option => option.value === code)?.label || '范围待核对' },
     highRisk(node) { return ['HIGH', 'CRITICAL'].includes(String(node.riskLevel || '').toUpperCase()) },
-    permissionLabel(code) { return this.draft?.groups.flatMap(group => group.rows).find(node => node.key === code)?.label || code },
+    permissionLabel(code) { return this.draft?.groups.flatMap(group => group.rows).find(node => node.key === code)?.label || '权限名称未取得' },
     clear() { this.saving = false; this.$emit('busy', false); this.detail = null; this.draft = null; this.base = null; this.receipt = null; this.outcomeUnknown = false; this.reviewOpen = false; this.reconcileNote = ''; this.lastReason = ''; this.$emit('dirty', false) },
     async load(preserve = false) {
       if (this.saving) return

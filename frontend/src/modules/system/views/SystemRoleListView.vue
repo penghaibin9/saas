@@ -148,7 +148,7 @@ export default {
   methods: {
     can(key) { return wc.actionAllowed(this.ctx, key) },
     countLabel: wc.countLabel,
-    scopeLabel(code) { return this.scopeOptions.find(item => item.value === code)?.label || code || '未取得' },
+    scopeLabel(code) { return this.scopeOptions.find(item => item.value === code)?.label || '范围待核对' },
     beforeUnload(event) { if (this.dirty || this.busy) { event.preventDefault(); event.returnValue = '' } },
     canLeave(to) {
       if (this.busy) { this.flash = '当前操作尚未返回结果，请等待后再切换。'; return false }
