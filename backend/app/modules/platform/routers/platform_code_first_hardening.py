@@ -1,6 +1,6 @@
 """W1-W4 exact control-plane replacements layered over platform_router.
 
-The S0 platform bundle is byte-frozen.  This module mutates the already-composed
+The S0 platform bundle is byte-frozen. This module mutates the already-composed
 canonical APIRouter in place, replacing only exact (method, path) signatures.
 That preserves ``app.api.v1.platform.router is platform_router.router`` while
 allowing production authority contracts to evolve without touching the bundle.
@@ -40,6 +40,38 @@ def governed_features_put(
         details={
             "tenantId": str(tenant_id),
             "normalAuthority": "PAID_ORDER",
+            "legacyWriteDisabled": True,
+            "requestedKeys": sorted(str(key) for key in (body or {}).keys()),
+        },
+    )
+
+
+@_routes.get("/tenants/{tenant_id}/workflows", summary="流程定义权威投影（旧 JSON 只读漂移证据）")
+def governed_workflows_get(
+    tenant_id: int,
+    user=Depends(_bundle.require_platform_super_admin),
+):
+    from app.services import platform_control_authority_service as authority
+
+    return success(authority.workflow_projection(int(tenant_id)))
+
+
+@_routes.put("/tenants/{tenant_id}/workflows/{workflow_code}", summary="拒绝旧 WORKFLOWS JSON 写入")
+def governed_workflow_put(
+    tenant_id: int,
+    workflow_code: str,
+    body: dict = Body(...),
+    user=Depends(_bundle.require_platform_super_admin),
+):
+    raise AppException(
+        "WORKFLOW_AUTHORITY_MOVED",
+        "审批流运行真值已统一到 WorkflowDefinition；平台主管旧 WORKFLOWS JSON 写入口已停止",
+        http_status=409,
+        details={
+            "tenantId": str(tenant_id),
+            "workflowCode": str(workflow_code),
+            "authority": "WORKFLOW_DEFINITION",
+            "writeSurface": "/admin/system/workflow-governance",
             "legacyWriteDisabled": True,
             "requestedKeys": sorted(str(key) for key in (body or {}).keys()),
         },

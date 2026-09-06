@@ -1,6 +1,6 @@
 """Code-first authority projections for the platform control plane.
 
-This module is deliberately outside the byte-frozen platform bundle.  It owns
+This module is deliberately outside the byte-frozen platform bundle. It owns
 read-only authority projections used by exact route replacements during W1-W4.
 Legacy PlatformConfig rows are evidence/compatibility inputs, not a license for
 new side writes.
@@ -77,4 +77,91 @@ def features_projection(tenant_id: int) -> dict:
         "legacyOverrideReadOnly": bool(legacy["payload"]),
         "legacyDrift": drift,
         "repairRequired": bool(drift),
+    }
+
+
+def _workflow_row(definition, nodes: list) -> dict:
+    return {
+        "workflowCode": definition.workflow_code,
+        "workflowName": definition.workflow_name,
+        "enabled": definition.status == "ENABLED",
+        "needApproval": bool(nodes),
+        "approverRoleCodes": [node.approver_role_code for node in nodes],
+        "ccRoleCodes": definition.cc_role_codes_json or [],
+        "timeoutHours": definition.timeout_hours,
+        "allowTransfer": definition.allow_transfer,
+        "allowReject": definition.allow_reject,
+        "allowWithdraw": definition.allow_withdraw,
+        "policyConfirmed": definition.policy_confirmed,
+        "definitionVersion": definition.definition_version,
+        "rowVersion": int(definition.version or 0),
+        "status": definition.status,
+    }
+
+
+def workflow_projection(tenant_id: int) -> dict:
+    """Project WorkflowDefinition as the only runtime workflow authority.
+
+    Legacy PlatformConfig(WORKFLOWS) is returned only as drift evidence. It is
+    never merged into the authoritative ``workflows`` result here.
+    """
+    from app.models import WorkflowDefinition, WorkflowNodeDefinition
+    from app.services import platform_service
+
+    platform_service.get_tenant(int(tenant_id))
+    legacy = config_snapshot(int(tenant_id), "WORKFLOWS")
+    db = get_sessionmaker()()
+    try:
+        definitions = db.scalars(select(WorkflowDefinition).where(
+            WorkflowDefinition.tenant_id == int(tenant_id),
+            WorkflowDefinition.is_deleted.is_(False),
+        ).order_by(WorkflowDefinition.workflow_code)).all()
+        ids = [int(row.id) for row in definitions]
+        nodes_by_definition: dict[int, list] = {value: [] for value in ids}
+        if ids:
+            nodes = db.scalars(select(WorkflowNodeDefinition).where(
+                WorkflowNodeDefinition.tenant_id == int(tenant_id),
+                WorkflowNodeDefinition.workflow_definition_id.in_(ids),
+                WorkflowNodeDefinition.is_deleted.is_(False),
+                WorkflowNodeDefinition.status == "ACTIVE",
+            ).order_by(WorkflowNodeDefinition.workflow_definition_id, WorkflowNodeDefinition.sequence_no)).all()
+            for node in nodes:
+                nodes_by_definition.setdefault(int(node.workflow_definition_id), []).append(node)
+        workflows = {
+            row.workflow_code: _workflow_row(row, nodes_by_definition.get(int(row.id), []))
+            for row in definitions
+        }
+    finally:
+        db.close()
+
+    drift = []
+    legacy_rows = dict(legacy["payload"] or {})
+    for code in sorted(set(workflows) | set(legacy_rows)):
+        canonical = workflows.get(code)
+        old = legacy_rows.get(code) if isinstance(legacy_rows.get(code), dict) else None
+        if canonical is None:
+            state = "CONFIG_ONLY"
+        elif old is None:
+            state = "DEFINITION_ONLY"
+        else:
+            comparable = {
+                "enabled": canonical.get("enabled"),
+                "needApproval": canonical.get("needApproval"),
+                "timeoutHours": canonical.get("timeoutHours"),
+                "approverRoleCodes": canonical.get("approverRoleCodes") or [],
+            }
+            old_comparable = {key: old.get(key) for key in comparable if key in old}
+            state = "MATCH" if all(old_comparable[key] == comparable[key] for key in old_comparable) else "CONFLICT"
+        drift.append({"workflowCode": code, "state": state})
+
+    return {
+        "tenantId": str(tenant_id),
+        "authority": "WORKFLOW_DEFINITION",
+        "workflows": workflows,
+        "items": list(workflows.values()),
+        "legacyOverride": legacy_rows,
+        "legacyOverrideVersion": legacy["version"],
+        "legacyOverrideReadOnly": bool(legacy_rows),
+        "drift": drift,
+        "writeSurface": "/admin/system/workflow-governance",
     }
