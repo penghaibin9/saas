@@ -168,23 +168,26 @@ def update_school_brand(
 
 
 def reset_school_brand(
-    tenant_id: int, *, expected_version=None, reason: str, user: dict | None = None,
+    tenant_id: int, *, expected_version, reason: str, user: dict | None = None,
 ) -> dict:
-    """Reset under a row lock; current UI may omit expectedVersion during transition."""
+    """Reset under the same mandatory optimistic lock as ordinary brand writes."""
     from app.core.exceptions import AppException
-    from app.models import TenantBrandConfig
+    from app.models import Tenant, TenantBrandConfig
     from app.services import audit_log
 
+    requested = _required_version(expected_version)
     reason_text = _required_reason(reason)
-    requested = None if expected_version in (None, "") else _required_version(expected_version)
     db = get_sessionmaker()()
     try:
+        tenant = db.get(Tenant, int(tenant_id))
+        if tenant is None or tenant.is_deleted:
+            raise AppException("NOT_FOUND", "租户不存在", http_status=404)
         row = db.scalars(select(TenantBrandConfig).where(
             TenantBrandConfig.tenant_id == int(tenant_id),
             TenantBrandConfig.is_deleted.is_(False),
         ).with_for_update()).first()
         current_version = int(row.version or 0) if row is not None else 0
-        if requested is not None and requested != current_version:
+        if requested != current_version:
             raise AppException(
                 "DATA_CONFLICT", "品牌配置已被其他管理员更新，请刷新后重试", http_status=409,
                 details={"expectedVersion": requested, "currentVersion": current_version},
@@ -200,6 +203,8 @@ def reset_school_brand(
             row.version = current_version + 1
             resource_id = str(row.id)
         else:
+            # No row means version 0 and already-default state. Do not fabricate
+            # a write/version bump merely to report success.
             resource_id = ""
         audit_log.record_critical_in_session(
             db, "BRAND_CONFIG_RESET", "学校品牌配置",
@@ -235,6 +240,21 @@ def effective_brand(tenant_id: int) -> dict:
     }
 
 
+def _platform_brand_write_moved(*args, **kwargs):
+    from app.core.exceptions import AppException
+
+    raise AppException(
+        "BRAND_AUTHORITY_MOVED",
+        "学校品牌唯一真值是 TenantBrandConfig；PlatformConfig(BRAND) 已降为只读对账证据",
+        http_status=409,
+        details={"authority": "TENANT_BRAND_CONFIG", "writeSurface": "/admin/system/config?tab=brand"},
+    )
+
+
 def install_platform_service_adapter() -> None:
-    from app.services import platform_service
+    """Install read compatibility and retire every known platform BRAND writer."""
+    from app.services import platform_control_authority_service, platform_service
+
     platform_service.effective_brand = effective_brand
+    platform_control_authority_service.brand_projection = brand_projection
+    platform_control_authority_service.update_brand = _platform_brand_write_moved
