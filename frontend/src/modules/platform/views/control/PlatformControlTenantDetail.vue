@@ -26,7 +26,6 @@
             <AppButton v-if="tenant.status === 'disabled'" variant="primary" @click="act('enable')">启用</AppButton>
             <AppButton v-else variant="danger" @click="act('disable')">停用</AppButton>
             <AppButton variant="ghost" @click="act('extend-trial', { days: 30 })">延期 30 天</AppButton>
-            <AppButton variant="ghost" @click="changePkg">变更套餐</AppButton>
             <AppButton variant="warning" @click="act('expire')">标记到期（只读）</AppButton>
           </div>
         </AppCard>
@@ -40,24 +39,19 @@
             <li><span>真实占用（文件+预留）</span><b>{{ formatBytes(tenant360.storage?.actualOccupancyBytes) }}</b></li>
             <li v-if="tenant360.effectiveState?.mismatch"><span>状态一致性</span><b class="ptd__danger">租户主状态与租户元数据不一致</b></li>
           </ul>
-          <div class="ptd__quota">
-            <label class="ptd__field"><span>学生上限</span><input v-model.number="quota.maxStudents" type="number" class="ptd__input" /></label>
-            <label class="ptd__field"><span>账号上限</span><input v-model.number="quota.maxUsers" type="number" class="ptd__input" /></label>
-            <label class="ptd__field"><span>存储上限（兆字节）</span><input v-model.number="quota.storageLimitMb" type="number" class="ptd__input" /></label>
-            <AppButton variant="primary" @click="saveQuota">保存容量</AppButton>
-          </div>
+          <p class="ptd__authority-note">商业套餐与商业额度由已支付订单或受控特批决定；本页不再提供普通直改入口。</p>
         </AppCard>
       </div>
 
       <AppCard v-else-if="tab === 'features'" class="ptd__panel">
-        <AppSectionHeader title="功能开关（保存后业务端即刻生效：关闭的功能接口返回 403）" />
+        <AppSectionHeader title="商业授权（只读对账）" />
+        <p class="ptd__authority-note">{{ featuresAuthorityHint }}</p>
         <div class="ptd__switches">
           <label v-for="k in featureKeys" :key="k" class="ptd__switch">
-            <input v-model="features[k]" type="checkbox" />
+            <input :checked="Boolean(features[k])" type="checkbox" disabled />
             <span>{{ featureLabels[k] || '待命名功能' }}</span>
           </label>
         </div>
-        <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveFeatures">保存功能开关</AppButton></div>
       </AppCard>
 
       <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
@@ -77,24 +71,17 @@
             </label>
           </div>
         </AppCard>
-        <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveRules">保存全部规则（即刻生效）</AppButton></div>
+        <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveRules">保存全部规则（版本 {{ rulesVersion }}）</AppButton></div>
       </div>
 
       <AppCard v-else-if="tab === 'workflows'" class="ptd__panel">
-        <AppSectionHeader title="审批流配置（是否需要审批 / 审批角色 / 时限）" />
+        <AppSectionHeader title="审批流运行定义（只读）" />
+        <p class="ptd__authority-note">WorkflowDefinition 是唯一运行真值；历史 WORKFLOWS JSON 仅用于漂移对账，请在学校系统管理的流程治理工作区修改正式定义。</p>
         <DataTable :columns="wfColumns" :rows="workflowRows" row-key="workflowCode">
-          <template #cell-enabled="{ row }">
-            <input v-model="row.enabled" type="checkbox" @change="saveWorkflow(row)" />
-          </template>
-          <template #cell-needApproval="{ row }">
-            <input v-model="row.needApproval" type="checkbox" @change="saveWorkflow(row)" />
-          </template>
-          <template #cell-approverRoleCodes="{ row }">
-            <span class="ptd__roles">{{ roleLabels(row.approverRoleCodes) }}</span>
-          </template>
-          <template #cell-timeoutHours="{ row }">
-            <input v-model.number="row.timeoutHours" type="number" class="ptd__input ptd__input--sm" @change="saveWorkflow(row)" />
-          </template>
+          <template #cell-enabled="{ row }"><input :checked="Boolean(row.enabled)" type="checkbox" disabled /></template>
+          <template #cell-needApproval="{ row }"><input :checked="Boolean(row.needApproval)" type="checkbox" disabled /></template>
+          <template #cell-approverRoleCodes="{ row }"><span class="ptd__roles">{{ roleLabels(row.approverRoleCodes) }}</span></template>
+          <template #cell-timeoutHours="{ row }"><span>{{ row.timeoutHours || '—' }}</span></template>
         </DataTable>
       </AppCard>
 
@@ -106,7 +93,7 @@
             <input v-model="brand[f.key]" class="ptd__input" :placeholder="f.ph || ''" />
           </label>
         </div>
-        <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveBrand">保存品牌配置</AppButton></div>
+        <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveBrand">保存品牌配置（版本 {{ brandVersion }}）</AppButton></div>
       </AppCard>
 
       <AppCard v-else-if="tab === 'users'" class="ptd__panel">
@@ -117,13 +104,11 @@
           <AppButton variant="primary" @click="createUser">创建学校管理员</AppButton>
         </div>
         <div v-if="oneTimeSecret" class="ptd__secret">
-          <span>{{ oneTimeSecret }}（仅本次显示，请立即转交；刷新后不可再查看）</span>
+          <span>{{ oneTimeSecret }}（仅本次显示，请立即转交；刷新或切换学校后不可再查看）</span>
           <AppButton variant="ghost" @click="oneTimeSecret = ''">我已记录</AppButton>
         </div>
         <DataTable :columns="userColumns" :rows="users" row-key="userId">
-          <template #cell-status="{ row }">
-            <StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.status === 'ACTIVE' ? '启用' : '停用'" />
-          </template>
+          <template #cell-status="{ row }"><StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.status === 'ACTIVE' ? '启用' : '停用'" /></template>
           <template #cell-userType="{ row }">{{ platformRoleLabel(row.userType) }}</template>
           <template #cell-lastLoginAt="{ row }">{{ fmt(row.lastLoginAt) || '从未登录' }}</template>
           <template #cell-actions="{ row }">
@@ -137,13 +122,7 @@
         <EmptyState v-if="!users.length" text="该学校暂无账号" compact />
       </AppCard>
 
-      <TenantOffboardingPanel
-        v-else-if="tab === 'offboarding'"
-        :tenant-id="tid"
-        :tenant="tenant"
-        :tenant360="tenant360"
-        @changed="load"
-      />
+      <TenantOffboardingPanel v-else-if="tab === 'offboarding'" :tenant-id="tid" :tenant="tenant" :tenant360="tenant360" @changed="load" />
     </template>
     <ErrorState v-else :text="error || '租户不存在'" @retry="load" />
   </ModulePageShell>
@@ -153,6 +132,7 @@
 import { AppButton, AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformControlHardeningApi } from '@/modules/platform/api/platformControlHardening.api'
 import StudentPortalConfigPanel from '@/modules/platform/components/StudentPortalConfigPanel.vue'
 import TenantOffboardingPanel from '@/modules/platform/components/TenantOffboardingPanel.vue'
 import {
@@ -168,10 +148,7 @@ const STATUS = { trial: ['warning', '试用中'], active: ['success', '正式'],
 
 export default {
   name: 'PlatformControlTenantDetail',
-  components: {
-    AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState,
-    ModulePageShell, StatusTag, StudentPortalConfigPanel, TenantOffboardingPanel
-  },
+  components: { AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag, StudentPortalConfigPanel, TenantOffboardingPanel },
   data() {
     return {
       loading: true,
@@ -179,101 +156,107 @@ export default {
       error: '',
       tenant: null,
       tenant360: {},
+      requestEpoch: 0,
+      tabRequestEpoch: 0,
       tab: 'info',
       tabs: [
-        { key: 'info', label: '运营与容量' },
-        { key: 'features', label: '功能开关' },
-        { key: 'rules', label: '规则中心' },
-        { key: 'workflows', label: '审批流' },
-        { key: 'brand', label: '品牌' },
-        { key: 'users', label: '账号' },
-        { key: 'studentPortal', label: '学生电脑门户' },
-        { key: 'offboarding', label: '退租与数据销毁' }
+        { key: 'info', label: '运营与容量' }, { key: 'features', label: '商业授权' },
+        { key: 'rules', label: '规则中心' }, { key: 'workflows', label: '审批流' },
+        { key: 'brand', label: '品牌' }, { key: 'users', label: '账号' },
+        { key: 'studentPortal', label: '学生电脑门户' }, { key: 'offboarding', label: '退租与数据销毁' }
       ],
       quota: { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 },
-      features: {},
-      featureKeys: [],
-      featureLabels: PLATFORM_FEATURE_LABELS,
-      rules: null,
-      ruleGroupLabels: PLATFORM_RULE_GROUP_LABELS,
-      ruleLabels: PLATFORM_RULE_LABELS,
-      workflowRows: [],
+      features: {}, featureKeys: [], featureLabels: PLATFORM_FEATURE_LABELS, featuresMeta: {},
+      rules: null, rulesVersion: 0, ruleGroupLabels: PLATFORM_RULE_GROUP_LABELS, ruleLabels: PLATFORM_RULE_LABELS,
+      workflowRows: [], workflowMeta: {},
       wfColumns: [
-        { key: 'workflowName', title: '审批流', width: '180px' },
-        { key: 'enabled', title: '启用', width: '60px', align: 'center' },
-        { key: 'needApproval', title: '需审批', width: '70px', align: 'center' },
-        { key: 'approverRoleCodes', title: '审批角色', width: '200px' },
+        { key: 'workflowName', title: '审批流', width: '180px' }, { key: 'enabled', title: '启用', width: '60px', align: 'center' },
+        { key: 'needApproval', title: '需审批', width: '70px', align: 'center' }, { key: 'approverRoleCodes', title: '审批角色', width: '200px' },
         { key: 'timeoutHours', title: '时限(小时)', width: '110px' }
       ],
-      brand: {},
+      brand: {}, brandVersion: 0,
       brandFields: [
-        { key: 'platformName', label: '平台名称（顶栏）' },
-        { key: 'topBarName', label: '顶栏主标题' },
-        { key: 'watermarkText', label: '页面水印文案' },
-        { key: 'primaryColor', label: '品牌主色', ph: '#2563EB' },
-        { key: 'contactPhone', label: '试用/续费咨询电话', ph: '13549666867' },
-        { key: 'copyrightText', label: '版权文案' }
+        { key: 'platformName', label: '平台名称（顶栏）' }, { key: 'topBarName', label: '顶栏主标题' },
+        { key: 'watermarkText', label: '页面水印文案' }, { key: 'primaryColor', label: '品牌主色', ph: '#2563EB' },
+        { key: 'contactPhone', label: '试用/续费咨询电话', ph: '13549666867' }, { key: 'copyrightText', label: '版权文案' }
       ],
       users: [],
       userColumns: [
-        { key: 'loginName', title: '登录名', width: '140px' },
-        { key: 'realName', title: '姓名', width: '110px' },
-        { key: 'userType', title: '类型', width: '130px' },
-        { key: 'status', title: '状态', width: '80px' },
-        { key: 'lastLoginAt', title: '最近登录', width: '150px' },
-        { key: 'actions', title: '操作', width: '220px' }
+        { key: 'loginName', title: '登录名', width: '140px' }, { key: 'realName', title: '姓名', width: '110px' },
+        { key: 'userType', title: '类型', width: '130px' }, { key: 'status', title: '状态', width: '80px' },
+        { key: 'lastLoginAt', title: '最近登录', width: '150px' }, { key: 'actions', title: '操作', width: '220px' }
       ],
       newUser: { loginName: '', realName: '' },
       oneTimeSecret: ''
     }
   },
   computed: {
-    tid() {
-      return this.$route.params.tenantId || this.$route.params.id
-    },
-    pkgLabel() {
-      return this.tenant ? this.tenant.packageName + ' · 到期 ' + this.fmt(this.tenant.expireAt) : ''
-    },
-    statusType() {
-      return (STATUS[this.tenant.status] || ['default'])[0]
-    },
-    statusLabel() {
-      return (STATUS[this.tenant.status] || ['default', '状态待确认'])[1]
+    tid() { return this.$route.params.tenantId || this.$route.params.id },
+    pkgLabel() { return this.tenant ? this.tenant.packageName + ' · 到期 ' + this.fmt(this.tenant.expireAt) : '' },
+    statusType() { return (STATUS[this.tenant?.status] || ['default'])[0] },
+    statusLabel() { return (STATUS[this.tenant?.status] || ['default', '状态待确认'])[1] },
+    featuresAuthorityHint() {
+      if (this.featuresMeta.legacyOverrideReadOnly) return '检测到历史授权覆盖：当前仅允许只读对账，不能继续从此页面直接改商业授权。'
+      if (this.featuresMeta.authoritySource === 'PAID_ORDER') return '商业授权来自已支付订单；学校启停由学校系统管理单独控制。'
+      return '商业授权来自套餐/订单权威；此处只展示，不作为学校功能开关写入口。'
+    }
+  },
+  watch: {
+    tid(newTenantId, oldTenantId) {
+      if (String(newTenantId || '') === String(oldTenantId || '')) return
+      this.resetTenantState()
+      const requestedTab = this.$route.query.tab
+      this.tab = requestedTab && this.tabs.some((item) => item.key === requestedTab) ? requestedTab : 'info'
+      this.load()
     }
   },
   created() {
-    const t = this.$route.query.tab
-    if (t && this.tabs.some((x) => x.key === t)) this.tab = t
+    const requestedTab = this.$route.query.tab
+    if (requestedTab && this.tabs.some((item) => item.key === requestedTab)) this.tab = requestedTab
     this.load()
   },
   methods: {
-    fmt(v) {
-      return v ? String(v).replace('T', ' ').slice(0, 16) : ''
-    },
-    formatBytes(value) {
-      if (value === null || value === undefined) return '未配置'
-      return `${(Number(value || 0) / 1024 / 1024 / 1024).toFixed(2)} 吉字节`
-    },
+    fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '' },
+    formatBytes(value) { return value == null ? '未配置' : `${(Number(value || 0) / 1024 / 1024 / 1024).toFixed(2)} 吉字节` },
     platformRoleLabel,
-    roleLabels(values) {
-      return (values || []).map((value) => platformRoleLabel(value)).join(' / ') || '—'
+    roleLabels(values) { return (values || []).map((value) => platformRoleLabel(value)).join(' / ') || '—' },
+    clearTenantPayload() {
+      this.error = ''
+      this.tenant = null
+      this.tenant360 = {}
+      this.saving = false
+      this.quota = { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 }
+      this.features = {}; this.featureKeys = []; this.featuresMeta = {}
+      this.rules = null; this.rulesVersion = 0
+      this.workflowRows = []; this.workflowMeta = {}
+      this.brand = {}; this.brandVersion = 0
+      this.users = []
+      this.newUser = { loginName: '', realName: '' }
+      this.oneTimeSecret = ''
+    },
+    resetTenantState() {
+      this.requestEpoch += 1
+      this.tabRequestEpoch += 1
+      this.clearTenantPayload()
+      this.loading = true
     },
     async load() {
+      const tenantId = String(this.tid || '')
+      const epoch = ++this.requestEpoch
+      this.tabRequestEpoch += 1
+      this.clearTenantPayload()
       this.loading = true
-      const res = await platformControlApi.getTenant(this.tid)
+      const res = await platformControlApi.getTenant(tenantId)
+      if (epoch !== this.requestEpoch || tenantId !== String(this.tid || '')) return
       this.loading = false
       if (res.code !== 0) {
-        this.error = res.message
+        this.error = res.message || '租户配置加载失败'
         return
       }
       this.tenant = res.data
       this.tenant360 = res.data.tenant360 || {}
-      this.quota = {
-        maxStudents: res.data.maxStudents,
-        maxUsers: res.data.maxUsers,
-        storageLimitMb: res.data.storageLimitMb
-      }
-      this.loadTab(this.tab)
+      this.quota = { maxStudents: res.data.maxStudents, maxUsers: res.data.maxUsers, storageLimitMb: res.data.storageLimitMb }
+      await this.loadTab(this.tab)
     },
     switchTab(key) {
       this.tab = key
@@ -281,29 +264,36 @@ export default {
       this.loadTab(key)
     },
     async loadTab(key) {
+      const tenantId = String(this.tid || '')
+      const epoch = ++this.tabRequestEpoch
+      const stillCurrent = () => epoch === this.tabRequestEpoch && tenantId === String(this.tid || '')
       if (key === 'features' && !this.featureKeys.length) {
-        const res = await platformControlApi.getFeatures(this.tid)
+        const res = await platformControlApi.getFeatures(tenantId)
+        if (!stillCurrent()) return
         if (res.code === 0) {
-          this.features = res.data.features
-          this.featureKeys = res.data.featureKeys || Object.keys(res.data.features)
-        } else {
-          toast.error(res.message)
-        }
+          this.features = res.data.features || {}
+          this.featureKeys = Object.keys(this.features)
+          this.featuresMeta = res.data || {}
+        } else toast.error(res.message)
       } else if (key === 'rules' && !this.rules) {
-        const res = await platformControlApi.getRules(this.tid)
-        if (res.code === 0) this.rules = res.data.rules
+        const res = await platformControlApi.getRules(tenantId)
+        if (!stillCurrent()) return
+        if (res.code === 0) { this.rules = res.data.rules || {}; this.rulesVersion = Number(res.data.overrideVersion || 0) }
         else toast.error(res.message)
       } else if (key === 'workflows' && !this.workflowRows.length) {
-        const res = await platformControlApi.getWorkflows(this.tid)
-        if (res.code === 0) this.workflowRows = Object.values(res.data.workflows)
+        const res = await platformControlApi.getWorkflows(tenantId)
+        if (!stillCurrent()) return
+        if (res.code === 0) { this.workflowRows = Object.values(res.data.workflows || {}); this.workflowMeta = res.data || {} }
         else toast.error(res.message)
       } else if (key === 'brand' && !Object.keys(this.brand).length) {
-        const res = await platformControlApi.getBrand(this.tid)
-        if (res.code === 0) this.brand = res.data.brand
+        const res = await platformControlApi.getBrand(tenantId)
+        if (!stillCurrent()) return
+        if (res.code === 0) { this.brand = res.data.brand || {}; this.brandVersion = Number(res.data.overrideVersion || 0) }
         else toast.error(res.message)
       } else if (key === 'users') {
-        const res = await platformControlApi.listUsers(this.tid)
-        if (res.code === 0) this.users = res.data.list
+        const res = await platformControlApi.listUsers(tenantId)
+        if (!stillCurrent()) return
+        if (res.code === 0) this.users = res.data.list || []
         else toast.error(res.message)
       }
     },
@@ -319,233 +309,62 @@ export default {
       const toStatus = platformStatusLabel(preview.data.toStatus)
       if (!window.confirm(`${fromStatus} → ${toStatus}${warnings ? `\n${warnings}` : ''}\n确认执行？`)) return
       const res = await platformControlApi.applyTenantTransition(this.tid, action, body)
-      if (res.code === 0) { toast.success('变更已生效'); await this.load() }
-      else toast.error(res.message)
+      if (res.code === 0) {
+        if (res.data?.cacheRecoveryRequired) toast.warning(res.data.warning || '业务已生效，但权限缓存待恢复')
+        else toast.success('变更已生效')
+        await this.load()
+      } else toast.error(res.message)
     },
-    async act(action, body = {}) {
-      return this.governedTransition(action, body)
-    },
-    async changePkg() {
-      const codes = ['trial', 'basic', 'standard', 'professional', 'private']
-      const cur = codes.indexOf(this.tenant.packageCode)
-      const next = codes[(cur + 1) % codes.length]
-      return this.governedTransition('change-package', { packageCode: next })
-    },
-    async saveQuota() {
-      return this.governedTransition('quota', { ...this.quota })
-    },
-    async saveFeatures() {
-      this.saving = true
-      const res = await platformControlApi.putFeatures(this.tid, { ...this.features })
-      this.saving = false
-      if (res.code === 0) toast.success('功能开关已保存，业务端即刻生效')
-      else toast.error(res.message)
-    },
+    async act(action, body = {}) { return this.governedTransition(action, body) },
     async saveRules() {
+      const reason = window.prompt('请输入规则变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
       this.saving = true
-      const res = await platformControlApi.putRules(this.tid, this.rules)
+      const res = await platformControlHardeningApi.putRules(this.tid, this.rules, this.rulesVersion, reason.trim())
       this.saving = false
-      if (res.code === 0) toast.success('规则已保存，后端校验即刻按新规则执行')
-      else toast.error(res.message)
-    },
-    async saveWorkflow(row) {
-      const res = await platformControlApi.putWorkflow(this.tid, row.workflowCode, {
-        enabled: row.enabled,
-        needApproval: row.needApproval,
-        timeoutHours: row.timeoutHours
-      })
-      if (res.code === 0) toast.success('「' + row.workflowName + '」已更新')
-      else toast.error(res.message)
+      if (res.code === 0) {
+        this.rules = res.data.rules || this.rules
+        this.rulesVersion = Number(res.data.overrideVersion || this.rulesVersion)
+        toast.success('规则已保存')
+      } else if (res.bizCode === 'DATA_CONFLICT') {
+        toast.error('规则已被其他人修改，请刷新后重试')
+      } else toast.error(res.message)
     },
     async saveBrand() {
+      const reason = window.prompt('请输入品牌变更原因（至少 5 个字符）')
+      if (!reason || reason.trim().length < 5) return
       this.saving = true
-      const res = await platformControlApi.putBrand(this.tid, { ...this.brand })
+      const res = await platformControlHardeningApi.putBrand(this.tid, { ...this.brand }, this.brandVersion, reason.trim())
       this.saving = false
-      if (res.code === 0) toast.success('品牌配置已保存')
-      else toast.error(res.message)
+      if (res.code === 0) {
+        this.brand = res.data.brand || this.brand
+        this.brandVersion = Number(res.data.overrideVersion || this.brandVersion)
+        toast.success('品牌配置已保存')
+      } else if (res.bizCode === 'DATA_CONFLICT') {
+        toast.error('品牌配置已被其他人修改，请刷新后重试')
+      } else toast.error(res.message)
     },
     async createUser() {
-      if (!this.newUser.loginName || !this.newUser.realName) {
-        toast.error('登录名与姓名必填')
-        return
-      }
+      if (!this.newUser.loginName || !this.newUser.realName) return toast.error('登录名与姓名必填')
       const res = await platformControlApi.createUser(this.tid, { ...this.newUser })
       if (res.code === 0) {
         this.oneTimeSecret = '账号 ' + res.data.loginName + ' 初始密码：' + res.data.initialPassword
         this.newUser = { loginName: '', realName: '' }
         this.loadTab('users')
-      } else {
-        toast.error(res.message)
-      }
+      } else toast.error(res.message)
     },
     async userAct(row, action) {
       const res = await platformControlApi.userAction(row.userId, action)
       if (res.code === 0) {
-        if (action === 'reset-password' && res.data.newPassword) {
-          this.oneTimeSecret = '账号 ' + row.loginName + ' 新密码：' + res.data.newPassword
-        } else {
-          toast.success('操作成功')
-        }
+        if (action === 'reset-password' && res.data.newPassword) this.oneTimeSecret = '账号 ' + row.loginName + ' 新密码：' + res.data.newPassword
+        else toast.success('操作成功')
         this.loadTab('users')
-      } else {
-        toast.error(res.message)
-      }
+      } else toast.error(res.message)
     }
   }
 }
 </script>
 
 <style scoped>
-.ptd__tabs {
-  display: flex;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-.ptd__tab {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--card-b);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--t2);
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-}
-.ptd__tab.is-active {
-  background: var(--btn-p-bg);
-  border-color: transparent;
-  color: #fff;
-  font-weight: var(--font-weight-semibold);
-}
-.ptd__cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--space-3);
-}
-.ptd__panel {
-  padding: var(--space-4);
-}
-.ptd__kv {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.ptd__kv li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.ptd__kv b {
-  color: var(--t1);
-}
-.ptd__danger { color: var(--danger-600, #b42318) !important; }
-.ptd__ops {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.ptd__ops--row {
-  margin-top: 0;
-}
-.ptd__quota {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.ptd__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.ptd__field--rule {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.ptd__input {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--card-b);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--t1);
-  font-size: 13px;
-  font-family: inherit;
-  min-width: 0;
-}
-.ptd__input:focus {
-  outline: none;
-  border-color: var(--glow);
-}
-.ptd__input--sm {
-  width: 90px;
-}
-.ptd__check {
-  width: 16px;
-  height: 16px;
-}
-.ptd__switches {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-.ptd__switch {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--t2);
-}
-.ptd__rules {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.ptd__rule-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-2) var(--space-4);
-  margin-top: var(--space-3);
-}
-.ptd__roles {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.ptd__brand {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-.ptd__user-create {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin: var(--space-3) 0;
-}
-.ptd__secret {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: 9px;
-  background: var(--warn-l);
-  color: var(--warning-700);
-  font-size: var(--font-size-sm);
-  margin-bottom: var(--space-3);
-}
+.ptd__tabs{display:flex;gap:var(--space-1);flex-wrap:wrap}.ptd__tab{height:34px;padding:0 14px;border:1px solid var(--card-b);border-radius:9px;background:rgba(255,255,255,.75);color:var(--t2);font-size:13px;font-family:inherit;cursor:pointer}.ptd__tab.is-active{background:var(--btn-p-bg);border-color:transparent;color:#fff;font-weight:var(--font-weight-semibold)}.ptd__cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--space-3)}.ptd__panel{padding:var(--space-4)}.ptd__kv{list-style:none;margin:var(--space-2) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--space-2)}.ptd__kv li{display:flex;align-items:center;justify-content:space-between;font-size:var(--font-size-sm);color:var(--text-secondary)}.ptd__kv b{color:var(--t1)}.ptd__danger{color:var(--danger-600,#b42318)!important}.ptd__ops{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}.ptd__ops--row{margin-top:0}.ptd__field{display:flex;flex-direction:column;gap:var(--space-1);font-size:var(--font-size-sm);color:var(--text-secondary)}.ptd__field--rule{flex-direction:row;align-items:center;justify-content:space-between;gap:var(--space-2)}.ptd__input{height:34px;padding:0 10px;border:1px solid var(--card-b);border-radius:9px;background:rgba(255,255,255,.85);color:var(--t1);font-size:13px;font-family:inherit;min-width:0}.ptd__input:focus{outline:none;border-color:var(--glow)}.ptd__input--sm{width:90px}.ptd__check{width:16px;height:16px}.ptd__switches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--space-2);margin-top:var(--space-3)}.ptd__switch{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-size-sm);color:var(--t2)}.ptd__rules{display:flex;flex-direction:column;gap:var(--space-3)}.ptd__rule-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--space-2) var(--space-4);margin-top:var(--space-3)}.ptd__roles{font-size:12px;color:var(--text-secondary)}.ptd__brand{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--space-3);margin-top:var(--space-3)}.ptd__user-create{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:var(--space-3) 0}.ptd__secret{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:9px;background:var(--warn-l);color:var(--warning-700);font-size:var(--font-size-sm);margin-bottom:var(--space-3)}.ptd__authority-note{margin:var(--space-3) 0 0;padding:var(--space-2) var(--space-3);border-radius:9px;background:var(--color-primary-soft);color:var(--text-secondary);font-size:var(--font-size-sm);line-height:1.6}
 </style>
