@@ -1,15 +1,11 @@
-"""Closeout architecture gates for the graduation material domain.
-
-These tests intentionally reject the former phase-6 coexistence assumptions.
-Behavioral MySQL coverage lives here and in the dedicated acceptance script.
-"""
+"""Graduation material-center production contracts."""
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
 import pytest
-from sqlalchemy import event, func, select, text
+from sqlalchemy import event, select, text
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -134,18 +130,29 @@ def test_production_material_center_route_and_ui_contract():
     assert "path: 'material-center'" in routes
     assert "path: 'materials', redirect" in routes
     assert "/admin/graduation/material-center" in workspace
-    for label in ("全部材料", "学生完整性", "待审核", "安全异常"):
+
+    # Freeze business functions and safety semantics, not old developer-facing copy.
+    for label in ("全部材料", "学生完整性", "待审核", "文件异常"):
         assert label in page
-    for field in ("学生", "材料", "当前文件", "提交信息", "文件安全", "审核结论", "归档结论", "操作"):
+    for field in ("学生", "材料", "当前文件", "提交信息", "文件状态", "审核结论", "归档结论", "操作"):
         assert field in page
     for marker in (
         "{{ stageLabel(row.stage) }}",
         "{{ row.materialName }}",
-        "技术标识",
+        "<summary>材料编号</summary>",
+        "{{ row.materialCode || '—' }}",
         "当前第 {{ row.currentVersion || 0 }} 版",
         "{{ row.uploadedAt || '尚未提交' }} · {{ sizeText(row.sizeBytes) }}",
+        "{{ scanLabel(row.scanStatus) }}",
+        "{{ reviewLabel(row.reviewStatus) }}",
+        "{{ archiveLabel(row.archiveStatus) }}",
     ):
         assert marker in page
+    assert 'v-if="row.readyForBusiness"' in page
+    assert "row.allowedActions?.includes('review')" in page
+    assert "const previewProvider = api.createPreviewProvider()" in page
+    assert "fileVersionId: target.fileVersionId" in page
+    assert "expectedVersion: target.expectedVersion" in page
     assert "阶段 / 材料" not in page
     assert "AppConfirmDialog" in page and "FileVersionTimeline" in page
     assert "window.prompt" not in page and "window.confirm" not in page

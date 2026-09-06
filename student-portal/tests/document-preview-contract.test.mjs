@@ -15,6 +15,7 @@ const versionBar = read('src/components/file/viewer/StudentDocumentVersionBar.vu
 const session = read('src/components/file/viewer/useStudentPreviewSession.js')
 const materials = read('src/views/graduation/GraduationMaterialsView.vue')
 const workbench = read('src/views/graduation/GraduationWorkbenchView.vue')
+const uploadStatus = read('src/components/graduation/GraduationUploadStatus.vue')
 const docxRenderer = read('src/components/file/viewer/adapters/docx-preview-renderer.js')
 const docxViewer = read('src/components/file/viewer/adapters/StudentDocxViewer.vue')
 
@@ -59,26 +60,46 @@ test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle
   assert.match(session, /currentGeneration !== generation/)
 })
 
-test('W3 graduation materials use audited business preview tickets for bound current and immutable history versions', () => {
+test('W3 graduation materials use audited preview tickets and the shared upload-status owner', () => {
   assert.match(materials, /查看当前版/)
   assert.match(materials, /查看历史版/)
   assert.match(materials, /历史版本 · 只读|历史只读/)
-  assert.match(materials, /预览我将提交的文件/)
+  assert.match(materials, /<GraduationUploadStatus[\s\S]*?v-model:file="pending\[material\.materialCode\]"[\s\S]*?@preview="openPendingReader\(pending\[material\.materialCode\]\)"/)
+  assert.match(materials, /!graduationUploadReady\(pending\[material\.materialCode\]\)/)
+  assert.match(materials, /readGraduationUpload\(target\.file,[\s\S]*?fileSdk\.metadata/)
   assert.match(materials, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
   assert.match(materials, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
   assert.match(materials, /fileVersionId: material\.currentVersion\.fileVersionId \|\| material\.currentVersionId/)
   assert.match(materials, /temporaryPreview: true/)
 })
 
-test('W3 graduation workbench separates current-version viewing/download and requires safe pending bytes before submit', () => {
-  assert.match(workbench, />查看当前版</)
+test('W3 shared upload status exposes preview only after verified readiness and remains read-only during submission', () => {
+  assert.match(uploadStatus, /previewLabel: \{ type: String, default: '预览我将提交的文件' \}/)
+  assert.match(uploadStatus, /v-if="status\.phase === 'ready' && file\.canPreview"/)
+  assert.match(uploadStatus, /:disabled="locked"/)
+  assert.match(uploadStatus, /@click="\$emit\('preview'\)"/)
+  assert.match(uploadStatus, /createGraduationUploadMonitor/)
+  assert.match(uploadStatus, /readMetadata: \(fileId\) => fileSdk\.metadata\(fileId\)/)
+  assert.match(uploadStatus, /String\(props\.file\?\.fileId \|\| ''\) === String\(fresh\.fileId \|\| ''\)/)
+  assert.match(uploadStatus, /onBeforeUnmount\(\(\) => monitor\.stop\(\)\)/)
+})
+
+test('W3 graduation workbench separates reading/download, monitors uploads and rechecks the exact file before submit', () => {
+  assert.match(workbench, /@click="openMaterialReader\(file\)"/)
+  assert.match(workbench, />在线查看</)
   assert.match(workbench, /@click="downloadMaterial\(file\)"/)
-  assert.match(workbench, /预览我将提交的文件/)
-  assert.match(workbench, /canPreviewPending\(attachments\.proposal\[0\]\)/)
-  assert.match(workbench, /!attachments\.final\[0\]\.readyForBusiness/)
+  assert.equal((workbench.match(/<GraduationUploadStatus\b/g) || []).length, 2)
+  for (const kind of ['proposal', 'final']) {
+    assert.ok(workbench.includes(`v-model:file="attachments.${kind}[0]"`))
+    assert.ok(workbench.includes(`@preview="openPendingReader(attachments.${kind}[0])"`))
+    assert.ok(workbench.includes(`checkedPendingFile('${kind}')`))
+  }
+  assert.match(workbench, /Boolean\(graduationUploadReady\(file\) && file\.canPreview\)/)
+  assert.match(workbench, /!graduationUploadReady\(attachments\.final\[0\]\)/)
+  assert.match(workbench, /readGraduationUpload\(expected, \(fileId\) => fileSdk\.metadata\(fileId\)\)/)
+  assert.match(workbench, /待提交文件已变化，请核对后重新提交/)
   assert.match(workbench, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
   assert.match(workbench, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
-  assert.match(workbench, /peerId \+ 冻结定稿 \+ 附件 fileId/)
   assert.match(workbench, /仅支持站内查看，不提供跨学生下载/)
   assert.match(workbench, /openPeerReader\(p, file\)/)
   assert.match(workbench, /peerId: String\(task\.id\)/)

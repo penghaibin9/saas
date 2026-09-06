@@ -389,13 +389,19 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await new StudentLoginPage(page, config.studentBaseUrl).login(STUDENT_TWO)
     const studentGraduation = new StudentGraduationPage(page, config.studentBaseUrl)
     await studentGraduation.open()
+    await studentGraduation.signTaskbookIfNeeded()
+
     const proposalStep = studentGraduation.step('开题')
-    if (!(await proposalStep.getByText(/待审核|待审阅|已提交/).count())) {
-      await studentGraduation.signTaskbookIfNeeded()
+    const submitAction = proposalStep.getByRole('button').filter({
+      hasText: /填写开题报告|修改后重交开题报告|提交开题报告|完善/
+    }).first()
+    if (await submitAction.count()) {
       await studentGraduation.submitProposal({
         suffix: graduationFixture.runId,
         fileName: `proposal-review-${graduationFixture.runId}.pdf`
       })
+    } else {
+      await expect(proposalStep).toContainText(/待.*审|已提交|审核中|已通过/)
     }
 
     await addStaffSession(page, adminApi)
@@ -404,7 +410,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await staffGraduation.selectStudent()
 
     await expect(page).toHaveURL(/\/admin\/graduation\/proposals/)
-    await expect(page.getByRole('heading', { name: '开题审核', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '开题报告批阅', exact: true })).toBeVisible()
     await expect(page.locator('.pr-split')).toBeVisible()
     await expect(page.locator('.pr-list')).toBeVisible()
     await expect(page.locator('.pr-pane')).toBeVisible()

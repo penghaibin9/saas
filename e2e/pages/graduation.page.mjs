@@ -250,24 +250,28 @@ export class StaffGraduationPage {
   }
 
   async dismissGuideIfPresent() {
-    const skip = this.page.getByRole('button', { name: /跳过引导|跳过/ }).first()
-    try {
-      await skip.waitFor({ state: 'visible', timeout: 1500 })
-    } catch {
-      return
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const masks = [this.page.locator('.app-step-guide__mask'), this.page.locator('.tour-mask')]
+      const visible = []
+      for (const mask of masks) {
+        if (await mask.isVisible().catch(() => false)) visible.push(mask)
+      }
+      if (!visible.length) return
+
+      const skip = this.page.getByRole('button', { name: /跳过引导|跳过/ }).first()
+      if (await skip.isVisible().catch(() => false)) await skip.click()
+      else await this.page.keyboard.press('Escape').catch(() => {})
+      await Promise.all(visible.map((mask) => mask.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})))
     }
-    await skip.click()
-    await this.page.locator('.tour-mask').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {})
   }
 
   async openProposals(tab = 'PENDING_REVIEW') {
     const query = new URLSearchParams({ batchId: this.fixture.batchId, tab })
     await this.page.goto(`${this.baseUrl}/admin/graduation/proposals?${query}`)
 
-    await this.dismissGuideIfPresent()
-    await expect(this.page.getByRole('heading', { name: '开题审核', exact: true })).toBeVisible()
     await expect(this.page.locator('.pr-split')).toBeVisible()
     await this.dismissGuideIfPresent()
+    await expect(this.page.getByRole('heading', { name: '开题报告批阅', exact: true })).toBeVisible()
   }
 
   async selectStudent(expectedPages = 1) {
