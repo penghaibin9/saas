@@ -1,5 +1,6 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
 import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
@@ -142,7 +143,7 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test.beforeAll(async () => {
     // This suite is visual evidence, not an authentication load test. One real admin
-    // login is reused so the official login throttle remains fully enforced.
+    // API login prepares fixtures; each screenshot page uses the production browser session flow.
     adminApi = await loginApi(config.sandboxAdmin)
     counselorFixture = await prepareCounselorResponsibilityFixture(adminApi)
     internshipFixture = await loadInternshipFixture()
