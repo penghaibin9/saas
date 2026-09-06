@@ -72,7 +72,7 @@ jobs:
       MIN_ACTIVE_TENANTS: '2'
       RESTORE_EVIDENCE_FILE: /tmp/data-governance-restore-evidence.txt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install MySQL client and rclone
         run: |
           sudo apt-get update
