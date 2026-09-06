@@ -227,12 +227,22 @@ case "$SUITE" in
     ;;
 
   graduation-functional)
+    ARCHIVE_ISOLATION_SPEC='specs/graduation-v6-archive-00-isolation.spec.mjs'
+    ARCHIVE_FILING_SPEC='specs/graduation-v6-archive-filing.spec.mjs'
     mapfile -t SPECS < <(
       cd "$ROOT/e2e"
       find specs -maxdepth 1 -type f -name 'graduation*.spec.mjs' \
         ! -name '*-visual.spec.mjs' \
+        ! -name 'graduation-v6-archive-00-isolation.spec.mjs' \
+        ! -name 'graduation-v6-archive-filing.spec.mjs' \
         -print | sort
     )
+    if [[ ! -f "$ROOT/e2e/$ARCHIVE_ISOLATION_SPEC" || ! -f "$ROOT/e2e/$ARCHIVE_FILING_SPEC" ]]; then
+      echo 'graduation archive tail specs are required' >&2
+      write_summary failed 2
+      exit 2
+    fi
+    SPECS+=("$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC")
     if [[ "${#SPECS[@]}" -eq 0 ]]; then
       echo 'no graduation functional specs discovered' >&2
       write_summary failed 2
