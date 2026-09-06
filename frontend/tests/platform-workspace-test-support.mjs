@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import vm from 'node:vm'
 import * as workspace from '../src/modules/platform/utils/tenantWorkspace.mjs'
+import * as ruleDraft from '../src/modules/platform/utils/tenantRuleDraft.mjs'
 
 export function deferred() {
   let resolve, reject
@@ -15,13 +16,13 @@ export function optionsInstance(relativePath, supplied = {}, dependencies = {}) 
     .replace('export default', 'globalThis.definition =')
   const notices = [], calls = []
   const context = vm.createContext({
-    ...workspace, ...Object.fromEntries(['AppButton','AppCard','AppSectionHeader','DataTable','EmptyState','ErrorState','LoadingState','ModulePageShell','StatusTag','StudentPortalConfigPanel','TenantOffboardingPanel','TenantLifecycleWorkspace'].map(name => [name, {}])),
+    ...workspace, ...ruleDraft, ...Object.fromEntries(['AppButton','AppCard','AppSectionHeader','DataTable','EmptyState','ErrorState','LoadingState','ModulePageShell','StatusTag','StudentPortalConfigPanel','TenantOffboardingPanel','TenantLifecycleWorkspace','TenantRulesWorkspace'].map(name => [name, {}])),
     PLATFORM_FEATURE_LABELS: {}, PLATFORM_RULE_GROUP_LABELS: {}, PLATFORM_RULE_LABELS: {},
     platformControlApi: {}, platformControlHardeningApi: {},
     getPermissionPatterns: () => ['platform.*'], getRbacLoadFailed: () => '', canEnterRoute: () => true,
     isPlatformRoot: () => true, toPlatformUiContext: () => null, platformRoleLabel: v => v,
     toast: { error: x => notices.push(['error', x]), success: x => notices.push(['success', x]), warning: x => notices.push(['warning', x]) },
-    window: { prompt: () => '真实操作原因' }, ...dependencies
+    window: { prompt: () => '真实操作原因', addEventListener() {}, removeEventListener() {} }, ...dependencies
   })
   vm.runInContext(script, context, { filename: relativePath })
   const definition = context.definition

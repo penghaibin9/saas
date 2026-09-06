@@ -28,11 +28,14 @@ test('legacy commercial and workflow surfaces are read-only in tenant360', () =>
 })
 
 test('rules preserve frozen OCC metadata while school brand is read-only', () => {
-  // The prior assertion required a retired platform BRAND writer. The backend
-  // now rejects it: UI must read TenantBrandConfig instead, not keep that button.
-  assert.match(source, /platformControlHardeningApi\.putRules\(tenantId, body, version, reason\.trim\(\)\)/)
-  assert.match(source, /JSON\.parse\(JSON\.stringify\(this\.rules\)\)/)
-  assert.match(source, /version = this\.rulesVersion/)
+  // Keep OCC and read-only brand guarantees while moving the rule writer into
+  // its own work area. Do not force the obsolete parent-level full-document PUT.
+  const rules = fs.readFileSync(new URL('../src/modules/platform/components/TenantRulesWorkspace.vue', import.meta.url), 'utf8')
+  const draft = fs.readFileSync(new URL('../src/modules/platform/utils/tenantRuleDraft.mjs', import.meta.url), 'utf8')
+  assert.match(rules, /platformControlHardeningApi\.putRules\(request\.tenantId, request\.rules, request\.expectedVersion, request\.reason\)/)
+  assert.match(draft, /rules: delta\.patch, expectedVersion: snapshot\.overrideVersion/)
+  assert.match(draft, /freeze\(cloneRules\(/)
+  assert.doesNotMatch(source, /saveRules|window\.prompt/)
   assert.match(source, /TENANT_BRAND_CONFIG/)
   assert.doesNotMatch(source, /putBrand\(|saveBrand|v-model="brand\[/)
 })

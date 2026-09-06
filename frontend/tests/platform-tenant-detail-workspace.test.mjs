@@ -53,11 +53,16 @@ test('double create click sends one command and duplicate user identity is not i
   const {state}=make({createUser:()=>{writes++;return pending.promise},listUsers:async()=>({code:0,data:{list:[]}})},{tab:'users',newUser:{loginName:'admin',realName:'管理员'}})
   const a=state.createUser(),b=state.createUser();assert.equal(writes,1);pending.resolve({code:0,data:{loginName:'admin',initialPassword:'test-only'}});await Promise.all([a,b]);assert.equal(state.saving,false)
 })
-test('rule save freezes school, payload and OCC version before awaiting',async()=>{
+test('rule save freezes school, sparse payload and OCC version before awaiting',async()=>{
+  // The same behavior now belongs to the dedicated rule workspace, not the parent.
   const pending=deferred();let args
-  const {state}=make({}, {tab:'rules',rules:{limits:{n:5}},rulesVersion:9},{platformControlHardeningApi:{putRules:(...values)=>{args=values;return pending.promise}}})
-  const request=state.saveRules();state.rules.limits.n=10;assert.deepEqual(plain(args),[tenant().tenantId,{limits:{n:5}},9,'真实操作原因'])
-  state.$route=route('7');state.resetTenantState();pending.resolve({code:0,data:{rules:{limits:{n:999}},overrideVersion:10}});await request;assert.equal(state.rules,null)
+  const projection={tenantId:tenant().tenantId,rules:{limits:{n:1,unchanged:2}},override:{},overrideVersion:9}
+  const {state,definition}=optionsInstance('../src/modules/platform/components/TenantRulesWorkspace.vue', {tenant:tenant(),projection},{platformControlHardeningApi:{putRules:(...values)=>{args=values;return pending.promise}}})
+  state.initialize();state.draft.limits.n='5';state.reason='真实操作原因';state.review()
+  const request=state.submit();state.draft.limits.n='10';assert.deepEqual(plain(args),[tenant().tenantId,{limits:{n:5}},9,'真实操作原因'])
+  state.tenant=tenant('7');state.projection={...projection,tenantId:'7'};definition.watch['tenant.tenantId'].call(state)
+  pending.resolve({code:0,data:{tenantId:tenant().tenantId,rules:{limits:{n:5,unchanged:2}},override:{limits:{n:5}},overrideVersion:10}});await request
+  assert.equal(state.base.tenantId,'7');assert.equal(state.base.overrideVersion,9);assert.equal(state.prepared,null)
 })
 test('unknown user row cannot be used as a cross-object action',async()=>{
   let writes=0;const {state}=make({userAction:async()=>{writes++}},{tab:'users',users:[{userId:'1'}]})
