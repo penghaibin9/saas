@@ -1,23 +1,23 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-09-06T05:51:44.200Z",
-  "studentMergeSha": "6810bd6284b4d5c69a78947560f808cd7738327e",
+  "generatedAt": "2026-09-06T07:02:55.890Z",
+  "studentMergeSha": "2455910417b87ad52266e8392de8426aa946578e",
   "actionSchemaVersion": "1.0.0",
-  "routeInventoryHash": "4d1262170be5cc4b35b04707de995397eddfafa2ded4133097924e63abfacf2f",
-  "routeCount": 147,
-  "subpackageHash": "11a08fabe14a3cdc0eed10ac945b2c2cf2f7d5c4199cf1b8b4adf1ac4bcee537",
+  "routeInventoryHash": "bf4b7a3bd8dd5f8c6f4aa21fd37967939f56edfe70649c5d5620608e1653bdd5",
+  "routeCount": 149,
+  "subpackageHash": "a443bfe58ec4a5421d806e74def031deb897e9e2ccddd5512c7e93ea2a9eee3d",
   "subpackages": [
     {
       "root": "pages/student",
-      "pages": 74
+      "pages": 75
     },
     {
       "root": "pages/teacher",
-      "pages": 60
+      "pages": 61
     }
   ],
   "networkPagerVersion": "1.0.0",
   "attachmentPickerVersion": "1.0.0",
-  "alembicHead": "20260906_student_loan_four_end",
-  "packageReportSha": ""
+  "alembicHead": "20260906_fee_reduction_four_end",
+  "packageReportSha": "9ffc44a9df32b6e34909f6c3496666cf9efa10794a0c561fee432cbd60c4f580"
 }
