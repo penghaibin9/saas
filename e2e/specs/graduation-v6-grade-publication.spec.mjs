@@ -321,7 +321,7 @@ test.describe.serial('V6 · grade calculation, review, publication and student r
     await expect(page.getByLabel('评阅分（服务器汇总）', { exact: true })).toHaveAttribute('readonly')
     await expect(page.getByLabel('答辩分（服务器汇总） *', { exact: true })).toHaveValue('83')
     await expect(page.getByLabel('答辩分（服务器汇总） *', { exact: true })).toHaveAttribute('readonly')
-    await page.getByLabel('导师分', { exact: true }).fill('92')
+    await page.getByLabel('导师分 *', { exact: true }).fill('92')
 
     const calculateResponse = page.waitForResponse(candidate => {
       const target = new URL(candidate.url())
