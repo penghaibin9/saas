@@ -1,9 +1,12 @@
 <template>
-  <ModulePageShell title="合同订单与授权" subtitle="核对学校订单，分别处理支付入账与授权激活" :role-name="roleName" data-scope-name="当前查询范围">
+  <ModulePageShell class="platform-workspace pcod" title="合同订单与授权" subtitle="核对学校订单，分别处理支付入账与授权激活" :role-name="roleName" data-scope-name="当前查询范围">
     <template #actions><AppButton v-if="can('platform.order.manage') && !work" variant="primary" @click="startCreate">录入订单</AppButton></template>
+    <PlatformMetricStrip v-if="!work" :items="summaryMetrics" />
     <div v-if="pendingNavigation" class="pcod__warning" role="alert"><strong>本次办理尚未结束</strong><p>离开会清除本页草稿或核验记录，不会撤销已经发送的请求。</p><button type="button" @click="pendingNavigation = null">继续办理</button><button type="button" :disabled="busy || leaving" @click="leave">确认离开</button></div>
     <section v-if="work" class="pcod__workspace" aria-labelledby="order-workspace-title">
       <header class="pcod__heading"><div><h3 id="order-workspace-title">{{ workTitle }}</h3><p>{{ work.schoolName }}<span v-if="work.row"> · {{ work.row.orderNo }}</span></p></div><span class="pcod__phase">{{ phaseLabel }}</span></header>
+      <ol class="pcod__steps" aria-label="订单办理进度"><li v-for="(step, index) in ['填写资料', '核对内容', '执行结果']" :key="step" :class="{ 'is-current': workStep === index, 'is-complete': workStep > index }" :aria-current="workStep === index ? 'step' : undefined"><span>{{ workStep > index ? '✓' : index + 1 }}</span>{{ step }}</li></ol>
+      <div class="pcod__work-layout"><div class="pcod__work-main">
       <p v-if="workError" class="pcod__error" role="alert">{{ workError }}</p>
       <LoadingState v-if="optionsLoading" text="正在读取可选学校和套餐…" />
       <form v-else-if="phase === 'edit'" class="pcod__form" @submit.prevent="review">
@@ -33,23 +36,41 @@
         <div class="pcod__ops"><button type="button" class="pcod__primary" :disabled="busy || confirmation !== prepared.confirmation || !can('platform.order.manage')" @click="submitPrepared">确认{{ work.kind === 'create' ? '创建未支付订单' : actionLabel(work.action) }}</button><button type="button" :disabled="busy" @click="phase = 'edit'; prepared = null; confirmation = ''">返回修改</button></div>
       </section>
       <LoadingState v-else-if="phase === 'saving'" text="正在提交，请勿重复操作…" />
-      <section v-if="receipt" class="pcod__receipt" role="status" aria-live="polite"><h4>{{ receiptLabel }}</h4><p>订单 {{ receipt.orderNo }} · 版本 {{ receipt.version }}</p><p v-if="receipt.result === 'paid-pending'">支付事实已经入账。请刷新订单后仅执行“修复激活”，不要再次标记支付。</p><p v-else-if="receipt.result === 'created'">未支付订单已创建并核对学校归属，尚未授予正式权限。</p><button type="button" :disabled="busy" @click="finish">返回并刷新订单清单</button></section>
+      <section v-if="receipt" class="pcod__receipt" :class="{ 'pcod__receipt--pending': receipt.result === 'paid-pending' }" role="status" aria-live="polite"><h4>{{ receiptLabel }}</h4><p>订单 {{ receipt.orderNo }} · 版本 {{ receipt.version }}</p><p v-if="receipt.result === 'paid-pending'">支付事实已经入账。请刷新订单后仅执行“修复激活”，不要再次标记支付。</p><p v-else-if="receipt.result === 'created'">未支付订单已创建并核对学校归属，尚未授予正式权限。</p><button type="button" :disabled="busy" @click="finish">返回并刷新订单清单</button></section>
       <section v-if="phase === 'uncertain' || phase === 'conflict'" class="pcod__warning" role="alert"><h4>{{ phase === 'conflict' ? '版本已变化，停止本次提交' : '尚未取得可信执行回执' }}</h4><p>先重新读取订单并核对支付与审计记录。本页不会自动重试，也不会把读取结果冒充本次操作成功。</p><button type="button" :disabled="busy" @click="inspectOutcome">只读取订单状态</button><p v-if="readback">{{ readback }}</p><button v-if="readback" type="button" :disabled="busy" @click="askClose = true">已核对，关闭本次记录</button></section>
       <div v-if="askClose" class="pcod__warning" role="alert">清除本页草稿或核验记录不会撤销服务器变更。<button type="button" :disabled="busy" @click="closeWork">确认返回</button><button type="button" @click="askClose = false">继续办理</button></div>
+      </div><aside class="pcod__order-summary" aria-label="本次订单摘要"><span class="pw-eyebrow"><AppIcon name="records" :size="18" />本次办理</span><h4>{{ workTitle }}</h4><p>{{ summarySchool }}</p><dl><div><dt>合同金额</dt><dd>{{ moneyLabel(work.kind === 'create' ? form.amount : work.row.amount) }}</dd></div><div v-if="work.kind === 'create'"><dt>服务期限</dt><dd>{{ form.durationDays || '待填写' }}<span v-if="form.durationDays"> 天</span></dd></div><div><dt>办理阶段</dt><dd>{{ phaseLabel }}</dd></div></dl><div class="pcod__summary-tip"><AppIcon name="workbench" :size="18" /><p>{{ work.kind === 'create' ? '录单、支付、激活分别确认，每一步都有明确结果。' : actionNote(work.action) }}</p></div></aside></div>
     </section>
-    <section v-else class="pcod__workspace" aria-label="订单查询与对账">
+    <section v-else class="pcod__workspace pcod__list-workspace" aria-label="订单查询与对账">
+      <div class="pcod__list-head"><div><h2>订单清单</h2><p>先看支付事实，再看学校授权是否生效</p></div><span class="pcod__scope-label">{{ scope.tenantId ? '当前学校' : '当前查询范围' }}</span></div>
+      <div class="pcod__focus-tabs" aria-label="按办理事项筛选"><button v-for="item in focusOptions" :key="item.value" type="button" :aria-pressed="focus === item.value" :class="{ 'is-active': focus === item.value }" @click="selectFocus(item.value)">{{ item.label }}</button></div>
       <form class="pcod__toolbar" role="search" @submit.prevent="searchOrders"><label>学校名称或订单号<input v-model="keywordInput" placeholder="搜索学校名称 / 订单号" maxlength="100" /></label><label>支付状态<select v-model="statusInput"><option value="">全部</option><option value="unpaid">待支付</option><option value="paid">已支付</option><option value="cancelled">已取消</option><option value="refunded">已退款</option></select></label><button type="submit" class="pcod__primary">查询</button><button type="button" :disabled="loading" @click="load">刷新</button><button v-if="scope.tenantId || scope.status || scope.keyword" type="button" @click="clearScope">清除筛选</button></form>
-      <p v-if="scope.tenantId" class="pcod__note">学校范围：{{ rows[0]?.tenantName || '当前选定学校' }} · 本页仅展示该校订单</p><div class="pcod__summary" role="status" aria-live="polite"><template v-if="!loading && !error"><span>当前结果 <b>{{ filteredRows.length }}</b> 笔</span><span>待支付 <b>{{ filteredRows.filter(row => row.status === 'unpaid').length }}</b> 笔</span><span>激活待修复 <b>{{ filteredRows.filter(row => row.status === 'paid' && row.repairTaskRequired === true).length }}</b> 笔</span><small>本次读取 {{ loadedAt }}</small></template><span v-else>{{ loading ? '正在读取订单' : '本次读取失败，未展示旧结果' }}</span></div>
+      <p v-if="scope.tenantId" class="pcod__note">学校范围：{{ rows[0]?.tenantName || '当前选定学校' }} · 本页仅展示该校订单</p><div class="pcod__summary" role="status" aria-live="polite"><template v-if="!loading && !error"><span>找到 <b>{{ filteredRows.length }}</b> 笔订单<span v-if="focus !== 'all'"> · {{ focusOptions.find(item => item.value === focus)?.label }}</span></span><small>本次读取 {{ loadedAt }}</small></template><span v-else>{{ loading ? '正在读取订单' : '本次读取失败，未展示旧结果' }}</span></div>
       <LoadingState v-if="loading" text="正在加载订单…" />
       <ErrorState v-else-if="error" :description="error" @retry="load" />
       <EmptyState v-else-if="!filteredRows.length" text="当前条件下没有订单" />
-      <template v-else><div class="pcod__table" tabindex="0" role="region" aria-label="合同订单，可横向滚动"><DataTable :columns="columns" :rows="visibleRows" row-key="orderNo"><template #cell-tenantName="{ row }"><strong>{{ row.tenantName || '学校名称未取得' }}</strong><small>{{ row.tenantId }}</small></template><template #cell-packageCode="{ row }">{{ packageLabel(row.packageCode) }}</template><template #cell-amount="{ row }">{{ moneyLabel(row.amount) }}</template><template #cell-status="{ row }"><StatusTag :type="orderStatus(row).tone" :label="orderStatus(row).label" /></template><template #cell-endAt="{ row }">{{ dateLabel(row.endAt) }}</template><template #cell-actions="{ row }"><div class="pcod__ops"><button v-for="action in can('platform.order.manage') ? orderActions(row) : []" :key="action" type="button" @click="openAction(row, action)">{{ actionLabel(action) }}</button><span v-if="!can('platform.order.manage') || !orderActions(row).length" class="pcod__muted">只读核对</span></div></template></DataTable></div><nav class="pcod__pagination" aria-label="订单分页"><span>每页 20 笔 · 第 {{ page }} / {{ pageCount }} 页</span><button type="button" :disabled="page <= 1" @click="page--">上一页</button><button type="button" :disabled="page >= pageCount" @click="page++">下一页</button></nav></template>
+      <template v-else>
+        <div class="pcod__table" tabindex="0" role="region" aria-label="合同订单，可横向滚动">
+          <DataTable :columns="columns" :rows="visibleRows" row-key="orderNo">
+            <template #cell-tenantName="{ row }"><div class="pcod__school"><span class="pcod__avatar" aria-hidden="true">{{ (row.tenantName || '校').slice(0, 1) }}</span><strong>{{ row.tenantName || '学校名称未取得' }}</strong></div></template>
+            <template #cell-orderNo="{ row }"><span class="pcod__order-no">{{ row.orderNo }}</span><small>{{ orderTypeLabel(row.orderType) }}</small></template>
+            <template #cell-packageCode="{ row }"><strong class="pcod__money">{{ moneyLabel(row.amount) }}</strong><small>{{ packageLabel(row.packageCode) }}</small></template>
+            <template #cell-status="{ row }"><StatusTag :type="paymentStatus(row).tone" :label="paymentStatus(row).label" /></template>
+            <template #cell-activation="{ row }"><StatusTag :type="activationStatus(row).tone" :label="activationStatus(row).label" /></template>
+            <template #cell-endAt="{ row }"><span class="pcod__date">{{ dateLabel(row.endAt) }}</span></template>
+            <template #cell-actions="{ row }"><div class="pcod__row-actions"><button v-for="action in can('platform.order.manage') ? orderActions(row) : []" :key="action" type="button" :class="{ 'pcod__row-action--quiet': action === 'cancel' }" @click="openAction(row, action)">{{ actionLabel(action) }}<span v-if="action !== 'cancel'" aria-hidden="true"> →</span></button><span v-if="!can('platform.order.manage') || !orderActions(row).length" class="pcod__muted">只读核对</span></div></template>
+          </DataTable>
+        </div>
+        <nav class="pcod__pagination" aria-label="订单分页"><span>每页 20 笔 · 共 {{ filteredRows.length }} 笔</span><button type="button" :disabled="page <= 1" @click="page--">上一页</button><b aria-live="polite">{{ page }} / {{ pageCount }}</b><button type="button" :disabled="page >= pageCount" @click="page++">下一页</button></nav>
+      </template>
     </section>
   </ModulePageShell>
 </template>
 
 <script>
 import { AppButton } from '@/components/ui'
+import AppIcon from '@/components/ui/AppIcon.vue'
+import PlatformMetricStrip from '@/modules/platform/components/PlatformMetricStrip.vue'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { canEnterRoute, getPermissionPatterns, getRbacLoadFailed } from '@/security/permissionGate'
@@ -60,17 +81,31 @@ import { orderScope, orderRows, orderId, orderStatus, orderActions, moneyLabel, 
 
 export default {
   name: 'PlatformControlOrders',
-  components: { AppButton, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag },
+  components: { AppIcon, PlatformMetricStrip, AppButton, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag },
   data() { return { loading: true, error: '', rows: [], loadedAt: '', page: 1, epoch: 0, workEpoch: 0,
+    focus: 'all', focusOptions: [{ value: 'all', label: '全部订单' }, { value: 'unpaid', label: '待确认收款' }, { value: 'repair', label: '激活待修复' }],
     scope: { tenantId: '', status: '', keyword: '' }, keywordInput: '', statusInput: '', work: null, phase: 'edit', workError: '',
     busy: false, optionsLoading: false, tenants: [], packages: [], form: {}, reason: '', confirmation: '', prepared: null,
     receipt: null, readback: '', askClose: false, pendingNavigation: null, leaving: false,
     columns: [{ key: 'tenantName', title: '学校', width: '190px' }, { key: 'orderNo', title: '订单号', width: '210px' },
-      { key: 'packageCode', title: '套餐', width: '110px' }, { key: 'amount', title: '合同金额', width: '130px' },
-      { key: 'status', title: '支付 / 激活', width: '190px' }, { key: 'endAt', title: '服务期至', width: '120px' }, { key: 'actions', title: '办理入口', width: '220px' }] } },
+      { key: 'packageCode', title: '合同金额 / 套餐', width: '160px' }, { key: 'status', title: '支付状态', width: '110px' },
+      { key: 'activation', title: '授权激活', width: '140px' }, { key: 'endAt', title: '服务期至', width: '120px' }, { key: 'actions', title: '下一步', width: '155px' }] } },
   computed: {
     roleName() { return platformRoleLabel(toPlatformUiContext()?.currentRole?.roleCode || 'PLATFORM') },
-    filteredRows() { const keyword = this.scope.keyword.toLocaleLowerCase(); return keyword ? this.rows.filter(row => `${row.tenantName || ''} ${row.orderNo}`.toLocaleLowerCase().includes(keyword)) : this.rows },
+    matchedRows() { const keyword = this.scope.keyword.toLocaleLowerCase(); return keyword ? this.rows.filter(row => `${row.tenantName || ''} ${row.orderNo}`.toLocaleLowerCase().includes(keyword)) : this.rows },
+    filteredRows() { return this.focus === 'unpaid' ? this.matchedRows.filter(row => row.status === 'unpaid') : this.focus === 'repair' ? this.matchedRows.filter(row => row.status === 'paid' && row.repairTaskRequired === true) : this.matchedRows },
+    summaryMetrics() {
+      const ready = !this.loading && !this.error
+      const value = predicate => ready ? this.matchedRows.filter(predicate).length : '未取得'
+      return [
+        { label: '当前订单', value: ready ? this.matchedRows.length : '未取得', unit: '笔', caption: '当前学校、支付与搜索条件', icon: 'records' },
+        { label: '待确认收款', value: value(row => row.status === 'unpaid'), unit: '笔', caption: '核对实际收款后入账', tone: 'warning', icon: 'kpi' },
+        { label: '激活待修复', value: value(row => row.status === 'paid' && row.repairTaskRequired === true), unit: '笔', caption: '已支付，不要重复入账', tone: 'danger', icon: 'risk' },
+        { label: '授权已生效', value: value(row => row.status === 'paid' && row.activationState === 'ACTIVE' && row.repairTaskRequired === false), unit: '笔', caption: '支付与激活均已确认', tone: 'success', icon: 'workbench' }
+      ]
+    },
+    workStep() { return this.phase === 'edit' ? 0 : this.phase === 'review' ? 1 : 2 },
+    summarySchool() { return this.work?.kind === 'create' ? this.tenants.find(row => row.tenantId === this.form.tenantId)?.tenantName || '选择学校后显示订单摘要' : this.work?.schoolName || '学校名称未取得' },
     pageCount() { return Math.max(1, Math.ceil(this.filteredRows.length / 20)) },
     visibleRows() { return this.filteredRows.slice((this.page - 1) * 20, this.page * 20) },
     protectNavigation() { return Boolean(this.work && !this.receipt) || this.busy },
@@ -86,6 +121,17 @@ export default {
   beforeRouteLeave(to) { return this.guardNavigation(to.fullPath) },
   methods: {
     orderStatus, orderActions, moneyLabel, dateLabel,
+    selectFocus(value) { if (this.focusOptions.some(item => item.value === value)) { this.focus = value; this.page = 1 } },
+    paymentStatus(row) { return ({ paid: { label: '已支付', tone: 'success' }, unpaid: { label: '待支付', tone: 'warning' }, cancelled: { label: '已取消', tone: 'default' }, refunded: { label: '已退款', tone: 'default' } })[row.status] || { label: '待核验', tone: 'warning' } },
+    activationStatus(row) {
+      if (row.status === 'paid') {
+        if (row.repairTaskRequired === true) return { label: '激活待修复', tone: 'warning' }
+        if (row.activationState === 'ACTIVE' && row.repairTaskRequired === false) return { label: '已激活', tone: 'success' }
+        return { label: '激活待核验', tone: 'warning' }
+      }
+      return ({ unpaid: { label: '待收款', tone: 'default' }, cancelled: { label: '不适用', tone: 'default' } })[row.status] || { label: '授权待核验', tone: 'warning' }
+    },
+    orderTypeLabel(type) { return ({ NEW: '新购订单', RENEW: '续费订单', UPGRADE: '升级订单' })[type] || '合同订单' },
     can(key) { return Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() && canEnterRoute({ moduleCode: 'PLATFORM', permissionKey: key }) },
     packageLabel(code) { return ({ basic: '基础版', standard: '标准版', professional: '专业版', private: '私有化版', trial: '试用版' })[code] || '套餐未取得' },
     actionLabel(action) { return ({ 'mark-paid': '标记已支付', cancel: '取消订单', 'repair-activation': '修复激活' })[action] || '订单办理' },
@@ -183,6 +229,21 @@ export default {
 }
 </script>
 
+<style src="../../styles/workspace.css"></style>
 <style scoped>
 .pcod__workspace{background:var(--bg-card,#fff);border:1px solid var(--card-b,#e5eaf2);border-radius:14px;overflow:hidden;min-width:0;padding:20px}.pcod__heading,.pcod__toolbar,.pcod__summary,.pcod__pagination,.pcod__ops{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.pcod__heading{justify-content:space-between;align-items:flex-start}.pcod__heading h3,.pcod__review h4,.pcod__receipt h4{margin:0;color:var(--t1,#1c2844);font-size:17px}.pcod__heading p{margin:7px 0;color:var(--text-secondary,#65758b);font-size:13px}.pcod__phase{background:var(--pri-bg,#edf1ff);padding:5px 10px;border-radius:7px;color:var(--pri,#3c5cdb);font-size:12px}.pcod__toolbar{align-items:flex-end}.pcod__workspace label{display:block;font-size:13px;color:var(--t2,#526176);line-height:1.8}.pcod__workspace input,.pcod__workspace select,.pcod__workspace textarea{box-sizing:border-box;display:block;width:100%;margin-top:4px;padding:8px 11px;border:1px solid var(--card-b,#dde4ee);border-radius:8px;background:var(--bg-input,#fff);color:var(--t1,#1c2844);font:inherit;font-size:13px}.pcod__workspace textarea{resize:vertical}.pcod__workspace button,.pcod__warning button{font:inherit;font-size:13px;border:1px solid var(--card-b,#dde4ee);border-radius:8px;padding:8px 12px;cursor:pointer;background:var(--bg-card,#fff);color:var(--t1,#1c2844)}.pcod__workspace .pcod__primary{background:var(--pri,#3c5cdb);border-color:transparent;color:#fff}.pcod__workspace :disabled,.pcod__warning :disabled{opacity:.55;cursor:not-allowed}.pcod__workspace :is(button,input,select,textarea):focus-visible,.pcod__warning button:focus-visible{outline:2px solid var(--pri,#3c5cdb);outline-offset:3px}.pcod__summary{font-size:13px;color:var(--t2,#526176);margin:20px 0}.pcod__summary small{margin-left:auto}.pcod__summary b{color:var(--t1,#1c2844);font-size:17px}.pcod__table{overflow:auto;min-width:0}.pcod__table small{display:block;font-size:12px;color:var(--text-secondary,#728098);margin-top:5px}.pcod__pagination{justify-content:flex-end;border-top:1px solid var(--card-b,#e5eaf2);padding-top:16px;font-size:13px;color:var(--t2,#526176)}.pcod__pagination span{margin-right:auto}.pcod__form,.pcod__review{max-width:900px;margin-top:20px;display:flex;flex-direction:column;gap:18px}.pcod__form-grid,.pcod__facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.pcod__facts{margin:0}.pcod__facts dt{font-size:12px;color:var(--text-secondary,#728098)}.pcod__facts dd{margin:7px 0 0;font-size:14px;color:var(--t1,#1c2844);overflow-wrap:anywhere}.pcod__note,.pcod__warning,.pcod__receipt{padding:13px 16px;border-radius:9px;background:var(--pri-bg,#f2f5ff);font-size:13px;line-height:1.7;color:var(--t2,#526176)}.pcod__warning{background:var(--warn-l,#fff5e5);margin:14px 0}.pcod__warning button{margin:7px 8px 0 0}.pcod__receipt{margin-top:20px;border-left:3px solid var(--pri,#3c5cdb)}.pcod__error{font-size:13px;color:var(--danger-600,#b42318)}.pcod__muted{font-size:12px;color:var(--text-secondary,#728098)}@media(max-width:700px){.pcod__workspace{padding:14px}.pcod__form-grid,.pcod__facts{grid-template-columns:1fr}.pcod__summary small{margin-left:0}}
+
+.pcod__list-workspace { padding: 0; box-shadow: var(--s1); }
+.pcod__list-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-3); }.pcod__list-head h2 { margin: 0; font-size: var(--font-size-base); }.pcod__list-head p { margin: var(--space-1) 0 0; font-size: var(--font-size-xs); color: var(--t2); }.pcod__scope-label { font-size: var(--font-size-xs); color: var(--t2); padding: var(--space-1) var(--space-2); border-radius: var(--rs); background: var(--bg-section); }
+.pcod__focus-tabs { display: flex; flex-wrap: wrap; gap: var(--space-4); padding: 0 var(--space-5); border-bottom: 1px solid var(--card-b); }.pcod__focus-tabs button { min-height: 46px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding-inline: var(--space-2); background: transparent; color: var(--t2); }.pcod__focus-tabs button.is-active { color: var(--pri); border-bottom-color: var(--pri); font-weight: var(--font-weight-semibold); }
+.pcod__list-workspace .pcod__toolbar { padding: var(--space-4) var(--space-5) 0; gap: var(--space-3); }.pcod__toolbar label:first-child { flex: 1; max-width: 430px; min-width: 200px; }.pcod__toolbar label:nth-child(2) { min-width: 140px; }.pcod__workspace .pcod__toolbar :is(button, input, select) { min-height: 40px; }.pcod__list-workspace > .pcod__note { margin-inline: var(--space-5); }.pcod__summary { margin: 0; padding: var(--space-4) var(--space-5); }.pcod__summary b { font-size: var(--font-size-sm); }.pcod__summary small { color: var(--t2); }
+.pcod__school { display: flex; align-items: center; gap: var(--space-3); }.pcod__school strong { overflow-wrap: anywhere; font-weight: var(--font-weight-semibold); }.pcod__avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--rs); color: var(--pri); background: var(--pri-bg); font-weight: var(--font-weight-semibold); }.pcod__order-no,.pcod__date,.pcod__money { font-variant-numeric: tabular-nums; }.pcod__order-no { font-size: var(--font-size-xs); overflow-wrap: anywhere; }.pcod__money { font-weight: var(--font-weight-semibold); }.pcod__table :deep(.dt__table) { min-width: 1040px; }.pcod__table small { color: var(--t2); }
+.pcod__row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }.pcod__workspace .pcod__row-actions button { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 34px; padding: var(--space-1) var(--space-2); border-color: transparent; background: var(--pri-bg); color: var(--pri); white-space: nowrap; font-weight: var(--font-weight-medium); }.pcod__workspace .pcod__row-actions .pcod__row-action--quiet { color: var(--t2); background: transparent; font-weight: normal; }.pcod__workspace .pcod__row-actions .pcod__row-action--quiet:hover { color: var(--danger-700); background: var(--err-l); }
+.pcod__pagination { padding: var(--space-4) var(--space-5); }.pcod__pagination b { color: var(--pri); font-size: var(--font-size-xs); }.pcod__pagination button { min-height: 34px; }
+.pcod__steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; margin: var(--space-5) 0; padding: var(--space-4); border-radius: var(--rs); background: var(--bg-section); gap: var(--space-3); }.pcod__steps li { display: flex; align-items: center; gap: var(--space-2); color: var(--t2); font-size: var(--font-size-sm); }.pcod__steps li > span { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border: 1px solid var(--card-b); border-radius: 50%; background: var(--bg-card); font-size: var(--font-size-xs); }.pcod__steps .is-current { color: var(--pri); font-weight: var(--font-weight-semibold); }.pcod__steps .is-current > span { background: var(--pri); border-color: var(--pri); color: var(--text-inverse); }.pcod__steps .is-complete > span { color: var(--success-700); background: var(--ok-l); border-color: var(--success-100); }
+.pcod__work-layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: var(--space-6); align-items: start; }.pcod__work-main { min-width: 0; }.pcod__form,.pcod__review { margin-top: 0; max-width: none; }.pcod__workspace :is(input,select) { min-height: 42px; }.pcod__workspace textarea { min-height: 86px; }.pcod__form .pcod__ops,.pcod__review .pcod__ops { padding-top: var(--space-4); border-top: 1px solid var(--card-b); }.pcod__workspace .pcod__ops button { min-height: 40px; }.pcod__form-grid { gap: var(--space-4); }.pcod__facts { background: var(--bg-section); padding: var(--space-4); border-radius: var(--rs); }.pcod__facts dd { font-weight: var(--font-weight-medium); }
+.pcod__order-summary { border: 1px solid var(--card-b); background: var(--bg-section); padding: var(--space-5); border-radius: var(--r); min-width: 0; }.pcod__order-summary h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-size-base); }.pcod__order-summary > p { font-size: var(--font-size-sm); color: var(--t2); line-height: 1.7; overflow-wrap: anywhere; }.pcod__order-summary dl { margin: var(--space-5) 0; }.pcod__order-summary dl > div { margin-top: var(--space-4); }.pcod__order-summary dt { font-size: var(--font-size-xs); color: var(--t2); }.pcod__order-summary dd { margin: var(--space-1) 0 0; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }.pcod__summary-tip { display: flex; align-items: flex-start; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--card-b); color: var(--pri); }.pcod__summary-tip p { margin: 0; color: var(--t2); font-size: var(--font-size-xs); line-height: 1.8; }
+.pcod__receipt { background: var(--ok-l); border-left-color: var(--ok); margin-top: 0; padding: var(--space-5); }.pcod__receipt h4 { color: var(--success-700); }.pcod__receipt--pending { background: var(--warn-l); border-left-color: var(--warn); }.pcod__receipt--pending h4 { color: var(--warning-700); }.pcod__warning h4 { margin: 0; }.pcod__workspace > .pcod__heading { padding-bottom: var(--space-3); border-bottom: 1px solid var(--dv); }.pcod__note { margin: 0; }
+@media (max-width: 1050px) { .pcod__work-layout { grid-template-columns: minmax(0, 1fr); }.pcod__order-summary { order: -1; padding: var(--space-4); }.pcod__order-summary dl { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: var(--space-3) 0 0; }.pcod__order-summary dl > div { margin-top: 0; }.pcod__summary-tip { display: none; } }
+@media (max-width: 650px) { .pcod__list-head,.pcod__list-workspace .pcod__toolbar,.pcod__summary,.pcod__pagination { padding-inline: var(--space-3); }.pcod__focus-tabs { gap: var(--space-2); padding-inline: var(--space-3); }.pcod__steps { padding: var(--space-3); gap: var(--space-2); }.pcod__steps li { font-size: var(--font-size-xs); flex-direction: column; }.pcod__toolbar label:first-child { min-width: 100%; max-width: none; }.pcod__scope-label { display: none; } }
 </style>

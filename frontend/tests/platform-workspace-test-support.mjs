@@ -16,7 +16,7 @@ export function optionsInstance(relativePath, supplied = {}, dependencies = {}) 
     .replace('export default', 'globalThis.definition =')
   const notices = [], calls = []
   const context = vm.createContext({
-    ...workspace, ...ruleDraft, ...Object.fromEntries(['AppButton','AppCard','AppSectionHeader','DataTable','EmptyState','ErrorState','LoadingState','ModulePageShell','StatusTag','StudentPortalConfigPanel','TenantOffboardingPanel','TenantLifecycleWorkspace','TenantRulesWorkspace'].map(name => [name, {}])),
+    ...workspace, ...ruleDraft, ...Object.fromEntries(['AppIcon','PlatformMetricStrip','AppButton','AppCard','AppSectionHeader','DataTable','EmptyState','ErrorState','LoadingState','ModulePageShell','StatusTag','StudentPortalConfigPanel','TenantOffboardingPanel','TenantLifecycleWorkspace','TenantRulesWorkspace'].map(name => [name, {}])),
     PLATFORM_FEATURE_LABELS: {}, PLATFORM_RULE_GROUP_LABELS: {}, PLATFORM_RULE_LABELS: {},
     platformControlApi: {}, platformControlHardeningApi: {},
     getPermissionPatterns: () => ['platform.*'], getRbacLoadFailed: () => '', canEnterRoute: () => true,

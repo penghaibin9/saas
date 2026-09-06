@@ -6,6 +6,8 @@ on:
     paths:
       - 'frontend/src/modules/platform/**'
       - 'frontend/tests/platform-*.mjs'
+      - 'frontend/tests/visual/platform-workspace*'
+      - 'e2e/tools/verify-platform-workspace-visual.mjs'
       - 'frontend/package*.json'
       - '.github/workflows/platform-workspace-validation.yml'
 
@@ -62,6 +64,19 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee ../artifacts/platform-workspace/build.log
+      - name: Install locked browser dependencies
+        if: ${{ !cancelled() }}
+        working-directory: e2e
+        run: npm ci
+      - name: Install Chromium for isolated visual checks
+        if: ${{ !cancelled() }}
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Render actual Vue workspaces and exercise isolated UI interactions
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          node e2e/tools/verify-platform-workspace-visual.mjs 2>&1 | tee artifacts/platform-workspace/visual.log
       - name: Upload exact-head validation evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

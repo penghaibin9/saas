@@ -65,7 +65,8 @@ export async function verifyPlatformOrderWorkspace(page, token, browserApiRaw) {
   expect(features.commercialOrderNo).toBe(bought.orderNo)
   expect(features.packageCode).toBe('standard')
   const paidRow = page.getByRole('row').filter({ hasText: bought.orderNo })
-  await expect(paidRow).toContainText('已支付 · 已激活')
+  await expect(paidRow).toContainText('已支付')
+  await expect(paidRow).toContainText('已激活')
   await expect(paidRow.getByRole('button', { name: '标记已支付', exact: true })).toHaveCount(0)
 
   const cancelledOrder = await createInWorkspace('500.00')
