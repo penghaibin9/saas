@@ -11,7 +11,7 @@
 
     <div class="mp-stack">
       <!--
-        SYS-08 显式 DENY。上面的范围规则表达"能看哪些"，这里表达"谁都不许看哪些"。
+        SYS-08 显式 DENY。上面的范围规则表达"能看哪些"，这里表达"当前角色不可访问哪些"。
         把"某节点不可见"写成"少给一个 ALLOW"是不可靠的：任何人给这个角色配个更大的
         范围就击穿了。DENY 判定永远最先命中，且不可被任何 ALLOW 覆盖。
       -->
@@ -26,7 +26,9 @@
           </span>
         </header>
         <div v-if="denyPanel.open" class="mp-card__body" style="padding-top: 0">
-          <table class="mp-audit">
+          <LoadingState v-if="denyPanel.loading" />
+          <ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" />
+          <table v-else-if="denyPanel.items.length" class="mp-audit">
             <thead>
               <tr>
                 <th style="width: 170px">角色</th>
@@ -53,9 +55,9 @@
             </tbody>
           </table>
           <EmptyState
-            v-if="!denyPanel.items.length"
+            v-if="!denyPanel.loading && !denyPanel.error && !denyPanel.items.length"
             title="尚未配置任何显式策略"
-            description="需要「某个学院或班级谁都不许看」时在这里配置 DENY；它不会被更大的范围覆盖"
+            description="显式策略由服务端维护与判断，不能用扩大默认范围替代策略复核。"
           />
           <p class="mp-note" style="margin-top: var(--space-2)">
             判定顺序：DENY → 继承 DENY → 敏感专项 → 业务关系 → 直接 ALLOW → 继承 ALLOW → 默认拒绝
@@ -81,7 +83,7 @@
         </template>
         <template #cell-affectedUsers="{ row }">
           <button class="mp-link" :class="{ 'is-disabled': !can('viewScopeAffected') }" :title="reason('viewScopeAffected')" @click="openAffected(row)">
-            {{ row.affectedUsers }} 人
+            {{ row.affectedUsers == null ? '未取得' : row.affectedUsers + ' 人（历史匹配口径）' }}
           </button>
         </template>
         <template #cell-status="{ row }">
@@ -101,7 +103,7 @@
       </DataTable>
 
       <p class="mp-note">
-        规则变更影响所有引用角色的成员可见范围，保存后写入审计日志；作废前必须先在角色配置中解除引用（影响人数为 0）。
+        引用角色与人数来自当前历史匹配口径，不代表所有结构化权限的完整影响。作废前先核对角色引用，由后端再次校验。
       </p>
     </div>
 
@@ -117,9 +119,11 @@
     <!-- 影响用户 -->
     <AppDrawer v-model:visible="affected.open" :title="'影响用户 · ' + affected.name" mode="modal" size="large">
       <LoadingState v-if="affected.loading" />
-      <EmptyState v-else-if="!affected.list.length" title="暂无影响用户" description="该规则当前没有被任何账号的角色引用" />
+      <ErrorState v-else-if="affected.error" :description="affected.error" @retry="openAffected({ id: affected.id, name: affected.name })" />
+      <EmptyState v-else-if="!affected.list.length" title="当前历史匹配口径未返回记录" description="这是受限预览，不能据此证明所有结构化权限都没有影响。" />
       <template v-else>
-        <div v-for="u in affected.list" :key="u.id" class="mp-kv">
+        <p class="mp-note">受限预览：最多 200 条用户与角色关联记录，可能包含同一用户的多个角色，不代表完整人数。</p>
+        <div v-for="(u, index) in affected.list" :key="`${u.id}:${u.roleName}:${index}`" class="mp-kv">
           <span class="mp-kv__k">{{ u.name }} · {{ u.roleName || '—' }}</span>
           <span class="mp-kv__v">{{ u.orgName || u.userNo || '—' }}</span>
         </div>
@@ -156,6 +160,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { contextFingerprint, createRequestFence } from '../utils/workspaceContract'
 
 export default {
   name: 'SystemDataScopeView',
@@ -166,11 +171,12 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      fence: null,
       loading: true,
       error: '',
       rows: [],
       // SYS-08 显式 DENY 策略（默认收起，不干扰既有范围规则管理）
-      denyPanel: { open: false, items: [] },
+      denyPanel: { open: false, items: [], loading: false, error: '' },
       filters: { keyword: '', status: '' },
       columns: [
         { key: 'rule', title: '规则' },
@@ -183,13 +189,14 @@ export default {
         { key: 'actions', title: '操作', width: '140px' }
       ],
       form: { open: false, id: '', value: {}, errors: {}, submitting: false },
-      affected: { open: false, loading: false, name: '', list: [] },
+      affected: { open: false, loading: false, id: '', name: '', list: [], error: '' },
       confirmDeprecate: false,
       deprecateRow: null,
       deprecateSubmitting: false
     }
   },
   computed: {
+    contextKey() { return contextFingerprint(this.ctx) },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '规则名称' },
@@ -213,8 +220,11 @@ export default {
       ]
     }
   },
-  created() {
-    this.load()
+  created() { this.fence = createRequestFence(); this.load() },
+  beforeUnmount() { this.fence.invalidate() },
+  watch: {
+    'affected.open'(open) { if (!open) this.fence.start('affected') },
+    contextKey() { this.fence.invalidate(); this.affected = { open: false, loading: false, id: '', name: '', list: [], error: '' }; this.rows = []; this.denyPanel = { open: false, items: [], loading: false, error: '' }; this.form = { open: false, id: '', value: {}, errors: {}, submitting: false }; this.confirmDeprecate = false; this.deprecateRow = null; this.deprecateSubmitting = false; this.load() }
   },
   methods: {
     can(key) {
@@ -249,11 +259,14 @@ export default {
       }
     },
     async submitForm() {
+      if (this.form.submitting || !this.form.open || !this.can(this.form.id ? 'editScopeRule' : 'createScopeRule')) return
+      const current = this.fence.start('form-write')
       const errors = FormFields.validateRequired(this.formFields, this.form.value)
       this.form.errors = errors
       if (Object.keys(errors).length) return
       this.form.submitting = true
       const res = await systemApi.saveScopeRule({ id: this.form.id || undefined, ...this.form.value })
+      if (!current()) return
       this.form.submitting = false
       if (res.code === 0) {
         toast.success('规则已保存并留痕')
@@ -265,10 +278,15 @@ export default {
     },
     async openAffected(row) {
       if (!this.can('viewScopeAffected')) return
-      this.affected = { open: true, loading: true, name: row.name, list: [] }
-      const res = await systemApi.getScopeAffectedUsers(row.id)
-      this.affected.loading = false
-      if (res.code === 0) this.affected.list = res.data
+      const current = this.fence.start('affected')
+      this.affected = { open: true, loading: true, id: row.id, name: row.name, list: [], error: '' }
+      try {
+        const res = await systemApi.getScopeAffectedUsers(row.id)
+        if (!current()) return
+        if (res.code !== 0 || !Array.isArray(res.data)) throw new Error(res.message || '影响用户数据未取得')
+        this.affected.list = res.data
+      } catch (error) { if (current()) this.affected.error = error.message || '影响用户读取失败，人数未取得' }
+      finally { if (current()) this.affected.loading = false }
     },
     askDeprecate(row) {
       if (!this.can('deprecateScopeRule')) return
@@ -276,8 +294,11 @@ export default {
       this.confirmDeprecate = true
     },
     async doDeprecate({ reason }) {
+      if (this.deprecateSubmitting || !this.deprecateRow || !this.can('deprecateScopeRule')) return
+      const current = this.fence.start('status-write')
       this.deprecateSubmitting = true
       const res = await systemApi.deprecateScopeRule(this.deprecateRow.id, { reason })
+      if (!current()) return
       this.deprecateSubmitting = false
       if (res.code === 0) {
         toast.success('规则已作废（逻辑删除），原因已留痕')
@@ -288,9 +309,11 @@ export default {
       }
     },
     async load() {
+      const current = this.fence.start('rules')
       this.loading = true
       this.error = ''
       const res = await systemApi.getScopeRules(this.filters)
+      if (!current()) return
       if (res.code === 0) this.rows = res.data.list
       else this.error = res.message
       this.loading = false
@@ -301,8 +324,15 @@ export default {
 
     /** SYS-08 显式策略。加载失败不阻断既有范围规则列表。 */
     async loadDenyPolicies() {
-      const res = await systemApi.getScopePolicies()
-      if (res.code === 0) this.denyPanel.items = (res.data || {}).items || []
+      const current = this.fence.start('policies')
+      this.denyPanel.loading = true; this.denyPanel.error = ''
+      try {
+        const res = await systemApi.getScopePolicies()
+        if (!current()) return
+        if (res.code !== 0 || !Array.isArray(res.data?.items)) throw new Error(res.message || '显式策略结果不完整')
+        this.denyPanel.items = res.data.items
+      } catch (error) { if (current()) this.denyPanel.error = error.message || '显式策略未取得' }
+      finally { if (current()) this.denyPanel.loading = false }
     }
   }
 }
