@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="心理预警摘要"
-    subtitle="面向管理侧的非敏感视图：仅呈现「是否需关注 / 关注等级 / 在办危机数」等聚合与标记，绝不含任何心理明细。"
+    subtitle="风险标记与在办数量"
     role-name="学工处 / 学院 / 辅导员（仅摘要）"
     data-scope-name="学工数据范围（明细另受 PSY_STUDENT 约束）"
     watermark-purpose="心理预警摘要查看"
@@ -13,17 +13,7 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <section class="sa-summary-strip mental-summary-privacy">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">非敏感管理视图</span>
-          <h2 class="sa-summary-strip__title">本页只回答“是否需要关注、处于什么等级、还有多少在办记录”，绝不展示咨询原文或心理明细</h2>
-          <p class="sa-summary-strip__text">管理人员可先看聚合分布，再按学生查询必要摘要。确需查看明细时必须进入心理关注名单，并通过专项权限、逐生范围和敏感查看审计。</p>
-        </div>
-      </section>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
 
       <div class="mental-summary-layout">
         <AppSectionCard title="关注等级分布（仅聚合）">
@@ -73,7 +63,6 @@
 <script>
 import {
   AppGlobalState,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppStudentPicker,
@@ -93,7 +82,7 @@ const LEVELS = [
 
 export default {
   name: 'MentalWarningSummaryView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppStudentPicker, AppSectionCard, AppStatusTag, DataTable },
+  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppStudentPicker, AppSectionCard, AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return { levelColumns: LEVEL_COLUMNS, loading: true, actioning: false, errorMessage: '', stats: null, queryStudentId: '', summary: null }

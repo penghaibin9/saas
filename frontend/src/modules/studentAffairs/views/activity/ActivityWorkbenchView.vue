@@ -1,38 +1,14 @@
 <template>
   <AppPageShell
     title="学生活动管理"
-    subtitle="活动发布→报名→签到→确认名单→生成第二课堂学时/积分（进学生画像·供综测评优引用）。"
+    subtitle="活动发布、签到与名单确认"
     role-name="团委 / 学工处 / 学院"
     data-scope-name="发布方范围（团委全校/学院本院）"
     watermark-purpose="学生活动管理"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载活动..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前活动运营</span>
-          <h2 class="sa-summary-strip__title">报名中 {{ statusCount('PUBLISHED') }} 场，待确认名单 {{ statusCount('FINISHED') }} 场</h2>
-          <p class="sa-summary-strip__text">活动必须按顺序完成发布、报名截止、开始、结束和名单确认。只有确认名单后才生成正式第二课堂学时、积分或志愿时长。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">新建活动</AppPermissionButton>
-        </div>
-      </section>
-
-      <div class="sa-workflow-strip" aria-label="学生活动流程">
-        <div class="sa-workflow-step" data-step="1"><strong>创建草稿</strong><br>配置活动、名额、时间和积分规则</div>
-        <div class="sa-workflow-step" data-step="2"><strong>发布报名</strong><br>学生报名，必要时进入候补队列</div>
-        <div class="sa-workflow-step" data-step="3"><strong>开始签到</strong><br>活动开始后使用可信签到方式</div>
-        <div class="sa-workflow-step" data-step="4"><strong>结束确认</strong><br>结束后核对名单与签到记录</div>
-        <div class="sa-workflow-step" data-step="5"><strong>积分入账</strong><br>确认名单后生成正式积分并归档</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton>
-      </div>
 
       <AppSectionCard v-if="formVisible" title="新建活动草稿">
         <div class="af-form-note">先填写活动基本信息，再配置第二课堂规则、名额和时间地点。保存后仅生成草稿，不会立即开放报名。</div>
@@ -124,7 +100,7 @@
 
 <script>
 import {
-  AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppDateTimePicker, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
   AppPagination, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -161,7 +137,7 @@ export default {
   name: 'ActivityWorkbenchView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppDateTimePicker, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
     AppPagination, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
   },
   data() {

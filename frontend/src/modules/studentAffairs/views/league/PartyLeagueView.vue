@@ -1,37 +1,14 @@
 <template>
   <AppPageShell
     title="党团建设"
-    subtitle="党/团员发展阶段台账（申请人→积极分子→发展对象→预备党员→正式党员）。材料脱敏、仅记引用。"
+    subtitle="发展阶段与材料管理"
     role-name="党委 / 团委 / 组织委员"
     data-scope-name="按数据范围（辅导员限本班）"
     watermark-purpose="党团发展台账（敏感）"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载发展台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">党团发展工作台</span>
-          <h2 class="sa-summary-strip__title">发展中 {{ statusCounts === null ? '—' : (statusCounts.ONGOING || 0) }} 人，已完成 {{ statusCounts === null ? '—' : (statusCounts.COMPLETED || 0) }} 人</h2>
-          <p class="sa-summary-strip__text">发展流程必须逐级推进，不允许跳过阶段。选择学生后核对当前阶段、历史时间线和材料，再执行下一阶段或终止。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建立发展档案</AppPermissionButton>
-        </div>
-      </section>
-
-      <div class="sa-workflow-strip" aria-label="党员发展流程">
-        <div class="sa-workflow-step" data-step="1"><strong>建立档案</strong><br>选择学生、类型与党团支部</div>
-        <div class="sa-workflow-step" data-step="2"><strong>逐级推进</strong><br>按申请人、积极分子等顺序推进</div>
-        <div class="sa-workflow-step" data-step="3"><strong>材料留痕</strong><br>上传阶段材料并执行授权下载</div>
-        <div class="sa-workflow-step" data-step="4"><strong>完成 / 终止</strong><br>转正或终止均保留原因和历史</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="openForm">建发展档案</AppPermissionButton>
-      </div>
 
       <AppSectionCard v-if="formVisible" title="建立党团发展档案">
         <div class="lg-form-note">建立档案后默认进入首个发展阶段。党团支部可选填，但建议完整登记，便于后续材料和组织关系追溯。</div>
@@ -127,7 +104,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+  AppConfirmDialog, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -146,7 +123,7 @@ export default {
   name: 'PartyLeagueView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+    AppConfirmDialog, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {

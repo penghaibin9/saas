@@ -100,7 +100,7 @@ export default {
 }
 .mps__chip--scope {
   color: var(--t2);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--bg-card);
   border: 1px solid var(--card-b);
 }
 .mps__chip-dot {

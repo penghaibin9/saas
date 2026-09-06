@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="房源管理"
-    subtitle="楼栋 → 房间 → 床位 三级台账；建楼可一键铺满整栋。宿管仅见本人负责楼栋。"
+    subtitle="楼栋、房间与床位维护"
     role-name="学工处 / 宿管"
     data-scope-name="宿管限负责楼栋（DORM_BUILDING）"
     watermark-purpose="宿舍房源管理"
@@ -24,27 +24,8 @@
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载房源台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前房源结论</span>
-          <h2 class="sa-summary-strip__title">{{ buildings.length }} 栋楼、{{ occ.totalBeds || 0 }} 张床位，当前空床 {{ occ.vacantBeds || 0 }} 张</h2>
-          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、负责宿管、层数、房间数和每间床位数。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">新建楼栋</AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="宿舍房源管理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>维护楼栋</strong><br>设置楼名、性别限制和宿管范围</div>
-        <div class="sa-workflow-step" data-step="2"><strong>生成房间</strong><br>按层数和每层房数铺设房间</div>
-        <div class="sa-workflow-step" data-step="3"><strong>生成床位</strong><br>按每间床位数形成床位台账</div>
-        <div class="sa-workflow-step" data-step="4"><strong>核对容量</strong><br>确认空床、入住数和房间状态</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
 
       <AppSectionCard title="一、选择楼栋">
         <p class="dorm-resource-hint">点击“查看房间”进入楼栋下钻；选中行会高亮。空床/总床可帮助判断当前容量。</p>
@@ -195,7 +176,7 @@
 </template>
 
 <script>
-import { AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
+import { AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
@@ -229,7 +210,7 @@ const ROOM_COLUMNS = [
 export default {
   name: 'DormResourceView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+  components: { AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
     AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput, DataTable },
   data() {
     return {

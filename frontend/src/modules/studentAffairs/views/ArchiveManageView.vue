@@ -1,33 +1,12 @@
 <template>
   <ModulePageShell
     title="学工归档"
-    subtitle="归档批次 · 档案包收集 · 学院审核 / 学工处确认 · 水印包"
+    subtitle="批次收集、审核与归档"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="学工归档"
   >
-    <section class="sa-summary-strip">
-      <div class="sa-summary-strip__content">
-        <span class="sa-summary-strip__eyebrow">当前归档任务</span>
-        <h2 class="sa-summary-strip__title">
-          {{ current ? `${current.batchName} · ${statusLabel(current.status)}` : '请先选择现有批次或新建归档批次' }}
-        </h2>
-        <p class="sa-summary-strip__text">
-          {{ current ? `当前已生成 ${packages.length} 个学生档案包。按照流程完成收集、学院审核、学工处确认后，系统登记正式水印归档包。` : '归档按批次推进。先建批次并圈定学生，确保每名学生档案包生成成功后再进入审核。' }}
-        </p>
-      </div>
-      <div class="sa-summary-strip__actions">
-        <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">新建归档批次</AppPermissionButton>
-      </div>
-    </section>
 
-    <div class="sa-workflow-strip" aria-label="学工归档流程">
-      <div class="sa-workflow-step" data-step="1"><strong>新建批次</strong><br>明确批次名称和归档学年</div>
-      <div class="sa-workflow-step" data-step="2"><strong>圈定学生</strong><br>为每名学生生成独立档案包</div>
-      <div class="sa-workflow-step" data-step="3"><strong>学院审核</strong><br>核对档案范围、内容与生成状态</div>
-      <div class="sa-workflow-step" data-step="4"><strong>学工处确认</strong><br>确认无缺失后生成正式水印包</div>
-      <div class="sa-workflow-step" data-step="5"><strong>完成归档</strong><br>归档批次转为只读并保留审计</div>
-    </div>
 
     <div class="av-workspace">
       <div class="av-side">

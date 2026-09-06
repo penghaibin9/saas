@@ -1,5 +1,6 @@
 import { downloadFile, request, uploadFile } from './request'
 import fileSdk from './fileSdk'
+import { presentLeave } from './leavePresentation'
 
 const enc = encodeURIComponent
 
@@ -30,6 +31,7 @@ function creditAppealBody(body = {}) {
 }
 
 export const affairsFourEndApi = {
+  getLeaveDetail: async (id) => presentLeave(await request(`/portal/affairs/leave/${enc(id)}`)),
   // 请假 version / 退回编辑
   getReturnedLeave: (id) => request(`/mobile/affairs/leave/${enc(id)}/editable`),
   updateReturnedLeave: (id, body) => request(`/mobile/affairs/leave/${enc(id)}/returned`, { method: 'PUT', body }),
@@ -38,6 +40,7 @@ export const affairsFourEndApi = {
   extendLeave: (id, version, newEndTime, reason) => request(`/portal/affairs/leave/${enc(id)}/extension`, { method: 'POST', body: { version, newEndTime, reason } }),
 
   // 困难/奖助退回编辑
+  getAidDetail: (id) => request(`/mobile/affairs/aid/${enc(id)}/detail`),
   getReturnedAid: (id) => request(`/mobile/affairs/aid/${enc(id)}/editable`),
   updateReturnedAid: (id, body) => request(`/mobile/affairs/aid/${enc(id)}/returned`, { method: 'PUT', body }),
   resubmitAid: (id, version) => request(`/mobile/affairs/aid/${enc(id)}/resubmit`, { method: 'POST', body: { version } }),

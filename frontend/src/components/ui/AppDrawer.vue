@@ -87,6 +87,10 @@ export default {
   display: flex;
   flex-direction: column;
 }
+.app-drawer.is-small { width: min(360px, 100vw); }
+.app-drawer.is-medium { width: min(420px, 100vw); }
+.app-drawer.is-large { width: min(680px, 100vw); }
+.app-drawer.is-xlarge { width: min(880px, 100vw); }
 .app-drawer.is-modal {
   width: min(720px, calc(100vw - 48px));
   height: auto;

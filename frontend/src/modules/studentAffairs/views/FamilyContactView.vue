@@ -1,25 +1,12 @@
 <template>
   <ModulePageShell
     title="家校联系"
-    subtitle="家校联系记录（留痕）· 查看完整号码需原因与审计"
+    subtitle="联系记录与后续跟进"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="家校联系查阅"
   >
-    <section class="sa-summary-strip">
-      <div class="sa-summary-strip__content">
-        <span class="sa-summary-strip__eyebrow">家校沟通工作区</span>
-        <h2 class="sa-summary-strip__title">先选择学生查看历史沟通，再登记本次联系事由、反馈和约定事项</h2>
-        <p class="sa-summary-strip__text">联系记录按时间留痕。只有确需拨打或核对时才查看完整号码，查看原因会进入敏感审计。</p>
-      </div>
-    </section>
 
-    <div class="sa-workflow-strip" aria-label="家校联系流程">
-      <div class="sa-workflow-step" data-step="1"><strong>选择学生</strong><br>按姓名或学号定位当前学生</div>
-      <div class="sa-workflow-step" data-step="2"><strong>回看历史</strong><br>了解此前事由、家长反馈与约定</div>
-      <div class="sa-workflow-step" data-step="3"><strong>完成联系</strong><br>通过电话、微信、家访或短信沟通</div>
-      <div class="sa-workflow-step" data-step="4"><strong>登记留痕</strong><br>记录结果、后续安排和敏感查看审计</div>
-    </div>
 
     <div class="fc-picker sa-filter-bar">
       <div class="fc-picker__copy">

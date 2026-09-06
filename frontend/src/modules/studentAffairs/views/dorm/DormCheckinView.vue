@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="入住管理"
-    subtitle="本页办理正式入住与退宿；学生自选由「分配计划」的批次、资源池和时间窗控制。"
+    subtitle="入住、退宿与床位核对"
     role-name="学工处 / 辅导员 / 宿管"
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍入住管理"
@@ -14,38 +14,10 @@
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前分配模式</span>
-          <h2 class="sa-summary-strip__title">{{ config.selfSelectEnabled ? '学生自选床位已开放' : '当前由辅导员 / 宿管统一分配床位' }}</h2>
-          <p class="sa-summary-strip__text">{{ config.studentNotice || '选择楼栋和房间后查看床位。空床可办理入住，已住床位可办理退宿。' }}</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="$router.push('/admin/student-affairs/dorm/allocation')">
-            管理分配计划
-          </AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="宿舍入住办理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>选择楼栋</strong><br>仅展示当前角色可管理的楼栋</div>
-        <div class="sa-workflow-step" data-step="2"><strong>选择房间</strong><br>查看房间空床数量和床位清单</div>
-        <div class="sa-workflow-step" data-step="3"><strong>核对床位</strong><br>确认空床或当前入住学生</div>
-        <div class="sa-workflow-step" data-step="4"><strong>办理结果</strong><br>入住写住宿历史；退宿进入宿管确认后释放床位</div>
-      </div>
-
-      <AppSectionCard title="分配模式说明">
-        <div class="sa-mode-card" :class="config.selfSelectEnabled ? 'is-open' : 'is-managed'">
-          <div>
-            <span class="sa-mode-card__label">当前模式</span>
-            <strong>{{ config.selfSelectEnabled ? '学生自选' : '统一分配' }}</strong>
-          </div>
-          <p>{{ config.studentNotice || '当前模式说明暂未配置' }}</p>
-        </div>
-      </AppSectionCard>
 
       <AppSectionCard title="选床入住 / 退宿">
-        <p class="sa-section-hint">按顺序选择楼栋和房间。床位列表会显示当前状态与入住学生，避免在不同房间间反复查找。</p>
+        <div class="sa-mode-line"><span>分配模式</span><strong>{{ config.selfSelectEnabled ? '学生自选' : '统一分配' }}</strong><small>{{ config.studentNotice || '由当前分配计划控制' }}</small></div>
         <AppInlineAlert v-if="routeNotice" type="info" :description="routeNotice" />
         <div class="sa-toolbar dorm-picker-bar">
           <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
@@ -259,6 +231,7 @@ export default {
 </script>
 
 <style scoped>
+ .sa-mode-line { display:flex; align-items:center; gap:10px; margin-bottom:12px; color:var(--text-secondary); font-size:12px; }.sa-mode-line strong { color:var(--text-primary); font-size:13px; }.sa-mode-line small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .sa-pick { min-width: 240px; flex: 0 1 320px; }
 .sa-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }

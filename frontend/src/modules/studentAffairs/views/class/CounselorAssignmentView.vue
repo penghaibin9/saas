@@ -1,24 +1,8 @@
 <template>
-  <ModulePageShell title="辅导员责任台账" subtitle="真实用户责任关系 · 主责、协同、临时代班与交接历史"
+  <ModulePageShell title="辅导员责任台账" subtitle="班级责任分配与交接"
     :role-name="roleName" :data-scope-name="scopeHint">
     <div class="mp-stack">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前责任关系</span>
-          <h2 class="sa-summary-strip__title">先查空缺班级，再建立主责、协同或临时代班关系</h2>
-          <p class="sa-summary-strip__text">责任关系决定辅导员可见学生和待办分派。主辅导员交接会结束旧主责关系并同步班级责任，历史记录继续保留。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" type="button" @click="openAssign">分配责任</AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="辅导员责任管理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>查责任台账</strong><br>查看每名辅导员带班与学生规模</div>
-        <div class="sa-workflow-step" data-step="2"><strong>补空缺班级</strong><br>优先为无主责班级建立责任关系</div>
-        <div class="sa-workflow-step" data-step="3"><strong>维护责任类型</strong><br>区分主责、协同和临时代班</div>
-        <div class="sa-workflow-step" data-step="4"><strong>交接留痕</strong><br>变更主责时保留原因、版本和历史</div>
-      </div>
 
       <div class="tabs" role="tablist" aria-label="责任台账视图">
         <button v-for="item in tabs" :key="item.key" class="tab" :class="{ active: tab === item.key }"

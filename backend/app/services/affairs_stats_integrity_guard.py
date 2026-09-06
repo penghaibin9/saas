@@ -162,9 +162,11 @@ def install() -> None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         return allowed, conds
 
-    def disbursement_stats(user):
+    def disbursement_stats(user, batch_id=None):
         with session() as db:
             _allowed, student_conds = _scoped_student_conds(db, user)
+            if batch_id is not None:
+                student_conds = [*student_conds, FundingDisbursement.batch_id == int(batch_id)]
             rows = db.execute(
                 select(
                     FundingDisbursement.bank_status,

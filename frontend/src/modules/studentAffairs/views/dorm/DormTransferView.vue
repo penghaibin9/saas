@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="调宿与退宿"
-    subtitle="调宿走「辅导员 → 宿管」两级审批；审批人必须核对原床、目标床、学生和事由。"
+    subtitle="调宿申请审核与执行"
     role-name="辅导员 / 宿管 / 学工处"
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍调宿审批"
@@ -16,33 +16,8 @@
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载调宿申请..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">调宿审批工作区</span>
-          <h3 class="sa-summary-strip__title">先核对“原床 → 目标床”和申请事由，再处理当前审批节点</h3>
-          <p class="sa-summary-strip__text">审批完成前学生原床保持不变。辅导员审核学生情况，宿管审核目标楼栋与床位。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton
-            :allowed="canBtn('studentAffairs.dorm.transfer.create')"
-            code="studentAffairs.dorm.transfer.create"
-            variant="secondary"
-            :loading="actioning"
-            @click="openTransfer"
-          >发起调宿</AppPermissionButton>
-        </div>
-      </div>
 
-      <div class="sa-workflow-strip" aria-label="调宿审批流程">
-        <div class="sa-workflow-step" data-step="1">选择学生、目标空床并填写真实事由</div>
-        <div class="sa-workflow-step" data-step="2">辅导员核对学生情况和调宿必要性</div>
-        <div class="sa-workflow-step" data-step="3">宿管核对楼栋、房间和床位可用性</div>
-        <div class="sa-workflow-step" data-step="4">终审通过后执行床位切换</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
 
       <AppSectionCard title="调宿申请">
         <p class="dr-section-hint">操作前请确认学生、原床、目标床、申请事由和当前节点。床位信息不完整时页面会禁止通过。</p>
@@ -152,7 +127,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert,
   AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker,
   AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea
 } from '@/components/common'
@@ -186,7 +161,7 @@ export default {
   name: 'DormTransferView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+    AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
     AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker,
     AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea, DataTable
   },

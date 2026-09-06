@@ -22,9 +22,22 @@
               <text class="icon-grid__label">{{ it.label }}</text>
             </view>
           </view>
+          <view class="af__work-study" @click="go('/pages/student/affairs/work-study')">
+            <view><text class="card-title">勤工助学</text><text class="t-xs t-tertiary">查开放岗位、提交申请、看上岗进度与月度补贴</text></view>
+            <text class="link">进入</text>
+          </view>
+          <view class="af__work-study" @click="go('/pages/student/affairs/loan')">
+            <view><text class="card-title">助学贷款</text><text class="t-xs t-tertiary">提交电子回执、查看核验进度</text></view>
+            <text class="link">进入</text>
+          </view>
+          <view class="af__work-study" @click="go('/pages/student/affairs/reduction')">
+            <view><text class="card-title">减免与临时补助</text><text class="t-xs t-tertiary">申请、补正与结果查询</text></view>
+            <text class="link">进入</text>
+          </view>
         </view>
 
-        <view class="section-head"><text class="section-head__title">材料补交</text><text class="af__refresh" @click="loadMaterials">刷新</text></view>
+        <view id="affairs-material-section" class="section-head"><text class="section-head__title">材料补交</text><text class="af__refresh" @click="loadMaterials">刷新</text></view>
+        <view v-if="materialReturnContext.bizType" class="card af__context"><text>仅显示这份{{ materialReturnContext.bizType === 'FUNDING' ? '奖助' : materialReturnContext.bizType === 'AID' ? '困难认定' : '请假' }}申请的材料</text><button class="btn" @click="returnToApplication">返回原申请</button></view>
         <MobileInlineAlert v-if="materialError" type="warning" title="材料列表暂不可用" :description="materialError" />
         <view v-else-if="!materials.length" class="card af__empty"><text>暂无材料缺项</text></view>
         <view v-else class="stack">
@@ -40,29 +53,31 @@
                 <text class="card-title">{{ item.itemName }}</text>
                 <text class="t-xs t-tertiary">{{ bizLine(item) }} · 第{{ item.returnRound || 1 }}轮</text>
               </view>
-              <MobileStatusTag :status="item.status" :label="item.statusLabel || item.status" />
+              <MobileStatusTag :status="item.status" :label="item.statusLabel || '状态待确认'" />
             </view>
             <text v-if="item.requirementReason" class="af__reason">缺项说明：{{ item.requirementReason }}</text>
             <text v-if="item.dueAt" class="af__due" :class="{ overdue: item.overdue }">截止 {{ formatTime(item.dueAt) }}{{ item.overdue ? '（已逾期）' : '' }}</text>
             <text class="t-xs t-tertiary">审核责任人：{{ item.reviewOwner || '待分配' }}</text>
 
             <view v-if="canSubmitMaterial(item)" class="af__submit">
-              <button class="btn btn-secondary" :disabled="materialBusy === item.requirementId" @click="chooseMaterial(item)">
+              <button class="btn btn-secondary" :disabled="!!materialBusy" @click="chooseMaterial(item)">
                 {{ selectedFiles[item.requirementId] ? selectedFiles[item.requirementId].name : '选择补交文件' }}
               </button>
-              <input v-model.trim="materialNotes[item.requirementId]" class="input" maxlength="500" placeholder="补充说明（选填）" />
-              <button class="btn btn-primary" :disabled="materialBusy === item.requirementId || !selectedFiles[item.requirementId]" @click="submitMaterial(item)">
-                {{ materialBusy === item.requirementId ? '提交中…' : '上传并提交审核' }}
+              <input v-model.trim="materialNotes[item.requirementId]" :disabled="!!materialBusy" class="input" maxlength="500" placeholder="补充说明（选填）" />
+              <button class="btn btn-primary" :disabled="!!materialBusy || !selectedFiles[item.requirementId]" @click="submitMaterial(item)">
+                {{ materialBusy === item.requirementId ? '处理中…' : uploadedMaterials[item.requirementId] ? '检查并提交审核' : '上传并提交审核' }}
               </button>
             </view>
             <view v-else-if="item.status === 'PENDING_REVIEW'" class="af__pending"><text>最新版本已提交，等待老师审核。</text></view>
+            <view v-if="uploadedMaterials[item.requirementId] && canSubmitMaterial(item)" class="af__pending"><text>{{ materialFileHint(uploadedMaterials[item.requirementId]) }}</text></view>
+            <view v-if="materialNotices[item.requirementId]" class="af__pending"><text>{{ materialNotices[item.requirementId] }}</text></view>
 
             <view class="af__versions" v-if="(item.versions || []).length">
               <text class="af__versions-title">版本记录（{{ item.versionCount || item.versions.length }}）</text>
               <view v-for="version in item.versions" :key="version.submissionId" class="af__version row-between">
                 <view class="flex-1">
                   <text class="t-sm t-primary">V{{ version.versionNo }} · {{ version.fileName }}</text>
-                  <text class="t-xs t-tertiary">{{ version.statusLabel || version.status }} · {{ formatTime(version.submittedAt) }}</text>
+                  <text class="t-xs t-tertiary">{{ version.statusLabel || '状态待确认' }} · {{ formatTime(version.submittedAt) }}</text>
                   <text v-if="version.reviewNote" class="af__review">审核意见：{{ version.reviewNote }}</text>
                 </view>
                 <view class="af__version-actions">
@@ -84,12 +99,13 @@
         </view>
       </view>
     </MobileGlobalState>
-    <MobileTabBar side="student" active="home" />
+    <MobileTabBar side="student" active="" :before-navigate="mayLeaveMaterials" />
   </view>
 </template>
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import fileSdk from '@/services/fileSdk'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
 import { go, toast } from '@/utils/nav'
@@ -118,9 +134,11 @@ export default {
       materials: [],
       materialError: '',
       materialBusy: '',
+      pageVisible: false,
       selectedFiles: {},
+      uploadedMaterials: {}, materialNotices: {},
       materialNotes: {},
-      focusMaterialId: '',
+      leaveContext: {}, focusMaterialId: '',
       materialPage: 1,
       materialPageSize: 20,
       materialTotal: 0,
@@ -128,11 +146,41 @@ export default {
     }
   },
   onLoad(query) {
+    this.leaveContext = query && ['LEAVE', 'AID', 'FUNDING'].includes(query.bizType) && /^\d+$/.test(String(query.bizId || '')) ? { bizType: query.bizType, bizId: query.bizId } : {}
     this.statusBarHeight = getStatusBarHeight()
     this.focusMaterialId = String((query && (query.materialRequirementId || query.requirementId)) || '')
     this.load()
+    // #ifdef H5
+    this._beforeUnload = (event) => {
+      if (!this.materialBusy && !this.hasMaterialDraft()) return
+      event.preventDefault(); event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', this._beforeUnload)
+    // #endif
+  },
+  onShow() { this.pageVisible = true; this.syncMaterialLeaveAlert() },
+  onHide() { this.pageVisible = false; this.syncMaterialLeaveAlert() },
+  onUnload() {
+    this.pageVisible = false; this.syncMaterialLeaveAlert()
+    // #ifdef H5
+    window.removeEventListener('beforeunload', this._beforeUnload)
+    // #endif
+  },
+  onBackPress() {
+    if (this._allowMaterialBack || (!this.materialBusy && !this.hasMaterialDraft())) return false
+    this.back()
+    return true
+  },
+  watch: {
+    materialGuardActive() { this.syncMaterialLeaveAlert() }
   },
   computed: {
+    materialReturnContext() {
+      if (this.leaveContext.bizType) return this.leaveContext
+      const row = this.materials.find(item => String(item.requirementId) === this.focusMaterialId)
+      return row && ['LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
+    },
+    materialGuardActive() { return !!this.materialBusy || this.hasMaterialDraft() },
     discNote() {
       if (!this.disc) return '生效中处分数量'
       return this.disc.activeCount > 0 ? `生效中 ${this.disc.activeCount} 条（${this.disc.detailNote || '明细请联系辅导员'}）` : '暂无生效处分'
@@ -140,10 +188,41 @@ export default {
     openMaterials() { return this.materials.filter((x) => ['MISSING', 'RETURNED', 'PENDING_REVIEW'].includes(x.status)) }
   },
   methods: {
-    go,
-    back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/student/home/index') }) },
+    hasMaterialDraft() { return Object.values(this.selectedFiles).some(Boolean) || Object.values(this.materialNotes).some(note => String(note || '').trim()) },
+    syncMaterialLeaveAlert() {
+      // #ifdef MP-WEIXIN
+      if (typeof uni.enableAlertBeforeUnload !== 'function') return
+      if (this.pageVisible && (this.materialBusy || this.hasMaterialDraft())) {
+        uni.enableAlertBeforeUnload({ message: this.materialBusy ? '材料正在提交，请稍候再离开。' : '材料尚未提交，离开后需要重新选择文件。' })
+      } else if (typeof uni.disableAlertBeforeUnload === 'function') uni.disableAlertBeforeUnload()
+      // #endif
+    },
+    async mayLeaveMaterials() {
+      if (this.materialBusy) { toast('材料正在提交，请稍候再离开'); return false }
+      if (!this.hasMaterialDraft()) return true
+      if (this._materialLeavePrompt) return false
+      this._materialLeavePrompt = true
+      try {
+        const allowed = await new Promise(resolve => uni.showModal({
+          title: '材料尚未提交', content: '离开将放弃本页选择的文件和补充说明。已提交的材料不受影响。',
+          cancelText: '继续填写', confirmText: '放弃离开',
+          success: result => resolve(!!result.confirm), fail: () => resolve(false)
+        }))
+        if (!allowed || this.materialBusy) return false
+        this.selectedFiles = {}; this.materialNotes = {}; this.uploadedMaterials = {}; this.materialNotices = {}
+        this.syncMaterialLeaveAlert()
+        return true
+      } finally { this._materialLeavePrompt = false }
+    },
+    async returnToApplication() { const context = this.materialReturnContext || this.leaveContext; if (!context.bizType) return; await this.go('/pages/student/affairs/' + (context.bizType === 'FUNDING' ? 'funding' : context.bizType === 'AID' ? 'aid' : 'leave') + '?recordId=' + encodeURIComponent(context.bizId)) },
+    async go(url) { if (await this.mayLeaveMaterials()) go(url) },
+    async back() {
+      if (!await this.mayLeaveMaterials()) return
+      this._allowMaterialBack = true
+      uni.navigateBack({ delta: 1, fail: () => go('/pages/student/home/index'), complete: () => { this._allowMaterialBack = false } })
+    },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
-    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
+    formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '' },
     // 学生不该靠主键认业务：后端下发 businessContext 时用业务语言，否则退回原文案。
     bizLine(item) {
       const c = (item && item.businessContext) || {}
@@ -151,7 +230,7 @@ export default {
       return parts.length ? parts.join(' · ') : `${this.bizLabel(item.bizType)} #${item.bizId}`
     },
     bizLabel(value) {
-      return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || value || '学工申请')
+      return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || '学工申请')
     },
     canSubmitMaterial(item) { return (item.allowedActions || []).includes('SUBMIT_MATERIAL') },
     load() {
@@ -171,7 +250,7 @@ export default {
       this.materialError = ''
       if (reset) this.materialPage = 1
       return affairsContractApi.getMyMaterialRequirements({
-        page: this.materialPage,
+        ...this.leaveContext, page: this.materialPage,
         pageSize: this.materialPageSize,
         requirementId: this.focusMaterialId || undefined
       }).then((d) => {
@@ -189,7 +268,7 @@ export default {
       if (this.materialLoadingMore || this.materials.length >= this.materialTotal) return
       this.materialLoadingMore = true
       const nextPage = this.materialPage + 1
-      affairsContractApi.getMyMaterialRequirements({ page: nextPage, pageSize: this.materialPageSize })
+      affairsContractApi.getMyMaterialRequirements({ ...this.leaveContext, requirementId: this.focusMaterialId || undefined, page: nextPage, pageSize: this.materialPageSize })
         .then((d) => {
           this.materials = this.materials.concat((d && d.items) || [])
           this.materialTotal = Number((d && d.total) || this.materialTotal)
@@ -199,21 +278,25 @@ export default {
         .finally(() => { this.materialLoadingMore = false })
     },
     scrollToMaterial() {
-      if (!this.focusMaterialId) return
+      if (!this.focusMaterialId && !this.leaveContext.bizId) return
       this.$nextTick(() => {
         setTimeout(() => {
-          try { uni.pageScrollTo({ selector: '#material-' + this.focusMaterialId, duration: 250 }) } catch (e) {}
+          try { uni.pageScrollTo({ selector: this.focusMaterialId ? '#material-' + this.focusMaterialId : '#affairs-material-section', duration: 250 }) } catch (e) {}
         }, 80)
       })
     },
     chooseMaterial(item) {
+      if (this.materialBusy) return
       const done = (res) => {
+        if (this.materialBusy) return
         const file = (res && res.tempFiles && res.tempFiles[0]) || null
         if (!file) return
         this.selectedFiles = { ...this.selectedFiles, [item.requirementId]: {
           path: file.path || file.tempFilePath,
           name: file.name || `补交材料-${Date.now()}`
         } }
+        delete this.uploadedMaterials[item.requirementId]
+        delete this.materialNotices[item.requirementId]
       }
       if (typeof uni.chooseMessageFile === 'function') {
         uni.chooseMessageFile({ count: 1, type: 'file', success: done, fail: () => {} })
@@ -223,27 +306,33 @@ export default {
         uni.chooseImage({ count: 1, success: done, fail: () => {} })
       }
     },
-    submitMaterial(item) {
+    materialFileHint(file) {
+      if (file.readyForBusiness === true) return '文件已上传且安全可用，确认后提交老师审核。'
+      if (file.scanStatus === 'ERROR') return '安全扫描失败，请稍后检查；持续失败可更换文件或联系学校管理员。'
+      if (['PENDING', 'RUNNING'].includes(file.scanStatus)) return '文件已上传，正在等待安全扫描；稍后点击“检查并提交审核”，无需重复上传。'
+      if (['INFECTED', 'QUARANTINED'].includes(file.scanStatus) || file.status === 'QUARANTINED') return '文件存在安全风险，请更换文件后重新提交。'
+      return '文件尚不可提交，请检查最新状态或更换文件。'
+    },
+    async submitMaterial(item) {
       const chosen = this.selectedFiles[item.requirementId]
       if (!chosen || !chosen.path || this.materialBusy) return
       this.materialBusy = item.requirementId
-      affairsContractApi.uploadMaterialFile(chosen.path)
-        .then((uploaded) => affairsContractApi.submitMaterialVersion(
-          item.requirementId,
-          uploaded.fileId,
-          this.materialNotes[item.requirementId] || '',
-          item.version
-        ))
-        .then(() => {
-          toast('材料已补交，等待老师审核')
-          const selectedFiles = { ...this.selectedFiles }
-          delete selectedFiles[item.requirementId]
-          this.selectedFiles = selectedFiles
-          this.materialNotes = { ...this.materialNotes, [item.requirementId]: '' }
-          return this.loadMaterials(false)
-        })
-        .catch((e) => toast(normalizeError(e).text || '材料补交失败'))
-        .finally(() => { this.materialBusy = '' })
+      delete this.materialNotices[item.requirementId]
+      try {
+        if (!this.uploadedMaterials[item.requirementId]) this.uploadedMaterials[item.requirementId] = await affairsContractApi.uploadMaterialFile(chosen.path)
+        const uploaded = this.uploadedMaterials[item.requirementId]
+        const metadata = await fileSdk.metadata(uploaded.fileId)
+        this.uploadedMaterials[item.requirementId] = metadata
+        if (metadata.readyForBusiness !== true) return
+        await affairsContractApi.submitMaterialVersion(item.requirementId, uploaded.fileId, this.materialNotes[item.requirementId] || '', item.version)
+        toast('材料已补交，等待老师审核')
+        delete this.selectedFiles[item.requirementId]
+        delete this.uploadedMaterials[item.requirementId]
+        this.materialNotes[item.requirementId] = ''
+        await this.loadMaterials(false)
+      } catch (e) {
+        this.materialNotices[item.requirementId] = normalizeError(e).text || '材料补交失败，文件与说明已保留，请重试'
+      } finally { this.materialBusy = '' }
     },
     downloadMaterial(version) {
       affairsContractApi.downloadMaterialFile(version.fileId).then((d) => {
@@ -281,4 +370,5 @@ export default {
 .af__version { padding: 10px 0; border-top: 1px solid var(--border-light); align-items: flex-start; gap: 8px; }
 .af__version-actions { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .af__current { color: var(--brand-primary); background: #eff6ff; padding: 2px 6px; border-radius: 5px; }
+.af__work-study { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; padding:12px 2px 2px; border-top:1px solid var(--border-light); }
 </style>

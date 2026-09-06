@@ -67,6 +67,88 @@ def _student_scope_values(db, file_obj, user: dict) -> set[str]:
     return {item for item in values if item}
 
 
+@register_file_resolver("FUNDING")
+def funding_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """Student-submitted evidence stays readable by its applicant after formal binding."""
+    if str(user.get("userType") or "").upper() != "STUDENT":
+        from app.services.file_access_service import _student_affairs_resolver
+        return _student_affairs_resolver(db, file_obj, bindings, user, action)
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    from app.models import FundingApplication
+    from app.services.mobile_student_service import resolve_student
+    student = resolve_student(db, user)
+    row = db.get(FundingApplication, int(file_obj.biz_id))
+    if not student or not row or row.is_deleted or row.tenant_id != file_obj.tenant_id or row.student_id != student.id:
+        return False
+    # Only evidence uploaded by this applicant. Staff investigation files do not
+    # become student-visible merely because they reference the same application.
+    return _owner_allows(file_obj, user) and any(
+        not item.is_deleted and item.status == "ACTIVE" and item.is_current
+        and item.biz_type == "FUNDING" and str(item.biz_id) == str(row.id)
+        and item.relation_type == "BUSINESS_EVIDENCE" and item.subject_type == "STUDENT"
+        and str(item.subject_id) == str(student.id)
+        for item in bindings
+    )
+
+
+@register_file_resolver("LOAN")
+def loan_receipt_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """贷款回执按当前贷款记录授权，本人和经办教师读取同一份正式材料。"""
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    try:
+        from app.models import StudentLoan
+
+        loan = db.get(StudentLoan, int(file_obj.biz_id))
+        if (not loan or loan.is_deleted or loan.tenant_id != file_obj.tenant_id
+                or int(loan.receipt_file_id or 0) != int(file_obj.id)):
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            from app.services.mobile_student_service import resolve_student
+            student = resolve_student(db, user)
+            return bool(student and int(student.id) == int(loan.student_id))
+        if not has_permission(user or {}, "studentAffairs.funding.view"):
+            return False
+        from app.services.affairs_attachment_service import _require_biz_scope
+        _require_biz_scope(db, "LOAN", loan.id, user)
+        return True
+    except Exception:
+        return False
+
+
+@register_file_resolver("REDUCTION")
+def reduction_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """减免/临补材料仅向申请本人和数据范围内经办教师开放。"""
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    try:
+        from app.models import FeeReduction
+
+        row = db.get(FeeReduction, int(file_obj.biz_id))
+        if not row or row.is_deleted or row.tenant_id != file_obj.tenant_id:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            from app.services.mobile_student_service import resolve_student
+            student = resolve_student(db, user)
+            if not student or int(student.id) != int(row.student_id) or not _owner_allows(file_obj, user):
+                return False
+            return any(
+                not item.is_deleted and item.status == "ACTIVE" and item.is_current
+                and item.biz_type == "REDUCTION" and str(item.biz_id) == str(row.id)
+                and item.relation_type == "BUSINESS_EVIDENCE" and item.subject_type == "STUDENT"
+                and str(item.subject_id) == str(student.id)
+                for item in bindings
+            )
+        if not has_permission(user or {}, "studentAffairs.funding.view"):
+            return False
+        from app.services.affairs_attachment_service import _require_biz_scope
+        _require_biz_scope(db, "REDUCTION", row.id, user)
+        return True
+    except Exception:
+        return False
+
+
 def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[int], set[int]]:
     """从文件对象、绑定与请假单中还原权威实习记录/学生范围。"""
     student_ids: set[int] = set()

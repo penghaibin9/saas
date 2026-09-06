@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="心理关注名单"
-    subtitle="强敏感红线：列表仅显示摘要与「需关注」标记；心理明细须授权角色 + 填写原因方可查看，且全程留痕。"
+    subtitle="关注名单与授权明细"
     role-name="心理老师 / 授权辅导员 / 学工处(专项授权)"
     data-scope-name="PSY_STUDENT 逐生授权范围"
     watermark-purpose="心理关注名单查看"
@@ -19,27 +19,8 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <section class="sa-summary-strip mental-privacy-summary">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">心理信息保护红线</span>
-          <h2 class="sa-summary-strip__title">名单只展示必要摘要；查看心理明文必须有逐生授权、填写业务原因并留下安全审计</h2>
-          <p class="sa-summary-strip__text">当前授权范围共 {{ total }} 条关注记录。先看等级、状态、事由摘要和最近回访；只有业务确有必要时才点击“查看明细”。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">登记转介</AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="心理关注处理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>登记转介</strong><br>客观记录关注等级与事由摘要</div>
-        <div class="sa-workflow-step" data-step="2"><strong>查看摘要</strong><br>默认只读必要业务信息和脱敏内容</div>
-        <div class="sa-workflow-step" data-step="3"><strong>授权查明细</strong><br>填写原因并记录敏感查看审计</div>
-        <div class="sa-workflow-step" data-step="4"><strong>回访 / 关闭</strong><br>持续记录处置，满足条件后关闭</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
 
       <AppSectionCard title="关注名单（明细默认遮蔽）">
         <div class="mental-list-note">
@@ -132,7 +113,6 @@ import {
   AppFormItem,
   AppGlobalState,
   AppInlineAlert,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppQuickPhrases,
@@ -177,8 +157,7 @@ export default {
     AppFormItem,
     AppGlobalState,
     AppInlineAlert,
-    AppMetricCard,
-    AppPageShell,
+      AppPageShell,
     AppPermissionButton,
     AppQuickPhrases,
     AppSectionCard,

@@ -12,6 +12,12 @@ const studentAffairsRoutes = [
     children: [
       { path: '', redirect: '/admin/student-affairs/dashboard' },
       {
+        path: '/admin/student-affairs/material-operations',
+        name: 'student-affairs-material-operations',
+        component: () => import('@/modules/studentAffairs/views/MaterialOperationsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '材料与档案', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
+      },
+      {
         path: 'dashboard',
         name: 'student-affairs-dashboard',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsDashboardView.vue'),

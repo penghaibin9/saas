@@ -1,5 +1,5 @@
 <template>
-  <div class="base-portal-layout thw" :class="themeClass">
+  <div class="base-portal-layout thw" :class="[themeClass, { 'bpl-workspace': workspace }]" :style="workspace ? workspaceColors : undefined">
     <!-- 顶栏 56px 玻璃：品牌 → ⌘K 搜索 → 主题 → 环境标 → 数据范围镜片 → 通知 → 角色胶囊 -->
     <header class="bpl-topbar">
       <div class="bpl-brand">
@@ -92,7 +92,7 @@
         </div>
       </div>
       <div class="bpl-top-r">
-        <div class="bpl-thdots" title="主题皮肤 themePreference">
+        <div v-if="!workspace" class="bpl-thdots" title="主题皮肤 themePreference">
           <span
             v-for="t in themeOptions"
             :key="t.key"
@@ -103,7 +103,7 @@
           />
         </div>
         <span
-          v-if="envLabel"
+          v-if="envLabel && !workspace"
           class="bpl-env"
           :class="{ 'bpl-env--planner': devPlannerView }"
           :title="envPlannerHint"
@@ -172,7 +172,17 @@
 
     <!-- 窄屏（<900px，含平板竖屏）左侧一/二级导航整体隐藏；给一句友好引导替代「无导航空白」。
          仅在有管理台一级导航轨（railItems）时显示，避免误伤走移动端的学生/外部身份门户。CSS 仅 <900px 渲染。 -->
-    <div v-if="railItems.length" class="bpl-mobilehint" role="note">
+    <TeacherWorkspaceFrame
+      v-if="workspace && ctx"
+      :key="ctx.ctxKey"
+      :modules="workspaceModules"
+      :centers="railItems"
+      :active-center="railActiveKey"
+      :active-module="planActiveModKey"
+      :identity-key="ctx.ctxKey || ''"
+      @tokens="workspaceColors = $event"
+    ><slot /></TeacherWorkspaceFrame>
+    <div v-if="!workspace && railItems.length" class="bpl-mobilehint" role="note">
       <svg class="bpl-mobilehint__ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
         <path d="M8 21h8M12 17v4" />
@@ -180,7 +190,7 @@
       <span class="bpl-mobilehint__tx"><strong>建议在电脑上使用管理控制台。</strong>当前屏幕较窄，左侧导航已隐藏；请使用电脑或将浏览器窗口调宽，以获得完整菜单与导航。</span>
     </div>
 
-    <div class="bpl-body">
+    <div v-if="!workspace || !ctx" class="bpl-body">
       <!-- 左一级 82px 深蓝渐变图标轨（菜单数据消费 config/adminMenu.js，本组件不写死业务菜单） -->
       <aside v-if="railItems.length" class="bpl-rail">
         <div
@@ -279,6 +289,7 @@
 <script>
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
+import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
 import { searchHelp, findHelpForRoute } from '@/config/helpContent'
 import { guideCount, replayGuide } from '@/utils/guideBus'
@@ -348,13 +359,14 @@ function readThemePreference() {
 
 export default {
   name: 'BasePortalLayout',
-  components: { AppIcon, AppUserChip },
+  components: { AppIcon, AppUserChip, TeacherWorkspaceFrame },
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
     menus: { type: Array, default: () => [] },
     activeKey: { type: String, default: '' },
     hideAside: { type: Boolean, default: false },
+    workspace: { type: Boolean, default: false },
     /* v2 新增（可选）：角色上下文，注入后启用统一壳的一级图标轨与身份区 */
     ctx: { type: Object, default: null },
     /* v2 新增（可选）：产品名（命名规范：高校学生全生命周期管理平台） */
@@ -363,6 +375,7 @@ export default {
   emits: ['menu-select', 'menu-disabled'],
   data() {
     return {
+      workspaceColors: {},
       theme: readThemePreference(),
       themeOptions: THEME_OPTIONS,
       /* ① 学生搜索框（后端按数据范围返回） */
@@ -392,6 +405,9 @@ export default {
     }
   },
   computed: {
+    workspaceModules() {
+      return getVisibleNavPlan({ includePlanned: false, permissionPatterns: this.ctx?.permissionPatterns || [], ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+    },
     /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
     visibleGroupKeys() {
       if (this.isPlatformMode) return new Set(['platform'])
@@ -526,13 +542,14 @@ export default {
       // 否则点「班级列表/班级画像/辅导员考评」这类叶子会把侧栏错误地整组切到工作台（内容页是对的，只是目录栏跳走）。
       const path = this.$route ? this.$route.path : ''
       if (this.isPlatformMode) return 'platform'
+      if (path === '/admin/student-affairs/material-operations') return 'student-affairs'
       return findActiveMenu(path).groupKey || this.planActive.groupKey || 'workbench'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {
       // 正式环境：学校业务菜单不展示施工地图 / planned / partial 待补强。
       // 开发环境：顶栏 DEV 可临时开启施工地图；校管/平台在 DEV 默认可看能力目录。
-      if (import.meta.env && import.meta.env.PROD) return false
+      if (this.workspace || (import.meta.env && import.meta.env.PROD)) return false
       if (import.meta.env && import.meta.env.DEV) return this.devPlannerView
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
@@ -861,6 +878,15 @@ export default {
 </script>
 
 <style scoped>
+.bpl-workspace .bpl-topbar{height:60px;padding:0 20px;background:var(--surface-2);border-color:var(--line);backdrop-filter:none}
+.bpl-workspace .bpl-brand__sch{display:none}
+.bpl-workspace .bpl-brand__nm{font-size:17px;color:var(--t1)}
+.bpl-workspace .bpl-logo{width:36px;height:36px;box-shadow:none;background:var(--pri);color:var(--pri-on)}
+.bpl-workspace .bpl-cmdk{background:var(--surface);border-color:var(--line);box-shadow:none}
+.bpl-workspace .bpl-scope{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t3);border-color:var(--line);background:var(--surface)}
+.bpl-workspace .bpl-search{margin:0 10px;max-width:600px}
+@media(max-width:1250px){.bpl-workspace .bpl-scope{display:none}.bpl-workspace .bpl-brand__nm{font-size:14px}.bpl-workspace .bpl-search{margin:0 2px}}
+@media(max-width:900px){.bpl-workspace .bpl-topbar{padding:0 10px}.bpl-workspace .bpl-brand__nm{display:none}.bpl-workspace .bpl-cmdk--stu{display:none}}
 .base-portal-layout {
   height: 100vh;
   display: flex;

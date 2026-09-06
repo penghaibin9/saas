@@ -13,7 +13,7 @@ import {
   waitStable
 } from './review-lib.mjs'
 
-const baseUrl = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5199'
+const baseUrl = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5199/portal'
 const loginName = process.env.REVIEW_LOGIN
 const password = process.env.REVIEW_PASSWORD
 const tenantCode = process.env.REVIEW_TENANT
@@ -67,7 +67,7 @@ function shouldUseShell(route) {
 
 async function inspectTabs(page, route, viewportKey) {
   const results = []
-  const tabs = page.locator('button.sp-tab:visible, button.mtab:visible, [role="tab"]:visible')
+  const tabs = page.locator('main button.sp-tab:visible, main button.mtab:visible, main [role="tab"]:visible')
   const count = await tabs.count()
   const labels = new Set()
   for (let index = 0; index < count; index += 1) {
@@ -128,8 +128,8 @@ async function inspectRoute(page, route, viewportKey) {
   if (item.layout.dialogs.some((dialog) => dialog.outside)) item.issues.push('弹窗超出视口')
   if (item.layout.states.some((text) => /入口配置异常|未找到.+业务面板/.test(text))) item.issues.push('教务独立路由映射失败')
   if (route.path === '/home' && !item.layout.shellClasses.includes('is-home')) item.issues.push('首页未命中 is-home 骨架')
-  if (shouldUseShell(route) && route.path !== '/home' && route.kind !== 'state' && !item.layout.shellClasses.includes('is-compact')) item.issues.push('业务页未命中紧凑骨架')
-  if (route.kind === 'state' && route.path === '/unknown-module' && !item.finalPath.startsWith('/module-disabled/')) item.issues.push('未知模块未进入模块禁用状态页')
+  if (shouldUseShell(route) && route.path !== '/home' && route.kind !== 'state' && !item.layout.shellClasses.includes('student-workspace')) item.issues.push('业务页未命中学生工作区骨架')
+  if (route.kind === 'state' && route.path === '/unknown-module' && !item.finalPath.includes('/module-disabled/')) item.issues.push('未知模块未进入模块禁用状态页')
 
   const before = new URL(page.url()).pathname
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -151,7 +151,7 @@ async function inspectThemes(page) {
     const themeGroup = page.getByRole('group', { name: '切换门户主题' })
     const button = themeGroup.getByRole('button', { name: `切换为${theme.label}` })
     const found = await button.count()
-    if (found) await button.click()
+    if (found) await setTheme(page, theme.key)
     await sleep(450)
     const data = await page.evaluate(() => {
       const app = document.querySelector('.sp-app')
@@ -166,7 +166,7 @@ async function inspectThemes(page) {
     const layout = await analyzeLayout(page)
     const technicalPassed = found === 1
       && data.htmlTheme === theme.key
-      && data.themeButtons === 6
+      && data.themeButtons === 4
       && !layout.horizontalOverflow
       && !layout.overflow.length
     report.themeChecks.push({
@@ -212,17 +212,17 @@ async function inspectFunctionalFlows(page) {
   await waitStable(page)
   await setTheme(page, 'blue')
 
-  const headerSearch = page.locator('.sp-header .sp-search input')
+  await page.locator('.workspace-search').click()
+  const headerSearch = page.getByRole('searchbox', { name: '搜索我的事项或服务', exact: true })
   await headerSearch.fill('请假')
-  await headerSearch.press('Enter')
-  await page.waitForURL((url) => url.pathname.endsWith('/service-hall') && url.searchParams.get('kw') === '请假', { timeout: 10000 }).catch(() => {})
+  await page.getByRole('dialog', { name: '查找我的服务' }).getByRole('button', { name: /请假与返校/ }).click()
+  const searchLanded = await page.waitForURL((url) => url.pathname.endsWith('/campus-service') && url.searchParams.get('tab') === 'leave', { timeout: 10000 }).then(() => true).catch(() => false)
   await waitStable(page)
-  const hallValue = await page.locator('.sp-page > .search input').inputValue().catch(() => '')
   report.functionalChecks.push({
-    name: '顶栏搜索将关键词带入办事大厅并立即筛选',
-    passed: hallValue === '请假',
-    actual: { url: page.url(), hallSearchValue: hallValue },
-    expected: { hallSearchValue: '请假' },
+    name: '顶栏搜索直达本人请假分类',
+    passed: searchLanded,
+    actual: { url: page.url() },
+    expected: { route: '/campus-service?tab=leave' },
     screenshot: await capture(page, outputDir, 'functional-header-search', false)
   })
 
@@ -242,12 +242,12 @@ async function inspectFunctionalFlows(page) {
 
   await page.goto(`${baseUrl}/internship`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const complianceLink = page.locator('.sp-context-link')
+  const complianceLink = page.getByRole('navigation', { name: '三级菜单', exact: true }).getByRole('button', { name: '上岗合规与安全教育', exact: true })
   const complianceFound = await complianceLink.count()
   if (complianceFound) await complianceLink.click()
   const toCompliance = await page.waitForURL((url) => url.pathname.endsWith('/internship/compliance'), { timeout: 8000 }).then(() => true).catch(() => false)
   if (toCompliance) {
-    const back = page.locator('.sp-context-link')
+    const back = page.getByRole('navigation', { name: '三级菜单', exact: true }).getByRole('button', { name: '实习工作台', exact: true })
     await back.click()
   }
   const backToInternship = await page.waitForURL((url) => url.pathname.endsWith('/internship'), { timeout: 8000 }).then(() => true).catch(() => false)
@@ -260,7 +260,7 @@ async function inspectFunctionalFlows(page) {
 
   await page.goto(`${baseUrl}/academic/grades`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  const academicHome = page.locator('.academic-context__item', { hasText: '教务总览' })
+  const academicHome = page.getByRole('navigation', { name: '二级菜单', exact: true }).getByRole('button', { name: '学业工作台', exact: true })
   const academicHomeFound = await academicHome.count()
   if (academicHomeFound) await academicHome.click()
   const backPassed = await page.waitForURL((url) => url.pathname.endsWith('/academic'), { timeout: 8000 }).then(() => true).catch(() => false)

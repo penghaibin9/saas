@@ -347,7 +347,7 @@ def _submission_dict(row, current_id: int | None = None) -> dict:
         "fileName": row.file_name or "补交材料",
         "sensitivityLevel": row.sensitivity_level or "SENSITIVE",
         "status": row.status,
-        "statusLabel": SUBMISSION_STATUS_LABELS.get(row.status, row.status),
+        "statusLabel": SUBMISSION_STATUS_LABELS.get(row.status, "状态待确认"),
         "submittedAt": _iso(row.submitted_at or row.created_at),
         "reviewedAt": _iso(row.reviewed_at),
         "reviewNote": row.review_note or "",
@@ -401,7 +401,7 @@ def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_
         "sensitivityLevel": row.sensitivity_level or "SENSITIVE",
         "materialScope": row.material_scope or "STUDENT_SELF",
         "status": row.status,
-        "statusLabel": MATERIAL_STATUS_LABELS.get(row.status, row.status),
+        "statusLabel": MATERIAL_STATUS_LABELS.get(row.status, "状态待确认"),
         "returnRound": int(row.return_round or 1),
         "dueAt": _iso(row.due_at),
         "overdue": overdue,
@@ -654,9 +654,10 @@ def _biz_subtitle_and_period(biz_type: str, record) -> tuple[str, str]:
         return str(getattr(record, "leave_type", "") or ""), period
     if biz_type == "AID":
         level = getattr(record, "final_level", None) or getattr(record, "apply_level", None)
-        return str(level or ""), ""
+        return {"GENERAL": "一般困难", "DIFFICULT": "困难", "SPECIAL": "特别困难"}.get(level, "等级待确认" if level else ""), ""
     if biz_type == "FUNDING":
-        return str(getattr(record, "project_type", "") or ""), ""
+        return {"SCHOLARSHIP": "奖学金", "GRANT": "助学金", "WORK_STUDY": "勤工助学", "LOAN": "助学贷款"}.get(
+            getattr(record, "project_type", ""), "资助项目"), ""
     if biz_type == "DISCIPLINE":
         return str(getattr(record, "doc_no", "") or ""), _year(getattr(record, "decide_date", None))
     if biz_type in {"CREDIT_APPEAL", "SECOND_CLASS_APPEAL"}:
@@ -780,7 +781,7 @@ def _requirement_business_filters(status: str | None, sensitivity_level: str | N
     return out
 
 
-def _requirement_page(db, user: dict, *, status, sensitivity_level, requirement_id, page, page_size):
+def _requirement_page(db, user: dict, *, status, sensitivity_level, requirement_id, page, page_size, biz_type=None, biz_id=None):
     """返回 (items, total, conds)。conds 交给概览聚合复用，保证两者口径一致。"""
     from app.models import StudentProfile, User
     from app.models.affairs_operations import AffairsMaterialRequirement
@@ -789,6 +790,10 @@ def _requirement_page(db, user: dict, *, status, sensitivity_level, requirement_
     if scope is None:
         return [], 0, None
     conds = [*scope, *_requirement_business_filters(status, sensitivity_level)]
+    if biz_type:
+        conds.append(AffairsMaterialRequirement.biz_type == _biz(biz_type))
+    if biz_id:
+        conds.append(AffairsMaterialRequirement.biz_id == int(biz_id))
     if requirement_id not in (None, ""):
         try:
             rid = int(requirement_id)
@@ -860,6 +865,8 @@ def list_teacher_requirements(
     status: str | None = None,
     sensitivity_level: str | None = None,
     requirement_id: int | None = None,
+    biz_type: str | None = None,
+    biz_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict], int]:
@@ -869,6 +876,7 @@ def list_teacher_requirements(
         items, total, _ = _requirement_page(
             db, user, status=status, sensitivity_level=sensitivity_level, requirement_id=requirement_id,
             page=page, page_size=page_size,
+            biz_type=biz_type, biz_id=biz_id,
         )
         return items, total
 
@@ -1362,6 +1370,8 @@ def material_overview(
     status: str | None = None,
     sensitivity_level: str | None = None,
     requirement_id: int | None = None,
+    biz_type: str | None = None,
+    biz_id: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict:
@@ -1370,6 +1380,7 @@ def material_overview(
     with session() as db:
         items, total, conds = _requirement_page(
             db, user, status=status, sensitivity_level=sensitivity_level, requirement_id=requirement_id,
+            biz_type=biz_type, biz_id=biz_id,
             page=page, page_size=page_size,
         )
         # 概览与列表共用同一份 conds：筛选后概览也必须是"筛选后的全量"，

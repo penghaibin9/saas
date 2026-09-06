@@ -123,7 +123,8 @@ export const NAV_PLAN = [
     mod('sa-workbench', '学工工作台', null, [
       I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
       /* 旧辅导员双首页已统一到 /workbench；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/workbench', 'workbench.home.view')
+      I('我的工作台', '/workbench', 'workbench.home.view'),
+      I('材料与档案', '/admin/student-affairs/material-operations', 'studentAffairs.dashboard.view', 'TASK_QUEUE')
     ]),
     // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
     // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。

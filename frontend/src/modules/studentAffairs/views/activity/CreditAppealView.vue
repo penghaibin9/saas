@@ -1,32 +1,13 @@
 <template>
   <AppPageShell
     title="第二课堂积分申诉"
-    subtitle="学生对二课学时缺记/记错提出申诉；通过会写入正式积分台账，必须核对主张类型、数值和理由。"
+    subtitle="待审申诉与积分入账"
     role-name="团委 / 学工处"
     data-scope-name="按数据范围（辅导员限本班）"
     watermark-purpose="第二课堂积分申诉"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载申诉..." @retry="load" @back="$router.push('/admin/student-affairs/activity')">
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">积分申诉复核</span>
-          <h3 class="sa-summary-strip__title">先核对申诉类型、主张数值和事实理由，再决定是否写入正式台账</h3>
-          <p class="sa-summary-strip__text">“缺记”补录缺失值，“记错”用于更正已有记录。待审核记录是本页首要处理事项。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
-        </div>
-      </div>
-
-      <div class="sa-workflow-strip" aria-label="积分申诉流程">
-        <div class="sa-workflow-step" data-step="1">核对学生、申诉类型和积分项目</div>
-        <div class="sa-workflow-step" data-step="2">核验主张数值与事实理由</div>
-        <div class="sa-workflow-step" data-step="3">通过后写入正式积分台账</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" /></div>
-      </div>
 
       <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="提交积分申诉">
         <p class="ca-form-hint">代录前请确认学生已有线下申请材料。主张数值和理由会直接进入后续复核依据。</p>
@@ -87,7 +68,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppConfirmDialog, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -109,7 +90,7 @@ export default {
   name: 'CreditAppealView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppConfirmDialog, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
     AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {

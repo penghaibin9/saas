@@ -5,14 +5,14 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "789b99a5b2b95a9503c2b5770549096a4d9ce6a8bab0051b78da1bd5b0db275a",
+  "digest": "36bb6fe11717e2d09c7698d911d92c0bf69fa4e3bb68e41938b16c41b5604953",
   "counts": {
-    "total": 572,
-    "production": 571,
-    "productionVisible": 502,
+    "total": 573,
+    "production": 572,
+    "productionVisible": 503,
     "hidden": 69,
     "planned": 1,
-    "school": 545,
+    "school": 546,
     "platform": 27
   },
   "surfaces": [
@@ -488,6 +488,27 @@
         "workbench.home.view"
       ],
       "entryType": "CONFIG_VIEW",
+      "status": "implemented",
+      "hidden": false,
+      "disabled": false,
+      "platformOnly": false
+    },
+    {
+      "groupKey": "student-affairs",
+      "groupLabel": "学工中心",
+      "moduleKey": "studentAffairs",
+      "workspaceKey": "sa-workbench",
+      "workspaceLabel": "学工工作台",
+      "surfaceKey": "sa-workbench-03",
+      "label": "材料与档案",
+      "path": "/admin/student-affairs/material-operations",
+      "permissionKey": "studentAffairs.dashboard.view",
+      "permissionAny": [],
+      "permissionAll": [],
+      "permissionCodes": [
+        "studentAffairs.dashboard.view"
+      ],
+      "entryType": "TASK_QUEUE",
       "status": "implemented",
       "hidden": false,
       "disabled": false,

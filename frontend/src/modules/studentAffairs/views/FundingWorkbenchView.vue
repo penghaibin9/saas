@@ -1,20 +1,12 @@
 <template>
   <ModulePageShell
-    title="奖助管理工作台"
-    subtitle="奖学金 / 助学金 · 资格硬校验 · 逐级评审 · 公示与发放"
+    class="funding-workbench"
+    title="申请评审"
+    subtitle="核对申请与材料，按当前受理节点完成评审。"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="奖助管理"
   >
-    <TaskContextBar
-      :role-name="roleName"
-      :scope-name="dataScopeName"
-      :pending="pendingCount"
-      :filter-summary="taskFilterSummary"
-      next-hint="选择待审申请，完成当前评审节点。"
-      :degraded="!!listError"
-      @clear-filter="clearTaskFilters"
-    />
     <p v-if="focusNotice" class="fd-focus-note">{{ focusNotice }}</p>
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
@@ -24,8 +16,8 @@
         <AppFundingBatchPicker v-model="batchId" :options="batchSelectOptions" :query="{ projectId }" placeholder="（选择批次）" :disabled="!projectId" @change="onBatchChange" />
       </label>
       <div class="fd-ctxtools">
-        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="goProjects">项目设置</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="goBatches">批次设置</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :disabled="!batchId || !projectId" @click="goPublicity">公示待办</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.create')" code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
@@ -37,7 +29,7 @@
       <button type="button" class="fd-chip" @click="clearStudentFilter">清除筛选</button>
     </div>
 
-    <div class="fd-toolbar">
+    <div v-if="batchId" class="fd-toolbar">
       <div class="fd-filters">
         <button
           v-for="f in statusFilters"
@@ -50,25 +42,27 @@
       </div>
     </div>
 
-    <div class="fd-workspace">
+    <div class="fd-workspace" :class="{ 'is-single': !batchId || !filteredList.length }">
       <div class="fd-list">
         <LoadingState v-if="loading" text="正在加载资助申请…" />
         <ErrorState v-else-if="listError" :description="listError" @retry="loadApplications" />
-        <EmptyState v-else-if="!batchId" title="请先选择项目与批次" description="从上方选择，或点「建项目」「建批次」" />
-        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="该批次暂无申请" description="可点「受理申请」，或调整筛选" />
+        <EmptyState v-else-if="!batchId" class="fd-empty-state" title="暂无可办理批次" description="请先创建或选择项目与批次" />
+        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" class="fd-empty-state" title="该批次暂无申请" description="可点「受理申请」，或调整筛选" />
         <ul v-else class="fd-queue">
-          <li
-            v-for="it in filteredList"
-            :key="it.applicationId"
+          <li v-for="it in filteredList" :key="it.applicationId">
+            <button type="button"
             class="fd-qitem"
             :class="{ 'is-active': selected && selected.applicationId === it.applicationId }"
+            :aria-pressed="!!selected && selected.applicationId === it.applicationId"
             @click="select(it)"
           >
             <div class="fd-qitem__top">
               <span class="fd-qitem__name">{{ it.realName || ('学生#' + it.studentId) }}</span>
               <StatusTag :type="statusType(it.status)" :label="it.statusLabel" dot />
             </div>
-            <div class="fd-qitem__meta">{{ projectTypeLabel(it.projectType) }} · 金额：{{ amountText(it.amount) }}</div>
+            <div class="fd-qitem__meta">{{ it.studentNo || '学号未记录' }} · {{ projectTypeLabel(it.projectType) }}</div>
+            <div class="fd-qitem__amount">{{ amountText(it.amount) }}</div>
+            </button>
           </li>
         </ul>
         <AppPagination
@@ -80,8 +74,8 @@
         />
       </div>
 
-      <div class="fd-detail">
-        <EmptyState v-if="!selected" title="请从左侧选择一条申请" description="查看详情、评审、公示确认" />
+      <div v-if="batchId && filteredList.length" class="fd-detail">
+        <EmptyState v-if="!selected" title="请选择一条申请" />
         <template v-else>
           <div class="fd-dhead">
             <div>
@@ -102,6 +96,7 @@
             <p>{{ selected.statement || '—' }}</p>
           </div>
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
+          <FundingEvidence :application-id="String(selected.applicationId)" />
 
           <div v-if="detailActions.length" class="fd-actions">
             <AppPermissionButton :allowed="canBtn(a.code)"
@@ -114,7 +109,7 @@
               @click="onAction(a.key)"
             >{{ a.label }}</AppPermissionButton>
           </div>
-          <p v-else class="fd-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
+          <p v-else class="fd-terminal">{{ FUND_NODES.includes(selected.status) ? '当前申请由对应节点受理人处理，你可以查看申请与材料。' : `当前为${selected.statusLabel || '已处理'}，请按最新办理结果查看。` }}</p>
         </template>
       </div>
     </div>
@@ -132,47 +127,6 @@
       :submitting="acting"
       @confirm="onDialogConfirm"
     />
-
-    <!-- 建项目 -->
-    <AppDrawer v-model:visible="projectModal.visible" title="新建资助项目" mode="modal" size="medium">
-      <div class="sa-form">
-        <AppFormItem label="项目类型" required>
-          <AppSelect v-model="projectModal.projectType" :options="projectTypeOptions" />
-        </AppFormItem>
-        <AppFormItem label="项目名称" required>
-          <AppTextInput v-model="projectModal.projectName" placeholder="如：国家励志奖学金 / 国家助学金" />
-        </AppFormItem>
-        <div class="fd-grid2">
-          <AppFormItem label="金额（元）"><AppNumberInput v-model="projectModal.amount" :min="0" /></AppFormItem>
-          <AppFormItem label="名额"><AppNumberInput v-model="projectModal.quota" :min="0" /></AppFormItem>
-        </div>
-        <p class="fd-modal__hint">助学金申请将硬校验困难库在库；奖学金将硬校验学籍/处分/成绩。</p>
-        <AppInlineAlert v-if="projectModal.error" type="danger" :description="projectModal.error" />
-      </div>
-      <template #footer>
-        <button type="button" class="fd-btn" @click="projectModal.visible = false">取消</button>
-        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitProject">创建</button>
-      </template>
-    </AppDrawer>
-
-    <!-- 建批次 -->
-    <AppDrawer v-model:visible="batchModal.visible" title="新建资助批次" mode="modal" size="medium">
-      <div class="sa-form">
-        <AppFormItem label="学年" required>
-          <AppTextInput v-model="batchModal.schoolYear" placeholder="如：2025-2026" />
-        </AppFormItem>
-        <div class="fd-grid2">
-          <AppFormItem label="公示天数"><AppNumberInput v-model="batchModal.publicityDays" :min="1" :max="30" placeholder="1-30 天，默认 5" /></AppFormItem>
-          <AppFormItem label="名额"><AppNumberInput v-model="batchModal.quota" :min="0" /></AppFormItem>
-        </div>
-        <label class="fd-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
-        <AppInlineAlert v-if="batchModal.error" type="danger" :description="batchModal.error" />
-      </div>
-      <template #footer>
-        <button type="button" class="fd-btn" @click="batchModal.visible = false">取消</button>
-        <button type="button" class="fd-btn fd-btn--primary" :disabled="acting" @click="submitBatch">保存</button>
-      </template>
-    </AppDrawer>
 
     <!-- 受理申请 -->
     <AppDrawer v-model:visible="applyModal.visible" title="受理资助申请" mode="modal" size="medium">
@@ -211,9 +165,9 @@
  * 助学金硬校验困难库在库，奖学金硬校验学籍/处分/成绩；不满足受理即被 409 拦截并透出原因。金额按角色脱敏。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
+import FundingEvidence from './funding/FundingEvidence.vue'
 import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, AppStatusTag,
-        AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea } from '@/components/common'
+        AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextarea } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -232,11 +186,12 @@ const BATCH_STATUS = { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已截止' }
 
 export default {
   name: 'FundingWorkbenchView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog, AppDrawer, AppFormItem,
-               AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextInput, AppTextarea },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, FundingEvidence, AppConfirmDialog, AppDrawer, AppFormItem,
+               AppInlineAlert, AppNumberInput, AppPagination, AppPermissionButton, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppFundingProjectPicker, AppFundingBatchPicker, AppTextarea },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      FUND_NODES,
       projects: [], batches: [], projectId: '', batchId: '',
       loading: false, listError: '', list: [], statusCounts: null, selected: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
@@ -245,8 +200,6 @@ export default {
       routeIntentConsumed: false, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
-      projectModal: { visible: false, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' },
-      batchModal: { visible: false, schoolYear: '', publicityDays: 5, quota: null, publish: true, error: '' },
       applyModal: { visible: false, studentId: '', applySource: 'SELF', amount: null, statement: '', error: '', preflight: null, preflightLoading: false }
     }
   },
@@ -272,9 +225,6 @@ export default {
     },
     batchSelectOptions() {
       return this.filteredBatches.map((b) => ({ label: `${b.schoolYear} · ${this.batchStatusLabel(b.status)}`, value: b.batchId }))
-    },
-    projectTypeOptions() {
-      return [{ label: '奖学金', value: 'SCHOLARSHIP' }, { label: '助学金', value: 'GRANT' }]
     },
     applySourceOptions() {
       return [{ label: '自主申请', value: 'SELF' }, { label: '推荐', value: 'RECOMMEND' }]
@@ -358,7 +308,7 @@ export default {
           { key: 'approve', label: '审批通过', tone: 'primary', code: 'studentAffairs.funding.approve' },
           { key: 'return', label: '退回', tone: 'default', code: 'studentAffairs.funding.approve' },
           { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.funding.approve' }
-        ]
+        ].filter(action => (this.selected.allowedActions || []).includes(action.key.toUpperCase()))
       }
       if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.funding.publicity.manage' }]
       return []
@@ -470,12 +420,20 @@ export default {
       return parts.join(' · ')
     },
     async loadProjects() {
-      const res = await studentAffairsApi.getFundingProjects({ page: 1, pageSize: 100 })
-      if (res.code !== 0 || !res.data) {
-        this.listError = res.message || '项目加载失败'
-        return
-      }
-      this.projects = res.data.items || []
+      const all = []
+      let page = 1
+      let total = 0
+      do {
+        const res = await studentAffairsApi.getFundingProjects({ page, pageSize: 200 })
+        if (res.code !== 0 || !res.data) {
+          this.listError = res.message || '项目加载失败'
+          return
+        }
+        all.push(...(res.data.items || []))
+        total = Number(res.data.total || all.length)
+        page++
+      } while (all.length < total && page <= 100)
+      this.projects = all
       await this.loadBatches()
       if (this.batchId) {
         const batch = this.batches.find((item) => String(item.batchId) === String(this.batchId))
@@ -501,8 +459,21 @@ export default {
       }
     },
     async loadBatches() {
-      const res = await studentAffairsApi.getFundingBatches({ page: 1, pageSize: 100 })
-      if (res.code === 0 && res.data) { this.batches = res.data.items || []; this.consumeRouteIntent() }
+      const all = []
+      let page = 1
+      let total = 0
+      do {
+        const res = await studentAffairsApi.getFundingBatches({ page, pageSize: 200 })
+        if (res.code !== 0 || !res.data) {
+          this.listError = res.message || '批次加载失败'
+          return
+        }
+        all.push(...(res.data.items || []))
+        total = Number(res.data.total || all.length)
+        page++
+      } while (all.length < total && page <= 100)
+      this.batches = all
+      this.consumeRouteIntent()
     },
     autoPickBatch() {
       const bs = this.filteredBatches
@@ -545,6 +516,11 @@ export default {
         if (this.selected) {
           const hit = this.list.find((x) => x.applicationId === this.selected.applicationId)
           if (hit) this.selected = { ...this.selected, ...hit }
+          else this.selected = null
+        }
+        if (!this.selected && this.list.length) {
+          this.selected = this.list[0]
+          await this.reloadDetail()
         }
       } else {
         this.listError = res.message || '申请加载失败'
@@ -588,35 +564,14 @@ export default {
       const ok = await this.runAction(call, { approve: '已审批通过', return: '已退回', reject: '已驳回', publicityConfirm: '已获资助' }[a])
       if (ok) this.dialog.visible = false
     },
-    openProject() {
-      this.projectModal = { visible: true, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' }
+    goProjects() {
+      this.$router.push('/admin/student-affairs/funding/projects')
     },
-    async submitProject() {
-      const m = this.projectModal
-      const projectName = (m.projectName || '').trim()
-      if (!projectName) { m.error = '请填写项目名称'; return }
-      const res = await studentAffairsApi.createFundingProject({ projectName, projectType: m.projectType, amount: m.amount || null, quota: m.quota || null })
-      if (res.code === 0) {
-        toast.success('项目已创建')
-        this.projectModal.visible = false
-        await this.loadProjects()
-        if (res.data && res.data.projectId) { this.projectId = res.data.projectId; this.onProjectChange() }
-      } else { m.error = res.message || '创建失败' }
-    },
-    openBatch() {
-      this.batchModal = { visible: true, schoolYear: '', publicityDays: 5, quota: null, publish: true, error: '' }
-    },
-    async submitBatch() {
-      const m = this.batchModal
-      const schoolYear = (m.schoolYear || '').trim()
-      if (!schoolYear) { m.error = '请填写学年'; return }
-      const res = await studentAffairsApi.createFundingBatch({ projectId: String(this.projectId), schoolYear, publicityDays: Number(m.publicityDays) || 5, quota: m.quota || null, publish: !!m.publish })
-      if (res.code === 0) {
-        toast.success('批次已保存')
-        this.batchModal.visible = false
-        await this.loadBatches()
-        if (res.data && res.data.batchId) { this.batchId = res.data.batchId; this.loadApplications() }
-      } else { m.error = res.message || '保存失败' }
+    goBatches() {
+      this.$router.push({
+        path: '/admin/student-affairs/funding/batches',
+        query: this.projectId ? { projectId: this.projectId } : {}
+      })
     },
     openApply() {
       const sid = this.studentFilter?.studentId
@@ -714,6 +669,7 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
+.fd-ctxsel > span { white-space: nowrap; flex-shrink: 0; }
 .fd-ctxtools {
   display: flex;
   gap: var(--space-2);
@@ -790,8 +746,8 @@ export default {
 }
 .fd-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
-  gap: var(--space-4);
+  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 .fd-list {
@@ -810,14 +766,26 @@ export default {
   gap: var(--space-2);
 }
 .fd-qitem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: var(--surface);
+  color: var(--t1);
   padding: var(--space-3);
   border: 1px solid var(--border-base);
   border-radius: var(--radius-base);
   cursor: pointer;
 }
 .fd-qitem:hover {
-  border-color: var(--primary-300);
+  border-color: var(--pri);
 }
+.fd-workspace.is-single { grid-template-columns: minmax(0, 1fr); }
+.fd-workspace.is-single .fd-list { min-height: 0; }
+.fd-empty-state :deep(.ags-panel) { padding: 28px 24px; }
+.fd-empty-state :deep(.ags-actions) { display: none; }
+.fd-qitem:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; }
+.fd-qitem__amount { margin-top: 10px; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--t1); }
 .fd-qitem.is-active {
   border-color: var(--primary-500);
   background: var(--primary-50);
@@ -907,9 +875,9 @@ export default {
 }
 .fd-snap {
   font-size: var(--font-size-xs);
-  color: var(--success-700, #15803d);
-  background: var(--success-50, #f0fdf4);
-  border: 1px solid var(--success-100, #dcfce7);
+  color: var(--t2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   border-radius: var(--radius-base);
   padding: var(--space-2);
   margin: 0 0 var(--space-3);
@@ -959,4 +927,9 @@ export default {
 .fd-preflight strong,.fd-preflight p,.fd-preflight small { display: block; }
 .fd-preflight p { margin: 3px 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
 .fd-preflight small { color: var(--text-tertiary); }
+.funding-workbench { gap: 12px; }
+.funding-workbench .fd-ctxbar { margin: 0; padding: 12px; border-color: var(--line); background: var(--surface); box-shadow: none; }
+.funding-workbench .fd-toolbar { margin: 0; }
+.funding-workbench .fd-detail { min-width: 0; padding: 18px; border-color: var(--line); }
+@media (max-width: 1000px) { .fd-workspace { grid-template-columns: 1fr; } .fd-list { min-height: 0; } }
 </style>

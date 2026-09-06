@@ -1,0 +1,103 @@
+<template>
+  <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen }" :style="tokens">
+    <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="navigate(center.path)">{{ center.label }}</button></nav><button class="tw-appearance" aria-label="外观设置" @click="appearance.showModal()"><AppIcon name="settings" />外观</button></div>
+    <div class="tw-body">
+      <div class="tw-rails">
+        <aside v-for="level in levels" :key="level.key" class="tw-rail" :class="[prefs[level.key], { tertiary: level.key === 'third' }]" :aria-label="level.title">
+          <div class="tw-rail-body">
+            <button class="tw-expand" :aria-label="`${prefs[level.key] === 'full' ? '收窄' : '展开'}${level.title}`" @click="prefs[level.key] = prefs[level.key] === 'full' ? 'compact' : 'full'"><span aria-hidden="true">{{ prefs[level.key] === 'full' ? '«' : '»' }}</span><strong class="full-label">{{ level.heading }}</strong></button>
+            <nav :aria-label="level.title"><button v-for="item in level.items" :key="item.id || item.key" :title="item.label" :aria-label="item.label" :class="{ selected: level.active === (item.id || item.key) }" :aria-current="level.active === (item.id || item.key) ? 'page' : undefined" @click="selectItem(level.key, item)"><AppIcon v-if="level.key === 'second'" name="records" :size="17" /><span class="short-label">{{ workspaceShort(item) }}</span><span class="full-label">{{ item.label }}</span></button></nav>
+          </div>
+          <button class="tw-pin" :aria-label="`${prefs[level.key] === 'auto' ? '固定' : '取消固定'}${level.title}`" :aria-pressed="prefs[level.key] !== 'auto'" @click="prefs[level.key] = prefs[level.key] === 'auto' ? 'compact' : 'auto'">{{ prefs[level.key] === 'auto' ? '固定' : '已固定' }}</button>
+        </aside>
+      </div>
+      <div class="tw-working">
+        <div class="tw-tabbar"><button class="tw-menu-toggle" @click="mobileOpen = !mobileOpen">目录</button><div class="tw-tabs" role="tablist" aria-label="已打开页面" @keydown="tabKeydown"><div v-for="item in openPages" :key="item.id" class="tw-tab" :class="{ selected: item.id === currentPage?.id }"><button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.path)">{{ item.title }}</button><button :aria-label="`关闭${item.title}`" @click="closePage(item)">×</button></div></div><div class="tw-tab-actions"><button :disabled="!closedId" title="恢复最近关闭的页签" @click="reopen">恢复</button><button :disabled="!currentPage" :aria-pressed="prefs.shortcuts.includes(currentPage?.id)" @click="toggleShortcut">{{ prefs.shortcuts.includes(currentPage?.id) ? '已收藏' : '收藏' }}</button><button :aria-pressed="focused" @click="focused = !focused">{{ focused ? '退出专注' : '专注' }}</button></div></div>
+        <main ref="mainElement" class="tw-main" tabindex="-1" @scroll="rememberScroll"><slot /></main>
+        <div class="tw-dock-wrap"><button v-if="prefs.collapsed" class="tw-pill" @click="prefs.collapsed = false">我的常用<span aria-hidden="true">⌃</span></button><nav v-else class="tw-dock" aria-label="快捷操作"><span class="tw-dock-title">我的<br />常用</span><button v-for="item in shortcuts" :key="item.id" :title="`${item.trail} / ${item.title}`" @click="navigate(item.path)"><AppIcon name="records" :size="22" :style="{ color: WORKSPACE_TONES[prefs.appearance[item.id]?.color || 'blue'].value }" /><span>{{ prefs.appearance[item.id]?.label || item.title }}</span></button><div class="tw-dock-tools"><button aria-label="编辑快捷栏" @click="shortcutsDialog.showModal()">编辑</button><button aria-label="收起快捷栏" @click="prefs.collapsed = true">收起</button></div></nav></div>
+      </div>
+    </div>
+    <dialog ref="appearance" class="tw-dialog"><form method="dialog" class="tw-dialog-head"><h2>外观设置</h2><button aria-label="关闭外观设置">×</button></form><div class="tw-themes"><button v-for="theme in WORKSPACE_THEMES" :key="theme.key" :aria-pressed="prefs.theme === theme.key" @click="prefs.theme = theme.key"><span><i v-for="color in [theme.bg, theme.surface, theme.soft, theme.accent]" :key="color" :style="{ background: color }" /></span><strong>{{ theme.label }}</strong></button></div><p>菜单宽度、配色与常用入口保存在当前浏览器。</p><button class="tw-text-button" @click="reset">恢复默认设置</button></dialog>
+    <dialog ref="shortcutsDialog" class="tw-dialog"><form method="dialog" class="tw-dialog-head"><h2>编辑我的常用</h2><button aria-label="关闭快捷栏编辑">×</button></form><p>最多 8 个入口。取消勾选即可移除。</p><div class="tw-shortcut-options"><label v-for="item in pages" :key="item.id"><input v-model="prefs.shortcuts" type="checkbox" :value="item.id" :disabled="prefs.shortcuts.length >= 8 && !prefs.shortcuts.includes(item.id)" />{{ item.trail }} · {{ item.title }}</label></div><ol class="tw-sort"><li v-for="(item, index) in shortcuts" :key="item.id"><input :value="prefs.appearance[item.id]?.label || ''" :placeholder="item.title" :aria-label="`${item.title}的快捷名称`" maxlength="12" @input="setAppearance(item.id, 'label', $event.target.value)" /><select :value="prefs.appearance[item.id]?.color || 'blue'" :aria-label="`${item.title}的快捷颜色`" @change="setAppearance(item.id, 'color', $event.target.value)"><option v-for="(tone, key) in WORKSPACE_TONES" :key="key" :value="key">{{ tone.label }}</option></select><button :disabled="index === 0" :aria-label="`上移${item.title}`" @click="moveShortcut(index, -1)">上移</button><button :disabled="index === shortcuts.length - 1" :aria-label="`下移${item.title}`" @click="moveShortcut(index, 1)">下移</button></li></ol></dialog>
+  </div>
+</template>
+<script setup>
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
+import { AppIcon } from '@/components/ui'
+import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, workspacePages, workspaceShort, workspaceTokens } from './teacherWorkspace'
+const props = defineProps({ modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true } })
+const emit = defineEmits(['tokens'])
+const route = useRoute(), router = useRouter()
+const pages = computed(() => workspacePages(props.modules))
+const storageKey = computed(() => `teacher-workspace-v1:${props.identityKey}`)
+const prefs = ref(restoreWorkspace({}, []))
+const focused = ref(false), mobileOpen = ref(false), closedId = ref(''), selectedModule = ref('')
+const appearance = ref(null), shortcutsDialog = ref(null), mainElement = ref(null)
+const destinations = new Map(), scrollPositions = new Map()
+const tokens = computed(() => workspaceTokens(prefs.value.theme))
+const currentPage = computed(() => pages.value.find(item => item.path === route.fullPath.split('#')[0]) || pages.value.find(item => item.path === route.path))
+const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || props.activeModule)) || props.modules[0])
+const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: '学工中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: pages.value.filter(item => item.moduleKey === selected.value?.key), active: currentPage.value?.id }])
+const openPages = computed(() => prefs.value.tabs.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
+const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
+function confirmUnsubmitted(to, from) {
+  if (to.path === from.path) return true
+  const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
+  return !editing || window.confirm('当前表单还有填写内容，请确认已经提交。继续离开会丢失未提交的内容。')
+}
+onBeforeRouteLeave(confirmUnsubmitted)
+onBeforeRouteUpdate(confirmUnsubmitted)
+watch([storageKey, pages], () => {
+  let saved = null
+  try { saved = JSON.parse(localStorage.getItem(storageKey.value) || 'null') } catch { /* Invalid preferences reset safely. */ }
+  prefs.value = restoreWorkspace(saved, pages.value)
+  closedId.value = ''; selectedModule.value = ''
+  rememberCurrent()
+}, { immediate: true })
+watch(prefs, value => { try { localStorage.setItem(storageKey.value, JSON.stringify(value)) } catch { /* Browsing works without storage. */ } }, { deep: true })
+const originalBodyTokens = new Map()
+let mounted = false
+function applyBodyTokens(value) {
+  for (const [name, color] of Object.entries(value)) {
+    if (!originalBodyTokens.has(name)) originalBodyTokens.set(name, document.body.style.getPropertyValue(name))
+    document.body.style.setProperty(name, color)
+  }
+}
+watch(tokens, value => { emit('tokens', value); if (mounted) applyBodyTokens(value) }, { immediate: true })
+onMounted(() => { mounted = true; applyBodyTokens(tokens.value) })
+onBeforeUnmount(() => { mounted = false; for (const [name, value] of originalBodyTokens) { if (value) document.body.style.setProperty(name, value); else document.body.style.removeProperty(name) } })
+watch(() => route.fullPath, async path => { selectedModule.value = ''; mobileOpen.value = false; rememberCurrent(); await nextTick(); if (path === route.fullPath && mainElement.value) mainElement.value.scrollTop = scrollPositions.get(currentPage.value?.id) || 0 })
+function rememberScroll() { if (currentPage.value) scrollPositions.set(currentPage.value.id, mainElement.value?.scrollTop || 0) }
+function rememberCurrent() { const id = currentPage.value?.id; if (id) destinations.set(id, route.fullPath); if (id && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
+async function navigate(path) { const destination = destinations.get(path) || path; if (destination && destination !== route.fullPath) await router.push(destination); mobileOpen.value = false }
+function selectItem(level, item) { if (level === 'second') selectedModule.value = item.key; else navigate(item.path) }
+async function closePage(item) {
+  const remaining = prefs.value.tabs.filter(id => id !== item.id)
+  if (item.id === currentPage.value?.id) {
+    const next = remaining.at(-1) || pages.value.find(page => page.id !== item.id)?.id
+    if (!next) return
+    await navigate(next)
+    if (currentPage.value?.id === item.id) return
+  }
+  const active = currentPage.value?.id
+  prefs.value.tabs = active && !remaining.includes(active) ? [...remaining, active] : remaining
+  closedId.value = item.id
+}
+function reopen() { const id = closedId.value; closedId.value = ''; if (pages.value.some(item => item.id === id)) { prefs.value.tabs = [...new Set([...prefs.value.tabs, id])].slice(-20); navigate(id) } }
+function toggleShortcut() { const id = currentPage.value?.id; if (!id) return; if (prefs.value.shortcuts.includes(id)) prefs.value.shortcuts = prefs.value.shortcuts.filter(key => key !== id); else if (prefs.value.shortcuts.length < 8) prefs.value.shortcuts.push(id); else shortcutsDialog.value.showModal() }
+function setAppearance(id, key, value) { prefs.value.appearance[id] = { ...prefs.value.appearance[id], [key]: value } }
+function moveShortcut(index, delta) { const ids = [...prefs.value.shortcuts]; [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]]; prefs.value.shortcuts = ids }
+function reset() { prefs.value = restoreWorkspace({}, pages.value); rememberCurrent() }
+function tabKeydown(event) { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.target.getAttribute('role') !== 'tab') return; event.preventDefault(); const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')]; const index = tabs.indexOf(event.target); const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length; tabs[next]?.focus(); tabs[next]?.click() }
+</script>
+<style scoped>
+.tw-frame{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--bg);color:var(--t1);font-size:13px}.tw-frame button{font:inherit;cursor:pointer;color:inherit}.tw-frame button:disabled{opacity:.45;cursor:default}.tw-frame button:focus-visible,.tw-frame input:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.tw-centers{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--line);background:var(--surface-2)}.tw-centers nav{display:flex;gap:8px;overflow:auto}.tw-centers button{background:transparent;border:0;border-radius:6px;padding:9px 16px;white-space:nowrap}.tw-centers .selected{background:var(--pri-50);color:var(--pri);font-weight:650}.tw-appearance{display:flex;gap:6px;align-items:center}
+.tw-body{display:flex;min-height:0;flex:1}.tw-rails{display:flex;min-height:0;flex:none}.tw-rail{width:88px;flex:none;position:relative;z-index:12;border-right:1px solid var(--line);background:var(--surface-2);display:flex;flex-direction:column}.tw-rail.tertiary{width:68px;z-index:11}.tw-rail.full{width:204px}.tw-rail-body{display:flex;flex-direction:column;min-height:0;flex:1;background:var(--surface-2)}.tw-expand{display:flex;align-items:center;gap:12px;height:40px;flex:none;border:0;background:transparent;padding:0 21px;color:var(--t3)}.tw-expand>span{font-size:23px}.tw-expand strong{font-size:13px;white-space:nowrap}.tw-rail nav{min-height:0;flex:1;overflow:auto;overflow-x:hidden;padding:4px 6px;scrollbar-width:thin;scrollbar-color:var(--line) transparent}.tw-rail nav button{width:100%;min-height:42px;display:flex;align-items:center;gap:7px;margin:2px 0;padding:0 9px;white-space:nowrap;background:transparent;border:0;border-radius:6px;text-align:left;color:var(--t3)}.tw-rail nav button.selected{background:var(--pri-50);color:var(--pri);box-shadow:inset 2px 0 var(--pri);font-weight:650}.tw-rail nav button:hover{background:var(--pri-50)}.full-label{display:none}.full .full-label{display:inline}.full .short-label{display:none}.tw-rail.tertiary nav button{justify-content:center}.tw-rail.tertiary.full nav button{justify-content:flex-start}.tw-pin{height:44px;flex:none;position:relative;z-index:1;border:0;border-top:1px solid var(--line);background:var(--surface-2);font-size:11px!important;color:var(--pri)!important}
+.tw-working{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}.tw-tabbar{height:40px;flex:none;display:flex;align-items:stretch;padding:0 10px;background:var(--surface-2);border-bottom:1px solid var(--line);gap:10px}.tw-tabs{display:flex;overflow:auto;flex:1;scrollbar-width:thin;align-items:stretch;gap:3px}.tw-tab{display:flex;white-space:nowrap;border-bottom:2px solid transparent}.tw-tab.selected{background:var(--pri-50);border-color:var(--pri);border-radius:5px 5px 0 0}.tw-tab button,.tw-tab-actions button,.tw-menu-toggle{border:0;background:transparent;padding:6px 9px;color:var(--t3)}.tw-tab-actions{display:flex;flex:none}.tw-tab-actions button{font-size:12px}.tw-main{overflow:auto;min-height:0;flex:1;padding:14px 18px 78px;scrollbar-width:thin}.tw-menu-toggle{display:none}.tw-frame.focused .tw-rails,.tw-frame.focused .tw-centers{display:none}
+.tw-dock-wrap{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:9}.tw-pill,.tw-dock{pointer-events:auto;background:var(--surface);border:1px solid var(--line);box-shadow:0 5px 20px #172b4612;border-radius:18px}.tw-pill{padding:8px 16px;display:flex;gap:14px;color:var(--t3)}.tw-dock{display:flex;gap:8px;padding:10px 14px;max-width:calc(100% - 28px);overflow:auto}.tw-dock>button{border:0;background:transparent;min-width:78px;display:flex;flex-direction:column;align-items:center;gap:7px;padding:5px 8px;color:var(--pri)}.tw-dock>button .app-icon{box-sizing:content-box;background:var(--pri-50);padding:8px;border-radius:11px}.tw-dock>button span{font-size:12px}.tw-dock-title{font-size:12px;line-height:22px;align-self:center;padding:0 8px;color:var(--t3);white-space:nowrap}.tw-dock-tools{border-left:1px solid var(--line);padding-left:8px;display:flex;flex-direction:column;justify-content:space-evenly}.tw-dock-tools button{border:0;background:transparent;font-size:12px;color:var(--t3)}
+.tw-dialog{width:min(590px,calc(100vw - 40px));max-height:80vh;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--t1);box-shadow:0 25px 80px #10182730}.tw-dialog::backdrop{background:#1a273d55;backdrop-filter:blur(3px)}.tw-dialog-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.tw-dialog h2{margin:0;font-size:20px}.tw-dialog-head button{border:0;background:transparent;font-size:24px}.tw-dialog p{font-size:13px;color:var(--t3);line-height:1.6}.tw-themes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tw-themes button{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:15px;text-align:left}.tw-themes button[aria-pressed=true]{outline:2px solid var(--pri);background:var(--pri-50)}.tw-themes button>span{display:flex;height:40px;margin-bottom:12px;border-radius:5px;overflow:hidden}.tw-themes i{flex:1}.tw-text-button{border:0;background:transparent;color:var(--pri)!important;padding:8px 0}.tw-shortcut-options{display:flex;flex-direction:column;gap:12px;max-height:34vh;overflow:auto}.tw-shortcut-options label{display:flex;align-items:center;gap:9px}.tw-shortcut-options input{accent-color:var(--pri)}.tw-sort{padding:10px 0 0;list-style:none}.tw-sort li{display:flex;gap:8px;align-items:center;padding:6px 0}.tw-sort input{flex:1;min-width:0;padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:var(--t1)}.tw-sort select{padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:var(--t1)}.tw-sort button{border:1px solid var(--line);border-radius:5px;background:var(--surface-2);font-size:12px}
+@media(hover:hover){.tw-rail.auto .tw-rail-body:hover,.tw-rail.auto .tw-rail-body:focus-within{position:absolute;inset:0 auto 44px 0;width:204px;border-right:1px solid var(--line);box-shadow:12px 0 24px #172b4614}.tw-rail.auto .tw-rail-body:hover .full-label,.tw-rail.auto .tw-rail-body:focus-within .full-label{display:inline}.tw-rail.auto .tw-rail-body:hover .short-label,.tw-rail.auto .tw-rail-body:focus-within .short-label{display:none}.tw-rail.auto.tertiary .tw-rail-body:hover button{justify-content:flex-start}}
+@media(max-width:900px){.tw-centers{padding:0 10px}.tw-centers button{padding:9px}.tw-rails{display:none}.tw-menu-toggle{display:block}.mobile-open .tw-rails{display:flex;position:absolute;inset:100px auto 0 0;z-index:25}.tw-tab-actions button{padding:5px}.tw-main{padding:12px 10px 78px}}
+</style>

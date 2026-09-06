@@ -1,11 +1,11 @@
 <template>
-  <ModulePageShell title="请假统计" subtitle="请假人数 / 天数 / 逾期未销口径 · 按班级/类型/状态下钻 · 数据范围裁剪"
+  <ModulePageShell title="请假统计" subtitle="掌握请假与返校情况，点击分组查看对应记录。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <div class="mp-stack">
       <div class="flt">
         <AppQuickFilterChips v-model="groupBy" :options="groupOptions" @change="load" />
         <AppDateRangePicker v-model="range" @change="load" />
-        <span class="mp-note">日期默认不限；口径：请假人数=范围内去重学生，逾期未销=当前 OVERDUE。</span>
+        <span class="mp-note">按申请开始日期统计；人数按学生去重，逾期为当前逾期未销假记录。</span>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -19,7 +19,7 @@
         <div class="sec-t">{{ groupLabel }}分布</div>
         <EmptyState v-if="!breakdown.length" title="暂无分布数据" description="当前范围内没有请假记录" />
         <DataTable v-else :columns="columns" :rows="breakdown" row-key="key">
-          <template #cell-count="{ row }"><b>{{ row.count }}</b> 件</template>
+          <template #cell-count="{ row }"><button v-if="row.key" type="button" class="mp-link" @click="drillDown(row)">{{ row.count }} 件 · 查看</button><span v-else>{{ row.count }} 件</span></template>
           <template #cell-days="{ row }">{{ row.days }} 天</template>
           <template #cell-studentCount="{ row }">{{ row.studentCount }} 人</template>
         </DataTable>
@@ -51,6 +51,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      hasActivated: false,
       loading: true, error: '', groupBy: 'CLASS', groupOptions: GROUP_OPTIONS,
       range: { start: '', end: '' }, metrics: [], breakdown: [], columns: COLUMNS
     }
@@ -61,7 +62,18 @@ export default {
     groupLabel() { return (GROUP_OPTIONS.find((o) => o.value === this.groupBy) || {}).label || '' }
   },
   created() { this.load() },
+  activated() { if (this.hasActivated) this.load(); this.hasActivated = true },
   methods: {
+    drillDown(row) {
+      if (!row.key) return
+      const query = {}
+      if (this.groupBy === 'CLASS') query.classId = String(row.key)
+      else if (this.groupBy === 'TYPE') query.leaveType = row.key
+      else query.status = row.key
+      if (this.range.start) query.dateStart = this.range.start
+      if (this.range.end) query.dateEnd = this.range.end
+      this.$router.push({ path: '/admin/student-affairs/leave/ledger', query })
+    },
     async load() {
       this.loading = true; this.error = ''
       const params = { groupBy: this.groupBy || 'CLASS' }

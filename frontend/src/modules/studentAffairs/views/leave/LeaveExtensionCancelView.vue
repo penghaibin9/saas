@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="延期销假" subtitle="请假通过后的后续处理 · 续假审批 · 销假确认 · 逾期处置（连续处理双栏）"
+  <ModulePageShell title="续假与返校" subtitle="核对续假与返校事实，及时跟进逾期学生。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <template #actions>
       <AppButton variant="ghost" size="sm" :loading="scanning" @click="onScan">扫描逾期未销</AppButton>
@@ -22,7 +22,7 @@
                   <span class="lv-item__index">{{ itemIndex(r.id) }}</span>
                   <div class="lv-item__row">
                     <span class="lv-item__name">{{ r.studentName }}</span>
-                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
+                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" :type="r.tone" />
                   </div>
                   <div class="lv-item__sub">{{ r.studentNo }} · {{ r.className }}</div>
                   <div class="lv-item__sub">{{ fmt(r.startTime) }} ~ {{ fmt(r.endTime) }} · {{ r.leaveTypeLabel }} · {{ r.days }}天</div>
@@ -55,11 +55,12 @@
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }} · {{ detail.data.className }}</span>
-                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" />
+                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" :type="detail.data.tone" />
               </div>
 
               <div class="sec-t">请假信息</div>
               <AppDescriptionList :items="leaveItems" :columns="2" />
+              <LeaveProgressContext :detail="detail.data" />
 
               <template v-if="detail.data.extensions && detail.data.extensions.length">
                 <div class="sec-t">续假记录</div>
@@ -139,6 +140,7 @@ import {
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
+import LeaveProgressContext from './components/LeaveProgressContext.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -156,7 +158,7 @@ const CANCEL_LABEL = { SUBMITTED: '待确认', CONFIRMED: '已销假', RETURNED:
 
 export default {
   name: 'LeaveExtensionCancelView',
-  components: {
+  components: { LeaveProgressContext,
     ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppDateTimePicker, AppSelect,
     AppTextarea, AppButton, AppGlobalState, AppPagination, AppFormItem, AppInlineAlert, AppDrawer
@@ -164,6 +166,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      hasActivated: false,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
       keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS, focusNotice: '',
       selectedId: '', doneHint: false, scanning: false,
@@ -210,10 +213,14 @@ export default {
     },
     auditRecords() {
       return (this.detail.data && this.detail.data.auditTrail || []).map((t, i) => ({
-        id: i, action: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
+        id: i, action: t.actionCode, actionLabel: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
       }))
     },
     actions() {
+      const mapping = { extApprove: 'APPROVE_EXTENSION', extReject: 'REJECT_EXTENSION', cancelConfirm: 'CONFIRM_CANCEL', cancelReturn: 'RETURN_CANCEL', overdueHandle: 'HANDLE_OVERDUE', proxyCancel: 'PROXY_CANCEL', applyExtension: 'SUBMIT_EXTENSION' }
+      return this.statusActions.filter(action => this.detail.data?.allowedActions?.includes(mapping[action.key]))
+    },
+    statusActions() {
       const s = this.detail.data && this.detail.data.affairsStatus
       if (s === 'EXTENSION_REVIEW') {
         return [
@@ -248,8 +255,11 @@ export default {
     }
   },
   created() { this.initRouteFocus() },
+  activated() { if (this.hasActivated) { this.load(); if (this.selectedId) this.loadDetail(this.selectedId) } this.hasActivated = true },
+  deactivated() { this.cd.visible = false; this.fm.visible = false },
   watch: {
     '$route.query'(value, previous) {
+      if (this.$route.path !== '/admin/student-affairs/leave/followup') return
       const nextId = String(value?.recordId || '')
       const prevId = String(previous?.recordId || '')
       if (nextId !== prevId || String(value?.status || '') !== String(previous?.status || '')) this.initRouteFocus()
@@ -282,7 +292,7 @@ export default {
       const detail = res.data
       const actual = String(detail.affairsStatus || '')
       if (validStatuses.has(actual)) this.statusFilter = actual
-      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || actual || '未知状态'}，仅展示最新事实。`
+      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，仅展示最新事实。`
       this.selectedId = String(recordId)
       this.detail = { loading: false, error: '', data: detail }
       await this.load()

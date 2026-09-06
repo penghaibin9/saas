@@ -20,7 +20,8 @@
     <div class="ad-batchbar">
       <label class="ad-batchsel">
         <span>认定批次</span>
-        <AppAidBatchPicker v-model="batchId" class="ad-batchpick" :options="batchOptions" placeholder="（请选择批次）" @change="onBatchChange" />
+        <AppAidBatchPicker v-model="batchId" class="ad-batchpick" data-scope-hint="按名称或学年搜索；最多显示100个匹配项，更多可进入全部批次分页查找" search-placeholder="按批次名称或学年搜索" placeholder="（请选择批次）" @change="onBatchChange" />
+        <button type="button" class="ad-btn" @click="$router.push('/admin/student-affairs/aid/batches')">全部批次</button>
       </label>
       <div class="ad-batchtools">
         <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" variant="secondary" size="sm" @click="openBatch">建批次</AppPermissionButton>
@@ -52,7 +53,7 @@
     <div class="ad-workspace">
       <div class="ad-list">
         <LoadingState v-if="loading" text="正在加载认定申请…" />
-        <ErrorState v-else-if="listError" :description="listError" @retry="loadApplications" />
+        <ErrorState v-else-if="listError" :description="listError" @retry="batchId ? loadApplications() : initRouteFocus()" />
         <EmptyState v-else-if="!batchId" title="请先选择认定批次" description="从上方选择一个批次，或点「建批次」新建" />
         <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="该批次暂无申请" description="可点「受理申请」为学生受理，或调整筛选条件" />
         <ul v-else class="ad-queue">
@@ -94,11 +95,17 @@
             <button type="button" class="ad-refresh" title="刷新详情" :disabled="acting" @click="reloadDetail">↻</button>
           </div>
 
+          <p v-if="selected.progressHint" class="ad-focus-note" role="status">{{ selected.progressHint }}</p>
           <dl class="ad-kv">
             <div><dt>申请等级</dt><dd>{{ levelLabel(selected.applyLevel) }}</dd></div>
             <div><dt>建议等级</dt><dd>{{ levelLabel(selected.suggestLevel) || '—' }}</dd></div>
             <div><dt>核定等级</dt><dd>{{ levelLabel(selected.finalLevel) || '—' }}</dd></div>
+            <div v-if="selected.adjustment"><dt>申请调整</dt><dd>{{ selected.adjustment.fromLabel }} → {{ selected.adjustment.targetLabel }}（待审核）</dd></div>
+            <div v-if="selected.adjustment?.reason"><dt>调整原因</dt><dd>{{ selected.adjustment.reason }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
+            <div v-if="selected.publicityEnd"><dt>公示截止</dt><dd>{{ historyTime(selected.publicityEnd) }}</dd></div>
+            <div v-if="selected.status === 'PUBLICITY'"><dt>公示进度</dt><dd>{{ selected.hasPendingObjection ? '有异议待复核，暂不能确认认定结果' : selected.publicityHint }}</dd></div>
+            <div v-if="selected.resultAt"><dt>认定时间</dt><dd>{{ historyTime(selected.resultAt) }}</dd></div>
           </dl>
 
           <section class="ad-statement" aria-label="困难情况说明">
@@ -140,7 +147,7 @@
               @click="onAction(a.key)"
             >{{ a.label }}</AppPermissionButton>
           </div>
-          <p v-else class="ad-terminal">该申请已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
+          <p v-else class="ad-terminal">当前没有可执行的办理动作，可查看申请与记录。</p>
 
           <div class="ad-actions">
             <AppPermissionButton
@@ -149,8 +156,12 @@
               variant="secondary"
               size="sm"
               @click="requireMaterial"
-            >要求补材料</AppPermissionButton>
+            >材料查看与补交</AppPermissionButton>
           </div>
+          <section class="ad-history" aria-label="办理记录">
+            <h4>办理记录</h4><p v-if="!selected.history?.length">暂无可核验的历史记录。</p>
+            <ol v-else><li v-for="item in selected.history" :key="item.id"><div><strong>{{ item.title }}</strong><time>{{ historyTime(item.occurredAt) }}</time></div><p v-if="item.description">{{ item.description }}</p><small v-if="item.operator">{{ item.operator }}</small></li></ol>
+          </section>
         </template>
       </div>
     </div>
@@ -220,7 +231,9 @@
         <label class="ad-field"><span>公示天数</span>
           <AppNumberInput v-model="batchModal.publicityDays" :min="1" :max="30" placeholder="1-30 天，默认 5" />
         </label>
-        <label class="ad-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（开放受理）</label>
+        <label class="ad-field"><span>申请开始时间（选填）</span><input v-model="batchModal.applyStart" type="datetime-local" /></label>
+        <label class="ad-field"><span>申请截止时间（选填）</span><input v-model="batchModal.applyEnd" type="datetime-local" /></label>
+        <label class="ad-check"><input v-model="batchModal.publish" type="checkbox" /> 立即发布（按申请时间开放受理）</label>
         <p v-if="batchModal.error" class="ad-err">{{ batchModal.error }}</p>
         <div class="ad-modal__foot">
           <button type="button" class="ad-btn" @click="batchModal.visible = false">取消</button>
@@ -311,7 +324,7 @@ export default {
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       revealModal: { visible: false, reason: '', error: '' },
       adjustModal: { visible: false, targetLevel: 'DIFFICULT', reason: '', error: '' },
-      batchModal: { visible: false, batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' },
+      batchModal: { visible: false, batchName: '', schoolYear: '', applyStart: '', applyEnd: '', publicityDays: 5, publish: true, error: '' },
       applyModal: { visible: false, studentId: '', applyLevel: 'DIFFICULT', statement: '', memberCount: null, annualIncome: '', debt: '', error: '' },
       levelOptions: Object.entries(LEVEL).map(([value, label]) => ({ value, label }))
     }
@@ -342,15 +355,9 @@ export default {
     taskFilterSummary() {
       return this.studentFilterLabel || (this.activeStatus !== 'ALL' ? `状态：${this.activeStatus}` : '')
     },
-    batchOptions() {
-      return this.batches.map((b) => ({
-        value: b.batchId,
-        label: `${b.batchName}（${b.schoolYear} · ${this.batchStatusLabel(b.status)}）`
-      }))
-    },
     currentBatchOpen() {
       const b = this.batches.find((x) => x.batchId === this.batchId)
-      return !!b && b.status === 'OPEN'
+      return !!b && b.status === 'OPEN' && (!b.applyStart || Date.parse(b.applyStart) <= Date.now()) && (!b.applyEnd || Date.parse(b.applyEnd) >= Date.now())
     },
     fam() {
       return (this.selected && this.selected.familyEconomy) || {}
@@ -420,6 +427,7 @@ export default {
                  allowed: this.canBtn('studentAffairs.aid.create') }]
       }
       if (s === 'PUBLICITY') {
+        if (!this.selected.publicityReady || this.selected.hasPendingObjection) return []
         return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.aid.approve',
                  allowed: this.canBtn('studentAffairs.aid.approve') }]
       }
@@ -428,10 +436,11 @@ export default {
                  allowed: this.canBtn('studentAffairs.aid.adjust') }]
       }
       if (s === 'ADJUST_REVIEW') {
-        const allowed = this.canBtn('studentAffairs.aid.adjust')
+        const actions = this.selected.allowedActions || []
+        const allowed = this.canBtn('studentAffairs.aid.approve')
         return [
-          { key: 'adjustApprove', label: '调整通过', tone: 'primary', code: 'studentAffairs.aid.adjust', allowed },
-          { key: 'adjustReject', label: '调整驳回', tone: 'danger', code: 'studentAffairs.aid.adjust', allowed }
+          { key: 'adjustApprove', label: '调整通过', tone: 'primary', code: 'studentAffairs.aid.approve', allowed: allowed && actions.includes('APPROVE') },
+          { key: 'adjustReject', label: '调整驳回', tone: 'danger', code: 'studentAffairs.aid.approve', allowed: allowed && actions.includes('REJECT') }
         ]
       }
       return []
@@ -442,11 +451,12 @@ export default {
     '$route.query'(value, previous) {
       const nextId = String(value?.recordId || '')
       const prevId = String(previous?.recordId || '')
-      if (nextId !== prevId) { this.initRouteFocus(); return }
+      if (nextId !== prevId || String(value?.batchId || '') !== String(previous?.batchId || '')) { this.initRouteFocus(); return }
       this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications()
     }
   },
   methods: {
+    historyTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '时间未记录' },
     async initRouteFocus() {
       this.applyRouteFilters()
       const recordId = String(this.$route.query?.recordId || '').trim()
@@ -454,7 +464,7 @@ export default {
       this.focusNotice = ''
       this.listError = ''
       if (!recordId) {
-        this.selected = null; this.batchId = ''
+        this.selected = null; this.batchId = String(this.$route.query?.batchId || '').trim()
         await this.loadBatches()
         return
       }
@@ -549,9 +559,13 @@ export default {
         if (this.batchId) {
           const visible = this.batches.some((batch) => String(batch.batchId) === String(this.batchId))
           if (!visible) {
-            this.listError = '该申请所属认定批次当前不可见，已停止自动回退到其他批次'
-            this.list = []; this.pagination.total = 0
-            return
+            const batch = await studentAffairsApi.getAidBatch(this.batchId)
+            if (batch.code !== 0 || !batch.data) {
+              this.listError = batch.message || '该认定批次当前不可见，已停止自动回退到其他批次'
+              this.list = []; this.pagination.total = 0
+              return
+            }
+            this.batches.push(batch.data)
           }
           await this.loadApplications()
         } else if (this.batches.length) {
@@ -564,7 +578,9 @@ export default {
         this.listError = res.message || '批次加载失败'
       }
     },
-    onBatchChange() {
+    onBatchChange(value, items = []) {
+      const batch = items[0]?.raw
+      if (batch && !this.batches.some(b => String(b.batchId) === String(batch.batchId))) this.batches.push(batch)
       this.selected = null
       this.detailRequestSeq += 1
       this.revealRequestSeq += 1
@@ -638,7 +654,7 @@ export default {
         resubmit: { action: 'resubmit', title: '重新提交', message: '将退回的申请重新提交，回到班级评议。', type: 'primary', confirmText: '重新提交', requireReason: false },
         publicityConfirm: { action: 'publicityConfirm', title: '确认公示通过', message: '确认公示期满无异议，认定通过并写入困难库、学生 360。', type: 'primary', confirmText: '确认通过', requireReason: false },
         adjustApprove: { action: 'adjustApprove', title: '调整审批通过', message: '通过后困难等级按目标等级调整，写入等级变更历史。', type: 'primary', confirmText: '调整通过', requireReason: false },
-        adjustReject: { action: 'adjustReject', title: '调整审批驳回', message: '驳回后等级维持不变。', type: 'danger', confirmText: '调整驳回', requireReason: false }
+        adjustReject: { action: 'adjustReject', title: '调整审批驳回', message: '驳回后等级维持不变，办理意见将显示在学生的记录中。', type: 'danger', confirmText: '调整驳回', requireReason: true }
       }
       const d = map[key]
       if (!d) return
@@ -656,7 +672,7 @@ export default {
         resubmit: () => studentAffairsApi.resubmitAid(id, ver),
         publicityConfirm: () => studentAffairsApi.confirmAidPublicity(id, ver),
         adjustApprove: () => studentAffairsApi.approveAidAdjust(id, 'APPROVE', ver),
-        adjustReject: () => studentAffairsApi.approveAidAdjust(id, 'REJECT', ver)
+        adjustReject: () => studentAffairsApi.approveAidAdjust(id, 'REJECT', ver, reason)
       }[a]
       if (!call) return
       const ok = await this.runAction(call, {
@@ -695,6 +711,8 @@ export default {
       this.adjustModal = { visible: true, targetLevel: this.selected.finalLevel || 'DIFFICULT', reason: '', error: '' }
     },
     async submitAdjust() {
+      if (!this.selected || this.acting) return
+      if (this.adjustModal.targetLevel === this.selected.finalLevel) { this.adjustModal.error = '目标等级与当前等级相同，请选择需要调整到的等级'; return }
       const reason = (this.adjustModal.reason || '').trim()
       if (!reason || reason.length < 5) { this.adjustModal.error = '调整原因不少于 5 字'; return }
       const ok = await this.runAction(
@@ -706,7 +724,7 @@ export default {
     },
     // ── 批次 ──
     openBatch() {
-      this.batchModal = { visible: true, batchName: `${this.currentSchoolYear}学年家庭经济困难认定`, schoolYear: this.currentSchoolYear, publicityDays: 5, publish: true, error: '' }
+      this.batchModal = { visible: true, batchName: `${this.currentSchoolYear}学年家庭经济困难认定`, schoolYear: this.currentSchoolYear, applyStart: '', applyEnd: '', publicityDays: 5, publish: true, error: '' }
     },
     useSchoolYear(year) {
       this.batchModal.schoolYear = year
@@ -719,7 +737,8 @@ export default {
       const batchName = (m.batchName || '').trim()
       const schoolYear = (m.schoolYear || '').trim()
       if (!batchName || !schoolYear) { m.error = '批次名称与学年必填'; return }
-      const body = { batchName, schoolYear, publicityDays: Number(m.publicityDays) || 5, publish: !!m.publish }
+      if (m.applyStart && m.applyEnd && m.applyEnd <= m.applyStart) { m.error = '申请截止时间必须晚于开始时间'; return }
+      const body = { batchName, schoolYear, applyStart: m.applyStart || null, applyEnd: m.applyEnd || null, publicityDays: Number(m.publicityDays), publish: !!m.publish }
       const res = await studentAffairsApi.createAidBatch(body)
       if (res.code === 0) {
         toast.success('批次已保存')
@@ -769,7 +788,8 @@ export default {
         this.revealRequestSeq += 1
         toast.success(okMsg)
         if (res.data && res.data.applyId) { this.selected = res.data; this.revealed = false; this.revealedFam = {} }
-        else await this.reloadDetail()
+        // 写接口返回列表投影，继续办理前重新读取单笔说明与当前动作。
+        await this.reloadDetail()
         await this.loadApplications()
         this.acting = false
         return true
@@ -1154,3 +1174,6 @@ export default {
 </style>
 
 <style src="../../../styles/golden-student-affairs-aid-rollout.css"></style>
+<style scoped>
+.ad-history { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color); }.ad-history h4 { margin: 0 0 14px; font-size: 15px; }.ad-history ol { margin: 0 0 0 6px; padding: 0 0 0 18px; list-style: none; border-left: 1px solid var(--border-color); }.ad-history li { position: relative; padding: 0 0 20px; }.ad-history li::before { content: ''; position: absolute; left: -23px; top: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--primary-500); border: 1px solid var(--bg-card); }.ad-history li > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }.ad-history time,.ad-history small { color: var(--text-secondary); font-size: 12px; }.ad-history p { margin: 6px 0; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }.ad-history strong { font-size: 13px; }
+</style>

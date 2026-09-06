@@ -164,6 +164,12 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
         "studentAffairs.discipline.appeal.review",
         "studentAffairs.activity.confirm",
     ),
+    "/api/v1/mobile/teacher/affairs/appeals/AID_OBJECTION/{objection_id}/detail": (
+        "studentAffairs.aid.approve",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/FUNDING_APPEAL/{appeal_id}/detail": (
+        "studentAffairs.funding.publicity.manage",
+    ),
     "/api/v1/mobile/teacher/affairs/appeals/repair/metrics": (
         "studentAffairs.aid.approve",
         "studentAffairs.funding.publicity.manage",

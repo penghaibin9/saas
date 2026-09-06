@@ -708,24 +708,24 @@ def affairs_family_contact_receipt(user: dict, contact_id: str, note: str | None
 # 数据范围+审批节点身份校验均在服务层 _scope_or_403/_check_review_node 完成，直接复用 PC 侧
 # affairs_leave_service（节点越权缺口已在服务层修复，见 _check_review_node/_node_visible）。══════════
 
-def affairs_leave_pending(user: dict) -> dict:
+def affairs_leave_pending(user: dict, page=1, page_size=20, keyword=None) -> dict:
     """请假待审批队列（本人数据范围+审批节点双重收敛，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_leave_service as leave_svc
-    items, total = leave_svc.list_pending(u, 1, 50)
-    return {"list": items, "total": total}
+    items, total = leave_svc.list_pending(u, page, page_size, keyword=keyword)
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
-def affairs_leave_followup(user: dict) -> dict:
+def affairs_leave_followup(user: dict, page=1, page_size=20, keyword=None, status=None) -> dict:
     """请假后续处理台账（已通过/续假审批中/待销假确认/逾期，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_leave_service as leave_svc
-    items, total = leave_svc.list_leaves(u, followup_only=True, page=1, page_size=50)
-    return {"list": items, "total": total}
+    items, total = leave_svc.list_leaves(u, followup_only=True, page=page, page_size=page_size, keyword=keyword, status=status)
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
 def affairs_leave_detail(user: dict, leave_id: str) -> dict:
@@ -900,17 +900,14 @@ def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_typ
     return [x for x in items if _biz_id(x) in allowed_ids]
 
 
-def affairs_aid_pending(user: dict) -> dict:
+def affairs_aid_pending(user: dict, page=1, page_size=20, kind="ALL", keyword=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_aid_service as svc
-    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
-    nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
-    out = [x for x in items if (x.get("status") or "") in nodes]
-    out = _filter_by_assignee_todos(
-        u, out, id_keys=("applyId", "id"), todo_types=("AID_APPROVAL", "AID_ADJUST"))
-    return {"list": out, "total": len(out)}
+    items, total, _ = svc.list_applications(u, page=page, page_size=page_size,
+                                            pending_kind=kind, keyword=keyword)
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
 def affairs_aid_detail(user: dict, apply_id: str) -> dict:
@@ -933,8 +930,12 @@ def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
     if (detail or {}).get("status") == "ADJUST_REVIEW":
         if act == "RETURN":
             raise AppException("VALIDATION_ERROR", "困难等级调整不支持退回，请选择通过或驳回")
+        if act not in {"APPROVE", "ADJUST_APPROVE", "REJECT", "ADJUST_REJECT"}:
+            raise AppException("VALIDATION_ERROR", "等级调整仅支持通过或驳回")
+        if level and level != detail.get("suggestLevel"):
+            raise AppException("DATA_CONFLICT", "申请调整等级已变化，请刷新原申请后重新确认")
         mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
-        result = svc.approve_adjust(apply_id, u, action=mapped, expected_version=expected)
+        result = svc.approve_adjust(apply_id, u, action=mapped, expected_version=expected, reason=reason)
     else:
         result = svc.review(apply_id, u, act, level=level, reason=reason or "",
                             expected_version=expected)
@@ -943,17 +944,14 @@ def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
     return result
 
 
-def affairs_funding_pending(user: dict) -> dict:
+def affairs_funding_pending(user: dict, page=1, page_size=20, keyword=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_funding_service as svc
-    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
-    nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
-    out = [x for x in items if (x.get("status") or "") in nodes]
-    out = _filter_by_assignee_todos(
-        u, out, id_keys=("applicationId", "appId", "id"), todo_types=("FUNDING_APPROVAL",))
-    return {"list": out, "total": len(out)}
+    items, total, _ = svc.list_applications(u, page=page, page_size=page_size,
+                                           pending_only=True, keyword=keyword)
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
 def affairs_funding_detail(user: dict, app_id: str) -> dict:

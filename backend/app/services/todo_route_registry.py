@@ -31,6 +31,7 @@ _PC_EXACT: dict[str, tuple[str, str]] = {
 
 # 尚无详情路由时，只能落到真实可处理列表；仍下发 recordId，不把列表伪装成详情页。
 _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
+    "MATERIAL_REVIEW": ("todo-route:student-affairs-material", "/admin/student-affairs/material-operations", {}),
     "LEAVE_APPROVAL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "PENDING"}),
     "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "OVERDUE"}),
     "LEAVE_CANCEL": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "WAIT_CANCEL_LEAVE"}),
@@ -56,6 +57,7 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
 # exact=True 的证据由 frontend/tests/student-affairs-todo-pc-focus.contract.test.mjs 逐页约束；
 # 不允许只改本表、页面不消费 recordId。
 _PC_LIST_FOCUS = frozenset({
+    "MATERIAL_REVIEW",
     "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
     "AID_APPROVAL", "AID_ADJUST", "FUNDING_APPROVAL",
     "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
@@ -107,6 +109,7 @@ _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
 # and is registered in mobile_focus_contract, focusMode stays NONE and routeExact remains false.
 # This is intentional: a safe business queue is better than pretending a list page is object-exact.
 _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
+    "MATERIAL_REVIEW": ("todo-route:teacher-mini-material", "/pages/teacher/affairs/index", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
@@ -163,10 +166,15 @@ def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: 
     if not target:
         return None
     route_name, path, focus_mode = target
+    query = {"recordId": rid}
+    # This page hosts several independent workflows with overlapping numeric IDs.
+    # Without type it defaults to AID_APPROVAL and can open a different business.
+    if path == "/pages/teacher/affairs-review/index":
+        query["type"] = type_code
     return {
         "routeName": route_name,
         "routeParams": {"recordId": rid},
-        "query": {"recordId": rid},
+        "query": query,
         "path": path,
         "focusMode": focus_mode,
         "exact": is_route_exact(focus_mode, path),

@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="谈话转介与回访"
-    subtitle="统一展示转介、回访、危机升级与关闭记录；动作由后端状态机返回，明细仍按专项授权和审计控制。"
+    subtitle="转介、回访与关闭"
     role-name="心理老师 / 授权辅导员"
     data-scope-name="PSY_STUDENT 逐生授权范围"
     watermark-purpose="心理转介回访处理"
@@ -11,27 +11,8 @@
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载转介回访工作台..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前工作要求</span>
-          <h2 class="sa-summary-strip__title">先看摘要与最近回访，再决定继续回访、升级危机或关闭</h2>
-          <p class="sa-summary-strip__text">列表只展示必要业务摘要；敏感明细仍需专项授权和查看审计。已升级危机由风险中枢继续处置，转介记录不再提供普通回访动作。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" :loading="actioning" @click="createReferral">登记新转介</AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="心理转介回访流程">
-        <div class="sa-workflow-step" data-step="1"><strong>登记转介</strong><br>客观记录表现、渠道与必要性</div>
-        <div class="sa-workflow-step" data-step="2"><strong>持续回访</strong><br>记录方式、当前情况和后续安排</div>
-        <div class="sa-workflow-step" data-step="3"><strong>危机升级</strong><br>有明确依据时转入风险中枢</div>
-        <div class="sa-workflow-step" data-step="4"><strong>关闭归档</strong><br>确认必要处置已完成后关闭</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
 
       <AppSectionCard title="心理转介与回访记录">
         <AppInlineAlert type="info" description="先查看学生、关注等级、当前状态和最近回访。仅在后端允许动作中显示回访、升级或关闭按钮。" />
@@ -88,7 +69,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell,
   AppPermissionButton, AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextarea
 } from '@/components/common'
@@ -110,7 +91,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
-    AppMetricCard, AppPageShell, AppPermissionButton, AppQuickPhrases, AppSectionCard,
+    AppPageShell, AppPermissionButton, AppQuickPhrases, AppSectionCard,
     AppSelect, AppStatusTag, AppStudentPicker, AppTextarea, DataTable
   },
   data() {

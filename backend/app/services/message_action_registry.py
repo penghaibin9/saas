@@ -134,8 +134,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     "AFFAIRS_FUNDING": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["recordId"],
+        "optionalParams": ["bizType"],
         "pc": "/admin/student-affairs/funding",
-        "studentPc": None,
+        "studentPc": "/campus-service",
+        "studentPcQuery": {"tab": "funding"},
         "studentMini": "/pages/student/affairs/funding",
         "teacherMini": None,
         "focus": {"studentMini": FOCUS_LIST_FOCUS},
@@ -241,7 +243,7 @@ def validate_action(action_key: Optional[str], action_params: Optional[dict]) ->
             details={"missing": missing, "actionKey": key},
         )
     # 只保留登记参数 + 透传已知字段
-    allowed = set(spec.get("requiredParams") or []) | {"campaignId", "ackDeadline"}
+    allowed = set(spec.get("requiredParams") or []) | set(spec.get("optionalParams") or []) | {"campaignId", "ackDeadline"}
     cleaned = {k: v for k, v in params.items() if k in allowed or k in (spec.get("requiredParams") or [])}
     for p in spec.get("requiredParams") or []:
         cleaned[p] = params[p]

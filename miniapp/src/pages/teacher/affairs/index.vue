@@ -1,8 +1,17 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="学工待办" subtitle="逐条待办、权限、数据范围与 PC 同源" back />
+    <MobileNavBar variant="brand" title="学工待办" subtitle="查看待办、材料与办理进度" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
+        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/work-study/index' })">
+          <view><text class="ta__label">勤工助学工作区</text><text class="ta__sub">审核申请、核验协议、确认上岗与登记月度考核</text></view><text class="ta__go">›</text>
+        </view>
+        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/loan/index' })">
+          <view><text class="ta__label">贷款回执核验</text><text class="ta__sub">核验、退回与确认台账</text></view><text class="ta__go">›</text>
+        </view>
+        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/reduction/index' })">
+          <view><text class="ta__label">减免与临补</text><text class="ta__sub">待审、退回与结果落实</text></view><text class="ta__go">›</text>
+        </view>
         <view class="ta__total">
           <view><text class="ta__eyebrow">今日先做</text><view><text class="ta__total-n">{{ data.total }}</text><text class="ta__total-l">项学工待办</text></view></view>
           <view class="ta__priority-stats">
@@ -33,10 +42,11 @@
         </view>
         <button v-if="todoHasMore" class="btn btn-secondary ta__load-more" :disabled="todoLoading" @click="loadMoreTodos">{{ todoLoading ? '加载中…' : '继续加载待办' }}</button>
 
-        <view class="section-head ta__section">
+        <view id="leave-material-section" class="section-head ta__section">
           <text class="section-head__title">材料补交审核</text>
           <text class="ta__refresh" @click="loadMaterials">刷新</text>
         </view>
+        <view v-if="materialReturnContext.bizType" class="ta__context card"><text>仅显示这份{{ materialReturnContext.bizType === 'FUNDING' ? '奖助' : materialReturnContext.bizType === 'AID' ? '困难认定' : '请假' }}申请的材料</text><button class="btn btn-secondary" @click="returnToApplication">返回原申请</button></view>
         <MobileInlineAlert v-if="materialError" type="warning" title="材料队列暂不可用" :description="materialError" />
         <view v-else-if="!materials.length" class="ta__empty card"><text>暂无材料缺项</text></view>
         <view v-else class="stack">
@@ -53,7 +63,7 @@
                 <text class="ta__sub">{{ materialStudentLine(item) }}</text>
                 <text class="ta__sub">{{ materialBizLine(item) }}</text>
               </view>
-              <MobileStatusTag :status="item.status" :label="item.statusLabel || item.status" />
+              <MobileStatusTag :status="item.status" :label="item.statusLabel || '状态待确认'" />
             </view>
             <text v-if="item.requirementReason" class="ta__title">缺项说明：{{ item.requirementReason }}</text>
             <text v-if="item.dueAt" class="ta__due" :class="{ 'is-danger': item.overdue }">截止 {{ formatTime(item.dueAt) }}{{ item.overdue ? '（已逾期）' : '' }}</text>
@@ -185,7 +195,7 @@ export default {
       batchJobs: [],
       activeBatch: null,
       batchBusy: false,
-      focusMaterialId: '',
+      leaveContext: {}, focusMaterialId: '',
       todoPage: 1,
       todoHasMore: false,
       todoLoading: false,
@@ -198,22 +208,29 @@ export default {
     }
   },
   computed: {
+    materialReturnContext() {
+      if (this.leaveContext.bizType) return this.leaveContext
+      const row = this.materials.find(item => String(item.requirementId) === this.focusMaterialId)
+      return row && ['LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
+    },
     todoItems() { return (this.data && Array.isArray(this.data.items)) ? this.data.items : [] },
     prioritySummary() {
       return (this.data && this.data.prioritySummary) || { overdue: 0, dueWithin24h: 0, ordinary: 0 }
     }
   },
   onLoad(query) {
+    this.leaveContext = query && ['LEAVE', 'AID', 'FUNDING'].includes(query.bizType) && /^\d+$/.test(String(query.bizId || '')) ? { bizType: query.bizType, bizId: query.bizId } : {}
     this.focusMaterialId = String((query && (query.materialRequirementId || query.recordId)) || '')
     this.load()
   },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
-    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
+    returnToApplication() { const context = this.materialReturnContext || this.leaveContext; if (!context.bizType) return; uni.navigateTo({ url: context.bizType === 'FUNDING' ? '/pages/teacher/affairs-review/index?type=FUNDING_APPROVAL&recordId=' + encodeURIComponent(context.bizId) : context.bizType === 'AID' ? '/pages/teacher/affairs-review/index?type=AID_APPROVAL&recordId=' + encodeURIComponent(context.bizId) : '/pages/teacher/affairs-leave/index?recordId=' + encodeURIComponent(context.bizId) }) },
+    formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '' },
     priorityClass(item) {
       return { 'is-overdue': !!item.overdue, 'is-near': !item.overdue && !!item.dueWithin24h }
     },
-    bizLabel(value) { return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉' }[value] || value) },
+    bizLabel(value) { return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉' }[value] || '学工申请') },
     // 老师在手机上尤其不该靠主键认学生。后端下发 businessContext 时显示
     // 姓名/学号/班级与业务标题，未下发时退回原有 ID 文案，不留空白。
     materialStudentLine(item) {
@@ -230,7 +247,7 @@ export default {
     canRemind(item) { return ['MISSING', 'RETURNED'].includes(item.status) && item.version !== undefined && item.version !== null },
     load() {
       this.state = 'loading'; this.activityError = ''; this.todoPage = 1
-      Promise.all([
+      const task = Promise.all([
         teacherApi.getAffairs(1, 20),
         this.loadMaterials(false, true),
         this.loadBatches(false, true)
@@ -246,11 +263,12 @@ export default {
           if (n.kind === 'forbidden') { this.activityVisible = false; this.activities = [] }
           else { this.activityVisible = true; this.activityError = n.text || '活动数据加载失败，请稍后重试' }
         })
+      return task
     },
     loadMaterials(showToast = true, reset = true) {
       this.materialError = ''
       if (reset) this.materialPage = 1
-      return affairsContractApi.getMaterialRequirements('', this.materialPage, 20).then((d) => {
+      return affairsContractApi.getMaterialRequirements('', this.materialPage, 20, { ...this.leaveContext, requirementId: this.focusMaterialId || undefined }).then((d) => {
         const rows = (d && d.items) || []
         this.materials = reset ? rows : [...this.materials, ...rows]
         this.materialHasMore = this.materialPage * 20 < Number((d && d.total) || 0)
@@ -300,9 +318,9 @@ export default {
         .finally(() => { this.batchLoading = false })
     },
     scrollToMaterial() {
-      if (!this.focusMaterialId) return
+      if (!this.focusMaterialId && !this.leaveContext.bizId) return
       this.$nextTick(() => setTimeout(() => {
-        try { uni.pageScrollTo({ selector: '#teacher-material-' + this.focusMaterialId, duration: 250 }) } catch (e) {}
+        try { uni.pageScrollTo({ selector: this.focusMaterialId ? '#teacher-material-' + this.focusMaterialId : '#leave-material-section', duration: 250 }) } catch (e) {}
       }, 80))
     },
     routeFor(todoType, params = {}) {
@@ -350,7 +368,7 @@ export default {
       const run = () => {
         this.materialBusy = item.requirementId
         affairsContractApi.reviewMaterialRequirement(item.requirementId, action, reason, item.version)
-          .then(() => { toast(action === 'ACCEPT' ? '材料已验收' : (action === 'RETURN' ? '已退回学生重补' : '材料已免交')); this.cancelReturn(); return this.loadMaterials(false) })
+          .then(() => { toast(action === 'ACCEPT' ? '材料已验收' : (action === 'RETURN' ? '已退回学生重补' : '材料已免交')); this.cancelReturn(); return this.load() })
           .catch((e) => toast(normalizeError(e).text || '材料审核失败'))
           .finally(() => { this.materialBusy = '' })
       }
@@ -421,6 +439,7 @@ export default {
 </script>
 
 <style scoped>
+.ta__work-study { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:var(--space-4); padding:14px; border:1px solid rgba(37,99,235,.18); border-radius:14px; background:rgba(37,99,235,.06); }
 .ta__total { background: linear-gradient(135deg, #174a78, var(--brand-primary) 58%, #2f8ea3); color: #fff; border-radius: 20px; padding: 18px; margin-bottom: var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: 14px; box-shadow: 0 18px 38px -25px rgba(15,59,95,.72); }
 .ta__eyebrow { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 700; letter-spacing: 2px; opacity: .82; }
 .ta__total-n { font-size: 28px; font-weight: 700; }

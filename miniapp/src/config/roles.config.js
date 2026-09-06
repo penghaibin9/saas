@@ -19,6 +19,8 @@ export const ROLE = {
   EMPLOYMENT: 'employment', // 就业老师
   ACADEMIC: 'academic', // 教务老师
   COLLEGE_ADMIN: 'college_admin', // 学院管理员
+  SCHOOL_ADMIN: 'school_admin', // 学校管理员
+  STUDENT_AFFAIRS: 'student_affairs', // 学工管理
   GRADUATION_ADMIN: 'graduation_admin', // 校级毕设管理员
   GD_COLLEGE_ADMIN: 'gd_college_admin', // 学院毕设管理员
   GD_MAJOR_ADMIN: 'gd_major_admin', // 专业毕设负责人
@@ -40,6 +42,10 @@ const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   ACADEMIC_TEACHER: ROLE.ACADEMIC,
   ACADEMIC_ADMIN: ROLE.ACADEMIC,
   COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
+  SCHOOL_ADMIN: ROLE.SCHOOL_ADMIN,
+  STUDENT_AFFAIRS_ADMIN: ROLE.STUDENT_AFFAIRS,
+  STUDENT_AFFAIRS: ROLE.STUDENT_AFFAIRS,
+  SA_ADMIN: ROLE.STUDENT_AFFAIRS,
   GRADUATION_ADMIN: ROLE.GRADUATION_ADMIN,
   GD_COLLEGE_ADMIN: ROLE.GD_COLLEGE_ADMIN,
   GD_MAJOR_ADMIN: ROLE.GD_MAJOR_ADMIN,
@@ -214,6 +220,20 @@ export const roleConfigs = {
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']
   },
+  [ROLE.SCHOOL_ADMIN]: {
+    key: ROLE.SCHOOL_ADMIN, label: '学校管理员', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'SCHOOL', dataScopeText: '学校授权范围',
+    workbench: ['approval'],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '学工办理', icon: '📋' }],
+    permissionActions: ['approval.handle']
+  },
+  [ROLE.STUDENT_AFFAIRS]: {
+    key: ROLE.STUDENT_AFFAIRS, label: '学工管理', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '学工授权范围',
+    workbench: ['approval'],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '学工办理', icon: '📋' }],
+    permissionActions: ['approval.handle']
+  },
   // 毕设 specialist 身份必须在移动端显式存在。每种身份只呈现其高价值队列，
   // 服务端仍按 currentRoleCode、关系和 batch context 裁剪数据，不在客户端放宽 Authority。
   [ROLE.GRADUATION_ADMIN]: {
@@ -318,6 +338,7 @@ export const roleConfigs = {
 // 教师端「多身份切换」：同一个人可绑定多个教师身份（08B 3.2 当前工作上下文）
 export const teacherIdentities = [
   ROLE.COUNSELOR, ROLE.DORM_MANAGER, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
+  ROLE.SCHOOL_ADMIN, ROLE.STUDENT_AFFAIRS,
   ROLE.GRADUATION_ADMIN, ROLE.GD_COLLEGE_ADMIN, ROLE.GD_MAJOR_ADMIN, ROLE.GD_REVIEWER,
   ROLE.GD_DEFENSE_SECRETARY, ROLE.GD_DEFENSE_EXPERT, ROLE.GD_GRADE_ADMIN
 ]

@@ -1,37 +1,14 @@
 <template>
   <AppPageShell
     title="志愿服务时长"
-    subtitle="校外/线下志愿时长补录与认定；认定后计入第二课堂志愿时长（进学生画像，供评优只读引用）。"
+    subtitle="补录、认定与入账"
     role-name="团委 / 学工处"
     data-scope-name="按数据范围（辅导员限本班）"
     watermark-purpose="志愿服务时长认定"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">补录时长</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载志愿记录..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前认定任务</span>
-          <h2 class="sa-summary-strip__title">待认定 {{ statusCount('PENDING') }} 条，已认定 {{ statusCount('CONFIRMED') }} 条</h2>
-          <p class="sa-summary-strip__text">补录记录提交后进入待认定。老师需核对学生、服务名称、单位、日期和时长；认定后才计入正式第二课堂志愿时长。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">补录时长</AppPermissionButton>
-        </div>
-      </section>
-
-      <div class="sa-workflow-strip" aria-label="志愿时长认定流程">
-        <div class="sa-workflow-step" data-step="1"><strong>补录服务</strong><br>填写学生、服务名称、单位和日期</div>
-        <div class="sa-workflow-step" data-step="2"><strong>核对时长</strong><br>确认服务事实和小时数准确</div>
-        <div class="sa-workflow-step" data-step="3"><strong>认定 / 驳回</strong><br>不符合条件时写明驳回原因</div>
-        <div class="sa-workflow-step" data-step="4"><strong>正式入账</strong><br>认定后进入学生第二课堂与画像</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">补录时长</AppPermissionButton>
-      </div>
 
       <AppSectionCard v-if="formVisible" title="补录志愿服务时长">
         <div class="vf-form-note">补录适用于校外或线下材料已核实的志愿服务。请按真实服务记录填写，提交后仍需正式认定。</div>
@@ -88,7 +65,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
+  AppConfirmDialog, AppDatePicker, AppGlobalState, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -113,7 +90,7 @@ export default {
   name: 'VolunteerRecordView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppDatePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell,
+    AppConfirmDialog, AppDatePicker, AppGlobalState, AppNumberInput, AppPageShell,
     AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {

@@ -1,27 +1,14 @@
 <template>
   <AppPageShell
     title="辅导员考评"
-    subtitle="考评指标配置 → 按周期录入各项评分（自动汇总总分）→ 发布 → 辅导员申诉复核。"
+    subtitle="指标、评分、发布与申诉"
     role-name="学工处 / 组织人事"
     data-scope-name="按租户（学工处管理）"
     watermark-purpose="辅导员考评"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载考评..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前考评工作</span>
-          <h2 class="sa-summary-strip__title">先确认指标与权重，再按周期录入评分；发布后仅处理正式申诉</h2>
-          <p class="sa-summary-strip__text">当前配置 {{ indicators.length }} 项指标，共有 {{ evalRows.length }} 条已加载考评记录。评分发布前可继续修改，发布后进入正式结果与申诉复核阶段。</p>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="辅导员考评流程">
-        <div class="sa-workflow-step" data-step="1"><strong>配置指标</strong><br>明确指标名称、权重和评分口径</div>
-        <div class="sa-workflow-step" data-step="2"><strong>录入评分</strong><br>选择周期与辅导员，逐项填写分值</div>
-        <div class="sa-workflow-step" data-step="3"><strong>发布结果</strong><br>核对总分、加权分和排名后发布</div>
-        <div class="sa-workflow-step" data-step="4"><strong>申诉复核</strong><br>对正式申诉作出维持或调整结论</div>
-      </div>
 
       <AppSectionCard title="一、考评指标">
         <p class="ce-section-hint">指标决定评分结构。新增前请确认名称清楚、权重口径一致，避免同一含义重复建项。</p>

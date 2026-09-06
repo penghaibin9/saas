@@ -514,10 +514,22 @@ def aid_batch_create(body: AidBatchCreate, user=Depends(require_permission("stud
     return success(aid_svc.create_batch(body, user), message="已保存")
 
 
+@router.get("/aid/batches/{batchId}", summary="认定批次详情")
+def aid_batch_detail(batchId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.view"))):
+    return success(aid_svc.get_batch(batchId, user))
+
+
+@router.post("/aid/batches/{batchId}/publish", summary="发布已有草稿认定批次")
+def aid_batch_publish(body: AidVersionOnlyBody, batchId: int = Path(...),
+                      user=Depends(require_permission("studentAffairs.aid.batch.manage"))):
+    return success(aid_svc.publish_batch(batchId, user, body.version), message="已发布")
+
+
 @router.get("/aid/batches", summary="认定批次列表")
 def aid_batches(schoolYear: Optional[str] = None, status: Optional[str] = None,
-                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission("studentAffairs.aid.view"))):
-    items, total = aid_svc.list_batches(user, schoolYear, status, page, pageSize)
+                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                keyword: str = Query('', max_length=100), user=Depends(require_permission("studentAffairs.aid.view"))):
+    items, total = aid_svc.list_batches(user, schoolYear, status, page, pageSize, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -612,10 +624,10 @@ def aid_adjust(body: AidAdjustBody, applyId: int = Path(...), user=Depends(requi
 
 
 @router.post("/aid/applications/{applyId}/adjust-approve", summary="动态调整审批")
-def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.adjust"))):
+def aid_adjust_approve(body: AidReviewBody = None, applyId: int = Path(...), user=Depends(require_permission("studentAffairs.aid.approve"))):
     action = body.action if body else "APPROVE"
     version = body.version if body else None
-    return success(aid_svc.approve_adjust(applyId, user, action, version), message="已处理")
+    return success(aid_svc.approve_adjust(applyId, user, action, version, reason=body.reason if body else ""), message="已处理")
 
 
 @router.post("/aid/applications/{applyId}/reveal", summary="查看完整家庭经济（sensitiveView+审计）")
@@ -631,8 +643,8 @@ def aid_reveal(body: AidRevealBody = AidRevealBody(), applyId: int = Path(...),
 class FundingProjectCreate(BaseModel):
     projectName: str = Field(..., min_length=1)
     projectType: str = Field(..., description="SCHOLARSHIP/GRANT")
-    amount: Optional[Money] = None
-    quota: Optional[int] = None
+    amount: Money = Field(..., gt=0)
+    quota: Optional[int] = Field(default=None, ge=1, le=100000)
     conditions: Optional[dict] = Field(default_factory=dict)
 
 
@@ -644,6 +656,16 @@ class FundingBatchCreate(BaseModel):
     publicityDays: Optional[int] = None
     quota: Optional[int] = None
     publish: bool = Field(False)
+
+
+class FundingProjectStatusBody(BaseModel):
+    status: str = Field(..., description="ENABLED/DISABLED")
+    version: int = Field(..., description="乐观锁版本（必填）")
+
+
+class FundingBatchActionBody(BaseModel):
+    action: str = Field(..., description="PUBLISH/CLOSE")
+    version: int = Field(..., description="乐观锁版本（必填）")
 
 
 class FundingApplyBody(BaseModel):
@@ -682,9 +704,19 @@ def funding_project_create(body: FundingProjectCreate, user=Depends(require_perm
 
 @router.get("/funding/projects", summary="资助项目列表")
 def funding_projects(projectType: Optional[str] = None, status: Optional[str] = None,
-                     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total = funding_svc.list_projects(user, projectType, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+                     keyword: Optional[str] = Query(None, max_length=100),
+                     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                     user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total, summary_data = funding_svc.list_projects(user, projectType, status, page, pageSize, keyword)
+    data = paginate(items, total, page, pageSize)
+    data["summary"] = summary_data
+    return success(data)
+
+
+@router.post("/funding/projects/{projectId}/status", summary="启用或停用奖学金/助学金项目")
+def funding_project_status(body: FundingProjectStatusBody, projectId: int = Path(..., ge=1),
+                           user=Depends(require_permission("studentAffairs.funding.project.manage"))):
+    return success(funding_svc.set_project_status(projectId, body.status, body.version, user), message="项目状态已更新")
 
 
 @router.post("/funding/batches", summary="建/发布资助批次")
@@ -694,9 +726,19 @@ def funding_batch_create(body: FundingBatchCreate, user=Depends(require_permissi
 
 @router.get("/funding/batches", summary="资助批次列表")
 def funding_batches(projectId: Optional[str] = None, status: Optional[str] = None,
-                    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total = funding_svc.list_batches(user, projectId, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+                    keyword: Optional[str] = Query(None, max_length=100),
+                    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                    user=Depends(require_permission("studentAffairs.funding.view"))):
+    items, total, summary_data = funding_svc.list_batches(user, projectId, status, page, pageSize, keyword)
+    data = paginate(items, total, page, pageSize)
+    data["summary"] = summary_data
+    return success(data)
+
+
+@router.post("/funding/batches/{batchId}/action", summary="发布草稿批次或关闭新申请")
+def funding_batch_action(body: FundingBatchActionBody, batchId: int = Path(..., ge=1),
+                         user=Depends(require_permission("studentAffairs.funding.project.manage"))):
+    return success(funding_svc.act_batch(batchId, body.action, body.version, user), message="批次状态已更新")
 
 
 @router.post("/funding/applications", summary="发起资助申请（含资格硬校验）")
@@ -738,9 +780,14 @@ def funding_publicity_confirm(body: FundingVersionOnlyBody,
     return success(funding_svc.confirm_publicity(applicationId, user, body.version), message="已通过")
 
 
+class FundingPublicityScanBody(BaseModel):
+    batchId: Optional[int] = Field(default=None, gt=0)
+
+
 @router.post("/funding/scan-publicity", summary="资助公示扫描（定时/手动，幂等）")
-def funding_scan_publicity(user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
-    return success(funding_svc.scan_publicity())
+def funding_scan_publicity(body: Optional[FundingPublicityScanBody] = None,
+                          user=Depends(require_permission("studentAffairs.funding.publicity.manage"))):
+    return success(funding_svc.scan_publicity(user=user, batch_id=body.batchId if body else None))
 
 
 @router.post("/funding/applications/{applicationId}/appeal", summary="对公示中资助申请提起申诉（理由≥5字）")
@@ -751,8 +798,9 @@ def funding_appeal_submit(body: FundingAppealBody, applicationId: int = Path(...
 
 @router.get("/funding/appeals", summary="资助公示申诉列表")
 def funding_appeals(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
+                    appealId: Optional[int] = Query(None, ge=1), applicationId: Optional[int] = Query(None, ge=1),
                     user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total = funding_svc.list_appeals(user, status, page, pageSize)
+    items, total = funding_svc.list_appeals(user, status, page, pageSize, appeal_id=appealId, application_id=applicationId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -762,9 +810,17 @@ def funding_appeal_review(body: FundingAppealReviewBody, appealId: int = Path(..
     return success(funding_svc.review_appeal(appealId, body, user), message="已复核")
 
 
-@router.get("/funding/stats", summary="奖助统计（按状态/项目类型聚合，计数口径不含金额明细）")
+@router.get("/funding/stats", summary="资助综合统计（奖助/勤工/贷款/减免及发放对账）")
 def funding_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
     return success(funding_svc.funding_stats(user))
+
+
+@router.get("/funding/stats/drill", summary="资助统计脱敏下钻名单")
+def funding_stats_drill(metric: str = Query(..., min_length=1),
+                        page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                        user=Depends(require_permission("studentAffairs.stats.view"))):
+    items, total, meta = funding_svc.funding_stats_drill(user, metric, page, pageSize)
+    return success({**paginate(items, total, page, pageSize), **meta})
 
 
 # ── 奖助发放台账（C 包·发放状态/发放/异常）──
@@ -802,8 +858,9 @@ def funding_disbursement_fail(body: ReasonBody, disbursementId: int = Path(...),
 
 
 @router.get("/funding/disbursements/stats", summary="发放概览（按状态计数，授权角色见已发放金额合计）")
-def funding_disbursement_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
-    return success(funding_svc.disbursement_stats(user))
+def funding_disbursement_stats(batchId: Optional[int] = Query(None, ge=1),
+                               user=Depends(require_permission("studentAffairs.stats.view"))):
+    return success(funding_svc.disbursement_stats(user, batch_id=batchId))
 
 
 # ═══════════ 奖助扩展：勤工助学 / 助学贷款 / 减免临补（V1 解冻补建）═══════════
@@ -814,15 +871,29 @@ class WsPostBody(BaseModel):
     salary: Optional[Money] = None
     headcount: Optional[int] = None
     requirement: Optional[str] = None
+    employmentType: Optional[str] = Field("FIXED", description="FIXED/TEMPORARY")
+    workLocation: Optional[str] = None
+    scheduleText: Optional[str] = None
+    applyEnd: Optional[str] = None
+    monthlyHoursLimit: Optional[Money] = Field("40.00")
+    agreementRequired: Optional[bool] = True
 
 
 class WsApplyBody(BaseModel):
     studentId: int = Field(...)
+    statement: Optional[str] = None
+    availability: Optional[str] = None
 
 
 class WsActionBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT/ONBOARD/TERMINATE")
     reason: Optional[str] = ""
+    version: int = Field(..., description="乐观锁版本（必填）")
+    agreementConfirmed: Optional[bool] = False
+
+
+class WsPostActionBody(BaseModel):
+    action: str = Field(..., description="ENABLE/DISABLE")
     version: int = Field(..., description="乐观锁版本（必填）")
 
 
@@ -833,7 +904,22 @@ class LoanBody(BaseModel):
     bankLast4: Optional[str] = None
     yearCode: Optional[str] = None
     amount: Optional[Money] = None
+    receiptCode: Optional[str] = None
+    receiptFileId: Optional[str] = None
     remark: Optional[str] = None
+
+
+class LoanActionBody(BaseModel):
+    action: str = Field(..., description="SUBMIT_RECEIPT/VERIFY/RETURN/CONFIRM")
+    version: int = Field(..., description="乐观锁版本（必填）")
+    reason: Optional[str] = None
+    loanType: Optional[str] = None
+    bankName: Optional[str] = None
+    bankLast4: Optional[str] = None
+    yearCode: Optional[str] = None
+    amount: Optional[Money] = None
+    receiptCode: Optional[str] = None
+    receiptFileId: Optional[str] = None
 
 
 class VersionOnlyBody(BaseModel):
@@ -843,22 +929,30 @@ class VersionOnlyBody(BaseModel):
 class FeeBody(BaseModel):
     studentId: int = Field(...)
     itemType: Optional[str] = Field("REDUCTION", description="REDUCTION/TEMP_AID")
+    yearCode: Optional[str] = None
+    reasonCategory: Optional[str] = "OTHER"
     amount: Optional[Money] = None
     reason: str = Field(..., min_length=5)
+    attachmentIds: list[str] = Field(default_factory=list)
 
 
 class FeeReviewBody(BaseModel):
-    action: str = Field(..., description="APPROVE/REJECT")
+    action: str = Field(..., description="APPROVE/RETURN/REJECT")
     opinion: Optional[str] = ""
     version: int = Field(..., description="乐观锁版本（必填）")
 
 
+class FeeActionBody(FeeReviewBody):
+    fulfillmentChannel: Optional[str] = None
+    fulfillmentReference: Optional[str] = None
+
+
 # —— 勤工助学 ——
 @router.get("/work-study/posts", summary="勤工助学岗位列表")
-def ws_posts(status: Optional[str] = None, page: int = Query(1, ge=1),
+def ws_posts(status: Optional[str] = None, keyword: str = Query("", max_length=100), page: int = Query(1, ge=1),
              pageSize: int = Query(50, ge=1, le=200),
              user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total = fext_svc.list_posts(user, status, page, pageSize)
+    items, total = fext_svc.list_posts(user, status, page, pageSize, keyword)
     return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
@@ -867,11 +961,20 @@ def ws_post_create(body: WsPostBody, user=Depends(require_permission("studentAff
     return success(fext_svc.create_post(body, user), message="已发布")
 
 
+@router.post("/work-study/posts/{postId}/action", summary="启用或停用勤工岗位")
+def ws_post_action(body: WsPostActionBody, postId: int = Path(...),
+                   user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    return success(fext_svc.set_post_status(
+        postId, body.action, user, expected_version=body.version), message="岗位状态已更新")
+
+
 @router.get("/work-study/records", summary="勤工上岗记录（数据范围）")
 def ws_records(postId: Optional[int] = None, status: Optional[str] = None,
+               keyword: str = Query("", max_length=100),
                page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total, status_counts = fext_svc.list_ws_records(user, postId, status, page, pageSize)
+    items, total, status_counts = fext_svc.list_ws_records(
+        user, postId, status, page, pageSize, keyword)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "page": page, "pageSize": pageSize})
 
@@ -886,7 +989,8 @@ def ws_apply(body: WsApplyBody, postId: int = Path(...),
 def ws_action(body: WsActionBody, recordId: int = Path(...),
               user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
     return success(fext_svc.act_work_study(recordId, body.action, user, body.reason or "",
-                                            expected_version=body.version), message="已处理")
+                                            expected_version=body.version,
+                                            agreement_confirmed=body.agreementConfirmed), message="已处理")
 
 
 class WsMonthlyBody(BaseModel):
@@ -911,12 +1015,15 @@ def ws_monthly_add(body: WsMonthlyBody, recordId: int = Path(...),
 
 # —— 助学贷款 ——
 @router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
-def loans(status: Optional[str] = None, page: int = Query(1, ge=1),
+def loans(status: Optional[str] = None, keyword: str = Query("", max_length=100),
+          yearCode: str = Query("", max_length=20), loanType: str = Query("", max_length=20),
+          page: int = Query(1, ge=1),
           pageSize: int = Query(50, ge=1, le=200),
           user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total, status_counts = fext_svc.list_loans(user, status, page, pageSize)
+    items, total, status_counts = fext_svc.list_loans(
+        user, status, page, pageSize, keyword, yearCode, loanType)
     return success({"items": items, "total": total, "statusCounts": status_counts,
-                    "page": page, "pageSize": pageSize})
+                    "policy": fext_svc.loan_policy(), "page": page, "pageSize": pageSize})
 
 
 @router.post("/loans", summary="登记助学贷款")
@@ -930,12 +1037,20 @@ def loan_advance(body: VersionOnlyBody, loanId: int = Path(...),
     return success(fext_svc.advance_loan(loanId, user, expected_version=body.version), message="已推进")
 
 
+@router.post("/loans/{loanId}/action", summary="贷款语义动作（补回执/核验/退回/确认）")
+def loan_action(body: LoanActionBody, loanId: int = Path(...),
+                user=Depends(require_permission("studentAffairs.funding.loan.manage"))):
+    return success(fext_svc.loan_action(loanId, body, user), message="贷款记录已更新")
+
+
 # —— 减免与临时补助 ——
 @router.get("/fee-reductions", summary="减免/临补台账（数据范围）")
 def fee_reductions(itemType: Optional[str] = None, status: Optional[str] = None,
+                   keyword: str = Query("", max_length=100), yearCode: str = Query("", max_length=20),
                    page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                    user=Depends(require_permission("studentAffairs.funding.view"))):
-    items, total, status_counts = fext_svc.list_reductions(user, itemType, status, page, pageSize)
+    items, total, status_counts = fext_svc.list_reductions(
+        user, itemType, status, page, pageSize, keyword, yearCode)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "page": page, "pageSize": pageSize})
 
@@ -949,6 +1064,12 @@ def fee_submit(body: FeeBody, user=Depends(require_permission("studentAffairs.fu
 def fee_review(body: FeeReviewBody, feeId: int = Path(...),
                user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
     return success(fext_svc.review_reduction(feeId, body, user), message="已处理")
+
+
+@router.post("/fee-reductions/{feeId}/action", summary="减免/临补语义动作（批准/退回/驳回/落实）")
+def fee_action(body: FeeActionBody, feeId: int = Path(...),
+               user=Depends(require_permission("studentAffairs.funding.reduction.manage"))):
+    return success(fext_svc.fee_action(feeId, body, user), message="申请已更新")
 
 
 @router.post("/fee-reductions/{feeId}/issue", summary="减免/临补发放")

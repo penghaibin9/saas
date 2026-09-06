@@ -213,6 +213,8 @@ def build_message_action(
 
     try:
         key, cleaned = _messages.validate_action(key, action_params or {})
+        from app.services.affairs_funding_student_service import message_application_params
+        cleaned = message_application_params(key, cleaned)
     except AppException:
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,

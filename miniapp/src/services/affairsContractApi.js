@@ -1,4 +1,5 @@
 import { realDownload, realRequest, realUpload } from '@/services/request'
+import { presentLeave } from './leavePresentation'
 
 async function loadAllTransferPages(path) {
   const pageSize = 200
@@ -23,6 +24,7 @@ async function loadAllTransferPages(path) {
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
  */
 export const affairsContractApi = {
+  getLeaveDetail: async (id) => presentLeave(await realRequest(`/mobile/affairs/leave/${encodeURIComponent(id)}/detail`)),
   getStudentCandidates: (purpose = 'TALK', q = '', page = 1, pageSize = 20) =>
     realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}&q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
 
@@ -118,8 +120,8 @@ export const affairsContractApi = {
   }),
 
   // 教师材料审核和安全批量提醒
-  getMaterialRequirements: (status = '', page = 1, pageSize = 20) => realRequest('/student-affairs/material-requirements', {
-    data: { status, page, pageSize }
+  getMaterialRequirements: (status = '', page = 1, pageSize = 20, context = {}) => realRequest('/student-affairs/material-requirements', {
+    data: { status, page, pageSize, ...context }
   }),
   reviewMaterialRequirement: (requirementId, action, reason, version) =>
     realRequest(`/student-affairs/material-requirements/${requirementId}/review`, {

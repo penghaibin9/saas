@@ -169,6 +169,9 @@ def _result_notice(todo_type: str, row_id: int) -> bool:
             status = str(getattr(row, spec["status_field"]) or "")
             result = str(getattr(row, "result", None) or status)
             opinion = str(getattr(row, "review_opinion", None) or "")
+            action_params = None
+            if todo_type == 'FUNDING_APPEAL_REVIEW':
+                action_params = {'bizType': 'FUNDING', 'recordId': str(row.application_id)}
             if status not in spec["pending"]:
                 emit_receiver_notice(
                     db,
@@ -180,6 +183,7 @@ def _result_notice(todo_type: str, row_id: int) -> bool:
                     title=f"{spec['title'].replace('待复核', '').replace('待审核', '')}结果",
                     content=f"复核结论：{result}" + (f"；意见：{opinion}" if opinion else ""),
                     receiver_as="student",
+                    action_params=action_params,
                     dedup_extra=f"result:{status}:{result}",
                 )
             db.commit()

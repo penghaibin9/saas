@@ -22,19 +22,20 @@ test('T5 MobileSequentialQueue is windowed and single-object only', () => {
 
 test('T5 leave queue uses canonical single-record commands and reloads truth before advancing', () => {
   const page = read('src/pages/teacher/affairs-leave/index.vue')
-  assert.match(page, /MobileSequentialQueue/)
+  assert.match(page, /MobileLeaveDetail/)
+  assert.match(page, /teacherApi\.getAffairsLeaveDetail\(id\)/)
   assert.match(page, /sequentialConflict/)
   assert.match(page, /affairsContractApi\.approveLeave\(x\.id/)
   assert.match(page, /affairsContractApi\.rejectLeave\(x\.id/)
   assert.match(page, /affairsContractApi\.returnLeave\(x\.id/)
-  assert.match(page, /return this\.load\(\)\.then\(\(\) => this\.afterSequentialSuccess/)
+  assert.match(page, /await this\.load\(\)[\s\S]*this\.afterSequentialSuccess/)
   // The conflict branch may be expressed directly (`===`) or by a complementary non-conflict
   // guard (`!==`). The production contract is behavioral: 409 never reopens stale input, while
   // a non-conflict failure preserves the typed draft and offers a retry.
   assert.match(page, /if \(n\.kind !== 'conflict'\)/)
   assert.match(page, /if \(retry\) setTimeout\(retry, 0\)/)
   assert.match(page, /this\.sequentialConflict = true/)
-  assert.match(page, /return this\.load\(\)\.catch\(\(\) => \{\}\)/)
+  assert.match(page, /await this\.load\(\)\.catch\(\(\) => \{\}\)/)
   assert.doesNotMatch(page, /approveLeave\([^\n]*\[/)
   assert.doesNotMatch(page, /rejectLeave\([^\n]*\[/)
 })
