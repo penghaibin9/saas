@@ -68,6 +68,7 @@ async function closePriorArchiveRetryBatches(adminApi, retry) {
 
 async function ensureGuidance(adminApi, fixture) {
   const rows = items(await adminApi.get('/graduation/gd-guidances', {
+    batchId: fixture.batchId,
     gdStudentId: fixture.gdStudentId,
     page: 1,
     pageSize: 200
@@ -90,6 +91,7 @@ async function ensureGuidance(adminApi, fixture) {
   let persisted
   await expect.poll(async () => {
     persisted = items(await adminApi.get('/graduation/gd-guidances', {
+      batchId: fixture.batchId,
       gdStudentId: fixture.gdStudentId,
       page: 1,
       pageSize: 200
