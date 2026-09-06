@@ -95,7 +95,7 @@ def commercial_state(tenant_id: int) -> dict:
     from app.services import platform_service
 
     tid = int(tenant_id)
-    tenant = platform_service.get_tenant(tid)
+    platform_service.get_tenant(tid)
     meta = platform_service.tenant_meta(tid)
     package_code = str(meta.get("packageCode") or "trial").strip()
     package = platform_service.get_package(package_code)
@@ -294,10 +294,14 @@ def install_platform_service_adapter() -> None:
         _ORIGINAL_PRELOADED = platform_service._tenant_row_preloaded
     original_preloaded = _ORIGINAL_PRELOADED
 
-    def _tenant_row_preloaded_verified(
+    def _tenant_row_preloaded_without_legacy_features(
         t, meta: dict, *, students: int, users: int, school_admins: int, teachers: int,
         package_overrides: dict[str, dict], feature_override: dict | None,
     ) -> dict:
+        # Keep PLAT-02 constant-query: this function runs once per listed tenant,
+        # so it must never open a session. Exact paid-order verification belongs
+        # to detail/runtime gates; list projection exposes UNKNOWN when only an
+        # order marker is present.
         row = original_preloaded(
             t, meta,
             students=students,
@@ -307,24 +311,31 @@ def install_platform_service_adapter() -> None:
             package_overrides=package_overrides,
             feature_override=None,
         )
-        features = effective_features(int(t.id))
-        mapping = {
-            "allowImport": "studentImport", "allowExport": "studentExport",
-            "allowFileUpload": "fileUpload", "allowMiniapp": "miniapp",
-            "allowGraduation": "graduation", "allowInternship": "internship",
-            "allowEmployment": "employment", "allowRiskWarning": "riskWarning",
-            "allowCustomBrand": "customBrand", "allowWorkflowConfig": "workflowConfig",
-            "allowApiAccess": "apiAccess",
-        }
-        for target, source in mapping.items():
-            row[target] = bool(features.get(source, False))
-        state = commercial_state(int(t.id))
-        row["commercialAuthoritySource"] = state["authoritySource"]
-        row["commercialAuthorityVerified"] = bool(state["verified"])
-        row["commercialRepairRequired"] = bool(state.get("repairRequired"))
+        package_code = str(meta.get("packageCode") or "trial")
+        status = str(meta.get("status") or "").lower()
+        authority = str(meta.get("lastCommercialAuthority") or "").upper()
+        approval_ref = str(meta.get("lastCommercialApprovalRef") or "")
+        order_no = str(meta.get("lastCommercialOrderNo") or "")
+        if package_code == "trial" and status in {"trial", "active"}:
+            source, verified, repair = "TRIAL", True, False
+        elif authority == "CONTROLLED_EXCEPTION" and len(approval_ref) >= 5:
+            source, verified, repair = "CONTROLLED_EXCEPTION", True, False
+        elif order_no:
+            source, verified, repair = "PAID_ORDER_EVIDENCE_PRESENT", None, None
+        else:
+            source, verified, repair = "COMMERCIAL_ORDER_REQUIRED", False, True
+            for key in (
+                "allowImport", "allowExport", "allowFileUpload", "allowMiniapp",
+                "allowGraduation", "allowInternship", "allowEmployment", "allowRiskWarning",
+                "allowCustomBrand", "allowWorkflowConfig", "allowApiAccess",
+            ):
+                row[key] = False
+        row["commercialAuthoritySource"] = source
+        row["commercialAuthorityVerified"] = verified
+        row["commercialRepairRequired"] = repair
         return row
 
-    platform_service._tenant_row_preloaded = _tenant_row_preloaded_verified
+    platform_service._tenant_row_preloaded = _tenant_row_preloaded_without_legacy_features
 
     if _ORIGINAL_TRANSITION is None:
         _ORIGINAL_TRANSITION = lifecycle.apply_transition
