@@ -172,7 +172,7 @@ jobs:
           NODE
 
       - name: Upload exact-SHA WeChat DevTools import package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: internship-s3-mp-weixin-${{ env.PRODUCT_EXACT_SHA }}
           path: |

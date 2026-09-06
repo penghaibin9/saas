@@ -96,7 +96,7 @@ jobs:
           echo "Shard ${{ matrix.shard }} pytest exit code: $PYTEST_EXIT"
       - name: Upload sanitized shard evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-shard-${{ matrix.shard }}
           path: |
@@ -163,7 +163,7 @@ jobs:
           fi
       - name: Upload merged baseline audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-baseline-audit
           path: test-results/backend-baseline-audit

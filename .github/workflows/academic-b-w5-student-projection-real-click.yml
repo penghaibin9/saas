@@ -179,7 +179,7 @@ jobs:
         run: npx playwright test specs/academic-b-selection-w5-final.spec.mjs --reporter=line
       - name: Upload W5 screenshots/traces
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w5-evidence-${{ github.sha }}
           path: e2e/test-results/
@@ -187,7 +187,7 @@ jobs:
           retention-days: 14
       - name: Upload W5 browser report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w5-report-${{ github.sha }}
           path: e2e/playwright-report/
@@ -195,7 +195,7 @@ jobs:
           retention-days: 14
       - name: Upload W5 service logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w5-logs-${{ github.sha }}
           path: e2e/runtime-logs/

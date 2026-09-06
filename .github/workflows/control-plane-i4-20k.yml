@@ -118,7 +118,7 @@ jobs:
           PY
       - name: Upload sanitized I4 metrics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: control-plane-i4-20k-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/control-plane/i4-20k.json

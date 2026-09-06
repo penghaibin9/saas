@@ -137,7 +137,7 @@ jobs:
 
       - name: Upload Playwright HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-html-report-${{ github.run_id }}
           path: e2e/playwright-report/
@@ -146,7 +146,7 @@ jobs:
 
       - name: Upload screenshots, video, traces and gate results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-evidence-${{ github.run_id }}
           path: |
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload service logs and provenance
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-service-logs-${{ github.run_id }}
           path: e2e/runtime-logs/
