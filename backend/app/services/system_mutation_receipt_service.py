@@ -3,7 +3,7 @@
 Critical school mutations commit the database and audit evidence in one
 transaction. Auth-cache invalidation happens afterwards and may degrade, but a
 cache failure must never make an already-committed mutation look rolled back.
-The receipt mirrors Platform W3 and exposes a cache-only recovery path.
+The receipt mirrors Platform W3 and exposes cache-only recovery paths.
 """
 from __future__ import annotations
 
@@ -30,12 +30,7 @@ def _actor_id(user: dict | None) -> int | None:
 
 
 def _optional_version(value, *, current: int, label: str) -> tuple[int, bool]:
-    """N-1 clients may omit expectedVersion; explicit versions are strict.
-
-    The compatibility flag is returned so the UI/acceptance tests can see that
-    the write did not have a client-side CAS precondition. New clients should
-    always send the version exposed by list/detail DTOs.
-    """
+    """Explicit expectedVersion is strict; N-1 omission stays visible as compatibility."""
     if value in (None, ""):
         return int(current), False
     try:
@@ -69,7 +64,7 @@ def _subject_cache_receipt(user_id: int, tenant_id: int) -> dict:
             "warning": "",
             "postCommitError": "",
         }
-    except Exception as exc:  # DB fact is already durable; never replay it here.
+    except Exception as exc:
         return {
             "cacheInvalidated": False,
             "cacheRecoveryRequired": True,
@@ -164,45 +159,34 @@ def set_user_status(
         else:
             target = "ACTIVE"
 
-        # Replaying the same terminal state is harmless but should not create a
-        # fake new version or a second critical audit record.
-        if before == target:
-            return {
-                "id": str(account.id),
-                "status": target,
-                "statusLabel": "已停用" if target == "DISABLED" else "启用中",
-                "version": version_before,
-                "runtimeMaterialized": True,
-                "cacheInvalidated": True,
-                "cacheRecoveryRequired": False,
-                "idempotent": True,
-                "optimisticLockEnforced": occ,
-                "warning": "",
-            }
-
-        account.status = target
-        account.version = version_before + 1
-        action_code = {"DISABLE": "USER_DISABLE", "ENABLE": "USER_ENABLE", "UNLOCK": "USER_UNLOCK"}[normalized]
-        audit_log.record_critical_in_session(
-            db,
-            action_code,
-            f"user:{account.id}",
-            detail={
-                "loginName": account.login_name,
-                "before": before,
-                "after": target,
-                "reason": reason_text,
-                "expectedVersion": expected_version,
-                "versionBefore": version_before,
-                "versionAfter": int(account.version),
-                "moduleCode": "systemAdmin",
-            },
-            tenant_id=tenant_id,
-            resource_id=str(account.id),
-        )
-        db.commit()
-        version_after = int(account.version)
+        idempotent = before == target
         login_name = account.login_name
+        if not idempotent:
+            account.status = target
+            account.version = version_before + 1
+            action_code = {"DISABLE": "USER_DISABLE", "ENABLE": "USER_ENABLE", "UNLOCK": "USER_UNLOCK"}[normalized]
+            audit_log.record_critical_in_session(
+                db,
+                action_code,
+                f"user:{account.id}",
+                detail={
+                    "loginName": account.login_name,
+                    "before": before,
+                    "after": target,
+                    "reason": reason_text,
+                    "expectedVersion": expected_version,
+                    "versionBefore": version_before,
+                    "versionAfter": int(account.version),
+                    "moduleCode": "systemAdmin",
+                },
+                tenant_id=tenant_id,
+                resource_id=str(account.id),
+            )
+            db.commit()
+            version_after = int(account.version)
+        else:
+            action_code = "USER_STATUS_IDEMPOTENT_CACHE_RECOVERY"
+            version_after = version_before
     except Exception:
         db.rollback()
         raise
@@ -212,6 +196,7 @@ def set_user_status(
     cache = _subject_cache_receipt(int(user_id), tenant_id)
     _audit_cache_degraded(action_code, f"user:{user_id}", tenant_id, cache, {
         "userId": str(user_id), "loginName": login_name, "version": version_after,
+        "idempotent": idempotent,
     })
     return {
         "id": str(user_id),
@@ -219,7 +204,7 @@ def set_user_status(
         "statusLabel": "已停用" if target == "DISABLED" else "启用中",
         "version": version_after,
         "runtimeMaterialized": True,
-        "idempotent": False,
+        "idempotent": idempotent,
         "optimisticLockEnforced": occ,
         **cache,
     }
@@ -327,35 +312,34 @@ def set_role_status(
             )) or 0)
             if members > 0:
                 raise AppException("DATA_CONFLICT", f"该角色仍有 {members} 名成员，请先改派成员再停用", http_status=409)
-        if before == target:
-            return {
-                "id": str(role.id), "status": target, "version": version_before,
-                "runtimeMaterialized": True, "cacheInvalidated": True,
-                "cacheRecoveryRequired": False, "idempotent": True,
-                "optimisticLockEnforced": occ, "warning": "",
-            }
-        role.status = target
-        role.version = version_before + 1
-        action_code = "ROLE_DISABLE" if normalized == "DISABLE" else "ROLE_ENABLE"
-        audit_log.record_critical_in_session(
-            db,
-            action_code,
-            f"role:{role.id}",
-            detail={
-                "roleCode": role.role_code,
-                "before": before,
-                "after": target,
-                "reason": reason_text,
-                "versionBefore": version_before,
-                "versionAfter": int(role.version),
-                "moduleCode": "systemAdmin",
-            },
-            tenant_id=tenant_id,
-            resource_id=str(role.id),
-        )
-        db.commit()
-        version_after = int(role.version)
+        idempotent = before == target
         role_code = role.role_code
+        if not idempotent:
+            role.status = target
+            role.version = version_before + 1
+            action_code = "ROLE_DISABLE" if normalized == "DISABLE" else "ROLE_ENABLE"
+            audit_log.record_critical_in_session(
+                db,
+                action_code,
+                f"role:{role.id}",
+                detail={
+                    "roleCode": role.role_code,
+                    "before": before,
+                    "after": target,
+                    "reason": reason_text,
+                    "expectedVersion": expected_version,
+                    "versionBefore": version_before,
+                    "versionAfter": int(role.version),
+                    "moduleCode": "systemAdmin",
+                },
+                tenant_id=tenant_id,
+                resource_id=str(role.id),
+            )
+            db.commit()
+            version_after = int(role.version)
+        else:
+            action_code = "ROLE_STATUS_IDEMPOTENT_CACHE_RECOVERY"
+            version_after = version_before
     except Exception:
         db.rollback()
         raise
@@ -365,22 +349,24 @@ def set_role_status(
     cache = _tenant_cache_receipt(tenant_id)
     _audit_cache_degraded(action_code, f"role:{role_id}", tenant_id, cache, {
         "roleId": str(role_id), "roleCode": role_code, "version": version_after,
+        "idempotent": idempotent,
     })
     return {
         "id": str(role_id), "status": target, "version": version_after,
-        "runtimeMaterialized": True, "idempotent": False,
+        "runtimeMaterialized": True, "idempotent": idempotent,
         "optimisticLockEnforced": occ, **cache,
     }
 
 
 def _student_scope_ids(db, tenant_id: int, scope: str, filters: dict) -> list[int]:
     from app.models import StudentAccountLink, StudentProfile, User
+    from app.modules.system_admin.routers import system_bundle as bundle
 
     stmt = select(User.id).where(
         User.tenant_id == tenant_id,
         User.is_deleted.is_(False),
         User.status == "ACTIVE",
-        User.user_type == "STUDENT",
+        bundle._account_type_condition(User, "STUDENT", tenant_id),
     )
     if scope != "SCHOOL":
         profile = select(StudentAccountLink.user_id).join(
@@ -416,6 +402,7 @@ def _student_scope_ids(db, tenant_id: int, scope: str, filters: dict) -> list[in
 def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
     """Batch-disable with explicit per-subject cache outcome after durable writes."""
     from app.models import User
+    from app.modules.system_admin.routers import system_bundle as bundle
     from app.services import audit_log
 
     tenant_id = _tenant_id()
@@ -427,7 +414,8 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
         raise AppException("VALIDATION_ERROR", "批量操作只支持 DISABLE / ENABLE", http_status=422)
     if scope not in {"SELECTED", "CLASS", "GRADE", "COLLEGE", "SCHOOL"}:
         raise AppException("VALIDATION_ERROR", "批量停用范围无效", http_status=422)
-    if scope != "SELECTED" and (action != "DISABLE" or str(payload.get("accountType") or "").upper() != "STUDENT"):
+    account_type = bundle._normalize_account_type(payload.get("accountType")) if payload.get("accountType") else ""
+    if scope != "SELECTED" and (action != "DISABLE" or account_type != "STUDENT"):
         raise AppException("VALIDATION_ERROR", "班级、年级、学院和全校范围仅支持批量停用学生账号", http_status=422)
     if scope == "SCHOOL" and payload.get("confirmSchoolScope") is not True:
         raise AppException("VALIDATION_ERROR", "全校停用属于高风险操作，请完成全校范围二次确认", http_status=422)
@@ -439,22 +427,36 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
             ids = _student_scope_ids(db, tenant_id, scope, dict(payload.get("filters") or {}))
         if not ids:
             raise AppException("VALIDATION_ERROR", "没有可处理的账号", http_status=422)
+        unique_ids = sorted(set(ids))
+        if account_type:
+            matched = int(db.scalar(select(func.count(User.id)).where(
+                User.tenant_id == tenant_id,
+                User.id.in_(unique_ids),
+                User.is_deleted.is_(False),
+                bundle._account_type_condition(User, account_type, tenant_id),
+            )) or 0)
+            if matched != len(unique_ids):
+                raise AppException("VALIDATION_ERROR", "所选账号包含其他类型，已拒绝批量操作", http_status=422)
+
         actor_id = _actor_id(user)
         accounts = list(db.scalars(select(User).where(
             User.tenant_id == tenant_id,
-            User.id.in_(ids),
+            User.id.in_(unique_ids),
             User.is_deleted.is_(False),
         ).order_by(User.id).with_for_update()).all())
         by_id = {int(row.id): row for row in accounts}
         results: list[dict[str, Any]] = []
         changed_ids: list[int] = []
-        for uid in ids:
+        for uid in unique_ids:
             account = by_id.get(uid)
             if account is None:
                 results.append({"id": str(uid), "status": "FAILED", "message": "账号不存在"})
                 continue
             if action == "DISABLE" and actor_id == uid:
                 results.append({"id": str(uid), "status": "FAILED", "message": "不能停用本人"})
+                continue
+            if action == "DISABLE" and bundle._is_last_active_school_admin(db, tenant_id, uid):
+                results.append({"id": str(uid), "status": "FAILED", "message": "不能停用本校最后一名启用中的学校管理员"})
                 continue
             target = "DISABLED" if action == "DISABLE" else "ACTIVE"
             if str(account.status or "").upper() == target:
@@ -464,6 +466,7 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
             account.version = int(account.version or 0) + 1
             changed_ids.append(uid)
             results.append({"id": str(uid), "status": "OK", "message": "已停用" if target == "DISABLED" else "已启用"})
+
         audit_log.record_critical_in_session(
             db,
             "USER_BATCH_DISABLE" if action == "DISABLE" else "USER_BATCH_ENABLE",
@@ -471,10 +474,11 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
             detail={
                 "scope": scope,
                 "count": len(changed_ids),
-                "requestedCount": len(ids),
+                "requestedCount": len(unique_ids),
                 "reason": reason,
                 "changedUserIds": [str(uid) for uid in changed_ids[:500]],
                 "moduleCode": "systemAdmin",
+                "optimisticLockEnforced": False,
             },
             tenant_id=tenant_id,
             resource_id=str(tenant_id),
@@ -488,7 +492,8 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
 
     cache_failed: list[str] = []
     removed_keys = 0
-    for uid in changed_ids:
+    successful_ids = [int(row["id"]) for row in results if row["status"] == "OK"]
+    for uid in successful_ids:
         receipt = _subject_cache_receipt(uid, tenant_id)
         removed_keys += int(receipt.get("removedKeys") or 0)
         if not receipt.get("cacheInvalidated"):
@@ -507,6 +512,7 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
         "cacheRecoveryRequired": not cache_ok,
         "cacheFailedUserIds": cache_failed,
         "removedKeys": removed_keys,
+        "optimisticLockEnforced": False,
         "warning": "" if cache_ok else "批量账号状态已提交，但部分账号缓存刷新失败；请只执行缓存恢复",
     }
     if not cache_ok:
