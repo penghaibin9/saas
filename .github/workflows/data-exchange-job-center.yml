@@ -89,7 +89,7 @@ jobs:
       FILE_SCAN_ENABLED: 'false'
       FILE_SCAN_REQUIRED: 'false'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exact branch HEAD assertion
