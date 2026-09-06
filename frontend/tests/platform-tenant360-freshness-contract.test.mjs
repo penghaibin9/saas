@@ -27,7 +27,12 @@ test('legacy commercial and workflow surfaces are read-only in tenant360', () =>
   assert.doesNotMatch(source, /@change="saveWorkflow/)
 })
 
-test('rules and brand writes send optimistic-lock metadata through hardening api', () => {
-  assert.match(source, /platformControlHardeningApi\.putRules\(this\.tid, this\.rules, this\.rulesVersion, reason\.trim\(\)\)/)
-  assert.match(source, /platformControlHardeningApi\.putBrand\(this\.tid, \{ \.\.\.this\.brand \}, this\.brandVersion, reason\.trim\(\)\)/)
+test('rules preserve frozen OCC metadata while school brand is read-only', () => {
+  // The prior assertion required a retired platform BRAND writer. The backend
+  // now rejects it: UI must read TenantBrandConfig instead, not keep that button.
+  assert.match(source, /platformControlHardeningApi\.putRules\(tenantId, body, version, reason\.trim\(\)\)/)
+  assert.match(source, /JSON\.parse\(JSON\.stringify\(this\.rules\)\)/)
+  assert.match(source, /version = this\.rulesVersion/)
+  assert.match(source, /TENANT_BRAND_CONFIG/)
+  assert.doesNotMatch(source, /putBrand\(|saveBrand|v-model="brand\[/)
 })
