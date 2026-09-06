@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
       - name: Assert exact W3 browser head
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
