@@ -1,7 +1,7 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { graduationRoles } from '../lib/graduation-role-accounts.mjs'
-import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { items, loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { ensureDefenseScoringContext } from '../lib/graduation-scenario-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
@@ -22,16 +22,55 @@ async function expectBusinessSuccess(response, action) {
   return body.data
 }
 
+async function closePriorRunningDefenseFixtures(adminApi) {
+  const runBase = String(process.env.GITHUB_RUN_ID || '').replace(/\D/g, '').slice(-12)
+  if (!runBase) return []
+
+  const batchPrefix = `PW-E2E-${runBase}-`
+  const batches = items(await adminApi.get('/graduation/batches', {
+    keyword: batchPrefix,
+    page: 1,
+    pageSize: 200
+  }))
+  const closed = []
+
+  for (const batch of batches) {
+    const batchNo = String(batch.batchNo || '')
+    if (!batchNo.startsWith(batchPrefix)) continue
+    if (String(batch.status || '').toUpperCase() !== 'RUNNING') continue
+
+    const students = items(await adminApi.get('/graduation/gd-students', {
+      batchId: batch.id,
+      keyword: graduationRoles.defenseStudent.username,
+      page: 1,
+      pageSize: 200
+    }))
+    const ownsDefenseStudent = students.some(row =>
+      String(row.studentNo || '') === String(graduationRoles.defenseStudent.username)
+    )
+    if (!ownsDefenseStudent) continue
+
+    const receipt = await adminApi.post(`/graduation/batches/${batch.id}/close`, {})
+    expect(String(receipt?.status || '').toUpperCase(), `old E2E defense batch ${batch.id} must close through the production state machine`).toBe('CLOSED')
+    const readback = await adminApi.get(`/graduation/batches/${batch.id}`)
+    expect(String(readback?.status || '').toUpperCase(), `old E2E defense batch ${batch.id} must read back as CLOSED`).toBe('CLOSED')
+    closed.push(String(batch.id))
+  }
+  return closed
+}
+
 test.describe.serial('V6 · defense secretary confirmation writes the complete round', () => {
   let fixture
   let adminApi
+  let closedPriorBatchIds = []
 
   test.beforeAll(async () => {
+    adminApi = await loginApi(config.sandboxAdmin)
+    closedPriorBatchIds = await closePriorRunningDefenseFixtures(adminApi)
     fixture = await prepareGraduationFixture({
       studentAccount: graduationRoles.defenseStudent,
       fixtureKey: 'defense-secretary-confirmation'
     })
-    adminApi = await loginApi(config.sandboxAdmin)
   })
 
   test('real secretary role confirms two genuine judge scores and reads both records back', async ({ page }, testInfo) => {
@@ -160,6 +199,7 @@ test.describe.serial('V6 · defense secretary confirmation writes the complete r
         defenseGroupId: String(scoringFixture.defenseGroupId),
         role: 'GD_DEFENSE_SECRETARY',
         roundNo,
+        closedPriorBatchIds,
         confirmation: receipt,
         scoresBefore: baseline,
         scoresAfter: confirmed,
