@@ -197,6 +197,31 @@ run_specs() {
   run_playwright "$@"
 }
 
+run_phase() {
+  local phase="$1"
+  shift
+  local phase_report="$RESULT_DIR/${SUITE}-${phase}-playwright.json"
+  local phase_failures="$RESULT_DIR/${SUITE}-${phase}-failures.json"
+  local phase_output="test-results/${SUITE}-${phase}"
+  rm -f "$phase_report" "$phase_failures"
+  (
+    cd "$ROOT/e2e"
+    PLAYWRIGHT_JSON_OUTPUT_NAME="$phase_report" \
+      npx playwright test "$@" --output="$phase_output" --reporter=line,json
+  )
+  local code=$?
+  summarize_playwright_report "$phase_report" "${SUITE}-${phase}" "$phase_failures"
+  return "$code"
+}
+
+publish_phase_result() {
+  local phase="$1"
+  local phase_report="$RESULT_DIR/${SUITE}-${phase}-playwright.json"
+  local phase_failures="$RESULT_DIR/${SUITE}-${phase}-failures.json"
+  cp "$phase_report" "$PLAYWRIGHT_JSON"
+  cp "$phase_failures" "$FAILURE_JSON"
+}
+
 case "$SUITE" in
   production-non-graduation)
     mapfile -t SPECS < <(
@@ -229,7 +254,7 @@ case "$SUITE" in
   graduation-functional)
     ARCHIVE_ISOLATION_SPEC='specs/graduation-v6-archive-00-isolation.spec.mjs'
     ARCHIVE_FILING_SPEC='specs/graduation-v6-archive-filing.spec.mjs'
-    mapfile -t SPECS < <(
+    mapfile -t CORE_SPECS < <(
       cd "$ROOT/e2e"
       find specs -maxdepth 1 -type f -name 'graduation*.spec.mjs' \
         ! -name '*-visual.spec.mjs' \
@@ -237,25 +262,39 @@ case "$SUITE" in
         ! -name 'graduation-v6-archive-filing.spec.mjs' \
         -print | sort
     )
+    if [[ "${#CORE_SPECS[@]}" -eq 0 ]]; then
+      echo 'no graduation core functional specs discovered' >&2
+      write_summary failed 2
+      exit 2
+    fi
     if [[ ! -f "$ROOT/e2e/$ARCHIVE_ISOLATION_SPEC" || ! -f "$ROOT/e2e/$ARCHIVE_FILING_SPEC" ]]; then
       echo 'graduation archive tail specs are required' >&2
       write_summary failed 2
       exit 2
     fi
-    SPECS+=("$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC")
-    if [[ "${#SPECS[@]}" -eq 0 ]]; then
-      echo 'no graduation functional specs discovered' >&2
-      write_summary failed 2
-      exit 2
+
+    printf '%s\n' "${CORE_SPECS[@]}" "$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC" \
+      > "$RESULT_DIR/${SUITE}-selected-specs.txt"
+
+    echo "[browser-suite] suite=$SUITE phase=core specs=${#CORE_SPECS[@]}"
+    run_phase core "${CORE_SPECS[@]}"
+    core_code=$?
+    if [[ "$core_code" -ne 0 ]]; then
+      publish_phase_result core
+      write_summary failed "$core_code"
+      exit "$core_code"
     fi
-    run_specs graduation-functional "${SPECS[@]}"
-    code=$?
-    if [[ "$code" -eq 0 ]]; then
+
+    echo '[browser-suite] core passed; archive isolation and formal filing now run as a separate terminal phase'
+    run_phase archive "$ARCHIVE_ISOLATION_SPEC" "$ARCHIVE_FILING_SPEC"
+    archive_code=$?
+    publish_phase_result archive
+    if [[ "$archive_code" -eq 0 ]]; then
       write_summary passed 0
     else
-      write_summary failed "$code"
+      write_summary failed "$archive_code"
     fi
-    exit "$code"
+    exit "$archive_code"
     ;;
 
   graduation-gold)
