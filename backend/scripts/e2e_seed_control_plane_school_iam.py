@@ -1,9 +1,10 @@
 """Minimal real prerequisites for the Control Plane school-IAM browser E2E.
 
-This seed creates identities/tenant entitlement only. It deliberately does not
-create a Custom Role, SecurityChange, RolePermission, or security revision;
-those are browser E2E writes under test. Global Permission definitions are
-materialized through the production Permission Catalog reconciliation Authority.
+This seed creates identities and *real commercial entitlement facts*. It does not
+use the retired tenant FEATURES override to fake purchases. Custom Role,
+SecurityChange, RolePermission, and security revision remain browser E2E writes
+under test. Global Permission definitions are materialized through the production
+Permission Catalog reconciliation Authority.
 """
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ from e2e_seed_playwright_tenants import assert_safe_target, ensure_tenant
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
+from app.services import commercial_entitlement_authority_service as commercial
+from app.services import platform_defaults
 from app.services import platform_service
 from app.services import system_role_shadow_service as shadow
 from app.services.permission_catalog_reconciliation_service import reconcile_permission_catalog
@@ -25,6 +28,8 @@ DEMO_TID = 1000000000000000003
 SANDBOX_TID = 1000000000000000007
 IAM_E2E_TID = 1000000000000000011
 IAM_DENIED_TID = 1000000000000000013
+IAM_FULL_PACKAGE = "e2e_iam_full"
+IAM_DENIED_PACKAGE = "e2e_iam_no_internship"
 IAM_E2E_TENANT = {
     "id": IAM_E2E_TID,
     "code": "iam-e2e-school",
@@ -116,6 +121,58 @@ def _ensure_teacher(db, *, tenant_id: int, login_name: str, real_name: str) -> U
     return target
 
 
+def _package_payload(code: str, name: str, *, internship: bool) -> dict:
+    features = dict(platform_defaults.DEFAULT_FEATURES)
+    features["internship"] = bool(internship)
+    return {
+        "packageCode": code,
+        "packageName": name,
+        "price": 1,
+        "durationDays": 30,
+        "maxStudents": 10000,
+        "maxUsers": 1000,
+        "storageLimitMb": 20480,
+        "features": features,
+        "enabled": True,
+        "remark": "Control Plane School IAM E2E commercial fixture",
+    }
+
+
+def _activate_paid_package(tenant_id: int, package_code: str) -> str:
+    """Use the production order -> paid -> activation chain; never write FEATURES."""
+    # Start from a legitimate trial materialization. A formal packageCode in
+    # TENANT_META before payment would itself be the W1 bypass this test guards.
+    platform_service.put_config_json(tenant_id, "TENANT_META", "-", {
+        "packageCode": "trial",
+        "status": "trial",
+        "environment": "test",
+    })
+    created = platform_service.create_order({
+        "tenantId": str(tenant_id),
+        "packageCode": package_code,
+        "orderType": "NEW",
+        "durationDays": 30,
+        "amount": 1,
+        "remark": "School IAM E2E paid entitlement fixture",
+    })
+    paid = platform_service.order_action(
+        created["orderNo"],
+        "mark-paid",
+        expected_version=int(created["version"]),
+        reason="E2E真实订单授权初始化",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform_service.order_action(
+            created["orderNo"],
+            "repair-activation",
+            expected_version=int(paid["version"]),
+            reason="E2E修复订单授权激活",
+        )
+    if not paid.get("tenantActivated"):
+        raise SystemExit(f"paid order did not activate tenant {tenant_id}: {paid}")
+    return str(created["orderNo"])
+
+
 def main() -> int:
     assert_safe_target()
     head_sha = str(os.getenv("E2E_EXPECTED_SHA") or os.getenv("GITHUB_SHA") or "").strip()
@@ -125,8 +182,8 @@ def main() -> int:
     # Keep product semantics and browser journeys isolated from one another:
     # demo-school and sandbox-school are entitled because the broad production
     # interaction suite exercises real Internship pages/APIs on both. A dedicated
-    # IAM-only tenant carries the not-entitled negative case so that School IAM
-    # coverage cannot silently disable unrelated Internship acceptance journeys.
+    # IAM-only tenant carries the not-entitled negative case so School IAM coverage
+    # cannot silently disable unrelated Internship acceptance journeys.
     db = get_sessionmaker()()
     try:
         ensure_tenant(db, IAM_E2E_TENANT)
@@ -146,18 +203,36 @@ def main() -> int:
     if catalog_reconciliation.get("missingAfterReconcile") != 0:
         raise SystemExit("Permission Catalog reconciliation did not converge")
 
-    # Explicit entitlement state: demo/sandbox/dedicated IAM own Internship;
-    # only iam-denied-school is the not-entitled School IAM negative case.
-    for tid in (DEMO_TID, SANDBOX_TID, IAM_E2E_TID, IAM_DENIED_TID):
-        platform_service.put_config_json(tid, "TENANT_META", "-", {
-            "packageCode": "professional",
-            "status": "active",
-            "environment": "test",
-        })
-    platform_service.put_config_json(DEMO_TID, "FEATURES", "-", {"internship": True})
-    platform_service.put_config_json(SANDBOX_TID, "FEATURES", "-", {"internship": True})
-    platform_service.put_config_json(IAM_E2E_TID, "FEATURES", "-", {"internship": True})
-    platform_service.put_config_json(IAM_DENIED_TID, "FEATURES", "-", {"internship": False})
+    # Test-only package definitions are catalog fixtures; entitlement still comes
+    # only from the paid-order activation chain below.
+    platform_service.put_config_json(
+        0, "PACKAGE", IAM_FULL_PACKAGE,
+        _package_payload(IAM_FULL_PACKAGE, "E2E IAM全能力套餐", internship=True),
+    )
+    platform_service.put_config_json(
+        0, "PACKAGE", IAM_DENIED_PACKAGE,
+        _package_payload(IAM_DENIED_PACKAGE, "E2E IAM无实习套餐", internship=False),
+    )
+
+    commercial_orders = {
+        str(DEMO_TID): _activate_paid_package(DEMO_TID, IAM_FULL_PACKAGE),
+        str(SANDBOX_TID): _activate_paid_package(SANDBOX_TID, IAM_FULL_PACKAGE),
+        str(IAM_E2E_TID): _activate_paid_package(IAM_E2E_TID, IAM_FULL_PACKAGE),
+        str(IAM_DENIED_TID): _activate_paid_package(IAM_DENIED_TID, IAM_DENIED_PACKAGE),
+    }
+    entitlement_checks = {
+        DEMO_TID: commercial.feature_enabled(DEMO_TID, "internship"),
+        SANDBOX_TID: commercial.feature_enabled(SANDBOX_TID, "internship"),
+        IAM_E2E_TID: commercial.feature_enabled(IAM_E2E_TID, "internship"),
+        IAM_DENIED_TID: commercial.feature_enabled(IAM_DENIED_TID, "internship"),
+    }
+    if entitlement_checks != {
+        DEMO_TID: True,
+        SANDBOX_TID: True,
+        IAM_E2E_TID: True,
+        IAM_DENIED_TID: False,
+    }:
+        raise SystemExit(f"commercial entitlement fixture did not converge: {entitlement_checks}")
 
     convergence = shadow.converge_published_system_templates(
         actor_user_id=None,
@@ -241,10 +316,11 @@ def main() -> int:
         "iamTargetUserId": str(iam_target_id),
         "iamTargetLogin": IAM_TARGET_LOGIN,
         "targetPermission": TARGET_PERMISSION,
-        "demoInternshipEntitled": True,
-        "sandboxInternshipEntitled": True,
-        "iamInternshipEntitled": True,
-        "iamDeniedInternshipEntitled": False,
+        "demoInternshipEntitled": entitlement_checks[DEMO_TID],
+        "sandboxInternshipEntitled": entitlement_checks[SANDBOX_TID],
+        "iamInternshipEntitled": entitlement_checks[IAM_E2E_TID],
+        "iamDeniedInternshipEntitled": entitlement_checks[IAM_DENIED_TID],
+        "commercialOrders": commercial_orders,
         "tenantPermissionUniverseCount": len(universe),
         "permissionCatalogReconciliation": catalog_reconciliation,
         "templateConvergence": convergence,
