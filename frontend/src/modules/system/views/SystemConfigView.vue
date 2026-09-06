@@ -136,6 +136,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppTextarea } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
+import { request } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -228,21 +229,26 @@ export default {
         toast.success('品牌配置已保存并生效，变更明细已写入审计日志')
         this.confirmSaveBrand = false
         this.brand = res.data
+        this.brandForm = { ...res.data }
       } else {
         toast.error(res.message)
       }
     },
     async doResetBrand({ reason }) {
       this.brandSubmitting = true
-      const res = await systemApi.resetBrandConfig({ reason })
-      this.brandSubmitting = false
-      if (res.code === 0) {
-        this.brand = res.data
-        this.brandForm = { ...res.data }
+      try {
+        const data = await request('/system/brand/reset', {
+          method: 'POST',
+          body: { reason, expectedVersion: Number(this.brand.version || 0) }
+        })
+        this.brand = data
+        this.brandForm = { ...data }
         this.confirmResetBrand = false
         toast.success('品牌配置已恢复为平台默认值并生效，操作已留痕')
-      } else {
-        toast.error(res.message)
+      } catch (error) {
+        toast.error(error?.message || '品牌恢复默认失败')
+      } finally {
+        this.brandSubmitting = false
       }
     },
     openConfigEdit(c) {
