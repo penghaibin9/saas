@@ -3,14 +3,14 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - scripts/check/module-commercial-inventory.py
-      - backend/tests/test_module_commercial_inventory.py
-      - backend/app/services/commercial_catalog_contract.py
+      - scripts/check/module-commercial-*.py
+      - backend/tests/test_module_commercial_*.py
       - backend/tests/test_commercial_catalog_contract.py
+      - backend/app/**
+      - backend/alembic/**
+      - backend/requirements.txt
       - shared/contracts/module-manifest.json
-      - backend/app/services/platform_defaults.py
-      - backend/app/models/**
-      - backend/alembic/versions/**
+      - docs/07-部署运维交付与商业化/module-commerce/**
       - .github/workflows/module-commerce-foundation.yml
   workflow_dispatch:
 permissions:
@@ -62,5 +62,88 @@ jobs:
         with:
           name: module-commerce-foundation-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/module-commerce
+          if-no-files-found: error
+          retention-days: 14
+
+  schema-evidence:
+    name: M0 metadata and migrated MySQL evidence (not stage approval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      APP_ENV: test
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/m0_commercial_audit
+      M0_DATABASE_URL: mysql+pymysql://m0_reader:m0-read-only-ci@127.0.0.1:3306/m0_commercial_audit
+      M0_EPHEMERAL_MYSQL: '1'
+      OUT: ${{ runner.temp }}/module-commerce-schema
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: m0_commercial_audit
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install the committed dependency lock
+        run: python -m pip install -r backend/requirements.txt
+      - name: Test M0 evidence validation and candidate indexing
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python -B backend/tests/test_module_commercial_reconcile.py -v 2>&1 | tee "$OUT/reconciliation-tests.log"
+      - name: Collect the clean exact-head AST and reference candidates
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -B scripts/check/module-commercial-inventory.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --output "$OUT/inventory.json" | tee "$OUT/inventory.log"
+          python -B scripts/check/module-commercial-references.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --output "$OUT/references.json" | tee "$OUT/references.log"
+      - name: Upgrade only the newly created disposable MySQL database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade head 2>&1 | tee "$OUT/migration.log"
+      - name: Provision a SELECT-only schema evidence reader in this disposable service
+        run: |
+          python - <<'PY'
+          import pymysql
+          connection = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='root', database='m0_commercial_audit')
+          with connection.cursor() as cursor:
+              cursor.execute("CREATE USER 'm0_reader'@'%' IDENTIFIED BY 'm0-read-only-ci'")
+              cursor.execute("GRANT SELECT ON m0_commercial_audit.* TO 'm0_reader'@'%'")
+          connection.close()
+          PY
+      - name: Collect official metadata and read-only MySQL schema; keep every discrepancy
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-reconcile.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --output "$OUT/reconciliation.json" --mysql | tee "$OUT/reconciliation.log"
+      - name: Archive committed review sources, never database rows or credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic backend/alembic.ini backend/requirements.txt shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py .github/workflows/module-commerce-foundation.yml
+          sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-schema-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/module-commerce-schema
           if-no-files-found: error
           retention-days: 14
