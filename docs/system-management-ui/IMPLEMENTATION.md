@@ -1,77 +1,76 @@
-# 系统管理 UI · 第一批实际实施记录
+# 系统管理 UI · PR #262 最终施工记录
 
-## 冻结输入与并行边界
+## 冻结输入与施工边界
 
 - PR：#262；唯一施工分支 `codex/system-management-ui-20260906`。
-- 审计/视觉基线：`6810bd6284b4d5c69a78947560f808cd7738327e`。
-- 本批集成起点：`9f14e9cf08932585376fb7b397119276ed7fad79`，已包含 `main@bafc9db2f48e98a1ac906a4f88cf37fce39915ce`。
-- 用户批准依据：2026-09-06《19页离线预览》及《16个关键交互状态》。采用其角色上下文、双列权限矩阵、独立预览、底部保存条和失败态；合成数据/场景切换/源码说明不进入生产页面。
-- 与 #261 并行，但不改它的生产后端、账号变更回执、品牌页面或商业授权。它合并后须重新核对同名接口的处理函数、版本与缓存回执。
-- 不改 `BasePortalLayout.vue`、`navPlan.js`、共享权限、路由定义、依赖锁和数据库迁移；这些由其他既有施工线持有。
+- 用户批准依据：2026-09-06《19页离线预览》及《16个关键交互状态》。
+- 生产实现原则：冻结稿提供信息架构、操作顺序和视觉目标；页面运行事实继续来自真实 API / MySQL / 权限 / 状态机，不把原型样例数据复制进生产。
+- 继续使用既有 `BasePortalLayout`、真实路由、权限码、API 客户端和后端状态机；本轮没有新建第二套门户壳。
+- 已经比冻结稿更深的页面不降级重写；统一通过系统管理内容区专属视觉层收口，保留真实能力与审计语义。
+- PR 保持 Draft；代码完成不等于真实学校、多角色、跨分支兼容和部署验收完成。
 
-## 已接入生产入口的本批范围
+## 19 个冻结页面族施工状态
 
-| 入口 | 实际实现 |
-| --- | --- |
-| `/admin/system/iam?surface=roles` | 服务端分页角色卡片；创建、复制、名称修改、停用、导出继续使用原接口 |
-| `?surface=permissions` / `/admin/system/roles?tab=permissions` | 左侧角色选择 + 菜单与操作/默认范围/成员/留痕/维护；不再要求再点中转入口 |
-| `?surface=templates` | 已发布模板、来源版本、本校影响；通配治理初始化改为显式确认 |
-| `?surface=members`、角色工作区成员页 | 独立成员分页、候选搜索、最多100人追加授权；不替换账号全部角色 |
-| `?surface=access` / `#access-explain` | 姓名与工号选人、稳定主档选对象、服务端最终判定；选择变化后旧结论失效 |
-| `/admin/system/module-entitlements` | 四态卡片、只读门、停用影响成功且对象一致才能确认、未知统计不显示零 |
-| `/admin/system/scopes` | 本批仅修影响名单/显式策略错误态、受限200条口径与迟到响应；完整布局重构尚未完成 |
+| # | 页面族 | 生产入口 | 当前收口方式 |
+| --- | --- | --- | --- |
+| 01 | 系统总览 | `/admin/system/overview` | **已收口**：结论 → 高频任务 → 待办/风险 → 审计证据；高频入口按当前权限模式过滤 |
+| 02 | 教职工账号 | `/admin/system/accounts/staff` | **已收口**：保留现有真实账号、角色、版本锁与批量能力；统一系统管理视觉层 |
+| 03 | 学生账号 | `/admin/system/accounts/students` | **已收口**：保留稳定学生主档绑定、账号状态与批量能力；统一系统管理视觉层 |
+| 04 | 教职工导入 | `/admin/system/identity-import/teachers` | **已收口**：页内五步办理，真实上传 → 扫描 → 预检 → 核对 → 确认 → 回读 |
+| 05 | 学生导入 | `/admin/system/identity-import/students` | **已收口**：与教师导入共用真实工作区但固定身份类型，不混表 |
+| 06 | 角色 | `/admin/system/roles` / IAM 工作区 | **已收口**：角色卡片、创建/复制/停用、来源与治理 |
+| 07 | 权限 | `/admin/system/roles?tab=permissions` / IAM 工作区 | **已收口**：角色上下文、权限矩阵、默认范围、冲突/未知结果处理 |
+| 08 | 成员 | `/admin/system/role-assignments` / IAM 工作区 | **已收口**：独立分页、候选搜索、追加授权，不把当前页长度冒充总数 |
+| 09 | 数据范围 | `/admin/system/scopes` | **已收口**：左侧规则上下文 + 单规则工作区 + 引用角色 + 受限影响预览 + 显式 DENY |
+| 10 | 访问排查 | `/admin/system/iam#access-explain` | **已收口**：稳定业务对象 + 服务端最终判定；选择变化后旧结论失效 |
+| 11 | 组织 | `/admin/system/org` | **已收口**：保留既有学院/专业/班级/版本/任职深度；统一系统管理视觉层 |
+| 12 | 模块开关 | `/admin/system/module-entitlements` | **已收口**：平台授权、学校开关、运行状态分离；未知统计不补 0 |
+| 13 | 安全变更 | `/admin/system/security-changes` | **已收口**：保留版本、影响、激活流水；只有激活才改变权限事实 |
+| 14 | 审计 | `/admin/system/logs?tab=operation` | **已收口**：保留操作/登录审计、筛选、只读详情与受控导出 |
+| 15 | 数据交换任务 | `/admin/system/data-exchange` | **已收口**：任务上下文、版本、结果未知防重放、强敏感回执安全合同 |
+| 16 | 实施与验收 | `/admin/system/implementation/overview` | **已收口**：未检查/未读运行时/未预览分别显示“待检查/待读取/待预览”，不伪造 0 |
+| 17 | 学校品牌 | `/admin/system/config?tab=brand` | **已收口**：保留真实可编辑字段与实时预览；平台控制字段继续只读 |
+| 18 | 学年学期 | `/admin/system/academic-calendar` | **已收口**：保留业务模块接线状态、影响对象与强制切换确认 |
+| 19 | 接口与同步 | `/admin/system/integrations` | **已收口**：连接配置 / 凭证轮换 / 连通性测试 / 同步任务结果分开呈现 |
 
-原 IAM 治理概览整文件移入 `components/workspace/SystemIamGovernancePanel.vue`，原 blob `0b6d7c10a0faaf04e019fcc9d4192ccad06286e3` 不变；可通过治理概览入口继续访问。没有删除企业权限边界、模板来源/漂移和分页证据功能。
+这里的“已收口”是**页面代码与冻结交互目标已经完成对应**，不是把未执行的真实环境验收标成通过。
 
-## 关键行为合同
+## 本轮直接重构的关键页面
 
-权限保存沿用 `systemApi.saveRolePermissions(menuKeys/buttonKeys/expectedVersion/reason/requestId)`，最终HTTP转换仍由现有适配器完成。具体目标未改动时省略 `scopeTarget`。只读/预设角色不调用只允许配置者读取的权限树；可写角色必须详情与目录双成功、角色和上下文一致。网络结果未知或版本冲突先重新读取、保留选择与原因，不自动重放；缓存警告显示已提交待核对，不再保存同一变更来清缓存。
+### 系统总览
 
-成员读取使用 `items/total/page/pageSize`；不会用当前页长度冒充总数。成员追加接口没有每人的范围目标，因此保存后仍需核对任职和指导关系。学生业务对象使用 `studentId`，不拿账号 `id` 替代主档编号。所有高风险确认继续由后端逐请求校验。
+`SystemDashboardView.vue` 改为任务优先：保留服务端运行指标；高频入口按 `permissionPatterns` 实时过滤；待办、安全提醒、最近操作都区分“服务端本次返回空”与“系统一定没有问题”。
 
-## 已运行的本地验证（不是学校数据库验收）
+### 数据范围
 
-- 34项 Node 测试通过：7项既有合同 + 27项新契约/生产 Vue 编译测试。
-- 修改的前端文件 ESLint 通过。
-- 6项纯文件型后端静态合同通过；仅运行 `test_control_plane_frontend_workspaces.py`，未运行数据库测试。
-- 编译后的真实 Vue 组件：15项 Chromium 浏览器检查通过，接口是明确合成夹具，不是实际 HTTP/MySQL。包括读取失败禁止保存、只读不调用权限树、缓存警告不重放、跨页成员、稳定主档ID、迟到结果失效及1440/1280/768三档溢出检查。
-- 原有安全变更 E2E 不变；新增实际浏览器流程附在 `e2e/specs/system-role-security-change.spec.mjs`，通过既有 School IAM MySQL 工作流运行。提交前只完成语法检查，实际结果以此提交对应的 CI 工件为准。
+`SystemDataScopeView.vue` 改为左侧规则上下文 + 单规则工作区，显示结构化范围、引用角色、历史匹配口径；影响成员继续调用真实 `getScopeAffectedUsers`，最多 200 条并明确可能重复；显式 DENY / ALLOW 保留独立真实策略读取；读取失败不显示成 0。
 
-```sh
-cd frontend
-node --test tests/systemAdmin.governance.test.mjs tests/system-role-scope-target-preservation.test.mjs tests/system-user-role-assignment-contract.test.mjs tests/system-ui-workspace.test.mjs
-```
+### 实施与验收
 
-## 尚未通过的验收门
+`SystemImplementationWorkspaceView.vue` 修复误导上线判断的 UI 语义：没运行上线检查显示 **待检查**；运行时预设未成功读取显示 **待读取**；没生成安装预览显示 **待预览**；只有取得对应服务端证据后才显示实际数量；验收封板仍以不可变 `acceptanceDigest` 为事实。
 
-本记录不将组件夹具通过换算为真实身份、权限、数据库和公共壳视觉验收。原前端完整构建、School IAM 新增真实创建/保存/成员/审计回读流程、真实多角色和上游分支集成，以精确提交的后续运行结果为准。19个页面族未全部重构；账号、导入、组织、品牌、学期、任务、安全变更等后续页面不得从此记录标为完成。
+### 接口与同步
 
-PR 保持 Draft，不自动合并 main、不部署。后续继续在原分支小批串行提交与复审，不新开同模块分支。
+`SystemIntegrationView.vue` 收口为学校能力与写权限、连接配置与脱敏凭证、连通性测试结果、同步任务结果四层事实。页面明确写出：**连通性测试通过不代表同步任务成功**。
 
-## 第二批续工：角色真实流程收口与师生导入工作区
+## 统一视觉层
 
-本批起点为 `3c64a12`。`00f0407dbda19911728d2c5a98b860b66b184a6e` 已为角色创建表单的来源模板与默认范围补上稳定可访问名称；没有删除或放宽原浏览器断言。
+`AdminSystemLayout.vue` 仍只保留一个 `BasePortalLayout`，在系统管理内容区增加 `.system-ui-polish` 包装。`styles/system-ui-polish.css` 只作用于该包装下，统一 19 个页面族的标题、卡片、表单、表格、状态提示和响应式密度；不改全局导航或其他业务模块视觉。
 
-精确 `00f0407` 的 School IAM 工作流 `34043291564` 已成功，包含新增 UI 创建角色、保存权限、追加成员、刷新回读、保留原角色及审计验证，以及原安全变更与角色投影测试。该成功不能推算为下面新增导入工作区已完成真实 Excel→worker→MySQL 的整链验收。
+## 关键生产合同继续保留
 
-### P04/P05 逐控件接线
+- 页面只展示真实后端返回结果，不硬编码冻结稿样例业务数据。
+- 高风险写操作继续由服务端做权限、租户、版本与状态校验。
+- 网络结果未知时不自动重放写请求。
+- 师生导入确认仍是 `confirmImport(jobId, current.version)`，实现已迁到共享 `identityImportWorkspace.js`；两个路由 wrapper 只固定身份类型。
+- 数据交换强敏感回执继续展示“强敏感、24 小时有效、一次性下载”，实际截止时间以服务端返回为准。
+- 文件治理权限不能作为文件原文读取旁路。
+- 审计日志不提供删除能力；受控导出仍需权限、水印与脱敏。
 
-教师、学生两个既有 route entry 均使用 `IdentityImportWorkspace.vue`，仅固定 kind，不改正式路由、权限定义、API客户端、后端或worker。原共享 ImportDialog 保留供其他页面使用；此处改为页内五步办理。
+## Actions 合同同步
 
-| 控件 / 状态 | 生产调用与约束 |
-| --- | --- |
-| 下载标准模板 | 原 `systemApi.downloadTeacherImportTemplate` / `downloadStudentImportTemplate`，不在浏览器自建模板 |
-| 上传名单 | 原 `dataExchangeApi.validateIdentity(kind, File)`；同一 File 对象显式重试继续由原API的WeakMap复用上传幂等标识 |
-| 扫描与预检 | 原 `waitIdentityValidation` 纯GET轮询；处理态计数显示未取得；离开只Abort本地轮询，不取消服务器任务 |
-| 刷新和任务深链 | 当前导入页 `?jobId=` 纯GET恢复；校验数字ID、IMPORT/SYSTEM、IDENTITY_TEACHER/STUDENT与服务器版本；错误类型任务不显示 |
-| 错误明细 | 原 `getImportErrors`，20条分页；只投影行号/字段/消息，不渲染raw snapshot；读失败独立错误，不等于零错误 |
-| 核对并继续 | 重新GET，冻结任务ID、文件ID、版本、身份、状态与数量摘要；填写确认勾选不自动代勾 |
-| 确认导入 | 再次GET并比较核对摘要，仅调用原 `confirmImport(jobId, current.version)`；不提交rows/batchNo/tenantId；状态或版本变化重新核对 |
-| 完成回执 | POST成功后再次GET；确认结果未知时阻止再次POST；只展示后台真实分类计数，缺失不补0 |
-| 初始凭据 | 本页不存储/截图/自动下载凭据；沿原任务中心受控下载，不能将receiptFileId当exportJobId |
+数据交换工作流原静态门仍在两个薄 wrapper 中搜索 `current.version`。第二批重构后，真实确认代码已经迁到共享 `identityImportWorkspace.js`，旧 grep 因此产生假红灯。本轮把门禁调整为验证 wrapper 确实引用共享工作区、共享控制器仍以 `confirmImport(jobId, current.version)` 提交、迁移页仍保留版本与 pendingJobId，同时不放宽租户隔离、`extra="forbid"` 和文件 RBAC-09 断言。
 
-现有确认服务校验：`data_exchange_confirm_service.confirm_identity_import_job` → `data_exchange_confirm_legacy.confirm_import_job` → `_finish`；确认后持久状态为SUCCEEDED。结果计数沿 `school_onboarding_service` 的 `entities.teachers/students/studentAccounts` 与 `summary.studentsReused/accountsSkipped`，不按原型样例推导。
+## 验收边界
 
-第二批本地：新增29项导入状态/请求生命周期/生产SFC测试；与已有测试合跑68项通过，修改文件ESLint通过。恢复快照全量Node为817项通过，但不是完整最新main的所有业务文件，不能代替精确HEAD CI。新增12项Chromium编译组件夹具检查通过，含1440/1280/768、教师/学生请求形状、扫描、错误分页、版本变化、只读与结果未知。
-
-保留待验：精确新HEAD构建与School IAM回归；真实师生XLSX上传、扫描worker、确认持久化与凭据票据下载；仅viewOwn身份的父布局/路由权限仍需专门联调，不能仅凭组件夹具宣布全站已兼容。账号目录、组织、任务中心等剩余页面继续按批准稿施工。
+提交前已对本轮新增/替换 Vue `<script>` 做 Node 语法检查，并新增 `system-ui-surface-completion.test.mjs` 静态合同。**仍必须以本提交对应的 GitHub Actions 精确 HEAD 结果为准。** 未执行的真实学校多角色浏览器验收、生产数据库、外部接口和跨 PR 集成不得从本文标成通过。
