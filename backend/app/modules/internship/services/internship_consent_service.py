@@ -59,7 +59,7 @@ def create_pending(body, user=None):
     digest = _hash(snapshot)
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
-        rec = assert_internship_record_scope(db, b.get("internshipId"), user, "创建知情确认任务")
+        rec = assert_internship_record_scope(db, b.get("internshipId"), user, "创建知情确认任务", lock=True)
         stu = db.get(StudentProfile, rec.student_id)
         applicable, state = evaluate_applicability(stu, typ)
         guardian = None

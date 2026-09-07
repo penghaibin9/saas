@@ -59,7 +59,7 @@
 
         <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
           <AppSectionHeader title="学生电脑门户配置（保存后写审计；关闭的模块或功能，学生端菜单隐藏且后端拒绝访问）" />
-          <StudentPortalConfigPanel :tenant-id="tid" />
+          <StudentPortalConfigPanel ref="portalWorkspace" :key="tid" :tenant-id="tid" />
         </AppCard>
 
         <TenantRulesWorkspace v-else-if="tab === 'rules'" ref="rulesWorkspace" :key="tid" :tenant="tenant" :projection="rulesProjection" @activity="rulesActivity = $event" />
@@ -96,7 +96,7 @@
           </DataTable>
           <EmptyState v-if="!users.length" title="该学校暂无账号" description="当前接口已返回空清单；已有账号不受本页面筛选影响。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
-        <TenantOffboardingPanel v-else-if="tab === 'offboarding'" :tenant-id="tid" :tenant="tenant" :tenant360="tenant360" @changed="load" />
+        <TenantOffboardingPanel v-else-if="tab === 'offboarding'" ref="offboardingWorkspace" :key="tid" :tenant-id="tid" :tenant="tenant" :tenant360="tenant360" @changed="load" />
       </template>
     </template>
     <ErrorState v-else :description="error || '学校详情未取得'" @retry="load" @back="backToList" />
@@ -201,7 +201,7 @@ export default {
   methods: {
     countLabel, environmentLabel,
     can(key) { return Array.isArray(getPermissionPatterns()) && !getRbacLoadFailed() && canEnterRoute({ moduleCode: 'PLATFORM', permissionKey: key }) },
-    protectedWorkspace() { return this.tab === 'rules' ? this.$refs?.rulesWorkspace : this.tab === 'info' ? this.$refs?.lifecycleWorkspace : null },
+    protectedWorkspace() { return this.tab === 'rules' ? this.$refs?.rulesWorkspace : this.tab === 'info' ? this.$refs?.lifecycleWorkspace : this.tab === 'studentPortal' ? this.$refs?.portalWorkspace : this.tab === 'offboarding' ? this.$refs?.offboardingWorkspace : null },
     blockRulesNavigation(destination) {
       if (this.rulesLeaveApproved || !this.protectedWorkspace()?.protectNavigation) return false
       this.pendingRulesNavigation = destination

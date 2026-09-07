@@ -38,8 +38,10 @@ test('系统治理页面使用业务选择器和结构化摘要', async () => {
 
 test('平台学生门户配置由租户上下文驱动且不输出 JSON 预览', async () => {
   const source = await read('src/modules/platform/components/StudentPortalConfigPanel.vue')
-  assert.doesNotMatch(source, /真实租户ID|mock ID|JSON\.stringify\(this\.form/)
+  assert.doesNotMatch(source, /真实租户ID|mock ID|<pre[^>]*>[\s\S]*JSON\.stringify/)
   assert.match(source, /最终配置预览/)
   assert.match(source, /未识别模块（请联系平台管理员）/)
-  assert.match(source, /配置已保存并记录操作日志/)
+  assert.match(source, /服务器返回值/)
+  assert.doesNotMatch(source, /读取配置失败，已载入默认值|配置已保存并记录操作日志/)
+  assert.match(source, /if \(!this\.canSave\) return/)
 })
