@@ -38,6 +38,34 @@ export async function paceBrowserLogin(page) {
   }
 }
 
+function retryAfterMs(response) {
+  const raw = String(response?.headers?.()['retry-after'] || '').trim()
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.ceil(seconds * 1000) + BROWSER_LOGIN_HEADROOM_MS
+  }
+  return BROWSER_LOGIN_WINDOW_MS + BROWSER_LOGIN_HEADROOM_MS
+}
+
+async function submitBrowserLogin(page, button, label) {
+  let response = null
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await paceBrowserLogin(page)
+    const responsePromise = page.waitForResponse((candidate) =>
+      candidate.url().includes('/api/v1/auth/browser-login') && candidate.request().method() === 'POST'
+    )
+    await button.click()
+    response = await responsePromise
+    if (response.status() !== 429) return response
+
+    // The shared real backend may have already consumed this runner IP's login budget during
+    // bootstrap before Playwright starts. Respect the production limiter's retry window instead
+    // of spoofing client IPs or weakening the backend threshold, then retry the same real login.
+    if (attempt === 0) await page.waitForTimeout(retryAfterMs(response))
+  }
+  return response
+}
+
 async function browserRefreshCookie(page, channel = 'staff') {
   const sessionId = await page.evaluate(() => String(sessionStorage.getItem('gx_browser_session_id_v2') || ''))
   if (!sessionId) return ''
@@ -82,12 +110,11 @@ export class StaffLoginPage {
     // The production auth contract intentionally limits one client IP to 10 login attempts per
     // rolling minute. Browser E2E exercises many real roles from one runner IP, so respect that
     // contract with headroom instead of spoofing X-Forwarded-For or weakening the backend limit.
-    await paceBrowserLogin(this.page)
-    const responsePromise = this.page.waitForResponse((response) =>
-      response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
+    const response = await submitBrowserLogin(
+      this.page,
+      this.page.getByRole('button', { name: /进入教师工作台|登录中/ }),
+      'staff'
     )
-    await this.page.getByRole('button', { name: /进入教师工作台|登录中/ }).click()
-    const response = await responsePromise
     expect(response.ok(), `staff login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
     expect(this.lastAccessToken, 'staff browser-login must return an in-memory access token').toBeTruthy()
@@ -176,12 +203,11 @@ export class StudentLoginPage {
     const agreement = this.page.locator('label.agreement input[type=checkbox]')
     if (!(await agreement.isChecked())) await agreement.check()
 
-    await paceBrowserLogin(this.page)
-    const responsePromise = this.page.waitForResponse((response) =>
-      response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
+    const response = await submitBrowserLogin(
+      this.page,
+      this.page.getByRole('button', { name: /进入学生服务门户|登录中/ }),
+      'student'
     )
-    await this.page.getByRole('button', { name: /进入学生服务门户|登录中/ }).click()
-    const response = await responsePromise
     expect(response.ok(), `student login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
     expect(this.lastAccessToken, 'student browser-login must return an in-memory access token').toBeTruthy()
