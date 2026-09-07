@@ -32,8 +32,13 @@ import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import SystemP1ClosurePanel from '@/modules/system/components/SystemP1ClosurePanel.vue'
 import { systemApi } from '@/modules/system/api/system.api'
+import { installSystemAuthorityCompatibility } from '@/modules/system/api/systemAuthorityCompatibility'
 import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
 import '@/modules/system/styles/system-ui-polish.css'
+
+// Install before any system child view starts issuing reads/writes. The bridge is
+// module-scoped and mutates only systemApi methods; BasePortalLayout/navPlan stay untouched.
+installSystemAuthorityCompatibility(systemApi)
 
 const CONTROL_PLANE_LANDING = Object.freeze({ 'sys-access': '/admin/system/iam' })
 const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
