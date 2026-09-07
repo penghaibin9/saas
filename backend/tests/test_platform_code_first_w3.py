@@ -5,6 +5,22 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 
+def _owner_headers() -> dict[str, str]:
+    from app.core.security import create_access_token
+
+    token = create_access_token({
+        "userId": "w3-platform-owner",
+        "realName": "W3平台主管",
+        "userType": "PLATFORM_SUPER_ADMIN",
+        "currentRoleCode": "PLATFORM_SUPER_ADMIN",
+        "tenantId": "0",
+        "tid": "platform",
+        "activeContextId": "ctx-w3-platform-owner",
+        "clientType": "PC",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _ensure_active_tenant(tenant_id: int) -> int:
     from app.db.session import get_sessionmaker
     from app.models import Tenant
@@ -67,6 +83,34 @@ def test_w3_post_commit_cache_failure_returns_recovery_receipt(db_mode, monkeypa
     assert recovered["cacheRecoveryRequired"] is False
     assert int(recovered["version"]) == committed_version
     assert get_effective_state(tenant_id, strict=True)["effectiveStatus"] == "disabled"
+
+
+def test_w3_legacy_disable_url_returns_post_commit_recovery_receipt(client, db_mode, monkeypatch):
+    """Compatibility URLs must not tell external clients to replay a committed write."""
+    from app.services import auth_service_db
+
+    tenant_id = 1000000000000096304
+    expected_version = _ensure_active_tenant(tenant_id)
+
+    def fail_cache(_tenant_id):
+        raise RuntimeError("redis unavailable on legacy W3 URL")
+
+    monkeypatch.setattr(auth_service_db, "invalidate_tenant_subject_caches", fail_cache)
+    response = client.post(
+        f"/api/v1/platform/tenants/{tenant_id}/disable",
+        headers=_owner_headers(),
+        json={
+            "expectedVersion": expected_version,
+            "reason": "W3旧兼容入口提交后缓存失败",
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200, body
+    assert body["code"] == 0, body
+    assert body["data"]["runtimeMaterialized"] is True
+    assert body["data"]["cacheInvalidated"] is False
+    assert body["data"]["cacheRecoveryRequired"] is True
+    assert body["data"]["after"]["effectiveStatus"] == "disabled"
 
 
 def test_w3_success_receipt_is_explicit(db_mode):
