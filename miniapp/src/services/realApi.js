@@ -841,6 +841,9 @@ export const submitWeeklyReport = (body) =>
   realRequest('/mobile/internship/weekly', { method: 'POST', data: body })
 
 /** 实习每日打卡（真实落库，一天一次，409=今日已打） */
+export const internshipCheckinPreflight = () =>
+  realRequest('/mobile/internship/checkin/preflight', { method: 'POST' })
+
 export const submitCheckin = (body) =>
   realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
 

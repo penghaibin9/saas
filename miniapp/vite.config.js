@@ -57,7 +57,19 @@ function stripMockPayloadInProduction() {
 
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
 export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()],
+  plugins: [stripMockPayloadInProduction(), uni(), {
+    name: 'local-preview-port',
+    apply: 'serve',
+    enforce: 'post',
+    config() {
+      const raw = process.env.VITE_DEV_PORT
+      if (!raw) return
+      const port = Number(raw)
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('VITE_DEV_PORT must be an integer from 1024 to 65535')
+      // uni-app supplies manifest.h5.devServer.port after CLI options; local workspaces need an explicit override.
+      return { server: { port, strictPort: true } }
+    }
+  }],
   server: {
     proxy: {
       '/api': {

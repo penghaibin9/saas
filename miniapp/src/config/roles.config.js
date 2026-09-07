@@ -139,6 +139,8 @@ export const roleConfigs = {
     dataScopeText: '本人实习学生',
     workbench: ['intern-review', 'leave', 'risk'],
     quickActions: [
+      { key: 'internship-students', label: '实习学生', icon: '▤' },
+      { key: 'internship-positions', label: '岗位核对', icon: '▦' },
       { key: 'weekly', label: '批阅周报', icon: '▤' },
       { key: 'checkin', label: '异常打卡', icon: '📍' },
       { key: 'makeup', label: '补卡审批', icon: '🔖' },
@@ -148,12 +150,14 @@ export const roleConfigs = {
       { key: 'stu-eval', label: '实习鉴定', icon: '📋' },
       { key: 'ent-eval', label: '企业评价', icon: '🏢' },
       { key: 'insurance', label: '保险核验', icon: '🛡' },
+      { key: 'internship-risk', label: '风险处置', icon: '⚠' },
       { key: 'internship-change', label: '调岗退岗初审', icon: '🔀' },
       { key: 'internship-score', label: '实习成绩', icon: '💯' },
       { key: 'agreement-confirm', label: '协议确认', icon: '📃' },
       { key: 'process-report', label: '过程报告批阅', icon: '📰' },
       { key: 'plan-task', label: '计划任务确认', icon: '☑' },
-      { key: 'internship-application', label: '实习申请审核', icon: '📥' }
+      { key: 'internship-application', label: '实习申请审核', icon: '📥' },
+      { key: 'internship-volunteers', label: '岗位确认', icon: '📥' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },

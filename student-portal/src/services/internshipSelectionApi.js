@@ -1,3 +1,4 @@
+import { selectionScope, selectionScopePath, selectionScopeBody } from '../../../shared/internshipSelectionScope.mjs'
 /**
  * E-A03 学生选岗 API facade。
  *
@@ -6,36 +7,11 @@
  * facade 尚未完整注册。本文件只负责冻结 endpoint，并把 A03 兼容字段收敛到 A01 canonical
  * service payload；禁止回落旧 InternshipApplication 三次写入，也禁止前端自造第二套真值。
  */
-import { request } from './request'
+import { request as baseRequest } from './request'
 import { normalizeCatalogQuery } from '../modules/internshipRecruitment/selectionContract.js'
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
-const latestReads = new Map()
-
-function latestRead(key, task, fallback = null) {
-  let exposed
-  const raw = Promise.resolve().then(task)
-  exposed = raw.then(
-    (value) => latestReads.get(key) === exposed ? value : latestReads.get(key),
-    (error) => {
-      if (latestReads.get(key) !== exposed) return latestReads.get(key)
-      if (fallback) return fallback(error)
-      throw error
-    }
-  )
-  latestReads.set(key, exposed)
-  return exposed
-}
-
-function unavailableContext() {
-  return {
-    campaignStatus: 'UNAVAILABLE',
-    phaseLabel: '招聘季信息暂不可用',
-    canSelect: false,
-    selectionBlockReason: '暂时无法读取学校招聘季信息，请重新加载后再调整志愿。'
-  }
-}
 
 function normalizeProfileWriteBody(body = {}) {
   const out = {}
@@ -71,8 +47,35 @@ function normalizeProfileItemWriteBody(body = {}) {
   return out
 }
 
-export const internshipSelectionApi = {
-  context() { return latestRead('context', () => request('/portal/internship/catalog/context'), unavailableContext) },
+export function createInternshipSelectionApi(input = {}) {
+const scope = selectionScope(input)
+const latestReads = new Map()
+
+function latestRead(key, task) {
+  let exposed
+  const raw = Promise.resolve().then(task)
+  exposed = raw.then(
+    (value) => latestReads.get(key) === exposed ? value : latestReads.get(key),
+    (error) => {
+      if (latestReads.get(key) !== exposed) return latestReads.get(key)
+      throw error
+    }
+  )
+  latestReads.set(key, exposed)
+  return exposed
+}
+
+function request(path, options = {}) {
+  if (path.startsWith('/portal/internship/catalog/') || path.startsWith('/portal/internship/context/volunteers') || ['/completeness', '/preview', '/pdf-preview'].some(suffix => path === '/portal/internship/profile' + suffix)) {
+    path = selectionScopePath(path, scope)
+    if (options.method && options.method !== 'GET') options = { ...options, body: selectionScopeBody(options.body, scope) }
+  }
+  return baseRequest(path, options)
+}
+return {
+  forScope: createInternshipSelectionApi,
+  volunteerResult(groupId) { return request(`/portal/internship/volunteer-results/${enc(groupId)}`) },
+  context() { return latestRead('context', () => request('/portal/internship/catalog/context')) },
   positions(query = {}) { return request('/portal/internship/catalog/positions', { params: normalizeCatalogQuery(query) }) },
   position(positionId) { return latestRead('position', () => request(`/portal/internship/catalog/positions/${enc(positionId)}`)) },
   company(companyId) { return latestRead('company', () => request(`/portal/internship/catalog/companies/${enc(companyId)}`)) },
@@ -97,5 +100,7 @@ export const internshipSelectionApi = {
   submission(version) { return latestRead('submission', () => request(`/portal/internship/context/volunteers/submissions/${enc(version)}`)) },
   revokeContactConsent(body = {}) { return request('/portal/internship/context/volunteers/contact-consent/revoke', { method: 'POST', body }) }
 }
+}
+export const internshipSelectionApi = createInternshipSelectionApi()
 
 export default internshipSelectionApi

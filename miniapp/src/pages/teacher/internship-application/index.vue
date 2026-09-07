@@ -3,6 +3,7 @@
     <MobileNavBar variant="teacher" title="实习申请审核" subtitle="核对去向、材料与学生记录版本" show-back />
 
     <view class="page-pad ap__context">
+      <button v-if="canViewVolunteers" @click="openVolunteers">办理招聘季正式志愿</button>
       <view class="card ap__batch" v-if="batches.length">
         <view class="ap__batch-copy">
           <text class="ap__eyebrow">当前审核批次</text>
@@ -106,6 +107,7 @@ export default {
     }
   },
   computed: {
+    canViewVolunteers() { return useInternshipContextStore().can('internship.application.view') },
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
     canReview() { return useInternshipContextStore().can('internship.application.review') },
     selfArrangedCount() { return (this.list || []).filter((item) => item.applicationType === 'SELF_ARRANGED').length },
@@ -124,6 +126,7 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    openVolunteers() { uni.navigateTo({ url: '/pages/teacher/internship-volunteers/index' + (this.batchId ? '?batchId=' + encodeURIComponent(this.batchId) : '') }) },
     fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
     approveLabel(a) { return a.applicationType === 'SELF_ARRANGED' ? '通过并确认自主实习' : '通过并落实岗位' },
     canApprove(a) {

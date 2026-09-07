@@ -70,6 +70,8 @@ def _resolve_context_in_tx(
         ).order_by(InternshipRecord.id.desc()))
         if not record:
             raise not_found("所选实习批次没有本人的实习记录")
+        if record_id not in (None, "") and int(record.id) != _as_id(record_id):
+            raise AppException("DATA_CONFLICT", "实习记录与所选批次不一致", http_status=409)
         campaign = db.scalar(select(InternshipRecruitmentCampaign).where(
             InternshipRecruitmentCampaign.tenant_id == tenant_id,
             InternshipRecruitmentCampaign.batch_id == selected_batch_id,
@@ -77,7 +79,7 @@ def _resolve_context_in_tx(
             InternshipRecruitmentCampaign.is_deleted.is_(False),
         ).order_by(InternshipRecruitmentCampaign.round_no.desc(), InternshipRecruitmentCampaign.id.desc()))
         if not campaign:
-            raise not_found("所选实习批次没有开放中的招聘季")
+            raise AppException("DATA_NOT_FOUND", "所选实习批次没有开放中的招聘季", details={"reasonCode": "NO_OPEN_CAMPAIGN"})
         return campaign, record
 
     if record_id not in (None, ""):
@@ -98,7 +100,7 @@ def _resolve_context_in_tx(
             InternshipRecruitmentCampaign.is_deleted.is_(False),
         ).order_by(InternshipRecruitmentCampaign.round_no.desc(), InternshipRecruitmentCampaign.id.desc()))
         if not campaign:
-            raise not_found("当前实习记录没有开放中的招聘季")
+            raise AppException("DATA_NOT_FOUND", "当前实习记录没有开放中的招聘季", details={"reasonCode": "NO_OPEN_CAMPAIGN"})
         return campaign, record
 
     group = db.scalar(select(InternshipVolunteerGroup).where(
@@ -137,7 +139,7 @@ def _resolve_context_in_tx(
         .order_by(InternshipRecruitmentCampaign.round_no.desc(), InternshipRecruitmentCampaign.id.desc())
     )
     if not campaign:
-        raise not_found("当前学生没有开放中的招聘季")
+        raise AppException("DATA_NOT_FOUND", "当前学生没有开放中的招聘季", details={"reasonCode": "NO_OPEN_CAMPAIGN"})
     record = db.scalar(select(InternshipRecord).where(
         InternshipRecord.tenant_id == tenant_id,
         InternshipRecord.student_id == student_id,
@@ -209,12 +211,12 @@ def _contact_policy(payload: dict) -> dict:
     return material_svc.normalize_contact_sharing_policy(raw)
 
 
-def get_my_volunteers(*, user: dict, batch_id=None) -> dict:
+def get_my_volunteers(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = _resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id)
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
             InternshipVolunteerGroup.record_id == record.id,
@@ -292,12 +294,12 @@ def save_my_draft(*, user: dict, body: dict) -> dict:
         }
 
 
-def get_my_material_preview(*, user: dict, batch_id=None) -> dict:
+def get_my_material_preview(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = _resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id)
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         preview = _material_preview_in_tx(
             db, tenant_id=tenant_id, student_id=student_id, campaign=campaign,
         )

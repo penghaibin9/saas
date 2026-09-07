@@ -1,42 +1,58 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { positionListQuery } from '../services/positionNavigation.js'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
-const router=useRouter(),context=useEnterpriseContextStore(),loading=ref(true),error=ref(''),items=ref([]),active=ref('ALL'),keyword=ref(''),workingId=ref(null),page=ref(1),pageSize=20,total=ref(0)
+const route=useRoute(),initial=positionListQuery(route.query)
+const router=useRouter(),context=useEnterpriseContextStore(),loading=ref(true),error=ref(''),items=ref([]),active=ref(initial.status||'ALL'),keyword=ref(initial.q||''),workingId=ref(null),page=ref(Number(initial.page)||1),pageSize=20,total=ref(0)
 const tabs=[['ALL','全部'],['DRAFT','草稿'],['PENDING','待学校审核'],['PUBLISHED','已发布'],['OFFLINE','已下线'],['RISK','风险']]
 const statusLabels={DRAFT:'草稿',PENDING:'待学校审核',PUBLISHED:'已发布',OFFLINE:'已下线',SUSPENDED:'已暂停',FULL:'已招满',RISK:'风险',ARCHIVED:'已归档'}
-let searchTimer=null,requestSeq=0
+let searchTimer=null,requestSeq=0,restoring=false,alive=true
+const scopeMatches=computed(()=>!route.query.campaignId||String(route.query.campaignId)===String(context.campaign?.id||''))
+function listQuery(){return positionListQuery({status:active.value,q:keyword.value,page:String(page.value),campaignId:String(context.campaign?.id||'')})}
+function positionLocation(item){return {path:`/positions/${item.id}/edit`,query:listQuery()}}
 const totalPages=()=>Math.max(1,Math.ceil(total.value/pageSize))
 function statusText(item){return item.riskFlag?'风险':(statusLabels[item.status]||item.status||'状态未知')}
 function countText(value){return value===undefined||value===null?'—':value}
 async function load(){
-  const seq=++requestSeq;loading.value=true;error.value=''
+  const seq=++requestSeq;loading.value=true;error.value='';workingId.value=null
+  if(!scopeMatches.value||!context.recruitmentContextReady){items.value=[];total.value=0;loading.value=false;error.value='此列表链接的招聘季与当前工作区不一致，请重新选择招聘季';return}
   try{
+    if(JSON.stringify(positionListQuery(route.query))!==JSON.stringify(listQuery()))await router.replace({path:'/positions',query:listQuery()})
+    if(!alive||seq!==requestSeq)return
     const data=await enterpriseInternshipApi.positions({page:page.value,pageSize,status:active.value==='ALL'?'':active.value,keyword:keyword.value.trim()})
-    if(seq!==requestSeq)return
+    if(!alive||seq!==requestSeq)return
     items.value=Array.isArray(data?.items)?data.items:[];total.value=Number(data?.total||0)
     if(page.value>totalPages()){page.value=totalPages();return load()}
   }catch(e){if(seq===requestSeq){items.value=[];total.value=0;error.value=e.message||'岗位加载失败'}}finally{if(seq===requestSeq)loading.value=false}
 }
 function scheduleSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page.value=1;load()},300)}
-async function withdrawAndEdit(item){if(!context.recruitmentWritable||item.status!=='PENDING'||item.version===null||item.version===undefined)return;workingId.value=item.id;error.value='';try{await enterpriseInternshipApi.withdrawPosition(item.id,item.version);await router.push(`/positions/${item.id}/edit`)}catch(e){error.value=e.message||'撤回岗位失败'}finally{workingId.value=null}}
+async function withdrawAndEdit(item){
+  if(workingId.value!==null||!context.recruitmentWritable||item.status!=='PENDING'||item.version===null||item.version===undefined)return
+  const seq=requestSeq;workingId.value=item.id;error.value=''
+  try{await enterpriseInternshipApi.withdrawPosition(item.id,item.version);if(alive&&seq===requestSeq)await router.push(positionLocation(item))}
+  catch(e){if(alive&&seq===requestSeq)error.value=e.message||'撤回岗位失败'}
+  finally{if(alive&&seq===requestSeq)workingId.value=null}
+}
 function previous(){if(page.value>1){page.value-=1;load()}}
 function next(){if(page.value<totalPages()){page.value+=1;load()}}
-watch(active,()=>{page.value=1;load()})
-watch(keyword,scheduleSearch)
+watch(active,()=>{if(restoring)return;clearTimeout(searchTimer);page.value=1;load()},{flush:'sync'})
+watch(keyword,()=>{if(!restoring)scheduleSearch()},{flush:'sync'})
+watch(()=>route.query,query=>{const next=positionListQuery(query);const changed=active.value!==(next.status||'ALL')||keyword.value!==(next.q||'')||page.value!==(Number(next.page)||1);if(changed){clearTimeout(searchTimer);restoring=true;active.value=next.status||'ALL';keyword.value=next.q||'';page.value=Number(next.page)||1;restoring=false;load()}else if(!scopeMatches.value)load()})
+watch(()=>context.campaign?.id,load)
 onMounted(load)
-onBeforeUnmount(()=>clearTimeout(searchTimer))
+onBeforeUnmount(()=>{alive=false;requestSeq++;clearTimeout(searchTimer)})
 </script>
 <template>
   <section class="ep-page">
-    <div class="ep-page-head"><div><h1 class="ep-title">我的岗位</h1><p class="ep-subtitle">集中管理企业在当前招聘季的岗位草稿、学校审核、发布和下线状态；企业只处理自身岗位，发布状态由学校端统一管理。</p></div><RouterLink v-if="context.recruitmentWritable" to="/positions/new" class="ep-btn ep-btn-primary">+ 创建实习岗位</RouterLink></div>
+    <div class="ep-page-head"><div><h1 class="ep-title">我的岗位</h1><p class="ep-subtitle">集中管理企业在当前招聘季的岗位草稿、学校审核、发布和下线状态；企业只处理自身岗位，发布状态由学校端统一管理。</p></div><RouterLink v-if="context.recruitmentWritable" :to="{path:'/positions/new',query:listQuery()}" class="ep-btn ep-btn-primary">+ 创建实习岗位</RouterLink></div>
     <div v-if="context.historyMode" class="history-note">招聘季已关闭：岗位记录保留为历史只读，不再允许创建、编辑、提交或撤回。</div>
-    <div class="toolbar-card ep-card"><div class="search-wrap"><span>搜索</span><input v-model="keyword" class="ep-input" placeholder="输入岗位名称或关键词"></div><div class="tabs" role="tablist"><button v-for="tab in tabs" :key="tab[0]" class="tab" :class="{active:active===tab[0]}" @click="active=tab[0]">{{ tab[1] }}</button></div><div class="total-chip"><strong>{{ total }}</strong><span>岗位</span></div></div>
-    <div v-if="error" class="ep-error">{{ error }}</div>
+    <div class="toolbar-card ep-card"><div class="search-wrap"><span>搜索</span><input v-model="keyword" aria-label="搜索岗位名称或关键词" :disabled="workingId!==null" class="ep-input" placeholder="输入岗位名称或关键词"></div><div class="tabs" role="group" aria-label="按岗位状态筛选"><button v-for="tab in tabs" :key="tab[0]" class="tab" :class="{active:active===tab[0]}" :aria-pressed="active===tab[0]" :disabled="workingId!==null" @click="active=tab[0]">{{ tab[1] }}</button></div><div class="total-chip"><strong>{{ total }}</strong><span>岗位</span></div></div>
+    <div v-if="error" class="ep-error" role="alert">{{ error }}<button v-if="scopeMatches" class="ep-btn" type="button" :disabled="loading||workingId!==null" @click="load">重新读取</button><RouterLink v-else to="/campaign-select">选择招聘季</RouterLink></div>
     <div v-if="loading" class="ep-card ep-empty">正在加载岗位…</div><div v-else-if="!items.length" class="ep-card ep-empty">暂无符合条件的岗位</div>
-    <div v-else class="list"><article v-for="item in items" :key="item.id" class="position ep-card"><div class="row"><div class="position-main"><div class="title-line"><h3>{{ item.title }}</h3><span class="ep-tag" :class="{warn:item.status==='PENDING',ok:item.status==='PUBLISHED',danger:item.riskFlag}">{{ statusText(item) }}</span></div><p>{{ item.workLocation||'工作地点待完善' }} · 招 {{ item.headcount??'—' }} 人 · {{ item.majorRequirement||'专业不限/以学校核验为准' }}</p></div><div class="salary"><span>岗位待遇</span><div class="ep-money">{{ item.salaryRange||'待完善' }}</div></div></div><div class="meta"><div class="metric"><strong>{{ countText(item.applicantCount) }}</strong><span>报名</span></div><div class="metric"><strong>{{ countText(item.acceptIntentCount) }}</strong><span>拟接收</span></div><div class="metric"><strong>{{ countText(item.placementCount) }}</strong><span>已落实</span></div><div class="manage-wrap"><template v-if="context.recruitmentWritable"><RouterLink v-if="item.status==='DRAFT'" :to="`/positions/${item.id}/edit`" class="manage">编辑草稿 →</RouterLink><button v-else-if="item.status==='PENDING'" class="manage action-link" type="button" :disabled="workingId===item.id" @click="withdrawAndEdit(item)">{{ workingId===item.id?'撤回中…':'撤回修改 →' }}</button><RouterLink v-else :to="`/positions/${item.id}/edit`" class="manage">查看岗位 →</RouterLink></template><span v-else class="manage muted">历史只读</span></div></div></article></div>
-    <div class="pager"><span>共 {{ total }} 个岗位 · 第 {{ page }}/{{ totalPages() }} 页</span><div><button class="ep-btn" :disabled="page<=1||loading" @click="previous">上一页</button><button class="ep-btn" :disabled="page>=totalPages()||loading" @click="next">下一页</button></div></div>
+    <div v-else class="list"><article v-for="item in items" :key="item.id" class="position ep-card"><div class="row"><div class="position-main"><div class="title-line"><h3>{{ item.title }}</h3><span class="ep-tag" :class="{warn:item.status==='PENDING',ok:item.status==='PUBLISHED',danger:item.riskFlag}">{{ statusText(item) }}</span></div><p>{{ item.workLocation||'工作地点待完善' }} · 招 {{ item.headcount??'—' }} 人 · {{ item.majorRequirement||'专业不限/以学校核验为准' }}</p></div><div class="salary"><span>岗位待遇</span><div class="ep-money">{{ item.salaryRange||'待完善' }}</div></div></div><p v-if="item.schoolReturn && ['DRAFT','PENDING'].includes(item.status)" class="return-note">学校退回意见：{{ item.schoolReturn.reason }}</p><div class="meta"><div class="metric"><strong>{{ countText(item.applicantCount) }}</strong><span>报名</span></div><div class="metric"><strong>{{ countText(item.acceptIntentCount) }}</strong><span>拟接收</span></div><div class="metric"><strong>{{ countText(item.placementCount) }}</strong><span>已落实</span></div><div class="manage-wrap"><button v-if="context.recruitmentWritable&&item.status==='PENDING'" class="manage action-link" type="button" :disabled="workingId!==null" @click="withdrawAndEdit(item)">{{ workingId===item.id?'撤回中…':'撤回修改' }}</button><RouterLink :to="positionLocation(item)" class="manage">{{ context.recruitmentWritable&&item.status==='DRAFT'?'编辑草稿 →':'查看岗位 →' }}</RouterLink></div></div></article></div>
+    <div class="pager"><span>共 {{ total }} 个岗位 · 第 {{ page }}/{{ totalPages() }} 页</span><div><button class="ep-btn" :disabled="page<=1||loading||workingId!==null" @click="previous">上一页</button><button class="ep-btn" :disabled="page>=totalPages()||loading||workingId!==null" @click="next">下一页</button></div></div>
   </section>
 </template>
 <style scoped>
@@ -45,3 +61,7 @@ onBeforeUnmount(()=>clearTimeout(searchTimer))
 .list{display:grid;gap:12px}.position{padding:18px 20px;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}.position:hover{transform:translateY(-1px);border-color:#dfe7f2;box-shadow:var(--shadow-md)}.row{display:flex;justify-content:space-between;gap:24px}.position-main{min-width:0}.title-line{display:flex;align-items:center;gap:10px}.title-line h3{margin:0;font-size:17px;line-height:1.35}.row p{margin:8px 0 0;color:var(--t3);font-size:12px;line-height:1.6}.salary{text-align:right;flex:0 0 auto}.salary>span{display:block;font-size:10px;color:var(--t3);margin-bottom:4px}.salary .ep-money{font-size:15px}.meta{display:grid;grid-template-columns:80px 80px 80px minmax(0,1fr);align-items:center;gap:8px;margin-top:17px;padding-top:14px;border-top:1px solid var(--line)}.metric{display:flex;align-items:baseline;gap:5px}.metric strong{font-size:15px;color:#2b374c}.metric span{font-size:10px;color:var(--t3)}.manage-wrap{justify-self:end}.manage{color:var(--pri);text-decoration:none;font-weight:700;font-size:12px}.action-link{border:0;background:transparent;padding:0}.action-link:disabled{color:var(--t3)}.muted{color:var(--t3)}.pager{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:16px;color:var(--t3);font-size:12px}.pager>div{display:flex;gap:8px}
 @media(max-width:900px){.toolbar-card{align-items:stretch;flex-direction:column}.search-wrap{min-width:0}.total-chip{display:none}.row{flex-direction:column}.salary{text-align:left}.meta{grid-template-columns:repeat(3,1fr)}.manage-wrap{grid-column:1/-1;justify-self:start}.pager{align-items:flex-start;flex-direction:column}}
 </style>
+
+<style scoped>.manage-wrap{display:flex;gap:18px;align-items:center}.ep-error .ep-btn{margin-left:14px}.manage:focus-visible,.tab:focus-visible{outline:2px solid var(--pri);outline-offset:3px}</style>
+
+<style scoped>.return-note{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;color:var(--warn-fg);background:var(--warn-bg);padding:10px 12px;border-radius:6px;font-size:13px;line-height:1.6}</style>

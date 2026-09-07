@@ -8,6 +8,15 @@
           <text class="lv__hint">病假或连续3天及以上请假必须上传证明；审批通过前教师需要真实查看材料。</text>
         </view>
 
+        <view v-if="receipt" class="card lv__receipt">
+          <view class="row-between">
+            <text class="lv__receipt-title">{{ receipt.actionLabel }}</text>
+            <text class="lv__receipt-close" @click="receipt = null">关闭</text>
+          </view>
+          <text class="lv__receipt-meta">记录 {{ receipt.id }} · {{ receipt.statusLabel || receipt.status }} · v{{ receipt.version ?? 0 }}</text>
+          <text class="lv__receipt-next">{{ receipt.nextStep }}</text>
+        </view>
+
         <view v-for="item in list" :key="item.id" class="card lv__item">
           <view class="row-between">
             <text class="lv__range">{{ item.startDate }} ~ {{ item.endDate }}</text>
@@ -21,8 +30,22 @@
             <text class="lv__review-title">审批意见</text>
             <text class="lv__review-text">{{ item.reviewComment }}</text>
           </view>
+          <view v-if="item.returnNote" class="lv__review lv__review--return">
+            <text class="lv__review-title">销假说明</text>
+            <text class="lv__review-text">{{ item.returnNote }}</text>
+          </view>
+          <text v-if="item.returnedAt" class="lv__meta">销假时间：{{ formatTime(item.returnedAt) }}</text>
           <button v-if="item.status === 'PENDING'" class="btn btn-ghost lv__withdraw" :disabled="submitting" @click="withdraw(item)">撤回</button>
-          <button v-if="item.status === 'APPROVED'" class="btn btn-ghost lv__withdraw" :disabled="submitting" @click="doReturn(item)">办理销假</button>
+          <button v-if="['APPROVED', 'OVERDUE'].includes(item.status)" class="btn btn-ghost lv__withdraw" :disabled="submitting" @click="openReturn(item)">办理销假</button>
+          <view v-if="returnDraft.id === String(item.id)" class="lv__return-editor">
+            <text class="lv__review-title">确认已经返岗</text>
+            <text class="lv__rule">提交后由指导教师核实返岗并同步处理关联风险。</text>
+            <textarea v-model="returnDraft.note" class="lv__textarea" maxlength="300" placeholder="销假说明（不少于2字）" />
+            <view class="lv__actions">
+              <button class="btn btn-ghost flex-1" :disabled="submitting" @click="closeReturn">取消</button>
+              <button class="btn btn-primary flex-1" :disabled="submitting || returnDraft.note.trim().length < 2" @click="submitReturn">确认销假</button>
+            </view>
+          </view>
         </view>
         <MobileInlineAlert v-if="!list.length" type="info" description="暂无请假记录，可点击下方按钮新建申请。" />
       </view>
@@ -96,7 +119,9 @@ export default {
       list: [], pageState: 'loading', formVisible: false,
       context: {},
       submitting: false, uploading: false, leaveTypeIndex: 0,
-      form: { leaveType: 'PERSONAL', startDate: '', endDate: '', reason: '', fileId: '', fileName: '' }
+      form: { leaveType: 'PERSONAL', startDate: '', endDate: '', reason: '', fileId: '', fileName: '' },
+      receipt: null,
+      returnDraft: { id: '', note: '', version: null }
     }
   },
   computed: {
@@ -123,10 +148,8 @@ export default {
     async loadList(done) {
       this.pageState = 'loading'
       try {
-        const [rows, dashboard] = await Promise.all([
-          studentInternshipLeaves(),
-          studentApi.getInternship()
-        ])
+        const dashboard = await studentApi.getInternship()
+        const rows = await studentInternshipLeaves(dashboard?.batchId, dashboard?.recordId)
         this.list = Array.isArray(rows) ? rows : (rows?.items || [])
         this.context = {
           batchId: dashboard?.batchId || '',
@@ -176,7 +199,7 @@ export default {
       if (this.evidenceRequired && !this.form.fileId) return toast(this.evidenceRuleText)
       this.submitting = true
       try {
-        await studentInternshipLeaveApply({
+        const result = await studentInternshipLeaveApply({
           ...this.context,
           leaveType: this.form.leaveType,
           startDate: this.form.startDate,
@@ -184,6 +207,10 @@ export default {
           reason: this.form.reason.trim(),
           fileId: this.form.fileId || ''
         })
+        this.receipt = {
+          ...(result || {}), actionLabel: '请假申请已提交',
+          nextStep: '等待指导教师审批；通过后返岗时请及时办理销假。'
+        }
         toast('请假申请已提交')
         this.formVisible = false
         await this.loadList()
@@ -199,10 +226,16 @@ export default {
           if (!result.confirm) return
           this.submitting = true
           try {
-            await studentInternshipLeaveWithdraw(item.id, {
+            const response = await studentInternshipLeaveWithdraw(item.id, {
               ...this.context,
               expectedVersion: item.version
             })
+            this.receipt = {
+              ...(response || {}), id: response?.id || item.id,
+              version: response?.version ?? (Number(item.version || 0) + 1),
+              statusLabel: response?.statusLabel || '已撤回', actionLabel: '请假申请已撤回',
+              nextStep: '本次申请已结束；如仍需请假，可重新提交。'
+            }
             toast('已撤回')
             await this.loadList()
           } catch (error) {
@@ -212,29 +245,35 @@ export default {
         }
       })
     },
-    doReturn(item) {
+    openReturn(item) {
       if (this.submitting) return
-      uni.showModal({
-        title: '办理销假', editable: true, placeholderText: '销假说明（如：已返岗）',
-        success: async (result) => {
-          if (!result.confirm) return
-          const note = String(result.content || '').trim()
-          if (note.length < 2) return toast('销假说明至少2字')
-          this.submitting = true
-          try {
-            await studentInternshipLeaveReturn(item.id, {
-              ...this.context,
-              note,
-              expectedVersion: item.version
-            })
-            toast('销假已登记')
-            await this.loadList()
-          } catch (error) {
-            toast(error?.message || '销假失败')
-            if (String(error?.code || '') === 'DATA_CONFLICT') await this.loadList()
-          } finally { this.submitting = false }
+      this.returnDraft = { id: String(item.id), note: '', version: item.version }
+    },
+    closeReturn() {
+      if (this.submitting) return
+      this.returnDraft = { id: '', note: '', version: null }
+    },
+    async submitReturn() {
+      const draft = this.returnDraft
+      const note = String(draft.note || '').trim()
+      if (this.submitting || !draft.id || note.length < 2) return
+      this.submitting = true
+      try {
+        const response = await studentInternshipLeaveReturn(draft.id, {
+          ...this.context, note, expectedVersion: draft.version
+        })
+        this.receipt = {
+          ...(response || {}), id: response?.id || draft.id,
+          statusLabel: response?.statusLabel || '已销假', actionLabel: '销假已登记',
+          nextStep: '等待指导教师核实返岗并完成风险同步。'
         }
-      })
+        this.returnDraft = { id: '', note: '', version: null }
+        toast('销假已登记')
+        await this.loadList()
+      } catch (error) {
+        toast(error?.message || '销假失败，填写内容已保留')
+        if (String(error?.code || '') === 'DATA_CONFLICT') await this.loadList()
+      } finally { this.submitting = false }
     },
     formatTime(value) {
       if (!value) return '—'
@@ -245,5 +284,5 @@ export default {
 </script>
 
 <style scoped>
-.lv__hint{display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.55}.lv__item{margin-bottom:10px}.lv__range{font-weight:var(--font-weight-medium)}.lv__days{display:block;margin-top:4px;font-size:var(--font-size-sm);color:var(--text-secondary)}.lv__reason{display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--text-primary)}.lv__meta{display:block;margin-top:5px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.lv__review{margin-top:9px;padding:9px 10px;border-radius:8px;background:var(--warning-50,#fff7ed)}.lv__review-title{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--warning-800,#9a3412)}.lv__review-text{display:block;margin-top:4px;font-size:var(--font-size-sm);line-height:1.5}.lv__withdraw{margin-top:10px}.lv__mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end}.lv__sheet{width:100%;border-radius:16px 16px 0 0;padding:16px;box-sizing:border-box;max-height:88vh;overflow-y:auto}.lv__field{margin-top:12px}.lv__label{display:block;font-size:var(--font-size-sm);margin-bottom:6px}.lv__req{color:var(--danger-600)}.lv__picker{padding:10px 12px;background:var(--gray-50);border-radius:var(--radius-md);font-size:var(--font-size-sm)}.lv__textarea{width:100%;min-height:80px;padding:10px;box-sizing:border-box;border:1px solid var(--border-base);border-radius:var(--radius-md);font-size:var(--font-size-sm)}.lv__evidence{padding:10px;border:1px solid var(--border-base);border-radius:var(--radius-md);background:var(--gray-50)}.lv__evidence.required{border-color:var(--warning-400,#fb923c);background:var(--warning-50,#fff7ed)}.lv__rule{display:block;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:1.45}.lv__upload{margin-top:8px}.lv__actions{display:flex;gap:10px;margin-top:16px}
+.lv__hint{display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.55}.lv__item{margin-bottom:10px}.lv__range{font-weight:var(--font-weight-medium)}.lv__days{display:block;margin-top:4px;font-size:var(--font-size-sm);color:var(--text-secondary)}.lv__reason{display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--text-primary)}.lv__meta{display:block;margin-top:5px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.lv__review{margin-top:9px;padding:9px 10px;border-radius:8px;background:var(--warning-50,#fff7ed)}.lv__review--return{background:var(--success-50,#f0fdf4)}.lv__review--return .lv__review-title{color:var(--success-800,#166534)}.lv__review-title{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--warning-800,#9a3412)}.lv__review-text{display:block;margin-top:4px;font-size:var(--font-size-sm);line-height:1.5}.lv__receipt{border-color:var(--success-200,#bbf7d0);background:var(--success-50,#f0fdf4)}.lv__receipt-title{color:var(--success-800,#166534);font-size:var(--font-size-md);font-weight:600}.lv__receipt-close{color:var(--success-700,#15803d);font-size:var(--font-size-xs)}.lv__receipt-meta,.lv__receipt-next{display:block;margin-top:5px;color:var(--success-700,#15803d);font-size:var(--font-size-xs);line-height:1.5}.lv__return-editor{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.lv__return-editor .lv__textarea{background:var(--bg-card)}.lv__withdraw{margin-top:10px}.lv__mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end}.lv__sheet{width:100%;border-radius:16px 16px 0 0;padding:16px;box-sizing:border-box;max-height:88vh;overflow-y:auto}.lv__field{margin-top:12px}.lv__label{display:block;font-size:var(--font-size-sm);margin-bottom:6px}.lv__req{color:var(--danger-600)}.lv__picker{padding:10px 12px;background:var(--gray-50);border-radius:var(--radius-md);font-size:var(--font-size-sm)}.lv__textarea{width:100%;min-height:80px;padding:10px;box-sizing:border-box;border:1px solid var(--border-base);border-radius:var(--radius-md);font-size:var(--font-size-sm)}.lv__evidence{padding:10px;border:1px solid var(--border-base);border-radius:var(--radius-md);background:var(--gray-50)}.lv__evidence.required{border-color:var(--warning-400,#fb923c);background:var(--warning-50,#fff7ed)}.lv__rule{display:block;font-size:var(--font-size-xs);color:var(--text-secondary);line-height:1.45}.lv__upload{margin-top:8px}.lv__actions{display:flex;gap:10px;margin-top:16px}
 </style>

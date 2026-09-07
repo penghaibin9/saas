@@ -15,7 +15,7 @@
           </view>
         </view>
         <view class="wb__rolepill" v-if="wb" @click="go('/pages/role-switch/index')">
-          <text class="wb__rolepill-dot" />当前身份：{{ wb.contextTitle }}<text class="wb__rolepill-chev">▾</text>
+          <text class="wb__rolepill-dot" />当前身份：{{ currentRoleTitle }}<text class="wb__rolepill-chev">▾</text>
         </view>
         <view class="stat-strip" v-if="wb">
           <view class="stat-strip__item" v-for="m in wb.metrics" :key="m.key"><text class="stat-strip__val">{{ m.value }}</text><text class="stat-strip__label">{{ m.label }}</text></view>
@@ -148,6 +148,8 @@ import { getStatusBarHeight } from '@/utils/deviceInfo'
 const WORKBENCH_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
 const INTERNSHIP_PERMISSIONS = {
+  'internship-students': 'internship.student.view',
+  'internship-positions': 'internship.position.view',
   weekly: 'internship.report.review',
   checkin: 'internship.attendance.review',
   makeup: 'internship.makeup.review',
@@ -162,6 +164,7 @@ const INTERNSHIP_PERMISSIONS = {
   'process-report': 'internship.report.view',
   'plan-task': 'internship.task.view',
   'internship-application': 'internship.application.view',
+  'internship-volunteers': 'internship.application.view',
   'internship-risk': 'internship.risk.view'
 }
 
@@ -197,6 +200,10 @@ export default {
       const session = useSessionStore()
       if (session.currentRole !== 'intern_mentor') return null
       return useInternshipContextStore().selectedBatch
+    },
+    currentRoleTitle() {
+      const title = String(this.wb?.contextTitle || '').trim()
+      return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
     },
     dueSoonCount() { return Array.isArray(this.wb?.dueSoon) ? this.wb.dueSoon.length : 0 },
     riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 },
@@ -324,6 +331,8 @@ export default {
         checkin: '/pages/teacher/internship-review/index',
         makeup: '/pages/teacher/internship-approval/index',
         leave: '/pages/teacher/internship-approval/index?tab=leave',
+        'internship-students': '/pages/teacher/internship-students/index',
+        'internship-positions': '/pages/teacher/internship-positions/index',
         guidance: '/pages/teacher/internship-guidance/index',
         'stu-eval': '/pages/teacher/student-eval/index',
         'ent-eval': '/pages/teacher/enterprise-eval/index',
@@ -334,6 +343,7 @@ export default {
         'process-report': '/pages/teacher/process-report-review/index',
         'plan-task': '/pages/teacher/plan-task-review/index',
         'internship-application': '/pages/teacher/internship-application/index',
+        'internship-volunteers': '/pages/teacher/internship-volunteers/index',
         'internship-risk': '/pages/teacher/internship-risk/index',
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',

@@ -21,6 +21,12 @@ function pagedBatchPath(path, batchId, page = 1, pageSize = 20) {
 }
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
+function studentContextPath(path, batchId, internshipId) {
+  const batch = requireBatch(batchId)
+  const record = String(internshipId || '').trim()
+  if (!record) throw { code: 'INTERNSHIP_REQUIRED', biz: true, message: '请先选择实习记录' }
+  return `${path}?batchId=${enc(batch)}&internshipId=${enc(record)}`
+}
 
 // ── 教师岗位实习：权限与批次上下文 ──
 export const teacherInternshipContext = () => realRequest('/mobile/teacher/internship/context')
@@ -28,6 +34,14 @@ export const teacherInternshipMyStudents = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/my-students', batchId)) }
   catch (e) { return Promise.reject(e) }
 }
+// 正式分页名单与详情复用 PC 权威接口，权限仍由服务端裁定。
+export const teacherInternshipRoster = (batchId, { keyword = '', eligibility = '', page = 1, pageSize = 20 } = {}) =>
+  realRequest(pagedBatchPath('/internship/intern-students', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&eligibility=' + enc(eligibility), { _rawPage: true })
+export const teacherInternshipStudentDetail = (id) => realRequest('/internship/intern-students/' + enc(id))
+export const teacherInternshipPositions = (batchId, { keyword = '', status = '', page = 1, pageSize = 20 } = {}) =>
+  realRequest(pagedBatchPath('/mobile/teacher/internship/context/positions', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&status=' + enc(status))
+export const teacherInternshipPositionDetail = (id, batchId) =>
+  realRequest(batchPath('/mobile/teacher/internship/context/positions/' + enc(id), batchId))
 export const teacherInternshipScores = (batchId, page = 1, pageSize = 20) => {
   try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/scores', batchId, page, pageSize)) }
   catch (e) { return Promise.reject(e) }
@@ -118,6 +132,18 @@ export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
 // ── 学生岗位实习：当前批次权威流程 ──
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
+export const studentInternshipWeeklyReports = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/weekly-reports', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipWeeklySubmit = (body) =>
+  realRequest('/mobile/internship/context/weekly-reports', { method: 'POST', data: body || {} })
+export const studentInternshipProcessReports = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/reports', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipProcessReportSubmit = (body) =>
+  realRequest('/mobile/internship/context/reports', { method: 'POST', data: body || {} })
 export const studentInternshipCompliance = (operation = 'ONBOARD', batchId = '') => {
   const query = [`operation=${encodeURIComponent(operation || 'ONBOARD')}`]
   if (batchId) query.push(`batchId=${encodeURIComponent(batchId)}`)
@@ -160,8 +186,10 @@ export const studentInternshipApplicationWithdraw = (applicationId, body) =>
     method: 'POST', data: body || {}
   })
 
-export const studentInternshipLeaves = () =>
-  realRequest('/mobile/internship/context/leaves')
+export const studentInternshipLeaves = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/leaves', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
 export const studentInternshipLeaveApply = (body) =>
   realRequest('/mobile/internship/context/leaves', { method: 'POST', data: body || {} })
 export const studentInternshipLeaveWithdraw = (leaveId, body) =>
@@ -171,8 +199,10 @@ export const studentInternshipLeaveWithdraw = (leaveId, body) =>
 export const studentInternshipLeaveReturn = (leaveId, body) =>
   realRequest(`/mobile/internship/context/leaves/${enc(leaveId)}/return`, { method: 'POST', data: body || {} })
 
-export const studentInternshipMakeups = () =>
-  realRequest('/mobile/internship/context/makeups')
+export const studentInternshipMakeups = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/makeups', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
 export const studentInternshipMakeupApply = (body) =>
   realRequest('/mobile/internship/context/makeups', { method: 'POST', data: body || {} })
 export const studentInternshipMakeupWithdraw = (makeupId, body) =>
@@ -204,3 +234,22 @@ export const studentInternshipChangeApply = (body) =>
   realRequest('/mobile/internship/context/changes', { method: 'POST', data: body || {} })
 export const studentInternshipChangeWithdraw = (changeId, body) =>
   realRequest(`/mobile/internship/context/changes/${enc(changeId)}/withdraw`, { method: 'POST', data: body || {} })
+
+export const studentInternshipSelfEval = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/self-eval', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipSelfEvalSubmit = (body) =>
+  realRequest('/mobile/internship/context/self-eval', { method: 'POST', data: body || {} })
+export const studentInternshipScoreAppeal = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/score-appeal', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipScoreAppealSubmit = (body) =>
+  realRequest('/mobile/internship/context/score-appeal', { method: 'POST', data: body || {} })
+export const studentInternshipHelp = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/help', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipHelpSubmit = (body) =>
+  realRequest('/mobile/internship/context/help', { method: 'POST', data: body || {} })

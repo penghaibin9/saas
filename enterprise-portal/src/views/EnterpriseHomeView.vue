@@ -1,10 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CampaignContextBar from '../components/CampaignContextBar.vue'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 
-const context=useEnterpriseContextStore(); const data=ref(null); const campaigns=ref([]); const loading=ref(true); const error=ref('')
+const context=useEnterpriseContextStore(); const data=ref(null); const campaigns=ref([]); const loading=ref(true); const error=ref(''); const campaignError=ref('')
+let requestSequence=0, alive=true
 const metrics=computed(()=>data.value?.metrics||null)
 const tasks=computed(()=>Array.isArray(data.value?.tasks)?data.value.tasks:[])
 const history=computed(()=>campaigns.value.filter(item=>['CLOSED','ARCHIVED'].includes(String(item.status||''))))
@@ -14,18 +15,25 @@ function metricValue(key){
   if(loading.value||!metrics.value)return '—'
   return Object.prototype.hasOwnProperty.call(metrics.value,key) ? metrics.value[key] : '—'
 }
-onMounted(async()=>{
+async function load(){
+  const sequence=++requestSequence
+  data.value=null; campaigns.value=[]; error.value=''; campaignError.value=''; loading.value=true
   try{
     // Collaboration-only access must not even invoke a recruitment endpoint.  The
     // API guard throws synchronously by design, so calling it before allSettled
     // would surface as an unhandled Vue page error instead of a controlled state.
     const dashboardRequest=context.recruitmentContextReady ? enterpriseInternshipApi.dashboard() : Promise.resolve(null)
     const [dashboardResult,campaignResult]=await Promise.allSettled([dashboardRequest,enterpriseInternshipApi.campaigns()])
+    if(!alive||sequence!==requestSequence)return
     if(dashboardResult.status==='fulfilled')data.value=dashboardResult.value
     else error.value=dashboardResult.reason?.message||'招聘工作台数据暂不可用'
     if(campaignResult.status==='fulfilled')campaigns.value=Array.isArray(campaignResult.value)?campaignResult.value:(campaignResult.value?.items||[])
-  }finally{loading.value=false}
-})
+    else campaignError.value=campaignResult.reason?.message||'历史招聘季暂时无法读取'
+  }catch(e){if(alive&&sequence===requestSequence)error.value=e?.message||'工作台暂时无法读取'}
+  finally{if(alive&&sequence===requestSequence)loading.value=false}
+}
+watch(()=>[context.campaign?.id,context.contextMode,context.recruitmentContextReady,context.memberRole],load,{immediate:true})
+onBeforeUnmount(()=>{alive=false;requestSequence++})
 </script>
 <template>
   <section class="ep-page">
@@ -33,15 +41,16 @@ onMounted(async()=>{
     <CampaignContextBar :campaign="context.campaign" :loading="context.loading" />
     <div v-if="context.historyMode" class="history-mode"><strong>当前招聘季已关闭</strong><span>岗位提交和候选人处理等招聘操作已关闭；岗位、申请和处理记录仍可作为历史查看。</span><span v-if="internshipCollabAllowed" class="collab-ok">学校已确认后续实习协同权限，正式实习学生和企业评价仍可继续处理。</span><span v-else class="collab-pending">后续实习协同权限需要学校确认；当前页面不会仅根据招聘季已结束就自动开放相关功能。</span></div>
     <div v-if="error" class="ep-error">{{ error }}。未取得真实数据时指标保持“—”。</div>
-    <div class="tasks ep-card today-first"><div class="card-head"><div><span>TODAY FIRST</span><h2 class="ep-section-title">今天要做什么</h2></div><span class="count-badge">{{ loading ? '…' : tasks.length }}</span></div><div v-if="loading" class="ep-empty compact">正在取得今天的具体办理对象…</div><div v-else-if="error" class="ep-empty compact">今日办理对象暂不可用，请刷新后重试；系统不会把加载失败显示为无待办。</div><div v-else-if="!tasks.length" class="ep-empty compact">当前没有可确认的待处理任务。</div><div v-for="task in tasks" :key="task.key||task.title" class="task"><div class="task-copy"><span v-if="task.whyHere" class="task-why">{{ task.whyHere }}</span><b>{{ task.title }}</b><p>{{ task.description }}</p><div class="task-meta"><span v-if="task.recentChange">最近变化：{{ task.recentChange }}</span><span v-if="task.waitingOn">正在等待：{{ task.waitingOn }}</span><span v-if="task.nextActor">下一办理方：{{ task.nextActor }}</span></div></div><RouterLink v-if="task.href" :to="task.href" class="ep-btn">{{ task.actionLabel||'去处理' }}</RouterLink></div></div>
+    <div class="tasks ep-card today-first"><div class="card-head"><div><span>TODAY FIRST</span><h2 class="ep-section-title">今天要做什么</h2></div><div class="queue-actions"><RouterLink v-if="context.recruitmentContextReady" to="/positions" class="ep-btn">全部岗位</RouterLink><button class="ep-btn" :disabled="loading" @click="load">{{ loading ? '读取中…' : '重新读取' }}</button><span class="count-badge">{{ loading ? '…' : tasks.length }}</span></div></div><div v-if="loading" class="ep-empty compact">正在取得今天的具体办理对象…</div><div v-else-if="error" class="ep-empty compact">今日办理对象暂不可用，请刷新后重试；系统不会把加载失败显示为无待办。</div><div v-else-if="!context.recruitmentContextReady" class="ep-empty compact">当前为实习协同入口，请从实习学生或评价任务继续办理。</div><div v-else-if="!tasks.length" class="ep-empty compact">当前没有可确认的待处理任务。</div><div v-for="task in tasks" :key="task.key||task.title" class="task"><div class="task-copy"><span v-if="task.whyHere" class="task-why">{{ task.whyHere }}</span><b>{{ task.title }}</b><p>{{ task.description }}</p><div class="task-meta"><span v-if="task.recentChange">最近变化：{{ task.recentChange }}</span><span v-if="task.waitingOn">正在等待：{{ task.waitingOn }}</span><span v-if="task.nextActor">下一办理方：{{ task.nextActor }}</span></div></div><RouterLink v-if="task.href" :to="task.href" class="ep-btn">{{ task.actionLabel||'去处理' }}</RouterLink></div></div>
     <div class="section-head"><div><span>招聘总览</span><strong>当前招聘季关键数字</strong></div><small>所有指标以学校系统返回的实时业务数据为准</small></div>
     <div class="metrics">
       <div v-for="item in metricItems" :key="item[0]" class="metric ep-card"><div class="metric-top"><span>{{ item[2] }}</span><i></i></div><strong>{{ metricValue(item[0]) }}</strong><span class="metric-label">{{ item[1] }}</span></div>
     </div>
-    <div class="history ep-card"><div class="card-head"><div><span>历史记录</span><h2 class="ep-section-title">历史招聘季</h2></div></div><div v-if="!history.length" class="ep-empty compact">暂无可确认的历史招聘季。</div><div v-for="item in history" :key="item.id||item.campaignId" class="history-row"><div><b>{{ item.name||item.campaignName||`招聘季 #${item.id||item.campaignId}` }}</b><span>{{ item.status }}</span></div><small>{{ item.period||`${item.startAt||'—'} ~ ${item.endAt||'—'}` }}</small></div></div>
+    <div class="history ep-card"><div class="card-head"><div><span>历史记录</span><h2 class="ep-section-title">历史招聘季</h2></div></div><div v-if="campaignError" class="ep-error" role="alert">{{ campaignError }}，可重新读取。</div><div v-else-if="loading" class="ep-empty compact">正在读取历史招聘季…</div><div v-else-if="!history.length" class="ep-empty compact">暂无可确认的历史招聘季。</div><div v-for="item in history" :key="item.id||item.campaignId" class="history-row"><div><b>{{ item.name||item.campaignName||`招聘季 #${item.id||item.campaignId}` }}</b><span>{{ item.status }}</span></div><small>{{ item.period||`${item.startAt||'—'} ~ ${item.endAt||'—'}` }}</small></div></div>
   </section>
 </template>
 <style scoped>
+.queue-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.task-copy p{white-space:pre-wrap;overflow-wrap:anywhere}
 .hero-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px}.eyebrow{display:block;font-size:10px;letter-spacing:.16em;color:var(--pri);font-weight:800;margin-bottom:7px}.hero-note{min-width:210px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow-sm);display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:2px}.hero-note>span,.hero-note small{font-size:10px;color:var(--t3)}.hero-note strong{font-size:12px;text-align:right;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hero-note small{grid-column:1/-1;text-align:right}
 .history-mode{display:flex;flex-direction:column;gap:5px;padding:13px 15px;margin-bottom:16px;border-radius:10px;background:var(--warn-bg);color:var(--warn-fg);border:1px solid rgba(154,91,0,.08)}.history-mode span{font-size:12px;line-height:1.6}.collab-ok{color:var(--ok-fg)}.collab-pending{color:var(--t2)}
 .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:22px 0 11px}.section-head>div{display:flex;flex-direction:column;gap:2px}.section-head span{font-size:10px;letter-spacing:.08em;color:var(--t3);font-weight:700}.section-head strong{font-size:15px}.section-head small{font-size:10px;color:var(--t4)}

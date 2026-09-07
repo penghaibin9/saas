@@ -94,6 +94,39 @@ def _pick(rows, statuses):
     return None
 
 
+def _insurance_coverage(policy, rec, batch, operation, *, today=None):
+    """Check the approved evidence against the recorded placement period."""
+    def as_date(value):
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(str(value or ""))
+        except ValueError:
+            return None
+
+    start = as_date(getattr(policy, "effective_date", None))
+    end = as_date(getattr(policy, "expiry_date", None))
+    if not start or not end or start > end:
+        return "MISSING", "保险保障期限待核实，请补正保单日期后重新核验"
+    period_start = as_date(getattr(rec, "intern_start_date", None) or getattr(batch, "start_date", None))
+    period_end = as_date(getattr(rec, "intern_end_date", None) or getattr(batch, "end_date", None))
+    if not period_start or not period_end or period_start > period_end:
+        return "MISSING", "实习起止日期待核实，暂不能确认保险覆盖范围"
+    if start > period_start or end < period_end:
+        return "MISSING", "保险保障期限未覆盖实习期间，请补充覆盖完整实习期的保单并重新核验"
+    # Completed placements are assessed against their historical period; a
+    # policy expiring after completion must not prevent historical archiving.
+    if operation in ("ONBOARD", "CONTINUE"):
+        current = today or datetime.utcnow().date()
+        if end < current:
+            return "EXPIRED", "保险已到期，请续保并重新核验后办理上岗"
+        if start > current:
+            return "PENDING", "保险尚未生效，生效前不能办理上岗"
+    return "VALID", ""
+
+
 def _item(code, cfg, status, reason="", evidence=None, route="", evidence_version=None):
     required = bool(cfg.get("required"))
     applicable = status != "NOT_APPLICABLE"
@@ -237,12 +270,20 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
             InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == rec.id,
             InternshipInsurance.is_deleted.is_(False),
         )).all()
-        hit = _pick(rows, ("VERIFIED",))
+        verified = [row for row in rows if row.status == "VERIFIED"]
+        evaluated = [(row, *_insurance_coverage(row, rec, batch, operation)) for row in verified]
+        hit = next((row for row, state, _ in evaluated if state == "VALID"), None)
         if not cfg.get("required"):
             items.append(_item("insurance", cfg, "NOT_APPLICABLE" if not hit else "VALID",
                                "" if hit else "规则未强制", getattr(hit, "id", None)))
         else:
-            status, reason, evid = (("VALID", "", hit.id) if hit else ("MISSING", "实习保险未核验", None))
+            if hit:
+                status, reason, evid = "VALID", "", hit.id
+            elif evaluated:
+                invalid, status, reason = evaluated[0]
+                evid = invalid.id
+            else:
+                status, reason, evid = "MISSING", "实习保险未核验", None
             status, reason, evid = apply_exemption("insurance", status, reason, evid)
             items.append(_item("insurance", cfg, status, reason, evid))
 

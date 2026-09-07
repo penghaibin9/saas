@@ -18,9 +18,11 @@ test('change approval resets the formal relationship to re-onboard in one transa
 test('staff review leads with exact objects and preserves 409 input with a receipt', () => {
   const page = read('frontend/src/modules/internship/views/ChangeRequestListView.vue')
   const api = read('frontend/src/modules/internship/api/internship.api.js')
-  assert.ok(page.indexOf('CHANGE NOW') < page.indexOf('mp-tabs'))
+  assert.match(page, /targetEnterpriseName/)
+  assert.match(page, /currentEnterprise/)
+  assert.match(page, /impactItems/)
   assert.match(page, /ActionReceipt/)
-  assert.match(page, /ConflictNotice/)
+  assert.match(page, /:confirm-disabled="conflict.active"/)
   assert.match(page, /captureConflict/)
   assert.match(page, /recordExpectedVersion/)
   assert.match(api, /recordExpectedVersion/)

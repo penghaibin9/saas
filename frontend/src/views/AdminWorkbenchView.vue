@@ -56,6 +56,11 @@ export default {
     }
   },
   created() {
+    const role = String(this.auth.roles?.[0] || '').toUpperCase()
+    if (['INTERN_MENTOR', 'INTERNSHIP_MENTOR', 'INTERN_ADVISOR'].includes(role)) {
+      this.$router.replace('/admin/internship')
+      return
+    }
     this.loadCtx()
   },
   methods: {

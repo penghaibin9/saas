@@ -1,23 +1,23 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-09-01T14:24:00.000Z",
-  "studentMergeSha": "d2a46ed51e7949a8bed6d3262e0d73d3d96ea912",
+  "generatedAt": "2026-09-06T06:17:46.598Z",
+  "studentMergeSha": "6810bd6284b4d5c69a78947560f808cd7738327e",
   "actionSchemaVersion": "1.0.0",
-  "routeInventoryHash": "b0d60714e644d66341a58732404fb1e3388d72198fd66d947b799dfde8e484e6",
-  "routeCount": 143,
-  "subpackageHash": "dfebb53d7174c65745c3a5801b31041c5bf18e9fcd8ef2aafa258a019ffedf86",
+  "routeInventoryHash": "91cb9408d3164f5d1f900b8e1059aee4d5363b5b6050080082752d4b8c9f80a5",
+  "routeCount": 150,
+  "subpackageHash": "19fc9fcba0ec72625e75e18e2217ca327f9948776acaf5aa5e6a5fec1c8b81d9",
   "subpackages": [
     {
       "root": "pages/student",
-      "pages": 72
+      "pages": 74
     },
     {
       "root": "pages/teacher",
-      "pages": 58
+      "pages": 63
     }
   ],
   "networkPagerVersion": "1.0.0",
   "attachmentPickerVersion": "1.0.0",
   "alembicHead": "20260901_orientation_self_activate_o6",
-  "packageReportSha": "b423d42239345f93f6f964494367566a98e562c2aacb4ae36205e74163b8ffd0"
+  "packageReportSha": ""
 }

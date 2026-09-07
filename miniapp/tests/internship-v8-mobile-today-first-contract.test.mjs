@@ -9,15 +9,15 @@ const review = read('src/pages/teacher/internship-review/index.vue')
 const adapter = read('src/services/teacherSequentialV3Api.js')
 const backend = read('../backend/app/modules/internship/services/internship_service.py')
 
-test('V8 Student Mini keeps currentTask first and groups all sixteen routes by live stage', () => {
+test('V8 Student Mini keeps currentTask first and groups all seventeen routes by live stage', () => {
   const navBlock = student.match(/navItems:\s*\[([\s\S]*?)\n\s*]/)?.[1] || ''
   const paths = [...navBlock.matchAll(/path: '([^']+)'/g)].map((match) => match[1])
 
-  assert.equal(paths.length, 16)
-  assert.equal(new Set(paths).size, 16)
+  assert.equal(paths.length, 17)
+  assert.equal(new Set(paths).size, 17)
   assert.ok(student.indexOf('compliance.currentTask') < student.indexOf('serviceGroups'))
   assert.match(student, /label: '当前必须做'/)
-  assert.match(student, /label: '今天'/)
+  assert.match(student, /label: this\.canShowDailyWork \? '今天' : '需要帮助'/)
   assert.match(student, /label: '当前阶段服务'/)
   assert.match(student, /label: '更多服务'/)
   assert.match(student, /currentStage\(\)/)

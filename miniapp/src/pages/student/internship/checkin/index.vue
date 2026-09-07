@@ -7,7 +7,7 @@
           <view class="ci__map-bg">
             <view class="ci__map-pin" />
           </view>
-          <text class="ci__map-loc">{{ i.checkin.place || '公司位置未设置' }} · {{ i.checkin.range || '围栏以岗位配置为准' }}</text>
+          <text class="ci__map-loc">{{ preflightRule?.place || i.checkin.place || '公司位置未设置' }} · {{ ruleSummary }}</text>
         </view>
 
         <view class="ci__circle" :class="i.checkin.done ? 'is-done' : 'is-todo'" @click="checkin">
@@ -38,12 +38,21 @@ import { studentApi } from '@/services/studentApi'
 import { toast } from '@/utils/nav'
 
 const STATUS_LABEL = { NORMAL: '正常', RECORDED: '正常', OUT_OF_RANGE: '超范围', NO_LOCATION: '无定位',
+  LOW_ACCURACY: '精度不足', LOCATION_UNCERTAIN: '边界待核实',
   PENDING: '待打卡', ABSENT: '缺卡' }
 const STATUS_TYPE = { NORMAL: 'success', RECORDED: 'success', OUT_OF_RANGE: 'warning', NO_LOCATION: 'warning',
+  LOW_ACCURACY: 'warning', LOCATION_UNCERTAIN: 'warning',
   PENDING: 'default', ABSENT: 'danger' }
 
 export default {
-  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '', days: [], lastResultNote: '' } },
+  data() { return { i: null, state: 'loading', checkingIn: false, checkinKey: '', days: [], lastResultNote: '', preflightRule: null } },
+  computed: {
+    ruleSummary() {
+      if (!this.preflightRule) return this.i?.checkin?.range || '围栏以岗位配置为准'
+      if (!this.preflightRule.configured) return '岗位未配置围栏，本次只留痕'
+      return `${this.preflightRule.radiusM} 米围栏 · 定位误差须不超过 ${this.preflightRule.maxAccuracyM} 米`
+    }
+  },
   onLoad() { this.load() },
   methods: {
     dayLabel(dateStr) {
@@ -70,9 +79,12 @@ export default {
           if (!r.confirm || this.checkingIn) return
           this.checkingIn = true
           this.checkinKey = this.checkinKey || `mp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+          let checkinToken = ''
+          let attempts = 0
+          let bestLocation = null
           const submit = (loc) => {
             studentApi.submitCheckin({ ...(loc || {}), idempotencyKey: this.checkinKey,
-              deviceRiskFlag: 'normal' }).then((res) => {
+              checkinToken, capturedAt: new Date().toISOString(), locationProvider: 'UNI_GCJ02' }).then((res) => {
               this.checkinKey = ''
               const dist = res && res.distanceM != null ? `（距围栏中心约 ${Math.round(res.distanceM)} 米）` : ''
               const fence = res && res.geofenceConfigured ? '已启用围栏核验' : '岗位未配置围栏，仅留痕'
@@ -96,7 +108,18 @@ export default {
           // 学生仍可选择坚持无定位打卡（2026-08-04 复审补全授权闭环）。
           const tryLocate = () => uni.getLocation({
             type: 'gcj02',
-            success: (p) => submit({ lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }),
+            success: (p) => {
+              attempts += 1
+              const loc = { lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy }
+              if (!bestLocation || Number(loc.gpsAccuracy || Infinity) < Number(bestLocation.gpsAccuracy || Infinity)) bestLocation = loc
+              const maxAccuracy = Number(this.preflightRule?.maxAccuracyM || 200)
+              if ((!p.accuracy || Number(p.accuracy) > maxAccuracy) && attempts < 3) {
+                this.lastResultNote = `定位精度不足，正在重新定位（${attempts}/3）…`
+                tryLocate()
+                return
+              }
+              submit(bestLocation)
+            },
             fail: (err) => {
               const msg = String((err && err.errMsg) || '')
               // 隐私协议未同意（errno 112）：由 MobilePrivacyGate 弹微信授权按钮处理；
@@ -135,7 +158,14 @@ export default {
               submit({})
             }
           })
-          tryLocate()
+          studentApi.getCheckinPreflight().then((preflight) => {
+            checkinToken = preflight.token
+            this.preflightRule = preflight.rule || null
+            tryLocate()
+          }).catch((e) => {
+            this.checkingIn = false
+            toast((e && e.message) || '打卡预检失败，请稍后重试')
+          })
         }
       })
     }

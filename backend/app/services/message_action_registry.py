@@ -20,6 +20,14 @@ from app.services.mobile_focus_contract import (
 # V3 §4.4：``focus`` 声明该端目标是否真的能落到对象上（DETAIL / LIST_FOCUS / NONE）；
 # 缺省视为 NONE。``focusParam`` 指明用哪个 requiredParam 作为聚焦值，缺省用第一个必需参数。
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    "student.internship.volunteer-result": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["groupId", "groupVersion"],
+        "pc": None, "studentPc": "/internship/volunteer-result",
+        "studentMini": "/pages/student/internship/volunteer-result/index", "teacherMini": None,
+        "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
+        "label": "原志愿办理结果",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],
@@ -57,6 +65,23 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "studentMini": None,
         "teacherMini": "/pages/teacher/risk-students/index",
         "label": "实习风险处置",
+    },
+    "enterprise.internship.application": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["applicationId", "campaignId"],
+        "pc": None, "studentPc": None, "studentMini": None, "teacherMini": None,
+        "enterprise": "/applications/:applicationId",
+        "label": "学生岗位申请",
+    },
+    "enterprise.internship.position": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["positionId", "campaignId"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": None,
+        "teacherMini": None,
+        "enterprise": "/positions/:positionId/edit",
+        "label": "企业岗位详情",
     },
     "student.exam.detail": {
         "roles": ["STUDENT"],
@@ -208,6 +233,7 @@ def list_action_keys() -> list[dict]:
                 "studentPc": v.get("studentPc"),
                 "studentMini": v.get("studentMini"),
                 "teacherMini": v.get("teacherMini"),
+                "enterprise": v.get("enterprise"),
             },
             "focus": {
                 client: focus_mode_for(k, client=client)
@@ -269,7 +295,7 @@ def focus_param_for(action_key: str) -> str | None:
 
 
 def resolve_route(action_key: str, *, client: str) -> dict:
-    """client: pc | studentPc | studentMini | teacherMini"""
+    """client: pc | studentPc | studentMini | teacherMini | enterprise"""
     spec = ACTION_REGISTRY.get(action_key)
     if not spec:
         return {"ok": False, "message": "请前往对应端办理", "path": None}

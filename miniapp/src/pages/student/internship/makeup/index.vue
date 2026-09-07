@@ -8,6 +8,15 @@
           <text class="lv__hint">超范围补卡必须上传考勤、定位或现场佐证；教师查看材料并审批通过后才会补写打卡留痕。</text>
         </view>
 
+        <view v-if="receipt" class="card lv__receipt">
+          <view class="row-between">
+            <text class="lv__receipt-title">{{ receipt.statusLabel || '已提交待审核' }}</text>
+            <text class="lv__receipt-close" @click="receipt = null">关闭</text>
+          </view>
+          <text class="lv__meta">申请编号 {{ receipt.id }} · 数据版本 v{{ receipt.version ?? 0 }}</text>
+          <text class="lv__receipt-next">下一步由指导教师核对；审批结果会回到本页。</text>
+        </view>
+
         <view v-for="item in list" :key="item.id" class="card lv__item">
           <view class="row-between">
             <text class="lv__range">{{ item.checkinDate }}</text>
@@ -87,6 +96,7 @@ export default {
       list: [], pageState: 'loading', formVisible: false,
       context: {},
       submitting: false, uploading: false, makeupTypeIndex: 0,
+      receipt: null,
       form: { checkinDate: '', reason: '', makeupType: 'MISSING', evidenceFileId: '', fileName: '' }
     }
   },
@@ -105,10 +115,8 @@ export default {
     async loadList(done) {
       this.pageState = 'loading'
       try {
-        const [rows, dashboard] = await Promise.all([
-          studentInternshipMakeups(),
-          studentApi.getInternship()
-        ])
+        const dashboard = await studentApi.getInternship()
+        const rows = await studentInternshipMakeups(dashboard?.batchId, dashboard?.recordId)
         this.list = Array.isArray(rows) ? rows : (rows?.items || [])
         this.context = {
           batchId: dashboard?.batchId || '',
@@ -156,13 +164,14 @@ export default {
       if (this.evidenceRequired && !this.form.evidenceFileId) return toast(this.evidenceRuleText)
       this.submitting = true
       try {
-        await studentInternshipMakeupApply({
+        const result = await studentInternshipMakeupApply({
           ...this.context,
           checkinDate: this.form.checkinDate,
           reason: this.form.reason.trim(),
           makeupType: this.form.makeupType,
           evidenceFileId: this.form.evidenceFileId || ''
         })
+        this.receipt = result || null
         toast('补卡申请已提交')
         this.formVisible = false
         await this.loadList()
@@ -201,4 +210,5 @@ export default {
 
 <style scoped>
 .lv__hint{display:block;margin-top:8rpx;color:var(--t3);font-size:24rpx;line-height:1.5}.lv__item{margin-bottom:16rpx}.lv__range{font-weight:600;color:var(--t1)}.lv__days{display:block;margin-top:8rpx;color:var(--t3);font-size:24rpx}.lv__reason{display:block;margin-top:8rpx;color:var(--t2);font-size:26rpx;line-height:1.5}.lv__meta{display:block;margin-top:6rpx;color:var(--text-tertiary);font-size:22rpx}.lv__review{margin-top:12rpx;padding:16rpx 18rpx;border-radius:12rpx;background:var(--warning-50,#fff7ed)}.lv__review-title{display:block;font-size:22rpx;font-weight:600;color:var(--warning-800,#9a3412)}.lv__review-text{display:block;margin-top:5rpx;font-size:25rpx;line-height:1.5}.lv__withdraw{margin-top:16rpx}.lv__mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99;display:flex;align-items:flex-end}.lv__sheet{width:100%;border-radius:24rpx 24rpx 0 0;padding:32rpx;max-height:88vh;overflow-y:auto;box-sizing:border-box}.lv__field{margin-top:24rpx}.lv__label{display:block;margin-bottom:8rpx;color:var(--t2);font-size:26rpx}.lv__req{color:#c0392b}.lv__picker,.lv__textarea{background:var(--bg-soft,#f5f6f8);border-radius:12rpx;padding:20rpx}.lv__textarea{width:100%;min-height:160rpx;box-sizing:border-box}.lv__evidence{padding:20rpx;border:1px solid var(--border-base);border-radius:14rpx;background:var(--gray-50)}.lv__evidence.required{border-color:var(--warning-400,#fb923c);background:var(--warning-50,#fff7ed)}.lv__rule{display:block;color:var(--text-secondary);font-size:22rpx;line-height:1.45}.lv__upload{margin-top:14rpx}.lv__actions{display:flex;gap:16rpx;margin-top:32rpx}
+.lv__receipt{border-color:var(--success-200,#bbf7d0);background:var(--success-50,#f0fdf4)}.lv__receipt-title{color:var(--success-800,#166534);font-size:28rpx;font-weight:600}.lv__receipt-close{color:var(--success-700,#15803d);font-size:22rpx}.lv__receipt-next{display:block;margin-top:8rpx;color:var(--success-700,#15803d);font-size:24rpx;line-height:1.5}
 </style>

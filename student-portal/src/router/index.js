@@ -18,6 +18,7 @@ const routes = [
       { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsFourEndView.vue') },
       { path: 'materials', name: 'material-supplement', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/MaterialSupplementView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
+      { path: 'internship/volunteer-result', name: 'internship-volunteer-result', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipVolunteerResultView.vue') },
       { path: 'internship/selection', name: 'internship-selection', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipSelectionView.vue') },
       { path: 'internship/selection/company/:companyId', name: 'internship-selection-company', meta: { modulePath: 'internship' }, component: () => import('../views/internship/EnterprisePublicView.vue') },
       { path: 'internship/profile', name: 'internship-profile', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipProfileView.vue') },

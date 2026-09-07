@@ -35,7 +35,7 @@ test('archive recovery uses the scoped package endpoint and never blindly replay
 test('technical FileVersion and Manifest evidence is collapsed by default', () => {
   const view = read('src/modules/internship/views/InternshipMaterialCenterView.vue')
   assert.match(view, /<details class="technical-evidence">/)
-  assert.match(view, /展开 FileVersion \/ Manifest 技术证据/)
+  assert.match(view, /查看材料版本与归档清单/)
   assert.match(view, /当前安全版本/)
   assert.doesNotMatch(view, /当前 v\{\{ activePreviewFile\.versionNo \}\} · FileVersion/)
 })

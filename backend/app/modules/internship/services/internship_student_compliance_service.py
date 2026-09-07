@@ -229,10 +229,16 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         rules = get_batch_compliance_rules(db, batch)
         items = []
 
+        from app.modules.internship.services.internship_eligibility_result import eligibility_result
+        eligibility = eligibility_result(db, rec)
         items.append(_item(
             "eligibility", "实习资格", required=True,
-            status="VALID" if rec.eligibility_status == "QUALIFIED" else "MISSING",
-            reason="" if rec.eligibility_status == "QUALIFIED" else "学校尚未认定实习资格合格",
+            status=("VALID" if rec.eligibility_status == "QUALIFIED" else
+                    "REJECTED" if rec.eligibility_status == "UNQUALIFIED" else "MISSING"),
+            reason=eligibility["reason"] or (
+                "" if rec.eligibility_status == "QUALIFIED" else
+                "本次资格认定未通过，请联系指导教师了解后续安排" if rec.eligibility_status == "UNQUALIFIED" else
+                "学校正在核对实习资格，请关注认定结果"),
         ))
         items.append(_item(
             "enterprise", "实习企业", required=True,

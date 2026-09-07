@@ -19,7 +19,7 @@ test('A03-9 preserves old enterprises route file but renames product surface to 
 
 test('A03-9 forbids client full-list filtering and uses server catalog pagination', () => {
   assert.doesNotMatch(pageSource, /(?:this\.)?positions\.filter\s*\(/)
-  assert.match(pageSource, /internshipSelectionApi\.positions/)
+  assert.match(pageSource, /this\.selectionApi\.positions/)
   assert.match(pageSource, /pageSize:\s*20/)
   assert.match(pageSource, /350/)
 })
@@ -66,8 +66,10 @@ test('A03 production seal makes mobile authority reads latest-wins and context f
   assert.match(apiSource, /company\(companyId\) \{ return latestRead\('company'/)
   assert.match(apiSource, /profile\(\) \{ return latestRead\('profile'/)
   assert.match(apiSource, /volunteers\(\) \{ return latestRead\('volunteers'/)
-  assert.match(apiSource, /canSelect: false/)
-  assert.match(apiSource, /selectionBlockReason/)
+  assert.equal(normalizeMobileSelectionContext({}).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ campaignStatus: 'OPEN', canSelect: false }).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ catalogState: 'NO_OPEN_CAMPAIGN', canSelect: true }).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ selectionBlockReason: '资格未满足' }).blockReason, '资格未满足')
   assert.match(apiSource, /availableFrom: profile\?\.availableFrom/)
 })
 
