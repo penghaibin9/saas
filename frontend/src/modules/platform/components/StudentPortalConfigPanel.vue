@@ -195,7 +195,7 @@ export default {
       if (!this.ready) return
       try {
         const address = this.form.portalUrl
-        if (typeof address !== 'string' || /[\u0000-\u0020\\]/.test(address)) throw new Error('门户地址无效')
+        if (typeof address !== 'string' || [...address].some(char => char.charCodeAt(0) <= 32 || char === '\\')) throw new Error('门户地址无效')
         const target = new URL(address, window.location.origin)
         if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password || address.startsWith('//')) throw new Error('门户地址必须是站内路径或 HTTP(S) 地址')
         window.open(target.href, '_blank', 'noopener,noreferrer')

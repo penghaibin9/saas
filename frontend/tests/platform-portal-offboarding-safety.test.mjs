@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { optionsInstance, deferred, plain } from './platform-workspace-test-support.mjs'
+import { setImmediate } from 'node:timers'
+import { optionsInstance, deferred } from './platform-workspace-test-support.mjs'
 const ID = '1000000000000000003'
 const modules = ['dashboard','profile','orientation','campusService','academic','internship','graduation','employment','messages']
 const features = ['upload','export','proofDownload','profileCorrection','messageReceipt','materialCenter','workItems','aiAssistant']
@@ -64,7 +65,7 @@ test('portal unload invalidates reads and warns about unsaved work', async () =>
 })
 test('unsafe numeric school identifiers never produce an API read', async () => {
   let reads = 0; const { state } = portal({ get: async () => { reads++; return cfg() } })
-  state.tenantId = 1000000000000000003; await state.load(); assert.equal(reads, 0); assert.equal(state.ready, false)
+  state.tenantId = Number(ID); await state.load(); assert.equal(reads, 0); assert.equal(state.ready, false)
 })
 for (const value of [undefined, null, '', false, -1, 1.5, 'bad', 1]) {
   test('offboarding missing or positive legal-hold evidence blocks purge: ' + String(value), async () => {
@@ -123,4 +124,15 @@ test('detail route guards protect portal and offboarding just like rules', () =>
     const { state } = optionsInstance('../src/modules/platform/views/control/PlatformControlTenantDetail.vue', { tab, $refs: { [ref]: { protectNavigation: true, busy: false } } })
     state.switchTab('brand'); assert.equal(state.tab, tab); assert.ok(state.pendingRulesNavigation)
   }
+})
+
+test('offboarding unload invalidates late replies and destroys temporary grants', () => {
+  const { state, definition } = offboard()
+  state.mfaGrant = { accessToken: 'test-only-not-a-session', expiresAt: Date.now() + 1000 }
+  state.mfaCode = 'unused'
+  const epoch = state.epoch
+  definition.beforeUnmount.call(state)
+  assert.equal(state.epoch, epoch + 1)
+  assert.equal(state.mfaGrant, null)
+  assert.equal(state.mfaCode, '')
 })
