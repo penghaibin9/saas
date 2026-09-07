@@ -148,3 +148,28 @@ test('failed leave retains the in-memory work and reports the navigation error',
   assert.equal(state.work.kind, 'create'); assert.equal(state.pendingNavigation, '/admin/platform/tenants')
   assert.equal(state.leaving, false); assert.equal(state.workError, 'navigation interrupted')
 })
+
+
+test('querying unchanged conditions performs a real reload', async () => {
+  const { state, calls } = make()
+  let reads = 0
+  state.load = async () => { reads++ }
+  state.$route.query = { tenantId: tid, status: 'paid', keyword: '学校' }
+  state.scope = contracts.orderScope(state.$route.query)
+  state.keywordInput = ' 学校 '; state.statusInput = 'paid'
+  await state.searchOrders()
+  assert.equal(reads, 1)
+  assert.equal(calls.length, 0)
+})
+
+test('querying changed conditions leaves the fetch to the route watcher', async () => {
+  const { state, calls } = make()
+  state.load = () => assert.fail('changed route must have a single fetch owner')
+  state.$route.query = { tenantId: tid }
+  state.scope = contracts.orderScope(state.$route.query)
+  state.keywordInput = '新订单'; state.statusInput = 'paid'
+  await state.searchOrders()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][0], 'replace')
+  assert.deepEqual(plain(calls[0][1].query), { tenantId: tid, status: 'paid', keyword: '新订单' })
+})

@@ -12,6 +12,14 @@ on:
       - 'backend/tests/test_internship_first_write_owner_lock.py'
       - 'backend/tests/test_platform_portal_admin_read_safety.py'
       - 'backend/tests/test_platform_offboarding_reversible_flow.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_identity_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py'
+      - 'backend/tests/test_pr261_actions_root_regressions.py'
+      - 'backend/tests/test_aa_grade_identity_head_concurrency.py'
+      - 'backend/tests/test_aa_effective_grade_policy_contract.py'
+      - 'backend/tests/test_system_admin_governance.py'
+      - 'backend/tests/test_system_admin_p0.py'
+      - 'backend/tests/test_workflow_security_policy.py'
       - '.github/workflows/pr261-audit-regressions.yml'
 permissions:
   contents: read
@@ -21,7 +29,7 @@ concurrency:
 jobs:
   audited-defects:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.0
@@ -65,6 +73,18 @@ jobs:
         run: |
           set -o pipefail
           pytest tests/test_internship_first_write_owner_lock.py tests/test_internship_v93_batch2_remaining_first_create.py -q --junitxml=../artifacts/platform-audited-defects/first-write.xml 2>&1 | tee ../artifacts/platform-audited-defects/first-write.log
+      - name: Actions root causes on real MySQL
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: |
+          set -o pipefail
+          pytest tests/test_pr261_actions_root_regressions.py tests/test_aa_grade_identity_head_concurrency.py tests/test_aa_effective_grade_policy_contract.py tests/test_system_admin_governance.py tests/test_system_admin_p0.py tests/test_workflow_security_policy.py -q --junitxml=../artifacts/platform-audited-defects/actions-roots.xml 2>&1 | tee ../artifacts/platform-audited-defects/actions-roots.log
+      - name: Tenant isolation gate remains enforced
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: |
+          set -o pipefail
+          python scripts/audit_tenant_queries.py --gate 2>&1 | tee ../artifacts/platform-audited-defects/tenant-query-gate.log
       - name: Upload exact-source results including failures
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

@@ -157,7 +157,11 @@ export default {
       finally { if (epoch === this.epoch) this.loading = false }
     },
     searchOrders() {
-      try { const scope = orderScope({ tenantId: this.scope.tenantId, status: this.statusInput, keyword: this.keywordInput }); this.$router.replace({ path: this.$route.path, query: Object.fromEntries(Object.entries(scope).filter(([, value]) => value)) }) }
+      try {
+        const scope = orderScope({ tenantId: this.scope.tenantId, status: this.statusInput, keyword: this.keywordInput })
+        if (JSON.stringify(scope) === JSON.stringify(orderScope(this.$route.query))) return this.load()
+        return this.$router.replace({ path: this.$route.path, query: Object.fromEntries(Object.entries(scope).filter(([, value]) => value)) })
+      }
       catch (error) { this.rows = []; this.loadedAt = ''; this.error = error.message }
     },
     clearScope() {
