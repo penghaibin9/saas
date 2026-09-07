@@ -2,15 +2,31 @@
 
 只替换公开考务 facade 的私有互斥锁 helper，不接管任何状态机、权限或业务写链。
 AaExamTeacherLock 已存在时仍只锁该教师行；只有首建尚无锁行时，才短暂锁现有租户行，
-把“查无记录 -> INSERT 锁行”串行化，避免两个事务同时 INSERT 导致 MySQL 1213，随后
-SQLAlchemy 回滚已经被 MySQL 取消的 SAVEPOINT 又暴露 1305。
+把“查无记录 -> INSERT 锁行”串行化。InnoDB 在与请求内其他行锁交互的极窄并发窗口仍可能
+选择一个事务作为 1205/1213 牺牲者；这种数据库并发裁决必须翻译为稳定 409，不能把
+SQLAlchemy/PyMySQL OperationalError 泄漏成 500。
 """
 from __future__ import annotations
 
+from sqlalchemy.exc import OperationalError
+
 from app.core.exceptions import AppException, not_found
 
+_LOCK_CONFLICT_ERRNOS = frozenset({1205, 1213})
 
-def lock_teacher_timeline(db, teacher_key: str):
+
+def _is_mysql_lock_conflict(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    args = getattr(orig, "args", None) or ()
+    if not args:
+        return False
+    try:
+        return int(args[0]) in _LOCK_CONFLICT_ERRNOS
+    except (TypeError, ValueError):
+        return False
+
+
+def _lock_teacher_timeline_once(db, teacher_key: str):
     from app.models import AaExamTeacherLock, Tenant
     from app.modules.academic_affairs.services import academic_affairs_exam_service as public_facade
 
@@ -49,6 +65,22 @@ def lock_teacher_timeline(db, teacher_key: str):
     db.add(lock_row)
     db.flush()
     return lock_row
+
+
+def lock_teacher_timeline(db, teacher_key: str):
+    """锁教师时间线；数据库选择并发牺牲事务时统一收口为可重试的 409。"""
+    try:
+        return _lock_teacher_timeline_once(db, teacher_key)
+    except OperationalError as exc:
+        if not _is_mysql_lock_conflict(exc):
+            raise
+        # 外层 ``with session()`` 会在 AppException 退出时回滚本事务；这里不要继续使用
+        # 已被 MySQL 标记失败的 Session，只把底层死锁/锁超时翻译为稳定业务冲突。
+        raise AppException(
+            "DATA_CONFLICT",
+            "教师监考时间线正被并发修改，请重试",
+            http_status=409,
+        ) from exc
 
 
 def install(public_facade) -> None:
