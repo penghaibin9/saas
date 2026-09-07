@@ -8,6 +8,7 @@
     <WorkbenchView
       v-if="ctx"
       :display-name="displayName"
+      :ctx="ctx"
     />
     <LoadingState v-else text="正在加载工作台…" />
   </BasePortalLayout>

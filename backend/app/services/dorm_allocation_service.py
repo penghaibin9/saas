@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from collections import deque
 from io import BytesIO
 
 from sqlalchemy import and_, func, or_, select, update
@@ -41,8 +42,11 @@ def _ids(value) -> list[int]:
     return out
 
 
-def _batch(db, batch_id: int) -> DormAllocationBatch:
-    row = db.get(DormAllocationBatch, int(batch_id))
+def _batch(db, batch_id: int, *, for_update=False) -> DormAllocationBatch:
+    row = db.scalar(select(DormAllocationBatch).where(
+        DormAllocationBatch.id == int(batch_id), DormAllocationBatch.tenant_id == _tid(),
+        DormAllocationBatch.is_deleted.is_(False),
+    ).with_for_update()) if for_update else db.get(DormAllocationBatch, int(batch_id))
     if not row or row.is_deleted or int(row.tenant_id) != int(_tid()):
         raise not_found("住宿分配批次不存在")
     return row
@@ -111,8 +115,8 @@ def _resource_rows(
     if not rows:
         raise AppException("DATA_CONFLICT", "资源池内没有有效床位")
     if enforce_management_scope:
-        for bed, _room, _building in rows:
-            _require_dorm_scope(db, int(bed.building_id), user)
+        for building_id in sorted({int(bed.building_id) for bed, _room, _building in rows}):
+            _require_dorm_scope(db, building_id, user)
     return rows
 
 
@@ -131,6 +135,7 @@ def _candidate_students(db, row: DormAllocationBatch, user):
             OrientationStudent.batch_id == orientation.id,
             OrientationStudent.is_deleted.is_(False),
             OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.stage.not_in(["NO_SHOW", "CANCELLED", "DEFERRED"]),
         )).all()
         missing_identity = sum(1 for item in ori_rows if not item.student_id)
         batch_ids = {int(item.student_id) for item in ori_rows if item.student_id}
@@ -244,8 +249,9 @@ def list_batches(user, page=1, page_size=20, status=None):
         return [_batch_row(row) for row in rows], total
 
 
-def _upsert_item(db, batch, student, *, bed=None, status="PENDING", source="AUTO", conflict=None):
-    item = db.scalars(select(DormAllocationItem).where(
+def _upsert_item(db, batch, student, *, bed=None, status="PENDING", source="AUTO", conflict=None,
+                 item_cache=None):
+    item = item_cache.get(int(student.id)) if item_cache is not None else db.scalars(select(DormAllocationItem).where(
         DormAllocationItem.tenant_id == _tid(),
         DormAllocationItem.allocation_batch_id == batch.id,
         DormAllocationItem.student_id == student.id,
@@ -257,6 +263,8 @@ def _upsert_item(db, batch, student, *, bed=None, status="PENDING", source="AUTO
             status=status, source=source,
         )
         db.add(item)
+        if item_cache is not None:
+            item_cache[int(student.id)] = item
     item.bed_id = bed.id if bed else None
     item.status = status
     item.source = source
@@ -280,7 +288,34 @@ def _dry_run(db, batch: DormAllocationBatch, user) -> dict:
         DormStay.status.in_(["RESERVED", "ACTIVE"]), DormStay.is_deleted.is_(False),
     )).all())
     available = list(resources)
+    resource_order = {int(bed.id): index for index, (bed, _room, _building) in enumerate(resources)}
     rules = dict(batch.rules_json or {})
+    # Manual proposals are deliberate decisions, not inputs to overwrite on regeneration.
+    existing_items = db.scalars(select(DormAllocationItem).where(
+        DormAllocationItem.tenant_id == _tid(),
+        DormAllocationItem.allocation_batch_id == batch.id,
+        DormAllocationItem.is_deleted.is_(False),
+    )).all()
+    item_cache = {int(item.student_id): item for item in existing_items}
+    manual_items = [item for item in existing_items if item.status == "PROPOSED" and item.source == "MANUAL"]
+    students_by_id = {int(student.id): student for student in students}
+    resources_by_id = {int(bed.id): (bed, room, building) for bed, room, building in resources}
+    protected = {}
+    protected_beds = set()
+    for item in manual_items:
+        student = students_by_id.get(int(item.student_id))
+        candidate = resources_by_id.get(int(item.bed_id or 0))
+        if (student is None or candidate is None
+                or student.id in occupied_students or student.id in reserved_students
+                or not _gender_ok(candidate[2], student)
+                or int(item.bed_id) in protected_beds):
+            raise AppException("DATA_CONFLICT", "人工安排的学生或床位已变化，请先核对人工安排后再重新生成")
+        protected[int(student.id)] = candidate
+        protected_beds.add(int(item.bed_id))
+    available = [candidate for candidate in available if int(candidate[0].id) not in protected_beds]
+    available_rooms = {}
+    for candidate in available:
+        available_rooms.setdefault(int(candidate[1].id), deque()).append(candidate)
     room_profiles: dict[int, list[StudentProfile]] = {}
     room_ids = sorted({int(room.id) for _bed, room, _building in resources})
     for room_id, profile in db.execute(
@@ -302,60 +337,65 @@ def _dry_run(db, batch: DormAllocationBatch, user) -> dict:
         remaining_by_room[room_id] = remaining_by_room.get(room_id, 0) + 1
         floor_key = (int(building.id), int(room.floor_no or 0))
         floor_population.setdefault(floor_key, 0)
+    from app.services.dorm_allocation_neighborhood import AllocationNeighborhood
+    neighborhood = AllocationNeighborhood()
     for room_id, profiles in room_profiles.items():
         room, building = room_meta.get(room_id, (None, None))
         if room is not None and building is not None:
             floor_population[(int(building.id), int(room.floor_no or 0))] += len(profiles)
+            for profile in profiles:
+                neighborhood.add(profile, room, building)
 
     def soft_score(candidate, student):
         bed, room, building = candidate
-        peers = room_profiles.get(int(room.id), [])
-        affinity = 0
-        if rules.get("sameClass") and student.class_id:
-            affinity += 8 * sum(peer.class_id == student.class_id for peer in peers)
-        if rules.get("sameMajor") and student.major_id:
-            affinity += 4 * sum(peer.major_id == student.major_id for peer in peers)
-        if rules.get("sameCollege") and student.college_id:
-            affinity += 2 * sum(peer.college_id == student.college_id for peer in peers)
+        affinity = neighborhood.score(student, room, building, rules)
         fill_score = -remaining_by_room.get(int(room.id), 0) if rules.get("minimizeVacancy") else 0
         floor_key = (int(building.id), int(room.floor_no or 0))
         balance_score = -floor_population.get(floor_key, 0) if rules.get("balanceFloor") else 0
-        return affinity, fill_score, balance_score, -int(bed.id)
+        return (*affinity, fill_score, balance_score, -resource_order[int(bed.id)])
 
-    assigned = conflicts = 0
+    # Seed affinity and capacity with protected proposals before assigning anybody else.
+    for student_id, (_bed, room, building) in protected.items():
+        room_profiles.setdefault(int(room.id), []).append(students_by_id[student_id])
+        neighborhood.add(students_by_id[student_id], room, building)
+        remaining_by_room[int(room.id)] -= 1
+        floor_key = (int(building.id), int(room.floor_no or 0))
+        floor_population[floor_key] = floor_population.get(floor_key, 0) + 1
+    assigned, conflicts = len(protected), 0
     current_ids = set()
     reasons = {"ALREADY_HAS_BED": 0, "NO_COMPATIBLE_BED": 0, "DATA_MISSING": missing}
     for student in students:
         current_ids.add(int(student.id))
+        if int(student.id) in protected:
+            continue
         if student.id in occupied_students or student.id in reserved_students:
-            _upsert_item(db, batch, student, status="CONFLICT", conflict="ALREADY_HAS_BED")
+            _upsert_item(db, batch, student, status="CONFLICT", conflict="ALREADY_HAS_BED", item_cache=item_cache)
             conflicts += 1; reasons["ALREADY_HAS_BED"] += 1
             continue
-        compatible = [(index, candidate) for index, candidate in enumerate(available)
-                      if _gender_ok(candidate[2], student)]
-        chosen_index = max(compatible, key=lambda pair: soft_score(pair[1], student))[0] if compatible else None
-        if chosen_index is None:
-            _upsert_item(db, batch, student, status="CONFLICT", conflict="NO_COMPATIBLE_BED")
+        # All beds in a room share the same score except deterministic bed ordering.
+        compatible = [queue[0] for queue in available_rooms.values()
+                      if queue and _gender_ok(queue[0][2], student)]
+        chosen = max(compatible, key=lambda candidate: soft_score(candidate, student)) if compatible else None
+        if chosen is None:
+            _upsert_item(db, batch, student, status="CONFLICT", conflict="NO_COMPATIBLE_BED", item_cache=item_cache)
             conflicts += 1; reasons["NO_COMPATIBLE_BED"] += 1
             continue
-        bed, _room, _building = available.pop(chosen_index)
-        _upsert_item(db, batch, student, bed=bed, status="PROPOSED", source="AUTO")
+        bed, _room, _building = available_rooms[int(chosen[1].id)].popleft()
+        _upsert_item(db, batch, student, bed=bed, status="PROPOSED", source="AUTO", item_cache=item_cache)
         room_profiles.setdefault(int(_room.id), []).append(student)
+        neighborhood.add(student, _room, _building)
         remaining_by_room[int(_room.id)] -= 1
         floor_key = (int(_building.id), int(_room.floor_no or 0))
         floor_population[floor_key] = floor_population.get(floor_key, 0) + 1
         assigned += 1
-    stale = db.scalars(select(DormAllocationItem).where(
-        DormAllocationItem.tenant_id == _tid(), DormAllocationItem.allocation_batch_id == batch.id,
-        DormAllocationItem.is_deleted.is_(False),
-        DormAllocationItem.student_id.not_in(current_ids or {-1}),
-    )).all()
+    stale = [item for item in existing_items if int(item.student_id) not in current_ids]
     for item in stale:
         item.status, item.bed_id, item.conflict_code = "CANCELLED", None, "OUT_OF_SCOPE"
     summary = {
         "totalStudents": len(students) + missing, "eligibleStudents": len(students),
         "proposed": assigned, "unassigned": conflicts + missing,
         "reasonCounts": reasons, "availableBeds": len(resources),
+        "preservedManual": len(protected),
         "appliedRules": sorted(key for key, enabled in rules.items()
                                if enabled is True and not key.startswith("_")),
     }
@@ -367,7 +407,7 @@ def _dry_run(db, batch: DormAllocationBatch, user) -> dict:
 
 def dry_run(batch_id: int, user) -> dict:
     with session() as db:
-        batch = _batch(db, batch_id)
+        batch = _batch(db, batch_id, for_update=True)
         summary = _dry_run(db, batch, user)
         from app.services import affairs_dorm_service as dorm
         dorm._audit(db, "DORM_ALLOCATION_BATCH", batch.id, "DRY_RUN", str(summary))
@@ -377,7 +417,7 @@ def dry_run(batch_id: int, user) -> dict:
 
 def manual_assign(batch_id: int, student_id: int, bed_id: int, user) -> dict:
     with session() as db:
-        batch = _batch(db, batch_id)
+        batch = _batch(db, batch_id, for_update=True)
         if batch.status != "DRAFT":
             raise AppException("INVALID_STATE", "仅草稿批次可人工调整分配")
         students, _missing = _candidate_students(db, batch, user)
@@ -411,6 +451,8 @@ def manual_assign(batch_id: int, student_id: int, bed_id: int, user) -> dict:
 
 
 def _link_orientation(db, batch, item, bed, room, building):
+    from app.services.dorm_housing_projection import sync_orientation
+    sync_orientation(db, int(item.student_id))
     if not batch.orientation_batch_id:
         return
     ori = db.scalars(select(OrientationStudent).where(
@@ -484,102 +526,128 @@ def _reserve(db, batch, item, user):
     _link_orientation(db, batch, item, bed, room, building)
 
 
-def publish(batch_id: int, user) -> dict:
-    with session() as db:
-        batch = _batch(db, batch_id)
-        if batch.status != "DRAFT":
-            raise AppException("INVALID_STATE", "仅草稿分配批次可发布")
-        students, missing = _candidate_students(db, batch, user)
-        resources = _resource_rows(db, batch.resource_scope_json or {}, user, vacant_only=True)
-        if not students:
-            raise AppException("DATA_CONFLICT", "学生范围内没有可分配的稳定学生")
-        overlapping = db.scalars(select(DormAllocationBatch).where(
-            DormAllocationBatch.tenant_id == _tid(),
-            DormAllocationBatch.id != batch.id,
-            DormAllocationBatch.status == "PUBLISHED",
-            DormAllocationBatch.open_at < batch.close_at,
-            DormAllocationBatch.close_at > batch.open_at,
-            DormAllocationBatch.is_deleted.is_(False),
-        )).all()
-        if overlapping:
-            overlapping_ids = [row.id for row in overlapping]
-            duplicated_student = db.scalars(select(DormAllocationItem.student_id).where(
-                DormAllocationItem.tenant_id == _tid(),
-                DormAllocationItem.allocation_batch_id.in_(overlapping_ids),
-                DormAllocationItem.student_id.in_([student.id for student in students]),
-                DormAllocationItem.status.in_(["PENDING", "PROPOSED", "RESERVED", "CONFIRMED"]),
-                DormAllocationItem.is_deleted.is_(False),
-            )).first()
-            if duplicated_student:
-                raise AppException("DATA_CONFLICT", "学生范围与同时段已发布分配批次重叠")
-            bed_ids = {int(bed.id) for bed, _room, _building in resources}
-            for other_batch in overlapping:
-                frozen = _ids((other_batch.resource_scope_json or {}).get("resolvedBedIds"))
-                if bed_ids & set(frozen):
-                    raise AppException("DATA_CONFLICT", "床位资源池与同时段已发布分配批次重叠")
-        if batch.mode in {"ADMIN_AUTO", "POST_CHECKIN_PUBLISH"}:
-            dry_summary = dict(batch.rules_json or {}).get("_dryRun")
-            if not dry_summary:
-                raise AppException("INVALID_STATE", "自动分配批次发布前必须先执行 Dry Run")
-            proposed = db.scalar(select(func.count()).select_from(DormAllocationItem).where(
-                DormAllocationItem.tenant_id == _tid(),
-                DormAllocationItem.allocation_batch_id == batch.id,
-                DormAllocationItem.status == "PROPOSED",
-                DormAllocationItem.is_deleted.is_(False),
-            )) or 0
-            if not proposed:
-                raise AppException("DATA_CONFLICT", "Dry Run 没有产生可发布的床位提议")
-        if batch.mode == "STUDENT_SELECT":
-            for old in db.scalars(select(DormAllocationItem).where(
-                DormAllocationItem.tenant_id == _tid(),
-                DormAllocationItem.allocation_batch_id == batch.id,
-                DormAllocationItem.is_deleted.is_(False),
-            )).all():
-                old.bed_id = None
-                old.status = "CANCELLED"
-            db.flush()
-            for student in students:
-                _upsert_item(db, batch, student, status="PENDING", source="STUDENT_SELECT")
-        elif batch.mode == "ADMIN_MANUAL":
-            if not db.scalars(select(DormAllocationItem).where(
-                DormAllocationItem.tenant_id == _tid(),
-                DormAllocationItem.allocation_batch_id == batch.id,
-                DormAllocationItem.status == "PROPOSED",
-                DormAllocationItem.is_deleted.is_(False),
-            )).first():
-                raise AppException("DATA_CONFLICT", "人工分配批次至少需要一条已核对的床位提议")
-        exact_beds = sorted({int(bed.id) for bed, _room, _building in resources})
-        batch.resource_scope_json = {
-            "buildingIds": sorted({int(building.id) for _bed, _room, building in resources}),
-            "roomIds": sorted({int(room.id) for _bed, room, _building in resources}),
-            "resolvedBedIds": exact_beds,
-        }
-        batch.student_scope_json = {
-            **dict(batch.student_scope_json or {}),
-            "resolvedStudentIds": sorted(int(student.id) for student in students),
-            "missingIdentityCount": int(missing),
-        }
-        for item in db.scalars(select(DormAllocationItem).where(
+def publish_in_transaction(db, batch_id: int, user, *, expected_version=None) -> dict:
+    batch = _batch(db, batch_id, for_update=True)
+    if expected_version is not None and int(batch.version or 0) != expected_version:
+        raise AppException("DATA_CONFLICT", "分配方案已变化，请重新核对后发布")
+    if batch.status == "PUBLISHED":
+        _resource_rows(db, batch.resource_scope_json or {}, user)
+        return _batch_row(batch)
+    if batch.status != "DRAFT":
+        raise AppException("INVALID_STATE", "仅草稿分配批次可发布")
+    students, missing = _candidate_students(db, batch, user)
+    resources = _resource_rows(db, batch.resource_scope_json or {}, user, vacant_only=True)
+    if not students:
+        raise AppException("DATA_CONFLICT", "学生范围内没有可分配的稳定学生")
+    overlapping = db.scalars(select(DormAllocationBatch).where(
+        DormAllocationBatch.tenant_id == _tid(),
+        DormAllocationBatch.id != batch.id,
+        DormAllocationBatch.status == "PUBLISHED",
+        DormAllocationBatch.open_at < batch.close_at,
+        DormAllocationBatch.close_at > batch.open_at,
+        DormAllocationBatch.is_deleted.is_(False),
+    )).all()
+    if overlapping:
+        overlapping_ids = [row.id for row in overlapping]
+        duplicated_student = db.scalars(select(DormAllocationItem.student_id).where(
+            DormAllocationItem.tenant_id == _tid(),
+            DormAllocationItem.allocation_batch_id.in_(overlapping_ids),
+            DormAllocationItem.student_id.in_([student.id for student in students]),
+            DormAllocationItem.status.in_(["PENDING", "PROPOSED", "RESERVED", "CONFIRMED"]),
+            DormAllocationItem.is_deleted.is_(False),
+        )).first()
+        if duplicated_student:
+            raise AppException("DATA_CONFLICT", "学生范围与同时段已发布分配批次重叠")
+        bed_ids = {int(bed.id) for bed, _room, _building in resources}
+        for other_batch in overlapping:
+            frozen = _ids((other_batch.resource_scope_json or {}).get("resolvedBedIds"))
+            if bed_ids & set(frozen):
+                raise AppException("DATA_CONFLICT", "床位资源池与同时段已发布分配批次重叠")
+    if batch.mode in {"ADMIN_AUTO", "POST_CHECKIN_PUBLISH"}:
+        dry_summary = dict(batch.rules_json or {}).get("_dryRun")
+        if not dry_summary:
+            raise AppException("INVALID_STATE", "自动分配批次发布前必须先执行 Dry Run")
+        proposed = db.scalar(select(func.count()).select_from(DormAllocationItem).where(
             DormAllocationItem.tenant_id == _tid(),
             DormAllocationItem.allocation_batch_id == batch.id,
             DormAllocationItem.status == "PROPOSED",
             DormAllocationItem.is_deleted.is_(False),
-        ).order_by(DormAllocationItem.id)).all():
-            _reserve(db, batch, item, user)
-        batch.status = "PUBLISHED"
-        batch.published_at = datetime.utcnow()
-        batch.version = int(batch.version or 0) + 1
-        from app.services import affairs_dorm_service as dorm
-        dorm._audit(db, "DORM_ALLOCATION_BATCH", batch.id, "PUBLISH",
-                    f"mode={batch.mode};students={len(students)};beds={len(exact_beds)}")
+        )) or 0
+        if not proposed:
+            raise AppException("DATA_CONFLICT", "Dry Run 没有产生可发布的床位提议")
+    if batch.mode == "STUDENT_SELECT":
+        for old in db.scalars(select(DormAllocationItem).where(
+            DormAllocationItem.tenant_id == _tid(),
+            DormAllocationItem.allocation_batch_id == batch.id,
+            DormAllocationItem.is_deleted.is_(False),
+        )).all():
+            old.bed_id = None
+            old.status = "CANCELLED"
+        db.flush()
+        for student in students:
+            _upsert_item(db, batch, student, status="PENDING", source="STUDENT_SELECT")
+    elif batch.mode == "ADMIN_MANUAL":
+        if not db.scalars(select(DormAllocationItem).where(
+            DormAllocationItem.tenant_id == _tid(),
+            DormAllocationItem.allocation_batch_id == batch.id,
+            DormAllocationItem.status == "PROPOSED",
+            DormAllocationItem.is_deleted.is_(False),
+        )).first():
+            raise AppException("DATA_CONFLICT", "人工分配批次至少需要一条已核对的床位提议")
+    proposals = db.scalars(select(DormAllocationItem).where(
+        DormAllocationItem.tenant_id == _tid(),
+        DormAllocationItem.allocation_batch_id == batch.id,
+        DormAllocationItem.status == "PROPOSED",
+        DormAllocationItem.is_deleted.is_(False),
+    ).order_by(DormAllocationItem.student_id, DormAllocationItem.id)).all()
+    candidates_by_id = {int(student.id): student for student in students}
+    resource_by_id = {int(bed.id): (bed, room, building) for bed, room, building in resources}
+    proposed_beds = set()
+    for item in proposals:
+        student = candidates_by_id.get(int(item.student_id))
+        resource = resource_by_id.get(int(item.bed_id or 0))
+        if student is None:
+            raise AppException("DATA_CONFLICT", "拟分配学生已不在当前有效名单，请重新生成分配方案")
+        if resource is None:
+            raise AppException("DATA_CONFLICT", "拟分配床位已不在当前可用房源内，请重新生成分配方案")
+        if not _gender_ok(resource[2], student):
+            raise AppException("DATA_CONFLICT", "拟分配学生与当前楼栋性别限制不符，请重新核对分配方案")
+        if int(item.bed_id) in proposed_beds:
+            raise AppException("DATA_CONFLICT", "分配方案存在重复床位，请重新核对")
+        proposed_beds.add(int(item.bed_id))
+    exact_beds = sorted(resource_by_id)
+    batch.resource_scope_json = {
+        "buildingIds": sorted({int(building.id) for _bed, _room, building in resources}),
+        "roomIds": sorted({int(room.id) for _bed, room, _building in resources}),
+        "resolvedBedIds": exact_beds,
+    }
+    batch.student_scope_json = {
+        **dict(batch.student_scope_json or {}),
+        "resolvedStudentIds": sorted(int(student.id) for student in students),
+        "missingIdentityCount": int(missing),
+    }
+    for item in proposals:
+        _reserve(db, batch, item, user)
+    batch.status = "PUBLISHED"
+    batch.published_at = datetime.utcnow()
+    batch.version = int(batch.version or 0) + 1
+    from app.services import affairs_dorm_service as dorm
+    dorm._audit(db, "DORM_ALLOCATION_BATCH", batch.id, "PUBLISH",
+                f"mode={batch.mode};students={len(students)};beds={len(exact_beds)}")
+    return _batch_row(batch)
+
+
+def publish(batch_id: int, user) -> dict:
+    with session() as db:
+        result = publish_in_transaction(db, batch_id, user)
         db.commit()
-        return _batch_row(batch)
+        return result
 
 
 def detail(batch_id: int, user) -> dict:
     with session() as db:
         batch = _batch(db, batch_id)
-        _resource_rows(db, batch.resource_scope_json or {}, user)
+        resources = _resource_rows(db, batch.resource_scope_json or {}, user)
         rows = db.execute(select(DormAllocationItem, StudentProfile, DormBed, DormRoom, DormBuilding)
             .join(StudentProfile, StudentProfile.id == DormAllocationItem.student_id)
             .outerjoin(DormBed, DormBed.id == DormAllocationItem.bed_id)
@@ -602,7 +670,23 @@ def detail(batch_id: int, user) -> dict:
                 f"{bed.bed_no}床" if bed else "",
             ) if x),
         } for item, student, bed, room, building in rows]
-        return {"batch": _batch_row(batch), "items": items, "total": len(items)}
+        from app.services.dorm_housing_projection import housing_map, housing_fields
+        candidates, missing = _candidate_students(db, batch, user)
+        facts = housing_map(db, [student.id for _item, student, *_ in rows] + [s.id for s in candidates])
+        from app.services.dorm_allocation_capacity import allocation_capacity
+        housed_ids = db.scalars(select(DormStay.student_id).where(
+            DormStay.tenant_id == _tid(), DormStay.is_deleted.is_(False),
+            DormStay.status.in_(["RESERVED", "ACTIVE"]),
+            DormStay.student_id.in_([s.id for s in candidates] or [-1]),
+        )).all()
+        capacity = allocation_capacity(candidates, resources, housed_ids, missing)
+        for item in items:
+            fact = facts.get(int(item["studentId"]), housing_fields())
+            item["housing"] = fact
+        return {"batch": _batch_row(batch), "items": items, "total": len(items), "capacity": capacity,
+                "missingIdentityCount": missing,
+                "candidates": [{"studentId": str(s.id), "studentName": s.real_name,
+                                "studentNo": s.student_no, "housing": facts.get(int(s.id), housing_fields())} for s in candidates]}
 
 
 def _student_item(db, student_id: int, *, require_open=False):

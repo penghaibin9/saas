@@ -6,7 +6,13 @@ const source=fs.readFileSync(new URL('../src/views/affairs/FundingAttachments.vu
 const script=source.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm,'')
 function make(sdk) {
   const scope=effectScope(),events=[],unmount=[],props=reactive({disabled:false,initialFiles:[]})
-  const vm=scope.run(()=>new Function('computed','onBeforeUnmount','ref','watch','fileSdk','defineProps','defineEmits',script+';return {choose,upload,check,remove,files,uploading,notice}')(computed,fn=>unmount.push(fn),ref,watch,sdk,()=>props,()=>((_name,state)=>events.push(state))))
+  const defineProps = definitions => {
+    for (const [key, definition] of Object.entries(definitions)) {
+      if (!(key in props) && 'default' in definition) props[key] = typeof definition.default === 'function' ? definition.default() : definition.default
+    }
+    return props
+  }
+  const vm=scope.run(()=>new Function('computed','onBeforeUnmount','ref','watch','fileSdk','defineProps','defineEmits',script+';return {choose,upload,check,remove,files,uploading,notice}')(computed,fn=>unmount.push(fn),ref,watch,sdk,defineProps,()=>((_name,state)=>events.push(state))))
   return {...vm,props,events,dispose(){unmount.forEach(fn=>fn());scope.stop()}}
 }
 

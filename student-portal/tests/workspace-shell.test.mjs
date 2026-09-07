@@ -80,5 +80,5 @@ test('首页待办先于成长航线；学工分类变化保持真实加载链�
   const affairs = await readFile(new URL('../src/views/affairs/AffairsFourEndView.vue', import.meta.url), 'utf8')
   assert.match(affairs, /watch\(\(\) => route\.query\.tab/)
   assert.match(affairs, /tabs\.some\(item => item\.key === key\)/)
-  assert.match(affairs, /watch\(tab, \(key\) => \{ loadTab\(key\) \}/)
+  assert.match(affairs, /watch\(tab, \(key\) => \{ loadTab\(key, \{ force: key === 'dorm' \}\) \}, \{ immediate: true \}\)/)
 })

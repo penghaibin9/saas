@@ -19,6 +19,8 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" type="button" @click="openAssign">分配责任</AppPermissionButton>
       </div>
 
+      <p v-if="notice" class="responsibility-success">{{ notice }}</p>
+
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDescription" />
@@ -27,12 +29,12 @@
           <div class="mp-cell-main">{{ row.counselorName || row.name || '—' }}</div>
           <div v-if="row.loginName" class="mp-cell-sub">{{ row.loginName }}</div>
         </template>
-        <template #cell-dutyType="{ row }"><AppStatusTag :status="row.dutyType" /></template>
+        <template #cell-dutyType="{ row }"><AppStatusTag :status="row.dutyType" :type="dutyTypeTone(row.dutyType)" :label="dutyTypeLabel(row.dutyType)" /></template>
         <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
         <template #cell-actions="{ row }">
           <div class="responsibility-actions">
             <AppPermissionButton v-if="tab === 'vacancies'" :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" size="sm" variant="primary" @click="openAssign(row)">立即分配</AppPermissionButton>
-            <button v-if="tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link" @click="openHandover(row)">交接</button>
+            <button v-if="tab === 'assignments' && row.status === 'ACTIVE' && row.dutyType === 'PRIMARY'" type="button" class="mp-link" @click="openHandover(row)">交接</button>
             <button v-if="tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link danger" @click="openEnd(row)">结束</button>
           </div>
         </template>
@@ -81,6 +83,8 @@ import { counselorAssignmentApi } from '@/modules/studentAffairs/api/class.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
 const TABS = [{ key: 'ledger', label: '辅导员台账' }, { key: 'vacancies', label: '空缺班级' }, { key: 'assignments', label: '按班分配' }]
+const DUTY_LABELS = { PRIMARY: '主辅导员', CO: '协同辅导员', TEMP: '临时代班' }
+const DUTY_TONES = { PRIMARY: 'primary', CO: 'info', TEMP: 'warning' }
 const COLS = {
   ledger: [{ key: 'counselor', title: '辅导员' }, { key: 'classCount', title: '带班数' }, { key: 'studentCount', title: '学生数' }, { key: 'primaryCount', title: '主责班级' }, { key: 'tempCount', title: '临时代班' }],
   vacancies: [{ key: 'className', title: '班级' }, { key: 'studentCount', title: '学生数' }, { key: 'status', title: '责任状态' }, { key: 'actions', title: '操作', align: 'right', width: '130px' }],
@@ -91,7 +95,7 @@ export default {
   name: 'CounselorAssignmentView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppPermissionButton, AppClassPicker, AppTeacherPicker },
   props: { ctx: { type: Object, default: null } },
-  data: () => ({ tabs: TABS, tab: 'ledger', rows: [], loading: true, error: '', filters: { classId: '', status: '' }, pagination: { page: 1, pageSize: 20, total: 0 }, dialog: { visible: false, mode: '', title: '', row: null }, form: emptyForm(), dialogError: '', submitting: false }),
+  data: () => ({ tabs: TABS, tab: 'ledger', rows: [], loading: true, error: '', notice: '', filters: { classId: '', status: '' }, pagination: { page: 1, pageSize: 20, total: 0 }, dialog: { visible: false, mode: '', title: '', row: null }, form: emptyForm(), dialogError: '', submitting: false }),
   computed: {
     columns() { return COLS[this.tab] }, rowKey() { return this.tab === 'ledger' ? 'userId' : (this.tab === 'vacancies' ? 'classId' : 'id') },
     roleName() { return this.ctx?.currentRole?.roleName || '学工处 / 学院学工 / 辅导员' },
@@ -99,9 +103,16 @@ export default {
     emptyTitle() { return this.tab === 'vacancies' ? '当前没有空缺班级' : '暂无责任关系记录' },
     emptyDescription() { return this.tab === 'vacancies' ? '所有当前可见班级均有有效主辅导员。' : '可通过“分配责任”建立真实辅导员用户关系。' }
   },
-  created() { this.load() },
+  created() {
+    const requestedTab = String(this.$route.query.tab || '')
+    if (TABS.some((item) => item.key === requestedTab)) this.tab = requestedTab
+    if (this.$route.query.classId) this.filters.classId = String(this.$route.query.classId)
+    this.load()
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    dutyTypeLabel(value) { return DUTY_LABELS[value] || '责任类型待核对' },
+    dutyTypeTone(value) { return DUTY_TONES[value] || 'default' },
     async load() {
       this.loading = true; this.error = ''
       let res
@@ -112,7 +123,11 @@ export default {
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; return }
       const data = res.data || {}; this.rows = data.list || data.items || []; this.pagination.total = data.total || this.rows.length
     },
-    switchTab(tab) { this.tab = tab; this.pagination.page = 1; this.load() },
+    switchTab(tab) {
+      this.tab = tab; this.pagination.page = 1; this.notice = ''
+      this.$router.replace({ query: { ...this.$route.query, tab, classId: this.filters.classId || undefined } }).catch(() => {})
+      this.load()
+    },
     onPageChange(page) { this.pagination.page = page; this.load() },
     openAssign(row = null) {
       this.form = { ...emptyForm(), classId: row?.classId ? String(row.classId) : null }
@@ -140,7 +155,14 @@ export default {
       if (this.dialog.mode === 'end') res = await counselorAssignmentApi.end(this.dialog.row.id, { reason: this.form.reason, version: this.dialog.row.version })
       this.submitting = false
       if (res.code !== 0) { this.dialogError = res.message || '提交失败'; return }
-      this.dialog.visible = false; this.load()
+      const doneMode = this.dialog.mode
+      this.dialog.visible = false
+      this.notice = doneMode === 'handover'
+        ? '交接完成：新辅导员已接管该班学生、待办与未关闭风险。'
+        : doneMode === 'end'
+          ? '责任关系已结束；主责结束后，该班会进入空缺班级。'
+          : '责任关系已生效，教师端班级与学生范围将同步更新。'
+      this.load()
     }
   }
 }
@@ -156,6 +178,7 @@ export default {
 .toolbar select { min-width: 130px; padding: 8px 10px; border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); }
 .responsibility-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
 .responsibility-note { margin: 0; padding: var(--space-3); border-left: 3px solid var(--primary-300, #93c5fd); background: var(--primary-50, #eff6ff); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.responsibility-success { margin: 0; padding: 10px 12px; border: 1px solid var(--success-200, #a7f3d0); border-radius: var(--radius-md); background: var(--success-50, #ecfdf5); color: var(--success-700, #047857); font-size: var(--font-size-sm); }
 .danger { color:var(--danger-600); }
 .overlay { position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.48); display:grid; place-items:center; padding: 16px; }
 .dialog { width:min(560px,100%); max-height: min(760px, calc(100vh - 32px)); overflow-y: auto; padding:24px; border-radius:var(--radius-xl, 16px); background:white; display:grid; gap:14px; box-shadow: var(--shadow-xl, 0 24px 64px rgba(15,23,42,.22)); }

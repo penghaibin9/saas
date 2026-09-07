@@ -176,17 +176,25 @@ def _orientation_payload(o, db=None) -> dict:
     steps = student_step_projection(db, o)
     qualification = evaluate(db, o)
     from app.services.orientation_checkin_service import _dorm_projection, token_status
-    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord
+    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord, StudentProfile, SchoolClass
+    profile = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
+    if profile and profile.is_deleted:
+        profile = None
+    class_id = profile.class_id if profile else o.class_id
+    school_class = tenant_get(db, SchoolClass, int(class_id)) if class_id else None
+    if school_class and school_class.is_deleted:
+        school_class = None
     checkin_credential = token_status(db, o, qualification=qualification)
     batch = db.get(OrientationBatch, int(o.batch_id))
-    dorm = _dorm_projection(db, o)
+    dorm = _dorm_projection(db, o, for_student=True)
+    if dorm.get("status") == "HIDDEN":
+        qualification.get("facts", {}).get("dorm", {}).pop("bedId", None)
     contacts = []
     contact_name = o.counselor or ""
     contact_phone = ""
-    if o.class_id:
+    if school_class:
         from app.core.field_crypto import decrypt_field
-        from app.models import SchoolClass, User
-        school_class = db.get(SchoolClass, int(o.class_id))
+        from app.models import User
         if (school_class and not school_class.is_deleted
                 and int(school_class.tenant_id) == int(o.tenant_id)
                 and school_class.counselor_id):
@@ -205,11 +213,11 @@ def _orientation_payload(o, db=None) -> dict:
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")
-    return {"hasData": True, "batchName": batch.batch_name if batch else "",
+    return {"hasData": True, "stage": o.stage, "batchName": batch.batch_name if batch else "",
             "reportStatus": o.report_status, "paymentStatus": payment_status,
-            "materialStatus": o.material_status, "dormStatus": o.dorm_status,
+            "materialStatus": o.material_status, "dormStatus": dorm["dormStatus"],
             "greenChannelStatus": o.green_channel_status,
-            "building": o.building or "", "room": o.room or "", "dorm": dorm,
+            "building": dorm["building"], "room": dorm["room"], "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
             "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
@@ -225,7 +233,8 @@ def _orientation_payload(o, db=None) -> dict:
             },
             "contacts": contacts,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
-            "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
+            "className": (school_class.class_name if school_class else o.class_name) or "",
+            "grade": (school_class.grade if school_class else o.grade) or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
 
 
@@ -1763,6 +1772,8 @@ def my_profile(user: dict) -> dict:
                 "gender": stu.gender or "", "collegeName": getattr(stu, "_college_name", "") or "",
                 "majorName": getattr(stu, "_major_name", "") or "",
                 "className": getattr(stu, "_class_name", "") or "",
+                "counselorId": str(getattr(stu, "_counselor_id", "") or ""),
+                "counselorName": getattr(stu, "_counselor_name", "") or "",
                 "grade": stu.grade or "",
                 "phoneMasked": _mask_phone(phone_plain) if phone_plain else "",
                 "idCardMasked": mask_id_card_encrypted(stu.id_card_encrypted),

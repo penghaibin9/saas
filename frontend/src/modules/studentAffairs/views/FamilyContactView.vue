@@ -11,7 +11,6 @@
     <div class="fc-picker sa-filter-bar">
       <div class="fc-picker__copy">
         <span class="fc-picker__label">当前学生</span>
-        <small>选择后加载该生完整家校联系时间线</small>
       </div>
       <div class="fc-picker__control">
         <AppStudentPicker v-model="studentId" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
@@ -20,17 +19,16 @@
     </div>
 
     <p v-if="focusNotice" class="fc-focus-note">{{ focusNotice }}</p>
-    <EmptyState v-if="!studentId" title="请选择一名学生" description="选择后可查看该生家校联系历史，并登记新的沟通记录" />
+    <div v-if="!studentId" class="fc-empty"><strong>请选择一名学生</strong><span>查看联系历史或登记沟通记录</span></div>
     <LoadingState v-else-if="loading" text="正在加载联系记录…" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
-    <EmptyState v-else-if="!contacts.length" title="暂无家校联系记录" description="该生尚未建立家校沟通记录，可点击“登记联系”记录首次沟通" />
+    <div v-else-if="!contacts.length" class="fc-empty"><strong>暂无家校联系记录</strong><span>可登记首次沟通</span></div>
     <template v-else>
       <div class="fc-timeline-head">
         <div>
           <strong>家校联系时间线</strong>
-          <span>共 {{ total }} 条记录，按时间顺序查看沟通事由与结果</span>
+          <span>共 {{ total }} 条</span>
         </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记本次联系</AppPermissionButton>
       </div>
       <ul class="fc-list">
         <li v-for="c in contacts" :key="c.contactId" class="fc-item" :class="{ 'is-focused': String(c.contactId) === String(contactFocusId) }">
@@ -38,7 +36,7 @@
           <div class="fc-item__content">
             <div class="fc-item__head">
               <span class="fc-item__type">{{ contactTypeLabel(c.contactType) }}</span>
-              <span v-if="c.fullPhoneViewed" class="fc-item__sensitive">🔒 已记录完整号码查看审计</span>
+              <span v-if="c.fullPhoneViewed" class="fc-item__sensitive">完整号码查看已审计</span>
               <span class="fc-item__time"><AppDateDisplay :value="c.occurredAt" mode="datetime" empty-text="" /></span>
             </div>
             <div class="fc-item__body">
@@ -94,7 +92,7 @@
  * 真实对接 /api/v1/student-affairs/students/{id}/family-contacts：联系记录(append-only) + 登记。
  * 查看完整号码需填原因(≥5字)，后端落 SENSITIVE 审计。
  */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import {
   AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
@@ -111,7 +109,7 @@ const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPE).map(([value, label]) =
 export default {
   name: 'FamilyContactView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState,
+    ModulePageShell, LoadingState, ErrorState,
     AppDateDisplay, AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
     AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
   },
@@ -222,8 +220,10 @@ export default {
 
 <style scoped>
 .fc-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); }
+.fc-empty { display:grid;gap:6px;padding:56px 16px;text-align:center;color:var(--text-tertiary);font-size:var(--font-size-xs) }
+.fc-empty strong { color:var(--text-primary);font-size:var(--font-size-md) }
 .fc-picker { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
-.fc-picker__copy { display: grid; gap: 2px; min-width: 150px; }
+.fc-picker__copy { display: grid; gap: 2px; min-width: 72px; }
 .fc-picker__copy small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .fc-picker__label { font-size: var(--font-size-sm); color: var(--text-primary); font-weight: 600; white-space: nowrap; }
 .fc-picker__control { flex: 1 1 360px; min-width: 260px; }
@@ -237,8 +237,8 @@ export default {
 .fc-item__rail::after { content: ''; position: absolute; top: 16px; bottom: calc(-1 * var(--space-3) - 4px); width: 2px; background: var(--border-light); }
 .fc-item:last-child .fc-item__rail::after { display: none; }
 .fc-item__rail span { position: relative; z-index: 1; width: 10px; height: 10px; margin-top: 16px; border: 2px solid var(--primary-500); border-radius: 50%; background: var(--bg-card); }
-.fc-item.is-focused .fc-item__content { border-color: var(--primary-500); box-shadow: 0 0 0 2px var(--primary-100); }
-.fc-item__content { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); }
+.fc-item.is-focused .fc-item__content { border-color: var(--primary-500); box-shadow: inset 3px 0 var(--primary-500); padding-left: 12px; }
+.fc-item__content { min-width: 0; padding: 10px 0 12px; border-bottom: 1px solid var(--border-base); background: transparent; }
 .fc-item__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .fc-item__type { font-weight: 700; color: var(--primary-700); }
 .fc-item__sensitive { padding: 2px 7px; border-radius: var(--radius-full); background: var(--danger-50); color: var(--danger-700, #b91c1c); font-size: var(--font-size-xs); }
@@ -247,7 +247,7 @@ export default {
 .fc-item__row { min-width: 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .fc-item__row > span { display: block; margin-bottom: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .fc-item__row p { margin: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
-.fc-form-note { margin-bottom: var(--space-4); padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.fc-form-note { margin-bottom: var(--space-4); padding-left: 10px; border-left: 3px solid var(--primary-400); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .fc-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .fc-check.is-on { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
 .fc-check span { display: grid; gap: 2px; }

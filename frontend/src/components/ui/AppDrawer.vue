@@ -4,7 +4,7 @@
       <div
         v-if="visible"
         class="app-drawer-mask"
-        :class="`is-${mode}`"
+        :class="[`is-${mode}`, { 'sa-workspace-overlay': affairsWorkspace }]"
         @click.self="close"
       >
         <aside
@@ -38,6 +38,7 @@
 <script>
 export default {
   name: 'AppDrawer',
+  inject: { affairsWorkspace: { default: false } },
   props: {
     visible: { type: Boolean, default: false },
     title: { type: String, default: '' },

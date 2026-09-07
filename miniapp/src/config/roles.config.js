@@ -13,6 +13,7 @@
 export const ROLE = {
   STUDENT: 'student',
   COUNSELOR: 'counselor', // 辅导员 / 班主任
+  PSYCHOLOGY_TEACHER: 'psychology_teacher', // 心理教师
   DORM_MANAGER: 'dorm_manager', // 宿管 / 公寓管理员
   MENTOR: 'mentor', // 毕业设计指导教师
   INTERN_MENTOR: 'intern_mentor', // 实习指导教师
@@ -33,6 +34,7 @@ export const ROLE = {
 const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   STUDENT: ROLE.STUDENT,
   COUNSELOR: ROLE.COUNSELOR,
+  PSYCHOLOGY_TEACHER: ROLE.PSYCHOLOGY_TEACHER,
   DORM_MANAGER: ROLE.DORM_MANAGER,
   GD_MENTOR: ROLE.MENTOR,
   MENTOR: ROLE.MENTOR,
@@ -102,6 +104,22 @@ export const roleConfigs = {
       { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
     permissionActions: ['approval.handle', 'risk.handle', 'student.contact', 'care.create', 'student360.view']
+  },
+  [ROLE.PSYCHOLOGY_TEACHER]: {
+    key: ROLE.PSYCHOLOGY_TEACHER,
+    label: '心理教师',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'PSY_STUDENT',
+    dataScopeText: '专项授权关注学生',
+    workbench: ['risk', 'contact'],
+    quickActions: [
+      { key: 'mental', label: '心理关注', icon: '🧠' },
+      { key: 'risk', label: '风险处置', icon: '⚠' },
+      { key: 'talk', label: '谈心谈话', icon: '💬' },
+      { key: 'contact', label: '联系学生', icon: '☎' }
+    ],
+    permissionActions: ['risk.handle', 'student.contact', 'care.create', 'student360.view']
   },
   [ROLE.DORM_MANAGER]: {
     key: ROLE.DORM_MANAGER,

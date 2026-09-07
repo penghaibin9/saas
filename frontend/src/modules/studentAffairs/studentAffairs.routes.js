@@ -336,7 +336,19 @@ const studentAffairsRoutes = [
         path: 'stats/cockpit',
         name: 'student-affairs-cockpit',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsCockpitView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '统计驾驶舱', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
+        path: 'stats/wall',
+        name: 'student-affairs-runtime-wall',
+        component: () => import('@/modules/studentAffairs/views/StudentAffairsWallView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工运行大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
+        path: 'stats/leader',
+        name: 'student-affairs-leader-wall',
+        component: () => import('@/modules/studentAffairs/views/StudentAffairsLeaderWallView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工领导大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       /* 心理关注 5 页（强敏感·PSY_STUDENT·危机接风险中枢）——对接 /student-affairs/mental/* 后端 */
       {

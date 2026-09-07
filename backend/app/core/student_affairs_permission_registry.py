@@ -143,6 +143,18 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "/api/v1/mobile/teacher/affairs/activities/ongoing": (
         "studentAffairs.activity.publish",
     ),
+    "/api/v1/mobile/teacher/affairs/activities": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/participants": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/transition": (
+        "studentAffairs.activity.publish",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/confirm": (
+        "studentAffairs.activity.confirm",
+    ),
     "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token": (
         "studentAffairs.activity.publish",
     ),

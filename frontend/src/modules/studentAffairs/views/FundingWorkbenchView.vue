@@ -310,7 +310,7 @@ export default {
           { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.funding.approve' }
         ].filter(action => (this.selected.allowedActions || []).includes(action.key.toUpperCase()))
       }
-      if (s === 'PUBLICITY') return [{ key: 'publicityConfirm', label: '确认公示通过', tone: 'primary', code: 'studentAffairs.funding.publicity.manage' }]
+      if (s === 'PUBLICITY') return [{ key: 'publicityProgress', label: '查看公示进度', tone: 'primary', code: 'studentAffairs.funding.publicity.manage' }]
       return []
     }
   },
@@ -539,11 +539,11 @@ export default {
       else toast.error(res.message || '刷新详情失败')
     },
     onAction(key) {
+      if (key === 'publicityProgress') { this.goPublicity(); return }
       const map = {
         approve: { action: 'approve', title: '审批通过', message: '通过后推进到下一评审节点，终审通过将进入公示。', type: 'primary', confirmText: '审批通过', requireReason: false },
         return: { action: 'return', title: '退回申请', message: '退回后本次申请需重新处理。', type: 'warning', confirmText: '退回', requireReason: true, reasonLabel: '退回原因（≥5字）', reasonPlaceholder: '请说明退回原因，不少于 5 字' },
         reject: { action: 'reject', title: '驳回申请', message: '驳回为终态，本次不予资助。', type: 'danger', confirmText: '驳回', requireReason: true, reasonLabel: '驳回原因（≥5字）', reasonPlaceholder: '请说明驳回原因，不少于 5 字' },
-        publicityConfirm: { action: 'publicityConfirm', title: '确认公示通过', message: '确认公示期满无异议，获得资助并写入学生 360。', type: 'primary', confirmText: '确认通过', requireReason: false }
       }
       const d = map[key]
       if (!d) return
@@ -558,10 +558,9 @@ export default {
         approve: () => studentAffairsApi.reviewFunding(id, 'APPROVE', '', ver),
         return: () => studentAffairsApi.reviewFunding(id, 'RETURN', reason, ver),
         reject: () => studentAffairsApi.reviewFunding(id, 'REJECT', reason, ver),
-        publicityConfirm: () => studentAffairsApi.confirmFundingPublicity(id, ver)
       }[a]
       if (!call) return
-      const ok = await this.runAction(call, { approve: '已审批通过', return: '已退回', reject: '已驳回', publicityConfirm: '已获资助' }[a])
+      const ok = await this.runAction(call, { approve: '已审批通过', return: '已退回', reject: '已驳回' }[a])
       if (ok) this.dialog.visible = false
     },
     goProjects() {
@@ -621,29 +620,35 @@ export default {
       else toast.error(res.message || '扫描失败')
     },
     async runAction(call, okMsg) {
+      if (this.acting) return false
       this.acting = true
       this._lastErr = ''
-      const res = await call()
-      if (res.code === 0) {
-        toast.success(okMsg)
-        if (res.data && res.data.applicationId) this.selected = res.data
-        else await this.reloadDetail()
-        await this.loadApplications()
-        this.acting = false
-        return true
-      }
-      if (res.bizCode === 'APPROVAL_VERSION_CONFLICT') {
-        this._lastErr = '该记录已被其他人处理，数据已刷新'
+      let committed = false
+      try {
+        const res = await call()
+        if (res.code === 0) {
+          committed = true
+          toast.success(okMsg)
+          if (res.data?.applicationId && String(this.selected?.applicationId) === String(res.data.applicationId)) this.selected = { ...this.selected, ...res.data }
+          await this.loadApplications()
+          await this.reloadDetail()
+          return true
+        }
+        if (res.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          this._lastErr = '该记录已被其他人处理，请核对最新状态后重新确认'
+          toast.error(this._lastErr)
+          await this.reloadDetail()
+          await this.loadApplications()
+          return false
+        }
+        this._lastErr = res.message || '操作失败'
         toast.error(this._lastErr)
-        await this.reloadDetail()
-        await this.loadApplications()
-        this.acting = false
         return false
-      }
-      this._lastErr = res.message || '操作失败'
-      toast.error(this._lastErr)
-      this.acting = false
-      return false
+      } catch (error) {
+        this._lastErr = committed ? '办理已完成，最新数据暂未读回，请刷新查看，不要重复提交' : (error?.message || '操作失败，请保留意见后重试')
+        toast.error(this._lastErr)
+        return committed
+      } finally { this.acting = false }
     }
   }
 }

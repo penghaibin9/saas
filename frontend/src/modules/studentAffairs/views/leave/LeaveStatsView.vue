@@ -1,23 +1,20 @@
 <template>
-  <ModulePageShell title="请假统计" subtitle="掌握请假与返校情况，点击分组查看对应记录。"
+  <ModulePageShell flat title="请假统计" subtitle="掌握请假与返校情况，点击分组查看对应记录。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <div class="mp-stack">
       <div class="flt">
         <AppQuickFilterChips v-model="groupBy" :options="groupOptions" @change="load" />
-        <AppDateRangePicker v-model="range" @change="load" />
-        <span class="mp-note">按申请开始日期统计；人数按学生去重，逾期为当前逾期未销假记录。</span>
+        <AppDateRangePicker :show-empty-hint="false" v-model="range" @change="load" />
+        <details class="flat-details"><summary>统计口径</summary>按请假开始日期统计，人数按学生去重；逾期为当前逾期未销假记录。</details>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <template v-else>
-        <div class="metrics">
-          <AppMetricCard v-for="m in metrics" :key="m.key" :title="m.label" :value="m.value" :unit="m.unit"
-            :accent="m.key === 'overdue' && m.value ? 'risk' : (m.key === 'waitCancel' && m.value ? 'warning' : 'primary')" />
-        </div>
+        <BusinessMetrics :items="metrics" />
 
         <div class="sec-t">{{ groupLabel }}分布</div>
-        <EmptyState v-if="!breakdown.length" title="暂无分布数据" description="当前范围内没有请假记录" />
+        <EmptyState v-if="!breakdown.length" title="暂无分布数据" description="当前范围内没有请假记录"><template #actions><button class="mp-link" @click="range = { start: '', end: '' }; load()">查看全部时间</button></template></EmptyState>
         <DataTable v-else :columns="columns" :rows="breakdown" row-key="key">
           <template #cell-count="{ row }"><button v-if="row.key" type="button" class="mp-link" @click="drillDown(row)">{{ row.count }} 件 · 查看</button><span v-else>{{ row.count }} 件</span></template>
           <template #cell-days="{ row }">{{ row.days }} 天</template>
@@ -29,12 +26,13 @@
 </template>
 
 <script>
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
 /**
  * 请假统计（/admin/student-affairs/leave/stats）。
  * 指标卡（人数/天数/在假/待审/待销假/逾期/已销假）+ 按班级/类型/状态下钻。真实对接 /student-affairs/leave/stats。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppMetricCard, AppQuickFilterChips, AppDateRangePicker } from '@/components/common'
+import { AppQuickFilterChips, AppDateRangePicker } from '@/components/common'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 
 const GROUP_OPTIONS = [
@@ -47,7 +45,7 @@ const COLUMNS = [
 
 export default {
   name: 'LeaveStatsView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppMetricCard, AppQuickFilterChips, AppDateRangePicker },
+  components: { BusinessMetrics, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppQuickFilterChips, AppDateRangePicker },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

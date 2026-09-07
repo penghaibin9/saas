@@ -192,15 +192,16 @@ export async function enrichOrientation() {
   const r = await realRequest('/mobile/orientation/my')
   if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
-    COLLEGE_CONFIRMED: '学院已确认' }
+    COLLEGE_CONFIRMED: '学院已确认', DELAYED: '已延期报到', NO_SHOW: '已登记未到校', CANCELLED: '已取消入学' }
   const rawSteps = r.steps || []
   const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
-    hasData: true, _real: true,
+    hasData: true, _real: true, stage: r.stage,
     batch: r.batchName || r.selfService?.batch?.name || '迎新报到',
-    overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
+    overallStatus: r.reportStatus, overallText: r.stage === 'CANCELLED' ? '已取消入学' : stMap[r.reportStatus] || '报到状态待核实',
     dorm: {
       building: r.building || '', room: r.room || '', status: r.dorm?.status || r.dormStatus || '',
+      statusLabel: r.dorm?.housingStatusLabel || r.dorm?.dormStatusLabel || '',
       label: r.dorm?.label || [r.building, r.room].filter(Boolean).join(' / '),
       buildingId: r.dorm?.buildingId || '', roomId: r.dorm?.roomId || '', bedId: r.dorm?.bedId || ''
     },
@@ -1000,7 +1001,8 @@ export async function enrichProfileReal() {
       idCard: d.idCardMasked || '' },
     contact: { ...contact, phone: d.phoneMasked || '' },
     org: { ...org, college: d.collegeName || '', major: d.majorName || '',
-      className: d.className || '', grade: d.grade || '' },
+      className: d.className || '', grade: d.grade || '',
+      counselorId: d.counselorId || '', counselorName: d.counselorName || '' },
     status: { stageText: STAGE_TEXT[d.stage] || d.stage || '', statusText: d.status || '', enrollStatus: '' },
     editableFields, lockedFields, summaries, credentials: [],
     _identity: { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
@@ -1072,12 +1074,12 @@ export const teacherMentalList = (level) =>
 export const teacherMentalDetail = (refId, reason) =>
   realRequest(`/mobile/teacher/mental/${refId}` + (reason ? `?reason=${encodeURIComponent(reason)}` : ''))
 export const teacherMentalCreate = (body) => realRequest('/mobile/teacher/mental', { method: 'POST', data: body })
-export const teacherMentalFollow = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content } })
-export const teacherMentalEscalate = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content } })
-export const teacherMentalClose = (refId, conclusion) =>
-  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion } })
+export const teacherMentalFollow = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content, version } })
+export const teacherMentalEscalate = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content, version } })
+export const teacherMentalClose = (refId, conclusion, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion, version } })
 
 /** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
 export async function teacherStudent360(id) {

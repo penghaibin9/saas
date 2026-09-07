@@ -7,7 +7,8 @@
     watermark-purpose="学工材料与档案"
   >
     <template #actions>
-      <button v-if="materialReturnContext.bizType" class="secondary" @click="returnToApplication">返回原申请</button>
+      <button v-if="materialReturnContext.bizType" class="secondary" @click="returnToApplication">{{ materialReturnContext.bizType === 'PROFILE' ? '返回学生档案' : '返回原申请' }}</button>
+      <button class="primary" @click="createVisible = true">登记缺项</button>
       <button class="secondary" :disabled="loading" @click="load">刷新</button>
       <button class="secondary" :disabled="acting === 'backfill'" @click="backfillLegacy">
         {{ acting === 'backfill' ? '正在回填…' : '回填旧材料' }}
@@ -15,19 +16,15 @@
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在读取材料版本…" @retry="load">
-      <p v-if="materialReturnContext.bizType" class="biz-context">当前只显示这份{{ materialReturnContext.bizType === 'FUNDING' ? '奖助' : materialReturnContext.bizType === 'AID' ? '困难认定' : '请假' }}申请的材料。</p>
-      <div class="metrics">
+      <p v-if="materialReturnContext.bizType" class="material-context">当前对象：{{ bizLabel(materialReturnContext.bizType) }} · #{{ materialReturnContext.bizId }}</p>
+      <div v-if="!materialReturnContext.bizType" class="metrics">
         <div class="metric"><span>授权范围材料</span><strong>{{ summary.total }}</strong></div>
         <div class="metric"><span>待学生补交</span><strong>{{ summary.missing }}</strong></div>
         <div class="metric"><span>待老师审核</span><strong>{{ summary.pendingReview }}</strong></div>
         <div class="metric"><span>强敏感材料</span><strong>{{ summary.highlySensitive }}</strong></div>
       </div>
 
-      <AppInlineAlert
-        class="material-privacy"
-        type="info"
-        description="家庭经济与心理材料仅限授权人员查看，请在当前学生范围内办理。"
-      />
+      <p class="material-privacy">家庭经济与心理材料仅限授权人员查看。</p>
 
       <AppSectionCard v-if="activePreviewVersion" title="站内材料阅读器">
         <div class="reader-head">
@@ -51,35 +48,13 @@
         />
       </AppSectionCard>
 
-      <AppSectionCard title="登记材料缺项">
-        <div v-if="bizContext" class="biz-context">
-          <div>
-            <strong>{{ bizContextStudentLine }}</strong>
-            <small>{{ bizContextBizLine }}</small>
-            <small class="tech-trace">{{ bizLabel(form.bizType) }} #{{ form.bizId }}</small>
-          </div>
-          <button class="secondary" type="button" @click="clearBizContext">改为手工指定业务记录</button>
-        </div>
-        <AppInlineAlert v-if="bizContextError" type="danger" :description="bizContextError" />
-        <div class="form-grid">
-          <template v-if="!bizContext">
-            <label><span>业务类型</span><select v-model="form.bizType" @change="loadItemSuggestions"><option v-for="item in bizTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-            <label><span>业务记录 ID</span><input v-model.trim="form.bizId" inputmode="numeric" placeholder="从申请详情复制记录ID" /></label>
-          </template>
-          <label><span>材料项编码</span><input v-model.trim="form.itemCode" maxlength="100" list="material-item-codes" placeholder="可从本校已用材料项中选择" /><datalist id="material-item-codes"><option v-for="s in itemSuggestions" :key="s.itemCode" :value="s.itemCode">{{ s.itemName }}（已用 {{ s.usedCount }} 次）</option></datalist></label>
-          <label><span>材料项名称</span><input v-model.trim="form.itemName" maxlength="200" placeholder="如 家庭经济情况证明" /></label>
-          <label><span>补交截止日期</span><input v-model="form.dueDate" type="date" /></label>
-          <label class="wide"><span>缺项说明</span><textarea v-model.trim="form.requirementReason" maxlength="500" placeholder="说明缺失内容和补交要求（5-500字）" /></label>
-        </div>
-        <div class="toolbar"><button class="primary" :disabled="acting === 'create' || !createValid" @click="createRequirement">{{ acting === 'create' ? '正在登记…' : '登记缺项并通知学生' }}</button></div>
-      </AppSectionCard>
 
-      <AppSectionCard title="材料总览与真实版本">
+
+      <AppSectionCard title="材料清单">
         <div class="toolbar filters">
           <select v-model="statusFilter" @change="applyFilters"><option value="">全部状态</option><option value="MISSING">待补交</option><option value="RETURNED">退回重补</option><option value="PENDING_REVIEW">待审核</option><option value="ACCEPTED">已验收</option><option value="WAIVED">已免交</option></select>
           <select v-model="sensitivityFilter" @change="applyFilters"><option value="">全部敏感级别</option><option value="PERSONAL">个人</option><option value="SENSITIVE">敏感</option><option value="HIGHLY_SENSITIVE">强敏感</option></select>
           <button v-if="focusRequirementId" class="focus-return" type="button" @click="clearRequirementFocus">已定位通知材料 · 返回全部</button>
-          <button class="secondary" :disabled="loading" @click="loadRequirements">刷新队列</button>
           <button class="primary" :disabled="!selectedRows.length || acting === 'batch'" @click="createReminderBatch">批量提醒已选 {{ selectedRows.length }} 项</button>
         </div>
         <div class="table-wrap">
@@ -118,7 +93,7 @@
       </AppSectionCard>
 
       <div v-if="activeRequirement" class="detail-grid">
-        <AppSectionCard title="历史版本（不可覆盖）">
+        <AppSectionCard title="版本记录">
           <div v-if="!activeRequirement.versions?.length" class="empty">暂无提交版本</div>
           <article v-for="version in activeRequirement.versions || []" :key="version.submissionId" class="version-card" :class="{ previewing: previewIdentity(version) === previewIdentity(activePreviewVersion) }">
             <div><strong>第 {{ version.versionNo }} 版 · {{ version.fileName }}</strong><small>提交编号 {{ version.submissionId }} · 文件版本 {{ version.fileVersionId || '待回填' }}</small></div>
@@ -127,7 +102,7 @@
           </article>
         </AppSectionCard>
 
-        <AppSectionCard title="最新真实档案清单">
+        <AppSectionCard title="档案清单">
           <div v-if="manifestLoading" class="empty">正在读取档案清单…</div>
           <div v-else-if="manifestError" class="empty">{{ manifestError }}</div>
           <div v-else-if="!manifest" class="empty">该学生尚未完成档案冻结，或当前角色无档案查看权限</div>
@@ -138,7 +113,7 @@
         </AppSectionCard>
       </div>
 
-      <AppSectionCard title="安全批次与逐条结果">
+      <AppSectionCard v-if="!materialReturnContext.bizType || batchJobs.length" title="批量提醒记录">
         <div class="batch-grid">
           <article v-for="job in batchJobs" :key="job.batchJobId" class="batch-card" :class="{ active: activeBatch?.batchJobId === job.batchJobId }" @click="openBatch(job)"><div><strong>{{ job.batchNo }}</strong><small>{{ operationStatusLabel(job.status, job.statusLabel) }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</small></div><button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="secondary small" :disabled="acting === `retry-${job.batchJobId}`" @click.stop="retry(job)">重试失败项</button></article>
           <p v-if="!batchJobs.length" class="empty">暂无批次记录</p>
@@ -146,6 +121,29 @@
         <div v-if="activeBatch" class="batch-detail"><h4>{{ activeBatch.batchNo }} · {{ operationStatusLabel(activeBatch.status, activeBatch.statusLabel) }}</h4><table><thead><tr><th>记录</th><th>动作</th><th>结果</th><th>尝试次数</th><th>失败原因</th></tr></thead><tbody><tr v-for="item in activeBatch.items || []" :key="item.itemId"><td>{{ item.itemKey }}</td><td>{{ batchActionLabel(item.action) }}</td><td><span class="status" :class="statusClass(item.status)">{{ operationStatusLabel(item.status, item.statusLabel) }}</span></td><td>{{ item.attemptCount }}</td><td>{{ item.errorMessage || '—' }}</td></tr></tbody></table></div>
       </AppSectionCard>
     </AppGlobalState>
+    <AppDrawer v-model:visible="createVisible" title="登记材料缺项" mode="modal" size="large">
+        <div v-if="bizContext" class="biz-context">
+          <div>
+            <strong>{{ bizContextStudentLine }}</strong>
+            <small>{{ bizContextBizLine }}</small>
+            <small class="tech-trace">{{ bizLabel(form.bizType) }} #{{ form.bizId }}</small>
+          </div>
+          <button class="secondary" type="button" @click="clearBizContext">改为手工指定业务记录</button>
+        </div>
+        <AppInlineAlert v-if="bizContextError" type="danger" :description="bizContextError" />
+        <div class="form-grid">
+          <template v-if="!bizContext">
+            <label><span>业务类型</span><select v-model="form.bizType" @change="loadItemSuggestions"><option v-for="item in bizTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+            <label><span>业务记录 ID</span><input v-model.trim="form.bizId" inputmode="numeric" placeholder="从申请详情复制记录ID" /></label>
+          </template>
+          <label><span>材料项编码</span><input v-model.trim="form.itemCode" maxlength="100" list="material-item-codes" placeholder="可从本校已用材料项中选择" /><datalist id="material-item-codes"><option v-for="s in itemSuggestions" :key="s.itemCode" :value="s.itemCode">{{ s.itemName }}（已用 {{ s.usedCount }} 次）</option></datalist></label>
+          <label><span>材料项名称</span><input v-model.trim="form.itemName" maxlength="200" placeholder="如 家庭经济情况证明" /></label>
+          <label><span>补交截止日期</span><input v-model="form.dueDate" type="date" /></label>
+          <label class="wide"><span>缺项说明</span><textarea v-model.trim="form.requirementReason" maxlength="500" placeholder="说明缺失内容和补交要求（5-500字）" /></label>
+        </div>
+        <template #footer><button class="secondary" :disabled="acting === 'create'" @click="createVisible = false">关闭（保留本页输入）</button><button class="primary" :disabled="acting === 'create' || !createValid" @click="createRequirement">{{ acting === 'create' ? '正在登记…' : '登记缺项并通知学生' }}</button></template>
+    </AppDrawer>
+
     <dialog ref="reviewDialog" class="material-review" aria-labelledby="material-review-title" @cancel="cancelReview($event)">
       <h2 id="material-review-title">{{ reviewAction === 'RETURN' ? '退回补充材料' : reviewAction === 'WAIVE' ? '确认免交材料' : '确认验收材料' }}</h2>
       <p>{{ reviewTarget?.itemName }}</p>
@@ -160,6 +158,7 @@
 
 <script>
 import { AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { affairsOperationsApi } from '@/modules/studentAffairs/api/operations.api'
 import { toast } from '@/utils/toast'
@@ -173,10 +172,10 @@ const BATCH_ACTION_LABELS = { CREATE: '创建', GENERATE: '生成', REMIND: '提
 export default {
   name: 'MaterialOperationsView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppDocumentViewer, AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard },
+  components: { AppDrawer, AppDocumentViewer, AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard },
   data() {
     return {
-      loading: true, acting: '', errorMessage: '', requirements: [], batchJobs: [], activeBatch: null,
+      createVisible: false, loading: true, acting: '', errorMessage: '', requirements: [], batchJobs: [], activeBatch: null,
       activeRequirement: null, activePreviewVersion: null, reviewTarget: null, reviewAction: '', reviewReason: '', reviewError: '',
       previewProvider: affairsOperationsApi.createPreviewProvider(),
       manifest: null, manifestLoading: false, manifestError: '', selected: new Set(),
@@ -185,6 +184,7 @@ export default {
       bizContext: null, bizContextError: '', itemSuggestions: [], contextGeneration: 0, requirementsGeneration: 0,
       summary: { total: 0, missing: 0, pendingReview: 0, accepted: 0, highlySensitive: 0 },
       bizTypes: [
+        { value: 'PROFILE', label: '学生个人档案' },
         { value: 'LEAVE', label: '请假' }, { value: 'AID', label: '困难认定（强敏感）' },
         { value: 'MENTAL', label: '心理专项材料（强敏感）' }, { value: 'FUNDING', label: '奖助申请' },
         { value: 'DISCIPLINE', label: '违纪处分' }, { value: 'DISCIPLINE_APPEAL', label: '处分申诉' },
@@ -199,9 +199,9 @@ export default {
       const q = this.$route.query || {}
       const id = String(q.materialRequirementId || q.requirementId || q.recordId || '')
       const row = (this.requirements || []).find(item => String(item.requirementId) === id)
-      return row && ['LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
+      return row && ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
     },
-    applicationContext() { const q = this.$route.query || {}; return ['AID', 'LEAVE', 'FUNDING'].includes(q.bizType) && /^\d+$/.test(String(q.bizId || '')) ? { bizType: q.bizType, bizId: q.bizId } : {} },
+    applicationContext() { const q = this.$route.query || {}; return ['PROFILE', 'AID', 'LEAVE', 'FUNDING'].includes(q.bizType) && /^\d+$/.test(String(q.bizId || '')) ? { bizType: q.bizType, bizId: q.bizId } : {} },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     previewDescriptor() {
       return this.activePreviewVersion ? affairsOperationsApi.previewDescriptor(this.activePreviewVersion) : null
@@ -222,7 +222,7 @@ export default {
     '$route.query'() { this.applyRouteFocus(); this.applyRouteBizContext(); this.pagination.page = 1; this.load() }
   },
   methods: {
-    returnToApplication() { const context = this.materialReturnContext || this.applicationContext; if (!context.bizType) return; this.$router.push({ path: context.bizType === 'FUNDING' ? '/admin/student-affairs/funding' : context.bizType === 'AID' ? '/admin/student-affairs/aid' : '/admin/student-affairs/leave', query: { recordId: context.bizId } }) },
+    returnToApplication() { const context = this.materialReturnContext || this.applicationContext; if (!context.bizType) return; if (context.bizType === 'PROFILE') return this.$router.push({ path: `/admin/student/${context.bizId}` }); this.$router.push({ path: context.bizType === 'FUNDING' ? '/admin/student-affairs/funding' : context.bizType === 'AID' ? '/admin/student-affairs/aid' : '/admin/student-affairs/leave', query: { recordId: context.bizId } }) },
     operationStatusLabel(status, providedLabel = '') { return providedLabel || safeLocalizedText({ value: status, dictionary: OPERATION_STATUS_LABELS, unknownLabel: '状态待确认' }) },
     scanResultLabel(value) { return safeLocalizedText({ value, dictionary: SCAN_RESULT_LABELS, unknownLabel: '扫描结果待确认' }) },
     reviewStatusLabel(value) { return safeLocalizedText({ value, dictionary: REVIEW_STATUS_LABELS, unknownLabel: '审核结果待确认' }) },
@@ -288,6 +288,7 @@ export default {
         this.form.bizType = data.bizType
         this.form.bizId = String(data.bizId)
         await this.loadItemSuggestions()
+        if (String(q.intent || '').toLowerCase() === 'create') this.createVisible = true
       } catch (e) {
         if (generation !== this.contextGeneration) return
         this.bizContext = null
@@ -332,9 +333,18 @@ export default {
       try { const data = await affairsOperationsApi.getLatestManifest(row.studentId); this.manifest = data?.manifest || null } catch (e) { this.manifestError = e?.message || '档案清单不可见' } finally { this.manifestLoading = false }
     },
     async createRequirement() {
-      if (!this.createValid) return toast.warning('请填写有效业务记录、材料编码、名称和缺项说明')
+      if (this.acting || !this.createValid) return
       this.acting = 'create'
-      try { await affairsOperationsApi.createRequirement({ bizType: this.form.bizType, bizId: Number(this.form.bizId), itemCode: this.form.itemCode.toUpperCase(), itemName: this.form.itemName, requirementReason: this.form.requirementReason || undefined, dueAt: this.form.dueDate ? `${this.form.dueDate}T23:59:59` : undefined }); toast.success('材料缺项已登记并通知学生'); Object.assign(this.form, { bizId: this.bizContext ? String(this.bizContext.bizId) : '', itemCode: '', itemName: '', requirementReason: '', dueDate: '' }); await this.loadRequirements() } catch (e) { toast.error(e?.message || '登记失败') } finally { this.acting = '' }
+      try {
+        await affairsOperationsApi.createRequirement({ bizType: this.form.bizType, bizId: String(this.form.bizId), itemCode: this.form.itemCode.toUpperCase(), itemName: this.form.itemName, requirementReason: this.form.requirementReason || undefined, dueAt: this.form.dueDate ? `${this.form.dueDate}T23:59:59` : undefined })
+      } catch (e) {
+        toast.error(e?.message || '登记失败')
+        return
+      } finally { this.acting = '' }
+      toast.success('材料缺项已登记并通知学生')
+      this.createVisible = false
+      Object.assign(this.form, { bizId: this.bizContext ? String(this.bizContext.bizId) : '', itemCode: '', itemName: '', requirementReason: '', dueDate: '' })
+      try { await this.loadRequirements() } catch { toast.error('登记已成功，材料列表刷新失败，请刷新队列查看') }
     },
     review(row, action) {
       if (this.acting) return
@@ -386,4 +396,9 @@ export default {
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .material-privacy{background:var(--surface-2);border-color:var(--line);color:var(--text-secondary)}.material-privacy :deep(.app-inline-alert__desc){color:var(--text-secondary)}.material-privacy :deep(.app-inline-alert__icon){background:var(--pri);color:var(--pri-on,#fff)}
 .material-review{width:min(520px,calc(100vw - 40px));box-sizing:border-box;padding:24px;background:var(--surface);color:var(--text-primary);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 60px #10182730}.material-review::backdrop{background:#10182766}.material-review h2{font-size:20px;margin:0 0 18px}.material-review p{line-height:1.7;overflow-wrap:anywhere}.review-context{color:var(--text-secondary)}.material-review label{display:block;margin-bottom:8px}.material-review textarea{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text-primary);padding:10px;font:inherit;resize:vertical}
+.material-context{margin:0 0 6px;font-size:13px;color:var(--text-secondary)}
+.material-privacy{margin:0 0 12px;background:transparent;font-size:12px;color:var(--text-secondary)}
+.filters{flex-wrap:wrap;margin-top:0;gap:8px}.filters select{width:150px}.filters button{white-space:nowrap}
+.table-wrap table{min-width:760px}.detail-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}
+@media(max-width:900px){.detail-grid{grid-template-columns:1fr}}
 </style>

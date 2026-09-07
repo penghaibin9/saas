@@ -1,5 +1,5 @@
 <template>
-  <div class="loan-student">
+  <div class="loan-student"><div v-if="recordId" class="loan-head"><strong>贷款记录 {{ recordId }}</strong><button class="sp-btn sp-btn--ghost" @click="clearFocus">全部记录</button></div>
     <section class="sp-card loan-head">
       <div><strong>助学贷款回执</strong><span>{{ activeCount }} 笔办理中</span></div>
       <button class="sp-btn" type="button" :disabled="loading || !!busy" @click="openCreate">提交回执</button>
@@ -11,8 +11,8 @@
     <StateBlock v-else-if="loading" type="loading" text="正在同步贷款办理进度…" />
     <section v-else class="sp-card loan-list">
       <header><strong>我的贷款记录</strong><button class="sp-btn sp-btn--ghost" type="button" :disabled="!!busy" @click="load">刷新</button></header>
-      <StateBlock v-if="!items.length" type="empty" text="还没有助学贷款回执记录" />
-      <article v-for="item in items" :key="item.loanId" class="loan-row">
+      <StateBlock v-if="!visibleItems.length" type="empty" :text="recordId ? '未找到这笔贷款记录，请核对入口或返回全部记录' : '还没有助学贷款回执记录'" />
+      <article v-for="item in visibleItems" :key="item.loanId" class="loan-row">
         <div class="loan-main">
           <strong>{{ typeLabel(item.loanType) }} · {{ item.yearCode }}</strong>
           <span>{{ money(item.amount) }}<template v-if="item.bankName"> · {{ item.bankName }}</template><template v-if="item.bankLast4"> · 尾号 {{ item.bankLast4 }}</template></span>
@@ -27,6 +27,7 @@
           <button v-if="allows(item, 'WITHDRAW')" class="sp-btn sp-btn--ghost" type="button" :disabled="!!busy" @click="withdrawTarget = item">撤回</button>
           <span v-if="!item.allowedActions?.length">{{ nextHint(item.status) }}</span>
         </div>
+        <div v-if="item.status === 'CONFIRMED'" class="loan-result"><strong>校内回执台账已确认</strong><span>记录 {{ item.loanId }} · {{ item.confirmedAt ? new Date(item.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</span><span>学校核验完成，银行放款请以经办银行结果为准。</span></div>
       </article>
     </section>
 
@@ -63,6 +64,7 @@
 
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import FundingAttachments from './FundingAttachments.vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
@@ -74,6 +76,10 @@ const ui = useUiStore()
 const loading = ref(true)
 const error = ref('')
 const items = ref([])
+const route = useRoute(); const router = useRouter()
+const recordId = computed(() => String(route.query.recordId || ''))
+const visibleItems = computed(() => recordId.value ? items.value.filter(item => String(item.loanId) === recordId.value) : items.value)
+function clearFocus(){ const query = { ...route.query }; delete query.recordId; router.replace({ path: route.path, query }) }
 const policy = ref({ minAmount: '1000.00', maxAmount: '20000.00' })
 const busy = ref('')
 const formError = ref('')
@@ -125,6 +131,7 @@ onBeforeUnmount(() => unregister?.())
 </script>
 
 <style scoped>
+.loan-result{grid-column:1/-1;display:grid;gap:6px;padding-top:12px;border-top:1px solid var(--line);color:var(--t2);font-size:13px}
 .loan-student { display: grid; gap: 12px; }.loan-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }.loan-head div { display: flex; gap: 10px; align-items: baseline; }.loan-head strong { color: var(--t1); font-size: 16px; }.loan-head span { color: var(--t3); font-size: 12px; }.loan-list { overflow: hidden; padding: 0; }.loan-list > header { display: flex; justify-content: space-between; align-items: center; min-height: 48px; padding: 0 16px; border-bottom: 1px solid var(--line); }.loan-row { display: grid; grid-template-columns: minmax(230px,1.2fr) minmax(160px,1fr) minmax(140px,.8fr) auto; gap: 16px; align-items: center; min-height: 76px; padding: 12px 16px; border-bottom: 1px solid var(--line); }.loan-row:last-child { border-bottom: 0; }.loan-main,.loan-receipt,.loan-state { display: grid; gap: 4px; min-width: 0; }.loan-main strong { color: var(--t1); font-size: 14px; }.loan-main span,.loan-receipt span,.loan-state small,.loan-actions > span { overflow: hidden; color: var(--t3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.loan-receipt button { overflow: hidden; padding: 0; border: 0; color: var(--pri); background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.loan-actions { display: flex; justify-content: flex-end; gap: 7px; }.loan-error { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border: 1px solid #f1b9b9; border-radius: 10px; color: #9a2929; background: #fff7f7; }.loan-mask { position: fixed; z-index: 2200; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(13,18,28,.52); }.loan-dialog { width: min(650px,100%); max-height: calc(100vh - 40px); overflow: auto; padding: 18px; }.loan-dialog--small { width: min(420px,100%); }.loan-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }.loan-dialog > header div { display: grid; gap: 4px; }.loan-dialog > header strong { color: var(--t1); font-size: 17px; }.loan-dialog > header span { color: var(--t3); font-size: 12px; }.loan-dialog > header button { width: 34px; height: 34px; border: 0; border-radius: 8px; color: var(--t2); background: var(--bg); font-size: 22px; cursor: pointer; }.loan-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 16px; }.loan-form > label { display: grid; gap: 6px; color: var(--t2); font-size: 13px; }.loan-file { grid-column: 1 / -1; }.loan-confirm { display: flex; gap: 8px; align-items: flex-start; margin-top: 14px; color: var(--t2); font-size: 13px; }.loan-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 @media (max-width: 900px) { .loan-row { grid-template-columns: 1fr 1fr; }.loan-actions { justify-content: flex-start; } }
 @media (max-width: 640px) { .loan-row,.loan-form { grid-template-columns: 1fr; }.loan-head div { display: grid; gap: 2px; }.loan-actions { flex-wrap: wrap; } }

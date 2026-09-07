@@ -1,14 +1,14 @@
 <template>
   <AppPageShell
     title="奖助申诉复核"
-    subtitle="核对申诉依据，填写结论；复核完成后，结果同步给学生。"
-    :role-name="ctx?.currentRole?.roleName || ''"
-    :data-scope-name="ctx?.dataScope?.scopeName || ''"
     watermark-purpose="资助公示申诉复核"
   >
+    <template #actions>
+      <button v-if="focusId || filterApplicationId" class="ob-chip" @click="clearFocus">查看全部申诉</button>
+      <button class="ob-chip" :disabled="!!acting" @click="load">刷新</button>
+    </template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载..." @retry="load"
                     @back="$router.push('/admin/student-affairs/funding')">
-      <div class="ob-context"><span>先处理待复核，再确认获资助资格</span><button v-if="focusId || filterApplicationId" class="ob-chip" @click="clearFocus">查看全部申诉</button><button class="ob-chip" :disabled="!!acting" @click="load">刷新</button></div>
 
       <details v-if="!focusId && !filterApplicationId" class="ob-intake"><summary>登记公示申诉 <span>{{ publicityPage.total }} 条公示申请</span></summary>
       <AppSectionCard title="公示中申请 · 可提申诉">
@@ -189,8 +189,6 @@ export default {
 </script>
 
 <style scoped>
-.ob-context { display:flex; align-items:center; gap:10px; margin-bottom:16px; color:var(--text-secondary); font-size:13px; }
-.ob-context>span { flex:1; }
 .ob-intake { margin-bottom:16px; border:1px solid var(--border-light); border-radius:12px; background:var(--bg-card); }
 .ob-intake summary { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; cursor:pointer; font-weight:600; }
 .ob-intake summary span,.ob-total { color:var(--text-tertiary); font-size:12px; font-weight:400; }

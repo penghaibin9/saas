@@ -27,7 +27,7 @@ test('the material workspace participates in tabs and shortcuts only with its ex
   const pagesFor = permissionPatterns => workspacePages(getVisibleNavPlan({ permissionPatterns }).find(group => group.key === 'student-affairs')?.children || [])
   const allowed = pagesFor(['studentAffairs.dashboard.view'])
   const material = allowed.find(page => page.id === path)
-  assert.equal(material.title, '材料与档案'); assert.equal(material.moduleKey, 'sa-workbench')
+  assert.equal(material.title, '材料与档案'); assert.equal(material.moduleKey, 'sa-archive-stats')
   const saved = { tabs: [path], shortcuts: [path] }
   assert.deepEqual(restoreWorkspace(saved, allowed).tabs, [path])
   assert.deepEqual(restoreWorkspace(saved, allowed).shortcuts, [path])
@@ -44,8 +44,8 @@ test('teacher workspace uses the accepted four student colors without a pure whi
 })
 test('workspace menu is a permission projection and leaves identity controls in the existing shell', () => {
   const source = readFileSync(new URL('../src/layouts/BasePortalLayout.vue', import.meta.url), 'utf8')
-  assert.match(source, /workspaceModules\(\)[\s\S]*?includePlanned: false, permissionPatterns: this\.ctx\?\.permissionPatterns \|\| \[\]/)
-  assert.match(source, /:identity-key="ctx\.ctxKey \|\| ''"/)
+  assert.match(source, /workspaceModules\(\)[\s\S]*?const permissions = this\.ctx\?\.permissionPatterns \|\| \[\][\s\S]*?includePlanned: false, permissionPatterns: permissions/)
+  assert.match(source, /:identity-key="workspaceIdentityKey"/)
   assert.match(source, /<AppUserChip embedded/)
   const frame = readFileSync(new URL('../src/components/workspace/TeacherWorkspaceFrame.vue', import.meta.url), 'utf8')
   assert.match(frame, /onBeforeRouteLeave\(confirmUnsubmitted\)/)

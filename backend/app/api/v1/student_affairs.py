@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -970,11 +970,12 @@ def ws_post_action(body: WsPostActionBody, postId: int = Path(...),
 
 @router.get("/work-study/records", summary="勤工上岗记录（数据范围）")
 def ws_records(postId: Optional[int] = None, status: Optional[str] = None,
+               recordId: Optional[int] = Query(None, ge=1),
                keyword: str = Query("", max_length=100),
                page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total, status_counts = fext_svc.list_ws_records(
-        user, postId, status, page, pageSize, keyword)
+        user, postId, status, page, pageSize, keyword, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "page": page, "pageSize": pageSize})
 
@@ -1017,11 +1018,11 @@ def ws_monthly_add(body: WsMonthlyBody, recordId: int = Path(...),
 @router.get("/loans", summary="助学贷款台账（金额脱敏，不含卡全号）")
 def loans(status: Optional[str] = None, keyword: str = Query("", max_length=100),
           yearCode: str = Query("", max_length=20), loanType: str = Query("", max_length=20),
-          page: int = Query(1, ge=1),
+          recordId: int | None = Query(None, ge=1), page: int = Query(1, ge=1),
           pageSize: int = Query(50, ge=1, le=200),
           user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total, status_counts = fext_svc.list_loans(
-        user, status, page, pageSize, keyword, yearCode, loanType)
+        user, status, page, pageSize, keyword, yearCode, loanType, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "policy": fext_svc.loan_policy(), "page": page, "pageSize": pageSize})
 
@@ -1048,9 +1049,10 @@ def loan_action(body: LoanActionBody, loanId: int = Path(...),
 def fee_reductions(itemType: Optional[str] = None, status: Optional[str] = None,
                    keyword: str = Query("", max_length=100), yearCode: str = Query("", max_length=20),
                    page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
+                   recordId: Optional[int] = Query(None, ge=1),
                    user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total, status_counts = fext_svc.list_reductions(
-        user, itemType, status, page, pageSize, keyword, yearCode)
+        user, itemType, status, page, pageSize, keyword, yearCode, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "page": page, "pageSize": pageSize})
 
@@ -1262,13 +1264,15 @@ def risk_records(source: Optional[str] = None, status: Optional[str] = None,
 
 @router.get("/risk/records/{riskId}", summary="风险详情（心理明细须填原因+SENSITIVE_VIEW）")
 def risk_record(riskId: int = Path(...), reason: Optional[str] = None,
-                user=Depends(require_permission("studentAffairs.risk.view"))):
+                user=Depends(require_any_permission(
+                    "studentAffairs.risk.view", "studentAffairs.dorm.inspection.manage"))):
     return success(risk_svc.get_risk(riskId, user, reason))
 
 
 @router.get("/risk/records/{riskId}/handles", summary="风险处置留痕（真实 handle 记录）")
 def risk_handles(riskId: int = Path(...),
-                 user=Depends(require_permission("studentAffairs.risk.view"))):
+                 user=Depends(require_any_permission(
+                     "studentAffairs.risk.view", "studentAffairs.dorm.inspection.manage"))):
     return success({"items": risk_svc.list_handles(riskId, user)})
 
 
@@ -1291,7 +1295,8 @@ def risk_assign(body: RiskAssignBody, riskId: int = Path(...),
 
 @router.post("/risk/records/{riskId}/process", summary="处置（首条→PROCESSING）")
 def risk_process(body: RiskContentBody, riskId: int = Path(...),
-                 user=Depends(require_permission("studentAffairs.risk.handle"))):
+                 user=Depends(require_any_permission(
+                     "studentAffairs.risk.handle", "studentAffairs.dorm.inspection.manage"))):
     return success(risk_svc.process(riskId, user, body.content or "", body.version), message="已处置")
 
 
@@ -1322,7 +1327,8 @@ def risk_takeover(body: RiskContentBody, riskId: int = Path(...),
 
 @router.post("/risk/records/{riskId}/close", summary="关闭（结论≥5字，进360）")
 def risk_close(body: RiskCloseBody, riskId: int = Path(...),
-               user=Depends(require_permission("studentAffairs.risk.close"))):
+               user=Depends(require_any_permission(
+                   "studentAffairs.risk.close", "studentAffairs.dorm.inspection.manage"))):
     return success(risk_svc.close(riskId, user, body.conclusion, body.version), message="已关闭")
 
 
@@ -1723,6 +1729,28 @@ def dorm_allocation_batch_publish(
     return success(dorm_allocation_svc.publish(batchId, user), message="分配批次已发布")
 
 
+class DormPublishJobBody(BaseModel):
+    version: int = Field(..., ge=0)
+
+
+@router.post("/dorm/allocation-batches/{batchId}/publish-jobs", summary="提交后台住宿发布任务")
+def dorm_allocation_publish_job_create(
+    body: DormPublishJobBody, batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    from app.services import dorm_allocation_publish_job
+    return success(dorm_allocation_publish_job.enqueue(batchId, body.version, user), message="发布任务已保存")
+
+
+@router.get("/dorm/allocation-batches/{batchId}/publish-jobs/latest", summary="查询住宿发布进度")
+def dorm_allocation_publish_job_latest(
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    from app.services import dorm_allocation_publish_job
+    return success(dorm_allocation_publish_job.latest(batchId, user))
+
+
 @router.get("/dorm/allocation-batches/{batchId}/conflicts.xlsx", summary="下载 Dry Run 异常行")
 def dorm_allocation_batch_conflicts(
     batchId: int = Path(...),
@@ -1741,10 +1769,50 @@ def dorm_allocation_batch_conflicts(
     )
 
 
+class DormBatchCheckinItem(BaseModel):
+    stayId: str = Field(..., pattern=r"^[1-9][0-9]*$")
+    version: int = Field(..., ge=0)
+
+
+class DormBatchCheckinBody(BaseModel):
+    clientRequestId: str = Field(..., min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    arrivalConfirmed: Literal[True]
+    items: list[DormBatchCheckinItem] = Field(..., min_length=1, max_length=5000)
+
+
+@router.post("/dorm/checkin-batches", summary="保存已核验到场的批量入住名单")
+def dorm_checkin_batch_create(body: DormBatchCheckinBody,
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
+    from app.services import dorm_checkin_batch_service as batch_svc
+    return success(batch_svc.create(body, user))
+
+
+@router.get("/dorm/checkin-batches", summary="本人最近入住批次")
+def dorm_checkin_batch_recent(user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
+    from app.services import dorm_checkin_batch_service as batch_svc
+    return success(batch_svc.recent(user))
+
+
+@router.get("/dorm/checkin-batches/{jobId}", summary="批量入住进度与逐人回执")
+def dorm_checkin_batch_detail(jobId: int = Path(...),
+    page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
+    from app.services import dorm_checkin_batch_service as batch_svc
+    return success(batch_svc.detail(jobId, user, page=page, page_size=pageSize))
+
+
+@router.post("/dorm/checkin-batches/{jobId}/continue", summary="继续处理至多20名待入住学生")
+def dorm_checkin_batch_continue(jobId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
+    from app.services import dorm_checkin_batch_service as batch_svc
+    return success(batch_svc.run(jobId, user))
+
+
 @router.post("/dorm/beds/{bedId}/checkin", summary="学生入住某床（回写我的宿舍）")
 def dorm_checkin(body: CheckinBody, bedId: int = Path(...),
                  user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
-    return success(dorm_svc.checkin(bedId, user, body.studentId), message="已入住")
+    from app.services.dorm_checkin_command import checkin
+    return success(checkin(bedId, user, body.studentId), message="已入住")
 
 
 @router.post("/dorm/beds/{bedId}/checkout", summary="兼容入口：发起正式退宿单（不立即释放床位）")
@@ -1770,13 +1838,14 @@ def dorm_checkout_request_create(
 def dorm_checkout_requests(
     status: Optional[str] = None,
     studentId: Optional[int] = None,
+    recordId: Optional[int] = Query(None, ge=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=200),
     user=Depends(require_permission("studentAffairs.dorm.view")),
 ):
     from app.services import affairs_dorm_stay_service as stay_svc
     items, total = stay_svc.list_checkout_requests(
-        user, status=status, student_id=studentId, page=page, page_size=pageSize,
+        user, status=status, student_id=studentId, record_id=recordId, page=page, page_size=pageSize,
     )
     return success(paginate(items, total, page, pageSize))
 
@@ -1809,6 +1878,10 @@ def dorm_checkout_request_cancel(
 
 @router.get("/dorm/stays", summary="住宿历史（DormStay Authority）")
 def dorm_stays(
+    buildingId: Optional[int] = None,
+    orientationBatchId: Optional[int] = Query(None, ge=1),
+    classId: Optional[int] = Query(None, ge=1),
+    keyword: Optional[str] = None,
     studentId: Optional[int] = None,
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
@@ -1818,8 +1891,16 @@ def dorm_stays(
     from app.services import affairs_dorm_stay_service as stay_svc
     items, total = stay_svc.list_stays(
         user, student_id=studentId, status=status, page=page, page_size=pageSize,
+        building_id=buildingId, keyword=keyword, orientation_batch_id=orientationBatchId, class_id=classId,
     )
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/dorm/stays/filter-options", summary="当前可见预留学生的迎新批次与班级")
+def dorm_stay_filter_options(orientationBatchId: Optional[int] = Query(None, ge=1),
+                            user=Depends(require_permission("studentAffairs.dorm.view"))):
+    from app.services.affairs_dorm_stay_service import stay_filter_options
+    return success(stay_filter_options(user, orientation_batch_id=orientationBatchId))
 
 
 class DormConfigBody(BaseModel):
@@ -1853,9 +1934,10 @@ def dorm_transfer_submit(body: TransferSubmit,
 
 @router.get("/dorm/transfers", summary="调宿申请列表（宿管仅本人楼栋）")
 def dorm_transfers(status: Optional[str] = None, studentId: Optional[str] = None,
+                   recordId: Optional[int] = Query(None, gt=0),
                    page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                    user=Depends(require_permission("studentAffairs.dorm.view"))):
-    items, total = dorm_svc.list_transfers(user, status, page, pageSize, student_id=studentId)
+    items, total = dorm_svc.list_transfers(user, status, page, pageSize, student_id=studentId, record_id=recordId)
     return success(paginate(items, total, page, pageSize))
 
 

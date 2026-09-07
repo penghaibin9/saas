@@ -10,20 +10,6 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载发展台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
 
-      <AppSectionCard v-if="formVisible" title="建立党团发展档案">
-        <div class="lg-form-note">建立档案后默认进入首个发展阶段。党团支部可选填，但建议完整登记，便于后续材料和组织关系追溯。</div>
-        <div class="lg-grid">
-          <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
-          <label class="lg-field"><span>类型</span><AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
-          <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" placeholder="选填，如：信息工程学院学生第一党支部" /></label>
-        </div>
-        <p v-if="form.error" class="lg-error">{{ form.error }}</p>
-        <div class="lg-actions">
-          <button type="button" class="lg-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="save">确认建档</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <div class="lg-layout">
         <AppSectionCard title="发展台账" class="lg-list">
           <p class="lg-section-hint">按类型、状态和阶段筛选。选择学生后，右侧展示完整阶段时间线和材料。</p>
@@ -64,7 +50,7 @@
               <li v-for="st in stages" :key="st.stageId">
                 <span class="lg-tl__stage">{{ st.toStageLabel }}</span>
                 <span class="lg-tl__meta">{{ (st.occurredAt||'').slice(0,10) }} · {{ st.operator || '—' }}
-                  <em v-if="st.hasMaterial" class="lg-tl__mat">📎 含材料</em></span>
+                  <em v-if="st.hasMaterial" class="lg-tl__mat">含附件</em></span>
                 <span v-if="st.remark" class="lg-tl__remark">{{ st.remark }}</span>
               </li>
               <li v-if="!stages.length" class="lg-empty">暂无阶段记录。</li>
@@ -80,7 +66,7 @@
               </div>
               <ul class="lg-attach__list">
                 <li v-for="a in attachments" :key="a.attachmentId">
-                  <span class="lg-att__name">📎 {{ a.fileName || ('附件#' + a.attachmentId) }}</span>
+                  <span class="lg-att__name">{{ a.fileName || ('附件#' + a.attachmentId) }}</span>
                   <span class="lg-att__meta">{{ (a.uploadedAt || '').slice(0, 10) }}</span>
                   <AppPermissionButton :allowed="canBtn('studentAffairs.league.view')" code="studentAffairs.league.view" size="sm" variant="secondary"
                                        @click="downloadMaterial(a)">下载</AppPermissionButton>
@@ -92,6 +78,19 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="建立党团发展档案" subtitle="建档后从首个发展阶段开始" mode="modal" size="large">
+      <div class="lg-grid">
+        <div class="lg-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
+        <label class="lg-field"><span>类型</span><AppSelect v-model="form.devType" :options="DEV_TYPE_OPTIONS" placeholder="" /></label>
+        <label class="lg-field"><span>党/团支部</span><AppTextInput v-model="form.branchName" placeholder="选填，如：信息工程学院学生第一党支部" /></label>
+      </div>
+      <p v-if="form.error" class="lg-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" :loading="saving" @click="save">确认建档</AppPermissionButton>
+      </template>
+    </AppDrawer>
 
     <AppConfirmDialog
       v-model:visible="terDlg.visible" title="终止发展流程" type="danger" confirm-text="确认终止"
@@ -107,6 +106,7 @@ import {
   AppConfirmDialog, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -123,7 +123,7 @@ export default {
   name: 'PartyLeagueView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+    AppButton, AppConfirmDialog, AppDrawer, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput
   },
   data() {

@@ -3,7 +3,7 @@
     <section class="sp-card material-head">
       <div>
         <div class="sp-panel__head">材料补交中心</div>
-        <p v-if="materialReturnContext.bizType" class="sp-muted">仅显示这份{{ materialReturnContext.bizType === 'FUNDING' ? '奖助' : bizLabel(materialReturnContext.bizType) }}申请的材料 <button class="link" @click="backToApplication">返回原申请</button></p>
+        <p v-if="materialReturnContext.bizType" class="sp-muted">仅显示{{ bizLabel(materialReturnContext.bizType) }}材料 <button class="link" @click="backToApplication">{{ materialReturnContext.bizType === 'PROFILE' ? '返回我的档案' : '返回原申请' }}</button></p>
         <p class="sp-muted">老师登记缺项后在这里按项补交。每次提交审核都会形成新版本，历史版本不会被覆盖。</p>
       </div>
       <button class="sp-btn sp-btn--ghost" :disabled="loading" @click="load">刷新</button>
@@ -113,13 +113,13 @@ function materialFileHint(file) {
 // SP-M01：深链现在完全由服务端 action_projection_service 生成，query 里保留的是
 // actionParams 原始参数名 materialRequirementId；requirementId 只作兼容旧外链保留。
 const focusId = computed(() => String(route.query.materialRequirementId || route.query.requirementId || ''))
-const leaveContext = computed(() => ['LEAVE', 'AID', 'FUNDING'].includes(route.query.bizType) && /^\d+$/.test(String(route.query.bizId || '')) ? { bizType: route.query.bizType, bizId: route.query.bizId } : {})
+const leaveContext = computed(() => ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(route.query.bizType) && /^\d+$/.test(String(route.query.bizId || '')) ? { bizType: route.query.bizType, bizId: route.query.bizId } : {})
 const materialReturnContext = computed(() => {
   if (leaveContext.value.bizType) return leaveContext.value
   const row = items.value.find(item => String(item.requirementId) === focusId.value)
-  return row && ['LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
+  return row && ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
 })
-function backToApplication() { const context = materialReturnContext.value; if (!context.bizType) return; router.push({ name: 'campus-service', query: { tab: context.bizType === 'FUNDING' ? 'funding' : context.bizType === 'AID' ? 'aid' : 'leave', recordId: context.bizId } }) }
+function backToApplication() { const context = materialReturnContext.value; if (!context.bizType) return; if (context.bizType === 'PROFILE') return router.push({ name: 'profile' }); router.push({ name: 'campus-service', query: { tab: context.bizType === 'FUNDING' ? 'funding' : context.bizType === 'AID' ? 'aid' : 'leave', recordId: context.bizId } }) }
 
 const openStates = new Set(['MISSING', 'RETURNED', 'PENDING_REVIEW'])
 const filters = computed(() => [
@@ -135,7 +135,7 @@ const shown = computed(() => {
 })
 
 function bizLabel(value) {
-  return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || '学工申请')
+  return ({ PROFILE: '个人档案', LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || '学工申请')
 }
 // 学生看不懂"业务记录 #123"。后端下发 businessContext 时用业务语言
 // （如"2026-03-01 ~ 2026-03-05 · 请假申请"），没下发时退回原有可读文案。

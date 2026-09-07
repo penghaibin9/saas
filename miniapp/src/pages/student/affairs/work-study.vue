@@ -38,9 +38,9 @@
             <view v-for="record in records" :key="record.recordId" class="card ws__record">
               <view class="row-between"><view class="flex-1"><text class="ws__dept">{{ record.post?.deptName }}</text><text class="card-title">{{ record.post?.postName || '勤工岗位' }}</text></view><MobileStatusTag :status="record.status" :label="statusLabel(record.status)" /></view>
               <view class="ws__flow"><text class="done">提交</text><text :class="{ done: passed(record.status, 1) }">录用</text><text :class="{ done: passed(record.status, 2) }">上岗</text><text :class="{ done: record.status === 'TERMINATED' }">结束</text></view>
-              <text v-if="record.reason" class="ws__notice">处理意见：{{ record.reason }}</text>
+              <text v-if="record.remark" class="ws__notice">处理意见：{{ record.remark }}</text>
               <text class="hint">可工作时段：{{ record.availability || '与用人部门协商' }}</text>
-              <text class="hint">累计补贴：{{ money(record.subsidyTotal, '¥0.00') }}</text>
+              <text class="hint">累计登记补贴：{{ money(record.subsidyTotal, '¥0.00') }}</text>
               <view v-if="record.monthly?.length" class="ws__months">
                 <text class="ws__months-title">月度考核与补贴</text>
                 <view v-for="item in record.monthly" :key="item.monthlyId" class="ws__month"><text>{{ item.monthCode }} · {{ item.workHours }}小时 · {{ ratingLabel(item.rating) }}</text><text>{{ money(item.subsidyAmount, '¥0.00') }}</text></view>

@@ -570,9 +570,9 @@ def risk_students(user: dict) -> dict:
 # ══════════ 我的班级 / 我的学生（辅导员/班主任按 t_class.counselor_id/head_teacher_id 收敛） ══════════
 
 def _teacher_numeric_id(user: dict):
-    """派生教师账号的数值 user_id（兼容 u_ 前缀），用于匹配 t_class.counselor_id/head_teacher_id。"""
+    """派生教师账号的数值 user_id（兼容真实登录 db- 与历史 u_ 前缀）。"""
     uid = str((user or {}).get("userId") or "")
-    raw = uid[2:] if uid.startswith("u_") else uid
+    raw = uid[3:] if uid.startswith("db-") else (uid[2:] if uid.startswith("u_") else uid)
     return int(raw) if raw.isdigit() else None
 
 
@@ -995,7 +995,8 @@ def affairs_discipline_detail(user: dict, case_id: str) -> dict:
     return svc.get_case(case_id, u)
 
 
-def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "") -> dict:
+def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "",
+                              expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
@@ -1003,9 +1004,11 @@ def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str
     act = (action or "APPROVE").upper()
     detail = svc.get_case(case_id, u)
     if (detail or {}).get("status") == "REMOVE_REVIEW":
-        result = svc.review_remove(case_id, u, act, reason=reason or "")
+        result = svc.review_remove(
+            case_id, u, act, reason=reason or "", expected_version=expected_version)
     else:
-        result = svc.review(case_id, u, act, reason=reason or "")
+        result = svc.review(
+            case_id, u, act, reason=reason or "", expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_DISC_REVIEW", f"discipline:{case_id}",
                  {"operator": u.get("realName"), "action": act})
     return result
@@ -1043,22 +1046,22 @@ def affairs_risk_detail(user: dict, risk_id: str) -> dict:
     return svc.get_risk(risk_id, u)
 
 
-def affairs_risk_process(user: dict, risk_id: str, content: str) -> dict:
+def affairs_risk_process(user: dict, risk_id: str, content: str, *, expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_risk_service as svc
-    result = svc.process(risk_id, u, content=content or "")
+    result = svc.process(risk_id, u, content=content or "", expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_RISK_PROCESS", f"risk:{risk_id}", {"operator": u.get("realName")})
     return result
 
 
-def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
+def affairs_risk_close(user: dict, risk_id: str, conclusion: str, *, expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_risk_service as svc
-    result = svc.close(risk_id, u, conclusion=conclusion or "")
+    result = svc.close(risk_id, u, conclusion=conclusion or "", expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_RISK_CLOSE", f"risk:{risk_id}", {"operator": u.get("realName")})
     return result
 
@@ -1668,7 +1671,11 @@ def talk_follow_up(user: dict, talk_id, body: dict) -> dict:
     _require_teacher(user)  # 纵深防御：与同族 talk_* 一致显式收口非教师（底层 _scope_or_403 仍在）
     from app.services import affairs_talk_service as talk
     b = body or {}
-    return talk.follow_up(talk_id, user, b.get("action"), b.get("content", ""))
+    expected_version = b.get("expectedVersion", b.get("version"))
+    return talk.follow_up(
+        talk_id, user, b.get("action"), b.get("content", ""),
+        expected_version=expected_version,
+    )
 
 
 def talk_stats(user: dict, group_by="TYPE") -> dict:
@@ -1706,19 +1713,28 @@ def mental_create(user: dict, body: dict) -> dict:
 def mental_follow(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.follow_referral(user, ref_id, (body or {}).get("content", ""))
+    payload = body or {}
+    return mental.follow_referral(
+        user, ref_id, payload.get("content", ""), expected_version=payload.get("version")
+    )
 
 
 def mental_escalate(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.escalate_crisis(user, ref_id, (body or {}).get("content", ""))
+    payload = body or {}
+    return mental.escalate_crisis(
+        user, ref_id, payload.get("content", ""), expected_version=payload.get("version")
+    )
 
 
 def mental_close(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.close_referral(user, ref_id, (body or {}).get("conclusion", ""))
+    payload = body or {}
+    return mental.close_referral(
+        user, ref_id, payload.get("conclusion", ""), expected_version=payload.get("version")
+    )
 
 
 def mental_stats(user: dict) -> dict:

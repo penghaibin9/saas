@@ -91,6 +91,10 @@ def test_m2_cascade_checkin_writeback(client, db_mode):
     stay = db.query(DormStay).filter_by(student_id=ids["sm2"], status="ACTIVE").one()
     assert stay.bed_id == int(beds[0]["bedId"]) and stay.checkin_at is not None
     db.close()
+    occupied = client.get(f"{BASE}/dorm/rooms/{rid}/beds", headers=hdr).json()["data"]["items"][0]
+    assert occupied["studentId"] == str(ids["sm2"])
+    assert occupied["studentName"] == occupied["occupantName"] == "男生丙"
+    assert occupied["studentNo"] == "M002"
 
 
 def test_m3_occupied_and_gender_conflict_409(client, db_mode):
@@ -109,6 +113,23 @@ def test_m3_occupied_and_gender_conflict_409(client, db_mode):
 
 def test_m4_transfer_executes(client, db_mode):
     ids = _seed(db_mode)
+    from app.core.security import hash_password
+    from app.db.session import get_sessionmaker
+    from app.models import Role, User, UserRole, StudentAccountLink
+    from test_aid_mobile_queue import _login
+    with get_sessionmaker()() as db:
+        role = Role(tenant_id=TID, role_code='STUDENT', role_name='学生', role_type='SYSTEM', status='ACTIVE')
+        db.add(role); db.flush()
+        for name, sid in [('dorm_self', ids['sm']), ('dorm_other', ids['sm2'])]:
+            user = User(tenant_id=TID, login_name=name, real_name=name, user_type='STUDENT',
+                        password_hash=hash_password('AidQueue-Test-2026!'), status='ACTIVE', must_change_password=False)
+            db.add(user); db.flush()
+            db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status='ACTIVE'))
+            db.add(StudentAccountLink(tenant_id=TID, user_id=user.id, student_id=sid, link_status='ACTIVE', source='MANUAL'))
+        db.commit()
+    student_pc = _login(client, 'dorm_self', 'PC')
+    student_mini = _login(client, 'dorm_self', 'STUDENT_MINI')
+    other = _login(client, 'dorm_other', 'PC')
     admin = _hdr(client, "school_admin01")
     counselor = role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员")
     bid = _make_building(client, admin)
@@ -119,12 +140,37 @@ def test_m4_transfer_executes(client, db_mode):
     transfer = client.post(f"{BASE}/dorm/transfers", headers=counselor, json={
         "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "学生申请调整宿舍床位"}).json()["data"]
     tid = transfer["transferId"]
+    def assert_self_readback(status):
+        for headers in (student_pc, student_mini):
+            response = client.get('/api/v1/mobile/affairs/dorm/transfers/my', headers=headers)
+            assert response.status_code == 200, response.text
+            data = response.json()['data']
+            assert data['total'] == 1
+            assert [x['transferId'] for x in data['items']] == [str(tid)]
+            assert data['items'][0]['status'] == status
+            assert data['items'][0]['allowedActions'] == []
+            assert data['items'][0]['createdAt']
+            assert data['items'][0]['returnReason'] == ''
+        # Supplying another student's ID never broadens the authenticated self scope.
+        response = client.get('/api/v1/mobile/affairs/dorm/transfers/my', headers=other,
+                              params={'studentId': ids['sm']})
+        assert response.json()['data']['items'] == []
+    assert_self_readback('COUNSELOR_REVIEW')
+    focused = client.get(f"{BASE}/dorm/transfers", headers=counselor, params={"recordId": tid})
+    assert focused.status_code == 200, focused.text
+    assert [row['transferId'] for row in focused.json()['data']['items']] == [str(tid)]
+    missing = client.get(f"{BASE}/dorm/transfers", headers=counselor, params={"recordId": 999999999})
+    assert missing.json()['data']['total'] == 0
     first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=counselor, json={
         "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 真实辅导员初审
     r = client.post(f"{BASE}/dorm/transfers/{tid}/review",
                     headers=role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李"), json={
         "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
     assert r["data"]["status"] == "EXECUTED"
+    assert_self_readback('EXECUTED')
+    focused = client.get(f"{BASE}/dorm/transfers", headers=admin, params={"recordId": tid})
+    assert focused.status_code == 200, focused.text
+    assert focused.json()['data']['items'][0]['status'] == 'EXECUTED'
     # 原床释放、新床占用
     from app.db.session import get_sessionmaker
     from app.models import DormBed, DormStay
@@ -136,6 +182,50 @@ def test_m4_transfer_executes(client, db_mode):
     assert stays[0].bed_id == int(old_bed) and stays[0].checkout_at is not None
     assert stays[1].bed_id == int(new_bed) and stays[1].source_type == "TRANSFER"
     db.close()
+
+
+def test_transfer_reapply_and_occupied_target_preserve_original_stay(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    counselor = role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员")
+    manager = role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
+    bid = _make_building(client, admin)
+    _, beds = _first_bed(client, admin, bid)
+    old_bed, target_bed = beds[0]["bedId"], beds[1]["bedId"]
+    assert client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=admin,
+                       json={"studentId": str(ids["sm"])}).status_code == 200
+    payload = {"studentId": str(ids["sm"]), "toBedId": str(target_bed), "reason": "申请调整宿舍床位方便日常学习"}
+    first = client.post(f"{BASE}/dorm/transfers", headers=counselor, json=payload).json()["data"]
+    reason = "请补充调整需求后重新申请"
+    rejected = client.post(f"{BASE}/dorm/transfers/{first['transferId']}/review", headers=counselor,
+                           json={"action": "REJECT", "reason": reason, "version": first["version"]})
+    assert rejected.status_code == 200, rejected.text
+    second_response = client.post(f"{BASE}/dorm/transfers", headers=counselor, json=payload)
+    assert second_response.status_code == 200, second_response.text
+    second = second_response.json()["data"]
+    assert second["transferId"] != first["transferId"]
+    assert client.post(f"{BASE}/dorm/transfers", headers=counselor, json=payload).status_code == 409
+    approved = client.post(f"{BASE}/dorm/transfers/{second['transferId']}/review", headers=counselor,
+                           json={"action": "APPROVE", "version": second["version"]}).json()["data"]
+    # A different student occupies the target through the formal check-in command before final review.
+    occupied = client.post(f"{BASE}/dorm/beds/{target_bed}/checkin", headers=admin,
+                           json={"studentId": str(ids["sm2"])})
+    assert occupied.status_code == 200, occupied.text
+    conflict = client.post(f"{BASE}/dorm/transfers/{second['transferId']}/review", headers=manager,
+                           json={"action": "APPROVE", "version": approved["version"]})
+    assert conflict.status_code == 409, conflict.text
+    rows = client.get(f"{BASE}/dorm/transfers", headers=admin).json()["data"]["items"]
+    original = next(x for x in rows if x["transferId"] == first["transferId"])
+    pending = next(x for x in rows if x["transferId"] == second["transferId"])
+    assert original["status"] == "REJECTED" and original["returnReason"] == reason
+    assert pending["status"] == "DORM_MANAGER_REVIEW" and pending["version"] == approved["version"]
+    from app.db.session import get_sessionmaker
+    from app.models import DormBed, DormStay
+    with get_sessionmaker()() as db:
+        assert db.get(DormBed, int(old_bed)).student_id == ids["sm"]
+        assert db.get(DormBed, int(target_bed)).student_id == ids["sm2"]
+        stay = db.query(DormStay).filter_by(student_id=ids["sm"], status="ACTIVE").one()
+        assert stay.bed_id == int(old_bed)
 
 
 def test_m4_d4_formal_checkout_blocks_transfer_then_confirms(client, db_mode):
@@ -198,6 +288,19 @@ def test_m4_d4_formal_checkout_blocks_transfer_then_confirms(client, db_mode):
     assert confirmed.status_code == 200, confirmed.text
     confirmed_row = confirmed.json()["data"]
     assert confirmed_row["status"] == "CONFIRMED"
+    focused = client.get(f"{BASE}/dorm/checkout-requests", headers=manager,
+                         params={"recordId": request["requestId"]})
+    assert focused.status_code == 200, focused.text
+    assert focused.json()["data"]["total"] == 1
+    assert focused.json()["data"]["items"][0]["status"] == "CONFIRMED"
+    assert focused.json()["data"]["items"][0]["allowedActions"] == []
+    missing = client.get(f"{BASE}/dorm/checkout-requests", headers=manager, params={"recordId": 999999999})
+    assert missing.json()["data"]["items"] == []
+    outside = client.get(f"{BASE}/dorm/checkout-requests",
+                         headers=role_headers("DORM_MANAGER", login_name="other", real_name="宿管·王"),
+                         params={"recordId": request["requestId"]})
+    assert outside.status_code == 200, outside.text
+    assert outside.json()["data"]["items"] == []
     repeated_confirm = client.post(
         f"{BASE}/dorm/checkout-requests/{request['requestId']}/confirm",
         headers=manager, json={"version": confirmed_row["version"]},

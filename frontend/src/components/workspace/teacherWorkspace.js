@@ -5,7 +5,29 @@ export const WORKSPACE_THEMES = [
   { key: 'sage', label: '护眼绿', bg: '#f0f4ed', surface: '#fbfcf8', header: '#f7faf3', soft: '#e2eee4', line: '#d5e1d2', accent: '#347254', ink: '#243c31', muted: '#536d5d', on: '#ffffff' },
   { key: 'plum', label: '石墨紫', bg: '#f3f3f6', surface: '#ffffff', header: '#f4f1f8', soft: '#eae4f4', line: '#e0daeb', accent: '#6954a3', ink: '#302d42', muted: '#6b617e', on: '#ffffff' }
 ]
-export const WORKSPACE_TONES = { blue: { label: '蓝色', value: '#326ac3' }, sage: { label: '绿色', value: '#278c7e' }, plum: { label: '紫色', value: '#8061b8' }, amber: { label: '琥珀', value: '#aa781f' } }
+export const WORKSPACE_TONES = {
+  blue: { label: '学院蓝', value: '#3269bf' }, sage: { label: '青竹绿', value: '#27968d' },
+  plum: { label: '藤花紫', value: '#8461bc' }, amber: { label: '麦穗金', value: '#b57f24' },
+  cyan: { label: '湖水蓝', value: '#278eb0' }, coral: { label: '陶土红', value: '#bf6b59' }
+}
+export const WORKSPACE_ICON_KEYS = ['document', 'user', 'calendar', 'house', 'flag', 'bell', 'message', 'monitor', 'folder', 'records', 'star', 'school']
+export function shortcutAppearance(page, appearances = {}) {
+  const text = `${page?.path || ''} ${page?.title || ''}`
+  let icon = 'document', color = 'blue'
+  if (/待办|approval/.test(text)) { icon = 'document'; color = 'amber' }
+  else if (/请假|销假|leave/.test(text)) { icon = 'calendar'; color = 'sage' }
+  else if (/宿舍|住宿|dorm/.test(text)) { icon = 'house'; color = 'plum' }
+  else if (/迎新|orientation/.test(text)) { icon = 'flag'; color = 'cyan' }
+  else if (/风险|预警|risk/.test(text)) { icon = 'bell'; color = 'coral' }
+  else if (/学生|student\/list/.test(text)) icon = 'user'
+  else if (/消息|message/.test(text)) icon = 'message'
+  else if (/工作台|看板|总览|workbench/.test(text)) icon = 'monitor'
+  else if (/班级|classes/.test(text)) icon = 'school'
+  else if (/档案|material/.test(text)) icon = 'folder'
+  else if (/奖|助|funding|aid/.test(text)) icon = 'star'
+  const saved = appearances[page?.id] || {}
+  return { label: typeof saved.label === 'string' ? saved.label.trim().slice(0, 16) : '', icon: WORKSPACE_ICON_KEYS.includes(saved.icon) ? saved.icon : icon, color: Object.hasOwn(WORKSPACE_TONES, saved.color) ? saved.color : color }
+}
 export function workspaceTokens(key) {
   const t = WORKSPACE_THEMES.find(t => t.key === key) || WORKSPACE_THEMES[1]
   return {
@@ -41,6 +63,11 @@ export function workspacePages(modules) {
     .filter(item => item.path && !item.disabled)
     .map(item => ({ ...item, id: item.path, title: item.label, moduleKey: mod.key, trail: mod.label })))
 }
+export function defaultShortcutIds(pages) {
+  const paths = ['/admin/approval/todos', '/admin/student/list', '/admin/student-affairs/leave', '/admin/student-affairs/dorm', '/admin/orientation', '/admin/student-affairs/risk', '/admin/student-affairs/funding']
+  const ids = paths.map(path => pages.find(page => page.path === path)?.id).filter(Boolean)
+  return ids.length ? ids : pages.slice(0, 4).map(page => page.id)
+}
 export function restoreWorkspace(value, pages) {
   const saved = value && typeof value === 'object' ? value : {}
   const allowed = new Set(pages.map(item => item.id))
@@ -49,18 +76,19 @@ export function restoreWorkspace(value, pages) {
   for (const id of allowed) {
     const entry = saved.appearance?.[id]
     if (!entry || typeof entry !== 'object') continue
-    appearance[id] = { label: typeof entry.label === 'string' ? entry.label.trim().slice(0, 12) : '', color: Object.hasOwn(WORKSPACE_TONES, entry.color) ? entry.color : 'blue' }
+    appearance[id] = shortcutAppearance(pages.find(page => page.id === id), saved.appearance)
   }
   return {
     appearance,
+    recent: safeIds(saved.recent, 30),
     second: ['compact', 'full', 'auto'].includes(saved.second) ? saved.second : 'compact',
     third: ['compact', 'full', 'auto'].includes(saved.third) ? saved.third : 'compact',
     theme: WORKSPACE_THEMES.some(t => t.key === saved.theme) ? saved.theme : 'blue',
-    tabs: safeIds(saved.tabs, 20), shortcuts: Array.isArray(saved.shortcuts) ? safeIds(saved.shortcuts, 8) : pages.filter(item => item.path.startsWith('/admin/student-affairs/leave')).slice(0, 4).map(item => item.id),
+    tabs: safeIds(saved.tabs, 20), shortcuts: Array.isArray(saved.shortcuts) ? safeIds(saved.shortcuts, 8) : defaultShortcutIds(pages),
     collapsed: saved.collapsed !== false
   }
 }
-const SHORT_NAMES = { 'sa-workbench': '看板', 'sa-profile': '学生', 'sa-classes': '班级', 'sa-orientation': '迎新', 'sa-leave': '请假', 'sa-dorm': '住宿', 'sa-risk': '风险', 'sa-difficulty': '认定', 'sa-aid': '奖助', 'sa-discipline': '处分', 'sa-talks': '家校', 'sa-mental': '心理', 'sa-activities': '活动', 'sa-archive-stats': '统计' }
-const PAGE_SHORT_NAMES = { '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '认定申请与审核（工作台）': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
+const SHORT_NAMES = { 'sa-workbench': '工作', 'sa-profile': '学生', 'sa-classes': '班级', 'sa-orientation': '迎新', 'sa-leave': '请假', 'sa-dorm': '住宿', 'sa-risk': '风险', 'sa-difficulty': '认定', 'sa-aid': '奖助', 'sa-discipline': '处分', 'sa-talks': '家校', 'sa-mental': '心理', 'sa-activities': '活动', 'sa-archive-stats': '统计' }
+const PAGE_SHORT_NAMES = { '我的工作台': '首页', '我的待办': '待办', '审批中心': '审批', '消息中心': '消息', '学工大屏': '大屏', '最近访问': '最近', '帮助中心': '帮助', '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '申请与审核': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
   '资助项目': '项目', '资助批次': '批次', '申请评审（工作台）': '评审', '公示申诉': '申诉', '发放台账': '发放', '资助统计': '统计', '助学金管理': '助学', '勤工助学': '勤工', '助学贷款': '贷款', '减免与临时补助': '减免' }
 export function workspaceShort(item) { return SHORT_NAMES[item.key] || PAGE_SHORT_NAMES[item.label] || String(item.label || '').slice(0, 2) }

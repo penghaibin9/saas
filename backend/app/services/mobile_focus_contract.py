@@ -24,6 +24,14 @@ FOCUS_MODES = frozenset({FOCUS_DETAIL, FOCUS_LIST_FOCUS, FOCUS_NONE})
 #: 已经真正实现对象聚焦的页面 → 该页面消费的 query 参数名。
 #: 每条都由 miniapp/tests/action-focus-contract.test.mjs 逐页证明。
 FOCUS_READY_PAGES: dict[str, str] = {
+    "/pages/teacher/risk-students/index": "recordId",
+    "/pages/student/affairs/dorm": "rectificationId",
+    "/pages/teacher/dorm-review/index": "recordId",
+    "/pages/teacher/affairs/work-study/index": "recordId",
+    "/pages/student/affairs/loan": "recordId",
+    "/pages/teacher/affairs/loan/index": "recordId",
+    "/pages/student/affairs/reduction": "recordId",
+    "/pages/teacher/affairs/reduction/index": "recordId",
     "/pages/teacher/affairs/index": "recordId",
     "/pages/student/affairs/leave": "recordId",
     "/pages/student/affairs/aid": "recordId",

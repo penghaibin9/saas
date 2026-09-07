@@ -3,6 +3,41 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 const source = readFileSync(new URL('../src/modules/studentAffairs/views/MaterialOperationsView.vue', import.meta.url), 'utf8').replaceAll('\r', '')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+
+function createFixture() {
+  return { acting: '', createValid: true, createVisible: true, bizContext: { bizId: '9007199254740993' },
+    form: { bizType: 'FUNDING', bizId: '9007199254740993', itemCode: 'proof', itemName: '收入证明', requirementReason: '请补充收入证明', dueDate: '' },
+    loadRequirements: async () => {} }
+}
+
+test('material creation preserves large IDs and distinguishes a saved record from a failed refresh', async () => {
+  const create = method('createRequirement()', 'review('), vm = createFixture(), notices = []
+  let payload, writes = 0
+  vm.loadRequirements = async () => { throw new Error('offline') }
+  await create.call(vm, { createRequirement: async data => { payload = data; writes++ } }, { success: text => notices.push(text), error: text => notices.push(text) })
+  assert.equal(writes, 1)
+  assert.equal(payload.bizId, '9007199254740993')
+  assert.equal(payload.itemCode, 'PROOF')
+  assert.equal(vm.form.bizId, '9007199254740993')
+  assert.equal(vm.createVisible, false)
+  assert.equal(vm.form.itemName, '')
+  assert.match(notices.at(-1), /登记已成功.*刷新失败/)
+})
+
+test('failed material creation retains input and prevents duplicate in-flight requests', async () => {
+  const create = method('createRequirement()', 'review('), vm = createFixture(), original = { ...vm.form }
+  let reject, writes = 0
+  const api = { createRequirement: () => { writes++; return new Promise((_, fail) => { reject = fail }) } }
+  const toast = { error: () => {}, success: () => assert.fail('failed write cannot show success') }
+  const first = create.call(vm, api, toast)
+  await create.call(vm, api, toast)
+  reject(new Error('conflict'))
+  await first
+  assert.equal(writes, 1)
+  assert.deepEqual(vm.form, original)
+  assert.equal(vm.createVisible, true)
+  assert.equal(vm.acting, '')
+})
 function method(name, next) {
   const start = source.indexOf(`    async ${name}`)
   const end = source.indexOf(`\n    ${next}`, start)

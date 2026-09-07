@@ -17,6 +17,29 @@ def _upload_receipt(client, headers, name: str) -> dict:
     ))
 
 
+def _loan_todo(loan_id, pending_type=None, student_login="fund_student"):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedTodo, User
+    from app.services.todo_route_registry import resolve_todo_route
+    with get_sessionmaker()() as db:
+        active = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == 1000000000000000001,
+            UnifiedTodo.source_biz_type == "STUDENT_LOAN", UnifiedTodo.source_biz_id == int(loan_id),
+            UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+        )).all()
+        assert len(active) == (1 if pending_type else 0)
+        if not active: return None
+        row=active[0]; assert row.todo_type == pending_type
+        student=pending_type == "STUDENT_LOAN_SUPPLEMENT"
+        assert db.get(User,row.assignee_id).login_name == (student_login if student else "sa_admin01")
+        for client,path in ([("studentPc","/campus-service"),("studentMini","/pages/student/affairs/loan")] if student else [("pc","/admin/student-affairs/funding/loans"),("teacherMini","/pages/teacher/affairs/loan/index")]):
+            target=resolve_todo_route(pending_type,str(loan_id),client=client)
+            assert target["path"] == path and target["exact"] is True
+            assert target["query"]["recordId"] == str(loan_id)
+        return str(row.id)
+
+
 def test_student_loan_four_end_core_flow(client, db_mode):
     ids = _accounts(db_mode)
     admin_pc = _login(client, "school_admin01", "PC")
@@ -33,6 +56,12 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         "receiptFileId": uploaded["fileId"], "confirm": True,
     }))
     loan_id = submitted["loanId"]
+    review_todo = _loan_todo(loan_id, "STUDENT_LOAN_REVIEW")
+    for endpoint in ("student-affairs/loans", "mobile/teacher/affairs/loans"):
+        focused = _data(client.get(f"{BASE}/{endpoint}", headers=admin_pc, params={"recordId":loan_id}))
+        assert [item["loanId"] for item in focused["items"]] == [loan_id]
+        missing = _data(client.get(f"{BASE}/{endpoint}", headers=admin_pc, params={"recordId":"999999999"}))
+        assert missing["items"] == []
     assert submitted["studentId"] == str(ids["sa"])
     assert submitted["status"] == "RECEIPT"
     assert submitted["amount"] == "12000.00"
@@ -79,6 +108,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         json={"action": "RETURN", "reason": "回执学年与申请信息不一致，请修正后重提。", "version": target["version"]},
     ))
     assert returned["status"] == "RETURNED"
+    _loan_todo(loan_id, "STUDENT_LOAN_SUPPLEMENT")
     returned_mine = next(item for item in _data(client.get(
         f"{BASE}/mobile/affairs/loans", headers=student_mini))["items"] if item["loanId"] == loan_id)
     assert returned_mine["reviewOpinion"].startswith("回执学年")
@@ -91,6 +121,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
               "yearCode": "2092-2093", "amount": "12000.00", "receiptCode": "GJKF-2092-FIX456",
               "receiptFileId": replacement["fileId"], "confirm": True, "version": returned_mine["version"]},
     ))
+    assert _loan_todo(loan_id, "STUDENT_LOAN_REVIEW") == review_todo
     assert resubmitted["status"] == "RECEIPT" and resubmitted["reviewOpinion"] == ""
     assert resubmitted["receiptFile"]["fileId"] == replacement["fileId"]
 
@@ -99,6 +130,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         json={"action": "VERIFY", "reason": "已核对学生、学年、金额和回执材料。",
               "version": resubmitted["version"]},
     ))
+    _loan_todo(loan_id, "STUDENT_LOAN_CONFIRM")
     assert verified["status"] == "VERIFIED" and verified["verifiedAt"]
     stale = client.post(
         f"{BASE}/student-affairs/loans/{loan_id}/action", headers=admin_pc,
@@ -109,6 +141,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         f"{BASE}/mobile/teacher/affairs/loans/{loan_id}/action", headers=admin_mini,
         json={"action": "CONFIRM", "version": verified["version"]},
     ))
+    _loan_todo(loan_id)
     assert confirmed["status"] == "CONFIRMED" and confirmed["confirmedAt"]
     final_mine = next(item for item in _data(client.get(
         f"{BASE}/portal/affairs/loans", headers=student_pc))["items"] if item["loanId"] == loan_id)
@@ -123,6 +156,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         "studentId": ids["sb"], "loanType": "CAMPUS", "bankName": "中国银行",
         "yearCode": "2097-2098", "amount": "8000.00",
     }))
+    _loan_todo(proxy["loanId"], "STUDENT_LOAN_SUPPLEMENT", "fund_other")
     assert proxy["status"] == "REGISTERED" and proxy["allowedActions"] == ["SUBMIT_RECEIPT"]
     proxy_receipt = _upload_receipt(client, other_pc, "receipt-2097.txt")
     completed_proxy = _data(client.post(
@@ -134,6 +168,7 @@ def test_student_loan_four_end_core_flow(client, db_mode):
         f"{BASE}/portal/affairs/loans/{proxy['loanId']}/withdraw", headers=other_pc,
         json={"version": completed_proxy["version"]},
     ))
+    _loan_todo(proxy["loanId"])
     assert withdrawn["status"] == "WITHDRAWN"
     replacement_record = _data(client.post(f"{BASE}/portal/affairs/loans", headers=other_pc, json={
         "loanType": "ORIGIN", "bankName": "国家开发银行", "yearCode": "2097-2098",

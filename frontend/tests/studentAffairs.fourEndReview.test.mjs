@@ -57,7 +57,7 @@ test('student portal affairs loads tabs on demand and refreshes only the affecte
   const source = read('student-portal/src/views/affairs/AffairsFourEndView.vue')
   assert.match(source, /const TAB_LOADERS = \{/)
   assert.match(source, /leave:\s*\[\{ load: \(\) => portalApi\.affairsLeave\(\)/)
-  assert.match(source, /watch\(tab, \(key\) => \{ loadTab\(key\) \}, \{ immediate: true \}\)/)
+  assert.match(source, /watch\(tab, \(key\) => \{ loadTab\(key, \{ force: key === 'dorm' \}\) \}, \{ immediate: true \}\)/)
   assert.match(source, /const inflight = new Map\(\)/)
   assert.match(source, /if \(inflight\.has\(key\)\) return inflight\.get\(key\)/)
   assert.match(source, /if \(!viewActive \|\| loadEpoch\[key\] !== epoch\) return/)

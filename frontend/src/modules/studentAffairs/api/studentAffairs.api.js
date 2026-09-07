@@ -547,8 +547,8 @@ export const studentAffairsApi = {
   setWorkStudyPostStatus(postId, action, version) {
     return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/action`, { method: 'POST', body: { action, version } }))
   },
-  getWorkStudyRecords({ postId = '', status = '', keyword = '', page = 1, pageSize = 50 } = {}) {
-    const params = { page, pageSize }; if (postId) params.postId = postId; if (status) params.status = status; if (keyword) params.keyword = keyword
+  getWorkStudyRecords({ recordId = '', postId = '', status = '', keyword = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }; if (recordId) params.recordId = recordId; if (postId) params.postId = postId; if (status) params.status = status; if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/work-study/records', { params }))
   },
   applyWorkStudy(postId, studentId, statement = '', availability = '') {
@@ -564,8 +564,9 @@ export const studentAffairsApi = {
   addWorkStudyMonthly(recordId, body) {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`, { method: 'POST', body }))
   },
-  getLoans({ status = '', keyword = '', yearCode = '', loanType = '', page = 1, pageSize = 50 } = {}) {
+  getLoans({ status = '', keyword = '', yearCode = '', loanType = '', page = 1, pageSize = 50, recordId } = {}) {
     const params = { page, pageSize }
+    if (recordId) params.recordId = String(recordId)
     if (status) params.status = status
     if (keyword) params.keyword = keyword
     if (yearCode) params.yearCode = yearCode
@@ -581,9 +582,10 @@ export const studentAffairsApi = {
   actionLoan(loanId, body) {
     return callStrict(() => request(`/student-affairs/loans/${loanId}/action`, { method: 'POST', body }))
   },
-  getFeeReductions({ itemType = '', status = '', keyword = '', yearCode = '', page = 1, pageSize = 50 } = {}) {
+  getFeeReductions({ itemType = '', status = '', keyword = '', yearCode = '', recordId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }; if (itemType) params.itemType = itemType; if (status) params.status = status
     if (keyword) params.keyword = keyword; if (yearCode) params.yearCode = yearCode
+    if (recordId) params.recordId = String(recordId)
     return callStrict(() => request('/student-affairs/fee-reductions', { params }))
   },
   submitFeeReduction(body) {
@@ -895,13 +897,19 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}`))
   },
   dryRunDormAllocation(batchId) {
-    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/dry-run`, { method: 'POST' }))
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/dry-run`, { method: 'POST', timeoutMs: 120000 }))
   },
   manualAssignDorm(batchId, studentId, bedId) {
     return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/manual-assign`, { method: 'POST', body: { studentId: String(studentId), bedId: String(bedId) } }))
   },
   publishDormAllocation(batchId) {
-    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish`, { method: 'POST' }))
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish`, { method: 'POST', timeoutMs: 120000 }))
+  },
+  queueDormAllocationPublish(batchId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish-jobs`, { method: 'POST', body: { version } }))
+  },
+  getDormAllocationPublishJob(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish-jobs/latest`))
   },
   async downloadDormAllocationConflicts(batchId) {
     try {
@@ -928,10 +936,11 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/dorm/checkout-requests', { method: 'POST', body }))
   },
 
-  listDormCheckouts({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+  listDormCheckouts({ status = '', studentId = '', recordId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
     if (studentId) params.studentId = studentId
+    if (recordId) params.recordId = recordId
     return callStrict(() => request('/student-affairs/dorm/checkout-requests', { params }))
   },
 
@@ -943,11 +952,31 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/cancel`, { method: 'POST', body: { version, reason } }))
   },
 
-  listDormStays({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+  createDormCheckinBatch(body) {
+    return callStrict(() => request('/student-affairs/dorm/checkin-batches', { method: 'POST', body }))
+  },
+  recentDormCheckinBatches() {
+    return callStrict(() => request('/student-affairs/dorm/checkin-batches'))
+  },
+  getDormCheckinBatch(id, params = {}) {
+    return callStrict(() => request(`/student-affairs/dorm/checkin-batches/${id}`, { params }))
+  },
+  continueDormCheckinBatch(id) {
+    return callStrict(() => request(`/student-affairs/dorm/checkin-batches/${id}/continue`, { method: 'POST', timeoutMs: 120000 }))
+  },
+
+  listDormStays({ status = '', studentId = '', buildingId = '', keyword = '', orientationBatchId = '', classId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }
+    if (orientationBatchId) params.orientationBatchId = orientationBatchId
+    if (classId) params.classId = classId
     if (status) params.status = status
     if (studentId) params.studentId = studentId
+    if (buildingId) params.buildingId = buildingId
+    if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/dorm/stays', { params }))
+  },
+  getDormStayFilterOptions(params = {}) {
+    return callStrict(() => request('/student-affairs/dorm/stays/filter-options', { params }))
   },
 
   /** 发起调宿（原床释放/新床占用走审批）。body: { studentId, toBedId, reason } */
@@ -998,10 +1027,11 @@ export const studentAffairsApi = {
   },
 
   /** 调宿申请列表。 */
-  getDormTransfers({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+  getDormTransfers({ status = '', studentId = '', recordId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
     if (studentId) params.studentId = studentId
+    if (recordId) params.recordId = recordId
     return callStrict(() => request('/student-affairs/dorm/transfers', { params }))
   },
 

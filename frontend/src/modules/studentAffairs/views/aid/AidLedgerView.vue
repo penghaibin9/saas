@@ -1,5 +1,6 @@
 <template>
   <AppPageShell
+    flat
     title="困难认定台账"
     subtitle="全量认定申请只读台账，按状态 / 等级筛选。家庭经济明细在台账不呈现，需到工作台鉴权查看。"
     :role-name="ctx?.currentRole?.roleName || ''"
@@ -8,8 +9,8 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载认定台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/aid')">
-      <AppSectionCard title="认定申请记录">
-        <div class="al-filters">
+      <section class="al-ledger" aria-label="认定申请记录">
+        <div class="al-filterline">
           <div class="al-fgroup">
             <button v-for="f in statusFilters" :key="f.key" type="button" class="al-chip"
                     :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
@@ -31,13 +32,13 @@
           <template #cell-actions="{ row }"><button type="button" class="aid-result-link" @click="$router.push({ path: '/admin/student-affairs/aid', query: { recordId: row.applyId } })">查看申请</button></template>
         </DataTable>
         <p v-else class="sa-empty">当前范围与筛选下暂无认定申请</p>
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
@@ -73,7 +74,7 @@ const LEVEL_FILTERS = [
 
 export default {
   name: 'AidLedgerView',
-  components: { AppGlobalState, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  components: { AppGlobalState, AppPageShell, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
@@ -124,18 +125,22 @@ export default {
 </script>
 
 <style scoped>
+@import '@/styles/module-page.css';
 .aid-result-link { appearance: none; border: 0; background: transparent; color: var(--text-link); font: inherit; font-size: 13px; cursor: pointer; padding: 6px 0; white-space: nowrap; }
 .aid-result-link:hover { text-decoration: underline; }
 .aid-result-link:focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
 .mp-cell-sub { display: block; color: var(--text-secondary); margin-top: 3px; font-size: 12px; }
 
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
-.al-filters { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
-.al-fgroup { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.al-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
-.al-chip.is-on { background: var(--pri-bg); color: var(--pri); border-color: var(--pri); }
+.al-ledger { min-width: 0; }
+.al-filterline { display: flex; align-items: center; gap: 18px; min-width: 0; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.al-fgroup { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.al-fgroup::-webkit-scrollbar { display: none; }
+.al-fgroup:first-child { flex: 1 1 auto; }
+.al-fgroup:last-child { flex: 0 0 auto; padding-left: 14px; border-left: 1px solid var(--line); }
+.al-chip { flex: 0 0 auto; min-height: 30px; padding: 4px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--t3); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.al-chip:hover { color: var(--t1); background: var(--bg-soft); }
+.al-chip.is-on { background: var(--pri-bg); color: var(--pri); font-weight: 600; }
 
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
-@import '@/styles/module-page.css';
+@media (max-width: 1100px) { .al-filterline { align-items: flex-start; flex-direction: column; gap: 4px; } .al-fgroup { width: 100%; } .al-fgroup:last-child { padding: 4px 0 0; border: 0; } }
 </style>

@@ -17,26 +17,6 @@
         </AppPermissionButton>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="新建认定批次">
-        <div class="bf-grid">
-          <label class="bf-field"><span>批次名称 *</span>
-            <input v-model.trim="form.batchName" class="bf-input" placeholder="如：2025-2026 学年家庭经济困难认定" /></label>
-          <label class="bf-field"><span>学年 *</span>
-            <input v-model.trim="form.schoolYear" class="bf-input" placeholder="如：2025-2026" /></label>
-          <label class="bf-field"><span>公示天数</span>
-            <input v-model.number="form.publicityDays" type="number" min="1" max="30" class="bf-input" placeholder="1-30 天，默认 5" /></label>
-          <label class="bf-field"><span>申请开始时间</span><input v-model="form.applyStart" type="datetime-local" class="bf-input" /><small>选填，未设置时发布后即可申请。</small></label>
-          <label class="bf-field"><span>申请截止时间</span><input v-model="form.applyEnd" type="datetime-local" class="bf-input" /><small>选填，截止后不再受理新申请；已退回申请仍可补正。</small></label>
-          <label class="bf-field bf-field--check">
-            <input v-model="form.publish" type="checkbox" /> <span>立即发布（开放受理）</span></label>
-        </div>
-        <p v-if="form.error" class="bf-error">{{ form.error }}</p>
-        <div class="bf-actions">
-          <button type="button" class="bf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <AppSectionCard title="批次列表">
         <DataTable v-if="batches.length" :columns="batchColumns" :rows="batches" row-key="batchId">
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.batchName }}</span></template>
@@ -63,12 +43,33 @@
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="新建认定批次" mode="modal" size="large">
+      <div class="bf-grid">
+        <label class="bf-field"><span>批次名称 *</span>
+          <input v-model.trim="form.batchName" class="bf-input" placeholder="如：2025-2026 学年家庭经济困难认定" /></label>
+        <label class="bf-field"><span>学年 *</span>
+          <input v-model.trim="form.schoolYear" class="bf-input" placeholder="如：2025-2026" /></label>
+        <label class="bf-field"><span>公示天数</span>
+          <input v-model.number="form.publicityDays" type="number" min="1" max="30" class="bf-input" placeholder="1-30 天，默认 5" /></label>
+        <label class="bf-field"><span>申请开始时间</span><input v-model="form.applyStart" type="datetime-local" class="bf-input" /><small>不填则发布后开放。</small></label>
+        <label class="bf-field"><span>申请截止时间</span><input v-model="form.applyEnd" type="datetime-local" class="bf-input" /><small>不填则不限制截止时间。</small></label>
+        <label class="bf-field bf-field--check">
+          <input v-model="form.publish" type="checkbox" /> <span>保存后立即开放受理</span></label>
+      </div>
+      <p v-if="form.error" class="bf-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存批次</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -86,7 +87,7 @@ const BATCH_COLUMNS = [
 
 export default {
   name: 'AidBatchView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  components: { AppButton, AppDateDisplay, AppDrawer, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {

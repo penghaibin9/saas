@@ -76,6 +76,7 @@
 </template>
 
 <script>
+import { dormLoginReturn } from '@/utils/dormLoginReturn.mjs'
 import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
@@ -86,6 +87,7 @@ import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
 export default {
   name: 'MiniLoginAuthPanel',
   props: {
+    dormRectificationId: { type: String, default: '' },
     entry: { type: String, required: true, validator: (value) => ['student', 'teacher'].includes(value) }
   },
   data() {
@@ -161,7 +163,7 @@ export default {
       const session = useSessionStore()
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
-      const goHome = () => relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index')
+      const goHome = () => relaunch(dormLoginReturn(this.entry, this.dormRectificationId) || (this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index'))
       if (!this.isTeacher) {
         studentApi.getProfile().then((profile) => session.hydrateStudentProfile(profile)).catch(() => {}).finally(goHome)
       } else {

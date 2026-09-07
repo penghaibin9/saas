@@ -3,7 +3,7 @@
     <section class="sp-card ws-summary">
       <div>
         <span class="ws-eyebrow">勤工助学</span>
-        <h2>从找岗位到补贴到账，都在这里查看</h2>
+        <h2>岗位申请、上岗与考核</h2>
         <p class="sp-muted">按自己的课余时间自愿申请。录用后先完成协议核验，再开始排班和月度考核。</p>
       </div>
       <div class="ws-summary__metrics" aria-label="我的勤工概览">
@@ -75,11 +75,11 @@
             <span class="done">提交申请</span><span :class="{ done: passed(record.status, 'APPROVED') }">录用审核</span>
             <span :class="{ done: passed(record.status, 'ONBOARD') }">协议与上岗</span><span :class="{ done: record.status === 'TERMINATED' }">岗位结束</span>
           </div>
-          <p v-if="record.reason" class="ws-reason">处理意见：{{ record.reason }}</p>
+          <p v-if="record.remark" class="ws-reason">处理意见：{{ record.remark }}</p>
           <div class="ws-record__meta">
             <span>申请说明：{{ record.applyStatement || '未填写' }}</span>
             <span>可工作时段：{{ record.availability || '与用人部门协商' }}</span>
-            <span>累计补贴：{{ money(record.subsidyTotal, '¥0.00') }}</span>
+            <span>累计登记补贴：{{ money(record.subsidyTotal, '¥0.00') }}</span>
           </div>
           <details v-if="record.monthly?.length" class="ws-monthly">
             <summary>月度考核与补贴（{{ record.monthly.length }}）</summary>

@@ -8,21 +8,24 @@
   >
 
 
-    <div class="av-workspace">
+    <AppGlobalState :state="listLoading ? 'loading' : listError ? 'error' : 'ready'" :description="listError" @retry="loadBatches">
+    <div class="archive-workspace">
       <div class="av-side">
         <div class="av-side__head">
           <div>
             <strong>归档批次</strong>
-            <small>按当前数据范围分页展示</small>
+
           </div>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">建批次</AppPermissionButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" @click="openBatch">新建批次</AppPermissionButton>
         </div>
-        <EmptyState v-if="!batches.length" title="暂无批次" description="点“建批次”创建第一个归档批次" />
+        <p v-if="!batches.length" class="av-empty">暂无归档批次</p>
         <ul v-else class="av-blist">
           <li
             v-for="b in batches"
             :key="b.batchId"
-            class="av-bitem"
+            class="av-bitem" role="button" tabindex="0"
+            :aria-pressed="Boolean(current && current.batchId === b.batchId)"
+            @keydown.enter="selectBatch(b)" @keydown.space.prevent="selectBatch(b)"
             :class="{ 'is-active': current && current.batchId === b.batchId }"
             @click="selectBatch(b)"
           >
@@ -39,18 +42,21 @@
           :show-size-changer="false"
           @change="onBatchPageChange"
         />
-        <p class="av-side__note">选择批次后，右侧展示当前流程、可执行动作和全部学生档案包。</p>
+
       </div>
 
       <div class="av-detail">
-        <EmptyState v-if="!current" title="请选择或新建批次" description="选中批次后，可查看当前阶段、下一步动作与档案包生成情况" />
-        <template v-else>
+        <p v-if="!current" class="av-empty">选择批次，查看归档进度与学生档案包</p>
+        <AppGlobalState v-else :state="detailLoading ? 'loading' : detailError ? 'error' : 'ready'" :description="detailError" @retry="reload">
           <div class="av-dhead">
             <div>
-              <span class="av-dhead__label">当前批次</span>
+
               <h3 class="av-dname">{{ current.batchName }}<span v-if="current.yearCode" class="av-year">{{ current.yearCode }}</span></h3>
             </div>
-            <button type="button" class="av-refresh" title="刷新" @click="reload">↻</button>
+            <div class="av-dhead__actions">
+              <AppButton variant="secondary" @click="openPackageLedger">查看档案包台账</AppButton>
+              <AppButton variant="ghost" :loading="detailLoading" @click="reload">刷新</AppButton>
+            </div>
           </div>
 
           <div class="av-flow" aria-label="当前归档进度">
@@ -67,42 +73,43 @@
 
           <div class="av-next-action">
             <div>
-              <span>当前阶段</span>
-              <strong>{{ statusLabel(current.status) }}</strong>
-              <p v-if="current.status === 'DRAFT'">下一步：圈定本批次归档学生并生成档案包。</p>
-              <p v-else-if="current.status === 'COLLECTING'">下一步：检查全部档案包生成情况，再推进学院审核。</p>
-              <p v-else-if="current.status === 'COLLEGE_REVIEW'">下一步：学院核对档案范围和内容，确认后提交学工处。</p>
-              <p v-else-if="current.status === 'SA_CONFIRM'">下一步：学工处完成最终确认并生成正式水印归档包。</p>
+
+              <p v-if="current.status === 'DRAFT'">选择归档学生，预检后生成档案包。</p>
+              <p v-else-if="current.status === 'COLLECTING'">档案包全部生成后，提交学院审核。</p>
+              <p v-else-if="current.status === 'COLLEGE_REVIEW'">核对档案后，提交学工处确认。</p>
+              <p v-else-if="current.status === 'SA_CONFIRM'">确认无误后归档，生成正式水印包。</p>
               <p v-else>该批次已完成归档，当前仅供查看和追溯。</p>
             </div>
             <div class="av-actions">
               <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" v-if="canCollect" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="openCollect">圈定学生</AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="onAdvance">{{ advanceLabel }}</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.archive.batch.manage')" v-if="advanceLabel" code="studentAffairs.archive.batch.manage" variant="primary" size="sm" :loading="acting" @click="advanceVisible = true">{{ advanceLabel }}</AppPermissionButton>
               <span v-if="current.status === 'ARCHIVED'" class="av-archived">✓ 已归档（水印包已登记）</span>
             </div>
           </div>
 
           <div class="av-pkgs">
             <div class="av-pkgs__head">
-              <div><strong>学生档案包</strong><small>每名学生一份，需全部生成成功后再推进审核</small></div>
-              <span v-if="packages.length" class="av-pkgs__count">{{ packages.length }} 份</span>
+              <strong>学生档案包</strong>
+              <span v-if="packages.length" class="av-pkgs__count">{{ packages.length }}</span>
             </div>
-            <EmptyState v-if="!packages.length" title="暂无档案包" description="点击“圈定学生”后，系统将为每名学生生成独立档案包" />
+            <p v-if="!packages.length" class="av-empty">暂无档案包</p>
             <ul v-else class="av-pkglist">
               <li v-for="p in packages" :key="p.packageId" class="av-pkg">
-                <span class="av-pkg__student">学生 #{{ p.studentId }}</span>
+                <span class="av-pkg__student">{{ p.realName || p.studentName || ('学生 #' + p.studentId) }}</span>
                 <span class="av-pkg__status" :class="`is-${String(p.status || '').toLowerCase()}`">{{ pkgStatusLabel(p.status) }}</span>
                 <span v-if="p.exportTaskId" class="av-pkg__task">水印包 #{{ p.exportTaskId }}</span>
               </li>
             </ul>
           </div>
-        </template>
+        </AppGlobalState>
       </div>
     </div>
 
+    </AppGlobalState>
+
     <AppDrawer v-model:visible="batchModal.visible" title="新建归档批次" mode="modal" size="medium">
       <div class="av-form">
-        <div class="av-form__note">批次建立后，按批次圈定学生并生成档案包。批次名称建议包含届别、学年或归档对象。</div>
+        <div class="av-form__note">建议用届别或学年命名，便于后续查找。</div>
         <AppFormItem label="批次名称" required>
           <AppTextInput v-model="batchModal.batchName" placeholder="如：2026 届毕业生学工归档" :disabled="acting" />
         </AppFormItem>
@@ -119,7 +126,7 @@
 
     <AppDrawer v-model:visible="collectModal.visible" title="圈定学生生成档案包" mode="modal" size="medium">
       <div class="av-form">
-        <div class="av-form__note">只选择本批次确需归档的学生。提交后系统为每名学生生成一份独立档案包。</div>
+        <div class="av-form__note">先核对学生范围，再确认生成；已在批次中的学生会跳过。</div>
         <AppFormItem label="学生（可多选）" required>
           <AppStudentPicker v-model="collectModal.studentIds" multiple placeholder="按姓名 / 学号搜索添加学生" @change="invalidateCollectPreview" />
         </AppFormItem>
@@ -135,7 +142,7 @@
               <em :class="{ duplicate: student.result === 'ALREADY_INCLUDED' }">{{ student.result === 'ALREADY_INCLUDED' ? '已存在，跳过' : '可生成' }}</em>
             </li>
           </ul>
-          <p>预检不写入数据；点击确认后服务端会再次执行正式范围和版本校验。</p>
+          <p>预检完成后，请核对学生再确认生成。</p>
         </div>
         <AppInlineAlert v-if="collectModal.error" type="danger" :description="collectModal.error" />
       </div>
@@ -145,6 +152,10 @@
         <AppButton variant="primary" :loading="acting" @click="collectModal.preview ? submitCollect() : previewCollect()">{{ collectModal.preview ? '确认生成档案包' : '先预检范围' }}</AppButton>
       </template>
     </AppDrawer>
+    <AppConfirmDialog v-model:visible="advanceVisible" :title="advanceLabel || '确认归档操作'" :confirm-text="advanceLabel || '确认'" :submitting="acting" @confirm="onAdvance">
+      <p v-if="current">{{ current.batchName }} · {{ packages.length }} 份档案包</p>
+      <p>请确认档案范围与材料已核对无误，再推进下一阶段。</p>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -152,11 +163,11 @@
 /**
  * 学工归档（/admin/student-affairs/archive）—— 13A P7。
  * 真实对接 /api/v1/student-affairs/archive/*：建批次 → 圈定学生生成档案包 → 学院审核 → 学工处确认 → 归档(登记水印包)。
- * 后端按批次 ID 管理，无列表端点，本页维护本会话已建批次。
+ * 批次列表、预检和推进均使用正式归档接口。
  */
-import { ModulePageShell, EmptyState } from '@/components/business'
+import { ModulePageShell } from '@/components/business'
 import {
-  AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppStatusTag, AppStudentPicker, AppTextInput
+  AppGlobalState, AppConfirmDialog, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppButton } from '@/components/ui'
@@ -180,12 +191,13 @@ const PKG_STATUS = {
 export default {
   name: 'ArchiveManageView',
   components: {
-    ModulePageShell, EmptyState, StatusTag: AppStatusTag, AppStudentPicker,
-    AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppTextInput, AppButton
+    ModulePageShell, StatusTag: AppStatusTag, AppStudentPicker,
+    AppDrawer, AppGlobalState, AppConfirmDialog, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppTextInput, AppButton
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      listLoading: true, listError: '', detailLoading: false, detailError: '', detailRequest: 0, advanceVisible: false,
       FLOW, batches: [], current: null, packages: [], acting: false,
       batchPagination: { page: 1, pageSize: 20, total: 0 },
       batchModal: { visible: false, batchName: '', yearCode: '', error: '' },
@@ -214,9 +226,16 @@ export default {
   mounted() {
     this.loadBatches()
   },
+  watch: {
+    '$route.query.batchId'(value) {
+      if (!this.listLoading) this.applyRouteBatch(value)
+    }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     async loadBatches() {
+      this.listLoading = true
+      this.listError = ''
       const res = await studentAffairsApi.getArchiveBatches({
         page: this.batchPagination.page,
         pageSize: this.batchPagination.pageSize
@@ -224,7 +243,11 @@ export default {
       if (res.code === 0 && res.data) {
         this.batches = res.data.items || []
         this.batchPagination.total = res.data.total || 0
-      }
+        const routeBatchId = String(this.$route.query.batchId || '')
+        if (routeBatchId) this.applyRouteBatch(routeBatchId)
+        else if (!this.current && this.batches.length) this.selectBatch(this.batches[0])
+      } else { this.listError = res.message || '归档批次加载失败' }
+      this.listLoading = false
     },
     onBatchPageChange(next) {
       this.batchPagination.page = (next && next.page) || 1
@@ -240,20 +263,43 @@ export default {
     pkgStatusLabel(s) {
       return PKG_STATUS[s] || (s ? '状态待确认' : '—')
     },
-    selectBatch(b) {
+    applyRouteBatch(value) {
+      const batchId = String(value || '')
+      if (!/^[1-9]\d*$/.test(batchId) || String(this.current?.batchId || '') === batchId) return
+      const row = this.batches.find((item) => String(item.batchId) === batchId)
+      this.selectBatch(row || { batchId, batchName: `归档批次 #${batchId}` }, false)
+    },
+    syncBatchRoute(batchId) {
+      const value = String(batchId || '')
+      if (!value || String(this.$route.query.batchId || '') === value) return
+      this.$router.replace({ query: { ...this.$route.query, batchId: value } })
+    },
+    selectBatch(b, syncRoute = true) {
+      if (this.acting) return
+      this.packages = []
       this.current = b
+      if (syncRoute) this.syncBatchRoute(b.batchId)
       this.reload()
+    },
+    openPackageLedger() {
+      if (!this.current) return
+      this.$router.push({ path: '/admin/student-affairs/archive/packages', query: { batchId: String(this.current.batchId) } })
     },
     async reload() {
       if (!this.current) return
+      const requestId = ++this.detailRequest
+      this.detailLoading = true
+      this.detailError = ''
       const res = await studentAffairsApi.getArchiveBatch(this.current.batchId)
+      if (requestId !== this.detailRequest) return
+      this.detailLoading = false
       if (res.code === 0 && res.data) {
         this.current = { ...this.current, ...res.data }
         this.packages = res.data.packages || []
         const idx = this.batches.findIndex((x) => x.batchId === this.current.batchId)
         if (idx > -1) this.batches.splice(idx, 1, { ...this.batches[idx], status: this.current.status })
       } else {
-        toast.error(res.message || '加载批次失败')
+        this.detailError = res.message || '加载批次失败'
       }
     },
     openBatch() {
@@ -309,10 +355,12 @@ export default {
       }
     },
     async onAdvance() {
+      if (this.acting) return
       this.acting = true
       const res = await studentAffairsApi.advanceArchive(this.current.batchId, 'APPROVE', this.current.version)
       this.acting = false
       if (res.code === 0) {
+        this.advanceVisible = false
         toast.success(res.data.status === 'ARCHIVED' ? '已归档，水印包已登记' : '已推进')
         this.reload()
       } else {
@@ -324,69 +372,52 @@ export default {
 </script>
 
 <style scoped>
-.av-workspace { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.av-side { border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); min-height: 360px; padding: var(--space-3); }
-.av-side__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); color: var(--text-primary); }
-.av-side__head > div { display: grid; gap: 2px; }
-.av-side__head small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
-.av-blist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.av-bitem { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 10px 11px; border: 1px solid var(--border-base); border-radius: var(--radius-md); cursor: pointer; transition: border-color .12s, background .12s; }
-.av-bitem:hover { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); }
-.av-bitem.is-active { border-color: var(--primary-500); background: var(--primary-50); box-shadow: inset 3px 0 0 var(--primary-500); }
-.av-bitem__name { display: grid; gap: 2px; min-width: 0; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; }
-.av-bitem__name small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
-.av-side__note { margin: var(--space-3) 0 0; padding-top: var(--space-3); border-top: 1px solid var(--border-light); color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.6; }
-.av-detail { border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); min-height: 360px; padding: var(--space-4); min-width: 0; }
-.av-dhead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
-.av-dhead__label { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.av-dname { margin: 3px 0 0; font-size: var(--font-size-lg); color: var(--text-primary); }
-.av-year { font-size: var(--font-size-sm); color: var(--text-tertiary); margin-left: var(--space-2); font-weight: 400; }
-.av-refresh { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-base); width: 32px; height: 32px; cursor: pointer; color: var(--text-secondary); }
-.av-flow { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-4); }
-.av-step { display: flex; align-items: center; gap: var(--space-2); padding: 9px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
-.av-step__dot { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: var(--font-size-xs); background: var(--gray-200, #e2e8f0); color: var(--text-tertiary); }
-.av-step.is-done { border-color: var(--success-200, #bbf7d0); background: var(--success-50, #f0fdf4); }
-.av-step.is-done .av-step__dot { background: var(--success-500, #22c55e); color: #fff; }
-.av-step.is-current { border-color: var(--primary-300, #93c5fd); background: var(--primary-50); }
-.av-step.is-current .av-step__dot { background: var(--primary-600); color: #fff; }
-.av-step__label { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.av-step.is-current .av-step__label { color: var(--primary-700); font-weight: 600; }
-.av-next-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--primary-100); border-radius: var(--radius-lg); background: var(--primary-50); }
-.av-next-action span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.av-next-action strong { display: block; margin-top: 2px; color: var(--text-primary); }
-.av-next-action p { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.55; }
-.av-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
-.av-archived { font-size: var(--font-size-sm); color: var(--success-700, #15803d); font-weight: 600; }
-.av-pkgs { min-width: 0; }
-.av-pkgs__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
-.av-pkgs__head > div { display: grid; gap: 2px; }
-.av-pkgs__head small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
-.av-pkgs__count { padding: 3px 9px; border-radius: var(--radius-full); background: var(--bg-section); color: var(--text-secondary); font-size: var(--font-size-xs); }
-.av-pkglist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
-.av-pkg { display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: var(--radius-md); font-size: var(--font-size-sm); color: var(--text-primary); }
-.av-pkg__student { font-weight: 600; }
-.av-pkg__status { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.av-pkg__status.is-submitted, .av-pkg__status.is-archived { color: var(--success-700, #15803d); }
-.av-preview { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--success-200, #bbf7d0); border-radius: var(--radius-lg); background: var(--success-50, #f0fdf4); }
-.av-preview__head { display: flex; justify-content: space-between; color: var(--success-800, #166534); }
-.av-preview__metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-2); }
-.av-preview__metrics > div { padding: 9px 11px; border-radius: var(--radius-md); background: rgba(255,255,255,.75); }
-.av-preview__metrics span,.av-preview__metrics strong { display: block; }
-.av-preview__metrics span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.av-preview__metrics strong { margin-top: 2px; color: var(--text-primary); font-size: var(--font-size-lg); }
-.av-preview__students { max-height: 180px; overflow: auto; margin: 0; padding: 0; list-style: none; }
-.av-preview__students li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 7px 0; border-top: 1px solid rgba(22,101,52,.1); }
-.av-preview__students span,.av-preview__students small { display: block; }
-.av-preview__students small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.av-preview__students em { color: var(--success-700, #15803d); font-size: var(--font-size-xs); font-style: normal; }
-.av-preview__students em.duplicate { color: var(--warning-700, #b45309); }
-.av-preview > p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-xs); }
-.av-pkg__status.is-pending_gen, .av-pkg__status.is-generating { color: var(--warning-700, #b45309); }
-.av-pkg__status.is-pending_supplement, .av-pkg__status.is-returned { color: var(--danger-700, #b91c1c); }
-.av-pkg__task { margin-left: auto; font-size: var(--font-size-xs); color: var(--primary-600); }
-.av-form { display: flex; flex-direction: column; gap: var(--space-4); }
-.av-form__note { padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
-.av-side__pager { margin-top: var(--space-3); }
-@media (max-width: 1080px) { .av-workspace { grid-template-columns: 1fr; } .av-side { min-height: 0; } .av-flow { grid-template-columns: repeat(3, minmax(100px, 1fr)); } }
-@media (max-width: 720px) { .av-flow, .av-pkglist { grid-template-columns: 1fr; } .av-next-action { grid-template-columns: 1fr; } .av-actions { justify-content: flex-start; } }
+.archive-workspace { display: grid; grid-template-columns: 240px minmax(0,1fr); min-height: 320px; }
+.av-side { min-width: 0; padding-right: 16px; border-right: 1px solid var(--border-light); }
+.av-side__head, .av-dhead, .av-pkgs__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; }
+.av-dhead__actions { display: flex; align-items: center; gap: 8px; }
+.av-side__head strong, .av-pkgs__head strong { font-size: 14px; }
+.av-blist, .av-pkglist { list-style: none; margin: 0; padding: 0; }
+.av-bitem { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 10px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.av-bitem:hover { background: var(--bg-section); }
+.av-bitem.is-active { background: var(--primary-50); box-shadow: inset 3px 0 var(--primary-500); }
+.av-bitem:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+.av-bitem__name { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; }
+.av-bitem__name small { display: block; margin-top: 4px; font-weight: 400; color: var(--text-tertiary); }
+.av-detail { min-width: 0; padding-left: 20px; }
+.av-dname { margin: 0; font-size: 17px; }
+.av-year { margin-left: 10px; font-size: 13px; font-weight: 400; color: var(--text-tertiary); }
+.av-flow { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.av-step { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: 12px; }
+.av-step__dot { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-base); }
+.av-step.is-current { color: var(--primary-600); font-weight: 600; }
+.av-step.is-current .av-step__dot { background: var(--primary-50); border-color: currentColor; }
+.av-step.is-done { color: var(--success-700); }
+.av-next-action { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 14px 0 20px; }
+.av-next-action p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.av-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.av-archived { font-size: 13px; color: var(--success-700); }
+.av-pkgs__count { font-variant-numeric: tabular-nums; color: var(--text-tertiary); font-size: 13px; }
+.av-pkg { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
+.av-pkg__student { flex: 1; font-weight: 500; }
+.av-pkg__task { color: var(--text-tertiary); }
+.av-pkg__status.is-submitted, .av-pkg__status.is-archived { color: var(--success-700); }
+.av-pkg__status.is-pending_supplement, .av-pkg__status.is-returned { color: var(--danger-700); }
+.av-empty { padding: 56px 12px; text-align: center; font-size: 13px; color: var(--text-tertiary); }
+.av-form { display: grid; gap: 16px; }
+.av-form__note { font-size: 13px; color: var(--text-secondary); }
+.av-preview { border-top: 1px solid var(--border-light); padding-top: 16px; }
+.av-preview__head, .av-preview__metrics { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.av-preview__head { font-size: 14px; }
+.av-preview__metrics { justify-content: flex-start; }
+.av-preview__metrics > div { display: flex; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.av-preview__metrics strong { color: var(--text-primary); }
+.av-preview__students { max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.av-preview__students li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border-light); font-size: 13px; }
+.av-preview__students small { margin-left: 8px; color: var(--text-tertiary); }
+.av-preview__students em { color: var(--success-700); font-style: normal; }
+.av-preview__students em.duplicate { color: var(--warning-700); }
+.av-preview > p { color: var(--text-tertiary); font-size: 12px; }
+.av-side__pager { margin-top: 12px; }
+@media (max-width: 720px) { .archive-workspace { grid-template-columns: minmax(0,1fr); } .av-side { border-right: 0; border-bottom: 1px solid var(--border-light); padding: 0 0 16px; } .av-detail { padding: 16px 0 0; } .av-empty { padding: 28px 8px; } }
 </style>

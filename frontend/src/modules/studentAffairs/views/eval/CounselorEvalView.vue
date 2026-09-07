@@ -10,45 +10,16 @@
                     @back="$router.push('/admin/student-affairs/dashboard')">
 
 
-      <AppSectionCard title="一、考评指标">
-        <p class="ce-section-hint">指标决定评分结构。新增前请确认名称清楚、权重口径一致，避免同一含义重复建项。</p>
-        <div class="ce-indbar">
-          <div class="ce-inds">
-            <span v-for="i in indicators" :key="i.indicatorId" class="ce-indtag">
-              {{ i.name }}<em>{{ i.weight != null ? (i.weight + '%') : '' }}</em>
-            </span>
-            <span v-if="!indicators.length" class="ce-muted">尚未配置指标，请先在右侧新增指标后再录入评分。</span>
-          </div>
-          <div class="ce-indadd">
-            <AppTextInput v-model="indForm.name" placeholder="指标名称" />
-            <AppNumberInput v-model="indForm.weight" class="ce-input--sm" :min="0" placeholder="权重%" />
-            <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting==='ind'" @click="addIndicator">加指标</AppPermissionButton>
-          </div>
+      <form class="ce-toolbar" @submit.prevent="search">
+        <label class="ce-filter">考评周期<AppTextInput v-model="filters.periodCode" placeholder="全部周期" /></label>
+        <label class="ce-filter">状态<AppSelect v-model="filters.status" :options="statusOptions" placeholder="全部状态" @change="search" /></label>
+        <AppButton variant="secondary" type="submit">查询</AppButton>
+        <div class="ce-toolbar__actions">
+          <AppButton variant="ghost" @click="indicatorVisible = true">考评指标</AppButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" variant="primary" @click="openScore()">录入评分</AppPermissionButton>
         </div>
-      </AppSectionCard>
-
-      <AppSectionCard title="二、录入 / 修改评分（发布前）">
-        <p class="ce-section-hint">先填写考评周期和辅导员标识，再逐项录入分值。页面会即时汇总原始总分，最终加权结果以保存后的正式记录为准。</p>
-        <div class="ce-scoreform ce-form-block">
-          <label class="ce-field"><span>考评周期 *</span><AppTextInput v-model="scoreForm.periodCode" placeholder="如 2025-2026-1" /></label>
-          <label class="ce-field"><span>辅导员标识 *</span><AppTextInput v-model="scoreForm.counselorKey" placeholder="工号/登录名" /></label>
-          <label class="ce-field"><span>姓名</span><AppTextInput v-model="scoreForm.counselorName" placeholder="用于列表快速识别" /></label>
-        </div>
-        <div class="ce-score-title">指标评分</div>
-        <div class="ce-scores">
-          <label v-for="i in indicators" :key="i.indicatorId" class="ce-field ce-score-item">
-            <span>{{ i.name }}（满分{{ i.maxScore || 100 }}）</span>
-            <AppNumberInput v-model="scoreForm.scores[i.indicatorId]" :min="0" />
-          </label>
-        </div>
-        <div class="ce-actions">
-          <span class="ce-total">当前合计 <b>{{ liveTotal }}</b></span>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" :loading="acting==='save'" :disabled="!indicators.length" @click="saveScore">保存评分</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
-      <AppSectionCard title="三、考评记录与发布">
-        <p class="ce-section-hint">记录按总分排名展示。发布前重点核对周期、辅导员、原始总分和加权总分；有正式申诉时再进入复核。</p>
+      </form>
+      <p v-if="!indicators.length" class="ce-notice">尚未配置考评指标，请先配置指标再录入评分。</p>
         <DataTable v-if="evalRows.length" :columns="evalColumns" :rows="evalRows" row-key="evalId">
           <template #cell-idx="{ row }"><span class="ce-rank">{{ row.rowIndex }}</span></template>
           <template #cell-period="{ row }">{{ row.periodCode }}</template>
@@ -65,14 +36,57 @@
           </template>
           <template #cell-actions="{ row }">
             <div class="ce-ops">
-              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publish(row)">发布</AppPermissionButton>
+              <AppPermissionButton v-if="row.status === 'DRAFT'" :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" size="sm" variant="ghost" @click="openScore(row)">修改评分</AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publishDlg = { visible: true, row }">发布</AppPermissionButton>
               <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppPermissionButton>
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无考评记录。请先配置指标并录入本周期辅导员评分。</p>
-      </AppSectionCard>
+        <p v-else class="sa-empty">暂无符合条件的考评记录</p>
+
+      <AppPagination v-if="pagination.total" :page="pagination.page" :page-size="pagination.pageSize" :total="pagination.total" @change="changePage" />
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="indicatorVisible" title="考评指标" mode="modal" size="medium">
+      <ul v-if="indicators.length" class="ce-indicator-list">
+        <li v-for="i in indicators" :key="i.indicatorId"><strong>{{ i.name }}</strong><span>满分 {{ i.maxScore || 100 }}</span><span>权重 {{ i.weight == null ? '未设置' : i.weight + '%' }}</span></li>
+      </ul>
+      <p v-else class="ce-muted">暂无指标</p>
+      <form class="ce-indicator-form" @submit.prevent="addIndicator">
+        <AppFormItem label="指标名称" required><AppTextInput v-model="indForm.name" :disabled="acting === 'ind'" placeholder="如：学生日常管理" /></AppFormItem>
+        <AppFormItem label="权重（%）"><AppNumberInput v-model="indForm.weight" :min="0" :disabled="acting === 'ind'" placeholder="选填" /></AppFormItem>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" variant="primary" :loading="acting === 'ind'" @click="addIndicator">新增指标</AppPermissionButton>
+      </form>
+      <AppInlineAlert v-if="indError" type="danger" :description="indError" />
+      <template #footer><AppButton variant="ghost" @click="indicatorVisible = false">关闭</AppButton></template>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="scoreVisible" :title="editing ? '修改评分' : '录入评分'" mode="modal" size="large">
+        <div class="ce-scoreform">
+          <label class="ce-field"><span>考评周期 *</span><AppTextInput v-model="scoreForm.periodCode" :disabled="editing || acting === 'save'" placeholder="如 2025-2026-1" /></label>
+          <label class="ce-field"><span>辅导员标识 *</span><AppTextInput v-model="scoreForm.counselorKey" :disabled="editing || acting === 'save'" placeholder="工号/登录名" /></label>
+          <label class="ce-field"><span>姓名</span><AppTextInput v-model="scoreForm.counselorName" :disabled="acting === 'save'" placeholder="用于列表快速识别" /></label>
+        </div>
+        <div class="ce-score-title">指标评分</div>
+        <div class="ce-scores">
+          <label v-for="i in indicators" :key="i.indicatorId" class="ce-field ce-score-item">
+            <span>{{ i.name }}（满分{{ i.maxScore || 100 }}）</span>
+            <AppNumberInput v-model="scoreForm.scores[i.indicatorId]" :min="0" :max="i.maxScore || 100" :disabled="acting === 'save'" />
+          </label>
+        </div>
+
+      <AppInlineAlert v-if="scoreError" type="danger" :description="scoreError" />
+      <template #footer>
+        <span class="ce-total">原始总分 <b>{{ liveTotal }}</b></span>
+        <AppButton variant="ghost" :disabled="acting === 'save'" @click="scoreVisible = false">关闭（保留本页输入）</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" variant="primary" :loading="acting === 'save'" :disabled="!indicators.length" @click="saveScore">保存评分</AppPermissionButton>
+      </template>
+    </AppDrawer>
+
+    <AppConfirmDialog v-model:visible="publishDlg.visible" title="发布考评" confirm-text="确认发布" :submitting="Boolean(acting)" @confirm="publish(publishDlg.row)">
+      <p v-if="publishDlg.row">{{ publishDlg.row.periodCode }} · {{ publishDlg.row.counselorName || publishDlg.row.counselorKey }}</p>
+      <p>发布后不能直接修改评分，请确认分值无误。</p>
+    </AppConfirmDialog>
 
     <AppConfirmDialog
       v-model:visible="appealDlg.visible" title="复核考评申诉" type="primary"
@@ -87,8 +101,10 @@
 </template>
 
 <script>
-import { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag,
+import { AppGlobalState, AppPageShell, AppPermissionButton, AppPagination, AppInlineAlert, AppStatusTag,
   AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
+import { AppButton } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
@@ -107,17 +123,22 @@ const EVAL_COLUMNS = [
   { key: 'weighted', title: '加权总分' },
   { key: 'status', title: '状态' },
   { key: 'appeal', title: '申诉' },
-  { key: 'actions', title: '操作', align: 'right', width: '160px' }
+  { key: 'actions', title: '操作', align: 'right', width: '220px' }
 ]
 
 export default {
   name: 'CounselorEvalView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag,
+  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppPagination, AppInlineAlert, AppDrawer, AppButton, StatusTag: AppStatusTag,
     AppConfirmDialog, AppFormItem, AppNumberInput, AppSelect, AppTextInput, DataTable },
   data() {
     return {
       APPEAL_RESULTS,
+      indicatorVisible: false, scoreVisible: false, editing: false, scoreError: '', indError: '', loadRequest: 0,
+      scoreDrafts: {}, scoreKey: 'new',
+      publishDlg: { visible: false, row: null },
+      filters: { periodCode: '', status: '' }, pagination: { page: 1, pageSize: 20, total: 0 },
+      statusOptions: [{ value: '', label: '全部状态' }, { value: 'DRAFT', label: '待发布' }, { value: 'PUBLISHED', label: '已发布' }],
       evalColumns: EVAL_COLUMNS,
       loading: true, acting: '', errorMessage: '', indicators: [], evals: [],
       indForm: { name: '', weight: null },
@@ -131,49 +152,78 @@ export default {
       return Math.round(Object.values(this.scoreForm.scores).reduce((a, v) => a + (Number(v) || 0), 0) * 100) / 100
     },
     evalRows() {
-      return this.evals.map((e, i) => ({ ...e, rowIndex: i + 1 }))
+      return this.evals.map((e, i) => ({ ...e, rowIndex: (this.pagination.page - 1) * this.pagination.pageSize + i + 1 }))
     }
   },
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    search() { this.pagination.page = 1; this.load() },
+    changePage(next) { this.pagination.page = next.page; this.pagination.pageSize = next.pageSize; this.load() },
+    openScore(row) {
+      if (!this.indicators.length) { this.indicatorVisible = true; return }
+      this.scoreDrafts[this.scoreKey] = { ...this.scoreForm, scores: { ...this.scoreForm.scores } }
+      this.scoreKey = row ? String(row.evalId) : 'new'
+      const draft = this.scoreDrafts[this.scoreKey] || (row
+        ? { periodCode: row.periodCode, counselorKey: row.counselorKey, counselorName: row.counselorName, scores: row.scores, remark: row.remark }
+        : { periodCode: this.filters.periodCode, counselorKey: '', counselorName: '', scores: {} })
+      this.scoreForm = { ...draft, scores: { ...draft.scores } }
+      this.editing = Boolean(row)
+      this.scoreError = ''
+      this.scoreVisible = true
+    },
     async load() {
+      const requestId = ++this.loadRequest
       this.loading = true; this.errorMessage = ''
       const [ind, ev] = await Promise.all([
         studentAffairsApi.getEvalIndicators(),
-        // 待服务端全量统计：考评工作台仅加载 API 单页上限。
-        studentAffairsApi.getCounselorEvals({ pageSize: 200 })
+        studentAffairsApi.getCounselorEvals({ ...this.filters, periodCode: this.filters.periodCode.trim(), page: this.pagination.page, pageSize: this.pagination.pageSize })
       ])
+      if (requestId !== this.loadRequest) return
       if (ind.code === 0 && ind.data) this.indicators = ind.data.items || []
       else this.errorMessage = ind.message || '加载失败'
-      this.evals = (ev.code === 0 && ev.data) ? (ev.data.items || []) : []
+      if (ev.code === 0 && ev.data) { this.evals = ev.data.items || []; this.pagination.total = ev.data.total || 0 }
+      else { this.evals = []; this.errorMessage = ev.message || '考评记录加载失败' }
       this.loading = false
     },
     async addIndicator() {
       const name = (this.indForm.name || '').trim()
-      if (!name) { toast.error('请输入指标名称'); return }
+      if (!name) { this.indError = '请输入指标名称'; return }
+      if (this.acting) return
+      this.indError = ''
       this.acting = 'ind'
       const res = await studentAffairsApi.createEvalIndicator({ name, weight: this.indForm.weight != null ? Number(this.indForm.weight) : undefined })
       this.acting = ''
-      if (res.code === 0) { toast.success('已加指标'); this.indForm = { name: '', weight: null }; this.load() } else toast.error(res.message || '创建失败')
+      if (res.code === 0) { toast.success('已加指标'); this.indForm = { name: '', weight: null }; this.load() } else this.indError = res.message || '创建失败'
     },
     async saveScore() {
       const f = this.scoreForm
       const periodCode = (f.periodCode || '').trim()
       const counselorKey = (f.counselorKey || '').trim()
-      if (!periodCode || !counselorKey) { toast.error('周期与辅导员标识必填'); return }
+      if (!periodCode || !counselorKey) { this.scoreError = '请填写考评周期与辅导员工号 / 登录名'; return }
+      if (this.acting) return
+      this.scoreError = ''
       const scores = {}
       Object.keys(f.scores).forEach((k) => { if (f.scores[k] != null && f.scores[k] !== '') scores[k] = Number(f.scores[k]) })
       this.acting = 'save'
-      const res = await studentAffairsApi.upsertCounselorEval({ periodCode, counselorKey, counselorName: (f.counselorName || '').trim() || undefined, scores })
+      const res = await studentAffairsApi.upsertCounselorEval({ periodCode, counselorKey, counselorName: (f.counselorName || '').trim() || undefined, scores, remark: f.remark })
       this.acting = ''
-      if (res.code === 0) { toast.success('评分已保存'); this.load() } else toast.error(res.message || '保存失败')
+      if (res.code === 0) {
+        toast.success('评分已保存，可在记录中核对并发布')
+        this.scoreVisible = false
+        delete this.scoreDrafts[this.scoreKey]
+        this.scoreKey = 'new'
+        this.editing = false
+        this.scoreForm = this.scoreDrafts.new || { periodCode, counselorKey: '', counselorName: '', scores: {} }
+        this.load()
+      } else this.scoreError = res.message || '保存失败'
     },
     async publish(e) {
+      if (!e || this.acting) return
       this.acting = e.evalId
       const res = await studentAffairsApi.publishCounselorEval(e.evalId, e.version)
       this.acting = ''
-      if (res.code === 0) { toast.success('已发布'); this.load() } else toast.error(res.message || '发布失败')
+      if (res.code === 0) { toast.success('已发布'); this.publishDlg.visible = false; this.load() } else toast.error(res.message || '发布失败')
     },
     /** 复核申诉：结论走下拉（原让用户手打 UPHELD/ADJUSTED），意见走弹窗必填区（≥5字由组件校验） */
     reviewAppeal(e) {
@@ -196,27 +246,27 @@ export default {
 </script>
 
 <style scoped>
-.ce-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
-.ce-indbar { display: flex; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; align-items: flex-start; }
-.ce-inds { display: flex; gap: var(--space-2); flex-wrap: wrap; flex: 1 1 420px; min-width: 0; }
-.ce-indtag { border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-full); padding: 6px 12px; background: var(--primary-50, #eff6ff); color: var(--text-primary); font-size: var(--font-size-sm); }
-.ce-indtag em { color: var(--text-tertiary); font-style: normal; margin-left: 4px; }
-.ce-indadd { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; flex: 1 1 360px; justify-content: flex-end; }
-.ce-indadd > * { flex: 1 1 140px; min-width: 120px; }
-.ce-indadd > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
-.ce-input--sm { flex: 0 0 110px; min-width: 90px; width: 90px; }
-.ce-form-block { padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
-.ce-scoreform, .ce-scores { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-.ce-score-title { margin: var(--space-4) 0 var(--space-2); color: var(--text-primary); font-weight: 700; }
-.ce-field { display: flex; flex-direction: column; gap: 5px; font-size: var(--font-size-sm); min-width: 0; }
-.ce-score-item { padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-card); }
-.ce-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-4); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
-.ce-total { color: var(--text-secondary); }
-.ce-total b { margin-left: 4px; font-size: var(--font-size-xl); color: var(--color-primary); font-variant-numeric: tabular-nums; }
-.ce-rank { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 50%; background: var(--bg-section); color: var(--text-secondary); font-weight: 700; }
-.ce-muted { color: var(--text-tertiary); }
-.ce-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-@media (max-width: 960px) { .ce-scoreform, .ce-scores { grid-template-columns: 1fr; } .ce-indadd { justify-content: flex-start; } }
-@media (max-width: 640px) { .ce-actions { align-items: stretch; flex-direction: column; } .ce-actions > * { width: 100%; } }
 @import '@/styles/module-page.css';
+.ce-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
+.ce-filter { display: grid; gap: 6px; width: 170px; font-size: 13px; color: var(--text-secondary); }
+.ce-toolbar__actions { margin-left: auto; display: flex; gap: 8px; }
+.ce-notice { padding: 10px 0; color: var(--text-secondary); font-size: 13px; }
+.ce-scoreform { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.ce-field { display: grid; gap: 6px; font-size: 13px; min-width: 0; }
+.ce-score-title { margin: 24px 0 8px; font-size: 14px; font-weight: 600; }
+.ce-scores { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+.ce-score-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.ce-score-item > :last-child { width: 120px; flex-shrink: 0; }
+.ce-indicator-list { margin: 0 0 20px; padding: 0; list-style: none; }
+.ce-indicator-list li { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
+.ce-indicator-list strong { flex: 1; }
+.ce-indicator-list span, .ce-muted { color: var(--text-tertiary); }
+.ce-indicator-form { display: grid; grid-template-columns: minmax(0,1fr) 140px; gap: 12px; }
+.ce-indicator-form > :last-child { justify-self: start; }
+.ce-total { margin-right: auto; align-self: center; color: var(--text-secondary); font-size: 13px; }
+.ce-total b { font-size: 22px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ce-rank { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.ce-ops { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.sa-empty { padding: 48px 16px; text-align: center; color: var(--text-tertiary); }
+@media (max-width: 720px) { .ce-scoreform, .ce-scores { grid-template-columns: 1fr; } .ce-toolbar__actions { margin-left: 0; } }
 </style>

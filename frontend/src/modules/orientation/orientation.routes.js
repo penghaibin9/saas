@@ -10,6 +10,7 @@ export const orientationRoutes = {
   component: () => import('@/views/admin/orientation/AdminOrientationLayout.vue'),
   meta: { moduleCode: 'ORIENTATION' },
   children: [
+    { path: 'checkin', name: 'orientation-checkin', component: () => import('@/views/admin/orientation/OrientationCheckinWorkspace.vue'), meta: { moduleCode: 'ORIENTATION', title: '现场报到', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' } },
     {
       path: '',
       name: 'orientation-dashboard',
@@ -50,7 +51,7 @@ export const orientationRoutes = {
       path: 'qualification',
       name: 'orientation-qualification',
       component: () => import('@/views/admin/orientation/OrientationQualificationView.vue'),
-      meta: { moduleCode: 'ORIENTATION', title: '报到资格', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
+      meta: { moduleCode: 'ORIENTATION', title: '资格与入学确认', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
     },
     {
       path: 'data',
@@ -68,7 +69,7 @@ export const orientationRoutes = {
       path: 'dorm-preassign',
       name: 'orientation-dorm-preassign',
       component: () => import('@/views/admin/orientation/OrientationDormPreassignView.vue'),
-      meta: { moduleCode: 'ORIENTATION', title: '宿舍预分配', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
+      meta: { moduleCode: 'ORIENTATION', title: '新生宿舍安排', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
     },
     {
       path: 'checkin-points',
@@ -122,7 +123,7 @@ export const orientationRoutes = {
       path: 'dorm',
       name: 'orientation-dorm',
       component: () => import('@/views/admin/orientation/DormCheckinView.vue'),
-      meta: { moduleCode: 'ORIENTATION', title: '宿舍入住确认', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
+      meta: { moduleCode: 'ORIENTATION', title: '新生住宿核对', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
     },
     {
       path: 'exceptions',

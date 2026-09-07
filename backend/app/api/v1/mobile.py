@@ -988,6 +988,7 @@ def teacher_affairs_work_study_posts(
 
 @router.get("/teacher/affairs/work-study/records", summary="教师·勤工申请与在岗记录")
 def teacher_affairs_work_study_records(
+    recordId: int | None = Query(None, ge=1),
     postId: int | None = None, status: str | None = None,
     keyword: str = Query("", max_length=100), page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
@@ -995,7 +996,7 @@ def teacher_affairs_work_study_records(
 ):
     from app.services import affairs_funding_ext_service as work_study
     items, total, status_counts = work_study.list_ws_records(
-        user, postId, status, page, pageSize, keyword)
+        user, postId, status, page, pageSize, keyword, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "page": page, "pageSize": pageSize})
 
@@ -1037,12 +1038,12 @@ def teacher_affairs_work_study_monthly_add(
 def teacher_affairs_loans(
     status: str | None = None, keyword: str = Query("", max_length=100),
     yearCode: str = Query("", max_length=20), loanType: str = Query("", max_length=20),
-    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    recordId: int | None = Query(None, ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
     user=Depends(require_permission("studentAffairs.funding.loan.manage")),
 ):
     from app.services import affairs_funding_ext_service as loans
     items, total, status_counts = loans.list_loans(
-        user, status, page, pageSize, keyword, yearCode, loanType)
+        user, status, page, pageSize, keyword, yearCode, loanType, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": status_counts,
                     "policy": loans.loan_policy(), "page": page, "pageSize": pageSize})
 
@@ -1064,11 +1065,12 @@ def teacher_affairs_fee_reductions(
     status: str | None = None, itemType: str | None = None,
     keyword: str = Query("", max_length=100), yearCode: str = Query("", max_length=20),
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    recordId: int | None = Query(None, ge=1),
     user=Depends(require_permission("studentAffairs.funding.reduction.manage")),
 ):
     from app.services import affairs_funding_ext_service as reductions
     items, total, counts = reductions.list_reductions(
-        user, itemType, status, page, pageSize, keyword, yearCode)
+        user, itemType, status, page, pageSize, keyword, yearCode, record_id=recordId)
     return success({"items": items, "total": total, "statusCounts": counts,
                     "page": page, "pageSize": pageSize})
 
@@ -1098,9 +1100,13 @@ def teacher_affairs_discipline_detail(case_id: str, user=Depends(get_current_use
 @router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
 def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
                                       user=Depends(get_current_user)):
+    from app.core.exceptions import AppException
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
     return success(tea.affairs_discipline_review(
         user, case_id, str((body or {}).get("action") or "APPROVE"),
-        reason=str((body or {}).get("reason") or "")), message="已处理")
+        reason=str((body or {}).get("reason") or ""),
+        expected_version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
@@ -1117,14 +1123,16 @@ def teacher_affairs_risk_detail(risk_id: str, user=Depends(get_current_user)):
 def teacher_affairs_risk_process(risk_id: str, body: dict = Body(...),
                                  user=Depends(get_current_user)):
     return success(tea.affairs_risk_process(
-        user, risk_id, str((body or {}).get("content") or "")), message="已记录处置")
+        user, risk_id, str((body or {}).get("content") or ""),
+        expected_version=(body or {}).get("version")), message="已记录处置")
 
 
 @router.post("/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
 def teacher_affairs_risk_close(risk_id: str, body: dict = Body(...),
                                user=Depends(get_current_user)):
     return success(tea.affairs_risk_close(
-        user, risk_id, str((body or {}).get("conclusion") or "")), message="已关闭")
+        user, risk_id, str((body or {}).get("conclusion") or ""),
+        expected_version=(body or {}).get("version")), message="已关闭")
 
 
 @router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")

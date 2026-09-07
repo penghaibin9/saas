@@ -14,11 +14,10 @@
     />
     <div v-else-if="ctx" class="student-affairs-ui-scope" :class="{ 'sa-compact-workspace': isCoreWorkspace, 'sa-aid-workspace': isAidWorkspace }">
       <div v-if="showSla || showTempExpiry" class="sa-context-stack">
-        <details v-if="showSla && isLeaveWorkspace" class="sa-leave-sla">
-          <summary>查看请假办理时限</summary>
-          <StudentAffairsSlaStrip kind="leave" />
+        <details v-if="showSla" class="sa-leave-sla">
+          <summary>{{ isLeaveWorkspace ? '查看请假办理时限' : '查看办理时限' }}</summary>
+          <StudentAffairsSlaStrip :kind="isLeaveWorkspace ? 'leave' : 'both'" />
         </details>
-        <StudentAffairsSlaStrip v-else-if="showSla" kind="both" />
         <CounselorTempExpiryPanel
           v-if="showTempExpiry"
           :ctx="ctx"
@@ -55,7 +54,7 @@ export default {
   name: 'AdminStudentAffairsLayout',
   components: { BasePortalLayout, LoadingState, ErrorState, StudentAffairsSlaStrip, CounselorTempExpiryPanel },
   provide() {
-    return { appPickerAdapters: studentAffairsPickerAdapters }
+    return { appPickerAdapters: studentAffairsPickerAdapters, conciseBusinessHeader: true, affairsWorkspace: true }
   },
   data() {
     return { ctx: null, loadError: '' }
@@ -64,7 +63,8 @@ export default {
     isLeaveWorkspace() { return this.$route.path.startsWith('/admin/student-affairs/leave') },
     isAidWorkspace() { return this.$route.path === '/admin/student-affairs/aid' || this.$route.path.startsWith('/admin/student-affairs/aid/') },
     isFundingWorkspace() { return this.$route.path === '/admin/student-affairs/funding' || this.$route.path.startsWith('/admin/student-affairs/funding/') },
-    isCoreWorkspace() { return this.isLeaveWorkspace || this.isAidWorkspace || this.isFundingWorkspace || this.$route.path === '/admin/student-affairs/material-operations' },
+    // 本布局下所有业务、详情和编辑页统一使用新壳，不再逐页维护白名单。
+    isCoreWorkspace() { return true },
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
@@ -112,7 +112,7 @@ export default {
 .sa-leave-sla { font-size: 12px; color: var(--text-secondary); }
 .sa-leave-sla summary { cursor: pointer; padding: 4px 0; width: fit-content; }
 .sa-leave-sla[open] summary { margin-bottom: 8px; }
-.sa-compact-workspace :deep(.mps__head) { min-height: auto; padding: 12px 16px; margin: 0; box-shadow: none; border-radius: 10px; align-items: center; }
+.sa-compact-workspace :deep(.mps__head) { min-height: auto; padding: 0 0 10px; margin: 0; border-bottom: 1px solid var(--line); background: transparent; box-shadow: none; border-radius: 0; align-items: center; }
 .sa-compact-workspace :deep(.mps__title) { font-size: 20px; }
 .sa-compact-workspace :deep(.mps__subtitle) { font-size: 12px; margin-top: 4px; }
 .sa-compact-workspace :deep(.mps) { gap: 12px; }

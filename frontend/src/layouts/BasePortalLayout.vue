@@ -1,10 +1,10 @@
 <template>
-  <div class="base-portal-layout thw" :class="[themeClass, { 'bpl-workspace': workspace }]" :style="workspace ? workspaceColors : undefined">
+  <div class="base-portal-layout thw" :class="[themeClass, { 'bpl-workspace': useWorkspace }]" :style="useWorkspace ? workspaceColors : undefined">
     <!-- 顶栏 56px 玻璃：品牌 → ⌘K 搜索 → 主题 → 环境标 → 数据范围镜片 → 通知 → 角色胶囊 -->
     <header class="bpl-topbar">
       <div class="bpl-brand">
         <slot name="logo">
-          <span class="bpl-logo">{{ logoText }}</span>
+          <span class="bpl-logo"><OfficeBuilding v-if="useWorkspace" aria-hidden="true" /><template v-else>{{ logoText }}</template></span>
         </slot>
         <span class="bpl-brand__info">
           <span class="bpl-brand__nm">{{ brandLine1 }}</span>
@@ -13,7 +13,7 @@
       </div>
       <div class="bpl-search">
         <!-- ① 学生搜索框（仅管理端有 ctx 时显示；后端按数据范围返回） -->
-        <div v-if="ctx && !isPlatformMode" class="bpl-cmdk bpl-cmdk--stu" :class="{ 'is-open': stuOpen }">
+        <div v-if="ctx && !isPlatformMode && !useWorkspace" class="bpl-cmdk bpl-cmdk--stu" :class="{ 'is-open': stuOpen }">
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3" />
@@ -59,7 +59,8 @@
             v-model="fnQuery"
             class="bpl-cmdk__input"
             type="text"
-            placeholder="搜功能、帮助文档、流程图"
+            :placeholder="useWorkspace ? '搜索学生、功能或帮助' : '搜功能、帮助文档、流程图'"
+            :aria-label="useWorkspace ? '搜索学生、功能或帮助' : '搜索功能与帮助'"
             @focus="fnOpen = true"
             @keydown.enter.prevent="pickFirstFn"
             @keydown.down.prevent="moveFn(1)"
@@ -67,7 +68,7 @@
             @keydown.esc.prevent="fnOpen = false"
             @blur="closeFnSoon"
           />
-          <kbd>⌘K</kbd>
+          <kbd>{{ shortcutLabel }}</kbd>
           <div v-if="fnOpen" class="bpl-cmdk__panel" @mousedown.prevent>
             <template v-if="fnResults.length">
               <template v-for="grp in fnGrouped" :key="grp.kind">
@@ -87,12 +88,15 @@
                 </a>
               </template>
             </template>
-            <div v-else class="bpl-cmdk__empty">未找到「{{ fnQuery }}」相关功能或帮助</div>
+            <div v-else class="bpl-cmdk__empty">{{ fnQuery ? `未找到「${fnQuery}」相关结果` : '输入学生姓名、学号或功能名称' }}</div>
+            <div v-if="useWorkspace && stuSearching" class="bpl-cmdk__loading">正在搜索学生…</div>
+            <div v-else-if="useWorkspace && stuError" class="bpl-cmdk__empty" role="status">{{ stuError }}</div>
           </div>
         </div>
       </div>
       <div class="bpl-top-r">
-        <div v-if="!workspace" class="bpl-thdots" title="主题皮肤 themePreference">
+        <WorkspaceDeskUtilities v-if="useWorkspace" />
+        <div v-if="!useWorkspace" class="bpl-thdots" title="主题皮肤 themePreference">
           <span
             v-for="t in themeOptions"
             :key="t.key"
@@ -103,7 +107,7 @@
           />
         </div>
         <span
-          v-if="envLabel && !workspace"
+          v-if="envLabel && !useWorkspace"
           class="bpl-env"
           :class="{ 'bpl-env--planner': devPlannerView }"
           :title="envPlannerHint"
@@ -112,7 +116,7 @@
           {{ envLabel }}
           <span v-if="devPlannerView" class="bpl-env__dot" aria-hidden="true" />
         </span>
-        <span v-if="scopeName" class="bpl-scope">
+        <span v-if="scopeName && !useWorkspace" class="bpl-scope">
           <svg class="bpl-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z" />
           </svg>
@@ -165,7 +169,9 @@
           <span v-if="messageUnreadCount" class="bpl-bell__b">{{ messageUnreadCount }}</span>
         </button>
         <slot name="user">
-          <AppUserChip embedded />
+          <AppUserChip embedded :compact="useWorkspace" :data-scope-name="scopeName"
+            :school-name="ctx?.tenantBrandConfig?.schoolName || ''" :appearance-label="workspaceThemeLabel"
+            @appearance="$refs.workspaceFrame?.openAppearance()" />
         </slot>
       </div>
     </header>
@@ -173,16 +179,24 @@
     <!-- 窄屏（<900px，含平板竖屏）左侧一/二级导航整体隐藏；给一句友好引导替代「无导航空白」。
          仅在有管理台一级导航轨（railItems）时显示，避免误伤走移动端的学生/外部身份门户。CSS 仅 <900px 渲染。 -->
     <TeacherWorkspaceFrame
-      v-if="workspace && ctx"
+      ref="workspaceFrame"
+      v-if="useWorkspace && ctx"
       :key="ctx.ctxKey"
       :modules="workspaceModules"
       :centers="railItems"
       :active-center="railActiveKey"
       :active-module="planActiveModKey"
-      :identity-key="ctx.ctxKey || ''"
+      :identity-key="workspaceIdentityKey"
+      :legacy-identity-key="ctx.ctxKey || ''"
+      :scope-name="scopeName"
       @tokens="workspaceColors = $event"
-    ><slot /></TeacherWorkspaceFrame>
-    <div v-if="!workspace && railItems.length" class="bpl-mobilehint" role="note">
+      @theme-label="workspaceThemeLabel = $event"
+    >
+      <WorkbenchPageTabs :permissions="ctx?.permissionPatterns || []" />
+      <div v-if="$slots.menu" class="bpl-workspace-custom"><aside><slot name="menu" /></aside><div><slot /></div></div>
+      <slot v-else />
+    </TeacherWorkspaceFrame>
+    <div v-if="!useWorkspace && railItems.length" class="bpl-mobilehint" role="note">
       <svg class="bpl-mobilehint__ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
         <path d="M8 21h8M12 17v4" />
@@ -190,7 +204,7 @@
       <span class="bpl-mobilehint__tx"><strong>建议在电脑上使用管理控制台。</strong>当前屏幕较窄，左侧导航已隐藏；请使用电脑或将浏览器窗口调宽，以获得完整菜单与导航。</span>
     </div>
 
-    <div v-if="!workspace || !ctx" class="bpl-body">
+    <div v-if="!useWorkspace || !ctx" class="bpl-body">
       <!-- 左一级 82px 深蓝渐变图标轨（菜单数据消费 config/adminMenu.js，本组件不写死业务菜单） -->
       <aside v-if="railItems.length" class="bpl-rail">
         <div
@@ -289,11 +303,17 @@
 <script>
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
+import { usesStudentAffairsWorkspace, workspaceIdentity, workspaceRouteOwner } from '@/components/workspace/workspaceRouting'
+import { currentUserFromToken } from '@/services/http/client'
 import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
+import WorkbenchPageTabs from '@/components/workspace/WorkbenchPageTabs.vue'
+import { WORKBENCH_PAGE_TABS } from '@/modules/workbench/config/workbenchNavigation'
+import WorkspaceDeskUtilities from '@/components/workspace/WorkspaceDeskUtilities.vue'
+import { OfficeBuilding } from '@element-plus/icons-vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
 import { searchHelp, findHelpForRoute } from '@/config/helpContent'
 import { guideCount, replayGuide } from '@/utils/guideBus'
-import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches, navRefExactMatch } from '@/config/navPlan'
+import { getVisibleNavPlan, searchNavPlan, navRefMatches, navRefExactMatch, matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -359,7 +379,7 @@ function readThemePreference() {
 
 export default {
   name: 'BasePortalLayout',
-  components: { AppIcon, AppUserChip, TeacherWorkspaceFrame },
+  components: { AppIcon, AppUserChip, TeacherWorkspaceFrame, WorkspaceDeskUtilities, OfficeBuilding, WorkbenchPageTabs },
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
@@ -376,6 +396,7 @@ export default {
   data() {
     return {
       workspaceColors: {},
+      workspaceThemeLabel: '',
       theme: readThemePreference(),
       themeOptions: THEME_OPTIONS,
       /* ① 学生搜索框（后端按数据范围返回） */
@@ -383,6 +404,8 @@ export default {
       stuOpen: false,
       stuResults: [],
       stuSearching: false,
+      stuError: '',
+      shortcutLabel: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ K' : 'Ctrl K',
       stuTimer: null,
       stuSeq: 0,
       stuBlurTimer: null,
@@ -405,8 +428,16 @@ export default {
     }
   },
   computed: {
+    useWorkspace() {
+      return !this.isPlatformMode && (this.workspace || usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path))
+    },
+    workspaceIdentityKey() {
+      return workspaceIdentity(currentUserFromToken(), this.ctx)
+    },
     workspaceModules() {
-      return getVisibleNavPlan({ includePlanned: false, permissionPatterns: this.ctx?.permissionPatterns || [], ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      const permissions = this.ctx?.permissionPatterns || []
+      const modules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },
     /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
     visibleGroupKeys() {
@@ -424,7 +455,7 @@ export default {
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
     fnResults() {
       const q = this.fnQueryDebounced.trim().toLowerCase()
-      const out = []
+      const out = this.useWorkspace ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' })) : []
       searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys }).forEach((a) => {
         out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' })
       })
@@ -455,7 +486,7 @@ export default {
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
-      const order = ['功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助任务卡', '帮助文档', '业务流程图']
+      const order = ['学生', '功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助任务卡', '帮助文档', '业务流程图']
       const map = {}
       this.fnResults.forEach((r) => {
         ;(map[r.kind] = map[r.kind] || []).push(r)
@@ -543,13 +574,13 @@ export default {
       const path = this.$route ? this.$route.path : ''
       if (this.isPlatformMode) return 'platform'
       if (path === '/admin/student-affairs/material-operations') return 'student-affairs'
-      return findActiveMenu(path).groupKey || this.planActive.groupKey || 'workbench'
+      return findActiveMenu(path).groupKey || this.planActive.groupKey || 'student-affairs'
     },
     /* ── navPlan 驱动的侧栏（完整二级/三级施工地图；planned 灰色不可点） ── */
     isPlannerView() {
       // 正式环境：学校业务菜单不展示施工地图 / planned / partial 待补强。
       // 开发环境：顶栏 DEV 可临时开启施工地图；校管/平台在 DEV 默认可看能力目录。
-      if (this.workspace || (import.meta.env && import.meta.env.PROD)) return false
+      if (this.useWorkspace || (import.meta.env && import.meta.env.PROD)) return false
       if (import.meta.env && import.meta.env.DEV) return this.devPlannerView
       const rt =
         (this.ctx && this.ctx.currentRole && (this.ctx.currentRole.roleType || this.ctx.currentRole.roleCode)) || ''
@@ -563,7 +594,7 @@ export default {
       return this.$route.fullPath.split('#')[0]
     },
     planActive() {
-      return findActiveInPlan(this.currentPath, this.currentNavRef)
+      return workspaceRouteOwner(this.currentPath, this.currentNavRef)
     },
     planGroup() {
       const gk = this.railActiveKey
@@ -734,6 +765,9 @@ export default {
     /* ── ① 学生搜索框（后端按数据范围过滤，越权搜不到） ── */
     queueStuSearch(q) {
       clearTimeout(this.stuTimer)
+      ++this.stuSeq
+      this.stuError = ''
+      this.stuResults = []
       const kw = (q || '').trim()
       if (!this.ctx || kw.length < 2) {
         this.stuResults = []
@@ -750,6 +784,7 @@ export default {
         const { studentApi } = await import('@/modules/student/api/student.api')
         const res = await studentApi.getStudents({ keyword: kw, pageSize: 6 })
         if (seq !== this.stuSeq) return
+        if (res?.code !== 0) throw new Error('学生搜索暂不可用')
         const list = (res && res.code === 0 && res.data && res.data.list) || []
         this.stuResults = list.map((s) => ({
           id: s.studentId,
@@ -758,7 +793,7 @@ export default {
           sub: [s.className, s.grade ? s.grade + '级' : ''].filter(Boolean).join(' · ')
         }))
       } catch {
-        if (seq === this.stuSeq) this.stuResults = []
+        if (seq === this.stuSeq) { this.stuResults = []; this.stuError = '学生搜索暂不可用，请重新搜索' }
       } finally {
         if (seq === this.stuSeq) this.stuSearching = false
       }
@@ -839,6 +874,7 @@ export default {
   },
   watch: {
     fnQuery(q) {
+      if (this.useWorkspace && !this.isPlatformMode) this.queueStuSearch(q)
       this.fnActive = 0
       clearTimeout(this.fnSearchTimer)
       const text = String(q || '').trim()
@@ -867,6 +903,7 @@ export default {
     }
   },
   beforeUnmount() {
+    ++this.stuSeq
     window.removeEventListener('keydown', this.onGlobalKeydown)
     if (this.stuBlurTimer) clearTimeout(this.stuBlurTimer)
     if (this.stuTimer) clearTimeout(this.stuTimer)
@@ -884,7 +921,12 @@ export default {
 .bpl-workspace .bpl-logo{width:36px;height:36px;box-shadow:none;background:var(--pri);color:var(--pri-on)}
 .bpl-workspace .bpl-cmdk{background:var(--surface);border-color:var(--line);box-shadow:none}
 .bpl-workspace .bpl-scope{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t3);border-color:var(--line);background:var(--surface)}
+.bpl-workspace-custom{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.bpl-workspace-custom>aside{max-height:70vh;overflow:auto}@media(max-width:1000px){.bpl-workspace-custom{grid-template-columns:1fr}}
 .bpl-workspace .bpl-search{margin:0 10px;max-width:600px}
+.bpl-workspace .bpl-cmdk--fn{width:100%;max-width:none;flex:1}
+.bpl-workspace .bpl-logo svg{width:25px;height:25px}
+.bpl-workspace .bpl-top-r{gap:14px;margin-left:auto}
+.bpl-workspace .bpl-brand{gap:12px;flex-shrink:0}
 @media(max-width:1250px){.bpl-workspace .bpl-scope{display:none}.bpl-workspace .bpl-brand__nm{font-size:14px}.bpl-workspace .bpl-search{margin:0 2px}}
 @media(max-width:900px){.bpl-workspace .bpl-topbar{padding:0 10px}.bpl-workspace .bpl-brand__nm{display:none}.bpl-workspace .bpl-cmdk--stu{display:none}}
 .base-portal-layout {

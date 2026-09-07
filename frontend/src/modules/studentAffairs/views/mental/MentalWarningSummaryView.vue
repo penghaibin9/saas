@@ -17,7 +17,6 @@
 
       <div class="mental-summary-layout">
         <AppSectionCard title="关注等级分布（仅聚合）">
-          <p class="mental-section-hint">只显示当前数据范围内各关注等级数量，不包含学生心理明细。</p>
           <DataTable v-if="levelRows.length" :columns="levelColumns" :rows="levelRows" row-key="key">
             <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
             <template #cell-value="{ row }"><strong class="mental-count">{{ row.value }}</strong></template>
@@ -26,7 +25,6 @@
         </AppSectionCard>
 
         <AppSectionCard title="按学生查询必要摘要">
-          <p class="mental-section-hint">选择当前数据范围内学生，仅返回关注标记、等级和在办数量。</p>
           <div class="sa-toolbar sa-filter-bar">
             <AppStudentPicker v-model="queryStudentId" class="sa-input" placeholder="按学号 / 姓名选择学生"
               data-scope-hint="仅显示你数据范围内的学生" @change="querySummary" />
@@ -147,18 +145,18 @@ export default {
 .mental-summary-privacy { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .mental-summary-layout { display: grid; grid-template-columns: minmax(280px, .75fr) minmax(0, 1.25fr); gap: var(--space-4); align-items: start; }
-.mental-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
 .sa-input { flex: 1 1 260px; min-width: 220px; }
 .mental-count { color: var(--primary-700); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 .sa-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.sa-summary__item { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg-section); }
+.sa-summary__item { border: 0; border-left: 1px solid var(--border-light); padding: 4px 12px; display: flex; flex-direction: column; gap: 3px; background: transparent; }
+.sa-summary__item:first-child { border-left: 0; padding-left: 0; }
 .sa-summary__item span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sa-summary__item strong { font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 .sa-warn { color: var(--warning-700); }
 .sa-ok { color: var(--success-700); }
 .sa-note { grid-column: 1 / -1; color: var(--text-tertiary); margin: 0; font-size: var(--font-size-xs); line-height: 1.6; }
-.mental-query-empty { margin: 0; padding: var(--space-5); border: 1px dashed var(--border-base); border-radius: var(--radius-md); color: var(--text-tertiary); text-align: center; }
+.mental-query-empty { margin: 0; padding: 12px 0; border-top: 1px dashed var(--border-base); color: var(--text-tertiary); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics, .mental-summary-layout { grid-template-columns: 1fr 1fr; } .mental-summary-layout { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .sa-grid--metrics, .sa-summary { grid-template-columns: 1fr; } .sa-input { width: 100%; min-width: 0; } }
 @import '@/styles/module-page.css';

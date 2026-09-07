@@ -11,6 +11,28 @@ from test_funding_application_workspace import _accounts
 BASE = "/api/v1"
 
 
+def _work_study_todo(record_id, pending_type=None):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedTodo, User
+    from app.services.todo_route_registry import resolve_todo_route
+    with get_sessionmaker()() as db:
+        active = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == 1000000000000000001,
+            UnifiedTodo.source_biz_type == "WORK_STUDY", UnifiedTodo.source_biz_id == int(record_id),
+            UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+        )).all()
+        assert len(active) == (1 if pending_type else 0)
+        if not active: return None
+        row=active[0]; assert row.todo_type == pending_type
+        assert db.get(User,row.assignee_id).login_name == "sa_admin01"
+        for client,path in [("pc","/admin/student-affairs/funding/work-study"),("teacherMini","/pages/teacher/affairs/work-study/index")]:
+            target=resolve_todo_route(pending_type,str(record_id),client=client)
+            assert target["path"] == path and target["exact"] is True
+            assert target["query"]["recordId"] == str(record_id)
+        return str(row.id)
+
+
 def test_work_study_four_end_core_flow(client, db_mode):
     ids = _accounts(db_mode)
     admin_pc = _login(client, "school_admin01", "PC")
@@ -50,6 +72,13 @@ def test_work_study_four_end_core_flow(client, db_mode):
               "availability": "周二、周四下午无课时段", "confirm": True},
     ))
     record_id = record["recordId"]
+    _work_study_todo(record_id, "WORK_STUDY_REVIEW")
+    for endpoint in ("student-affairs/work-study/records", "mobile/teacher/affairs/work-study/records"):
+        focused = _data(client.get(f"{BASE}/{endpoint}", headers=admin_pc, params={"recordId":record_id}))
+        assert [item["recordId"] for item in focused["items"]] == [record_id]
+        missing = _data(client.get(f"{BASE}/{endpoint}", headers=admin_pc, params={"recordId":"999999999"}))
+        assert missing["items"] == []
+        assert client.get(f"{BASE}/{endpoint}", headers=student_pc, params={"recordId":record_id}).status_code == 403
     assert record["studentId"] == str(ids["sa"])
     assert client.post(
         f"{BASE}/mobile/affairs/work-study/posts/{post_id}/apply", headers=student_mini,
@@ -70,12 +99,14 @@ def test_work_study_four_end_core_flow(client, db_mode):
         headers=admin_mini,
         json={"action": "APPROVE", "version": target["version"]},
     ))
+    _work_study_todo(record_id, "WORK_STUDY_ONBOARD")
     missing_agreement = client.post(
         f"{BASE}/mobile/teacher/affairs/work-study/records/{record_id}/action",
         headers=admin_mini,
         json={"action": "ONBOARD", "version": approved["version"], "agreementConfirmed": False},
     )
     assert missing_agreement.status_code == 409
+    _work_study_todo(record_id, "WORK_STUDY_ONBOARD")
     onboard = _data(client.post(
         f"{BASE}/mobile/teacher/affairs/work-study/records/{record_id}/action",
         headers=admin_mini,
@@ -83,6 +114,7 @@ def test_work_study_four_end_core_flow(client, db_mode):
     ))
     assert onboard["status"] == "ONBOARD" and onboard["agreementConfirmed"] is True
     assert "MONTHLY" in onboard["allowedActions"]
+    _work_study_todo(record_id)
 
     month = "2026-09"
     first_month = _data(client.post(
@@ -112,6 +144,21 @@ def test_work_study_four_end_core_flow(client, db_mode):
         assert same["monthly"][0]["subsidyAmount"] == "640.00"
         assert same["subsidyTotal"] == "640.00"
         assert same["allowedActions"] == []
+
+    second = _data(client.post(f"{BASE}/portal/affairs/work-study/posts/{post_id}/apply", headers=other_pc,
+        json={"statement":"隔离测试申请。", "availability":"周末", "confirm":True}))
+    rejected = _data(client.post(f"{BASE}/student-affairs/work-study/records/{second['recordId']}/action", headers=admin_pc,
+        json={"action":"REJECT", "reason":"排班与本次岗位要求不符", "version":second["version"]}))
+    assert rejected["remark"] == "排班与本次岗位要求不符"
+    _work_study_todo(second["recordId"])
+    mine = _data(client.get(f"{BASE}/portal/affairs/work-study/my", headers=other_pc))["items"]
+    assert mine[0]["remark"] == rejected["remark"]
+    third = _data(client.post(f"{BASE}/portal/affairs/work-study/posts/{post_id}/apply", headers=other_pc,
+        json={"statement":"撤回链路测试。", "availability":"周末", "confirm":True}))
+    _work_study_todo(third["recordId"], "WORK_STUDY_REVIEW")
+    _data(client.post(f"{BASE}/portal/affairs/work-study/records/{third['recordId']}/withdraw", headers=other_pc,
+        json={"version":third["version"]}))
+    _work_study_todo(third["recordId"])
 
     disabled = _data(client.post(
         f"{BASE}/student-affairs/work-study/posts/{post_id}/action", headers=admin_pc,

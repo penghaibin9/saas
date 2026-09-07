@@ -54,6 +54,7 @@ SUBMISSION_STATUS_LABELS = {
 }
 
 BIZ_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "PROFILE": ("studentAffairs.archive.view",),
     "LEAVE": ("studentAffairs.leave.approve",),
     "AID": ("studentAffairs.aid.approve", "studentAffairs.aid.counselorReview", "studentAffairs.aid.view"),
     "FUNDING": ("studentAffairs.funding.approve", "studentAffairs.funding.view"),
@@ -118,6 +119,8 @@ def _require_biz_permission(user: dict, biz_type: str) -> None:
 
 def _resolve_biz_student(db, biz_type: str, biz_id: int) -> int:
     bt = _require_supported_biz(biz_type)
+    if bt == "PROFILE":
+        return int(_student_profile(db, int(biz_id)).id)
     if bt == "MENTAL":
         from app.models import PsyReferral
 
@@ -606,6 +609,7 @@ def create_material_requirement(user: dict, payload: dict) -> dict:
 
 
 BIZ_DISPLAY_TITLES = {
+    "PROFILE": "学生个人档案",
     "LEAVE": "请假申请",
     "AID": "家庭经济困难认定申请",
     "FUNDING": "奖助学金申请",

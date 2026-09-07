@@ -1,6 +1,6 @@
 <template>
   <section class="fund-files" :aria-label="title">
-    <div class="fund-files__head"><strong>{{ title }} <small>选填</small></strong><span>{{ files.length }}/{{ maxCount }} · 单个不超过 10 MB</span></div>
+    <div class="fund-files__head"><strong>{{ title }} <small>{{ required ? '必填' : '选填' }}</small></strong><span>{{ files.length }}/{{ maxCount }} · 单个不超过 10 MB</span></div>
     <p>{{ description }}</p>
     <ul v-if="files.length">
       <li v-for="item in files" :key="item.key">
@@ -23,6 +23,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { fileSdk } from '../../services/fileSdk'
 const props = defineProps({
   disabled: Boolean,
+  required: Boolean,
   initialFiles: { type: Array, default: () => [] },
   bizType: { type: String, default: 'FUNDING' },
   maxCount: { type: Number, default: 5 },

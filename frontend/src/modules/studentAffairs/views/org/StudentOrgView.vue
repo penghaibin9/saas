@@ -10,21 +10,6 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载学生组织..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
 
-      <AppSectionCard v-if="formVisible" title="新建学生组织">
-        <div class="og-form-note">先明确组织名称、类型与级别。指导老师可选填，组织建立后再在右侧维护在任成员。</div>
-        <div class="og-grid">
-          <label class="og-field og-field--wide"><span>组织名称 *</span><AppTextInput v-model="form.orgName" placeholder="如：校学生会 / 信息工程学院学生会" /></label>
-          <label class="og-field"><span>类型</span><AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>级别</span><AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" placeholder="选填" /></label>
-        </div>
-        <p v-if="form.error" class="og-error">{{ form.error }}</p>
-        <div class="og-actions">
-          <button type="button" class="og-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存组织</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <div class="og-layout">
         <AppSectionCard title="组织列表" class="og-list">
           <p class="og-section-hint">选择组织后，右侧展示在任成员和任命入口。</p>
@@ -71,6 +56,20 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="新建学生组织" mode="modal" size="large">
+      <div class="og-grid">
+        <label class="og-field og-field--wide"><span>组织名称 *</span><AppTextInput v-model="form.orgName" placeholder="如：校学生会 / 信息工程学院学生会" /></label>
+        <label class="og-field"><span>类型</span><AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
+        <label class="og-field"><span>级别</span><AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
+        <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" placeholder="选填" /></label>
+      </div>
+      <p v-if="form.error" class="og-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存组织</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
@@ -80,6 +79,7 @@ import {
   AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -98,7 +98,7 @@ export default {
   name: 'StudentOrgView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
+    AppButton, AppDrawer, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
     StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {

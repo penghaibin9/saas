@@ -1,11 +1,13 @@
 <template>
-  <MiniLoginAuthPanel entry="student" />
+  <MiniLoginAuthPanel entry="student" :dorm-rectification-id="dormRectificationId" />
 </template>
 
 <script>
 import MiniLoginAuthPanel from '@/components/login/MiniLoginAuthPanel.vue'
 
 export default {
-  components: { MiniLoginAuthPanel }
+  components: { MiniLoginAuthPanel },
+  data() { return { dormRectificationId: '' } },
+  onLoad(q) { this.dormRectificationId = String(q?.dormRectificationId || '') }
 }
 </script>

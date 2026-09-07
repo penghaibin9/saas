@@ -4,8 +4,8 @@
     <view class="af__hero hero-band is-brand">
       <view class="hero-band__orb" />
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
-      <view class="af__navbar"><text class="af__navbar-back" @click="back">‹</text><text class="af__navbar-title">学工中心</text></view>
-      <view class="stat-strip" v-if="data">
+      <view class="af__navbar"><text class="af__navbar-back" @click="back">‹</text><text class="af__navbar-title">{{ materialReturnContext.bizType ? '材料补交' : '学工中心' }}</text></view>
+      <view class="stat-strip" v-if="data && !materialReturnContext.bizType">
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.leaveCount }}</text><text class="stat-strip__label">请假</text></view>
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.aidApproved }}</text><text class="stat-strip__label">困难认定</text></view>
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.fundingGranted }}</text><text class="stat-strip__label">获资助</text></view>
@@ -15,7 +15,7 @@
 
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data" style="padding-top: var(--space-3);">
-        <view class="card">
+        <view v-if="!materialReturnContext.bizType" class="card">
           <view class="icon-grid">
             <view v-for="(it, i) in entries" :key="it.key" class="icon-grid__item" @click="go(it.route)">
               <view class="icon-grid__badge" :class="gradClass(i)">{{ it.icon }}</view>
@@ -37,7 +37,7 @@
         </view>
 
         <view id="affairs-material-section" class="section-head"><text class="section-head__title">材料补交</text><text class="af__refresh" @click="loadMaterials">刷新</text></view>
-        <view v-if="materialReturnContext.bizType" class="card af__context"><text>仅显示这份{{ materialReturnContext.bizType === 'FUNDING' ? '奖助' : materialReturnContext.bizType === 'AID' ? '困难认定' : '请假' }}申请的材料</text><button class="btn" @click="returnToApplication">返回原申请</button></view>
+        <view v-if="materialReturnContext.bizType" class="card af__context"><text>仅显示{{ bizLabel(materialReturnContext.bizType) }}材料</text><button class="btn" @click="returnToApplication">{{ materialReturnContext.bizType === 'PROFILE' ? '返回学生档案' : '返回原申请' }}</button></view>
         <MobileInlineAlert v-if="materialError" type="warning" title="材料列表暂不可用" :description="materialError" />
         <view v-else-if="!materials.length" class="card af__empty"><text>暂无材料缺项</text></view>
         <view v-else class="stack">
@@ -92,8 +92,8 @@
           </button>
         </view>
 
-        <view class="section-head"><text class="section-head__title">我的处分</text></view>
-        <view class="card" @click="go('/pages/student/affairs/discipline')">
+        <view v-if="!materialReturnContext.bizType" class="section-head"><text class="section-head__title">我的处分</text></view>
+        <view v-if="!materialReturnContext.bizType" class="card" @click="go('/pages/student/affairs/discipline')">
           <text class="t-sm t-secondary">{{ discNote }}</text>
           <text class="t-sm link">进入申诉 ›</text>
         </view>
@@ -146,7 +146,7 @@ export default {
     }
   },
   onLoad(query) {
-    this.leaveContext = query && ['LEAVE', 'AID', 'FUNDING'].includes(query.bizType) && /^\d+$/.test(String(query.bizId || '')) ? { bizType: query.bizType, bizId: query.bizId } : {}
+    this.leaveContext = query && ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(query.bizType) && /^\d+$/.test(String(query.bizId || '')) ? { bizType: query.bizType, bizId: query.bizId } : {}
     this.statusBarHeight = getStatusBarHeight()
     this.focusMaterialId = String((query && (query.materialRequirementId || query.requirementId)) || '')
     this.load()
@@ -178,7 +178,7 @@ export default {
     materialReturnContext() {
       if (this.leaveContext.bizType) return this.leaveContext
       const row = this.materials.find(item => String(item.requirementId) === this.focusMaterialId)
-      return row && ['LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
+      return row && ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(row.bizType) && /^\d+$/.test(String(row.bizId || '')) ? { bizType: row.bizType, bizId: String(row.bizId) } : {}
     },
     materialGuardActive() { return !!this.materialBusy || this.hasMaterialDraft() },
     discNote() {
@@ -214,7 +214,7 @@ export default {
         return true
       } finally { this._materialLeavePrompt = false }
     },
-    async returnToApplication() { const context = this.materialReturnContext || this.leaveContext; if (!context.bizType) return; await this.go('/pages/student/affairs/' + (context.bizType === 'FUNDING' ? 'funding' : context.bizType === 'AID' ? 'aid' : 'leave') + '?recordId=' + encodeURIComponent(context.bizId)) },
+    async returnToApplication() { const context = this.materialReturnContext || this.leaveContext; if (!context.bizType) return; if (context.bizType === 'PROFILE') return this.go('/pages/student/profile/index'); await this.go('/pages/student/affairs/' + (context.bizType === 'FUNDING' ? 'funding' : context.bizType === 'AID' ? 'aid' : 'leave') + '?recordId=' + encodeURIComponent(context.bizId)) },
     async go(url) { if (await this.mayLeaveMaterials()) go(url) },
     async back() {
       if (!await this.mayLeaveMaterials()) return
@@ -230,7 +230,7 @@ export default {
       return parts.length ? parts.join(' · ') : `${this.bizLabel(item.bizType)} #${item.bizId}`
     },
     bizLabel(value) {
-      return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || '学工申请')
+      return ({ PROFILE: '个人档案', LEAVE: '请假', AID: '困难认定', FUNDING: '奖助申请', DISCIPLINE: '违纪处分', DISCIPLINE_APPEAL: '处分申诉', DORM_TRANSFER: '调宿申请', CREDIT_APPEAL: '第二课堂申诉', SECOND_CLASS_APPEAL: '第二课堂申诉' }[value] || '学工申请')
     },
     canSubmitMaterial(item) { return (item.allowedActions || []).includes('SUBMIT_MATERIAL') },
     load() {

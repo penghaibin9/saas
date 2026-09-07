@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
+import json
 
-from sqlalchemy import case, false, func, or_, select
+from sqlalchemy import and_, case, false, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -98,7 +99,7 @@ def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
     row = {
         # studentId 固定为迎新台账主键，避免绑定学籍后与 StudentProfile.id 混用导致详情/操作串号。
         # profileStudentId 才是绑定的学籍档案 id（未绑定为空）。
-        "id": str(s.id), "studentId": str(s.id),
+        "id": str(s.id), "studentId": str(s.id), "version": int(s.version or 0),
         "profileStudentId": str(s.student_id) if s.student_id else "",
         "name": s.name, "batchId": str(s.batch_id),
         "admissionNo": s.admission_no, "studentNo": s.student_no or "",
@@ -130,6 +131,11 @@ def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
         row["voidReason"] = s.void_reason or ""
         row["checkinTime"] = _iso(s.checkin_time) or ""
         row["exceptionNote"] = s.exception_note or ""
+        from app.services.dorm_housing_projection import housing_map, housing_fields
+        row.update(housing_map(db, [s.student_id]).get(int(s.student_id or 0),
+                   housing_fields(linked=bool(s.student_id))))
+        row["dormCheckinTime"] = row.pop("checkinTime", "")
+        row["checkinTime"] = _iso(s.checkin_time) or ""
     return row
 
 
@@ -142,7 +148,7 @@ def _page(items, page, page_size):
 # ═══ 学生台账 ═══
 
 def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, stage=None,
-                  report_status=None, payment_status=None, risk_level=None, user=None):
+                  report_status=None, payment_status=None, risk_level=None, user=None, pending_arrival=False):
     with session() as db:
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
@@ -169,6 +175,11 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
                 q = q.where(OrientationStudent.student_id.in_(scoped_profiles))
         if stage:
             q = q.where(OrientationStudent.stage == stage)
+        if pending_arrival:
+            q = q.where(
+                OrientationStudent.report_status.in_(["NOT_REPORTED", "PREPARED", "DELAYED", "NO_SHOW", "ABNORMAL"]),
+                OrientationStudent.stage.notin_(["CANCELLED", "ENROLLED"]),
+            )
         if report_status:
             q = q.where(OrientationStudent.report_status == report_status)
         if payment_status:
@@ -194,7 +205,10 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.scalars(q.order_by(OrientationStudent.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_stu_row(r) for r in rows], total
+        from app.services.dorm_housing_projection import housing_map, housing_fields
+        facts = housing_map(db, [r.student_id for r in rows])
+        return [{**_stu_row(r), **facts.get(int(r.student_id or 0),
+                 housing_fields(linked=bool(r.student_id)))} for r in rows], total
 
 
 def get_student_detail(sid, user=None) -> dict:
@@ -320,17 +334,17 @@ def create_student(body: dict, *, db=None) -> dict:
             db.commit()
         else:
             db.flush()
-        return {"id": str(s.id), "studentId": str(s.id),
+        return {"id": str(s.id), "studentId": str(s.id), "version": int(s.version or 0),
                 "profileStudentId": str(s.student_id) if s.student_id else ""}
 
 
 def update_student(sid, body: dict) -> dict:
+    if any(body.get(key) is not None for key in ("reportStatus", "building", "room", "dormStatus")):
+        raise AppException("INVALID_STATE", "报到与住宿状态由正式办理流程更新，请使用现场报到、学院确认或房态图")
     with session() as db:
         s = _get_student(db, sid)
-        field_map = {
-            "name": "name", "origin": "origin", "counselor": "counselor",
-            "reportStatus": "report_status", "building": "building", "room": "room",
-        }
+        assert_orientation_student_scope(db, s)
+        field_map = {"name": "name", "origin": "origin", "counselor": "counselor"}
         for k, col in field_map.items():
             if body.get(k) is not None:
                 setattr(s, col, body[k])
@@ -362,6 +376,72 @@ def update_student(sid, body: dict) -> dict:
         return {"id": str(s.id)}
 
 
+def disposition_student(sid, body):
+    from app.core.optimistic_lock import require_expected_version
+    from app.models import DormStay, DormBed, DormAllocationItem, OrientationCheckinToken
+    from app.services.dorm_housing_projection import sync_orientation
+    status = str(body.get("status") or "").upper()
+    reason = str(body.get("reason") or "").strip()
+    if status not in {"NO_SHOW", "CANCELLED", "DEFERRED", "RESUME"} or len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "请选择处理结果，原因至少填写 5 个字")
+    version = require_expected_version(body.get("expectedVersion"))
+    with session() as db:
+        _archive_scope(db)
+        student = _get_student(db, sid)
+        if student.student_id:
+            db.execute(select(StudentProfile.id).where(StudentProfile.id == student.student_id,
+                StudentProfile.tenant_id == _tid()).with_for_update()).first()
+        student = db.scalars(select(OrientationStudent).where(OrientationStudent.id == student.id,
+            OrientationStudent.tenant_id == _tid()).execution_options(populate_existing=True).with_for_update()).one()
+        if student.version != version:
+            raise AppException("VERSION_CONFLICT", "记录已变化，请刷新后重试", http_status=409)
+        if student.stage == "ENROLLED" or student.report_status in {"CHECKED_IN", "COLLEGE_CONFIRMED"}:
+            raise AppException("INVALID_STATE", "已报到学生请通过学籍及住宿正式流程办理")
+        batch = _get_batch(db, student.batch_id)
+        if batch.status != "ACTIVE":
+            raise AppException("INVALID_STATE", "仅开放中的迎新批次可办理")
+        stays = db.scalars(select(DormStay).where(DormStay.tenant_id == _tid(),
+            DormStay.student_id == student.student_id, DormStay.is_deleted.is_(False),
+            DormStay.status.in_(["RESERVED", "ACTIVE"])).with_for_update()).all() if student.student_id else []
+        if any(stay.status == "ACTIVE" for stay in stays):
+            raise AppException("INVALID_STATE", "学生已实际入住，请先办理正式退宿")
+        before = student.stage
+        if status == "RESUME" and before not in {"NO_SHOW", "CANCELLED", "DEFERRED"}:
+            raise AppException("INVALID_STATE", "当前记录无需恢复报到")
+        # Delay keeps the reserved bed. A confirmed non-arrival/cancellation releases it atomically.
+        if status in {"NO_SHOW", "CANCELLED"}:
+            for stay in stays:
+                bed = db.scalars(select(DormBed).where(DormBed.id == stay.bed_id,
+                    DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False)).with_for_update()).first()
+                if not bed or bed.status != "LOCKED" or bed.student_id:
+                    raise AppException("DATA_CONFLICT", "预留床位状态不一致，请先核查房态")
+                bed.status = "VACANT"
+                bed.version += 1
+                stay.status = "CANCELLED"
+                stay.version += 1
+            if student.student_id:
+                items = db.scalars(select(DormAllocationItem).where(DormAllocationItem.tenant_id == _tid(),
+                    DormAllocationItem.student_id == student.student_id,
+                    DormAllocationItem.is_deleted.is_(False),
+                    DormAllocationItem.status.in_(["PENDING", "PROPOSED", "RESERVED", "CONFIRMED"])).with_for_update()).all()
+                for item in items:
+                    item.status = "CANCELLED"
+                    item.version += 1
+                sync_orientation(db, student.student_id)
+        tokens = db.scalars(select(OrientationCheckinToken).where(OrientationCheckinToken.tenant_id == _tid(),
+            OrientationCheckinToken.orientation_student_id == student.id,
+            OrientationCheckinToken.status == "ISSUED").with_for_update()).all()
+        for token in tokens:
+            token.status = "REVOKED"
+        student.stage = "ADMITTED" if status == "RESUME" else status
+        student.report_status = "DELAYED" if status == "DEFERRED" else "NO_SHOW" if status in {"NO_SHOW", "CANCELLED"} else "NOT_REPORTED"
+        student.exception_note = reason[:500]
+        student.version += 1
+        _audit(db, "STUDENT", student.id, "调整报到安排", reason[:1000], before=before, after=student.stage)
+        db.commit()
+        return {"id": str(student.id), "stage": student.stage, "version": student.version}
+
+
 def void_student(sid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
@@ -381,11 +461,13 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
     不通过 → 记录原因 + 标记高风险，stage 不前进。"""
     with session() as db:
         s = _get_student(db, sid)
-        if s.stage in ("ENROLLED", "CANCELLED"):
+        assert_orientation_student_scope(db, s)
+        if s.stage in ("ENROLLED", "CANCELLED", "NO_SHOW", "DEFERRED"):
             raise AppException("INVALID_STATE", "该新生已入学/已取消，不可再核验")
         if passed:
             before = s.stage
-            s.stage = "PRE_STUDENT_VERIFIED"
+            if s.report_status != "CHECKED_IN":
+                s.stage = "PRE_STUDENT_VERIFIED"
             s.exception_note = ""
             set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
                                     source_biz_id=f"student:{s.id}:verify")
@@ -557,7 +639,7 @@ def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None,
             "remark": g.remark or "", "attachments": list(attachments or [])}
 
 
-def list_green_channels(page, page_size, keyword=None, status=None, user=None):
+def list_green_channels(page, page_size, keyword=None, status=None, user=None, batch_id=None):
     with session() as db:
         # P1-4：join 学生表消 N+1（此前每行一次 db.get），keyword/分页全部下沉 DB
         q = (select(GreenChannelApplication, OrientationStudent)
@@ -581,6 +663,8 @@ def list_green_channels(page, page_size, keyword=None, status=None, user=None):
                     StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
                     StudentProfile.class_id.in_(class_ids),
                 )))
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
         if status:
             q = q.where(GreenChannelApplication.status == status)
         if keyword:
@@ -790,7 +874,8 @@ def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") 
 
 # ═══ 材料审核 ═══
 
-def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None) -> dict:
+def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None,
+             file_data: dict | None = None) -> dict:
     return {"id": str(m.id), "studentId": str(m.ori_student_id),
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "materialType": m.material_type, "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type),
@@ -799,10 +884,11 @@ def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None) -> d
             "assetId": str(m.asset_id or ""), "fileVersionId": str(m.file_version_id or ""),
             "status": m.status, "statusLabel": L_MAT.get(m.status, m.status),
             "reviewer": m.reviewer or "", "reviewTime": _iso(m.review_time) or "",
-            "returnReason": m.return_reason or ""}
+            "returnReason": m.return_reason or "", **(file_data or {})}
 
 
-def list_materials(page, page_size, keyword=None, status=None, material_type=None, user=None):
+def list_materials(page, page_size, keyword=None, status=None, material_type=None, user=None,
+                   batch_id=None, orientation_student_id=None):
     with session() as db:
         q = select(OrientationMaterial, OrientationStudent).join(
             OrientationStudent,
@@ -829,6 +915,10 @@ def list_materials(page, page_size, keyword=None, status=None, material_type=Non
                     StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
                     StudentProfile.class_id.in_(class_ids),
                 )))
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
+        if orientation_student_id is not None:
+            q = q.where(OrientationMaterial.ori_student_id == int(orientation_student_id))
         if status:
             q = q.where(OrientationMaterial.status == status)
         if material_type:
@@ -838,7 +928,39 @@ def list_materials(page, page_size, keyword=None, status=None, material_type=Non
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.execute(q.order_by(OrientationMaterial.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_mat_row(material, student) for material, student in rows], total
+        material_ids = [str(material.id) for material, _student in rows]
+        file_by_material: dict[str, dict] = {}
+        if material_ids:
+            from app.models.file import FileBinding, FileObject
+            from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
+            from app.services.file_access_service import file_view
+
+            file_rows = db.execute(select(FileBinding, FileObject).join(
+                FileObject,
+                (FileObject.id == FileBinding.file_id)
+                & (FileObject.tenant_id == FileBinding.tenant_id),
+            ).where(
+                FileBinding.tenant_id == _tid(),
+                FileBinding.biz_type == "ORIENTATION_MATERIAL",
+                FileBinding.biz_id.in_(material_ids),
+                FileBinding.is_current.is_(True),
+                FileBinding.status == "ACTIVE",
+                FileBinding.is_deleted.is_(False),
+                FileObject.is_deleted.is_(False),
+            )).all()
+            actor = user or get_current_user_ctx() or {}
+            for binding, file_obj in file_rows:
+                view = file_view(file_obj, user=actor, bindings=[binding], db=db)
+                allowed = list(view.get("allowedActions") or [])
+                file_by_material[str(binding.biz_id)] = {
+                    **view,
+                    "canPreview": "preview" in allowed,
+                    "canDownload": "download" in allowed,
+                }
+        return [
+            _mat_row(material, student, file_by_material.get(str(material.id)))
+            for material, student in rows
+        ], total
 
 
 def _refresh_material_status(db, stu):
@@ -925,69 +1047,63 @@ def return_material(mid, reason, user=None):
 
 # ═══ 宿舍 ═══
 
-def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None):
+def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None, batch_id=None):
+    from app.models import SchoolClass
+    from app.services.dorm_housing_projection import housing_query, housing_fields
+    from app.core.affairs_security import student_directory_scope
     with session() as db:
-        q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
-                                             OrientationStudent.is_deleted.is_(False),
-                                             OrientationStudent.record_status == "ACTIVE")
+        facts = housing_query().subquery()
+        q = select(OrientationStudent, facts).outerjoin(
+            facts, facts.c.student_id == OrientationStudent.student_id).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
+            OrientationStudent.record_status == "ACTIVE")
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
+        class_ids, student_ids = student_directory_scope(get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
+        elif class_ids is not None:
+            profiles = select(StudentProfile.id).where(StudentProfile.tenant_id == _tid(),
+                StudentProfile.is_deleted.is_(False), StudentProfile.class_id.in_(class_ids))
+            q = q.where(OrientationStudent.student_id.in_(profiles))
+        current_status = case((facts.c.housing_status == "ACTIVE", "CHECKED_IN"),
+            (facts.c.housing_status == "RESERVED", "ASSIGNED"),
+            (facts.c.housing_status == "EXCEPTION", "EXCEPTION"), else_="UNASSIGNED")
         if dorm_status:
-            q = q.where(OrientationStudent.dorm_status == dorm_status)
+            q = q.where(current_status == dorm_status)
         if building:
-            q = q.where(OrientationStudent.building == building)
-        if keyword:
-            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+            q = q.where(facts.c.building_name == building,
+                        facts.c.housing_status.in_(["ACTIVE", "RESERVED"]))
+        if keyword and keyword.strip():
+            kw = f"%{keyword.strip()}%"
+            q = q.where(or_(OrientationStudent.name.like(kw),
+                OrientationStudent.admission_no.like(kw), facts.c.room_no.like(kw)))
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-        rows = db.scalars(q.order_by(OrientationStudent.id)
-                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
-                  "building": r.building or "", "room": r.room or "",
-                  "dormStatus": r.dorm_status, "dormStatusLabel": L_DORM.get(r.dorm_status, r.dorm_status),
-                  "checkinTime": _iso(r.checkin_time) or "", "exceptionNote": r.exception_note or "",
-                  "phone": mask_phone_encrypted(r.phone_encrypted)} for r in rows]
+        rows = db.execute(q.order_by(OrientationStudent.id)
+            .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        visible_ids = [row[0].student_id for row in rows if row[0].student_id]
+        class_names = dict(db.execute(select(StudentProfile.id, SchoolClass.class_name).join(
+            SchoolClass, and_(SchoolClass.id == StudentProfile.class_id, SchoolClass.tenant_id == _tid(),
+                SchoolClass.is_deleted.is_(False))).where(StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False), StudentProfile.id.in_(visible_ids or [-1]))).all())
+        items = []
+        for result in rows:
+            r = result[0]
+            fact = result._mapping if result._mapping["housing_status"] else None
+            fields = housing_fields(fact, linked=bool(r.student_id))
+            items.append({"id": str(r.id), "profileStudentId": str(r.student_id or ""),
+                "batchId": str(r.batch_id), "name": r.name, "className": class_names.get(r.student_id, r.class_name or ""),
+                **fields, "exceptionNote": r.exception_note or "",
+                "phone": mask_phone_encrypted(r.phone_encrypted)})
         return items, total
 
 
 def update_dorm(sid, body: dict) -> dict:
-    building = body.get("building")
-    room = body.get("room")
-    dorm_status = body.get("dormStatus")
-    remark = body.get("remark")
-    with session() as db:
-        s = _get_student(db, sid)
-        before = f"{s.building or ''} {s.room or ''}".strip()
-        if building is not None:
-            s.building = building
-        if room is not None:
-            s.room = room
-        if dorm_status is not None:
-            s.dorm_status = dorm_status
-        elif (building or room) and s.dorm_status not in ("CHECKED_IN", "EXCEPTION"):
-            s.dorm_status = "ASSIGNED"
-        if remark is not None:
-            s.exception_note = remark
-        after = f"{s.building or ''} {s.room or ''}".strip()
-        s.version += 1
-        _audit(db, "DORM", s.id, "编辑宿舍信息", f"{before or '未分配'} → {after or '未分配'}")
-        db.commit()
-        return {"id": str(s.id)}
+    raise AppException("INVALID_STATE", "请通过分配计划安排床位，或在房态图办理入住；迎新台账自动同步住宿状态")
 
 
 def batch_confirm_checkin(ids: list) -> dict:
-    cnt = 0
-    with session() as db:
-        for sid in ids:
-            s = db.get(OrientationStudent, int(sid))
-            if not s or s.tenant_id != _tid() or s.dorm_status == "EXCEPTION":
-                continue
-            s.dorm_status = "CHECKED_IN"
-            s.checkin_time = datetime.utcnow()
-            set_student_step_status(db, s, "DORM", "DONE", status_source="PROCESS_FACT",
-                                    source_biz_id=f"student:{s.id}:dorm-checkin")
-            s.version += 1
-            _audit(db, "DORM", s.id, "批量确认入住")
-            cnt += 1
-        db.commit()
-        return {"count": cnt}
+    raise AppException("INVALID_STATE", "请在房态图按实际床位办理入住，不能仅修改迎新入住状态")
 
 
 def mark_dorm_exception(sid, note) -> dict:
@@ -995,7 +1111,7 @@ def mark_dorm_exception(sid, note) -> dict:
         raise AppException("VALIDATION_ERROR", "异常说明必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
-        s.dorm_status = "EXCEPTION"
+        assert_orientation_student_scope(db, s)
         s.exception_note = note.strip()
         s.version += 1
         db.add(OrientationException(tenant_id=_tid(), ori_student_id=s.id, exception_type="DORM",
@@ -1034,6 +1150,7 @@ def create_exception(student_id, exception_type, description, risk_level="MEDIUM
         e = OrientationException(tenant_id=_tid(), ori_student_id=s.id, exception_type=etype,
                                  description=description.strip(), risk_level=level, status="OPEN",
                                  handler=_op()[0])
+        assert_orientation_student_scope(db, s)
         db.add(e)
         db.flush()
         _audit(db, "EXCEPTION", s.id, f"登记异常({etype})", description.strip())
@@ -1042,32 +1159,51 @@ def create_exception(student_id, exception_type, description, risk_level="MEDIUM
         return _exc_row(e, s)
 
 
-def list_exceptions(page, page_size, keyword=None, exception_type=None, status=None, risk_level=None):
+def list_exceptions(page, page_size, keyword=None, exception_type=None, status=None, risk_level=None, batch_id=None):
     with session() as db:
-        q = select(OrientationException).where(OrientationException.tenant_id == _tid(),
-                                               OrientationException.is_deleted.is_(False))
+        q = select(OrientationException, OrientationStudent).join(OrientationStudent,
+            (OrientationStudent.id == OrientationException.ori_student_id)
+            & (OrientationStudent.tenant_id == OrientationException.tenant_id)).where(
+                OrientationException.tenant_id == _tid(), OrientationException.is_deleted.is_(False),
+                OrientationStudent.is_deleted.is_(False))
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
+        elif class_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                StudentProfile.class_id.in_(class_ids))) if class_ids else false())
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
         if exception_type:
             q = q.where(OrientationException.exception_type == exception_type)
         if status:
             q = q.where(OrientationException.status == status)
         if risk_level:
             q = q.where(OrientationException.risk_level == risk_level)
-        rows = db.scalars(q.order_by(OrientationException.id.desc())).all()
-        items = []
-        for e in rows:
-            stu = tenant_get(db, OrientationStudent, e.ori_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_exc_row(e, stu))
-        return _page(items, page, page_size)
+        if keyword:
+            q = q.where(OrientationStudent.name.contains(keyword.strip(), autoescape=True))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(q.order_by(OrientationException.id.desc())
+            .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_exc_row(e, stu) for e, stu in rows], total
+
+
+def _scoped_exception(db, eid, *, for_update=False):
+    q = select(OrientationException).where(OrientationException.id == int(eid),
+        OrientationException.tenant_id == _tid(), OrientationException.is_deleted.is_(False))
+    e = db.scalar(q.with_for_update() if for_update else q)
+    if not e:
+        raise not_found("异常记录不存在")
+    student = _get_student(db, e.ori_student_id)
+    assert_orientation_student_scope(db, student)
+    return e, student
 
 
 def get_exception_detail(eid) -> dict:
     with session() as db:
-        e = db.get(OrientationException, int(eid))
-        if not e or e.is_deleted or e.tenant_id != _tid():
-            raise not_found("异常记录不存在")
-        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
+        e, stu = _scoped_exception(db, eid)
         fus = db.scalars(select(OrientationExceptionFollowup).where(
             OrientationExceptionFollowup.tenant_id == _tid(),
             OrientationExceptionFollowup.exception_id == e.id).order_by(
@@ -1083,9 +1219,7 @@ def add_followup(eid, content, way="PHONE") -> dict:
     if not content or not content.strip():
         raise AppException("VALIDATION_ERROR", "跟进内容必填")
     with session() as db:
-        e = db.get(OrientationException, int(eid))
-        if not e or e.is_deleted or e.tenant_id != _tid():
-            raise not_found("异常记录不存在")
+        e, _stu = _scoped_exception(db, eid, for_update=True)
         f = OrientationExceptionFollowup(tenant_id=_tid(), exception_id=e.id, way=way,
                                          content=content.strip(), operator=_op()[0], status="ACTIVE",
                                          follow_time=datetime.utcnow())
@@ -1102,12 +1236,9 @@ def add_followup(eid, content, way="PHONE") -> dict:
 
 def resolve_exception(eid, note="") -> dict:
     with session() as db:
-        e = db.get(OrientationException, int(eid))
-        if not e or e.is_deleted or e.tenant_id != _tid():
-            raise not_found("异常记录不存在")
+        e, stu = _scoped_exception(db, eid, for_update=True)
         e.status = "RESOLVED"
         e.version += 1
-        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu and stu.risk_level == "HIGH":
             stu.risk_level = "MEDIUM"
         _audit(db, "EXCEPTION", e.id, "标记已处理", note)
@@ -1119,13 +1250,10 @@ def escalate_exception(eid, reason) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "升级原因必填且不少于 5 字")
     with session() as db:
-        e = db.get(OrientationException, int(eid))
-        if not e or e.is_deleted or e.tenant_id != _tid():
-            raise not_found("异常记录不存在")
+        e, stu = _scoped_exception(db, eid, for_update=True)
         e.status = "ESCALATED"
         e.risk_level = "HIGH"
         e.version += 1
-        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu:
             stu.risk_level = "HIGH"
         _audit(db, "EXCEPTION", e.id, "升级风险", reason.strip())
@@ -1475,6 +1603,12 @@ def close_batch(bid) -> dict:
         b = _get_batch(db, bid)
         if b.status != "ACTIVE":
             raise AppException("INVALID_STATE", "仅进行中批次可结束")
+        pending = db.scalar(select(func.count()).select_from(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.batch_id == b.id,
+            OrientationStudent.is_deleted.is_(False), OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.stage.not_in(["ENROLLED", "NO_SHOW", "CANCELLED"]))) or 0
+        if pending:
+            raise AppException("INVALID_STATE", f"仍有 {pending} 名新生未办结，请先完成入学确认或处理未到校事项")
         b.status = "CLOSED"
         b.version += 1
         _audit(db, "BATCH", b.id, "结束迎新批次", before="ACTIVE", after="CLOSED")
@@ -1716,13 +1850,32 @@ def list_archives(page, page_size, keyword=None, status=None):
         return items, total
 
 
+def _archive_scope(db):
+    from app.core.affairs_security import build_affairs_context, no_data_scope
+    ctx = build_affairs_context(get_current_user_ctx() or {}, db)
+    if ctx.scope_type != "TENANT_ALL":
+        raise no_data_scope("批次归档需由学校迎新管理人员办理")
+
+
+def _archive_batch(db, batch_no):
+    batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
+        OrientationBatch.batch_no == str(batch_no or "").strip(),
+    )).first()
+    if not batch:
+        raise AppException("VALIDATION_ERROR", "请选择有效的迎新批次")
+    return batch
+
+
 def create_archive(body):
     name = str(body.get("archiveName") or "").strip()
     if not name:
         raise AppException("VALIDATION_ERROR", "归档名称必填")
     with session() as db:
-        a = OrientationArchive(tenant_id=_tid(), archive_name=name, batch_no=body.get("batchNo"),
-                               scope=body.get("scope"), status="PENDING", remark=body.get("remark"))
+        _archive_scope(db)
+        batch = _archive_batch(db, body.get("batchNo"))
+        a = OrientationArchive(tenant_id=_tid(), archive_name=name, batch_no=batch.batch_no,
+                               scope="本批次", status="PENDING", remark=body.get("remark"))
         db.add(a)
         db.flush()
         _audit(db, "ARCHIVE", a.id, "新建归档任务", name)
@@ -1731,21 +1884,51 @@ def create_archive(body):
 
 
 def run_archive(aid):
+    from app.services.dorm_housing_projection import housing_map
     with session() as db:
-        a = db.get(OrientationArchive, int(aid))
-        if not a or a.is_deleted or a.tenant_id != _tid():
+        _archive_scope(db)
+        a = db.scalars(select(OrientationArchive).where(
+            OrientationArchive.id == int(aid), OrientationArchive.tenant_id == _tid(),
+            OrientationArchive.is_deleted.is_(False)).with_for_update()).first()
+        if not a:
             raise not_found("归档任务不存在")
         if a.status == "DONE":
-            raise AppException("INVALID_STATE", "该归档已完成")
-        cnt = db.scalar(select(func.count()).select_from(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(),
-            OrientationStudent.is_deleted.is_(False))) or 0
+            return {"id": str(a.id), "status": a.status, "itemCount": a.item_count}
+        batch = _archive_batch(db, a.batch_no)
+        if batch.status != "CLOSED":
+            raise AppException("INVALID_STATE", "请先办结新生事项并关闭迎新批次，再执行归档")
+        rows = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
+            OrientationStudent.batch_id == batch.id, OrientationStudent.record_status == "ACTIVE",
+        ).with_for_update()).all()
+        pending = sum(r.stage not in ("ENROLLED", "NO_SHOW", "CANCELLED") for r in rows)
+        if pending:
+            raise AppException("INVALID_STATE", f"本批次仍有 {pending} 名新生未办结，请先确认入学或处理未到校事项")
+        facts = housing_map(db, [r.student_id for r in rows])
+        for r in rows:
+            snapshot = {"orientationStudentId": str(r.id), "profileStudentId": str(r.student_id or ""),
+                        "name": r.name, "admissionNo": r.admission_no, "stage": r.stage,
+                        "reportStatus": r.report_status, "paymentStatus": r.payment_status,
+                        "materialStatus": r.material_status, "version": r.version,
+                        "housingStatus": facts.get(int(r.student_id or 0), {}).get("housingStatus", "UNLINKED")}
+            _audit(db, "ARCHIVE_ITEM", a.id, "新生归档快照", json.dumps(snapshot, ensure_ascii=False))
         name, _role = _op()
-        a.status = "DONE"
-        a.item_count = int(cnt)
-        a.archived_by = name
+        a.status, a.item_count, a.archived_by = "DONE", len(rows), name
         a.archived_at = datetime.utcnow()
         a.version += 1
-        _audit(db, "ARCHIVE", a.id, "执行归档", after="DONE", detail=f"归档 {cnt} 名新生")
+        _audit(db, "ARCHIVE", a.id, "执行归档", after="DONE", detail=f"批次 {batch.batch_no}，归档 {len(rows)} 名新生")
         db.commit()
-        return {"id": str(a.id), "status": a.status, "itemCount": int(cnt)}
+        return {"id": str(a.id), "status": a.status, "itemCount": len(rows)}
+
+
+def archive_items(aid, page, page_size):
+    with session() as db:
+        _archive_scope(db)
+        archive = tenant_get(db, OrientationArchive, int(aid))
+        if not archive:
+            raise not_found("归档任务不存在")
+        q = select(OrientationAuditTrail).where(OrientationAuditTrail.tenant_id == _tid(),
+            OrientationAuditTrail.biz_type == "ARCHIVE_ITEM", OrientationAuditTrail.biz_id == str(aid))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.scalars(q.order_by(OrientationAuditTrail.id).offset((page - 1) * page_size).limit(page_size)).all()
+        return [dict(json.loads(r.detail), id=str(r.id), archivedAt=_iso(r.occurred_at)) for r in rows], total

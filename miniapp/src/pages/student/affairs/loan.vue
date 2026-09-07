@@ -2,17 +2,18 @@
   <view class="page-wrap">
     <MobileNavBar variant="brand" title="助学贷款" subtitle="电子回执与核验进度" show-back />
     <MobileGlobalState :state="state" @retry="load">
-      <view v-if="state === 'ready'" class="page-pad stack">
+      <view v-if="state === 'ready'" class="page-pad stack"><view v-if="recordId" class="row-between"><text>贷款记录 {{ recordId }}</text><button class="btn btn-secondary" @click="clearFocus">全部记录</button></view>
         <view class="loan__bar"><text>{{ activeCount }} 笔办理中</text><button class="btn btn-primary" :disabled="!!busy" @click="openCreate">提交回执</button></view>
-        <view v-if="items.length" class="stack">
-          <view v-for="item in items" :key="item.loanId" class="card loan__item">
+        <view v-if="visibleItems.length" class="stack">
+          <view v-for="item in visibleItems" :key="item.loanId" class="card loan__item">
             <view class="row-between"><view class="flex-1"><text class="card-title">{{ typeLabel(item.loanType) }} · {{ item.yearCode }}</text><text class="hint">{{ money(item.amount) }}<template v-if="item.bankName"> · {{ item.bankName }}</template><template v-if="item.bankLast4"> · 尾号 {{ item.bankLast4 }}</template></text></view><MobileStatusTag :status="item.status" :label="item.statusLabel || statusLabel(item.status)" /></view>
             <view class="loan__receipt"><text>{{ item.receiptCodeMasked || '回执编号待补充' }}</text><text v-if="item.receiptFile" class="link" @click="openFile(item)">{{ item.receiptFile.fileName || '查看回执材料' }}</text></view>
-            <text v-if="item.reviewOpinion" class="loan__opinion">{{ item.reviewOpinion }}</text>
+            <text v-if="item.reviewOpinion" class="loan__opinion" :class="{ 'loan__opinion--returned': item.status === 'RETURNED' }">{{ item.reviewOpinion }}</text>
+            <view v-if="item.status === 'CONFIRMED'" class="loan__result"><text>校内回执台账已确认</text><text>记录 {{ item.loanId }} · {{ item.confirmedAt ? new Date(item.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</text><text>银行放款请以经办银行结果为准。</text></view>
             <view class="loan__actions"><button v-if="allows(item, 'RESUBMIT')" class="btn btn-primary" :disabled="!!busy" @click="openEdit(item)">{{ item.status === 'REGISTERED' ? '补充回执' : '修改后重提' }}</button><button v-if="allows(item, 'WITHDRAW')" class="btn btn-secondary" :disabled="!!busy" @click="confirmWithdraw(item)">撤回</button><text v-if="!item.allowedActions?.length" class="hint">{{ nextHint(item.status) }}</text></view>
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="还没有贷款回执" description="取得电子回执后，可在这里提交给学校核验。" />
+        <MobileGlobalState v-else state="empty" :title="recordId ? '未找到这笔贷款记录' : '还没有贷款回执'" description="取得电子回执后，可在这里提交给学校核验。" />
       </view>
     </MobileGlobalState>
 
@@ -44,16 +45,18 @@ const academicYear = () => { const d = new Date(); const start = d.getMonth() >=
 const freshForm = () => ({ loanType: 'ORIGIN', yearCode: academicYear(), amount: '', bankName: '国家开发银行', bankLast4: '', receiptCode: '', confirm: false })
 
 export default {
-  data() { return { state: 'loading', items: [], policy: { minAmount: '1000.00', maxAmount: '20000.00' }, busy: '', formOpen: false, editing: null, form: freshForm(), fileIds: [], fileReady: true, formError: '', loanTypes: [{ value: 'ORIGIN', label: '生源地贷款' }, { value: 'CAMPUS', label: '校园地贷款' }] } },
+  data() { return { state: 'loading', recordId: '', items: [], policy: { minAmount: '1000.00', maxAmount: '20000.00' }, busy: '', formOpen: false, editing: null, form: freshForm(), fileIds: [], fileReady: true, formError: '', loanTypes: [{ value: 'ORIGIN', label: '生源地贷款' }, { value: 'CAMPUS', label: '校园地贷款' }] } },
   computed: {
+    visibleItems() { return this.recordId ? this.items.filter(item => String(item.loanId) === this.recordId) : this.items },
     activeCount() { return this.items.filter(item => !['CONFIRMED', 'WITHDRAWN'].includes(item.status)).length },
     loanTypeIndex() { return Math.max(0, this.loanTypes.findIndex(item => item.value === this.form.loanType)) },
     formValid() { const year = /^(\d{4})-(\d{4})$/.exec(this.form.yearCode); const amount = Number(this.form.amount); return !!year && Number(year[2]) === Number(year[1]) + 1 && amount >= Number(this.policy.minAmount || 1000) && amount <= Number(this.policy.maxAmount || 20000) && (!this.form.bankLast4 || /^\d{4}$/.test(this.form.bankLast4)) && (!!this.form.receiptCode.replace(/\s+/g, '') || !!this.editing?.receiptCodeMasked) && this.form.confirm && this.fileReady }
   },
-  onLoad() { this.load() },
+  onLoad(options) { this.recordId = String(options?.recordId || ''); this.load() },
   onPullDownRefresh() { this.load().finally(() => uni.stopPullDownRefresh()) },
   onBackPress() { if (this.formOpen) { this.closeForm(); return true } return false },
   methods: {
+    clearFocus() { uni.redirectTo({ url: '/pages/student/affairs/loan' }) },
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     typeLabel(type) { return type === 'CAMPUS' ? '校园地贷款' : '生源地贷款' },
     statusLabel(status) { return ({ REGISTERED: '待补回执', RECEIPT: '待学校核验', RETURNED: '已退回修改', VERIFIED: '学校已核验', CONFIRMED: '台账已确认', WITHDRAWN: '已撤回' })[status] || '状态待确认' },
@@ -74,5 +77,7 @@ export default {
 </script>
 
 <style scoped>
-.loan__bar { display:flex; justify-content:space-between; align-items:center; min-height:42px; color:var(--text-secondary); font-size:13px; }.loan__bar .btn { margin:0; }.loan__item { display:flex; flex-direction:column; gap:10px; }.loan__item .card-title,.loan__item .hint { display:block; }.loan__item .hint { margin-top:4px; }.loan__receipt { display:flex; justify-content:space-between; gap:12px; padding:9px 10px; border-radius:9px; color:var(--text-secondary); background:var(--bg-page); font-size:12px; }.loan__opinion { padding:8px 10px; border-radius:8px; color:#8a3d20; background:#fff5ed; font-size:12px; }.loan__actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }.loan__actions .btn { margin:0; }.loan__mask { position:fixed; z-index:1000; inset:0; display:flex; align-items:flex-end; background:rgba(15,23,42,.52); }.loan__sheet { width:100%; max-height:90vh; overflow:auto; padding:18px; border-radius:18px 18px 0 0; }.loan__close { padding:0 6px; color:var(--text-secondary); font-size:26px; }.loan__form { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }.loan__attachment { grid-column:1 / -1; margin-top:12px; }.loan__picker { display:flex; align-items:center; }.loan__check { display:flex; gap:8px; align-items:flex-start; margin-top:14px; color:var(--text-secondary); font-size:12px; line-height:1.5; }.loan__box { flex-shrink:0; transform:scale(.8); transform-origin:top left; }.loan__error { display:block; margin-top:8px; color:var(--danger-600); font-size:12px; }.loan__sheet-actions { display:flex; gap:10px; margin-top:14px; }
+.loan__item .card-title,.loan__item .hint{display:block}.loan__opinion.loan__opinion--returned{color:#8a3d20;background:#fff5ed}
+.loan__result{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--border-light);font-size:12px;color:var(--text-secondary)}
+.loan__bar { display:flex; justify-content:space-between; align-items:center; min-height:42px; color:var(--text-secondary); font-size:13px; }.loan__bar .btn { margin:0; }.loan__item { display:flex; flex-direction:column; gap:10px; }.loan__item .card-title,.loan__item .hint { display:block; }.loan__item .hint { margin-top:4px; }.loan__receipt { display:flex; justify-content:space-between; gap:12px; padding:9px 10px; border-radius:9px; color:var(--text-secondary); background:var(--bg-page); font-size:12px; }.loan__opinion { padding:8px 10px; border-radius:8px; color:var(--text-secondary); background:var(--bg-page); font-size:12px; }.loan__actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }.loan__actions .btn { margin:0; }.loan__mask { position:fixed; z-index:1000; inset:0; display:flex; align-items:flex-end; background:rgba(15,23,42,.52); }.loan__sheet { width:100%; max-height:90vh; overflow:auto; padding:18px; border-radius:18px 18px 0 0; }.loan__close { padding:0 6px; color:var(--text-secondary); font-size:26px; }.loan__form { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }.loan__attachment { grid-column:1 / -1; margin-top:12px; }.loan__picker { display:flex; align-items:center; }.loan__check { display:flex; gap:8px; align-items:flex-start; margin-top:14px; color:var(--text-secondary); font-size:12px; line-height:1.5; }.loan__box { flex-shrink:0; transform:scale(.8); transform-origin:top left; }.loan__error { display:block; margin-top:8px; color:var(--danger-600); font-size:12px; }.loan__sheet-actions { display:flex; gap:10px; margin-top:14px; }
 </style>

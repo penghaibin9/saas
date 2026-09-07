@@ -7,7 +7,7 @@
     watermark-purpose="勤工助学管理"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载勤工助学工作区..." @retry="loadAll">
-      <div class="ws-switchbar">
+      <div v-if="!focusId" class="ws-switchbar">
         <div class="ws-view-tabs" role="tablist" aria-label="勤工助学业务视图">
           <button type="button" role="tab" :aria-selected="activeView === 'records'" :class="{ active: activeView === 'records' }" @click="activeView = 'records'">申请与在岗 <span>{{ totalRecordCount }}</span></button>
           <button type="button" role="tab" :aria-selected="activeView === 'posts'" :class="{ active: activeView === 'posts' }" @click="activeView = 'posts'">岗位目录 <span>{{ postTotal }}</span></button>
@@ -28,19 +28,42 @@
       </div>
 
       <section v-if="activeView === 'records'" class="ws-panel">
-        <div class="ws-statusbar" aria-label="按办理状态筛选">
+        <div v-if="!focusId" class="ws-statusbar" aria-label="按办理状态筛选">
           <button type="button" :class="{ active: recordQuery.status === '' }" @click="setRecordStatus('')">全部 <span>{{ totalRecordCount }}</span></button>
           <button type="button" :class="{ active: recordQuery.status === 'APPLIED' }" @click="setRecordStatus('APPLIED')">待审核 <span>{{ statusCount('APPLIED') }}</span></button>
           <button type="button" :class="{ active: recordQuery.status === 'APPROVED' }" @click="setRecordStatus('APPROVED')">已录用 <span>{{ statusCount('APPROVED') }}</span></button>
           <button type="button" :class="{ active: recordQuery.status === 'ONBOARD' }" @click="setRecordStatus('ONBOARD')">在岗 <span>{{ statusCount('ONBOARD') }}</span></button>
           <button type="button" :class="{ active: recordQuery.status === 'TERMINATED' }" @click="setRecordStatus('TERMINATED')">已终止 <span>{{ statusCount('TERMINATED') }}</span></button>
         </div>
-        <div class="ws-toolbar">
+        <div v-if="!focusId" class="ws-toolbar">
           <AppTextInput v-model="recordQuery.keyword" placeholder="搜索学生姓名、学号或岗位" @keydown.enter="searchRecords" />
           <AppSelect v-model="recordQuery.postId" :options="postFilterOptions" @change="searchRecords" />
           <button class="ws-search" type="button" @click="searchRecords">查询</button>
         </div>
-        <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
+        <div v-if="focusId" class="ws-focusbar"><span>当前申请 · {{ focusId }}</span><button type="button" class="ws-search" @click="clearFocus">返回申请与在岗</button></div>
+        <article v-if="focusId && records.length" class="ws-focus" aria-label="勤工申请原单工作区">
+          <header><h2>{{ records[0].realName || records[0].studentName }} · {{ records[0].studentNo }}</h2><StatusTag :type="statusType(records[0].status)" :label="records[0].statusLabel" /></header>
+          <dl>
+            <div><dt>申请岗位</dt><dd>{{ records[0].post?.postName }} · {{ records[0].post?.deptName }}</dd></div>
+            <div><dt>工作地点</dt><dd>{{ records[0].post?.workLocation || '地点待通知' }}</dd></div>
+            <div><dt>申请说明</dt><dd>{{ records[0].applyStatement || '未填写' }}</dd></div>
+            <div><dt>可工作时段</dt><dd>{{ records[0].availability || '未填写' }}</dd></div>
+            <div><dt>协议核验</dt><dd>{{ records[0].agreementConfirmed ? '已核验' : '待核验' }}</dd></div>
+            <div><dt>累计登记补贴</dt><dd>{{ money(records[0].subsidyTotal) }}</dd></div>
+          </dl>
+          <p v-if="records[0].remark">处理说明：{{ records[0].remark }}</p>
+          <div class="ws-ops">
+            <AppPermissionButton v-for="action in focusActions" :key="action.code" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" :disabled="!!acting || !hasVersion(records[0])" :variant="action.code === 'REJECT' || action.code === 'TERMINATE' ? 'secondary' : 'primary'" @click="action.code === 'MONTHLY' ? openMonthly(records[0]) : openAction(records[0], action.code)">{{ action.label }}</AppPermissionButton>
+          </div>
+          <p v-if="records[0].status === 'ONBOARD'" class="ws-next">已完成上岗。按实际工作月份登记考核与补贴，学生可在本人勤工记录查询；登记金额不代表银行已到账。</p>
+          <section v-if="['ONBOARD','TERMINATED'].includes(records[0].status)" class="ws-monthly-history" aria-label="月度考核记录">
+            <h3>月度考核记录</h3>
+            <p v-if="historyError">{{ historyError }} <button type="button" class="ws-search" @click="loadRecords">重试</button></p>
+            <p v-else-if="!monthlies.length">尚未登记月度考核。</p>
+            <div v-for="item in monthlies" :key="item.monthlyId" class="ws-history-row"><strong>{{ item.monthCode }}</strong><span>{{ item.workHours }} 小时</span><span>{{ ratingLabel(item.rating) }}</span><span>{{ money(item.subsidyAmount) }}</span></div>
+          </section>
+        </article>
+        <DataTable v-else-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
           <template #cell-student="{ row }"><span class="ws-main">{{ row.realName || ('学生#' + row.studentId) }}</span><small>{{ row.studentNo || '' }}</small></template>
           <template #cell-post="{ row }"><span class="ws-main">{{ row.post?.postName || postName(row.postId) }}</span><small>{{ row.post?.deptName || '' }} · {{ row.post?.workLocation || '地点待确认' }}</small></template>
           <template #cell-availability="{ row }"><span>{{ row.availability || '未填写' }}</span><small>{{ row.applyStatement || '' }}</small></template>
@@ -56,7 +79,7 @@
             </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前没有待处理记录。</p>
+        <p v-else class="sa-empty">{{ focusId ? '该申请不存在或不在当前权限范围内。' : '当前没有待处理记录。' }}</p>
         <AppPagination v-if="recordTotal > recordQuery.pageSize" v-model:page="recordQuery.page" v-model:pageSize="recordQuery.pageSize" :total="recordTotal" @change="loadRecords" />
       </section>
 
@@ -165,7 +188,7 @@ export default {
     return {
       POST_STATUS_OPTIONS, EMPLOYMENT_OPTIONS, RATING_OPTIONS,
       activeView: 'records', loading: true, acting: '', errorMessage: '', posts: [], records: [], statusCounts: {},
-      postTotal: 0, recordTotal: 0,
+      postTotal: 0, recordTotal: 0, recordRequestSeq: 0, monthlies: [], historyError: '',
       postQuery: { status: '', keyword: '', page: 1, pageSize: 20 },
       recordQuery: { postId: '', status: 'APPLIED', keyword: '', page: 1, pageSize: 20 },
       postColumns: [
@@ -185,6 +208,8 @@ export default {
     }
   },
   computed: {
+    focusId() { return String(this.$route.query.recordId || '') },
+    focusActions() { return [{code:'APPROVE',label:'录用'}, {code:'REJECT',label:'拒绝申请'}, {code:'ONBOARD',label:'核验协议并上岗'}, {code:'MONTHLY',label:'登记月度考核'}, {code:'TERMINATE',label:'结束岗位'}].filter(action => this.allows(this.records[0], action.code)) },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     canManage() { return canCode(this.ctx, 'studentAffairs.funding.workstudy.manage') },
     totalRecordCount() { return Number(this.statusCounts?.ALL || 0) },
@@ -194,11 +219,14 @@ export default {
     actionConfirmText() { return ({ APPROVE: '确认录用', REJECT: '确认拒绝', ONBOARD: '确认上岗', TERMINATE: '确认结束' })[this.actionDlg.action] || '确认' },
     actionMessage() { return ({ APPROVE: '录用时会锁定岗位并校验剩余人数。', REJECT: '拒绝后本次申请结束，请填写清楚原因。', ONBOARD: '上岗前必须完成协议核验；确认后才能登记月度考核。', TERMINATE: '结束后不能继续登记月度考核，原台账仍保留。' })[this.actionDlg.action] || '' }
   },
-  mounted() { this.loadAll() },
+  watch: { focusId: { immediate: true, handler() { this.activeView = 'records'; this.actionDlg.visible = false; this.monthlyDlg.visible = false; this.loadAll() } } },
+  beforeUnmount() { this.recordRequestSeq++ },
   methods: {
+    clearFocus() { const query = { ...this.$route.query }; delete query.recordId; return this.$router.replace({ path: this.$route.path, query }) },
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
     allows(row, action) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes(action) },
+    ratingLabel(value) { return ({GOOD:'优秀',PASS:'合格',FAIL:'不合格'})[value] || '待核对' },
     statusCount(status) { return Number(this.statusCounts?.[status] || 0) },
     postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位#${id}` },
     money(value) { return value == null || value === '' ? '待确认' : `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
@@ -209,7 +237,7 @@ export default {
     async loadAll() {
       this.loading = true; this.errorMessage = ''
       const [posts, records] = await Promise.all([this.loadPosts(), this.loadRecords()])
-      if (!posts && !records) this.errorMessage = '勤工助学数据加载失败，请重试。'
+      if (!posts && !records && !this.errorMessage) this.errorMessage = '勤工助学数据加载失败，请重试。'
       this.loading = false
     },
     async loadPosts() {
@@ -218,9 +246,26 @@ export default {
       this.posts = response.data?.items || []; this.postTotal = Number(response.data?.total || 0); return this.posts
     },
     async loadRecords() {
-      const response = await studentAffairsApi.getWorkStudyRecords(this.recordQuery)
-      if (response.code !== 0) return null
-      this.records = response.data?.items || []; this.recordTotal = Number(response.data?.total || 0); this.statusCounts = response.data?.statusCounts || {}; return this.records
+      const request = ++this.recordRequestSeq
+      this.monthlies = []; this.historyError = ''
+      this.errorMessage = ''
+      if (this.focusId && !/^[1-9]\d*$/.test(this.focusId)) { this.records = []; this.errorMessage = '申请编号无效，请返回待办重新打开。'; return null }
+      const query = this.focusId ? { recordId: this.focusId, page: 1, pageSize: 1 } : { ...this.recordQuery }
+      try {
+        const response = await studentAffairsApi.getWorkStudyRecords(query)
+        if (request !== this.recordRequestSeq) return null
+        if (response.code !== 0 || !Array.isArray(response.data?.items)) throw new Error(response.message || '申请列表加载失败，请重试。')
+        this.records = response.data.items; this.recordTotal = Number(response.data.total || 0); this.statusCounts = response.data.statusCounts || {}
+        if (this.focusId && ['ONBOARD','TERMINATED'].includes(this.records[0]?.status)) {
+          try {
+            const history = await studentAffairsApi.getWorkStudyMonthly(this.focusId)
+            if (request !== this.recordRequestSeq) return null
+            if (history.code !== 0 || !Array.isArray(history.data?.items)) throw new Error('考核记录加载失败，请重试。')
+            this.monthlies = history.data.items
+          } catch (e) { if (request === this.recordRequestSeq) this.historyError = e.message || '考核记录加载失败，请重试。' }
+        }
+        return this.records
+      } catch (e) { if (request === this.recordRequestSeq) { this.records = []; this.errorMessage = e.message || '申请列表加载失败，请重试。' }; return null }
     },
     searchPosts() { this.postQuery.page = 1; return this.loadPosts() },
     searchRecords() { this.recordQuery.page = 1; return this.loadRecords() },
@@ -282,6 +327,13 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.ws-monthly-history{margin-top:20px;border-top:1px solid var(--border-color);padding-top:12px}.ws-monthly-history h3{font-size:14px}.ws-history-row{display:flex;flex-wrap:wrap;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color)}
+.ws-focusbar,.ws-focus header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ws-focusbar{padding:12px 0;color:var(--text-secondary)}
+.ws-focus{padding:16px 0}.ws-focus h2{margin:0;font-size:18px}.ws-focus dl{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}.ws-focus dt{font-size:12px;color:var(--text-secondary);margin-bottom:5px}.ws-focus dd{margin:0;overflow-wrap:anywhere}.ws-next{padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);line-height:1.7}
+@media(max-width:640px){.ws-focus dl{grid-template-columns:1fr}.ws-focus .ws-ops{justify-content:flex-start;flex-wrap:wrap}}
+
+
 .ws-switchbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }.ws-view-tabs,.ws-statusbar { display: flex; align-items: center; gap: 4px; }.ws-view-tabs { padding: 3px; border-radius: 10px; background: var(--bg-secondary); }.ws-view-tabs button,.ws-statusbar button { border: 0; color: var(--text-secondary); background: transparent; cursor: pointer; }.ws-view-tabs button { padding: 7px 12px; border-radius: 8px; font-weight: 600; }.ws-view-tabs button.active { color: var(--brand-primary); background: var(--bg-card); box-shadow: var(--shadow-xs); }.ws-view-tabs span,.ws-statusbar span { margin-left: 4px; font-variant-numeric: tabular-nums; }
 .ws-panel { padding: 12px; border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-card); }.ws-statusbar { gap: 6px; margin-bottom: 8px; overflow-x: auto; }.ws-statusbar button { flex: 0 0 auto; padding: 5px 10px; border-radius: 7px; font-size: 12px; }.ws-statusbar button:hover { color: var(--text-primary); background: var(--bg-secondary); }.ws-statusbar button.active { color: var(--color-primary); background: var(--color-primary-light); font-weight: 600; }.ws-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 8px; align-items: center; margin-bottom: 8px; }.ws-toolbar--posts { grid-template-columns: minmax(240px, 1fr) 150px auto; }.ws-search { height: 36px; padding: 0 16px; border: 0; border-radius: var(--radius-md); color: #fff; background: var(--brand-primary); cursor: pointer; }.ws-main { display: block; color: var(--text-primary); font-weight: 600; }.ws-main + small,.ws-panel small { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 11px; line-height: 1.4; }.ws-ops { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }.ws-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }.ws-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--text-secondary); font-size: 13px; }
 @media (max-width: 1050px) { .ws-toolbar { grid-template-columns: 1fr 1fr; }.ws-search { width: max-content; }.ws-ops { justify-content: flex-start; } }

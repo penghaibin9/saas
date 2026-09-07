@@ -31,11 +31,11 @@ def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200)
              keyword: Optional[str] = None, classId: Optional[str] = None,
              batchId: Optional[str] = None, stage: Optional[str] = None,
              reportStatus: Optional[str] = None, paymentStatus: Optional[str] = None,
-             riskLevel: Optional[str] = None, user=Depends(require_staff)):
+             riskLevel: Optional[str] = None, pendingArrival: bool = False, user=Depends(require_staff)):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      batch_id=batchId, stage=stage,
                                      report_status=reportStatus, payment_status=paymentStatus,
-                                     risk_level=riskLevel, user=user)
+                                     risk_level=riskLevel, pending_arrival=pendingArrival, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -98,9 +98,9 @@ def payment_sync(sid: str, body: PaymentSyncBody, user=Depends(require_staff)):
 
 @router.get("/green-channels", summary="绿色通道列表")
 def green_channels(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, status: Optional[str] = None,
+                   keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = None,
                    user=Depends(require_staff)):
-    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user)
+    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -128,10 +128,11 @@ def gc_return(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
 @router.get("/qualifications", summary="服务端报到资格列表")
 def qualifications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    keyword: Optional[str] = None, verdict: Optional[str] = None,
+                   queue: Optional[str] = Query(None, pattern="^(ready|blocked)$"),
                    user=Depends(require_staff)):
     from app.services.orientation_qualification_service import list_qualifications
     items, total = list_qualifications(
-        page, pageSize, keyword=keyword, verdict=verdict, user=user,
+        page, pageSize, keyword=keyword, verdict=verdict, queue=queue, user=user,
     )
     return success(paginate(items, total, page, pageSize))
 
@@ -163,9 +164,11 @@ def enrollment_activate(sid: str, body: dict = Body(...), user=Depends(require_s
 @router.get("/materials", summary="材料审核列表")
 def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,
-              materialType: Optional[str] = None, user=Depends(require_staff)):
+              materialType: Optional[str] = None, batchId: Optional[int] = None,
+              orientationStudentId: Optional[int] = Query(None, ge=1), user=Depends(require_staff)):
     items, total = svc.list_materials(page, pageSize, keyword=keyword, status=status,
-                                      material_type=materialType, user=user)
+                                      material_type=materialType, user=user, batch_id=batchId,
+                                      orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -181,10 +184,11 @@ def mat_return(mid: str, body: ReasonBody, user=Depends(require_staff)):
 
 @router.get("/dorms", summary="宿舍入住列表")
 def dorms(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+          batchId: Optional[int] = Query(None, ge=1),
           keyword: Optional[str] = None, dormStatus: Optional[str] = None,
           building: Optional[str] = None, user=Depends(require_staff)):
     items, total = svc.list_dorms(page, pageSize, keyword=keyword, dorm_status=dormStatus,
-                                  building=building)
+                                  building=building, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -212,10 +216,10 @@ def exception_create(body: ExceptionCreate, user=Depends(require_staff)):
 @router.get("/exceptions", summary="迎新异常列表")
 def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                keyword: Optional[str] = None, exceptionType: Optional[str] = None,
-               status: Optional[str] = None, riskLevel: Optional[str] = None,
+               status: Optional[str] = None, riskLevel: Optional[str] = None, batchId: Optional[int] = None,
                user=Depends(require_staff)):
     items, total = svc.list_exceptions(page, pageSize, keyword=keyword, exception_type=exceptionType,
-                                       status=status, risk_level=riskLevel)
+                                       status=status, risk_level=riskLevel, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -372,3 +376,15 @@ def archive_create(body: ArchiveCreate, user=Depends(require_staff)):
 @router.post("/archives/{aid}/run", summary="执行归档")
 def archive_run(aid: str, user=Depends(require_staff)):
     return success(svc.run_archive(aid), message="已归档")
+
+
+@router.get("/archives/{aid}/items", summary="迎新归档快照")
+def archive_items(aid: str, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  user=Depends(require_staff)):
+    items, total = svc.archive_items(aid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/students/{sid}/disposition", summary="未到校、延期及取消入学处理")
+def disposition_student(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    return success(svc.disposition_student(sid, body), message="已处理")

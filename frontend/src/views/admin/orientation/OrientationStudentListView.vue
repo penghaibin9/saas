@@ -251,7 +251,6 @@ export default {
         { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions, required: true, disabled: !!this.editing },
         { key: 'classId', label: '录取班级（自动确定学院/专业）', type: 'select', options: this.filterOptions.classes || [], required: true },
         { key: 'admissionType', label: '录取类型', type: 'text' },
-        { key: 'reportStatus', label: '报到状态', type: 'select', options: this.statusOptions.reportStatus || [] },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text', placeholder: '敏感字段，列表脱敏展示' },
         { key: 'origin', label: '生源地', type: 'region' }
@@ -265,7 +264,9 @@ export default {
       }))
     }
   },
+  watch: { '$route.query.batchId'(value) { if (value !== undefined && String(value) !== this.filters.batchId) { this.filters.batchId = String(value); this.search() } } },
   async created() {
+    if (this.$route.query.batchId) this.filters.batchId = String(this.$route.query.batchId)
     await this.init()
   },
   methods: {
@@ -389,7 +390,7 @@ export default {
     async onEditSubmit(form) {
       this.submitting = true
       try {
-        const res = this.editing ? await api.updateOrientationStudent(this.editing.id, form) : await api.createOrientationStudent(form)
+        const res = this.editing ? await api.updateOrientationStudent(this.editing.id, Object.fromEntries(this.editFields.map(f => [f.key, form[f.key]]))) : await api.createOrientationStudent(form)
         if (res.code === 0) {
           toast.success(this.editing ? '报到信息已更新，已写入留痕' : '新生记录已新增')
           this.editVisible = false

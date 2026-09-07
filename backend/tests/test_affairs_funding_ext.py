@@ -76,6 +76,8 @@ def test_loan_flow(client, db_mode):
 
 
 def test_fee_reduction_flow(client, db_mode):
+    from affairs_contract_test_support import ensure_role_user
+    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
     # 理由过短

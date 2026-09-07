@@ -1,5 +1,6 @@
 <template>
   <AppPageShell
+    flat
     title="奖助发放登记"
     subtitle="按批次生成发放记录，登记银行发放结果。列表、统计、导出和操作均遵守当前数据范围。"
     :role-name="ctx?.currentRole?.roleName || ''"
@@ -15,8 +16,8 @@
     >
       <AppInlineAlert v-if="genBatchId && routeSource === 'publicity'" type="info" :description="`已承接公示批次 #${genBatchId}；下方记录、生成与导出保持同一批次上下文。`" />
       <p v-if="genBatchId" class="fd-scope-note">当前批次 #{{ genBatchId }} · 汇总、记录与导出使用同一批次。</p>
-      <div class="sa-toolbar">
-        <div class="fd-summary"><span v-for="card in metricCards" :key="card.key"><span>{{ card.label }}</span><strong>{{ card.value }}</strong></span></div>
+      <div class="fd-commandbar">
+        <div class="fd-kpis"><span v-for="card in metricCards" :key="card.key"><span>{{ card.label }}</span><strong>{{ card.value }}</strong></span></div>
         <div class="fd-gen">
           <AppPermissionButton
             :allowed="canBtn('studentAffairs.funding.disburse.manage')"
@@ -47,8 +48,10 @@
         <button v-else-if="exportJob.status === 'FAILED' || exportJob.status === 'DEAD'" type="button" class="fd-link" @click="openExport">重新创建</button>
       </div>
 
-      <AppSectionCard title="发放记录">
-        <div class="fd-filters">
+      <section class="fd-records" aria-label="发放记录">
+        <div class="fd-record-head">
+          <h2>发放记录</h2>
+          <div class="fd-status-tabs">
           <button
             v-for="filter in statusFilters"
             :key="filter.key"
@@ -58,6 +61,7 @@
             :aria-pressed="activeStatus === filter.key"
             @click="setStatus(filter.key)"
           >{{ filter.label }}</button>
+          </div>
         </div>
         <DataTable v-if="items.length" :columns="disbursementColumns" :rows="items" row-key="disbursementId">
           <template #cell-student="{ row }">
@@ -105,7 +109,7 @@
           :total="pagination.total"
           @change="loadRecords"
         />
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
 
     <AppConfirmDialog
@@ -172,7 +176,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppFundingBatchPicker, AppGlobalState, AppInlineAlert,
-  AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+  AppPageShell, AppPagination, AppPermissionButton,
   AppStatusTag, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -198,7 +202,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppFundingBatchPicker, AppGlobalState, AppInlineAlert,
-    AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+    AppPageShell, AppPagination, AppPermissionButton,
     StatusTag: AppStatusTag, AppTextInput, DataTable
   },
   data() {
@@ -476,16 +480,17 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.fd-summary { display:flex;gap:12px 24px;flex-wrap:wrap;width:100%;padding:12px 0 }
-.fd-summary>span { display:flex;align-items:baseline;gap:8px;color:var(--text-secondary);font-size:13px }.fd-summary strong { color:var(--text-primary);font-size:18px;font-variant-numeric:tabular-nums }
+@import '@/styles/module-page.css';
+.fd-commandbar { display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;padding:4px 0 10px;border-bottom:1px solid var(--line) }
+.fd-kpis { display:flex;align-items:center;gap:8px 20px;min-width:0;flex:1 1 auto;flex-wrap:wrap }
+.fd-kpis>span { display:flex;align-items:baseline;gap:6px;color:var(--t3);font-size:11px;white-space:nowrap }.fd-kpis strong { color:var(--t1);font-size:17px;font-variant-numeric:tabular-nums }
 .fd-date { display:block;margin-top:4px;color:var(--text-tertiary);font-size:12px }.fd-record-context { padding:12px;border:1px solid var(--border-light);border-radius:10px;color:var(--text-secondary) }
 .fd-scope-note { margin: 0 0 var(--space-3); color: var(--text-tertiary); font-size: var(--font-size-sm); }
-.fd-gen { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.fd-gen { display: flex; flex:0 0 auto; gap: 8px; align-items: center; flex-wrap: nowrap; justify-content: flex-end; }
 .fd-genpick { width: 260px; }
-.fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.fd-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
-.fd-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.fd-records { min-width:0 }.fd-record-head { display:flex;align-items:center;gap:18px;min-height:38px;border-bottom:1px solid var(--line) }.fd-record-head h2 { flex:0 0 auto;margin:0;color:var(--t1);font-size:14px }.fd-status-tabs { display:flex;align-items:center;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none }.fd-status-tabs::-webkit-scrollbar { display:none }
+.fd-chip { flex:0 0 auto;min-height:30px;border:0;background:transparent;border-radius:4px;padding:4px 10px;color:var(--t3);font-size:12px;cursor:pointer;white-space:nowrap }
+.fd-chip:hover { color:var(--t1);background:var(--bg-soft) }.fd-chip.is-on { background:var(--pri-bg);color:var(--pri);font-weight:600 }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .fd-reason { display: block; color: var(--danger-600); font-size: var(--font-size-xs); margin-top: 2px; }
 .fd-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -493,6 +498,6 @@ export default {
 .fd-hint { margin: var(--space-2) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .fd-export-job { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--bg-card); }
 .fd-link { border: 0; background: transparent; color: var(--color-primary); font: inherit; cursor: pointer; font-weight: 600; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .fd-gen { width: 100%; justify-content: flex-start; } .fd-genpick { flex: 1; } }
-@import '@/styles/module-page.css';
+@media (max-width: 1180px) { .fd-commandbar { align-items:flex-start;flex-direction:column }.fd-gen { width:100%;justify-content:flex-start }.fd-genpick { flex:1 } }
+@media (max-width: 720px) { .fd-gen { align-items:stretch;flex-direction:column }.fd-genpick { width:100% }.fd-record-head { align-items:flex-start;flex-direction:column;gap:2px;padding:6px 0 }.fd-status-tabs { width:100% } }
 </style>

@@ -198,7 +198,7 @@ export default {
           this.showError(e, '重新提交失败')
           return
         }
-        toast('已修改并重新提交'); this.editVisible = false; this.editNotice = ''; this.load()
+        toast('已修改并重新提交'); this.editVisible = false; this.editNotice = ''; this.detailId = String(this.editTarget.applicationId); this.load()
       } catch (e) { this.showError(e, '保存修改失败') } finally { this.busy = false }
     },
     async appeal(x) {

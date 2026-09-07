@@ -8,11 +8,12 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载助学贷款台账…" @retry="load" @back="$router.push('/admin/student-affairs/funding')">
       <AppSectionCard title="贷款办理台账" compact>
-        <div class="ln-statusbar" aria-label="按办理状态筛选">
+        <div v-if="focusId" class="ln-toolbar"><strong>当前记录 · {{ focusId }}</strong><button class="ln-secondary" type="button" @click="clearFocus">返回贷款台账</button></div>
+        <div v-else class="ln-statusbar" aria-label="按办理状态筛选">
           <button v-for="item in quickStatuses" :key="item.value || 'ALL'" type="button" :class="{ active: filters.status === item.value }" @click="setStatus(item.value)"><span>{{ item.label }}</span><strong>{{ item.value ? count(item.value) : Number(statusCounts.ALL || 0) }}</strong></button>
           <AppPermissionButton code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" @click="openRegister">代登记</AppPermissionButton>
         </div>
-        <div class="ln-toolbar">
+        <div v-if="!focusId" class="ln-toolbar">
           <AppTextInput v-model="filters.keyword" class="ln-search" type="search" placeholder="姓名、学号或经办银行" clearable @change="applyFilters" @clear="applyFilters" />
           <AppSelect v-model="filters.status" class="ln-filter" :options="statusOptions" @change="applyFilters" />
           <AppSelect v-model="filters.loanType" class="ln-filter" :options="typeOptions" @change="applyFilters" />
@@ -20,7 +21,19 @@
           <button type="button" class="ln-secondary" :disabled="loading" @click="applyFilters">查询</button>
         </div>
 
-        <DataTable v-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
+        <section v-if="focusId && loans.length" class="ln-focused" aria-label="贷款原单工作区">
+          <header><div><strong>{{ loans[0].realName }} · {{ loans[0].studentNo }}</strong><span>{{ typeLabel(loans[0].loanType) }} · {{ loans[0].yearCode }}</span></div><StatusTag :type="statusTone(loans[0].status)" :label="loans[0].statusLabel" dot /></header>
+          <dl>
+            <div><dt>贷款金额</dt><dd>{{ amountText(loans[0].amount) }}</dd></div>
+            <div><dt>经办银行</dt><dd>{{ loans[0].bankName || '待补充' }}<template v-if="loans[0].bankLast4"> · 尾号 {{ loans[0].bankLast4 }}</template></dd></div>
+            <div><dt>电子回执</dt><dd>{{ loans[0].receiptCodeMasked || '待补充' }}</dd></div>
+            <div><dt>回执材料</dt><dd><button v-if="loans[0].receiptFile" class="ln-file" type="button" :disabled="!!fileBusy" @click="openReceipt(loans[0])">{{ loans[0].receiptFile.fileName || '查看回执材料' }}</button><span v-else>未附材料</span></dd></div>
+          </dl>
+          <p v-if="loans[0].reviewOpinion" class="ln-focused-note"><strong>{{ loans[0].status === 'RETURNED' ? '需修改' : '核验意见' }}</strong>{{ loans[0].reviewOpinion }}</p>
+          <p v-if="loans[0].status === 'CONFIRMED'" class="ln-focused-note"><strong>校内回执台账已确认</strong>{{ loans[0].confirmedAt ? new Date(loans[0].confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}<span>银行放款请以经办银行结果为准。</span></p>
+          <footer><AppPermissionButton v-for="action in availableActions(loans[0])" :key="action.code" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" :variant="action.code === 'RETURN' ? 'secondary' : 'primary'" :disabled="saving" @click="openAction(loans[0], action.code)">{{ action.label }}</AppPermissionButton></footer>
+        </section>
+        <DataTable v-else-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
           <template #cell-student="{ row }">
             <strong class="ln-main">{{ row.realName || `学生 ${row.studentId}` }}</strong>
             <small>{{ row.studentNo || '学号待核对' }}</small>
@@ -44,13 +57,13 @@
               <AppPermissionButton v-if="allows(row, 'VERIFY')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'VERIFY')">核验通过</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'RETURN')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" variant="secondary" @click="openAction(row, 'RETURN')">退回</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'CONFIRM')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'CONFIRM')">确认台账</AppPermissionButton>
-              <span v-if="!row.allowedActions?.length" class="ln-muted">只读</span>
+              <div v-if="row.status === 'CONFIRMED'" class="ln-muted"><span>台账已确认</span><small>{{ row.confirmedAt ? new Date(row.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</small></div><span v-else-if="!row.allowedActions?.length" class="ln-muted">只读</span>
             </div>
           </template>
         </DataTable>
         <div v-else class="ln-empty">
-          <strong>{{ hasFilters ? '没有匹配的贷款记录' : '当前范围还没有贷款记录' }}</strong>
-          <p>{{ hasFilters ? '调整筛选条件后再试。' : '学生提交电子回执后会自动进入待核验队列，也可由老师代登记纸质来件。' }}</p>
+          <strong>{{ focusId ? '该记录不存在或不在当前权限范围内' : hasFilters ? '没有匹配的贷款记录' : '当前范围还没有贷款记录' }}</strong>
+          <p v-if="!focusId">{{ hasFilters ? '调整筛选条件后再试。' : '学生提交电子回执后会自动进入待核验队列，也可由老师代登记纸质来件。' }}</p>
         </div>
         <AppPagination v-if="total > pageSize || page > 1" v-model:page="page" v-model:pageSize="pageSize" :total="total" :disabled="loading" @change="load" />
       </AppSectionCard>
@@ -152,15 +165,18 @@ export default {
     }
   },
   computed: {
+    focusId() { return String(this.$route?.query?.recordId || '') },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     hasFilters() { return Object.values(this.filters).some(Boolean) },
     actionTitle() { return ({ SUBMIT_RECEIPT: '补录贷款回执', VERIFY: '核验贷款回执', RETURN: '退回学生修改', CONFIRM: '确认贷款台账' })[this.actionDrawer.action] || '处理贷款记录' },
     actionSubtitle() { return ({ SUBMIT_RECEIPT: '补齐电子回执后进入学校待核验队列。', VERIFY: '核对学生、学年、金额和回执材料。', RETURN: '退回后学生 PC 与小程序会显示具体修改意见。', CONFIRM: '确认校内回执台账完成，不代表银行已经放款。' })[this.actionDrawer.action] || '' },
     actionConfirmText() { return ({ SUBMIT_RECEIPT: '提交待核验', VERIFY: '确认核验通过', RETURN: '确认退回', CONFIRM: '确认台账' })[this.actionDrawer.action] || '确认' }
   },
-  mounted() { this.load() },
+  watch: { focusId: { immediate: true, handler() { this.page = 1; this.actionDrawer.visible = false; this.load() } } },
   beforeUnmount() { this.loadSeq++ },
   methods: {
+    availableActions(row) { return [{ code: 'SUBMIT_RECEIPT', label: '补录回执' }, { code: 'VERIFY', label: '核验通过' }, { code: 'RETURN', label: '退回修改' }, { code: 'CONFIRM', label: '确认台账' }].filter(action => this.allows(row, action.code)) },
+    clearFocus() { const query = { ...this.$route.query }; delete query.recordId; this.$router.replace({ path: this.$route.path, query }) },
     canBtn(code) { return canCode(this.ctx, code) },
     count(status) { return Number(this.statusCounts?.[status] || 0) },
     allows(row, action) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes(action) },
@@ -171,7 +187,8 @@ export default {
       const seq = ++this.loadSeq
       this.loading = true; this.errorMessage = ''
       try {
-        const response = await studentAffairsApi.getLoans({ ...this.filters, keyword: this.filters.keyword.trim(), yearCode: this.filters.yearCode.trim(), page: this.page, pageSize: this.pageSize })
+        if (this.focusId && !/^[1-9]\d*$/.test(this.focusId)) throw new Error('贷款记录编号无效，请返回台账')
+        const response = await studentAffairsApi.getLoans(this.focusId ? { recordId: this.focusId, page: 1, pageSize: 1 } : { ...this.filters, keyword: this.filters.keyword.trim(), yearCode: this.filters.yearCode.trim(), page: this.page, pageSize: this.pageSize })
         if (seq !== this.loadSeq) return
         if (response.code !== 0 || !response.data) throw new Error(response.message || '贷款台账加载失败')
         this.loans = response.data.items || []; this.total = Number(response.data.total || 0)
@@ -251,6 +268,8 @@ export default {
 </script>
 
 <style scoped>
+.ln-focused{padding:16px 0;min-width:0}.ln-focused>header{display:flex;justify-content:space-between;gap:16px;align-items:center}.ln-focused>header>div{display:grid;gap:6px}.ln-focused>header span,.ln-focused dt{color:var(--text-secondary)}.ln-focused dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 28px;margin:24px 0}.ln-focused dl>div{display:grid;gap:7px;min-width:0}.ln-focused dd{margin:0;overflow-wrap:anywhere}.ln-focused-note{display:grid;gap:7px;margin:0;padding:16px 0;border-top:1px solid var(--border-light);line-height:1.6;overflow-wrap:anywhere}.ln-focused>footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.ln-focused>footer:empty{display:none}@media(max-width:640px){.ln-focused dl{grid-template-columns:1fr;gap:14px}.ln-focused>header{align-items:flex-start}}
+
 @import '@/styles/module-page.css';
 .ln-statusbar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }.ln-statusbar > button:not(:last-child) { display: inline-flex; gap: 7px; align-items: center; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); background: transparent; cursor: pointer; }.ln-statusbar > button.active:not(:last-child) { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }.ln-statusbar > button:last-child { margin-left: auto; }.ln-statusbar strong { font-size: 12px; }.ln-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }.ln-search { flex: 1 1 240px; }.ln-filter { flex: 0 1 150px; }.ln-year { flex: 0 1 160px; }.ln-secondary { min-height: 36px; padding: 0 15px; border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); background: var(--bg-card); cursor: pointer; }.ln-secondary:disabled { opacity: .55; cursor: not-allowed; }.ln-main,.ln-main + small,.ln-table strong,.ln-table small { display: block; }.ln-main + small,[data-key='loan'] small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.ln-file { display: block; max-width: 190px; overflow: hidden; margin-top: 4px; padding: 0; border: 0; color: var(--color-primary); background: transparent; font: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.ln-opinion { display: block; max-width: 150px; overflow: hidden; margin-top: 4px; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.ln-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }.ln-muted { color: var(--text-tertiary); font-size: 12px; }.ln-empty { padding: 42px 20px; color: var(--text-secondary); text-align: center; }.ln-empty strong { color: var(--text-primary); }.ln-empty p { margin: 6px 0 0; font-size: 13px; }.ln-form { display: grid; gap: 14px; }.ln-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 16px; }.ln-span2 { grid-column: 1 / -1; }.ln-uploaded { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); font-size: 12px; }.ln-uploaded span:first-child { color: var(--text-primary); }.ln-uploaded button { margin-left: auto; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; }.ln-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-card); }.ln-context div { display: grid; gap: 4px; min-width: 0; }.ln-context span { color: var(--text-secondary); font-size: 11px; }.ln-context strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .ln-form-grid,.ln-context { grid-template-columns: 1fr; }.ln-span2 { grid-column: auto; } }

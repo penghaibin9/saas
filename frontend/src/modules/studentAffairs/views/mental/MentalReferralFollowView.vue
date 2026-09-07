@@ -15,8 +15,8 @@
 
 
       <AppSectionCard title="心理转介与回访记录">
-        <AppInlineAlert type="info" description="先查看学生、关注等级、当前状态和最近回访。仅在后端允许动作中显示回访、升级或关闭按钮。" />
-        <DataTable v-if="items.length || pagination.total > 0" :columns="followColumns" :rows="items" row-key="referralId" :pagination="pagination" @page-change="onPageChange">
+        <p class="mental-policy">只显示当前状态允许的回访、升级或关闭动作。</p>
+        <DataTable v-if="items.length || pagination.total > 0" :columns="followColumns" :rows="items" row-key="referralId" :pagination="pagination" :row-class="rowClass" @page-change="onPageChange">
           <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div><div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div></template>
           <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
@@ -28,6 +28,7 @@
               <AppPermissionButton v-if="allowed(row).includes('FOLLOW')" :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" :disabled="!hasVersion(row)" @click="follow(row)">回访</AppPermissionButton>
               <AppPermissionButton v-if="allowed(row).includes('ESCALATE')" :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" variant="secondary" danger :disabled="!hasVersion(row)" @click="gotoCrisis(row)">填写依据并升级</AppPermissionButton>
               <AppPermissionButton v-if="allowed(row).includes('CLOSE')" :allowed="canBtn('studentAffairs.mental.manage')" code="studentAffairs.mental.manage" size="sm" variant="secondary" :disabled="!hasVersion(row)" @click="close(row)">关闭</AppPermissionButton>
+              <AppPermissionButton v-if="row.riskId" :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" size="sm" variant="secondary" @click="openRisk(row.riskId)">查看风险</AppPermissionButton>
             </div>
             <span v-else class="sa-muted">当前状态无操作</span>
           </template>
@@ -106,6 +107,10 @@ export default {
   computed: {
     CHANNELS: () => CHANNELS,
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    focusedReferralId() {
+      const raw = String(this.$route.query.referralId || this.$route.query.recordId || '')
+      return /^[1-9]\d*$/.test(raw) ? raw : ''
+    },
     referralValid() { const n = this.refDlg.reasonSummary.trim().length; return !!this.refDlg.studentId && n >= 5 && n <= 500 },
     metricCards() {
       return [
@@ -125,12 +130,22 @@ export default {
       this.loading = true; this.errorMessage = ''
       try {
         const res = await studentAffairsApi.listMentalAttention({ page: this.pagination.page, pageSize: this.pagination.pageSize })
-        this.items = res.data.items || []
+        const rows = res.data.items || []
+        let index = this.focusedReferralId ? rows.findIndex((row) => String(row.referralId) === this.focusedReferralId) : -1
+        if (this.focusedReferralId && index < 0) {
+          try {
+            const focused = await studentAffairsApi.getMentalReferral(this.focusedReferralId)
+            if (focused.data) rows.unshift(focused.data)
+            index = 0
+          } catch { /* 保留当前授权列表，不把单条权限失败伪装成全页故障。 */ }
+        }
+        this.items = index > 0 ? [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)] : rows
         this.pagination.total = res.data.total != null ? res.data.total : this.items.length
       } catch (e) { this.errorMessage = e.message || '转介回访工作台加载失败' }
       finally { this.loading = false }
     },
     onPageChange(page) { this.pagination.page = page; this.load() },
+    rowClass(row) { return this.focusedReferralId && String(row.referralId) === this.focusedReferralId ? 'mental-row--focused' : '' },
     createReferral() { this.refDlg = { visible: true, studentId: '', channel: '校内咨询', reasonSummary: '', error: '' } },
     closeReferral() { if (!this.actioning) this.refDlg.visible = false },
     onPickReferral(text) {
@@ -168,16 +183,24 @@ export default {
     },
     gotoCrisis(row) {
       if (!this.allowed(row).includes('ESCALATE') || !this.hasVersion(row)) return
-      this.$router.push('/admin/student-affairs/mental/crisis')
+      this.txtDlg = {
+        visible: true, kind: 'escalate', row, title: `升级为心理危机 · ${row.realName || '该生'}`,
+        type: 'danger', confirmText: '确认升级', reasonLabel: '升级依据（5-300字）',
+        sceneKey: 'sa.mental.escalate', message: '将生成正式风险记录。请客观写明危机信号、核实来源和已采取措施。'
+      }
     },
+    openRisk(riskId) { this.$router.push(`/admin/student-affairs/risk/${riskId}`) },
     async submitText({ reason }) {
       const dlg = this.txtDlg
       const text = (reason || '').trim()
       if (text.length < 5 || text.length > 300) { this.errorMessage = '处理说明需5-300字'; return }
-      if (!dlg.row || !this.allowed(dlg.row).includes(dlg.kind === 'follow' ? 'FOLLOW' : 'CLOSE') || !this.hasVersion(dlg.row)) { this.errorMessage = '记录状态或版本已变化，请刷新后重试'; return }
+      const action = dlg.kind === 'follow' ? 'FOLLOW' : (dlg.kind === 'escalate' ? 'ESCALATE' : 'CLOSE')
+      if (!dlg.row || !this.allowed(dlg.row).includes(action) || !this.hasVersion(dlg.row)) { this.errorMessage = '记录状态或版本已变化，请刷新后重试'; return }
       const task = dlg.kind === 'follow'
         ? () => studentAffairsApi.followMentalReferral(dlg.row.referralId, text, dlg.row.version)
-        : () => studentAffairsApi.closeMentalReferral(dlg.row.referralId, text, dlg.row.version)
+        : (dlg.kind === 'escalate'
+            ? () => studentAffairsApi.escalateMentalReferral(dlg.row.referralId, text, dlg.row.version)
+            : () => studentAffairsApi.closeMentalReferral(dlg.row.referralId, text, dlg.row.version))
       const ok = await this.runAction(task)
       if (ok) dlg.visible = false
     },
@@ -202,8 +225,10 @@ export default {
 .mental-summary { color: var(--text-secondary); }
 .mental-followed { color: var(--success-700, #15803d); font-weight: 600; }
 .mental-pending { color: var(--warning-700, #b45309); font-weight: 600; }
+.mental-policy { margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--line,var(--border-light));color:var(--text-tertiary);font-size:var(--font-size-xs) }
+:deep(.dt__tr.mental-row--focused) .dt__td { background:var(--primary-50,#eff6ff) }
 .dr-form { display:flex;flex-direction:column;gap:var(--space-4) }
-.mental-form-note { padding: 10px 12px; border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-md); background: var(--primary-50, #eff6ff); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.mental-form-note { padding-left:10px;border-left:3px solid var(--primary-400,#60a5fa);color:var(--text-secondary);font-size:var(--font-size-sm);line-height:1.6 }
 .char-count { margin:4px 0 0;text-align:right;color:var(--text-tertiary);font-size:12px }
 @media(max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.sa-grid--metrics{grid-template-columns:1fr}}

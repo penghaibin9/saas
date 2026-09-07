@@ -1,7 +1,7 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" :title="title" subtitle="核对申请材料，及时处理待办" show-back />
-    <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal) && focusId" class="ar__search"><button @click="returnToQueue">查看全部待办</button><text class="ar__muted">当前事项 · 按最新进度展示</text></view>
+    <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal) && focusId" class="ar__search"><button :disabled="acting" @click="returnToQueue">查看全部待办</button><button :disabled="acting || state === 'loading'" @click="load">{{ state === 'loading' ? '正在刷新…' : '刷新进度' }}</button></view>
     <view v-if="(isAid || isFunding) && !focusId" class="ar__search">
       <input v-model="keyword" confirm-type="search" placeholder="搜索学生姓名或学号" maxlength="100" @confirm="load" />
       <button :disabled="acting" @click="load">搜索</button>
@@ -151,7 +151,13 @@ export default {
       if (HIGH_RISK_KINDS.has(this.kind)) return []
       return ['APPROVE', 'RETURN', 'REJECT']
     },
-    canAction(x, action) { const list = Array.isArray(x.allowedActions) ? x.allowedActions : this.fallbackActions(); return list.includes(action) },
+    canAction(x, action) {
+      const list = Array.isArray(x.allowedActions) ? x.allowedActions : this.fallbackActions()
+      if (this.kind === 'DISCIPLINE_REMOVE' && ['APPROVE', 'REJECT'].includes(action)) {
+        return list.includes(`REMOVE_${action}`)
+      }
+      return list.includes(action)
+    },
     visibleAppealActions(x) {
       if (!Array.isArray(x && x.allowedActions)) return []
       if (x.allowedActions.includes('REVIEW')) return this.appealActions

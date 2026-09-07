@@ -207,8 +207,7 @@ def _funding_attachment_counts(db, application_ids: list[int]) -> dict[int, int]
 
 
 def discipline_my(user) -> dict:
-    """学生端仅回数量+生效处分的申诉入口所需最小信息（caseId/申诉状态），不回完整卷宗细节
-    （既有 t_cs_discipline 约定，13A 沿用）。"""
+    """学生端返回本人当前处分与已解除结果，不回完整卷宗细节。"""
     from app.models import DisciplineAppeal, DisciplineCase
     L_DISC_TYPE = {"WARNING": "警告", "SERIOUS_WARNING": "严重警告", "DEMERIT": "记过",
                    "PROBATION": "留校察看", "EXPEL": "开除学籍"}
@@ -216,7 +215,8 @@ def discipline_my(user) -> dict:
         stu = _me(db, user)
         rows = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.student_id == stu.id,
-            DisciplineCase.status == "EFFECTIVE", DisciplineCase.is_deleted.is_(False))
+            DisciplineCase.status.in_(["EFFECTIVE", "REMOVED"]),
+            DisciplineCase.is_deleted.is_(False))
             .order_by(DisciplineCase.id.desc())).all()
         appeals = db.scalars(select(DisciplineAppeal).where(
             DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.student_id == stu.id,
@@ -230,14 +230,19 @@ def discipline_my(user) -> dict:
             items.append({
                 "caseId": str(x.id), "discType": x.disc_type,
                 "discTypeLabel": L_DISC_TYPE.get(x.disc_type, x.disc_type),
+                "caseStatus": x.status,
+                "caseStatusLabel": "已解除" if x.status == "REMOVED" else "已生效",
                 "effectiveAt": _iso(x.effective_at),
+                "removedAt": _iso(x.removed_at),
                 "appealStatus": ap.status if ap else None,
                 "appealResult": ap.result if ap else None,
                 "appealReviewOpinion": ap.review_opinion if ap else "",
                 # 一案一诉：只要曾提交过申诉（含已结案）即不可再申
-                "allowedActions": ["SUBMIT_APPEAL"] if ap is None else [],
+                "allowedActions": ["SUBMIT_APPEAL"] if x.status == "EFFECTIVE" and ap is None else [],
             })
-        return {"activeCount": len(rows), "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员",
+        active_count = sum(1 for row in rows if row.status == "EFFECTIVE")
+        return {"activeCount": active_count, "historyCount": len(rows),
+               "detailNote": "处分卷宗明细按权限管理，如有疑问请联系辅导员",
                "items": items}
 
 

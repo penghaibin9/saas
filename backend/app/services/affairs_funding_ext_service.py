@@ -274,7 +274,7 @@ def _ws_row(r, s=None, user=None, *, exact_amount: bool = False) -> dict:
             }.get(r.status, [])}
 
 
-def list_ws_records(user, post_id=None, status=None, page=1, page_size=50, keyword=""):
+def list_ws_records(user, post_id=None, status=None, page=1, page_size=50, keyword="", record_id=None):
     from app.models import StudentProfile, WorkStudyPost, WorkStudyRecord
     from app.services.affairs_dashboard_service import _allowed_class_ids
     page, page_size = _page(page, page_size)
@@ -292,6 +292,8 @@ def list_ws_records(user, post_id=None, status=None, page=1, page_size=50, keywo
         status_counts = {str(key): int(count or 0) for key, count in status_rows}
         status_counts["ALL"] = sum(status_counts.values())
         conds = list(scope_conds)
+        if record_id is not None:
+            conds.append(WorkStudyRecord.id == int(record_id))
         if post_id:
             conds.append(WorkStudyRecord.post_id == int(post_id))
         if status:
@@ -343,6 +345,8 @@ def apply_work_study(post_id, body, user, *, skip_scope_check=False) -> dict:
                             created_by=_uid(user))
         db.add(r); db.flush()
         _audit(db, r.id, "WS_APPLY", f"student={sid}")
+        from app.services.affairs_funding_todo_service import sync_work_study_todos
+        sync_work_study_todos(db, r)
         db.commit(); db.refresh(r)
         return _ws_row(r, s, user)
 
@@ -452,6 +456,8 @@ def withdraw_work_study_self(record_id, body, user) -> dict:
         record.remark = "学生本人撤回"
         record.version = int(record.version or 0) + 1
         _audit(db, record.id, "WS_WITHDRAW", "APPLIED->WITHDRAWN")
+        from app.services.affairs_funding_todo_service import sync_work_study_todos
+        sync_work_study_todos(db, record)
         db.commit(); db.refresh(record)
         return _ws_row(record, db.get(StudentProfile, int(record.student_id)), user)
 
@@ -499,6 +505,10 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None,
         elif action == "REJECT":
             if before != "APPLIED":
                 raise AppException("DATA_CONFLICT", "仅待审核可拒绝")
+            text = str(reason or "").strip()
+            if not 5 <= len(text) <= 500:
+                raise AppException("VALIDATION_ERROR", "未录用原因需5-500字")
+            record.remark = text
             record.status = "REJECTED"
         elif action == "ONBOARD":
             if before != "APPROVED":
@@ -525,6 +535,8 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None,
             raise AppException("VALIDATION_ERROR", "动作非法")
         record.version = int(record.version or 0) + 1
         _audit(db, record.id, "WS_" + action, f"{before}->{record.status}")
+        from app.services.affairs_funding_todo_service import sync_work_study_todos
+        sync_work_study_todos(db, record)
         db.commit(); db.refresh(record)
         student = db.get(StudentProfile, int(record.student_id))
         return _ws_row(record, student, user)
@@ -600,7 +612,7 @@ def loan_policy() -> dict:
     return _loan_policy()
 
 
-def list_loans(user, status=None, page=1, page_size=50, keyword="", year_code="", loan_type=""):
+def list_loans(user, status=None, page=1, page_size=50, keyword="", year_code="", loan_type="", record_id=None):
     from app.models import StudentLoan, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     page, page_size = _page(page, page_size)
@@ -618,6 +630,8 @@ def list_loans(user, status=None, page=1, page_size=50, keyword="", year_code=""
         status_counts = {str(key): int(count or 0) for key, count in status_rows}
         status_counts["ALL"] = sum(status_counts.values())
         conds = list(scope_conds)
+        if record_id is not None:
+            conds.append(StudentLoan.id == int(record_id))
         if status:
             conds.append(StudentLoan.status == status)
         if year_code:
@@ -718,6 +732,8 @@ def register_loan(body, user, *, student_self: bool = False) -> dict:
         _bind_loan_receipt(db, row, _loan_body(body, "receiptFileId"), user)
         _audit(db, row.id, "LOAN_SELF_SUBMIT" if student_self else "LOAN_REGISTER",
                f"type={ltype};year={year_code};receipt={'yes' if code else 'no'}")
+        from app.services.affairs_funding_todo_service import sync_loan_todos
+        sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
         return _loan_row(row, student, user, student_view=student_self)
 
@@ -796,6 +812,8 @@ def loan_action(loan_id, body, user) -> dict:
         row.updated_by = _uid(user)
         row.version = int(row.version or 0) + 1
         _audit(db, row.id, f"LOAN_{action}", f"{before}->{row.status}")
+        from app.services.affairs_funding_todo_service import sync_loan_todos
+        sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
         student = db.get(StudentProfile, int(row.student_id))
         return _loan_row(row, student, user)
@@ -883,6 +901,8 @@ def resubmit_loan_self(loan_id, body, user) -> dict:
         row.updated_by = _uid(user)
         row.version = int(row.version or 0) + 1
         _audit(db, row.id, "LOAN_SELF_RESUBMIT", f"{before}->RECEIPT")
+        from app.services.affairs_funding_todo_service import sync_loan_todos
+        sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
         return _loan_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True)
 
@@ -905,6 +925,8 @@ def withdraw_loan_self(loan_id, body, user) -> dict:
         row.review_opinion = "学生本人撤回"
         row.version = int(row.version or 0) + 1
         _audit(db, row.id, "LOAN_SELF_WITHDRAW", "RECEIPT->WITHDRAWN")
+        from app.services.affairs_funding_todo_service import sync_loan_todos
+        sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
         return _loan_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True)
 
@@ -1033,7 +1055,7 @@ def _fee_row(x, s=None, user=None, *, student_view: bool = False, db=None) -> di
 
 
 def list_reductions(user, itemType=None, status=None, page=1, page_size=50,
-                    keyword="", year_code=""):
+                    keyword="", year_code="", record_id=None):
     from app.models import FeeReduction, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     page, page_size = _page(page, page_size)
@@ -1051,6 +1073,8 @@ def list_reductions(user, itemType=None, status=None, page=1, page_size=50,
         status_counts = {str(key): int(count or 0) for key, count in status_rows}
         status_counts["ALL"] = sum(status_counts.values())
         conds = list(scope_conds)
+        if record_id is not None:
+            conds.append(FeeReduction.id == record_id)
         if itemType:
             conds.append(FeeReduction.item_type == _fee_type(itemType))
         if status:
@@ -1123,6 +1147,8 @@ def submit_reduction(body, user, *, student_self: bool = False) -> dict:
         _bind_fee_evidence(db, row, file_ids, student, user)
         _audit(db, row.id, "FEE_SELF_SUBMIT" if student_self else "FEE_SUBMIT",
                f"type={item_type};year={year_code};files={len(file_ids)}")
+        from app.services.affairs_funding_todo_service import sync_reduction_todos
+        sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
         return _fee_row(row, student, user, student_view=student_self, db=db)
 
@@ -1175,6 +1201,8 @@ def fee_action(fee_id, body, user) -> dict:
         x.version = int(x.version or 0) + 1
         _audit(db, x.id, "FEE_" + ("FULFILL" if action == "ISSUE" else action),
                f"{before}->{x.status}")
+        from app.services.affairs_funding_todo_service import sync_reduction_todos
+        sync_reduction_todos(db, x)
         db.commit(); db.refresh(x)
         s = db.get(StudentProfile, int(x.student_id))
         return _fee_row(x, s, user, db=db)
@@ -1256,6 +1284,8 @@ def resubmit_reduction_self(fee_id, body, user) -> dict:
         row.review_opinion, row.updated_by = None, _uid(user)
         row.version = int(row.version or 0) + 1
         _audit(db, row.id, "FEE_SELF_RESUBMIT", f"{before}->SUBMITTED;files={len(file_ids)}")
+        from app.services.affairs_funding_todo_service import sync_reduction_todos
+        sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
         return _fee_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True, db=db)
 
@@ -1278,6 +1308,8 @@ def withdraw_reduction_self(fee_id, body, user) -> dict:
         row.review_opinion, row.updated_by = "学生本人撤回", _uid(user)
         row.version = int(row.version or 0) + 1
         _audit(db, row.id, "FEE_SELF_WITHDRAW", "SUBMITTED->WITHDRAWN")
+        from app.services.affairs_funding_todo_service import sync_reduction_todos
+        sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
         return _fee_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True, db=db)
 

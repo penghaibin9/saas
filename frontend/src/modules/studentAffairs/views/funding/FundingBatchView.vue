@@ -1,5 +1,6 @@
 <template>
   <AppPageShell
+    flat
     title="申请批次"
     subtitle="按项目设置申请窗口。草稿可反复核对，发布后四端同步开放，关闭只停止新申请。"
     role-name="学工处 / 资助老师"
@@ -23,7 +24,7 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/funding')"
     >
-      <section class="fb-summary" aria-label="申请批次概览">
+      <section class="fb-kpis" aria-label="申请批次概览">
         <div><span>全部批次</span><strong>{{ summary.all }}</strong></div>
         <div><span>当前可申请</span><strong>{{ summary.availableNow || 0 }}</strong></div>
         <div><span>开放状态</span><strong>{{ summary.byStatus.OPEN || 0 }}</strong></div>
@@ -36,11 +37,11 @@
         description="当前没有启用中的奖学金或助学金项目，请先到“资助项目”创建或启用项目。"
       />
 
-      <AppSectionCard
-        title="批次列表"
-        subtitle="“当前可申请”同时满足：批次开放、项目启用、申请时间有效。"
-        compact
-      >
+      <section class="fb-list" aria-label="批次列表">
+        <header class="fb-list__head">
+          <h2>批次列表</h2>
+          <span>开放批次、启用项目、有效申请窗口</span>
+        </header>
         <div class="fb-toolbar">
           <AppTextInput
             v-model="filters.keyword"
@@ -117,7 +118,7 @@
           :disabled="loading"
           @change="load"
         />
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
 
     <AppDrawer v-model:visible="drawer.visible" title="新建申请批次" mode="modal" size="large">
@@ -187,7 +188,7 @@
 import {
   AppConfirmDialog, AppDateDisplay, AppDateRangePicker, AppFormItem, AppFundingProjectPicker,
   AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell, AppPagination,
-  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
+  AppPermissionButton, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { DataTable } from '@/components/business'
@@ -217,7 +218,7 @@ export default {
   components: {
     AppConfirmDialog, AppDateDisplay, AppDateRangePicker, AppDrawer, AppFormItem, AppFundingProjectPicker,
     AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell, AppPagination, AppPermissionButton,
-    AppSectionCard, AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
+    AppSelect, AppTextInput, StatusTag: AppStatusTag, DataTable
   },
   props: { ctx: { type: Object, default: null } },
   data() {
@@ -420,10 +421,11 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.fb-summary { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:14px;border:1px solid var(--border-base);border-radius:12px;background:var(--bg-card);overflow:hidden }.fb-summary>div { display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 16px;border-right:1px solid var(--border-light) }.fb-summary>div:last-child { border-right:0 }.fb-summary span { color:var(--text-secondary);font-size:12px }.fb-summary strong { color:var(--text-primary);font-size:20px;font-variant-numeric:tabular-nums }
-.fb-toolbar { display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px) 130px auto;gap:10px;margin-bottom:14px }.fb-search,.fb-project-filter,.fb-status-filter { min-width:0 }.fb-search-btn,.fb-secondary-btn { height:34px;padding:0 15px;border:1px solid var(--border-base);border-radius:8px;background:var(--bg-card);color:var(--text-secondary);font:inherit;cursor:pointer }.fb-search-btn:hover,.fb-secondary-btn:hover { border-color:var(--primary-400);color:var(--color-primary) }.fb-search-btn:disabled,.fb-secondary-btn:disabled { opacity:.55;cursor:default }
+.fb-kpis { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;border-bottom:1px solid var(--line) }.fb-kpis>div { display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:42px;padding:6px 16px;border-right:1px solid var(--line) }.fb-kpis>div:first-child { padding-left:0 }.fb-kpis>div:last-child { border-right:0 }.fb-kpis span { color:var(--t3);font-size:11px }.fb-kpis strong { color:var(--t1);font-size:20px;font-variant-numeric:tabular-nums }
+.fb-list { min-width:0 }.fb-list__head { display:flex;align-items:baseline;gap:10px;min-height:32px;padding:5px 0;border-bottom:1px solid var(--line) }.fb-list__head h2 { margin:0;color:var(--t1);font-size:14px }.fb-list__head span { color:var(--t3);font-size:11px }
+.fb-toolbar { display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,260px) 130px auto;gap:8px;margin:8px 0 }.fb-search,.fb-project-filter,.fb-status-filter { min-width:0 }.fb-search-btn,.fb-secondary-btn { height:34px;padding:0 15px;border:1px solid var(--border-base);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font:inherit;cursor:pointer }.fb-search-btn:hover,.fb-secondary-btn:hover { border-color:var(--primary-400);color:var(--color-primary) }.fb-search-btn:disabled,.fb-secondary-btn:disabled { opacity:.55;cursor:default }
 .fb-main { display:block;color:var(--text-primary);font-weight:600 }.fb-main+small,td small { display:block;margin-top:5px;color:var(--text-tertiary);font-size:12px;line-height:1.45 }.fb-window { display:flex;align-items:center;gap:5px;color:var(--text-secondary);font-size:13px;white-space:nowrap }.fb-muted { color:var(--text-tertiary);font-size:12px }.fb-empty { padding:34px 16px;text-align:center }.fb-empty strong { color:var(--text-primary) }.fb-empty p { margin:7px 0 0;color:var(--text-secondary);font-size:13px }.fb-pager { margin-top:14px }
 .fb-form { display:flex;flex-direction:column;gap:4px }.fb-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px }.fb-project-context { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 8px;padding:10px 12px;border:1px solid var(--border-light);border-radius:9px;background:var(--bg-subtle);font-size:13px }.fb-project-context span { color:var(--text-secondary) }.fb-check { display:flex;align-items:flex-start;gap:9px;margin:2px 0 12px;padding:11px 12px;border:1px solid var(--border-base);border-radius:9px;color:var(--text-primary);cursor:pointer }.fb-check input { margin-top:3px }.fb-check span,.fb-check small { display:block }.fb-check small { margin-top:4px;color:var(--text-tertiary);font-size:12px;line-height:1.5 }.fb-dialog-context { padding:13px 14px;border:1px solid var(--border-base);border-radius:10px;background:var(--bg-subtle) }.fb-dialog-context p { margin:7px 0 0;color:var(--text-secondary);font-size:13px;line-height:1.65 }
-@media (max-width:1000px) { .fb-toolbar { grid-template-columns:1fr 1fr }.fb-search { grid-column:1/-1 }.fb-summary { grid-template-columns:1fr 1fr }.fb-summary>div:nth-child(2) { border-right:0 }.fb-summary>div:nth-child(-n+2) { border-bottom:1px solid var(--border-light) } }
-@media (max-width:600px) { .fb-toolbar,.fb-grid2 { grid-template-columns:1fr }.fb-search { grid-column:auto }.fb-project-context { align-items:flex-start;flex-direction:column }.fb-summary>div { padding:10px 12px } }
+@media (max-width:1000px) { .fb-toolbar { grid-template-columns:1fr 1fr }.fb-search { grid-column:1/-1 }.fb-kpis { grid-template-columns:1fr 1fr }.fb-kpis>div:nth-child(2) { border-right:0 }.fb-kpis>div:nth-child(-n+2) { border-bottom:1px solid var(--line) } }
+@media (max-width:600px) { .fb-toolbar,.fb-grid2 { grid-template-columns:1fr }.fb-search { grid-column:auto }.fb-project-context { align-items:flex-start;flex-direction:column }.fb-kpis>div { padding:6px 10px }.fb-list__head span { display:none } }
 </style>

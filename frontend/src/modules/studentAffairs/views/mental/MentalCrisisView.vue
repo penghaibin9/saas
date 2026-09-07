@@ -11,7 +11,7 @@
 
 
       <AppSectionCard title="危机与可升级记录">
-        <AppInlineAlert type="warning" description="升级危机会生成正式风险单并通知相关责任人。必须填写客观危机信号和已采取措施，禁止空说明或诊断性结论。" />
+        <p class="mental-crisis-policy">升级会生成正式风险单并通知责任人；需填写客观信号和已采取措施。</p>
         <DataTable
           v-if="items.length || pagination.total > 0"
           :columns="crisisColumns"
@@ -68,7 +68,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
   AppPermissionButton, AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -86,7 +86,7 @@ export default {
   name: 'MentalCrisisView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell,
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
     AppPermissionButton, AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea, DataTable
   },
   data() {
@@ -166,6 +166,7 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-bottom:var(--space-4) }
+.mental-crisis-policy { margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--warning-200,#fde68a);color:var(--text-secondary);font-size:var(--font-size-xs) }
 :deep(.dt__tr.sa-crisis) .dt__td { background:var(--danger-50,var(--warning-50)) }
 .sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }
 .sa-link { color:var(--primary-600);cursor:pointer;font-weight:600 }

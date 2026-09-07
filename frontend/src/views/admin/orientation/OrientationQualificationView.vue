@@ -1,14 +1,11 @@
 <template>
   <ModulePageShell
-    title="报到资格"
-    subtitle="服务端综合身份、必交材料、缴费/绿通、住宿、异常与冻结流程，返回可解释资格结论"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
+    flat title="资格与入学确认"
     watermark-purpose="报到资格判定"
   >
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
-      <ModuleToolbar :actions="[]" :hint="`共 ${total} 名新生 · 当前页面只展示服务端资格真值`" />
+      <ModuleToolbar :actions="[]" :hint="`共 ${total} 名新生`" />
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
@@ -30,17 +27,18 @@
           <span :class="{ 'oq-muted': !row.blockers?.length }">{{ blockerText(row) }}</span>
         </template>
         <template #cell-reportStatus="{ row }">
-          <StatusTag :type="reportType(row.reportStatus)" :label="reportText(row.reportStatus)" dot />
+          <StatusTag :type="reportType(row.reportStatus)" :label="reportText(row.reportStatus, row.stage)" dot />
         </template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
       </DataTable>
 
+      <AppConfirmDialog v-model:visible="dispositionVisible" title="调整报到安排" :message="dispositionRow ? `学生：${dispositionRow.name}。未到校或取消入学会释放预留床位；延期保留床位。` : ''" :submitting="disposing" :confirm-disabled="dispositionReason.trim().length < 5" @confirm="onDisposition"><div class="oq-finalize-field"><label for="disposition-status">处理结果</label><select id="disposition-status" v-model="dispositionStatus"><option value="NO_SHOW">未到校</option><option value="DEFERRED">延期报到</option><option value="CANCELLED">取消入学</option><option value="RESUME">恢复报到</option></select><label for="disposition-reason">原因</label><textarea id="disposition-reason" v-model="dispositionReason" placeholder="填写核实情况，至少 5 个字" /></div></AppConfirmDialog>
       <AppConfirmDialog
         v-model:visible="confirmVisible"
         title="重新计算报到资格"
-        :message="confirmRow ? `将按当前服务器真实材料、缴费、绿色通道、住宿和异常事实重算「${confirmRow.name}」的报到资格。` : ''"
+        :message="confirmRow ? `将更新「${confirmRow.name}」的办理情况。` : ''"
         type="primary"
         confirm-text="确认重算"
         @confirm="onConfirm"
@@ -49,7 +47,7 @@
       <AppConfirmDialog
         v-model:visible="activateVisible"
         title="激活学生身份与账号"
-        :message="activateRow ? `为「${activateRow.name}」建立或绑定正式学生主档和登录账号，随后学生才能登录并领取签名报到凭证。` : ''"
+        :message="activateRow ? `为「${activateRow.name}」建立或绑定正式学生主档和登录账号，随后学生才能登录并领取报到码。` : ''"
         type="primary"
         confirm-text="确认激活"
         :confirm-disabled="!activateStudentNo.trim()"
@@ -59,7 +57,7 @@
         <div class="oq-finalize-field">
           <label>正式学号</label>
           <AppTextInput v-model="activateStudentNo" placeholder="请输入学校正式学号" />
-          <small>导入不会隐式创建账号；此处是受控、留痕的账号激活步骤。</small>
+          <small>激活后学生可登录 PC 或小程序办理迎新。</small>
         </div>
       </AppConfirmDialog>
 
@@ -121,7 +119,7 @@ export default {
       filters: EMPTY_FILTERS(), confirmVisible: false, confirmRow: null,
       activateVisible: false, activateRow: null, activateStudentNo: '', activating: false,
       finalizeVisible: false, finalizeRow: null, finalizeStudentNo: '', finalizing: false,
-      credentialVisible: false, credential: null
+      dispositionRow: null, dispositionVisible: false, dispositionStatus: 'NO_SHOW', dispositionReason: '', disposing: false, credentialVisible: false, credential: null, activateRequestId: '', finalizeRequestId: ''
     }
   },
   computed: {
@@ -132,6 +130,7 @@ export default {
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
+        { key: 'queue', label: '办理队列', type: 'select', options: [{ value: 'ready', label: '可确认入学' }, { value: 'blocked', label: '待补办' }] },
         { key: 'verdict', label: '资格结论', type: 'select', options: [
           { value: 'QUALIFIED', label: '具备报到资格' },
           { value: 'NOT_QUALIFIED', label: '暂不具备报到资格' },
@@ -146,7 +145,6 @@ export default {
         { key: 'qualification', title: '报到资格' },
         { key: 'reportStatus', title: '现场报到' },
         { key: 'blockedReason', title: '受阻原因' },
-        { key: 'ruleVersion', title: '规则版本' },
         { key: 'actions', title: '操作' }
       ]
     }
@@ -154,8 +152,10 @@ export default {
   async created() {
     const ctx = await api.getOrientationContext()
     if (ctx.code === 0) this.ctx = ctx.data
+    if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
     await this.load()
   },
+  watch: { '$route.query.keyword'(value) { if (value !== undefined) { this.filters.keyword = String(value); this.search() } } },
   methods: {
     async load() {
       this.loading = true; this.error = ''
@@ -170,8 +170,9 @@ export default {
     qualificationType(verdict) {
       return ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warning' })[verdict] || 'default'
     },
-    reportText(status) {
-      return ({ NOT_REPORTED: '未现场报到', CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '学院已确认' })[status] || (status ? '状态待确认' : '—')
+    reportText(status, stage) {
+      if (stage === 'CANCELLED') return '已取消入学'
+      return ({ NOT_REPORTED: '未现场报到', PREPARED: '已预报到，待到校', NO_SHOW: '未到校', DELAYED: '延期报到', CANCELLED: '已取消', CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '学院已确认' })[status] || (status ? '状态待确认' : '—')
     },
     reportType(status) {
       return ({ CHECKED_IN: 'warning', COLLEGE_CONFIRMED: 'success' })[status] || 'default'
@@ -182,27 +183,32 @@ export default {
     rowActions(row) {
       const actions = [
         { key: 'student', label: '学生详情' },
-        { key: 'recalculate', label: '按当前事实重算' }
+        { key: 'recalculate', label: '刷新资格' }
       ]
       const identityBlocked = !row.profileStudentId || row.blockers?.some((item) => ['IDENTITY_NOT_LINKED', 'ACCOUNT_NOT_LINKED'].includes(item.code))
       if (identityBlocked && this.perms['orientation.identity.activate']?.allowed) actions.push({ key: 'activate', label: '激活学生账号' })
       if (row.canFinalize && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'finalize', label: '学院确认入学' })
+      if (!['CHECKED_IN', 'COLLEGE_CONFIRMED'].includes(row.reportStatus) && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'disposition', label: '报到安排' })
       return actions
     },
     onRowAction(key, row) {
+      if (key === 'disposition') { this.dispositionRow = row; this.dispositionReason = ''; this.dispositionStatus = ['NO_SHOW', 'CANCELLED', 'DEFERRED'].includes(row.stage) ? 'RESUME' : 'NO_SHOW'; this.dispositionVisible = true }
       if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
       if (key === 'recalculate') { this.confirmRow = row; this.confirmVisible = true }
       if (key === 'activate') {
+        this.activateRequestId = globalThis.crypto?.randomUUID?.() || `orientation-activate-${Date.now()}`
         this.activateRow = row
         this.activateStudentNo = row.studentNo || ''
         this.activateVisible = true
       }
       if (key === 'finalize') {
+        this.finalizeRequestId = globalThis.crypto?.randomUUID?.() || `orientation-finalize-${Date.now()}`
         this.finalizeRow = row
         this.finalizeStudentNo = row.studentNo || ''
         this.finalizeVisible = true
       }
     },
+    async onDisposition() { if (this.disposing || !this.dispositionRow) return; this.disposing = true; try { const r = await api.dispositionOrientationStudent(this.dispositionRow.id, { expectedVersion: this.dispositionRow.version, status: this.dispositionStatus, reason: this.dispositionReason }); if (r.code !== 0) return toast.error(r.message); this.dispositionVisible = false; toast.success('报到安排已更新'); await this.load() } finally { this.disposing = false } },
     async onConfirm() {
       const row = this.confirmRow; if (!row) return
       const res = await api.recalculateOrientationQualification(row.id)
@@ -212,7 +218,7 @@ export default {
     async onActivateConfirm() {
       if (!this.activateRow || this.activating) return
       this.activating = true
-      const clientRequestId = globalThis.crypto?.randomUUID?.() || `orientation-activate-${Date.now()}`
+      const clientRequestId = this.activateRequestId
       try {
         const res = await api.activateOrientationIdentity(this.activateRow.id, {
           expectedVersion: this.activateRow.version,
@@ -232,7 +238,7 @@ export default {
     async onFinalizeConfirm() {
       if (!this.finalizeRow || this.finalizing) return
       this.finalizing = true
-      const clientRequestId = globalThis.crypto?.randomUUID?.() || `orientation-finalize-${Date.now()}`
+      const clientRequestId = this.finalizeRequestId
       try {
         const res = await api.finalizeOrientationEnrollment(this.finalizeRow.id, {
           expectedVersion: this.finalizeRow.version,
@@ -259,6 +265,7 @@ export default {
 }
 .oq-finalize-field { display: grid; gap: 8px; margin-top: 14px; }
 .oq-finalize-field label { font-weight: 600; }
+.oq-finalize-field select,.oq-finalize-field textarea { border:1px solid var(--border-light); border-radius:5px; padding:10px; background:var(--bg-card); color:var(--text-primary); font:inherit; }
 .oq-finalize-field small, .oq-credential small { color: var(--text-tertiary); }
 .oq-credential { display: grid; gap: 8px; padding: 12px; border-radius: 8px; background: var(--warning-50); }
 </style>

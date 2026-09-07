@@ -10,24 +10,7 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载志愿记录..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
 
-      <AppSectionCard v-if="formVisible" title="补录志愿服务时长">
-        <div class="vf-form-note">补录适用于校外或线下材料已核实的志愿服务。请按真实服务记录填写，提交后仍需正式认定。</div>
-        <div class="vf-grid">
-          <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
-          <label class="vf-field"><span>服务名称 *</span><AppTextInput v-model="form.serviceName" placeholder="如：社区图书整理" /></label>
-          <label class="vf-field"><span>时长（小时）*</span><AppNumberInput v-model="form.hours" :min="0" :step="0.5" /></label>
-          <label class="vf-field"><span>服务单位</span><AppTextInput v-model="form.orgName" placeholder="如：社区服务中心" /></label>
-          <label class="vf-field"><span>服务日期</span><AppDatePicker v-model="form.serviceDate" /></label>
-        </div>
-        <p v-if="form.error" class="vf-error">{{ form.error }}</p>
-        <div class="vf-actions">
-          <button type="button" class="vf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">提交待认定</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <AppSectionCard title="志愿时长认定台账">
-        <p class="vf-section-hint">优先处理待认定记录。驳回原因会直接展示在状态下方，方便学生和老师理解未通过原因。</p>
         <div class="vf-filters sa-filter-bar">
           <button v-for="f in statusFilters" :key="f.key" type="button" class="vf-chip"
                   :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button>
@@ -55,6 +38,21 @@
       </AppSectionCard>
     </AppGlobalState>
 
+    <AppDrawer v-model:visible="formVisible" title="补录志愿服务" subtitle="提交后进入待认定队列" mode="modal" size="large">
+      <div class="vf-grid">
+        <div class="vf-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
+        <label class="vf-field"><span>服务名称 *</span><AppTextInput v-model="form.serviceName" placeholder="如：社区图书整理" /></label>
+        <label class="vf-field"><span>时长（小时）*</span><AppNumberInput v-model="form.hours" :min="0" :step="0.5" /></label>
+        <label class="vf-field"><span>服务单位</span><AppTextInput v-model="form.orgName" placeholder="如：社区服务中心" /></label>
+        <label class="vf-field"><span>服务日期</span><AppDatePicker v-model="form.serviceDate" /></label>
+      </div>
+      <p v-if="form.error" class="vf-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">提交待认定</AppPermissionButton>
+      </template>
+    </AppDrawer>
+
     <AppConfirmDialog
       v-model:visible="rejDlg.visible" title="驳回志愿服务记录" type="danger" confirm-text="确认驳回"
       require-reason :reason-min-length="5" reason-label="驳回原因（≥5 字）"
@@ -69,6 +67,7 @@ import {
   AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -90,7 +89,7 @@ export default {
   name: 'VolunteerRecordView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppDatePicker, AppGlobalState, AppNumberInput, AppPageShell,
+    AppButton, AppConfirmDialog, AppDatePicker, AppDrawer, AppGlobalState, AppNumberInput, AppPageShell,
     AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
