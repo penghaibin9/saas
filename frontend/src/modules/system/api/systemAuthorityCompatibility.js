@@ -4,12 +4,12 @@ import { toast } from '@/utils/toast'
 /**
  * System-management compatibility bridge for the hardened school Authority.
  *
- * The system pages historically called a few mutation helpers without carrying
- * expectedVersion because the old endpoints did not require it. The control
+ * The current main still has a few legacy mutation responses while the control
  * plane hardening makes object versions and post-commit cache receipts explicit.
- * This module upgrades those calls inside /admin/system only:
- * - remember versions from authoritative reads;
- * - send expectedVersion on account/role/brand mutations;
+ * This module keeps /admin/system safe across that transition:
+ * - remember versions from authoritative reads when the server exposes them;
+ * - send expectedVersion on account/role/brand mutations whenever available;
+ * - keep legacy brand writes usable until the versioned Authority is merged;
  * - if a durable write committed but auth-cache invalidation failed, run the
  *   cache-only recovery endpoint and NEVER replay the business mutation.
  */
@@ -32,6 +32,13 @@ function rememberVersion(map, id, value) {
   map.set(String(id), value)
 }
 
+function reconcileMutationVersion(map, id, data) {
+  if (id == null) return
+  const key = String(id)
+  if (validVersion(data?.version)) map.set(key, data.version)
+  else map.delete(key)
+}
+
 function rememberUsers(data) {
   if (Array.isArray(data?.list)) data.list.forEach((row) => rememberVersion(state.userVersions, row?.id, row?.version))
   if (data?.id != null) rememberVersion(state.userVersions, data.id, data.version)
@@ -44,6 +51,10 @@ function rememberRoles(data) {
 
 function rememberBrand(data) {
   if (validVersion(data?.version)) state.brandVersion = data.version
+}
+
+function reconcileBrandVersion(data) {
+  state.brandVersion = validVersion(data?.version) ? data.version : null
 }
 
 function rememberContext(data = {}) {
@@ -92,16 +103,16 @@ async function recoverTenant() {
   return authorityRequest('/system/auth-cache/recover', { method: 'POST' })
 }
 
-async function settleCommittedReceipt(result, { label, recover, remember } = {}) {
+async function settleCommittedReceipt(result, { label, recover, reconcile } = {}) {
   if (!result || result.code !== 0) return result
-  if (typeof remember === 'function') remember(result.data)
+  if (typeof reconcile === 'function') reconcile(result.data)
   if (result.data?.cacheRecoveryRequired !== true) return result
 
   // The database mutation is already durable. Only the idempotent cache-recovery
   // command is allowed here; replaying the original write can duplicate effects.
   const recovery = await recover()
   if (recovery.code === 0 && recovery.data?.cacheRecoveryRequired !== true && recovery.data?.cacheInvalidated !== false) {
-    if (typeof remember === 'function') remember(recovery.data)
+    if (typeof reconcile === 'function') reconcile(recovery.data)
     toast.warning(`${label}已提交；权限缓存曾刷新失败，现已执行缓存恢复。原业务操作没有重放。`)
     return {
       ...result,
@@ -157,6 +168,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     getRoleDetail: systemApi.getRoleDetail.bind(systemApi),
     getBrandConfig: systemApi.getBrandConfig.bind(systemApi),
     saveBrandConfig: systemApi.saveBrandConfig.bind(systemApi),
+    resetBrandConfig: systemApi.resetBrandConfig.bind(systemApi),
     batchDisableUsers: systemApi.batchDisableUsers.bind(systemApi)
   }
 
@@ -182,7 +194,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     const version = expectedVersion(payload.expectedVersion, state.userVersions.get(String(id)))
     if (version == null) return fail('未取得账号版本，已阻止无乐观锁的账号编辑')
     const result = await original.updateUser(id, { ...payload, expectedVersion: version })
-    if (result.code === 0) rememberUsers(result.data)
+    if (result.code === 0) reconcileMutationVersion(state.userVersions, id, result.data)
     return result
   }
 
@@ -193,7 +205,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     return settleCommittedReceipt(result, {
       label: options.action === 'DISABLE' ? '账号停用' : '账号状态变更',
       recover: () => recoverSubject(id),
-      remember: rememberUsers
+      reconcile: (data) => reconcileMutationVersion(state.userVersions, id, data)
     })
   }
 
@@ -204,7 +216,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     return settleCommittedReceipt(result, {
       label: '密码重置',
       recover: () => recoverSubject(id),
-      remember: rememberUsers
+      reconcile: (data) => reconcileMutationVersion(state.userVersions, id, data)
     })
   }
 
@@ -223,7 +235,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     return settleCommittedReceipt(result, {
       label: '账号角色分配',
       recover: () => recoverSubject(id),
-      remember: rememberUsers
+      reconcile: (data) => reconcileMutationVersion(state.userVersions, id, data)
     })
   }
 
@@ -249,7 +261,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     return settleCommittedReceipt(result, {
       label: '角色停用',
       recover: recoverTenant,
-      remember: rememberRoles
+      reconcile: (data) => reconcileMutationVersion(state.roleVersions, id, data)
     })
   }
 
@@ -261,29 +273,41 @@ export function installSystemAuthorityCompatibility(systemApi) {
 
   systemApi.saveBrandConfig = async (payload = {}, options = {}) => {
     const version = expectedVersion(payload.expectedVersion ?? payload.version, state.brandVersion)
-    if (version == null) return fail('未取得品牌版本，已阻止无乐观锁的品牌保存')
+    if (version == null) {
+      // Current main does not expose brand version yet. Preserve the existing
+      // endpoint until the versioned Authority lands; a hardened server will
+      // reject an unversioned legacy request rather than silently bypass a lock.
+      const legacy = await original.saveBrandConfig(payload, options)
+      if (legacy.code === 0) reconcileBrandVersion(legacy.data)
+      return legacy
+    }
     const result = await original.saveBrandConfig({ ...payload, expectedVersion: version }, options)
-    if (result.code === 0) rememberBrand(result.data)
+    if (result.code === 0) reconcileBrandVersion(result.data)
     return result
   }
 
   systemApi.resetBrandConfig = async ({ reason, expectedVersion: explicitVersion } = {}) => {
     const version = expectedVersion(explicitVersion, state.brandVersion)
-    if (version == null) return fail('未取得品牌版本，已阻止无乐观锁的恢复默认')
+    if (version == null) {
+      const legacy = await original.resetBrandConfig({ reason })
+      if (legacy.code === 0) reconcileBrandVersion(legacy.data)
+      return legacy
+    }
     const result = await authorityRequest('/system/brand/reset', {
       method: 'POST', body: { reason, expectedVersion: version }
     })
-    if (result.code === 0) rememberBrand(result.data)
+    if (result.code === 0) reconcileBrandVersion(result.data)
     return result
   }
 
   systemApi.batchDisableUsers = async (...args) => {
     const result = await original.batchDisableUsers(...args)
+    if (result.code === 0) state.userVersions.clear()
     if (result.code !== 0 || result.data?.cacheRecoveryRequired !== true) return result
     return settleCommittedReceipt(result, {
       label: '批量账号状态变更',
       recover: recoverTenant,
-      remember: () => state.userVersions.clear()
+      reconcile: () => state.userVersions.clear()
     })
   }
 
@@ -297,6 +321,8 @@ export const __authorityCompatibilityTest = {
   rememberUsers,
   rememberRoles,
   rememberBrand,
+  reconcileMutationVersion,
+  reconcileBrandVersion,
   rememberContext,
   state
 }
