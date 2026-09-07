@@ -4,6 +4,8 @@ from __future__ import annotations
 from app.services import audit_log_legacy as _legacy
 
 _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
+    "WX_BIND_APPROVAL_AUTHORIZED",
+    "WX_BINDING_ACTIVATED",
     "SECURITY_CHANGE_ACTIVATE",
     "SECURITY_CHANGE_ROLLBACK",
     "PLATFORM_DUTY_CHANGE",

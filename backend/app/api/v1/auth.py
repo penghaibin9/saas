@@ -173,6 +173,8 @@ def wx_select(body: WxSelectRequest):
 
 
 class WxBindRequest(BaseModel):
+    bindingApprovalToken: str | None = Field(None, min_length=40, max_length=128, repr=False,
+                                            description="新增绑定的学校一次性批准码；不是校园密码")
     wxToken: str = Field(..., min_length=10, description="wx-login 返回的绑定令牌（携带 openid）")
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
     loginName: str = Field(..., min_length=1, description="学号/工号")
@@ -188,9 +190,10 @@ def wx_bind(body: WxBindRequest):
     _login_rate_guard()
     captcha_svc.enforce_login_captcha(captcha_svc.WX_BIND, body.tenantCode, body.loginName,
                                       body.captchaId, body.captchaCode, body.clientNonce, body.clientType)
-    from app.services import wx_auth_service
-    result = wx_auth_service.wx_bind(
-        body.wxToken, body.loginName.strip(), body.password, body.tenantCode)
+    from app.services import control_plane_auth_service as p0_auth
+    result = p0_auth.wx_bind(
+        body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
+        binding_approval_token=body.bindingApprovalToken)
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")
