@@ -31,11 +31,16 @@ from . import academic_affairs_scheduling_public_service as academic_affairs_sch
 from . import academic_affairs_autoschedule_final_service as academic_affairs_autoschedule_service
 from . import academic_affairs_schedule_final_service as academic_affairs_schedule_service
 from . import academic_affairs_exam_facade as academic_affairs_exam_service
+from . import academic_affairs_exam_teacher_lock_guard
 from . import academic_affairs_textbook_final_facade as academic_affairs_textbook_service
 from . import academic_affairs_recognition_public_service as academic_affairs_recognition_service
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# 考务教师时间线首次创建没有现成锁行；用租户父行只串行化首建，避免 MySQL
+# 1213 后 savepoint 被服务端取消再暴露 1305。公开考务 owner/权限/状态机均不改变。
+academic_affairs_exam_teacher_lock_guard.install(academic_affairs_exam_service)
 
 # AA-010：逐生点名状态变更必须与业务写入同事务留下 before/after MARK 审计证据。
 # 只监听 AttendanceSession.roster_json 的真实状态变化，不接管权限、状态机或考勤事实。
