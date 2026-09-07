@@ -191,7 +191,7 @@ def main():
     if output.is_relative_to(repo) or output.exists():
         parser.error('output must be a new file outside the repository')
     tool = load_check('module-commercial-inventory')
-    verify = load_check('module-commercial-reconcile').verify_source
+    verify = load_check('module-commercial-reconcile').verify_current_inventory
     source = json.loads(args.inventory.read_text(encoding='utf-8'))
     if tool.git_read(repo, 'rev-parse', 'HEAD') != args.expected_head or tool.git_read(repo, 'status', '--porcelain'):
         parser.error('expected clean exact-head checkout')

@@ -27,6 +27,13 @@ def load_inventory_tool():
     return module
 
 
+def load_key_contracts():
+    spec = importlib.util.spec_from_file_location('m0_key_contracts', Path(__file__).with_name('module-commercial-key-contracts.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def verify_source(repo: Path, report: dict, expected_sha: str) -> None:
     if not re.fullmatch(r'[0-9a-f]{40}', expected_sha) or report.get('sourceSha') != expected_sha:
         raise ValueError('SOURCE_SHA_MISMATCH')
@@ -44,6 +51,18 @@ def verify_source(repo: Path, report: dict, expected_sha: str) -> None:
             raise ValueError(f'SOURCE_CONTENT_CHANGED: {name}')
     if report.get('summary', {}).get('issues'):
         raise ValueError('STATIC_INVENTORY_HAS_ISSUES')
+
+
+def verify_current_inventory(repo: Path, report: dict, expected_sha: str) -> None:
+    """A self-consistent partial manifest is not complete source evidence."""
+    verify_source(repo, report, expected_sha)
+    fresh = load_inventory_tool().inventory(repo)
+    if fresh["summary"]["issues"]:
+        raise ValueError("CURRENT_INVENTORY_HAS_ISSUES")
+    for key in ("schemaVersion", "sourceFiles", "sourceManifestHash", "models", "migrations",
+                "staticMigrationHeads", "additionalTableSites", "moduleMapping"):
+        if fresh.get(key) != report.get(key):
+            raise ValueError(f"INVENTORY_RECOLLECTION_MISMATCH: {key}")
 
 
 @contextmanager
@@ -70,8 +89,10 @@ def collect_metadata(repo: Path) -> dict:
     if not metadata.tables:
         raise ValueError('EMPTY_RUNTIME_METADATA')
     tables = {}
+    keys = load_key_contracts()
     for name, table in sorted(metadata.tables.items()):
         tables[name] = {
+            'keyContract': keys.metadata_contract(table),
             'columns': {c.name: {'type': str(c.type.compile(dialect=dialect())),
                                  'nullable': c.nullable, 'primaryKey': c.primary_key}
                         for c in table.columns},
@@ -125,12 +146,30 @@ def collect_mysql(url: str) -> dict:
             for t, col, typ, null, key in connection.execute(text('SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=:s ORDER BY TABLE_NAME,ORDINAL_POSITION'), {'s': database}):
                 if t in tables:
                     tables[t]['columns'][col] = {'type': typ, 'nullable': null == 'YES', 'primaryKey': key == 'PRI'}
-            for t, col, dest, dest_col in connection.execute(text('SELECT TABLE_NAME,COLUMN_NAME,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=:s AND REFERENCED_TABLE_NAME IS NOT NULL'), {'s': database}):
+            foreign_rows = connection.execute(text(
+                'SELECT k.TABLE_NAME,k.CONSTRAINT_NAME,k.ORDINAL_POSITION,k.COLUMN_NAME,'
+                'k.REFERENCED_TABLE_SCHEMA,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,'
+                'r.DELETE_RULE,r.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE k '
+                'JOIN information_schema.REFERENTIAL_CONSTRAINTS r '
+                'ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.TABLE_NAME=k.TABLE_NAME '
+                'AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME '
+                'WHERE k.TABLE_SCHEMA=:s AND k.REFERENCED_TABLE_NAME IS NOT NULL '
+                'ORDER BY k.TABLE_NAME,k.CONSTRAINT_NAME,k.ORDINAL_POSITION'), {'s': database}).all()
+            for t, _, _, col, schema, dest, dest_col, _, _ in foreign_rows:
                 if t in tables:
-                    tables[t]['foreignKeys'].append({'column': col, 'target': f'{dest}.{dest_col}'})
-            for t, name, non_unique, seq, col in connection.execute(text('SELECT TABLE_NAME,INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=:s ORDER BY TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX'), {'s': database}):
+                    target = f'{dest}.{dest_col}' if schema == database else f'{schema}.{dest}.{dest_col}'
+                    tables[t]['foreignKeys'].append({'column': col, 'target': target})
+            index_rows = connection.execute(text(
+                'SELECT TABLE_NAME,INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,SUB_PART,EXPRESSION,COLLATION '
+                'FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=:s '
+                'ORDER BY TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX'), {'s': database}).all()
+            for t, name, non_unique, seq, col, prefix, expression, collation in index_rows:
                 if t in tables:
-                    tables[t]['indexes'].append({'name': name, 'unique': non_unique == 0, 'sequence': seq, 'column': col})
+                    tables[t]['indexes'].append({'name': name, 'unique': non_unique == 0, 'sequence': seq, 'column': col,
+                        'prefixLength': prefix, 'expression': expression, 'collation': collation})
+            contracts = load_key_contracts().mysql_contracts(tables, foreign_rows, index_rows, database)
+            for name, contract in contracts.items():
+                tables[name]['keyContract'] = contract
             heads = sorted(connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalars())
             triggers = sorted(row[0] for row in connection.execute(text('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=:s'), {'s': database}))
             connection.rollback()
@@ -153,7 +192,7 @@ def reconcile(source: dict, runtime: dict, physical: dict | None) -> dict:
     result = {'astOnlyTables': sorted(declared.keys() - rt.keys()),
               'runtimeOnlyTables': sorted(rt.keys() - declared.keys()), 'astRuntimeColumns': [],
               'runtimeOnlyVsMysql': [], 'mysqlOnlyTables': [], 'runtimeMysqlColumns': [],
-              'runtimeMysqlConstraints': [], 'migrationHeadsMatch': None}
+              'runtimeMysqlConstraints': [], 'runtimeMysqlKeyContracts': [], 'migrationHeadsMatch': None}
     for name in sorted(declared.keys() & rt.keys()):
         expected, actual = set(declared[name]['inheritedFieldNames']), set(rt[name]['columns'])
         if expected != actual:
@@ -165,7 +204,11 @@ def reconcile(source: dict, runtime: dict, physical: dict | None) -> dict:
         result['runtimeOnlyVsMysql'] = sorted(rt.keys() - db.keys())
         result['mysqlOnlyTables'] = sorted(db.keys() - rt.keys())
         result['migrationHeadsMatch'] = sorted(source['staticMigrationHeads']) == sorted(physical['schemaHeads'])
+        keys = load_key_contracts()
         for name in sorted(rt.keys() & db.keys()):
+            key_result = keys.compare(rt[name].get('keyContract'), db[name].get('keyContract'))
+            if key_result['status'] != 'MATCH':
+                result['runtimeMysqlKeyContracts'].append({'table': name, **key_result})
             expected, actual = rt[name]['columns'], db[name]['columns']
             nullable = [key for key in expected.keys() & actual.keys() if expected[key]['nullable'] != actual[key]['nullable']]
             if expected.keys() != actual.keys() or nullable:
@@ -198,14 +241,14 @@ def main() -> int:
         if tool.git_read(repo, 'rev-parse', 'HEAD') != args.expected_head or tool.git_read(repo, 'status', '--porcelain'):
             raise ValueError('EXPECTED_CLEAN_EXACT_HEAD')
         source = json.loads(args.inventory.read_text(encoding='utf-8'))
-        verify_source(repo, source, args.expected_head)
+        verify_current_inventory(repo, source, args.expected_head)
         runtime = collect_metadata(repo)
         physical = collect_mysql(os.environ.get('M0_DATABASE_URL', '')) if args.mysql else None
-        result = {'schemaVersion': 1, 'sourceSha': args.expected_head, 'sourceManifestHash': source['sourceManifestHash'],
+        result = {'schemaVersion': 2, 'sourceSha': args.expected_head, 'sourceManifestHash': source['sourceManifestHash'],
                   'generatedAtUtc': datetime.now(timezone.utc).isoformat(), 'metadata': runtime, 'mysql': physical,
                   'comparison': reconcile(source, runtime, physical), 'collectionStatus': 'PASS',
                   'consumerClosure': 'PENDING', 'policyPublication': 'PENDING'}
-        verify_source(repo, source, args.expected_head)
+        verify_current_inventory(repo, source, args.expected_head)
         if tool.git_read(repo, 'rev-parse', 'HEAD') != args.expected_head or tool.git_read(repo, 'status', '--porcelain'):
             raise ValueError('SOURCE_CHANGED_DURING_COLLECTION')
         output.parent.mkdir(parents=True, exist_ok=True)

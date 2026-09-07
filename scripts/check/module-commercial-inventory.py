@@ -77,6 +77,39 @@ def python_paths(root: Path, repo: Path, issues: list[dict]) -> list[Path]:
     return sorted(paths)
 
 
+def schema_asset_paths(repo: Path, issues: list[dict]) -> list[Path]:
+    """Fingerprint migration inputs too; a frozen SQL edit is a schema edit."""
+    root = repo / "backend/alembic"
+    paths: set[Path] = set()
+    permitted = {".py", ".sql", ".txt", ".json", ".yaml", ".yml", ".mako", ".toml"}
+    if root.is_symlink() or not root.resolve().is_relative_to(repo):
+        issues.append({"path": "backend/alembic", "code": "UNSAFE_SCHEMA_ASSET_ROOT"})
+        return []
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for name in list(dirs):
+            path = Path(directory) / name
+            if path.is_symlink():
+                issues.append({"path": path.relative_to(repo).as_posix(), "code": "SYMLINK_NOT_SCANNED"})
+                dirs.remove(name)
+            elif name == "__pycache__":
+                dirs.remove(name)
+        for name in files:
+            path = Path(directory) / name
+            if path.is_symlink():
+                issues.append({"path": path.relative_to(repo).as_posix(), "code": "SYMLINK_NOT_SCANNED"})
+            elif path.suffix in permitted:
+                paths.add(path)
+            elif path.suffix != ".pyc":
+                issues.append({"path": path.relative_to(repo).as_posix(), "code": "SCHEMA_ASSET_REQUIRES_REVIEW"})
+    for name in ("alembic.ini", "requirements.txt", "requirements.lock", "requirements.in", "pyproject.toml"):
+        path = repo / "backend" / name
+        if path.is_symlink():
+            issues.append({"path": path.relative_to(repo).as_posix(), "code": "SYMLINK_NOT_SCANNED"})
+        elif path.is_file():
+            paths.add(path)
+    return sorted(paths)
+
+
 def module_mapping(manifest: dict) -> dict:
     modules = manifest.get("modules")
     if not isinstance(modules, list):
@@ -206,6 +239,12 @@ def inventory(repo: Path) -> dict:
     if waiting.keys() - resolved:
         issues.append({"code": "UNRESOLVED_MIGRATION_CHAIN", "revisions": sorted(waiting.keys() - resolved)})
     manifest_path = repo / "shared/contracts/module-manifest.json"
+    asset_paths = schema_asset_paths(repo, issues)
+    for path in asset_paths:
+        try:
+            hashes[path.relative_to(repo).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            issues.append({"path": path.relative_to(repo).as_posix(), "code": "SCHEMA_ASSET_UNREADABLE"})
     mapping = None
     try:
         if manifest_path.is_symlink() or not manifest_path.resolve().is_relative_to(repo):
@@ -224,15 +263,15 @@ def inventory(repo: Path) -> dict:
         except OSError:
             changed_during_scan.append(relative)
     final_paths = python_paths(repo / "backend/app", repo, issues) + python_paths(repo / "backend/alembic/versions", repo, issues)
-    if set(final_paths) != set(app_paths + migration_paths):
+    if set(final_paths) != set(app_paths + migration_paths) or set(schema_asset_paths(repo, issues)) != set(asset_paths):
         issues.append({"code": "SOURCE_FILESET_CHANGED_DURING_SCAN"})
     if changed_during_scan:
         issues.append({"code": "SOURCE_CHANGED_DURING_SCAN", "paths": changed_during_scan})
-    return {"schemaVersion": 1, "evidenceLevel": "STATIC_ONLY", "sourceManifestHash": digest(hashes),
+    return {"schemaVersion": 2, "evidenceLevel": "STATIC_ONLY", "sourceManifestHash": digest(hashes),
             "sourceFiles": hashes, "moduleMapping": mapping, "models": sorted(models, key=lambda m: (m["table"], m["path"])),
             "migrations": migrations, "staticMigrationHeads": heads, "additionalTableSites": dynamic_tables,
             "summary": {"pythonFiles": len(app_paths), "tableDeclarations": len(models), "uniqueTables": len({m["table"] for m in models}),
-                        "migrationFiles": len(migrations), "issues": issues},
+                        "migrationFiles": len(migrations), "schemaInputFiles": len(asset_paths), "issues": issues},
             "gates": {"staticScan": "FAIL" if issues else "PASS", "runtimeMetadata": "NOT_RUN", "mysqlSchema": "NOT_RUN",
                       "consumerClosure": "PENDING", "policyPublication": "PENDING", "m0Complete": False,
                       "runtimeEntitlementChanged": False, "deletionAuthorized": False}}

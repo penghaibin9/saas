@@ -27,8 +27,16 @@ def sources():
 
 
 def meta():
-    return {'tables': {'t_parent': {'columns': {'id': {'nullable': False, 'primaryKey': True}, 'tenant_id': {'nullable': False}}, 'foreignKeys': []},
+    result = {'tables': {'t_parent': {'columns': {'id': {'nullable': False, 'primaryKey': True}, 'tenant_id': {'nullable': False}}, 'foreignKeys': []},
                        't_child': {'columns': {'id': {'nullable': False, 'primaryKey': True}, 'parent_id': {'nullable': False}}, 'foreignKeys': [{'column': 'parent_id', 'target': 't_parent.id'}]}}}
+
+
+    for name, table in result['tables'].items():
+        table['keyContract'] = {'version': 1, 'primaryKey': ['id'], 'foreignKeys': [], 'uniqueKeys': [], 'unsupported': []}
+        if name == 't_child':
+            table['keyContract']['foreignKeys'] = [{'name': 'fk_parent', 'columns': ['parent_id'],
+                'targets': [{'schema': None, 'table': 't_parent', 'column': 'id'}], 'onDelete': 'RESTRICT', 'onUpdate': 'RESTRICT'}]
+    return result
 
 
 class ReconciliationTests(unittest.TestCase):
