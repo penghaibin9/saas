@@ -33,7 +33,7 @@
             <div class="sw-stack">
               <div class="dx-task-heading"><span class="sw-symbol"><AppIcon :name="state.detail.item.jobType === 'IMPORT' ? 'records' : 'reports'" :size="23" /></span><div><h3>{{ taskLabel(state.detail.item) }}</h3><p class="sw-code">{{ state.detail.item.jobType }} #{{ state.detail.item.id }} · 版本 {{ state.detail.item.version }}</p></div><span class="sw-tag" :class="tone(state.detail.item)">{{ taskStatus(state.detail.item) }}</span></div>
               <div v-if="unresolved(state.detail.item)" class="sw-alert sw-alert--warning"><b>上次请求结果尚未核实</b><p>只允许重新读取；不会因关闭确认框或再次点击而重复执行。</p></div>
-              <div v-if="state.detail.item.strongSensitive" class="sw-alert sw-alert--warning"><b>强敏感回执，下载前请核对交接对象</b><p>有效期以服务器返回值为准；一次性票据只能消费一次，文件内容不在页面预览。</p></div>
+              <div v-if="state.detail.item.strongSensitive" class="sw-alert sw-alert--warning"><b>强敏感、24 小时有效、一次性下载</b><p>下载前请核对交接对象；具体截止时间以服务器返回值为准，一次性票据只能消费一次，文件内容不在页面预览。</p></div>
               <dl class="dx-facts"><div><dt>业务模块</dt><dd>{{ moduleLabel(state.detail.item.moduleCode) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatTime(state.detail.item.createdAt) }}</dd></div><div><dt>当前版本</dt><dd>{{ state.detail.item.version }}</dd></div><div><dt>有效截止时间</dt><dd>{{ formatTime(state.detail.item.expiresAt) }}</dd></div></dl>
               <template v-if="state.detail.item.jobType === 'IMPORT'">
                 <div class="dx-counts"><div v-for="(label, key) in countLabels" :key="key"><small class="sw-muted">{{ label }}</small><strong>{{ taskCount(taskCounts(state.detail.item)[key]) }}</strong></div></div>
