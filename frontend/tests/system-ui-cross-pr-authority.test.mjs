@@ -11,7 +11,7 @@ test('system layout installs the authority bridge without replacing the shared p
   assert.match(layout, /import BasePortalLayout from '@\/layouts\/BasePortalLayout\.vue'/)
   assert.match(layout, /installSystemAuthorityCompatibility\(systemApi\)/)
   assert.equal((layout.match(/<BasePortalLayout\b/g) || []).length, 1)
-  assert.doesNotMatch(layout, /navPlan|main\.js|base-portal-theme-controls/)
+  assert.doesNotMatch(layout, /import .*navPlan|from ['\"]@\/config\/navPlan['\"]|import .*main\.js|base-portal-theme-controls/)
 })
 
 test('compatibility bridge carries object versions on all cross-authority mutations', () => {
@@ -39,6 +39,17 @@ test('versions are learned from list and detail reads, including direct role dee
   assert.match(bridge, /rememberVersion\(state\.roleVersions/)
 })
 
+test('authority version caches are invalidated when tenant, subject or active context changes', () => {
+  assert.match(bridge, /systemApi\.getContext = async/)
+  assert.match(bridge, /function rememberContext/)
+  assert.match(bridge, /state\.brandVersion = null/)
+  assert.match(bridge, /state\.userVersions\.clear\(\)/)
+  assert.match(bridge, /state\.roleVersions\.clear\(\)/)
+  assert.match(bridge, /access\.tenantId/)
+  assert.match(bridge, /access\.subjectId/)
+  assert.match(bridge, /access\.activeContextId/)
+})
+
 test('post-commit cache failure uses recovery-only endpoints and never replays the write', () => {
   assert.match(bridge, /cacheRecoveryRequired !== true/)
   assert.match(bridge, /\/auth-cache\/recover/)
@@ -53,7 +64,7 @@ test('post-commit cache failure uses recovery-only endpoints and never replays t
 test('retired bulk module-feature writer is not reintroduced', () => {
   assert.match(moduleFeature, /listCapabilitySettings/)
   assert.match(moduleFeature, /setCapabilitySetting/)
-  assert.match(moduleFeature, /expectedVersion:\s*pending\.version/)
+  assert.match(moduleFeature, /expectedVersion:\s*this\.pending\.version/)
   assert.doesNotMatch(moduleFeature, /setModuleFeatures|module-features.*method:\s*['\"]PUT/)
 })
 
