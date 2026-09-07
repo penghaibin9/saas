@@ -433,15 +433,15 @@ def active_scope_key(term_id) -> str:
 def activate_grade_policy(user, payload) -> dict:
     """发布一个策略版本：锁定该范围现有 ACTIVE → 置 SUPERSEDED → 落新 ACTIVE，一次事务。
 
-    并发保护有两道：范围内既有 ACTIVE 行的 ``FOR UPDATE`` 让后到者排队；范围内本来就没有
-    ACTIVE 行时（无行可锁）由 ``uk_aa_effective_grade_policy_scope`` 唯一索引兜底，
-    第二个请求插入即撞键，转成 409 而不是产生两条并存的 ACTIVE 策略。
+    先锁既有学校行，再读范围内策略及版本链，避免首次发布时空范围 gap lock 互锁。
+    同一学校发布顺序一致，跨学期使用同一 policy_code 也不会分配重复版本。
+    活动范围和版本身份唯一索引仍保留，事务提交前不释放锁。
     """
     from datetime import datetime
 
     from sqlalchemy.exc import IntegrityError
 
-    from app.models import AaTerm, AffairsAuditTrail
+    from app.models import AaTerm, AffairsAuditTrail, Tenant
     from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
     from app.services.db_service import session
 
@@ -451,6 +451,14 @@ def activate_grade_policy(user, payload) -> dict:
     term_id = payload.get("effectiveFromTermId")
     term_id = int(term_id) if term_id not in (None, "") else None
     with session() as db:
+        # Low-frequency publication mutex; use an existing owner, not an absent
+        # ACTIVE policy row. Keep this ahead of term/policy/chain reads so the
+        # waiting transaction cannot reuse a pre-lock repeatable-read snapshot.
+        tenant = db.query(Tenant).filter(
+            Tenant.id == _tid(), Tenant.is_deleted.is_(False),
+        ).with_for_update().first()
+        if tenant is None:
+            raise AppException("VALIDATION_ERROR", "当前学校不存在")
         if term_id:
             term = db.query(AaTerm).filter(
                 AaTerm.id == term_id,

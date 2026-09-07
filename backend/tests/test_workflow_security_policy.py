@@ -25,15 +25,19 @@ def _session():
 @pytest.fixture()
 def tenant_ctx(db_mode):
     from app.models import Tenant
-    from app.services import platform_service as platform
 
     with _session() as db:
         if db.get(Tenant, MAIN_TENANT_ID) is None:
             db.add(Tenant(id=MAIN_TENANT_ID, tenant_code="demo",
                           school_name="流程安全测试学校", status="ACTIVE"))
             db.commit()
-    platform.put_config_json(MAIN_TENANT_ID, "TENANT_META", "-",
-                             {"status": "active", "packageCode": "professional"})
+    # db_mode already activated a real paid order. Replacing TENANT_META with
+    # just a package/status discards its commercial provenance and blocks the
+    # implementation preview before workflow-policy behavior can be tested.
+    from app.services import commercial_entitlement_authority_service as commercial
+    state = commercial.commercial_state(MAIN_TENANT_ID)
+    assert state["verified"] is True, state
+    assert state["authoritySource"] == "PAID_ORDER", state
     set_tenant({"tenantId": str(MAIN_TENANT_ID)})
     try:
         yield MAIN_TENANT_ID
@@ -259,8 +263,12 @@ def _project_with_workflow(workflow_code: str = "AFFAIRS_LEAVE") -> int:
 
     impl.create_project(ADMIN, {"projectName": "SYS14 版本策略测试项目", "profileCode": "PILOT_FAST"})
     project = impl.current_project()
-    impl.preview_project(ADMIN, int(project["id"]))
-    impl.apply_snapshot(ADMIN, int(project["id"]), {"confirmText": "确认应用", "reason": "装流程定义"})
+    preview = impl.preview_project(ADMIN, int(project["id"]))
+    assert preview["preview"]["blocked"] is False, preview["preview"]
+    impl.apply_snapshot(ADMIN, int(project["id"]), {
+        "confirmText": "确认应用", "reason": "装流程定义",
+        "expectedPreviewHash": preview["previewHash"],
+    })
     return int(project["id"])
 
 

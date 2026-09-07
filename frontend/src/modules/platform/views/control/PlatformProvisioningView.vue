@@ -1,9 +1,8 @@
 <template>
   <ModulePageShell title="租户自动开通、初始化与上线验收" subtitle="运行中 · 失败 · 待补偿 · 待学校输入 · 成功率"
-                   role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+                   :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
     <template #actions>
-      <ModuleToolbar :actions="[{ key: 'create', label: '＋ 新建开通任务' }, { key: 'refresh', label: '刷新' }]"
-                    @action="onToolbarAction" />
+      <ModuleToolbar :actions="[{ key: 'create', label: '＋ 新建开通任务' }, { key: 'refresh', label: '刷新' }]" @action="onToolbarAction" />
     </template>
 
     <LoadingState v-if="loading" text="正在加载开通任务…" />
@@ -52,29 +51,26 @@
             <div class="psc__cell-main">{{ row.tenantCode }}</div>
             <div class="psc__cell-sub">{{ row.jobId }} · 当前步骤 {{ row.currentStep || '—' }}</div>
           </template>
-          <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
-          </template>
+          <template #cell-status="{ row }"><StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot /></template>
         </DataTable>
       </AppCard>
 
       <AppCard v-if="selected" class="psc__panel">
         <AppSectionHeader :title="`任务详情：${selected.tenantCode}（${selected.jobId}）`" />
         <p v-if="selected.lastError" class="pcp__error">最近错误：{{ selected.lastError }}</p>
+        <p v-if="!isRoot" class="pcp__authority-note">当前职责可执行新建、续跑和失败步骤重试；补偿、转人工和取消属于平台主管高危动作，仅平台负责人/超级管理员可执行。</p>
         <DataTable :columns="stepColumns" :rows="selected.steps" row-key="stepCode">
           <template #cell-stepCode="{ row }">{{ stepLabel(row.stepCode) }}</template>
-          <template #cell-status="{ row }">
-            <StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
-          </template>
+          <template #cell-status="{ row }"><StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot /></template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="retryStep(row)">重试</button>
-            <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="compensateStep(row)">补偿</button>
-            <button v-if="row.status === 'FAILED' || row.status === 'COMPENSATED'" class="mp-link" @click.stop="flagManual(row)">转人工</button>
+            <button v-if="isRoot && row.status === 'FAILED'" class="mp-link" @click.stop="compensateStep(row)">补偿</button>
+            <button v-if="isRoot && (row.status === 'FAILED' || row.status === 'COMPENSATED')" class="mp-link" @click.stop="flagManual(row)">转人工</button>
           </template>
         </DataTable>
         <div class="pcp__form">
           <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="resumeJob">续跑</button>
-          <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="cancelJob">取消任务</button>
+          <button v-if="isRoot && !['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="cancelJob">取消任务</button>
         </div>
       </AppCard>
     </template>
@@ -88,32 +84,26 @@ import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
+const ROOT_ROLES = new Set(['PLATFORM_OWNER', 'PLATFORM_SUPER_ADMIN'])
+
 export default {
   name: 'PlatformProvisioningView',
   components: { AppCard, AppSectionHeader, DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
-      error: '',
-      overview: {},
-      jobs: [],
-      selected: null,
-      showCreate: false,
-      revealedPassword: '',
-      credentialRevealed: false,
+      loading: true, error: '', overview: {}, jobs: [], selected: null, showCreate: false,
+      revealedPassword: '', credentialRevealed: false,
       form: { idempotencyKey: '', tenantCode: '', tenantName: '', targetPackageCode: 'trial', adminLoginName: '', adminRealName: '' },
-      jobColumns: [
-        { key: 'scope', title: '任务' },
-        { key: 'status', title: '状态' }
-      ],
+      jobColumns: [{ key: 'scope', title: '任务' }, { key: 'status', title: '状态' }],
       stepColumns: [
-        { key: 'stepCode', title: '步骤' },
-        { key: 'status', title: '状态' },
-        { key: 'attemptCount', title: '尝试次数' },
-        { key: 'error', title: '错误' },
-        { key: 'ops', title: '操作' }
+        { key: 'stepCode', title: '步骤' }, { key: 'status', title: '状态' }, { key: 'attemptCount', title: '尝试次数' },
+        { key: 'error', title: '错误' }, { key: 'ops', title: '操作' }
       ]
     }
+  },
+  computed: {
+    isRoot() { return ROOT_ROLES.has(String(this.ctx?.currentRole?.roleCode || '').toUpperCase()) }
   },
   created() {
     if (String(this.$route.query.create || '') === '1') this.openCreate()
@@ -122,33 +112,19 @@ export default {
   methods: {
     platformStatusLabel,
     stepLabel(code) {
-      return ({
-        TENANT: '创建租户', ROLES: '初始化角色', FIRST_ADMIN: '创建首位管理员',
-        CAPABILITIES: '开通功能能力', IMPLEMENTATION_PROJECT: '创建实施项目', HEALTH_CHECK: '运行健康检查'
-      })[code] || '其他开户步骤'
+      return ({ TENANT: '创建租户', ROLES: '初始化角色', FIRST_ADMIN: '创建首位管理员', CAPABILITIES: '开通功能能力', IMPLEMENTATION_PROJECT: '创建实施项目', HEALTH_CHECK: '运行健康检查' })[code] || '其他开户步骤'
     },
-    statusTone(s) {
-      return { RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', COMPENSATING: 'warning', CANCELLED: 'default', PENDING: 'default', WAITING_INPUT: 'warning' }[s] || 'default'
-    },
-    stepStatusTone(s) {
-      return { SUCCEEDED: 'success', FAILED: 'danger', RUNNING: 'warning', NEEDS_MANUAL_REVIEW: 'danger', COMPENSATED: 'default', PENDING: 'default' }[s] || 'default'
-    },
-    onToolbarAction(action) {
-      if (action === 'create') this.openCreate()
-      if (action === 'refresh') this.load()
-    },
+    statusTone(s) { return { RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', COMPENSATING: 'warning', CANCELLED: 'default', PENDING: 'default', WAITING_INPUT: 'warning' }[s] || 'default' },
+    stepStatusTone(s) { return { SUCCEEDED: 'success', FAILED: 'danger', RUNNING: 'warning', NEEDS_MANUAL_REVIEW: 'danger', COMPENSATED: 'default', PENDING: 'default' }[s] || 'default' },
+    onToolbarAction(action) { if (action === 'create') this.openCreate(); if (action === 'refresh') this.load() },
     async submitCreate() {
-      if (!this.form.idempotencyKey || !this.form.tenantCode || !this.form.tenantName) {
-        return toast.error('幂等键、租户代码、学校名称必填')
-      }
+      if (!this.form.idempotencyKey || !this.form.tenantCode || !this.form.tenantName) return toast.error('幂等键、租户代码、学校名称必填')
       const res = await platformControlApi.startProvisioningJob({ ...this.form })
       if (res.code === 0) {
         toast.success(res.data.provisioningState === 'BOOTSTRAP_READY' ? '基础开户已完成；学校实施与验收仍需继续' : '开通任务已受理：' + platformStatusLabel(res.data.status))
         this.revealedPassword = res.data.revealOnce?.FIRST_ADMIN?.initialPassword || ''
-        this.credentialRevealed = false
-        this.showCreate = false
-        await this.load()
-        this.selected = res.data
+        this.credentialRevealed = false; this.showCreate = false
+        await this.load(); this.selected = res.data
       } else toast.error(res.message)
     },
     openCreate() {
@@ -159,64 +135,36 @@ export default {
     async copyCredential() {
       if (!this.revealedPassword) return
       const value = `学校编码：${this.selected?.tenantCode || this.form.tenantCode}\n管理员账号：${this.form.adminLoginName}\n临时密码：${this.revealedPassword}`
-      try {
-        await navigator.clipboard.writeText(value)
-        toast.success('一次性凭据已复制，请通过安全渠道交付')
-      } catch {
-        toast.info('浏览器未允许复制，可临时显示后手动保存')
-      }
+      try { await navigator.clipboard.writeText(value); toast.success('一次性凭据已复制，请通过安全渠道交付') }
+      catch { toast.info('浏览器未允许复制，可临时显示后手动保存') }
     },
-    clearCredential() {
-      this.revealedPassword = ''
-      this.credentialRevealed = false
-    },
-    async selectJob(row) {
-      const res = await platformControlApi.getProvisioningJob(row.jobId)
-      if (res.code === 0) this.selected = res.data
-      else toast.error(res.message)
-    },
-    async resumeJob() {
-      const res = await platformControlApi.resumeProvisioningJob(this.selected.jobId)
-      if (res.code === 0) { toast.success('已续跑：' + res.data.status); this.selected = res.data; await this.load() }
-      else toast.error(res.message)
-    },
-    async retryStep(row) {
-      const res = await platformControlApi.retryProvisioningStep(this.selected.jobId, row.stepCode)
-      if (res.code === 0) { toast.success('已重试'); this.selected = res.data; await this.load() }
-      else toast.error(res.message)
-    },
+    clearCredential() { this.revealedPassword = ''; this.credentialRevealed = false },
+    async selectJob(row) { const res = await platformControlApi.getProvisioningJob(row.jobId); if (res.code === 0) this.selected = res.data; else toast.error(res.message) },
+    async resumeJob() { const res = await platformControlApi.resumeProvisioningJob(this.selected.jobId); if (res.code === 0) { toast.success('已续跑：' + res.data.status); this.selected = res.data; await this.load() } else toast.error(res.message) },
+    async retryStep(row) { const res = await platformControlApi.retryProvisioningStep(this.selected.jobId, row.stepCode); if (res.code === 0) { toast.success('已重试'); this.selected = res.data; await this.load() } else toast.error(res.message) },
     async compensateStep(row) {
-      const reason = window.prompt('补偿原因（至少5字）')
-      if (!reason) return
+      if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可执行补偿')
+      const reason = window.prompt('补偿原因（至少5字）'); if (!reason) return
       const res = await platformControlApi.compensateProvisioningStep(this.selected.jobId, row.stepCode, reason)
-      if (res.code === 0) { toast.success('补偿已执行'); this.selected = res.data; await this.load() }
-      else toast.error(res.message)
+      if (res.code === 0) { toast.success('补偿已执行'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },
     async flagManual(row) {
-      const reason = window.prompt('转人工原因（至少5字）')
-      if (!reason) return
+      if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可转人工')
+      const reason = window.prompt('转人工原因（至少5字）'); if (!reason) return
       const res = await platformControlApi.flagProvisioningManualReview(this.selected.jobId, row.stepCode, reason)
-      if (res.code === 0) { toast.success('已转人工队列'); this.selected = res.data; await this.load() }
-      else toast.error(res.message)
+      if (res.code === 0) { toast.success('已转人工队列'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },
     async cancelJob() {
-      const reason = window.prompt('取消原因（至少5字）')
-      if (!reason) return
+      if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可取消开通任务')
+      const reason = window.prompt('取消原因（至少5字）'); if (!reason) return
       const res = await platformControlApi.cancelProvisioningJob(this.selected.jobId, reason)
-      if (res.code === 0) { toast.success('已取消'); this.selected = res.data; await this.load() }
-      else toast.error(res.message)
+      if (res.code === 0) { toast.success('已取消'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },
     async load() {
-      this.loading = true
-      this.error = ''
-      const [overview, jobs] = await Promise.all([
-        platformControlApi.getProvisioningOverview(),
-        platformControlApi.listProvisioningJobs()
-      ])
-      if (overview.code === 0) this.overview = overview.data || {}
-      else this.error = overview.message
-      if (jobs.code === 0) this.jobs = jobs.data.items || []
-      else if (!this.error) this.error = jobs.message
+      this.loading = true; this.error = ''
+      const [overview, jobs] = await Promise.all([platformControlApi.getProvisioningOverview(), platformControlApi.listProvisioningJobs()])
+      if (overview.code === 0) this.overview = overview.data || {}; else this.error = overview.message
+      if (jobs.code === 0) this.jobs = jobs.data.items || []; else if (!this.error) this.error = jobs.message
       this.loading = false
     }
   }
@@ -224,16 +172,5 @@ export default {
 </script>
 
 <style scoped>
-.pcp__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-.pcp__stat { padding: var(--space-4); }
-.pcp__stat--warn { border-color: var(--color-danger); }
-.pcp__stat-num { font-size: 26px; font-weight: var(--font-weight-bold); color: var(--t1); }
-.pcp__stat-label { margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-secondary); }
-.pcp__form { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
-.pcp__input { padding: 6px 10px; border: 1px solid var(--border-base); border-radius: var(--radius-sm); min-width: 160px; }
-.pcp__error { color: var(--color-danger); font-size: var(--font-size-sm); }
-.pcp__reveal { border-color: var(--color-warning, #d97706); }
-.pcp__reveal-text { font-family: monospace; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
-.pcp__request-key { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.pcp__authority-note { flex-basis: 100%; font-size: var(--font-size-xs); color: var(--color-warning, #9a6700); }
+.pcp__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-3);margin-bottom:var(--space-3)}.pcp__stat{padding:var(--space-4)}.pcp__stat--warn{border-color:var(--color-danger)}.pcp__stat-num{font-size:26px;font-weight:var(--font-weight-bold);color:var(--t1)}.pcp__stat-label{margin-top:2px;font-size:var(--font-size-sm);color:var(--text-secondary)}.pcp__form{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;margin-top:var(--space-3)}.pcp__input{padding:6px 10px;border:1px solid var(--border-base);border-radius:var(--radius-sm);min-width:160px}.pcp__error{color:var(--color-danger);font-size:var(--font-size-sm)}.pcp__reveal{border-color:var(--color-warning,#d97706)}.pcp__reveal-text{font-family:monospace;font-size:var(--font-size-lg);font-weight:var(--font-weight-bold)}.pcp__request-key{font-size:var(--font-size-xs);color:var(--text-secondary)}.pcp__authority-note{flex-basis:100%;font-size:var(--font-size-xs);color:var(--color-warning,#9a6700)}
 </style>
