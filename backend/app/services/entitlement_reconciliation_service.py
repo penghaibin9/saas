@@ -70,6 +70,16 @@ def reconcile_snapshot(snapshot: dict[str, Any]) -> dict:
             "severity": "P1",
             "repairable": True,
         })
+    legacy_override = dict(snapshot.get("legacyEntitlementOverride") or {})
+    if legacy_override:
+        violations.append({
+            "code": "LEGACY_ENTITLEMENT_OVERRIDE",
+            "severity": "P1",
+            "readOnly": True,
+            "repairable": True,
+            "overrideVersion": int(snapshot.get("legacyEntitlementOverrideVersion") or 0),
+            "keys": sorted(legacy_override),
+        })
     return {
         **snapshot,
         "actualConsumptionBytes": actual,
@@ -97,7 +107,7 @@ def reconcile_tenant(tenant_id: int) -> dict:
     from app.models import PlatformOrder, Tenant
     from app.models.file import FileObject, TenantStorageQuota
     from app.models.file_quota import FileStorageQuotaReservation
-    from app.services import module_access_service, platform_service
+    from app.services import module_access_service, platform_control_authority_service, platform_service
 
     db = get_sessionmaker()()
     try:
@@ -106,6 +116,7 @@ def reconcile_tenant(tenant_id: int) -> dict:
             raise AppException("NOT_FOUND", "租户不存在", http_status=404)
         meta = platform_service.tenant_meta(int(tenant_id))
         package = platform_service.get_package(str(meta.get("packageCode") or _LEGACY_PACKAGE_CODE))
+        feature_authority = platform_control_authority_service.features_projection(int(tenant_id))
         commercial = commercial_storage_limit_bytes(int(tenant_id), db=db, meta=meta, package=package)
         quota = db.scalars(select(TenantStorageQuota).where(
             TenantStorageQuota.tenant_id == int(tenant_id),
@@ -159,6 +170,9 @@ def reconcile_tenant(tenant_id: int) -> dict:
             "moduleUsage": module_usage,
             "paidOrder": bool(paid_order),
             "provisioned": str(tenant.status).upper() in {"ACTIVE", "SUSPENDED"},
+            "entitlementAuthoritySource": feature_authority.get("authoritySource"),
+            "legacyEntitlementOverride": feature_authority.get("legacyOverride") or {},
+            "legacyEntitlementOverrideVersion": int(feature_authority.get("legacyOverrideVersion") or 0),
         }
         return reconcile_snapshot(snapshot)
     finally:

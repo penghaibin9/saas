@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from app.modules.system_admin.routers import identity_import_compat_router as _identity
 from app.modules.system_admin.routers import system_router as _base
+from app.modules.system_admin.routers import system_cross_authority_hardening as _cross_authority
 from app.services.system_governance_authority_service import (
     install_legacy_delegation_authority_adapter,
 )
@@ -39,6 +40,10 @@ def _compose() -> APIRouter:
 
 
 router = _compose()
+# Cross-plane reverse audit: brand writes must share TenantBrandConfig with the
+# platform projection, and the legacy bulk module-feature writer must not bypass
+# SYS-13 per-capability optimistic locking.
+_cross_authority.install_into_system_router(router)
 
 
 def __getattr__(name: str):

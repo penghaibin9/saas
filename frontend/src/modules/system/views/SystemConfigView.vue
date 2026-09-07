@@ -228,6 +228,7 @@ export default {
         toast.success('品牌配置已保存并生效，变更明细已写入审计日志')
         this.confirmSaveBrand = false
         this.brand = res.data
+        this.brandForm = { ...res.data }
       } else {
         toast.error(res.message)
       }
@@ -242,7 +243,7 @@ export default {
         this.confirmResetBrand = false
         toast.success('品牌配置已恢复为平台默认值并生效，操作已留痕')
       } else {
-        toast.error(res.message)
+        toast.error(res.message || '品牌恢复默认失败')
       }
     },
     openConfigEdit(c) {

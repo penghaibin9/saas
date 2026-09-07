@@ -1,0 +1,75 @@
+name: Platform audited defects regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/app/modules/internship/services/internship_scope.py'
+      - 'backend/app/modules/internship/services/internship_consent_service.py'
+      - 'backend/app/modules/internship/services/internship_safety_service.py'
+      - 'backend/app/services/student_portal_service.py'
+      - 'backend/app/api/v1/student_portal_admin.py'
+      - 'backend/tests/test_internship_first_write_owner_lock.py'
+      - 'backend/tests/test_platform_portal_admin_read_safety.py'
+      - 'backend/tests/test_platform_offboarding_reversible_flow.py'
+      - '.github/workflows/pr261-audit-regressions.yml'
+permissions:
+  contents: read
+concurrency:
+  group: platform-audited-defects-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  audited-defects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_root
+          MYSQL_DATABASE: platform_audit_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest_root --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:test_root@127.0.0.1:3306/platform_audit_test
+      FAST_TEST_SCHEMA: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Record exact source and install frozen dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha }}'
+          mkdir -p ../artifacts/platform-audited-defects
+          git rev-parse HEAD > ../artifacts/platform-audited-defects/revision.txt
+          pip install -r requirements.txt
+      - name: Portal reads and reversible offboarding on MySQL
+        working-directory: backend
+        run: |
+          set -o pipefail
+          pytest tests/test_student_portal_config.py tests/test_platform_portal_admin_read_safety.py tests/test_platform_offboarding_reversible_flow.py -q --junitxml=../artifacts/platform-audited-defects/portal-exit.xml 2>&1 | tee ../artifacts/platform-audited-defects/portal-exit.log
+      - name: First-write concurrency across student and staff commands
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: |
+          set -o pipefail
+          pytest tests/test_internship_first_write_owner_lock.py tests/test_internship_v93_batch2_remaining_first_create.py -q --junitxml=../artifacts/platform-audited-defects/first-write.xml 2>&1 | tee ../artifacts/platform-audited-defects/first-write.log
+      - name: Upload exact-source results including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-audited-defects-${{ github.event.pull_request.head.sha }}
+          path: artifacts/platform-audited-defects/
+          if-no-files-found: error
+          retention-days: 7

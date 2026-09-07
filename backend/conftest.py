@@ -1,6 +1,11 @@
 """Repository-wide pytest safety and compatibility fixtures.
 
 DB-backed tests use an isolated MySQL schema and the canonical demo tenant id.
+The baseline converges the same School-IAM and commercial authorities required
+by a production school: IAM comes from the published system templates and
+commercial entitlement comes from a real paid PlatformOrder activation. Tests
+must not regain entitlement through legacy FEATURES rows or environment bypasses.
+
 Package 8 removed runtime authorization by advisor display name, so older
 internship fixtures are explicitly migrated to stable advisor ids here.
 Package 9 adds an authoritative defense-phase gate; legacy positive defense
@@ -20,16 +25,68 @@ TEST_TENANT_ID = 1000000000000000001
 _REQUEST_WRAPPER_PATCHED = False
 
 
+def _converge_test_commercial_authority() -> None:
+    """Materialize the canonical DB-test school through the real paid-order path.
+
+    Before W1, an absent TENANT_META implicitly behaved like ``professional`` and
+    all legacy DB integration tests therefore represented a fully entitled school.
+    W1 correctly removed that implicit grant. Preserve the intended integration
+    baseline by creating the commercial fact that production now requires instead
+    of restoring FEATURES overrides or adding an APP_ENV=test bypass.
+    """
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import platform_service
+
+    current = commercial.commercial_state(TEST_TENANT_ID)
+    if bool(current.get("verified")) and str(current.get("packageCode") or "") == "professional":
+        return
+
+    # Start from an explicit legitimate trial state; the formal package is then
+    # materialized only by the same create -> mark-paid -> optional repair flow
+    # exercised by the platform production API.
+    platform_service.put_config_json(TEST_TENANT_ID, "TENANT_META", "-", {
+        "status": "trial",
+        "packageCode": "trial",
+        "environment": "test",
+    })
+    created = platform_service.create_order({
+        "tenantId": str(TEST_TENANT_ID),
+        "packageCode": "professional",
+        "orderType": "NEW",
+        "durationDays": 30,
+        "amount": 1,
+        "remark": "pytest production-equivalent paid commercial baseline",
+    })
+    paid = platform_service.order_action(
+        created["orderNo"],
+        "mark-paid",
+        expected_version=int(created["version"]),
+        reason="pytest真实已支付套餐基线",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform_service.order_action(
+            created["orderNo"],
+            "repair-activation",
+            expected_version=int(paid["version"]),
+            reason="pytest修复商业激活基线",
+        )
+    if not paid.get("tenantActivated"):
+        raise RuntimeError("pytest commercial baseline did not activate the canonical tenant")
+
+    verified = commercial.commercial_state(TEST_TENANT_ID)
+    if not bool(verified.get("verified")) or str(verified.get("packageCode") or "") != "professional":
+        raise RuntimeError(f"pytest commercial authority did not converge: {verified.get('authoritySource')}")
+
+
 @pytest.fixture(autouse=True)
 def _seed_authoritative_tenant_for_db_tests(request):
-    """Seed the canonical tenant and post-B8 School-IAM deployment Authority.
+    """Seed the canonical tenant plus production-equivalent IAM/commercial truth.
 
     ``db_mode`` recreates or clears the database before each integration test.
-    After B8 retired the SCHOOL_ADMIN runtime wildcard, a clean schema is not a
-    production-equivalent deployment until the authoritative Permission Catalog
-    has been reconciled and the Published SYSTEM RoleTemplates have been
-    generated.  Run the same production convergence here instead of granting a
-    pytest-only wildcard or weakening the runtime fail-closed resolver.
+    A clean schema is not production-equivalent until both authorities have been
+    converged: Published SYSTEM RoleTemplates for School IAM and a real paid order
+    for commercial entitlement. No pytest-only wildcard or FEATURES entitlement
+    override is permitted here.
     """
     if "db_mode" not in request.fixturenames:
         yield
@@ -68,6 +125,7 @@ def _seed_authoritative_tenant_for_db_tests(request):
         source_commit_sha="pytest-db-deployment-baseline",
         actor_user_id=None,
     )
+    _converge_test_commercial_authority()
 
     yield
 

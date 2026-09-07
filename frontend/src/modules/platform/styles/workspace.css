@@ -1,0 +1,39 @@
+/* Opt-in to the selected platform workspaces only. Shared shells and other centers stay unchanged. */
+.platform-workspace { gap: var(--space-5); color: var(--t1); }
+.platform-workspace .mps__head { align-items: center; row-gap: var(--space-3); }
+.platform-workspace .mps__title { font-size: var(--font-size-2xl); letter-spacing: -.025em; }
+.platform-workspace .mps__subtitle { margin-top: var(--space-2); color: var(--t2); line-height: 1.6; }
+.platform-workspace .mps__chip { height: auto; min-height: 26px; white-space: normal; padding-block: var(--space-1); }
+.platform-workspace .mps__actions .app-button { min-height: 40px; }
+.platform-workspace .mps__actions .app-button--primary { background: var(--pri); box-shadow: var(--s1); }
+.platform-workspace .dt { border: 0; border-radius: 0; box-shadow: none; }
+.platform-workspace .dt:hover { box-shadow: none; }
+.platform-workspace .dt__table { table-layout: auto; }
+.platform-workspace .dt__th { height: 46px; padding: var(--space-3) var(--space-4); background: var(--bg-section); color: var(--t2); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); white-space: nowrap; border-top: 1px solid var(--card-b); }
+.platform-workspace .dt__td { padding: var(--space-4); vertical-align: middle; border-bottom: 1px solid var(--dv); font-size: var(--font-size-sm); line-height: 1.6; }
+.platform-workspace .dt__tr:hover { background: var(--bg-hover); }
+.platform-workspace .dt__tr:last-child .dt__td { border-bottom: 0; }
+.platform-workspace :is(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.platform-workspace .pw-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 40px; padding: var(--space-2) var(--space-4); border: 1px solid var(--card-b); border-radius: var(--rs); background: var(--bg-card); color: var(--t2); font: inherit; font-size: var(--font-size-sm); text-decoration: none; cursor: pointer; }
+.platform-workspace .pw-button:hover:not(:disabled) { color: var(--pri); border-color: var(--pri); background: var(--pri-bg); }
+.platform-workspace .pw-button--primary { color: var(--text-inverse); background: var(--pri); border-color: var(--pri); }
+.platform-workspace .pw-button--primary:hover:not(:disabled) { color: var(--text-inverse); background: var(--pri-h); }
+.platform-workspace .pw-button:disabled { opacity: .55; cursor: not-allowed; }
+.platform-workspace .pw-eyebrow { display: flex; align-items: center; gap: var(--space-2); color: var(--pri); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); letter-spacing: .06em; }
+.platform-workspace .pw-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { .platform-workspace *, .platform-workspace *::before, .platform-workspace *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+/* Empty states have contextual actions; native scrolling stays available on narrow screens. */
+.platform-workspace .pw-empty-note { color: var(--t2); font-size: var(--font-size-xs); line-height: 1.7; }
+.platform-workspace .pw-scroll-hint { display: none; margin: 0; padding: var(--space-2) var(--space-4); color: var(--t2); background: var(--bg-section); font-size: var(--font-size-xs); line-height: 1.7; }
+.platform-workspace .pco__panel .ags-panel { padding: var(--space-4) var(--space-2); min-height: 0; }
+.platform-workspace .pco__panel .ags-icon { font-size: 28px; margin-bottom: var(--space-2); }
+@media(max-width:1100px) { .platform-workspace .pw-scroll-hint { display: block; } }
+
+/* One focusable scroll owner per list; no nested clipped DataTable scroll region. */
+.platform-workspace :is(.pct__table-region,.pcod__table) .dt { overflow: visible; }
+.platform-workspace :is(.pct__table-region,.pcod__table) .dt__scroll { overflow: visible; }
+
+/* The full-width lifecycle row must not preserve empty auto-fit tracks. */
+.platform-workspace.ptd .ptd__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .platform-workspace.ptd .ptd__cols { grid-template-columns: minmax(0, 1fr); } }

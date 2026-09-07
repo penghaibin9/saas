@@ -1,9 +1,15 @@
 <template>
   <div class="top">
     <LoadingState v-if="loading" text="正在加载退租与销毁权威状态…" />
-    <ErrorState v-else-if="error" :text="error" @retry="load" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" @back="$emit('changed')" />
 
     <template v-else>
+      <div v-if="uncertain" class="top__danger-box" role="alert">
+        <b>上次操作结果尚未确认，请勿重复提交</b>
+        <p>先重新读取当前学校与任务状态；读取成功不代表上次操作一定成功，也不会重放命令。</p>
+        <AppButton :disabled="busy" @click="load">只读取当前状态</AppButton>
+        <AppButton v-if="inspected" :disabled="busy" @click="uncertain = false; inspected = false">已核对，结束本次记录</AppButton>
+      </div>
       <AppCard class="top__panel top__panel--summary">
         <div class="top__header">
           <div>
@@ -47,7 +53,7 @@
           </label>
         </div>
         <div class="top__ops">
-          <AppButton variant="danger" :loading="working" :disabled="requestForm.reason.length < 10" @click="requestOffboarding">发起退租并冻结只读</AppButton>
+          <AppButton variant="danger" :loading="working" :disabled="busy || uncertain || expectedTenantVersion === null || requestForm.reason.length < 10" @click="requestOffboarding">发起退租并冻结只读</AppButton>
           <span class="top__hint">当前状态版本：{{ expectedTenantVersion }}</span>
         </div>
       </AppCard>
@@ -81,7 +87,7 @@
           <p class="top__note">完成最终数据交付后，把导出物的 64 位 SHA-256 摘要填入。后端确认后租户进入保留期并进一步收紧登录。</p>
           <div class="top__inline">
             <input v-model.trim="finalExportSha" class="top__input top__input--hash" maxlength="64" placeholder="64 位 SHA-256" />
-            <AppButton variant="primary" :loading="working" :disabled="!validSha" @click="confirmFinalExport">确认最终导出</AppButton>
+            <AppButton variant="primary" :loading="working" :disabled="busy || uncertain || !validSha" @click="confirmFinalExport">确认最终导出</AppButton>
           </div>
         </AppCard>
 
@@ -90,7 +96,7 @@
           <p class="top__note">仅在不可逆边界前允许取消，系统会恢复冻结前的租户状态。</p>
           <div class="top__inline">
             <input v-model.trim="cancelReason" class="top__input top__input--grow" placeholder="取消原因（至少 5 个字符）" />
-            <AppButton variant="warning" :loading="working" :disabled="cancelReason.length < 5" @click="cancelOffboarding">取消退租</AppButton>
+            <AppButton variant="warning" :loading="working" :disabled="busy || uncertain || cancelReason.length < 5" @click="cancelOffboarding">取消退租</AppButton>
           </div>
         </AppCard>
 
@@ -99,7 +105,7 @@
           <div class="top__gates">
             <div :class="job.finalExportSha256 ? 'is-ok' : 'is-bad'"><b>最终导出</b><span>{{ job.finalExportSha256 ? '已确认 SHA-256' : '未确认' }}</span></div>
             <div :class="retentionExpired ? 'is-ok' : 'is-warn'"><b>保留期</b><span>{{ retentionExpired ? '已结束' : `截止 ${fmt(job.retentionUntil)}` }}</span></div>
-            <div :class="Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? 'is-ok' : 'is-bad'"><b>司法保全</b><span>{{ Number(preview?.counts?.legalHoldFileCount || 0) === 0 ? '无阻断' : `${preview.counts.legalHoldFileCount} 个文件被保护` }}</span></div>
+            <div :class="legalHoldClear ? 'is-ok' : 'is-bad'"><b>司法保全</b><span>{{ legalHoldClear ? '无阻断' : '存在保全或证据未取得，禁止销毁' }}</span></div>
             <div :class="preview?.registry?.complete ? 'is-ok' : 'is-bad'"><b>销毁登记表</b><span>{{ preview?.registry?.complete ? '完整' : '不完整' }}</span></div>
             <div :class="mfaStatus.enabled ? 'is-ok' : 'is-bad'"><b>平台主管二次认证</b><span>{{ mfaStatus.enabled ? '动态口令已启用' : '尚未绑定' }}</span></div>
           </div>
@@ -120,7 +126,7 @@
                 <span>认证器 6 位动态码</span>
                 <input v-model.trim="mfaCode" inputmode="numeric" maxlength="6" class="top__input top__input--code" placeholder="000000" @keyup.enter="stepUpMfa" />
               </label>
-              <AppButton variant="primary" :loading="mfaWorking" :disabled="mfaCode.length !== 6" @click="stepUpMfa">完成二次认证</AppButton>
+              <AppButton variant="primary" :loading="mfaWorking" :disabled="busy || uncertain || mfaCode.length !== 6" @click="stepUpMfa">完成二次认证</AppButton>
               <StatusTag v-if="mfaGrantValid" type="success" label="二次认证已通过 · 本页临时授权" />
             </div>
 
@@ -151,6 +157,7 @@ import { ErrorState, LoadingState, StatusTag } from '@/components/business'
 import { platformSecurityOpsApi } from '@/modules/platform/api/platformSecurityOps.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { wholeNumber } from '@/modules/platform/utils/tenantWorkspace.mjs'
 
 const STATE_LABELS = {
   REQUESTED: '已发起', PRECHECK: '预检查', FROZEN_READONLY: '已冻结只读', FINAL_EXPORT_READY: '待确认最终导出',
@@ -173,7 +180,7 @@ export default {
   emits: ['changed'],
   data() {
     return {
-      loading: true,
+      loading: true, ready: false, epoch: 0, uncertain: false, inspected: false,
       working: false,
       mfaWorking: false,
       error: '',
@@ -190,11 +197,14 @@ export default {
     }
   },
   computed: {
+    busy() { return this.loading || this.working || this.mfaWorking },
+    legalHoldClear() { return wholeNumber(this.preview?.counts?.legalHoldFileCount) === 0 },
+    protectNavigation() { return this.working || this.mfaWorking || this.uncertain || Boolean(this.requestForm.reason || this.cancelReason || this.mfaGrant) },
     canStartNew() {
-      return !this.job || this.job.state === 'CANCELLED'
+      return this.ready && (!this.job || this.job.state === 'CANCELLED')
     },
     expectedTenantVersion() {
-      return Number(this.preview?.effectiveState?.version ?? this.job?.tenantVersion ?? this.tenant360?.version ?? this.tenant?.version ?? 0)
+      return wholeNumber(this.preview?.effectiveState?.version)
     },
     validSha() {
       return /^[0-9a-fA-F]{64}$/.test(this.finalExportSha)
@@ -208,10 +218,12 @@ export default {
     },
     purgePrechecksPass() {
       return !!(
-        this.job?.finalExportSha256 &&
-        this.retentionExpired &&
-        Number(this.preview?.counts?.legalHoldFileCount || 0) === 0 &&
-        this.preview?.registry?.complete &&
+        this.ready && this.expectedTenantVersion !== null &&
+        /^[0-9a-fA-F]{64}$/.test(this.job?.finalExportSha256 || '') &&
+        this.retentionExpired && this.legalHoldClear &&
+        wholeNumber(this.preview?.counts?.activeFileJobCount) === 0 &&
+        Array.isArray(this.preview?.blockers) && this.preview.blockers.length === 0 &&
+        this.preview?.registry?.complete === true &&
         ['RETENTION', 'PURGE_READY', 'BLOCKED', 'FAILED', 'PURGING'].includes(this.job.state)
       )
     },
@@ -219,7 +231,7 @@ export default {
       return !!(this.mfaGrant?.accessToken && Number(this.mfaGrant.expiresAt || 0) > Date.now())
     },
     canExecutePurge() {
-      return this.purgePrechecksPass && this.mfaStatus.enabled && this.mfaGrantValid && this.confirmText === '永久销毁租户数据'
+      return !this.busy && !this.uncertain && this.purgePrechecksPass && this.mfaStatus.enabled === true && this.mfaGrantValid && this.confirmText === '永久销毁租户数据'
     },
     jobStatusLabel() {
       return this.job ? this.stateLabel(this.job.state) : '尚未发起退租'
@@ -232,10 +244,18 @@ export default {
       return 'default'
     }
   },
+  watch: {
+    tenantId() {
+      this.epoch++; this.working = false; this.mfaWorking = false; this.uncertain = false; this.inspected = false
+      this.requestForm = { reason: '', retentionDays: 30 }; this.cancelReason = ''; this.confirmText = ''; this.finalExportSha = ''
+      this.load()
+    }
+  },
   created() {
     this.load()
   },
   beforeUnmount() {
+    this.epoch++
     this.clearMfaGrant()
   },
   methods: {
@@ -270,9 +290,13 @@ export default {
       this.mfaGrant = null
       this.mfaCode = ''
     },
+    current(epoch, id) { return this.epoch === epoch && String(this.tenantId) === id },
+    canMutate() { return this.ready && !this.busy && !this.error && !this.uncertain && this.expectedTenantVersion !== null },
     async load() {
-      this.loading = true
-      this.error = ''
+      if (this.working || this.mfaWorking) return
+      const id = String(this.tenantId), epoch = ++this.epoch
+      this.loading = true; this.ready = false; this.preview = null; this.job = null; this.finalExportSha = ''; this.inspected = false
+      this.error = ''; this.mfaStatus = { enabled: false, status: 'NONE' }
       this.clearMfaGrant()
       try {
         const [preview, job, mfa] = await Promise.all([
@@ -280,24 +304,27 @@ export default {
           platformSecurityOpsApi.getTenantOffboarding(this.tenantId),
           platformSecurityOpsApi.getMfaStatus()
         ])
-        this.preview = preview
-        this.job = job
-        this.mfaStatus = mfa || { enabled: false, status: 'NONE' }
-        this.finalExportSha = job?.finalExportSha256 || ''
+        if (!this.current(epoch, id)) return
+        if (!/^[1-9]\d*$/.test(id) || typeof preview?.tenantId !== 'string' || preview.tenantId !== id || wholeNumber(preview?.effectiveState?.version) === null) throw new Error('未取得当前学校的身份或可信版本')
+        if (job !== null && (!job || job.tenantId !== id || typeof job.jobId !== 'string' || !/^[1-9]\d*$/.test(job.jobId) || typeof job.state !== 'string')) throw new Error('退租任务与当前学校不一致')
+        this.preview = preview; this.job = job
+        this.mfaStatus = mfa && typeof mfa.enabled === 'boolean' ? mfa : { enabled: false, status: 'NONE' }
+        this.finalExportSha = job?.finalExportSha256 || ''; this.ready = true; this.inspected = this.uncertain
       } catch (error) {
-        this.error = error.message || '退租与销毁状态加载失败'
-      } finally {
-        this.loading = false
-      }
+        if (this.current(epoch, id)) this.error = error.message || '退租与销毁状态加载失败'
+      } finally { if (this.current(epoch, id)) this.loading = false }
     },
     async refreshAfterChange(message) {
       if (message) toast.success(message)
-      await this.load()
+      // A keyed parent remount fetches current facts after this completed command.
       this.$emit('changed')
     },
     async requestOffboarding() {
+      if (!this.canMutate() || !this.canStartNew) return
+      if (wholeNumber(this.requestForm.retentionDays) === null) return toast.error('保留期必须是非负整数')
       if (this.requestForm.reason.length < 10) return toast.error('退租原因至少 10 个字符')
       if (!window.confirm('发起后该学校将立即冻结为只读，普通登录与业务写入会被拒绝。确认继续？')) return
+      const id = String(this.tenantId), epoch = ++this.epoch
       this.working = true
       try {
         await platformSecurityOpsApi.requestTenantOffboarding(this.tenantId, {
@@ -305,48 +332,64 @@ export default {
           retentionDays: Number(this.requestForm.retentionDays || 0),
           expectedVersion: this.expectedTenantVersion
         })
+        if (!this.current(epoch, id)) return
         this.requestForm.reason = ''
         await this.refreshAfterChange('退租任务已创建，租户已冻结为只读')
       } catch (error) {
+        if (!this.current(epoch, id)) return
+        this.uncertain = true
         toast.error(error.message || '退租发起失败')
       } finally {
-        this.working = false
+        if (this.current(epoch, id)) this.working = false
       }
     },
     async confirmFinalExport() {
+      if (!this.canMutate() || !['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(this.job?.state)) return
       if (!this.validSha) return toast.error('请输入 64 位 SHA-256')
       if (!window.confirm('确认该 SHA-256 对应已经交付并封存的最终数据导出物？确认后进入数据保留期。')) return
+      const id = String(this.tenantId), epoch = ++this.epoch
       this.working = true
       try {
         await platformSecurityOpsApi.confirmTenantFinalExport(this.job.jobId, this.finalExportSha.toLowerCase())
+        if (!this.current(epoch, id)) return
         await this.refreshAfterChange('最终导出已确认，租户已进入数据保留期')
       } catch (error) {
+        if (!this.current(epoch, id)) return
+        this.uncertain = true
         toast.error(error.message || '最终导出确认失败')
       } finally {
-        this.working = false
+        if (this.current(epoch, id)) this.working = false
       }
     },
     async cancelOffboarding() {
+      if (!this.canMutate() || this.job?.cancellable !== true) return
       if (this.cancelReason.length < 5) return toast.error('取消原因至少 5 个字符')
       if (!window.confirm('确认取消当前退租任务并恢复冻结前租户状态？')) return
+      const id = String(this.tenantId), epoch = ++this.epoch
       this.working = true
       try {
         await platformSecurityOpsApi.cancelTenantOffboarding(this.job.jobId, this.cancelReason)
+        if (!this.current(epoch, id)) return
         this.cancelReason = ''
         await this.refreshAfterChange('退租任务已取消')
       } catch (error) {
+        if (!this.current(epoch, id)) return
+        this.uncertain = true
         toast.error(error.message || '取消退租失败')
       } finally {
-        this.working = false
+        if (this.current(epoch, id)) this.working = false
       }
     },
     async stepUpMfa() {
+      if (!this.canMutate() || this.mfaStatus.enabled !== true) return
       if (!/^\d{6}$/.test(this.mfaCode)) return toast.error('请输入 6 位动态码')
       const code = this.mfaCode
+      const id = String(this.tenantId), epoch = ++this.epoch
       this.mfaWorking = true
       this.clearMfaGrant()
       try {
         const grant = await platformSecurityOpsApi.stepUpMfa(code)
+        if (!this.current(epoch, id)) return
         const ttlSeconds = Number(grant.expiresIn || 600)
         this.mfaGrant = {
           accessToken: grant.accessToken,
@@ -358,14 +401,17 @@ export default {
         }, ttlSeconds * 1000)
         toast.success('二次认证通过；临时授权只保存在本页内存中')
       } catch (error) {
+        if (!this.current(epoch, id)) return
         toast.error(error.message || '二次认证失败')
       } finally {
-        this.mfaWorking = false
+        if (this.current(epoch, id)) this.mfaWorking = false
       }
     },
     async approvePurge() {
+      if (!this.canMutate()) return
       if (!this.canExecutePurge) return toast.error('销毁门禁尚未全部满足')
       if (!window.confirm(`最后确认：将永久销毁“${this.preview?.tenantName || this.tenant?.tenantName || this.tenantId}”的数据。该操作不可撤销。`)) return
+      const id = String(this.tenantId), epoch = ++this.epoch
       this.working = true
       const token = this.mfaGrant.accessToken
       try {
@@ -373,14 +419,17 @@ export default {
           expectedVersion: Number(this.job.tenantVersion ?? this.expectedTenantVersion),
           confirmText: this.confirmText
         }, token)
+        if (!this.current(epoch, id)) return
         this.confirmText = ''
         await this.refreshAfterChange('租户数据物理销毁完成，销毁证据已生成')
       } catch (error) {
+        if (!this.current(epoch, id)) return
+        this.uncertain = true
         toast.error(error.message || '永久销毁执行失败')
-        await this.load()
+        // Keep the unconfirmed outcome visible; readback is an explicit action.
       } finally {
-        this.clearMfaGrant()
-        this.working = false
+        if (this.current(epoch, id)) this.clearMfaGrant()
+        if (this.current(epoch, id)) this.working = false
       }
     }
   }
