@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+
 
 def _ensure_active_tenant(tenant_id: int) -> int:
     from app.db.session import get_sessionmaker
@@ -80,3 +84,48 @@ def test_w3_success_receipt_is_explicit(db_mode):
     assert receipt["runtimeMaterialized"] is True
     assert receipt["cacheInvalidated"] is True
     assert receipt["cacheRecoveryRequired"] is False
+
+
+def test_w3_other_request_version_advance_is_not_current_materialization(db_mode, monkeypatch):
+    """A competing commit must not make this stale request look committed."""
+    from app.core.exceptions import AppException
+    from app.services import tenant_effective_state_service as lifecycle
+    from app.services.platform_transition_receipt_service import apply_transition_with_receipt
+    from app.services.tenant_effective_state_service import get_effective_state
+
+    tenant_id = 1000000000000096303
+    expected_version = _ensure_active_tenant(tenant_id)
+    original = lifecycle.apply_transition
+
+    def lose_after_competing_commit(*args, **kwargs):
+        # ContextVars do not propagate to a fresh worker thread. This models the
+        # real race: another request commits and crosses its own cache boundary,
+        # while the current request itself never reaches the post-commit phase.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                original,
+                tenant_id,
+                "disable",
+                reason="W3并发请求先提交停用",
+                expected_version=expected_version,
+                payload={},
+                audit_action="PLATFORM_TENANT_DISABLE",
+            )
+            future.result(timeout=30)
+        raise AppException(
+            "DATA_CONFLICT",
+            "租户状态已被其他操作更新，请刷新后重试",
+            http_status=409,
+        )
+
+    monkeypatch.setattr(lifecycle, "apply_transition", lose_after_competing_commit)
+    with pytest.raises(AppException) as caught:
+        apply_transition_with_receipt(
+            tenant_id,
+            "disable",
+            reason="W3当前请求应输掉并发竞争",
+            expected_version=expected_version,
+            audit_action="PLATFORM_TENANT_DISABLE",
+        )
+    assert caught.value.code == "DATA_CONFLICT"
+    assert get_effective_state(tenant_id, strict=True)["effectiveStatus"] == "disabled"
