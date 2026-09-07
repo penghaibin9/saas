@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_exam_teacher_lock_guard as exam_teacher_lock_guard
 from app.modules.academic_affairs.services import exam_convenience_service as exam_convenience
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务"])
@@ -33,6 +34,8 @@ DeferApplyBody = legacy.DeferApplyBody
 DeferReviewBody = legacy.DeferReviewBody
 
 exam_svc = legacy.exam_svc
+# 仅在考务路由装配时替换 facade 私有锁 helper；不触碰 services/__init__.py 共享 owner。
+exam_teacher_lock_guard.install(exam_svc)
 autoexam_svc = legacy.autoexam_svc
 _require_student = legacy._require_student
 _EXAM_MANAGE = legacy._EXAM_MANAGE

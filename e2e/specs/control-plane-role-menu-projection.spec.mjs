@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { verifyPlatformOrderWorkspace } from '../lib/platform-order-workspace-journey.mjs'
 
 const FIXTURE = JSON.parse(fs.readFileSync(
   path.resolve(process.cwd(), 'runtime-fixtures/control-plane-role-projection.json'),
@@ -412,6 +413,8 @@ test('W12 real Browser Role/Menu Projection Seal covers every school role, platf
           golden.roleTemplatePublishMfa = true
           golden.roleTemplateMenuImpact = true
           golden.staleTemplateVersionDenied = true
+          await verifyPlatformOrderWorkspace(page, token, browserApiRaw)
+          golden.commercialOrderWorkspaceRealFlow = true
         }
       }
       expect([401, 403, 404], JSON.stringify(crossPlane.json)).toContain(crossPlane.status)
