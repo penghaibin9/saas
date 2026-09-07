@@ -56,12 +56,24 @@ def _tenant_snapshot(tenant_id: int) -> dict:
         db.close()
 
 
+def _service_window_state(order, *, now: datetime | None = None) -> str:
+    """Resolve the paid service window independently from activation markers."""
+    current = (now or datetime.utcnow()).replace(tzinfo=None)
+    start_at = getattr(order, "start_at", None)
+    end_at = getattr(order, "end_at", None)
+    if start_at is not None and start_at.replace(tzinfo=None) > current:
+        return "NOT_STARTED"
+    if end_at is not None and end_at.replace(tzinfo=None) <= current:
+        return "EXPIRED"
+    return "ACTIVE"
+
+
 def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
     """Return the paid order that actually authorizes the materialized package.
 
-    New orders must be the exact ``lastCommercialOrderNo`` written by activation.
-    Pre-marker historical paid rows are accepted only when their paid service
-    period is still active and the materialized tenant package matches.
+    New orders must be the exact ``lastCommercialOrderNo`` written by activation
+    and must be inside their paid service window. Pre-marker historical paid rows
+    retain the same service-window and tenant-state requirements.
     """
     from app.db.session import get_sessionmaker
     from app.models import PlatformOrder, Tenant
@@ -85,6 +97,9 @@ def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
             activation_state, repair_required = platform_service.paid_order_activation_state(order, tenant, meta)
             if activation_state != "ACTIVE" or repair_required:
                 return None, "PAID_ORDER_ACTIVATION_REPAIR_REQUIRED"
+            window_state = _service_window_state(order)
+            if window_state != "ACTIVE":
+                return None, f"PAID_ORDER_SERVICE_{window_state}"
             return order, "PAID_ORDER"
 
         # N-1 compatibility: historical paid rows predate lastCommercialOrderNo.
@@ -95,15 +110,13 @@ def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
             PlatformOrder.status == "paid",
             PlatformOrder.is_deleted.is_(False),
         ).order_by(PlatformOrder.id.desc())).all()
-        now = datetime.now()
+        now = datetime.utcnow()
         for order in rows:
             # version>=2 belongs to the new activation protocol and therefore
             # must have an exact marker; never silently downgrade it to legacy.
             if int(order.version or 0) >= 2:
                 continue
-            if order.start_at and order.start_at.replace(tzinfo=None) > now:
-                continue
-            if order.end_at and order.end_at.replace(tzinfo=None) <= now:
+            if _service_window_state(order, now=now) != "ACTIVE":
                 continue
             if tenant is None or str(tenant.status or "").upper() != "ACTIVE":
                 continue
@@ -120,10 +133,14 @@ def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
 def commercial_state(tenant_id: int) -> dict:
     """Resolve one commercial truth record used by every runtime feature check."""
     from app.services import platform_service
+    from app.services.tenant_effective_state_service import effective_state_from_records
 
     tid = int(tenant_id)
-    _tenant_snapshot(tid)  # existence check without rendering entitlement fields
+    tenant = _tenant_snapshot(tid)
     meta = platform_service.tenant_meta(tid)
+    lifecycle = effective_state_from_records(
+        row_status=tenant["tenantStatus"], meta=meta, strict=True,
+    )
     package_code = str(meta.get("packageCode") or "trial").strip()
     package = platform_service.get_package(package_code)
     if str(package.get("packageCode") or "") != package_code:
@@ -141,9 +158,9 @@ def commercial_state(tenant_id: int) -> dict:
     authority = str(meta.get("lastCommercialAuthority") or "").strip().upper()
     approval_ref = str(meta.get("lastCommercialApprovalRef") or "").strip()
 
-    # Trial is a legitimate non-paid commercial state. It never authorizes a
-    # formal package merely because somebody edited TENANT_META.packageCode.
-    if package_code == "trial" and status in {"trial", "active"}:
+    # Trial is a legitimate non-paid commercial state, but an inactive tenant
+    # can never regain runtime capabilities through stale trial metadata.
+    if package_code == "trial" and status in {"trial", "active"} and lifecycle.get("writable"):
         return {
             "verified": True,
             "authoritySource": "TRIAL",
@@ -155,6 +172,17 @@ def commercial_state(tenant_id: int) -> dict:
         }
 
     if authority == "CONTROLLED_EXCEPTION":
+        if lifecycle.get("effectiveStatus") != "active" or status != "active" or not lifecycle.get("writable"):
+            return {
+                "verified": False,
+                "authoritySource": "CONTROLLED_EXCEPTION_TENANT_INACTIVE",
+                "packageCode": package_code,
+                "packageVersion": int(package.get("version") or 0),
+                "features": _zero_features(),
+                "commercialOrderNo": None,
+                "approvalRef": approval_ref or None,
+                "repairRequired": True,
+            }
         if len(approval_ref) < 5:
             return {
                 "verified": False,
@@ -338,17 +366,21 @@ def install_platform_service_adapter() -> None:
         )
         package_code = str(meta.get("packageCode") or "trial")
         status = str(meta.get("status") or "").lower()
+        effective_status = str(row.get("status") or "").lower()
         authority = str(meta.get("lastCommercialAuthority") or "").upper()
         approval_ref = str(meta.get("lastCommercialApprovalRef") or "")
         order_no = str(meta.get("lastCommercialOrderNo") or "")
-        if package_code == "trial" and status in {"trial", "active"}:
+        if package_code == "trial" and status in {"trial", "active"} and effective_status in {"trial", "active"}:
             source, verified, repair = "TRIAL", True, False
-        elif authority == "CONTROLLED_EXCEPTION" and len(approval_ref) >= 5:
+        elif authority == "CONTROLLED_EXCEPTION" and len(approval_ref) >= 5 and status == "active" and effective_status == "active":
             source, verified, repair = "CONTROLLED_EXCEPTION", True, False
+        elif authority == "CONTROLLED_EXCEPTION":
+            source, verified, repair = "CONTROLLED_EXCEPTION_TENANT_INACTIVE", False, True
         elif order_no:
             source, verified, repair = "PAID_ORDER_EVIDENCE_PRESENT", None, None
         else:
             source, verified, repair = "COMMERCIAL_ORDER_REQUIRED", False, True
+        if verified is False:
             for key in (
                 "allowImport", "allowExport", "allowFileUpload", "allowMiniapp",
                 "allowGraduation", "allowInternship", "allowEmployment", "allowRiskWarning",
@@ -373,7 +405,7 @@ def install_platform_service_adapter() -> None:
         if normalized in {"change-package", "quota"}:
             raise AppException(
                 "COMMERCIAL_ORDER_REQUIRED",
-                "商业套餐与商业额度不能直接修改；请通过已支付订单生效，受控特批请走 convert-to-paid",
+                "商业套餐与商业额度不能直接修改；请通过已支付订单生效，受控赠送/特批请使用明确的商业例外授权流程",
                 http_status=409,
             )
         if normalized == "convert-to-paid" and str(kwargs.get("commercial_authority") or "").strip().upper() == "PAID_ORDER":
