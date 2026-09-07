@@ -13,7 +13,14 @@ scheduling depend only on real order facts:
 - RENEW continues after the latest paid order for the same tenant + package;
 - RENEW without such a paid predecessor starts now.
 
-The package already uses approved lazy runtime wrappers for legacy services; this
+``t_order.start_at/end_at`` are MySQL DATETIME columns without fractional-second
+precision. MySQL can round a value carrying microseconds to the following second;
+an immediate authority read can then observe a newly paid order as briefly
+"not started". Normalize service-window writes to the column precision before
+persisting them. This keeps fail-closed semantics for genuinely future windows
+without requiring an authorization grace period.
+
+The package already uses approved runtime wrappers for legacy services; this
 module follows that pattern and is idempotent.
 """
 from __future__ import annotations
@@ -47,7 +54,9 @@ def install(platform_service):
         if not order_no:
             return result
 
-        now = datetime.now().replace(tzinfo=None)
+        # t_order uses DATETIME(0). Persist exactly at the column precision so
+        # MySQL cannot round an immediate NEW/UPGRADE start into the future.
+        now = datetime.now().replace(tzinfo=None, microsecond=0)
         db = get_sessionmaker()()
         try:
             order = db.scalars(
@@ -85,7 +94,7 @@ def install(platform_service):
                 ).first()
                 predecessor_end = _naive(predecessor.end_at) if predecessor is not None else None
                 if predecessor_end is not None and predecessor_end > now:
-                    service_start = predecessor_end
+                    service_start = predecessor_end.replace(microsecond=0)
 
             order.start_at = service_start
             order.end_at = service_start + timedelta(days=duration_days)
