@@ -66,28 +66,42 @@ def _latest_paid_predecessor(db, order):
 
 
 @contextmanager
-def _serialized_renewal_payment(order_no: str):
+def _serialized_renewal_payment(order_no: str, *, expected_version=None):
     """Hold one cross-worker renewal lane across payment and tenant activation."""
     from app.core.exceptions import AppException
     from app.db.session import get_engine, get_sessionmaker
     from app.models import PlatformOrder
 
-    # Resolve the lane without mutating anything. Canonical order_action remains
-    # responsible for missing/order-state validation.
+    # Resolve whether this call needs the renewal lane, then close the read session
+    # before yielding/calling the canonical command. Ordinary NEW/UPGRADE payments
+    # must not consume an extra pooled DB connection for their whole request.
+    tenant_id = None
+    package_code = ""
+    should_serialize = False
     db = get_sessionmaker()()
     try:
         current = db.scalars(select(PlatformOrder).where(
             PlatformOrder.order_no == str(order_no),
             PlatformOrder.is_deleted.is_(False),
         )).first()
-        if current is None or str(current.order_type or "").upper() != "RENEW" \
-                or str(current.status or "").lower() != "unpaid":
-            yield
-            return
-        tenant_id = int(current.tenant_id)
-        package_code = str(current.package_code or "")
+        if current is not None and str(current.order_type or "").upper() == "RENEW" \
+                and str(current.status or "").lower() == "unpaid":
+            current_version = max(1, int(current.version or 0))
+            try:
+                version_matches = expected_version is None or int(expected_version) == current_version
+            except (TypeError, ValueError):
+                version_matches = False
+            if version_matches:
+                tenant_id = int(current.tenant_id)
+                package_code = str(current.package_code or "")
+                should_serialize = True
     finally:
         db.close()
+
+    if not should_serialize:
+        # Missing/stale/wrong-state requests are validated by canonical order_action.
+        yield
+        return
 
     engine = get_engine()
     if engine.dialect.name != "mysql":
@@ -100,7 +114,6 @@ def _serialized_renewal_payment(order_no: str):
     lock_key = f"platform-renew-{digest}"
     connection = engine.connect()
     acquired = False
-    release_failed = False
     try:
         acquired = int(connection.execute(
             text("SELECT GET_LOCK(:lock_key, 15)"), {"lock_key": lock_key}
@@ -124,14 +137,16 @@ def _serialized_renewal_payment(order_no: str):
             )).first()
             if order is not None and str(order.status or "").lower() == "unpaid" \
                     and str(order.order_type or "").upper() == "RENEW":
-                now = datetime.now().replace(tzinfo=None, microsecond=0)
-                predecessor = _latest_paid_predecessor(db, order)
-                predecessor_end = _naive(predecessor.end_at) if predecessor is not None else None
-                service_start = max(now, predecessor_end) if predecessor_end is not None else now
-                duration_days = _duration_days(order)
-                order.start_at = service_start.replace(microsecond=0)
-                order.end_at = order.start_at + timedelta(days=duration_days)
-                db.commit()
+                current_version = max(1, int(order.version or 0))
+                if expected_version is None or int(expected_version) == current_version:
+                    now = datetime.now().replace(tzinfo=None, microsecond=0)
+                    predecessor = _latest_paid_predecessor(db, order)
+                    predecessor_end = _naive(predecessor.end_at) if predecessor is not None else None
+                    service_start = max(now, predecessor_end) if predecessor_end is not None else now
+                    duration_days = _duration_days(order)
+                    order.start_at = service_start.replace(microsecond=0)
+                    order.end_at = order.start_at + timedelta(days=duration_days)
+                    db.commit()
         except Exception:
             db.rollback()
             raise
@@ -150,13 +165,8 @@ def _serialized_renewal_payment(order_no: str):
                 ).scalar()
             except Exception:
                 # Never return a pooled connection carrying an unreleased named lock.
-                release_failed = True
                 connection.invalidate()
         connection.close()
-        if release_failed:
-            # The business command has already produced its own result; invalidating
-            # the lock connection is the safe cleanup and needs no replay.
-            pass
 
 
 def install(platform_service):
@@ -243,7 +253,9 @@ def install(platform_service):
         def order_action(order_no: str, action: str, **kwargs):
             if str(action or "").strip().lower() != "mark-paid":
                 return original_action(order_no, action, **kwargs)
-            with _serialized_renewal_payment(str(order_no)):
+            with _serialized_renewal_payment(
+                str(order_no), expected_version=kwargs.get("expected_version")
+            ):
                 return original_action(order_no, action, **kwargs)
 
         order_action._commercial_renewal_payment_guard = True
