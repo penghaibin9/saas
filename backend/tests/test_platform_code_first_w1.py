@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
 from app.core.security import create_access_token
 
 
@@ -40,6 +44,28 @@ def _trial(tenant_id: int) -> None:
     platform_service.put_config_json(tenant_id, "TENANT_META", "-", {
         "status": "trial", "packageCode": "trial", "environment": "test",
     })
+
+
+def test_w1_service_package_installs_authorities_without_http_router():
+    """Fresh workers/scripts must not need a FastAPI router import for W1 truth."""
+    backend_root = Path(__file__).resolve().parents[1]
+    probe = """
+import app.services
+from app.services import platform_service
+from app.services import commercial_entitlement_authority_service as commercial
+from app.services import tenant_brand_authority_service as brand
+assert platform_service.effective_features is commercial.effective_features
+assert platform_service.feature_enabled is commercial.feature_enabled
+assert platform_service.effective_brand is brand.effective_brand
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=backend_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_w1_generic_features_write_is_rejected_by_canonical_router(client, db_mode):
