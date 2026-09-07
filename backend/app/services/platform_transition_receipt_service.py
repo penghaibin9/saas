@@ -2,12 +2,52 @@
 
 The canonical transition service commits the database before invalidating auth
 caches. If cache invalidation fails after commit, replaying the business command
-is wrong: the business fact already changed. This wrapper detects that durable
-version advance and returns an explicit degraded receipt instead.
+is wrong: the business fact already changed.
+
+A version delta alone is not proof that *this* request committed: a concurrent
+administrator can advance the same tenant while the current request loses its
+optimistic-lock race. The receipt therefore uses a request-local post-commit
+probe on the canonical cache invalidation boundary. Only an exception raised
+after this invocation crosses that boundary is converted into a degraded
+materialized receipt; stale-version and all other pre-commit failures propagate.
 """
 from __future__ import annotations
 
+from contextvars import ContextVar
+from functools import wraps
+
 from app.services.tenant_effective_state_service import get_effective_state
+
+_POST_COMMIT_PROBE: ContextVar[dict | None] = ContextVar(
+    "platform_transition_post_commit_probe",
+    default=None,
+)
+
+
+def _ensure_invalidation_probe() -> None:
+    """Wrap the canonical tenant-cache boundary without sharing request state.
+
+    ``tenant_effective_state_service.apply_transition`` imports the invalidator at
+    call time and invokes it only after ``db.commit()``. A ContextVar marker is
+    therefore an exact phase signal for this request and remains isolated across
+    concurrent worker threads/tasks. Tests may monkeypatch the invalidator, so the
+    wrapper is reinstalled whenever the current callable is not already probed.
+    """
+    from app.services import auth_service_db
+
+    current = auth_service_db.invalidate_tenant_subject_caches
+    if getattr(current, "_platform_transition_receipt_probe", False):
+        return
+
+    @wraps(current)
+    def probed(tenant_id):
+        probe = _POST_COMMIT_PROBE.get()
+        if probe is not None and int(probe.get("tenantId") or 0) == int(tenant_id):
+            probe["reached"] = True
+        return current(tenant_id)
+
+    probed._platform_transition_receipt_probe = True
+    auth_service_db.invalidate_tenant_subject_caches = probed
 
 
 def _materialized_receipt(
@@ -74,6 +114,9 @@ def apply_transition_with_receipt(
     tid = int(tenant_id)
     normalized = str(action or "").strip().lower()
     before = get_effective_state(tid, strict=True)
+    _ensure_invalidation_probe()
+    probe = {"tenantId": tid, "reached": False}
+    token = _POST_COMMIT_PROBE.set(probe)
     try:
         out = apply_transition(
             tid,
@@ -85,14 +128,21 @@ def apply_transition_with_receipt(
             commercial_authority=commercial_authority,
         )
     except Exception as exc:
-        # If the durable version advanced, the business transaction committed.
-        # Never tell the caller to replay that command; return a recovery receipt.
-        after = get_effective_state(tid, strict=True)
-        if int(after.get("version") or 0) > int(before.get("version") or 0):
+        # The canonical invalidator is reached only after the business DB commit.
+        # Never infer ownership from a version delta: another request may have won
+        # the same optimistic-lock race while this invocation committed nothing.
+        if probe["reached"]:
+            after = get_effective_state(tid, strict=True)
             return _materialized_receipt(
-                tenant_id=tid, action=normalized, before=before, after=after, error=exc,
+                tenant_id=tid,
+                action=normalized,
+                before=before,
+                after=after,
+                error=exc,
             )
         raise
+    finally:
+        _POST_COMMIT_PROBE.reset(token)
     return {
         **out,
         "runtimeMaterialized": True,
@@ -122,13 +172,15 @@ def recover_tenant_auth_cache(tenant_id: int) -> dict:
         error = str(exc)[:500]
     after = get_effective_state(tid, strict=True)
     version_after = int(after.get("version") or 0)
-    # Recovery must be cache-only. A version change here indicates a broken contract.
+    # A different administrator may legitimately change the tenant while cache
+    # recovery is running. The recovery command itself is cache-only, so report a
+    # retryable concurrency conflict instead of falsely claiming it mutated state.
     if version_after != version_before:
         from app.core.exceptions import AppException
         raise AppException(
-            "CACHE_RECOVERY_MUTATED_RUNTIME",
-            "缓存恢复命令意外改变了租户业务版本，已拒绝报告成功",
-            http_status=500,
+            "DATA_CONFLICT",
+            "缓存恢复期间租户状态已被其他操作更新，请刷新后仅重试缓存恢复",
+            http_status=409,
             details={"beforeVersion": version_before, "afterVersion": version_after},
         )
     try:
