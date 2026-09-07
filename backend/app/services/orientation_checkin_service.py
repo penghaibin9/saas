@@ -128,6 +128,17 @@ def _self_orientation_student(db, user) -> OrientationStudent:
     return row
 
 
+def _checkin_enabled(db, student) -> bool:
+    from app.services.orientation_flow_service import student_flow_steps
+
+    return any(step["key"] == "CHECKIN" for step in student_flow_steps(db, student))
+
+
+def _require_checkin_enabled(db, student) -> None:
+    if not _checkin_enabled(db, student):
+        raise AppException("INVALID_STATE", "当前迎新流程未启用现场报到，请联系学校核对流程配置", http_status=409)
+
+
 def token_status(db, student: OrientationStudent, *, qualification: dict | None = None) -> dict:
     from app.services.orientation_qualification_service import evaluate
 
@@ -140,7 +151,8 @@ def token_status(db, student: OrientationStudent, *, qualification: dict | None 
     finalized = student.stage == "ENROLLED" or student.report_status == "COLLEGE_CONFIRMED"
     checked = student.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED")
     checkin_eligibility = decision.get("checkinEligibility") or {}
-    can_issue = bool(checkin_eligibility.get("eligible")) and not checked and not finalized
+    checkin_enabled = _checkin_enabled(db, student)
+    can_issue = checkin_enabled and bool(checkin_eligibility.get("eligible")) and not checked and not finalized
     status = "FINALIZED" if finalized else "CHECKED_IN" if checked else "ELIGIBLE" if can_issue else "BLOCKED"
     active_issued = bool(
         latest and latest.status == "ISSUED"
@@ -156,6 +168,7 @@ def token_status(db, student: OrientationStudent, *, qualification: dict | None 
             "学院已完成入学确认" if finalized else
             "已完成现场报到，等待学院确认" if checked else
             "可签发一次性报到凭证；学校办理事项不影响到校核验" if can_issue else
+            "当前迎新流程未启用现场报到，请联系学校核对流程配置" if not checkin_enabled else
             "请先完成身份与个人信息核验"
         ),
     }
@@ -261,38 +274,21 @@ def _load_token(db, raw_token: str, *, for_update: bool = False):
     return claims, row
 
 
-def _dorm_projection(db, student: OrientationStudent) -> dict:
-    if not student.student_id:
-        return {"status": "UNLINKED", "label": "尚未绑定学生主档"}
-    stay = db.scalars(select(DormStay).where(
-        DormStay.tenant_id == _tid(), DormStay.student_id == student.student_id,
-        DormStay.status.in_(("RESERVED", "ACTIVE")), DormStay.is_deleted.is_(False),
-    ).order_by(DormStay.id.desc())).first()
-    if not stay:
-        return {"status": "UNASSIGNED", "label": "未分配宿舍"}
-    bed = db.scalars(select(DormBed).where(
-        DormBed.id == int(stay.bed_id), DormBed.tenant_id == _tid(),
-        DormBed.is_deleted.is_(False),
-    )).first()
-    room = db.scalars(select(DormRoom).where(
-        DormRoom.id == int(stay.room_id), DormRoom.tenant_id == _tid(),
-        DormRoom.is_deleted.is_(False),
-    )).first()
-    building = db.scalars(select(DormBuilding).where(
-        DormBuilding.id == int(stay.building_id), DormBuilding.tenant_id == _tid(),
-        DormBuilding.is_deleted.is_(False),
-    )).first()
-    return {
-        "status": stay.status,
-        "label": " / ".join(x for x in (
-            building.building_name if building else "",
-            room.room_no if room else "",
-            f"{bed.bed_no}床" if bed else "",
-        ) if x) or "住宿信息待核查",
-        "buildingId": str(stay.building_id),
-        "roomId": str(stay.room_id),
-        "bedId": str(stay.bed_id),
-    }
+def _dorm_projection(db, student: OrientationStudent, *, for_student=False) -> dict:
+    from app.services.dorm_housing_projection import housing_map, housing_fields
+    fact = housing_map(db, [student.student_id]).get(int(student.student_id or 0),
+        housing_fields(linked=bool(student.student_id)))
+    if for_student and student.student_id:
+        from app.services.dorm_allocation_service import current_student_allocation
+        allocation = current_student_allocation(db, student.student_id)
+        if allocation and allocation.get("hiddenUntilCheckin"):
+            return {"status": "HIDDEN", "housingStatus": "HIDDEN", "dormStatus": "ASSIGNED",
+                    "housingStatusLabel": "报到后公布", "label": "住宿已安排，现场报到后可查看",
+                    "building": "", "room": "", "buildingId": "", "roomId": "", "bedId": ""}
+    label = fact["room"].replace("室 ", " / ")
+    return {**fact, "status": fact["housingStatus"],
+            "label": " / ".join(x for x in (fact["building"], label) if x)
+                     or fact["housingStatusLabel"]}
 
 
 def preflight(raw_token: str, user: dict) -> dict:
@@ -307,6 +303,7 @@ def preflight(raw_token: str, user: dict) -> dict:
         if not student or student.is_deleted or int(student.tenant_id) != int(_tid()):
             raise not_found("报到凭证对应的新生记录不存在")
         assert_orientation_student_scope(db, student, user)
+        _require_checkin_enabled(db, student)
         decision = evaluate(db, student)
         if not (decision.get("checkinEligibility") or {}).get("eligible"):
             raise AppException(
@@ -430,6 +427,7 @@ def confirm(raw_token: str, checkin_point_id, user: dict) -> dict:
         if not student:
             raise not_found("报到凭证对应的新生记录不存在")
         assert_orientation_student_scope(db, student, user)
+        _require_checkin_enabled(db, student)
         point = _assert_point(db, checkin_point_id, user)
         prior = db.scalars(select(OrientationCheckinRecord).where(
             OrientationCheckinRecord.tenant_id == _tid(),

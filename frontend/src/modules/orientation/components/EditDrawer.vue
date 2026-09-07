@@ -6,8 +6,8 @@
     :size="fields.length > 6 ? 'large' : 'medium'"
     @update:visible="$emit('update:visible', $event)"
   >
-    <form class="ed" @submit.prevent="onSubmit">
-      <label v-for="f in fields" :key="f.key" class="ed__field">
+    <form class="ed" :class="{ 'ed--columns': fields.length > 6 }" @submit.prevent="onSubmit">
+      <label v-for="f in fields" :key="f.key" class="ed__field" :class="{ 'ed__field--wide': ['textarea', 'region'].includes(f.type) }">
         <span class="ed__label">
           {{ f.label }}<span v-if="f.required" class="ed__required">*</span>
         </span>
@@ -139,6 +139,10 @@ export default {
   flex-direction: column;
   gap: var(--space-4);
 }
+.ed--columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
+.ed--columns .ed__field--wide { grid-column: 1 / -1; }
+.ed__field { min-width: 0; }
+@media (max-width: 600px) { .ed--columns { grid-template-columns: minmax(0, 1fr); } }
 .ed__field {
   display: flex;
   flex-direction: column;

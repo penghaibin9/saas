@@ -115,7 +115,7 @@ def project_transfer_items(items, user):
 
 
 def install() -> None:
-    from app.models import DormBed, DormRoom, StudentProfile
+    from app.models import DormBed, DormRoom, DormStay, StudentProfile
     from app.services import affairs_dorm_service as dorm
 
     def list_beds(room_id, user):
@@ -128,9 +128,20 @@ def install() -> None:
                 DormBed.tenant_id == _tid(), DormBed.room_id == int(room_id),
                 DormBed.is_deleted.is_(False),
             ).order_by(DormBed.bed_no)).all()
-            student_ids = {int(x.student_id) for x in rows if x.student_id}
+            reservations = db.scalars(select(DormStay).where(
+                DormStay.tenant_id == _tid(), DormStay.room_id == int(room_id),
+                DormStay.status == "RESERVED", DormStay.is_deleted.is_(False),
+            )).all()
+            from app.services.dorm_housing_projection import housing_map
+            housing = housing_map(db, [int(stay.student_id) for stay in reservations])
+            reserved_by_bed = {}
+            for stay in reservations:
+                fact = housing.get(int(stay.student_id), {})
+                if fact.get("housingStatus") == "RESERVED" and str(fact.get("bedId")) == str(stay.bed_id):
+                    reserved_by_bed[int(stay.bed_id)] = int(stay.student_id)
+            student_ids = {int(bed.student_id) for bed in rows if bed.student_id} | set(reserved_by_bed.values())
             students = {
-                int(x.id): x.real_name
+                int(x.id): x
                 for x in db.scalars(select(StudentProfile).where(
                     StudentProfile.tenant_id == _tid(),
                     StudentProfile.id.in_(student_ids or {-1}),
@@ -140,16 +151,19 @@ def install() -> None:
             return [{
                 "bedId": str(row.id), "roomId": str(row.room_id), "bedNo": row.bed_no,
                 "status": row.status, "studentId": str(row.student_id or ""),
-                "occupantName": students.get(int(row.student_id), "") if row.student_id else None,
+                "occupantName": students[int(row.student_id)].real_name if row.student_id and int(row.student_id) in students else None,
+                "reservedStudentId": str(reserved_by_bed.get(int(row.id), "")),
+                "reservedStudentName": students[reserved_by_bed[int(row.id)]].real_name if reserved_by_bed.get(int(row.id)) in students else "",
+                "reservedStudentNo": students[reserved_by_bed[int(row.id)]].student_no if reserved_by_bed.get(int(row.id)) in students else "",
                 "occupiedAt": _iso(row.occupied_at), "version": int(row.version or 0),
             } for row in rows]
 
     original_list_transfers = dorm.list_transfers
 
-    def list_transfers(user, status=None, page=1, page_size=50, student_id=None):
+    def list_transfers(user, status=None, page=1, page_size=50, student_id=None, record_id=None):
         """补齐审批人必须看到的原床→目标床，并按真实当前节点/受理人投影动作。"""
         items, total = original_list_transfers(
-            user, status=status, page=page, page_size=page_size, student_id=student_id,
+            user, status=status, page=page, page_size=page_size, student_id=student_id, record_id=record_id,
         )
         return project_transfer_items(items, user), total
 

@@ -78,11 +78,11 @@ test('A1 every remaining unsupported orientation action is disabled before invoc
   assert.doesNotMatch(api, /'orientation\.student\.(import|export)':\s*'当前后端尚未提供/)
 })
 
-test('A1 old dormitory route remains an honest overview of real workspaces', () => {
-  assert.match(dormOverview, /住宿运行结论/)
-  assert.match(dormOverview, /待办工作区/)
-  assert.match(dormOverview, /房态与入住入口/)
-  assert.match(dormOverview, /聚合待办数：后端未配置/)
+test('A1 dormitory cockpit keeps one compact drill-down workspace and real work entries', () => {
+  assert.match(dormOverview, /宿舍房态总览/)
+  assert.match(dormOverview, /楼栋房间床位联动工作区/)
+  assert.match(dormOverview, /openBedAction/)
+  assert.doesNotMatch(dormOverview, /聚合待办数：后端未配置/)
   for (const path of ['resource', 'checkin', 'transfer', 'check', 'exception']) {
     assert.ok(dormOverview.includes(`/admin/student-affairs/dorm/${path}`), `${path} workspace must remain reachable`)
   }

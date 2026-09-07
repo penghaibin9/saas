@@ -1,9 +1,6 @@
 <template>
   <AppPageShell
     title="宿舍检查"
-    subtitle="按生效模板逐房检查，照片进入公共文件证据链；异常形成整改，只有高风险问题进入风险处置。"
-    role-name="宿管 / 辅导员 / 学工处"
-    data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍检查登记"
   >
     <template #actions>
@@ -12,14 +9,19 @@
       </AppPermissionButton>
     </template>
 
+    <nav class="inspection-tabs" aria-label="宿舍检查工作区">
+      <button type="button" :class="{active: workspace === 'tasks'}" :aria-current="workspace === 'tasks' ? 'page' : undefined" @click="switchWorkspace('tasks')">检查任务</button>
+      <button type="button" :class="{active: workspace === 'rectifications'}" :aria-current="workspace === 'rectifications' ? 'page' : undefined" @click="switchWorkspace('rectifications')">整改与复检</button>
+    </nav>
+    <div v-if="workspace === 'rectifications'" class="inspection-filter"><label for="rect-status">办理状态</label><select id="rect-status" v-model="rectStatus" @change="rectPage.page = 1; saveWorkspaceRoute()"><option value="WAITING_RECHECK">待复检</option><option value="PENDING">全部未完成</option><option value="OPEN">待整改</option><option value="RECTIFYING">整改中</option><option value="CLOSED">已关闭</option><option value="ESCALATED">已升级风险</option><option value="">全部记录</option></select></div>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载检查任务..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <AppSectionCard title="检查任务">
+      <section v-if="workspace === 'tasks' && !showRecords">
         <DataTable
           v-if="tasks.length"
           :columns="taskColumns"
           :rows="tasks"
-          row-key="taskId"
+          row-key="taskId" :pagination="taskPage" @page-change="taskPage.page = $event; load()"
           :row-class="(row) => (row.taskId === curTask ? 'sa-sel' : '')"
         >
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.taskName }}</span></template>
@@ -34,10 +36,11 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">暂无检查任务</p>
-      </AppSectionCard>
+      </section>
 
-      <AppSectionCard v-if="curTask" :title="`检查记录 · ${curTaskName}`">
-        <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId">
+      <section v-if="workspace === 'tasks' && showRecords">
+        <div class="inspection-record-title"><button type="button" class="sa-link" @click="showRecords = false">返回任务</button><h2>{{ curTaskName }}</h2><AppButton variant="secondary" @click="openTask({taskId: curTask, taskName: curTaskName, checkType: curTaskType}, false)">刷新记录</AppButton></div>
+        <DataTable v-if="records.length" :columns="recordColumns" :rows="records" row-key="recordId" :pagination="recordPage" @page-change="recordPage.page = $event; openTask({taskId: curTask, taskName: curTaskName, checkType: curTaskType}, false)">
           <template #cell-room="{ row }">{{ row.roomNo || row.roomId || '—' }}</template>
           <template #cell-result="{ row }"><AppStatusTag :type="row.result === 'ABNORMAL' ? 'danger' : 'success'" :label="row.result === 'ABNORMAL' ? '异常' : '正常'" /></template>
           <template #cell-issueType="{ row }"><strong>{{ severityLabel(row.severity) }}</strong><small class="cell-sub">{{ row.score == null ? '未评分' : `${row.score} 分` }}</small></template>
@@ -48,18 +51,18 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">暂无检查记录</p>
-      </AppSectionCard>
+      </section>
 
-      <AppSectionCard title="整改与复检">
-        <DataTable v-if="rectifications.length" :columns="rectColumns" :rows="rectifications" row-key="rectificationId">
+      <section v-if="workspace === 'rectifications'">
+        <DataTable v-if="rectifications.length" :columns="rectColumns" :rows="rectifications" row-key="rectificationId" :pagination="rectPage" @page-change="rectPage.page = $event; saveWorkspaceRoute()">
           <template #cell-room="{ row }"><strong>{{ row.buildingName }} · {{ row.roomNo }}室</strong><small class="cell-sub">{{ row.studentName || '房间级整改' }}</small></template>
           <template #cell-issue="{ row }"><AppStatusTag :type="['HIGH','CRITICAL'].includes(row.severity) ? 'danger' : 'warning'" :label="severityLabel(row.severity)" /><small class="cell-sub">{{ row.requirement }}</small></template>
           <template #cell-deadline="{ row }"><span :class="row.overdue ? 'danger-text' : ''">{{ fmt(row.deadlineAt) }}</span></template>
           <template #cell-status="{ row }"><AppStatusTag :type="rectStatusType(row.status)" :label="rectStatusLabel(row.status)" /></template>
-          <template #cell-actions="{ row }"><div class="sa-actions"><AppPermissionButton v-if="row.allowedActions?.includes('START')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" variant="secondary" :loading="actioning" @click="startRectification(row)">开始整改</AppPermissionButton><AppPermissionButton v-if="row.allowedActions?.includes('SUBMIT')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="openRectification(row, 'SUBMIT')">提交证据</AppPermissionButton><AppPermissionButton v-if="row.allowedActions?.includes('PASS')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="openRectification(row, 'PASS')">复检</AppPermissionButton></div></template>
+          <template #cell-actions="{ row }"><div class="sa-actions"><AppButton size="sm" variant="ghost" @click="openRectification(row, 'VIEW')">查看记录</AppButton><AppPermissionButton v-if="row.allowedActions?.includes('START')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" variant="secondary" :loading="actioning" @click="startRectification(row)">开始整改</AppPermissionButton><AppPermissionButton v-if="row.allowedActions?.includes('SUBMIT')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="openRectification(row, 'SUBMIT')">提交证据</AppPermissionButton><AppPermissionButton v-if="row.allowedActions?.includes('PASS')" :allowed="canBtn('studentAffairs.dorm.inspection.manage')" code="studentAffairs.dorm.inspection.manage" size="sm" :loading="actioning" @click="openRectification(row, 'PASS')">复检</AppPermissionButton></div></template>
         </DataTable>
         <p v-else class="sa-empty">暂无整改记录</p>
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
 
     <!-- 新建检查任务：原为「任务名→类型码→楼栋 ID」3 连原生弹窗，类型要手打 HYGIENE 之类 -->
@@ -118,9 +121,16 @@
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="rectDlg.visible" :title="rectDlg.mode === 'SUBMIT' ? '提交整改证据' : '宿舍整改复检'" mode="modal" size="large" @close="rectDlg.visible = false">
-      <div class="dr-form" v-if="rectDlg.row"><AppInlineAlert type="info" :title="`${rectDlg.row.buildingName} · ${rectDlg.row.roomNo}室 · ${severityLabel(rectDlg.row.severity)}`" :description="rectDlg.row.requirement" /><AppFormItem v-if="rectDlg.mode !== 'SUBMIT'" label="复检结论" required><AppSelect v-model="rectDlg.action" :options="RECHECK_ACTIONS" :disabled="actioning" /></AppFormItem><AppFormItem :label="rectDlg.mode === 'SUBMIT' ? '整改说明（5-1000字）' : '复检意见（5-1000字）'" required><AppTextarea v-model="rectDlg.note" :rows="4" :maxlength="1000" :disabled="actioning" /></AppFormItem><AppFormItem label="照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传照片" :disabled="actioning" @uploaded="onRectFileUploaded" @error="onUploadError" /><div v-if="rectDlg.files.length" class="file-chips"><span v-for="file in rectDlg.files" :key="file.fileId">{{ file.fileName || `文件 #${file.fileId}` }} <button type="button" @click="removeRectFile(file.fileId)">×</button></span></div></AppFormItem><AppInlineAlert v-if="rectDlg.error" type="danger" :description="rectDlg.error" /></div>
-      <template #footer><AppButton variant="ghost" :disabled="actioning" @click="rectDlg.visible = false">取消</AppButton><AppButton variant="primary" :loading="actioning" @click="submitRectificationAction">{{ rectDlg.mode === 'SUBMIT' ? '提交复检' : '保存复检结论' }}</AppButton></template>
+    <AppDrawer :visible="rectDlg.visible" :title="rectDlg.mode === 'VIEW' ? '整改办理记录' : rectDlg.mode === 'SUBMIT' ? '提交整改证据' : '宿舍整改复检'" mode="modal" size="large" @close="rectDlg.visible = false">
+      <div class="dr-form" v-if="rectDlg.row"><AppInlineAlert type="info" :title="`${rectDlg.row.buildingName} · ${rectDlg.row.roomNo}室 · ${severityLabel(rectDlg.row.severity)}`" :description="rectDlg.row.requirement" /><section class="inspection-evidence" aria-label="检查与整改证据">
+        <h3>原检查</h3><p>{{ rectDlg.row.inspectionDetail || '未填写检查说明' }}</p>
+        <button v-for="file in rectDlg.row.inspectionFiles || []" :key="file.fileId" type="button" class="sa-link" @click="previewEvidence(file)">{{ file.fileName || '查看检查照片' }}</button>
+        <h3>学生 / 责任人整改</h3><p>{{ rectDlg.row.rectifyNote || '尚未提交整改说明' }}</p>
+        <button v-for="file in rectDlg.row.rectificationFiles || []" :key="file.fileId" type="button" class="sa-link" @click="previewEvidence(file)">{{ file.fileName || '查看整改照片' }}</button>
+        <template v-if="rectDlg.row.recheckNote"><h3>上次复检</h3><p>{{ rectDlg.row.recheckNote }}</p></template>
+        <button v-for="file in rectDlg.row.recheckFiles || []" :key="file.fileId" type="button" class="sa-link" @click="previewEvidence(file)">{{ file.fileName || '查看复检照片' }}</button>
+      </section><template v-if="rectDlg.mode !== 'VIEW'"><AppFormItem v-if="rectDlg.mode !== 'SUBMIT'" label="复检结论" required><AppSelect v-model="rectDlg.action" :options="RECHECK_ACTIONS" :disabled="actioning" /></AppFormItem><AppFormItem :label="rectDlg.mode === 'SUBMIT' ? '整改说明（5-1000字）' : '复检意见（5-1000字）'" required><AppTextarea v-model="rectDlg.note" :rows="4" :maxlength="1000" :disabled="actioning" /></AppFormItem><AppFormItem label="照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传照片" :disabled="actioning" @uploaded="onRectFileUploaded" @error="onUploadError" /><div v-if="rectDlg.files.length" class="file-chips"><span v-for="file in rectDlg.files" :key="file.fileId">{{ file.fileName || `文件 #${file.fileId}` }} <button type="button" @click="removeRectFile(file.fileId)">×</button></span></div></AppFormItem></template><AppInlineAlert v-if="rectDlg.error" type="danger" :description="rectDlg.error" /></div>
+      <template #footer><AppButton variant="ghost" :disabled="actioning" @click="rectDlg.visible = false">取消</AppButton><AppButton v-if="rectDlg.mode !== 'VIEW'" variant="primary" :loading="actioning" @click="submitRectificationAction">{{ rectDlg.mode === 'SUBMIT' ? '提交复检' : '保存复检结论' }}</AppButton></template>
     </AppDrawer>
   </AppPageShell>
 </template>
@@ -128,11 +138,12 @@
 <script>
 import {
   AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea
+  AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import FileUploader from '@/components/file/FileUploader.vue'
+import { fileSdk } from '@/services/file/fileSdk'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -192,7 +203,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppButton, AppDrawer, FileUploader, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppQuickPhrases, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea, DataTable
+    AppQuickPhrases, AppSelect, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, AppTextInput, AppTextarea, DataTable
   },
   data() {
     return {
@@ -200,6 +211,8 @@ export default {
       recordColumns: RECORD_COLUMNS,
       rectColumns: RECT_COLUMNS,
       loading: true, actioning: false, errorMessage: '',
+      workspace: 'tasks', showRecords: false, loadSerial: 0, recordSerial: 0, rectStatus: 'WAITING_RECHECK',
+      taskPage: {page: 1, pageSize: 20, total: 0}, recordPage: {page: 1, pageSize: 20, total: 0}, rectPage: {page: 1, pageSize: 20, total: 0},
       tasks: [], curTask: '', curTaskName: '', curTaskType: '', records: [], rectifications: [], policy: { items: [], riskSeverities: [], evidenceRequiredSeverities: [] },
       buildings: [], rooms: [],
       taskDlg: { visible: false, taskName: '', templateKey: '', buildingId: '', floorScope: [], plannedAt: '', error: '' },
@@ -225,36 +238,63 @@ export default {
     },
     recordAbnormal() { return this.recDlg.itemResults.some((item) => item.status === 'FAIL') }
   },
-  mounted() { this.load(); this.loadBuildings() },
+  mounted() {
+    this.applyWorkspaceRoute(); this.load(); this.loadBuildings()
+    window.addEventListener('focus', this.refreshFromExternalAction)
+  },
+  activated() { this.refreshFromExternalAction() },
+  beforeUnmount() { window.removeEventListener('focus', this.refreshFromExternalAction) },
+  watch: { '$route.query': { handler() { this.applyWorkspaceRoute(); this.load() }, deep: true } },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    refreshFromExternalAction() {
+      if (!this.actioning && !this.taskDlg.visible && !this.recDlg.visible && !this.rectDlg.visible) this.load()
+    },
+    applyWorkspaceRoute() {
+      const q = this.$route.query
+      this.workspace = q.workspace === 'rectifications' ? 'rectifications' : 'tasks'
+      this.rectStatus = ['WAITING_RECHECK','PENDING','OPEN','RECTIFYING','CLOSED','ESCALATED',''].includes(q.rectStatus) ? q.rectStatus : 'WAITING_RECHECK'
+      this.rectPage.page = /^[1-9]\d{0,5}$/.test(String(q.rectPage || '')) ? Number(q.rectPage) : 1
+    },
+    saveWorkspaceRoute() { return this.$router.replace({ query: { ...this.$route.query, workspace: this.workspace, rectStatus: this.rectStatus, rectPage: String(this.rectPage.page) } }) },
+    switchWorkspace(value) { this.workspace = value; this.saveWorkspaceRoute() },
     async load() {
+      const serial = ++this.loadSerial
       this.loading = true; this.errorMessage = ''
       try {
-        const [taskRes, policyRes, rectRes] = await Promise.all([
-          studentAffairsApi.listDormCheckTasks({ pageSize: 100 }),
-          studentAffairsApi.getDormInspectionTemplates(),
-          studentAffairsApi.listDormRectifications({ pageSize: 200 })
-        ])
-        this.tasks = taskRes.data.items || []; this.policy = policyRes.data || this.policy; this.rectifications = rectRes.data.items || []
-      }
-      catch (e) { this.errorMessage = e.message || '检查任务加载失败' } finally { this.loading = false }
+        if (this.workspace === 'rectifications') {
+          const res = await studentAffairsApi.listDormRectifications({page: this.rectPage.page, pageSize: this.rectPage.pageSize, status: this.rectStatus})
+          if (serial !== this.loadSerial) return
+          this.rectifications = res.data.items || []; this.rectPage.total = res.data.total || 0
+        } else {
+          const [taskRes, policyRes] = await Promise.all([
+            studentAffairsApi.listDormCheckTasks({page: this.taskPage.page, pageSize: this.taskPage.pageSize}),
+            studentAffairsApi.getDormInspectionTemplates()
+          ])
+          if (serial !== this.loadSerial) return
+          this.tasks = taskRes.data.items || []; this.taskPage.total = taskRes.data.total || 0; this.policy = policyRes.data || this.policy
+          if (this.showRecords && this.curTask) await this.openTask({taskId: this.curTask, taskName: this.curTaskName, checkType: this.curTaskType}, false)
+        }
+      } catch (e) { if (serial === this.loadSerial) this.errorMessage = e.message || '检查任务加载失败' } finally { if (serial === this.loadSerial) this.loading = false }
     },
     async loadBuildings() {
-      // 楼栋列表只用于填下拉；失败不阻断主流程，退化为「不限楼栋」。
-      try { this.buildings = (await studentAffairsApi.listDormBuildings({ pageSize: 200 })).data.items || [] }
+      try { this.buildings = (await studentAffairsApi.listAllDormBuildings()).data.items || [] }
       catch { this.buildings = [] }
     },
     async loadRooms(buildingId) {
       if (!buildingId) { this.rooms = []; return }
-      // 待服务端全量统计：下拉列表仅加载 API 单页上限。
-      try { this.rooms = (await studentAffairsApi.listDormRooms(buildingId, { pageSize: 200 })).data.items || [] }
+      try { this.rooms = (await studentAffairsApi.listAllDormRooms(buildingId)).data.items || [] }
       catch { this.rooms = [] }
     },
-    async openTask(t) {
-      this.curTask = t.taskId; this.curTaskName = t.taskName; this.curTaskType = t.checkType
-      try { this.records = (await studentAffairsApi.listDormCheckRecords(t.taskId)).data.items || [] }
-      catch (e) { this.errorMessage = e.message }
+    async openTask(t, reset = true) {
+      const serial = ++this.recordSerial
+      this.curTask = t.taskId; this.curTaskName = t.taskName; this.curTaskType = t.checkType; this.showRecords = true
+      if (reset) { this.recordPage.page = 1; this.records = [] }
+      try {
+        const res = await studentAffairsApi.listDormCheckRecords(t.taskId, {page: this.recordPage.page, pageSize: this.recordPage.pageSize})
+        if (serial !== this.recordSerial) return
+        this.records = res.data.items || []; this.recordPage.total = res.data.total || 0
+      } catch (e) { if (serial === this.recordSerial) this.errorMessage = e.message || '检查记录加载失败' }
     },
     /* ── 新建任务 ── */
     createTask() {
@@ -317,16 +357,18 @@ export default {
       else d.error = this.errorMessage
     },
     async startRectification(row) { await this.runAction(() => studentAffairsApi.startDormRectification(row.rectificationId, row.version)) },
-    openRectification(row, mode) { this.rectDlg = { visible: true, row, mode, action: mode === 'SUBMIT' ? '' : 'PASS', note: '', files: [], error: '' } },
+    async previewEvidence(file) { try { await fileSdk.preview(file.fileId) } catch (e) { this.rectDlg.error = e.message || '照片暂不可查看，请重试' } },
+    openRectification(row, mode) { this.rectDlg = { visible: true, row, mode, requestId: requestId('dorm-rectify'), action: mode === 'SUBMIT' ? '' : 'PASS', note: '', files: [], error: '' } },
     async submitRectificationAction() {
       const d = this.rectDlg
+      if (d.mode === 'VIEW') return
       if (d.note.trim().length < 5) { d.error = '说明不少于5字'; return }
       if (d.mode === 'SUBMIT' && !d.files.length) { d.error = '请上传整改照片证据'; return }
       if (d.mode !== 'SUBMIT' && d.action === 'PASS' && ['HIGH', 'CRITICAL'].includes(d.row.severity) && !d.files.length) { d.error = '高风险复检通过必须上传现场照片'; return }
       d.error = ''
       const body = { expectedVersion: d.row.version, note: d.note.trim(), fileIds: d.files.map((file) => file.fileId) }
       const task = d.mode === 'SUBMIT'
-        ? () => studentAffairsApi.submitDormRectification(d.row.rectificationId, { ...body, clientRequestId: requestId('dorm-rectify') })
+        ? () => studentAffairsApi.submitDormRectification(d.row.rectificationId, { ...body, clientRequestId: d.requestId })
         : () => studentAffairsApi.recheckDormRectification(d.row.rectificationId, { ...body, action: d.action })
       const ok = await this.runAction(task)
       if (ok) d.visible = false
@@ -352,6 +394,10 @@ export default {
 </script>
 
 <style scoped>
+.inspection-tabs{display:flex;gap:24px;border-bottom:1px solid var(--border-color,#dbe4f2);margin-bottom:16px}.inspection-tabs button{font:inherit;background:none;color:inherit;border:0;border-bottom:2px solid transparent;padding:12px 0;cursor:pointer}.inspection-tabs button.active{color:var(--primary-600,#295bbb);border-bottom-color:currentColor;font-weight:600}.inspection-filter,.inspection-record-title{display:flex;align-items:center;gap:16px;margin-bottom:16px}.inspection-filter select{font:inherit;background:var(--bg-card,#fff);color:inherit;border:1px solid var(--border-color,#dbe4f2);padding:8px 12px;border-radius:6px}.inspection-record-title h2{font-size:16px;flex:1;margin:0}
+
+.inspection-evidence{border-block:1px solid var(--border-color,#dbe4f2);padding:12px 0}.inspection-evidence h3{font-size:14px;margin:12px 0 6px}.inspection-evidence p{white-space:pre-wrap;margin:6px 0;color:var(--text-secondary)}.inspection-evidence button{display:block;background:transparent;border:0;padding:6px 0;cursor:pointer;text-align:left}
+
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* 选中任务高亮：类由 DataTable 的 row-class 挂在子组件内部 <tr> 上，父级 scoped 样式须 :deep() 穿透 */
 :deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }

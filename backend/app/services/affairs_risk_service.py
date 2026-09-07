@@ -280,7 +280,17 @@ def _todo_done(db, risk_id):
         r.status, r.version = "DONE", r.version + 1
 
 
-def _scope_or_403(db, student_id, user):
+def _scope_or_403(db, student_id, user, risk=None):
+    """校验风险可见范围；当前责任人始终可访问自己被指派的精确原单。
+
+    宿管的数据范围按楼栋表达，无法转换成班级集合。宿舍检查把高风险明确
+    指派给楼栋宿管后，责任关系本身就是这一条风险的最小授权；这里只放行
+    当前 owner 的单条记录，列表仍按原数据范围收敛，避免扩大到其他学生。
+    """
+    if risk is not None:
+        uid = _uid_int(user)
+        if risk.owner_id and uid and _uid_norm(risk.owner_id) == _uid_norm(uid):
+            return
     from app.models import StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     allowed, _ = _allowed_class_ids(db, user)
@@ -469,7 +479,7 @@ def assign(risk_id, user, owner_id, expected_version=None) -> dict:
     owner_id = resolve_self_owner(user, owner_id)
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         to_status = _transition_or_conflict(x, "ASSIGN")
         atomic_claim_version(db, x, expected_version)
         valid_owner_id = _validate_owner(db, owner_id, x.student_id)
@@ -495,7 +505,7 @@ def process(risk_id, user, content="", expected_version=None) -> dict:
         raise AppException("VALIDATION_ERROR", "处置记录必填且不少于 5 字")
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_owner_or_admin(db, x, user, label="填写处置")
         to_status = _transition_or_conflict(x, "PROCESS")
         atomic_claim_version(db, x, expected_version)
@@ -512,7 +522,7 @@ def process(risk_id, user, content="", expected_version=None) -> dict:
 def follow(risk_id, user, content="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_owner_or_admin(db, x, user, label="转跟进")
         to_status = _transition_or_conflict(x, "FOLLOW")
         atomic_claim_version(db, x, expected_version)
@@ -529,7 +539,7 @@ def follow(risk_id, user, content="", expected_version=None) -> dict:
 def transfer(risk_id, user, new_owner_id, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_owner_or_admin(db, x, user, label="转办")
         to_status = _transition_or_conflict(x, "TRANSFER")
         atomic_claim_version(db, x, expected_version)
@@ -553,7 +563,7 @@ _LEVEL_UP = {"LOW": "MEDIUM", "MEDIUM": "HIGH", "HIGH": "CRITICAL", "CRITICAL": 
 def escalate(risk_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_owner_or_admin(db, x, user, label="升级")
         to_status = _transition_or_conflict(x, "ESCALATE")
         atomic_claim_version(db, x, expected_version)
@@ -573,7 +583,7 @@ def escalate(risk_id, user, reason="", expected_version=None) -> dict:
 def takeover(risk_id, user, content="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_takeover_authority(db, user)
         to_status = _transition_or_conflict(x, "TAKEOVER")
         atomic_claim_version(db, x, expected_version)
@@ -597,7 +607,7 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
     with session() as db:
         from app.models import StudentStageEvent
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_owner_or_admin(db, x, user, label="关闭")
         to_status = _transition_or_conflict(x, "CLOSE")
         atomic_claim_version(db, x, expected_version)
@@ -624,7 +634,7 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
 def reopen(risk_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         _require_takeover_authority(db, user)  # 重开属上级动作，防同班互改
         to_status = _transition_or_conflict(x, "REOPEN")
         atomic_claim_version(db, x, expected_version)
@@ -781,12 +791,24 @@ def _risk_action_evaluator(user):
     permitted = {action: has_permission(user, rule["permission"])
                  for action, rule in RISK_TRANSITIONS.items()}
     actor = _uid_norm(user)
+    dorm_manager_can_handle = (
+        role == "DORM_MANAGER"
+        and has_permission(user, "studentAffairs.dorm.inspection.manage")
+    )
 
     def evaluate(x) -> list[str]:
         is_owner = bool(x.owner_id) and _uid_norm(x.owner_id) == actor
         actions: list[str] = []
         for action, rule in RISK_TRANSITIONS.items():
-            if x.status not in rule["from"] or not permitted[action]:
+            # 宿舍检查产生的风险由楼栋宿管原地闭环。宿管不获得通用 risk 权限，
+            # 仅凭已有宿舍检查权限处理明确指派给本人的 DORM 原单。
+            dorm_owner_action = (
+                dorm_manager_can_handle
+                and x.source == "DORM"
+                and is_owner
+                and action in {"PROCESS", "CLOSE"}
+            )
+            if x.status not in rule["from"] or not (permitted[action] or dorm_owner_action):
                 continue
             relationship = rule.get("relationship")
             if relationship == "OWNER_OR_ADMIN" and not (is_owner or is_admin):
@@ -809,7 +831,7 @@ def list_handles(risk_id, user) -> list[dict]:
     from app.models import AffairsRiskHandle
     with session() as db:
         x, _s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         rows = db.scalars(select(AffairsRiskHandle).where(
             AffairsRiskHandle.tenant_id == _tid(),
             AffairsRiskHandle.risk_id == int(risk_id),
@@ -837,7 +859,7 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
     with session() as db:
         from app.models import User
         x, s = _load(db, risk_id)
-        _scope_or_403(db, x.student_id, user)
+        _scope_or_403(db, x.student_id, user, x)
         reveal = False
         # 心理来源明细=敏感：仅授权角色 + 填写原因(≥5字) 方可查看明文，并写 SENSITIVE_VIEW 审计；
         # 审计必须先成功，再 reveal（强敏感不可吞异常后仍返明文）。

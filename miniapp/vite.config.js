@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -56,13 +56,17 @@ function stripMockPayloadInProduction() {
 }
 
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
-export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()],
-  server: {
-    proxy: {
-      '/api': {
-        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000',
-        changeOrigin: true
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+  return {
+    plugins: [stripMockPayloadInProduction(), uni()],
+    server: {
+      proxy: {
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true
+        }
       }
     }
   }

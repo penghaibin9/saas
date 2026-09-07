@@ -31,6 +31,13 @@ _PC_EXACT: dict[str, tuple[str, str]] = {
 
 # 尚无详情路由时，只能落到真实可处理列表；仍下发 recordId，不把列表伪装成详情页。
 _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
+    "WORK_STUDY_REVIEW": ("todo-route:student-affairs-work-study", "/admin/student-affairs/funding/work-study", {}),
+    "WORK_STUDY_ONBOARD": ("todo-route:student-affairs-work-study", "/admin/student-affairs/funding/work-study", {}),
+    "STUDENT_LOAN_REVIEW": ("todo-route:student-affairs-loan", "/admin/student-affairs/funding/loans", {}),
+    "STUDENT_LOAN_CONFIRM": ("todo-route:student-affairs-loan", "/admin/student-affairs/funding/loans", {}),
+    "FEE_REDUCTION_REVIEW": ("todo-route:student-affairs-reduction", "/admin/student-affairs/funding/fee-reductions", {}),
+    "FEE_REDUCTION_FULFILL": ("todo-route:student-affairs-reduction", "/admin/student-affairs/funding/fee-reductions", {}),
+    "MATERIAL_REVIEW": ("todo-route:student-affairs-material", "/admin/student-affairs/material-operations", {}),
     "LEAVE_APPROVAL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "PENDING"}),
     "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "OVERDUE"}),
     "LEAVE_CANCEL": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "WAIT_CANCEL_LEAVE"}),
@@ -56,6 +63,11 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
 # exact=True 的证据由 frontend/tests/student-affairs-todo-pc-focus.contract.test.mjs 逐页约束；
 # 不允许只改本表、页面不消费 recordId。
 _PC_LIST_FOCUS = frozenset({
+    "DORM_TRANSFER",
+    "WORK_STUDY_REVIEW", "WORK_STUDY_ONBOARD",
+    "STUDENT_LOAN_REVIEW", "STUDENT_LOAN_CONFIRM",
+    "FEE_REDUCTION_REVIEW", "FEE_REDUCTION_FULFILL",
+    "MATERIAL_REVIEW",
     "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
     "AID_APPROVAL", "AID_ADJUST", "FUNDING_APPROVAL",
     "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
@@ -66,6 +78,9 @@ _PC_LIST_FOCUS = frozenset({
 # 只是个安全入口就写 NONE；exact 由 mobile_focus_contract.is_route_exact() 统一判定，
 # 不再由本表自行宣称。
 _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
+    "DORM_RECTIFICATION": ("todo-route:student-mini-dorm-rectification", "/pages/student/affairs/dorm", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-mini-loan", "/pages/student/affairs/loan", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_CORRECTION": ("todo-route:student-mini-reduction", "/pages/student/affairs/reduction", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_OVERDUE": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_CANCEL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
@@ -87,6 +102,8 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
 # tab（如 leave/aid/funding）已经实现了 LIST_FOCUS，就假装 PC 端也一样。
 # 第三项是该目标的静态 query（如 {"tab": "leave"}）。
 _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
+    "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-pc-loan", "/campus-service", {"tab": "loan"}, FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_CORRECTION": ("todo-route:student-pc-reduction", "/campus-service", {"tab": "reduction"}, FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
@@ -107,6 +124,15 @@ _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
 # and is registered in mobile_focus_contract, focusMode stays NONE and routeExact remains false.
 # This is intentional: a safe business queue is better than pretending a list page is object-exact.
 _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
+    "DORM_RECTIFICATION": ("todo-route:teacher-mini-dorm-rectify", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
+    "DORM_RECTIFICATION_RECHECK": ("todo-route:teacher-mini-dorm-recheck", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
+    "WORK_STUDY_REVIEW": ("todo-route:teacher-mini-work-study", "/pages/teacher/affairs/work-study/index", FOCUS_LIST_FOCUS),
+    "WORK_STUDY_ONBOARD": ("todo-route:teacher-mini-work-study", "/pages/teacher/affairs/work-study/index", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_REVIEW": ("todo-route:teacher-mini-loan", "/pages/teacher/affairs/loan/index", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_CONFIRM": ("todo-route:teacher-mini-loan", "/pages/teacher/affairs/loan/index", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_REVIEW": ("todo-route:teacher-mini-reduction", "/pages/teacher/affairs/reduction/index", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_FULFILL": ("todo-route:teacher-mini-reduction", "/pages/teacher/affairs/reduction/index", FOCUS_LIST_FOCUS),
+    "MATERIAL_REVIEW": ("todo-route:teacher-mini-material", "/pages/teacher/affairs/index", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
@@ -116,7 +142,7 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "AID_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
     "AID_ADJUST": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
     "FUNDING_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
-    "RISK_HANDLE": ("todo-route:teacher-mini-risk", "/pages/teacher/risk-students/index", FOCUS_NONE),
+    "RISK_HANDLE": ("todo-route:teacher-mini-risk", "/pages/teacher/risk-students/index", FOCUS_LIST_FOCUS),
     "ACAD_WARNING_HANDLE": ("todo-route:teacher-mini-academic-warning", "/pages/teacher/academic-warning/index", FOCUS_NONE),
     "AA_SCHEDULE_CHANGE_APPROVAL": ("todo-route:teacher-mini-schedule-change", "/pages/teacher/academic-affairs/schedule-change-review", FOCUS_NONE),
     "AA_STATUS_APPROVAL": ("todo-route:teacher-mini-status-change", "/pages/teacher/academic-affairs/status-change-review", FOCUS_NONE),
@@ -129,7 +155,7 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
     "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
     "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
+    "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
     "DORM_EXCEPTION": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
     "EMPLOYMENT_FOLLOWUP": ("todo-route:teacher-mini-employment", "/pages/teacher/employment-follow/index", FOCUS_NONE),
 }
@@ -154,7 +180,7 @@ def _student_pc_target(type_code: str, rid: str) -> dict | None:
         "query": {**static_query, "recordId": rid},
         "path": path,
         "focusMode": focus_mode,
-        "exact": is_route_exact(focus_mode, path),
+        "exact": focus_mode == FOCUS_LIST_FOCUS,
     }
 
 
@@ -163,10 +189,19 @@ def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: 
     if not target:
         return None
     route_name, path, focus_mode = target
+    query = {"recordId": rid}
+    if type_code == "DORM_RECTIFICATION" and path == "/pages/student/affairs/dorm":
+        query = {"rectificationId": rid}
+    if type_code in {"DORM_RECTIFICATION", "DORM_RECTIFICATION_RECHECK"} and path == "/pages/teacher/dorm-review/index":
+        query["tab"] = "recheck"
+    # This page hosts several independent workflows with overlapping numeric IDs.
+    # Without type it defaults to AID_APPROVAL and can open a different business.
+    if path == "/pages/teacher/affairs-review/index":
+        query["type"] = type_code
     return {
         "routeName": route_name,
         "routeParams": {"recordId": rid},
-        "query": {"recordId": rid},
+        "query": query,
         "path": path,
         "focusMode": focus_mode,
         "exact": is_route_exact(focus_mode, path),

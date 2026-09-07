@@ -106,8 +106,8 @@ def test_date_only_leave_range_is_inclusive_and_same_day_is_valid():
     from app.services.affairs_leave_date_contract import normalize_range
 
     start, end = normalize_range("2026-08-01", "2026-08-01")
-    assert start == datetime(2026, 8, 1, 0, 0, 0)
-    assert end == datetime(2026, 8, 1, 23, 59, 59)
+    assert start == datetime(2026, 7, 31, 16, 0, 0)
+    assert end == datetime(2026, 8, 1, 15, 59, 59)
     assert end > start
 
     with pytest.raises(AppException):

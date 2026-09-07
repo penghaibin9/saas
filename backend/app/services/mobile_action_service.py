@@ -213,6 +213,8 @@ def build_message_action(
 
     try:
         key, cleaned = _messages.validate_action(key, action_params or {})
+        from app.services.affairs_funding_student_service import message_application_params
+        cleaned = message_application_params(key, cleaned)
     except AppException:
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,
@@ -242,7 +244,7 @@ def build_message_action(
     query = dict(cleaned or {})
     # 目标页面登记的聚焦参数名与消息参数名不一致时补一份，例如列表页统一读 recordId。
     page_focus_key = focus_param(path)
-    if page_focus_key and record_id and query.get(page_focus_key) in (None, ""):
+    if normalize_focus_mode(route.get("focusMode")) != FOCUS_NONE and page_focus_key and record_id and query.get(page_focus_key) in (None, ""):
         query[page_focus_key] = record_id
 
     return _descriptor(

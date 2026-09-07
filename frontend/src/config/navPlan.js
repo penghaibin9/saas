@@ -1,3 +1,4 @@
+import { WORKBENCH_PAGE_TABS } from '../modules/workbench/config/workbenchNavigation.js'
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
 import { PLATFORM_MANAGEMENT_CATALOG } from '../modules/platform/platformManagementCatalog.js'
 import { buildGraduationNavMods } from '../modules/graduation/config/graduationWorkspaces.js'
@@ -16,7 +17,7 @@ import { buildGraduationNavMods } from '../modules/graduation/config/graduationW
  *      管理员 / 开发者视角可见 planned（includePlanned=true）；
  *   4) 顶部搜索命中 planned 只提示「待施工」，不跳转（searchNavPlan 返回 disabled 标记）。
  *
- * 一级导航固定 6 个：工作台 / 学工中心 / 教务中心 / 毕业设计中心 / 岗位实习中心 / 系统管理。
+ * 一级导航：学工中心 / 教务中心 / 毕业设计中心 / 岗位实习中心 / 系统管理。
  * 数字迎新固定归属：学工中心 > 数字迎新（不作一级）。
  */
 
@@ -32,10 +33,6 @@ function I(label, path, permissionKey, entryType, opts) {
 function PA(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'partial', disabled: false, badge: '部分能力',
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
-}
-/** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
-function P(...labels) {
-  return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
 }
 /** 未开通叶子（模块未授权，管理员可见「未开通」，普通角色隐藏） */
 // eslint-disable-next-line no-unused-vars
@@ -82,48 +79,19 @@ function grp(key, label, moduleKey, children, extra) {
 }
 
 export const NAV_PLAN = [
-  /* ═══════════ 一级①：工作台 ═══════════ */
-  grp('workbench', '工作台', 'workbench', [
-    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）。
-    // 根路径 / 已是公开门户，管理端入口必须固定指向 /workbench。
-    mod('wb-home', '我的工作台', '/workbench', []),
-    mod('wb-todo', '我的待办', '/admin/approval/todos', [], 'approval.todo.view'),
-    mod('wb-approval', '审批中心', '/admin/approval', [
-      I('待办看板', '/admin/approval', 'approval.todo.view'),
-      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
-      I('已办 · 抄送', '/admin/approval/done', 'approval.done.view'),
-      I('退回记录', '/admin/approval/returned', 'approval.returned.view'),
-      I('审批模板', '/admin/approval/templates', 'approval.template.view')
-    ], 'approval.dashboard.view'),
-    mod('wb-messages', '消息中心', '/admin/messages/inbox', [
-      I('我的消息', '/admin/messages/inbox', 'workbench.message.view'),
-      I('通知发布', '/admin/messages/compose', 'workbench.message.publish'),
-      I('发布记录', '/admin/messages/outbox', 'workbench.message.publish'),
-      I('发送统计', '/admin/messages/statistics', 'workbench.message.statistics.view'),
-      I('消息模板', '/admin/messages/templates', 'workbench.message.template.manage'),
-      I('消息设置', '/admin/messages/settings', 'workbench.message.view'),
-      I('投递运维', '/admin/messages/ops', 'workbench.message.statistics.view')
-    ], 'workbench.message.view'),
-    mod('wb-dashboard', '领导驾驶舱', '/admin/data-center', [
-      I('数据驾驶舱', '/admin/data-center', 'dataCenter.dashboard.view'),
-      I('生命周期总览', '/admin/data-center/lifecycle', 'dataCenter.lifecycle.view'),
-      I('排行分析', '/admin/data-center/rankings', 'dataCenter.ranking.view'),
-      I('风险预警', '/admin/data-center/risk', 'dataCenter.risk.view'),
-      I('专题报表', '/admin/data-center/reports', 'dataCenter.report.view')
-    ], 'dataCenter.dashboard.view'),
-    mod('wb-recent', '最近访问', null, P('最近访问')),
-    // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
-    // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
-    mod('wb-help', '帮助中心', '/admin/help', [])
-  ]),
-
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
     /* 本组对齐学工中心业务入口；状态以代码真实路由为准。 */
     mod('sa-workbench', '学工工作台', null, [
-      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
-      /* 旧辅导员双首页已统一到 /workbench；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/workbench', 'workbench.home.view')
+      I('我的工作台', '/workbench', 'workbench.home.view'),
+      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
+      I('审批中心', '/admin/approval', 'approval.todo.view'),
+      I('消息中心', '/admin/messages/inbox', 'workbench.message.view'),
+      I('学工运行大屏', '/admin/student-affairs/stats/wall', 'studentAffairs.stats.view', 'ANALYTICS_VIEW'),
+      I('学工领导大屏', '/admin/student-affairs/stats/leader', 'studentAffairs.stats.view', 'ANALYTICS_VIEW'),
+      I('最近访问', '/workbench?view=recent', 'workbench.home.view'),
+      I('帮助中心', '/admin/help'),
+      ...WORKBENCH_PAGE_TABS.map(page => H(page.label, page.path, page.permissionKey, undefined, { workbenchSection: page.section }))
     ]),
     // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
     // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。
@@ -153,15 +121,16 @@ export const NAV_PLAN = [
       I('迎新批次', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
       I('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view'),
       I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
-      I('报到资格', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
+      I('资格与入学确认', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
       I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
-      I('新生报到', '/admin/orientation/students', 'studentAffairs.orientation.view'),
+      I('现场报到', '/admin/orientation/checkin', 'studentAffairs.orientation.view'),
+      I('新生台账', '/admin/orientation/students', 'studentAffairs.orientation.view'),
       I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
       I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
       I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
       I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
-      I('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
+      I('新生宿舍安排', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
+      I('新生住宿核对', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
       I('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
       I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
       I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
@@ -180,6 +149,7 @@ export const NAV_PLAN = [
     mod('sa-dorm', '宿舍与公寓', null, [
       I('宿舍驾驶舱', '/admin/student-affairs/dormitory', 'studentAffairs.dorm.view'),
       I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
+      I('分配计划', '/admin/student-affairs/dorm/allocation', 'studentAffairs.dorm.view'),
       I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
       I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view'),
       I('宿舍检查', '/admin/student-affairs/dorm/check', 'studentAffairs.dorm.view'),
@@ -193,7 +163,7 @@ export const NAV_PLAN = [
     // 困难认定
     mod('sa-difficulty', '困难认定', null, [
       I('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view'),
-      I('认定申请与审核（工作台）', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
+      I('申请与审核', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
       I('公示待办', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view'),
       I('认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view'),
       I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view'),
@@ -216,14 +186,14 @@ export const NAV_PLAN = [
     ]),
     // 违纪处分
     mod('sa-discipline', '违纪处分', null, [
-      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
+      I('处分工作台', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
-      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
+      I('违纪台账', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
       I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view')
     ]),
     // 谈心家校
     mod('sa-talks', '谈心家校', null, [
-      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
+      I('谈心谈话', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
       I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
       I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view'),
       I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view'),
@@ -232,15 +202,13 @@ export const NAV_PLAN = [
     ]),
     // 心理关注
     mod('sa-mental', '心理关注', null, [
-      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
+      I('关注与处置', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
       I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
-      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view'),
-      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
       I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.stats.view')
     ]),
     // 活动二课与社团
     mod('sa-activities', '活动二课与社团', null, [
-      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
+      I('学生活动', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
       I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
       I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
       I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
@@ -252,7 +220,8 @@ export const NAV_PLAN = [
     // 统计与档案
     mod('sa-archive-stats', '统计与档案', null, [
       I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view'),
-      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view'),
+      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
+      I('材料与档案', '/admin/student-affairs/material-operations', 'studentAffairs.dashboard.view', 'TASK_QUEUE'),
       I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view'),
       I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view')
     ])

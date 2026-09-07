@@ -23,6 +23,7 @@ import { registerStudentRoutes } from '@/modules/student/student.routes'
 export default {
   name: 'AdminStudentLayout',
   components: { BasePortalLayout, LoadingState },
+  provide() { return { affairsWorkspace: true, conciseBusinessHeader: true } },
   data() {
     return { ctx: null, ctxVersion: 0 }
   },

@@ -1,13 +1,22 @@
 from pathlib import Path
 
 
+def test_transfer_todo_targets_preserve_exact_record_id():
+    from app.services.todo_route_registry import resolve_todo_route
+    for client in ('pc', 'teacherMini'):
+        route = resolve_todo_route('DORM_TRANSFER', '9007199254740993', client=client)
+        assert route['query']['recordId'] == '9007199254740993'
+        assert route['focusMode'] == 'LIST_FOCUS'
+        assert route['exact'] is True
+
+
 def test_dorm_transfer_list_scope_keeps_counselor_student_scope_and_dorm_manager_building_scope():
     source = (Path(__file__).resolve().parents[1] / "app/services/affairs_dorm_transfer_scope_guard.py").read_text(
         encoding="utf-8"
     )
 
     assert 'context.scope_type in ("TENANT_ALL", "DORM_BUILDING")' in source
-    assert 'context.scope_type not in ("CLASS", "COLLEGE")' in source
+    assert 'context.scope_type not in ("CLASS", "COLLEGE", "SELF")' in source
     assert "allowed_classes = context.allowed_class_ids(db)" in source
     assert "StudentProfile.class_id.in_(list(allowed_classes))" in source
     assert "project_transfer_items(out, user)" in source

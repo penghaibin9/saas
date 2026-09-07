@@ -866,13 +866,16 @@ def teacher_family_contact_receipt(contact_id: str, body: dict = Body(default={}
 
 
 @router.get("/teacher/affairs/leaves/pending", summary="辅导员·请假待审批队列（数据范围+审批节点双重收敛）")
-def teacher_affairs_leave_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_leave_pending(user))
+def teacher_affairs_leave_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                 keyword: str = Query('', max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_pending(user, page, pageSize, keyword))
 
 
 @router.get("/teacher/affairs/leaves/followup", summary="辅导员·请假后续处理台账（已通过/续假中/待销假/逾期）")
-def teacher_affairs_leave_followup(user=Depends(get_current_user)):
-    return success(tea.affairs_leave_followup(user))
+def teacher_affairs_leave_followup(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                  keyword: str = Query('', max_length=100), status: str = Query('', max_length=40),
+                                  user=Depends(get_current_user)):
+    return success(tea.affairs_leave_followup(user, page, pageSize, keyword, status))
 
 
 @router.get("/teacher/affairs/leaves/{leave_id}", summary="辅导员·请假详情（含销假/续假/审计留痕，范围校验）")
@@ -933,8 +936,10 @@ def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(def
 
 
 @router.get("/teacher/affairs/aid/pending", summary="辅导员·困难认定待审")
-def teacher_affairs_aid_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_aid_pending(user))
+def teacher_affairs_aid_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                               kind: str = Query("ALL", pattern="^(ALL|AID_APPROVAL|AID_ADJUST)$"),
+                               keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_aid_pending(user, page, pageSize, kind, keyword))
 
 
 @router.get("/teacher/affairs/aid/{apply_id}", summary="辅导员·困难认定详情")
@@ -948,12 +953,13 @@ def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
     return success(tea.affairs_aid_review(
         user, apply_id, str((body or {}).get("action") or "APPROVE"),
         reason=str((body or {}).get("reason") or ""),
-        level=(body or {}).get("level")), message="已处理")
+        level=(body or {}).get("level"), version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/funding/pending", summary="辅导员·奖助待审")
-def teacher_affairs_funding_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_funding_pending(user))
+def teacher_affairs_funding_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                   keyword: str | None = Query(None, max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_funding_pending(user, page=page, page_size=pageSize, keyword=keyword))
 
 
 @router.get("/teacher/affairs/funding/{app_id}", summary="辅导员·奖助详情")
@@ -969,6 +975,118 @@ def teacher_affairs_funding_review(app_id: str, body: dict = Body(default={}),
         reason=str((body or {}).get("reason") or "")), message="已处理")
 
 
+@router.get("/teacher/affairs/work-study/posts", summary="教师·勤工岗位")
+def teacher_affairs_work_study_posts(
+    status: str | None = None, keyword: str = Query("", max_length=100),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.services import affairs_funding_ext_service as work_study
+    items, total = work_study.list_posts(user, status, page, pageSize, keyword)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/work-study/records", summary="教师·勤工申请与在岗记录")
+def teacher_affairs_work_study_records(
+    recordId: int | None = Query(None, ge=1),
+    postId: int | None = None, status: str | None = None,
+    keyword: str = Query("", max_length=100), page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.services import affairs_funding_ext_service as work_study
+    items, total, status_counts = work_study.list_ws_records(
+        user, postId, status, page, pageSize, keyword, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/work-study/records/{record_id}/action", summary="教师·勤工录用、上岗或离岗")
+def teacher_affairs_work_study_action(
+    record_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as work_study
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(work_study.act_work_study(
+        record_id, (body or {}).get("action"), user, (body or {}).get("reason") or "",
+        expected_version=(body or {}).get("version"),
+        agreement_confirmed=bool((body or {}).get("agreementConfirmed"))), message="已处理")
+
+
+@router.get("/teacher/affairs/work-study/records/{record_id}/monthly", summary="教师·勤工月度考核明细")
+def teacher_affairs_work_study_monthly(record_id: int,
+        user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    from app.services import affairs_funding_ext_service as work_study
+    return success({"items": work_study.list_monthly(record_id, user)})
+
+
+@router.post("/teacher/affairs/work-study/records/{record_id}/monthly", summary="教师·登记勤工月度考核")
+def teacher_affairs_work_study_monthly_add(
+    record_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from types import SimpleNamespace
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.add_monthly(
+        record_id, SimpleNamespace(**(body or {})), user), message="月度考核已登记")
+
+
+@router.get("/teacher/affairs/loans", summary="教师·助学贷款回执办理队列")
+def teacher_affairs_loans(
+    status: str | None = None, keyword: str = Query("", max_length=100),
+    yearCode: str = Query("", max_length=20), loanType: str = Query("", max_length=20),
+    recordId: int | None = Query(None, ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.loan.manage")),
+):
+    from app.services import affairs_funding_ext_service as loans
+    items, total, status_counts = loans.list_loans(
+        user, status, page, pageSize, keyword, yearCode, loanType, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "policy": loans.loan_policy(), "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/loans/{loan_id}/action", summary="教师·核验、退回或确认贷款回执")
+def teacher_affairs_loan_action(
+    loan_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.loan.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as loans
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(loans.loan_action(loan_id, body or {}, user), message="贷款记录已更新")
+
+
+@router.get("/teacher/affairs/fee-reductions", summary="教师·减免与临时补助办理队列")
+def teacher_affairs_fee_reductions(
+    status: str | None = None, itemType: str | None = None,
+    keyword: str = Query("", max_length=100), yearCode: str = Query("", max_length=20),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    recordId: int | None = Query(None, ge=1),
+    user=Depends(require_permission("studentAffairs.funding.reduction.manage")),
+):
+    from app.services import affairs_funding_ext_service as reductions
+    items, total, counts = reductions.list_reductions(
+        user, itemType, status, page, pageSize, keyword, yearCode, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": counts,
+                    "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/fee-reductions/{fee_id}/action", summary="教师·审核或落实减免与临补")
+def teacher_affairs_fee_reduction_action(
+    fee_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.reduction.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as reductions
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(reductions.fee_action(fee_id, body or {}, user), message="申请已更新")
+
+
 @router.get("/teacher/affairs/discipline/pending", summary="辅导员·处分/解除待审")
 def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
     return success(tea.affairs_discipline_pending(user))
@@ -982,9 +1100,13 @@ def teacher_affairs_discipline_detail(case_id: str, user=Depends(get_current_use
 @router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
 def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
                                       user=Depends(get_current_user)):
+    from app.core.exceptions import AppException
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
     return success(tea.affairs_discipline_review(
         user, case_id, str((body or {}).get("action") or "APPROVE"),
-        reason=str((body or {}).get("reason") or "")), message="已处理")
+        reason=str((body or {}).get("reason") or ""),
+        expected_version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
@@ -1001,14 +1123,16 @@ def teacher_affairs_risk_detail(risk_id: str, user=Depends(get_current_user)):
 def teacher_affairs_risk_process(risk_id: str, body: dict = Body(...),
                                  user=Depends(get_current_user)):
     return success(tea.affairs_risk_process(
-        user, risk_id, str((body or {}).get("content") or "")), message="已记录处置")
+        user, risk_id, str((body or {}).get("content") or ""),
+        expected_version=(body or {}).get("version")), message="已记录处置")
 
 
 @router.post("/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
 def teacher_affairs_risk_close(risk_id: str, body: dict = Body(...),
                                user=Depends(get_current_user)):
     return success(tea.affairs_risk_close(
-        user, risk_id, str((body or {}).get("conclusion") or "")), message="已关闭")
+        user, risk_id, str((body or {}).get("conclusion") or ""),
+        expected_version=(body or {}).get("version")), message="已关闭")
 
 
 @router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
@@ -1761,9 +1885,10 @@ def affairs_aid_my(user=Depends(get_current_user)):
 
 
 @router.get("/affairs/aid/batches", summary="学工·当前开放困难认定批次")
-def affairs_aid_batches(user=Depends(get_current_user)):
+def affairs_aid_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                       keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
     from app.student_portal.services import affairs_service as portal_aff
-    return success(portal_aff.aid_batches_open(user))
+    return success(portal_aff.aid_batches_open(user, page, pageSize, keyword))
 
 
 @router.post("/affairs/aid/apply", summary="学工·困难认定申请（本人·承诺书）")
@@ -1783,13 +1908,92 @@ def affairs_funding_my(user=Depends(get_current_user)):
     return success(aff.funding_my(user))
 
 
-@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
-def affairs_funding_batches(user=Depends(get_current_user)):
+@router.get("/affairs/work-study/posts", summary="学工·本人可申请勤工岗位")
+def affairs_work_study_posts(keyword: str = Query("", max_length=100),
+                             page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                             user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.student_posts(user, keyword, page, pageSize))
+
+
+@router.get("/affairs/work-study/my", summary="学工·本人勤工申请、上岗与补贴")
+def affairs_work_study_my(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.student_records(user))
+
+
+@router.post("/affairs/work-study/posts/{post_id}/apply", summary="学工·本人申请勤工岗位")
+def affairs_work_study_apply(post_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.apply_work_study_self(post_id, body or {}, user), message="勤工申请已提交")
+
+
+@router.post("/affairs/work-study/records/{record_id}/withdraw", summary="学工·本人撤回待审核勤工申请")
+def affairs_work_study_withdraw(record_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.withdraw_work_study_self(record_id, body or {}, user), message="申请已撤回")
+
+
+@router.get("/affairs/loans", summary="学工·我的助学贷款与回执状态")
+def affairs_loans(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.student_loans(user))
+
+
+@router.post("/affairs/loans", summary="学工·本人提交助学贷款电子回执")
+def affairs_loan_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.submit_loan_self(body or {}, user), message="贷款回执已提交学校核验")
+
+
+@router.post("/affairs/loans/{loan_id}/resubmit", summary="学工·本人修正并重提贷款回执")
+def affairs_loan_resubmit(loan_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.resubmit_loan_self(loan_id, body or {}, user), message="贷款回执已重新提交")
+
+
+@router.post("/affairs/loans/{loan_id}/withdraw", summary="学工·本人在核验前撤回贷款回执")
+def affairs_loan_withdraw(loan_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.withdraw_loan_self(loan_id, body or {}, user), message="贷款回执已撤回")
+
+
+@router.get("/affairs/fee-reductions", summary="学工·我的学费减免与临时困难补助")
+def affairs_fee_reductions(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.student_reductions(user))
+
+
+@router.post("/affairs/fee-reductions", summary="学工·本人提交减免或临补申请")
+def affairs_fee_reduction_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.submit_reduction_self(body or {}, user), message="申请已提交学校审核")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/resubmit", summary="学工·本人补正并重提减免或临补")
+def affairs_fee_reduction_resubmit(fee_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.resubmit_reduction_self(fee_id, body or {}, user), message="申请已重新提交")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/withdraw", summary="学工·本人撤回待审减免或临补")
+def affairs_fee_reduction_withdraw(fee_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.withdraw_reduction_self(fee_id, body or {}, user), message="申请已撤回")
+
+
+@router.get("/affairs/funding/applications/{application_id}", summary="学工·本人奖助申请详情与发放结果")
+def affairs_funding_detail(application_id: str, user=Depends(get_current_user)):
     from app.student_portal.services import affairs_service as portal_aff
-    data = portal_aff.funding_batches_open(user)
-    items = [x for x in (data.get("items") or [])
-             if (x.get("projectType") or "") in ("SCHOLARSHIP", "GRANT")]
-    return success({"items": items, "total": len(items)})
+    return success(portal_aff.funding_detail(user, application_id))
+
+
+@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
+def affairs_funding_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           keyword: str = Query("", max_length=100), projectType: str | None = None,
+                           user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.funding_batches_open(user, page, pageSize, keyword, projectType))
 
 
 @router.post("/affairs/funding/apply", summary="学工·奖学金/助学金申请（本人·承诺书）")

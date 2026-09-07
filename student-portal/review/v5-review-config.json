@@ -47,12 +47,10 @@
     {"key":"1024x768","width":1024,"height":768}
   ],
   "themes": [
-    {"key":"blue","label":"校园蓝","route":"/home"},
-    {"key":"purple","label":"科技紫","route":"/academic/grades"},
-    {"key":"green","label":"薄荷绿","route":"/internship"},
-    {"key":"orange","label":"活力橙","route":"/campus-service"},
-    {"key":"pink","label":"樱花粉","route":"/graduation"},
-    {"key":"dark","label":"深邃黑","route":"/service-hall"}
+    {"key":"blue","label":"雾蓝","route":"/home"},
+    {"key":"sage","label":"护眼绿","route":"/campus-service"},
+    {"key":"plum","label":"石墨紫","route":"/academic/grades"},
+    {"key":"dark","label":"曜石黑","route":"/service-hall"}
   ],
   "representativeResponsiveRoutes": [
     "/home",

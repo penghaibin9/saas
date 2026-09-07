@@ -195,8 +195,16 @@ export const studentAffairsApi = {
     return pass(core.cancelDormCheckout(requestId, version, reason))
   },
 
+  createDormCheckinBatch(body) { return pass(core.createDormCheckinBatch(body)) },
+  recentDormCheckinBatches() { return pass(core.recentDormCheckinBatches()) },
+  getDormCheckinBatch(id, params) { return pass(core.getDormCheckinBatch(id, params)) },
+  continueDormCheckinBatch(id) { return pass(core.continueDormCheckinBatch(id)) },
+
   listDormStays(params = {}) {
     return pass(core.listDormStays(params))
+  },
+  getDormStayFilterOptions(params = {}) {
+    return pass(core.getDormStayFilterOptions(params))
   },
 
   setDormSelfSelect(enabled) {

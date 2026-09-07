@@ -26,6 +26,7 @@ import { useGraduationHealth } from './stores/graduationHealth'
 import './styles/graduation-usability.css'
 import './styles/v5-overrides.css'
 import './styles/v5-polish.css'
+import { normalizeTheme, themeTokens } from './platform/workspaceTheme'
 
 const ui = useUiStore()
 const route = useRoute()
@@ -33,77 +34,17 @@ const router = useRouter()
 const health = useGraduationHealth()
 const graduationErrors = health.items
 
-const THEME_PRESETS = {
-  blue: { display: '#78add3', accent: '#356a94' },
-  purple: { display: '#7b61ff', accent: '#6045d2' },
-  green: { display: '#16a078', accent: '#087858' },
-  orange: { display: '#f59b23', accent: '#a75400' },
-  pink: { display: '#f36ca5', accent: '#b83d72' },
-  dark: { display: '#4f8bff', accent: '#71a1ff' }
-}
 const themeKey = ref('blue')
-
-function normalizeHex(input, fallback = '#2f6bff') {
-  const raw = String(input || '').trim().replace('#', '')
-  if (/^[0-9a-f]{3}$/i.test(raw)) return `#${raw.split('').map((char) => char + char).join('')}`
-  if (/^[0-9a-f]{6}$/i.test(raw)) return `#${raw}`
-  return fallback
-}
-
-function shadeHex(input, factor = 0.82) {
-  const hex = normalizeHex(input).slice(1)
-  const channels = [0, 2, 4].map((offset) => Math.max(0, Math.min(255, Math.round(Number.parseInt(hex.slice(offset, offset + 2), 16) * factor))))
-  return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`
-}
-
-function rgbOf(input) {
-  const hex = normalizeHex(input).slice(1)
-  return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16)).join(',')
-}
-
-const displayPrimary = computed(() => {
-  return THEME_PRESETS[themeKey.value]?.display || '#2f6bff'
-})
-const readablePrimary = computed(() => {
-  return THEME_PRESETS[themeKey.value]?.accent || shadeHex(displayPrimary.value, 0.78)
-})
-const readableHover = computed(() => shadeHex(readablePrimary.value, 0.86))
-const themeStyle = computed(() => {
-  const dark = themeKey.value === 'dark'
-  return {
-    '--sp-primary': displayPrimary.value,
-    '--sp-primary-rgb': rgbOf(displayPrimary.value),
-    '--pri-display': displayPrimary.value,
-    '--pri': readablePrimary.value,
-    '--pri-text': readablePrimary.value,
-    '--pri-h': readableHover.value,
-    '--pri-on': '#ffffff',
-    '--pri-50': `color-mix(in srgb, ${displayPrimary.value} 9%, ${dark ? '#1b2231' : '#fff'})`,
-    '--pri-100': `color-mix(in srgb, ${displayPrimary.value} 18%, ${dark ? '#1b2231' : '#fff'})`,
-    '--pri-500': readablePrimary.value,
-    '--g1': `color-mix(in srgb, ${displayPrimary.value} 62%, #fff)`,
-    '--g2': displayPrimary.value,
-    '--bg': dark ? '#161b24' : `color-mix(in srgb, ${displayPrimary.value} 4%, #f8faff)`,
-    '--surface': dark ? '#1b2231' : '#ffffff',
-    '--surface-2': dark ? '#202838' : '#f8faff',
-    '--field-bg': dark ? '#202838' : '#f8faff',
-    '--t1': dark ? '#f2f6ff' : '#172033',
-    '--t2': dark ? '#d2daea' : '#3f4b63',
-    '--t3': dark ? '#adb9cf' : '#65728a',
-    '--t4': dark ? '#91a0ba' : '#5f6f89',
-    '--line': dark ? '#34405a' : '#dfe5ef',
-    '--line2': dark ? '#2a3448' : '#ebeff5'
-  }
-})
+const themeStyle = computed(() => themeTokens(themeKey.value))
 
 const showGraduationPanel = computed(() => route.name === 'graduation-workbench')
 const showGraduationHealth = computed(() => showGraduationPanel.value && graduationErrors.value.length > 0)
 
 function setTheme(key) {
-  const allowed = key === 'blue' || Object.prototype.hasOwnProperty.call(THEME_PRESETS, key)
-  themeKey.value = allowed ? key : 'blue'
+  themeKey.value = normalizeTheme(key)
   document.documentElement.dataset.spTheme = themeKey.value
 }
+
 function onThemeChange(event) {
   setTheme(event?.detail || 'blue')
 }
@@ -113,10 +54,12 @@ function retryGraduation() {
 }
 
 onMounted(() => {
-  const saved = window.localStorage.getItem('student-portal-theme') || 'blue'
-  setTheme(saved)
-  window.addEventListener('student-portal-theme-change', onThemeChange)
+  // 挂载子布局前已接收到账号配色时，不再用旧的全局偏好覆盖。
+  if (!document.documentElement.dataset.spTheme) {
+    try { setTheme(window.localStorage.getItem('student-portal-theme') || 'blue') } catch { setTheme('blue') }
+  }
 })
+window.addEventListener('student-portal-theme-change', onThemeChange)
 onBeforeUnmount(() => window.removeEventListener('student-portal-theme-change', onThemeChange))
 </script>
 

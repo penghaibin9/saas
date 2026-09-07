@@ -117,6 +117,18 @@ def test_disbursement_full_flow(client, db_mode):
     assert any(x["key"] == "ISSUED" and x["count"] == 2 for x in st["byStatus"])
     assert st["issuedAmountTotal"] == "6601.50"
 
+    # A second batch must not leak into the selected batch's counts, amounts or Excel.
+    other_bid = _seed_granted(db_mode["student"], n=1)
+    assert client.post(f"{BASE}/funding/batches/{other_bid}/disbursements/generate", headers=hdr).json()["data"]["generated"] == 1
+    scoped = client.get(f"{BASE}/funding/disbursements/stats", headers=hdr, params={"batchId": bid}).json()["data"]
+    assert scoped["total"] == 2 and scoped["issuedAmountTotal"] == "6601.50"
+    other_stats = client.get(f"{BASE}/funding/disbursements/stats", headers=hdr, params={"batchId": other_bid}).json()["data"]
+    assert other_stats["total"] == 1 and other_stats["issuedAmountTotal"] == "0.00"
+    assert client.get(f"{BASE}/funding/disbursements/stats", headers=hdr).json()["data"]["total"] == 3
+    assert client.get(f"{BASE}/funding/disbursements/stats", headers=hdr, params={"batchId": -1}).status_code == 400
+    batches = client.get(f"{BASE}/funding/batches", headers=hdr).json()["data"]["items"]
+    assert next(x for x in batches if x["batchId"] == str(bid))["projectName"] == "国家助学金"
+
     # XLSX 必须显式用途；请求只创建任务，真正生成由学工 scheduler worker 完成。
     bad_export = client.post(
         f"{BASE}/funding/disbursements/export", headers=hdr,

@@ -20,6 +20,14 @@ from app.services.mobile_focus_contract import (
 # V3 §4.4：``focus`` 声明该端目标是否真的能落到对象上（DETAIL / LIST_FOCUS / NONE）；
 # 缺省视为 NONE。``focusParam`` 指明用哪个 requiredParam 作为聚焦值，缺省用第一个必需参数。
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    "STUDENT_AFFAIRS_DORM_RECTIFICATION": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["rectificationId"],
+        "pc": None, "studentPc": None, "teacherMini": None,
+        "studentMini": "/pages/student/affairs/dorm",
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "查看宿舍整改",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],
@@ -134,8 +142,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     "AFFAIRS_FUNDING": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["recordId"],
+        "optionalParams": ["bizType"],
         "pc": "/admin/student-affairs/funding",
-        "studentPc": None,
+        "studentPc": "/campus-service",
+        "studentPcQuery": {"tab": "funding"},
         "studentMini": "/pages/student/affairs/funding",
         "teacherMini": None,
         "focus": {"studentMini": FOCUS_LIST_FOCUS},
@@ -241,7 +251,7 @@ def validate_action(action_key: Optional[str], action_params: Optional[dict]) ->
             details={"missing": missing, "actionKey": key},
         )
     # 只保留登记参数 + 透传已知字段
-    allowed = set(spec.get("requiredParams") or []) | {"campaignId", "ackDeadline"}
+    allowed = set(spec.get("requiredParams") or []) | set(spec.get("optionalParams") or []) | {"campaignId", "ackDeadline"}
     cleaned = {k: v for k, v in params.items() if k in allowed or k in (spec.get("requiredParams") or [])}
     for p in spec.get("requiredParams") or []:
         cleaned[p] = params[p]

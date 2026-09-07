@@ -136,7 +136,8 @@ def activate_checkin(db, *, bed, student, user, stay_type: str = "CURRENT_OCCUPA
             item.status = "CONFIRMED"
             item.confirmed_at = now
             item.version = int(item.version or 0) + 1
-    db.flush()
+    from app.services.dorm_housing_projection import sync_orientation
+    sync_orientation(db, int(student.id))
     return stay
 
 
@@ -376,6 +377,8 @@ def confirm_checkout(request_id: int, *, expected_version, user) -> dict:
             bed.occupied_at = None
             bed.cs_dorm_record_id = None
             bed.version = int(bed.version or 0) + 1
+            from app.services.dorm_housing_projection import sync_orientation
+            sync_orientation(db, int(row.student_id))
             row.status = "CONFIRMED"
             row.blockers_json = []
             row.confirmed_at = now
@@ -444,7 +447,7 @@ def _teacher_scope(db, user):
 
 
 def list_checkout_requests(user, *, status: str | None = None,
-                           student_id: int | None = None, page: int = 1,
+                           student_id: int | None = None, record_id: int | None = None, page: int = 1,
                            page_size: int = 50):
     from app.models import (DormBed, DormBuilding, DormCheckoutRequest, DormRoom,
                             StudentProfile)
@@ -457,11 +460,17 @@ def list_checkout_requests(user, *, status: str | None = None,
             DormCheckoutRequest.is_deleted.is_(False),
         ]
         if status:
-            if str(status).upper() not in CHECKOUT_STATUSES:
+            normalized = str(status).upper()
+            if normalized == "PENDING":
+                conds.append(DormCheckoutRequest.status.in_(["PENDING_CONFIRMATION", "BLOCKED"]))
+            elif normalized in CHECKOUT_STATUSES:
+                conds.append(DormCheckoutRequest.status == normalized)
+            else:
                 return [], 0
-            conds.append(DormCheckoutRequest.status == str(status).upper())
         if student_id:
             conds.append(DormCheckoutRequest.student_id == int(student_id))
+        if record_id is not None:
+            conds.append(DormCheckoutRequest.id == int(record_id))
         if context.scope_type == "DORM_BUILDING":
             allowed = list(context.dorm_building_ids)
             conds.append(DormCheckoutRequest.building_id.in_(allowed or [-1]))
@@ -502,11 +511,13 @@ def list_checkout_requests(user, *, status: str | None = None,
         ], total
 
 
-def _stay_row(stay, *, student=None, bed=None, room=None, building=None) -> dict:
+def _stay_row(stay, *, student=None, bed=None, room=None, building=None, school_class=None) -> dict:
     return {
         "stayId": str(stay.id), "studentId": str(stay.student_id),
         "studentName": student.real_name if student else "",
         "studentNo": student.student_no if student else "",
+        "classId": str(student.class_id or "") if student else "",
+        "className": school_class.class_name if school_class else "",
         "bedId": str(stay.bed_id),
         "buildingId": str(stay.building_id), "roomId": str(stay.room_id),
         "building": building.building_name if building else "",
@@ -522,25 +533,74 @@ def _stay_row(stay, *, student=None, bed=None, room=None, building=None) -> dict
     }
 
 
+def _stay_scope_conditions(db, user):
+    from app.models import DormStay, StudentProfile
+    context = _teacher_scope(db, user)
+    conds = [DormStay.tenant_id == _tid(), DormStay.is_deleted.is_(False),
+             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
+    if context.scope_type == "DORM_BUILDING":
+        conds.append(DormStay.building_id.in_(list(context.dorm_building_ids) or [-1]))
+    elif context.scope_type in ("CLASS", "COLLEGE"):
+        conds.append(StudentProfile.class_id.in_(list(context.allowed_class_ids(db) or {-1})))
+    elif context.scope_type != "TENANT_ALL":
+        conds.append(DormStay.id == -1)
+    return conds
+
+
+def _stay_orientation_batch(batch_id):
+    from app.models import DormStay, OrientationStudent
+    return select(OrientationStudent.id).where(
+        OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
+        OrientationStudent.record_status == "ACTIVE", OrientationStudent.batch_id == int(batch_id),
+        OrientationStudent.student_id == DormStay.student_id,
+    ).exists()
+
+
+def stay_filter_options(user, *, orientation_batch_id=None):
+    """仅返回当前可见预留名单所属批次/班级，不暴露无关组织目录。"""
+    from app.models import DormStay, StudentProfile, SchoolClass, OrientationBatch, OrientationStudent
+    with session() as db:
+        conds = _stay_scope_conditions(db, user) + [DormStay.status == "RESERVED"]
+        base = select(DormStay.id).select_from(DormStay).join(StudentProfile, StudentProfile.id == DormStay.student_id)
+        batch_rows = db.execute(base.with_only_columns(OrientationBatch.id, OrientationBatch.batch_name)
+            .join(OrientationStudent, and_(OrientationStudent.student_id == DormStay.student_id,
+                OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
+                OrientationStudent.record_status == "ACTIVE"))
+            .join(OrientationBatch, and_(OrientationBatch.id == OrientationStudent.batch_id,
+                OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False)))
+            .where(*conds).distinct().order_by(OrientationBatch.id.desc()).limit(2000)).all()
+        if orientation_batch_id:
+            conds.append(_stay_orientation_batch(orientation_batch_id))
+        class_rows = db.execute(base.with_only_columns(SchoolClass.id, SchoolClass.class_name)
+            .join(SchoolClass, and_(SchoolClass.id == StudentProfile.class_id,
+                SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)))
+            .where(*conds).distinct().order_by(SchoolClass.class_name, SchoolClass.id).limit(2000)).all()
+        return {"batches": [{"value": str(row[0]), "label": row[1]} for row in batch_rows],
+                "classes": [{"value": str(row[0]), "label": row[1]} for row in class_rows]}
+
+
 def list_stays(user, *, student_id: int | None = None, status: str | None = None,
-               page: int = 1, page_size: int = 50):
-    from app.models import DormBed, DormBuilding, DormRoom, DormStay, StudentProfile
+               page: int = 1, page_size: int = 50, building_id=None, keyword=None,
+               orientation_batch_id=None, class_id=None):
+    from app.models import DormBed, DormBuilding, DormRoom, DormStay, StudentProfile, SchoolClass
 
     page, page_size = max(1, int(page)), max(1, min(int(page_size), 200))
     with session() as db:
-        context = _teacher_scope(db, user)
-        conds = [DormStay.tenant_id == _tid(), DormStay.is_deleted.is_(False)]
+        conds = _stay_scope_conditions(db, user)
+        if orientation_batch_id:
+            conds.append(_stay_orientation_batch(orientation_batch_id))
+        if class_id:
+            conds.append(StudentProfile.class_id == int(class_id))
+        if building_id:
+            conds.append(DormStay.building_id == int(building_id))
+        if keyword:
+            term = str(keyword).strip()
+            conds.append(StudentProfile.real_name.contains(term, autoescape=True)
+                         | StudentProfile.student_no.contains(term, autoescape=True))
         if student_id:
             conds.append(DormStay.student_id == int(student_id))
         if status:
             conds.append(DormStay.status == str(status).upper())
-        if context.scope_type == "DORM_BUILDING":
-            conds.append(DormStay.building_id.in_(list(context.dorm_building_ids) or [-1]))
-        elif context.scope_type in ("CLASS", "COLLEGE"):
-            allowed = context.allowed_class_ids(db)
-            conds.append(StudentProfile.class_id.in_(list(allowed or {-1})))
-        elif context.scope_type != "TENANT_ALL":
-            return [], 0
         join_student = and_(
             StudentProfile.id == DormStay.student_id,
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
@@ -550,8 +610,10 @@ def list_stays(user, *, student_id: int | None = None, status: str | None = None
             .join(StudentProfile, join_student).where(*conds)
         ) or 0)
         rows = db.execute(
-            select(DormStay, StudentProfile, DormBed, DormRoom, DormBuilding)
+            select(DormStay, StudentProfile, DormBed, DormRoom, DormBuilding, SchoolClass)
             .join(StudentProfile, join_student)
+            .outerjoin(SchoolClass, and_(SchoolClass.id == StudentProfile.class_id,
+                SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)))
             .outerjoin(DormBed, and_(
                 DormBed.id == DormStay.bed_id, DormBed.tenant_id == _tid(),
                 DormBed.is_deleted.is_(False),
@@ -568,8 +630,8 @@ def list_stays(user, *, student_id: int | None = None, status: str | None = None
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
         return [
-            _stay_row(stay, student=student, bed=bed, room=room, building=building)
-            for stay, student, bed, room, building in rows
+            _stay_row(stay, student=student, bed=bed, room=room, building=building, school_class=school_class)
+            for stay, student, bed, room, building, school_class in rows
         ], total
 
 

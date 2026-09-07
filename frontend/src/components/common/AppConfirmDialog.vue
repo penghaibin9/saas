@@ -1,6 +1,6 @@
 <template>
-  <div v-if="visible" class="app-confirm-dialog__mask" @click.self="onCancel">
-    <div class="app-confirm-dialog" :class="`is-${size}`" role="dialog" aria-modal="true">
+  <div v-if="visible" class="app-confirm-dialog__mask" :class="{ 'sa-workspace-overlay': affairsWorkspace }" @click.self="onCancel">
+    <div class="app-confirm-dialog" :class="`is-${size}`" role="dialog" aria-modal="true" :aria-label="title">
       <div class="app-confirm-dialog__header" :class="`is-${effType}`">
         <span class="app-confirm-dialog__icon">{{ effType === 'danger' ? '!' : '?' }}</span>
         <span class="app-confirm-dialog__title">{{ title }}</span>
@@ -77,6 +77,7 @@ import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 export default {
   name: 'AppConfirmDialog',
+  inject: { affairsWorkspace: { default: false } },
   components: { AppQuickPhrases, AppTemplateChips },
   props: {
     visible: { type: Boolean, default: false },

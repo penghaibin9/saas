@@ -29,7 +29,7 @@
       <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
       <input v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
       <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
-      <view class="newcomer-entry" @click="openOrientationActivation">
+      <view v-if="!isTeacher" class="newcomer-entry" @click="openOrientationActivation">
         <view class="newcomer-entry__content"><text class="newcomer-entry__badge">新生首次使用</text><text class="newcomer-entry__title">录取身份核验并激活账号</text></view>
         <text class="newcomer-entry__arrow">›</text>
       </view>
@@ -76,6 +76,7 @@
 </template>
 
 <script>
+import { dormLoginReturn } from '@/utils/dormLoginReturn.mjs'
 import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
@@ -86,6 +87,7 @@ import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
 export default {
   name: 'MiniLoginAuthPanel',
   props: {
+    dormRectificationId: { type: String, default: '' },
     entry: { type: String, required: true, validator: (value) => ['student', 'teacher'].includes(value) }
   },
   data() {
@@ -161,7 +163,7 @@ export default {
       const session = useSessionStore()
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
-      const goHome = () => relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index')
+      const goHome = () => relaunch(dormLoginReturn(this.entry, this.dormRectificationId) || (this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index'))
       if (!this.isTeacher) {
         studentApi.getProfile().then((profile) => session.hydrateStudentProfile(profile)).catch(() => {}).finally(goHome)
       } else {

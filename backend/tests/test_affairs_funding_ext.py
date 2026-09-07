@@ -27,7 +27,8 @@ def test_work_study_flow(client, db_mode):
     assert post_versioned(client, f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "ONBOARD"}).json()["code"] != 0
     # 录用→上岗→终止
     assert post_versioned(client, f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
-    assert post_versioned(client, f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "ONBOARD"}).json()["data"]["status"] == "ONBOARD"
+    assert post_versioned(client, f"{BASE}/work-study/records/{rid}/action", headers=hdr,
+                          json={"action": "ONBOARD", "agreementConfirmed": True}).json()["data"]["status"] == "ONBOARD"
     assert post_versioned(client, f"{BASE}/work-study/records/{rid}/action", headers=hdr, json={"action": "TERMINATE", "reason": "短"}).json()["code"] != 0
     # 在岗期间录月度考核（累计补贴）——先重建到 ONBOARD 态验证月度
     # 上面已 ONBOARD；录两月：合格 300 + 优 500 → subsidy_total 800
@@ -37,7 +38,7 @@ def test_work_study_flow(client, db_mode):
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
                        json={"monthCode": "2025-10", "subsidyAmount": 100}).json()["code"] != 0
     assert client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
-                       json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500, "workHours": 48}).json()["code"] == 0
+                       json={"monthCode": "2025-11", "rating": "GOOD", "subsidyAmount": 500, "workHours": 40}).json()["code"] == 0
     # Decimal 金额按 API 金额字符串合同返回；数值语义必须为 0。
     failed_month = client.post(f"{BASE}/work-study/records/{rid}/monthly", headers=hdr,
                                json={"monthCode": "2025-12", "rating": "FAIL", "subsidyAmount": 999, "workHours": 32}).json()["data"]
@@ -56,25 +57,27 @@ def test_loan_flow(client, db_mode):
     sid = db_mode["student"]
     lid = client.post(f"{BASE}/loans", headers=hdr, json={
         "studentId": sid, "loanType": "ORIGIN", "bankName": "农行", "bankLast4": "6411",
-        "yearCode": "2025-2026", "amount": 8000}).json()["data"]["loanId"]
+        "yearCode": "2025-2026", "amount": 8000, "receiptCode": "TEST-2025-6411"}).json()["data"]["loanId"]
     lst = client.get(f"{BASE}/loans", headers=hdr).json()["data"]["items"]
     row = next(x for x in lst if x["loanId"] == lid)
-    assert row["bankLast4"] == "6411" and row["status"] == "REGISTERED"
-    # 推进 登记→回执→核对→确认：每一步显式提交上一响应中可见的 version。
+    assert row["bankLast4"] == "6411" and row["status"] == "RECEIPT"
+    # 明确动作：学校核验→确认台账；每一步显式提交上一响应中可见的 version。
     version = row["version"]
-    for exp in ("RECEIPT", "VERIFIED", "CONFIRMED"):
-        response = client.post(f"{BASE}/loans/{lid}/advance", headers=hdr,
-                               json={"version": version}).json()
+    for action, exp in (("VERIFY", "VERIFIED"), ("CONFIRM", "CONFIRMED")):
+        response = client.post(f"{BASE}/loans/{lid}/action", headers=hdr,
+                               json={"action": action, "version": version}).json()
         assert response["code"] == 0 and response["data"]["status"] == exp
         version = response["data"]["version"]
-    # 已确认不可再推进
-    assert client.post(f"{BASE}/loans/{lid}/advance", headers=hdr,
-                       json={"version": version}).json()["code"] != 0
+    # 已确认不可再处理
+    assert client.post(f"{BASE}/loans/{lid}/action", headers=hdr,
+                       json={"action": "CONFIRM", "version": version}).json()["code"] != 0
     # 非法类型
     assert client.post(f"{BASE}/loans", headers=hdr, json={"studentId": sid, "loanType": "XX"}).json()["code"] != 0
 
 
 def test_fee_reduction_flow(client, db_mode):
+    from affairs_contract_test_support import ensure_role_user
+    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
     # 理由过短

@@ -42,18 +42,24 @@ def install() -> None:
                 dorm._require_dorm_scope(db, target.building_id, user)
         return original_submit(user, student_id, to_bed_id, reason)
 
-    def list_transfers(user, status=None, page=1, page_size=50, student_id=None):
+    def list_transfers(user, status=None, page=1, page_size=50, student_id=None, record_id=None):
         """调宿列表按真实职责范围收敛，不把 CLASS/COLLEGE 错当宿管楼栋范围。"""
         with session() as db:
             context = build_affairs_context(user, db)
             # 原实现对这两类范围语义正确：全校不收敛；宿管按目标楼栋收敛，且已经过公共投影。
             if context.scope_type in ("TENANT_ALL", "DORM_BUILDING"):
-                return original_list(user, status, page, page_size, student_id)
-            if context.scope_type not in ("CLASS", "COLLEGE"):
+                return original_list(user, status, page, page_size, student_id, record_id=record_id)
+            if context.scope_type not in ("CLASS", "COLLEGE", "SELF"):
                 return [], 0
 
             allowed_classes = context.allowed_class_ids(db)
-            if not allowed_classes:
+            if context.scope_type == "SELF":
+                if not context.self_student_id:
+                    return [], 0
+                student_scope = StudentProfile.id == context.self_student_id
+            elif allowed_classes:
+                student_scope = StudentProfile.class_id.in_(list(allowed_classes))
+            else:
                 return [], 0
 
             conds = [
@@ -61,8 +67,10 @@ def install() -> None:
                 DormTransfer.is_deleted.is_(False),
                 StudentProfile.tenant_id == _tid(),
                 StudentProfile.is_deleted.is_(False),
-                StudentProfile.class_id.in_(list(allowed_classes)),
+                student_scope,
             ]
+            if record_id is not None:
+                conds.append(DormTransfer.id == int(record_id))
             if status == "PENDING":
                 conds.append(DormTransfer.status.in_([
                     "PENDING", "SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW",

@@ -25,6 +25,7 @@ import { approvalApi } from '@/modules/approval/api/approval.api'
 export default {
   name: 'AdminApprovalLayout',
   components: { BasePortalLayout, LoadingState },
+  provide() { return { affairsWorkspace: true, conciseBusinessHeader: true } },
   data() {
     return { ctx: null, todoCount: 0 }
   },
