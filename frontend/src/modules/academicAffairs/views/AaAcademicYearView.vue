@@ -1,12 +1,13 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学年管理"
-    subtitle="按学年汇总学期 · 当前学年结论由全校当前学期 A-C1 解析，不再信任历史 raw 标记"
+    subtitle="按学年查看学期设置、起止日期与筹备进度。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="primary" @click="goCreate">＋ 新建学期</AppButton>
+      <AppButton v-if="canManage" variant="primary" @click="goCreate">新建学期</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -44,16 +45,16 @@
         </template>
         <template #cell-terms="{ row }">
           <div class="aa-year-terms">
-            <span v-for="t in row.terms" :key="t.termId" class="aa-year-term-chip">
+            <button v-for="t in row.terms" :key="t.termId" type="button" class="aa-year-term-chip" @click="$router.push({ name: 'aa-term-detail', params: { termId: t.termId } })">
               第{{ t.termNo }}学期
               <AppStatusTag :type="termStatusType(t.status)" dot>{{ termStatusLabel(t.status) }}</AppStatusTag>
-            </span>
+            </button>
           </div>
         </template>
       </DataTable>
 
       <p class="mp-note">
-        学年由学期的「学年编码」自动归组计算，不单独维护学年记录；如需调整某学期所属学年，请到「学期管理」编辑对应学期。
+        学年由所属学期自动汇总。点击学期可查看详情；学年和学期序号创建后不可修改。
         <button class="mp-link" @click="$router.push('/admin/academic-affairs/terms')">前往学期管理</button>
       </p>
     </div>
@@ -66,6 +67,7 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { matchPermission } from '@/config/navPlan'
 
 const YEAR_STATUS_LABEL = { ACTIVE: '进行中', ARCHIVED: '已归档', PLANNING: '筹备中', MIXED: '状态不一致' }
 const YEAR_STATUS_TYPE = { ACTIVE: 'success', ARCHIVED: 'info', PLANNING: 'default', MIXED: 'warning' }
@@ -76,6 +78,9 @@ export default {
   name: 'AaAcademicYearView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
+  computed: {
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.term.manage') }
+  },
   data() {
     return {
       loading: true,
@@ -104,6 +109,7 @@ export default {
       return Boolean(this.currentContext?.yearCode) && String(row.yearCode) === String(this.currentContext.yearCode)
     },
     goCreate() {
+      if (!this.canManage) return
       this.$router.push('/admin/academic-affairs/terms/new')
     },
     async loadCurrentContext() {
@@ -136,12 +142,14 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-year-terms {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 .aa-year-term-chip {
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;

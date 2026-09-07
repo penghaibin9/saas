@@ -293,7 +293,7 @@ export default {
 .aa-item { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--fill-50, #fafafa); font-size: 13px; }
 .aa-item__head { display: flex; align-items: center; gap: 8px; min-width: 0; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
 .aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 11px; overflow-wrap: anywhere; }
+.aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 12px; overflow-wrap: anywhere; }
 .aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-blocked-tip { color: var(--warning-700, #b45309); font-size: 12px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 @media (max-width: 900px) { .aa-items { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {

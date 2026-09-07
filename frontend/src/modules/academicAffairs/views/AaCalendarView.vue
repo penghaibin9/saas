@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
-    title="校历节次 · 校历"
-    subtitle="按学期维护教学 / 考试 / 实习 / 节假日 / 补课日安排；校历发布会触及当前学期 Authority"
+    class="aa-foundation-workspace"
+    title="校历安排"
+    subtitle="安排教学、考试、实习与节假日，核对调休日期后统一发布。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,49 +10,54 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <AppTermEntityPicker v-model="termId" :options="termOptions" @change="onTermChange" />
+          <AppTermEntityPicker v-model="termId" :options="termOptions" :clearable="false" :disabled="busy || termsLoading" @change="onTermChange" />
         </label>
       </div>
 
       <AppInlineAlert
         v-if="currentError"
         type="danger"
-        :description="`当前学期解析失败：${currentError}。校历仍可按显式学期查看，但发布已安全禁用。`"
+        :description="`当前学期暂不可用：${currentError}。可继续查看所选学期的校历，暂不能发布。`"
       />
       <AppInlineAlert
         v-else-if="governanceManaged"
         type="info"
-        :description="currentContext.switchHint || '全校统一学期治理已启用；校历页不能通过发布其它学期旁路切换当前学期。'"
+        description="当前学期由学校统一设置。发布校历前，请核对所选学期与全校当前学期一致。"
       />
 
+      <ErrorState v-if="catalogError" :description="catalogError" @retry="refreshTermCatalog" />
+      <LoadingState v-else-if="termsLoading" />
       <EmptyState
-        v-if="!termsLoading && !terms.length"
+        v-else-if="!terms.length"
         title="还没有学年学期"
-        description="校历依附于学期，请先到「学年学期」创建并发布一个学期"
+        description="请先创建草稿学期，完善校历后再发布。"
       >
         <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
       </EmptyState>
 
       <template v-else>
         <nav class="aa-tabs">
-          <button v-for="t in tabs" :key="t.key" class="aa-tab" :class="{ 'is-active': tab === t.key }"
+          <button v-for="t in tabs" :key="t.key" class="aa-tab" :class="{ 'is-active': tab === t.key }" :aria-current="tab === t.key ? 'page' : undefined" :disabled="busy"
                   @click="switchTab(t.key)">{{ t.label }}</button>
         </nav>
 
         <template v-if="['events', 'holiday', 'makeup'].includes(tab)">
           <AppInlineAlert v-if="selectedTerm && isLocked" type="warning"
-                          description="校历已发布，事件已锁定；如需调整请到「校历归档」页确认状态，或联系教务处走线下变更流程。" />
+                          description="所选学期已发布，校历事件保持锁定。如需调整，请联系教务处核对学校的变更流程。" />
 
-          <AaCalendarCopyPanel
-            v-if="tab === 'events'"
+          <details v-if="tab === 'events' && canEditCalendar && !isLocked" class="aa-calendar-copy">
+            <summary>从历史学期复制校历</summary>
+            <AaCalendarCopyPanel
             :terms="terms"
             :target-term-id="termId"
-            :disabled="isLocked"
+            :disabled="!canEditEvents || adding || saving || deleting || publishing"
             @applied="loadEvents"
-          />
+            @busy="copying = $event"
+            />
+          </details>
 
-          <AppSectionCard :title="addFormTitle">
-            <div class="aa-cal-form">
+          <AppSectionCard v-if="canEditCalendar && !isLocked" :title="addFormTitle">
+            <fieldset class="aa-cal-form" :disabled="busy">
               <label v-if="tab === 'events'" class="aa-cal-form__item">
                 类型
                 <AppSelect v-model="draft.eventType" :options="eventTypeOptions" />
@@ -72,8 +78,8 @@
                 备注
                 <AppTextInput v-model="draft.remark" placeholder="选填，如 国庆假期 / 国庆调休" :maxlength="60" />
               </label>
-              <AppButton variant="primary" :disabled="isLocked" :loading="adding" @click="addEvent">添加</AppButton>
-            </div>
+              <AppButton variant="primary" :disabled="!canEditEvents || busy" :loading="adding" @click="addEvent">添加</AppButton>
+            </fieldset>
             <AppInlineAlert v-if="formError" type="danger" :description="formError" />
           </AppSectionCard>
 
@@ -83,11 +89,12 @@
             <EmptyState v-else-if="!filteredEvents.length" :title="emptyTitle" :description="emptyDesc" />
             <DataTable v-else :columns="eventColumns" :rows="filteredEvents" row-key="eventId">
               <template #cell-eventType="{ row }">
-                <StatusTag :type="typeColor(row.eventType)" :label="EVENT_TYPES[row.eventType] || row.eventType" dot />
+                <StatusTag :type="typeColor(row.eventType)" :label="EVENT_TYPES[row.eventType] || '类型待确认'" dot />
               </template>
               <template #cell-actions="{ row }">
-                <button class="mp-link" :disabled="isLocked" @click="openEdit(row)">编辑</button>
-                <button class="mp-link aa-danger" :disabled="isLocked" @click="confirmDelete(row)">删除</button>
+                <button v-if="canEditCalendar && !isLocked" class="mp-link" :disabled="!canEditEvents || busy" @click="openEdit(row)">编辑</button>
+                <button v-if="canEditCalendar && !isLocked" class="mp-link aa-danger" :disabled="!canEditEvents || busy" @click="confirmDelete(row)">删除</button>
+                <span v-else class="mp-note">只读</span>
               </template>
             </DataTable>
           </AppSectionCard>
@@ -102,8 +109,8 @@
             <ul v-else class="aa-week-list">
               <li v-for="w in weekData.weeks" :key="w.weekNo" class="aa-week-item">
                 <span class="aa-week-item__no">第 {{ w.weekNo }} 周</span>
-                <span class="aa-week-item__range">{{ w.startDate }} ~ {{ w.endDate }}</span>
-                <StatusTag :type="weekTypeColor(w.weekType)" :label="WEEK_TYPES[w.weekType] || w.weekType" dot />
+                <span class="aa-week-item__range">{{ calendarDate(w.startDate) }} 至 {{ calendarDate(w.endDate) }}</span>
+                <StatusTag :type="weekTypeColor(w.weekType)" :label="WEEK_TYPES[w.weekType] || '类型待确认'" dot />
                 <span v-if="w.holidays.length" class="aa-week-item__tag">假期：{{ w.holidays.map(h => h.remark || '假期').join('、') }}</span>
                 <span v-if="w.swaps.length" class="aa-week-item__tag">调休：{{ w.swaps.length }} 项</span>
               </li>
@@ -113,22 +120,22 @@
 
         <template v-else-if="tab === 'publish'">
           <AppSectionCard title="校历发布">
-            <p class="mp-note">发布后校历事件（教学/考试/实习/节假日/补课日）锁定，不可再增删改；该动作同时会把所属学期设为当前，因此必须服从 A-C1 当前学期 Authority。</p>
+            <p class="mp-note">发布后，本学期的校历事件将锁定。请先配置至少一个启用节次，并核对补课日期。{{ governanceManaged ? '全校当前学期保持学校的统一设置。' : '本次发布会同时将所选学期设为当前学期。' }}</p>
             <div v-if="selectedTerm" class="aa-status-row">
               <span>所选学期：{{ selectedTerm.yearCode }} 第 {{ selectedTerm.termNo }} 学期</span>
               <StatusTag :status="selectedTerm.status" />
               <StatusTag v-if="isSelectedResolvedCurrent" type="success" label="全校当前" dot />
             </div>
-            <AppInlineAlert v-if="!canManageCalendar" type="info" description="仅教务处 / 学校管理员可执行发布，当前身份可查看但按钮已禁用。" />
-            <AppInlineAlert v-if="currentError" type="danger" description="当前学期 Authority 无法解析，发布已 fail-closed；请先修复学期治理数据。" />
+            <AppInlineAlert v-if="!canManageCalendar" type="info" description="当前身份没有校历发布权限，可查看发布状态。" />
+            <AppInlineAlert v-if="currentError" type="danger" description="暂不能确定全校当前学期，请刷新或联系学校管理员核对后再发布。" />
             <AppInlineAlert
               v-else-if="governanceManaged && !isSelectedResolvedCurrent"
               type="warning"
-              :description="currentContext.switchHint || '所选学期不是全校 ACTIVE 学期，禁止通过校历发布旁路切换；请先从统一治理入口切换。'"
+              description="所选学期与全校当前学期不一致。请先在学校的统一学期设置中完成切换。"
             />
             <AppInlineAlert v-if="selectedTerm && selectedTerm.status !== 'DRAFT'" type="info"
                             :description="selectedTerm.status === 'PUBLISHED' ? '校历已发布。' : '当前学期状态不支持再次发布。'" />
-            <AppButton variant="primary" :disabled="!canPublish" :loading="publishing" @click="doPublish">
+            <AppButton v-if="canManageCalendar" variant="primary" :disabled="!canPublish || busy" :loading="publishing" @click="publishVisible = true">
               {{ publishing ? '发布中…' : '发布校历' }}
             </AppButton>
           </AppSectionCard>
@@ -144,14 +151,14 @@
             </div>
             <AppInlineAlert v-if="selectedTerm && selectedTerm.status === 'DRAFT'" type="warning" description="校历尚未发布，请先到「校历发布」页发布。" />
             <AppInlineAlert v-if="selectedTerm && selectedTerm.status === 'ARCHIVED'" type="success" description="该学期已归档，全部写操作已锁定。" />
-            <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/archive')">前往教务归档</AppButton>
+            <AppButton v-if="hasPermission('academicAffairs.archive.view')" variant="primary" @click="$router.push('/admin/academic-affairs/archive')">前往教务归档</AppButton>
           </AppSectionCard>
         </template>
       </template>
     </div>
 
     <AppDrawer :visible="editVisible" title="编辑校历事件" mode="modal" size="large" @close="editVisible = false">
-      <div class="aa-cal-form aa-cal-form--drawer" v-if="editForm">
+      <fieldset class="aa-cal-form aa-cal-form--drawer" v-if="editForm" :disabled="saving">
         <AppFormItem label="类型" v-if="tab === 'events'">
           <AppSelect v-model="editForm.eventType" :options="eventTypeOptions" />
         </AppFormItem>
@@ -168,7 +175,7 @@
           <AppTextInput v-model="editForm.remark" :maxlength="60" />
         </AppFormItem>
         <AppInlineAlert v-if="editError" type="danger" :description="editError" />
-      </div>
+      </fieldset>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="editVisible = false">取消</AppButton>
         <AppButton variant="primary" :loading="saving" @click="submitEdit">保存</AppButton>
@@ -176,7 +183,10 @@
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" title="删除校历事件"
-                      message="删除后不可恢复，确认删除该事件？" type="danger" @confirm="doDelete" />
+                      message="删除后，该安排将从校历移除。确认删除？" type="danger" :submitting="deleting" @confirm="doDelete" />
+    <AppConfirmDialog v-model:visible="publishVisible" title="发布校历"
+                      :message="governanceManaged ? '发布后校历事件将锁定，全校当前学期保持不变。确认发布？' : '发布后校历事件将锁定，并将所选学期设为当前学期。确认发布？'"
+                      confirm-text="确认发布" :submitting="publishing" @confirm="doPublish" />
   </ModulePageShell>
 </template>
 
@@ -192,6 +202,7 @@ import AaCalendarCopyPanel from '@/modules/academicAffairs/components/AaCalendar
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 
 const EVENT_TYPES = { TEACHING: '教学', EXAM: '考试', INTERNSHIP: '实习', HOLIDAY: '节假日', SWAP: '补课日' }
 const TYPE_COLOR = { TEACHING: 'primary', EXAM: 'danger', INTERNSHIP: 'warning', HOLIDAY: 'success', SWAP: 'default' }
@@ -213,6 +224,9 @@ export default {
       EVENT_TYPES, WEEK_TYPES,
       eventTypeOptions: Object.entries(EVENT_TYPES).map(([value, label]) => ({ value, label })),
       termsLoading: true,
+      catalogError: '', currentLoading: true,
+      eventRequestVersion: 0, weekRequestVersion: 0,
+      copying: false, deleting: false, publishVisible: false,
       terms: [],
       termId: '',
       currentContext: null,
@@ -245,6 +259,9 @@ export default {
     }
   },
   computed: {
+    busy() { return this.adding || this.saving || this.deleting || this.publishing || this.copying },
+    canEditCalendar() { return this.hasPermission('academicAffairs.calendar.manage') },
+    canEditEvents() { return this.canEditCalendar && this.selectedTerm?.status === 'DRAFT' && !this.termsLoading && !this.catalogError },
     governanceManaged() {
       return this.currentContext?.currentAuthority === 'CALENDAR_GOVERNANCE'
     },
@@ -264,19 +281,21 @@ export default {
       return !!this.selectedTerm && ['PUBLISHED', 'FROZEN', 'ARCHIVED'].includes(this.selectedTerm.status)
     },
     canManageCalendar() {
-      return MGMT_ROLES.includes((this.ctx.currentRole && this.ctx.currentRole.roleCode || '').toUpperCase())
+      return this.hasPermission('academicAffairs.calendarPublish.manage') && ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) && MGMT_ROLES.includes((this.ctx.currentRole?.roleCode || '').toUpperCase())
     },
     canPublish() {
-      if (!this.canManageCalendar || !this.selectedTerm || this.selectedTerm.status !== 'DRAFT' || this.currentError) return false
+      if (!this.canManageCalendar || !this.selectedTerm || this.selectedTerm.status !== 'DRAFT' || this.currentError || this.currentLoading || this.termsLoading || this.catalogError) return false
       if (this.governanceManaged) return this.isSelectedResolvedCurrent
-      return this.currentContext?.canDirectSwitch !== false
+      return this.currentContext?.canDirectSwitch === true
     },
     filteredEvents() {
       const t = TAB_EVENT_TYPE[this.tab]
       const rows = t ? this.events.filter((e) => e.eventType === t) : this.events
       return rows.map((e) => ({
         ...e,
-        dateLabel: e.endDate && e.endDate !== e.startDate ? `${e.startDate || '—'} ~ ${e.endDate}` : (e.startDate || '—')
+        startDate: this.calendarDate(e.startDate), swapToDate: this.calendarDate(e.swapToDate),
+        dateLabel: e.eventType === 'SWAP' ? `${this.calendarDate(e.startDate)} → ${this.calendarDate(e.swapToDate)}`
+          : e.endDate && e.endDate !== e.startDate ? `${this.calendarDate(e.startDate)} 至 ${this.calendarDate(e.endDate)}` : this.calendarDate(e.startDate)
       }))
     },
     eventColumns() {
@@ -312,6 +331,7 @@ export default {
       return { events: '本学期暂无校历事件', holiday: '本学期暂无节假日', makeup: '本学期暂无补课日' }[this.tab] || '暂无数据'
     },
     emptyDesc() {
+      if (!this.canEditEvents) return '该学期暂未登记此类安排。'
       return { events: '用上方表单添加教学/考试/假期等安排', holiday: '用上方表单添加国庆/寒暑假等节假日', makeup: '用上方表单添加调休补课安排（原停课日+调至日期成对登记）' }[this.tab] || ''
     }
   },
@@ -321,7 +341,19 @@ export default {
     this.resetDraft()
     this.refreshTermCatalog()
   },
+  watch: {
+    '$route.query.tab'(key) { this.switchTab(this.tabs.some(t => t.key === key) ? key : 'events') },
+    '$route.query.termId'(id) {
+      if (!this.busy && id && String(id) !== String(this.termId) && this.terms.some(t => String(t.termId) === String(id))) {
+        this.termId = id; this.onTermChange()
+      }
+    }
+  },
+  beforeRouteUpdate(to, from, next) { if (this.busy) { toast.warning('正在保存校历，请稍候再切换'); next(false) } else next() },
+  beforeUnmount() { this.eventRequestVersion++; this.weekRequestVersion++ },
   methods: {
+    hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
+    calendarDate(value) { return value ? String(value).slice(0, 10) : '—' },
     statusLabel(s) {
       return { DRAFT: '草稿', PUBLISHED: '已发布', FROZEN: '已锁定', ARCHIVED: '已归档' }[s] || '状态待确认'
     },
@@ -335,6 +367,8 @@ export default {
       return Boolean(term && this.currentContext?.termId) && String(term.termId) === String(this.currentContext.termId)
     },
     async loadCurrentContext() {
+      this.currentLoading = true
+      this.currentContext = null
       this.currentError = ''
       const res = await academicAffairsApi.getCurrentTerm()
       if (res.code === 0) {
@@ -343,6 +377,7 @@ export default {
         this.currentContext = null
         this.currentError = res.message || '当前学期解析失败，请核对全校学期治理与教务学期数据'
       }
+      this.currentLoading = false
     },
     resetDraft() {
       const fixedType = TAB_EVENT_TYPE[this.tab]
@@ -350,31 +385,43 @@ export default {
       this.formError = ''
     },
     switchTab(key) {
-      if (this.tab === key) return
+      if (this.tab === key || this.busy) return
       this.tab = key
+      this.syncQuery()
       this.resetDraft()
       this.loadForTab()
     },
     async refreshTermCatalog() {
       this.termsLoading = true
+      this.catalogError = ''
       try {
         this.terms = await loadAcademicTermCatalog()
         await this.loadCurrentContext()
-        const selected = this.terms.find((t) => String(t.termId) === String(this.termId))
+        const selected = this.terms.find((t) => String(t.termId) === String(this.termId || this.$route.query.termId))
         const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
         const fallback = this.terms[0]
         const next = selected || resolved || fallback
         if (next) {
           this.termId = next.termId
+          this.syncQuery()
           this.loadForTab()
         }
       } catch (error) {
-        this.error = error.message || '学期数据加载失败'
+        this.catalogError = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
     onTermChange() {
+      this.eventRequestVersion++; this.weekRequestVersion++
+      this.events = []; this.weekData = null
+      this.resetDraft(); this.editVisible = false; this.confirmVisible = false; this.publishVisible = false
+      this.syncQuery()
       this.loadForTab()
+    },
+    syncQuery() {
+      if (this.termId && (String(this.$route.query.termId) !== String(this.termId) || this.$route.query.tab !== this.tab)) {
+        this.$router.replace({ query: { ...this.$route.query, termId: String(this.termId), tab: this.tab } })
+      }
     },
     loadForTab() {
       if (!this.termId) return
@@ -383,10 +430,12 @@ export default {
       this.loadEvents()
     },
     async loadEvents() {
+      const version = ++this.eventRequestVersion
       if (!this.termId) return
       this.eventsLoading = true
       this.error = ''
       const res = await academicAffairsApi.getCalendar(this.termId)
+      if (version !== this.eventRequestVersion) return
       if (res.code === 0) {
         this.events = res.data || []
       } else {
@@ -395,7 +444,7 @@ export default {
       this.eventsLoading = false
     },
     async addEvent() {
-      if (this.adding || !this.termId) return
+      if (this.busy || !this.canEditEvents) return
       this.formError = ''
       const eventType = TAB_EVENT_TYPE[this.tab] || this.draft.eventType
       if (!this.draft.startDate) {
@@ -406,6 +455,8 @@ export default {
         this.formError = '补课日必须填写「调至日期」，节假日与补课日须成对登记'
         return
       }
+      if (eventType !== 'SWAP' && this.draft.endDate && this.draft.endDate < this.draft.startDate) { this.formError = '结束日期不能早于开始日期'; return }
+      if (eventType === 'SWAP' && this.draft.startDate === this.draft.swapToDate) { this.formError = '补课日期不能与原停课日期相同'; return }
       this.adding = true
       const body = {
         eventType,
@@ -425,13 +476,14 @@ export default {
       }
     },
     openEdit(row) {
-      this.editForm = { eventId: row.eventId, eventType: row.eventType, startDate: row.startDate || '',
-        endDate: row.endDate || '', swapToDate: row.swapToDate || '', remark: row.remark || '' }
+      if (this.busy || !this.canEditEvents) return
+      this.editForm = { eventId: row.eventId, eventType: row.eventType, startDate: row.startDate ? row.startDate.slice(0, 10) : '',
+        endDate: row.endDate ? row.endDate.slice(0, 10) : '', swapToDate: row.swapToDate && row.swapToDate !== '—' ? row.swapToDate.slice(0, 10) : '', remark: row.remark || '' }
       this.editError = ''
       this.editVisible = true
     },
     async submitEdit() {
-      if (this.saving || !this.editForm) return
+      if (this.busy || !this.canEditEvents || !this.editForm) return
       if (!this.editForm.startDate) { this.editError = '请先选择日期'; return }
       if (this.editForm.eventType === 'SWAP' && !this.editForm.swapToDate) {
         this.editError = '补课日必须填写「调至日期」'
@@ -441,9 +493,9 @@ export default {
       const body = {
         eventType: this.editForm.eventType,
         startDate: this.editForm.startDate,
-        endDate: this.editForm.eventType === 'SWAP' ? undefined : (this.editForm.endDate || this.editForm.startDate),
-        swapToDate: this.editForm.eventType === 'SWAP' ? this.editForm.swapToDate : undefined,
-        remark: this.editForm.remark || undefined
+        endDate: this.editForm.eventType === 'SWAP' ? null : (this.editForm.endDate || this.editForm.startDate),
+        swapToDate: this.editForm.eventType === 'SWAP' ? this.editForm.swapToDate : null,
+        remark: this.editForm.remark || ''
       }
       const res = await academicAffairsApi.updateCalendarEvent(this.termId, this.editForm.eventId, body)
       this.saving = false
@@ -456,11 +508,13 @@ export default {
       }
     },
     confirmDelete(row) {
+      if (this.busy || !this.canEditEvents) return
       this.pendingDelete = row
       this.confirmVisible = true
     },
     async doDelete() {
-      if (!this.pendingDelete) return
+      if (this.busy || !this.canEditEvents || !this.pendingDelete) return
+      this.deleting = true
       const res = await academicAffairsApi.deleteCalendarEvent(this.termId, this.pendingDelete.eventId)
       if (res.code === 0) {
         toast.success('已删除')
@@ -469,12 +523,16 @@ export default {
         toast.error(res.message || '删除失败')
       }
       this.pendingDelete = null
+      this.confirmVisible = false
+      this.deleting = false
     },
     async loadWeekCalendar() {
+      const version = ++this.weekRequestVersion
       if (!this.termId) return
       this.weekLoading = true
       this.weekError = ''
       const res = await academicAffairsApi.getWeekCalendar(this.termId)
+      if (version !== this.weekRequestVersion) return
       if (res.code === 0) {
         this.weekData = res.data
       } else {
@@ -484,8 +542,8 @@ export default {
       this.weekLoading = false
     },
     async doPublish() {
-      if (this.publishing || !this.canPublish) {
-        if (!this.canPublish) toast.warning(this.currentContext?.switchHint || this.currentError || '当前学期 Authority 不允许从校历页发布并切换')
+      if (this.busy || !this.canPublish) {
+        if (!this.canPublish) toast.warning(this.currentError || '当前学期或权限条件不支持发布，请刷新核对')
         return
       }
       this.publishing = true
@@ -493,6 +551,7 @@ export default {
       this.publishing = false
       if (res.code === 0) {
         toast.success('校历已发布')
+        this.publishVisible = false
         this.refreshTermCatalog()
       } else {
         toast.error(res.message || '发布失败')
@@ -505,6 +564,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; }
 .aa-filter__item, .aa-cal-form__item {
   display: inline-flex; flex-direction: column; gap: 6px;
@@ -518,9 +578,11 @@ export default {
   box-sizing: border-box;
 }
 .aa-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); flex-wrap: wrap; }
+.aa-calendar-copy > summary { cursor: pointer; width: fit-content; padding: 6px 0; color: var(--pri); font-size: 13px; }
+.aa-calendar-copy[open] > summary { margin-bottom: 10px; }
 .aa-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; }
 .aa-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
-.aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin: 0; padding: 0; border: 0; min-width: 0; }
 .aa-cal-form--drawer { flex-direction: column; align-items: stretch; }
 .aa-cal-form__item--grow { flex: 1; min-width: 200px; }
 .mp-link.aa-danger { color: var(--danger-600, #f53f3f); }

@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="学期课表"
-    subtitle="按学期查看整学期课表（不按周过滤），支持班级/教师/教室/学生/教学班五维度切换"
+    subtitle="查看整学期课程安排，保留各门课程的起止周与单双周。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -69,8 +70,8 @@
       <EmptyState v-else-if="!hasSelection" title="请先选择查询对象" :description="dimHint" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
-        <AppSectionCard :title="resultTitle">
-          <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+        <AppSectionCard compact :title="resultTitle">
+          <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
       </template>
     </div>
@@ -222,6 +223,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-bottom: 4px; }
 .aa-filter__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 160px; }
 .aa-filter__item--grow { flex: 1; min-width: 260px; }

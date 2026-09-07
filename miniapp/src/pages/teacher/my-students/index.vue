@@ -18,6 +18,7 @@
           </view>
           <view class="ms__search-meta">
             <text>共 {{ total }} 名学生</text>
+            <text class="ms__more" @click="reload">刷新名册</text>
             <text v-if="keyword" class="ms__clear" @click="clearSearch">清除“{{ keyword }}”</text>
           </view>
         </view>
@@ -66,19 +67,23 @@ export default {
       classId: '',
       className: '',
       keywordInput: '',
-      keyword: ''
+      keyword: '',
+      requestVersion: 0
     }
   },
   onLoad(q) {
     this.classId = (q && q.classId) || ''
     this.className = decodeQueryText(q && q.className)
-    this.reload()
   },
+  onShow() { this.reload() },
+  onHide() { this.requestVersion++ },
+  onUnload() { this.requestVersion++ },
   onReachBottom() {
     this.loadMore()
   },
   methods: {
     async load({ append = false } = {}) {
+      const version = append ? this.requestVersion : ++this.requestVersion
       if (append) {
         if (!this.hasMore || this.loadingMore) return
         this.loadingMore = true
@@ -96,6 +101,7 @@ export default {
           cursor: append ? this.nextCursor : '',
           pageSize: TEACHER_STUDENT_PAGE_SIZE
         })
+        if (version !== this.requestVersion) return
         const incoming = Array.isArray(data && data.items) ? data.items : []
         if (append) {
           const seen = new Set(this.items.map((item) => String(item.studentId)))
@@ -108,13 +114,14 @@ export default {
         this.hasMore = Boolean(data && data.hasMore && this.nextCursor)
         this.state = 'ready'
       } catch (error) {
+        if (version !== this.requestVersion) return
         if (append) {
           toastError(error)
         } else {
           this.state = 'error'
         }
       } finally {
-        this.loadingMore = false
+        if (version === this.requestVersion) this.loadingMore = false
       }
     },
     reload() {

@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期详情"
     subtitle="查看学期时间轴、关联业务、修改影响和状态变更记录"
     :role-name="ctx.currentRole.roleName"
@@ -8,24 +9,28 @@
     <template #actions>
       <div class="atd-actions">
         <AppButton variant="ghost" @click="goBack">返回学期列表</AppButton>
-        <AppButton variant="ghost" @click="goReadiness">查看学期运行结论</AppButton>
+        <AppButton v-if="hasPermission('academicAffairs.dashboard.view')" variant="ghost" @click="goReadiness">学期运行概况</AppButton>
         <AppButton
-          v-if="detail.allowedActions?.publish && directCurrentSwitchAllowed"
+          v-if="detail.allowedActions?.publish && publishAllowed"
+          :disabled="hasChanges || saving || previewing"
           variant="primary"
           @click="openAction('PUBLISH')"
-        >发布并设为当前</AppButton>
+        >{{ governanceManaged ? '发布学期' : '发布并设为当前' }}</AppButton>
         <AppButton
           v-if="detail.allowedActions?.setCurrent && directCurrentSwitchAllowed"
+          :disabled="hasChanges || saving || previewing"
           variant="primary"
           @click="openAction('SET_CURRENT')"
         >设为当前学期</AppButton>
         <AppButton
-          v-if="detail.allowedActions?.freeze"
+          v-if="canManage && detail.allowedActions?.freeze"
+          :disabled="hasChanges || saving || previewing"
           variant="ghost"
           @click="openAction('FREEZE')"
         >冻结学期</AppButton>
+        <AppButton v-if="canManage && detail.status === 'FROZEN'" variant="ghost" @click="openAction('UNFREEZE')">解冻学期</AppButton>
         <AppButton
-          v-if="detail.allowedActions?.archive"
+          v-if="hasPermission('academicAffairs.archive.view') && detail.allowedActions?.archive"
           variant="primary"
           @click="goArchive"
         >进入归档预检</AppButton>
@@ -40,7 +45,6 @@
           <div class="atd-eyebrow">
             <AppStatusTag :status="detail.status" dot>{{ statusLabel(detail.status) }}</AppStatusTag>
             <AppStatusTag v-if="isResolvedCurrent" type="success" dot>当前学期</AppStatusTag>
-            <span>版本 {{ detail.version ?? 0 }}</span>
           </div>
           <h2>{{ detail.termName || `${detail.yearCode} 第 ${detail.termNo} 学期` }}</h2>
           <p>{{ detail.yearCode }} · 第 {{ detail.termNo }} 学期 · {{ termRange }}</p>
@@ -54,7 +58,7 @@
 
       <div v-if="currentContextError" class="atd-authority is-error">
         <div>
-          <strong>当前学期 Authority 解析失败</strong>
+          <strong>当前学期读取失败</strong>
           <p>{{ currentContextError }}。为避免误切换，本页已暂停“发布并设当前 / 设为当前”操作。</p>
         </div>
         <AppButton variant="ghost" @click="loadCurrentContext">重新解析</AppButton>
@@ -64,7 +68,7 @@
           <strong>当前学期由全校统一治理</strong>
           <p>{{ currentContext.switchHint }}</p>
         </div>
-        <AppButton variant="ghost" @click="goGovernance">前往学年学期与业务日历</AppButton>
+        <AppButton v-if="hasPermission('systemAdmin.academicCalendar.view')" variant="ghost" @click="goGovernance">前往学年学期与业务日历</AppButton>
       </div>
 
       <div class="atd-grid">
@@ -82,7 +86,7 @@
               <span>学期名称</span>
               <input
                 v-model.trim="form.termName"
-                :disabled="!canEditName"
+                :disabled="!canEditName || saving"
                 maxlength="100"
                 placeholder="填写学校正式使用的学期名称"
                 @input="invalidatePreview"
@@ -90,11 +94,11 @@
             </label>
             <label>
               <span>开学日期</span>
-              <input v-model="form.startDate" type="date" :disabled="!canEditTimeline" @input="invalidatePreview" />
+              <input v-model="form.startDate" type="date" :disabled="!canEditTimeline || saving" @input="invalidatePreview" />
             </label>
             <label>
               <span>结束日期</span>
-              <input v-model="form.endDate" type="date" :disabled="!canEditTimeline" @input="invalidatePreview" />
+              <input v-model="form.endDate" type="date" :disabled="!canEditTimeline || saving" @input="invalidatePreview" />
             </label>
             <label>
               <span>教学周数</span>
@@ -103,7 +107,7 @@
                 type="number"
                 min="1"
                 max="30"
-                :disabled="!canEditTimeline"
+                :disabled="!canEditTimeline || saving"
                 @input="invalidatePreview"
               />
             </label>
@@ -114,7 +118,7 @@
                 type="number"
                 min="1"
                 max="30"
-                :disabled="!canEditTimeline"
+                :disabled="!canEditTimeline || saving"
                 @input="invalidatePreview"
               />
             </label>
@@ -143,13 +147,13 @@
           </div>
         </AppSectionCard>
 
-        <AppSectionCard title="状态与操作后果" subtitle="状态转换沿用统一学期状态机">
+        <AppSectionCard title="学期生命周期" subtitle="查看当前阶段与下一步安排">
           <div class="atd-state-list">
             <article :class="{ active: detail.status === 'DRAFT' }">
               <b>草稿</b><span>可维护日期、教学周和考试周；发布前完成校历与节次检查。</span>
             </article>
             <article :class="{ active: detail.status === 'PUBLISHED' }">
-              <b>进行中</b><span>可设为当前和冻结；时间轴不可直接修改，只允许更正显示名称。</span>
+              <b>已发布</b><span>日期与教学周已锁定，可更正名称。启用为当前学期后，师生按此开展教学。</span>
             </article>
             <article :class="{ active: detail.status === 'FROZEN' }">
               <b>已冻结</b><span>教学结构保持稳定，完成成绩和业务收口后进入归档预检。</span>
@@ -158,11 +162,11 @@
               <b>已归档</b><span>全字段只读，所有关联业务按正式归档规则封存。</span>
             </article>
           </div>
-          <button class="mp-link atd-archive-link" @click="goArchive">查看归档语义预检 →</button>
+          <button v-if="hasPermission('academicAffairs.archive.view')" class="mp-link atd-archive-link" @click="goArchive">查看归档预检 →</button>
         </AppSectionCard>
       </div>
 
-      <AppSectionCard title="关联业务影响" subtitle="全部通过稳定 termId 或批次回链统计，不按名称和日期猜归属">
+      <AppSectionCard title="关联业务" subtitle="查看本学期的教学安排与办理进度">
         <div class="atd-linked-grid">
           <button v-for="card in linkedCards" :key="card.key" class="atd-linked" @click="goTarget(card.route)">
             <span>{{ card.label }}</span>
@@ -208,14 +212,14 @@
         </div>
       </AppSectionCard>
 
-      <AppSectionCard title="学期状态时间线" subtitle="读取 append-only 审计流水，保留操作者、角色和发生时间">
+      <AppSectionCard title="状态记录" subtitle="查看本学期的修改、发布与冻结记录">
         <EmptyState v-if="!detail.timeline?.length" title="暂无状态变更记录" description="创建、发布、冻结和归档后会在这里形成记录" />
         <ol v-else class="atd-timeline">
           <li v-for="row in detail.timeline" :key="row.auditId">
             <span class="atd-timeline-dot" />
             <div>
-              <header><strong>{{ auditActionLabel(row) }}</strong><time>{{ row.occurredAt || '—' }}</time></header>
-              <p>{{ row.operator || '系统' }}<template v-if="row.roleName"> · {{ row.roleName }}</template></p>
+              <header><strong>{{ auditActionLabel(row) }}</strong><time>{{ formatDateTime(row.occurredAt, '—') }}</time></header>
+              <p>{{ row.operator || '系统' }}<template v-if="row.roleName"> · {{ auditRoleLabel(row) }}</template></p>
               <small v-if="row.detail">{{ auditDetail(row.detail) }}</small>
             </div>
           </li>
@@ -227,8 +231,11 @@
       v-model:visible="actionDialog.visible"
       :title="actionDialog.title"
       :message="actionDialog.message"
-      confirm-text="确认执行"
+      :confirm-text="actionDialog.title"
       :submitting="actionDialog.submitting"
+      :require-reason="actionDialog.type === 'UNFREEZE'"
+      reason-label="解冻原因"
+      reason-placeholder="说明恢复业务办理的原因，至少 5 个字"
       @confirm="confirmAction"
     />
   </ModulePageShell>
@@ -241,11 +248,13 @@ import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/com
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsTermDetailApi as termApi } from '@/modules/academicAffairs/api/academic-affairs-term-detail.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
+import { formatDateTime } from '@/utils/dateUtils'
 import { presentAuditRecord, safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 
 const STATUS_LABEL = {
   DRAFT: '草稿',
-  PUBLISHED: '进行中',
+  PUBLISHED: '已发布',
   FROZEN: '已冻结',
   ARCHIVED: '已归档'
 }
@@ -260,6 +269,7 @@ export default {
   data() {
     return {
       loading: true,
+      requestVersion: 0,
       error: '',
       detail: {},
       currentContextLoading: true,
@@ -276,20 +286,24 @@ export default {
   },
   computed: {
     termId() { return this.$route.params.termId },
-    canEditTimeline() { return Boolean(this.detail.allowedActions?.editBasic) },
-    canEditName() { return Boolean(this.detail.allowedActions?.editBasic || this.detail.allowedActions?.editNameOnly) },
+    canManage() { return !this.loading && !this.error && this.hasPermission('academicAffairs.term.manage') },
+    canManageSchoolTerm() { return this.canManage && ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) },
+    canEditTimeline() { return this.canManage && Boolean(this.detail.allowedActions?.editBasic) },
+    canEditName() { return this.canManage && Boolean(this.detail.allowedActions?.editBasic || this.detail.allowedActions?.editNameOnly) },
     governanceManaged() { return this.currentContext?.currentAuthority === 'CALENDAR_GOVERNANCE' },
     directCurrentSwitchAllowed() {
-      return !this.currentContextLoading && !this.currentContextError && this.currentContext?.canDirectSwitch !== false
+      return this.canManageSchoolTerm && !this.currentContextLoading && !this.currentContextError && !this.governanceManaged && this.currentContext?.canDirectSwitch === true
     },
+    publishAllowed() { return this.canManageSchoolTerm && !this.currentContextLoading && !this.currentContextError && (this.governanceManaged || this.directCurrentSwitchAllowed) },
     isResolvedCurrent() {
       return Boolean(this.currentContext?.termId) && String(this.currentContext.termId) === String(this.termId)
     },
     termRange() {
-      if (this.detail.startDate && this.detail.endDate) return `${this.detail.startDate} 至 ${this.detail.endDate}`
+      if (this.detail.startDate && this.detail.endDate) return `${this.detail.startDate.slice(0, 10)} 至 ${this.detail.endDate.slice(0, 10)}`
       return '起止日期未完整设置'
     },
     editHint() {
+      if (!this.canManage) return '当前角色可查看学期信息'
       if (this.detail.status === 'ARCHIVED') return '已归档学期保持只读'
       if (this.canEditTimeline) return '草稿状态可维护完整时间轴，保存前必须执行影响预览'
       return '当前仅允许更正学期显示名称，日期和教学周时间轴已经锁定'
@@ -319,10 +333,16 @@ export default {
     this.loadCurrentContext()
     this.load()
   },
+  watch: {
+    termId() { this.actionDialog.visible = false; this.invalidatePreview(); this.load() }
+  },
   methods: {
+    formatDateTime,
+    hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     statusLabel(status) { return safeEnumLabel({ value: status, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
     blockerText(row) { return safeBusinessMessage(row?.message || row?.summary, '当前修改不满足业务校验，请调整后重试') },
     auditActionLabel(row) { return presentAuditRecord(row).displayAction },
+    auditRoleLabel(row) { return presentAuditRecord({ ...row, actorRole: row.roleName }).displayRole },
     auditDetail(detail) { return safeBusinessMessage(detail, '已记录本次状态变更') },
     valueText(value) { return value === null || value === undefined || value === '' ? '未设置' : String(value) },
     normalizedForm() {
@@ -362,9 +382,12 @@ export default {
       this.currentContextLoading = false
     },
     async load() {
+      const version = ++this.requestVersion
       this.loading = true
       this.error = ''
+      this.detail = {}
       const res = await termApi.get(this.termId)
+      if (version !== this.requestVersion) return
       if (res.code === 0) {
         this.detail = res.data || {}
         this.hydrateForm(this.detail)
@@ -374,11 +397,13 @@ export default {
       this.loading = false
     },
     async previewChange() {
-      if (!this.hasChanges || this.previewing) return
+      if (!this.canEditName || !this.hasChanges || this.previewing || this.saving) return
       this.previewing = true
       const signature = this.currentSignature
-      const res = await termApi.preview(this.termId, this.normalizedForm())
+      const termId = this.termId
+      const res = await termApi.preview(termId, this.normalizedForm())
       this.previewing = false
+      if (termId !== this.termId || signature !== this.currentSignature) return
       if (res.code === 0) {
         this.preview = res.data || {}
         this.previewSignature = signature
@@ -389,20 +414,22 @@ export default {
       }
     },
     async save() {
-      if (!this.previewCurrent || !this.preview.canSave || this.saving) return
+      if (!this.canEditName || !this.previewCurrent || !this.preview.canSave || this.saving) return
       this.saving = true
-      const res = await termApi.update(this.termId, {
+      const termId = this.termId
+      const res = await termApi.update(termId, {
         ...this.normalizedForm(),
         expectedVersion: this.detail.version ?? 0
       })
       this.saving = false
+      if (termId !== this.termId) return
       if (res.code === 0) {
         toast.success('学期信息已保存')
         this.detail = res.data || {}
         this.hydrateForm(this.detail)
       } else {
         toast.error(res.message || '保存失败')
-        if (res.code === 'APPROVAL_VERSION_CONFLICT' || res.code === 409) this.load()
+        this.invalidatePreview()
       }
     },
     goBack() { this.$router.push('/admin/academic-affairs/terms') },
@@ -411,21 +438,29 @@ export default {
     goGovernance() { this.$router.push(this.currentContext?.switchRoute || '/admin/system/academic-calendar') },
     goTarget(route) { if (route) this.$router.push(route) },
     openAction(type) {
-      if ((type === 'PUBLISH' || type === 'SET_CURRENT') && !this.directCurrentSwitchAllowed) {
+      if (!this.actionAllowed(type)) {
         toast.warning(this.currentContext?.switchHint || this.currentContextError || '当前学期切换暂不可用')
         return
       }
       const labels = {
-        PUBLISH: ['发布并设为当前', '发布后学期时间轴将锁定，后续只能更正显示名称。确认继续？'],
+        PUBLISH: [this.governanceManaged ? '发布学期' : '发布并设为当前', this.governanceManaged ? '发布后日期与教学周将锁定，学校当前学期仍由统一治理设置。确认发布？' : '发布后日期与教学周将锁定，并替换全校当前学期。确认继续？'],
         SET_CURRENT: ['设为当前学期', '确认将该学期设为当前学期？系统会取消其它学期的当前标记。'],
-        FREEZE: ['冻结学期', '冻结后教学结构保持稳定，需完成业务收口后再进入归档。确认继续？']
+        FREEZE: ['冻结学期', '冻结后教学结构保持稳定，需完成业务收口后再进入归档。确认继续？'],
+        UNFREEZE: ['解冻学期', '解冻后恢复为已发布状态。确认恢复本学期业务办理？']
       }
       const [title, message] = labels[type]
       this.actionDialog = { visible: true, submitting: false, type, title, message }
     },
-    async confirmAction() {
+    actionAllowed(type) {
+      if (!this.canManage || this.hasChanges || this.saving || this.previewing) return false
+      const allowed = this.detail.allowedActions || {}
+      return Boolean({ PUBLISH: allowed.publish && this.publishAllowed, SET_CURRENT: allowed.setCurrent && this.directCurrentSwitchAllowed, FREEZE: allowed.freeze, UNFREEZE: this.detail.status === 'FROZEN' }[type])
+    },
+    async confirmAction({ reason = '' } = {}) {
       const type = this.actionDialog.type
-      if ((type === 'PUBLISH' || type === 'SET_CURRENT') && !this.directCurrentSwitchAllowed) {
+      if (this.actionDialog.submitting) return
+      if (type === 'UNFREEZE' && reason.trim().length < 5) { toast.warning('请填写至少 5 个字的解冻原因'); return }
+      if (!this.actionAllowed(type)) {
         this.actionDialog.visible = false
         toast.warning(this.currentContext?.switchHint || this.currentContextError || '当前学期切换暂不可用')
         return
@@ -435,6 +470,7 @@ export default {
       if (type === 'PUBLISH') res = await academicAffairsApi.publishTerm(this.termId)
       if (type === 'SET_CURRENT') res = await academicAffairsApi.setCurrentTerm(this.termId)
       if (type === 'FREEZE') res = await academicAffairsApi.freezeTerm(this.termId)
+      if (type === 'UNFREEZE') res = await academicAffairsApi.unfreezeTerm(this.termId, reason.trim())
       this.actionDialog.submitting = false
       if (res?.code === 0) {
         this.actionDialog.visible = false
@@ -452,6 +488,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .atd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .atd-hero {
   display: flex; justify-content: space-between; gap: 24px; align-items: center;

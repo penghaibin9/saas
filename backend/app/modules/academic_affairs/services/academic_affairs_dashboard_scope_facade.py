@@ -109,7 +109,7 @@ def publish_term(term_id, user) -> dict:
                 )
             if term.status == "DRAFT":
                 term.status = "PUBLISHED"
-                _legacy._audit(db, "AA_TERM", term.id, "PUBLISH")
+                _legacy._audit(db, "AA_TERM", term.id, "PUBLISH_DEFINITION", "发布学期定义；当前学期仍由全校统一治理设置")
             db.commit()
             db.refresh(term)
             return _legacy._term_row(term)

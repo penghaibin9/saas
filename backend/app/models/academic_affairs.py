@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Index, Integer, Numeric, String,
                         Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
@@ -661,6 +662,9 @@ class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     is_exclusive=专用教室，自动排课不自动占用（仅可人工指定），如录播室/校企共建实训室。
     """
     __tablename__ = "t_aa_classroom"
+
+    building_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    floor_no: Mapped[int | None] = mapped_column(Integer, comment="明确维护的楼层；旧数据不从编号推断")
 
     building_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="楼栋编码")
     building_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="楼栋名称")
@@ -1736,10 +1740,10 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
 
     adjust_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
                                               comment="MERGE/SPLIT/DISBAND/GRADUATE_CLEAR")
-    from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="JSON数组，来源行政班id列表")
+    from_class_ids: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False, comment="JSON数组，来源行政班id列表")
     to_class_id: Mapped[int | None] = mapped_column(BigInteger, comment="合班目标班级（MERGE专用）")
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)
-    check_result_json: Mapped[str | None] = mapped_column(String(2000))
+    check_result_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")

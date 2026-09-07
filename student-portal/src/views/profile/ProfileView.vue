@@ -1,7 +1,9 @@
 <template>
   <div class="sp-page">
+    <div class="profile-heading"><div><h1>我的学籍</h1><p class="sp-muted">查看教务登记的学籍状态与当前班级归属。</p></div><button class="sp-btn sp-btn--ghost sp-btn--sm" :disabled="loading || busy" @click="load">刷新学籍</button></div>
     <StateBlock v-if="loading" type="loading" text="正在加载学籍信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
+    <StateBlock v-else-if="!info.hasData" type="empty" text="尚未建立你的学籍档案，请联系学校核对。" />
     <div v-else class="grid">
       <!-- 左列 -->
       <div style="display:flex;flex-direction:column;gap:18px">
@@ -46,7 +48,7 @@
         <section class="card">
           <div class="stitle" style="margin-bottom:14px">学籍卡片</div>
           <div class="idcard">
-            <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:var(--t3)">学号</span><span style="font-size:12.5px;color:var(--ok-fg);font-weight:500">● {{ statusText(info.studentStatus) }}</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:var(--t3)">学号</span><StatusTag :text="statusText(info.studentStatus)" :tone="['NORMAL', 'REGISTERED'].includes(info.studentStatus) ? 'success' : 'default'" /></div>
             <div style="font-size:22px;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;letter-spacing:1px;margin-top:4px">{{ info.studentNo || '—' }}</div>
             <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
               <div><div class="idlbl">院系</div><div class="idval">{{ info.collegeName || '—' }}</div></div>
@@ -101,7 +103,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onActivated, onDeactivated, onBeforeUnmount, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
@@ -122,10 +124,11 @@ const reason = ref('')
 const showBind = ref(false)
 const bindForm = reactive({ name: '', phone: '' })
 const confirmRevoke = ref('')
+let loadVersion = 0
 
 const initial = computed(() => (info.value.name || '同').slice(0, 1))
-const STATUS_MAP = { NORMAL: '在读', ACTIVE: '在读', SUSPENDED: '休学', TRANSFERRED: '转学', WITHDRAWN: '退学', GRADUATED: '毕业' }
-function statusText(s) { return STATUS_MAP[s] || s || '在读' }
+const STATUS_MAP = { NORMAL: '在读', ACTIVE: '在读', REGISTERED: '已注册', PENDING_REGISTER: '待注册', UNREGISTERED: '未注册', SUSPENDED: '休学', PRESERVED: '保留学籍', RETAINED: '留级', TRANSFERRED: '转学', TRANSFER_SCHOOL: '转学', WITHDRAWN: '退学', GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业', MERGED: '已合并', RECYCLED: '已回收' }
+function statusText(s) { return STATUS_MAP[s] || '待确认' }
 const APPLICATION_STATUS_MAP = { SUBMITTED: '已提交', PENDING_REVIEW: '待审核', CLASS_REVIEW: '班级审核中', COUNSELOR_REVIEW: '辅导员审核中', COLLEGE_REVIEW: '学院审核中', SCHOOL_REVIEW: '学校审核中', APPROVED: '已通过', REJECTED: '未通过', RETURNED: '已退回', PROCESSING: '处理中', COMPLETED: '已完成' }
 const APPLICATION_NAME_MAP = { PERSONAL: '事假申请', SICK: '病假申请', OFFICIAL: '公假申请', LEAVE: '请假申请', AID: '困难认定', FUNDING: '奖助申请', DORM: '宿舍事务' }
 function readableCode(value, mapping, fallback = '状态待确认') {
@@ -165,9 +168,11 @@ function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '—' }
 function startReveal(field) { revealing.value = field; reason.value = '' }
 async function confirmReveal(field) {
   if (!reason.value) return
+  const version = loadVersion
   busy.value = true
   try {
     const data = await portalApi.profileSensitive(field, reason.value)
+    if (version !== loadVersion) return
     reveal[field] = data?.value || data?.plain || data?.[field] || '（已授权）'
     ui.notify('已按你的授权展示明文并写入审计日志')
     revealing.value = ''; reason.value = ''
@@ -196,20 +201,32 @@ async function loadGuardians() {
   catch (e) { guardianError.value = '家长授权信息暂时读取失败，可稍后重试。'; guardians.value = [] }
 }
 async function load() {
+  const version = ++loadVersion
+  reveal.phone = ''; reveal.idCard = ''; revealing.value = ''; reason.value = ''
   loading.value = true; error.value = ''
+  info.value = {}
   try {
     const [i, a] = await Promise.all([portalApi.profileEnrollment(), portalApi.affairsApplications().catch(() => ({}))])
+    if (version !== loadVersion) return
     info.value = i || {}
     apps.value = (a && a.applications) ? a.applications.slice(0, 5) : []
-  } catch (e) { error.value = e?.message || '学籍信息加载失败' } finally { loading.value = false }
-  loadGuardians()
+  } catch (e) { if (version === loadVersion) error.value = e?.message || '学籍信息加载失败' }
+  finally { if (version === loadVersion) loading.value = false }
+  if (version === loadVersion) loadGuardians()
 }
 onMounted(load)
+onActivated(() => { if (!loading.value) load() })
+function leaveProfile() { loadVersion++; reveal.phone = ''; reveal.idCard = ''; loading.value = false }
+onDeactivated(leaveProfile)
+onBeforeUnmount(leaveProfile)
 </script>
 
 <style scoped>
 .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; align-items: start; }
-.card { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 22px 24px; }
+.profile-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.profile-heading h1 { font-size: 20px; margin: 0 0 6px; color: var(--t1); }
+.profile-heading p { margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 22px 24px; }
 .phead { display: flex; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line2); }
 .avatar { width: 60px; height: 60px; flex: none; border-radius: 16px; background: linear-gradient(135deg, var(--g2), var(--g1)); color: #fff; font-size: 24px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .pname { font-size: 18px; font-weight: 600; color: var(--t1); }
@@ -217,15 +234,15 @@ onMounted(load)
 .srow { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 14px; }
 .stitle { font-size: 15px; font-weight: 600; color: var(--t1); }
 .basic { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
-.brow { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 11px; border-bottom: 1px solid #F5F6F8; }
+.brow { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 11px; border-bottom: 1px solid var(--line2); }
 .bl { font-size: 13px; color: var(--t4); flex: none; }
 .bv { font-size: 13.5px; color: var(--t1); text-align: right; }
 .masktag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--warn-bg); color: var(--warn-fg); font-size: 11.5px; font-weight: 500; }
-.sens { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #F9FAFB; border: 1px solid var(--line2); border-radius: 10px; }
+.sens { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line2); border-radius: 10px; }
 .eye { all: unset; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; color: var(--pri); }
 .eye:hover { color: var(--pri-h); }
 .eye:disabled { opacity: .5; cursor: not-allowed; }
-.idcard { padding: 16px; border-radius: 12px; background: linear-gradient(135deg, var(--pri-50), #ffffff); border: 1px solid var(--pri-100); }
+.idcard { padding: 16px; border-radius: 12px; background: var(--pri-50); border: 1px solid var(--pri-100); }
 .idlbl { font-size: 11.5px; color: var(--t4); }
 .idval { font-size: 13px; color: var(--t1); margin-top: 2px; }
 .approw { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-bottom: 1px solid #F4F5F7; }

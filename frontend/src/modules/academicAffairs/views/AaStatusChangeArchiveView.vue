@@ -21,7 +21,8 @@
 
       <AppSectionCard title="按异动类型分布">
         <EmptyState v-if="!stats.byType.length" title="暂无数据" />
-        <table v-else class="aa-table">
+        <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else>
+<table  class="aa-table">
           <thead><tr><th>类型</th><th>数量</th></tr></thead>
           <tbody>
             <tr v-for="g in stats.byType" :key="g.key">
@@ -30,11 +31,13 @@
             </tr>
           </tbody>
         </table>
+</div>
       </AppSectionCard>
 
       <AppSectionCard title="在途未终结件清单（归档缺项）">
         <EmptyState v-if="!pendingRows.length" title="当前无在途异动" description="全部异动均已终结（生效/驳回/退回），可正常归档" />
-        <table v-else class="aa-table">
+        <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else>
+<table  class="aa-table">
           <thead><tr><th>学生</th><th>异动类型</th><th>当前节点</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="row in pendingRows" :key="row.changeId">
@@ -46,6 +49,7 @@
             </tr>
           </tbody>
         </table>
+</div>
       </AppSectionCard>
 
       <AppSectionCard title="说明">

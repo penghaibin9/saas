@@ -1,0 +1,98 @@
+{
+  "sourceWorktree": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统",
+  "targetWorktree": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-academic-affairs-ui-20260905",
+  "branch": "codex/academic-affairs-ui-20260905",
+  "baseCommit": "6810bd6284b4d5c69a78947560f808cd7738327e",
+  "importedAt": "2026-09-05T20:06:20.3927430+08:00",
+  "importedFiles": [
+    {
+      "path": "student-portal/src/App.vue",
+      "sha256": "C1CB720C9B9FC5F42AF39C43B54615011569BB74D5F15E2E4B2A4A76E7B3FF5B",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/layouts/PortalLayout.vue",
+      "sha256": "E49802574693F83985408EA8D0C0B18EDD157BBDA215CE95B6E5518664458699",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/components/workspace/WorkspaceIcon.vue",
+      "sha256": "590EBB4973F64AC8F353458D67E2FAF3A9DB87E2759F419DF0F3543D85717B69",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/components/workspace/WorkspaceRail.vue",
+      "sha256": "47A24F01C86212AAA18F3A113ECC83A4BA1089D9CE064BC60C7C6A51C4176E90",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/platform/workspaceNavigation.js",
+      "sha256": "BAB95BC02C120621B3C669AC60E18212D2586B14B0E10EAFD697210C21259D89",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/platform/workspaceTheme.js",
+      "sha256": "C3337139239B66C3218BB3BBA939220CE51E31CC755C80206F1702CB179B5F7E",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/styles/student-workspace.css",
+      "sha256": "E01F77ABF8098FF0FDD8FB856462E8E01E2E373DC777B02EB20251DF7469C900",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/assets/icons/workspaceIcons.js",
+      "sha256": "207A454D5AB1B209BED01464EF28D3251BCB077C990EA742C45DD5C15E468B3F",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/src/assets/icons/LICENSE.element-plus-icons",
+      "sha256": "5DB4EBB3ABD8353774AE148723CCC14087D6DAB99473F77A7B799B55DEFD8DFE",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "student-portal/tests/sidebar-navigation-contract.test.mjs",
+      "sha256": "23EB1CDEB6B302D30E04B2121F08FD00DCF609C1E5052B0EDC784635E0072C7C",
+      "category": "shared-student-shell"
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/ai-prompts/04-教务核心业务四端分批落地固定提示词.md",
+      "sha256": "F64CF50D317643E97228B82DD2D50316729DEC444DE8C2EC44239D7F10FE7D21",
+      "category": "academic-handoff"
+    },
+    {
+      "path": "docs/03-业务模块设计/教务中心/文档关联索引.md",
+      "sha256": "9519E58491ED7CD59C271E35498151B5AA4D5B48D6070A138E8E2D0DAB32321A",
+      "category": "academic-handoff"
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/施工记录/2026-09-05-学生PC同壳接入记录.md",
+      "sha256": "457C673730F8CC0ACB5DC3F38A2D76C30F12EBC3CD51AE3A915C2263B938927C",
+      "category": "academic-handoff"
+    }
+  ],
+  "unchangedTeacherFiles": [
+    {
+      "path": "frontend/src/layouts/BasePortalLayout.vue",
+      "sourceSha256": "D27F72CA37D2B2E8CBC0CADC9B83A755053429BD393D9524E039452B5CD2E5F4",
+      "targetSha256": "D27F72CA37D2B2E8CBC0CADC9B83A755053429BD393D9524E039452B5CD2E5F4",
+      "comparison": "identical-after-CRLF-to-LF-normalization",
+      "category": "existing-committed-teacher-shell"
+    },
+    {
+      "path": "frontend/src/modules/academicAffairs/views/AdminAcademicAffairsLayout.vue",
+      "sourceSha256": "579DBF2A6A736D1F7DC3388F4935FCCAD8C92C161A84825C3ABC419A60C5B903",
+      "targetSha256": "579DBF2A6A736D1F7DC3388F4935FCCAD8C92C161A84825C3ABC419A60C5B903",
+      "comparison": "identical-after-CRLF-to-LF-normalization",
+      "category": "existing-committed-teacher-shell"
+    },
+    {
+      "path": "frontend/src/config/navPlan.js",
+      "sourceSha256": "B143B41AA27D7C6ED1CEDF2329BB4993CE6EDE2AA6C909A04FA0B3B29EA3CA28",
+      "targetSha256": "B5B402A7BE75743AF9F7AFC8B1180FFDD245D86A1C56A07E68ECD98E062E01F0",
+      "comparison": "identical-after-CRLF-to-LF-normalization",
+      "category": "existing-committed-teacher-shell"
+    }
+  ],
+  "note": "仅公共壳与教务交接资料；未导入学工业务未提交改动。学生壳为源工作区未提交快照，后续合并前须与公共壳主维护结果核对。"
+}

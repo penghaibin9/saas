@@ -246,13 +246,13 @@ def attendance_my(user) -> dict:
 # ═══════════ 学生校历只读 ═══════════
 
 def calendar_my(user) -> dict:
-    from app.models import AaTerm
     from app.modules.academic_affairs.services import academic_affairs_service as svc
+    from app.modules.academic_affairs.services.academic_affairs_term_context_service import resolve_current_term
     with session() as db:
         _me(db, user)
-        term = db.scalars(select(AaTerm).where(
-            AaTerm.tenant_id == _tid(), AaTerm.is_current.is_(True),
-            AaTerm.is_deleted.is_(False))).first()
+        # Student PC and mobile consume the same school authority as staff and teaching.
+        # Ambiguous legacy flags must fail closed instead of showing an arbitrary calendar.
+        term = resolve_current_term(db, tenant_id=_tid()).term
         if not term:
             return {"hasTerm": False, "events": [], "weeks": [], "note": "尚未设置当前学期"}
         tid = term.id

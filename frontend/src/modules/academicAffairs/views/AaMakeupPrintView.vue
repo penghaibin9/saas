@@ -1,5 +1,5 @@
 <template>
-  <div class="aa-print">
+  <div class="aa-print-preview aa-print">
     <div class="aa-print__bar">
       <span>{{ printTime }}</span>
       <AppPrintButton v-if="!loading && !error" variant="primary" :handler="doPrint" />
@@ -83,3 +83,5 @@ export default {
   @page { size: A4 portrait; margin: 1.5cm; }
 }
 </style>
+
+<style src="../styles/print-preview.css"></style>

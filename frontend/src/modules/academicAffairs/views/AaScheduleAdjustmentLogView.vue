@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="课表调整记录"
-    subtitle="课表条目/批次变更留痕只读查询（手工排课、导入、改排、教师异议、发布、作废重发等）"
+    subtitle="查询排课、改排、发布及作废的操作记录。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -22,7 +23,7 @@
         <AppButton @click="reload">查询</AppButton>
       </div>
 
-      <AppSectionCard title="调整记录">
+      <AppSectionCard compact title="调整记录">
         <ErrorState v-if="error" :description="error" @retry="reload" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" title="暂无匹配记录" description="课表批次发生手工排课/导入/改排/发布/作废重发等操作后会在此留痕" />
@@ -35,8 +36,7 @@
           <template #cell-action="{ row }">{{ actionLabel(row.action) }}</template>
         </DataTable>
         <p class="mp-note">
-          本页只读，读取排课服务操作留痕（t_affairs_audit_trail）；正式「调课/停课/补课」审批流程见
-          「调停课」二级模块自有台账，不在本页重复展示。
+          本页记录排课与发布操作。「调课、停课、补课」的申请和审批结果请在「调停课」台账查看。
         </p>
       </AppSectionCard>
     </div>
@@ -128,6 +128,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-filter__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 220px; }
 .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }

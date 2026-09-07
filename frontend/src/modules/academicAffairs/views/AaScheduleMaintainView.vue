@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="排课 · 课表维护"
-    subtitle="从排课任务队列进入班级网格，点击候选课位后先校验教师、班级、教室冲突，再确认写入"
+    subtitle="选择教学任务，在课表中安排课位并检查冲突。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -40,8 +41,8 @@
       />
 
       <LoadingState v-if="loading" />
-      <AppSectionCard v-else :title="classId ? ('班级 ' + (className || '已选择班级') + ' 课表') : '请先载入班级课表'">
-        <AaScheduleGrid
+      <AppSectionCard compact v-else :title="classId ? ('班级 ' + (className || '已选择班级') + ' 课表') : '请先载入班级课表'">
+        <AaScheduleGrid interactive
           :items="items"
           :slots="slots"
           :editable="!!classId"
@@ -97,7 +98,7 @@
         </label>
         <label>结束周
           <input v-model.number="add.endWeek" type="number" :min="selectedTask?.startWeek || 1" :max="selectedTask?.endWeek || undefined" class="aa-input" />
-          <small class="mp-note">不再使用固定 18 周</small>
+          <small class="mp-note">周次范围由所选教学任务确定</small>
         </label>
 
         <section class="aa-preflight aa-assign-form__wide" :class="preflightClass">
@@ -429,6 +430,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }

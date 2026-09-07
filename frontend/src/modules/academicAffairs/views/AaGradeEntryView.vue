@@ -129,7 +129,8 @@
           <AppSectionCard title="固定三段成绩录入表">
             <p class="mp-note">平时 {{ task.usualRatio }}%<template v-if="hasMidterm"> · 期中 {{ task.midtermRatio }}%</template> · 期末 {{ task.finalRatio }}%</p>
             <EmptyState v-if="!rows.length" title="录入表为空" description="从上方检索学生加入，或按正式教学班名单圈定" />
-            <table v-else class="aa-course-table">
+            <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else>
+<table  class="aa-course-table">
               <thead><tr><th>学生</th><th>异常标记</th><th>平时分</th><th v-if="hasMidterm">期中分</th><th>期末分</th><th>总评</th><th>结果</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="r in rows" :key="r.studentId">
@@ -144,6 +145,7 @@
                 </tr>
               </tbody>
             </table>
+</div>
           </AppSectionCard>
         </template>
 
@@ -606,17 +608,17 @@ export default {
 .aa-task-head { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-700, #4e5969); margin-bottom: 8px; flex-wrap: wrap; }
 .aa-mode-switch { display: inline-flex; gap: 4px; margin: 8px 0 12px; padding: 4px; border-radius: 8px; background: var(--fill-100, #f2f3f5); }
 .aa-mode { padding: 7px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--text-600, #64748b); cursor: pointer; }
-.aa-mode.is-active { background: #fff; color: var(--primary-600, #2563eb); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+.aa-mode.is-active { background: var(--bg-card); color: var(--primary-600, #2563eb); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
 .aa-course-table { width: 100%; border-collapse: collapse; }.aa-course-table th, .aa-course-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }
-.aa-course-table th { color: var(--text-500, #646a73); font-weight: 500; font-size: 13px; white-space: nowrap; }.aa-course-table th small, .aa-course-table td small { display: block; margin-top: 3px; color: var(--text-400, #8a9099); font-size: 11px; }
+.aa-course-table th { color: var(--text-500, #646a73); font-weight: 500; font-size: 13px; white-space: nowrap; }.aa-course-table th small, .aa-course-table td small { display: block; margin-top: 3px; color: var(--text-400, #8a9099); font-size: 12px; }
 .aa-table-scroll { overflow-x: auto; }.aa-dynamic-table { min-width: 860px; }
 .aa-scheme-head { display: flex; justify-content: space-between; margin: 14px 0 10px; color: var(--text-600, #64748b); font-size: 13px; }
 .aa-scheme-list { display: flex; flex-direction: column; gap: 8px; }.aa-scheme-row { display: flex; align-items: center; gap: 10px; }.aa-code { width: 150px; }.aa-name { flex: 1; }.aa-weight { width: 110px; }.aa-required { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }.is-danger { color: var(--danger-600, #dc2626); }
 .aa-my-tasks { margin-top: 20px; border-top: 1px solid var(--border-100, #f0f1f2); padding-top: 16px; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
 .aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
 .aa-remind-link { color: var(--warning-700, #b45309); }.aa-overdue-text { color: var(--danger-600, #dc2626); font-weight: 600; }
-.aa-action-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.aa-action-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: var(--aa-success-bg, #f3fbf5); }
 .aa-action-receipt strong, .aa-action-receipt span, .aa-action-receipt small, .aa-action-receipt b { display: block; }
-.aa-action-receipt strong { color: #15803d; font-size: 14px; }.aa-action-receipt span { margin-top: 3px; color: #64748b; font-size: 11px; }.aa-action-receipt small { color: #94a3b8; font-size: 10px; }.aa-action-receipt b { margin-top: 3px; color: #334155; font-size: 12px; }
+.aa-action-receipt strong { color: var(--success-color, #16803c); font-size: 14px; }.aa-action-receipt span { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.aa-action-receipt small { color: var(--text-tertiary); font-size: 12px; }.aa-action-receipt b { margin-top: 3px; color: var(--text-primary); font-size: 12px; }
 @media (max-width: 760px) { .aa-grid2, .aa-action-receipt { grid-template-columns: 1fr; }.aa-action-receipt { align-items: stretch; gap: 10px; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
 </style>

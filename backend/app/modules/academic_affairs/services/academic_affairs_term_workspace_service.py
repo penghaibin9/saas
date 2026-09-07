@@ -25,6 +25,8 @@ _ACTION_LABELS = {
     "CREATE": "创建学期",
     "UPDATE_BASIC": "修改基本信息",
     "PUBLISH": "发布学期",
+    "PUBLISH_DEFINITION": "发布学期",
+    "TEACHING_WEEKS_UPDATE": "修改教学周配置",
     "SET_CURRENT": "设为当前学期",
     "FREEZE": "冻结学期",
     "UNFREEZE": "解冻学期",
@@ -226,6 +228,8 @@ def get_workspace(term_id: int, user) -> dict:
             "linkedData": linked,
             "allowedActions": allowed,
             "impactWarning": (
+                "该学期已归档，基本信息与时间轴保持只读。" if term.status == "ARCHIVED" else
+                "该学期已发布，日期与教学周保持锁定；更正名称不会改变教学安排。" if term.status != "DRAFT" else
                 "该学期已经产生关联业务。修改时间轴会影响课表周次、考试日期、选课窗口和成绩收口，必须先查看影响。"
                 if allowed["hasLinkedBusiness"] else
                 "当前尚无关联业务，草稿状态可维护基础时间轴。"
@@ -238,11 +242,11 @@ def get_workspace(term_id: int, user) -> dict:
 def _proposed(term, body: dict) -> dict:
     data = body or {}
     return {
-        "termName": str(data.get("termName") if "termName" in data else (term.term_name or "")).strip(),
+        "termName": str((data.get("termName") or "") if "termName" in data else (term.term_name or "")).strip(),
         "startDate": _to_datetime(data.get("startDate"), end_of_day=False) if "startDate" in data else term.start_date,
         "endDate": _to_datetime(data.get("endDate"), end_of_day=True) if "endDate" in data else term.end_date,
-        "teachingWeeks": int(data.get("teachingWeeks")) if data.get("teachingWeeks") not in (None, "") else term.teaching_weeks,
-        "examWeekStart": int(data.get("examWeekStart")) if data.get("examWeekStart") not in (None, "") else term.exam_week_start,
+        "teachingWeeks": data["teachingWeeks"] if "teachingWeeks" in data else term.teaching_weeks,
+        "examWeekStart": data["examWeekStart"] if "examWeekStart" in data else term.exam_week_start,
     }
 
 
@@ -449,7 +453,7 @@ def update_term(term_id: int, user, body: dict) -> dict:
         before = ";".join(f"{row['label']}={row['before']}" for row in changes)
         after = ";".join(f"{row['label']}={row['after']}" for row in changes)
         structural = bool(preview["structuralChange"])
-        term.term_name = proposed["termName"] or term.term_name
+        term.term_name = proposed["termName"] or None
         if structural:
             term.start_date = proposed["startDate"]
             term.end_date = proposed["endDate"]

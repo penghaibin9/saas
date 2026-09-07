@@ -147,7 +147,7 @@ export default {
 .sc-slot--to { color: var(--pri, #2563eb); font-weight: 600; }
 .sc-arrow { margin: 0 6px; color: var(--t3, #94a3b8); }
 .sc-stop { color: var(--warning, #d97706); font-weight: 600; font-size: 12px; }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
+.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: var(--bg-card); cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-link--danger { color: var(--danger, #dc2626); }
 </style>

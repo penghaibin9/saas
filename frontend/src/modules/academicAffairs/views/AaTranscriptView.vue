@@ -27,7 +27,8 @@
             </div>
             <p v-if="data.note" class="mp-note">{{ data.note }}</p>
             <EmptyState v-if="!data.items.length && !data.note" title="暂无成绩记录" description="学生还没有已发布的课程成绩" />
-            <table v-else-if="data.items.length" class="aa-course-table">
+            <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else-if="data.items.length">
+<table  class="aa-course-table">
               <thead><tr><th>课程</th><th>学期</th><th>学分</th><th>成绩</th><th>结果</th></tr></thead>
               <tbody>
                 <tr v-for="(g, i) in data.items" :key="i">
@@ -39,6 +40,7 @@
                 </tr>
               </tbody>
             </table>
+</div>
           </AppSectionCard>
         </template>
       </template>

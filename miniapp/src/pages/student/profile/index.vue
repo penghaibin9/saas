@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <view class="pf__refresh"><text>我的学籍资料</text><button size="mini" :disabled="state === 'loading'" @click="load">刷新资料</button></view>
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="p">
         <!-- 顶部身份卡 -->
@@ -10,7 +11,7 @@
             <text class="pf__id-sub">{{ p.org.className }} · 学号 {{ p.base.studentNo }}</text>
             <view class="pf__id-tags">
               <MobileStatusTag :label="p.status.stageText" type="processing" />
-              <MobileStatusTag :label="p.status.statusText" type="success" />
+              <MobileStatusTag :label="studentStatusText(p.status.statusText)" type="default" />
             </view>
           </view>
         </view>
@@ -81,14 +82,24 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { toast } from '@/utils/nav'
 export default {
-  data() { return { p: null, state: 'loading' } },
-  onLoad() { this.load() },
+  data() { return { p: null, state: 'loading', requestVersion: 0 } },
+  onShow() { this.load() },
+  onHide() { this.requestVersion++ },
+  onUnload() { this.requestVersion++ },
   methods: {
-    load() {
-      this.state = 'loading'
-      studentApi.getProfile().then((d) => { this.p = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+    studentStatusText(value) {
+      return { NORMAL: '在读', REGISTERED: '已注册', PENDING_REGISTER: '待注册', UNREGISTERED: '未注册', SUSPENDED: '休学', PRESERVED: '保留学籍', RETAINED: '留级', WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学', GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业', MERGED: '已合并', RECYCLED: '已回收' }[value] || (value && !/^[A-Z_]+$/.test(value) ? value : '待确认')
+    },
+    async load() {
+      const version = ++this.requestVersion
+      this.state = 'loading'; this.p = null
+      try {
+        const data = await studentApi.getProfile()
+        if (version !== this.requestVersion) return
+        this.p = data && !data._empty ? data : null
+        this.state = this.p ? 'ready' : 'empty'
+      } catch { if (version === this.requestVersion) this.state = 'error' }
     },
     correct(field) {
       // 走真实服务申请（信息更正工单），不做假成功
@@ -100,6 +111,8 @@ export default {
 </script>
 
 <style scoped>
+.pf__refresh { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4) 0; color: var(--text-secondary); }
+.pf__refresh button { margin: 0; }
 .pf__id { display: flex; align-items: center; gap: var(--space-3); }
 .pf__avatar { width: 52px; height: 52px; border-radius: var(--radius-full); background: var(--brand-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-size: var(--font-size-xl); }
 .pf__id-sub { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px; }

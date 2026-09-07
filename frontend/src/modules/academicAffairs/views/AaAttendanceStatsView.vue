@@ -7,14 +7,10 @@
   >
     <div class="mp-stack">
       <div class="aa-filter">
-        <span class="aa-filter__label">视图</span>
-        <AppSelect v-model="panel" :options="panelOptions" style="min-width:140px" @change="onPanelChange" />
-        <span class="aa-filter__label">行政班</span>
-        <AppClassPicker v-model="classId" placeholder="全部班级" style="max-width:220px" />
-        <span class="aa-filter__label">学期</span>
-        <AppTermCodePicker v-model="termCode" placeholder="全部学期" style="max-width:220px" />
-        <span class="aa-filter__label">点名类别</span>
-        <AppSelect v-model="sessionType" :options="typeOptions" style="min-width:150px" @change="load" />
+        <label class="aa-filter-field"><span>视图</span><AppSelect v-model="panel" :options="panelOptions" @change="onPanelChange" /></label>
+        <label class="aa-filter-field"><span>行政班</span><AppClassPicker v-model="classId" placeholder="全部班级" /></label>
+        <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="termCode" placeholder="全部学期" /></label>
+        <label class="aa-filter-field"><span>点名类别</span><AppSelect v-model="sessionType" :options="typeOptions" @change="load" /></label>
         <AppButton variant="ghost" @click="load">查询</AppButton>
         <AppButton v-if="sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
       </div>

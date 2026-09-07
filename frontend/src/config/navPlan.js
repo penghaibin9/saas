@@ -1,6 +1,7 @@
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
 import { PLATFORM_MANAGEMENT_CATALOG } from '../modules/platform/platformManagementCatalog.js'
 import { buildGraduationNavMods } from '../modules/graduation/config/graduationWorkspaces.js'
+import { buildAcademicNavigation } from '../modules/academicAffairs/config/academicNavigation.js'
 
 /**
  * 菜单规划总纲（PC-NAV-PLAN）——「完整三级目录规划版」唯一事实源。
@@ -260,11 +261,14 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级③：教务中心 ═══════════ */
   grp('academic-affairs', '教务中心', 'academicAffairs', [
+    mod('aa-big-screen', '教务大屏', '/admin/academic-affairs?wall=1', [
+      I('教务运行大屏', '/admin/academic-affairs?wall=1', 'academicAffairs.dashboard.view', 'ANALYTICS_VIEW')
+    ]),
     mod('aa-dashboard', '教务看板', '/admin/academic-affairs', [
-      I('教务看板（教务中心）', '/admin/academic-affairs'),
-      I('学业过程总览（现有）', '/admin/academic'),
+      I('教务看板（教务中心）', '/admin/academic-affairs', 'academicAffairs.dashboard.view'),
+      I('学业过程', '/admin/academic-affairs?panel=academicProgress', 'academicAffairs.dashboard.view'),
       // 2026-07-15 P4：六卡提醒点亮（零新表只读聚合 GET /academic-affairs/dashboard/reminders）。
-      // ?panel= 深链接滚动定位到教务看板对应分栏（AaDashboardView PANEL_ANCHORS，同岗位实习看板模式）。
+      // ?panel= 深链接打开对应业务工作区，刷新和页签返回保留所选内容。
       I('成绩提交进度', '/admin/academic-affairs?panel=gradeProgress', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
       I('考试安排提醒', '/admin/academic-affairs?panel=examReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
       I('学籍异动提醒', '/admin/academic-affairs?panel=statusChangeReminders', 'academicAffairs.dashboard.view', 'TASK_QUEUE'),
@@ -280,7 +284,7 @@ export const NAV_PLAN = [
       I('教务数据趋势', '/admin/academic-affairs?panel=dataTrends', 'academicAffairs.dashboard.view', 'ANALYTICS_VIEW')
     ]),
     mod('aa-terms', '学年学期', '/admin/academic-affairs/terms', [
-      I('学期管理', '/admin/academic-affairs/terms'),
+      I('学期管理', '/admin/academic-affairs/terms', 'academicAffairs.term.view'),
       I('学年管理', '/admin/academic-affairs/terms/years', 'academicAffairs.term.view'),
       I('当前学期设置', '/admin/academic-affairs/terms/current', 'academicAffairs.term.view'),
       I('学期周次', '/admin/academic-affairs/terms/weeks', 'academicAffairs.term.view'),
@@ -290,21 +294,21 @@ export const NAV_PLAN = [
       I('学期归档', '/admin/academic-affairs/terms/archive-status', 'academicAffairs.term.view')
     ]),
     mod('aa-calendar', '校历节次', '/admin/academic-affairs/calendar', [
-      I('校历管理', '/admin/academic-affairs/calendar'),
+      I('校历管理', '/admin/academic-affairs/calendar', 'academicAffairs.calendar.view'),
       I('作息时间', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.view'),
       // 2026-07-15 Tier1 R2：节假日/补课日=按 eventType 过滤同一批 t_aa_calendar_event（AaCalendarView 页签）；
       // 节次管理=复用「作息时间」页（t_aa_time_slot 全 CRUD）；上课时间段=新表 t_aa_class_time_band；
       // 教学周日历=派生只读聚合；校历发布/归档=复用学期状态机，仅教务处/学校管理员（后端角色白名单强制）。
       I('节假日配置', '/admin/academic-affairs/calendar?tab=holiday', 'academicAffairs.calendar.view'),
       I('补课日配置', '/admin/academic-affairs/calendar?tab=makeup', 'academicAffairs.calendar.view'),
-      I('节次管理', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.manage'),
-      I('上课时间段', '/admin/academic-affairs/time-slots?tab=bands', 'academicAffairs.classTimeBand.view'),
+      I('节次管理', '/admin/academic-affairs/time-slots', 'academicAffairs.timeslot.manage', null, { permissionAny: ['academicAffairs.timeslot.view'] }),
+      I('上课时间段', '/admin/academic-affairs/time-slots?tab=bands', 'academicAffairs.classTimeBand.view', null, { permissionAny: ['academicAffairs.timeslot.view'] }),
       I('教学周日历', '/admin/academic-affairs/calendar?tab=weekCalendar', 'academicAffairs.calendar.view'),
       I('校历发布', '/admin/academic-affairs/calendar?tab=publish', 'academicAffairs.calendarPublish.manage'),
       I('校历归档', '/admin/academic-affairs/calendar?tab=archive', 'academicAffairs.calendarArchive.manage')
     ]),
     mod('aa-student-status', '学籍管理', '/admin/academic-affairs/roster', [
-      I('学籍名册', '/admin/academic-affairs/roster'),
+      I('学籍名册', '/admin/academic-affairs/roster', 'academicAffairs.roster.view'),
       H('学籍档案', '/admin/academic-affairs/roster', 'academicAffairs.roster.view', 'DETAIL'),
       I('学籍状态', '/admin/academic-affairs/roster/status', 'academicAffairs.roster.view'),
       I('学籍异动记录', '/admin/academic-affairs/roster/changes', 'academicAffairs.statusChange.view'),
@@ -328,7 +332,7 @@ export const NAV_PLAN = [
       I('学籍归档', '/admin/academic-affairs/archive?entry=studentStatus', 'academicAffairs.archive.view')
     ]),
     mod('aa-registration', '注册管理', '/admin/academic-affairs/registration', [
-      I('注册批次', '/admin/academic-affairs/registration'),
+      I('注册批次', '/admin/academic-affairs/registration', 'academicAffairs.registration.view'),
       I('入学注册', '/admin/academic-affairs/registration?type=ENROLL', 'academicAffairs.registration.view'),
       I('学年注册', '/admin/academic-affairs/registration?type=ANNUAL', 'academicAffairs.registration.view'),
       // 2026-07-16 续工三级卡：学期注册=第三种 register_type（SEMESTER），与入学/学年共用同一批次引擎/页面，
@@ -349,8 +353,8 @@ export const NAV_PLAN = [
       I('分流统计（同页志愿名单）', '/admin/academic-affairs/major-split', 'academicAffairs.majorSplit.view')
     ]),
     mod('aa-status-change', '学籍异动', '/admin/academic-affairs/status-changes', [
-      I('异动台账', '/admin/academic-affairs/status-changes'),
-      I('发起异动', '/admin/academic-affairs/status-changes/new'),
+      I('异动台账', '/admin/academic-affairs/status-changes', 'academicAffairs.statusChange.view'),
+      I('发起异动', '/admin/academic-affairs/status-changes/new', 'academicAffairs.statusChange.apply'),
       I('休学申请', '/admin/academic-affairs/status-changes/suspend', 'academicAffairs.statusChange.apply'),
       I('复学申请', '/admin/academic-affairs/status-changes/resume', 'academicAffairs.statusChange.apply'),
       I('退学申请', '/admin/academic-affairs/status-changes/withdraw', 'academicAffairs.statusChange.apply'),
@@ -384,7 +388,7 @@ export const NAV_PLAN = [
       I('班级调整', '/admin/academic-affairs/orgs?tab=adjust', 'academicAffairs.org.view')
     ]),
     mod('aa-training', '培养方案', '/admin/academic-affairs/programs', [
-      I('方案列表', '/admin/academic-affairs/programs'),
+      I('方案列表', '/admin/academic-affairs/programs', 'academicAffairs.program.view'),
       // Tier1 续工（2026-07-15）：以下 7 项接入统一控制台 /programs/console?tab=xxx（DataTable+Drawer，深编辑仍回既有 /programs/:id 编制器）
       I('方案制定', '/admin/academic-affairs/programs/console?tab=authoring', 'academicAffairs.program.view'),
       I('方案版本', '/admin/academic-affairs/programs/console?tab=versions', 'academicAffairs.program.view'),
@@ -400,7 +404,7 @@ export const NAV_PLAN = [
       I('方案归档', '/admin/academic-affairs/programs/console?tab=archive', 'academicAffairs.program.view')
     ]),
     mod('aa-courses', '课程库', '/admin/academic-affairs/courses', [
-      I('课程列表', '/admin/academic-affairs/courses'),
+      I('课程列表', '/admin/academic-affairs/courses', 'academicAffairs.course.view'),
       // Tier1 续工（2026-07-15）：以下 5 项接入统一控制台 /courses/console?tab=xxx（DataTable+Drawer，深编辑/两级审核仍回既有 /courses/:id）
       I('新增课程', '/admin/academic-affairs/courses/new', 'academicAffairs.course.manage'),
       I('课程分类', '/admin/academic-affairs/courses/console?tab=category', 'academicAffairs.course.view'),
@@ -437,7 +441,7 @@ export const NAV_PLAN = [
       I('计划执行进度', '/admin/academic-affairs/teaching-tasks/stats', 'academicAffairs.teachingTask.stats')
     ]),
     mod('aa-teaching-tasks', '教学任务', '/admin/academic-affairs/teaching-tasks', [
-      I('教学任务批次', '/admin/academic-affairs/teaching-tasks'),
+      I('教学任务批次', '/admin/academic-affairs/teaching-tasks', 'academicAffairs.teachingTask.view'),
       I('教学任务生成', '/admin/academic-affairs/teaching-tasks?open=generate', 'academicAffairs.teachingTask.generate'),
       I('任课教师分配', '/admin/academic-affairs/teaching-tasks/assign', 'academicAffairs.teachingTask.assign'),
       // 教学班生成：教学班无独立表，随「教学任务生成」按(学期+课程+行政班)确定性派生（见 academic_affairs_task_service.
@@ -469,7 +473,7 @@ export const NAV_PLAN = [
       I('排课归档', '/admin/academic-affairs/schedule?panel=archive', 'academicAffairs.schedule.archive')
     ]),
     mod('aa-schedule', '课表管理', '/admin/academic-affairs/schedule', [
-      I('课表批次 / 排课', '/admin/academic-affairs/schedule'),
+      I('课表批次 / 排课', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view'),
       I('班级课表', '/admin/academic-affairs/schedule/class', 'academicAffairs.schedule.view'),
       I('教师课表', '/admin/academic-affairs/schedule/teacher', 'academicAffairs.schedule.view'),
       I('学生课表', '/admin/academic-affairs/schedule/student', 'academicAffairs.schedule.view'),
@@ -545,7 +549,7 @@ export const NAV_PLAN = [
       I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view')
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
-      I('预警扫描与列表', '/admin/academic-affairs/warnings'),
+      I('预警扫描与列表', '/admin/academic-affairs/warnings', 'academicAffairs.warning.view'),
       I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.view'),
       I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.warning.view'),
       I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.warning.view'),
@@ -558,7 +562,7 @@ export const NAV_PLAN = [
       I('预警通知', '/admin/academic-affairs/warnings/console?tab=notify', 'academicAffairs.warning.view')
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
-      I('毕业资格预审', '/admin/academic-affairs/graduation'),
+      I('毕业资格预审', '/admin/academic-affairs/graduation', 'academicAffairs.graduation.view'),
       I('审核批次', '/admin/academic-affairs/graduation?tab=batches', 'academicAffairs.graduation.view'),
       I('毕业学生名单', '/admin/academic-affairs/graduation/audit-console?tab=roster', 'academicAffairs.graduation.view'),
       I('学分达成审核', '/admin/academic-affairs/graduation/audit-console?tab=credit', 'academicAffairs.graduation.view'),
@@ -653,7 +657,8 @@ export const NAV_PLAN = [
       I('教师工作量统计', '/admin/academic-affairs/stats?tab=workload', 'academicAffairs.stats.view'),
       I('教学资源统计', '/admin/academic-affairs/stats?tab=resource', 'academicAffairs.stats.view'),
       I('工作量申报审核（教师申报）', '/admin/academic-affairs/workload-review', 'academicAffairs.stats.view'),
-      I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export')
+      I('导出报表', '/admin/academic-affairs/stats?tab=export', 'academicAffairs.stats.export'),
+      I('统计快照', '/admin/academic-affairs/stats?tab=snapshot', 'academicAffairs.stats.snapshot.view', 'ANALYTICS_VIEW', { permissionAny: ['academicAffairs.stats.view'] })
     ])
   ]),
 
@@ -820,6 +825,11 @@ export const PLATFORM_PLAN = grp('platform', '平台运营', 'platform', PLATFOR
 ), { platformOnly: true })
 
 /* 平台运营不混入学校侧 NAV_PLAN 导出，但 BasePortalLayout 需要它完成平台二、三级导航投影。 */
+// Preserve all second-level business modules; normalize labels and keep historical search aliases.
+const academicNavGroup = NAV_PLAN.find((group) => group.key === 'academic-affairs')
+export const ACADEMIC_NAV_SOURCE_MODULES = academicNavGroup.children
+academicNavGroup.children = buildAcademicNavigation(ACADEMIC_NAV_SOURCE_MODULES)
+
 const NAV_PLAN_WITH_PLATFORM = [...NAV_PLAN, PLATFORM_PLAN]
 
 /* ── 规划占位页路径分配（CLAUDE.md §42，2026-07-11 甲方拍板）──────────────
@@ -1008,7 +1018,9 @@ const FLAT_NAV_INDEX = (() => {
           badge: leaf.badge,
           isLeaf: true,
           hidden: !!leaf.hidden,
-          permissionKey: leaf.permissionKey || null
+          permissionKey: leaf.permissionKey || null,
+          permissionAny: leaf.permissionAny || [],
+          searchAliases: leaf.searchAliases || []
         })
       })
     }
@@ -1035,7 +1047,8 @@ export function findActiveInPlan(path, fullPath = '') {
       const prefixOnly = !cand.query && cur.path !== cand.path && cur.path.startsWith(`${cand.path}/`)
       if (prefixOnly) {
         // 父路径（如 /admin/internship）不可抢占子路由高亮
-        score = cand.path.length - 500
+        // 教务新建/详情没有独立菜单时，归属最长的现有业务路径。
+        score = cand.path.length - (row.groupKey === 'academic-affairs' ? 0 : 500)
       } else {
         score = row.path.length + (cand.query ? 1000 : 0)
       }
@@ -1069,7 +1082,8 @@ export function searchNavPlan(query, permissionPatterns = null) {
   for (const row of FLAT_NAV_INDEX) {
     if (row.hidden) continue  // 隐藏的兼容入口不进搜索
     if (applyPerm && row.permissionKey && !matchPermission(permissionPatterns, row.permissionKey)) continue  // 无权限页面不进搜索
-    if (!row.label.toLowerCase().includes(q)) continue
+    if (applyPerm && row.permissionAny?.length && !row.permissionAny.some((key) => matchPermission(permissionPatterns, key))) continue
+    if (![row.label, ...(row.searchAliases || [])].some((label) => label.toLowerCase().includes(q))) continue
     out.push({
       label: row.label,
       path: row.path,

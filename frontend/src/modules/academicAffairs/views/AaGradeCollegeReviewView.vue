@@ -104,8 +104,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-focus-note { padding: 9px 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-size: 12px; }
-.aa-review-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 18px; padding: 12px 14px; border: 1px solid #a7d7b4; border-radius: 9px; background: #f3fbf5; }
-.aa-review-receipt strong, .aa-review-receipt span, .aa-review-receipt small, .aa-review-receipt b { display: block; }.aa-review-receipt strong { color: #15803d; }.aa-review-receipt span, .aa-review-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.aa-review-receipt b { margin-top: 3px; font-size: 12px; }
+.aa-focus-note { padding: 9px 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: var(--pri-bg); color: var(--pri); font-size: 12px; }
+.aa-review-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 18px; padding: 12px 14px; border: 1px solid #a7d7b4; border-radius: 9px; background: var(--aa-success-bg, #f3fbf5); }
+.aa-review-receipt strong, .aa-review-receipt span, .aa-review-receipt small, .aa-review-receipt b { display: block; }.aa-review-receipt strong { color: var(--success-color, #16803c); }.aa-review-receipt span, .aa-review-receipt small { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.aa-review-receipt b { margin-top: 3px; font-size: 12px; }
 @media (max-width: 760px) { .aa-review-receipt { grid-template-columns: 1fr; gap: 10px; } }
 </style>

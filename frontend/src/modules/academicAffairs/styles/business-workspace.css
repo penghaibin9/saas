@@ -1,0 +1,178 @@
+/* Academic page bodies only. Navigation, permissions and shared component defaults stay owned by the public shell. */
+.aa-business-area {
+  container: academic-body / inline-size;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 16px;
+  color: var(--text-primary);
+  --text-900: var(--text-primary);
+  --text-800: var(--text-primary);
+  --text-700: var(--text-secondary);
+  --text-600: var(--text-secondary);
+  --text-500: var(--text-secondary);
+  --text-400: var(--text-tertiary);
+  --gray-50: var(--bg-page);
+  --gray-100: var(--bg-page);
+  --gray-200: var(--border-base);
+  --gray-300: var(--border-base);
+  --gray-400: var(--text-tertiary);
+  --gray-500: var(--text-secondary);
+  --gray-600: var(--text-secondary);
+  --gray-700: var(--text-secondary);
+  --gray-800: var(--text-primary);
+  --gray-900: var(--text-primary);
+  --bg-white: var(--bg-card);
+  --bg-100: var(--bg-page);
+  --bg-subtle: var(--bg-page);
+  --fill-50: var(--bg-page);
+  --fill-100: var(--bg-page);
+  --fill-light: var(--bg-page);
+  --border-color: var(--border-base);
+  --border-100: var(--border-base);
+  --border-200: var(--border-base);
+  --border-300: var(--border-base);
+  --primary-color: var(--pri);
+  --primary-bg: var(--pri-bg);
+  --aa-success-bg: color-mix(in srgb, var(--success-color, #16803c) 7%, var(--bg-card));
+  --aa-warning-bg: color-mix(in srgb, var(--warning-color, #b76700) 7%, var(--bg-card));
+  --aa-danger-bg: color-mix(in srgb, var(--danger-color, #d92d20) 7%, var(--bg-card));
+}
+.aa-business-area .mps { min-width: 0; gap: 12px; }
+.aa-business-area .mps .mps__head {
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border-base);
+}
+.aa-business-area .mps .mps__title { font-size: 20px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.aa-business-area .mps .mps__actions { flex-wrap: wrap; gap: 6px; }
+.aa-business-area .app-button:is(.app-button--secondary, .app-button--danger, .app-button--warning) { background: var(--bg-card); }
+.aa-business-area .app-button--secondary { color: var(--text-secondary); border-color: var(--border-base); }
+.aa-business-area .mps .task-workbench__scope-note { background: var(--bg-page); border: 1px solid var(--border-base); }
+.aa-business-area .mps .mp-stack { min-width: 0; gap: 12px; }
+.aa-business-area .mps :is(.app-section-card, .mp-card, .dt) {
+  min-width: 0;
+  border-radius: 12px;
+  border-color: var(--border-base);
+  box-shadow: none;
+}
+.aa-business-area .mps :is(.app-section-card__head, .mp-card__head) { padding: 10px 14px; gap: 8px 12px; flex-wrap: wrap; }
+.aa-business-area .mps :is(.app-section-card__title, .mp-card__title) { font-size: 15px; font-weight: 650; line-height: 1.5; }
+.aa-business-area .mps .app-section-card__body:not(.is-nopad),
+.aa-business-area .mps .mp-card__body { padding: 14px; }
+.aa-business-area .mps :is(.mp-note, .aa-note, .aa-note-sm) { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.aa-business-area .mps .mp-cell-main { font-weight: 600; line-height: 1.4; }
+.aa-business-area .mps .mp-cell-sub { margin-top: 1px; font-size: 12px; line-height: 1.35; }
+.aa-business-area .mps .aa-object-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.aa-business-area .mps :is(.aa-input, .aa-select, .aa-textarea, .af__control) { max-width: 100%; min-height: 36px; border-radius: 8px; color: var(--text-primary); background-color: var(--bg-card); border-color: var(--border-base); }
+.aa-business-area .mps :is(input, textarea)::placeholder { color: var(--text-tertiary); }
+.aa-business-area .mps :is(.aa-input, .aa-select, .aa-textarea):disabled { background: var(--bg-page); color: var(--text-secondary); }
+.aa-business-area .mps :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.aa-business-area .mps .mp-link { min-height: 32px; padding: 4px 2px; }
+.aa-business-area .mps .mp-link + .mp-link { margin-inline-start: 10px; }
+.aa-business-area .mps .ags-panel { padding: 20px 16px; min-height: 140px; border-radius: 12px; }
+.aa-business-area .mps .ags-icon { width: 40px; height: 40px; font-size: 24px; margin-bottom: 12px; }
+.aa-business-area .mps .ags-title { font-size: 16px; }
+.aa-business-area .mps .ags-desc { font-size: 13px; line-height: 1.7; }
+.aa-business-area .mps .ags-actions { margin-top: 16px; }
+
+/* Filters belong together; sizing follows the usable content width, including open menu rails. */
+.aa-business-area .mps :is(.af, .aa-filter, .aa-filter-row, .aacr-filters, .aaeq-filters, .aalr-filters,
+  .aacert-bar, .aacb-bar, .aalb-bar, .aarn-bar, .aarc-bar, .aaro-bar, .aarr-bar, .aamk-bar,
+  .aaev-bar, .aaql-bar, .aatb-bar, .aawc-bar, .aapc-bar, .task-batch-filters, .teacher-task__filters) {
+  display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px;
+  padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 12px;
+  background: var(--bg-card); min-width: 0;
+}
+.aa-business-area .mps .af__fields { flex: 1 1 360px; min-width: 0; gap: 12px 16px; }
+.aa-business-area .mps .af__field { flex: 1 1 150px; min-width: 0; }
+.aa-business-area .mps :is(.af__ops, .aa-actions, .aa-review-btns, .aa-row-actions, .aa-section-toolbar) { gap: 8px; flex-wrap: wrap; }
+.aa-business-area .mps :is(.aa-filter__item, .aa-field, .aa-filter-field) { min-width: 0; }
+.aa-business-area .mps .aa-filter-field { display: grid; flex: 0 1 260px; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.aa-business-area .mps :is(.af__label, .aa-field > span, .aa-form__label) { font-size: 13px; font-weight: 500; line-height: 1.5; }
+
+/* Existing business tabs keep their actions and query parameters. */
+.aa-business-area .mps :is(.aa-tabs, .mp-tabs, .aacc-tabs, .aapc-tabs, .aaev-tabs, .aamk-tabs, .aamks-tabs, .aarw-tabs, .aaql-tabs, .aatb-tabs, .aawc-tabs) {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 4px;
+  border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card);
+}
+.aa-business-area .mps :is(.aa-tabs, .mp-tabs, .aacc-tabs, .aapc-tabs, .aaev-tabs, .aamk-tabs, .aamks-tabs, .aarw-tabs, .aaql-tabs, .aatb-tabs, .aawc-tabs) > button {
+  min-height: 34px; padding: 6px 10px; border: 0; border-radius: 7px; line-height: 1.45; background: transparent; color: var(--text-secondary);
+}
+.aa-business-area .mps :is(.aa-tabs, .mp-tabs, .aacc-tabs, .aapc-tabs, .aaev-tabs, .aamk-tabs, .aamks-tabs, .aarw-tabs, .aaql-tabs, .aatb-tabs, .aawc-tabs) > button:is(.active, .is-active) {
+  color: var(--pri); background: var(--pri-bg); font-weight: 650; box-shadow: inset 0 -2px var(--pri);
+}
+
+/* Readable ledgers and keyboard reachable horizontal scrolling for wide native tables. */
+.aa-business-area .mps .dt__scroll { border-radius: 10px; }
+.aa-business-area .mps :is(.dt__th, .aa-table th, .aa-course-table th) { padding: 8px 12px; background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; line-height: 1.4; }
+.aa-business-area .mps :is(.dt__td, .aa-table td, .aa-course-table td) { padding: 8px 12px; line-height: 1.4; vertical-align: middle; }
+.aa-business-area .mps .dt__tr:hover { background: var(--pri-bg); }
+.aa-business-area .mps .dt__pager { padding: 9px 12px; border-top: 1px solid var(--border-base); }
+.aa-business-area .mps .aa-table-scroll { max-width: 100%; overflow: auto; overscroll-behavior-inline: contain; border: 1px solid var(--border-base); border-radius: 10px; }
+.aa-business-area .mps .aa-table-scroll > table { width: 100%; min-width: 560px; border-collapse: collapse; }
+.aa-business-area .mps .aa-table-scroll > table :is(th, td) { padding: 8px 12px; border-bottom: 1px solid var(--border-base); text-align: start; line-height: 1.4; }
+.aa-business-area .mps .aa-table-scroll > table th { background: var(--bg-page); color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+
+/* Forms and fourth-level object workspaces keep their specialist content. */
+.aa-business-area .mps .app-desc-list { column-gap: 24px; }
+.aa-business-area .mps .app-desc-list__item { padding: 12px 0; border-bottom: 1px solid var(--border-base); line-height: 1.65; }
+.aa-business-area .mps .app-desc-list__label { font-size: 13px; color: var(--text-secondary); }
+.aa-business-area .mps .app-desc-list__value { font-size: 13px; font-weight: 500; }
+.aa-business-area .mps .aa-object-meta { padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 10px; }
+.aa-business-area .mps .aa-review-btns { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.aa-business-area .mps :is(.aa-grid, .aa-grid2, .aa-form-grid, .aa-facts) { gap: 18px 24px; }
+.aa-business-area .mps .aa-form-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.aa-business-area .mps .aa-form-group + .aa-form-group { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-base); }
+.aa-business-area .mps .aa-form-group > legend { padding: 0 0 14px; font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.aa-business-area .mps .aa-form-intro { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.aa-business-area .mps .aa-form-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-base); }
+.aa-business-area .mps :is(.aa-material-reader-item, .aa-standard-row, .aa-facts > div) { border-radius: 10px; }
+.aa-business-area .mps :is(.aaexam-head, .aaev-head, .aams-head, .aalv-head, .aaar-head, .aaex-head) { flex-wrap: wrap; }
+.aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaar-layout, .aaex-layout) { grid-template-columns: minmax(200px, 25%) minmax(0, 1fr); gap: 20px; align-items: start; }
+.aa-business-area .mps :is(.aaexam-detail, .aaev-detail, .aams-detail, .aalv-detail, .aaar-detail, .aaex-detail, .aa-program-main) { min-width: 0; }
+.aa-business-area .mps :is(.aaexam-batch, .aams-batch, .aalv-exam, .aaar-item, .aaex-item) { padding: 12px; border-radius: 9px; line-height: 1.6; }
+.aa-business-area .mps :is(.aa-summary-grid, .aa-metric-grid, .aaql-grid, .aawc-metric-grid, .aamk-cards, .aaexam-readiness) { grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
+.aa-business-area .mps :is(.aa-summary-card, .aaql-card, .aawc-metric, .aaexam-readiness__item) { padding: 16px; border-radius: 10px; }
+.aa-business-area .mps :is(.aa-action-receipt, .aa-review-receipt, .aawc-receipt, .agc-receipt) { border-radius: 10px; gap: 12px; flex-wrap: wrap; }
+
+@container academic-body (max-width: 1000px) {
+  .aa-business-area .mps :is(.aasel-layout, .agc-overview__top, .aasel-hero, .aasg-repair-center) { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps .aasel-list-card { position: static; }
+  .aa-business-area .mps :is(.aasg-flow, .aasg-metric-grid, .aasel-metrics, .agc-metrics) { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .aa-business-area .mps .aa-program-layout { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps :is(.aa-program-nav, .aa-validation-panel) { position: static; grid-column: auto; }
+  .aa-business-area .mps .aa-program-nav { display: flex; flex-wrap: wrap; gap: 4px; }
+  .aa-business-area .mps .aa-program-nav > button { width: auto; }
+  .aa-business-area .mps :is(.aa-nav-title, .aa-nav-links) { width: 100%; }
+  .aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaar-layout, .aaex-layout) { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps :is(.aaexam-list, .aaev-list-pane, .aams-list, .aalv-list, .aaar-list, .aaex-list) { max-height: 280px; overflow: auto; }
+}
+@container academic-body (max-width: 640px) {
+  .aa-business-area .mps .app-desc-list { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps .app-desc-list__item { grid-column: 1 / -1; }
+  .aa-business-area .mps :is(.atd-hero, .aa-term-summary, .aasg-current-action, .aa-my-task-item, .aa-material, .aa-scheme-row) { flex-wrap: wrap; }
+  .aa-business-area .mps :is(.aa-action-receipt, .aa-review-receipt, .aawc-receipt, .agc-receipt, .aa-radio-group) { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps .aa-transition { margin-left: 0; }
+  .aa-business-area .mps .aa-form__actions { padding-left: 0; flex-wrap: wrap; }
+  .aa-business-area .mps .mps__title { font-size: 20px; }
+  .aa-business-area .mps .mps__meta { width: 100%; }
+  .aa-business-area .mps :is(.aa-grid, .aa-grid2, .aa-form-grid, .aa-facts, .mp-grid-2, .atd-grid, .aa-term-create-layout, .aa-transition, .aa-impact-grid) { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps :is(.aa-field--full, .aa-form-grid__wide, .atd-span-2) { grid-column: 1 / -1; }
+  .aa-business-area .mps :is(.aa-form__row, .aa-form__field--inline, .aa-cal-form, .aa-slot-form, .aa-reg-search) { flex-wrap: wrap; min-width: 0; }
+  .aa-business-area .mps :is(.aa-filter__item--grow, .aa-cal-form__item--grow, .aa-input--wide, .aa-bind-class) { min-width: 0; max-width: 100%; }
+  .aa-business-area .mps :is(.aa-credit-bar, .aa-metric-grid, .aa-summary-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aa-business-area .mps :is(.aa-standard-row, .aa-material-reader-meta, .aa-task-head) { flex-wrap: wrap; }
+  .aa-business-area .mps .af__fields { flex-basis: 100%; }
+}
+@container academic-body (max-width: 420px) {
+  .aa-business-area .mps :is(.app-section-card__head, .mp-card__head) { padding: 12px; }
+  .aa-business-area .mps .app-section-card__body:not(.is-nopad), .aa-business-area .mps .mp-card__body { padding: 12px; }
+  .aa-business-area .mps .af__field { flex-basis: 100%; }
+  .aa-business-area .mps .aa-form__row { flex-direction: column; align-items: stretch; }
+  .aa-business-area .mps :is(.aa-form__label, .aa-form__field) { width: 100%; min-width: 0; text-align: start; }
+  .aa-business-area .mps .aa-transition__arrow { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aa-business-area .mps *, .aa-business-area .mps *::before, .aa-business-area .mps *::after { transition: none; animation: none; scroll-behavior: auto; }
+}

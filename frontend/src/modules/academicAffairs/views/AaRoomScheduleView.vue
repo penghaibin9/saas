@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="教室课表"
-    subtitle="按教室字典选择教室，查看当前已发布课表占用情况（教务处/学院教务只读）"
+    subtitle="查看教室已发布的课程安排与占用时段。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -31,9 +32,9 @@
       <EmptyState v-else-if="!classroomId" title="请先选择教室" description="搜索并选择教室后自动加载课表" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
-        <p class="mp-note">按教室字典拼装文本精确匹配课表教室快照；手工排课时若教室文本与字典不一致可能查不全（与教室预约模块同口径）。</p>
-        <AppSectionCard :title="classroomText ? `${classroomText} · 周课表` : '教室课表'">
-          <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+        <p class="mp-note">历史课表中的教室名称若与当前目录不一致，可能未列入结果；请同时核对班级课表。</p>
+        <AppSectionCard compact :title="classroomText ? `${classroomText} · 周课表` : '教室课表'">
+          <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
       </template>
     </div>
@@ -104,6 +105,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-filter__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 200px; }
 .aa-filter__item--grow { flex: 1; min-width: 260px; }

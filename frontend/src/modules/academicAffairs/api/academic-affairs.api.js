@@ -5,8 +5,7 @@
  * 与旧「学业过程」模块（同目录 api/academic.api.js，接 /academic/* + mock 兜底）互不干扰、并存。
  *
  * 以代码为准（后端 academic_affairs.py 实测签名）：
- *  - 学期基础字段（学年/学期号/名称/起止日期）仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 →
- *    本模块不提供 updateTerm（勘误见施工记录）。
+ *  - 学期详情、影响预览与 PUT 更新由 academic-affairs-term-detail.api.js 提供。
  *  - 学期状态机 DRAFT→PUBLISHED→FROZEN→ARCHIVED 全 4 态：DRAFT/PUBLISHED 走 create/publish；
  *    FROZEN 走 Tier1-R2 新增 freeze/unfreeze（学期状态）；ARCHIVED 由「教务归档」二级模块
  *    academic_affairs_archive_service 的批次确认归档写入，本模块 getTermArchiveOverview 仅只读联动。
@@ -23,7 +22,7 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, details: e.details })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {
@@ -50,6 +49,7 @@ export const academicAffairsApi = {
     let roleName = '教务管理员'
     let roleCode = u.currentRoleCode || ''
     const scopeName = '本校教务数据（按后端数据范围）'
+    let dataScope = { scope: '', scopeName, name: scopeName }
     let permissionPatterns = null
     try {
       if (shouldTryReal()) {
@@ -64,6 +64,7 @@ export const academicAffairsApi = {
             const cr = rc.currentRole || {}
             if (cr.roleName) roleName = cr.roleName
             if (cr.roleCode) roleCode = cr.roleCode
+            if (rc.dataScope) dataScope = { ...rc.dataScope, name: rc.dataScope.scopeName || rc.dataScope.scopeLabel || scopeName }
           }
         } catch {
           /* current-context 不可用：展示降级；后端接口仍是最终权限边界 */
@@ -78,7 +79,7 @@ export const academicAffairsApi = {
     return ok({
       tenantBrandConfig: { schoolName },
       currentRole: { roleName, roleCode },
-      dataScope: { scopeName, name: scopeName },
+      dataScope,
       permissionActions: {},
       permissionPatterns
     })
@@ -917,10 +918,12 @@ export const academicAffairsApi = {
   getStatsResourceDetail(params = {}) { return callList(`${BASE}/stats/resource/detail`, params) },
 
   /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
-  listClassrooms({ keyword = '', buildingCode = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
+  listClassrooms({ keyword = '', buildingCode = '', buildingId = '', floorNo = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
     const params = { page, pageSize }
     if (keyword) params.keyword = keyword
     if (buildingCode) params.buildingCode = buildingCode
+    if (buildingId) params.buildingId = buildingId
+    if (floorNo !== '') params.floorNo = floorNo
     if (roomType) params.roomType = roomType
     if (status) params.status = status
     return call(() => request(`${BASE}/classrooms`, { params }))
@@ -954,8 +957,9 @@ export const academicAffairsOrgApi = {
   createCollege(body) { return call(() => request(`${BASE}/orgs/colleges`, { method: 'POST', body })) },
   updateCollege(id, body) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'PUT', body })) },
   deleteCollege(id) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'DELETE' })) },
-  bindSecretary(id, secretaryId) {
-    return call(() => request(`${BASE}/orgs/colleges/${id}/secretary`, { method: 'POST', body: { secretaryId } }))
+  listSecretaryCandidates(id, params = {}) { return callList(`${BASE}/orgs/colleges/${id}/secretary-candidates`, params) },
+  bindSecretary(id, secretaryId, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/colleges/${id}/secretary`, { method: 'POST', body: { secretaryId, expectedVersion } }))
   },
   // ── 专业 ──
   listMajors(params = {}) { return callList(`${BASE}/orgs/majors`, params) },
@@ -966,20 +970,24 @@ export const academicAffairsOrgApi = {
   listClasses(params = {}) { return callList(`${BASE}/orgs/classes`, params) },
   createClass(body) { return call(() => request(`${BASE}/orgs/classes`, { method: 'POST', body })) },
   updateClass(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'PUT', body })) },
+  previewClassState(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}/state-preview`, { method: 'POST', body })) },
   deleteClass(id) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'DELETE' })) },
   // ── 年级 / 教学班 / 班级学生 / 班级调整（个体移动，既有轻量端点）──
   listGrades(params = {}) { return call(() => request(`${BASE}/orgs/grades`, { params })) },
   listTeachingClasses(params = {}) { return callList(`${BASE}/orgs/teaching-classes`, params) },
   listClassStudents(classId, params = {}) { return callList(`${BASE}/orgs/classes/${classId}/students`, params) },
   adjustClass(body) { return call(() => request(`${BASE}/orgs/class-adjustments`, { method: 'POST', body })) },
+  previewClassTransfer(body) { return call(() => request(`${BASE}/orgs/class-adjustments/preview`, { method: 'POST', body })) },
   // ── 组织树 / 统计 / 变更审计 ──
   orgTree() { return call(() => request(`${BASE}/orgs/tree`)) },
+  listOrgReferenceChecks(params = {}) { return callList(`${BASE}/orgs/sync-check`, params) },
+  getOrgReferenceCheck(type, id) { return call(() => request(`${BASE}/orgs/sync-check/${type}/${id}`)) },
   orgStats() { return call(() => request(`${BASE}/orgs/stats`)) },
   listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) },
   // ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后按专业维护方向）──
   getMajorDirectionToggle() { return call(() => request(`${BASE}/orgs/major-direction-toggle`)) },
-  setMajorDirectionToggle(enabled) {
-    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled } }))
+  setMajorDirectionToggle(enabled, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled, expectedVersion } }))
   },
   listDirections(majorId, params = {}) { return callList(`${BASE}/orgs/majors/${majorId}/directions`, params) },
   createDirection(majorId, body) {
@@ -988,22 +996,22 @@ export const academicAffairsOrgApi = {
   updateDirection(majorId, directionId, body) {
     return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}`, { method: 'PUT', body }))
   },
-  disableDirection(majorId, directionId) {
-    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST' }))
+  disableDirection(majorId, directionId, body = {}) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST', body }))
   },
   // ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班）──
   listClassAdjustments(params = {}) { return callList(`${BASE}/orgs/class-adjustment-requests`, params) },
   createClassAdjustment(body) {
     return call(() => request(`${BASE}/orgs/class-adjustment-requests`, { method: 'POST', body }))
   },
-  precheckClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST' }))
+  precheckClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST', body: { expectedVersion } }))
   },
-  executeClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST' }))
+  executeClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST', body: { expectedVersion } }))
   },
-  cancelClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST' }))
+  cancelClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST', body: { expectedVersion } }))
   }
 }
 

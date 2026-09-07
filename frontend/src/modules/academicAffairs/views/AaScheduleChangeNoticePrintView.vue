@@ -1,5 +1,5 @@
 <template>
-  <div class="scn-wrap">
+  <div class="aa-print-preview scn-wrap">
     <div class="scn-bar no-print">
       <AppButton @click="$router.back()">返回</AppButton>
       <AppPrintButton variant="primary" :handler="printNotice" :disabled="!canPrint" label="打印通知单" />
@@ -101,3 +101,5 @@ export default {
   @page { size: A4; margin: 1.5cm; }
 }
 </style>
+
+<style src="../styles/print-preview.css"></style>

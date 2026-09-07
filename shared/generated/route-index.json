@@ -1,13 +1,12 @@
 {
-  "generatedAt": "2026-09-02T03:56:46.530Z",
-  "exactCount": 490,
-  "patternCount": 77,
-  "redirectCount": 59,
+  "generatedAt": "2026-09-07T06:05:29.763Z",
+  "exactCount": 489,
+  "patternCount": 78,
+  "redirectCount": 58,
   "aliasCount": 0,
   "exact": [
     "/",
     "/admin",
-    "/admin/academic",
     "/admin/academic-affairs",
     "/admin/academic-affairs/archive",
     "/admin/academic-affairs/archive/export",
@@ -498,6 +497,7 @@
   ],
   "patterns": [
     "/admin/planned/:groupKey/:modKey/:leafIdx?",
+    "/admin/academic-affairs/terms/:termId",
     "/admin/academic-affairs/roster/:studentId",
     "/admin/academic-affairs/registration/:batchId",
     "/admin/academic-affairs/status-changes/:id",
@@ -587,10 +587,6 @@
     {
       "from": "/admin/employment/companies",
       "to": "/admin/internship/enterprises"
-    },
-    {
-      "from": "/admin/academic",
-      "to": "/admin/academic-affairs"
     },
     {
       "from": "/admin/academic/students",

@@ -142,7 +142,7 @@ export default {
 .aamks-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
 .aamks-form { display: grid; gap: 14px; }
 .aamks-field { display: grid; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
-.aamks-select { min-height: 38px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 7px; background: #fff; }
+.aamks-select { min-height: 38px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 7px; background: var(--bg-card); }
 .aamks-actions { display: flex; justify-content: flex-end; }
 .aamks-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .aamks-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--fill-light, #f8fafc); border-radius: 8px; }

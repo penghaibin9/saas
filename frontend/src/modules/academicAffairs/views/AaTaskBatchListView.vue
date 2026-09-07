@@ -215,16 +215,16 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.task-batch-overview { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.task-batch-metric { padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
+.task-batch-overview { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.task-batch-metric { min-height: 78px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); box-sizing: border-box; }
 .task-batch-metric span, .task-batch-metric small { display: block; color: var(--gray-500); font-size: 12px; }
-.task-batch-metric strong { display: block; margin: 8px 0 5px; color: var(--gray-900); font-size: 24px; }
+.task-batch-metric strong { display: block; margin: 3px 0 2px; color: var(--gray-900); font-size: 20px; line-height: 1.15; }
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--gray-700); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
-.aa-input, .aa-select { height: 36px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 7px; background: #fff; color: var(--gray-900); font-size: 13px; box-sizing: border-box; }
-.task-batch-filters { display: flex; align-items: flex-end; gap: 14px; padding: 14px 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
-.task-batch-filters label { display: flex; flex-direction: column; gap: 6px; color: var(--gray-600); font-size: 12px; }
+.aa-input, .aa-select { height: 36px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 7px; background: var(--bg-card); color: var(--gray-900); font-size: 13px; box-sizing: border-box; }
+.task-batch-filters { display: flex; align-items: flex-end; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); }
+.task-batch-filters label { display: flex; flex-direction: column; gap: 4px; color: var(--gray-600); font-size: 12px; }
 .task-batch-filters__search { flex: 1; }
 .task-batch-filters__search .aa-input { width: 100%; }
 .task-progress-line { display: flex; justify-content: space-between; color: var(--gray-700); font-size: 12px; }

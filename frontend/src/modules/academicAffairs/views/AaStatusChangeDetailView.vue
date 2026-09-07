@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="学籍异动详情"
+    :title="change ? `${change.changeTypeLabel} · ${change.realName}` : '学籍异动详情'"
     :subtitle="change ? (change.changeTypeLabel + ' · ' + change.realName) : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"

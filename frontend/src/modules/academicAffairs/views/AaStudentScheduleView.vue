@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="学生课表"
-    subtitle="按学生查看当前已发布课表（按行政班推导 + 本人已锁定选课并入），越范围数据拒绝访问"
+    subtitle="查看学生已发布课表，包含班级课程和已确认选课。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -31,8 +32,8 @@
         <LoadingState v-else-if="loading" />
         <template v-else>
           <p v-if="note" class="mp-note">{{ note }}</p>
-          <AppSectionCard :title="studentName ? `${studentName}（${studentNo}）· 课表` : '学生课表'">
-            <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+          <AppSectionCard compact :title="studentName ? `${studentName}（${studentNo}）· 课表` : '学生课表'">
+            <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
           </AppSectionCard>
         </template>
       </template>
@@ -112,6 +113,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-reg-search { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
 .aa-input--grow { flex: 1; }

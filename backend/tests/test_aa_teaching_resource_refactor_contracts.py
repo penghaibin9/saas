@@ -74,7 +74,8 @@ def _shapes(router) -> set[tuple[str, str]]:
 def test_d5_s3_public_shapes_are_owned_by_teaching_resource_router():
     expected = "app.modules.academic_affairs.routers.teaching_resource_router"
     children = [route for route in teaching_resource_router.router.routes if isinstance(route, APIRoute)]
-    assert len(children) == 34
+    assert len(children) == 44  # Original 34 routes plus 10 explicit classroom catalogue endpoints.
+    assert sum(not route.path.startswith(("/academic-affairs/classroom-buildings", "/academic-affairs/classroom-batches")) for route in children) == 34
     for child in children:
         for method in _methods(child):
             public = _first_route(child.path, method)
@@ -86,6 +87,10 @@ def test_d5_s3_move_only_preserves_legacy_permissions_and_route_metadata():
         if not isinstance(child, APIRoute):
             continue
         for method in _methods(child):
+            if child.path.startswith(("/academic-affairs/classroom-buildings", "/academic-affairs/classroom-batches")):
+                expected = "update" if method == "PUT" else "view" if child.path == "/academic-affairs/classroom-buildings" and method == "GET" else "create"
+                assert _permission_codes(child) == {f"academicAffairs.classroom.{expected}"}
+                continue
             old = _first_in(legacy.router, child.path, method)
             assert _permission_codes(child) == _permission_codes(old), (method, child.path)
             assert child.summary == old.summary, (method, child.path)

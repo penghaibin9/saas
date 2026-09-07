@@ -43,6 +43,8 @@ def _row(c) -> dict:
     return {
         "classroomId": str(c.id), "buildingCode": c.building_code, "buildingName": c.building_name,
         "roomCode": c.room_code, "roomName": c.room_name or f"{c.building_name}{c.room_code}",
+        "buildingId": str(c.building_id) if c.building_id else None, "floorNo": c.floor_no,
+        "examSeats": c.exam_seats, "isExclusive": c.is_exclusive,
         "capacity": int(c.capacity or 0), "roomType": c.room_type,
         "roomTypeLabel": ROOM_TYPE_LABEL.get(c.room_type, c.room_type),
         "campusCode": c.campus_code or "", "remark": c.remark or "",
@@ -70,7 +72,7 @@ def _norm_capacity(v):
 
 def _load(db, classroom_id):
     from app.models import AaClassroom
-    c = db.get(AaClassroom, int(classroom_id)) if classroom_id else None
+    c = db.scalar(select(AaClassroom).where(AaClassroom.id == int(classroom_id), AaClassroom.tenant_id == _tid()).with_for_update()) if classroom_id else None
     if not c or c.is_deleted or c.tenant_id != _tid():
         raise not_found("教室不存在")
     return c
@@ -79,10 +81,17 @@ def _load(db, classroom_id):
 # ═══════════ 查询 ═══════════
 
 def list_classrooms(user, keyword=None, building_code=None, room_type=None, status=None,
-                    page=1, page_size=20):
+                    page=1, page_size=20, building_id=None, floor_no=None):
     from app.models import AaClassroom
+    page_size = max(1, min(100, page_size))
     with session() as db:
         conds = [AaClassroom.tenant_id == _tid(), AaClassroom.is_deleted.is_(False)]
+        if building_id:
+            conds.append(AaClassroom.building_id == int(building_id))
+        if floor_no == 0:
+            conds.append(AaClassroom.floor_no.is_(None))
+        elif floor_no:
+            conds.append(AaClassroom.floor_no == floor_no)
         if building_code:
             conds.append(AaClassroom.building_code == building_code)
         if room_type:
@@ -96,7 +105,7 @@ def list_classrooms(user, keyword=None, building_code=None, room_type=None, stat
         total = db.scalar(select(func.count()).select_from(AaClassroom).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(AaClassroom).where(*conds)
-                          .order_by(AaClassroom.building_code, AaClassroom.room_code)
+                          .order_by(AaClassroom.building_code, AaClassroom.floor_no, AaClassroom.room_code, AaClassroom.id)
                           .offset(offset).limit(page_size)).all()
         return [_row(c) for c in rows], total
 
@@ -137,6 +146,8 @@ def create_classroom(body, user) -> dict:
     room_type = _norm_type(getattr(body, "roomType", None))
     capacity = _norm_capacity(getattr(body, "capacity", None))
     with session() as db:
+        from app.modules.academic_affairs.services.academic_affairs_classroom_catalog_service import bind_location
+        location = bind_location(db, body)
         # 含逻辑删除一并查（唯一约束 uk_aa_classroom 覆盖已删行，需就地复活而非再插入）
         existing = db.scalars(select(AaClassroom).where(
             AaClassroom.tenant_id == _tid(), AaClassroom.building_code == building_code,
@@ -163,6 +174,9 @@ def create_classroom(body, user) -> dict:
             db.add(c)
             db.flush()
             _audit(db, c.id, "CREATE", f"{building_name}{room_code}")
+        c.building_id, c.floor_no = location
+        c.exam_seats = getattr(body, "examSeats", None)
+        c.is_exclusive = bool(getattr(body, "isExclusive", False))
         db.commit()
         db.refresh(c)
         return _row(c)
@@ -172,6 +186,15 @@ def update_classroom(classroom_id, body, user) -> dict:
     with session() as db:
         from app.models import AaClassroom
         c = _load(db, classroom_id)
+        expected = getattr(body, "expectedVersion", None)
+        if expected is not None and expected != c.version:
+            raise AppException("DATA_CONFLICT", "教室资料已变化，请重新读取后核对修改")
+        from app.modules.academic_affairs.services.academic_affairs_classroom_catalog_service import bind_location
+        c.building_id, c.floor_no = bind_location(db, body, c)
+        if "examSeats" in body.model_fields_set:
+            c.exam_seats = body.examSeats
+        if getattr(body, "isExclusive", None) is not None:
+            c.is_exclusive = body.isExclusive
         building_code = (getattr(body, "buildingCode", None) or c.building_code).strip()
         room_code = (getattr(body, "roomCode", None) or c.room_code).strip()
         # 改动唯一键需再次去重（排除自身）

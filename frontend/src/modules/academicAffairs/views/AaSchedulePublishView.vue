@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="课表发布"
-    subtitle="课表批次预发布/正式发布/作废重发，及发布通知回执历史（t_aa_schedule_publish）"
+    subtitle="检查课表完整性、发布通知，并查阅发布记录。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,13 +11,13 @@
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard v-if="gate.visible" title="发布门禁检查">
+      <AppSectionCard compact v-if="gate.visible" title="发布门禁检查">
         <LoadingState v-if="gate.loading" />
         <template v-else-if="gate.summary">
           <div class="aa-gate-head">
             <div>
               <strong>{{ gate.batch?.batchName }}</strong>
-              <p>发布动作只认服务端同一套课表完整性闸门；检查未通过时不会写入发布状态。</p>
+              <p>请先处理漏排、超排和课程冲突。全部检查通过后可继续发布。</p>
             </div>
             <AppStatusTag :type="gate.summary.complete ? 'success' : 'danger'" dot>
               {{ gate.summary.complete ? '全部通过' : '存在阻断项' }}
@@ -29,7 +30,7 @@
             </div>
           </div>
           <p v-if="gate.summary.pendingTeacherObjections" class="aa-gate-warning">
-            教师异议待处理 {{ gate.summary.pendingTeacherObjections }} 条；当前不是技术硬门禁，但建议正式发布前处理完毕。
+            教师异议待处理 {{ gate.summary.pendingTeacherObjections }} 条，建议正式发布前处理完毕。
           </p>
           <div class="aa-gate-actions">
             <AppButton @click="gate.visible = false">收起检查</AppButton>
@@ -44,7 +45,7 @@
         </template>
       </AppSectionCard>
 
-      <AppSectionCard title="待发布 / 已发布批次">
+      <AppSectionCard compact title="待发布 / 已发布批次">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" title="暂无课表批次" description="请先到「课表批次/排课」页新建批次并排课" />
@@ -60,15 +61,16 @@
               <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openPublished(row)">查看已发布课表</button>
               <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openChangeLedger(row)">调停课台账</button>
               <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" @click="openVoid(row)">作废重发（重大纠错）</button>
-              <span v-if="row.status === 'ARCHIVED'" class="aa-archived">已作废</span>
+              <span v-if="row.status === 'ARCHIVED'" class="aa-archived">{{ statusLabel(row.status) }}</span>
             </div>
           </template>
         </DataTable>
         <p class="mp-note">发布后课表不可直接修改。日常单课位调课、停课、补课走「调停课」审批；只有整批课表存在重大错误、必须整体重排时，才使用危险操作「作废重发」。</p>
       </AppSectionCard>
 
-      <AppSectionCard title="发布记录（发布/作废历史留痕）">
-        <LoadingState v-if="recLoading" />
+      <AppSectionCard compact title="发布记录（发布/作废历史留痕）">
+        <ErrorState v-if="recError" :description="recError" @retry="loadRecords" />
+        <LoadingState v-else-if="recLoading" />
         <EmptyState v-else-if="!records.length" title="暂无发布记录" />
         <DataTable v-else :columns="recColumns" :rows="records" row-key="recordId">
           <template #cell-action="{ row }">
@@ -113,7 +115,7 @@ export default {
   data() {
     return {
       loading: true, error: '', rows: [],
-      recLoading: true, records: [],
+      recLoading: true, records: [], recError: '',
       gate: { visible: false, loading: false, submitting: false, batch: null, summary: null, intent: 'pre' },
       voidDlg: { visible: false, submitting: false, batchId: '' },
       columns: [
@@ -200,9 +202,16 @@ export default {
     },
     async loadRecords() {
       this.recLoading = true
-      const res = await academicAffairsApi.getSchedulePublishRecords({ page: 1, pageSize: 50 })
-      if (res.code === 0) this.records = res.data.list
-      this.recLoading = false
+      this.recError = ''
+      try {
+        const res = await academicAffairsApi.getSchedulePublishRecords({ page: 1, pageSize: 50 })
+        if (res.code === 0) this.records = res.data.list
+        else this.recError = res.message || '发布记录读取失败，请重试'
+      } catch (exception) {
+        this.recError = exception?.message || '发布记录读取失败，请重试'
+      } finally {
+        this.recLoading = false
+      }
     }
   }
 }
@@ -210,6 +219,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-danger { color: var(--danger-600, #f53f3f); }
 .aa-archived { color: var(--text-400, #8a9099); font-size: 13px; }
 .aa-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }

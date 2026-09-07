@@ -4,11 +4,11 @@
     <div class="mps__head">
       <div class="mps__title-wrap">
         <h1 class="mps__title">{{ title }}</h1>
-        <p v-if="subtitle" class="mps__subtitle">{{ subtitle }}</p>
+        <p v-if="subtitle && !conciseBusinessHeader" class="mps__subtitle">{{ subtitle }}</p>
       </div>
-      <div class="mps__meta">
-        <span v-if="roleName" class="mps__chip mps__chip--role">{{ roleName }}</span>
-        <span v-if="dataScopeName" class="mps__chip mps__chip--scope">
+      <div v-if="!conciseBusinessHeader || $slots.actions" class="mps__meta">
+        <span v-if="roleName && !conciseBusinessHeader" class="mps__chip mps__chip--role">{{ roleName }}</span>
+        <span v-if="dataScopeName && !conciseBusinessHeader" class="mps__chip mps__chip--scope">
           <span class="mps__chip-dot" />数据范围：{{ dataScopeName }}
         </span>
         <div v-if="$slots.actions" class="mps__actions"><slot name="actions" /></div>
@@ -34,6 +34,7 @@ import SecurityWatermark from '@/security/components/SecurityWatermark.vue'
 export default {
   name: 'ModulePageShell',
   components: { SecurityWatermark },
+  inject: { conciseBusinessHeader: { default: false } },
   props: {
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },

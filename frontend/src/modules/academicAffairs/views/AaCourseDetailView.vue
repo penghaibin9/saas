@@ -13,6 +13,19 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="course" class="mp-stack">
+      <p class="aa-object-meta">课程编码 {{ course.courseCode }}<span>{{ course.credit }} 学分</span><AppStatusTag :type="reviewStatusColor(course.status)" dot>{{ statusLabel(course.status) }}</AppStatusTag></p>
+      <AppSectionCard title="审核办理">
+        <div class="aa-review-btns">
+          <AppButton v-if="canSubmit(course.status)" variant="primary" :loading="acting" @click="doSubmit">提交审核</AppButton>
+          <template v-if="inReview(course.status)">
+            <AppButton variant="primary" @click="openReview('APPROVE')">{{ course.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
+            <AppButton @click="openReview('RETURN')">退回</AppButton>
+          </template>
+          <span v-if="course.status === 'ENABLED'" class="aa-hint">课程已启用，可被培养方案引用</span>
+        </div>
+        <p class="mp-note">草稿提交后依次进入学院审核、教务审核，通过后启用。退回时请填写不少于 5 字的修改意见。</p>
+      </AppSectionCard>
+
       <AppSectionCard title="课程信息">
         <AppDescriptionList :items="descItems" :columns="2">
           <template #status="{ item }">
@@ -21,7 +34,7 @@
         </AppDescriptionList>
       </AppSectionCard>
 
-      <AppSectionCard title="课程材料 Reader">
+      <AppSectionCard title="课程材料">
         <LoadingState v-if="materialsLoading" />
         <ErrorState v-else-if="materialsError" :description="materialsError" @retry="loadMaterials" />
         <EmptyState
@@ -48,19 +61,7 @@
             />
           </div>
         </div>
-        <p class="mp-note">Reader 只消费课程业务票据授权后的字节；预览与下载分别按 allowedActions 判定，不从页面状态猜权限，也不打开公共存储 URL。</p>
-      </AppSectionCard>
-
-      <AppSectionCard title="审核操作">
-        <div class="aa-review-btns">
-          <AppButton v-if="canSubmit(course.status)" variant="primary" :loading="acting" @click="doSubmit">提交审核</AppButton>
-          <template v-if="inReview(course.status)">
-            <AppButton variant="primary" @click="openReview('APPROVE')">{{ course.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
-            <AppButton @click="openReview('RETURN')">退回</AppButton>
-          </template>
-          <span v-if="course.status === 'ENABLED'" class="aa-hint">课程已启用，可被培养方案引用</span>
-        </div>
-        <p class="mp-note">两级审核：草稿提交后进入学院审核 → 教务审核 → 启用。退回原因必填不少于 5 字。</p>
+        <p class="mp-note">选择材料在线阅读；具备下载权限的材料可保存到本地。</p>
       </AppSectionCard>
 
       <AppSectionCard title="停用管理">
@@ -69,7 +70,7 @@
           <AppButton v-if="course.status === 'DISABLED'" variant="primary" :loading="acting" @click="doEnable">重新启用</AppButton>
           <AppButton :loading="loadingRefs" @click="loadReferences">查看引用情况</AppButton>
         </div>
-        <p class="mp-note">课程被在途审核中或已发布/启用/冻结的培养方案引用时，停用会被拦截（400）。</p>
+        <p class="mp-note">停用前请查看引用情况。仍被审核中、已发布、已启用或已冻结培养方案引用的课程，需要先处理相关引用。</p>
         <div v-if="references" class="aa-refs">
           <EmptyState v-if="!references.length" title="暂无培养方案引用该课程" description="" />
           <ul v-else>

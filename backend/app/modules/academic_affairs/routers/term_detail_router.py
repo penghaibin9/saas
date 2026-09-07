@@ -19,9 +19,9 @@ class TermChangeBody(BaseModel):
     termName: Optional[str] = Field(None, max_length=100)
     startDate: Optional[str] = None
     endDate: Optional[str] = None
-    teachingWeeks: Optional[int] = Field(None, ge=1, le=30)
-    examWeekStart: Optional[int] = Field(None, ge=1, le=30)
-    expectedVersion: Optional[int] = Field(None, ge=0)
+    teachingWeeks: Optional[int] = Field(None, ge=1, le=30, strict=True)
+    examWeekStart: Optional[int] = Field(None, ge=1, le=30, strict=True)
+    expectedVersion: Optional[int] = Field(None, ge=0, strict=True)
 
 
 @router.get("/{termId}/workspace", summary="学期详情工作区：关联业务、允许动作和状态时间线")

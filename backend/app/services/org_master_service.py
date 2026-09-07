@@ -67,7 +67,8 @@ def apply_org_node_in_session(
     row = None
     if node_id:
         row = db.scalars(select(model).where(
-            model.id == node_id, model.tenant_id == tid, model.is_deleted.is_(False))).first()
+            model.id == node_id, model.tenant_id == tid, model.is_deleted.is_(False))
+            .execution_options(populate_existing=True).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "组织节点不存在")
         if expected_version is not None and int(getattr(row, "version", 0) or 0) != int(expected_version):
@@ -93,6 +94,18 @@ def apply_org_node_in_session(
             raise AppException("VALIDATION_ERROR", "专业不属于当前租户或不存在")
         if str(parent.status or "").upper() == "DISABLED" and not row:
             raise AppException("VALIDATION_ERROR", "父级专业已停用，禁止新建班级")
+        next_class_status = extras.get('class_status')
+        if next_class_status is not None and next_class_status not in {'NORMAL', 'GRADUATED', 'DISBANDED'}:
+            raise AppException('VALIDATION_ERROR', '班级状态非法')
+        closing = row is not None and (
+            (next_class_status is not None and next_class_status != row.class_status and next_class_status != 'NORMAL') or
+            (extras.get('status') is not None and extras['status'] != row.status and extras['status'] != 'ACTIVE'))
+        if closing:
+            from app.services.org_class_lifecycle_service import read_class_references, closing_blockers
+            _, _, counts, task_counts = read_class_references(db, tid, [row.id])
+            blockers = closing_blockers(counts.get(row.id, 0), task_counts.get(row.id, 0))
+            if blockers:
+                raise AppException('VALIDATION_ERROR', '；'.join(blockers), details={'blockers': blockers})
 
     if code:
         if node_type == "COLLEGE":
@@ -200,17 +213,20 @@ def save_org_node(*, node_type: str, name: str, code: str | None = "", parent_id
 
 
 def soft_delete_org_node(*, node_type: str, node_id: int, actor: dict | None = None,
-                         reason: str = "软删除") -> dict:
-    """统一软删：校验子级/学生后标记 is_deleted + DISABLED。"""
+                         reason: str = "软删除", db=None) -> dict:
+    """统一软删；传入 db 时加入调用方事务，不提交或关闭该会话。"""
     from app.models import College, Major, SchoolClass, StudentProfile
 
     node_type = str(node_type or "").upper()
     tenant_id = _tid()
     model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
-    db = get_sessionmaker()()
+    owns_session = db is None
+    if owns_session:
+        db = get_sessionmaker()()
     try:
         row = db.scalars(select(model).where(
-            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
+            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))
+            .execution_options(populate_existing=True).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "组织节点不存在")
 
@@ -237,30 +253,35 @@ def soft_delete_org_node(*, node_type: str, node_id: int, actor: dict | None = N
             if students:
                 raise AppException("DATA_CONFLICT", f"该专业下仍有 {students} 名学生，请先处理")
         else:
-            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.class_id == node_id,
-                StudentProfile.is_deleted.is_(False))) or 0
+            from app.services.org_class_lifecycle_service import read_class_references
+            members, _, _, task_counts = read_class_references(db, tenant_id, [node_id])
+            students = len(members)
             if students:
                 raise AppException("DATA_CONFLICT", f"该班级下仍有 {students} 名学生，请先处理")
+            if task_counts.get(node_id, 0):
+                raise AppException('DATA_CONFLICT', f'该班级仍有 {task_counts[node_id]} 条未归档教学任务，请先处理')
 
         row.is_deleted = True
         row.status = "DISABLED"
         if node_type == "CLASS" and hasattr(row, "class_status"):
             row.class_status = "DISBANDED"
         row.version = int(getattr(row, "version", 0) or 0) + 1
-        db.commit()
-        from app.services import audit_log
-        audit_log.record(
-            "ORG_NODE_DELETE", f"{node_type}:{node_id}",
-            detail={"reason": reason, "moduleCode": "systemAdmin",
-                    "actor": (actor or {}).get("userId")},
-        )
+        detail = {"reason": reason, "moduleCode": "systemAdmin", "actor": (actor or {}).get("userId")}
+        if owns_session:
+            db.commit()
+            from app.services import audit_log
+            audit_log.record("ORG_NODE_DELETE", f"{node_type}:{node_id}", detail=detail)
+        else:
+            from app.services.db_service import audit_insert_in_session
+            audit_insert_in_session(db, 'ORG_NODE_DELETE', f'{node_type}:{node_id}', detail, 'SUCCESS', tenant_id=tenant_id)
         return {"id": str(node_id), "deleted": True}
     except Exception:
-        db.rollback()
+        if owns_session:
+            db.rollback()
         raise
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def disable_org_node(*, node_type: str, node_id: int, reason: str,
@@ -276,7 +297,8 @@ def disable_org_node(*, node_type: str, node_id: int, reason: str,
     db = get_sessionmaker()()
     try:
         row = db.scalars(select(model).where(
-            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
+            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))
+            .execution_options(populate_existing=True).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "组织节点不存在")
         if expected_version is not None and int(getattr(row, "version", 0) or 0) != int(expected_version):
@@ -304,9 +326,11 @@ def disable_org_node(*, node_type: str, node_id: int, reason: str,
                 StudentProfile.tenant_id == tenant_id, StudentProfile.major_id == node_id,
                 StudentProfile.is_deleted.is_(False))) or 0
         elif node_type == "CLASS":
-            impact["students"] = db.scalar(select(func.count()).select_from(StudentProfile).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.class_id == node_id,
-                StudentProfile.is_deleted.is_(False))) or 0
+            from app.services.org_class_lifecycle_service import read_class_references
+            members, _, _, task_counts = read_class_references(db, tenant_id, [node_id])
+            impact['students'] = len(members)
+            if task_counts.get(node_id, 0):
+                raise AppException('VALIDATION_ERROR', f'班级仍有 {task_counts[node_id]} 条未归档教学任务，请先处理')
         if impact["children"] or impact["students"]:
             raise AppException(
                 "VALIDATION_ERROR",

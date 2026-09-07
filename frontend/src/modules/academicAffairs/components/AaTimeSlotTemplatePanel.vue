@@ -2,10 +2,10 @@
   <AppSectionCard title="标准作息模板">
     <div class="aa-template-toolbar">
       <div class="aa-template-choice">
-        <AppButton :variant="templateKey === 'STANDARD_8' ? 'primary' : 'ghost'" @click="choose('STANDARD_8')">标准 8 节</AppButton>
-        <AppButton :variant="templateKey === 'STANDARD_10' ? 'primary' : 'ghost'" @click="choose('STANDARD_10')">标准 10 节</AppButton>
+        <AppButton :variant="templateKey === 'STANDARD_8' ? 'primary' : 'ghost'" :disabled="disabled || applying" @click="choose('STANDARD_8')">标准 8 节</AppButton>
+        <AppButton :variant="templateKey === 'STANDARD_10' ? 'primary' : 'ghost'" :disabled="disabled || applying" @click="choose('STANDARD_10')">标准 10 节</AppButton>
       </div>
-      <AppButton variant="primary" :loading="loading" @click="loadPreview">检查当前作息</AppButton>
+      <AppButton variant="primary" :loading="loading" :disabled="disabled || applying" @click="loadPreview">检查当前作息</AppButton>
     </div>
 
     <p class="aa-template-note">模板只负责给出候选，不覆盖现有节次；确认时仅创建「可新增」项，每一项继续经过服务端节次序号与时间重叠校验。</p>
@@ -31,7 +31,7 @@
       </div>
 
       <div class="aa-template-actions">
-        <AppButton variant="ghost" :disabled="applying" @click="loadPreview">刷新权威预览</AppButton>
+        <AppButton variant="ghost" :disabled="disabled || applying || loading" @click="loadPreview">重新检查</AppButton>
         <AppButton variant="primary" :loading="applying" :disabled="!canApply" @click="applyTemplate">
           创建 {{ preview.readyCount }} 个缺失节次
         </AppButton>
@@ -51,34 +51,46 @@ import { toast } from '@/utils/toast'
 export default {
   name: 'AaTimeSlotTemplatePanel',
   components: { StatusTag, AppButton, AppInlineAlert, AppSectionCard },
-  emits: ['applied'],
+  props: { disabled: { type: Boolean, default: false } },
+  emits: ['applied', 'busy'],
   data() {
     return {
       templateKey: 'STANDARD_8',
       preview: null,
       loading: false,
       applying: false,
-      error: ''
+      error: '',
+      requestVersion: 0
     }
   },
   computed: {
     canApply() {
-      return !!this.preview && !this.preview.blockedCount && this.preview.readyCount > 0 && !this.applying
+      return !!this.preview && !this.preview.blockedCount && this.preview.readyCount > 0 && !this.applying && !this.loading && !this.disabled
     }
+  },
+  beforeUnmount() { this.requestVersion++ },
+  watch: {
+    disabled(value) { if (value) { this.requestVersion++; this.preview = null; this.loading = false } }
   },
   methods: {
     statusLabel(status) { return { READY: '可新增', EXISTS: '已存在', BLOCKED: '冲突' }[status] || (status ? '状态待确认' : '—') },
     statusTone(status) { return { READY: 'success', EXISTS: 'default', BLOCKED: 'danger' }[status] || 'default' },
     choose(key) {
+      if (this.disabled || this.applying) return
+      this.requestVersion++
+      this.loading = false
       this.templateKey = key
       this.preview = null
       this.error = ''
     },
     async loadPreview() {
-      if (this.loading) return
+      if (this.loading || this.disabled || this.applying) return
+      const version = ++this.requestVersion
       this.loading = true
       this.error = ''
+      this.preview = null
       const res = await termCalendarConvenienceApi.previewTimeSlotTemplate(this.templateKey)
+      if (version !== this.requestVersion) return
       this.loading = false
       if (res.code === 0) {
         this.preview = res.data
@@ -89,25 +101,28 @@ export default {
     },
     async applyTemplate() {
       if (!this.canApply) return
+      const items = this.preview.items.filter(row => row.status === 'READY').map(row => ({ ...row.desired }))
       this.applying = true
+      this.$emit('busy', true)
       this.error = ''
       let applied = 0
-      for (const row of this.preview.items) {
-        if (row.status !== 'READY') continue
-        const res = await academicAffairsApi.createTimeSlot(row.desired)
+      for (const desired of items) {
+        const res = await academicAffairsApi.createTimeSlot(desired)
         if (res.code !== 0) {
-          this.error = `已成功创建 ${applied} 项；后续节次被服务端拒绝：${res.message || '发生冲突'}。已保留模板选择，请刷新权威预览后再确认。`
+          this.error = `已成功创建 ${applied} 项；后续节次未创建：${res.message || '发生冲突'}。请重新检查当前作息后再继续。`
+          this.preview = null
           this.applying = false
+          this.$emit('busy', false)
           this.$emit('applied', { applied, partial: true })
-          await this.loadPreview()
           return
         }
         applied += 1
       }
       this.applying = false
+      this.preview = null
+      this.$emit('busy', false)
       toast.success(`已创建 ${applied} 个缺失节次`)
       this.$emit('applied', { applied, partial: false })
-      await this.loadPreview()
     }
   }
 }

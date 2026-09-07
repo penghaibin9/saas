@@ -3,25 +3,25 @@
     <section class="schedule-hero">
       <div>
         <div class="schedule-hero__eyebrow">教务学业 · 我的课表</div>
-        <h1>本学期课程安排</h1>
-        <p>{{ schedule.note || currentWeekHint }}</p>
+        <h1>我的课表</h1>
+        <p>{{ loading ? '正在读取课表…' : error ? '课表暂时无法读取' : schedule.note || currentWeekHint }}</p>
       </div>
       <div class="schedule-hero__actions">
         <button class="sp-btn sp-btn--ghost" @click="goAll">全部教务服务</button>
-        <button class="sp-btn" :disabled="printing || loading || !filteredItems.length" @click="printSchedule">
+        <button class="sp-btn" :disabled="printing || loading || !!error || !filteredItems.length" @click="printSchedule">
           {{ printing ? '生成中…' : '打印当前课表视图' }}
         </button>
       </div>
     </section>
 
-    <section class="today-board" aria-labelledby="today-heading">
+    <section v-if="!error" class="today-board" aria-labelledby="today-heading" :aria-busy="loading">
       <header class="today-board__head">
         <div>
           <div class="today-board__eyebrow">今天 · {{ todayDateText }}</div>
           <h2 id="today-heading">{{ todayHeading }}</h2>
-          <p>{{ todayNote }}</p>
+          <p v-if="!loading">{{ todayNote }}</p>
         </div>
-        <span v-if="schedule.todayWeek" class="today-board__week">第{{ schedule.todayWeek }}教学周</span>
+        <span v-if="!loading && schedule.todayWeek" class="today-board__week">第{{ schedule.todayWeek }}教学周</span>
       </header>
       <StateBlock v-if="loading" type="loading" text="正在读取今天的正式课程…" />
       <div v-else-if="todayItems.length" class="today-course-list">
@@ -37,14 +37,15 @@
       <div v-else-if="!loading" class="today-empty">{{ todayEmptyText }}</div>
     </section>
 
-    <section class="schedule-toolbar sp-card">
+    <section v-if="!loading && !error" class="schedule-toolbar sp-card" data-workspace-filter>
       <div>
-        <div class="schedule-toolbar__label">查看周次 · {{ currentWeekHint }}</div>
+        <label class="schedule-toolbar__label" for="schedule-week">周课表 · {{ currentWeekHint }}</label>
         <div class="week-filter">
-          <button :class="{ active: selectedWeek === null }" @click="selectedWeek = null">全部周次</button>
-          <button v-for="week in weekOptions" :key="week" :class="{ active: selectedWeek === week }" @click="selectedWeek = week">
-            第{{ week }}周
-          </button>
+          <select id="schedule-week" v-model="selectedWeek">
+            <option :value="null">全部周次</option>
+            <option v-for="week in weekOptions" :key="week" :value="week">第{{ week }}周</option>
+          </select>
+          <button v-if="currentWeekInRange" class="sp-btn sp-btn--ghost" :disabled="selectedWeek === currentWeekInRange" @click="selectedWeek = currentWeekInRange">回到本周</button>
         </div>
       </div>
       <div class="schedule-summary">
@@ -62,7 +63,7 @@
     <StateBlock v-else-if="!items.length" type="empty" text="暂无已发布课表" />
     <StateBlock v-else-if="!filteredItems.length" type="empty" :text="`第${selectedWeek}周没有课程安排`" />
 
-    <section v-else class="week-board">
+    <section v-else class="week-board" aria-label="一周课程，窄屏可横向滚动" tabindex="0">
       <article v-for="day in days" :key="day.value" class="day-column" :class="{ 'is-empty': !dayItems(day.value).length }">
         <header class="day-column__head">
           <span>{{ day.label }}</span>
@@ -85,7 +86,7 @@
       </article>
     </section>
 
-    <section v-if="items.length" class="schedule-note sp-card">
+    <section v-if="!loading && !error && items.length" class="schedule-note sp-card">
       <strong>看课表时请注意</strong>
       <span>单双周、起止周以每门课程卡片为准；钟点来自学校当前生效作息。多校区同一节次时间不一致时，本页会明确显示“按校区作息”，不会擅自猜测。调停课生效后请以最新发布结果和消息通知为准。</span>
     </section>
@@ -122,6 +123,10 @@ const maxWeek = computed(() => Math.max(
   ...items.value.map((item) => Number(item.endWeek) || 0)
 ))
 const weekOptions = computed(() => Array.from({ length: Math.min(maxWeek.value, 30) }, (_, index) => index + 1))
+const currentWeekInRange = computed(() => {
+  const week = Number(schedule.value.currentWeek)
+  return weekOptions.value.includes(week) ? week : null
+})
 const filteredItems = computed(() => selectedWeek.value == null
   ? items.value
   : items.value.filter((item) => occursInWeek(item, selectedWeek.value)))
@@ -243,7 +248,7 @@ function appendText(parent, tag, text) {
 }
 
 async function printSchedule() {
-  if (printing.value || !filteredItems.value.length) return
+  if (printing.value || loading.value || error.value || !filteredItems.value.length) return
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
     ui.notify('浏览器阻止了打印窗口，请允许弹出窗口后重试')
@@ -301,55 +306,57 @@ onMounted(load)
 </script>
 
 <style scoped>
-.schedule-page { max-width: 1440px; margin: 0 auto; }
-.schedule-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 24px 26px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, #fff, var(--pri-50)); box-shadow: 0 1px 3px rgba(16,24,40,.05); }
-.schedule-hero__eyebrow { color: var(--pri); font-size: 12px; font-weight: 600; letter-spacing: .08em; }
-.schedule-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
+.schedule-page { max-width: 1600px; min-width: 0; margin: 0 auto; }
+.schedule-hero { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 0 0 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+.schedule-hero__eyebrow { color: var(--t3); font-size: 12px; }
+.schedule-hero h1 { margin: 5px 0; color: var(--t1); font-size: 22px; line-height: 1.4; }
 .schedule-hero p { margin: 0; color: var(--t3); font-size: 13px; }
-.schedule-hero__actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.today-board { margin-bottom: 16px; padding: 20px 22px; border: 1px solid #cfe8d7; border-radius: 16px; background: linear-gradient(135deg, #f8fffa, #eef9f2); box-shadow: 0 12px 32px -28px rgba(22, 101, 52, .45); }
-.today-board__head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
-.today-board__eyebrow { color: var(--ok-fg); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
-.today-board h2 { margin: 6px 0 4px; color: var(--t1); font-size: 20px; }
-.today-board p { margin: 0; color: var(--t3); font-size: 12px; }
-.today-board__week { flex-shrink: 0; padding: 6px 9px; border-radius: 999px; background: #fff; color: var(--ok-fg); font-size: 11px; font-weight: 600; }
-.today-course-list { display: grid; gap: 8px; margin-top: 15px; }
-.today-course { display: grid; grid-template-columns: minmax(145px, auto) minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 14px; border: 1px solid rgba(22, 101, 52, .10); border-left: 4px solid var(--ok-fg); border-radius: 11px; background: rgba(255,255,255,.82); }
-.today-course__time { color: var(--ok-fg); font-size: 12px; font-weight: 700; }
-.today-course__body strong, .today-course__body span { display: block; }
+.schedule-hero__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.today-board { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.today-board__head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.today-board__eyebrow { color: var(--pri); font-size: 12px; font-weight: 600; }
+.today-board h2 { margin: 6px 0; color: var(--t1); font-size: 18px; }
+.today-board p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.6; }
+.today-board__week { flex-shrink: 0; padding: 6px 9px; border-radius: 6px; background: var(--pri-50); color: var(--pri); font-size: 12px; }
+.today-course-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 16px; }
+.today-course { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--pri); border-radius: 8px; background: var(--field-bg); }
+.today-course__time { width: 100%; color: var(--pri); font-size: 12px; font-weight: 600; }
+.today-course__body { min-width: 0; flex: 1; }
+.today-course__body strong, .today-course__body span { display: block; overflow-wrap: anywhere; }
 .today-course__body strong { color: var(--t1); font-size: 14px; }
-.today-course__body span { margin-top: 3px; color: var(--t3); font-size: 11.5px; }
-.today-course__source { padding: 3px 7px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); font-size: 10px; }
-.today-empty { margin-top: 15px; padding: 20px; border: 1px dashed #bcdcc6; border-radius: 11px; background: rgba(255,255,255,.55); color: var(--t3); text-align: center; font-size: 12.5px; }
-.schedule-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 16px; }
-.schedule-toolbar__label { margin-bottom: 9px; color: var(--t2); font-size: 13px; font-weight: 600; }
-.week-filter { display: flex; flex-wrap: wrap; gap: 6px; }
-.week-filter button { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: #fff; color: var(--t2); cursor: pointer; font-size: 12px; }
-.week-filter button.active { border-color: var(--pri); background: var(--pri-50); color: var(--pri); font-weight: 600; }
-.schedule-summary { display: flex; gap: 16px; color: var(--t3); font-size: 12.5px; white-space: nowrap; }
+.today-course__body span { margin-top: 5px; color: var(--t3); font-size: 12px; line-height: 1.5; }
+.today-course__source, .course-card__source { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--pri); font-size: 12px; }
+.today-empty { margin-top: 16px; padding: 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--t3); text-align: center; font-size: 13px; }
+.schedule-toolbar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; background: var(--surface); }
+.schedule-toolbar__label { display: block; margin-bottom: 8px; color: var(--t2); font-size: 13px; font-weight: 600; }
+.week-filter { display: flex; align-items: center; gap: 8px; }
+.week-filter select { min-width: 160px; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--field-bg); color: var(--t1); font: inherit; font-size: 13px; }
+.schedule-page :is(button, select, [tabindex]):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.schedule-summary { display: flex; flex-wrap: wrap; gap: 16px; color: var(--t3); font-size: 13px; }
 .schedule-summary b { color: var(--t1); }
-.schedule-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.week-board { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
-.day-column { min-width: 150px; border: 1px solid var(--line); border-radius: 13px; background: #fff; overflow: hidden; }
-.day-column.is-empty { background: #fafbfc; }
-.day-column__head { display: flex; justify-content: space-between; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line2); color: var(--t1); font-size: 13px; font-weight: 600; }
-.day-column__head small { color: var(--t4); font-size: 11px; font-weight: 400; }
-.day-column__list { display: flex; flex-direction: column; gap: 8px; padding: 9px; }
-.day-column__empty { padding: 34px 8px; text-align: center; color: var(--t4); font-size: 12px; }
-.course-card { position: relative; padding: 10px; border-left: 3px solid var(--pri); border-radius: 9px; background: var(--pri-50); }
-.course-card.is-enrolled { border-left-color: var(--ok-fg); background: #edf9f1; }
-.course-card__slot { color: var(--pri); font-size: 11px; font-weight: 600; }
-.course-card__time { margin-top: 3px; color: var(--warning-fg, #a15c00); font-size: 10px; line-height: 1.4; }
-.course-card__name { margin-top: 5px; color: var(--t1); font-size: 13px; font-weight: 600; line-height: 1.4; }
-.course-card__meta { display: flex; flex-direction: column; gap: 2px; margin-top: 7px; color: var(--t3); font-size: 11px; }
-.course-card__weeks { margin-top: 7px; color: var(--t4); font-size: 10.5px; }
-.course-card__source { display: inline-flex; margin-top: 7px; padding: 2px 6px; border-radius: 9px; background: #fff; color: var(--ok-fg); font-size: 10px; }
-.schedule-note { display: flex; gap: 12px; margin-top: 16px; color: var(--t3); font-size: 12.5px; }
+.schedule-error { display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--surface); }
+.week-board { display: grid; grid-template-columns: repeat(7, minmax(155px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 10px; }
+.day-column { min-width: 155px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.day-column.is-empty { background: var(--field-bg); }
+.day-column__head { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); color: var(--t1); font-size: 13px; font-weight: 600; }
+.day-column__head small { color: var(--t3); font-size: 12px; font-weight: 400; }
+.day-column__list { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.day-column__empty { padding: 32px 8px; text-align: center; color: var(--t3); font-size: 12px; }
+.course-card { padding: 12px 10px; border-left: 3px solid var(--pri); border-radius: 6px; background: var(--pri-50); overflow-wrap: anywhere; }
+.course-card.is-enrolled { border-left-style: dashed; }
+.course-card__slot { color: var(--pri); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.course-card__time { margin-top: 4px; color: var(--t3); font-size: 12px; line-height: 1.5; }
+.course-card__name { margin-top: 7px; color: var(--t1); font-size: 14px; font-weight: 600; line-height: 1.5; }
+.course-card__meta { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; color: var(--t3); font-size: 12px; }
+.course-card__weeks { margin-top: 10px; color: var(--t3); font-size: 12px; line-height: 1.5; }
+.course-card__source { display: inline-flex; margin-top: 8px; }
+.schedule-note { display: flex; gap: 12px; margin-top: 16px; background: var(--surface); color: var(--t3); font-size: 13px; line-height: 1.7; }
 .schedule-note strong { color: var(--t1); white-space: nowrap; }
-@media (max-width: 1100px) { .week-board { grid-template-columns: repeat(7, 180px); } }
-@media (max-width: 680px) {
-  .today-board__head { flex-direction: column; gap: 10px; }
-  .today-course { grid-template-columns: 1fr; gap: 5px; }
-  .today-course__source { justify-self: start; }
+@media (max-width: 760px) {
+  .schedule-hero { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .today-board { padding: 16px; }
+  .today-board__head { flex-wrap: wrap; gap: 10px; }
+  .today-course-list { grid-template-columns: minmax(0, 1fr); }
+  .schedule-note { flex-direction: column; gap: 5px; }
 }
 </style>

@@ -7,10 +7,8 @@
   >
     <div class="mp-stack">
       <div class="aa-filter">
-        <span class="aa-filter__label">状态</span>
-        <AppSelect v-model="status" :options="statusOptions" style="min-width:140px" @change="load" />
-        <span class="aa-filter__label">学期</span>
-        <AppTermCodePicker v-model="termCode" placeholder="全部学期" style="max-width:220px" />
+        <label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" @change="load" /></label>
+        <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="termCode" placeholder="全部学期" /></label>
         <AppButton variant="ghost" @click="load">查询</AppButton>
       </div>
 

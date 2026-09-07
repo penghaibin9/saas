@@ -7,18 +7,15 @@
  * 刷新不 404，主入口收敛到新。旧页面组件文件保留未删（可逆：移除 redirect 即恢复），
  * 待确认新页 100% 覆盖旧页专属查询后再评估删除组件（§6.4 删除前需引用核验+用户确认）。
  */
-export const academicRoutes = {
-  path: '/admin/academic',
-  children: [
-    { path: '', redirect: '/admin/academic-affairs' },                        // 学业总览 → 教务看板
-    { path: 'students', redirect: '/admin/academic-affairs/roster' },         // 在籍学生 → 学籍名册
-    { path: 'students/:id', redirect: '/admin/academic-affairs/roster' },
-    { path: 'grades', redirect: '/admin/academic-affairs/grade-overview' },   // 课程成绩 → 成绩总览
-    { path: 'credits', redirect: '/admin/academic-affairs/grade-overview' },  // 学分修读 → 成绩总览(含学分)
-    { path: 'makeup-retake', redirect: '/admin/academic-affairs/makeup' },    // 补考重修 → 补考重修缓考免修控制台
-    { path: 'warnings', redirect: '/admin/academic-affairs/warnings' },       // 学业预警 → 学业预警
-    { path: 'warnings/:id', redirect: '/admin/academic-affairs/warnings' }
+// 学业过程总览旧地址已退役；其余历史业务深链仍有消息/API 消费者，单独保留待迁移。
+export const academicRoutes = [
+    { path: '/admin/academic/students', redirect: '/admin/academic-affairs/roster' },         // 在籍学生 → 学籍名册
+    { path: '/admin/academic/students/:id', redirect: '/admin/academic-affairs/roster' },
+    { path: '/admin/academic/grades', redirect: '/admin/academic-affairs/grade-overview' },   // 课程成绩 → 成绩总览
+    { path: '/admin/academic/credits', redirect: '/admin/academic-affairs/grade-overview' },  // 学分修读 → 成绩总览(含学分)
+    { path: '/admin/academic/makeup-retake', redirect: '/admin/academic-affairs/makeup' },    // 补考重修 → 补考重修缓考免修控制台
+    { path: '/admin/academic/warnings', redirect: '/admin/academic-affairs/warnings' },       // 学业预警 → 学业预警
+    { path: '/admin/academic/warnings/:id', redirect: '/admin/academic-affairs/warnings' }
   ]
-}
 
 export default academicRoutes
