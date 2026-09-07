@@ -9,9 +9,12 @@ fails closed with PAID_ORDER_SERVICE_NOT_STARTED.
 
 This wrapper keeps the public command unchanged while making service-window
 scheduling depend only on real order facts:
-- NEW / UPGRADE start now;
-- RENEW continues after the latest paid order for the same tenant + package;
-- RENEW without such a paid predecessor starts now.
+- explicit NEW / UPGRADE start now;
+- explicit RENEW continues after the latest paid order for the same tenant + package;
+- legacy callers that omit ``orderType`` are inferred as RENEW when a paid
+  same-package predecessor exists, preserving the historical "buy again extends
+  the current service term" contract;
+- otherwise an omitted ``orderType`` is a first NEW purchase and starts now.
 
 ``t_order.start_at/end_at`` are MySQL DATETIME columns without fractional-second
 precision. MySQL can round a value carrying microseconds to the following second;
@@ -70,31 +73,47 @@ def install(platform_service):
             if order is None:
                 return result
 
+            explicit_order_type = bool(str(body.get("orderType") or "").strip())
             order_type = str(order.order_type or body.get("orderType") or "NEW").strip().upper()
-            try:
-                duration_days = int(body.get("durationDays") or 365)
-            except (TypeError, ValueError):
-                # The original command has already validated this field. Keep this
-                # defensive fallback from creating a second validation contract.
+
+            # Derive the duration from the already validated/persisted order when
+            # callers omit durationDays. This preserves package-specific durations
+            # instead of silently replacing them with a generic 365-day window.
+            if body.get("durationDays") not in (None, ""):
+                try:
+                    duration_days = int(body.get("durationDays"))
+                except (TypeError, ValueError):
+                    duration_days = max(1, int((order.end_at - order.start_at).days))
+            elif order.end_at is not None and order.start_at is not None:
                 duration_days = max(1, int((order.end_at - order.start_at).days))
+            else:
+                duration_days = 365
+
+            predecessor = db.scalars(
+                select(PlatformOrder)
+                .where(
+                    PlatformOrder.tenant_id == int(order.tenant_id),
+                    PlatformOrder.package_code == str(order.package_code or ""),
+                    PlatformOrder.order_no != order_no,
+                    PlatformOrder.status == "paid",
+                    PlatformOrder.is_deleted.is_(False),
+                    PlatformOrder.end_at.is_not(None),
+                )
+                .order_by(PlatformOrder.end_at.desc(), PlatformOrder.id.desc())
+            ).first()
+            predecessor_end = _naive(predecessor.end_at) if predecessor is not None else None
+
+            # Backward-compatible command semantics: historical callers omitted
+            # orderType when buying the same package again and expected the paid
+            # term to extend. Infer RENEW from commercial order truth only; never
+            # from TENANT_META, which may describe trials/exceptions/stale state.
+            if not explicit_order_type and predecessor is not None:
+                order_type = "RENEW"
+                order.order_type = "RENEW"
 
             service_start = now
-            if order_type == "RENEW":
-                predecessor = db.scalars(
-                    select(PlatformOrder)
-                    .where(
-                        PlatformOrder.tenant_id == int(order.tenant_id),
-                        PlatformOrder.package_code == str(order.package_code or ""),
-                        PlatformOrder.order_no != order_no,
-                        PlatformOrder.status == "paid",
-                        PlatformOrder.is_deleted.is_(False),
-                        PlatformOrder.end_at.is_not(None),
-                    )
-                    .order_by(PlatformOrder.end_at.desc(), PlatformOrder.id.desc())
-                ).first()
-                predecessor_end = _naive(predecessor.end_at) if predecessor is not None else None
-                if predecessor_end is not None and predecessor_end > now:
-                    service_start = predecessor_end.replace(microsecond=0)
+            if order_type == "RENEW" and predecessor_end is not None and predecessor_end > now:
+                service_start = predecessor_end.replace(microsecond=0)
 
             order.start_at = service_start
             order.end_at = service_start + timedelta(days=duration_days)
