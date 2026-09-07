@@ -11,7 +11,7 @@ test('system layout installs the authority bridge without replacing the shared p
   assert.match(layout, /import BasePortalLayout from '@\/layouts\/BasePortalLayout\.vue'/)
   assert.match(layout, /installSystemAuthorityCompatibility\(systemApi\)/)
   assert.equal((layout.match(/<BasePortalLayout\b/g) || []).length, 1)
-  assert.doesNotMatch(layout, /import .*navPlan|from ['\"]@\/config\/navPlan['\"]|import .*main\.js|base-portal-theme-controls/)
+  assert.doesNotMatch(layout, /import .*navPlan|from ['"]@\/config\/navPlan['"]|import .*main\.js|base-portal-theme-controls/)
 })
 
 test('compatibility bridge carries object versions on all cross-authority mutations', () => {
@@ -65,7 +65,7 @@ test('retired bulk module-feature writer is not reintroduced', () => {
   assert.match(moduleFeature, /listCapabilitySettings/)
   assert.match(moduleFeature, /setCapabilitySetting/)
   assert.match(moduleFeature, /expectedVersion:\s*this\.pending\.version/)
-  assert.doesNotMatch(moduleFeature, /setModuleFeatures|module-features.*method:\s*['\"]PUT/)
+  assert.doesNotMatch(moduleFeature, /setModuleFeatures|module-features.*method:\s*['"]PUT/)
 })
 
 test('bridge stays inside the system module and does not import platform or global navigation writers', () => {
