@@ -30,7 +30,29 @@ def module_path(path):
     return '.'.join(parts[:-1] if parts[-1] == '__init__' else parts)
 
 
-def index_references(repo: Path, inventory: dict) -> dict:
+def schema_tables(inventory: dict, schema: dict | None) -> set[str]:
+    """Use only matching evidence; SQL-only tables are never silently discarded."""
+    if schema is None:
+        return set()
+    if (schema.get('sourceSha') != inventory.get('sourceSha') or
+            schema.get('sourceManifestHash') != inventory.get('sourceManifestHash')):
+        raise ValueError('SCHEMA_SOURCE_MISMATCH')
+    runtime = schema.get('metadata', {}).get('tables')
+    if not isinstance(runtime, dict) or not runtime:
+        raise ValueError('RUNTIME_SCHEMA_MISSING')
+    tables = set(runtime)
+    physical = schema.get('mysql')
+    if physical is not None:
+        if (physical.get('readOnly') is not True or not physical.get('schemaHeads') or
+                not isinstance(physical.get('tables'), dict) or not physical['tables']):
+            raise ValueError('MYSQL_SCHEMA_INVALID')
+        tables.update(physical['tables'])
+    if any(not isinstance(name, str) or not re.fullmatch(r't_[A-Za-z0-9_]+', name) for name in tables):
+        raise ValueError('SCHEMA_TABLE_NAME_INVALID')
+    return tables
+
+
+def index_references(repo: Path, inventory: dict, schema: dict | None = None) -> dict:
     models = inventory.get('models')
     if not models:
         raise ValueError('MISSING_MODEL_INVENTORY')
@@ -38,9 +60,12 @@ def index_references(repo: Path, inventory: dict) -> dict:
     for model in models:
         names[model['model']].append(model['table'])
         qualified[(module_path(model['path']), model['model'])] = model['table']
-    known_tables = {model['table'] for model in models}
+    declared_tables = {model['table'] for model in models}
+    observed_tables = schema_tables(inventory, schema)
+    known_tables = declared_tables | observed_tables
     result, unresolved_imports, dynamic_sites = [], [], []
-    for path in sorted((repo / 'backend/app').rglob('*.py')):
+    paths = set((repo / 'backend/app').rglob('*.py')) | set((repo / 'backend/alembic/versions').rglob('*.py'))
+    for path in sorted(paths):
         if path.is_symlink() or not path.resolve().is_relative_to(repo.resolve()):
             raise ValueError('UNSAFE_SOURCE')
         relative = path.relative_to(repo).as_posix()
@@ -96,7 +121,7 @@ def index_references(repo: Path, inventory: dict) -> dict:
                 result.append({'table': table, 'path': relative, 'line': node.lineno,
                     'symbol': '.'.join(self.scope) or '<module>', 'kind': kind,
                     'enclosingCall': calls[-1] if calls else None,
-                    'referenceResolvedOnlySyntactically': True, 'reviewStatus': 'CANDIDATE', 'purgeAuthorized': False})
+                    'referenceResolvedOnlySyntactically': True, 'sourceKind': 'MIGRATION' if relative.startswith('backend/alembic/') else 'APPLICATION', 'reviewStatus': 'CANDIDATE', 'purgeAuthorized': False})
             def visit_Name(self, node):
                 if isinstance(node.ctx, ast.Load) and node.id in aliases:
                     self.emit(node, aliases[node.id], 'MODEL_SYMBOL')
@@ -132,11 +157,21 @@ def index_references(repo: Path, inventory: dict) -> dict:
             'logicalIdFieldsToReview': model['logicalIdFieldsToReview'], 'referenceSites': len(consumers),
             'candidateConsumerFiles': sorted({r['path'] for r in consumers}), 'ownershipClass': 'UNKNOWN',
             'consumerClosure': 'UNRESOLVED', 'purgeAuthorized': False})
-    return {'schemaVersion': 1, 'sourceSha': inventory.get('sourceSha'), 'sourceManifestHash': inventory['sourceManifestHash'],
+    for table in sorted(observed_tables - declared_tables):
+        refs = by_table[table]
+        records.append({'table': table, 'declaration': None,
+            'tenantScope': 'SCHEMA_OBSERVED_REQUIRES_SOURCE_REVIEW', 'logicalIdFieldsToReview': [],
+            'referenceSites': len(refs), 'candidateConsumerFiles': sorted({r['path'] for r in refs}),
+            'ownershipClass': 'UNKNOWN', 'consumerClosure': 'UNRESOLVED', 'purgeAuthorized': False})
+    records.sort(key=lambda record: record['table'])
+    return {'schemaVersion': 2, 'sourceSha': inventory.get('sourceSha'), 'sourceManifestHash': inventory['sourceManifestHash'],
+        'schemaEvidenceIncluded': schema is not None, 'additionalSchemaResources': sorted(observed_tables - declared_tables),
         'evidenceLevel': 'STATIC_REFERENCE_CANDIDATES', 'resources': records, 'references': result,
         'unresolvedImports': unresolved_imports, 'dynamicDispatchSites': dynamic_sites,
         'summary': {'resourceCount': len(records), 'referenceSites': len(result),
-                    'candidateConsumerFiles': len({r['path'] for r in result}), 'referenceKinds': dict(Counter(r['kind'] for r in result)),
+                    'candidateConsumerFiles': len({r['path'] for r in result}),
+                    'applicationReferenceSites': sum(r['sourceKind'] == 'APPLICATION' for r in result),
+                    'migrationReferenceSites': sum(r['sourceKind'] == 'MIGRATION' for r in result), 'referenceKinds': dict(Counter(r['kind'] for r in result)),
                     'resourcesWithoutExternalReferences': [r['table'] for r in records if r['referenceSites'] == 0]},
         'limitations': ['AST imports may be rebound/shadowed; all sites remain candidates.',
             'Dynamic table construction, raw SQL interpolation, JSON IDs, background dispatch and external copies require manual review.',
@@ -150,6 +185,7 @@ def main():
     parser.add_argument('--inventory', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--expected-head', required=True)
+    parser.add_argument('--schema-evidence', type=Path, help='Optional same-source metadata/MySQL evidence JSON')
     args = parser.parse_args()
     repo, output = args.repo.resolve(strict=True), args.output.resolve()
     if output.is_relative_to(repo) or output.exists():
@@ -160,7 +196,8 @@ def main():
     if tool.git_read(repo, 'rev-parse', 'HEAD') != args.expected_head or tool.git_read(repo, 'status', '--porcelain'):
         parser.error('expected clean exact-head checkout')
     verify(repo, source, args.expected_head)
-    result = index_references(repo, source)
+    schema = json.loads(args.schema_evidence.read_text(encoding='utf-8')) if args.schema_evidence else None
+    result = index_references(repo, source, schema)
     verify(repo, source, args.expected_head)
     if tool.git_read(repo, 'rev-parse', 'HEAD') != args.expected_head or tool.git_read(repo, 'status', '--porcelain'):
         parser.error('source changed while indexing')

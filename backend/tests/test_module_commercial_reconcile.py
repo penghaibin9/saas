@@ -115,6 +115,20 @@ class ReconciliationTests(unittest.TestCase):
         for other_env in [{}, {'GITHUB_ACTIONS': 'true'}, {'M0_EPHEMERAL_MYSQL': '1'}]:
             with self.assertRaises(ValueError): R.validate_mysql_target(good, other_env)
 
+    def test_workflow_job_env_uses_only_server_available_contexts(self):
+        import re
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/module-commerce-foundation.yml').read_text())
+        allowed = {'github', 'needs', 'strategy', 'matrix', 'vars', 'secrets', 'inputs'}
+        for job in workflow['jobs'].values():
+            for value in job.get('env', {}).values():
+                for expression in re.findall(r'\$\{\{(.*?)\}\}', str(value)):
+                    self.assertTrue(set(re.findall(r'(?<![\w.])(\w+)\.', expression)) <= allowed)
+        schema = workflow['jobs']['schema-evidence']
+        self.assertEqual(schema['env']['OUT'], '/tmp/module-commerce-schema')
+        upload = schema['steps'][-1]
+        self.assertEqual(upload['with']['path'], schema['env']['OUT'])
+
     def test_metadata_guard_blocks_and_restores_connectors(self):
         import socket
         from sqlalchemy.engine import Engine
@@ -144,11 +158,11 @@ class ReferenceIndexTests(unittest.TestCase):
 
     def test_no_references_does_not_mean_no_consumers(self):
         report = self.scan('pass\n')
-        self.assertEqual(report['summary']['resourcesWithoutExternalReferences'], ['t_parent','t_child'])
+        self.assertEqual(set(report['summary']['resourcesWithoutExternalReferences']), {'t_parent','t_child'})
         self.assertTrue(all(r['consumerClosure']=='UNRESOLVED' for r in report['resources']))
 
     def test_child_without_tenant_keeps_parent_resolution_requirement(self):
-        report = self.scan('pass\n'); child = report['resources'][1]
+        report = self.scan('pass\n'); child = next(r for r in report['resources'] if r['table'] == 't_child')
         self.assertEqual(child['tenantScope'], 'PARENT_OR_GLOBAL_REVIEW')
         self.assertEqual(child['logicalIdFieldsToReview'], ['parent_id'])
         self.assertFalse(child['purgeAuthorized'])
@@ -167,6 +181,47 @@ class ReferenceIndexTests(unittest.TestCase):
 
     def test_broken_python_does_not_yield_partial_success(self):
         with self.assertRaises(SyntaxError): self.scan('def broken(:')
+
+
+    def test_schema_evidence_must_match_both_sha_and_manifest(self):
+        schema = {'sourceSha': SHA, 'sourceManifestHash': 'fixture', 'metadata': meta(), 'mysql': None}
+        self.assertEqual(G.schema_tables(sources(), schema), {'t_parent','t_child'})
+        for key in ['sourceSha', 'sourceManifestHash']:
+            wrong = {**schema, key: 'wrong'}
+            with self.assertRaises(ValueError): G.schema_tables(sources(), wrong)
+
+    def test_sql_only_table_is_a_resource_even_with_no_model(self):
+        schema = {'sourceSha': SHA, 'sourceManifestHash': 'fixture', 'metadata': meta(),
+                  'mysql': {'tables': {**meta()['tables'], 't_sql_only': {'columns': {}}},
+                            'readOnly': True, 'schemaHeads': ['migration_head']}}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); target = root/'backend/alembic/versions/one.py'; target.parent.mkdir(parents=True)
+            target.write_text('def upgrade():\n    op.create_table("t_sql_only")\n')
+            report = G.index_references(root, sources(), schema)
+        extra = next(r for r in report['resources'] if r['table'] == 't_sql_only')
+        self.assertIsNone(extra['declaration']); self.assertFalse(extra['purgeAuthorized'])
+        self.assertEqual(extra['consumerClosure'], 'UNRESOLVED')
+        self.assertEqual(report['references'][0]['sourceKind'], 'MIGRATION')
+        self.assertEqual(report['additionalSchemaResources'], ['t_sql_only'])
+
+    def test_dynamic_metadata_tables_do_not_need_mysql_to_be_visible(self):
+        rt = meta(); rt['tables']['t_dynamic'] = {'columns': {}}
+        schema = {'sourceSha': SHA, 'sourceManifestHash': 'fixture', 'metadata': rt, 'mysql': None}
+        with tempfile.TemporaryDirectory() as tmp:
+            report = G.index_references(Path(tmp), sources(), schema)
+        self.assertEqual(report['additionalSchemaResources'], ['t_dynamic'])
+        self.assertFalse(report['m0Complete'])
+
+    def test_empty_or_untrusted_schema_does_not_extend_inventory(self):
+        base = {'sourceSha': SHA, 'sourceManifestHash': 'fixture', 'metadata': meta()}
+        for schema in [{**base, 'metadata': {'tables': {}}}, {**base, 'mysql': {'tables': {}, 'readOnly': True}},
+                       {**base, 'mysql': {'tables': meta()['tables'], 'readOnly': False, 'schemaHeads': ['x']}}]:
+            with self.assertRaises(ValueError): G.schema_tables(sources(), schema)
+
+    def test_schema_name_is_not_an_executable_selector(self):
+        rt = meta(); rt['tables']['t_a;DELETE FROM t_parent'] = {'columns': {}}
+        with self.assertRaises(ValueError):
+            G.schema_tables(sources(), {'sourceSha': SHA, 'sourceManifestHash': 'fixture', 'metadata': rt})
 
     def test_empty_model_inventory_is_rejected(self):
         with self.assertRaises(ValueError): G.index_references(ROOT, {'models': []})

@@ -132,6 +132,10 @@ jobs:
         run: |
           set -euo pipefail
           python -B scripts/check/module-commercial-reconcile.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --output "$OUT/reconciliation.json" --mysql | tee "$OUT/reconciliation.log"
+      - name: Index the union of declarations, runtime tables and migrated tables
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-references.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --output "$OUT/reference-union.json" | tee "$OUT/reference-union.log"
       - name: Archive committed review sources, never database rows or credentials
         if: always()
         run: |
