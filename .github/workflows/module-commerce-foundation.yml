@@ -1,0 +1,56 @@
+name: Module commerce foundation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/check/module-commercial-inventory.py
+      - backend/tests/test_module_commercial_inventory.py
+      - backend/app/services/commercial_catalog_contract.py
+      - backend/tests/test_commercial_catalog_contract.py
+      - .github/workflows/module-commerce-foundation.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: module-commerce-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-inventory:
+    name: Exact-source read-only commercial inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test read-only inventory without application imports
+        run: python -B backend/tests/test_module_commercial_inventory.py -v
+      - name: Inventory the exact source without importing application or touching MySQL
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -B scripts/check/module-commercial-inventory.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --output "$OUT/inventory.json" | tee "$OUT/inventory.log"
+      - name: Package only committed code for subsequent review
+        if: always()
+        env:
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src/modules/platform
+          sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-foundation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/module-commerce
+          if-no-files-found: error
+          retention-days: 14
