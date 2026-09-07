@@ -1,20 +1,19 @@
-"""Create only the tenants and administrator identities required by Playwright E2E.
+"""Create isolated browser identities and verified commercial prerequisites.
 
-This script intentionally does not call the repository's rich demo/sandbox seeders. Those
-seeders create many cross-domain records and can lag behind newly tightened production
-constraints. Browser E2E prepares its own domain prerequisites through real APIs.
+Domain fixtures remain real API writes. This seed must never use a retired tenant
+FEATURES override as proof of purchase or report READY before activation succeeds.
 """
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
-from app.models import PlatformConfig, Role, Tenant, TenantBrandConfig, User, UserRole
+from app.models import Role, Tenant, TenantBrandConfig, User, UserRole
 
 TENANTS = (
     {
@@ -45,59 +44,99 @@ TENANTS = (
 
 
 def assert_safe_target() -> None:
-    env_name = str(os.getenv("APP_ENV") or "").lower()
-    deploy_mode = str(os.getenv("DEPLOYMENT_MODE") or "").lower()
+    env_name = str(os.getenv("APP_ENV") or "").strip().lower()
+    deploy_mode = str(os.getenv("DEPLOYMENT_MODE") or "").strip().lower()
     if env_name in {"prod", "production"} or deploy_mode in {"prod", "production"}:
         raise SystemExit("refusing to seed Playwright tenants in production")
     if os.getenv("E2E_ALLOW_DESTRUCTIVE_TESTS") != "true":
         raise SystemExit("E2E_ALLOW_DESTRUCTIVE_TESTS=true is required")
 
     db_url = str(os.getenv("DATABASE_URL") or "")
-    lowered = db_url.lower()
-    if not db_url or not any(marker in lowered for marker in ("e2e", "test")):
-        raise SystemExit("DATABASE_URL must contain e2e or test")
-    if any(marker in lowered for marker in ("prod", "production", "staging")):
-        raise SystemExit("DATABASE_URL looks like a production or staging database")
-
     parsed = urlparse(db_url)
+    database_name = unquote(parsed.path.lstrip("/")).lower()
+    if parsed.scheme not in {"mysql", "mysql+pymysql"}:
+        raise SystemExit("Playwright tenant seed requires MySQL")
+    if not database_name or not any(marker in database_name for marker in ("e2e", "test")):
+        raise SystemExit("database name must contain e2e or test")
+    if any(marker in database_name for marker in ("prod", "production", "staging")):
+        raise SystemExit("database name looks like a production or staging database")
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise SystemExit("Playwright tenant seed only accepts a local database")
 
 
-def ensure_internship_entitlement(db, tenant_id: int) -> None:
-    """Keep the isolated browser fixture explicit after production package/catalog cutovers.
+def ensure_commercial_entitlement(tenant_id: int) -> str:
+    """Activate a real order only for the three guarded positive browser fixtures.
 
-    Production remains fail-closed.  The Playwright sandbox is a disposable acceptance
-    tenant and must opt into internship before exercising the real module guard.
+    Re-running a successful seed reuses its verified order. An existing narrower
+    paid package is rejected, not silently upgraded; IAM negative tenants are not
+    in this seed's allowlist. Independent scripts verify the canonical authority
+    directly, without relying on importing an HTTP router to install adapters.
     """
-    row = db.scalars(
-        select(PlatformConfig).where(
-            PlatformConfig.tenant_id == tenant_id,
-            PlatformConfig.config_type == "FEATURES",
-            PlatformConfig.config_key == "-",
-            PlatformConfig.is_deleted.is_(False),
-        )
-    ).first()
-    if row is None:
-        db.add(
-            PlatformConfig(
-                tenant_id=tenant_id,
-                config_type="FEATURES",
-                config_key="-",
-                config_json={"internship": True},
-                enabled=True,
-                status="ACTIVE",
-                remark="Isolated Playwright acceptance entitlement",
-            )
-        )
-        return
+    assert_safe_target()
+    if int(tenant_id) not in {item["id"] for item in TENANTS}:
+        raise SystemExit("tenant is outside the Playwright positive-fixture allowlist")
 
-    features = dict(row.config_json or {})
-    features["internship"] = True
-    row.config_json = features
-    row.enabled = True
-    row.status = "ACTIVE"
-    row.is_deleted = False
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import platform_service
+
+    required = ("academicAffairs", "internship", "fileUpload")
+    state = commercial.commercial_state(int(tenant_id))
+    if state["verified"] and state["authoritySource"] != "TRIAL":
+        if state["authoritySource"] == "PAID_ORDER" and all(
+            state["features"].get(key, False) for key in required
+        ):
+            return str(state["commercialOrderNo"])
+        raise SystemExit(f"refusing to replace existing commercial state for tenant {tenant_id}")
+
+    # Resume only this bootstrap's exact owned order. Never replace another
+    # commercial contract or create a second purchase after interrupted activation.
+    remark = "Isolated Playwright paid commercial prerequisite"
+    orders = platform_service.list_orders(tenant_id=int(tenant_id))
+    if orders:
+        if len(orders) != 1:
+            raise SystemExit(f"ambiguous commercial history for tenant {tenant_id}")
+        order = orders[0]
+        if not (
+            order.get("remark") == remark
+            and order.get("packageCode") == "professional"
+            and order.get("orderType") == "NEW"
+            and order.get("status") in {"unpaid", "paid"}
+            and order.get("amount") == 1
+        ):
+            raise SystemExit(f"refusing to replace existing order for tenant {tenant_id}")
+    else:
+        if str(state.get("packageCode") or "trial") != "trial":
+            raise SystemExit(f"unverified formal package needs review for tenant {tenant_id}")
+        # The production command owns payment, activation, versions and audit.
+        order = platform_service.create_order({
+            "tenantId": str(tenant_id),
+            "packageCode": "professional",
+            "orderType": "NEW",
+            "durationDays": 30,
+            "amount": 1,
+            "remark": remark,
+        })
+    paid = platform_service.order_action(
+        order["orderNo"], "mark-paid" if order["status"] == "unpaid" else "repair-activation",
+        expected_version=int(order["version"]),
+        reason="Playwright真实订单授权初始化",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform_service.order_action(
+            order["orderNo"], "repair-activation",
+            expected_version=int(paid["version"]),
+            reason="Playwright修复订单授权激活",
+        )
+    state = commercial.commercial_state(int(tenant_id))
+    if not (
+        paid.get("tenantActivated")
+        and state["verified"]
+        and state["authoritySource"] == "PAID_ORDER"
+        and state.get("commercialOrderNo") == order["orderNo"]
+        and all(state["features"].get(key, False) for key in required)
+    ):
+        raise SystemExit(f"commercial activation did not verify for tenant {tenant_id}")
+    return str(order["orderNo"])
 
 
 def ensure_tenant(db, spec: dict) -> None:
@@ -135,8 +174,6 @@ def ensure_tenant(db, spec: dict) -> None:
                 watermark_text=f"{spec['name']} · Playwright E2E",
             )
         )
-
-    ensure_internship_entitlement(db, spec["id"])
 
     user = db.scalars(
         select(User).where(
@@ -208,16 +245,20 @@ def main() -> int:
         for spec in TENANTS:
             ensure_tenant(db, spec)
         db.commit()
-        print(
-            "[e2e-seed] ready:",
-            ", ".join(f"{item['code']}:{item['login']}" for item in TENANTS),
-        )
-        return 0
     except Exception:
         db.rollback()
         raise
     finally:
         db.close()
+
+    # Order commands own separate transactions and must see committed identities.
+    for spec in TENANTS:
+        ensure_commercial_entitlement(spec["id"])
+    print(
+        "[e2e-seed] ready:",
+        ", ".join(f"{item['code']}:{item['login']}" for item in TENANTS),
+    )
+    return 0
 
 
 if __name__ == "__main__":

@@ -42,9 +42,25 @@ def get_config_json(tenant_id: int, ctype: str, key: str = "-") -> dict | None:
         return dict(row.config_json) if row else None
 
 
-def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled: bool = True, expected_version: int | None = None) -> dict:
-    from app.models import PlatformConfig
-    with session() as db:
+def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled: bool = True,
+                    expected_version: int | None = None, *, db_session=None) -> dict:
+    """Write a configuration; a RULES caller may own the transaction and its audit.
+
+    RULES writers serialize on the existing tenant row, including first creation.
+    Other configuration families retain their existing transaction ownership.
+    """
+    from app.models import PlatformConfig, Tenant
+
+    if db_session is not None and ctype != "RULES":
+        raise ValueError("caller-owned configuration transactions currently support RULES only")
+
+    def write(db):
+        if ctype == "RULES":
+            tenant = db.scalar(select(Tenant.id).where(
+                Tenant.id == tenant_id, Tenant.is_deleted.is_(False),
+            ).with_for_update())
+            if tenant is None:
+                raise not_found("学校不存在")
         row = _get_cfg(db, tenant_id, ctype, key)
         current_version = int(row.version or 1) if row else 0
         if expected_version is not None and int(expected_version) != current_version:
@@ -57,14 +73,28 @@ def put_config_json(tenant_id: int, ctype: str, key: str, payload: dict, enabled
             row.enabled = enabled
             row.version = current_version + 1
         else:
+            if ctype == "RULES" and db.scalar(select(PlatformConfig.id).where(
+                PlatformConfig.tenant_id == tenant_id, PlatformConfig.config_type == ctype,
+                PlatformConfig.config_key == key,
+            )) is not None:
+                raise AppException("DATA_CONFLICT", "规则存在历史删除记录，请核对后恢复", http_status=409)
             row = PlatformConfig(tenant_id=tenant_id, config_type=ctype, config_key=key,
                                  config_json=payload, enabled=enabled)
+            if ctype == "RULES":
+                row.version = 1
             db.add(row)
+        db.flush()
+        return dict(payload)
+
+    if db_session is not None:
+        return write(db_session)  # No commit, rollback, cache operation or second session.
+    with session() as db:
+        out = write(db)
         db.commit()
         if ctype == "TENANT_META":
             from app.services.auth_service_db import invalidate_tenant_subject_caches
             invalidate_tenant_subject_caches(tenant_id)
-        return dict(payload)
+        return out
 
 
 def list_configs(ctype: str, tenant_id: int | None = None) -> list[dict]:

@@ -17,6 +17,41 @@ MAIN_TID = 1000000000000000001
 ADMIN = {"userId": "db-1", "realName": "系统管理员", "currentRoleCode": "SCHOOL_ADMIN"}
 
 
+def _ensure_paid_professional_authority():
+    """SYS20 的正向 HTTP 用例必须具备真实 apiAccess 商业事实。
+
+    不能再靠 TENANT_META.packageCode=professional 绕过 W1。若公共测试库尚未
+    建立已支付专业版订单，则走正式订单服务创建并确认支付；后续用例复用已
+    核验的商业状态。负向 standard 租户仍保持未购买，用于验证 fail-closed。
+    """
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import platform_service as platform
+
+    state = commercial.commercial_state(MAIN_TID)
+    if state.get("verified") and state.get("features", {}).get("apiAccess"):
+        return
+    order = platform.create_order({
+        "tenantId": str(MAIN_TID),
+        "packageCode": "professional",
+        "amount": 99800,
+        "durationDays": 365,
+        "orderType": "NEW",
+        "remark": "SYS20 integration-security test commercial prerequisite",
+    })
+    paid = platform.order_action(
+        order["orderNo"],
+        "mark-paid",
+        expected_version=int(order["version"]),
+        reason="SYS20测试确认专业版订单已支付",
+    )
+    assert paid["status"] == "paid", paid
+    assert paid["tenantActivated"] is True, paid
+    verified = commercial.commercial_state(MAIN_TID)
+    assert verified["verified"] is True, verified
+    assert verified["authoritySource"] == "PAID_ORDER", verified
+    assert verified["features"]["apiAccess"] is True, verified
+
+
 @pytest.fixture()
 def tenant_ctx(db_mode):
     from app.models import Tenant
@@ -31,6 +66,7 @@ def tenant_ctx(db_mode):
     finally:
         db.close()
     platform.put_config_json(MAIN_TID, "TENANT_META", "-", {"status": "active", "packageCode": "professional"})
+    _ensure_paid_professional_authority()
     set_tenant({"tenantId": str(MAIN_TID)})
     try:
         yield MAIN_TID
@@ -98,14 +134,14 @@ def test_t01e_connect_reuses_same_resolution_for_validate_and_connect(tenant_ctx
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))]
 
     def _fake_create_connection(addr, timeout=None):
-        assert addr[0] == "8.8.8.8"  # 必须是校验阶段解析出的同一个IP
+        assert addr[0] == "8.8.8.8"
         raise ConnectionRefusedError("no real service listening, expected in test")
 
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
     monkeypatch.setattr(socket, "create_connection", _fake_create_connection)
     with pytest.raises(AppException):
         isec.connect_ssrf_safe("https://real-external.example.com/webhook", timeout=1)
-    assert calls["getaddrinfo"] == 1  # 只解析了一次
+    assert calls["getaddrinfo"] == 1
 
 
 def test_t01f_localhost_blocked_in_prod(tenant_ctx, monkeypatch):
@@ -171,12 +207,10 @@ def test_t03_sync_job_without_executor_cannot_succeed(tenant_ctx):
         gov.run_sync_job_executor(job["id"], ADMIN)
 
     refreshed = next(x for x in gov.list_sync_jobs() if x["id"] == job["id"])
-    assert refreshed["status"] == gov.SYNC_FAILED  # 强行跑executor：明确失败，不是静默假成功
+    assert refreshed["status"] == gov.SYNC_FAILED
 
 
 def test_t03b_known_adapter_field_wired_correctly(tenant_ctx):
-    """KNOWN_SYNC_ADAPTERS 当前为空表（禁止伪造成功）；一旦登记了适配器，
-    hasExecutor 必须如实反映，不能不管登记与否都统一 True/False。"""
     from app.services import system_governance_service as gov
 
     assert gov.KNOWN_SYNC_ADAPTERS == {}
@@ -192,8 +226,7 @@ def test_t04_enqueue_idempotency_key_dedups(tenant_ctx):
     second = gov.enqueue_sync_job(ADMIN, {"name": "幂等测试重复提交", "adapterCode": "X",
                                           "idempotencyKey": "sys20-t04-key"})
     assert first["id"] == second["id"]
-    assert second["name"] == "幂等测试"  # 命中去重返回既有行，不被第二次提交的内容覆盖
-
+    assert second["name"] == "幂等测试"
     all_jobs = [j for j in gov.list_sync_jobs() if j.get("idempotencyKey") == "sys20-t04-key"]
     assert len(all_jobs) == 1
 
@@ -208,7 +241,7 @@ def test_t04b_retry_is_explainable_and_reversible(tenant_ctx):
 
     retried = gov.retry_sync_job(ADMIN, job["id"])
     assert retried["status"] == gov.SYNC_PENDING
-    assert "无真实执行器" in retried["message"]  # 差异原因明确可读，不是空白重试
+    assert "无真实执行器" in retried["message"]
     assert retried["retriedBy"] == "系统管理员"
     assert retried["version"] == int(job["version"]) + 1
 

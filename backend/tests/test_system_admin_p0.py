@@ -57,6 +57,10 @@ def seeded(db_mode):
         db.add(cls_empty); db.add(cls_full)
         db.add(StudentProfile(id=500, tenant_id=TID, student_no="S001", real_name="学生甲",
                               class_id=21, college_id=10, current_stage="ENROLLED"))
+        # This isolated test owns its five log fixtures. Paid-order deployment
+        # seeding emits real audits before this fixture; do not count those as
+        # the two operations under test, or disable production audit generation.
+        db.query(SecurityAuditLog).filter(SecurityAuditLog.tenant_id == TID).delete(synchronize_session=False)
         # 审计：2 条登录（含中文动作）+ 1 条登录失败 + 2 条业务操作
         for a, res, name in [("登录", "SUCCESS", "李敏"), ("登录", "SUCCESS", "测试管理员"),
                              ("LOGIN_FAIL", "FAIL", "未知")]:
