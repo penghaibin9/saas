@@ -1,5 +1,6 @@
 """PR261: real-MySQL first-write, ownership and transaction regressions."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from threading import Barrier
 
 import pytest
@@ -9,6 +10,48 @@ from test_aa_effective_grade_policy_contract import (
     TID, _activate, _new_term, _policies, policy_service,
 )
 from test_internship_v93_batch2_remaining_first_create import _seed, _admin_ctx, ADMIN_USER
+
+
+def _platform_owner_headers() -> dict[str, str]:
+    from app.core.security import create_access_token
+
+    token = create_access_token({
+        "userId": "pr261-review-owner",
+        "realName": "PR261合并审计",
+        "userType": "PLATFORM_SUPER_ADMIN",
+        "currentRoleCode": "PLATFORM_SUPER_ADMIN",
+        "tenantId": "0",
+        "tid": "platform",
+        "activeContextId": "ctx-pr261-review",
+        "clientType": "PC",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _commercial_trial_tenant(tenant_id: int, code: str) -> None:
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+    from app.services import platform_service
+
+    db = get_sessionmaker()()
+    try:
+        tenant = db.get(Tenant, int(tenant_id))
+        if tenant is None:
+            tenant = Tenant(
+                id=int(tenant_id), tenant_code=code,
+                school_name=f"PR261商业授权回归-{code}", status="ACTIVE",
+            )
+            db.add(tenant)
+        else:
+            tenant.status = "ACTIVE"
+            tenant.is_deleted = False
+        db.commit()
+    finally:
+        db.close()
+    platform_service.put_config_json(tenant_id, "TENANT_META", "-", {
+        "status": "trial", "packageCode": "trial", "environment": "test",
+    })
+
 
 @pytest.mark.parametrize("broken_link", ["foreign", "deleted", "missing"])
 def test_record_scope_rejects_invalid_student_owner(db_mode, broken_link):
@@ -33,6 +76,7 @@ def test_record_scope_rejects_invalid_student_owner(db_mode, broken_link):
     with _session() as db, pytest.raises(AppException) as caught:
         assert_internship_record_scope(db, ids["internship"], ADMIN_USER, "测试操作", lock=True)
     assert caught.value.http_status == 404
+
 
 def test_reentrant_allocation_preserves_pending_counter(identity, db_mode):
     """The upsert/read must not overwrite an uncommitted ORM counter on re-entry."""
@@ -91,6 +135,7 @@ def test_soft_deleted_identity_is_not_recreated_or_reset(identity, db_mode):
         ).one()
         assert row.is_deleted is True and row.current_attempt_no == 8
 
+
 @pytest.mark.usefixtures("db_mode")
 @pytest.mark.parametrize("repeat", range(3))
 def test_concurrent_publications_share_version_chain_across_scopes(repeat):
@@ -114,3 +159,104 @@ def test_concurrent_publications_share_version_chain_across_scopes(repeat):
     active = [row for row in _policies() if row.status == "ACTIVE"]
     assert len(active) == 2
     assert {row.active_scope_key for row in active} == {"BASE", str(term_id)}
+
+
+def test_paid_order_marker_does_not_grant_before_service_start(db_mode):
+    """A materialized paid marker cannot bypass the order's future service window."""
+    from app.db.session import get_sessionmaker
+    from app.models import PlatformOrder
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import platform_service
+
+    tenant_id = 1000000000000096261
+    _commercial_trial_tenant(tenant_id, "pr261-future-paid-window")
+    created = platform_service.create_order({
+        "tenantId": str(tenant_id), "packageCode": "professional",
+        "orderType": "NEW", "durationDays": 30, "amount": 1,
+        "remark": "PR261 paid service-window regression",
+    })
+    paid = platform_service.order_action(
+        created["orderNo"], "mark-paid",
+        expected_version=int(created["version"]), reason="PR261订单入账回归测试",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform_service.order_action(
+            created["orderNo"], "repair-activation",
+            expected_version=int(paid["version"]), reason="PR261订单激活修复回归",
+        )
+    assert paid["tenantActivated"] is True
+
+    db = get_sessionmaker()()
+    try:
+        order = db.query(PlatformOrder).filter(
+            PlatformOrder.tenant_id == tenant_id,
+            PlatformOrder.order_no == created["orderNo"],
+        ).one()
+        order.start_at = datetime.utcnow() + timedelta(days=1)
+        db.commit()
+    finally:
+        db.close()
+
+    state = commercial.commercial_state(tenant_id)
+    assert state["verified"] is False
+    assert state["authoritySource"] == "PAID_ORDER_SERVICE_NOT_STARTED"
+    assert state["features"]["internship"] is False
+    assert commercial.feature_enabled(tenant_id, "internship") is False
+
+
+def test_controlled_exception_stops_granting_after_tenant_disable(db_mode):
+    """Approval evidence cannot revive features after the hard tenant state is inactive."""
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import tenant_effective_state_service as lifecycle
+
+    tenant_id = 1000000000000096262
+    _commercial_trial_tenant(tenant_id, "pr261-disabled-exception")
+    current = lifecycle.get_effective_state(tenant_id, strict=True)
+    converted = lifecycle.apply_transition(
+        tenant_id, "convert-to-paid",
+        reason="PR261受控例外授权建立",
+        expected_version=int(current["version"]),
+        payload={
+            "packageCode": "professional", "durationDays": 30,
+            "exceptionGrantType": "SPECIAL_APPROVAL",
+            "approvalRef": "APPROVAL-PR261-INACTIVE",
+        },
+    )
+    active_state = commercial.commercial_state(tenant_id)
+    assert active_state["verified"] is True
+    assert active_state["authoritySource"] == "CONTROLLED_EXCEPTION"
+
+    lifecycle.apply_transition(
+        tenant_id, "disable",
+        reason="PR261停用受控例外租户",
+        expected_version=int(converted["version"]), payload={},
+    )
+    inactive_state = commercial.commercial_state(tenant_id)
+    assert inactive_state["verified"] is False
+    assert inactive_state["authoritySource"] == "CONTROLLED_EXCEPTION_TENANT_INACTIVE"
+    assert inactive_state["features"]["internship"] is False
+
+
+@pytest.mark.parametrize("action,payload", [
+    ("change-package", {"packageCode": "professional"}),
+    ("quota", {"storageLimitMb": 4096}),
+])
+def test_generic_package_and_quota_transition_rejects_even_exception_evidence(client, db_mode, action, payload):
+    """The generic transition surface must not advertise an exception path its authority rejects."""
+    tenant_id = 1000000000000096263
+    _commercial_trial_tenant(tenant_id, "pr261-generic-commercial-write")
+    response = client.post(
+        f"/api/v1/platform/tenants/{tenant_id}/transitions/{action}",
+        headers=_platform_owner_headers(),
+        json={
+            **payload,
+            "expectedVersion": 1,
+            "reason": "PR261通用商业写入口拒绝",
+            "exceptionGrantType": "SPECIAL_APPROVAL",
+            "approvalRef": "APPROVAL-PR261-GENERIC",
+        },
+    )
+    body = response.json()
+    assert response.status_code == 409, body
+    assert body["bizCode"] == "COMMERCIAL_ORDER_REQUIRED"
+    assert body["details"]["genericTransitionDisabled"] is True
