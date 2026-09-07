@@ -137,6 +137,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
     setUserStatus: systemApi.setUserStatus.bind(systemApi),
     resetUserPassword: systemApi.resetUserPassword.bind(systemApi),
     getRoles: systemApi.getRoles.bind(systemApi),
+    getRoleDetail: systemApi.getRoleDetail.bind(systemApi),
     getBrandConfig: systemApi.getBrandConfig.bind(systemApi),
     saveBrandConfig: systemApi.saveBrandConfig.bind(systemApi),
     batchDisableUsers: systemApi.batchDisableUsers.bind(systemApi)
@@ -205,6 +206,12 @@ export function installSystemAuthorityCompatibility(systemApi) {
 
   systemApi.getRoles = async (...args) => {
     const result = await original.getRoles(...args)
+    if (result.code === 0) rememberRoles(result.data)
+    return result
+  }
+
+  systemApi.getRoleDetail = async (...args) => {
+    const result = await original.getRoleDetail(...args)
     if (result.code === 0) rememberRoles(result.data)
     return result
   }
