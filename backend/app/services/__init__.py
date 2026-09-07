@@ -1,4 +1,4 @@
-"""Service package with lazy installation of approved runtime wrappers."""
+"""Service package with installation of approved runtime wrappers."""
 from __future__ import annotations
 
 import importlib
@@ -9,14 +9,25 @@ _ACADEMIC_SERVICE_MODULE = "academic_service"
 _PLATFORM_SERVICE_MODULE = "platform_service"
 
 
+def _install_platform_service_guards():
+    """Install commercial order invariants before any caller can import platform_service.
+
+    Python initializes this package before resolving ``app.services.platform_service``.
+    Eager installation therefore covers both direct submodule imports and
+    ``from app.services import platform_service``; the former bypassed the old lazy
+    ``__getattr__`` path and made Actions depend on import order.
+    """
+    module = importlib.import_module(f"{__name__}.{_PLATFORM_SERVICE_MODULE}")
+    from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
+
+    module = install_order_schedule_guard(module)
+    globals()[_PLATFORM_SERVICE_MODULE] = module
+    return module
+
+
 def __getattr__(name: str):
     if name == _PLATFORM_SERVICE_MODULE:
-        module = importlib.import_module(f"{__name__}.{name}")
-        from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
-
-        module = install_order_schedule_guard(module)
-        globals()[name] = module
-        return module
+        return globals()[_PLATFORM_SERVICE_MODULE]
     if name == _APPROVAL_RUNTIME_MODULE:
         module = importlib.import_module(f"{__name__}.{name}")
         from app.services.approval_production_guard import install as install_approval_guard
@@ -39,3 +50,6 @@ def __getattr__(name: str):
     module = install_mobile_read_wrappers(name, module)
     globals()[name] = module
     return module
+
+
+_install_platform_service_guards()
