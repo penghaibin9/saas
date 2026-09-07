@@ -14,7 +14,7 @@ test('system layout installs the authority bridge without replacing the shared p
   assert.doesNotMatch(layout, /import .*navPlan|from ['"]@\/config\/navPlan['"]|import .*main\.js|base-portal-theme-controls/)
 })
 
-test('compatibility bridge carries object versions on all cross-authority mutations', () => {
+test('compatibility bridge carries object versions on hardened cross-authority mutations', () => {
   for (const fragment of [
     "body: { action: 'DISABLE', reason, expectedVersion: version }",
     'expectedVersion: version',
@@ -26,7 +26,15 @@ test('compatibility bridge carries object versions on all cross-authority mutati
 
   assert.match(bridge, /未取得账号版本，已阻止无乐观锁/)
   assert.match(bridge, /未取得角色版本，已阻止无乐观锁/)
-  assert.match(bridge, /未取得品牌版本，已阻止无乐观锁/)
+})
+
+test('legacy main brand writes remain usable until versioned brand Authority is merged', () => {
+  assert.match(bridge, /resetBrandConfig: systemApi\.resetBrandConfig\.bind\(systemApi\)/)
+  assert.match(bridge, /const legacy = await original\.saveBrandConfig\(payload, options\)/)
+  assert.match(bridge, /const legacy = await original\.resetBrandConfig\(\{ reason \}\)/)
+  assert.match(bridge, /const version = expectedVersion\(explicitVersion, state\.brandVersion\)/)
+  assert.match(bridge, /body: \{ reason, expectedVersion: version \}/)
+  assert.match(bridge, /reconcileBrandVersion/)
 })
 
 test('versions are learned from list and detail reads, including direct role deep links', () => {
@@ -37,6 +45,14 @@ test('versions are learned from list and detail reads, including direct role dee
   assert.match(bridge, /systemApi\.getBrandConfig = async/)
   assert.match(bridge, /rememberVersion\(state\.userVersions/)
   assert.match(bridge, /rememberVersion\(state\.roleVersions/)
+})
+
+test('legacy mutation responses without new version invalidate cached optimistic-lock versions', () => {
+  assert.match(bridge, /function reconcileMutationVersion/)
+  assert.match(bridge, /else map\.delete\(key\)/)
+  assert.match(bridge, /reconcileMutationVersion\(state\.userVersions, id, data\)/)
+  assert.match(bridge, /reconcileMutationVersion\(state\.roleVersions, id, data\)/)
+  assert.match(bridge, /if \(result\.code === 0\) state\.userVersions\.clear\(\)/)
 })
 
 test('authority version caches are invalidated when tenant, subject or active context changes', () => {
