@@ -136,15 +136,16 @@ def governed_tenant_transition(
     normalized = str(action or "").strip().lower()
     payload = dict(body or {})
     if normalized in {"change-package", "quota"}:
-        grant_type = str(payload.get("exceptionGrantType") or "").strip().upper()
-        approval_ref = str(payload.get("approvalRef") or "").strip()
-        if grant_type not in {"GIFT", "SPECIAL_APPROVAL"} or len(approval_ref) < 5:
-            raise AppException(
-                "COMMERCIAL_ORDER_REQUIRED",
-                "套餐或商业额度不能通过普通租户变更旁路订单；特批必须提供 exceptionGrantType 与 approvalRef",
-                http_status=409,
-                details={"action": normalized, "normalAuthority": "PAID_ORDER"},
-            )
+        raise AppException(
+            "COMMERCIAL_ORDER_REQUIRED",
+            "套餐与商业额度不接受通用生命周期写入；正常变更必须由已支付订单物化，受控赠送/特批必须使用明确的商业例外授权流程",
+            http_status=409,
+            details={
+                "action": normalized,
+                "normalAuthority": "PAID_ORDER",
+                "genericTransitionDisabled": True,
+            },
+        )
     audit_actions = {
         "enable": "PLATFORM_TENANT_ENABLE", "disable": "PLATFORM_TENANT_DISABLE",
         "extend-trial": "PLATFORM_TENANT_EXTEND_TRIAL", "convert-to-paid": "PLATFORM_TENANT_CONVERT_PAID",
