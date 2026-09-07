@@ -6,9 +6,17 @@ import importlib
 _CACHEABLE_MOBILE_MODULES = {"mobile_student_service", "mobile_teacher_service"}
 _APPROVAL_RUNTIME_MODULE = "approval_runtime_service"
 _ACADEMIC_SERVICE_MODULE = "academic_service"
+_PLATFORM_SERVICE_MODULE = "platform_service"
 
 
 def __getattr__(name: str):
+    if name == _PLATFORM_SERVICE_MODULE:
+        module = importlib.import_module(f"{__name__}.{name}")
+        from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
+
+        module = install_order_schedule_guard(module)
+        globals()[name] = module
+        return module
     if name == _APPROVAL_RUNTIME_MODULE:
         module = importlib.import_module(f"{__name__}.{name}")
         from app.services.approval_production_guard import install as install_approval_guard
