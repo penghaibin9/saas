@@ -204,6 +204,66 @@ def test_paid_order_marker_does_not_grant_before_service_start(db_mode):
     assert commercial.feature_enabled(tenant_id, "internship") is False
 
 
+def test_future_same_package_renewal_keeps_current_paid_coverage(db_mode):
+    """Prepaying the next term must not turn off the package before renewal starts."""
+    from app.db.session import get_sessionmaker
+    from app.models import PlatformOrder
+    from app.services import commercial_entitlement_authority_service as commercial
+    from app.services import platform_service
+
+    tenant_id = 1000000000000096264
+    _commercial_trial_tenant(tenant_id, "pr261-renewal-continuity")
+
+    first = platform_service.create_order({
+        "tenantId": str(tenant_id), "packageCode": "professional",
+        "orderType": "NEW", "durationDays": 30, "amount": 1,
+        "remark": "PR261 current paid coverage",
+    })
+    first_paid = platform_service.order_action(
+        first["orderNo"], "mark-paid",
+        expected_version=int(first["version"]), reason="PR261首期订单入账",
+    )
+    if first_paid.get("repairTaskRequired"):
+        first_paid = platform_service.order_action(
+            first["orderNo"], "repair-activation",
+            expected_version=int(first_paid["version"]), reason="PR261首期激活修复",
+        )
+    assert first_paid["tenantActivated"] is True
+    assert commercial.commercial_state(tenant_id)["verified"] is True
+
+    renewal = platform_service.create_order({
+        "tenantId": str(tenant_id), "packageCode": "professional",
+        "orderType": "RENEW", "durationDays": 30, "amount": 1,
+        "remark": "PR261 prepaid renewal continuity",
+    })
+    renewal_paid = platform_service.order_action(
+        renewal["orderNo"], "mark-paid",
+        expected_version=int(renewal["version"]), reason="PR261续费订单提前入账",
+    )
+    if renewal_paid.get("repairTaskRequired"):
+        renewal_paid = platform_service.order_action(
+            renewal["orderNo"], "repair-activation",
+            expected_version=int(renewal_paid["version"]), reason="PR261续费激活修复",
+        )
+    assert renewal_paid["tenantActivated"] is True
+
+    db = get_sessionmaker()()
+    try:
+        renewal_row = db.query(PlatformOrder).filter(
+            PlatformOrder.tenant_id == tenant_id,
+            PlatformOrder.order_no == renewal["orderNo"],
+        ).one()
+        assert renewal_row.start_at is not None and renewal_row.start_at > datetime.now()
+    finally:
+        db.close()
+
+    state = commercial.commercial_state(tenant_id)
+    assert state["verified"] is True
+    assert state["authoritySource"] == "PAID_ORDER"
+    assert state["commercialOrderNo"] == renewal["orderNo"]
+    assert state["features"]["internship"] is True
+
+
 def test_controlled_exception_stops_granting_after_tenant_disable(db_mode):
     """Approval evidence cannot revive features after the hard tenant state is inactive."""
     from app.services import commercial_entitlement_authority_service as commercial
