@@ -74,13 +74,10 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: student_lifecycle_test
-        ports:
-          - 3306:3306
+        ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=15
+          --health-interval=10s --health-timeout=5s --health-retries=15
     env:
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
@@ -90,29 +87,16 @@ jobs:
       FILE_SCAN_REQUIRED: 'false'
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - name: Exact branch HEAD assertion
         run: |
           ACTUAL="$(git rev-parse HEAD)"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            EXPECTED="${{ github.event.pull_request.head.sha }}"
-          else
-            EXPECTED="${{ github.sha }}"
-          fi
-          echo "actual=$ACTUAL"
-          echo "expected=$EXPECTED"
-          test "$ACTUAL" = "$EXPECTED"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then EXPECTED="${{ github.event.pull_request.head.sha }}"; else EXPECTED="${{ github.sha }}"; fi
+          echo "actual=$ACTUAL"; echo "expected=$EXPECTED"; test "$ACTUAL" = "$EXPECTED"
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+        with: { python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt }
       - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+        with: { node-version: '24', cache: npm, cache-dependency-path: frontend/package-lock.json }
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
@@ -124,36 +108,10 @@ jobs:
       - name: Compile data exchange and RBAC-09 backend
         working-directory: backend
         run: |
-          python -m py_compile \
-            app/core/rbac09_permission_bundles.py \
-            app/models/data_exchange.py \
-            app/services/data_exchange_job_service.py \
-            app/services/data_exchange_confirm_service.py \
-            app/services/data_exchange_cleanup_service.py \
-            app/services/identity_import_service.py \
-            app/services/identity_import_scan_orchestrator.py \
-            app/services/identity_import_staging_service.py \
-            app/services/file_access_service.py \
-            app/api/v1/data_exchange.py \
-            app/modules/system_admin/routers/data_exchange_bundle.py \
-            app/modules/system_admin/routers/data_exchange_router.py \
-            app/modules/system_admin/routers/identity_import_compat_router.py \
-            app/modules/system_admin/services/identity_import_control_plane_service.py \
-            app/modules/system_admin/services/identity_import_idempotency_service.py \
-            app/api/v1/file_governance.py \
-            app/api/v1/migration.py \
-            alembic/versions/0147_data_exchange_job_center.py \
-            alembic/versions/20260815_control_plane_identity_staging.py
+          python -m py_compile app/core/rbac09_permission_bundles.py app/models/data_exchange.py app/services/data_exchange_job_service.py app/services/data_exchange_confirm_service.py app/services/data_exchange_cleanup_service.py app/services/identity_import_service.py app/services/identity_import_scan_orchestrator.py app/services/identity_import_staging_service.py app/services/file_access_service.py app/api/v1/data_exchange.py app/modules/system_admin/routers/data_exchange_bundle.py app/modules/system_admin/routers/data_exchange_router.py app/modules/system_admin/routers/identity_import_compat_router.py app/modules/system_admin/services/identity_import_control_plane_service.py app/modules/system_admin/services/identity_import_idempotency_service.py app/api/v1/file_governance.py app/api/v1/migration.py alembic/versions/0147_data_exchange_job_center.py alembic/versions/20260815_control_plane_identity_staging.py
       - name: Authoritative contract tests
         working-directory: backend
-        run: |
-          pytest \
-            tests/test_data_exchange_job_center.py \
-            tests/test_rbac09_file_data_exchange_permissions.py \
-            tests/test_control_plane_identity_import_contract.py \
-            tests/test_control_plane_identity_import_idempotency.py \
-            tests/test_control_plane_identity_import_staging.py \
-            -q -p no:warnings
+        run: pytest tests/test_data_exchange_job_center.py tests/test_rbac09_file_data_exchange_permissions.py tests/test_control_plane_identity_import_contract.py tests/test_control_plane_identity_import_idempotency.py tests/test_control_plane_identity_import_staging.py -q -p no:warnings
       - name: Frontend lint and build
         working-directory: frontend
         run: |
@@ -162,19 +120,17 @@ jobs:
           npm run build
       - name: Reject old confirmation and overbroad RBAC contracts
         run: |
-          ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch\|confirmMigrationBatch" \
-            frontend/src/modules/system/views/SystemStudentImportView.vue \
-            frontend/src/modules/system/views/SystemTeacherImportView.vue \
-            frontend/src/modules/system/views/SystemMigrationView.vue
+          ! grep -R "confirmStudentIdentityBatch\|confirmTeacherIdentityBatch\|confirmMigrationBatch" frontend/src/modules/system/views/SystemStudentImportView.vue frontend/src/modules/system/views/SystemTeacherImportView.vue frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "jobId" frontend/src/modules/system/components/ImportDialog.vue
-          grep -q "current.version" frontend/src/modules/system/views/SystemStudentImportView.vue
-          grep -q "current.version" frontend/src/modules/system/views/SystemTeacherImportView.vue
+          grep -q "IdentityImportWorkspace" frontend/src/modules/system/views/SystemStudentImportView.vue
+          grep -q "IdentityImportWorkspace" frontend/src/modules/system/views/SystemTeacherImportView.vue
+          grep -q "confirmImport(jobId, current.version)" frontend/src/modules/system/utils/identityImportWorkspace.js
           grep -q "current.version" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "pendingJobId" frontend/src/modules/system/views/SystemMigrationView.vue
           grep -q "ImportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "ExportJob.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
           grep -q "IdentityImportStagingRow.tenant_id == tenant_id" backend/app/services/data_exchange_cleanup_service.py
-          grep -q "extra=\"forbid\"" backend/app/modules/system_admin/routers/data_exchange_bundle.py
+          grep -q 'extra="forbid"' backend/app/modules/system_admin/routers/data_exchange_bundle.py
           ! grep -q "systemAdmin.audit.sensitive.view" backend/app/modules/system_admin/routers/data_exchange_bundle.py
           ! grep -q "systemAdmin.audit.sensitive.view" backend/app/modules/system_admin/routers/data_exchange_router.py
           grep -q "systemAdmin.fileGovernance.view" frontend/src/modules/system/systemManagementCatalog.js

@@ -27,7 +27,9 @@ def test_b6_product_iam_has_dedicated_platform_workspace():
 
 def test_b7_school_iam_workspace_consumes_canonical_endpoints():
     routes = _read("frontend/src/modules/system/system.routes.js")
-    view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    facade = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    assert "SystemIamGovernancePanel" in facade and "<SystemRoleListView" in facade
+    view = facade + _read("frontend/src/modules/system/components/workspace/SystemIamGovernancePanel.vue")
     api = _read("frontend/src/modules/system/api/schoolIam.api.js")
     layout = _read("frontend/src/modules/system/views/AdminSystemLayout.vue")
     assert "path: 'iam'" in routes
@@ -57,7 +59,9 @@ def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
     # source gate cannot accidentally force logic back into the shim.
     service = _read("backend/app/modules/system_admin/services/school_iam_authority_projection_service.py")
     router = _read("backend/app/modules/system_admin/routers/school_iam_router.py")
-    view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    facade = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    assert "SystemIamGovernancePanel" in facade and "<SystemRoleListView" in facade
+    view = facade + _read("frontend/src/modules/system/components/workspace/SystemIamGovernancePanel.vue")
     for term in (
         "templateProvenance",
         "sourceTemplateVersion",
@@ -83,7 +87,9 @@ def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
 def test_b7_reuses_20k_safe_member_and_security_audit_pagination():
     i4 = _read("backend/app/modules/system_admin/routers/system_i4_router.py")
     api = _read("frontend/src/modules/system/api/schoolIam.api.js")
-    view = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    facade = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    assert "SystemIamGovernancePanel" in facade and "<SystemRoleListView" in facade
+    view = facade + _read("frontend/src/modules/system/components/workspace/SystemIamGovernancePanel.vue")
     assert '/system/roles/{role_id}/members' in i4
     assert '/system/roles/{role_id}/audit' in i4
     assert 'pageSize: int = Query(50, ge=1, le=200)' in i4
@@ -100,11 +106,13 @@ def test_role_list_member_count_opens_paginated_member_directory():
     view = _read("frontend/src/modules/system/views/SystemRoleListView.vue")
     api = _read("frontend/src/modules/system/api/schoolIam.api.js")
     router = _read("backend/app/modules/system_admin/routers/system_i4_router.py")
-    assert '@click="openMembers(row)"' in view
+    assert "<RoleMembersPanel" in view
+    assert "openRole(row.id, 'members')" in view
+    view = _read("frontend/src/modules/system/components/workspace/RoleMembersPanel.vue")
     assert "schoolIamApi.roleMembers" in view
-    assert "data.items || []" in view
-    assert "@page-change=\"onMembersPageChange\"" in view
-    assert "openMemberAdd" in view
+    assert "wc.paged(wc.unwrap(await fn()))" in view
+    assert "loadMembers(members.page + 1)" in view
+    assert "openAdd" in view
     assert "batchAddRoleMembers" in view and "roleMemberCandidates" in view
     assert "member-candidates" in api and "members/batch" in api
     assert "/system/roles/{role_id}/member-candidates" in router
@@ -113,7 +121,7 @@ def test_role_list_member_count_opens_paginated_member_directory():
 
 def test_b6_b7_do_not_create_second_permission_authority_in_frontend():
     product = _read("frontend/src/modules/platform/views/control/PlatformProductIamView.vue")
-    school = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
+    school = _read("frontend/src/modules/system/components/workspace/SystemIamGovernancePanel.vue")
     assert "权限目录" in product
     assert "权限目录" in school
     assert "productIamApi.source()" in product

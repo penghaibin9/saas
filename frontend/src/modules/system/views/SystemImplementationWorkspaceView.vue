@@ -1,298 +1,43 @@
 <template>
-  <ModulePageShell
-    title="实施项目工作区"
-    subtitle="项目阶段 · 未确认政策 · 未安装对象 · 上线阻断 · 验收证据"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onAction" />
-    </template>
-
+  <ModulePageShell title="实施与上线验收" subtitle="把学校准备情况收成一张可执行清单：没有真实检查、预览或运行时证据时，不把未知显示成 0" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <template #actions><ModuleToolbar :actions="toolbarActions" @action="onAction" /></template>
     <div class="mp-stack">
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!project" title="本校还没有实施项目"
-                  description="到「首次开局向导」创建实施项目后回到本页统一推进" />
+      <ErrorState v-if="error" :description="error" @retry="load"/><LoadingState v-else-if="loading"/><EmptyState v-else-if="!project" title="本校还没有实施项目" description="先进入首次开局向导创建实施项目，再回到这里统一推进上线准备与验收"/>
       <template v-else>
-        <section class="mp-card">
-          <header class="mp-card__head">
-            <span class="mp-card__title">{{ project.projectName }}</span>
-            <StatusTag :type="stageTone" :label="stageLabel" dot />
-          </header>
-          <div class="mp-card__body iw-conclusions">
-            <div class="iw-item">
-              <span class="iw-item__num">{{ blockingChecks.length }}</span>
-              <span class="iw-item__label">上线阻断</span>
-            </div>
-            <div class="iw-item">
-              <span class="iw-item__num">{{ pendingPolicyCount }}</span>
-              <span class="iw-item__label">未确认流程政策</span>
-            </div>
-            <div class="iw-item">
-              <span class="iw-item__num">{{ notInstalledCount }}</span>
-              <span class="iw-item__label">未安装对象</span>
-            </div>
-            <div class="iw-item">
-              <span class="iw-item__num">{{ blockedModules.length }}</span>
-              <span class="iw-item__label">未授权模块</span>
-            </div>
-            <div class="iw-item">
-              <span class="iw-item__num">{{ project.acceptanceDigest ? '已封板' : '未验收' }}</span>
-              <span class="iw-item__label">验收证据</span>
-            </div>
-          </div>
+        <section class="iw-hero"><div class="iw-hero__main"><span class="iw-kicker">IMPLEMENTATION PROJECT</span><div class="iw-hero__title"><div><h2>{{ project.projectName }}</h2><p>当前阶段 {{ stageLabel }}；未取得证据的项目明确显示“待检查 / 待读取 / 待预览”。</p></div><StatusTag :type="stageTone" :label="stageLabel" dot/></div><div class="su-notice" :class="readinessTone" role="status"><b>{{ readinessTitle }}</b><p>{{ readinessDescription }}</p></div></div><div class="iw-hero__actions"><router-link class="iw-route-link" to="/admin/system/implementation/acceptance">进入上线检查</router-link><router-link class="iw-route-link" to="/admin/system/implementation/wizard">核对开局配置</router-link></div></section>
+        <section class="su-metrics" aria-label="实施项目关键结论">
+          <div class="su-metric" :class="{'is-warning':!checksLoaded||blockingChecks.length}"><span>上线阻断</span><strong>{{ blockingCountText }}</strong><small>{{ checksLoaded?'来自最近一次真实检查结果':'尚未运行或未取得检查证据' }}</small></div>
+          <div class="su-metric" :class="{'is-warning':!runtimeLoaded||pendingPolicyCount}"><span>未确认流程政策</span><strong>{{ pendingPolicyCountText }}</strong><small>{{ runtimeLoaded?'来自运行时预设服务':'运行时预设尚未取得' }}</small></div>
+          <div class="su-metric" :class="{'is-warning':!previewEvidenceReady||notInstalledCount}"><span>待安装对象</span><strong>{{ notInstalledCountText }}</strong><small>{{ previewEvidenceReady?'来自当前安装预览':'生成预览后才有可靠数量' }}</small></div>
+          <div class="su-metric" :class="{'is-warning':!previewEvidenceReady||blockedModules.length}"><span>未授权模块</span><strong>{{ blockedModuleCountText }}</strong><small>{{ previewEvidenceReady?'来自平台商业授权校验':'未预览时不猜测为 0' }}</small></div>
+          <div class="su-metric" :class="{'is-success':project.acceptanceDigest}"><span>验收证据</span><strong>{{ project.acceptanceDigest?'已封板':'未验收' }}</strong><small>{{ project.acceptanceDigest?'存在不可变验收摘要':'没有证据就不标记通过' }}</small></div>
         </section>
-
-        <section v-if="preview && project.status === 'PREVIEW_READY'" class="mp-card">
-          <header class="mp-card__head">
-            <span class="mp-card__title">应用前确认</span>
-            <span class="mp-note">快照哈希 {{ shortHash }}</span>
-          </header>
-          <div class="mp-card__body">
-            <p v-if="blockedModules.length" class="iw-blocked">
-              以下模块未获得平台商业授权，无法安装启用：{{ blockedModules.join('、') }}
-            </p>
-            <ul class="iw-list">
-              <li>幂等键：{{ idempotencyKey || '（先预览生成）' }}</li>
-              <li>本次将新建审批流程 {{ (preview.impact && preview.impact.workflows.toCreate.length) || 0 }} 个，
-                已存在跳过 {{ (preview.impact && preview.impact.workflows.alreadyInstalled.length) || 0 }} 个</li>
-              <li>本次将新建角色工作台 {{ (preview.impact && preview.impact.workbenches.toCreate.length) || 0 }} 个，
-                已存在跳过 {{ (preview.impact && preview.impact.workbenches.alreadyInstalled.length) || 0 }} 个</li>
-              <li>涉及模块：{{ (preview.impact && preview.impact.selectedModules.join('、')) || '—' }}</li>
-              <li v-if="preview.missingSections && preview.missingSections.length">
-                缺失配置段：{{ preview.missingSections.join('、') }}
-              </li>
-            </ul>
-            <p class="mp-note">{{ (preview.impact && preview.impact.note) || '' }}</p>
-          </div>
-        </section>
-
-        <section v-if="checks.length" class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">上线检查</span></header>
-          <div class="mp-card__body">
-            <DataTable :columns="checkColumns" :rows="checks" row-key="code">
-              <template #cell-result="{ row }">
-                <StatusTag :type="row.result === 'PASS' ? 'success' : 'danger'" :label="row.result" dot />
-              </template>
-              <template #cell-severity="{ row }">
-                <StatusTag :type="row.severity === 'BLOCKER' ? 'danger' : 'warning'" :label="row.severity" dot />
-              </template>
-            </DataTable>
-          </div>
-        </section>
-
-        <section class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">分步作业入口</span></header>
-          <div class="mp-card__body iw-links">
-            <router-link v-for="link in stepLinks" :key="link.path" class="mp-link" :to="link.path">
-              {{ link.label }}
-            </router-link>
-          </div>
-        </section>
+        <section class="iw-grid"><div class="iw-main">
+          <section v-if="preview && project.status === 'PREVIEW_READY'" class="mp-card"><header class="mp-card__head"><div><span class="mp-card__title">应用前确认</span><p class="mp-note">这一步只核对将要安装的真实对象；不会因为进入页面而写入配置。</p></div><span class="sw-tag">快照 {{ shortHash }}</span></header><div class="mp-card__body"><div v-if="blockedModules.length" class="su-notice su-notice--warning"><b>存在商业授权阻断</b><p>以下模块无法安装启用：{{ blockedModules.join('、') }}</p></div><div v-else class="su-notice su-notice--success"><b>当前预览未返回商业授权阻断</b><p>这只代表本次预览结果；正式应用时后端仍会再次校验。</p></div><dl class="iw-preview-facts"><div><dt>审批流程</dt><dd>待新建 {{ previewCount('workflows','toCreate') }} 个 · 已存在 {{ previewCount('workflows','alreadyInstalled') }} 个</dd></div><div><dt>角色工作台</dt><dd>待新建 {{ previewCount('workbenches','toCreate') }} 个 · 已存在 {{ previewCount('workbenches','alreadyInstalled') }} 个</dd></div><div><dt>涉及模块</dt><dd>{{ previewModulesText }}</dd></div><div><dt>幂等身份</dt><dd class="iw-code">{{ idempotencyKey||'未取得' }}</dd></div></dl><p v-if="preview.missingSections&&preview.missingSections.length" class="iw-warning-line">缺失配置段：{{ preview.missingSections.join('、') }}</p></div></section>
+          <section class="mp-card"><header class="mp-card__head"><div><span class="mp-card__title">上线检查</span><p class="mp-note">只有真实运行检查后才显示 0 个阻断；未运行时保持“待检查”。</p></div><StatusTag :type="checksLoaded?(blockingChecks.length?'danger':'success'):'warning'" :label="checksLoaded?(blockingChecks.length?`${blockingChecks.length} 个阻断`:'本次检查无阻断'):'待检查'"/></header><div class="mp-card__body"><div v-if="!checksLoaded" class="iw-awaiting"><b>尚未取得上线检查证据</b><p>请运行上线检查；页面不会把“没检查”解释成“0 个问题”。</p></div><DataTable v-else-if="checks.length" :columns="checkColumns" :rows="checks" row-key="code"><template #cell-result="{row}"><StatusTag :type="row.result==='PASS'?'success':'danger'" :label="row.result" dot/></template><template #cell-severity="{row}"><StatusTag :type="row.severity==='BLOCKER'?'danger':'warning'" :label="row.severity" dot/></template></DataTable><div v-else class="iw-awaiting iw-awaiting--success"><b>本次检查已执行，服务端未返回检查项</b><p>这是实际响应的空结果，不等同于浏览器自行推断“全部通过”。</p></div></div></section>
+        </div><aside class="iw-side"><section class="mp-card"><header class="mp-card__head"><span class="mp-card__title">学校准备清单</span></header><div class="mp-card__body iw-step-list"><router-link v-for="link in stepLinks" :key="link.path" :to="link.path" class="iw-step"><span class="iw-step__num">{{ link.no }}</span><span><b>{{ link.label }}</b><small>{{ link.hint }}</small></span><span>→</span></router-link></div></section><section class="mp-card"><header class="mp-card__head"><span class="mp-card__title">验收原则</span></header><div class="mp-card__body iw-principles"><div><b>先验核心业务，再看页面</b><p>账号、权限、数据范围拒绝、审计回执必须有真实请求与持久化证据。</p></div><div><b>不同角色分别验</b><p>管理员通过不能替代普通老师、只读角色与配置角色的验收。</p></div><div><b>错误状态必须能恢复</b><p>403、409、超时、扫描失败与缓存失效必须分开呈现。</p></div></div></section></aside></section>
       </template>
     </div>
-
-    <AppConfirmDialog
-      v-model:visible="confirmOpen"
-      type="warning"
-      :title="pendingAction === 'apply' ? '应用预设快照？' : '验收封板？'"
-      :message="confirmMessage"
-      :confirm-text="pendingAction === 'apply' ? '确认应用' : '确认验收'"
-      require-reason
-      :reason-label="pendingAction === 'apply' ? '应用原因' : '验收意见'"
-      :submitting="submitting"
-      @confirm="submit"
-    />
+    <AppConfirmDialog v-model:visible="confirmOpen" type="warning" :title="pendingAction==='apply'?'应用预设快照？':'验收封板？'" :message="confirmMessage" :confirm-text="pendingAction==='apply'?'确认应用':'确认验收'" require-reason :reason-label="pendingAction==='apply'?'应用原因':'验收意见'" :submitting="submitting" @confirm="submit"/>
   </ModulePageShell>
 </template>
-
 <script>
-import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell,ModuleToolbar,DataTable,StatusTag,LoadingState,ErrorState,EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { implementationApi } from '@/modules/system/api/implementation.api'
 import { toast } from '@/utils/toast'
-
-const STAGE_LABELS = {
-  DRAFT: '草稿', CONFIGURING: '配置中', PREVIEW_READY: '预览就绪', APPLIED: '已应用',
-  VERIFYING: '检查中', READY_FOR_ACCEPTANCE: '可验收', ACCEPTED: '已验收封板'
-}
-
-export default {
-  name: 'SystemImplementationWorkspaceView',
-  components: {
-    ModulePageShell, ModuleToolbar, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppConfirmDialog
-  },
-  props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true,
-      error: '',
-      project: null,
-      preview: null,
-      idempotencyKey: '',
-      checks: [],
-      runtime: null,
-      confirmOpen: false,
-      submitting: false,
-      pendingAction: '',
-      checkColumns: [
-        { key: 'name', title: '检查项' },
-        { key: 'result', title: '结果' },
-        { key: 'severity', title: '级别' },
-        { key: 'ownerRole', title: '责任角色' }
-      ],
-      stepLinks: [
-        { label: '首次开局向导', path: '/admin/system/implementation/wizard' },
-        { label: '预设方案', path: '/admin/system/implementation/presets' },
-        { label: '数据导入与智能匹配', path: '/admin/system/implementation/data-mapping' },
-        { label: '已安装配置', path: '/admin/system/implementation/installed' },
-        { label: '变更与升级', path: '/admin/system/implementation/changes' },
-        { label: '上线检查与验收', path: '/admin/system/implementation/acceptance' }
-      ]
-    }
-  },
-  computed: {
-    stageLabel() {
-      return STAGE_LABELS[this.project?.status] || this.project?.status || '—'
-    },
-    stageTone() {
-      if (this.project?.status === 'ACCEPTED') return 'success'
-      if (this.project?.status === 'VERIFYING') return 'warning'
-      return 'default'
-    },
-    blockingChecks() {
-      return this.checks.filter((c) => c.result !== 'PASS' && c.severity === 'BLOCKER')
-    },
-    blockedModules() {
-      return (this.preview && this.preview.entitlement && this.preview.entitlement.blockedModules) || []
-    },
-    pendingPolicyCount() {
-      return (this.runtime && this.runtime.pendingPolicyConfirmation) || 0
-    },
-    notInstalledCount() {
-      if (this.project?.status !== 'PREVIEW_READY' || !this.preview || !this.preview.impact) return 0
-      return this.preview.impact.workflows.toCreate.length + this.preview.impact.workbenches.toCreate.length
-    },
-    shortHash() {
-      return this.idempotencyKey ? `${this.idempotencyKey.slice(0, 12)}…` : '—'
-    },
-    toolbarActions() {
-      const actions = [{ key: 'refresh', label: '刷新' }]
-      if (!this.project) return actions
-      if (['DRAFT', 'CONFIGURING', 'PREVIEW_READY'].includes(this.project.status)) {
-        actions.unshift({ key: 'preview', label: '生成预览' })
-      }
-      if (this.project.status === 'PREVIEW_READY') {
-        actions.unshift({ key: 'apply', label: '应用快照', variant: 'primary' })
-      }
-      if (['APPLIED', 'VERIFYING', 'READY_FOR_ACCEPTANCE'].includes(this.project.status)) {
-        actions.unshift({ key: 'checks', label: '运行上线检查' })
-      }
-      if (this.project.status === 'READY_FOR_ACCEPTANCE') {
-        actions.unshift({ key: 'accept', label: '验收封板', variant: 'primary' })
-      }
-      return actions
-    },
-    confirmMessage() {
-      if (this.pendingAction === 'apply') {
-        return `将按快照 ${this.shortHash} 安装预设；已存在的对象只跳过不覆盖，重复提交不会装第二遍。`
-      }
-      return '验收后配置封板，只能通过新建变更项目调整。'
-    }
-  },
-  created() { this.load() },
-  methods: {
-    onAction(key) {
-      if (key === 'refresh') return this.load()
-      if (key === 'preview') return this.doPreview()
-      if (key === 'checks') return this.doChecks()
-      if (key === 'apply' || key === 'accept') {
-        this.pendingAction = key
-        this.confirmOpen = true
-      }
-    },
-    async doPreview() {
-      const res = await this.call(() => implementationApi.preview(this.project.id))
-      if (!res) return
-      this.preview = res.preview
-      this.idempotencyKey = res.idempotencyKey || res.previewHash || ''
-      this.project = res.project || this.project
-      if (this.preview.blocked) toast.error('预览存在阻断项，请先处理后再应用')
-      else toast.success('预览已生成')
-    },
-    async doChecks() {
-      const res = await this.call(() => implementationApi.runChecks(this.project.id))
-      if (!res) return
-      this.checks = res.checks || []
-      await this.load()
-    },
-    async submit({ reason }) {
-      this.submitting = true
-      const res = this.pendingAction === 'apply'
-        ? await this.call(() => implementationApi.apply(this.project.id, {
-          confirmText: '确认应用', reason, idempotencyKey: this.idempotencyKey
-        }))
-        : await this.call(() => implementationApi.accept(this.project.id, {
-          confirmText: '确认验收', comment: reason
-        }))
-      this.submitting = false
-      if (!res) return
-      if (this.pendingAction === 'apply' && res.idempotent) {
-        toast.success(`该快照已应用过，沿用安装版本 ${res.installationNo || ''}`)
-      } else {
-        toast.success('已完成')
-      }
-      if (this.pendingAction === 'apply') {
-        this.preview = null
-        this.idempotencyKey = ''
-      }
-      this.confirmOpen = false
-      await this.load()
-    },
-    async call(fn) {
-      try {
-        return await fn()
-      } catch (e) {
-        toast.error(e?.message || '操作失败')
-        return null
-      }
-    },
-    async load() {
-      this.loading = true
-      this.error = ''
-      try {
-        this.project = await implementationApi.current()
-        if (this.project) {
-          this.checks = (this.project.checks || []).map((c) => ({ ...c }))
-          try {
-            this.runtime = await implementationApi.runtimePresets(this.project.id)
-          } catch {
-            this.runtime = null
-          }
-        }
-      } catch (e) {
-        this.error = e?.message || '实施项目加载失败'
-      }
-      this.loading = false
-    }
-  }
+const STAGE_LABELS={DRAFT:'草稿',CONFIGURING:'配置中',PREVIEW_READY:'预览就绪',APPLIED:'已应用',VERIFYING:'检查中',READY_FOR_ACCEPTANCE:'可验收',ACCEPTED:'已验收封板'}
+export default{
+ name:'SystemImplementationWorkspaceView',components:{ModulePageShell,ModuleToolbar,DataTable,StatusTag,LoadingState,ErrorState,EmptyState,AppConfirmDialog},props:{ctx:{type:Object,required:true}},
+ data(){return{loading:true,error:'',project:null,preview:null,idempotencyKey:'',checks:[],checksLoaded:false,runtime:null,runtimeLoaded:false,confirmOpen:false,submitting:false,pendingAction:'',checkColumns:[{key:'name',title:'检查项'},{key:'result',title:'结果'},{key:'severity',title:'级别'},{key:'ownerRole',title:'责任角色'}],stepLinks:[{no:'01',label:'首次开局向导',path:'/admin/system/implementation/wizard',hint:'学校基础配置与实施项目'},{no:'02',label:'预设方案',path:'/admin/system/implementation/presets',hint:'核对将安装的流程与工作台'},{no:'03',label:'数据导入与智能匹配',path:'/admin/system/implementation/data-mapping',hint:'主数据与关系映射'},{no:'04',label:'已安装配置',path:'/admin/system/implementation/installed',hint:'核对实际安装版本'},{no:'05',label:'变更与升级',path:'/admin/system/implementation/changes',hint:'通过变更项目持续维护'},{no:'06',label:'上线检查与验收',path:'/admin/system/implementation/acceptance',hint:'真实检查、阻断与封板证据'}]}},
+ computed:{stageLabel(){return STAGE_LABELS[this.project?.status]||this.project?.status||'—'},stageTone(){return this.project?.status==='ACCEPTED'?'success':this.project?.status==='VERIFYING'?'warning':this.project?.status==='READY_FOR_ACCEPTANCE'?'processing':'default'},blockingChecks(){return this.checks.filter(c=>c.result!=='PASS'&&c.severity==='BLOCKER')},blockedModules(){return this.preview?.entitlement?.blockedModules||[]},pendingPolicyCount(){return Number(this.runtime?.pendingPolicyConfirmation||0)},notInstalledCount(){return this.preview?.impact?(this.preview.impact.workflows?.toCreate?.length||0)+(this.preview.impact.workbenches?.toCreate?.length||0):0},previewEvidenceReady(){return!!this.preview?.impact},blockingCountText(){return this.checksLoaded?String(this.blockingChecks.length):'待检查'},pendingPolicyCountText(){return this.runtimeLoaded?String(this.pendingPolicyCount):'待读取'},notInstalledCountText(){return this.previewEvidenceReady?String(this.notInstalledCount):'待预览'},blockedModuleCountText(){return this.previewEvidenceReady?String(this.blockedModules.length):'待预览'},readinessTitle(){if(this.project.acceptanceDigest)return'本项目已经验收封板';if(!this.checksLoaded)return'尚未取得完整上线检查证据';if(this.blockingChecks.length)return`仍有 ${this.blockingChecks.length} 个上线阻断`;if(!this.runtimeLoaded)return'上线检查已运行，但运行时预设状态尚未取得';if(!this.previewEvidenceReady&&['DRAFT','CONFIGURING','PREVIEW_READY'].includes(this.project.status))return'还需要生成安装预览';if(this.project.status==='READY_FOR_ACCEPTANCE')return'服务端状态已进入可验收阶段';return'当前没有足够证据宣布完成验收'},readinessDescription(){if(this.project.acceptanceDigest)return'后续配置调整必须通过新的变更项目继续留痕。';if(!this.checksLoaded)return'先运行真实上线检查，再处理阻断；页面不会用空数组代替“已经检查”。';if(this.blockingChecks.length)return'按检查项责任角色逐个处理，处理后重新运行检查，不在前端直接改成通过。';if(!this.runtimeLoaded)return'运行时预设读取失败或未取得时保持未知，避免误导为“0 个待确认”。';if(!this.previewEvidenceReady&&['DRAFT','CONFIGURING','PREVIEW_READY'].includes(this.project.status))return'预览会给出待安装对象、商业授权阻断和幂等快照身份。';return this.project.status==='READY_FOR_ACCEPTANCE'?'仍需由具备权限的人员执行最终验收封板，才形成不可变验收摘要。':'继续按右侧准备清单推进，直到服务端返回可验收状态并完成封板。'},readinessTone(){return this.project.acceptanceDigest?'su-notice--success':this.blockingChecks.length?'su-notice--error':'su-notice--warning'},shortHash(){return this.idempotencyKey?`${this.idempotencyKey.slice(0,12)}…`:'未取得'},previewModulesText(){const m=this.preview?.impact?.selectedModules;return Array.isArray(m)&&m.length?m.join('、'):'未取得'},toolbarActions(){const a=[{key:'refresh',label:'刷新'}];if(!this.project)return a;if(['DRAFT','CONFIGURING','PREVIEW_READY'].includes(this.project.status))a.unshift({key:'preview',label:'生成预览'});if(this.project.status==='PREVIEW_READY')a.unshift({key:'apply',label:'应用快照',variant:'primary'});if(['APPLIED','VERIFYING','READY_FOR_ACCEPTANCE'].includes(this.project.status))a.unshift({key:'checks',label:'运行上线检查'});if(this.project.status==='READY_FOR_ACCEPTANCE')a.unshift({key:'accept',label:'验收封板',variant:'primary'});return a},confirmMessage(){return this.pendingAction==='apply'?`将按快照 ${this.shortHash} 安装预设；已存在对象只跳过不覆盖，重复提交不会装第二遍。`:'验收后配置封板，只能通过新建变更项目调整。'}},
+ created(){this.load()},methods:{previewCount(g,k){const v=this.preview?.impact?.[g]?.[k];return Array.isArray(v)?v.length:0},onAction(k){if(k==='refresh')return this.load();if(k==='preview')return this.doPreview();if(k==='checks')return this.doChecks();if(k==='apply'||k==='accept'){this.pendingAction=k;this.confirmOpen=true}},async doPreview(){const r=await this.call(()=>implementationApi.preview(this.project.id));if(!r)return;this.preview=r.preview||null;this.idempotencyKey=r.idempotencyKey||r.previewHash||'';this.project=r.project||this.project;if(!this.preview)return toast.error('预览接口未返回可核对快照');r.preview.blocked?toast.error('预览存在阻断项，请先处理后再应用'):toast.success('安装预览已生成，请核对影响后再应用')},async doChecks(){const r=await this.call(()=>implementationApi.runChecks(this.project.id));if(!r)return;this.checks=Array.isArray(r.checks)?r.checks:[];this.checksLoaded=true;await this.load({preserveCheckEvidence:true})},async submit({reason}){this.submitting=true;const r=this.pendingAction==='apply'?await this.call(()=>implementationApi.apply(this.project.id,{confirmText:'确认应用',reason,idempotencyKey:this.idempotencyKey})):await this.call(()=>implementationApi.accept(this.project.id,{confirmText:'确认验收',comment:reason}));this.submitting=false;if(!r)return;toast.success(this.pendingAction==='accept'?'验收已封板':r.idempotent?'该快照已应用过':'快照已应用');if(this.pendingAction==='apply'){this.preview=null;this.idempotencyKey=''}this.confirmOpen=false;await this.load({preserveCheckEvidence:this.checksLoaded})},async call(fn){try{return await fn()}catch(e){toast.error(e?.message||'操作失败');return null}},async load({preserveCheckEvidence=false}={}){this.loading=true;this.error='';if(!preserveCheckEvidence)this.checksLoaded=false;this.runtimeLoaded=false;try{this.project=await implementationApi.current();if(this.project?.status !== 'PREVIEW_READY'){
+    this.preview = null
+    this.idempotencyKey = ''
+   }if(this.project){if(Array.isArray(this.project.checks)&&this.project.checks.length){this.checks=this.project.checks.map(c=>({...c}));this.checksLoaded=true}else if(!preserveCheckEvidence)this.checks=[];try{this.runtime=await implementationApi.runtimePresets(this.project.id);this.runtimeLoaded=true}catch{this.runtime=null;this.runtimeLoaded=false}}else{this.checks=[];this.runtime=null}}catch(e){this.error=e?.message||'实施项目加载失败'}this.loading=false}}
 }
 </script>
-
 <style scoped>
 @import '@/styles/module-page.css';
-.iw-conclusions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
-.iw-item {
-  min-width: 120px;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-}
-.iw-item__num { display: block; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); }
-.iw-item__label { display: block; color: var(--text-secondary); font-size: var(--font-size-xs); }
-.iw-blocked { color: var(--color-danger); font-weight: var(--font-weight-medium); }
-.iw-list { margin: var(--space-2) 0; padding-left: var(--space-4); }
-.iw-links { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.iw-hero{display:flex;justify-content:space-between;gap:22px;padding:24px;border:1px solid var(--border-light);border-radius:14px;background:var(--bg-card)}.iw-hero__main{flex:1;min-width:0}.iw-kicker{color:var(--text-tertiary);font-size:11px;font-weight:650;letter-spacing:.08em}.iw-hero__title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:5px 0 16px}.iw-hero__title h2{margin:0;font-size:22px}.iw-hero__title p{margin:4px 0 0;color:var(--text-tertiary);font-size:var(--font-size-sm)}.iw-hero__actions{display:flex;flex-direction:column;gap:8px;min-width:150px}.iw-route-link{display:inline-flex;justify-content:center;padding:9px 12px;border:1px solid var(--primary-100);border-radius:9px;background:var(--primary-50);color:var(--primary-700);font-size:var(--font-size-sm);text-decoration:none}.iw-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}.iw-main,.iw-side{display:grid;gap:16px;min-width:0}.iw-preview-facts{display:grid;margin:14px 0 0}.iw-preview-facts>div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:11px 0;border-bottom:1px dashed var(--border-light)}.iw-preview-facts dt{color:var(--text-tertiary)}.iw-preview-facts dd{margin:0;overflow-wrap:anywhere}.iw-code{font-family:ui-monospace,Consolas,monospace;font-size:12px}.iw-warning-line{margin:12px 0 0;color:var(--warning-700);font-size:var(--font-size-sm)}.iw-awaiting{padding:30px 18px;border:1px dashed var(--border-base);border-radius:10px;background:var(--bg-page);text-align:center}.iw-awaiting p{margin:5px 0 0;color:var(--text-tertiary)}.iw-step{display:grid;grid-template-columns:34px minmax(0,1fr) 18px;gap:10px;align-items:center;padding:13px 0;border-bottom:1px dashed var(--border-light);color:var(--text-primary);text-decoration:none}.iw-step__num{display:grid;width:30px;height:30px;place-items:center;border-radius:8px;background:var(--primary-50);color:var(--primary-700);font-size:11px;font-weight:650}.iw-step b,.iw-step small{display:block}.iw-step small,.iw-principles p{margin-top:3px;color:var(--text-tertiary);font-size:11px}.iw-principles{display:grid;gap:16px}@media(max-width:1100px){.iw-grid{grid-template-columns:1fr}.iw-side{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.iw-hero,.iw-hero__title{flex-direction:column}.iw-hero__actions{width:100%}.iw-side{grid-template-columns:1fr}.iw-preview-facts>div{grid-template-columns:1fr}}
 </style>

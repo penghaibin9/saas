@@ -1,323 +1,80 @@
 <template>
-  <ModulePageShell
-    title="数据范围管理"
-    subtitle="数据范围独立于角色配置：全校 / 学院 / 专业 / 班级 / 本人 / 指导关系 / 企业授权 / 临时授权"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <template #actions>
-      <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
-    </template>
-
+  <ModulePageShell title="数据范围规则" subtitle="先选一条规则，再核对引用角色、受影响成员和显式限制；最终访问结论始终由后端按具体业务对象判定" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar" /></template>
     <div class="mp-stack">
-      <!--
-        SYS-08 显式 DENY。上面的范围规则表达"能看哪些"，这里表达"谁都不许看哪些"。
-        把"某节点不可见"写成"少给一个 ALLOW"是不可靠的：任何人给这个角色配个更大的
-        范围就击穿了。DENY 判定永远最先命中，且不可被任何 ALLOW 覆盖。
-      -->
-      <section class="mp-card ds-deny">
-        <header class="mp-card__head">
-          <span class="mp-card__title">显式禁止（DENY）</span>
-          <span>
-            <span class="mp-note">DENY 优先于一切 ALLOW，含继承</span>
-            <button class="mp-link" @click="denyPanel.open = !denyPanel.open">
-              {{ denyPanel.open ? '收起' : '展开' }}
-            </button>
-          </span>
-        </header>
-        <div v-if="denyPanel.open" class="mp-card__body" style="padding-top: 0">
-          <table class="mp-audit">
-            <thead>
-              <tr>
-                <th style="width: 170px">角色</th>
-                <th style="width: 90px">效果</th>
-                <th style="width: 190px">目标</th>
-                <th style="width: 90px">向下继承</th>
-                <th style="width: 165px">生效期间</th>
-                <th>原因</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="p in denyPanel.items" :key="p.policyId">
-                <td class="is-who">{{ p.roleCode }}</td>
-                <td>
-                  <StatusTag :type="p.effect === 'DENY' ? 'danger' : 'success'" :label="p.effect" />
-                </td>
-                <td>{{ p.targetType }}:{{ p.targetId }}</td>
-                <td>{{ p.includeChildren ? '是' : '否' }}</td>
-                <td class="mp-cell-sub">
-                  {{ fmtTime(p.effectiveAt) }} ~ {{ p.expiresAt ? fmtTime(p.expiresAt) : '长期' }}
-                </td>
-                <td class="mp-cell-sub">{{ p.reason }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <EmptyState
-            v-if="!denyPanel.items.length"
-            title="尚未配置任何显式策略"
-            description="需要「某个学院或班级谁都不许看」时在这里配置 DENY；它不会被更大的范围覆盖"
-          />
-          <p class="mp-note" style="margin-top: var(--space-2)">
-            判定顺序：DENY → 继承 DENY → 敏感专项 → 业务关系 → 直接 ALLOW → 继承 ALLOW → 默认拒绝
-          </p>
-        </div>
-      </section>
-
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="load" @reset="reset" />
-
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="没有符合条件的规则" description="可调整筛选条件或新增数据范围规则" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="id">
-        <template #cell-rule="{ row }">
-          <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ row.scopeCode }}</div>
-        </template>
-        <template #cell-scopeLabel="{ row }">
-          <StatusTag type="info" :label="row.scopeLabel" />
-        </template>
-        <template #cell-appliedRoles="{ row }">
-          <span class="mp-cell-sub">{{ row.appliedRoles.join('、') || '未引用' }}</span>
-        </template>
-        <template #cell-affectedUsers="{ row }">
-          <button class="mp-link" :class="{ 'is-disabled': !can('viewScopeAffected') }" :title="reason('viewScopeAffected')" @click="openAffected(row)">
-            {{ row.affectedUsers }} 人
-          </button>
-        </template>
-        <template #cell-status="{ row }">
-          <StatusTag :type="row.status === 'ENABLED' ? 'success' : 'default'" :label="row.statusLabel" dot />
-        </template>
-        <template #cell-actions="{ row }">
-          <button class="mp-link" :class="{ 'is-disabled': !can('editScopeRule') }" :title="reason('editScopeRule')" @click="openEdit(row)">编辑</button>
-          <button
-            v-if="row.status === 'ENABLED'"
-            class="mp-link ds-danger"
-            :class="{ 'is-disabled': !can('deprecateScopeRule') }"
-            :title="reason('deprecateScopeRule')"
-            @click="askDeprecate(row)"
-          >作废</button>
-          <span v-else class="mp-note">已作废</span>
-        </template>
-      </DataTable>
-
-      <p class="mp-note">
-        规则变更影响所有引用角色的成员可见范围，保存后写入审计日志；作废前必须先在角色配置中解除引用（影响人数为 0）。
-      </p>
-    </div>
-
-    <!-- 新增 / 编辑规则 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑数据范围规则' : '新增数据范围规则'" mode="modal" size="medium">
-      <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
-      <template #footer>
-        <AppButton variant="ghost" @click="form.open = false">取消</AppButton>
-        <AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存规则</AppButton>
-      </template>
-    </AppDrawer>
-
-    <!-- 影响用户 -->
-    <AppDrawer v-model:visible="affected.open" :title="'影响用户 · ' + affected.name" mode="modal" size="large">
-      <LoadingState v-if="affected.loading" />
-      <EmptyState v-else-if="!affected.list.length" title="暂无影响用户" description="该规则当前没有被任何账号的角色引用" />
+      <ErrorState v-if="error" :description="error" @retry="load" /><LoadingState v-else-if="loading" />
+      <EmptyState v-else-if="!rows.length" title="没有符合条件的数据范围规则" description="可调整筛选条件；若要新增规则，请使用页面右上角的新增入口" />
       <template v-else>
-        <div v-for="u in affected.list" :key="u.id" class="mp-kv">
-          <span class="mp-kv__k">{{ u.name }} · {{ u.roleName || '—' }}</span>
-          <span class="mp-kv__v">{{ u.orgName || u.userNo || '—' }}</span>
-        </div>
-        <p class="mp-note" style="margin-top: var(--space-2)">仅展示姓名与组织，联系方式等敏感字段不在此页展示。</p>
+        <section class="su-metrics" aria-label="当前筛选结果摘要">
+          <div class="su-metric"><span>当前筛选规则</span><strong>{{ rows.length }}</strong><small>仅统计本次服务端返回结果</small></div>
+          <div class="su-metric"><span>启用中</span><strong>{{ enabledRuleCount }}</strong><small>当前筛选结果口径</small></div>
+          <div class="su-metric"><span>当前规则引用角色</span><strong>{{ selectedRule ? selectedRule.appliedRoles.length : 0 }}</strong><small>角色引用关系，不等于实际访问人数</small></div>
+          <div class="su-metric" :class="{ 'is-warning': selectedRule && selectedRule.affectedUsers == null }"><span>历史匹配人数</span><strong>{{ affectedCountText }}</strong><small>未取得时明确显示，不补 0</small></div>
+        </section>
+        <section class="ds-workbench">
+          <aside class="ds-context" aria-label="数据范围规则列表">
+            <div class="ds-context__head"><div><span class="ds-kicker">范围规则</span><p>选择一条规则继续核对</p></div><span class="sw-tag">{{ rows.length }} 条</span></div>
+            <button v-for="row in rows" :key="row.id" type="button" class="ds-choice" :class="{ 'is-selected': selectedRuleId === row.id }" :aria-current="selectedRuleId === row.id ? 'true' : undefined" @click="selectRule(row)">
+              <span class="ds-choice__title"><b>{{ row.name }}</b><StatusTag :type="row.status === 'ENABLED' ? 'success' : 'default'" :label="row.statusLabel" dot /></span><small>{{ row.scopeLabel }} · {{ row.appliedRoles.length }} 个角色引用</small>
+            </button>
+          </aside>
+          <div v-if="selectedRule" class="ds-main">
+            <header class="ds-main__head"><div><span class="ds-kicker">当前规则</span><h2>{{ selectedRule.name }}</h2><p>结构化范围类型 {{ selectedRule.scopeLabel }}<span v-if="selectedRule.scopeCode"> · {{ selectedRule.scopeCode }}</span><span v-if="selectedRule.updatedAt"> · 最近更新 {{ selectedRule.updatedAt }}</span></p></div>
+              <div class="ds-actions"><AppButton variant="ghost" :disabled="!can('editScopeRule')" :title="reason('editScopeRule')" @click="openEdit(selectedRule)">编辑规则</AppButton><AppButton v-if="selectedRule.status === 'ENABLED'" variant="warning" :disabled="!can('deprecateScopeRule')" :title="reason('deprecateScopeRule')" @click="askDeprecate(selectedRule)">作废规则</AppButton></div></header>
+            <div class="su-notice"><b>角色权限通过，不代表可以读取任意业务对象。</b><p>显式 DENY、敏感专项、业务关系和具体对象范围仍由后端最终判定；本页只呈现规则与引用事实。</p></div>
+            <div class="ds-facts"><div><span>范围类型</span><strong>{{ selectedRule.scopeLabel }}</strong></div><div><span>引用角色</span><strong>{{ selectedRule.appliedRoles.length }}</strong></div><div><span>历史匹配人数</span><strong>{{ selectedRule.affectedUsers == null ? '未取得' : selectedRule.affectedUsers + ' 人*' }}</strong></div><div><span>当前状态</span><strong>{{ selectedRule.statusLabel }}</strong></div></div>
+            <section class="ds-section"><div class="ds-section__head"><div><h3>引用该规则的角色</h3><p>这里只说明角色默认范围引用，不自动替成员创建任职或指导关系。</p></div></div><div v-if="selectedRule.appliedRoles.length" class="ds-role-list"><span v-for="role in selectedRule.appliedRoles" :key="role" class="ds-role-chip">{{ role }}</span></div><p v-else class="ds-empty-line">当前没有角色引用这条规则。</p></section>
+            <section class="ds-section">
+              <div class="ds-section__head"><div><h3>受影响成员 · 受限预览</h3><p>最多返回 200 条用户与角色关联记录；同一成员可能因多个角色重复出现，因此不能把列表长度当作完整人数。</p></div><AppButton variant="ghost" :disabled="!can('viewScopeAffected') || affected.loading" :title="reason('viewScopeAffected')" @click="openAffected(selectedRule)">{{ affected.loadedFor === selectedRule.id ? '重新读取' : '查看受影响成员' }}</AppButton></div>
+              <LoadingState v-if="affected.loading && affected.id === selectedRule.id" /><ErrorState v-else-if="affected.error && affected.id === selectedRule.id" :description="affected.error" @retry="openAffected(selectedRule)" />
+              <template v-else-if="affected.loadedFor === selectedRule.id"><EmptyState v-if="!affected.list.length" title="当前历史匹配口径未返回记录" description="这是受限预览，不能据此证明所有结构化权限都没有影响" /><div v-else class="ds-affected-list"><div v-for="(u,index) in affected.list" :key="`${u.id}:${u.roleName}:${index}`" class="ds-person-row"><span><b>{{ u.name }}</b><small>{{ u.roleName || '—' }}</small></span><span>{{ u.orgName || u.userNo || '—' }}</span></div></div><p class="ds-footnote">* 仅展示姓名与组织，不展示联系方式等敏感字段；服务端限制最多 200 条。</p></template>
+              <p v-else class="ds-empty-line">尚未读取影响预览；未读取不等于 0 人。</p>
+            </section>
+            <section class="ds-section ds-section--deny"><div class="ds-section__head"><div><h3>显式禁止与特殊限制</h3><p>DENY 优先于 ALLOW。规则列表没有 DENY 记录，不代表某个具体业务对象一定允许访问。</p></div><button type="button" class="mp-link" @click="denyPanel.open = !denyPanel.open">{{ denyPanel.open ? '收起策略' : '展开策略' }}</button></div>
+              <template v-if="denyPanel.open"><LoadingState v-if="denyPanel.loading" /><ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" /><div v-else-if="denyPanel.items.length" class="ds-deny-list"><div v-for="policy in denyPanel.items" :key="policy.policyId" class="ds-deny-row"><span><b>{{ policy.roleCode }}</b><small>{{ policy.targetType }}:{{ policy.targetId }}</small></span><StatusTag :type="policy.effect === 'DENY' ? 'danger' : 'success'" :label="policy.effect" /><span>{{ policy.includeChildren ? '包含下级' : '仅当前节点' }}</span><span>{{ fmtTime(policy.effectiveAt) }} ~ {{ policy.expiresAt ? fmtTime(policy.expiresAt) : '长期' }}</span><span>{{ policy.reason || '—' }}</span></div></div><EmptyState v-else title="服务端未返回显式策略" description="这里只能说明本次读取没有记录，最终访问仍需结合具体对象由后端判定" /><p class="ds-footnote">判定顺序：DENY → 继承 DENY → 敏感专项 → 业务关系 → 直接 ALLOW → 继承 ALLOW → 默认拒绝。</p></template>
+            </section>
+            <p v-if="selectedRule.remark" class="ds-remark">规则说明：{{ selectedRule.remark }}</p>
+          </div>
+        </section>
       </template>
-    </AppDrawer>
-
-    <AppConfirmDialog
-      v-model:visible="confirmDeprecate"
-      type="danger"
-      :title="'作废规则「' + (deprecateRow ? deprecateRow.name : '') + '」？'"
-      message="作废为逻辑删除：历史引用记录保留可追溯；作废后该规则不可再被角色引用。"
-      confirm-text="确认作废并留痕"
-      require-reason
-      reason-label="作废原因"
-      :submitting="deprecateSubmitting"
-      @confirm="doDeprecate"
-    />
+    </div>
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑数据范围规则' : '新增数据范围规则'" mode="modal" size="medium"><FormFields v-model="form.value" :fields="formFields" :errors="form.errors" /><template #footer><AppButton variant="ghost" @click="form.open=false">取消</AppButton><AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存规则</AppButton></template></AppDrawer>
+    <AppConfirmDialog v-model:visible="confirmDeprecate" type="danger" :title="'作废规则「'+(deprecateRow?deprecateRow.name:'')+'」？'" message="作废为逻辑删除：历史引用记录保留可追溯；作废后该规则不可再被角色引用。" confirm-text="确认作废并留痕" require-reason reason-label="作废原因" :submitting="deprecateSubmitting" @confirm="doDeprecate" />
   </ModulePageShell>
 </template>
-
 <script>
-/**
- * 数据范围管理（/admin/system/scopes）：
- * 新增 / 编辑 / 作废（逻辑删除+原因留痕）/ 查看影响用户 / 导出规则清单。
- */
-import {
-  ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
-  StatusTag, LoadingState, ErrorState, EmptyState
-} from '@/components/business'
+import { ModulePageShell,ModuleToolbar,AdvancedFilter,StatusTag,LoadingState,ErrorState,EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
-
-export default {
-  name: 'SystemDataScopeView',
-  components: {
-    ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, FormFields
-  },
-  props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true,
-      error: '',
-      rows: [],
-      // SYS-08 显式 DENY 策略（默认收起，不干扰既有范围规则管理）
-      denyPanel: { open: false, items: [] },
-      filters: { keyword: '', status: '' },
-      columns: [
-        { key: 'rule', title: '规则' },
-        { key: 'scopeLabel', title: '范围类型' },
-        { key: 'appliedRoles', title: '引用角色' },
-        { key: 'affectedUsers', title: '影响用户' },
-        { key: 'remark', title: '说明' },
-        { key: 'status', title: '状态' },
-        { key: 'updatedAt', title: '最近更新' },
-        { key: 'actions', title: '操作', width: '140px' }
-      ],
-      form: { open: false, id: '', value: {}, errors: {}, submitting: false },
-      affected: { open: false, loading: false, name: '', list: [] },
-      confirmDeprecate: false,
-      deprecateRow: null,
-      deprecateSubmitting: false
-    }
-  },
-  computed: {
-    filterFields() {
-      return [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '规则名称' },
-        { key: 'status', label: '状态', type: 'select', options: this.ctx.statusOptions.ruleStatus }
-      ]
-    },
-    toolbarActions() {
-      const pa = this.ctx.permissionActions
-      return [
-        { key: 'createScopeRule', label: '＋ 新增规则', variant: 'primary' },
-        { key: 'exportScopeRules', label: '⇩ 导出规则清单' }
-      ]
-        .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
-    },
-    formFields() {
-      return [
-        { key: 'name', label: '规则名称', required: true, placeholder: '如：本学院范围' },
-        { key: 'scopeCode', label: '范围类型', type: 'select', required: true, options: this.ctx.statusOptions.scopeTypes },
-        { key: 'remark', label: '规则说明', type: 'textarea', full: true, placeholder: '计算口径与边界，如「按任职学院自动计算，跨院不可见」' }
-      ]
-    }
-  },
-  created() {
-    this.load()
-  },
-  methods: {
-    can(key) {
-      const pa = this.ctx.permissionActions[key]
-      return !!(pa && pa.visible && pa.allowed)
-    },
-    reason(key) {
-      const pa = this.ctx.permissionActions[key]
-      return pa && !pa.allowed ? pa.reason : ''
-    },
-    reset() {
-      this.filters = { keyword: '', status: '' }
-      this.load()
-    },
-    async onToolbar(key) {
-      if (key === 'createScopeRule') this.openEdit(null)
-      if (key === 'exportScopeRules') {
-        const res = await systemApi.exportScopeRules()
-        if (res.code === 0) toast.success('数据范围清单已下载：' + res.data.fileName + '（含水印），已留痕')
-        else toast.error(res.message)
-      }
-    },
-    openEdit(row) {
-      const key = row ? 'editScopeRule' : 'createScopeRule'
-      if (!this.can(key)) return
-      this.form = {
-        open: true,
-        id: row ? row.id : '',
-        value: row ? { name: row.name, scopeCode: row.scopeCode, remark: row.remark } : { name: '', scopeCode: '', remark: '' },
-        errors: {},
-        submitting: false
-      }
-    },
-    async submitForm() {
-      const errors = FormFields.validateRequired(this.formFields, this.form.value)
-      this.form.errors = errors
-      if (Object.keys(errors).length) return
-      this.form.submitting = true
-      const res = await systemApi.saveScopeRule({ id: this.form.id || undefined, ...this.form.value })
-      this.form.submitting = false
-      if (res.code === 0) {
-        toast.success('规则已保存并留痕')
-        this.form.open = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
-    async openAffected(row) {
-      if (!this.can('viewScopeAffected')) return
-      this.affected = { open: true, loading: true, name: row.name, list: [] }
-      const res = await systemApi.getScopeAffectedUsers(row.id)
-      this.affected.loading = false
-      if (res.code === 0) this.affected.list = res.data
-    },
-    askDeprecate(row) {
-      if (!this.can('deprecateScopeRule')) return
-      this.deprecateRow = row
-      this.confirmDeprecate = true
-    },
-    async doDeprecate({ reason }) {
-      this.deprecateSubmitting = true
-      const res = await systemApi.deprecateScopeRule(this.deprecateRow.id, { reason })
-      this.deprecateSubmitting = false
-      if (res.code === 0) {
-        toast.success('规则已作废（逻辑删除），原因已留痕')
-        this.confirmDeprecate = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
-    async load() {
-      this.loading = true
-      this.error = ''
-      const res = await systemApi.getScopeRules(this.filters)
-      if (res.code === 0) this.rows = res.data.list
-      else this.error = res.message
-      this.loading = false
-      this.loadDenyPolicies()
-    },
-
-    fmtTime(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-
-    /** SYS-08 显式策略。加载失败不阻断既有范围规则列表。 */
-    async loadDenyPolicies() {
-      const res = await systemApi.getScopePolicies()
-      if (res.code === 0) this.denyPanel.items = (res.data || {}).items || []
-    }
-  }
+import { contextFingerprint,createRequestFence } from '../utils/workspaceContract'
+export default{
+ name:'SystemDataScopeView',components:{ModulePageShell,ModuleToolbar,AdvancedFilter,StatusTag,LoadingState,ErrorState,EmptyState,AppButton,AppDrawer,AppConfirmDialog,FormFields},props:{ctx:{type:Object,required:true}},
+ data(){return{fence:null,loading:true,error:'',rows:[],selectedRuleId:'',denyPanel:{open:false,items:[],loading:false,error:''},filters:{keyword:'',status:''},form:{open:false,id:'',value:{},errors:{},submitting:false},affected:{loading:false,id:'',loadedFor:'',list:[],error:''},confirmDeprecate:false,deprecateRow:null,deprecateSubmitting:false}},
+ computed:{
+  contextKey(){return contextFingerprint(this.ctx)},selectedRule(){return this.rows.find(r=>r.id===this.selectedRuleId)||this.rows[0]||null},enabledRuleCount(){return this.rows.filter(r=>r.status==='ENABLED').length},affectedCountText(){return!this.selectedRule||this.selectedRule.affectedUsers==null?'未取得':`${this.selectedRule.affectedUsers} 人*`},
+  filterFields(){return[{key:'keyword',label:'关键词',type:'text',placeholder:'规则名称'},{key:'status',label:'状态',type:'select',options:this.ctx.statusOptions.ruleStatus}]},
+  toolbarActions(){const pa=this.ctx.permissionActions;return[{key:'createScopeRule',label:'＋ 新增规则',variant:'primary'},{key:'exportScopeRules',label:'⇩ 导出规则清单'}].filter(a=>pa[a.key]&&pa[a.key].visible).map(a=>({...a,disabled:!pa[a.key].allowed,disabledReason:pa[a.key].reason}))},
+  formFields(){return[{key:'name',label:'规则名称',required:true,placeholder:'如：本学院范围'},{key:'scopeCode',label:'范围类型',type:'select',required:true,options:this.ctx.statusOptions.scopeTypes},{key:'remark',label:'规则说明',type:'textarea',full:true,placeholder:'计算口径与边界'}]}
+ },
+ created(){this.fence=createRequestFence();this.load()},beforeUnmount(){this.fence.invalidate()},watch:{contextKey(){this.fence.invalidate();this.rows=[];this.selectedRuleId='';this.affected={loading:false,id:'',loadedFor:'',list:[],error:''};this.denyPanel={open:false,items:[],loading:false,error:''};this.load()}},
+ methods:{
+  can(key){const pa=this.ctx.permissionActions[key];return!!(pa&&pa.visible&&pa.allowed)},reason(key){const pa=this.ctx.permissionActions[key];return pa&&!pa.allowed?pa.reason:''},selectRule(row){this.selectedRuleId=row.id;this.affected={loading:false,id:'',loadedFor:'',list:[],error:''}},reset(){this.filters={keyword:'',status:''};this.load()},
+  async onToolbar(key){if(key==='createScopeRule')this.openEdit(null);if(key==='exportScopeRules'){const res=await systemApi.exportScopeRules();res.code===0?toast.success('数据范围清单已下载：'+res.data.fileName+'（含水印），已留痕'):toast.error(res.message)}},
+  openEdit(row){const key=row?'editScopeRule':'createScopeRule';if(!this.can(key))return;this.form={open:true,id:row?row.id:'',value:row?{name:row.name,scopeCode:row.scopeCode,remark:row.remark}:{name:'',scopeCode:'',remark:''},errors:{},submitting:false}},
+  async submitForm(){if(this.form.submitting||!this.form.open||!this.can(this.form.id?'editScopeRule':'createScopeRule'))return;const current=this.fence.start('form-write'),errors=FormFields.validateRequired(this.formFields,this.form.value);this.form.errors=errors;if(Object.keys(errors).length)return;this.form.submitting=true;const res=await systemApi.saveScopeRule({id:this.form.id||undefined,...this.form.value});if(!current())return;this.form.submitting=false;if(res.code===0){toast.success('规则已保存并留痕');this.form.open=false;await this.load()}else toast.error(res.message)},
+  async openAffected(row){if(!row||!this.can('viewScopeAffected'))return;const current=this.fence.start('affected');this.affected={loading:true,id:row.id,loadedFor:'',list:[],error:''};try{const res=await systemApi.getScopeAffectedUsers(row.id);if(!current())return;if(res.code!==0||!Array.isArray(res.data))throw new Error(res.message||'影响用户数据未取得');this.affected.list=res.data;this.affected.loadedFor=row.id}catch(error){if(current()){this.affected.error=error.message||'影响用户读取失败，人数未取得';this.affected.loadedFor=row.id}}finally{if(current())this.affected.loading=false}},
+  askDeprecate(row){if(!this.can('deprecateScopeRule'))return;this.deprecateRow=row;this.confirmDeprecate=true},async doDeprecate({reason}){if(this.deprecateSubmitting||!this.deprecateRow||!this.can('deprecateScopeRule'))return;const current=this.fence.start('status-write');this.deprecateSubmitting=true;const res=await systemApi.deprecateScopeRule(this.deprecateRow.id,{reason});if(!current())return;this.deprecateSubmitting=false;if(res.code===0){toast.success('规则已作废（逻辑删除），原因已留痕');this.confirmDeprecate=false;await this.load()}else toast.error(res.message)},
+  async load(){const current=this.fence.start('rules');this.loading=true;this.error='';const res=await systemApi.getScopeRules(this.filters);if(!current())return;if(res.code===0&&Array.isArray(res.data?.list)){this.rows=res.data.list;if(!this.rows.some(r=>r.id===this.selectedRuleId)){this.selectedRuleId=this.rows[0]?.id||'';this.affected={loading:false,id:'',loadedFor:'',list:[],error:''}}}else{this.rows=[];this.error=res.message||'数据范围规则加载失败'}this.loading=false;this.loadDenyPolicies()},fmtTime(v){return v?String(v).replace('T',' ').slice(0,16):'—'},
+  async loadDenyPolicies(){const current=this.fence.start('policies');this.denyPanel.loading=true;this.denyPanel.error='';try{const res=await systemApi.getScopePolicies();if(!current())return;if(res.code!==0||!Array.isArray(res.data?.items))throw new Error(res.message||'显式策略结果不完整');this.denyPanel.items=res.data.items}catch(error){if(current())this.denyPanel.error=error.message||'显式策略未取得'}finally{if(current())this.denyPanel.loading=false}}
+ }
 }
 </script>
-
 <style scoped>
 @import '@/styles/module-page.css';
-.ds-danger {
-  color: var(--danger-600);
-}
-.mp-link + .mp-link {
-  margin-left: var(--space-2);
-}
-/* SYS-08 显式 DENY */
-.ds-deny {
-  border-left: 3px solid var(--danger-600);
-}
+.ds-workbench{display:grid;grid-template-columns:236px minmax(0,1fr);overflow:hidden;border:1px solid var(--border-light);border-radius:14px;background:var(--bg-card)}.ds-context{min-width:0;padding:14px 10px;border-right:1px solid var(--border-light);background:var(--bg-page)}.ds-context__head,.ds-section__head,.ds-main__head,.ds-choice__title,.ds-actions{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}.ds-context__head{align-items:flex-start;padding:6px 8px 12px}.ds-context__head p,.ds-main__head p,.ds-section__head p{margin:3px 0 0;color:var(--text-tertiary);font-size:var(--font-size-xs)}.ds-kicker{color:var(--text-tertiary);font-size:11px;font-weight:600;letter-spacing:.06em}.ds-choice{display:block;width:100%;margin:4px 0;padding:12px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}.ds-choice:hover,.ds-choice.is-selected{border-color:var(--primary-100);background:var(--bg-card)}.ds-choice.is-selected{box-shadow:inset 3px 0 0 var(--color-primary)}.ds-choice small{display:block;margin-top:5px;color:var(--text-tertiary)}.ds-main{min-width:0;padding:22px}.ds-main__head{align-items:flex-start}.ds-main__head h2{margin:2px 0 0;font-size:20px}.ds-actions{justify-content:flex-end;flex-wrap:wrap}.ds-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}.ds-facts>div{min-width:0;padding:14px;border:1px solid var(--border-light);border-radius:10px;background:var(--bg-page)}.ds-facts span,.ds-facts strong{display:block}.ds-facts span{color:var(--text-tertiary);font-size:var(--font-size-xs)}.ds-facts strong{margin-top:5px;overflow-wrap:anywhere}.ds-section{margin-top:16px;padding:18px;border:1px solid var(--border-light);border-radius:12px}.ds-section--deny{border-left:3px solid var(--danger-600)}.ds-section__head{align-items:flex-start}.ds-role-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.ds-role-chip{padding:5px 9px;border-radius:7px;background:var(--primary-50);color:var(--primary-700);font-size:var(--font-size-xs)}.ds-affected-list,.ds-deny-list{display:grid;gap:8px;margin-top:14px}.ds-person-row,.ds-deny-row{display:grid;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--border-light);font-size:var(--font-size-sm)}.ds-person-row{grid-template-columns:minmax(180px,1fr) minmax(180px,1fr)}.ds-deny-row{grid-template-columns:minmax(130px,1.2fr) 80px 100px 190px minmax(160px,1.5fr)}.ds-person-row small,.ds-deny-row small{display:block;margin-top:2px;color:var(--text-tertiary)}.ds-empty-line,.ds-footnote,.ds-remark{margin:12px 0 0;color:var(--text-tertiary);font-size:var(--font-size-xs)}@media(max-width:960px){.ds-workbench{grid-template-columns:1fr}.ds-context{border-right:0;border-bottom:1px solid var(--border-light)}.ds-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.ds-deny-row{grid-template-columns:1fr 90px}}@media(max-width:640px){.ds-main__head,.ds-section__head{flex-direction:column;align-items:stretch}.ds-actions{justify-content:stretch}.ds-facts,.ds-person-row{grid-template-columns:1fr}}
 </style>
