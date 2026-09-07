@@ -17,6 +17,7 @@ import { toast } from '@/utils/toast'
 const VERSION_MISSING = '未取得当前版本，请刷新页面后再操作'
 const state = {
   installed: false,
+  contextKey: '',
   brandVersion: null,
   userVersions: new Map(),
   roleVersions: new Map()
@@ -43,6 +44,21 @@ function rememberRoles(data) {
 
 function rememberBrand(data) {
   if (validVersion(data?.version)) state.brandVersion = data.version
+}
+
+function rememberContext(data = {}) {
+  const access = data.permissionActions?.effectiveAccess || {}
+  const next = JSON.stringify([
+    access.tenantId ?? data.tenantId ?? null,
+    access.subjectId ?? data.currentRole?.userId ?? null,
+    access.activeContextId ?? data.currentRole?.roleCode ?? null
+  ])
+  if (state.contextKey && state.contextKey !== next) {
+    state.brandVersion = null
+    state.userVersions.clear()
+    state.roleVersions.clear()
+  }
+  state.contextKey = next
 }
 
 function fail(message = VERSION_MISSING) {
@@ -131,6 +147,7 @@ export function installSystemAuthorityCompatibility(systemApi) {
   state.installed = true
 
   const original = {
+    getContext: systemApi.getContext.bind(systemApi),
     getUsers: systemApi.getUsers.bind(systemApi),
     getUserDetail: systemApi.getUserDetail.bind(systemApi),
     updateUser: systemApi.updateUser.bind(systemApi),
@@ -141,6 +158,12 @@ export function installSystemAuthorityCompatibility(systemApi) {
     getBrandConfig: systemApi.getBrandConfig.bind(systemApi),
     saveBrandConfig: systemApi.saveBrandConfig.bind(systemApi),
     batchDisableUsers: systemApi.batchDisableUsers.bind(systemApi)
+  }
+
+  systemApi.getContext = async (...args) => {
+    const result = await original.getContext(...args)
+    if (result.code === 0) rememberContext(result.data)
+    return result
   }
 
   systemApi.getUsers = async (...args) => {
@@ -274,5 +297,6 @@ export const __authorityCompatibilityTest = {
   rememberUsers,
   rememberRoles,
   rememberBrand,
+  rememberContext,
   state
 }
