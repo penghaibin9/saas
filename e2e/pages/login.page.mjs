@@ -47,7 +47,7 @@ function retryAfterMs(response) {
   return BROWSER_LOGIN_WINDOW_MS + BROWSER_LOGIN_HEADROOM_MS
 }
 
-async function submitBrowserLogin(page, button, label) {
+async function submitBrowserLogin(page, button) {
   let response = null
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await paceBrowserLogin(page)
@@ -112,8 +112,7 @@ export class StaffLoginPage {
     // contract with headroom instead of spoofing X-Forwarded-For or weakening the backend limit.
     const response = await submitBrowserLogin(
       this.page,
-      this.page.getByRole('button', { name: /进入教师工作台|登录中/ }),
-      'staff'
+      this.page.getByRole('button', { name: /进入教师工作台|登录中/ })
     )
     expect(response.ok(), `staff login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
@@ -205,8 +204,7 @@ export class StudentLoginPage {
 
     const response = await submitBrowserLogin(
       this.page,
-      this.page.getByRole('button', { name: /进入学生服务门户|登录中/ }),
-      'student'
+      this.page.getByRole('button', { name: /进入学生服务门户|登录中/ })
     )
     expect(response.ok(), `student login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
