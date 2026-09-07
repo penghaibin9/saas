@@ -28,6 +28,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "focus": {"studentMini": FOCUS_LIST_FOCUS},
         "label": "查看宿舍整改",
     },
+    "student.internship.volunteer-result": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["groupId", "groupVersion"],
+        "pc": None, "studentPc": "/internship/volunteer-result",
+        "studentMini": "/pages/student/internship/volunteer-result/index", "teacherMini": None,
+        "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
+        "label": "原志愿办理结果",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],
@@ -65,6 +73,23 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "studentMini": None,
         "teacherMini": "/pages/teacher/risk-students/index",
         "label": "实习风险处置",
+    },
+    "enterprise.internship.application": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["applicationId", "campaignId"],
+        "pc": None, "studentPc": None, "studentMini": None, "teacherMini": None,
+        "enterprise": "/applications/:applicationId",
+        "label": "学生岗位申请",
+    },
+    "enterprise.internship.position": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["positionId", "campaignId"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": None,
+        "teacherMini": None,
+        "enterprise": "/positions/:positionId/edit",
+        "label": "企业岗位详情",
     },
     "student.exam.detail": {
         "roles": ["STUDENT"],
@@ -218,6 +243,7 @@ def list_action_keys() -> list[dict]:
                 "studentPc": v.get("studentPc"),
                 "studentMini": v.get("studentMini"),
                 "teacherMini": v.get("teacherMini"),
+                "enterprise": v.get("enterprise"),
             },
             "focus": {
                 client: focus_mode_for(k, client=client)
@@ -279,7 +305,7 @@ def focus_param_for(action_key: str) -> str | None:
 
 
 def resolve_route(action_key: str, *, client: str) -> dict:
-    """client: pc | studentPc | studentMini | teacherMini"""
+    """client: pc | studentPc | studentMini | teacherMini | enterprise"""
     spec = ACTION_REGISTRY.get(action_key)
     if not spec:
         return {"ok": False, "message": "请前往对应端办理", "path": None}

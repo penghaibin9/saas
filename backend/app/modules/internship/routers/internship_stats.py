@@ -22,6 +22,15 @@ _P_VIEW = "internship.stats.view"
 _P_EXPORT = "internship.stats.export"
 
 
+@router.get("/stats/command-screen", summary="岗位实习监管大屏只读聚合")
+def command_screen(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services.internship_command_screen_service import overview
+    return success(overview(user, batchId))
+
+
 @router.get("/stats/metrics", summary="实习统计指标字典")
 def stats_metrics(user=Depends(require_permission(_P_VIEW))):
     return success(svc.metric_definitions())

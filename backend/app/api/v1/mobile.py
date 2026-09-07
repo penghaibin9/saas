@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
@@ -46,6 +46,14 @@ internship_teacher_mobile = APIRouter(
     prefix="/teacher/internship", tags=["教师移动端-岗位实习"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+
+def _selected_internship_batch_id(
+    header_value: str | None = Header(default=None, alias="X-Internship-Batch-Id"),
+    explicit: int | None = Query(default=None, alias="batchId", ge=1),
+) -> str | None:
+    """Use the page's explicit batch first, otherwise the shared mobile batch context."""
+    return str(explicit) if explicit is not None else header_value
 
 # ── 学生端·我的 ──
 @router.get("/me/overview", summary="学生首页总览（本人）")
@@ -181,13 +189,28 @@ def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
 
 
 @internship_mobile.post("/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
-def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_user)):
-    return success(stu.internship_checkin(user, body))
+def internship_checkin(
+    body: dict = Body(default={}),
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin(user, body, batch_id=batch_id))
+
+
+@internship_mobile.post("/checkin/preflight", summary="实习打卡预检与短时定位凭证（本人）")
+def internship_checkin_preflight(
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin_preflight(user, batch_id=batch_id))
 
 
 @internship_mobile.get("/checkin/week", summary="本周打卡记录（本人）")
-def internship_checkin_week(user=Depends(get_current_user)):
-    return success(stu.internship_checkin_week(user))
+def internship_checkin_week(
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin_week(user, batch_id=batch_id))
 
 
 @internship_mobile.get("/enterprises", summary="企业岗位库（本人可浏览，城市筛选）")

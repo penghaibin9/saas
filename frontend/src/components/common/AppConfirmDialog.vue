@@ -27,6 +27,7 @@
           />
           <textarea
             ref="reasonEl"
+            :aria-label="reasonLabel"
             v-model="reason"
             class="app-confirm-dialog__textarea"
             :placeholder="reasonPlaceholder"

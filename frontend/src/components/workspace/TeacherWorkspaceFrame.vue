@@ -31,8 +31,8 @@ import WorkspaceShortcutEditor from './WorkspaceShortcutEditor.vue'
 import { SHORTCUT_ICONS } from './shortcutIcons'
 import WorkspaceDeskUtilities from './WorkspaceDeskUtilities.vue'
 import { RefreshLeft, Star, FullScreen, Close, Monitor, User, Calendar, House, Bell, ChatDotRound, Sunny, Help, Coin, DocumentChecked, Collection, DataAnalysis, School, Flag } from '@element-plus/icons-vue'
-import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceShort, workspaceTokens } from './teacherWorkspace'
-const props = defineProps({ modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
+import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceCurrentPage, workspaceShort, workspaceTokens } from './teacherWorkspace'
+const props = defineProps({ resolveDestination: { type: Function, default: (path) => path }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
 const emit = defineEmits(['tokens', 'theme-label'])
 const route = useRoute(), router = useRouter()
 const pages = computed(() => workspacePages(props.modules))
@@ -62,13 +62,15 @@ defineExpose({ openAppearance })
 watch(() => prefs.value.theme, key => emit('theme-label', WORKSPACE_THEMES.find(theme => theme.key === key)?.label || ''), { immediate: true })
 const destinations = new Map(), scrollPositions = new Map()
 const tokens = computed(() => workspaceTokens(prefs.value.theme))
-const currentPage = computed(() => pages.value.find(item => item.path === route.fullPath.split('#')[0]) || pages.value.filter(item => route.path === item.path.split('?')[0] || route.path.startsWith(item.path.split('?')[0] + '/')).sort((a,b) => b.path.split('?')[0].length - a.path.split('?')[0].length)[0] || pages.value.find(item => item.moduleKey === props.activeModule && !item.workspaceHidden))
-const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || props.activeModule)) || props.modules[0])
-const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: '学工中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: pages.value.filter(item => item.moduleKey === selected.value?.key && !item.workspaceHidden), active: currentPage.value?.id }])
+const currentPage = computed(() => workspaceCurrentPage(pages.value, route.fullPath, props.activeModule))
+const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || currentPage.value?.moduleKey || props.activeModule)) || props.modules[0])
+const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: props.centers.find(center => center.key === props.activeCenter)?.label || '业务中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: pages.value.filter(item => item.moduleKey === selected.value?.key && !item.workspaceHidden), active: currentPage.value?.id }])
 const openPages = computed(() => prefs.value.tabs.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 function confirmUnsubmitted(to, from) {
   if (to.path === from.path) return true
+  // 正式长表单已按用户真实修改记录 dirty，由统一路由 guard 负责确认。
+  if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true
   const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
   return !editing || window.confirm('当前表单还有填写内容，请确认已经提交。继续离开会丢失未提交的内容。')
 }
@@ -96,7 +98,7 @@ onBeforeUnmount(() => { mounted = false; for (const [name, value] of originalBod
 watch(() => route.fullPath, async path => { selectedModule.value = ''; mobileOpen.value = false; rememberCurrent(); await nextTick(); if (path === route.fullPath && mainElement.value) mainElement.value.scrollTop = scrollPositions.get(currentPage.value?.id) || 0 }, { flush: 'post' })
 function rememberScroll() { if (currentPage.value) scrollPositions.set(currentPage.value.id, mainElement.value?.scrollTop || 0) }
 function rememberCurrent() { const id = currentPage.value?.id; if (id && id !== '/workbench?view=recent') prefs.value.recent = [id, ...prefs.value.recent.filter(key => key !== id)].slice(0, 30); if (id) destinations.set(id, route.fullPath); if (id && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
-async function navigate(path) { const destination = destinations.get(path) || path; if (destination && destination !== route.fullPath) await router.push(destination); mobileOpen.value = false }
+async function navigate(path) { const destination = destinations.get(path) || path; if (destination && destination !== route.fullPath) await router.push(props.resolveDestination(destination)); mobileOpen.value = false }
 function selectItem(level, item) {
   if (level === 'second') {
     selectedModule.value = item.key

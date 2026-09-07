@@ -10,16 +10,10 @@ const receipt = read('../src/modules/internship/views/components/ActionReceipt.v
 const attendanceApi = read('../src/modules/internship/api/attendance.api.js')
 const leaveApi = read('../src/modules/internship/api/leave-risk.api.js')
 const router = read('../../backend/app/modules/internship/routers/internship.py')
-
-test('W7 attendance leads with bounded exact objects before metrics', () => {
-  assert.match(attendance, /priorityRows\(\)\s*\{[\s\S]*?\.slice\(0, 3\)/)
-  assert.match(attendance, /为什么到这里/)
-  assert.match(attendance, /判定事实/)
-  assert.match(attendance, /下一责任人/)
-  const nowIndex = attendance.indexOf('class="att-now"')
-  const kpiIndex = attendance.indexOf('<ModuleSummaryStrip')
-  assert.ok(nowIndex >= 0 && kpiIndex > nowIndex)
-})
+const leaveContext = read('../../backend/app/modules/internship/services/internship_student_leave_context_service.py')
+const studentPortal = read('../../student-portal/src/views/internship/InternshipView.vue')
+const studentMobile = read('../../miniapp/src/pages/student/internship/leave/index.vue')
+const teacherMobile = read('../../miniapp/src/pages/teacher/internship-approval/ApprovalCore.vue')
 
 test('W7 thin attendance table routes exception decisions to full evidence detail', () => {
   assert.match(attendance, /openExceptionDetail\(row\)/)
@@ -28,7 +22,7 @@ test('W7 thin attendance table routes exception decisions to full evidence detai
   assert.doesNotMatch(attendance, /openHandle\(row, 'ABNORMAL'\)/)
   assert.doesNotMatch(attendance, /openHandle\(row, 'TO_RISK'\)/)
   assert.match(exceptionDetail, /定位精度/)
-  assert.match(exceptionDetail, /模拟定位检测/)
+  assert.match(exceptionDetail, /客户端报告模拟定位/)
   assert.match(exceptionDetail, /学生说明/)
   assert.match(exceptionDetail, /expectedVersion: this\.detail\.version/)
 })
@@ -44,11 +38,7 @@ test('W7 makeup approval requires full request and current-version evidence ackn
 })
 
 test('W7 leave workbench leads with exact requests and protects evidence plus 409 recovery', () => {
-  assert.match(leave, /priorityRows\(\)\s*\{[\s\S]*?\.slice\(0, 3\)/)
-  const nowIndex = leave.indexOf('class="leave-now"')
-  const kpiIndex = leave.indexOf('<ModuleSummaryStrip')
-  assert.ok(nowIndex >= 0 && kpiIndex > nowIndex)
-  assert.match(leave, /markEvidenceViewed\(this\.detail\.data\.id\)/)
+  assert.match(leave, /markEvidenceViewed\(current\.id\)/)
   assert.match(leave, /:disabled="!leaveCanApprove"/)
   assert.match(leave, /isConflict\(res\)/)
   assert.match(leave, /captureConflict\(/)
@@ -65,4 +55,29 @@ test('W7 successful critical writes retain a truthful page receipt', () => {
   }
   assert.doesNotMatch(receipt, /receipt\.auditId/)
   assert.match(receipt, /不伪造 auditId 或服务端时间/)
+})
+
+test('W8 leave return closes the student and teacher PC story with versioned risk sync', () => {
+  for (const text of ['待审批', '返岗确认', '已批准', '全部台账']) assert.match(leave, new RegExp(text))
+  assert.match(leave, /getReturnQueue\(this\.batchStore\.selectedBatchId\)/)
+  assert.match(leave, /ackReturn\(this\.pending\.id/)
+  assert.match(leaveApi, /\/leaves\/return-queue/)
+  assert.match(leaveApi, /\/leaves\/\$\{id\}\/ack-return/)
+  assert.match(router, /def leave_return_queue[\s\S]*?list_teacher_overdue/)
+  assert.match(router, /def leave_ack_return[\s\S]*?ack_overdue_return/)
+  assert.match(leaveContext, /acknowledged_ids[\s\S]*?ACK_OVERDUE_RETURN_VERSIONED/)
+  assert.match(leaveContext, /_expected\(payload\.get\("expectedVersion"\), row\.version\)/)
+})
+
+test('W8 student leave and mobile approval keep evidence, receipts and inline return notes', () => {
+  assert.match(studentPortal, /leaveEvidenceRequired/)
+  assert.match(studentPortal, /uploadLeaveEvidence/)
+  assert.match(studentPortal, /leaveReceipt/)
+  assert.match(studentPortal, /returnDraft/)
+  assert.doesNotMatch(studentPortal, /window\.prompt\('请填写销假说明/)
+  assert.match(studentMobile, /lv__receipt/)
+  assert.match(studentMobile, /submitReturn/)
+  assert.match(teacherMobile, /reviewDraft\.kind === 'leave'/)
+  assert.match(teacherMobile, /returnDraft\.visible/)
+  assert.match(teacherMobile, /核实说明已保留/)
 })

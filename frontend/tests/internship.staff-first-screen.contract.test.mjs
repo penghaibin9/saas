@@ -14,6 +14,18 @@ const internshipDashboard = fs.readFileSync(
   new URL('../src/modules/internship/views/InternshipDashboardView.vue', import.meta.url),
   'utf8'
 )
+const internshipLayout = fs.readFileSync(
+  new URL('../src/modules/internship/views/AdminInternshipLayout.vue', import.meta.url),
+  'utf8'
+)
+const basePortalLayout = fs.readFileSync(
+  new URL('../src/layouts/BasePortalLayout.vue', import.meta.url),
+  'utf8'
+)
+const adminWorkbench = fs.readFileSync(
+  new URL('../src/views/AdminWorkbenchView.vue', import.meta.url),
+  'utf8'
+)
 
 test('Staff first screen does not auto-cover Today Work but keeps replayable help', () => {
   assert.match(pageGuide, /autoOpen:\s*\{\s*type:\s*Boolean,\s*default:\s*true\s*\}/)
@@ -22,7 +34,7 @@ test('Staff first screen does not auto-cover Today Work but keeps replayable hel
   assert.match(staffWorkbench, /guide-key="workbench\.first-login"\s+:auto-open="false"/)
 })
 
-test('Internship Staff dashboard leads with bounded concrete objects before metrics', () => {
+test('Internship Staff dashboard keeps bounded concrete work and removes duplicate metric blocks', () => {
   assert.match(internshipDashboard, /class="mp-card idb-today"/)
   assert.match(internshipDashboard, /v-for="item in workItems"/)
   assert.match(internshipDashboard, /最近发生了什么/)
@@ -30,7 +42,13 @@ test('Internship Staff dashboard leads with bounded concrete objects before metr
   assert.match(internshipDashboard, /办完交给谁/)
   assert.match(internshipDashboard, /workItemLimit:\s*8/)
 
-  const todayIndex = internshipDashboard.indexOf('class="mp-card idb-today"')
-  const metricsIndex = internshipDashboard.indexOf('<ModuleHero')
-  assert.ok(todayIndex >= 0 && metricsIndex > todayIndex, 'Today Work must render before KPI metrics')
+  assert.doesNotMatch(internshipDashboard, /<ModuleHero/)
+  assert.doesNotMatch(internshipDashboard, /id="idb-batch-progress"/)
+})
+
+test('Internship Staff uses Today Work as the single work entry', () => {
+  assert.match(internshipLayout, /\bhide-global-workbench\b/)
+  assert.match(basePortalLayout, /!this\.hideGlobalWorkbench \|\| group\.key !== 'workbench'/)
+  assert.match(adminWorkbench, /\['INTERN_MENTOR', 'INTERNSHIP_MENTOR', 'INTERN_ADVISOR'\]\.includes\(role\)/)
+  assert.match(adminWorkbench, /this\.\$router\.replace\('\/admin\/internship'\)/)
 })

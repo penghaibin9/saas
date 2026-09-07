@@ -47,7 +47,7 @@ test('Staff evaluation reviews preserve CAS and never silently replay a stale co
 })
 
 test('Appeal decisions name the frozen score and leave a durable next-step receipt', () => {
-  const view = read('frontend/src/modules/internship/views/ScoreView.vue')
+  const view = read('frontend/src/modules/internship/views/components/ScoreAppealWorkspace.vue')
   assert.match(view, /expectedVersion: item\.version/)
   assert.match(view, /冻结成绩/)
   assert.match(view, /res\.data\.scoreId/)

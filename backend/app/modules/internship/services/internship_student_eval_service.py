@@ -152,9 +152,20 @@ def _rating(value, label):
 
 # ═══════════ 学生本人 ═══════════
 
-def my_eval(user) -> dict | None:
+def my_eval(user, *, batch_id=None, internship_id=None) -> dict | None:
     with session() as db:
-        record, student = _student_record(db, user)
+        if batch_id is not None or internship_id is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            record, student, _batch_id = require_explicit_context(
+                db,
+                user,
+                {"batchId": batch_id, "internshipId": internship_id},
+                for_write=False,
+            )
+        else:
+            record, student = _student_record(db, user)
         if not record:
             return None
         row = db.scalars(select(InternshipStudentEval).where(

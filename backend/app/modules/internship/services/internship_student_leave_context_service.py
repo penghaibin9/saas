@@ -131,6 +131,11 @@ def list_teacher_overdue(batch_id, user: dict) -> dict:
     """教师本人数据范围内，待确认销假或仍超期的记录。"""
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
+        acknowledged_ids = set(db.scalars(select(InternshipAuditTrail.target_id).where(
+            InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "LEAVE",
+            InternshipAuditTrail.action == "ACK_OVERDUE_RETURN_VERSIONED",
+        )).all())
         rows = db.scalars(select(InternshipLeave).where(
             InternshipLeave.tenant_id == _tid(),
             InternshipLeave.status.in_(("RETURNED", "OVERDUE")),
@@ -139,6 +144,8 @@ def list_teacher_overdue(batch_id, user: dict) -> dict:
         items = []
         scope = _current_scope(user)
         for row in rows:
+            if row.id in acknowledged_ids:
+                continue
             record = db.get(InternshipRecord, row.internship_id)
             student = db.get(StudentProfile, row.student_id)
             if not record or str(record.batch_id or "") != str(batch_id or ""):

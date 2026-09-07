@@ -63,6 +63,23 @@ export function workspacePages(modules) {
     .filter(item => item.path && !item.disabled)
     .map(item => ({ ...item, id: item.path, title: item.label, moduleKey: mod.key, trail: mod.label })))
 }
+// 菜单参数是页面身份，批次/分页等额外参数不应破坏高亮。
+export function workspaceCurrentPage(pages, fullPath, activeModule = '') {
+  const current = new URL(fullPath, 'https://workspace.invalid')
+  let best, bestScore = -1
+  for (const page of pages) {
+    for (const path of [page.path, ...(page.workspacePaths || [])]) {
+    const candidate = new URL(path, 'https://workspace.invalid')
+    const exact = current.pathname === candidate.pathname
+    if (!exact && !current.pathname.startsWith(candidate.pathname + '/')) continue
+    const query = [...candidate.searchParams]
+    const matches = query.every(([key, value]) => current.searchParams.get(key) === value)
+    const score = candidate.pathname.length * 10 + (exact ? 1 : 0) + (matches ? query.length * 10000 : 0)
+    if (score > bestScore) { best = page; bestScore = score }
+    }
+  }
+  return best || pages.find(page => page.moduleKey === activeModule && !page.workspaceHidden)
+}
 export function defaultShortcutIds(pages) {
   const paths = ['/admin/approval/todos', '/admin/student/list', '/admin/student-affairs/leave', '/admin/student-affairs/dorm', '/admin/orientation', '/admin/student-affairs/risk', '/admin/student-affairs/funding']
   const ids = paths.map(path => pages.find(page => page.path === path)?.id).filter(Boolean)

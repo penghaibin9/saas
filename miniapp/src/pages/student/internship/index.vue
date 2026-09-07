@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobileNavBar title="我的岗位实习" subtitle="查看安排、资格与当前事项" show-back fallback-url="/pages/student/me/index" />
     <MobileGlobalState :state="state" @retry="load">
       <view v-if="needSelect" class="page-pad stack">
         <MobileInlineAlert type="warning" title="请选择要办理的实习批次"
@@ -31,6 +32,13 @@
           </picker>
         </view>
 
+        <view class="in__qualification card">
+          <view class="in__qualification-head"><text class="in__qualification-label">学校资格认定</text><MobileStatusTag :label="qualification.label" :type="qualification.status === 'QUALIFIED' ? 'success' : qualification.status === 'UNQUALIFIED' ? 'danger' : 'warning'" /></view>
+          <text class="in__qualification-title">{{ qualification.status === 'QUALIFIED' ? '实习资格已通过' : qualification.status === 'UNQUALIFIED' ? '请查看认定说明' : '关注本批次资格认定' }}</text>
+          <text class="in__qualification-reason">{{ qualification.reason || qualificationHint }}</text>
+          <text v-if="qualification.reviewedAt" class="in__qualification-time">更新于 {{ formatDateTime(qualification.reviewedAt) }}</text>
+          <view class="in__qualification-footer"><text>指导教师 · {{ i.schoolMentor }}</text><button class="in__refresh" size="mini" @click="load">刷新结果</button></view>
+        </view>
         <view class="in__hero card">
           <text class="in__hero-batch">{{ compliance.batchName || i.batch }}</text>
           <text class="in__hero-post">{{ i.post || '岗位待落实' }}</text>
@@ -51,7 +59,7 @@
           {{ compliance.nextAction.label }}
         </button>
 
-        <view class="in__today">
+        <view v-if="canShowDailyWork" class="in__today">
           <view class="in__today-card" @click="openSub('/pages/student/internship/checkin/index')">
             <text class="in__today-icon">📍</text><text class="in__today-title">今日打卡</text>
             <text class="in__today-status" :class="{ 'is-warn': !i.checkin.done }">{{ i.checkin.done ? '已打卡' : '未打卡' }}</text>
@@ -63,10 +71,10 @@
             <text class="in__today-btn">写周报</text>
           </view>
         </view>
-        <MobileInlineAlert type="info" :description="i.checkin.note" />
-        <MobileInlineAlert v-if="i.weekly.lastFeedback" type="warning" title="导师上周反馈" :description="i.weekly.lastFeedback" />
+        <MobileInlineAlert v-if="canShowDailyWork" type="info" :description="i.checkin.note" />
+        <MobileInlineAlert v-if="canShowDailyWork && i.weekly.lastFeedback" type="warning" title="导师上周反馈" :description="i.weekly.lastFeedback" />
 
-        <view class="section-head"><text class="section-head__title">实习状态</text></view>
+        <template v-if="canShowDailyWork"><view class="section-head"><text class="section-head__title">实习状态</text></view>
         <view class="card"><view class="in__status-grid">
           <view class="in__status-item"><text class="in__status-k">协议</text><MobileStatusTag :status="i.status.agreement" /></view>
           <view class="in__status-item"><text class="in__status-k">保险</text><MobileStatusTag :status="i.status.insurance" /></view>
@@ -74,7 +82,7 @@
           <view class="in__status-item"><text class="in__status-k">今日打卡</text><MobileStatusTag :status="i.status.todayCheckin" /></view>
           <view class="in__status-item"><text class="in__status-k">本周周报</text><MobileStatusTag :status="i.status.weekly" /></view>
           <view class="in__status-item"><text class="in__status-k">请假</text><MobileStatusTag :status="i.status.leave" /></view>
-        </view></view>
+        </view></view></template>
 
         <view class="section-head"><text class="section-head__title">上岗合规</text><text class="section-head__more">{{ completenessText }}</text></view>
         <view class="card">
@@ -85,8 +93,8 @@
           <MobileInlineAlert v-if="blockingReason" type="warning" title="上岗阻断原因" :description="blockingReason" />
         </view>
 
-        <view class="section-head"><text class="section-head__title">实习流程</text></view>
-        <view class="card"><MobileTimeline :nodes="compliance.timeline && compliance.timeline.length ? compliance.timeline : i.timeline" /></view>
+        <template v-if="canShowDailyWork"><view class="section-head"><text class="section-head__title">实习流程</text></view>
+        <view class="card"><MobileTimeline :nodes="compliance.timeline && compliance.timeline.length ? compliance.timeline : i.timeline" /></view></template>
 
         <view class="section-head"><text class="section-head__title">阶段服务</text><text class="section-head__more">按当前实习状态整理</text></view>
         <view class="in__service-groups">
@@ -103,7 +111,7 @@
       </view>
     </MobileGlobalState>
 
-    <MobileSafeAreaBar v-if="i && i.hasBatch && !i.historyMode">
+    <MobileSafeAreaBar v-if="canShowDailyWork">
       <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
       <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="openSub('/pages/student/internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
     </MobileSafeAreaBar>
@@ -111,6 +119,7 @@
 </template>
 
 <script>
+import { formatDateTime } from '@/utils/format'
 import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
 
@@ -119,7 +128,7 @@ const STORAGE_KEY = 'gx_student_internship_batch_v1'
 export default {
   data() {
     return {
-      i: null, state: 'loading', selectedBatchId: '', candidates: [],
+      i: null, state: 'loading', loadSequence: 0, selectedBatchId: '', candidates: [],
       compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
       navItems: [
         { label: '知情确认', path: '/pages/student/internship/consent/index', icon: '✅', stages: ['onboard'] },
@@ -137,11 +146,15 @@ export default {
         { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒', stages: ['result'] },
         { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄', stages: ['process'] },
         { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘', today: true },
-        { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐', stages: ['result'] }
+        { label: '鉴定与成绩', path: '/pages/student/internship/self-eval/index', icon: '⭐', stages: ['result'] },
+        { label: '就业衔接', path: '/pages/student/employment/index', icon: '🎯', stages: ['result'] }
       ]
     }
   },
   computed: {
+    qualification() { return this.i?.eligibilityReview || { status: 'UNKNOWN', label: '暂未取得结果', reason: '' } },
+    qualificationHint() { return ({ QUALIFIED: '学校已完成本批次实习资格认定。', PENDING: '学校正在核对实习资格。需要补充材料时，请联系校内指导教师。', UNQUALIFIED: '本次认定未通过。请联系指导教师了解原因及后续安排。' })[this.qualification.status] || '请刷新认定结果，或联系指导教师核对。' },
+    canShowDailyWork() { return this.i?.hasBatch && !this.i.historyMode && this.i.statusText === 'ONBOARD' },
     needSelect() { return !!(this.i?.needSelect || this.compliance?.needSelect) && !this.selectedBatchId },
     candidateLabels() { return this.candidates.map((x) => `${x.batchName || `批次 ${x.batchId}`} · ${x.status}`) },
     candidateIndex() { return Math.max(0, this.candidates.findIndex((x) => String(x.batchId) === String(this.selectedBatchId))) },
@@ -159,16 +172,16 @@ export default {
       const actionRoute = String(this.compliance?.nextAction?.route || '').split('?')[0]
       const required = actionRoute ? this.navItems.filter((item) => item.path.split('?')[0] === actionRoute) : []
       const requiredPaths = new Set(required.map((item) => item.path))
-      const today = this.navItems.filter((item) => item.today && !requiredPaths.has(item.path))
+      const today = this.navItems.filter((item) => item.today && (this.canShowDailyWork || item.path.includes('/help/')) && !requiredPaths.has(item.path))
       const todayPaths = new Set(today.map((item) => item.path))
       const stage = this.navItems.filter((item) => (item.stages || []).includes(this.currentStage) && !requiredPaths.has(item.path) && !todayPaths.has(item.path))
       const stagePaths = new Set(stage.map((item) => item.path))
       const more = this.navItems.filter((item) => !requiredPaths.has(item.path) && !todayPaths.has(item.path) && !stagePaths.has(item.path))
       return [
         { key: 'required', label: '当前必须做', hint: '来自学校合规任务', items: required },
-        { key: 'today', label: '今天', hint: '高频记录与即时求助', items: today },
+        { key: 'today', label: this.canShowDailyWork ? '今天' : '需要帮助', hint: this.canShowDailyWork ? '高频记录与即时求助' : '遇到问题及时联系学校', items: today },
         { key: 'stage', label: '当前阶段服务', hint: '与你现在的实习阶段相关', items: stage },
-        { key: 'more', label: '更多服务', hint: '全部历史能力仍可进入', items: more }
+        { key: 'more', label: '更多服务', hint: '查看其他实习事项', items: more }
       ].filter((group) => group.items.length)
     }
   },
@@ -183,7 +196,9 @@ export default {
     this.load()
   },
   onShow() { if (this.i) this.load() },
+  onUnload() { this.loadSequence++ },
   methods: {
+    formatDateTime,
     toast, go,
     restoreBatch() { try { this.selectedBatchId = String(uni.getStorageSync(STORAGE_KEY) || '') } catch (e) {} },
     persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync(STORAGE_KEY, this.selectedBatchId); else uni.removeStorageSync(STORAGE_KEY) } catch (e) {} },
@@ -192,15 +207,19 @@ export default {
     selectCandidate(candidate) { this.selectedBatchId = String(candidate?.batchId || ''); this.persistBatch(); this.load() },
     onCandidatePicker(e) { this.selectCandidate(this.candidates[Number(e.detail.value)]) },
     async load() {
+      const seq = ++this.loadSequence
+      const batchId = this.selectedBatchId
       this.state = 'loading'; this.complianceError = ''
-      try {
-        const [dashboard, compliance] = await Promise.all([studentApi.getInternship(this.selectedBatchId), studentApi.getInternshipCompliance('ONBOARD', this.selectedBatchId)])
-        const candidates = dashboard?.candidates?.length ? dashboard.candidates : (compliance?.candidates || []); this.candidates = candidates
-        if (this.selectedBatchId && candidates.length && !candidates.some((x) => String(x.batchId) === String(this.selectedBatchId))) { this.selectedBatchId = ''; this.persistBatch(); this.i = dashboard; this.compliance = compliance; this.state = 'ready'; return }
-        this.i = dashboard; this.compliance = compliance || { items: [], blockers: [], warnings: [], timeline: [] }; this.state = 'ready'
-      } catch (e) {
-        try { this.i = await studentApi.getInternship(this.selectedBatchId); this.candidates = this.i?.candidates || []; this.compliance = { items: [], blockers: [], warnings: [], timeline: [] }; this.complianceError = (e && e.message) || '无法取得学校权威合规状态，请稍后重试；系统不会把未知状态显示为已通过。'; this.state = 'ready' } catch (second) { this.state = 'error' }
-      }
+      const [dashboard, compliance] = await Promise.allSettled([
+        studentApi.getInternship(batchId), studentApi.getInternshipCompliance('ONBOARD', batchId)
+      ])
+      if (seq !== this.loadSequence) return
+      if (dashboard.status !== 'fulfilled') { this.state = 'error'; return }
+      this.i = dashboard.value
+      this.compliance = compliance.status === 'fulfilled' ? compliance.value : { items: [], blockers: [], warnings: [], timeline: [] }
+      this.complianceError = compliance.status === 'rejected' ? (compliance.reason?.message || '合规状态暂不可用，请稍后重试') : ''
+      this.candidates = this.i?.candidates?.length ? this.i.candidates : (this.compliance?.candidates || [])
+      this.state = 'ready'
     },
     complianceTone(status) { if (['VALID', 'EXEMPTED', 'NOT_APPLICABLE'].includes(status)) return 'success'; if (['REJECTED', 'CONFIG_ERROR'].includes(status)) return 'danger'; return 'warning' },
     weekly() {
@@ -238,4 +257,11 @@ export default {
 .in__service-count { flex-shrink: 0; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .in__service-group:first-child .in__nav { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
 .in__nav { display: flex; flex-wrap: wrap; }.in__nav-item { width: 25%; min-height: var(--touch-target-min); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: var(--space-3) 0; }.in__nav-icon { font-size: 26px; line-height: 1; }.in__nav-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
+
+.in__qualification{border-top:3px solid var(--brand-primary);padding:var(--card-padding-mobile)}
+.in__qualification-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.in__qualification-label{font-size:12px;color:var(--text-tertiary)}
+.in__qualification-title{display:block;font-size:20px;font-weight:600;line-height:1.5;margin:18px 0 10px;color:var(--text-primary)}
+.in__qualification-reason{display:block;font-size:14px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word}
+.in__qualification-time{display:block;font-size:11px;color:var(--text-tertiary);margin-top:14px}.in__qualification-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border-light);font-size:12px;color:var(--text-secondary)}
+.in__refresh{margin:0;background:transparent;color:var(--brand-primary);font-size:12px}.in__refresh::after{border:0}
 </style>

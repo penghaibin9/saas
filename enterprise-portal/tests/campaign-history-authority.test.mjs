@@ -16,7 +16,7 @@ test('campaign selector preserves closed and archived history instead of hiding 
   assert.match(select,/historyItems/)
   assert.match(select,/历史招聘季/)
   assert.match(select,/进入历史只读视图/)
-  assert.match(select,/岗位、申请和企业处理记录仍保留查看/)
+  assert.match(select,/在访问有效期内查阅岗位、申请及企业处理记录/)
 })
 
 test('internship collaboration is never inferred from campaign history',()=>{

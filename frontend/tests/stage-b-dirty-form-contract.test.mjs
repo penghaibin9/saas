@@ -15,6 +15,7 @@ test('Stage B B4 installs one global dirty-form guard', () => {
 
 test('Stage B B4 covers internship batch/company and same-domain long forms', () => {
   for (const name of [
+    'internship-recruitment-campaign-new', 'internship-recruitment-campaign-edit',
     'internship-batch-new', 'internship-batch-edit',
     'internship-enterprise-new', 'internship-enterprise-edit',
     'internship-position-new', 'internship-position-edit',

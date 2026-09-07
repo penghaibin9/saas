@@ -2,7 +2,7 @@
   <view class="page-wrap pr">
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack" v-if="loaded">
-                <view class="card">
+        <view class="card">
           <text class="card-title">{{ typeLabel }}</text>
           <text class="pr__hint">提交后由指导教师在 PC 端批阅，退回后可修改重交。</text>
           <view v-if="showTypePick" class="pr__types">
@@ -15,6 +15,15 @@
             >{{ t.l }}</text>
           </view>
         </view>
+        <view v-if="receipt" class="card pr__receipt">
+          <text class="t-md t-bold">{{ receipt.actionLabel }}</text>
+          <text>#{{ receipt.id }} · v{{ receipt.version }} · {{ receipt.statusLabel }}</text>
+          <text>{{ receipt.nextStep }}</text>
+        </view>
+        <MobileInlineAlert v-if="currentReport && currentReport.status !== 'RETURNED'" type="info"
+          :description="`${typeLabel} ${currentReport.periodKey} 已提交，当前状态：${statusLabel(currentReport.status)}。`" />
+        <MobileInlineAlert v-else-if="currentReport" type="warning"
+          :description="`教师退回：${currentReport.reviewComment || '请按要求修改正文后重新提交'}`" />
         <view class="card stack">
           <view v-if="reportType !== 'SUMMARY'" class="pr__field">
             <text class="pr__label">{{ periodLabel }} <text class="pr__req">*</text></text>
@@ -26,17 +35,26 @@
             <text class="pr__count">{{ (form.content || '').length }} 字</text>
           </view>
         </view>
+        <view class="card stack">
+          <text class="card-title">我的{{ typeLabel }}记录</text>
+          <text v-if="!typeReports.length" class="pr__empty">暂无记录</text>
+          <view v-for="item in typeReports" :key="item.id" class="pr__record" @click="selectRecord(item)">
+            <view><text>{{ item.periodKey }}</text><text>v{{ item.version }} · {{ statusLabel(item.status) }}</text></view>
+            <text>{{ item.reviewComment || '等待教师批阅' }}</text>
+          </view>
+        </view>
       </view>
     </MobileGlobalState>
     <MobileSafeAreaBar v-if="loaded">
-      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交' + typeLabel }}</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting || !canSubmit" @click="submit">{{ submitting ? '提交中…' : (currentReport ? '重新提交' : '提交') + typeLabel }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { toast, back } from '@/utils/nav'
+import MobileInlineAlert from '@/components/MobileInlineAlert.vue'
+import { toast } from '@/utils/nav'
 
 const TYPE_LABEL = { DAILY: '日报', MONTHLY: '月报', SUMMARY: '实习总结' }
 // 默认结构模板（20-岗位实习预设便捷字段与提示词.md §7.5/§7.9），仅用于新建报告时预填骨架，学生按小节填空
@@ -46,6 +64,7 @@ const DEFAULT_TPL = {
 }
 
 export default {
+  components: { MobileInlineAlert },
   data() {
     return {
       pageState: 'loading', loaded: false, submitting: false, showTypePick: false,
@@ -53,7 +72,8 @@ export default {
       typeOptions: [
         { v: 'DAILY', l: '日报' }, { v: 'MONTHLY', l: '月报' }, { v: 'SUMMARY', l: '实习总结' }
       ],
-      form: { periodKey: '', content: '' }
+      form: { periodKey: '', content: '' }, reports: [], receipt: null,
+      batchId: '', internshipId: '', loadSequence: 0
     }
   },
   computed: {
@@ -65,6 +85,16 @@ export default {
     contentPlaceholder() {
       const min = { DAILY: 30, MONTHLY: 100, SUMMARY: 300 }[this.reportType] || 30
       return `请填写${this.typeLabel}正文（至少 ${min} 字）`
+    },
+    minimum() { return { DAILY: 30, MONTHLY: 100, SUMMARY: 300 }[this.reportType] || 30 },
+    typeReports() { return this.reports.filter((item) => item.reportType === this.reportType) },
+    currentReport() {
+      const period = this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey
+      return this.typeReports.find((item) => item.periodKey === period) || null
+    },
+    canSubmit() {
+      return (!this.currentReport || this.currentReport.status === 'RETURNED') &&
+        (this.reportType === 'SUMMARY' || !!this.form.periodKey) && this.form.content.trim().length >= this.minimum
     }
   },
   onLoad(q) {
@@ -76,48 +106,68 @@ export default {
     // 无 type 参数时提供类型切换，避免永远默认日报
     this.showTypePick = !raw
     uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
-    if (this.reportType === 'DAILY') {
-      const d = new Date()
-      this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    } else if (this.reportType === 'MONTHLY') {
-      const d = new Date()
-      this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    }
-    if (DEFAULT_TPL[this.reportType]) this.form.content = DEFAULT_TPL[this.reportType]
-    this.loaded = true
-    this.pageState = 'ready'
+    this.prepareForm(this.reportType)
+    this.load()
   },
   methods: {
-    load() { this.pageState = 'ready' },
-    pickType(v) {
-      this.reportType = v
-      uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
-      if (v === 'DAILY') {
-        const d = new Date()
-        this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        this.form.content = ''
-      } else if (v === 'MONTHLY') {
-        const d = new Date()
-        this.form.periodKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        this.form.content = DEFAULT_TPL.MONTHLY
-      } else {
-        this.form.periodKey = 'FINAL'
-        this.form.content = DEFAULT_TPL.SUMMARY
+    prepareForm(v) {
+      const d = new Date()
+      this.form.periodKey = v === 'DAILY'
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        : v === 'MONTHLY' ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : 'FINAL'
+      this.form.content = DEFAULT_TPL[v] || ''
+    },
+    async load() {
+      const sequence = ++this.loadSequence
+      this.pageState = 'loading'
+      try {
+        const dashboard = await studentApi.getInternship()
+        if (sequence !== this.loadSequence) return
+        this.batchId = dashboard.batchId || ''
+        this.internshipId = dashboard.recordId || ''
+        const result = await studentApi.getInternshipProcessReports(this.batchId, this.internshipId)
+        if (sequence !== this.loadSequence) return
+        this.reports = result.items || []
+        const current = this.currentReport
+        if (current?.status === 'RETURNED') this.form.content = current.content || this.form.content
+        this.loaded = true
+        this.pageState = 'ready'
+      } catch (e) {
+        if (sequence === this.loadSequence) this.pageState = 'error'
       }
     },
-    submit() {
+    pickType(v) {
       if (this.submitting) return
+      this.reportType = v
+      uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
+      this.prepareForm(v)
+    },
+    statusLabel(status) { return ({ PENDING_REVIEW: '待批阅', APPROVED: '已通过', RETURNED: '已退回' })[status] || status || '未知' },
+    selectRecord(item) {
+      if (this.submitting) return
+      this.form.periodKey = item.periodKey
+      this.form.content = item.content || ''
+    },
+    async submit() {
+      if (this.submitting || !this.canSubmit) return
       this.submitting = true
-      studentApi.submitProcessReport({
-        reportType: this.reportType,
-        periodKey: this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey,
-        content: this.form.content
-      }).then((res) => {
-        toast((res && res.message) || '提交成功')
-        setTimeout(() => back(), 600)
-      }).catch((e) => {
-        toast((e && e.message) || '提交失败')
-      }).finally(() => { this.submitting = false })
+      const current = this.currentReport
+      try {
+        const result = await studentApi.submitInternshipProcessReport({
+          batchId: this.batchId, internshipId: this.internshipId,
+          reportType: this.reportType,
+          periodKey: this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey,
+          content: this.form.content.trim(), expectedVersion: current?.version ?? 0
+        })
+        this.receipt = {
+          actionLabel: current ? `${this.typeLabel}已重新提交` : `${this.typeLabel}已提交`,
+          id: result.id, version: result.version, statusLabel: '待批阅',
+          nextStep: '等待指导教师批阅；退回后可从本页继续修改。'
+        }
+        await this.load()
+      } catch (e) {
+        toast((e && e.message) || '提交失败，正文已保留')
+      } finally { this.submitting = false }
     }
   }
 }
@@ -125,6 +175,11 @@ export default {
 
 <style scoped>
 .pr__hint { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: var(--space-2); }
+.pr__receipt { display: flex; flex-direction: column; gap: 4px; border-color: #86efac; background: #f0fdf4; color: #166534; font-size: var(--font-size-xs); }
+.pr__empty { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.pr__record { display: flex; flex-direction: column; gap: 5px; padding: 10px 0; border-top: 1px solid var(--border-light); }
+.pr__record view { display: flex; justify-content: space-between; gap: 10px; font-size: var(--font-size-sm); }
+.pr__record view text:last-child, .pr__record > text { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .pr__types { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .pr__type { padding: 6px 12px; border-radius: var(--radius-md); background: var(--gray-100); font-size: var(--font-size-sm); color: var(--text-secondary); }
 .pr__type.is-on { background: var(--brand-primary); color: #fff; }

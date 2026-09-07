@@ -189,6 +189,7 @@
       :identity-key="workspaceIdentityKey"
       :legacy-identity-key="ctx.ctxKey || ''"
       :scope-name="scopeName"
+      :resolve-destination="workspaceNavigate"
       @tokens="workspaceColors = $event"
       @theme-label="workspaceThemeLabel = $event"
     >
@@ -387,6 +388,8 @@ export default {
     activeKey: { type: String, default: '' },
     hideAside: { type: Boolean, default: false },
     workspace: { type: Boolean, default: false },
+    hideGlobalWorkbench: { type: Boolean, default: false },
+    workspaceNavigate: { type: Function, default: (path) => path },
     /* v2 新增（可选）：角色上下文，注入后启用统一壳的一级图标轨与身份区 */
     ctx: { type: Object, default: null },
     /* v2 新增（可选）：产品名（命名规范：高校学生全生命周期管理平台） */
@@ -556,15 +559,17 @@ export default {
         const firstAllowed = this.menus.find((item) => item?.path)?.path
         return [{ key: 'platform', label: '平台运营', path: firstAllowed || this.$route?.path || '/security/403' }]
       }
-      return getVisibleAdminMenu(this.ctx).map((group) => {
-        const first = group.children[0]
-        return {
-          key: group.key,
-          label: group.label,
-          path: first ? first.path : '',
-          badge: group.badge
-        }
-      })
+      return getVisibleAdminMenu(this.ctx)
+        .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
+        .map((group) => {
+          const first = group.children[0]
+          return {
+            key: group.key,
+            label: group.label,
+            path: first ? first.path : '',
+            badge: group.badge
+          }
+        })
     },
     railActiveKey() {
       // 依路径定位一级模块；根路径 / 命中「工作台」首叶，未知路径兜底高亮工作台。
