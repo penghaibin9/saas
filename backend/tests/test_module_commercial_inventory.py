@@ -2,6 +2,8 @@
 from pathlib import Path
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -119,6 +121,72 @@ class Child(Base):
         result = scanner.inventory(self.root)
         self.assertEqual(result['additionalTableSites'][0]['kind'], 'TABLE_CALL_REVIEW')
         self.assertFalse(result['gates']['m0Complete'])
+
+    def test_disconnected_cycle_is_detected_even_with_one_head(self):
+        self.write('backend/alembic/versions/two.py', 'revision = "r2"\ndown_revision = "r3"\n')
+        self.write('backend/alembic/versions/three.py', 'revision = "r3"\ndown_revision = "r2"\n')
+        result = scanner.inventory(self.root)
+        self.assertEqual(result['staticMigrationHeads'], ['r1'])
+        self.assertTrue(any(i['code'] == 'UNRESOLVED_MIGRATION_CHAIN' for i in result['summary']['issues']))
+
+    def test_no_revision_is_invented_for_dynamic_migrations(self):
+        self.write('backend/alembic/versions/two.py', 'revision = compute_revision()\ndown_revision = "r1"\n')
+        codes = {i['code'] for i in scanner.inventory(self.root)['summary']['issues']}
+        self.assertIn('DYNAMIC_MIGRATION_REQUIRES_REVIEW', codes)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+    def committed_fixture(self):
+        self.git('init', '-q')
+        self.git('add', 'backend/app/models/test.py', 'backend/alembic/versions/one.py', 'shared/contracts/module-manifest.json')
+        self.git('-c', 'user.name=Inventory Test', '-c', 'user.email=inventory@example.invalid', 'commit', '-qm', 'isolated scanner fixture')
+        return self.git('rev-parse', 'HEAD')
+
+    def run_cli(self, head, output):
+        return subprocess.run([sys.executable, '-B', str(SCRIPT), '--repo', str(self.root),
+                               '--expected-head', head, '--output', str(output)], capture_output=True, text=True, timeout=20)
+
+    def test_cli_binds_evidence_to_exact_clean_head(self):
+        head = self.committed_fixture()
+        with tempfile.TemporaryDirectory() as output_dir:
+            output = Path(output_dir) / 'inventory.json'
+            result = self.run_cli(head, output)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            evidence = json.loads(output.read_text())
+            self.assertEqual(evidence['sourceSha'], head)
+            self.assertFalse(evidence['gates']['m0Complete'])
+            self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_cli_rejects_wrong_head_and_does_not_write_evidence(self):
+        self.committed_fixture()
+        with tempfile.TemporaryDirectory() as output_dir:
+            output = Path(output_dir) / 'inventory.json'
+            self.assertEqual(self.run_cli('0'*40, output).returncode, 2)
+            self.assertFalse(output.exists())
+
+    def test_cli_rejects_dirty_or_untracked_source(self):
+        head = self.committed_fixture()
+        self.write('backend/app/models/new.py', 'class New: pass\n')
+        with tempfile.TemporaryDirectory() as output_dir:
+            output = Path(output_dir) / 'inventory.json'
+            self.assertEqual(self.run_cli(head, output).returncode, 2)
+            self.assertFalse(output.exists())
+            self.assertTrue((self.root / 'backend/app/models/new.py').exists())
+
+    def test_cli_never_overwrites_existing_report(self):
+        head = self.committed_fixture()
+        with tempfile.TemporaryDirectory() as output_dir:
+            output = Path(output_dir) / 'inventory.json'
+            output.write_text('previous evidence')
+            self.assertEqual(self.run_cli(head, output).returncode, 2)
+            self.assertEqual(output.read_text(), 'previous evidence')
+
+    def test_cli_cannot_write_inside_repo(self):
+        head = self.committed_fixture()
+        output = self.root / 'audit.json'
+        self.assertEqual(self.run_cli(head, output).returncode, 2)
+        self.assertFalse(output.exists())
 
     def test_missing_source_roots_fail_instead_of_empty_pass(self):
         self.assertEqual(scanner.inventory(self.root / 'shared')['gates']['staticScan'], 'FAIL')

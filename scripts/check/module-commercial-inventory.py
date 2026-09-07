@@ -54,7 +54,7 @@ def literal(node: ast.expr | None) -> Any:
 
 
 def python_paths(root: Path, repo: Path, issues: list[dict]) -> list[Path]:
-    if not root.is_dir() or root.is_symlink():
+    if not root.is_dir() or root.is_symlink() or not root.resolve().is_relative_to(repo):
         issues.append({"path": str(root.relative_to(repo)), "code": "SOURCE_ROOT_UNAVAILABLE"})
         return []
     paths = []
@@ -195,10 +195,20 @@ def inventory(repo: Path) -> dict:
     if any(count > 1 for count in revisions.values()) or missing_parents or len(heads) != 1:
         issues.append({"code": "MIGRATION_GRAPH_REQUIRES_REVIEW", "missingParents": missing_parents,
                        "duplicateRevisions": sorted(key for key, count in revisions.items() if count > 1), "heads": heads})
+    # A disconnected cycle can coexist with one apparent head; count roots too.
+    waiting = {m["revision"]: set(m["parents"]) for m in migrations}
+    resolved: set[str] = set()
+    while True:
+        ready = {key for key, parents in waiting.items() if key not in resolved and parents <= resolved}
+        if not ready:
+            break
+        resolved.update(ready)
+    if waiting.keys() - resolved:
+        issues.append({"code": "UNRESOLVED_MIGRATION_CHAIN", "revisions": sorted(waiting.keys() - resolved)})
     manifest_path = repo / "shared/contracts/module-manifest.json"
     mapping = None
     try:
-        if manifest_path.is_symlink():
+        if manifest_path.is_symlink() or not manifest_path.resolve().is_relative_to(repo):
             raise ValueError("symlink manifest")
         content = manifest_path.read_bytes()
         hashes[manifest_path.relative_to(repo).as_posix()] = hashlib.sha256(content).hexdigest()
@@ -213,6 +223,9 @@ def inventory(repo: Path) -> dict:
                 changed_during_scan.append(relative)
         except OSError:
             changed_during_scan.append(relative)
+    final_paths = python_paths(repo / "backend/app", repo, issues) + python_paths(repo / "backend/alembic/versions", repo, issues)
+    if set(final_paths) != set(app_paths + migration_paths):
+        issues.append({"code": "SOURCE_FILESET_CHANGED_DURING_SCAN"})
     if changed_during_scan:
         issues.append({"code": "SOURCE_CHANGED_DURING_SCAN", "paths": changed_during_scan})
     return {"schemaVersion": 1, "evidenceLevel": "STATIC_ONLY", "sourceManifestHash": digest(hashes),

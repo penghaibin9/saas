@@ -7,6 +7,10 @@ on:
       - backend/tests/test_module_commercial_inventory.py
       - backend/app/services/commercial_catalog_contract.py
       - backend/tests/test_commercial_catalog_contract.py
+      - shared/contracts/module-manifest.json
+      - backend/app/services/platform_defaults.py
+      - backend/app/models/**
+      - backend/alembic/versions/**
       - .github/workflows/module-commerce-foundation.yml
   workflow_dispatch:
 permissions:
@@ -27,8 +31,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test read-only inventory without application imports
-        run: python -B backend/tests/test_module_commercial_inventory.py -v
+      - name: Test read-only inventory and draft contracts without application imports
+        env:
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python -B backend/tests/test_module_commercial_inventory.py -v 2>&1 | tee "$OUT/inventory-tests.log"
+          python -B backend/tests/test_commercial_catalog_contract.py -v 2>&1 | tee "$OUT/catalogue-tests.log"
       - name: Inventory the exact source without importing application or touching MySQL
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -45,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$OUT"
-          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src/modules/platform
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src/modules/platform scripts/check/module-commercial-inventory.py backend/tests/test_module_commercial_inventory.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml
           sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()
