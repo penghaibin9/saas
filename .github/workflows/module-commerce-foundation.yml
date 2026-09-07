@@ -9,6 +9,10 @@ on:
       - backend/app/**
       - backend/alembic/**
       - backend/requirements.txt
+      - backend/requirements.lock
+      - backend/requirements.in
+      - backend/pyproject.toml
+      - backend/alembic.ini
       - shared/contracts/module-manifest.json
       - docs/07-部署运维交付与商业化/module-commerce/**
       - .github/workflows/module-commerce-foundation.yml
@@ -110,6 +114,7 @@ jobs:
           python -B backend/tests/test_module_commercial_reconcile.py -v 2>&1 | tee "$OUT/reconciliation-tests.log"
           python -B backend/tests/test_module_commercial_key_contracts.py -v 2>&1 | tee "$OUT/key-contract-tests.log"
           python -B backend/tests/test_module_commercial_review.py -v 2>&1 | tee "$OUT/review-tests.log"
+          python -B backend/tests/test_module_commercial_boundaries.py -v 2>&1 | tee "$OUT/boundary-tests.log"
       - name: Collect the clean exact-head AST and reference candidates
         run: |
           set -euo pipefail
@@ -143,6 +148,10 @@ jobs:
         run: |
           set -euo pipefail
           python -B scripts/check/module-commercial-review.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --review "docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json" --output "$OUT/schema-dispositions.json" | tee "$OUT/schema-dispositions.log"
+      - name: Verify exceptional and shared resource boundaries without runtime approval
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-boundaries.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --contract "docs/07-部署运维交付与商业化/module-commerce/M0-resource-boundaries.json" --output "$OUT/resource-boundaries.json" | tee "$OUT/resource-boundaries.log"
       - name: Archive committed review sources, never database rows or credentials
         if: always()
         run: |
@@ -150,7 +159,7 @@ jobs:
           mkdir -p "$OUT"
           git rev-parse HEAD > "$OUT/revision.txt"
           mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
-          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
           sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()
