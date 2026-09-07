@@ -75,7 +75,7 @@ jobs:
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/m0_commercial_audit
       M0_DATABASE_URL: mysql+pymysql://m0_reader:m0-read-only-ci@127.0.0.1:3306/m0_commercial_audit
       M0_EPHEMERAL_MYSQL: '1'
-      OUT: ${{ runner.temp }}/module-commerce-schema
+      OUT: /tmp/module-commerce-schema
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
     services:
       mysql:
@@ -144,6 +144,6 @@ jobs:
         if: always()
         with:
           name: module-commerce-schema-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ${{ runner.temp }}/module-commerce-schema
+          path: /tmp/module-commerce-schema
           if-no-files-found: error
           retention-days: 14
