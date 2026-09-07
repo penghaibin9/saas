@@ -1,0 +1,275 @@
+# Standalone production candidate, NOT an override of the historical HTTP stack.
+# Required: scripts/deploy/prepare-security-config.py, reviewed image digests,
+# real TLS certificate, tests, backup/restore rehearsal and operator release approval.
+name: school-lifecycle-security
+
+x-db-runtime: &db-runtime
+  DB_ENABLED: "true"
+  DB_DRIVER: mysql
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: saas_lifecycle
+  DB_USER: saas_runtime
+  DB_PASSWORD: ${DB_PASSWORD:?runtime password required}
+  DATABASE_URL: ""
+
+x-app-env: &app-env
+  <<: *db-runtime
+  APP_ENV: production
+  DEPLOYMENT_MODE: production
+  DEBUG: "false"
+  MOCK_LOGIN_ENABLED: "false"
+  REDIS_URL: redis://default:${REDIS_PASSWORD:?Redis password required}@redis:6379/0
+  REDIS_KEY_PREFIX: school-lifecycle-security
+  MULTI_INSTANCE: "true"
+  WEB_CONCURRENCY: "2"
+  SCHEDULER_MODE: external
+  TENANCY_MODE: multi
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "5"
+  DB_POOL_TIMEOUT: "5"
+  REDIS_CONNECT_TIMEOUT: "2"
+  REDIS_SOCKET_TIMEOUT: "2"
+  TRUSTED_PROXY_IPS: 172.30.40.10/32
+  UPLOAD_DIR: /app/backend/uploads
+  EXPORT_DIR: /app/backend/exports
+  CLAMAV_ENABLED: "true"
+  FILE_SCAN_REQUIRED: "true"
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: "3310"
+
+x-app: &app
+  image: ${APP_IMAGE:?reviewed application image digest required}
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  mem_limit: ${APP_MEMORY_LIMIT:-2g}
+  cpus: ${APP_CPU_LIMIT:-2.0}
+  tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777"]
+  env_file: [../env/security/runtime.env]
+  environment: *app-env
+  volumes:
+    - uploads:/app/backend/uploads
+    - exports:/app/backend/exports
+    - app_data:/app/backend/data
+  networks: [data, egress]
+  restart: unless-stopped
+  logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:?reviewed MySQL image digest required}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci,
+              --innodb-buffer-pool-size=512M, --max-connections=200,
+              --log-bin=mysql-bin, --binlog-format=ROW, --binlog-expire-logs-seconds=604800,
+              --sync-binlog=1, --innodb-flush-log-at-trx-commit=1]
+    environment:
+      MYSQL_DATABASE: saas_lifecycle
+      MYSQL_USER: saas_runtime
+      MYSQL_PASSWORD: ${DB_PASSWORD:?runtime password required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?separate root password required}
+      MIGRATOR_PASSWORD: ${MIGRATOR_PASSWORD:?separate migrator password required}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - type: bind
+        source: ./mysql-security-init/01-accounts.sh
+        target: /docker-entrypoint-initdb.d/01-accounts.sh
+        read_only: true
+        bind: {create_host_path: false}
+    networks: [data]
+    # No public or host port; root password is not part of x-app or runtime.env.
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP -h127.0.0.1 -u"$${MYSQL_USER}" -Nse "SELECT 1"']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    mem_limit: 2g
+    pids_limit: 512
+
+  redis:
+    image: ${REDIS_IMAGE:?reviewed Redis image digest required}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Redis password required}
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec,
+              --maxmemory, 256mb, --maxmemory-policy, noeviction,
+              --requirepass, '${REDIS_PASSWORD:?Redis password required}']
+    volumes: [redis_data:/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+    pids_limit: 128
+
+  prepare-storage:
+    image: ${APP_IMAGE:?reviewed application image digest required}
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    command: [python, scripts/security_profile_probe.py, prepare-storage]
+    volumes: [uploads:/app/backend/uploads, exports:/app/backend/exports, app_data:/app/backend/data]
+    healthcheck: {disable: true}
+    restart: "no"
+
+  migrate:
+    image: ${APP_IMAGE:?reviewed application image digest required}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=128m,mode=1777"]
+    environment:
+      <<: *db-runtime
+      APP_ENV: production
+      DEPLOYMENT_MODE: production
+      DEBUG: "false"
+      MOCK_LOGIN_ENABLED: "false"
+      DB_USER: saas_migrator
+      DB_PASSWORD: ${MIGRATOR_PASSWORD:?separate migrator password required}
+    command: [alembic, upgrade, head]
+    networks: [data]
+    depends_on:
+      mysql: {condition: service_healthy}
+    healthcheck: {disable: true}
+    restart: "no"
+
+  clamav:
+    image: ${CLAMAV_IMAGE:?reviewed ClamAV image digest required}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    # Network egress is needed for signature updates, but port 3310 is NOT published.
+    networks: [scan, egress]
+    volumes: [clamav_db:/var/lib/clamav]
+    mem_limit: ${CLAMAV_MEMORY_LIMIT:-4g}
+    pids_limit: 128
+    # Official ClamAV images supply the clamd PING healthcheck.
+    # A digest without that healthcheck must fail dependency readiness.
+
+  backend:
+    <<: *app
+    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && python scripts/check_production_file_scan.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers']
+    expose: ["8000"]
+    networks: [edge, data, scan, egress]
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      prepare-storage: {condition: service_completed_successfully}
+      clamav: {condition: service_healthy}
+
+  scheduler:
+    <<: *app
+    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && exec python -m scripts.run_scheduled_jobs']
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      prepare-storage: {condition: service_completed_successfully}
+    healthcheck: {disable: true}
+
+  file-scan:
+    <<: *app
+    networks: [data, scan, egress]
+    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_file_scan.py && exec python -m app.workers.file_scan_worker']
+    # Workers do not wait for web readiness (which may itself need queue progress).
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      prepare-storage: {condition: service_completed_successfully}
+      clamav: {condition: service_healthy}
+    healthcheck: {disable: true}
+
+  nginx:
+    image: ${NGINX_IMAGE:?reviewed Nginx image digest required}
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    volumes:
+      - type: bind
+        source: ../env/security/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../env/security/tls
+        target: /etc/nginx/tls
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../nginx/security-http.conf
+        target: /etc/nginx/conf.d/security-http.conf
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../nginx/security-server.conf
+        target: /etc/nginx/conf.d/security-server.conf
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../nginx/security-headers.conf
+        target: /etc/nginx/conf.d/security-headers.conf
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../../frontend/dist
+        target: /usr/share/nginx/html/pc
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../../student-portal/dist
+        target: /usr/share/nginx/html/portal
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../../enterprise-portal/dist
+        target: /usr/share/nginx/html/enterprise
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../../miniapp/dist/build/h5
+        target: /usr/share/nginx/html/miniapp
+        read_only: true
+        bind: {create_host_path: false}
+    ports: ["80:80", "443:443"]
+    networks:
+      edge: {ipv4_address: 172.30.40.10}
+    depends_on:
+      backend: {condition: service_healthy}
+    mem_limit: 256m
+    pids_limit: 128
+
+networks:
+  scan:
+    driver: bridge
+    internal: true
+  egress:
+    driver: bridge
+  edge:
+    driver: bridge
+    ipam:
+      config: [{subnet: 172.30.40.0/24}]
+  data:
+    driver: bridge
+    internal: true
+
+volumes:
+  mysql_data:
+  redis_data:
+  uploads:
+  exports:
+  app_data:
+  clamav_db:

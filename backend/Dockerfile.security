@@ -1,0 +1,36 @@
+# Build from REPOSITORY ROOT, not backend/: shared runtime contracts are required.
+# Build a release, scan it, publish it, then pin APP_IMAGE to its registry digest.
+# Historical Dockerfile/volumes are deliberately not changed by this profile.
+ARG PYTHON_BASE_IMAGE
+FROM ${PYTHON_BASE_IMAGE} AS wheels
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+COPY backend/requirements.txt ./requirements.txt
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
+
+FROM ${PYTHON_BASE_IMAGE}
+WORKDIR /app/backend
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend
+COPY backend/requirements.txt ./requirements.txt
+COPY --from=wheels /wheels /tmp/wheels
+RUN pip install --no-cache-dir --no-index --find-links /tmp/wheels -r requirements.txt \
+    && pip check && rm -rf /tmp/wheels
+COPY backend/app ./app
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./alembic.ini
+COPY backend/scripts ./scripts
+COPY shared /app/shared
+# Only schema/contract documentation, not the entire audit/history collection.
+COPY docs/architecture /app/docs/architecture
+RUN groupadd --gid 10001 schoolapp \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin schoolapp \
+    && mkdir -p /app/backend/data /app/backend/uploads /app/backend/exports \
+    && chown 10001:10001 /app/backend/data /app/backend/uploads /app/backend/exports \
+    && chmod 0770 /app/backend/data /app/backend/uploads /app/backend/exports
+USER 10001:10001
+EXPOSE 8000
+# No password/ops token on process argv. Parse readiness JSON, not a fragile grep.
+HEALTHCHECK --interval=30s --timeout=8s --start-period=60s --retries=3 \
+    CMD ["python", "scripts/security_profile_probe.py", "ready"]
+CMD ["sh", "-c", "python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && python scripts/check_production_file_scan.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers"]

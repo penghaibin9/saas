@@ -1,0 +1,42 @@
+name: Security deployment profile
+on:
+  pull_request:
+    paths:
+      - "backend/Dockerfile.security*"
+      - "backend/scripts/security_profile_probe.py"
+      - "backend/tests/test_security_deployment_profile.py"
+      - "deploy/docker/docker-compose.security.yml"
+      - "deploy/docker/mysql-security-init/**"
+      - "deploy/nginx/**"
+      - "scripts/deploy/*security*"
+      - "scripts/check/check-security-profile*"
+      - ".github/workflows/security-deployment-profile.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-deployment-profile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen test dependencies and local Nginx
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pip check
+          sudo apt-get update
+          sudo apt-get install -y nginx
+      - name: Reject unsafe generated and effective deployment configurations
+        run: python -m pytest --noconftest backend/tests/test_security_deployment_profile.py -q
+      - name: Validate TLS, all four portals, private paths and proxy headers on loopback
+        run: python scripts/check/check-security-profile-tls.py
+      - name: Build real image, render Compose and prove isolated MySQL privilege separation
+        run: python scripts/check/check-security-profile-containers.py --disposable-ci-only
