@@ -57,8 +57,15 @@ def _tenant_snapshot(tenant_id: int) -> dict:
 
 
 def _service_window_state(order, *, now: datetime | None = None) -> str:
-    """Resolve the paid service window independently from activation markers."""
-    current = (now or datetime.utcnow()).replace(tzinfo=None)
+    """Resolve the paid service window using the timestamp semantics of ``t_order``.
+
+    ``PlatformOrder.start_at/end_at`` predate the UTC-naive migration contract and
+    are still written with ``datetime.now()`` by ``platform_service.create_order``.
+    Comparing those legacy local-naive values with ``datetime.utcnow()`` creates an
+    artificial timezone-sized future window. Keep this boundary internally
+    consistent until the order columns are migrated as one data change.
+    """
+    current = (now or datetime.now()).replace(tzinfo=None)
     start_at = getattr(order, "start_at", None)
     end_at = getattr(order, "end_at", None)
     if start_at is not None and start_at.replace(tzinfo=None) > current:
@@ -66,6 +73,28 @@ def _service_window_state(order, *, now: datetime | None = None) -> str:
     if end_at is not None and end_at.replace(tzinfo=None) <= current:
         return "EXPIRED"
     return "ACTIVE"
+
+
+def _has_current_same_package_coverage(db, order, *, now: datetime) -> bool:
+    """Keep a prepaid renewal from revoking coverage that is already paid today.
+
+    Activation materializes the newest order number immediately so retries and
+    optimistic locking have one exact authority. A same-package renewal may start
+    at the previous service end, though. In that interval the predecessor remains
+    the commercial fact that authorizes today's package. This helper never grants a
+    different package early and stops authorizing as soon as no predecessor window
+    covers ``now``.
+    """
+    from app.models import PlatformOrder
+
+    rows = db.scalars(select(PlatformOrder).where(
+        PlatformOrder.tenant_id == int(order.tenant_id),
+        PlatformOrder.package_code == str(order.package_code or ""),
+        PlatformOrder.order_no != str(order.order_no),
+        PlatformOrder.status == "paid",
+        PlatformOrder.is_deleted.is_(False),
+    ).order_by(PlatformOrder.id.desc())).all()
+    return any(_service_window_state(row, now=now) == "ACTIVE" for row in rows)
 
 
 def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
@@ -97,7 +126,12 @@ def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
             activation_state, repair_required = platform_service.paid_order_activation_state(order, tenant, meta)
             if activation_state != "ACTIVE" or repair_required:
                 return None, "PAID_ORDER_ACTIVATION_REPAIR_REQUIRED"
-            window_state = _service_window_state(order)
+            now = datetime.now()
+            window_state = _service_window_state(order, now=now)
+            if window_state == "NOT_STARTED" and _has_current_same_package_coverage(db, order, now=now):
+                # A prepaid same-package renewal may be the exact activation marker
+                # while the preceding paid term still covers the current instant.
+                return order, "PAID_ORDER"
             if window_state != "ACTIVE":
                 return None, f"PAID_ORDER_SERVICE_{window_state}"
             return order, "PAID_ORDER"
@@ -110,7 +144,7 @@ def _active_paid_order(tenant_id: int, meta: dict, package_code: str):
             PlatformOrder.status == "paid",
             PlatformOrder.is_deleted.is_(False),
         ).order_by(PlatformOrder.id.desc())).all()
-        now = datetime.utcnow()
+        now = datetime.now()
         for order in rows:
             # version>=2 belongs to the new activation protocol and therefore
             # must have an exact marker; never silently downgrade it to legacy.
