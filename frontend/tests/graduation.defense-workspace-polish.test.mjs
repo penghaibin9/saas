@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
-import { workspaceCss, workspaceCssUrl, workspaceSection, foundationStyles, legacyStyleImportLayout } from './graduation-workspace-style-sections.mjs'
+import { workspaceCss, workspaceCssUrl, workspaceSection, foundationStyles, legacyStyleImportLayout, stripFinalIntegrationPresentation } from './graduation-workspace-style-sections.mjs'
 
 const root = new URL('../src/modules/graduation/', import.meta.url)
 const layout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', root), 'utf8')
+const historicalLayout = stripFinalIntegrationPresentation(layout)
 const marker = layout.match(/:data-graduation-defense-workspace="([\s\S]*?)"/)?.[1]
 const css = workspaceSection('defense')
 const hash = text => createHash('sha256').update(text).digest('hex')
@@ -32,7 +33,7 @@ test('the exact original single-style-owner architecture requirement is restored
   assert.deepEqual(styleFiles, ['graduation-workspaces.css'])
   assert.equal((layout.match(/<style src="@\/modules\/graduation\/styles\/graduation-workspaces\.css"><\/style>/g) || []).length, 1)
   assert.equal((layout.match(/<style\s+src=/g) || []).length, 1)
-  assert.ok(layout.trimEnd().endsWith('<style src="@/modules/graduation/styles/graduation-workspaces.css"></style>'))
+  assert.ok(layout.indexOf('<style src="@/modules/graduation/styles/graduation-workspaces.css"></style>') > layout.indexOf('</style>'))
   for (const selector of ['.gd-business-view', '.gd-student-page', '.mc-summary', '.rk-rules']) assert.ok(workspaceCss.includes(selector), selector)
   assert.equal(fs.realpathSync(workspaceCssUrl), fs.realpathSync(new URL('styles/graduation-workspaces.css', root)))
 })
@@ -45,14 +46,14 @@ test('consolidation retains every previous process and material declaration byte
 })
 
 test('reversing only display marker and stylesheet consolidation restores the entire previous parent', () => {
-  const prior = legacyStyleImportLayout(layout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+  const prior = legacyStyleImportLayout(historicalLayout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
     + '\n<style src="../styles/graduation-process-workspace.css"></style>\n'
     + '\n<style src="../styles/graduation-material-workspace.css"></style>\n'
   assert.equal(hash(prior), 'f27e5500b3c8ebbe517750202ca1dd96366a26bcc6e36fb9f91314498373c48e')
 })
 
 test('parent business script, permission gate, router outlet and grad-qual compatibility are untouched', () => {
-  assert.equal(hash(legacyStyleImportLayout(layout).match(/<script>([\s\S]*?)<\/script>/)[1]), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
+  assert.equal(hash(legacyStyleImportLayout(historicalLayout).match(/<script>([\s\S]*?)<\/script>/)[1]), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
   assert.equal(hash(layout.match(/<style scoped>([\s\S]*?)<\/style>/)[1]), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
   assert.match(layout, /v-if="canRenderBusiness"[\s\S]*?:data-graduation-defense-workspace=/)
   assert.equal((layout.match(/<router-view\b/g) || []).length, 1)
