@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const source = fs.readFileSync(new URL('../src/pages/student/internship/insurance/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
+const source = fs.readFileSync(new URL('../src/pages/student-internship/insurance/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 function view(api = {}, upload = async () => ({ fileId: 'new-file' })) {
   const notices = []
   const def = new Function('studentApi', 'chooseSingleFile', 'uploadBusinessFile', 'toast', source)(api, async () => ({ name: 'fixture.pdf' }), upload, message => notices.push(message))

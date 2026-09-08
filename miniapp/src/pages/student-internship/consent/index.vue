@@ -49,7 +49,7 @@ export default {
       if (item.consentType !== 'STUDENT') return
       const query = [`id=${encodeURIComponent(item.id)}`]
       if (this.batchId) query.push(`batchId=${encodeURIComponent(this.batchId)}`)
-      go(`/pages/student/internship/consent/detail?${query.join('&')}`)
+      go(`/pages/student-internship/consent/detail?${query.join('&')}`)
     },
     statusLabel(status) {
       return ({ PENDING: '待确认', VALID: '已确认', REJECTED: '已拒绝', REVOKED: '已作废',

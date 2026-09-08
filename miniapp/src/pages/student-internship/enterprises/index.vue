@@ -110,7 +110,7 @@
 </template>
 
 <script>
-import { selectionScope, selectionScopePath } from '../../../../../../shared/internshipSelectionScope.mjs'
+import { selectionScope, selectionScopePath } from '../../../../../shared/internshipSelectionScope.mjs'
 import { internshipSelectionApi, normalizeMobileCatalogQuery } from '@/services/internshipSelectionApi'
 import { mobileCompanyLocation, normalizeMobilePublicCompany } from '@/modules/internshipCompanyPublicModel'
 import { formatMobileDeadline, normalizeMobilePage, normalizeMobileSelectionContext } from '@/modules/internshipSelectionModel'
@@ -135,7 +135,7 @@ export default {
   onShow() { if (this.mode === 'volunteers' && this.catalogReady) this.loadVolunteers() },
   onLoad(query = {}) { this.roundScope = query; this.loadContext() }, onUnload() { this.detailSeq++; this.companySeq++; clearTimeout(this.searchTimer); this.requestSeq += 1; this.contextSeq += 1; this.volunteerSeq += 1 },
   watch: {
-    '$route.fullPath'() { if (this.$route?.path === '/pages/student/internship/enterprises/index') { this.roundScope = this.$route.query || {}; this.loadContext() } }
+    '$route.fullPath'() { if (this.$route?.path === '/pages/student-internship/enterprises/index') { this.roundScope = this.$route.query || {}; this.loadContext() } }
   },
   methods: {
     showList() { this.mode = 'list'; this.confirmOpen = false; this.volunteerError = '' },
@@ -162,8 +162,8 @@ export default {
         this.mode = 'list'; this.volunteerState = 'error'
       }
     },
-    openProfile() { if (this.volunteerBusy) return; try { uni.navigateTo({ url: selectionScopePath('/pages/student/internship/profile/index', this.profileScope) }) } catch (e) { this.volunteerError = e.message } },
-    openPreparation() { uni.navigateTo({ url: '/pages/student/internship/index' }) },
+    openProfile() { if (this.volunteerBusy) return; try { uni.navigateTo({ url: selectionScopePath('/pages/student-internship/profile/index', this.profileScope) }) } catch (e) { this.volunteerError = e.message } },
+    openPreparation() { uni.navigateTo({ url: '/pages/student-internship/index' }) },
 
     loadPositions(nextQuery) { if (!this.catalogReady) return Promise.resolve(); const query = normalizeMobileCatalogQuery(nextQuery || this.query); this.query = query; const requestId = ++this.requestSeq; this.listState = 'loading'; return this.selectionApi.positions(query).then((data) => { if (requestId !== this.requestSeq) return; const page = normalizeMobilePage(data || {}); this.positions = page.items; this.total = page.total; this.listState = 'ready' }).catch(() => { if (requestId !== this.requestSeq) return; this.positions = []; this.total = 0; this.listState = 'error' }) },
     scheduleSearch() { clearTimeout(this.searchTimer); this.searchTimer = setTimeout(() => this.loadPositions({ ...this.query, page: 1 }), 350) }, onKeywordInput(e) { this.query = { ...this.query, keyword: e.detail.value }; this.scheduleSearch() }, onCityInput(e) { this.query = { ...this.query, city: e.detail.value }; this.scheduleSearch() }, flushSearch() { clearTimeout(this.searchTimer); this.loadPositions({ ...this.query, page: 1 }) }, clearKeyword() { this.query = { ...this.query, keyword: '' }; this.flushSearch() }, onSortChange(e) { const index = Number(e.detail.value || 0); this.loadPositions({ ...this.query, page: 1, sort: SORTS[index] || 'RECOMMENDED' }) }, toggleFilter(key) { this.loadPositions({ ...this.query, page: 1, [key]: this.query[key] === true ? '' : true }) }, changePage(page) { this.loadPositions({ ...this.query, page }) },

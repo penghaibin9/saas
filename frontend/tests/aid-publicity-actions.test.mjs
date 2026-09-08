@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 // Execute the real component method so dropping the observed version breaks this regression.
-const source = readFileSync(new URL('../src/modules/studentAffairs/views/aid/AidPublicityView.vue', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../src/modules/studentAffairs/views/aid/AidPublicityView.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const method = source.match(/async confirm\(it\) \{([\s\S]*?)\n {4}\},\n {4}levelLabel/)[1]
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const invoke = new AsyncFunction('studentAffairsApi', 'toast', 'it', method)

@@ -91,9 +91,9 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
     "DISCIPLINE_APPROVAL": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
     "DISCIPLINE_REMOVE": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
     "ACAD_WARNING_HANDLE": ("todo-route:student-mini-academic-warning", "/pages/student/academic-affairs/warning", FOCUS_NONE),
-    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
-    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
-    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
 }
 
 # Student PC 当前真实业务页。query.tab 定位到 AffairsFourEndView/AcademicView
@@ -151,10 +151,10 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "GD_TOPIC_CHANGE_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
     "GD_FINAL_REVIEW": ("todo-route:teacher-mini-graduation-guide", "/pages/teacher/graduation-guide/index", FOCUS_NONE),
     "GD_DEFENSE_SCORE": ("todo-route:teacher-mini-defense-score", "/pages/teacher/defense-score/index", FOCUS_NONE),
-    "INTERN_WEEKLY_REVIEW": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
     "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
     "DORM_EXCEPTION": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
     "EMPLOYMENT_FOLLOWUP": ("todo-route:teacher-mini-employment", "/pages/teacher/employment-follow/index", FOCUS_NONE),

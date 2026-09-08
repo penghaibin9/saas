@@ -6,7 +6,7 @@ import { positionFilters, positionQuery, positionListUrl, positionDetailUrl, pos
 function mount(file, api={}, overrides={}) {
   const context={selectedBatchId:'22',batches:[{id:'22',name:'指导批次'}],load:async()=>{},can:()=>true,selectBatch(id){if(id!=='22')return false;this.selectedBatchId=id;return true},...overrides}
   const paths=[]
-  const script=fs.readFileSync(new URL('../src/pages/teacher/internship-positions/'+file+'.vue',import.meta.url),'utf8').split('<script>')[1].split('</script>')[0].replace(/^import.*$/gm,'').replace('export default','return')
+  const script=fs.readFileSync(new URL('../src/pages/teacher-internship/internship-positions/'+file+'.vue',import.meta.url),'utf8').split('<script>')[1].split('</script>')[0].replace(/^import.*$/gm,'').replace('export default','return')
   const options=new Function('useInternshipContextStore','teacherInternshipPositions','teacherInternshipPositionDetail','positionFilters','positionQuery','positionListUrl','positionDetailUrl','positionFacts','formatDateTime','go','uni',script)(()=>context,api.list,api.detail,positionFilters,positionQuery,positionListUrl,positionDetailUrl,positionFacts,String,path=>paths.push(path),{redirectTo:({url})=>paths.push(url)})
   const vm={...options.data()}
   for(const [key,fn] of Object.entries(options.computed))Object.defineProperty(vm,key,{get:()=>fn.call(vm)})

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const script = fs.readFileSync(new URL('../src/pages/teacher/insurance-verify/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
+const script = fs.readFileSync(new URL('../src/pages/teacher-internship/insurance-verify/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 const item = { id: '9007199254740999', studentName: '虚构学生', version: 3, fileId: '9', hasFile: true }
 function view({ open = async () => ({ fileId: '9', readyForBusiness: true, canPreview: true }), write = async () => {}, read = async () => ({ list: [] }) } = {}) {
   const context = { restore() {}, load: async () => {}, selectedBatchId: '1', batches: [{ id: '1' }] }

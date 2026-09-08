@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 
-const source = parse(fs.readFileSync(new URL('../src/pages/student/internship/volunteer-result/index.vue', import.meta.url), 'utf8')).descriptor.script.content.replace(/^import[^\n]+\n/gm, '').replace('export default', 'return')
+const source = parse(fs.readFileSync(new URL('../src/pages/student-internship/volunteer-result/index.vue', import.meta.url), 'utf8')).descriptor.script.content.replace(/^import[^\n]+\n/gm, '').replace('export default', 'return')
 function fixture(request) {
   const options = new Function('internshipSelectionApi', source)({ volunteerResult: request })
   const page = options.data()
@@ -45,7 +45,7 @@ test('reused H5 route clears previous result when new group is denied', async ()
     return { id, version: 1 }
   })
   await page.applyQuery({ groupId: '1' }); assert.equal(page.result.id, '1')
-  page.$route = { path: '/pages/student/internship/volunteer-result/index', query: { groupId: '2' } }
+  page.$route = { path: '/pages/student-internship/volunteer-result/index', query: { groupId: '2' } }
   options.watch['$route.fullPath'].call(page)
   assert.equal(page.result, null)
   await new Promise(resolve => setImmediate(resolve))

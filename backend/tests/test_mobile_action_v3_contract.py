@@ -156,7 +156,7 @@ def test_route_exact_requires_real_object_focus():
     assert is_route_exact(FOCUS_DETAIL, "/pages/common/message-detail/index") is True
     # LIST_FOCUS 只有页面实现了才精确
     assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student/affairs/leave") is True
-    assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student/internship/index") is False
+    assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student-internship/index") is False
     # 仅有入口不算对象级闭环
     assert is_route_exact("NONE", "/pages/student/affairs/leave") is False
     assert is_route_exact("nonsense", "/pages/student/affairs/leave") is False

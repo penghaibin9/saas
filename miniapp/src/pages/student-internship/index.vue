@@ -60,7 +60,7 @@
         </button>
 
         <view v-if="canShowDailyWork" class="in__today">
-          <view class="in__today-card" @click="openSub('/pages/student/internship/checkin/index')">
+          <view class="in__today-card" @click="openSub('/pages/student-internship/checkin/index')">
             <text class="in__today-icon">📍</text><text class="in__today-title">今日打卡</text>
             <text class="in__today-status" :class="{ 'is-warn': !i.checkin.done }">{{ i.checkin.done ? '已打卡' : '未打卡' }}</text>
             <text class="in__today-btn">{{ i.checkin.done ? '已完成' : '去打卡' }}</text>
@@ -113,7 +113,7 @@
 
     <MobileSafeAreaBar v-if="canShowDailyWork">
       <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
-      <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="openSub('/pages/student/internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
+      <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="openSub('/pages/student-internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -131,22 +131,22 @@ export default {
       i: null, state: 'loading', loadSequence: 0, selectedBatchId: '', candidates: [],
       compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
       navItems: [
-        { label: '知情确认', path: '/pages/student/internship/consent/index', icon: '✅', stages: ['onboard'] },
-        { label: '安全教育', path: '/pages/student/internship/safety/index', icon: '⛑️', stages: ['onboard'] },
-        { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯', stages: ['selection'] },
-        { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋', stages: ['selection'] },
-        { label: '实习选岗', path: '/pages/student/internship/enterprises/index', icon: '🏢', stages: ['selection'] },
-        { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄', stages: ['onboard'] },
-        { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️', stages: ['onboard'] },
-        { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️', stages: ['onboard', 'process'] },
-        { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️', today: true },
-        { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍', today: true },
-        { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝', today: true },
-        { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑', stages: ['process'] },
-        { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒', stages: ['result'] },
-        { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄', stages: ['process'] },
-        { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘', today: true },
-        { label: '鉴定与成绩', path: '/pages/student/internship/self-eval/index', icon: '⭐', stages: ['result'] },
+        { label: '知情确认', path: '/pages/student-internship/consent/index', icon: '✅', stages: ['onboard'] },
+        { label: '安全教育', path: '/pages/student-internship/safety/index', icon: '⛑️', stages: ['onboard'] },
+        { label: '实习意向', path: '/pages/student-internship/intention/index', icon: '🎯', stages: ['selection'] },
+        { label: '正式申请', path: '/pages/student-internship/application/index', icon: '📋', stages: ['selection'] },
+        { label: '实习选岗', path: '/pages/student-internship/enterprises/index', icon: '🏢', stages: ['selection'] },
+        { label: '三方协议', path: '/pages/student-internship/agreement/index', icon: '📄', stages: ['onboard'] },
+        { label: '实习保险', path: '/pages/student-internship/insurance/index', icon: '🛡️', stages: ['onboard'] },
+        { label: '实习计划', path: '/pages/student-internship/plan/index', icon: '🗂️', stages: ['onboard', 'process'] },
+        { label: '实习请假', path: '/pages/student-internship/leave/index', icon: '🗓️', today: true },
+        { label: '补卡申请', path: '/pages/student-internship/makeup/index', icon: '📍', today: true },
+        { label: '日报', path: '/pages/student-internship/process-report/index?type=daily', icon: '📝', today: true },
+        { label: '月报', path: '/pages/student-internship/process-report/index?type=monthly', icon: '📑', stages: ['process'] },
+        { label: '实习总结', path: '/pages/student-internship/process-report/index?type=summary', icon: '📒', stages: ['result'] },
+        { label: '调岗退岗', path: '/pages/student-internship/change/index', icon: '🔄', stages: ['process'] },
+        { label: '实习求助', path: '/pages/student-internship/help/index', icon: '🆘', today: true },
+        { label: '鉴定与成绩', path: '/pages/student-internship/self-eval/index', icon: '⭐', stages: ['result'] },
         { label: '就业衔接', path: '/pages/student/employment/index', icon: '🎯', stages: ['result'] }
       ]
     }

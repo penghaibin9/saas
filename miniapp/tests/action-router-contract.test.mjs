@@ -79,7 +79,7 @@ test('S2 runAction 只拼服务端已校验的 query 并统一 encode', () => {
 
 test('S2 routeExact 决定是否真的对象级闭环', () => {
   assert.equal(isObjectFocused(studentTarget), true)
-  assert.equal(isObjectFocused({ target: { path: '/pages/student/internship/index', routeExact: false } }), false)
+  assert.equal(isObjectFocused({ target: { path: '/pages/student-internship/index', routeExact: false } }), false)
   assert.equal(isObjectFocused(null), false)
 })
 

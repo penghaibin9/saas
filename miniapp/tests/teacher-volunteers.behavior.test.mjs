@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 
-const source = parse(fs.readFileSync(new URL('../src/pages/teacher/internship-volunteers/index.vue', import.meta.url), 'utf8')).descriptor.script.content.replace(/^import[^\n]+\n/gm, '').replace('export default', 'return')
+const source = parse(fs.readFileSync(new URL('../src/pages/teacher-internship/internship-volunteers/index.vue', import.meta.url), 'utf8')).descriptor.script.content.replace(/^import[^\n]+\n/gm, '').replace('export default', 'return')
 function fixture(overrides = {}, allowed = true) {
   const calls = []; let modal
   const context = { load: async () => {}, can: () => allowed, selectedBatchId: 1, batches: [{ id: '1', name: '批次' }] }

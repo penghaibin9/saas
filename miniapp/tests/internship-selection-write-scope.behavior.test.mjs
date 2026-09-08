@@ -5,7 +5,7 @@ import * as volunteers from '../src/modules/internshipVolunteerModel.js'
 import * as selection from '../src/modules/internshipSelectionModel.js'
 import * as company from '../src/modules/internshipCompanyPublicModel.js'
 
-const source = fs.readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0].replace(/^import .*$/gm, '').replace('export default', 'return')
+const source = fs.readFileSync(new URL('../src/pages/student-internship/enterprises/index.vue', import.meta.url), 'utf8').split('<script>')[1].split('</script>')[0].replace(/^import .*$/gm, '').replace('export default', 'return')
 function fixture(api) {
   const deps = { ...volunteers, ...selection, ...company, normalizeMobileCatalogQuery: x => x, internshipSelectionApi: { forScope: () => api } }
   const options = new Function(...Object.keys(deps), source)(...Object.values(deps))

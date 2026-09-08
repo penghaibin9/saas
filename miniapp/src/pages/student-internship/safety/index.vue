@@ -64,7 +64,7 @@ export default {
     open(course) {
       const query = [`id=${encodeURIComponent(course.id)}`]
       if (this.batchId) query.push(`batchId=${encodeURIComponent(this.batchId)}`)
-      go(`/pages/student/internship/safety/course?${query.join('&')}`)
+      go(`/pages/student-internship/safety/course?${query.join('&')}`)
     },
     statusLabel(status) {
       return ({ NOT_STARTED: '未开始', IN_PROGRESS: '学习中', PENDING_REVIEW: '待审核',

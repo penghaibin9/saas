@@ -171,7 +171,7 @@ def test_teacher_pages_append_next_page_on_reach_bottom():
         assert "onReachBottom()" in source, relative
         assert "hasMore" in source, relative
         assert "loadMore()" in source, relative
-    approval = (ROOT.parent / "miniapp/src/pages/teacher/internship-approval/index.vue").read_text(
+    approval = (ROOT.parent / "miniapp/src/pages/teacher-internship/internship-approval/index.vue").read_text(
         encoding="utf-8"
     )
     assert "onReachBottom()" in approval

@@ -54,7 +54,7 @@ export default {
   // H5 may reuse this page for a changed hash query without invoking uni onLoad.
   watch: {
     '$route.fullPath'() {
-      if (this.$route?.path === '/pages/student/internship/volunteer-result/index') this.applyQuery(this.$route.query || {})
+      if (this.$route?.path === '/pages/student-internship/volunteer-result/index') this.applyQuery(this.$route.query || {})
     }
   },
   onUnload() { this.alive = false; this.sequence++ },
@@ -63,7 +63,7 @@ export default {
       const row = this.result
       if (!row || row.status !== 'NEEDS_REVISION' || row.campaignStatus !== 'OPEN') return
       const query = ['batchId', 'campaignId', 'recordId'].map(key => `${key}=${encodeURIComponent(row[key])}`).join('&')
-      uni.navigateTo({ url: `/pages/student/internship/enterprises/index?${query}` })
+      uni.navigateTo({ url: `/pages/student-internship/enterprises/index?${query}` })
     },
     applyQuery(query = {}) {
       this.groupId = typeof query.groupId === 'string' && /^[1-9]\d*$/.test(query.groupId) ? query.groupId : ''

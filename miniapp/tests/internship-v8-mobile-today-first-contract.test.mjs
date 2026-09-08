@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
-const student = read('src/pages/student/internship/index.vue')
+const student = read('src/pages/student-internship/index.vue')
 const teacher = read('src/pages/teacher/workbench/index.vue')
-const review = read('src/pages/teacher/internship-review/index.vue')
+const review = read('src/pages/teacher-internship/internship-review/index.vue')
 const adapter = read('src/services/teacherSequentialV3Api.js')
 const backend = read('../backend/app/modules/internship/services/internship_service.py')
 

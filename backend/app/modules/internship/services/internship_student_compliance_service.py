@@ -244,13 +244,13 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
             "enterprise", "实习企业", required=True,
             status="VALID" if rec.enterprise_id else "MISSING",
             reason="" if rec.enterprise_id else "尚未落实实习企业",
-            route="/pages/student/internship/enterprises/index",
+            route="/pages/student-internship/enterprises/index",
         ))
         items.append(_item(
             "position", "实习岗位", required=True,
             status="VALID" if rec.position_id else "MISSING",
             reason="" if rec.position_id else "尚未落实实习岗位",
-            route="/pages/student/internship/application/index",
+            route="/pages/student-internship/application/index",
         ))
         items.append(_item(
             "advisor", "校内指导教师", required=bool(rules.get("advisor", {}).get("required", True)),
@@ -295,7 +295,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "studentConsent", cfg.get("label", "学生知情确认"),
             required=bool(cfg.get("required")), severity=cfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/consent/index",
+            status=status, reason=reason, route="/pages/student-internship/consent/index",
         ))
 
         gcfg = rules.get("guardianConsent") or {"label": "监护人知情确认", "required": False, "severity": "BLOCK"}
@@ -320,7 +320,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "guardianConsent", gcfg.get("label", "监护人知情确认"),
             required=required, severity=gcfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/consent/index",
+            status=status, reason=reason, route="/pages/student-internship/consent/index",
         ))
 
         courses = db.scalars(select(InternshipSafetyCourse).where(
@@ -340,7 +340,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "safetyEducation", scfg.get("label", "岗前安全教育"),
             required=bool(scfg.get("required")), severity=scfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/safety/index",
+            status=status, reason=reason, route="/pages/student-internship/safety/index",
             detail={
                 "requiredCount": safety["requiredCount"],
                 "passedCount": safety["passedCount"],
@@ -367,7 +367,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "insurance", icfg.get("label", "实习保险"),
             required=bool(icfg.get("required")), severity=icfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/insurance/index",
+            status=status, reason=reason, route="/pages/student-internship/insurance/index",
         ))
 
         acfg = rules["agreement"]
@@ -391,7 +391,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "agreement", acfg.get("label", "三方协议"),
             required=bool(acfg.get("required")), severity=acfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/agreement/index",
+            status=status, reason=reason, route="/pages/student-internship/agreement/index",
         ))
 
         fcfg = rules["specialFiling"]

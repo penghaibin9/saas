@@ -8,7 +8,7 @@ import {
   normalizeMobileSelectionContext
 } from '../src/modules/internshipSelectionModel.js'
 
-const pageSource = readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8')
+const pageSource = readFileSync(new URL('../src/pages/student-internship/enterprises/index.vue', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/services/internshipSelectionApi.js', import.meta.url), 'utf8')
 
 test('A03-9 preserves old enterprises route file but renames product surface to 实习选岗', () => {

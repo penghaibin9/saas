@@ -184,7 +184,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
 
   test('IX-011：Student Mini 与 Student PC 读取同一新协议；Student PC 真实确认进入企业签署', async ({ page }) => {
     await loginMini(page, 'student', config.student)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText('待学生确认', { exact: false }).first()).toBeVisible()
@@ -236,7 +236,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText('待学校确认', { exact: true }).first()).toBeVisible()
 
     await loginMini(page, 'teacher', config.mentor)
-    await page.goto(`${miniBaseUrl}/#/pages/teacher/agreement-confirm/index`)
+    await page.goto(`${miniBaseUrl}/#/pages/teacher-internship/agreement-confirm/index`)
     await page.getByText('切换批次', { exact: false }).click()
     await page.getByText(fixture.batchName, { exact: false }).last().click()
     await expect(page.getByText(fixture.studentName, { exact: false }).first()).toBeVisible()
@@ -271,7 +271,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
 
     await loginMini(page, 'student', config.student)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
     await expect(page.getByText('已生效', { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
 

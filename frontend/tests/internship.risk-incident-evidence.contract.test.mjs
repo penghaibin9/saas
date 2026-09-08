@@ -31,7 +31,7 @@ test('Staff incident workbench explains close blockers and leads to regulatory e
 })
 
 test('Teacher Mini uses server versions, source facts, conflict draft and receipt', () => {
-  const view = read('miniapp/src/pages/teacher/internship-risk/index.vue')
+  const view = read('miniapp/src/pages/teacher-internship/internship-risk/index.vue')
   assert.match(view, /sourceText\(r\)/)
   assert.match(view, /r\.latestEvent/)
   assert.match(view, /r\.currentAction/)

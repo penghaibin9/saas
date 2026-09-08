@@ -12,8 +12,8 @@ const leaveApi = read('../src/modules/internship/api/leave-risk.api.js')
 const router = read('../../backend/app/modules/internship/routers/internship.py')
 const leaveContext = read('../../backend/app/modules/internship/services/internship_student_leave_context_service.py')
 const studentPortal = read('../../student-portal/src/views/internship/InternshipView.vue')
-const studentMobile = read('../../miniapp/src/pages/student/internship/leave/index.vue')
-const teacherMobile = read('../../miniapp/src/pages/teacher/internship-approval/ApprovalCore.vue')
+const studentMobile = read('../../miniapp/src/pages/student-internship/leave/index.vue')
+const teacherMobile = read('../../miniapp/src/pages/teacher-internship/internship-approval/ApprovalCore.vue')
 
 test('W7 thin attendance table routes exception decisions to full evidence detail', () => {
   assert.match(attendance, /openExceptionDetail\(row\)/)

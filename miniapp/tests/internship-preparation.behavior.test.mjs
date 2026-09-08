@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-const source = fs.readFileSync(new URL('../src/pages/student/internship/index.vue', import.meta.url), 'utf8')
+const source = fs.readFileSync(new URL('../src/pages/student-internship/index.vue', import.meta.url), 'utf8')
 const script = source.split('<script>')[1].split('</script>')[0]
   .replace(/^import .*$/gm, '').replace('export default', 'return')
 const page = new Function('formatDateTime', 'toast', 'go', script)(String, () => {}, () => {})
@@ -33,8 +33,8 @@ test('a refreshed deep link returns to its parent and still respects the passwor
   const back = new Function('uni', 'getCurrentPages', 'forcePasswordChangeRequired', 'FORCE_PASSWORD_CHANGE_ROUTE', 'isForcePasswordChangeRoute', nav + '\nreturn back')(
     { reLaunch: ({ url }) => calls.push(url), navigateBack: () => calls.push('back') },
     () => [{}], () => forced, '/required-password', () => false)
-  back('/pages/teacher/internship-students/index?batchId=22')
-  assert.equal(calls.pop(), '/pages/teacher/internship-students/index?batchId=22')
+  back('/pages/teacher-internship/internship-students/index?batchId=22')
+  assert.equal(calls.pop(), '/pages/teacher-internship/internship-students/index?batchId=22')
   forced = true
   back('/pages/student/me/index')
   assert.equal(calls.pop(), '/required-password')

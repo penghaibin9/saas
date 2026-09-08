@@ -432,7 +432,7 @@ export default {
       if (!start && !end) return '未配置'
       return `${this.dateShort(start) || '—'} ~ ${this.dateShort(end) || '—'}`
     },
-    policyLabels(values, options, empty = '未设置') { return !Array.isArray(values) ? '原规则格式需核对' : values.map((value) => options.find((option) => option.value === value)?.label || value).join('、') || empty },
+    policyLabels(values, options, empty = '未设置') { return !Array.isArray(values) ? '原规则格式需核对' : values.map((value) => options.find((option) => option.value === value)?.label || '未识别规则').join('、') || empty },
     editSettings() {
       return this.$router.push({ path: '/admin/internship/recruitment-campaigns/' + this.detail.id + '/edit', query: { ...this.$route.query, batchId: this.detail.batchId } })
     },
@@ -541,8 +541,8 @@ export default {
     admissionBlockReason(c) {
       if (c.status && c.status !== 'ACTIVE') return '企业已停用'
       if (c.blacklist || c.coopStatus === 'BLACKLIST') return '黑名单企业'
-      if (c.coopStatus !== 'ACTIVE') return `合作状态：${c.coopStatusLabel || c.coopStatus || '未知'}`
-      if (c.qualificationStatus !== 'PASSED') return `资质：${c.qualificationLabel || c.qualificationStatus || '未核验'}`
+      if (c.coopStatus !== 'ACTIVE') return `合作状态：${c.coopStatusLabel || '状态待确认'}`
+      if (c.qualificationStatus !== 'PASSED') return `资质：${c.qualificationLabel || '状态待确认'}`
       if (c.accessValidUntil && new Date(c.accessValidUntil).getTime() < Date.now()) return '企业准入已过期'
       return ''
     },

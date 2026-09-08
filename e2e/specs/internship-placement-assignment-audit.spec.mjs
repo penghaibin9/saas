@@ -311,7 +311,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
 
   test('IX-009：Student Mini 读取同一 server truth；落岗后企业拉黑不得抹掉历史 placement', async ({ page }) => {
     await loginStudentMini(page)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(`校内导师 ${ADVISOR_NAME}`, { exact: false }).first()).toBeVisible()
@@ -342,7 +342,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(ADVISOR_NAME, { exact: false }).first()).toBeVisible()
 
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(`校内导师 ${ADVISOR_NAME}`, { exact: false }).first()).toBeVisible()

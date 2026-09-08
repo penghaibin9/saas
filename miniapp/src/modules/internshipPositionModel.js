@@ -15,8 +15,8 @@ export function positionQuery(query = {}) {
 function queryString(query) {
   return Object.entries(positionQuery(query)).map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')
 }
-export const positionListUrl = query => '/pages/teacher/internship-positions/index?' + queryString(query)
-export const positionDetailUrl = (id, query) => '/pages/teacher/internship-positions/detail?id=' + encodeURIComponent(id) + '&' + queryString(query)
+export const positionListUrl = query => '/pages/teacher-internship/internship-positions/index?' + queryString(query)
+export const positionDetailUrl = (id, query) => '/pages/teacher-internship/internship-positions/detail?id=' + encodeURIComponent(id) + '&' + queryString(query)
 const amount = (value, unit) => value == null || value === '' ? '待补充' : value + unit
 const yesNo = value => value === true ? '是' : value === false ? '否' : '待补充'
 export function positionFacts(row = {}) {

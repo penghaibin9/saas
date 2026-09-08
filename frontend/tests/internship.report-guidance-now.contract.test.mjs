@@ -19,7 +19,7 @@ const router = read('../../backend/app/modules/internship/routers/internship.py'
 const studentPortal = read('../../student-portal/src/views/internship/InternshipView.vue')
 const mobileInternshipApi = read('../../miniapp/src/services/internshipApi.js')
 const mobileWeekly = read('../../miniapp/src/pages/student/weekly-report/index.vue')
-const mobileProcess = read('../../miniapp/src/pages/student/internship/process-report/index.vue')
+const mobileProcess = read('../../miniapp/src/pages/student-internship/process-report/index.vue')
 
 test('W8 resubmitted weekly report shows real before and after bodies on one screen', () => {
   assert.match(weeklyDetail, /resubmitComparison\(\)/)

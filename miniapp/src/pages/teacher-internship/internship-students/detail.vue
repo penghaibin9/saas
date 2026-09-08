@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="学生实习档案" subtitle="核对本批次安排与资格结果" show-back :fallback-url="'/pages/teacher/internship-students/index?batchId=' + batchId" />
+    <MobileNavBar variant="teacher" title="学生实习档案" subtitle="核对本批次安排与资格结果" show-back :fallback-url="'/pages/teacher-internship/internship-students/index?batchId=' + batchId" />
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view v-if="detail" class="page-pad stack">
         <view class="card itd__identity"><text class="itd__batch">{{ detail.batchName }}</text><view class="itd__heading"><text>{{ detail.name }}</text><MobileStatusTag :label="detail.statusLabel" /></view><text class="itd__meta">{{ detail.className }} · {{ maskedNo(detail.studentNo) }}</text></view>

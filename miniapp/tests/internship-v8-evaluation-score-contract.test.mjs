@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
-const teacherScore = read('src/pages/teacher/internship-score/index.vue')
-const selfEval = read('src/pages/student/internship/self-eval/index.vue')
+const teacherScore = read('src/pages/teacher-internship/internship-score/index.vue')
+const selfEval = read('src/pages/student-internship/self-eval/index.vue')
 const internshipApi = read('src/services/internshipApi.js')
-const studentHome = read('src/pages/student/internship/index.vue')
-const studentHelp = read('src/pages/student/internship/help/index.vue')
+const studentHome = read('src/pages/student-internship/index.vue')
+const studentHelp = read('src/pages/student-internship/help/index.vue')
 
 test('Teacher Mini triggers authoritative compute without forging component scores', () => {
   assert.match(teacherScore, /sourceReadiness\?\.enterpriseEvaluation/)

@@ -70,7 +70,7 @@ import { useInternshipContextStore } from '@/stores/internshipContext'
 import { teacherVolunteerApi } from '@/services/teacherVolunteerApi'
 import { openBusinessFile } from '@/services/fileApi'
 
-const base = '/pages/teacher/internship-volunteers/index'
+const base = '/pages/teacher-internship/internship-volunteers/index'
 const filters = [{ value: 'PENDING', label: '待处理' }, { value: 'NEEDS_REVISION', label: '待补正' }, { value: 'APPROVED', label: '已确认' }, { value: 'ALL', label: '全部' }]
 export default {
   data: () => ({ scope: { batchId: '', campaignId: '', groupId: '', status: 'PENDING', keyword: '', page: 1 }, state: 'loading', error: '', actionError: '', campaigns: [], rows: [], total: 0, detail: null, keyword: '', selectedId: '', reason: '', busy: false, sequence: 0, filters }),

@@ -126,7 +126,7 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    openVolunteers() { uni.navigateTo({ url: '/pages/teacher/internship-volunteers/index' + (this.batchId ? '?batchId=' + encodeURIComponent(this.batchId) : '') }) },
+    openVolunteers() { uni.navigateTo({ url: '/pages/teacher-internship/internship-volunteers/index' + (this.batchId ? '?batchId=' + encodeURIComponent(this.batchId) : '') }) },
     fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
     approveLabel(a) { return a.applicationType === 'SELF_ARRANGED' ? '通过并确认自主实习' : '通过并落实岗位' },
     canApprove(a) {

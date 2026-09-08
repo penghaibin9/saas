@@ -29,7 +29,7 @@ test('staff review leads with exact objects and preserves 409 input with a recei
 })
 
 test('teacher Mini uses explicit batch and both application and record versions', () => {
-  const page = read('miniapp/src/pages/teacher/internship-change/index.vue')
+  const page = read('miniapp/src/pages/teacher-internship/internship-change/index.vue')
   const api = read('miniapp/src/services/internshipApi.js')
   assert.match(page, /useInternshipContextStore/)
   assert.match(page, /teacherInternshipChanges/)
@@ -40,7 +40,7 @@ test('teacher Mini uses explicit batch and both application and record versions'
 })
 
 test('student Mini selects a canonical candidate instead of asking for a raw database id', () => {
-  const page = read('miniapp/src/pages/student/internship/change/index.vue')
+  const page = read('miniapp/src/pages/student-internship/change/index.vue')
   assert.doesNotMatch(page, /岗位库 ID|目标岗位编号/)
   assert.match(page, /studentInternshipChangeTargets/)
   assert.match(page, /selectedTarget/)

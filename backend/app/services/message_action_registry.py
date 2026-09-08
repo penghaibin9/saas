@@ -32,7 +32,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "roles": ["STUDENT"],
         "requiredParams": ["groupId", "groupVersion"],
         "pc": None, "studentPc": "/internship/volunteer-result",
-        "studentMini": "/pages/student/internship/volunteer-result/index", "teacherMini": None,
+        "studentMini": "/pages/student-internship/volunteer-result/index", "teacherMini": None,
         "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
         "label": "原志愿办理结果",
     },

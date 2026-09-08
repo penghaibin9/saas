@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { selectionScope, selectionScopePath } from '../../shared/internshipSelectionScope.mjs'
-const source = fs.readFileSync(new URL('../src/pages/student/internship/profile/index.vue', import.meta.url),'utf8').split('<script>')[1].split('</script>')[0].replace(/^import .*$/gm,'').replace('export default','return')
+const source = fs.readFileSync(new URL('../src/pages/student-internship/profile/index.vue', import.meta.url),'utf8').split('<script>')[1].split('</script>')[0].replace(/^import .*$/gm,'').replace('export default','return')
 const projection = () => ({profile:{profileVersion:3,selfIntro:'原介绍',skillTags:['PLC']},schoolFacts:{realName:'测试学生'},items:[]})
 function fixture(overrides={}) {
   const calls=[]; const api={profile:async()=>projection(),profileCompleteness:async()=>({percent:100}),updateProfile:async data=>{calls.push(data);return projection()},createProfileItem:async data=>{calls.push(data);return projection()},...overrides}

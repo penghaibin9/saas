@@ -57,7 +57,7 @@ export default {
     search() { this.page = 1; this.load() },
     chooseFilter(value) { this.eligibility = value; this.search() },
     turn(direction) { this.page += direction; this.load() },
-    openStudent(row) { go('/pages/teacher/internship-students/detail?id=' + encodeURIComponent(row.id) + '&batchId=' + encodeURIComponent(row.batchId)) }
+    openStudent(row) { go('/pages/teacher-internship/internship-students/detail?id=' + encodeURIComponent(row.id) + '&batchId=' + encodeURIComponent(row.batchId)) }
   }
 }
 </script>

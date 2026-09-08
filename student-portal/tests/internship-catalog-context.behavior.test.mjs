@@ -23,7 +23,7 @@ function fixture(mobile = false, contextRequest = async () => empty) {
     volunteers: async () => { calls.push('volunteers'); return {} }, profile: async () => ({}), profileCompleteness: async () => ({}) }
   api.forScope = () => api
   if (mobile) {
-    const source = parse(read('../../miniapp/src/pages/student/internship/enterprises/index.vue')).descriptor.script.content
+    const source = parse(read('../../miniapp/src/pages/student-internship/enterprises/index.vue')).descriptor.script.content
     const deps = { ...scopeModel, ...mobileContext, ...mobileVolunteer, internshipSelectionApi: api, normalizeMobileCatalogQuery: queryModel.normalizeCatalogQuery }
     const options = new Function(...Object.keys(deps), stripImports(source).replace('export default', 'return'))(...Object.values(deps))
     const page = { ...options.data() }

@@ -329,27 +329,27 @@ export default {
     quick(q) {
       const session = useSessionStore()
       const map = {
-        weekly: '/pages/teacher/internship-review/index',
+        weekly: '/pages/teacher-internship/internship-review/index',
         'review-open': '/pages/teacher/graduation-guide/index?tab=review&kind=proposal',
         'review-mid': '/pages/teacher/graduation-guide/index?tab=midterm',
         'review-result': '/pages/teacher/graduation-guide/index?tab=review&kind=final',
-        checkin: '/pages/teacher/internship-review/index',
-        makeup: '/pages/teacher/internship-approval/index',
-        leave: '/pages/teacher/internship-approval/index?tab=leave',
-        'internship-students': '/pages/teacher/internship-students/index',
-        'internship-positions': '/pages/teacher/internship-positions/index',
-        guidance: '/pages/teacher/internship-guidance/index',
-        'stu-eval': '/pages/teacher/student-eval/index',
-        'ent-eval': '/pages/teacher/enterprise-eval/index',
-        insurance: '/pages/teacher/insurance-verify/index',
-        'internship-change': '/pages/teacher/internship-change/index',
-        'internship-score': '/pages/teacher/internship-score/index',
-        'agreement-confirm': '/pages/teacher/agreement-confirm/index',
-        'process-report': '/pages/teacher/process-report-review/index',
-        'plan-task': '/pages/teacher/plan-task-review/index',
-        'internship-application': '/pages/teacher/internship-application/index',
-        'internship-volunteers': '/pages/teacher/internship-volunteers/index',
-        'internship-risk': '/pages/teacher/internship-risk/index',
+        checkin: '/pages/teacher-internship/internship-review/index',
+        makeup: '/pages/teacher-internship/internship-approval/index',
+        leave: '/pages/teacher-internship/internship-approval/index?tab=leave',
+        'internship-students': '/pages/teacher-internship/internship-students/index',
+        'internship-positions': '/pages/teacher-internship/internship-positions/index',
+        guidance: '/pages/teacher-internship/internship-guidance/index',
+        'stu-eval': '/pages/teacher-internship/student-eval/index',
+        'ent-eval': '/pages/teacher-internship/enterprise-eval/index',
+        insurance: '/pages/teacher-internship/insurance-verify/index',
+        'internship-change': '/pages/teacher-internship/internship-change/index',
+        'internship-score': '/pages/teacher-internship/internship-score/index',
+        'agreement-confirm': '/pages/teacher-internship/agreement-confirm/index',
+        'process-report': '/pages/teacher-internship/process-report-review/index',
+        'plan-task': '/pages/teacher-internship/plan-task-review/index',
+        'internship-application': '/pages/teacher-internship/internship-application/index',
+        'internship-volunteers': '/pages/teacher-internship/internship-volunteers/index',
+        'internship-risk': '/pages/teacher-internship/internship-risk/index',
         approval: '/pages/teacher/approval/index',
         todos: '/pages/teacher/todos/index',
         risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
@@ -391,20 +391,20 @@ export default {
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'
       }
-      if (q.key === 'risk' && session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (q.key === 'risk' && session.currentRole === 'intern_mentor') return go('/pages/teacher-internship/internship-risk/index')
       if (map[q.key]) return go(map[q.key])
       toast('当前入口尚未配置，请联系管理员')
     },
     goRiskList() {
       const session = useSessionStore()
       go(session.currentRole === 'intern_mentor'
-        ? '/pages/teacher/internship-risk/index'
+        ? '/pages/teacher-internship/internship-risk/index'
         : '/pages/teacher/affairs-review/index?type=RISK_HANDLE')
     },
     handleTodo(t) { return runAction(t && t.action, { side: 'teacher' }) },
     handleRisk(r) {
       const session = useSessionStore()
-      if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (session.currentRole === 'intern_mentor') return go('/pages/teacher-internship/internship-risk/index')
       if (r && r.actionType === 'RISK_HANDLE') return go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')
       go('/pages/teacher/risk-students/index')
     },

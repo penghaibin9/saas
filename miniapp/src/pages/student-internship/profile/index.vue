@@ -32,9 +32,9 @@
 <script>
 import { internshipSelectionApi } from '@/services/internshipSelectionApi'
 import { chooseSingleFile, uploadBusinessFile, openBusinessFile } from '@/services/fileApi'
-import { selectionScope, selectionScopePath } from '../../../../../../shared/internshipSelectionScope.mjs'
+import { selectionScope, selectionScopePath } from '../../../../../shared/internshipSelectionScope.mjs'
 
-const base = '/pages/student/internship/profile/index'
+const base = '/pages/student-internship/profile/index'
 const itemTypes = [{value:'PROJECT',label:'项目'},{value:'PRACTICE',label:'实践经历'},{value:'CERTIFICATE',label:'技能证书'},{value:'AWARD',label:'获奖'},{value:'PORTFOLIO',label:'作品'},{value:'SKILL_EVIDENCE',label:'技能证明'}]
 const cleanList = value => value.split(/[,，、]/).map(x => x.trim()).filter(Boolean)
 export default {
@@ -43,7 +43,7 @@ export default {
     textFields: [{key:'selfIntro',label:'自我介绍',max:1000,placeholder:'介绍专业学习经历和实习目标'},{key:'strengths',label:'个人优势',max:1000,placeholder:'说明技能、经验与擅长的工作'}] }),
   computed: {
     api() { return internshipSelectionApi.forScope(this.scope) },
-    returnUrl() { return selectionScopePath('/pages/student/internship/enterprises/index', this.scope) },
+    returnUrl() { return selectionScopePath('/pages/student-internship/enterprises/index', this.scope) },
     profileDirty() { return this.baseline !== '' && JSON.stringify(this.draft) !== this.baseline },
     itemTypeIndex() { return Math.max(0, itemTypes.findIndex(x => x.value === this.itemDraft?.itemType)) }
   },

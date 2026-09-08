@@ -74,7 +74,7 @@ def test_school_result_outbox_delivery_and_retry_are_scoped_and_idempotent(db_mo
             assert action['focusMode']=='DETAIL'
             from app.services.mobile_action_service import build_message_action as mobile_action
             mobile=mobile_action(own[0].action_key,own[0].action_params_json)
-            assert mobile['target']['path']=='/pages/student/internship/volunteer-result/index'
+            assert mobile['target']['path']=='/pages/student-internship/volunteer-result/index'
             assert mobile['target']['query']['groupId']==str(ids['0'])
             assert mobile['focusMode']=='DETAIL'
             assert len(company)==2 and all(message.receiver_type=='ENTERPRISE' for message in company)

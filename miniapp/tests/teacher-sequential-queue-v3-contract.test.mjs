@@ -41,7 +41,7 @@ test('T5 leave queue uses canonical single-record commands and reloads truth bef
 })
 
 test('T5 internship weekly and abnormal queues stop on conflict and never batch ids', () => {
-  const page = read('src/pages/teacher/internship-review/index.vue')
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(page, /MobileSequentialQueue/)
   assert.match(page, /tab === 'weekly'/)
   assert.match(page, /PENDING_REVIEW/)
@@ -77,7 +77,7 @@ test('T5 abnormal queue carries the exact read-snapshot version into the canonic
 test('T5 only advances after server reload and cannot auto-advance while conflict is set', () => {
   const component = read('src/components/teacher/MobileSequentialQueue.vue')
   const leave = read('src/pages/teacher/affairs-leave/index.vue')
-  const internship = read('src/pages/teacher/internship-review/index.vue')
+  const internship = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(component, /allowManualNext:\s*\{\s*type:\s*Boolean,\s*default:\s*false\s*\}/)
   assert.doesNotMatch(leave, /:allow-manual-next="true"|allow-manual-next/)
   assert.doesNotMatch(internship, /:allow-manual-next="true"|allow-manual-next/)
