@@ -68,6 +68,15 @@ _module_access_service = importlib.import_module(f"{__name__}.module_access_serv
 from app.services.module_commerce_access_guard import install as _install_module_access_guard
 _install_module_access_guard(_module_access_service)
 
+# M3: contract storage quota is an upper bound; the existing school-governance
+# quota remains a stricter lower layer. Install before any storage caller can bind
+# reserve_quota directly from the submodule.
+_file_storage_quota_service = importlib.import_module(
+    f"{__name__}.file_storage_quota_reservation_service"
+)
+from app.services.module_commerce_quota_guard import install as _install_module_commerce_quota_guard
+_install_module_commerce_quota_guard(_file_storage_quota_service)
+
 # M3-M5 hardening: keep delivery acceptance tied to the current paid-source set,
 # serialize tenant-wide vs module-only exit requests across MySQL workers, and
 # strengthen final export evidence before retention can begin.

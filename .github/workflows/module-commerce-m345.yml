@@ -9,9 +9,12 @@ on:
       - backend/app/services/module_commerce_access_guard.py
       - backend/app/services/module_commerce_lifecycle_service.py
       - backend/app/services/module_commerce_m345_hardening.py
+      - backend/app/services/module_commerce_quota_guard.py
+      - backend/app/services/file_storage_quota_reservation_service.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
+      - backend/tests/test_module_commerce_quota_guard_runtime.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
       - frontend/tests/module-commerce-lifecycle-workspace.test.mjs
@@ -54,7 +57,17 @@ jobs:
           set -euo pipefail
           mkdir -p "$OUT"; test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"; git rev-parse HEAD > "$OUT/revision.txt"
           python -m pip install -r backend/requirements.txt
-          python -m py_compile backend/app/models/commercial.py backend/app/models/platform.py backend/app/services/module_commerce_access_guard.py backend/app/services/module_commerce_lifecycle_service.py backend/app/services/module_commerce_m345_hardening.py backend/app/modules/platform/routers/module_commerce_router.py backend/alembic/versions/20260908_module_commerce_m345.py backend/tests/test_module_commerce_m345_runtime.py
+          python -m py_compile \
+            backend/app/models/commercial.py \
+            backend/app/models/platform.py \
+            backend/app/services/module_commerce_access_guard.py \
+            backend/app/services/module_commerce_lifecycle_service.py \
+            backend/app/services/module_commerce_m345_hardening.py \
+            backend/app/services/module_commerce_quota_guard.py \
+            backend/app/modules/platform/routers/module_commerce_router.py \
+            backend/alembic/versions/20260908_module_commerce_m345.py \
+            backend/tests/test_module_commerce_m345_runtime.py \
+            backend/tests/test_module_commerce_quota_guard_runtime.py
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
         working-directory: backend
         run: |
@@ -62,7 +75,7 @@ jobs:
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head 2>&1 | tee "$OUT/migration.log"
           alembic current | tee "$OUT/current.log"
-          pytest tests/test_module_commerce_m345_runtime.py -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
+          pytest tests/test_module_commerce_m345_runtime.py tests/test_module_commerce_quota_guard_runtime.py -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
       - name: Assert scope stops before irreversible purge
         working-directory: backend
         run: |
@@ -71,11 +84,13 @@ jobs:
           from pathlib import Path
           service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
           hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
+          quota=Path('app/services/module_commerce_quota_guard.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          for source in (service, hardening):
+          for source in (service, hardening, quota):
               assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
           assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
-          print('M345_NON_PURGE_SCOPE_AND_HARDENING_VERIFIED')
+          assert 'COMMERCIAL_MODULE_STORAGE_QUOTA_EXCEEDED' in quota and 'MODULE_NOT_AUTHORIZED' in quota
+          print('M345_NON_PURGE_SCOPE_QUOTA_AND_HARDENING_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
