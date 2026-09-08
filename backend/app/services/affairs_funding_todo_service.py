@@ -93,10 +93,12 @@ def _sync(db, row, *, biz_type, types, student_states, permission, title):
     if not pending_type:
         return
     if current is None:
+        # The shared DATETIME column stores whole seconds. Truncate before insert:
+        # MySQL rounding up would hide a fresh task behind the reader's asOf fence.
         db.add(UnifiedTodo(tenant_id=_tid(), source_module='student-affairs',
                           source_biz_type=biz_type, source_biz_id=row.id,
                           todo_type=pending_type, assignee_id=assignee, student_id=row.student_id,
-                          title=title, status='PENDING'))
+                          title=title, status='PENDING', created_at=now.replace(microsecond=0)))
     elif current.status != 'PENDING' or current.assignee_id != assignee or current.title != title:
         current.assignee_id, current.title, current.status = assignee, title, 'PENDING'
         current.completed_at = None

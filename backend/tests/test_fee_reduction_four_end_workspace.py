@@ -9,6 +9,46 @@ from test_funding_application_workspace import _accounts
 BASE = "/api/v1"
 
 
+def test_fee_reduction_todo_visible_in_creation_second(client, db_mode, monkeypatch):
+    """MySQL DATETIME rounds .9 up: a submitted task must still be readable immediately."""
+    from datetime import datetime
+    from sqlalchemy import event
+    from app.models import UnifiedTodo
+    from app.services import affairs_funding_todo_service as funding
+    from app.services import workbench_todo_service as reader
+
+    ids = _accounts(db_mode)
+    admin = _login(client, "school_admin01", "PC")
+    receiver = _login(client, "sa_admin01", "TEACHER_MINI")
+    now = datetime.utcnow().replace(microsecond=900000)
+
+    class Clock:
+        @staticmethod
+        def utcnow():
+            return now
+
+    # Supply the ORM default at the same controlled clock as the command and reader.
+    # Explicit timestamps from the command are left intact; MySQL stores the real row.
+    def default_clock(_mapper, _connection, todo):
+        if todo.created_at is None:
+            todo.created_at = now
+
+    monkeypatch.setattr(funding, "datetime", Clock)
+    monkeypatch.setattr(reader, "_utc_now", lambda: now)
+    event.listen(UnifiedTodo, "before_insert", default_clock)
+    try:
+        submitted = _data(client.post(f"{BASE}/student-affairs/fee-reductions", headers=admin, json={
+            "studentId": ids["sa"], "itemType": "REDUCTION", "yearCode": "2097-2098",
+            "reasonCategory": "EXTREME_DIFFICULTY", "amount": "600",
+            "reason": "核验新申请提交后教师在同一秒内即可接收审核待办。",
+        }))
+        todo_id = _todos(submitted["feeId"], "FEE_REDUCTION_REVIEW")
+        inbox = _data(client.get(f"{BASE}/teacher-mobile/todos/grouped-continuous", headers=receiver))
+        assert todo_id in [str(item["todoId"]) for item in inbox["items"]]
+    finally:
+        event.remove(UnifiedTodo, "before_insert", default_clock)
+
+
 def _upload(client, headers, name: str) -> dict:
     return _data(client.post(
         f"{BASE}/files", headers=headers,

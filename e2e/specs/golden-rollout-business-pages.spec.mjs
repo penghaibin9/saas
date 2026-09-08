@@ -131,8 +131,8 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await page.goto(`${config.staffBaseUrl}/admin/internship?batchId=${encodeURIComponent(internshipFixture.batchId)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship/)
-    await expect(page.locator('.idb-path')).toBeVisible()
-    await expect(page.locator('#idb-batch-progress')).toBeVisible()
+    await expect(page.getByLabel('按实习流程办理', { exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '待办类型' })).toBeVisible()
     await expect(page.locator('#idb-todos')).toBeVisible()
     await expect(page.locator('body')).not.toContainText(/请先选择实习批次|存在多个进行中批次/)
 

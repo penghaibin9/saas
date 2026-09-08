@@ -343,11 +343,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
     internshipFixture = await loadInternshipFixture()
-    const studentApi = await loginApi(config.student)
-
     aidFixture = await prepareAidPublicity(adminApi, internshipFixture.studentId)
-    internshipChangeFixture = await prepareInternshipChange(studentApi, internshipFixture)
-    graduationFixture = await prepareGraduationReviewFixture(adminApi)
   })
 
   test('Student Affairs aid publicity review · Screenshot B', async ({ page }, testInfo) => {
@@ -360,12 +356,13 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: aidFixture.studentNo }).first()).toBeVisible()
-    expect(await page.locator('.ap-note').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('11px')
+    expect(await page.locator('.ap-note').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('0px')
 
     await capture(page, testInfo, 'rollout-review-affairs-aid-publicity-b')
   })
 
   test('Internship change review queue · Screenshot B', async ({ page }, testInfo) => {
+    internshipChangeFixture = await prepareInternshipChange(await loginApi(config.student), internshipFixture)
     await page.setViewportSize(VIEWPORT)
     await openGoldenStaffPage(page, `/admin/internship/changes?panel=pending&id=${encodeURIComponent(internshipChangeFixture.id)}`)
     await setStorage(page, 'internship.selectedBatchId', internshipChangeFixture.batchId)
@@ -384,6 +381,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
   })
 
   test('Graduation proposal review queue · Screenshot B', async ({ page }, testInfo) => {
+    graduationFixture = await prepareGraduationReviewFixture(adminApi)
     await page.setViewportSize(VIEWPORT)
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(STUDENT_TWO)

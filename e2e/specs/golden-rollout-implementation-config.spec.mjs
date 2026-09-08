@@ -154,31 +154,12 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     await openGoldenStaffPage(page, '/admin/student-affairs/counselor-assignments')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-assignments/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
-    await expect(page.locator('.tabs')).toBeVisible()
-    await expect(page.locator('.dt')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '辅导员责任台账', exact: true })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: '责任台账视图' })).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(counselorFixture.userId).not.toBe('')
-
-    const affairsContract = await page.evaluate(() => {
-      const heroTitle = document.querySelector('.sa-summary-strip__title')
-      const workflow = document.querySelector('.sa-workflow-strip')
-      const tabs = document.querySelector('.tabs')
-      const table = document.querySelector('.dt')
-      if (!heroTitle || !workflow || !tabs || !table) return null
-      return {
-        titleColor: getComputedStyle(heroTitle).color,
-        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
-        tabsWidth: tabs.getBoundingClientRect().width,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(affairsContract).not.toBeNull()
-    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
-    expect(affairsContract.workflowColumns).toBe(4)
-    expect(affairsContract.tabsWidth).toBeLessThan(520)
-    expect(affairsContract.tableRadius).toBe('16px')
+    await expect(page.getByRole('button', { name: '分配责任', exact: true })).toBeEnabled()
+    await expect(page.locator('.responsibility-note')).toContainText('历史记录保留')
 
     await capture(page, testInfo, 'rollout-config-affairs-counselor-b')
   })

@@ -223,6 +223,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     const ruleResponse = await ruleResponsePromise
     expect(ruleResponse.ok(), `participant rule HTTP ${ruleResponse.status()}`).toBeTruthy()
     await expect(page.getByRole('heading', { name: new RegExp(fixture.batchName) })).toBeVisible()
+    await page.getByRole('link', { name: '参与名单', exact: true }).click()
     await expect(page.getByText('参与学生范围', { exact: true })).toBeVisible()
     await expect(page.getByText('参与学生范围加载失败', { exact: true })).toHaveCount(0)
     assertHttpsRuntime(page)

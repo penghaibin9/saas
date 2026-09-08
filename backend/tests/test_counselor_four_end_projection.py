@@ -56,6 +56,13 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
     from app.models import StudentProfile
 
     with get_sessionmaker()() as db:
+        # This story hands over existing students. Keep their creation before the
+        # keyset snapshot (MySQL DATETIME can round a fresh ORM timestamp forward).
+        from datetime import datetime, timedelta
+        db.query(StudentProfile).filter_by(
+            tenant_id=1000000000000000001, class_id=ids["a"]
+        ).update({StudentProfile.created_at: datetime.utcnow() - timedelta(days=1)})
+        db.commit()
         student_id = db.query(StudentProfile.id).filter_by(
             tenant_id=1000000000000000001, class_id=ids["a"], student_no="CA001"
         ).scalar()

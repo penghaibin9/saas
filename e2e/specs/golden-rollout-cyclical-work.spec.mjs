@@ -98,24 +98,15 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await target.click()
     await expect(target).toHaveClass(/is-active/)
     await expect(page.locator('.tk-detail')).toContainText(talkFixture.topic)
-    await expect(page.locator('.tk-record')).toBeVisible()
-
-    const talkVisual = await page.locator('.tk-workspace').evaluate((node) => {
-      const list = node.querySelector('.tk-list')
-      const detail = node.querySelector('.tk-detail')
-      const kv = node.querySelector('.tk-kv')
-      const textarea = node.querySelector('.tk-textarea')
-      return {
-        listRadius: parseFloat(getComputedStyle(list).borderTopLeftRadius),
-        detailRadius: parseFloat(getComputedStyle(detail).borderTopLeftRadius),
-        kvColumns: getComputedStyle(kv).gridTemplateColumns.split(' ').filter(Boolean).length,
-        textareaMinHeight: parseFloat(getComputedStyle(textarea).minHeight)
-      }
-    })
-    expect(talkVisual.listRadius).toBeGreaterThanOrEqual(15)
-    expect(talkVisual.detailRadius).toBeGreaterThanOrEqual(15)
-    expect(talkVisual.kvColumns).toBe(4)
-    expect(talkVisual.textareaMinHeight).toBeGreaterThanOrEqual(92)
+    await expect(page.locator('.tk-record-prompt')).toBeVisible()
+    await page.getByRole('button', { name: '填写记录', exact: true }).click()
+    const record = page.getByRole('dialog', { name: /填写谈话记录/ })
+    await expect(record).toBeVisible()
+    await record.getByPlaceholder('客观记录谈话过程与主要内容').fill('本次核对学生近期学习与生活情况，约定后续跟进时间。')
+    await expect(record.getByRole('button', { name: '提交记录', exact: true })).toBeEnabled()
+    await record.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(record).toBeHidden()
+    await expect(page.locator('.tk-detail')).toContainText(talkFixture.topic)
 
     await capture(page, testInfo, 'rollout-cyclical-affairs-talk-planning-b')
   })

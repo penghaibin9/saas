@@ -262,7 +262,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
   test('IX-009：Staff 真实手动匹配并确认，必须进入 canonical assign_position_in_tx', async ({ page }) => {
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/match?batchId=${encodeURIComponent(fixture.batchId)}&panel=manual`)
-    await page.getByRole('button', { name: /手动匹配/ }).click()
+    await page.getByRole('button', { name: '＋ 手动匹配', exact: true }).click()
 
     const studentField = page.locator('.ie-fld').filter({ hasText: '实习学生' }).first()
     await pickRemote(studentField, fixture.studentNo, fixture.studentName)
@@ -273,7 +273,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
       apiPath(response) === '/api/v1/internship/match/manual'
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '确认', exact: true }).click()
+    await page.getByRole('button', { name: '创建待确认匹配', exact: true }).click()
     const manualPayload = await payloadOf(await manualPromise)
     expect(manualPayload.body?.code, manualPayload.text).toBe(0)
     matchId = String(manualPayload.body?.data?.id || '')
@@ -305,7 +305,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await page.goto(`${config.staffBaseUrl}/admin/internship/students?batchId=${encodeURIComponent(fixture.batchId)}`)
     const row = page.locator('tbody tr').filter({ hasText: fixture.studentName }).first()
     await expect(row).toContainText(positionTitle())
-    await row.getByRole('button', { name: '分配指导老师', exact: true }).click()
+    await row.getByRole('button', { name: '分配导师', exact: true }).click()
 
     const advisorField = page.locator('.ie-fld').filter({ hasText: '校内指导教师' }).first()
     await pickRemote(advisorField, 'e2e_advisor_a', ADVISOR_NAME)

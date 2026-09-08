@@ -272,7 +272,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await openStudentFromRoleHome(handoff, { materials: true })
-      await expect(handoff.getByText(/材料库|材料状态/).first()).toBeVisible()
+      await expect(handoff.getByRole('heading', { name: '查看材料状态并按退回意见重交', exact: true })).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-05', 'C-handoff')
       const finals = await adminApi.get('/graduation/finals', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-05', { screenshotA, screenshotB, screenshotC, action, serverTruth: { finalCount: items(finals).length } })
@@ -328,7 +328,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await openStudentFromRoleHome(handoff, { materials: true })
-      await expect(handoff.getByText(/尚未上传版本|等待扫描|材料库/).first()).toBeVisible()
+      await expect(handoff.getByRole('heading', { name: '查看材料状态并按退回意见重交', exact: true })).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-08', 'C-handoff')
       const archives = await adminApi.get('/graduation/gd-archives', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-08', {

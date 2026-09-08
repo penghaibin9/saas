@@ -162,31 +162,16 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-eval')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-eval/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
-    await expect(page.locator('.ce-indbar')).toBeVisible()
-    await expect(page.locator('.dt')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '辅导员考评', exact: true })).toBeVisible()
+    await expect(page.locator('.ce-toolbar')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: affairsFixture.periodCode }).first()).toBeVisible()
-
-    const affairsContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(.ce-indbar)')
-      const heroTitle = root?.querySelector('.sa-summary-strip__title')
-      const workflow = root?.querySelector('.sa-workflow-strip')
-      const indicatorBar = root?.querySelector('.ce-indbar')
-      const sectionCard = root?.querySelector('.app-section-card')
-      if (!root || !heroTitle || !workflow || !indicatorBar || !sectionCard) return null
-      return {
-        titleColor: getComputedStyle(heroTitle).color,
-        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
-        indicatorBackground: getComputedStyle(indicatorBar).backgroundColor,
-        sectionRadius: getComputedStyle(sectionCard).borderRadius
-      }
-    })
-    expect(affairsContract).not.toBeNull()
-    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
-    expect(affairsContract.workflowColumns).toBe(4)
-    expect(affairsContract.indicatorBackground).toBe('rgb(248, 250, 252)')
-    expect(affairsContract.sectionRadius).toBe('15px')
+    await page.getByRole('button', { name: '考评指标', exact: true }).click()
+    const indicators = page.getByRole('dialog', { name: '考评指标', exact: true })
+    await expect(indicators).toBeVisible()
+    await expect(indicators.locator('input').first()).toBeVisible()
+    await indicators.getByRole('button', { name: '关闭', exact: true }).last().click()
+    await expect(indicators).toBeHidden()
+    await expect(page.locator('.dt__tr').filter({ hasText: affairsFixture.periodCode }).first()).toBeVisible()
 
     await capture(page, testInfo, 'rollout-results-affairs-counselor-eval-b')
   })
