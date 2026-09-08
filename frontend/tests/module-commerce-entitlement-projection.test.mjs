@@ -40,3 +40,6 @@ test('unhealthy and unknown commercial contexts have distinct cache signatures',
   assert.equal(entitlementSignature(null, true), '__module_authority_unknown__')
   assert.notEqual(entitlementSignature([], true), entitlementSignature(null, true))
 })
+
+// Keep the real adapter regressions in the existing M2 CI entrypoint.
+await import('./module-commerce-layout-context.test.mjs')

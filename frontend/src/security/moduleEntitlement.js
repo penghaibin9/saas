@@ -72,3 +72,18 @@ export function entitlementSignature(entitlements, healthy = true) {
   if (!Array.isArray(entitlements)) return '__module_authority_unknown__'
   return [...new Set(entitlements.map((value) => String(value)))].sort().join(',')
 }
+
+/** Preserve the server's commercial projection when building a layout context.
+ * A missing response is UNKNOWN/unhealthy, never an empty purchased set. This
+ * pure adapter does not infer grants from roles, permissions or feature aliases.
+ */
+export function projectModuleAccess(context) {
+  const known = Array.isArray(context?.moduleEntitlements)
+    && context.moduleEntitlements.every((key) => typeof key === 'string')
+  return {
+    moduleEntitlements: known ? [...context.moduleEntitlements] : null,
+    moduleStates: context?.moduleStates || {},
+    moduleAccessHealthy: known && context?.moduleAccessHealthy !== false,
+    moduleAccessError: context?.moduleAccessError || (known ? '' : '模块授权上下文暂不可用'),
+  }
+}
