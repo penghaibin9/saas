@@ -17,7 +17,8 @@ EXECUTABLE_DIRS = tuple(Path(value) for value in (
 ))
 # Exact CLI names removed by Dockerfile.security after build-time setup. Python and
 # the POSIX shell remain because they are production entrypoints; this list is an
-# attack-surface reduction contract, not a claim that arbitrary egress is impossible.
+# attack-surface reduction contract, not a claim that arbitrary egress is impossible
+# and not a vulnerability waiver. Package inventory remains available to Trivy.
 DISALLOWED_RUNTIME_TOOLS = (
     "apt", "apt-get", "apt-cache", "apt-cdrom", "apt-config", "apt-mark",
     "dpkg", "dpkg-deb", "dpkg-divert", "dpkg-maintscript-helper", "dpkg-query",
@@ -25,24 +26,20 @@ DISALLOWED_RUNTIME_TOOLS = (
     "curl", "wget", "git", "ssh", "scp", "sftp", "nc", "netcat", "ncat", "socat",
     "telnet", "ftp", "su", "passwd", "chfn", "chsh", "chpasswd", "useradd", "userdel",
     "usermod", "groupadd", "groupdel", "groupmod", "gpasswd", "newgrp", "mount", "umount",
+    "nsenter", "gzip", "gunzip", "zcat", "infocmp", "sqlite3", "systemd-homed",
+    "getfacl", "setfacl", "pcre2grep", "grep", "egrep", "fgrep",
 )
+# Perl's versioned interpreter path changes with the Debian point release. Fail closed
+# on all runtime executable names beginning with perl rather than pinning one basename.
+DISALLOWED_RUNTIME_PREFIXES = ("perl",)
 
 
 def runtime_surface(directories=None) -> None:
     """Fail closed if reviewed runtime CLI or set-id boundaries drift."""
     directories = EXECUTABLE_DIRS if directories is None else tuple(Path(value) for value in directories)
-    for name in DISALLOWED_RUNTIME_TOOLS:
-        for folder in directories:
-            candidate = folder / name
-            try:
-                info = candidate.lstat()
-            except FileNotFoundError:
-                continue
-            if stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
-                raise RuntimeError("DISALLOWED_RUNTIME_TOOL_PRESENT")
     for folder in directories:
         try:
-            entries = folder.iterdir()
+            entries = tuple(folder.iterdir())
         except FileNotFoundError:
             continue
         for candidate in entries:
@@ -50,6 +47,12 @@ def runtime_surface(directories=None) -> None:
                 info = candidate.lstat()
             except FileNotFoundError:
                 continue
+            executable_like = stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            if executable_like and (
+                candidate.name in DISALLOWED_RUNTIME_TOOLS
+                or any(candidate.name.startswith(prefix) for prefix in DISALLOWED_RUNTIME_PREFIXES)
+            ):
+                raise RuntimeError("DISALLOWED_RUNTIME_TOOL_PRESENT")
             if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
                 raise RuntimeError("PRIVILEGED_EXECUTABLE_PRESENT")
 
