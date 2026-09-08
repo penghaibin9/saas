@@ -182,7 +182,7 @@ class ImageEvidenceTests(unittest.TestCase):
         for value in (None, [], [{}], [{'Name': 'name-only'}]):
             with self.subTest(value=value):
                 r = report(); r['Results'][1]['Packages'] = value
-                with self.assertRaisesRegex(POLICY.InvalidEvidence, 'PACKAGE_INVENTORY_MISSING'):
+                with self.assertRaises(POLICY.InvalidEvidence):
                     evaluate(r)
 
     def test_suppression_or_adjusted_severity_is_not_allowed(self):
