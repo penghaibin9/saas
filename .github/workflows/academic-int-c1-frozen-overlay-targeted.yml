@@ -107,7 +107,7 @@ jobs:
           diff -u /tmp/expected-c1-paths.txt /tmp/actual-c1-paths.txt
           test "$(git diff --name-only 3288e10907106d17d9dec64dc2a185b90a503bd5 -- $(cat /tmp/expected-c1-paths.txt) | wc -l)" -eq 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

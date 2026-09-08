@@ -77,7 +77,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: 校验只读范围、指标门槛与安全锁
@@ -160,7 +160,7 @@ jobs:
           --health-retries=20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -332,7 +332,7 @@ jobs:
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: 检查目标、运维探针与账号/令牌池

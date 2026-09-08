@@ -91,7 +91,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify exact restore head checkout
         run: test "$(git rev-parse HEAD)" = "$RESTORE_SOURCE_COMMIT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

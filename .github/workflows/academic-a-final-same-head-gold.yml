@@ -74,7 +74,7 @@ jobs:
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
           git diff --check "$EXPECTED_MAIN_SHA..$GITHUB_SHA"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -202,7 +202,7 @@ jobs:
           test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_B_GOLD_SHA"
           git diff --check
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
