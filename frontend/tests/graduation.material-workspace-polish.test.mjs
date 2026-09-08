@@ -1,4 +1,4 @@
-import { workspaceSection, foundationStyles, legacyStyleImportLayout } from './graduation-workspace-style-sections.mjs'
+import { workspaceSection, foundationStyles, legacyStyleImportLayout, stripFinalIntegrationPresentation } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -8,7 +8,7 @@ import vm from 'node:vm'
 const root = new URL('../src/modules/graduation/', import.meta.url)
 const read = path => fs.readFileSync(new URL(path, root), 'utf8')
 const rawLayout = read('views/AdminGraduationLayout.vue')
-const layout = rawLayout.replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+const layout = stripFinalIntegrationPresentation(rawLayout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
 const css = workspaceSection('material')
 const oldCss = foundationStyles(read('styles/graduation-workspaces.css'))
 const marker = layout.match(/:data-graduation-material-workspace="([\s\S]*?)"/)?.[1]
