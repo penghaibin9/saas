@@ -29,23 +29,27 @@ CVE_TRIGGER_TOOLS = {
     "gzip", "gunzip", "zcat", "infocmp", "nsenter", "sqlite3",
     "systemd-homed", "getfacl", "setfacl", "pcre2grep", "grep", "egrep", "fgrep",
 }
+SHELL_TOOLS = {"sh", "dash", "bash"}
 
 
 class RuntimeCveSurfaceTests(unittest.TestCase):
-    def test_reviewed_cve_trigger_clis_are_fail_closed(self):
-        self.assertTrue(CVE_TRIGGER_TOOLS.issubset(set(PROBE.DISALLOWED_RUNTIME_TOOLS)))
+    def test_reviewed_cve_trigger_clis_and_shells_are_fail_closed(self):
+        blocked = set(PROBE.DISALLOWED_RUNTIME_TOOLS)
+        self.assertTrue(CVE_TRIGGER_TOOLS.issubset(blocked))
+        self.assertTrue(SHELL_TOOLS.issubset(blocked))
         self.assertIn("perl", PROBE.DISALLOWED_RUNTIME_PREFIXES)
 
-    def test_dockerfile_removes_exact_tools_and_all_perl_entrypoints(self):
+    def test_dockerfile_removes_exact_tools_shells_and_all_perl_entrypoints(self):
         text = DOCKERFILE.read_text()
         match = re.search(r"for tool in (.*?); do", text, flags=re.S)
         self.assertIsNotNone(match)
         docker_tools = set(match.group(1).replace("\\\n", " ").split())
-        self.assertTrue(CVE_TRIGGER_TOOLS.issubset(docker_tools))
+        self.assertTrue((CVE_TRIGGER_TOOLS | SHELL_TOOLS).issubset(docker_tools))
         self.assertIn("-name 'perl*'", text)
         self.assertIn("-delete", text)
         self.assertIn("Keep /var/lib/dpkg metadata", text)
         self.assertNotIn("rm -rf /var/lib/dpkg", text)
+        self.assertIn('CMD ["python", "scripts/security_runtime_launcher.py", "backend"]', text)
 
     def test_probe_rejects_versioned_perl_binary(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -60,6 +64,15 @@ class RuntimeCveSurfaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             executable = folder / "infocmp"
+            executable.write_text("fixture")
+            executable.chmod(0o755)
+            with self.assertRaisesRegex(RuntimeError, "DISALLOWED_RUNTIME_TOOL_PRESENT"):
+                PROBE.runtime_surface([folder])
+
+    def test_probe_rejects_shell_reintroduction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            executable = folder / "sh"
             executable.write_text("fixture")
             executable.chmod(0o755)
             with self.assertRaisesRegex(RuntimeError, "DISALLOWED_RUNTIME_TOOL_PRESENT"):

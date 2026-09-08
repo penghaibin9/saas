@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 from pathlib import Path
 import re
 import tempfile
@@ -18,6 +17,7 @@ EXPECTED_RUNTIME_SCRIPTS = {
     'cleanup_shared_import_batches.py',
     'run_scheduled_jobs.py',
     'security_profile_probe.py',
+    'security_runtime_launcher.py',
 }
 
 
@@ -73,14 +73,14 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
 
     def test_native_runtime_surface_check_is_mandatory_before_scan(self):
         text = WORKFLOW.read_text()
-        surface = text.index('- name: Verify reduced runtime script and privilege-escalation surface')
+        surface = text.index('- name: Verify shell-free runtime and production entrypoint families')
         scan = text.index('- name: Scan OS and language packages')
         self.assertLess(surface, scan)
         block = text[surface:scan]
-        self.assertIn('find /usr/bin /usr/sbin /bin /sbin', block)
         self.assertIn('python scripts/security_profile_probe.py image', block)
         for name in EXPECTED_RUNTIME_SCRIPTS:
             self.assertIn(name, block)
+        self.assertIn('/bin/sh', block)
         self.assertNotIn('continue-on-error', block)
         self.assertNotIn('|| true', block)
 
@@ -94,12 +94,14 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
 
     def test_dockerfile_cli_pruning_matches_runtime_probe_contract(self):
         text = DOCKERFILE.read_text()
-        match = re.search(r'for tool in (.*?)\; do', text, flags=re.S)
+        match = re.search(r'for tool in (.*?); do', text, flags=re.S)
         self.assertIsNotNone(match)
         docker_tools = set(match.group(1).replace('\\\n', ' ').split())
         self.assertEqual(docker_tools, set(PROBE.DISALLOWED_RUNTIME_TOOLS))
-        for required in ('python', 'sh', 'uvicorn', 'alembic'):
+        for required in ('python', 'uvicorn', 'alembic'):
             self.assertNotIn(required, docker_tools)
+        for shell in ('sh', 'dash', 'bash'):
+            self.assertIn(shell, docker_tools)
 
     def test_cli_pruning_runs_after_account_creation_and_before_nonroot_switch(self):
         text = DOCKERFILE.read_text()
@@ -142,11 +144,12 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
 
     def test_real_image_smokes_all_production_entrypoint_families_before_scan(self):
         text = WORKFLOW.read_text()
-        surface = text.index('- name: Verify reduced runtime script and privilege-escalation surface')
+        surface = text.index('- name: Verify shell-free runtime and production entrypoint families')
         scan = text.index('- name: Scan OS and language packages')
         block = text[surface:scan]
         for evidence in ('uvicorn --help', 'alembic --help',
-                         'scripts/run_scheduled_jobs.py', 'app/workers/file_scan_worker.py'):
+                         'security_runtime_launcher.py', 'scripts/run_scheduled_jobs.py',
+                         'app/workers/file_scan_worker.py'):
             self.assertIn(evidence, block)
         self.assertLess(text.index('uvicorn --help'), scan)
         self.assertLess(text.index('alembic --help'), scan)

@@ -42,11 +42,10 @@ BIND_MOUNTS = {
     },
 }
 COMMANDS = {
-    'scheduler': ['sh', '-c', 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && exec python -m scripts.run_scheduled_jobs'],
-    'file-scan': ['sh', '-c', 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_file_scan.py && exec python -m app.workers.file_scan_worker'],
+    'backend': ['python', 'scripts/security_runtime_launcher.py', 'backend'],
+    'scheduler': ['python', 'scripts/security_runtime_launcher.py', 'scheduler'],
+    'file-scan': ['python', 'scripts/security_runtime_launcher.py', 'file-scan'],
 }
-# These are absent in the supported profile; reject additions rather than try
-# to classify every possible command, mount or namespace they might introduce.
 OVERRIDES = ('volumes_from', 'configs', 'secrets', 'post_start', 'pre_start', 'pre_stop',
              'develop', 'profiles', 'deploy', 'extra_hosts', 'dns', 'dns_search',
              'external_links', 'links', 'group_add', 'device_cgroup_rules', 'gpus',
@@ -61,13 +60,6 @@ MYSQL_HEALTH = ['CMD-SHELL', 'MYSQL_PWD="${MYSQL_PASSWORD}" mysql --protocol=TCP
 
 
 def normalize_checked_bind_options(config: dict, root: Path) -> tuple[dict, list[str]]:
-    """Recover only an omitted serialized flag from an explicit checked source.
-
-    Compose generations differ in serializing default/false bind options. Never
-    interpret a missing JSON flag as permission: require an explicit long-syntax
-    false in the exact source file AND the exact resolved host source. A true or
-    malformed flag returned by Docker is not overwritten. Input is not mutated.
-    """
     root = root.resolve()
     source = root / 'deploy/docker/docker-compose.security.yml'
     if source.is_symlink() or source.resolve() != source or source.stat().st_size > 1024 * 1024:
@@ -126,15 +118,11 @@ def execution_errors(config: dict) -> list[str]:
             errors.append(name + ':WORKER_COMMAND_DRIFT')
         if name in ('nginx', 'clamav') and service.get('command') is not None:
             errors.append(name + ':IMAGE_COMMAND_OVERRIDE_FORBIDDEN')
-        # Do not let a pass-always check (or NONE) replace image readiness.
         health = service.get('healthcheck', {})
         if name in ('backend', 'clamav') and health:
             errors.append(name + ':IMAGE_HEALTHCHECK_OVERRIDE_FORBIDDEN')
         if name in ('mysql', 'redis'):
             expected = MYSQL_HEALTH if name == 'mysql' else ['CMD', 'redis-cli', 'ping']
-            # Compose config serializes dollar signs as $$ even in JSON
-            # (cmd/compose/config.go: escapeDollarSign). Match the exact known
-            # command in model or serialized form; never broadly normalize shell.
             serialized = [str(part).replace('$', '$$') for part in expected]
             if health.get('disable') or health.get('test') not in (expected, serialized):
                 errors.append(name + ':AUTHENTICATED_HEALTHCHECK_REQUIRED')
@@ -200,11 +188,6 @@ def execution_errors(config: dict) -> list[str]:
 
 
 def release_input_errors(config: dict, root: Path, compose: dict, runtime: dict) -> list[str]:
-    """Tie the inspected local inputs to the actual resolved deployment inputs.
-
-    Root must be the same resolved repository used to invoke Compose. A readonly
-    mount with the right target is not enough if it reads a different host file.
-    """
     errors = []
     root = root.resolve()
     services = config['services']
@@ -223,8 +206,6 @@ def release_input_errors(config: dict, root: Path, compose: dict, runtime: dict)
                'clamav': 'CLAMAV_IMAGE'}.get(name, 'APP_IMAGE')
         if services[name].get('image') != compose.get(key):
             errors.append('CHECKED_IMAGE_REFERENCE_MISMATCH')
-    # Verify the secrets and policy supplied in runtime.env survive Compose
-    # precedence unchanged. Explicit profile routing values are checked separately.
     for name in APPS:
         env = services.get(name, {}).get('environment', {})
         if any(env.get(key) != value for key, value in runtime.items()):

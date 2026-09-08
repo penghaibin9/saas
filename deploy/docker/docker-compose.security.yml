@@ -63,9 +63,6 @@ services:
     image: ${MYSQL_IMAGE:?reviewed MySQL image digest required}
     restart: unless-stopped
     logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
-    # Only the trusted migrator owns schema DDL/TRIGGER privileges. Runtime is
-    # DML-only. Keep binary logging/ROW recovery while allowing migration triggers
-    # without granting either account global SUPER/SYSTEM_VARIABLES_ADMIN.
     command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci,
               --innodb-buffer-pool-size=512M, --max-connections=200,
               --log-bin=mysql-bin, --binlog-format=ROW, --log-bin-trust-function-creators=1,
@@ -85,7 +82,6 @@ services:
         read_only: true
         bind: {create_host_path: false}
     networks: [data]
-    # No public or host port; root password is not part of x-app or runtime.env.
     healthcheck:
       test: [CMD-SHELL, 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP -h127.0.0.1 -u"$${MYSQL_USER}" -Nse "SELECT 1"']
       interval: 10s
@@ -152,17 +148,14 @@ services:
     image: ${CLAMAV_IMAGE:?reviewed ClamAV image digest required}
     restart: unless-stopped
     logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
-    # Network egress is needed for signature updates, but port 3310 is NOT published.
     networks: [scan, egress]
     volumes: [clamav_db:/var/lib/clamav]
     mem_limit: ${CLAMAV_MEMORY_LIMIT:-4g}
     pids_limit: 128
-    # Official ClamAV images supply the clamd PING healthcheck.
-    # A digest without that healthcheck must fail dependency readiness.
 
   backend:
     <<: *app
-    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && python scripts/check_production_file_scan.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers']
+    command: [python, scripts/security_runtime_launcher.py, backend]
     expose: ["8000"]
     networks: [edge, data, scan, egress]
     depends_on:
@@ -174,7 +167,7 @@ services:
 
   scheduler:
     <<: *app
-    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && exec python -m scripts.run_scheduled_jobs']
+    command: [python, scripts/security_runtime_launcher.py, scheduler]
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -185,8 +178,7 @@ services:
   file-scan:
     <<: *app
     networks: [data, scan, egress]
-    command: [sh, -c, 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_file_scan.py && exec python -m app.workers.file_scan_worker']
-    # Workers do not wait for web readiness (which may itself need queue progress).
+    command: [python, scripts/security_runtime_launcher.py, file-scan]
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}

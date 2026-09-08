@@ -15,10 +15,10 @@ WRITABLE = ("backend/uploads", "backend/exports", "backend/data")
 EXECUTABLE_DIRS = tuple(Path(value) for value in (
     "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"
 ))
-# Exact CLI names removed by Dockerfile.security after build-time setup. Python and
-# the POSIX shell remain because they are production entrypoints; this list is an
-# attack-surface reduction contract, not a claim that arbitrary egress is impossible
-# and not a vulnerability waiver. Package inventory remains available to Trivy.
+# Exact CLI names removed by Dockerfile.security after build-time setup. Python is
+# the only production command interpreter; POSIX shells are explicitly absent.
+# This is attack-surface reduction, not a vulnerability waiver. Package inventory
+# remains available to Trivy through /var/lib/dpkg.
 DISALLOWED_RUNTIME_TOOLS = (
     "apt", "apt-get", "apt-cache", "apt-cdrom", "apt-config", "apt-mark",
     "dpkg", "dpkg-deb", "dpkg-divert", "dpkg-maintscript-helper", "dpkg-query",
@@ -28,6 +28,7 @@ DISALLOWED_RUNTIME_TOOLS = (
     "usermod", "groupadd", "groupdel", "groupmod", "gpasswd", "newgrp", "mount", "umount",
     "nsenter", "gzip", "gunzip", "zcat", "infocmp", "sqlite3", "systemd-homed",
     "getfacl", "setfacl", "pcre2grep", "grep", "egrep", "fgrep",
+    "sh", "dash", "bash",
 )
 # Perl's versioned interpreter path changes with the Debian point release. Fail closed
 # on all runtime executable names beginning with perl rather than pinning one basename.
@@ -94,7 +95,6 @@ def prepare_storage(root: Path = ROOT) -> None:
             continue
         if next(folder.iterdir(), None) is not None:
             raise RuntimeError("NONEMPTY_VOLUME_REQUIRES_REVIEWED_MIGRATION")
-        # With only CHOWN capability, chmod is legal while this process owns it.
         if info.st_uid != 0:
             raise RuntimeError("UNEXPECTED_EMPTY_VOLUME_OWNER")
         folder.chmod(0o770)
@@ -111,7 +111,6 @@ def ready() -> None:
     if not token:
         raise RuntimeError("OPS_TOKEN_REQUIRED")
     request = Request("http://127.0.0.1:8000/health/ready", headers={"X-Ops-Token": token})
-    # Never send a local ops credential to an HTTP_PROXY from the environment.
     with build_opener(ProxyHandler({}), _NoRedirect()).open(request, timeout=5) as response:
         result = json.loads(response.read(65536))
         if response.status != 200 or result.get("status") != "READY":

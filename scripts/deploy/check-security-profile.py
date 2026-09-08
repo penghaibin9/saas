@@ -41,8 +41,6 @@ def read_env(path: Path) -> dict[str, str]:
         key, sep, value = line.partition('=')
         if not sep or not re.fullmatch(r'[A-Z][A-Z0-9_]*', key) or key in result or '\x00' in value:
             raise ValueError('INVALID_ENV_FORMAT')
-        # This generator emits literal unquoted values only. Do not ambiguously
-        # interpret dotenv interpolation, quotes, comments or backslash escapes.
         if any(char in value for char in '$\r\n\'"`\\'):
             raise ValueError('NON_LITERAL_ENV_VALUE')
         result[key] = value
@@ -55,7 +53,6 @@ def _no_new_privileges(service: dict) -> bool:
 
 
 def validate_rendered(config: dict, *, root: Path | None = None) -> list[str]:
-    """Validate Docker's normalized JSON, not the unexpanded YAML anchors."""
     errors = []
     if not isinstance(config, dict) or not isinstance(config.get('services'), dict):
         return ['COMPOSE_SERVICE_STRUCTURE_INVALID']
@@ -127,15 +124,18 @@ def validate_rendered(config: dict, *, root: Path | None = None) -> list[str]:
             errors.append(name + ':MIGRATION_DEPENDENCY_REQUIRED')
         if name != 'backend' and 'backend' in service.get('depends_on', {}):
             errors.append(name + ':WORKER_WEB_READINESS_CYCLE')
+    expected_commands = {
+        'backend': ['python', 'scripts/security_runtime_launcher.py', 'backend'],
+        'scheduler': ['python', 'scripts/security_runtime_launcher.py', 'scheduler'],
+        'file-scan': ['python', 'scripts/security_runtime_launcher.py', 'file-scan'],
+    }
     for name in ('backend', 'file-scan'):
         service = services.get(name, {})
         if service.get('depends_on', {}).get('clamav', {}).get('condition') != 'service_healthy':
             errors.append(name + ':SCANNER_READINESS_REQUIRED')
-        if 'scripts/check_production_file_scan.py' not in str(service.get('command', [])):
+        if service.get('command') != expected_commands[name]:
             errors.append(name + ':SCAN_PREFLIGHT_REQUIRED')
-    cmd = services.get('backend', {}).get('command', [])
-    expected = ['sh', '-c', 'python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && python scripts/check_production_file_scan.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers']
-    if cmd != expected:
+    if services.get('backend', {}).get('command', []) != expected_commands['backend']:
         errors.append('SINGLE_PROXY_AUTHORITY_COMMAND_REQUIRED')
     app_image = services.get('backend', {}).get('image')
     if any(services.get(name, {}).get('image') != app_image for name in (*APPS, 'migrate', 'prepare-storage')):
@@ -204,7 +204,6 @@ def certificate_errors(folder: Path, host: str) -> list[str]:
         context.load_cert_chain(folder / 'fullchain.pem', folder / 'privkey.pem')
         cert = x509.load_pem_x509_certificate((folder / 'fullchain.pem').read_bytes())
         names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName)
-        # Explicit DNS SAN avoids wildcard / CN-only ambiguity in this profile.
         if host not in {name.lower() for name in names}:
             return ['TLS_EXACT_HOST_SAN_REQUIRED']
         now = datetime.now(timezone.utc)
@@ -257,7 +256,6 @@ def local_errors(root: Path) -> list[str]:
         if (folder / 'nginx.conf').read_text(encoding='utf-8') != module.nginx_config(host):
             errors.append('NGINX_GENERATED_CONTRACT_DRIFT')
         errors.extend(certificate_errors(folder / 'tls', host))
-        # Reject shell shadowing instead of checking one config and deploying another.
         if any(key in os.environ and os.environ[key] != value for key, value in compose.items()):
             errors.append('AMBIENT_COMPOSE_VALUE_SHADOWING')
         if any(key.startswith('COMPOSE_') for key in os.environ):

@@ -30,6 +30,7 @@ COPY backend/alembic.ini ./alembic.ini
 # one-shots that expand post-compromise tooling inside the web container.
 RUN mkdir -p ./scripts
 COPY backend/scripts/security_profile_probe.py \
+     backend/scripts/security_runtime_launcher.py \
      backend/scripts/check_production_redis.py \
      backend/scripts/check_production_file_scan.py \
      backend/scripts/run_scheduled_jobs.py \
@@ -42,8 +43,8 @@ COPY docs/architecture /app/docs/architecture
 # no-new-privileges already blocks privilege gain at runtime; stripping SUID/SGID
 # bits too removes that executable escalation primitive from the shipped image.
 # Keep /var/lib/dpkg metadata so vulnerability scanners still see installed OS
-# packages, but remove package/network/account administration CLIs not used by
-# any production entrypoint. This narrows post-compromise tooling; it is NOT a
+# packages, but remove package/network/account/shell administration CLIs not used
+# by any production entrypoint. This narrows post-compromise tooling; it is NOT a
 # substitute for fixing vulnerable packages and does not relax the Trivy gate.
 RUN groupadd --gid 10001 schoolapp \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin schoolapp \
@@ -59,7 +60,7 @@ RUN groupadd --gid 10001 schoolapp \
          su passwd chfn chsh chpasswd useradd userdel usermod \
          groupadd groupdel groupmod gpasswd newgrp mount umount nsenter \
          gzip gunzip zcat infocmp sqlite3 systemd-homed getfacl setfacl \
-         pcre2grep grep egrep fgrep; do \
+         pcre2grep grep egrep fgrep sh dash bash; do \
          path="$(command -v "$tool" 2>/dev/null || true)"; \
          if [ -n "$path" ]; then rm -f -- "$path"; fi; \
        done
@@ -68,4 +69,4 @@ EXPOSE 8000
 # No password/ops token on process argv. Parse readiness JSON, not a fragile grep.
 HEALTHCHECK --interval=30s --timeout=8s --start-period=60s --retries=3 \
     CMD ["python", "scripts/security_profile_probe.py", "ready"]
-CMD ["sh", "-c", "python scripts/security_profile_probe.py filesystem && python scripts/check_production_redis.py && python scripts/check_production_file_scan.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-proxy-headers"]
+CMD ["python", "scripts/security_runtime_launcher.py", "backend"]
