@@ -148,7 +148,9 @@ def _require_dorm_scope(db, building_id, user):
     此前仅读接口（occupancy_stats/list_transfers/list_check_tasks/list_exceptions/list_buildings）
     做了范围过滤，写操作（建楼/铺床/入住/退宿/调宿/检查/处置异常）全部缺校验，宿管可越楼栋操作任意数据。"""
     scope = _dorm_scope_building_ids(db, user)
-    if scope is not None and (building_id is None or int(building_id) not in scope):
+    # 批量工作区同一事务可一次解析权限，再核对全部楼栋；不跨请求缓存授权。
+    buildings = building_id if isinstance(building_id, (list, tuple, set, frozenset)) else [building_id]
+    if scope is not None and any(value is None or int(value) not in scope for value in buildings):
         raise AppException("NO_DATA_SCOPE", "该楼栋不在您的数据范围内")
     return scope
 
@@ -376,6 +378,10 @@ def list_beds(room_id, user):
             "bedId": str(bed.id), "roomId": str(bed.room_id), "bedNo": bed.bed_no,
             "status": bed.status, "studentId": str(bed.student_id or ""),
             "occupantName": students[int(bed.student_id)].real_name if bed.student_id and int(bed.student_id) in students else None,
+            # 现场检查与其他学生选择器统一消费 studentName/studentNo；保留
+            # occupantName 兼容既有房源视图，避免出现一个无文字的学生按钮。
+            "studentName": students[int(bed.student_id)].real_name if bed.student_id and int(bed.student_id) in students else None,
+            "studentNo": students[int(bed.student_id)].student_no if bed.student_id and int(bed.student_id) in students else None,
             "occupiedAt": _iso(bed.occupied_at),
         } for bed in rows]
 
@@ -547,6 +553,7 @@ def _transfer_row(t) -> dict:
     return {"transferId": str(t.id), "studentId": str(t.student_id),
             "fromBedId": str(t.from_bed_id or ""), "toBedId": str(t.to_bed_id or ""),
             "reason": t.reason or "", "status": t.status, "currentNode": t.current_node or "",
+            "createdAt": _iso(t.created_at), "returnReason": t.return_reason or "",
             "version": t.version}
 
 
@@ -724,11 +731,13 @@ def occupancy_stats(user):
 
 # ═══════════ 列表（调宿/检查/异常，宿管按楼栋收敛）═══════════
 
-def list_transfers(user, status=None, page=1, page_size=50, student_id=None):
+def list_transfers(user, status=None, page=1, page_size=50, student_id=None, record_id=None):
     from app.models import DormBed, DormTransfer, StudentProfile
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds = [DormTransfer.tenant_id == _tid(), DormTransfer.is_deleted.is_(False)]
+        if record_id is not None:
+            conds.append(DormTransfer.id == int(record_id))
         if status == "PENDING":
             conds.append(DormTransfer.status.in_(
                 ["PENDING", "SUBMITTED", "COUNSELOR_REVIEW", "DORM_REVIEW", "DORM_MANAGER_REVIEW"]))

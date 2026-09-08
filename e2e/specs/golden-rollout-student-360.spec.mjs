@@ -81,8 +81,10 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
         minHeight: parseFloat(style.minHeight)
       }
     })
-    expect(affairsVisual.radius).toBeGreaterThanOrEqual(14)
-    expect(affairsVisual.minHeight).toBeGreaterThanOrEqual(90)
+    expect(affairsVisual.radius).toBe(0)
+    const summaryBox = await page.locator('.profile-summary').boundingBox()
+    expect(summaryBox.height).toBeGreaterThan(40)
+    expect(summaryBox.height).toBeLessThanOrEqual(160)
 
     await capture(page, testInfo, 'rollout-student-360-affairs-profile-b')
   })
@@ -95,14 +97,13 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
     })
 
     await expect(page).toHaveURL(/\/admin\/internship\/students\//)
-    await expect(page.getByRole('heading', { name: new RegExp(`${internshipFixture.studentName}.*实习详情`) })).toBeVisible()
-    await expect(page.locator('.sd-summary')).toBeVisible()
-    await expect(page.locator('.sd-panels')).toBeVisible()
-    await expect(page.locator('.sd-audit')).toBeVisible()
-    await expect(page.locator('.sd-summary')).toContainText(internshipFixture.companyName)
-    await expect(page.locator('.sd-summary')).toContainText(internshipFixture.positionName)
-
-    const enterprisePanel = page.locator('.sd-panels > .mp-card').nth(1)
+    await expect(page.getByRole('heading', { name: new RegExp(`${internshipFixture.studentName}.*实习档案`) })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学生与实习信息', exact: true })).toBeVisible()
+    const sections = page.getByRole('navigation', { name: '学生实习档案分区' })
+    await sections.getByRole('link', { name: '岗位去向', exact: true }).click()
+    const enterprisePanel = page.locator('.mp-card:visible').filter({ hasText: '企业、岗位与企业导师' }).first()
+    await expect(enterprisePanel).toContainText(internshipFixture.companyName)
+    await expect(enterprisePanel).toContainText(internshipFixture.positionName)
     const enterpriseLink = enterprisePanel.locator('.sd-kv').filter({ hasText: '实习企业' }).locator('.mp-link')
     const positionLink = enterprisePanel.locator('.sd-kv').filter({ hasText: '实习岗位' }).locator('.mp-link')
     await expect(enterpriseLink).toBeVisible()
@@ -116,12 +117,12 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
         overflows: values.filter((value) => value.scrollWidth > value.clientWidth + 1).length
       }
     })
-    const linkWrap = await enterpriseLink.evaluate((node) => getComputedStyle(node).whiteSpace)
     expect(internshipVisual.width).toBeGreaterThanOrEqual(420)
     expect(internshipVisual.overflows).toBe(0)
-    expect(linkWrap).toBe('normal')
 
     await capture(page, testInfo, 'rollout-student-360-internship-detail-b')
+    await enterpriseLink.click()
+    await expect(page).toHaveURL(/\/admin\/internship\/enterprises\//)
   })
 
   test('Graduation student detail · Screenshot B', async ({ page }, testInfo) => {

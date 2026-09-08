@@ -1,9 +1,12 @@
 <template>
   <view class="page-wrap">
     <MobilePrivacyGate />
-    <MobileNavBar variant="brand" title="我的宿舍" :subtitle="subtitle" back />
-    <MobileGlobalState :state="state" @retry="load">
-      <view class="page-pad" v-if="cfg">
+    <MobileNavBar variant="brand" :title="rectificationId ? '宿舍整改' : '我的宿舍'" :subtitle="subtitle" back />
+    <button v-if="needsLogin && rectificationId" class="dm__secondary" @click="loginForRectification">登录后继续整改</button>
+    <MobileGlobalState :state="state" :description="loadError" @retry="load">
+      <view class="page-pad" v-if="cfg || rectificationId">
+        <button v-if="rectificationId" class="dm__secondary" @click="returnToDorm">返回我的宿舍</button>
+        <template v-if="!rectificationId">
         <view class="dm__bed" v-if="cfg.hasBed">
           <text class="dm__bed-t">我的床位</text>
           <text class="dm__bed-v">{{ cfg.myBed.building }} · {{ cfg.myBed.room }}室 · {{ cfg.myBed.bedNo }}床</text>
@@ -13,7 +16,7 @@
           <text v-if="cfg.allocation && !cfg.allocation.hiddenUntilCheckin" class="dm__bed-v">{{ cfg.allocation.building }} · {{ cfg.allocation.room }}室 · {{ cfg.allocation.bedNo }}床</text>
           <text v-else class="dm__bed-v">完成现场报到后可查看位置</text>
         </view>
-        <view class="dm__empty" v-else><text>暂无住宿安排</text></view>
+        <view class="dm__empty" v-else><text>{{ stayEnded ? '住宿已结束，当前无在住床位' : '暂无住宿安排' }}</text></view>
 
         <view class="dm__notice" v-if="notice"><text class="dm__notice-icon">ℹ️</text><text class="dm__notice-t">{{ notice }}</text></view>
         <view class="dm__presence">
@@ -26,12 +29,15 @@
         <MobileInlineAlert v-if="transferError" type="warning" title="调宿记录暂不可用" :description="transferError" />
         <MobileInlineAlert v-if="optionError" type="warning" title="可选床位加载失败" :description="optionError" />
 
+        </template>
         <view class="dm__history">
           <text class="dm__step-t">检查整改</text>
           <view v-for="x in rectifications" :key="x.rectificationId" class="dm__rect">
             <view class="row-between"><text class="dm__history-status">{{ rectStatusLabel(x.status) }} · {{ severityLabel(x.severity) }}</text><text class="dm__deadline" :class="{ overdue: x.overdue }">{{ fmtTime(x.deadlineAt) }}</text></view>
             <text class="dm__history-route">{{ x.buildingName }} · {{ x.roomNo }}室</text>
             <text class="dm__history-reason">{{ x.requirement }}</text>
+            <text v-if="x.rectifyNote" class="dm__history-reason">上次提交：{{ x.rectifyNote }}</text>
+            <text v-if="x.recheckNote" class="dm__history-reason">复检意见：{{ x.recheckNote }}</text>
             <button v-if="x.allowedActions && x.allowedActions.includes('START')" class="dm__secondary" :disabled="submitting" @click="startRect(x)">开始整改</button>
             <view v-if="x.allowedActions && x.allowedActions.includes('SUBMIT')" class="dm__rect-form">
               <textarea v-model="rectNotes[x.rectificationId]" class="dm__textarea" maxlength="1000" placeholder="整改说明（5-1000字）" />
@@ -44,6 +50,7 @@
           <text v-if="!rectifications.length" class="dm__empty-text">暂无整改任务</text>
         </view>
 
+        <template v-if="!rectificationId">
         <view v-if="canChoose" class="dm__select">
           <view class="dm__step-t">{{ cfg.hasBed ? '申请调宿：选择目标床位' : '首次选床：选择床位' }}</view>
 
@@ -83,7 +90,7 @@
         <view v-if="transfers.length" class="dm__history">
           <text class="dm__step-t">我的调宿申请</text>
           <view v-for="x in transfers" :key="x.transferId" class="dm__history-row">
-            <view class="flex-1"><text class="dm__history-status">{{ statusLabel(x.status || x.currentNode) }}</text><text class="dm__history-route">{{ x.fromBedLabel || ('原床 #' + (x.fromBedId || '—')) }} → {{ x.toBedLabel || ('目标床 #' + (x.toBedId || '—')) }}</text><text class="dm__history-reason">{{ x.reason || '未填写原因' }}</text></view>
+            <view class="flex-1"><text class="dm__history-status">{{ statusLabel(x.status || x.currentNode) }}</text><text class="dm__history-route">{{ x.fromBedLabel || ('原床 #' + (x.fromBedId || '—')) }} → {{ x.toBedLabel || ('目标床 #' + (x.toBedId || '—')) }}</text><text class="dm__history-reason">{{ x.reason || '未填写原因' }}</text><text v-if="x.returnReason" class="dm__history-reason">未通过原因：{{ x.returnReason }}</text></view>
           </view>
         </view>
         <view v-else-if="!transferError" class="dm__history"><text class="dm__step-t">我的调宿申请</text><text class="dm__empty-text">暂无调宿申请</text></view>
@@ -92,6 +99,7 @@
           <view v-for="x in stays" :key="x.stayId" class="dm__history-row"><text class="dm__history-status">{{ stayStatusLabel(x.status) }}</text><text class="dm__history-route">{{ x.bedLabel || ('床位 #' + x.bedId) }}</text><text class="dm__history-reason">{{ (x.checkinAt || '未记录') + ' → ' + (x.checkoutAt || '当前') }}</text></view>
           <text v-if="!stays.length" class="dm__empty-text">暂无住宿历史</text>
         </view>
+        </template>
       </view>
     </MobileGlobalState>
     <view v-if="confirmDlg.visible" class="dm__mask" @click.self="confirmDlg.visible = false">
@@ -118,26 +126,29 @@ const PENDING = ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_R
 export default {
   data() {
     return {
-      cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
+      needsLogin: false, rectificationId: '', loadSerial: 0, loadError: '', cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
       transferError: '', optionError: '', optionsLoading: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
       transferReason: '', rectNotes: {}, rectFiles: {}, rectRequestIds: {}, confirmDlg: { visible: false, current: '', reason: '' }, _lock: createSubmitLock()
     }
   },
   computed: {
+    stayEnded() { return !!this.cfg && !this.cfg.hasBed && !this.cfg.hasAllocation && !this.cfg.canSelfSelect && this.stays.some(x => x.status === 'ENDED') },
     subtitle() {
       if (!this.cfg) return ''
       if (this.cfg.hasBed) return this.pendingTransfer ? '调宿审批处理中' : '正式调宿须审批'
       if (this.cfg.hasAllocation) return '住宿分配已确认'
+      if (this.stayEnded) return '住宿历史可查'
       return this.cfg.selfSelectEnabled ? '已开放首次选床' : '等待学校分配'
     },
     pendingTransfer() { return this.transfers.find((x) => PENDING.includes(x.status || x.currentNode)) || null },
     presenceLabel() { return this.cfg?.presence?.statusLabel || '未知' },
     presenceTone() { return ({ IN_DORM: 'success', ON_LEAVE: 'primary', LATE_RETURN: 'warning', NOT_RETURNED: 'danger' })[this.cfg?.presence?.status] || 'default' },
-    canChoose() { return !!(this.cfg && (this.cfg.hasBed ? !this.pendingTransfer : this.cfg.canSelfSelect)) },
+    canChoose() { return !!(this.cfg && (this.cfg.hasBed ? !this.transferError && !this.pendingTransfer : this.cfg.canSelfSelect)) },
     notice() {
       if (!this.cfg) return ''
-      if (this.cfg.hasBed) return this.pendingTransfer ? '请等待当前调宿申请处理完成，审批期间原床位保持不变。' : (this.cfg.studentNotice || '如需调整床位，请提交调宿申请，审批完成前原床不变。')
+      if (this.cfg.hasBed) return this.pendingTransfer ? '请等待当前调宿申请处理完成，审批期间原床位保持不变。' : '如需调整床位，请提交调宿申请，审批完成前原床不变。'
+      if (this.stayEnded) return '住宿记录可在下方历史查看；如需重新住宿，请联系宿管。'
       return this.cfg.studentNotice
     },
     selectedBuilding() { return this.buildings.find((x) => String(x.buildingId) === String(this.sel.building)) || {} },
@@ -147,8 +158,33 @@ export default {
       return [this.selectedBuilding.buildingName, this.selectedRoom.roomNo && `${this.selectedRoom.roomNo}室`, this.selectedBed.bedNo && `${this.selectedBed.bedNo}床`].filter(Boolean).join(' / ') || `床位 #${this.sel.bed}`
     }
   },
-  onLoad() { this.load() },
+  onLoad(q) { this.rectificationId = String(q?.rectificationId || '')
+    // #ifdef H5
+    this._onRectHashChange = () => this.syncRectificationHash(window.location.hash)
+    window.addEventListener('hashchange', this._onRectHashChange)
+    // #endif
+  },
+  onShow() { this.load() },
+  onUnload() { this.disposeRectificationFocus() },
+  beforeUnmount() { this.disposeRectificationFocus() },
   methods: {
+    loginForRectification() { uni.redirectTo({ url: `/pages/login/student/index?dormRectificationId=${encodeURIComponent(this.rectificationId)}` }) },
+    returnToDorm() { uni.redirectTo({ url: '/pages/student/affairs/dorm' }) },
+    disposeRectificationFocus() {
+      // #ifdef H5
+      if (this._onRectHashChange) window.removeEventListener('hashchange', this._onRectHashChange)
+      // #endif
+      this.loadSerial++
+    },
+    syncRectificationHash(hash) {
+      const [path, query = ''] = String(hash || '').replace(/^#/, '').split('?')
+      if (path !== '/pages/student/affairs/dorm') return
+      const id = new URLSearchParams(query).get('rectificationId') || ''
+      if (id === this.rectificationId) return
+      this.rectificationId = id; this.rectifications = []; this.rectNotes = {}; this.rectFiles = {}; this.rectRequestIds = {}
+      this.confirmDlg.visible = false
+      return this.load()
+    },
     statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s || '处理中' },
     stayStatusLabel(s) { return ({ RESERVED: '待入住', ACTIVE: '当前在住', ENDED: '已退宿', CANCELLED: '已取消' })[String(s || '').toUpperCase()] || '状态待确认' },
     rectStatusLabel(s) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[s] || s },
@@ -156,8 +192,21 @@ export default {
     fmtTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
     showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
     async load() {
+      const serial = ++this.loadSerial
+      this.loadError = ''; this.needsLogin = false
       this.state = 'loading'; this.sel = { building: '', room: '', bed: '' }; this.rooms = []; this.beds = []; this.transferError = ''; this.optionError = ''
+      if (this.rectificationId) {
+        try {
+          if (!/^[1-9]\d*$/.test(this.rectificationId)) throw new Error('整改编号无效，请从待办或消息重新进入')
+          const row = await affairsContractApi.getMyDormRectification(this.rectificationId)
+          if (serial !== this.loadSerial) return
+          if (!row || String(row.rectificationId) !== this.rectificationId) throw new Error('该整改单不存在或不在本人权限范围内')
+          this.rectifications = [row]; this.state = 'ready'
+        } catch (e) { if (serial !== this.loadSerial) return; this.rectifications = []; this.needsLogin = normalizeError(e).kind === 'auth'; this.loadError = e.message || '整改记录加载失败'; this.state = 'error'; this.showError(e, this.loadError) }
+        return
+      }
       const [dormResult, transferResult, stayResult, rectResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers(), affairsContractApi.getMyDormStays(), affairsContractApi.getMyDormRectifications()])
+      if (serial !== this.loadSerial) return
       if (dormResult.status === 'rejected') { this.state = 'error'; this.showError(dormResult.reason, '宿舍信息加载失败'); return }
       this.cfg = dormResult.value
       if (transferResult.status === 'fulfilled') this.transfers = (transferResult.value && transferResult.value.items) || []
@@ -165,7 +214,7 @@ export default {
       this.stays = stayResult.status === 'fulfilled' ? ((stayResult.value && stayResult.value.items) || []) : []
       this.rectifications = rectResult.status === 'fulfilled' ? ((rectResult.value && rectResult.value.items) || []) : []
       this.state = 'ready'
-      if (this.cfg.hasBed && !this.pendingTransfer) this.loadTransferOptions()
+      if (this.cfg.hasBed && this.canChoose) this.loadTransferOptions()
       else if (!this.cfg.hasBed && (this.cfg.canSelfSelect || this.cfg.selfSelectEnabled)) this.loadSelfSelectOptions()
     },
     async loadSelfSelectOptions() {
@@ -229,7 +278,7 @@ export default {
       finally { this.submitting = false }
     },
     confirm() {
-      if (this.submitting || !this.sel.bed || this.pendingTransfer) return
+      if (this.submitting || !this.sel.bed || !this.canChoose) return
       const reason = this.transferReason.trim()
       if (this.cfg.hasBed && (reason.length < 5 || reason.length > 300)) return safeToast('调宿原因需5-300字')
       const current = this.cfg.hasBed && this.cfg.myBed ? `${this.cfg.myBed.building} / ${this.cfg.myBed.room}室 / ${this.cfg.myBed.bedNo}床` : '尚未入住'

@@ -27,9 +27,13 @@ def _is_student(user: dict | None) -> bool:
     return str((user or {}).get("userType") or "").strip().upper() == "STUDENT"
 
 
+def _is_enterprise_member(user: dict | None) -> bool:
+    return str((user or {}).get("userType") or "").strip().upper() == "ENTERPRISE_MENTOR"
+
+
 def _require_inbox_perm(user: dict, code: str) -> None:
-    """管理端/教师端校验 workbench.message.*；学生端走本人收件，不套工作台权限码。"""
-    if _is_student(user):
+    """管理端/教师端校验权限；学生和企业成员只读写自己的收件箱。"""
+    if _is_student(user) or _is_enterprise_member(user):
         return
     enforce_permission(user, code)
 

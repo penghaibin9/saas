@@ -17,7 +17,7 @@ async function callList(path, params = {}) {
 export const planApi = {
   getBatchPlan(batchId) { return call(() => request(`/internship/plans/batch/${batchId}`)) },
   saveBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}`, { method: 'PUT', body })) },
-  publishBatchPlan(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/publish`, { method: 'POST', body: {} })) },
+  publishBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}/publish`, { method: 'POST', body })) },
   getPlanAcks(params = {}) { return callList('/internship/plan-acks', params) },
   getTaskProgress(params = {}) { return callList('/internship/plan-task-progress', params) },
   reviewTaskProgress(id, body) {
@@ -28,7 +28,8 @@ export const planApi = {
 
 export const insuranceApi = {
   getInsurances(params = {}) { return callList('/internship/insurances', params) },
-  verify(id, { action, comment }) {
-    return call(() => request(`/internship/insurances/${id}/verify`, { method: 'POST', body: { action, comment } }))
+  getDetail(id, batchId) { return call(() => request(`/internship/insurances/${id}`, { params: { batchId } })) },
+  verify(id, { action, comment, expectedVersion }) {
+    return call(() => request(`/internship/insurances/${id}/verify`, { method: 'POST', body: { action, comment, expectedVersion } }))
   }
 }

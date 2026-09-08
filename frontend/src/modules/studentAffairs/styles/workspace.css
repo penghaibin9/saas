@@ -1,0 +1,323 @@
+/* 学工 PC 内容层。由学生、迎新、学工布局注入；弹层显式接收相同标记。
+ * 不使用 body 路由类，避免切页后改变其他中心或已打开窗口的外观。 */
+#app .base-portal-layout .sa-workspace {
+  --sa-field-height: 36px;
+  color: var(--t1);
+  gap: 16px;
+  min-width: 0;
+}
+#app .sa-workspace :is(.mp-stack, .sa-stack) { gap: 16px; }
+#app .base-portal-layout .sa-workspace > .mps__head {
+  padding: 0 0 12px;
+  min-height: 48px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  box-shadow: none;
+}
+#app .sa-workspace .mps__actions { flex-wrap: wrap; gap: 8px; }
+#app .sa-workspace :is(.mp-card, .app-section-card, .ori-section, .sa-panel) {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+#app .sa-workspace :is(.mp-card__head, .app-section-card__head) {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+#app .sa-workspace :is(.mp-card__title, .app-section-card__title, .ori-section__title) {
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+}
+#app .sa-workspace :is(.mp-card__body, .app-section-card__body) { padding: 16px 0; }
+#app .sa-workspace .app-section-card__body.is-nopad { padding: 0; }
+#app .sa-workspace :is(.af, .mt, .sa-toolbar) { margin: 0; box-shadow: none; }
+#app .sa-workspace :is(.sa-grid--metrics, .mp-metrics) {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0 12px;
+}
+#app .sa-workspace .app-metric-card {
+  min-height: 0;
+  padding: 8px 18px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+#app .sa-workspace .app-metric-card:last-child { border-right: 0; }
+#app .sa-workspace .app-metric-card::before { display: none; }
+#app .sa-workspace .app-metric-card__title { font-size: 12px; margin-bottom: 4px; }
+#app .sa-workspace .app-metric-card__value { font-size: 26px; line-height: 34px; font-variant-numeric: tabular-nums; }
+#app .sa-workspace .app-metric-card__footer:empty { display: none; }
+#app .sa-workspace .app-metric-card.is-drillable:hover { background: var(--pri-bg); transform: none; }
+#app .sa-workspace :is(.dt, .ags-panel) { border: 0; border-radius: 0; box-shadow: none; }
+#app .sa-workspace .dt__th { height: 38px; padding: 8px 12px; }
+#app .sa-workspace .dt__td { padding: 10px 12px; line-height: 1.55; }
+#app .sa-workspace .dt__pager { padding: 12px 0; }
+#app .sa-workspace :is(.sa-summary-strip, .task-context-bar) {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 0;
+  margin: 0;
+  box-shadow: none;
+}
+#app .sa-workspace .sa-detail-layout { gap: 24px; align-items: start; }
+#app .sa-workspace .app-desc-list { border-radius: 0; border: 0; }
+#app .sa-workspace .app-desc-list__item { border-bottom: 1px solid var(--line); }
+#app .sa-workspace .app-desc-list__label { background: transparent; color: var(--t3); font-size: 13px; }
+#app .sa-workspace .app-desc-list__value { overflow-wrap: anywhere; font-size: 14px; }
+#app .sa-workspace :is(.sd-head, .sa-heading) { padding: 12px 0; }
+#app .sa-workspace .sd-head__avatar { width: 44px; height: 44px; border-radius: 8px; font-size: 20px; }
+#app .sa-workspace .sd-head__complete-num { font-size: 24px; }
+#app .sa-workspace .sd-quick { padding: 8px 0; }
+#app .sa-workspace .sd-quick__actions { gap: 8px; }
+#app .sa-workspace .sd-quick__btn { box-shadow: none; padding: 8px 12px; border-radius: 6px; }
+#app .sa-workspace :is(.sd-tabs, .ori-tabs) { margin: 0; border-bottom: 1px solid var(--line); }
+#app .sa-workspace :is(.se-grid, .ori-form-grid) { gap: 18px 24px; }
+#app .sa-workspace .se-field__control { min-height: 36px; border-radius: 6px; font-size: 14px; }
+#app .sa-workspace .se-ops {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface, var(--bg-card));
+}
+#app .sa-workspace .ori-steps { gap: 8px; padding: 10px 0; }
+#app .sa-workspace .ori-step { padding: 8px 12px; border-radius: 4px; }
+#app .sa-workspace :is(.metrics, .profile-priority-grid) { gap: 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+#app .sa-workspace .profile-priority-card { border: 0; border-right: 1px solid var(--line); background: transparent; box-shadow: none; border-radius: 0; padding: 12px 18px; }
+#app .sa-workspace .mh { padding: 16px 0; background: transparent; color: var(--t1); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+#app .sa-workspace .mh::before, #app .sa-workspace .mh::after { display: none; }
+#app .sa-workspace .mh__title { font-size: 18px; color: var(--t1); }
+#app .sa-workspace :is(.mh__subtitle, .mh__stat-label) { color: var(--t3); }
+#app .sa-workspace .mh__stat-value { font-size: 26px; color: var(--t1); }
+#app .sa-workspace .mh__chip { color: var(--t2); background: var(--bg-soft); border-color: var(--line); }
+#app .sa-workspace .bf-grid { gap: 18px 24px; }
+#app .sa-workspace .bf-input { min-height: 36px; background: var(--field-bg); color: var(--t1); border-color: var(--line); border-radius: 6px; }
+#app .sa-workspace :is(.bf-actions, .ori-actbar) { gap: 8px; padding: 12px 0; }
+
+/* 三级业务页统一为平铺工作区：筛选和状态只占一行，不再包成大卡片。 */
+#app .base-portal-layout .sa-workspace :is(.sa-filter-bar, .sa-filters, [class*="-filters"]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .sa-workspace button[class*="-chip"] {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--t3);
+  box-shadow: none;
+}
+#app .base-portal-layout .sa-workspace button[class*="-chip"]:hover { color: var(--t1); background: var(--bg-soft); }
+#app .base-portal-layout .sa-workspace button[class*="-chip"].is-on,
+#app .base-portal-layout .sa-workspace button[class*="-chip"].active {
+  color: var(--pri);
+  background: transparent;
+  box-shadow: inset 0 -2px var(--pri);
+}
+#app .base-portal-layout .sa-workspace button[class*="-chip"][class*="exception"]:not(.is-on) {
+  color: var(--warning-800, #92400e);
+  background: var(--warning-50, #fffbeb);
+  box-shadow: none;
+}
+
+/* 各业务历史页面的概览块统一为文字指标带，去掉外框、圆角和底板。 */
+#app .base-portal-layout .sa-workspace :is(
+  .fp-summary, .fb-summary, .fd-summary, .rv-summary,
+  .fs-overview, .ln-statusbar, .fr-statusbar, .ws-statusbar
+) {
+  margin: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div {
+  min-height: 52px;
+  padding: 8px 18px;
+  border-right: 1px solid var(--line);
+  border-bottom: 0;
+}
+#app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div:first-child { padding-left: 0; }
+#app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div:last-child { border-right: 0; }
+#app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) strong { font-size: 25px; line-height: 32px; }
+
+/* 双栏办理台只用分隔线建立层级，列表和详情共享完整工作区。 */
+#app .base-portal-layout .sa-workspace :is(.ad-workspace, .fd-workspace, .av-workspace, .dr-workspace, .cf-layout) {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .sa-workspace :is(.ad-list, .fd-list, .av-side, .cf-list) {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .sa-workspace :is(.ad-detail, .fd-detail, .av-detail, .cf-detail) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 谈心工作台旧的 Golden 装饰层在全局样式中权重较高；学工新壳内统一压平。 */
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) > .mps__head {
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) .tk-toolbar {
+  margin-bottom: 10px;
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) .tk-workspace { gap: 0; }
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) :is(.tk-list, .tk-detail) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) .tk-list {
+  padding: 0 12px 0 0;
+  border-right: 1px solid var(--line);
+}
+#app .base-portal-layout .mps.sa-workspace:has(.tk-toolbar):has(.tk-workspace) .tk-detail { padding: 4px 0 0 20px; }
+.sa-workspace-overlay .sa-form-section { padding: 0; margin: 0; min-width: 0; border: 0; }
+.sa-workspace-overlay .sa-form-section + .sa-form-section { padding-top: 18px; border-top: 1px solid var(--line); }
+.sa-workspace-overlay .sa-form-section legend { float: left; width: 100%; margin-bottom: 14px; padding: 0; font-size: 14px; font-weight: 600; color: var(--t1); }
+.sa-workspace-overlay .sa-form-section legend + * { clear: both; }
+.sa-workspace-overlay .sa-form-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+.sa-workspace-overlay .sa-form-columns--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sa-workspace-overlay .sa-form-receipt { margin: 0; padding: 12px 14px; border-left: 3px solid var(--pri); background: var(--pri-bg); color: var(--t2); font-size: 13px; }
+.sa-workspace-overlay .sa-form-receipt strong { font-size: 18px; color: var(--t1); margin: 0 4px; }
+.sa-workspace-overlay .dr-building-form { gap: 16px; }
+.sa-workspace-overlay .dr-building-form .dr-check { margin-bottom: 16px; border: 0; padding: 0; background: transparent; }
+#app .sa-workspace .exd { max-height: calc(100dvh - 48px); border-radius: 10px; background: var(--surface, var(--bg-card)); }
+#app .sa-workspace :is(.exd__header, .exd__footer) { padding: 16px 24px; background: transparent; }
+#app .sa-workspace .exd__body { padding: 20px 24px; }
+#app .sa-workspace .exd__section { padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+
+/* 四级新建/编辑/详情窗口：标题、内容、操作分层，只有正文滚动。 */
+.sa-workspace-overlay.app-drawer-mask { background: rgb(15 23 42 / 32%); backdrop-filter: none; }
+.sa-workspace-overlay.app-drawer-mask .app-drawer {
+  color: var(--t1);
+  background: var(--surface, var(--bg-card));
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 48px rgb(15 23 42 / 16%);
+}
+.sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal {
+  max-height: calc(100dvh - 48px);
+  border-radius: 10px;
+}
+.sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal .app-drawer__header {
+  min-height: 60px;
+  flex: 0 0 auto;
+  padding: 16px 24px;
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal .app-drawer__header h3 { font-size: 18px; line-height: 26px; }
+.sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal .app-drawer__body {
+  min-height: 0;
+  padding: 20px 24px;
+  background: var(--surface, var(--bg-card));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal .app-drawer__footer {
+  padding: 12px 24px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  background: var(--surface, var(--bg-card));
+}
+.sa-workspace-overlay .app-form-item { margin-bottom: 16px; }
+.sa-workspace-overlay .app-form-item__label { font-size: 13px; line-height: 22px; margin-bottom: 6px; }
+.sa-workspace-overlay :is(.form-grid, .sa-form-grid, .ori-form-grid) { gap: 16px 20px; }
+.sa-workspace-overlay :is(.app-section-card, .mp-card) { border: 0; box-shadow: none; border-radius: 0; background: transparent; }
+.sa-workspace-overlay :is(.app-section-card__body, .mp-card__body) { padding: 12px 0; }
+.sa-workspace-overlay .app-desc-list { border-radius: 4px; }
+.sa-workspace-overlay :is(.dorm-form-note, .dr-hint) { background: transparent; border: 0; padding: 0; color: var(--t3); font-size: 13px; line-height: 1.6; }
+.sa-workspace-overlay.app-confirm-dialog__mask { padding: 24px; background: rgb(15 23 42 / 32%); }
+.sa-workspace-overlay .app-confirm-dialog {
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface, var(--bg-card));
+  color: var(--t1);
+  box-shadow: 0 16px 48px rgb(15 23 42 / 16%);
+}
+.sa-workspace-overlay .app-confirm-dialog__header { flex: 0 0 auto; padding: 18px 24px; background: transparent; border-bottom: 1px solid var(--line); }
+.sa-workspace-overlay .app-confirm-dialog__title { font-size: 18px; }
+.sa-workspace-overlay .app-confirm-dialog__body { min-height: 0; overflow-y: auto; padding: 20px 24px; }
+.sa-workspace-overlay .app-confirm-dialog__message { margin: 0 0 16px; line-height: 1.75; font-size: 14px; color: var(--t2); white-space: pre-line; }
+.sa-workspace-overlay .app-confirm-dialog__footer { flex: 0 0 auto; padding: 12px 24px; border-top: 1px solid var(--line); background: transparent; }
+.sa-workspace-overlay .app-confirm-dialog__textarea { border-radius: 6px; min-height: 96px; background: var(--field-bg); color: var(--t1); }
+:is(.sa-workspace, .sa-workspace-overlay) :is(button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--pri);
+  outline-offset: 2px;
+}
+@media (max-width: 900px) {
+  #app .sa-workspace :is(.se-grid, .sa-detail-layout) { grid-template-columns: minmax(0, 1fr); }
+  #app .sa-workspace .mps__actions { width: 100%; }
+}
+@media (max-width: 600px) {
+  .sa-workspace-overlay.app-drawer-mask.is-modal,
+  .sa-workspace-overlay.app-confirm-dialog__mask { padding: 10px; }
+  .sa-workspace-overlay.app-drawer-mask .app-drawer.is-modal { width: 100%; max-height: calc(100dvh - 20px); }
+  .sa-workspace-overlay .app-drawer :is(.app-drawer__header, .app-drawer__body, .app-drawer__footer),
+  .sa-workspace-overlay .app-confirm-dialog :is(.app-confirm-dialog__header, .app-confirm-dialog__body, .app-confirm-dialog__footer) { padding: 14px 16px; }
+  .sa-workspace-overlay :is(.form-grid, .sa-form-grid, .ori-form-grid) { grid-template-columns: minmax(0, 1fr); }
+  .sa-workspace-overlay .sa-form-columns { grid-template-columns: minmax(0, 1fr); }
+  #app .base-portal-layout .sa-workspace :is(.sa-filter-bar, .sa-filters, [class*="-filters"]) {
+    align-items: center;
+  }
+  #app .base-portal-layout .sa-workspace :is(.sa-filter-bar, .sa-filters, [class*="-filters"]) > button {
+    width: auto !important;
+    flex: 0 0 auto;
+  }
+  #app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div { padding: 8px 10px; }
+  #app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div:nth-child(odd) { padding-left: 0; }
+  #app .base-portal-layout .sa-workspace :is(.fp-summary, .fb-summary) > div:nth-child(2) { border-right: 0; }
+  #app .sa-workspace .app-metric-card { padding: 8px 10px; }
+}

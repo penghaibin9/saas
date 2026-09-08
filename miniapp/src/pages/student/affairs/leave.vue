@@ -6,24 +6,27 @@
         <MobileGlobalState v-if="!items.length" state="empty" title="暂无请假记录" description="发起请假后记录会显示在这里。" />
                 <MobileInlineAlert v-if="focusMissing" type="warning" title="没有找到这条记录"
           description="消息或待办指向的请假记录不在当前列表里，可能已被处理、撤回或超出本页范围。" />
-<view class="list-group" v-else>
+<view class="list-group" v-if="items.length">
           <view v-for="x in items" :key="x.leaveId" :id="'leave-' + x.leaveId" :class="{ 'is-focus': isFocused(x) }" class="list-row lv__row">
             <view class="flex-1">
-              <text class="t-md">{{ typeText(x.leaveType) }}</text>
-              <text class="lv__time">{{ (x.startTime || '').slice(0, 10) }} 至 {{ (x.endTime || '').slice(0, 10) }} · {{ x.days }} 天</text>
+              <text class="t-md">{{ x.leaveTypeLabel }}</text>
+              <text class="lv__time">{{ x.startDate }} 至 {{ x.endDate }} · {{ x.days }} 天</text>
               <text class="lv__reason" v-if="x.reason">{{ x.reason }}</text>
               <text class="lv__reason lv__opinion" v-if="x.returnReason || x.rejectReason">处理意见：{{ x.returnReason || x.rejectReason }}</text>
             </view>
-            <MobileStatusTag :label="statusText(x.status)" :type="badgeType(x.status)" />
-            <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="editReturned(x)">修改后重提</button>
-            <button v-if="allows(x, 'SUBMIT_CANCEL')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="cancelLeave(x)">申请销假</button>
-            <button v-if="allows(x, 'SUBMIT_EXTENSION')" class="btn btn-ghost lv__resubmit" :disabled="submitting" @click="openExtend(x)">申请续假</button>
+            <MobileStatusTag :label="x.statusLabel" :type="badgeType(x.status)" />
+            <button class="btn btn-ghost lv__resubmit" @click="openDetail(x.leaveId)">查看进度与办理</button>
           </view>
         </view>
       </view>
     </MobileGlobalState>
 
-    <MobileSafeAreaBar>
+    <MobileLeaveDetail v-if="detailVisible" :detail="detail" :loading="detailLoading" :error="detailError" @close="detailVisible = false; detailEpoch++" @retry="openDetail(detailId)">
+      <template #materials><view class="card lv__materials"><text class="t-md t-bold">证明与补交材料</text><text class="lv__time">查看老师要求补充的内容与处理结果。</text><button class="btn btn-ghost" @click="openMaterials">查看材料要求</button></view></template>
+      <template #default="{ item: x }"><view class="lv__actions"><button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-primary flex-1" :disabled="submitting" @click="editReturned(x)">修改后重提</button><button v-if="allows(x, 'SUBMIT_CANCEL')" class="btn btn-primary flex-1" :disabled="submitting" @click="cancelLeave(x)">我已返校</button><button v-if="allows(x, 'SUBMIT_EXTENSION')" class="btn btn-ghost flex-1" :disabled="submitting" @click="openExtend(x)">申请续假</button></view></template>
+    </MobileLeaveDetail>
+
+    <MobileSafeAreaBar v-if="!detailVisible">
       <button class="btn btn-primary flex-1" :disabled="submitting" @click="openApply">新建请假</button>
     </MobileSafeAreaBar>
 
@@ -80,6 +83,8 @@
 </template>
 
 <script>
+import MobileLeaveDetail from '@/components/MobileLeaveDetail.vue'
+import { leaveDate, leaveError, leaveStatusText } from '@/services/leavePresentation'
 import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
 import { studentApi } from '@/services/studentApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
@@ -87,15 +92,11 @@ import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const TYPE = { SICK: '病假', PERSONAL: '事假', HOME: '探亲假', HOSPITAL: '住院假', GOOUT: '外出', OTHER: '其他' }
-const STATUS = {
-  COUNSELOR_REVIEW: '辅导员审批', COLLEGE_REVIEW: '学院审批', STUDENT_AFFAIRS_REVIEW: '学工处审批',
-  APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', WAIT_CANCEL_LEAVE: '待销假',
-  CLOSED: '已销假', OVERDUE: '已逾期', EXTENSION_REVIEW: '续假审批中', PENDING_REVIEW: '待审批'
-}
 
 export default {
+  components: { MobileLeaveDetail },
   data() {
-    return { focusId: '', focusMissing: false,
+    return { detail: null, detailId: '', detailVisible: false, detailLoading: false, detailError: '', detailEpoch: 0, focusId: '', focusMissing: false,
       items: null, state: 'loading', formVisible: false, editTarget: null, editNotice: '',
       extendVisible: false, extendTarget: {}, extendForm: { newEndTime: '', reason: '' },
       submitting: false, typeIndex: 0,
@@ -109,7 +110,7 @@ export default {
   },
   computed: {
     startMin() { return this.editTarget ? '' : this.today() },
-    originalEnd() { return (this.extendTarget.endTime || '').slice(0, 10) },
+    originalEnd() { return leaveDate(this.extendTarget.endTime) },
     extendMin() { return this.dayAfter(this.originalEnd) || this.today() },
     formValid() {
       const reason = this.form.reason.trim()
@@ -121,8 +122,18 @@ export default {
     }
   },
   // V3 §4.4 LIST_FOCUS：待办/消息深链带 recordId 进来时必须定位到那条记录。
-  onLoad(query) { this.focusId = readFocusId(query); this.load() },
+  onLoad(query) { this.focusId = readFocusId(query); this.load(); if (this.focusId) this.openDetail(this.focusId) },
+  onShow() { if (this.state === 'ready' && !this.submitting) this.load() },
+  onUnload() { this.detailEpoch++ },
   methods: {
+    async openDetail(id) {
+      const ticket = ++this.detailEpoch
+      this.detailId = String(id); this.detailVisible = true; this.detailLoading = true; this.detailError = ''; this.detail = null
+      try { const data = await affairsContractApi.getLeaveDetail(id); if (ticket === this.detailEpoch) this.detail = data }
+      catch (e) { if (ticket === this.detailEpoch) this.detailError = leaveError(e, '暂时无法读取申请详情，请重试。') }
+      finally { if (ticket === this.detailEpoch) this.detailLoading = false }
+    },
+    openMaterials() { uni.navigateTo({ url: '/pages/student/affairs/index?bizType=LEAVE&bizId=' + encodeURIComponent(this.detailId) }) },
     isFocused(row) { return isFocusRow(row, this.focusId, ['leaveId']) },
     applyFocus() {
       if (!this.focusId) return
@@ -134,7 +145,7 @@ export default {
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     load() {
       this.state = 'loading'
-      studentApi.getMyLeaves().then((d) => { this.items = (d && d.items) || []; this.state = 'ready'; this.applyFocus() })
+      studentApi.getMyLeaves().then((d) => { this.items = (d && d.items) || []; this.state = 'ready'; this.applyFocus(); if (this.detailVisible && this.detailId) this.openDetail(this.detailId) })
         .catch((e) => { this.state = 'error'; this.showError(e, '请假记录加载失败') })
     },
     today() {
@@ -158,18 +169,18 @@ export default {
       affairsContractApi.getReturnedLeave(item.leaveId).then((d) => {
         this.editTarget = { ...item, ...d }; this.editNotice = ''
         const idx = this.typeOptions.findIndex((x) => x.value === d.leaveType); this.typeIndex = idx >= 0 ? idx : 0
-        this.form = { startTime: (d.startTime || '').slice(0, 10), endTime: (d.endTime || '').slice(0, 10), reason: d.reason || '' }
+        this.form = { startTime: leaveDate(d.startTime), endTime: leaveDate(d.endTime), reason: d.reason || '' }
         this.formVisible = true
       }).catch((e) => this.showError(e, '加载退回申请失败')).finally(() => { this.submitting = false })
     },
-    openExtend(item) { this.extendTarget = item; this.extendForm = { newEndTime: this.dayAfter((item.endTime || '').slice(0, 10)), reason: '' }; this.extendVisible = true },
+    openExtend(item) { this.extendTarget = item; this.extendForm = { newEndTime: this.dayAfter(leaveDate(item.endTime)), reason: '' }; this.extendVisible = true },
     closeExtend() { if (!this.submitting) this.extendVisible = false },
     onType(e) { this.typeIndex = Number(e.detail.value) },
     onStart(e) { this.form.startTime = e.detail.value; if (this.form.endTime && this.form.endTime < this.form.startTime) this.form.endTime = this.form.startTime },
     onEnd(e) { this.form.endTime = e.detail.value },
     onExtendEnd(e) { this.extendForm.newEndTime = e.detail.value },
     showError(e, fallback) {
-      const n = normalizeError(e); toast(n.text || (e && e.message) || fallback)
+      const n = normalizeError(e); toast(leaveError(e, fallback))
       if (n.kind === 'conflict') this.load()
       return n
     },
@@ -185,7 +196,7 @@ export default {
           try {
             await affairsContractApi.resubmitLeave(this.editTarget.leaveId, this.editTarget.version)
           } catch (e) {
-            this.editNotice = `修改已保存，但重新提交失败：${normalizeError(e).text || e.message || '请重试'}`
+            this.editNotice = `修改已保存，但重新提交失败：${leaveError(e, '请重试')}`
             this.showError(e, '重新提交失败')
             return
           }
@@ -206,7 +217,7 @@ export default {
         .then(() => { toast('续假已提交，等待辅导员审批'); this.extendVisible = false; this.load() })
         .catch((e) => this.showError(e, '续假失败')).finally(() => { this.submitting = false })
     },
-    typeText(t) { return TYPE[t] || t }, statusText(s) { return STATUS[s] || s },
+    typeText(t) { return TYPE[t] || '假种待确认' }, statusText(s) { return leaveStatusText(s) },
     badgeType(s) { if (['APPROVED', 'CLOSED'].includes(s)) return 'success'; if (['REJECTED', 'OVERDUE'].includes(s)) return 'danger'; return 'warning' },
     cancelLeave(item) {
       if (this.submitting) return
@@ -239,4 +250,5 @@ export default {
 .lv__error { display: block; margin-top: 5px; font-size: 12px; color: #dc2626; }
 .lv__counter { display: block; margin-top: 3px; font-size: 11px; text-align: right; color: #94a3b8; }
 .is-focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-md); }
+.lv__row{flex-wrap:wrap}.lv__row>.flex-1{min-width:65%}.lv__resubmit{width:100%;margin:12px 0 0}.lv__materials{margin-top:12px}.lv__materials button{margin-top:12px}.lv__actions{flex-wrap:wrap}.lv__picker,.lv__textarea{background:var(--bg-card,#fff);color:var(--text-primary)}
 </style>

@@ -21,7 +21,8 @@ STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在�
                 "ASSESSING": "考核中", "ARCHIVED": "已归档"}
 RISK_LABEL = {"NONE": "无", "LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险"}
 RISK_TONE = {"HIGH": "danger", "MEDIUM": "warning", "LOW": "default", "NONE": "default"}
-EXC_TYPE_LABEL = {"OUT_OF_RANGE": "超范围", "MOCK_LOCATION": "模拟定位", "MISSING": "缺卡"}
+EXC_TYPE_LABEL = {"OUT_OF_RANGE": "超范围", "LOW_ACCURACY": "定位精度不足",
+                  "LOCATION_UNCERTAIN": "围栏边界待核实", "MOCK_LOCATION": "模拟定位", "MISSING": "缺卡"}
 EXC_STATUS_LABEL = {"PENDING_HANDLE": "待核实", "COMPLETED": "已处理"}
 REPORT_STATUS_LABEL = {"PENDING_REVIEW": "待批阅", "APPROVED": "已通过",
                        "RETURNED": "已退回", "OVERDUE": "逾期未交"}
@@ -35,8 +36,9 @@ DEFAULT_STAGES = [
     {"code": "REVIEW", "name": "总结考核", "startDate": "", "endDate": ""},
 ]
 DEFAULT_RULES = {
-    "checkin": {"requireDaily": True, "geofenceRadiusM": 500,
-                "allowedExceptionTypes": ["OUT_OF_RANGE", "MOCK_LOCATION", "MISSING"]},
+    "checkin": {"requireDaily": True, "geofenceRadiusM": 500, "maxAccuracyM": 200,
+                "allowedExceptionTypes": ["OUT_OF_RANGE", "LOW_ACCURACY", "LOCATION_UNCERTAIN",
+                                          "MOCK_LOCATION", "MISSING"]},
     "weeklyReport": {"frequency": "WEEKLY", "minWordCount": 800, "deadlineWeekday": 7},
     "guidance": {"minVisitsPerTerm": 2, "minCommunicationsPerMonth": 2},
     "evaluation": {"enterpriseWeight": 0.4, "teacherWeight": 0.4, "selfWeight": 0.2},
@@ -373,6 +375,9 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
             missing_facts.append("定位精度")
         if not c.address:
             missing_facts.append("打卡地址")
+    elif c.exception_type in {"LOW_ACCURACY", "LOCATION_UNCERTAIN"}:
+        if c.gps_accuracy is None:
+            missing_facts.append("定位精度")
     elif c.exception_type == "MOCK_LOCATION":
         if not c.device_risk_flag or str(c.device_risk_flag).lower() == "normal":
             missing_facts.append("设备风险信号")
@@ -389,7 +394,7 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
         "distance": f"{c.distance_km} km" if c.distance_km else "—",
         "accuracy": f"±{c.gps_accuracy} m" if c.gps_accuracy else "—",
         "address": c.address or "",
-        "deviceRisk": c.device_risk_flag or "正常", "note": c.student_note or "",
+        "deviceRisk": c.device_risk_flag or "not_available", "note": c.student_note or "",
         "streak": f"连续 {c.streak_days} 天" if c.streak_days else "",
         "appealStatus": c.appeal_status or "", "appealNote": c.appeal_note or "",
         "appealFileId": c.appeal_file_id or "", "appealedAt": _iso(c.appealed_at),
@@ -403,6 +408,7 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
 # ═══ 打卡台账（PC 管理端只读，over t_internship_checkin；移动端学生写入，按数据范围收敛） ═══
 
 CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围",
+                        "LOW_ACCURACY": "定位精度不足", "LOCATION_UNCERTAIN": "围栏边界待核实",
                         "NO_LOCATION": "无定位", "LEAVE": "请假"}
 
 CHECKIN_RESULT_LABEL["MOCK_LOCATION"] = "设备/模拟定位风险"
@@ -555,11 +561,37 @@ def get_exception_detail(exception_id, user=None) -> dict:
             InternshipAuditTrail.target_id == c.id,
             InternshipAuditTrail.target_type == "EXCEPTION").order_by(
             InternshipAuditTrail.id)).all()
+        checkin_date = c.exception_date.date().isoformat() if c.exception_date else ""
+        checkin = db.scalars(select(InternshipCheckin).where(
+            InternshipCheckin.tenant_id == _tid(),
+            InternshipCheckin.internship_id == c.internship_id,
+            InternshipCheckin.checkin_date == checkin_date,
+            InternshipCheckin.is_deleted.is_(False),
+        ).order_by(InternshipCheckin.id.desc())).first()
+        from app.models import InternshipPosition
+        from app.modules.internship.services import internship_checkin_trust_service as trust
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec and rec.position_id else None
+        rule = trust.resolve_rule(db, rec, position) if rec else {
+            "configured": False, "radiusM": None, "maxAccuracyM": 200,
+            "coordinateSystem": "GCJ02", "source": "UNAVAILABLE",
+        }
         row = _exc_row(c, rec, stu)
         row.update({
             "positionName": rec.position_name if rec else "", "address": c.address or "",
             "accuracy": f"±{c.gps_accuracy} m" if c.gps_accuracy else "—",
             "studentNote": c.student_note or "", "handleComment": c.handle_comment or "",
+            "locationEvidence": {
+                "available": bool(checkin and checkin.lat is not None and checkin.lng is not None),
+                "checkinLat": checkin.lat if checkin else None,
+                "checkinLng": checkin.lng if checkin else None,
+                "distanceM": checkin.distance_m if checkin else None,
+                "accuracyM": checkin.gps_accuracy if checkin else c.gps_accuracy,
+                "fenceLat": rule.get("centerLat"), "fenceLng": rule.get("centerLng"),
+                "radiusM": rule.get("radiusM"), "maxAccuracyM": rule.get("maxAccuracyM"),
+                "coordinateSystem": rule.get("coordinateSystem"), "ruleSource": rule.get("source"),
+                "deviceSignal": (checkin.device_risk_flag if checkin else c.device_risk_flag) or "not_available",
+                "result": checkin.result if checkin else c.exception_type,
+            },
             "trail": [{"title": t.action, "desc": json.dumps(t.detail_json or {}, ensure_ascii=False),
                        "time": _iso(t.occurred_at), "tone": "processing"} for t in trail],
         })
@@ -625,9 +657,14 @@ def _report_versions(trail, w: WeeklyReport) -> list[dict]:
     """版本记录（BUG-014）：从留痕中还原历史版本正文 + 当前版本，按版本号升序。
     历史退回快照来自 REVIEW_RETURN 留痕；无快照的老数据只呈现事件、不伪造正文。"""
     items = []
+    current_report_version = int(w.report_version or 1)
     for t in trail:
         snap = (t.detail_json or {}).get("snapshot")
         if not snap:
+            continue
+        # A return trail snapshots the same body that remains current until the
+        # student resubmits. Show it once; after resubmission it becomes history.
+        if int(snap.get("version") or 1) == current_report_version:
             continue
         cmt = (t.detail_json or {}).get("comment") or ""
         items.append({"version": f"v{snap.get('version', 1)}", "tone": "warning",

@@ -18,6 +18,7 @@ def test_funding_appeal_row_exposes_version_for_review_lock():
         review_opinion=None,
         reviewer=None,
         reviewed_at=None,
+        created_at=None,
         version=7,
     )
 

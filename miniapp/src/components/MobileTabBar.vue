@@ -43,7 +43,8 @@ export default {
   props: {
     side: { type: String, default: 'student' }, // student | teacher
     active: { type: String, required: true },
-    badges: { type: Object, default: () => ({}) } // { message: 3, todo: 8 }
+    badges: { type: Object, default: () => ({}) }, // { message: 3, todo: 8 }
+    beforeNavigate: { type: Function, default: null }
   },
   computed: {
     tabs() {
@@ -52,8 +53,9 @@ export default {
     }
   },
   methods: {
-    onTap(item) {
+    async onTap(item) {
       if (item.key === this.active) return
+      if (this.beforeNavigate && !await this.beforeNavigate()) return
       relaunch(item.route)
     }
   }

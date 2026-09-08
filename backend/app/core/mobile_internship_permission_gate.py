@@ -22,6 +22,7 @@ _STUDENT_AGREEMENT_MARKER = "/mobile/internship/agreements"
 _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^$"), "internship.dashboard.view"),
     ("GET", re.compile(r"^context$"), "internship.dashboard.view"),
+    ("GET", re.compile(r"^context/positions(?:/[^/]+)?$"), "internship.position.view"),
     ("GET", re.compile(r"^context/scores$"), "internship.score.view"),
     ("GET", re.compile(r"^context/agreements$"), "internship.agreement.view"),
     ("GET", re.compile(r"^context/enterprise-evals$"), "internship.eval.enterprise.view"),
@@ -44,6 +45,9 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^context/plan-tasks$"), "internship.task.view"),
     ("POST", re.compile(r"^context/plan-tasks/[^/]+/review$"), "internship.task.review"),
     ("GET", re.compile(r"^context/applications$"), "internship.application.view"),
+    ("GET", re.compile(r"^context/volunteer-groups(?:/[^/]+)?$"), "internship.application.view"),
+    ("GET", re.compile(r"^context/volunteer-campaigns$"), "internship.application.view"),
+    ("POST", re.compile(r"^context/volunteer-groups/[^/]+/(?:confirm|return)$"), "internship.application.review"),
     ("POST", re.compile(r"^context/applications/[^/]+/review$"), "internship.application.review"),
     ("GET", re.compile(r"^context/changes$"), "internship.change.view"),
     ("POST", re.compile(r"^context/changes/[^/]+/review$"), "internship.change.review"),

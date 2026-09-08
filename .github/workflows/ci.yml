@@ -47,8 +47,12 @@ jobs:
         run: python scripts/check/check-migration-time-travel.py
 
   internship-production-gates:
-    name: 岗位实习生产闸门
+    name: 岗位实习生产闸门（${{ matrix.shard }} / 4）
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     defaults:
       run:
         working-directory: backend
@@ -80,7 +84,17 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
       - name: 岗位实习专项测试（25分钟硬超时）
-        run: timeout 25m pytest tests/test_internship*.py -q -p no:warnings --durations=20
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          files=(tests/test_internship*.py)
+          selected=()
+          for ((i=SHARD_INDEX; i<${#files[@]}; i+=4)); do
+            selected+=("${files[i]}")
+          done
+          test "${#selected[@]}" -gt 0
+          printf '%s\n' "${selected[@]}"
+          timeout 25m pytest "${selected[@]}" -q -p no:warnings --durations=20
       - name: 岗位实习静态生产合同
         run: python ../scripts/check/check-internship-production-contracts.py
       - name: 岗位实习 PC 路由权限合同

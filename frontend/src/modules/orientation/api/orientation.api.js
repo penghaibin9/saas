@@ -202,8 +202,8 @@ export async function getExportOptions(listKey) {
 }
 
 /* ---------------- 看板 / 新生 ---------------- */
-export async function getOrientationDashboard() {
-  return callData(() => request('/orientation/dashboard'))
+export async function getOrientationDashboard(params = {}) {
+  return callData(() => request('/orientation/dashboard', { params }))
 }
 
 export async function getOrientationStudents(params = {}) {
@@ -531,3 +531,7 @@ export async function createArchive(payload) {
 export async function runArchive(id) {
   return callData(() => request(`/orientation/archives/${id}/run`, { method: 'POST' }))
 }
+
+export async function getArchiveItems(id, params = {}) { return callList(`/orientation/archives/${id}/items`, params) }
+
+export async function dispositionOrientationStudent(id, body) { return callData(() => request(`/orientation/students/${id}/disposition`, { method: "POST", body })) }

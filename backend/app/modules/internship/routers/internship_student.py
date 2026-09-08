@@ -190,7 +190,8 @@ def student_status(record_id: str, body: StudentStatusRequest, user=Depends(requ
 
 @router.post("/intern-students/{record_id}/eligibility", summary="实习资格认定（合格/不合格）")
 def student_eligibility(record_id: str, body: EligibilityRequest, user=Depends(require_permission(_P_ELIGIBILITY))):
-    result = svc.set_eligibility(record_id, body.status, body.reason or "", user=user, expected_version=body.expectedVersion)
+    result = svc.set_eligibility(record_id, body.status, body.reason or "", user=user,
+                                 expected_version=body.expectedVersion, publish_reason=body.publishReason)
     audit_log.record("实习资格认定", f"internship-student:{record_id}", detail={"status": body.status})
     return success(result, message="已更新")
 

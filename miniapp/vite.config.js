@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -56,13 +56,29 @@ function stripMockPayloadInProduction() {
 }
 
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
-export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()],
-  server: {
-    proxy: {
-      '/api': {
-        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000',
-        changeOrigin: true
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+  const previewPort = env.VITE_DEV_PORT || process.env.VITE_DEV_PORT
+  return {
+    plugins: [stripMockPayloadInProduction(), uni(), {
+      name: 'local-preview-port',
+      apply: 'serve',
+      enforce: 'post',
+      config() {
+        if (!previewPort) return
+        const port = Number(previewPort)
+        if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('VITE_DEV_PORT must be an integer from 1024 to 65535')
+        // uni-app supplies manifest.h5.devServer.port after CLI options; local workspaces need an explicit override.
+        return { server: { port, strictPort: true } }
+      }
+    }],
+    server: {
+      proxy: {
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true
+        }
       }
     }
   }

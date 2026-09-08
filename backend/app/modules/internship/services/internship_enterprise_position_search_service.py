@@ -41,8 +41,9 @@ def list_positions_in_tx(
         .offset((max(1, page) - 1) * page_size)
         .limit(page_size)
     ).all()
+    returns = position_svc.school_returns_in_tx(db, context=context, position_ids=[row.id for row in rows])
     return {
-        "items": [position_svc._position_row(row) for row in rows],
+        "items": [{**position_svc._position_row(row), "schoolReturn": returns.get(row.id)} for row in rows],
         "total": total,
         "page": max(1, page),
         "pageSize": page_size,

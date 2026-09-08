@@ -9,7 +9,8 @@
     "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-官网2x.png",
     "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-彩色帮助文档版.png",
     "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心业务流程-帮助文档版-高清2x.png",
-    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心全流程-官网公开版-高清2x.png"
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心全流程-官网公开版-高清2x.png",
+    "docs/04-UI与全端交互/ui/学工四端原型/学工核心流程-实景展示.html"
   ],
   "duplicateAllowedPrefixes": [
     "backend/tests/fixtures/",
@@ -146,6 +147,13 @@
       "paths": [
         "miniapp/src/components/MobileTodoCard.vue",
         "mobile/shared/components/MobileTodoCard.vue"
+      ]
+    },
+    {
+      "reason": "学生 PC 与小程序独立构建均消费请假展示合同；保留各端模块入口，跨端合同测试核对语义，不为整合任务迁移构建边界。",
+      "paths": [
+        "miniapp/src/services/leavePresentation.js",
+        "student-portal/src/services/leavePresentation.js"
       ]
     }
   ]

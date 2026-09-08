@@ -172,6 +172,7 @@ def test_mysql_two_connections_last_slot_race(client, auth_headers, db_mode):
     })
     pos = client.post(POS, headers=auth_headers, json={
         "companyId": eid, "title": _uniq("末席岗"), "headcount": 1, "batchId": bid,
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
         "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,
         "overtimeAllowed": False, "restDaysPerWeek": 2, "remunerationType": "MONTHLY",
         "accommodationProvided": True, "mealProvided": True, "hazardousFlag": False,

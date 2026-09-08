@@ -4,14 +4,14 @@
       <view class="page-pad" v-if="o">
         <view class="card oq__ticket" :class="{ 'is-invalid': !credential.token }">
           <text class="oq__ticket-label">到校报到二维码</text>
-          <text class="oq__guide">到校后打开本页，请辅导员或现场核验人员扫码</text>
-          <view class="oq__code-box">
+          <text class="oq__guide">{{ completed ? '现场核验已完成，无需再次出示报到码' : '到校后打开本页，请辅导员或现场核验人员扫码' }}</text>
+          <view v-if="!completed" class="oq__code-box">
             <image v-if="credential.qrDataUrl" class="oq__qr" :src="credential.qrDataUrl" mode="aspectFit" />
             <text v-else class="oq__code">{{ issuing ? '签发中…' : '尚未签发' }}</text>
           </view>
           <text class="oq__note">{{ credential.token ? '二维码仅用于本人本次报到，扫码确认后自动失效' : o.reportCode.note }}</text>
           <text v-if="credential.expiresAt" class="oq__expires">有效至 {{ credential.expiresAt.replace('T', ' ').slice(0, 19) }}</text>
-          <button class="btn-primary oq__issue" :disabled="issuing || !o.reportCode.canIssue" @click="issue(false)">
+          <button v-if="!completed" class="btn-primary oq__issue" :disabled="issuing || !o.reportCode.canIssue" @click="issue(false)">
             {{ credential.token ? '二维码过期了？重新生成' : '生成报到二维码' }}
           </button>
         </view>
@@ -37,6 +37,9 @@ import { toast } from '@/utils/nav'
 export default {
   data() { return { o: null, state: 'loading', issuing: false, credential: { token: '', qrDataUrl: '', expiresAt: '' } } },
   onLoad() { this.load() },
+  computed: {
+    completed() { return ['CHECKED_IN', 'COLLEGE_CONFIRMED', 'REGISTERED'].includes(this.o?.overallStatus) },
+  },
   methods: {
     async load() {
       this.state = 'loading'

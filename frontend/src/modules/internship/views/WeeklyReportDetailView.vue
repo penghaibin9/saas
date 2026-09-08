@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.studentName + ' · ' + detail.week + '周报批阅' : '周报批阅'"
-    :subtitle="detail ? detail.className + ' · ' + detail.enterpriseName : ''"
+    :subtitle="detail ? [detail.className, detail.enterpriseName].filter((item) => item && item !== '-' && item !== 'null').join(' · ') : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,18 +9,18 @@
       ref="queueBar"
       :current-id="$route.params.id"
       kind="weekly-report"
-      :make-path="(id) => '/admin/internship/reports/' + id"
-      list-fallback="/admin/internship/reports"
+      :make-path="(id) => ({ path: '/admin/internship/reports/' + id, query: $route.query })"
+      :list-fallback="$router.resolve({ path: '/admin/internship/reports', query: $route.query }).fullPath"
       style="margin-bottom: var(--space-3)"
     />
     <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
-    <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
+    <ErrorState v-if="error" :description="error" @retry="load" @back="$refs.queueBar.backToList()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
       <div class="mp-stack">
         <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">{{ detail.week }}周报 · {{ detail.version }}</span>
+            <span class="mp-card__title">{{ detail.week }}周报 · {{ detail.reportVersion || `v${Number(detail.version || 0) + 1}` }}</span>
             <span>
               <AppStatusTag v-if="detail.isResubmit" type="info">重交件</AppStatusTag>
               <AppRiskTag v-if="detail.riskFlag" :level="detail.riskFlag" label="风险学生" style="margin-left: var(--space-2)" />
@@ -95,31 +95,31 @@
           <div class="mp-card__body">
             <!-- 撞车提示必须放在状态判断外面：别人先批完之后 detail.status 会变，
                  下面这块表单整体会被「已处理」态替换掉，提示放里面就跟着一起消失了。 -->
-            <ConflictNotice :state="conflict" />
+            <AppInlineAlert v-if="conflict.active" type="warning" title="周报已更新，本次批阅已暂停"
+              description="评语已保留，请返回台账重新打开周报，核对最新版本再办理。"><p v-if="conflict.kept" class="wr-kept">{{ conflict.kept }}</p></AppInlineAlert>
             <template v-if="detail.status === 'PENDING_REVIEW'">
-              <div class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }" @click="action = 'APPROVE'">
-                <input type="radio" :checked="action === 'APPROVE'" style="margin-top: 3px" />
+              <label class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }">
+                <input v-model="action" type="radio" name="weekly-report-action" value="APPROVE" :disabled="submitting || conflict.active || !canReview" style="margin-top: 3px" />
                 <div>
                   <div class="mp-radio__title">通过</div>
                   <div class="mp-radio__desc">计入周报完成率，可附评语</div>
                 </div>
-              </div>
-              <div class="mp-radio" :class="{ 'is-active': action === 'RETURN' }" @click="action = 'RETURN'">
-                <input type="radio" :checked="action === 'RETURN'" style="margin-top: 3px" />
+              </label>
+              <label class="mp-radio" :class="{ 'is-active': action === 'RETURN' }">
+                <input v-model="action" type="radio" name="weekly-report-action" value="RETURN" :disabled="submitting || conflict.active || !canReview" style="margin-top: 3px" />
                 <div>
                   <div class="mp-radio__title">退回修改</div>
                   <div class="mp-radio__desc">退回原因必填（≥5 字），学生端收到不可关闭的退回提醒</div>
                 </div>
-              </div>
-              <label class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">
+              </label>
+              <label for="weekly-review-comment" class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">
                 {{ action === 'RETURN' ? '退回原因（必填，≥5 字）' : '评语（选填）' }}
               </label>
               <AppTemplateChips class="wr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
-              <textarea v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因，将原样同步学生端…' : '例如：联调记录完整，下周补充量化数据…'"></textarea>
+              <textarea id="weekly-review-comment" :disabled="submitting || conflict.active || !canReview" v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因，将原样同步学生端…' : '例如：联调记录完整，下周补充量化数据…'"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                <AppButton variant="primary" :disabled="!canReview" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">✓ 通过</AppButton>
-                <AppButton variant="warning" :disabled="!canReview" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit('RETURN')">↩ 退回修改</AppButton>
+                <AppButton :variant="action === 'RETURN' ? 'warning' : 'primary'" :disabled="!canReview || conflict.active" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit(action)">{{ action === 'RETURN' ? '退回修改' : '确认通过' }}</AppButton>
               </div>
               <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
@@ -147,7 +147,7 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
-import ConflictNotice from './components/ConflictNotice.vue'
+import { AppInlineAlert } from '@/components/common'
 import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
@@ -158,7 +158,7 @@ import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/pr
 export default {
   name: 'WeeklyReportDetailView',
   components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips,
-    LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice, ActionReceipt },
+    LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false,
@@ -191,6 +191,7 @@ export default {
       this.comment = ''
       this.formError = ''
       this.conflict = emptyConflict()
+      this.lastReceipt = null
       this.openVersions = []
       this.load()
     }
@@ -205,7 +206,7 @@ export default {
       else this.openVersions.push(i)
     },
     onPickChip(text) {
-      if (!text) return
+      if (!text || this.submitting || this.conflict.active || !this.canReview) return
       const cur = (this.comment || '').trim()
       this.comment = cur ? cur + '；' + text : text
     },
@@ -220,6 +221,8 @@ export default {
       this.loading = false
     },
     async submit(action) {
+      if (this.submitting || this.loading || this.error || this.conflict.active || this.detail?.status !== 'PENDING_REVIEW' || !['APPROVE', 'RETURN'].includes(action)) return
+      const current = this.detail, id = this.$route.params.id
       if (!this.canReview) return toast.error('无周报批阅权限')
       this.action = action
       this.formError = ''
@@ -234,6 +237,7 @@ export default {
         action, comment: this.comment, expectedVersion: this.detail.version
       })
       this.submitting = false
+      if (this.detail !== current || this.$route.params.id !== id) return
       if (res.code === 0) {
         this.lastReceipt = {
           id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
@@ -250,10 +254,11 @@ export default {
       } else if (isConflict(res)) {
         // 撞车：评语一个字都不清，只把最新真值拉回来（this.detail.version 一并刷新），
         // 由老师看完再决定要不要按原意见重新提交——页面不替他自动重放。
-        this.conflict = await captureConflict({
+        this.conflict = { ...emptyConflict(), active: true }
+        const captured = await captureConflict({
           res,
           kept: this.comment,
-          refresh: () => this.load(),
+          refresh: async () => { await this.load(); if (this.error) throw new Error(this.error) },
           latest: () => {
             if (!this.detail) throw new Error('最新详情未拉回')
             return [
@@ -263,6 +268,7 @@ export default {
             ]
           }
         })
+        if (this.$route.params.id === id) this.conflict = captured
       } else {
         this.formError = res.message
       }
@@ -273,6 +279,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.wr-kept { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wr-chips { margin-bottom: var(--space-2); }
 .wr-ver__toggle { margin-top: var(--space-1); padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
 .wr-ver__body { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-subtle, #f6f7f9); }

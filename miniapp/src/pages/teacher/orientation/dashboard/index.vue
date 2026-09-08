@@ -16,6 +16,8 @@
           </view>
         </view>
 
+        <view class="card od__entry" @click="goWorklist"><text class="t-md t-bold">新生办理与学院确认</text><text class="od__entry-arrow">›</text></view>
+        <view class="card od__entry" @click="goVerify"><text class="t-md t-bold">现场扫码报到</text><text class="od__entry-arrow">›</text></view>
         <view class="card od__entry" @click="goGc">
           <view class="flex-1">
             <text class="t-md t-bold">绿色通道审核</text>
@@ -48,8 +50,10 @@
 import { teacherApi } from '@/services/teacherApi'
 export default {
   data() { return { d: null, state: 'loading' } },
-  onLoad() { this.load() },
+  onShow() { this.load() },
   methods: {
+    goWorklist() { uni.navigateTo({ url: '/pages/teacher/orientation/worklist/index' }) },
+    goVerify() { uni.navigateTo({ url: '/pages/teacher/orientation/verify/index' }) },
     goGc() { uni.navigateTo({ url: '/pages/teacher/orientation/green-channel/index' }) },
     load() {
       this.state = 'loading'

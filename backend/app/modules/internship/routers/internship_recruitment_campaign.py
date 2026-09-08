@@ -6,11 +6,12 @@ registered separately and never inherit require_staff.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission
 from app.core.response import success
 from app.modules.internship.schemas.internship_recruitment_campaign import (
+    VolunteerLockRelease,
+    VolunteerSchoolConfirm,
     CampaignEnterpriseInvite,
     CampaignEnterpriseRevoke,
     RecruitmentCampaignCreate,
@@ -21,6 +22,7 @@ from app.modules.internship.services import internship_campaign_enterprise_servi
 from app.modules.internship.services import internship_enterprise_auth_service as enterprise_auth_svc
 from app.modules.internship.services import internship_recruitment_campaign_service as campaign_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
+from app.modules.internship.services import internship_school_volunteer_service as school_volunteer_svc
 from app.services import audit_log
 
 router = APIRouter(prefix="/internship/recruitment-campaigns", tags=["岗位实习-招聘季"])
@@ -30,10 +32,7 @@ _MANAGE = require_any_permission("internship.recruitment.manage", "internship.en
 _INVITE = require_any_permission("internship.recruitment.invite", "internship.enterprise.manage")
 _CLOSE = require_any_permission("internship.recruitment.close", "internship.enterprise.manage")
 _VOLUNTEER_REVIEW = require_any_permission("internship.application.review", "internship.recruitment.manage")
-
-
-class VolunteerLockRelease(BaseModel):
-    reason: str = Field(min_length=2, max_length=500)
+_VOLUNTEER_VIEW = require_any_permission("internship.application.view", "internship.recruitment.manage")
 
 
 def _actor_id(user) -> int | None:
@@ -64,6 +63,11 @@ def create_campaign(body: RecruitmentCampaignCreate, user=Depends(_MANAGE)):
         detail={"batchId": result["batchId"], "campaignCode": result["campaignCode"]},
     )
     return success(result, message="招聘季已创建")
+
+
+@router.get("/review-context")
+def volunteer_review_context(batchId: int = Query(..., ge=1), user=Depends(_VOLUNTEER_VIEW)):
+    return success(school_volunteer_svc.review_context(batch_id=batchId, user=user))
 
 
 @router.get("/{campaign_id}")
@@ -179,6 +183,37 @@ def revoke_company(
     return success(result, message="企业招聘季参与资格已撤销")
 
 
+@router.get("/{campaign_id}/volunteer-groups")
+def school_volunteer_groups(
+    campaign_id: int,
+    status: str = "PENDING",
+    keyword: str | None = Query(None, max_length=100),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(_VOLUNTEER_VIEW),
+):
+    return success(school_volunteer_svc.list_groups(
+        campaign_id=campaign_id, user=user, status=status, keyword=keyword,
+        page=page, page_size=pageSize,
+    ))
+
+
+@router.get("/{campaign_id}/volunteer-groups/{group_id}")
+def school_volunteer_detail(campaign_id: int, group_id: int, user=Depends(_VOLUNTEER_VIEW)):
+    return success(school_volunteer_svc.get_group(campaign_id=campaign_id, group_id=group_id, user=user))
+
+
+@router.post("/{campaign_id}/volunteer-groups/{group_id}/confirm")
+def confirm_school_volunteer(campaign_id: int, group_id: int, body: VolunteerSchoolConfirm,
+                             user=Depends(_VOLUNTEER_REVIEW)):
+    return success(school_volunteer_svc.confirm_group(
+        campaign_id=campaign_id, group_id=group_id, application_id=body.applicationId, user=user,
+        expected_group_version=body.expectedGroupVersion, expected_record_version=body.expectedRecordVersion,
+        expected_application_version=body.expectedApplicationVersion,
+    ), message="岗位已确认，协议、保险与上岗条件需继续核验")
+
+
+@router.post("/{campaign_id}/volunteer-groups/{group_id}/return")
 @router.post("/{campaign_id}/volunteer-groups/{group_id}/release")
 def release_volunteer_lock(
     campaign_id: int,
@@ -191,10 +226,12 @@ def release_volunteer_lock(
         campaign_id=campaign_id,
         reason=body.reason,
         user=user,
+        expected_group_version=body.expectedGroupVersion,
+        expected_record_version=body.expectedRecordVersion,
     )
     audit_log.record(
         "RELEASE_VOLUNTEER_ENTERPRISE_CONFIRM_LOCK",
         f"internship-volunteer-group:{group_id}",
         detail={"campaignId": str(campaign_id), "reason": body.reason},
     )
-    return success(result, message="企业确认锁已解除，学生可修改志愿")
+    return success(result, message="志愿已退回，学生可修改后重新提交")

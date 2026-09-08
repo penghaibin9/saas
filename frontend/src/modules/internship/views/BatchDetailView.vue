@@ -1,104 +1,75 @@
 <template>
-  <ModulePageShell
-    :title="detail ? `${detail.batchName} · 批次详情` : '实习批次详情'"
-    :subtitle="detail ? [detail.batchNo, termText].filter(Boolean).join(' · ') : ''"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
-    watermark-purpose="实习批次管理"
-  >
+  <ModulePageShell class="ix-batch-detail" :title="detail?.batchName || '批次详情'"
+    :subtitle="detail ? [detail.batchNo, termText].filter(Boolean).join(' · ') : ''" watermark-purpose="实习批次管理">
     <template #actions>
-      <AppButton variant="ghost" @click="goBack">← 返回批次列表</AppButton>
+      <AppButton variant="ghost" @click="goBack">返回批次列表</AppButton>
+      <AppButton v-if="detail?.status === 'DRAFT' && canManage" variant="secondary" @click="goEdit">编辑批次</AppButton>
+      <AppButton v-if="detail?.status === 'DRAFT' && canManage" variant="primary" @click="focusParticipants">配置名单并启用</AppButton>
     </template>
-
-    <ErrorState v-if="error" :description="error" @retry="load" />
-    <LoadingState v-else-if="loading" />
-    <div v-else-if="detail" class="mp-stack">
-      <BatchParticipantScope
-        ref="participantScope"
-        :batch-id="detail.id"
-        :batch-status="detail.status"
-        @frozen="load"
-      />
-
-      <div class="mp-grid-2">
-      <!-- 左：批次信息 + 阶段时间轴 + 规则配置 -->
-      <div class="mp-stack">
+    <LoadingState v-if="loading" />
+    <ErrorState v-else-if="error" :description="error" @retry="load" />
+    <template v-else-if="detail">
+      <div class="bdv-identity">
+        <AppStatusTag :type="statusTagType[detail.status] || 'default'" dot>{{ detail.statusLabel }}</AppStatusTag>
+        <span>{{ dateShort(detail.startDate) }} 至 {{ dateShort(detail.endDate) }}</span>
+        <span>实习档案 <strong>{{ detail.actualCount ?? '—' }}</strong> 人</span>
+      </div>
+      <nav class="bdv-tabs" aria-label="批次详情分区">
+        <RouterLink v-for="tab in detailTabs" :key="tab.key" :to="sectionLocation(tab.key)"
+          :class="{ 'is-active': activeSection === tab.key }"
+          :aria-current="activeSection === tab.key ? 'page' : undefined">{{ tab.label }}</RouterLink>
+      </nav>
+      <div v-if="activeSection === 'overview'" class="bdv-overview">
         <section class="mp-card">
-          <div class="mp-card__head">
-            <span class="mp-card__title">批次信息</span>
-            <AppStatusTag :type="statusTagType[detail.status] || 'default'" dot>{{ detail.statusLabel }}</AppStatusTag>
-          </div>
+          <div class="mp-card__head"><h2 class="mp-card__title">本轮实习安排</h2></div>
+          <div class="mp-card__body"><AppDescriptionList :items="infoItems" :columns="2" /></div>
+        </section>
+        <aside class="mp-card bdv-next">
+          <div class="mp-card__head"><h2 class="mp-card__title">当前进度与下一步</h2></div>
           <div class="mp-card__body">
-            <AppDescriptionList :items="infoItems" :columns="2" />
+            <p class="bdv-next__text">{{ nextStep }}</p>
+            <AppButton v-if="detail.status === 'DRAFT' && canManage" variant="primary" @click="focusParticipants">选择参与学生</AppButton>
+            <AppButton v-else variant="secondary" @click="goStudents">查看学生与资格</AppButton>
+            <AppDescriptionList v-if="transitionItems.length" :items="transitionItems" :columns="1" size="compact" />
+            <p v-if="detail.transitionReason" class="bdv-reason">{{ detail.status === 'VOIDED' ? '作废原因' : '流转原因' }}：{{ detail.transitionReason }}</p>
+            <div v-if="canManage && !isFinal" class="bdv-lifecycle">
+              <span>批次管理</span>
+              <AppButton v-if="detail.status === 'RUNNING'" variant="ghost" @click="openConfirm('close')">结束批次</AppButton>
+              <AppButton v-if="detail.status === 'CLOSED'" variant="ghost" @click="openConfirm('archive')">归档批次</AppButton>
+              <AppButton v-if="detail.status === 'DRAFT'" variant="ghost" @click="openConfirm('void')">作废草稿</AppButton>
+            </div>
+          </div>
+        </aside>
+      </div>
+      <BatchParticipantScope v-show="activeSection === 'participants'" :key="detail.id" ref="participantScope"
+        :batch-id="detail.id" :batch-status="detail.status" :readonly="!canManage" @frozen="load" />
+      <div v-if="activeSection === 'rules'" class="bdv-overview">
+        <section class="mp-card">
+          <div class="mp-card__head"><h2 class="mp-card__title">业务规则</h2><AppButton v-if="detail.status === 'DRAFT' && canManage" variant="ghost" @click="goEdit">编辑规则</AppButton></div>
+          <div class="mp-card__body">
+            <dl v-if="rulesList.length" class="bdv-rule-list">
+              <div v-for="rule in rulesList" :key="rule.label"><dt>{{ rule.label }}</dt><dd>{{ rule.value }}</dd></div>
+            </dl>
+            <p v-else class="mp-note">该批次未配置规则。</p>
+            <p class="bdv-footnote">启用后的规则按原有生效范围执行，已形成的历史结果保留。</p>
           </div>
         </section>
-
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">阶段时间轴</span></div>
+          <div class="mp-card__head"><h2 class="mp-card__title">阶段安排</h2></div>
           <div class="mp-card__body">
             <AppTimeline v-if="stageTimelineItems.length" :items="stageTimelineItems" />
-            <p v-else class="mp-note" style="margin: 0">该批次未配置阶段时间轴。</p>
-          </div>
-        </section>
-
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">规则配置</span></div>
-          <div class="mp-card__body">
-            <ul v-if="rulesList.length" class="bdv-rules">
-              <li v-for="(line, i) in rulesList" :key="i">{{ line }}</li>
-            </ul>
-            <p v-else class="mp-note" style="margin: 0">该批次未配置规则。</p>
+            <p v-else class="mp-note">该批次未配置阶段时间轴。</p>
           </div>
         </section>
       </div>
-
-      <!-- 右：状态与操作 + 操作留痕 -->
-      <div class="mp-stack">
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">状态与操作</span></div>
-          <div class="mp-card__body">
-            <div class="bdv-status">
-              <span class="bdv-status__lbl">当前状态</span>
-              <AppStatusTag :type="statusTagType[detail.status] || 'default'" dot>{{ detail.statusLabel }}</AppStatusTag>
-            </div>
-            <AppDescriptionList v-if="transitionItems.length" :items="transitionItems" :columns="1" size="compact" />
-            <p v-if="detail.transitionReason" class="bdv-reason">
-              {{ detail.status === 'VOIDED' ? '作废原因' : '流转原因' }}：{{ detail.transitionReason }}
-            </p>
-            <div class="bdv-actions">
-              <AppButton v-if="detail.status === 'DRAFT'" variant="secondary" @click="goEdit">编辑</AppButton>
-              <AppButton v-if="detail.status === 'DRAFT'" variant="primary" @click="focusParticipants">选择学生并启用</AppButton>
-              <AppButton v-if="detail.status === 'RUNNING'" variant="danger" @click="openConfirm('close')">结束</AppButton>
-              <AppButton v-if="detail.status === 'CLOSED'" variant="danger" @click="openConfirm('archive')">归档</AppButton>
-              <AppButton v-if="detail.status === 'DRAFT'" variant="danger" @click="openConfirm('void')">作废</AppButton>
-            </div>
-            <p v-if="isFinal" class="mp-note" style="margin: var(--space-2) 0 0">
-              批次已处于终态（{{ detail.statusLabel }}），仅可查看，不可再变更。
-            </p>
-          </div>
-        </section>
-
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">操作留痕</span></div>
-          <div class="mp-card__body">
-            <AppAuditTrail :records="auditRecords" :show-ip="false" empty-text="暂无操作记录" />
-          </div>
-        </section>
-      </div>
-      </div>
-    </div>
-
-    <AppConfirmDialog
-      v-model:visible="confirmVisible"
-      :title="confirmConf.title"
-      :message="confirmConf.message"
-      :type="confirmConf.type"
-      :confirm-text="confirmConf.confirmText"
-      :require-reason="confirmConf.requireReason"
-      :reason-label="confirmConf.reasonLabel || '操作原因（≥5 字）'"
-      :submitting="confirmSubmitting"
-      @confirm="onConfirm"
-    />
+      <section v-if="activeSection === 'history'" class="mp-card">
+        <div class="mp-card__head"><h2 class="mp-card__title">操作记录</h2></div>
+        <div class="mp-card__body"><AppAuditTrail :records="auditRecords" :show-ip="false" empty-text="暂无操作记录" /></div>
+      </section>
+    </template>
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmConf.title" :message="confirmConf.message"
+      :type="confirmConf.type" :confirm-text="confirmConf.confirmText" :require-reason="confirmConf.requireReason"
+      :reason-label="confirmConf.reasonLabel || '操作原因（≥5 字）'" :submitting="confirmSubmitting" @confirm="onConfirm" />
   </ModulePageShell>
 </template>
 
@@ -116,6 +87,8 @@ import { batchLifecycleApi } from '@/modules/internship/api/batch-lifecycle.api'
 import { toast } from '@/utils/toast'
 import { formatDate, formatDateTime } from '@/utils/dateUtils'
 import BatchParticipantScope from './components/BatchParticipantScope.vue'
+import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
 
@@ -136,10 +109,30 @@ export default {
       confirmMode: '',
       confirmSubmitting: false,
       closeReadiness: null,
+      loadSequence: 0,
       statusTagType: { DRAFT: 'default', RUNNING: 'success', CLOSED: 'info', ARCHIVED: 'default', VOIDED: 'danger' }
     }
   },
   computed: {
+    detailTabs() { return [
+      { key: 'overview', label: '批次概况' }, { key: 'participants', label: '参与名单' },
+      { key: 'rules', label: '阶段与规则' }, { key: 'history', label: '操作记录' }
+    ] },
+    activeSection() {
+      const value = this.$route.query.setup
+      return this.detailTabs.some((tab) => tab.key === value) ? value : 'overview'
+    },
+    nextStep() {
+      const messages = {
+        DRAFT: '核对实习时间与规则后，选择参与班级或学生。预览名单无误，再冻结名单并启用批次。',
+        RUNNING: '本批次已启用。请继续核对学生参与资格与待安置情况；学生满足各项上岗条件后再进入实习过程。',
+        CLOSED: '本批次已结束。核对结项材料和学生结果，满足归档条件后完成归档。',
+        ARCHIVED: '本批次已归档，历史名单、规则与处理记录可在授权范围内查看。',
+        VOIDED: '本批次已作废，保留原有信息与操作记录供核对。'
+      }
+      return messages[this.detail?.status] || '请核对当前批次信息。'
+    },
+    canManage() { return this.ctx?.permissionActions?.createBatch?.allowed === true },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -180,11 +173,18 @@ export default {
       const r = this.detail && this.detail.rules
       if (!r) return []
       const out = []
-      if (r.checkin) out.push(`打卡：${r.checkin.requireDaily ? '每日必打卡' : '不强制每日'}，电子围栏 ${r.checkin.geofenceRadiusM} 米`)
-      if (r.weeklyReport) out.push(`周报：${r.weeklyReport.frequency === 'WEEKLY' ? '每周 1 次' : '每两周 1 次'}，正文 ≥ ${r.weeklyReport.minWordCount} 字，周${r.weeklyReport.deadlineWeekday}前提交`)
-      if (r.guidance) out.push(`指导：每学期现场巡访 ≥ ${r.guidance.minVisitsPerTerm} 次，每月沟通 ≥ ${r.guidance.minCommunicationsPerMonth} 次`)
-      if (r.evaluation) out.push(`评价权重：企业 ${this.pct(r.evaluation.enterpriseWeight)} / 教师 ${this.pct(r.evaluation.teacherWeight)} / 自评 ${this.pct(r.evaluation.selfWeight)}`)
-      if (r.score) out.push(`成绩：及格线 ${r.score.passThreshold} 分，构成 ${(r.score.components || []).map((c) => `${c.name} ${this.pct(c.weight)}`).join(' + ')}`)
+      if (r.checkin) out.push({ label: '考勤打卡', value: `${r.checkin.requireDaily ? '每日必打卡' : '不强制每日打卡'}；电子围栏 ${r.checkin.geofenceRadiusM ?? '—'} 米；最大定位误差 ${r.checkin.maxAccuracyM ?? 200} 米` })
+      if (r.weeklyReport) {
+        const day = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][r.weeklyReport.deadlineWeekday]
+        out.push({ label: '实习周报', value: `${r.weeklyReport.frequency === 'WEEKLY' ? '每周 1 次' : '每两周 1 次'}；正文至少 ${r.weeklyReport.minWordCount ?? '—'} 字${day ? `；${day}前提交` : ''}` })
+      }
+      if (r.guidance) out.push({ label: '指导巡访', value: `每学期现场巡访至少 ${r.guidance.minVisitsPerTerm ?? '—'} 次；每月沟通至少 ${r.guidance.minCommunicationsPerMonth ?? '—'} 次` })
+      if (r.evaluation) out.push({ label: '评价权重', value: `企业 ${this.pct(r.evaluation.enterpriseWeight)} / 教师 ${this.pct(r.evaluation.teacherWeight)} / 自评 ${this.pct(r.evaluation.selfWeight)}` })
+      if (r.score) out.push({ label: '成绩评定', value: `及格线 ${r.score.passThreshold ?? '—'} 分；${(r.score.components || []).map((c) => `${c.name} ${this.pct(c.weight)}`).join(' + ')}` })
+      if (r.onboard) {
+        const checks = [['requireAgreement', '三方协议生效'], ['requireInsurance', '保险核验'], ['requireAdvisor', '分配校内指导教师']]
+        out.push({ label: '上岗前置', value: checks.map(([key, label]) => `${label}：${r.onboard[key] === true ? '必需' : r.onboard[key] === false ? '不要求' : '未配置'}`).join('；') })
+      }
       return out
     },
     transitionItems() {
@@ -252,7 +252,9 @@ export default {
       if (!id || id === oldId) return
       this.detail = null
       this.closeReadiness = null
+      this.confirmVisible = false
       this.load()
+      this.focusHeading()
     }
   },
   created() {
@@ -261,7 +263,19 @@ export default {
     })
     this.load()
   },
+  mounted() { this.focusHeading() },
+  beforeUnmount() { this.loadSequence++ },
   methods: {
+    focusHeading() {
+      this.$nextTick(() => {
+        const heading = this.$el?.querySelector('h1')
+        if (!heading) return
+        heading.setAttribute('tabindex', '-1')
+        heading.style.scrollMarginTop = '170px'
+        heading.focus({ preventScroll: true })
+        heading.scrollIntoView({ block: 'start', behavior: 'instant' })
+      })
+    },
     dateShort(v) {
       return formatDate(v, '')
     },
@@ -272,30 +286,50 @@ export default {
       return `${Math.round((v || 0) * 100)}%`
     },
     goBack() {
-      const back = this.$router.options.history.state && this.$router.options.history.state.back
-      if (typeof back === 'string' && back.startsWith('/admin/internship/batches')) this.$router.back()
-      else this.$router.push('/admin/internship/batches')
+      this.$router.push(internshipBatchListReturn(this.$route.query, this.detail?.id || this.$route.query.batchId))
     },
     goEdit() {
-      this.$router.push(`/admin/internship/batches/${this.detail.id}/edit`)
+      const location = withInternshipBatch(`/admin/internship/batches/${this.detail.id}/edit`, this.detail.id)
+      location.query.returnTo = this.$route.query.returnTo
+      location.query.setup = this.activeSection
+      this.$router.push(location)
     },
-    focusParticipants() {
+    sectionLocation(section) {
+      return { path: this.$route.path, query: { ...this.$route.query, batchId: this.detail.id, setup: section } }
+    },
+    goStudents() {
+      this.$router.push(withInternshipBatch('/admin/internship/students', this.detail.id))
+    },
+    async focusParticipants() {
+      await this.$router.replace(this.sectionLocation('participants'))
+      await this.$nextTick()
       this.$refs.participantScope?.focus()
     },
     async load() {
+      const sequence = ++this.loadSequence
       this.loading = true
       this.error = ''
+      this.detail = null
       const id = this.$route.params.id
-      const res = await internshipApi.getBatchDetail(id)
-      if (id !== this.$route.params.id) return
-      this.loading = false
-      if (res.code !== 0) {
-        this.error = res.message || '批次不存在或无权查看'
-        return
+      try {
+        const res = await internshipApi.getBatchDetail(id)
+        if (sequence !== this.loadSequence || id !== this.$route.params.id) return
+        if (res.code !== 0 || !res.data) throw new Error(res.message || '批次不存在或无权查看')
+        this.detail = res.data
+        const store = useInternshipBatchStore()
+        const cached = store.availableBatches.find((batch) => String(batch.id) === String(this.detail.id))
+        if (cached) {
+          for (const key of ['status', 'batchName', 'batchNo', 'startDate', 'endDate']) cached[key] = this.detail[key]
+          if (String(store.selectedBatchId) === String(this.detail.id)) store.applyBatch(cached)
+        }
+      } catch (error) {
+        if (sequence === this.loadSequence) this.error = error.message || '批次加载失败，请重试'
+      } finally {
+        if (sequence === this.loadSequence) this.loading = false
       }
-      this.detail = res.data
     },
     async openConfirm(mode) {
+      if (!this.canManage) return
       if (mode === 'close') {
         const res = await batchLifecycleApi.getReadiness(this.detail.id)
         if (!res || res.code !== 0) {
@@ -311,6 +345,7 @@ export default {
       this.confirmVisible = true
     },
     async onConfirm(payload) {
+      if (!this.canManage) return
       const d = this.detail
       if (!d) return
       const reason = (payload && payload.reason) || ''
@@ -380,4 +415,25 @@ export default {
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+.bdv-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 22px; color: var(--t2); font-size: 13px; }
+.bdv-identity strong { color: var(--t1); }
+.bdv-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--card-b); overflow-x: auto; }
+.bdv-tabs a { color: var(--t2); text-decoration: none; padding: 8px 2px; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 13px; }
+.bdv-tabs a.is-active { color: var(--pri); border-color: var(--pri); font-weight: 600; }
+.bdv-overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
+.bdv-overview h2, .ix-batch-detail h2 { margin: 0; font-size: 14px; }
+.bdv-next__text { margin: 0 0 16px; color: var(--t2); line-height: 1.85; font-size: 13px; }
+.bdv-lifecycle { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--card-b); padding-top: 12px; margin-top: 20px; color: var(--t3); font-size: 12px; }
+.bdv-footnote { color: var(--t3); line-height: 1.7; font-size: 12px; margin: 18px 0 0; }
+.bdv-rules li { padding: 10px 0; line-height: 1.75; border-bottom: 1px solid var(--card-b); }
+.bdv-rules li:last-child { border: 0; }
+.bdv-rule-list { margin: 0; }
+.bdv-rule-list > div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--card-b); font-size: 13px; line-height: 1.8; }
+.bdv-rule-list > div:first-child { padding-top: 0; }
+.bdv-rule-list > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.bdv-rule-list dt { color: var(--t2); font-weight: 600; }
+.bdv-rule-list dd { margin: 0; color: var(--t2); overflow-wrap: anywhere; }
+@media (max-width: 1120px) { .bdv-overview { grid-template-columns: 1fr; } }
+
 </style>

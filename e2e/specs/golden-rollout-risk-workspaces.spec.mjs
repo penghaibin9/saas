@@ -208,7 +208,7 @@ test.describe.serial('Golden rollout · risk / exception workspaces · Batch 3',
     await openWithApiSession(page, adminApi, '/admin/student-affairs/risk')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/risk/)
-    await expect(page.locator('.sa-grid--metrics')).toBeVisible()
+    await expect(page.getByLabel('业务统计', { exact: true })).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(affairsFixture.riskId).not.toBe('')

@@ -109,7 +109,11 @@ def main() -> int:
     graph = patch_graph()
     used = used_permission_codes()
     missing = sorted(used - STUDENT_AFFAIRS_PERMISSION_CODES)
-    unused = sorted(STUDENT_AFFAIRS_PERMISSION_CODES - used - {"studentAffairs.orientation.view"})
+    # 数字迎新路由通过 make_domain_request_permission() 动态拼出 view/manage，
+    # 源码扫描无法从字符串字面量发现这两个权限码。
+    unused = sorted(STUDENT_AFFAIRS_PERMISSION_CODES - used - {
+        "studentAffairs.orientation.view", "studentAffairs.orientation.manage",
+    })
     role_codes = role_template_permission_codes()
     role_missing = sorted(role_codes - STUDENT_AFFAIRS_PERMISSION_CODES)
     invoked_installers = [item["installer"] for item in graph if item["invoked"]]
@@ -182,8 +186,10 @@ def main() -> int:
         "Array.isArray(row.allowedActions) && row.allowedActions.includes(action)" in dorm_view_source
         and "Array.isArray(row.allowedActions) ? row.allowedActions : []" in mental_view_source
         and "FALLBACK_ACTIONS" not in mental_view_source
-        and "Array.isArray(row?.allowedActions) ? row.allowedActions : []" in workstudy_view_source
-        and "Array.isArray(row?.allowedActions) && row.allowedActions.includes('ADVANCE')" in loan_view_source
+        and "Array.isArray(row?.allowedActions) && row.allowedActions.includes(action)" in workstudy_view_source
+        and "FALLBACK_ACTIONS" not in workstudy_view_source
+        and "Array.isArray(row?.allowedActions) && row.allowedActions.includes(action)" in loan_view_source
+        and "FALLBACK_ACTIONS" not in loan_view_source
         and "Array.isArray(row?.allowedActions) && row.allowedActions.includes(action)" in fee_view_source
     )
     activity_source = (BACKEND / "services" / "affairs_activity_service.py").read_text(encoding="utf-8")
@@ -206,7 +212,8 @@ def main() -> int:
         "install_funding_ext_guard" not in router_source
         and "Compatibility shim" in funding_ext_guard_source
         and all(token in funding_ext_source for token in (
-            '"allowedActions": {', '"allowedActions": ["ADVANCE"]',
+            '"allowedActions": {', "_LOAN_STAFF_ACTIONS", "_FEE_STAFF_ACTIONS",
+            '"RECEIPT": ["VERIFY", "RETURN"]', '"VERIFIED": ["CONFIRM", "RETURN"]',
             "with_for_update()).first()", "岗位录用人数已满", "累计补贴超过金额上限",
             ".offset((page - 1) * page_size).limit(page_size)", 'status_counts["ALL"]',
         ))

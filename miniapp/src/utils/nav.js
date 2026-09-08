@@ -37,13 +37,17 @@ export function go(url) {
 export function relaunch(url) {
   uni.reLaunch({ url: secureTarget(url) })
 }
-export function back() {
+export function back(fallbackUrl = '/pages/login/index') {
   // 强制改密期间不能通过返回按钮回到业务页面。
   if (forcePasswordChangeRequired()) {
     uni.reLaunch({ url: FORCE_PASSWORD_CHANGE_ROUTE })
     return
   }
-  uni.navigateBack({ fail() { uni.reLaunch({ url: '/pages/login/index' }) } })
+  if (typeof getCurrentPages === 'function' && getCurrentPages().length <= 1) {
+    relaunch(fallbackUrl)
+    return
+  }
+  uni.navigateBack({ fail() { relaunch(fallbackUrl) } })
 }
 export function toast(title, icon = 'none') {
   uni.showToast({ title, icon })

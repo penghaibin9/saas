@@ -182,10 +182,15 @@ test('W12 real Browser Role/Menu Projection Seal covers every school role, platf
       const page = await context.newPage()
       const token = await openWithRotatedSession(page, session)
 
-      await expect(page.locator('.bpl-rail__lb').filter({ hasText: session.visibleGroup }).first()).toBeVisible()
-      await expect(page.locator('.bpl-rail__lb').filter({ hasText: session.hiddenGroup })).toHaveCount(0)
-
-      const visibleRail = page.locator('.bpl-rail__item').filter({ hasText: session.visibleGroup }).first()
+      const schoolMenu = page.getByRole('navigation', { name: '一级菜单', exact: true })
+      const visibleRail = session.plane === 'SCHOOL'
+        ? schoolMenu.getByRole('button', { name: session.visibleGroup, exact: true })
+        : page.locator('.bpl-rail__item').filter({ hasText: session.visibleGroup }).first()
+      const hiddenRail = session.plane === 'SCHOOL'
+        ? schoolMenu.getByRole('button', { name: session.hiddenGroup, exact: true })
+        : page.locator('.bpl-rail__lb').filter({ hasText: session.hiddenGroup })
+      await expect(visibleRail).toBeVisible()
+      await expect(hiddenRail).toHaveCount(0)
       await visibleRail.click()
       await expect(page).not.toHaveURL(/\/security\/403|\/(login|platform-login)(?:\?|$)/)
 

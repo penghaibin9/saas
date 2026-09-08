@@ -23,18 +23,25 @@ def test_explicit_batch_resolution_precedes_historical_group_pinning():
 
 
 def test_pc_and_mobile_read_facades_bind_the_same_batch_header():
+    route_names = (
+        "get_catalog_context",
+        "list_catalog_positions",
+        "get_my_volunteers",
+        "get_my_material_preview",
+        "list_my_submission_history",
+        "get_my_submission_version",
+        "submit_my_volunteers",
+        "withdraw_my_volunteers",
+        "request_my_volunteer_unlock",
+        "revoke_my_contact_consent",
+    )
     for router_module in (internship_selection_router, mobile_internship_selection):
         source = inspect.getsource(router_module)
         assert 'alias="X-Internship-Batch-Id"' in source
-        assert "catalog_svc.get_catalog_context(user=user, batch_id=batch_id)" in source
-        assert "catalog_svc.list_catalog_positions(user=user, batch_id=batch_id" in source
-        assert "selection_svc.get_my_volunteers(\n        user=user, batch_id=batch_id)" in source
-        assert "selection_svc.get_my_material_preview(user=user, batch_id=batch_id)" in source
-        assert "action_svc.list_my_submissions(user=user, batch_id=batch_id)" in source
-        assert "selection_svc.submit_my_saved_volunteers(\n        user=user, body=body or {}, batch_id=batch_id)" in source
-        assert "action_svc.withdraw_my_submission(\n        user=user, body=body or {}, batch_id=batch_id)" in source
-        assert "action_svc.request_my_unlock(\n        user=user, body=body or {}, batch_id=batch_id)" in source
-        assert "action_svc.revoke_my_contact_consent(\n        user=user, body=body or {}, batch_id=batch_id)" in source
+        for route_name in route_names:
+            route = getattr(router_module, route_name)
+            assert "batch_id" in inspect.signature(route).parameters
+            assert "batch_id=batch_id" in inspect.getsource(route)
 
 
 def test_all_selection_read_services_forward_explicit_batch_context():

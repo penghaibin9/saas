@@ -21,6 +21,7 @@ from app.modules.internship.services import internship_agreement_service as agr
 from app.modules.internship.services import internship_enterprise_eval_service as ee
 from app.modules.internship.services import internship_guidance_service as gd
 from app.modules.internship.services import internship_leave_service as lv
+from app.modules.internship.services import internship_student_leave_context_service as leave_context
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.internship.services import internship_risk_service as risk
 from app.modules.internship.services import internship_score_service as score
@@ -439,6 +440,12 @@ def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/leaves/return-queue", summary="销假与超期返岗待确认队列（按数据范围）")
+def leave_return_queue(batchId: str = Query(..., min_length=1),
+                       user=Depends(require_permission("internship.leave.view"))):
+    return success(leave_context.list_teacher_overdue(batchId, user))
+
+
 @router.get("/leaves/{leave_id}", summary="请假详情（含附件/审批留痕）")
 def leave_detail(leave_id: str, user=Depends(require_permission("internship.leave.view"))):
     return success(lv.get_leave(leave_id, user=user))
@@ -460,6 +467,15 @@ def leave_review(leave_id: str, body: dict = Body(...), user=Depends(require_per
         expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("审批实习请假", f"internship-leave:{leave_id}", detail=result)
     return success(result, message="审批完成")
+
+
+@router.post("/leaves/{leave_id}/ack-return", summary="确认学生返岗并关闭关联超期风险")
+def leave_ack_return(leave_id: str, body: dict = Body(...),
+                     user=Depends(require_permission("internship.leave.review"))):
+    result = leave_context.ack_overdue_return(user, leave_id, body or {})
+    audit_log.record("确认实习销假返岗", f"internship-leave:{leave_id}",
+                     detail={"risksClosed": result.get("risksClosed", 0)})
+    return success(result, message="返岗已确认，关联风险已同步")
 
 
 # ═══════════ 三方协议签署实例（P2-A：三方确认状态机，owner + 数据范围）═══════════

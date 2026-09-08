@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.services import affairs_aid_service as aid
+from app.services import affairs_aid_workspace as workspace
 
 
 class _Session:
@@ -32,6 +33,8 @@ def test_aid_statement_is_detail_only(monkeypatch):
     monkeypatch.setattr(aid, "_scope_or_403", lambda _db, _student_id, _user: None)
     monkeypatch.setattr(aid, "_family_of", lambda _db, _apply_id: None)
     monkeypatch.setattr(aid, "_pending_objection_ids", lambda _db, _ids: set())
+    # Timeline queries are covered by the real MySQL history test; this unit isolates list/detail fields.
+    monkeypatch.setattr(workspace, "detail_context", lambda _db, _row: {"history": []})
 
     list_row = aid._apply_row(application, student, None)
     detail_row = aid.get_application("7", {})

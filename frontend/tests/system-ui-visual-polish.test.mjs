@@ -30,7 +30,7 @@ const root = new URL('../src/modules/system/', import.meta.url)
 const digest = value => createHash('sha256').update(value).digest('hex')
 function businessScript(source) {
   return parse(source).descriptor.script.content
-    .replace(/^import AppIcon from '@\/components\/ui\/AppIcon.vue'\n/m, '')
+    .replace(/^import AppIcon from '@\/components\/ui\/AppIcon.vue'\r?\n/m, '')
     .replace(/components: \{ AppIcon, /, 'components: { ')
     .replace(/\s+/g, ' ').trim()
 }
