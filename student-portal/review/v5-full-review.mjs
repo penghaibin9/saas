@@ -114,6 +114,10 @@ async function inspectRoute(page, route, viewportKey) {
   }
   await page.goto(`${baseUrl}${route.path}`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
+  if (shouldUseShell(route) && route.kind !== 'state') {
+    await page.locator('.student-workspace').waitFor({ state: 'visible', timeout: 15000 })
+      .catch(() => item.issues.push('学生工作区未在等待期内就绪'))
+  }
   if (shouldUseShell(route)) await setTheme(page, 'blue')
 
   const currentUrl = new URL(page.url())
@@ -148,10 +152,8 @@ async function inspectThemes(page) {
   for (const theme of config.themes) {
     await page.goto(`${baseUrl}${theme.route}`, { waitUntil: 'domcontentloaded' })
     await waitStable(page)
-    const themeGroup = page.getByRole('group', { name: '切换门户主题' })
-    const button = themeGroup.getByRole('button', { name: `切换为${theme.label}` })
-    const found = await button.count()
-    if (found) await setTheme(page, theme.key)
+    // 当前壳将主题放在账户的外观对话框中，必须实际打开并点击。
+    const switched = await setTheme(page, theme.key)
     await sleep(450)
     const data = await page.evaluate(() => {
       const app = document.querySelector('.sp-app')
@@ -164,7 +166,7 @@ async function inspectThemes(page) {
       }
     })
     const layout = await analyzeLayout(page)
-    const technicalPassed = found === 1
+    const technicalPassed = switched === true
       && data.htmlTheme === theme.key
       && data.themeButtons === 4
       && !layout.horizontalOverflow
@@ -187,6 +189,7 @@ async function inspectViewports(page) {
     for (const route of config.routes.filter((entry) => !['public','state'].includes(entry.kind))) {
       await page.goto(`${baseUrl}${route.path}`, { waitUntil: 'domcontentloaded' })
       await waitStable(page)
+      await page.locator('.student-workspace').waitFor({ state: 'visible', timeout: 15000 })
       await setTheme(page, 'blue')
       const layout = await analyzeLayout(page)
       const issues = []

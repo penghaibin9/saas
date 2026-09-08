@@ -37,7 +37,10 @@ def test_teacher_mobile_position_scope_readonly_and_private_fields(client, posit
     for endpoint in (ROOT,ROOT+'/'+row['id']):
         assert client.get(endpoint,headers=headers(9002),params=params).status_code==404
         assert client.get(endpoint,headers=own,params={'batchId':str(other_id)}).status_code==404
-        assert client.get(endpoint,headers=headers(9001,tenant=TENANT+1),params=params).status_code==404
+        # 未获得学校模块授权的租户先被权限门拒绝，不进入对象查询。
+        foreign = client.get(endpoint,headers=headers(9001,tenant=TENANT+1),params=params)
+        assert foreign.status_code == 403
+        assert foreign.json().get('data') is None
         assert client.get(endpoint,headers=headers(9001,role='STUDENT'),params=params).status_code==403
         assert client.get(endpoint,params=params).status_code==401
     assert client.get(ROOT+'/'+str(int(row['id'])+1000),headers=own,params=params).status_code==404

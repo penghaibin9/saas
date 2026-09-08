@@ -134,7 +134,12 @@ def test_enterprise_correction_publication_and_student_pc_mobile_supply_loop(cli
     assert '补正专用公开意见' not in resumed_task['description']
     resubmitted=client.post(f'{PORTAL}/positions/{pid}/submit',headers=enterprise,params=params,json={'expectedVersion':withdrawn.json()['data']['version']})
     assert resubmitted.status_code==200,resubmitted.json()
-    published=client.post(status_url,headers=auth_headers,json={'action':'PUBLISH','expectedVersion':resubmitted.json()['data']['version']})
+    # 企业提交岗位后，由学校配置其负责的打卡围栏，再按新版本上架。
+    configured=client.put(f'{POS}/{pid}',headers=auth_headers,json={
+        'expectedVersion':resubmitted.json()['data']['version'],
+        'geofenceLat':31.23,'geofenceLng':121.47,'geofenceRadiusM':300})
+    assert configured.status_code==200,configured.json()
+    published=client.post(status_url,headers=auth_headers,json={'action':'PUBLISH','expectedVersion':configured.json()['data']['version']})
     assert published.status_code==200,published.json()
     publish_messages=client.get(PORTAL+'/messages',headers=enterprise,params={'readStatus':'UNREAD'}).json()['data']['items']
     assert any(item['msgType']=='WORKFLOW_RESULT' and item['actionParams']['positionId']==pid for item in publish_messages)

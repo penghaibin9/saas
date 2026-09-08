@@ -218,7 +218,8 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     const uploadedPayload = await payloadOf(uploaded)
     expect(uploadedPayload.body?.code, uploadedPayload.text).toBe(0)
     expect(String(uploadedPayload.body?.data?.fileId || '')).not.toBe('')
-    await expect(page.getByText('已上传：', { exact: false }).first()).toBeVisible()
+    await expect(page.locator('.agd-att')).toContainText('待确认登记')
+    await expect(page.getByRole('button', { name: '确认企业已签署', exact: true })).toBeEnabled()
     await formItem(page, '企业经办人').locator('input').fill(ENTERPRISE_SIGNER)
 
     const enterprisePromise = page.waitForResponse((response) =>

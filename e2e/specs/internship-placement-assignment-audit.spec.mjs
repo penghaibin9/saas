@@ -131,6 +131,8 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     companyId = String(createdPayload.body?.data?.id || '')
     expect(companyId).not.toBe('')
 
+    await expect(page).toHaveURL(new RegExp(`/admin/internship/enterprises/${companyId}(?:\\?|$)`))
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     let row = companyRow(page, companyName())
     await expect(row).toBeVisible()
     await row.getByRole('link', { name: '核验准入', exact: true }).click()

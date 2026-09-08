@@ -64,6 +64,8 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     companyId = String(createdPayload.body?.data?.id || '')
     expect(companyId).not.toBe('')
 
+    await expect(page).toHaveURL(new RegExp(`/admin/internship/enterprises/${companyId}(?:\\?|$)`))
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     await expect(page).toHaveURL(/\/admin\/internship\/enterprises(?:\?|$)/)
     let row = companyRow(page, companyName())
     await expect(row).toBeVisible()

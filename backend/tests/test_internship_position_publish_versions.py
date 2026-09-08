@@ -26,6 +26,7 @@ def position(db_mode):
         db.add_all([company, batch]); db.flush()
         row = InternshipPosition(tenant_id=TENANT, company_id=company.id, company_name=company.name,
             batch_id=batch.id, title="虚构验收岗位", status="DRAFT", headcount=3,
+            geofence_lat=31.23, geofence_lng=121.47, geofence_radius_m=300,
             work_content="指导下记录与复盘", daily_hours=8, weekly_hours=40, night_shift=False,
             overtime_allowed=False, rest_days_per_week=2, remuneration_type="MONTHLY",
             remuneration_amount=2000, remuneration_cycle="MONTHLY", accommodation_provided=False,

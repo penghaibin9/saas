@@ -51,7 +51,7 @@ def _seed(db_mode, full_a=True):
     try:
         b = InternshipBatch(
             tenant_id=TID, batch_name="归档测试批次", batch_no=f"ARB-{uuid4().hex[:8]}",
-            status="RUNNING", planned_count=5, end_date=date.today(),
+            status="RUNNING", planned_count=5, start_date=date.today(), end_date=date.today(),
             rules_config={"compliance": {"studentConsent": {"requireGuardianConsentForMinor": False}}})
         db.add(b); db.flush()
         ids["batch"] = b.id
@@ -87,9 +87,10 @@ def _seed(db_mode, full_a=True):
             ra.eligibility_status = "QUALIFIED"
             ra.enterprise_id = company.id
             ra.position_id = position.id
-            db.add(InternshipInsurance(tenant_id=TID, internship_id=a, student_id=sa, status="VERIFIED"))
+            db.add(InternshipInsurance(tenant_id=TID, internship_id=a, student_id=sa, status="VERIFIED",
+                                      effective_date=date.today().isoformat(), expiry_date=date.today().isoformat()))
             db.add(InternshipAgreement(tenant_id=TID, internship_id=a, student_id=sa, status="EFFECTIVE"))
-            db.add(InternshipCheckin(tenant_id=TID, internship_id=a, checkin_date="2026-07-01",
+            db.add(InternshipCheckin(tenant_id=TID, internship_id=a, checkin_date=date.today().isoformat(),
                                      checkin_at=datetime.utcnow(), result="NORMAL"))
             db.add(WeeklyReport(tenant_id=TID, internship_id=a, week_number=1, word_count=800,
                                 report_version=1, submitted_at=datetime.utcnow(), status="APPROVED"))
