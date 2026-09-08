@@ -1,4 +1,4 @@
-name: PR264 integration preparation (not a release gate)
+name: PR264 exact integration repair verification
 on:
   push:
     branches: [codex/academic-affairs-delivery-20260907]
@@ -9,14 +9,29 @@ concurrency:
   group: pr264-repair-inspection
   cancel-in-progress: false
 jobs:
-  prepare:
+  repair:
     if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/codex/academic-affairs-delivery-20260907'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: pr264_isolated
+          MYSQL_DATABASE: student_lifecycle_pr264_test
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ppr264_isolated" --health-interval=10s --health-timeout=5s --health-retries=15
     env:
       MAIN_SHA: b9ef56ff4e29fc76679c590964b7b3273c32d7f2
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:pr264_isolated@127.0.0.1:3306/student_lifecycle_pr264_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:pr264_isolated@127.0.0.1:3306/student_lifecycle_pr264_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      MOCK_LOGIN_ENABLED: 'false'
+      SCHEDULER_MODE: external
     steps:
-      - name: Fetch frozen integration recipe and current exact head
+      - name: Integrate the frozen main and apply only hash-verified reviewed repairs
         shell: bash
         run: |
           set -euo pipefail
@@ -31,46 +46,151 @@ jobs:
           python -m pip install --quiet PyYAML==6.0.3
           python - <<'PY'
           from pathlib import Path
-          import subprocess,yaml
-          raw=subprocess.check_output(['git','show','2a88cf3a91d28c12cc8245ad6e6f0ce326eb3ebf:.github/workflows/pr264-repair-inspect.yml']).decode()
-          steps=yaml.safe_load(raw)['jobs']['prepare']['steps']
-          names={'Reconcile the fourteen reviewed conflicts without discarding either business delivery':'merge', 'Regenerate derived navigation from the merged sources':'generate', 'Run complete frontend unit suite on the integration candidate':'units', 'Publish inspectable Git objects only (never update any branch)':'publish'}
-          for step in steps:
-              if step.get('name') not in names: continue
-              script=step['run']
-              if names[step['name']]=='merge':
-                  old="r'^<<<<<<< .*\\n(.*?)^=======\\n(.*?)^>>>>>>> .*\\n'"
-                  new="r'^<<<<<<< [^\\n]*\\n(.*?)^=======\\n(.*?)^>>>>>>> [^\\n]*\\n'"
-                  assert script.count(old)==1
-                  script=script.replace(old,new)
-              Path('/tmp/pr264-'+names[step['name']]+'.sh').write_text(script)
+          import subprocess, yaml
+          raw = subprocess.check_output(['git','show','2a88cf3a91d28c12cc8245ad6e6f0ce326eb3ebf:.github/workflows/pr264-repair-inspect.yml']).decode()
+          step = next(s for s in yaml.safe_load(raw)['jobs']['prepare']['steps'] if s.get('name') == 'Reconcile the fourteen reviewed conflicts without discarding either business delivery')
+          old = "r'^<<<<<<< .*\\n(.*?)^=======\\n(.*?)^>>>>>>> .*\\n'"
+          new = "r'^<<<<<<< [^\\n]*\\n(.*?)^=======\\n(.*?)^>>>>>>> [^\\n]*\\n'"
+          assert step['run'].count(old) == 1
+          Path('/tmp/pr264-merge.sh').write_text(step['run'].replace(old,new))
           PY
           git -c core.quotePath=false merge --no-commit --no-ff "$MAIN_SHA" || test -n "$(git diff --name-only --diff-filter=U)"
           bash /tmp/pr264-merge.sh
+          python - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          manifest = json.loads(Path('.github/pr264-repair-payload.json').read_text())
+          for name, expected in manifest['expected_blobs'].items():
+              actual = subprocess.check_output(['git','hash-object','--',name]).decode().strip()
+              assert actual == expected, (name,actual,expected)
+          for name in manifest['new_files']:
+              assert not Path(name).exists(), name
+          parts = []
+          for name, expected in manifest['parts'].items():
+              raw = Path(name).read_bytes(); actual = hashlib.sha256(raw).hexdigest()
+              assert actual == expected, (name,actual,expected)
+              parts.append(raw)
+          patch = b''.join(parts)
+          assert hashlib.sha256(patch).hexdigest() == manifest['patch_sha256']
+          Path('/tmp/pr264-reviewed.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','--unidiff-zero','/tmp/pr264-reviewed.patch'],check=True)
+          subprocess.run(['git','apply','--index','--unidiff-zero','/tmp/pr264-reviewed.patch'],check=True)
+          subprocess.run(['git','rm','--','.github/workflows/pr264-repair-inspect.yml','.github/pr264-repair-payload.json',*manifest['parts']],check=True)
+          print('Verified and applied repairs to', len(manifest['expected_blobs']) + len(manifest['new_files']), 'source/test files; temporary transport removed from candidate.')
+          PY
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - name: Generate merged source contracts
-        run: bash /tmp/pr264-generate.sh
-      - name: Full frontend unit suite on integration candidate
-        id: units
-        run: bash /tmp/pr264-units.sh
-      - name: Preserve inspectable candidate objects without moving the branch
-        if: always() && steps.units.outputs.exit_code != ''
+      - name: Regenerate navigation from the integrated source of truth
+        run: |
+          set -euo pipefail
+          npm ci --prefix frontend --no-audit --no-fund > /tmp/pr264-npm.log 2>&1 || { tail -n 60 /tmp/pr264-npm.log; exit 1; }
+          node scripts/check/build-route-index.mjs
+          node scripts/generate-navigation-surface-contract.mjs
+          node scripts/check/generate-capability-registry.mjs
+          git add -- shared/contracts/navigation-surface-contract.json shared/generated/capability-registry.json shared/generated/route-index.json
+          python -m compileall -q backend/app backend/tests
+      - name: Publish exact candidate Git objects without changing any branch
+        id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
-          UNIT_EXIT: ${{ steps.units.outputs.exit_code }}
-        run: bash /tmp/pr264-publish.sh
-      - name: Archive exact tracked candidate source and test log
-        if: always() && steps.units.outputs.exit_code != ''
         run: |
-          git archive --format=tar "$(git write-tree)" | gzip > /tmp/pr264-source.tar.gz
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always() && steps.units.outputs.exit_code != ''
+          python - <<'PY'
+          import json, os, subprocess, urllib.request, urllib.error
+          root = 'https://api.github.com/repos/penghaibin9/saas'
+          def git(*args): return subprocess.check_output(['git',*args])
+          def api(path, data=None):
+              req = urllib.request.Request(root+path,data=json.dumps(data).encode() if data is not None else None,headers={'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST' if data is not None else 'GET')
+              req.add_unredirected_header('Authorization','Bearer '+os.environ['GH_TOKEN'])
+              try:
+                  with urllib.request.urlopen(req,timeout=120) as response: return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  print('Git object API error:', exc.code, exc.read().decode()[:1000], flush=True)
+                  raise
+          parent = os.environ['GITHUB_SHA']; main = os.environ['MAIN_SHA']
+          assert api('/git/ref/heads/codex/academic-affairs-delivery-20260907')['object']['sha'] == parent
+          assert api('/git/ref/heads/main')['object']['sha'] == main
+          tree = git('write-tree').decode().strip()
+          known = set()
+          for ref in [parent, main]:
+              for entry in git('ls-tree','-r','-z',ref).decode().strip('\0').split('\0'):
+                  known.add(entry.split('\t',1)[0].split()[2])
+          entries = []
+          for path in git('diff','--name-only','-z',main,tree).decode().strip('\0').split('\0'):
+              record = git('ls-tree','-z',tree,'--',path).decode().strip('\0')
+              if not record:
+                  entries.append({'path':path,'mode':'100644','type':'blob','sha':None}); continue
+              mode, kind, sha = record.split('\t',1)[0].split()
+              assert kind == 'blob', (path,kind)
+              entry = {'path':path,'mode':mode,'type':kind}
+              if sha in known: entry['sha'] = sha
+              else: entry['content'] = git('cat-file','blob',sha).decode('utf-8')
+              entries.append(entry)
+          base_tree = git('rev-parse',main+'^{tree}').decode().strip()
+          result = api('/git/trees',{'base_tree':base_tree,'tree':entries})
+          assert result['sha'] == tree, (result['sha'],tree)
+          commit = api('/git/commits',{'message':'fix(academic): reconcile main and close tenant, transaction, migration and browser contract regressions','tree':tree,'parents':[parent,main]})
+          receipt = {'candidateCommit':commit['sha'],'tree':tree,'parents':[parent,main],'changedFromMain':len(entries),'branchUpdated':False,'releaseApproved':False}
+          print(json.dumps(receipt,indent=2),flush=True)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write('sha='+commit['sha']+'\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f: f.write('Candidate created for verification; no branch advanced.\n```json\n'+json.dumps(receipt,indent=2)+'\n```\n')
+          PY
+      - name: Check out exact candidate for all tests
+        run: |
+          set -euo pipefail
+          candidate='${{ steps.candidate.outputs.sha }}'
+          git fetch --quiet --no-tags origin "$candidate"
+          git reset --hard "$candidate"
+          test "$(git rev-parse HEAD)" = "$candidate"
+          git diff --exit-code
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          name: pr264-integration-source-${{ github.sha }}
-          path: |
-            /tmp/pr264-source.tar.gz
-            /tmp/pr264-frontend-tests.log
-          retention-days: 3
-          if-no-files-found: error
+          python-version: '3.12'
+      - name: Frontend full unit suite and production build
+        id: frontend
+        if: always() && steps.candidate.outputs.sha != ''
+        shell: bash
+        run: |
+          set +e
+          npm test --prefix frontend > /tmp/pr264-frontend-tests.log 2>&1
+          units=$?
+          npm run build --prefix frontend > /tmp/pr264-frontend-build.log 2>&1
+          build=$?
+          tail -n 16 /tmp/pr264-frontend-tests.log
+          grep -A 32 '^not ok' /tmp/pr264-frontend-tests.log || true
+          tail -n 12 /tmp/pr264-frontend-build.log
+          echo "units=$units build=$build" >> "$GITHUB_STEP_SUMMARY"
+          test "$units" -eq 0 && test "$build" -eq 0
+      - name: Fresh MySQL migration and focused backend regressions
+        id: backend
+        if: always() && steps.candidate.outputs.sha != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r backend/requirements.txt > /tmp/pr264-pip.log 2>&1 || { tail -n 60 /tmp/pr264-pip.log; exit 1; }
+          python - <<'PY'
+          import pymysql
+          connection=pymysql.connect(host='127.0.0.1',user='root',password='pr264_isolated')
+          with connection.cursor() as cursor: cursor.execute('SET GLOBAL log_bin_trust_function_creators = 1')
+          connection.close()
+          PY
+          export PYTHONPATH="$GITHUB_WORKSPACE/backend"
+          (cd backend && alembic upgrade head) > /tmp/pr264-migration.log 2>&1 || { tail -n 70 /tmp/pr264-migration.log; exit 1; }
+          python scripts/check/check-migrated-schema-parity.py
+          ROLLBACK_BASE_REF="$MAIN_SHA" python scripts/check/check-rollback-compatible-migrations.py
+          cd backend
+          pytest -q tests/test_aa_term_current_mysql.py tests/test_aa_orgs.py tests/test_aa_orgs_tier1_r2.py tests/test_aa_org_adjustment_roundtrip.py tests/test_aa_org_adjustment_expand_contract.py tests/test_org_master_governance.py tests/test_aa_classroom_bulk.py tests/test_aa_student_portal_design_tokens.py tests/test_multi_tenant_db_get_scan.py > /tmp/pr264-backend-tests.log 2>&1 || { tail -n 220 /tmp/pr264-backend-tests.log; exit 1; }
+          tail -n 24 /tmp/pr264-backend-tests.log
+      - name: Record verification outcomes without claiming full release approval
+        if: always()
+        run: |
+          echo 'Candidate: ${{ steps.candidate.outputs.sha }}' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Frontend: ${{ steps.frontend.outcome }}; backend: ${{ steps.backend.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Original canonical and production browser gates remain mandatory; no PR merge or deployment performed.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pr264-repair-logs-${{ github.sha }}
+          path: /tmp/pr264-*.log
+          retention-days: 7
+          if-no-files-found: warn
