@@ -1,40 +1,102 @@
 name: Internship downloadable repair
-
 on:
   push:
     branches: [fix/internship-download-repair-20260909]
     paths:
       - '.github/workflows/internship-download-repair.yml'
-      - 'scripts/check/verify-internship-download-repair.py'
       - 'scripts/check/internship-download-repair-trigger.txt'
-
 permissions:
   contents: read
-
 concurrency:
   group: internship-download-repair-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
-  source:
+  backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      SCHEDULER_MODE: external
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent" --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
-      - name: Package exact checked-out source (no credentials or runtime data)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/internship-source
-          git rev-parse HEAD > /tmp/internship-source/checkout-sha.txt
-          git archive --format=tar.gz --output=/tmp/internship-source/source.tar.gz HEAD
-          sha256sum /tmp/internship-source/source.tar.gz > /tmp/internship-source/SHA256SUMS
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Materialize verified patch in disposable worktree
+        run: python scripts/repair-payload/materialize_for_test.py
       - uses: actions/upload-artifact@v4
         with:
-          name: internship-repair-source-${{ github.sha }}
-          path: /tmp/internship-source/
+          name: repair-source-${{ github.run_id }}
+          path: /tmp/repair-proof/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
+      - run: pip install -r backend/requirements.txt cryptography
+      - name: Real MySQL regression
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/download-repair
+          pytest -q tests/test_internship_download_repair_mysql.py tests/test_internship_enterprise_eval.py tests/test_internship_enterprise_e9_facade_contract.py tests/test_internship_placement_snapshot_mysql.py tests/test_internship_score_archive_guard.py --junitxml=test-results/download-repair/junit.xml --timeout=180 --durations=15 2>&1 | tee test-results/download-repair/pytest.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repair-backend-${{ github.run_id }}
+          path: backend/test-results/download-repair/
+          if-no-files-found: warn
+          retention-days: 14
+  enterprise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: enterprise-portal/package-lock.json
+      - name: Materialize verified patch in disposable worktree
+        run: python scripts/repair-payload/materialize_for_test.py
+      - run: npm ci
+        working-directory: enterprise-portal
+      - name: Full enterprise lint tests build and browser fixture
+        working-directory: enterprise-portal
+        run: |
+          set -euo pipefail
+          mkdir -p repair-results
+          cp /tmp/repair-proof/manifest.json repair-results/source-manifest.json
+          npm run lint 2>&1 | tee repair-results/lint.log
+          npm test 2>&1 | tee repair-results/test.log
+          npm run build 2>&1 | tee repair-results/build.log
+          npx playwright install --with-deps chromium
+          npx playwright test e2e/collaboration-lifecycle.spec.mjs --retries=0 2>&1 | tee repair-results/browser.log
+      - name: CI and capacity offline regressions
+        run: |
+          python scripts/check/test_selected_pytest_shards.py
+          python performance/tools/test_download_repair.py
+          node --test performance/k6/test-download-repair.mjs
+          node scripts/check/check-capacity-load-gates.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repair-enterprise-${{ github.run_id }}
+          path: |
+            enterprise-portal/repair-results/
+            enterprise-portal/test-results/
+          if-no-files-found: warn
+          retention-days: 14
