@@ -1,0 +1,169 @@
+name: Security runtime acceptance
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/core/token_store.py"
+      - "backend/app/services/auth_service_db.py"
+      - "backend/app/services/control_plane_auth_service.py"
+      - "backend/app/services/clamav_client.py"
+      - "backend/app/services/file_scan_*.py"
+      - "backend/app/workers/file_scan_worker.py"
+      - "backend/tests/test_security_hardening_revocation.py"
+      - "backend/tests/file_scan_mysql_acceptance.py"
+      - "backend/tests/file_scan_recovery_acceptance.py"
+      - "backend/tests/test_security_runtime_acceptance_contract.py"
+      - "scripts/e2e/auth_two_process_revocation.py"
+      - ".github/workflows/security-runtime-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: 双 HTTP 撤销 + ClamAV 故障恢复
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: security_runtime_acceptance
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+      clamav:
+        image: clamav/clamav:stable
+        ports: ["3310:3310"]
+
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: security_runtime_acceptance
+      DB_USER: root
+      DB_PASSWORD: root
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/security_runtime_acceptance?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/security_runtime_acceptance?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: security-runtime-acceptance
+      REDIS_CONNECT_TIMEOUT: "2"
+      REDIS_SOCKET_TIMEOUT: "2"
+      SCHEDULER_MODE: external
+      MOCK_LOGIN_ENABLED: "false"
+      JWT_SECRET: security-runtime-acceptance-only-secret-at-least-32
+      CORS_ORIGINS: http://127.0.0.1:8000,http://127.0.0.1:8001
+      UPLOAD_DIR: /tmp/security-runtime-uploads
+      FILE_STORAGE_BACKEND: local
+      FILE_ALLOW_ZIP: "true"
+      CLAMAV_ENABLED: "true"
+      FILE_SCAN_REQUIRED: "true"
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: "3310"
+      CLAMAV_CONNECT_TIMEOUT: "2"
+      CLAMAV_READ_TIMEOUT: "60"
+      FILE_SCAN_MAX_ATTEMPTS: "3"
+      FILE_SCAN_RETRY_BASE_SECONDS: "1"
+      PYTHONPATH: ${{ github.workspace }}/backend
+      E2E_AUTH_A: http://127.0.0.1:8000
+      E2E_AUTH_B: http://127.0.0.1:8001
+      E2E_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/security-runtime
+      SECURITY_RUNTIME_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/security-runtime
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen backend dependencies
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pip check
+      - name: Validate runtime acceptance contracts
+        working-directory: backend
+        run: python -m unittest discover -s tests -p test_security_runtime_acceptance_contract.py -v
+      - name: Wait for real ClamAV
+        run: |
+          python - <<'PY'
+          import time
+          from app.services.clamav_client import ClamAVClient
+          for _ in range(180):
+              try:
+                  client = ClamAVClient()
+                  if client.ping():
+                      client.version()
+                      raise SystemExit(0)
+              except Exception:
+                  pass
+              time.sleep(2)
+          raise SystemExit("ClamAV readiness timeout")
+          PY
+      - name: Upgrade real MySQL and seed explicit login roles
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          python scripts/_seed_login_accounts_only.py
+      - name: Targeted revocation and scan unit contracts
+        working-directory: backend
+        run: pytest -q tests/test_security_hardening_revocation.py tests/test_file_scan_clamav.py tests/test_file_scan_state.py -p no:warnings
+      - name: Start two independent FastAPI processes
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/security-runtime-a.log 2>&1 &
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/security-runtime-b.log 2>&1 &
+          python - <<'PY'
+          import time, urllib.request
+          for port in (8000, 8001):
+              url=f"http://127.0.0.1:{port}/health"
+              for _ in range(90):
+                  try:
+                      with urllib.request.urlopen(url, timeout=2) as r:
+                          if r.status == 200: break
+                  except Exception:
+                      time.sleep(1)
+              else:
+                  raise SystemExit(f"backend {port} did not become ready")
+          PY
+      - name: Real HTTP cross-process logout revocation
+        run: python scripts/e2e/auth_two_process_revocation.py
+      - name: Real MySQL and ClamAV clean infected and outage acceptance
+        working-directory: backend
+        run: python tests/file_scan_mysql_acceptance.py
+      - name: Same quarantined file recovers after scanner returns
+        working-directory: backend
+        run: python tests/file_scan_recovery_acceptance.py
+      - name: Upload sanitized runtime receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/security-runtime
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Failure-only service logs
+        if: failure()
+        run: |
+          echo "===== backend A ====="; tail -n 120 /tmp/security-runtime-a.log || true
+          echo "===== backend B ====="; tail -n 120 /tmp/security-runtime-b.log || true
