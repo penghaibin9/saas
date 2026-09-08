@@ -13,8 +13,8 @@ def test_extension_dtos_return_version_and_backend_actions():
     assert text.count('"version": int(') >= 4
     assert '"APPLIED": ["APPROVE", "REJECT"]' in text
     assert '"APPROVED": ["ONBOARD", "TERMINATE"]' in text
-    assert 'x.status in _LOAN_NEXT' in text
-    assert '"APPROVED": ["ISSUE"]' in text
+    assert '(_LOAN_STUDENT_ACTIONS if student_view else _LOAN_STAFF_ACTIONS).get(x.status, [])' in text
+    assert '"APPROVED": ["FULFILL"]' in text
 
 
 def test_work_study_capacity_and_monthly_totals_are_locked():

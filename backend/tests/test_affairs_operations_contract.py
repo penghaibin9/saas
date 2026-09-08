@@ -184,7 +184,7 @@ def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():
     assert "reviewRequirement" in api
     assert "createBatchJob" in api
     assert "retryFailed" in api
-    assert "家庭经济与心理材料仅限授权人员查看，请在当前学生范围内办理。" in page
+    assert "家庭经济与心理材料仅限授权人员查看。" in page
     assert "row.allowedActions" in page and "row.version" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "/admin/student-affairs/material-operations" in routes

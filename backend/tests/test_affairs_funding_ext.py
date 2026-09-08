@@ -14,10 +14,14 @@ def _hdr(client, login_name):
 
 
 def test_work_study_flow(client, db_mode):
+    from affairs_contract_test_support import ensure_role_user
+    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
-    pid = client.post(f"{BASE}/work-study/posts", headers=hdr, json={
-        "deptName": "图书馆", "postName": "书库整理员", "salary": 800, "headcount": 3}).json()["data"]["postId"]
+    created_post = client.post(f"{BASE}/work-study/posts", headers=hdr, json={
+        "deptName": "图书馆", "postName": "书库整理员", "salary": 800, "headcount": 3}).json()
+    assert created_post["code"] == 0, created_post
+    pid = created_post["data"]["postId"]
     assert len(client.get(f"{BASE}/work-study/posts", headers=hdr).json()["data"]["items"]) >= 1
     # 申请
     rid = client.post(f"{BASE}/work-study/posts/{pid}/apply", headers=hdr, json={"studentId": sid}).json()["data"]["recordId"]
@@ -53,11 +57,15 @@ def test_work_study_flow(client, db_mode):
 
 
 def test_loan_flow(client, db_mode):
+    from affairs_contract_test_support import ensure_role_user
+    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
-    lid = client.post(f"{BASE}/loans", headers=hdr, json={
+    created_loan = client.post(f"{BASE}/loans", headers=hdr, json={
         "studentId": sid, "loanType": "ORIGIN", "bankName": "农行", "bankLast4": "6411",
-        "yearCode": "2025-2026", "amount": 8000, "receiptCode": "TEST-2025-6411"}).json()["data"]["loanId"]
+        "yearCode": "2025-2026", "amount": 8000, "receiptCode": "TEST-2025-6411"}).json()
+    assert created_loan["code"] == 0, created_loan
+    lid = created_loan["data"]["loanId"]
     lst = client.get(f"{BASE}/loans", headers=hdr).json()["data"]["items"]
     row = next(x for x in lst if x["loanId"] == lid)
     assert row["bankLast4"] == "6411" and row["status"] == "RECEIPT"

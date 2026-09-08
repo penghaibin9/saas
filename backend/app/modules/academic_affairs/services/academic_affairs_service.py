@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import json
 import re
 from datetime import datetime, timedelta
@@ -813,7 +814,7 @@ def _resolve_org_names(db, s):
     from app.models import College, Major, SchoolClass
     college_name = major_name = class_name = ""
     if s.class_id:
-        c = db.get(SchoolClass, int(s.class_id))
+        c = tenant_get(db, SchoolClass, int(s.class_id))
         if c and not c.is_deleted and c.tenant_id == _tid():
             class_name = c.class_name
     if s.major_id:
@@ -1533,7 +1534,7 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
 def _precheck(db, student_id) -> dict:
     """注册预检：只读迎新台账（报到/缴费/材料/绿通），不复制。无迎新数据则默认通过。"""
     from app.models import OrientationStudent, StudentProfile
-    s = db.get(StudentProfile, int(student_id))
+    s = tenant_get(db, StudentProfile, int(student_id))
     ori = db.scalars(select(OrientationStudent).where(
         OrientationStudent.tenant_id == _tid(),
         OrientationStudent.name == (s.real_name if s else ""),
@@ -1557,7 +1558,7 @@ def register_student(batch_id, user, student_id) -> dict:
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
         if b.status != "OPEN":
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
-        s = db.get(StudentProfile, int(student_id))
+        s = tenant_get(db, StudentProfile, int(student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
         dup = db.scalars(select(AaRegistration).where(
@@ -1716,10 +1717,10 @@ def _require_school_scope(ctx):
 
 def _counselor_of(db, student_id):
     from app.models import SchoolClass, StudentProfile
-    s = db.get(StudentProfile, int(student_id))
+    s = tenant_get(db, StudentProfile, int(student_id))
     if not s or not s.class_id:
         return 0
-    c = db.get(SchoolClass, int(s.class_id))
+    c = tenant_get(db, SchoolClass, int(s.class_id))
     return int(c.counselor_id) if c and c.counselor_id else 0
 
 

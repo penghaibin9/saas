@@ -5,7 +5,7 @@ import { parse, compileTemplate } from '@vue/compiler-sfc'
 import { findActiveInPlan, getVisibleNavPlan } from '../src/config/navPlan.js'
 import { workspaceCurrentPage, workspacePages } from '../src/components/workspace/teacherWorkspace.js'
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/InternshipMaterialCenterView.vue', import.meta.url), 'utf8'))
-const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').replace(/^  components:.*\r?\n/m, '').replace('export default', 'return')
+const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').replace(/^ {2}components:.*\r?\n/m, '').replace('export default', 'return')
 const file = (fileId = '9007199254740999', safe = true) => ({ fileId, versionId: '9007199254740998', versionNo: 2, fileName: '测试材料.pdf', canPreview: safe, canDownload: safe, readyForBusiness: safe })
 const detail = (id = '2', items = [file()]) => ({ internshipId: id, batchId: '1', studentName: '测试学生', items, summary: { total: items.length, ready: items.filter(f => f.readyForBusiness).length, unsafe: items.filter(f => !f.readyForBusiness).length }, manifest: null })
 function setup(api = {}, permission = () => true) {

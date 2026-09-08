@@ -64,7 +64,7 @@ async function assertRoleHomeDestination(page, entryLabel, expectedPath) {
 async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-  const graduationRail = page.locator('.bpl-rail__item').filter({ hasText: '毕业设计中心' }).first()
+  const graduationRail = page.getByRole('navigation', { name: '一级菜单', exact: true }).getByRole('button', { name: '毕业设计中心', exact: true })
   await expect(graduationRail).toBeVisible()
   await graduationRail.click()
   await expect(page).toHaveURL(/\/admin\/graduation(?:\?|$)/)

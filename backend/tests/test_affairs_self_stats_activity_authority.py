@@ -25,9 +25,10 @@ def test_statistics_are_scoped_and_missing_metrics_are_not_fake_zero():
     assert "activity_scope._teacher_scope_tokens" in text
     assert "StudentProfile.class_id.in_(allowed_classes or {-1})" in text
     assert "统计口径缺少必需字段" in text
-    assert '"key": "workStudy"' in text
-    assert '"key": "archive"' in text
-    assert '"key": "family"' in text
+    assert '"workStudy": _work_study_stats' in text
+    assert '"archive": _archive_stats' in text
+    assert '"family": _family_stats' in text
+    assert 'cockpit._supplemental_stats = supplemental_stats' in text
 
 
 def test_activity_create_and_state_actions_are_server_scoped():

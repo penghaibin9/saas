@@ -6,6 +6,7 @@ DB_ENABLED=true 时，students / approvals / todos / messages / audit 全部走�
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 from typing import Optional
 
@@ -268,7 +269,7 @@ def create_student(body) -> dict:
         except IntegrityError as e:
             db.rollback()
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
-        s = db.get(StudentProfile, result.student_id)
+        s = tenant_get(db, StudentProfile, result.student_id)
         db.refresh(s)
         _org_names(db, [s])
         row = _student_row(s, body.phone)

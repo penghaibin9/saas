@@ -121,7 +121,7 @@ try {
 
   await page.goto(`${baseUrl}/campus-service`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  await setTheme(page, 'orange')
+  await setTheme(page, 'sage')
   const leaveTab = page.locator('button.sp-tab:visible', { hasText: '请假销假' }).first()
   if (await leaveTab.count()) await leaveTab.click()
   await sleep(500)

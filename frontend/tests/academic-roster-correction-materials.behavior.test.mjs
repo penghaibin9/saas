@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 const source = parse(fs.readFileSync(new URL('../src/modules/academicAffairs/views/AaRosterCorrectionListView.vue', import.meta.url), 'utf8')).descriptor.script.content
-const script = source.replace(/^import[^\n]*\n/gm, '').replace(/  components: \{[\s\S]*?\},/, '').replace('export default', 'return')
+const script = source.replace(/^import[^\n]*\n/gm, '').replace(/ {2}components: \{[\s\S]*?\},/, '').replace('export default', 'return')
 function view(api = {}, sdk = {}) {
   const definition = new Function('academicAffairsApi', 'fileSdk', 'toast', script)(api, { normalize: file => file, ...sdk }, { success() {}, error() {} })
   const vm = { $route: { query: {} } }

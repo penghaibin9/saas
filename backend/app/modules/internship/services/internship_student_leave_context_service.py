@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 
 from sqlalchemy import select
@@ -146,9 +147,9 @@ def list_teacher_overdue(batch_id, user: dict) -> dict:
         for row in rows:
             if row.id in acknowledged_ids:
                 continue
-            record = db.get(InternshipRecord, row.internship_id)
-            student = db.get(StudentProfile, row.student_id)
-            if not record or str(record.batch_id or "") != str(batch_id or ""):
+            record = tenant_get(db, InternshipRecord, row.internship_id)
+            student = tenant_get(db, StudentProfile, row.student_id)
+            if not record or not student or record.student_id != row.student_id or str(record.batch_id or "") != str(batch_id or ""):
                 continue
             if not _rec_in_scope(scope, db, record, student):
                 continue
@@ -164,8 +165,10 @@ def ack_overdue_return(user: dict, leave_id, body: dict) -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     with session() as db:
         row = _locked(db, leave_id)
-        record = db.get(InternshipRecord, row.internship_id)
-        student = db.get(StudentProfile, row.student_id)
+        record = tenant_get(db, InternshipRecord, row.internship_id)
+        student = tenant_get(db, StudentProfile, row.student_id)
+        if not record or not student or record.student_id != row.student_id:
+            raise no_permission("请假关联的实习与学生不属于当前学校或不一致")
         if not _rec_in_scope(_current_scope(user), db, record, student):
             raise no_permission("只能办结本人指导学生的请假")
         _expected(payload.get("expectedVersion"), row.version)

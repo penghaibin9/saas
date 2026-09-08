@@ -185,7 +185,7 @@ def _orientation_payload(o, db=None) -> dict:
     if school_class and school_class.is_deleted:
         school_class = None
     checkin_credential = token_status(db, o, qualification=qualification)
-    batch = db.get(OrientationBatch, int(o.batch_id))
+    batch = tenant_get(db, OrientationBatch, int(o.batch_id))
     dorm = _dorm_projection(db, o, for_student=True)
     if dorm.get("status") == "HIDDEN":
         qualification.get("facts", {}).get("dorm", {}).pop("bedId", None)

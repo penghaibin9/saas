@@ -17,7 +17,8 @@ function statusText(item){return item.riskFlag?'风险':(statusLabels[item.statu
 function countText(value){return value===undefined||value===null?'—':value}
 async function load(){
   const seq=++requestSeq;loading.value=true;error.value='';workingId.value=null
-  if(!scopeMatches.value||!context.recruitmentContextReady){items.value=[];total.value=0;loading.value=false;error.value='此列表链接的招聘季与当前工作区不一致，请重新选择招聘季';return}
+  if(!context.recruitmentContextReady){items.value=[];total.value=0;loading.value=false;error.value='招聘访问已结束或未获授权，可继续已有的实习协同';return}
+  if(!scopeMatches.value){items.value=[];total.value=0;loading.value=false;error.value='此列表链接的招聘季与当前工作区不一致，请重新选择招聘季';return}
   try{
     if(JSON.stringify(positionListQuery(route.query))!==JSON.stringify(listQuery()))await router.replace({path:'/positions',query:listQuery()})
     if(!alive||seq!==requestSeq)return
@@ -47,7 +48,7 @@ onBeforeUnmount(()=>{alive=false;requestSeq++;clearTimeout(searchTimer)})
 <template>
   <section class="ep-page">
     <div class="ep-page-head"><div><h1 class="ep-title">我的岗位</h1><p class="ep-subtitle">集中管理企业在当前招聘季的岗位草稿、学校审核、发布和下线状态；企业只处理自身岗位，发布状态由学校端统一管理。</p></div><RouterLink v-if="context.recruitmentWritable" :to="{path:'/positions/new',query:listQuery()}" class="ep-btn ep-btn-primary">+ 创建实习岗位</RouterLink></div>
-    <div v-if="context.historyMode" class="history-note">招聘季已关闭：岗位记录保留为历史只读，不再允许创建、编辑、提交或撤回。</div>
+    <div v-if="context.historyMode && context.recruitmentContextReady" class="history-note">招聘季已关闭：岗位记录保留为历史只读，不再允许创建、编辑、提交或撤回。</div>
     <div class="toolbar-card ep-card"><div class="search-wrap"><span>搜索</span><input v-model="keyword" aria-label="搜索岗位名称或关键词" :disabled="workingId!==null" class="ep-input" placeholder="输入岗位名称或关键词"></div><div class="tabs" role="group" aria-label="按岗位状态筛选"><button v-for="tab in tabs" :key="tab[0]" class="tab" :class="{active:active===tab[0]}" :aria-pressed="active===tab[0]" :disabled="workingId!==null" @click="active=tab[0]">{{ tab[1] }}</button></div><div class="total-chip"><strong>{{ total }}</strong><span>岗位</span></div></div>
     <div v-if="error" class="ep-error" role="alert">{{ error }}<button v-if="scopeMatches" class="ep-btn" type="button" :disabled="loading||workingId!==null" @click="load">重新读取</button><RouterLink v-else to="/campaign-select">选择招聘季</RouterLink></div>
     <div v-if="loading" class="ep-card ep-empty">正在加载岗位…</div><div v-else-if="!items.length" class="ep-card ep-empty">暂无符合条件的岗位</div>

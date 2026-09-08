@@ -86,7 +86,7 @@ async function openStudentAgreementTab(page, fixture) {
 
 async function generateAgreement(page, fixture) {
   await page.goto(`${config.staffBaseUrl}/admin/internship/agreements?batchId=${encodeURIComponent(fixture.batchId)}&panel=issue`)
-  await page.getByRole('button', { name: '＋ 生成协议', exact: true }).click()
+  await page.getByRole('button', { name: '生成协议', exact: true }).click()
   await pickInternshipStudent(page, fixture)
   const templateField = formItem(page, '协议模板')
   await templateField.locator('select').selectOption({ label: fixture.templateName })
@@ -96,7 +96,7 @@ async function generateAgreement(page, fixture) {
     apiPath(response) === '/api/v1/internship/agreements'
       && response.request().method() === 'POST'
   )
-  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await page.getByRole('button', { name: '生成草稿', exact: true }).click()
   const created = await createPromise
   const createPayload = await payloadOf(created)
   expect(createPayload.body?.code, createPayload.text).toBe(0)

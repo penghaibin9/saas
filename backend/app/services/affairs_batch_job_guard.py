@@ -1,6 +1,7 @@
 """学工批处理安全门：请假逾期扫描与资助发放台账的并发、范围和副作用。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import re
 from datetime import datetime
 
@@ -151,7 +152,7 @@ def install() -> None:
                 f"你的资助已发放，批次号：{number}", "WORKFLOW_RESULT", row.application_id,
             )
             db.commit(); db.refresh(row)
-            student = db.get(StudentProfile, int(row.student_id))
+            student = tenant_get(db, StudentProfile, int(row.student_id))
             result = disbursement_row(row, user, student)
         funding._drain_message_outbox()
         return result
@@ -181,7 +182,7 @@ def install() -> None:
                 "STATUS_CHANGED", row.application_id,
             )
             db.commit(); db.refresh(row)
-            student = db.get(StudentProfile, int(row.student_id))
+            student = tenant_get(db, StudentProfile, int(row.student_id))
             result = disbursement_row(row, user, student)
         funding._drain_message_outbox()
         return result

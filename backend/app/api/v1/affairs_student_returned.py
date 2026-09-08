@@ -1,6 +1,7 @@
 """学生本人困难认定、奖助申请退回修改与重新提交。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import json
 from datetime import datetime
 
@@ -232,7 +233,7 @@ def aid_resubmit(
         atomic_claim_version(db, row, body.get("version"))
         first = aid.AID_NODES[0]
         assignee = aid._assignee_for(db, first, row.student_id)
-        workflow = db.get(WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
+        workflow = tenant_get(db, WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
         if not workflow:
             workflow = aid._open_wf(db, row.id, row.student_id, f"{student.real_name} 困难认定", first, assignee)
             row.workflow_instance_id = workflow.id
@@ -349,7 +350,7 @@ def funding_resubmit(
         snapshot["amountAuthority"] = amount_authority
         first = funding.FUND_NODES[0]
         assignee = funding._assignee_for(db, first, row.student_id)
-        workflow = db.get(WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
+        workflow = tenant_get(db, WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
         if not workflow:
             workflow = funding._open_wf(
                 db, row.id, row.project_type, row.student_id,

@@ -4,7 +4,7 @@ import test from 'node:test'
 import { parse, compileTemplate } from '@vue/compiler-sfc'
 
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/InternshipEnterpriseListView.vue', import.meta.url), 'utf8'))
-const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/  components: \{[^\n]*\},/, '').replace('export default', 'return')
+const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[^\n]*\},/, '').replace('export default', 'return')
 const ok = data => ({ code: 0, data })
 function setup(api = {}, query = {}, allowed = true) {
   const def = new Function('internshipApi', 'toast', 'canCode', script)(api, { error() {} }, () => allowed)

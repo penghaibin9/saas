@@ -4,6 +4,7 @@
 数据范围复用 _allowed_class_ids（辅导员限本班）。
 """
 
+from app.core.tenant_scoped import tenant_get
 from app.core.optimistic_lock import atomic_claim_version
 
 import re
@@ -459,7 +460,7 @@ def withdraw_work_study_self(record_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_work_study_todos
         sync_work_study_todos(db, record)
         db.commit(); db.refresh(record)
-        return _ws_row(record, db.get(StudentProfile, int(record.student_id)), user)
+        return _ws_row(record, tenant_get(db, StudentProfile, int(record.student_id)), user)
 
 
 def _load_ws(db, rid):
@@ -538,7 +539,7 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None,
         from app.services.affairs_funding_todo_service import sync_work_study_todos
         sync_work_study_todos(db, record)
         db.commit(); db.refresh(record)
-        student = db.get(StudentProfile, int(record.student_id))
+        student = tenant_get(db, StudentProfile, int(record.student_id))
         return _ws_row(record, student, user)
 
 
@@ -815,7 +816,7 @@ def loan_action(loan_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_loan_todos
         sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
-        student = db.get(StudentProfile, int(row.student_id))
+        student = tenant_get(db, StudentProfile, int(row.student_id))
         return _loan_row(row, student, user)
 
 
@@ -904,7 +905,7 @@ def resubmit_loan_self(loan_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_loan_todos
         sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
-        return _loan_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True)
+        return _loan_row(row, tenant_get(db, StudentProfile, int(row.student_id)), user, student_view=True)
 
 
 def withdraw_loan_self(loan_id, body, user) -> dict:
@@ -928,7 +929,7 @@ def withdraw_loan_self(loan_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_loan_todos
         sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
-        return _loan_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True)
+        return _loan_row(row, tenant_get(db, StudentProfile, int(row.student_id)), user, student_view=True)
 
 
 # ═══════════ 减免与临时补助 ═══════════
@@ -1204,7 +1205,7 @@ def fee_action(fee_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_reduction_todos
         sync_reduction_todos(db, x)
         db.commit(); db.refresh(x)
-        s = db.get(StudentProfile, int(x.student_id))
+        s = tenant_get(db, StudentProfile, int(x.student_id))
         return _fee_row(x, s, user, db=db)
 
 
@@ -1287,7 +1288,7 @@ def resubmit_reduction_self(fee_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_reduction_todos
         sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
-        return _fee_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True, db=db)
+        return _fee_row(row, tenant_get(db, StudentProfile, int(row.student_id)), user, student_view=True, db=db)
 
 
 def withdraw_reduction_self(fee_id, body, user) -> dict:
@@ -1311,7 +1312,7 @@ def withdraw_reduction_self(fee_id, body, user) -> dict:
         from app.services.affairs_funding_todo_service import sync_reduction_todos
         sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
-        return _fee_row(row, db.get(StudentProfile, int(row.student_id)), user, student_view=True, db=db)
+        return _fee_row(row, tenant_get(db, StudentProfile, int(row.student_id)), user, student_view=True, db=db)
 
 
 # ═══════════ 勤工月度考核（月度考核→累计补贴）═══════════

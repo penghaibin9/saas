@@ -5,7 +5,7 @@ import { parse, compileTemplate } from '@vue/compiler-sfc'
 import { POSITION_STATUS } from '../src/modules/internship/constants/position.constants.js'
 
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/InternshipPositionListView.vue', import.meta.url), 'utf8'))
-const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/  components: \{[^\n]*\},/, '').replace('export default', 'return')
+const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[^\n]*\},/, '').replace('export default', 'return')
 const ok = data => ({ code: 0, data })
 const rights = ['internship.position.view', 'internship.position.manage', 'internship.position.publish', 'internship.position.export', 'internship.enterprise.view']
 function setup(api = {}, query = { batchId: '1' }, permissions = rights) {

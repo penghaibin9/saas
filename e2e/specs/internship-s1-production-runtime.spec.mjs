@@ -116,7 +116,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
   test('S1-03 BASE_PATH / route refresh：Student PC 深路由硬刷新仍可用', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     await page.goto(`${config.studentBaseUrl}/internship`)
-    await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '二级菜单', exact: true }).getByRole('button', { name: '我的实习', exact: true })).toBeVisible()
 
     const batchSelector = page.getByText('请选择要办理的实习批次', { exact: true })
     const companyName = page.getByText(fixture.companyName, { exact: false }).first()
@@ -132,7 +132,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     await expect(companyName).toBeVisible()
     assertHttpsRuntime(page)
     await page.reload()
-    await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '二级菜单', exact: true }).getByRole('button', { name: '我的实习', exact: true })).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
     assertHttpsRuntime(page)
   })

@@ -85,7 +85,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
   test('管理员真实创建批次：规则权重错误先在浏览器阻断，修正后创建并刷新持久化', async ({ page }) => {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches`)
-    await expect(page.getByText('实习批次设置').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '批次管理', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '新建批次' }).click()
     await expect(page.getByText('新建实习批次').first()).toBeVisible()
 

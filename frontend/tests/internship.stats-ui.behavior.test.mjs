@@ -4,7 +4,7 @@ import test from 'node:test'
 import { parse, compileTemplate } from '@vue/compiler-sfc'
 
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/StatsView.vue', import.meta.url), 'utf8'))
-const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').replace(/^  components:.*\r?\n/m, '').replace('export default', 'return')
+const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').replace(/^ {2}components:.*\r?\n/m, '').replace('export default', 'return')
 const result = data => ({ code: 0, data })
 const overview = () => result({ counters: [{ key: 'total', value: 3 }], metrics: [{ key: 'placementRate', label: '实习落实率', numerator: 1, denominator: 3, rate: 33.3, threshold: 95, warn: true }], generatedAt: '2026-09-07T10:00:00' })
 function setup(api = {}, permission = () => true) {

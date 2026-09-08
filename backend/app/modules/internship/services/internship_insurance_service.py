@@ -235,7 +235,7 @@ def student_submit(user, body) -> dict:
             **({"previousPolicy": previous} if previous else {}),
         }, _op_name(user))
         db.commit()
-        ins = db.get(InternshipInsurance, ins.id)
+        ins = tenant_get(db, InternshipInsurance, ins.id)
         return _row(ins, rec, stu, batch=batch)
 
 
@@ -283,7 +283,7 @@ def verify_insurance(insurance_id, action: str, comment: str = "", *, expected_v
             "comment": (comment or "").strip(), "newVersion": new_version,
         }, _op_name(user))
         db.commit()
-        ins = db.get(InternshipInsurance, ins.id)
+        ins = tenant_get(db, InternshipInsurance, ins.id)
         return _row(ins, rec, stu, batch=tenant_get(db, InternshipBatch, rec.batch_id))
 
 

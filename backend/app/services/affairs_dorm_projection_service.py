@@ -152,6 +152,8 @@ def install() -> None:
                 "bedId": str(row.id), "roomId": str(row.room_id), "bedNo": row.bed_no,
                 "status": row.status, "studentId": str(row.student_id or ""),
                 "occupantName": students[int(row.student_id)].real_name if row.student_id and int(row.student_id) in students else None,
+                "studentName": students[int(row.student_id)].real_name if row.student_id and int(row.student_id) in students else None,
+                "studentNo": students[int(row.student_id)].student_no if row.student_id and int(row.student_id) in students else None,
                 "reservedStudentId": str(reserved_by_bed.get(int(row.id), "")),
                 "reservedStudentName": students[reserved_by_bed[int(row.id)]].real_name if reserved_by_bed.get(int(row.id)) in students else "",
                 "reservedStudentNo": students[reserved_by_bed[int(row.id)]].student_no if reserved_by_bed.get(int(row.id)) in students else "",

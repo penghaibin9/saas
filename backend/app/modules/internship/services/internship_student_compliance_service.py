@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 
 from sqlalchemy import select
@@ -225,7 +226,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
                 "operation": operation,
             }
         if batch is None and rec.batch_id:
-            batch = db.get(InternshipBatch, rec.batch_id)
+            batch = tenant_get(db, InternshipBatch, rec.batch_id)
         rules = get_batch_compliance_rules(db, batch)
         items = []
 
@@ -395,7 +396,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         ))
 
         fcfg = rules["specialFiling"]
-        position = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
         from app.modules.internship.services.internship_special_filing_service import evaluate_triggers
         triggers = evaluate_triggers(position, student, None) if fcfg.get("required") else []
         filings = db.scalars(select(InternshipSpecialFiling).where(
@@ -424,7 +425,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         elif not position:
             status, reason = "MISSING", "尚未落实岗位，无法核验岗位权益"
         else:
-            company = db.get(EmpCompany, position.company_id) if position.company_id else None
+            company = tenant_get(db, EmpCompany, position.company_id) if position.company_id else None
             rights = evaluate_position_publishability(
                 position, company, batch, student, operation=operation, db=db)
             status = "VALID" if rights.get("passed") else "REJECTED"

@@ -115,7 +115,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
   test('IX-009 前置：学校浏览器创建并准入企业，企业真实加入当前招聘季', async ({ page }) => {
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/enterprises`)
-    await page.getByRole('button', { name: '＋ 新增企业', exact: true }).click()
+    await page.getByRole('button', { name: '新增企业', exact: true }).click()
     await formItem(page, '企业名称').locator('input').fill(companyName())
     await formItem(page, '统一社会信用代码').locator('input').fill(creditCode())
     await formItem(page, '联系人').locator('input').fill('IX009企业联系人')
@@ -133,9 +133,12 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
 
     let row = companyRow(page, companyName())
     await expect(row).toBeVisible()
-    await row.getByRole('button', { name: '审核通过', exact: true }).click()
+    await row.getByRole('link', { name: '核验准入', exact: true }).click()
+    await page.getByRole('button', { name: '审核通过', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: '通过（资质合格）', exact: true }).click()
+    await expect(page.getByRole('button', { name: '暂停合作', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     row = companyRow(page, companyName())
     await expect(row).toContainText('合作中')
 
@@ -156,9 +159,9 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(inviteToken).not.toBe('')
 
     await page.goto(`${enterpriseBaseUrl}/invite/accept?token=${encodeURIComponent(inviteToken)}&tenantCode=${encodeURIComponent(fixture.tenantCode)}`)
-    await page.getByLabel('验证受邀手机号').fill(enterprisePhone)
+    await page.getByLabel('受邀手机号').fill(enterprisePhone)
     await page.getByLabel(/设置密码/).fill(ENTERPRISE_PASSWORD)
-    await page.getByRole('button', { name: '接受邀请并进入企业协同中心', exact: true }).click()
+    await page.getByRole('button', { name: '激活账号并接受邀请', exact: true }).click()
     await expect(page).toHaveURL(/\/enterprise\/home/)
   })
 
