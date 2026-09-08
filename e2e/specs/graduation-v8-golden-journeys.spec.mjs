@@ -87,14 +87,14 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   }
   const workspaceLabel = workspaceByEntry[entryLabel]
   expect(workspaceLabel, `缺少 ${entryLabel} 的 Role Home 工作区映射`).toBeTruthy()
-  const workspace = page.locator('.bpl-tree__mod').filter({ hasText: workspaceLabel }).first()
-  const leaf = page.locator('.bpl-tree__leaf').filter({ hasText: entryLabel }).first()
-  if (!(await leaf.isVisible().catch(() => false))) {
-    await expect(workspace).toBeVisible()
-    await workspace.click()
-    await expect(leaf, `Role Home 侧栏必须展开 ${workspaceLabel}`).toBeVisible()
-    await settle(page)
-  }
+  const workspace = page.getByRole('navigation', { name: '二级菜单', exact: true })
+    .getByRole('button', { name: workspaceLabel, exact: true })
+  await expect(workspace).toBeVisible()
+  await workspace.click()
+  const leaf = page.getByRole('navigation', { name: '三级菜单', exact: true })
+    .getByRole('button', { name: entryLabel, exact: true })
+  await expect(leaf, `Role Home 侧栏必须展开 ${workspaceLabel}`).toBeVisible()
+  await settle(page)
   await expect(leaf, `Role Home 侧栏必须能找到 ${workspaceLabel} → ${entryLabel}`).toBeVisible()
   await leaf.click()
   await assertRoleHomeDestination(page, entryLabel, expectedPath)
