@@ -137,8 +137,12 @@ export default {
         // only schedule a repair when the live Graduation route truly lost its
         // query. Explicit URL batchId always remains authoritative.
         if (!id && this.$route?.path?.startsWith('/admin/graduation')) {
+          const sourceFullPath = this.$route.fullPath
           void Promise.resolve(loading)
-            .then(() => this.syncBatchToUrl?.())
+            .then(() => {
+              // A delayed repair belongs only to the route that requested it.
+              if (this.$route.fullPath === sourceFullPath) return this.syncBatchToUrl?.()
+            })
             .catch(() => {})
         }
       }
@@ -197,6 +201,8 @@ export default {
       await this.syncBatchToUrl()
     },
     async syncBatchToUrl() {
+      // Context loading may finish after the shared frame leaves this center.
+      if (!/^\/admin\/graduation(?:\/|$)/.test(this.$route?.path || '')) return
       const store = useGraduationBatchStore()
       const cur = this.$route.query.batchId ? String(this.$route.query.batchId) : ''
       const next = store.selectedBatchId || ''
@@ -205,12 +211,9 @@ export default {
       }
     },
     onMenuSelect(item) {
-      if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
-        const store = useGraduationBatchStore()
-        const path = item.path
-        const batchQ = store.selectedBatchId ? `batchId=${encodeURIComponent(store.selectedBatchId)}` : ''
-        let target = path
-        if (batchQ && !/[?&]batchId=/.test(path)) target = path.includes('?') ? `${path}&${batchQ}` : `${path}?${batchQ}`
+      if (!item?.path) return
+      const target = this.resolveWorkspaceDestination(item.path)
+      if (target && target !== this.$route.fullPath) {
         router.push(target).catch(() => {})
       }
     }
