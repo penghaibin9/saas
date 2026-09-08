@@ -13,6 +13,17 @@ import {
   getRbacLoadFailed,
 } from '../src/security/permissionGate.js'
 import { getVisibleNavPlan } from '../src/config/navPlan.js'
+import { coreControlRoutes } from '../src/router/coreControl.routes.js'
+
+test('workbench direct link uses the same explicit permission as its menu', () => {
+  const route = coreControlRoutes.find(item => item.path === '/workbench')
+  assert.equal(route.meta.moduleCode, 'WORKBENCH')
+  setPermissionPatterns(['internship.recruitment.view'])
+  assert.equal(canEnterRoute(route.meta), false)
+  setPermissionPatterns(['workbench.home.view'])
+  assert.equal(canEnterRoute(route.meta), true)
+  clearPermissionPatterns()
+})
 
 test('未纳入业务门禁的公共路由一律放行', () => {
   setPermissionPatterns([])

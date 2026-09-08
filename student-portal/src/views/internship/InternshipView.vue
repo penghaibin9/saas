@@ -191,6 +191,7 @@
                   </div>
                 </div>
                 <div v-if="lv.returnNote" class="makeup-review-note">销假说明：{{ lv.returnNote }}</div>
+                <div v-if="lv.reviewComment" class="makeup-review-note">{{ lv.status === 'REJECTED' ? '驳回原因' : '审批意见' }}：{{ lv.reviewComment }}</div>
               </div>
             </div>
           </section>
