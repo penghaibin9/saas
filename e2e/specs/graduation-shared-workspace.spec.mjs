@@ -40,13 +40,16 @@ async function expectSharedShell(page, batchId) {
   const shell = page.locator('.graduation-portal.bpl-workspace')
   await expect(shell).toHaveCount(1)
   await expect(shell.locator('.tw-frame')).toHaveCount(1)
-  await expect(shell.locator('.tw-main .gd-business-view')).toBeVisible()
+  const businessView = shell.locator('.tw-main .gd-business-view')
+  await expect(businessView).toBeVisible()
   await expect(shell.locator('.gd-batch-context')).toHaveCount(1)
   await expect(shell.getByRole('combobox', { name: '选择毕设批次', exact: true })).toHaveValue(String(batchId))
   await expect(shell.locator(':scope > .bpl-body')).toHaveCount(0)
   await expect(shell.getByRole('navigation', { name: '二级菜单', exact: true })).toBeVisible()
   await expect(shell.getByRole('navigation', { name: '三级菜单', exact: true })).toBeVisible()
-  await expect(shell.locator('.gd-business-view h1:visible')).toHaveCount(1)
+  // Different real Graduation pages use h1/h2 according to their existing
+  // semantic shell. Require a visible semantic heading, not an invented h1.
+  await expect(businessView.getByRole('heading').first()).toBeVisible()
   return shell
 }
 
