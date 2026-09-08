@@ -18,6 +18,10 @@ import tempfile
 import time
 
 
+SECURITY_PYTHON_BASE_TAG = "registry.access.redhat.com/ubi9/python-312-minimal:9.8"
+RUNTIME_BASE_TAG = "registry.access.redhat.com/ubi9/ubi-micro:9.8"
+
+
 class CheckFailure(RuntimeError):
     """Failure metadata contains enums/numbers only, never command output."""
     def __init__(self, label, result=None, *, timed_out=False):
@@ -113,12 +117,19 @@ def main(argv=None):
     try:
         with tempfile.TemporaryDirectory(prefix='pr265-container-check-') as directory:
             folder = Path(directory)
-            # Capture the exact base digest used in this CI build. This is NOT a vulnerability scan.
-            run('PULL_PYTHON', ['docker', 'pull', 'python:3.12-slim'], timeout=180)
-            python_digest = run('PYTHON_DIGEST', ['docker', 'image', 'inspect', 'python:3.12-slim',
+            # Build exactly the same reviewed two-base candidate used by the Trivy gate.
+            # Tags are pulled only to resolve immutable RepoDigests; the Docker build
+            # receives the digests, never mutable tags. This is not a vulnerability scan.
+            run('PULL_PYTHON', ['docker', 'pull', SECURITY_PYTHON_BASE_TAG], timeout=180)
+            run('PULL_RUNTIME', ['docker', 'pull', RUNTIME_BASE_TAG], timeout=180)
+            python_digest = run('PYTHON_DIGEST', ['docker', 'image', 'inspect', SECURITY_PYTHON_BASE_TAG,
                                                   '--format', '{{index .RepoDigests 0}}'])
-            run('BUILD', ['docker', 'build', '-f', 'backend/Dockerfile.security', '--build-arg',
-                          'PYTHON_BASE_IMAGE=' + python_digest, '-t', image, '.'], timeout=900, cwd=root)
+            runtime_digest = run('RUNTIME_DIGEST', ['docker', 'image', 'inspect', RUNTIME_BASE_TAG,
+                                                    '--format', '{{index .RepoDigests 0}}'])
+            run('BUILD', ['docker', 'build', '-f', 'backend/Dockerfile.security',
+                          '--build-arg', 'SECURITY_PYTHON_BASE_IMAGE=' + python_digest,
+                          '--build-arg', 'RUNTIME_BASE_IMAGE=' + runtime_digest,
+                          '-t', image, '.'], timeout=900, cwd=root)
             complete(checks, 'security-image-build')
             run('IMAGE_CONTRACT', ['docker', 'run', '--rm', '--network', 'none', '--read-only',
                                    '--cap-drop=ALL', '--security-opt=no-new-privileges', image,
@@ -142,6 +153,8 @@ def main(argv=None):
             env_path = config_dir / 'compose.env'
             content = env_path.read_text()
             # Syntax render only: do not pretend these mutable CI tags passed release preflight.
+            # PYTHON_BASE_IMAGE is a deployment-profile input for migration tooling; keep it
+            # pinned to the same reviewed Python digest used to build the application image.
             ci_images = {'APP_IMAGE': image, 'PYTHON_BASE_IMAGE': python_digest, 'MYSQL_IMAGE': 'mysql:8.0',
                          'REDIS_IMAGE': 'redis:7-alpine', 'NGINX_IMAGE': 'nginx:stable-alpine',
                          'CLAMAV_IMAGE': 'clamav/clamav:stable'}
