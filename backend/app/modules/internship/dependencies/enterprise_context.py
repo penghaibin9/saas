@@ -125,9 +125,9 @@ def get_enterprise_principal(
         "authSessionId": auth_session_id or None,
     })
 
-    # Enterprise routes intentionally do not inherit require_staff, so this is
-    # their canonical commercial/data-state gate. It also installs the M4 final
-    # commit fence on unsafe HTTP requests, preventing a request that started
+    # Enterprise routes intentionally remain outside the school-staff dependency bundle,
+    # so this is their canonical commercial/data-state gate. It also installs the M4
+    # final commit fence on unsafe HTTP requests, preventing a request that started
     # before freeze/cancellation from committing afterwards.
     from app.services.module_access_service import assert_module_access
     assert_module_access(
