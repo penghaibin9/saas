@@ -20,6 +20,7 @@ SBX_TID = 1000000000000000007
 def two_tenants(db_mode):
     """在 db_mode 空库上种双租户体系（demo 富数据 + sandbox 最小数据）。"""
     from app.db.session import get_sessionmaker
+    from app.services import platform_service as platform
     from _seed_demo_school import seed_demo_school
     from _seed_two_tenants import seed_two_tenants
     db = get_sessionmaker()()
@@ -28,6 +29,15 @@ def two_tenants(db_mode):
         seed_two_tenants(db)      # 账号/组织/20 学生/三态样例 + 沙箱
     finally:
         db.close()
+    # sandbox-school 是免费体验环境，不伪造客户付款。W1 之后它仍必须拥有一个
+    # 可核验的非付费商业状态，否则 internship 等真实功能会按设计 fail-closed。
+    # 用正式 trial authority，而不是旧 FEATURES/TENANT_META 正式套餐旁路。
+    platform.put_config_json(
+        SBX_TID,
+        "TENANT_META",
+        "-",
+        {"status": "trial", "packageCode": "trial", "environment": "sandbox"},
+    )
     return db_mode
 
 

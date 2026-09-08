@@ -16,5 +16,5 @@ test('SA-009 resource creation binds a real DORM_MANAGER from Staff PC', () => {
 
 test('SA-009 manager picker is registered on the resource page', () => {
   assert.match(source, /AppTeacherPicker, AppTextInput/)
-  assert.match(source, /AppSelect, AppTeacherPicker, AppTextInput, DataTable/)
+  assert.match(source, /AppSelect, AppTeacherPicker, AppTextInput/)
 })

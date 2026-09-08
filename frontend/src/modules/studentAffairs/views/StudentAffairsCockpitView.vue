@@ -1,162 +1,90 @@
 <template>
-  <AppPageShell
-    title="学工统计驾驶舱"
-    subtitle="学工各业务域统一概览；可用域展示真实指标，暂未形成独立口径的域明确标记为降级。"
-    role-name="学工处 / 校领导"
-    data-scope-name="按数据范围聚合"
-    watermark-purpose="学工统计驾驶舱"
-  >
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载驾驶舱..." @retry="load"
-                    @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip cockpit-summary" :class="{ 'has-warning': domains.some((d) => d.status !== 'OK') || reconcileOk === false }">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">统计健康状态</span>
-          <h2 class="sa-summary-strip__title">
-            已加载 {{ domains.length }} 个业务域，{{ domains.filter((d) => d.status === 'OK').length }} 个口径可用，{{ domains.filter((d) => d.status !== 'OK').length }} 个需关注
-          </h2>
-          <p class="sa-summary-strip__text">
-            先处理统计不可用或数据对账不一致的业务域，再依据真实指标下钻。所有数字均按当前角色数据范围聚合，不使用浏览器单页数据二次拼算。
-          </p>
-        </div>
-        <div class="cockpit-summary__status">
-          <span>处分投影对账</span>
-          <StatusTag v-if="reconcileOk !== null" :type="reconcileOk ? 'success' : 'danger'" :label="reconcileOk ? '一致' : '需核查'" dot />
-          <span v-else class="cockpit-summary__unknown">暂不可用</span>
-        </div>
-      </section>
-
-      <div class="cockpit-legend" aria-label="驾驶舱说明">
-        <span><i class="is-ok"></i>真实统计可用，可点击下钻</span>
-        <span><i class="is-warning"></i>统计降级或错误，显示原因而不显示假数字</span>
+  <section ref="screen" class="leadership-screen" :class="{ 'is-fullscreen': fullscreen }">
+    <div class="screen-ambient" aria-hidden="true" /><header class="screen-header">
+      <div><span class="screen-school">{{ ctx?.tenantBrandConfig?.schoolName || '学工中心' }}</span><h1>学工智慧管理 · 态势总览</h1></div>
+      <div class="screen-meta"><span>{{ ctx?.dataScope?.scopeName || '当前授权范围' }}</span><time>{{ updatedLabel }}</time></div>
+      <div class="screen-actions"><button :disabled="loading" @click="load"><Refresh />刷新</button><button :aria-pressed="autoRefresh" @click="autoRefresh = !autoRefresh">{{ autoRefresh ? '自动刷新 · 开' : '自动刷新 · 关' }}</button><button @click="toggleFullscreen"><FullScreen />{{ fullscreen ? '退出大屏' : '全屏展示' }}</button></div>
+    </header>
+    <div v-if="errorMessage" class="screen-alert" role="alert">{{ errorMessage }}<span v-if="domains.length"> · 当前保留上次数据</span><button :disabled="loading" @click="load">重试</button></div>
+    <div v-if="loading && !domains.length" class="screen-empty" role="status">正在加载学工数据…</div>
+    <div v-else-if="!domains.length" class="screen-empty">暂无可展示的学工统计</div>
+    <template v-else>
+      <div class="screen-overview">
+        <article v-for="item in overview" :key="item.key"><span>{{ item.label }}</span><div><strong>{{ number(item.value) }}</strong><small>{{ item.unit }}</small></div></article>
       </div>
-
-      <div class="cp-grid">
-        <div v-for="d in domains" :key="d.key" class="cp-cell" :class="{ 'is-error': d.status === 'ERROR' || d.status === 'DEGRADED' }">
-          <div class="cp-cell__head">
-            <span class="cp-cell__status" :class="d.status === 'OK' ? 'is-ok' : 'is-warning'">{{ d.status === 'OK' ? '口径正常' : '需要关注' }}</span>
-          </div>
-          <AppMetricCard
-            v-if="d.status === 'OK'"
-            :title="d.label"
-            :value="d.total"
-            drillable
-            :drill-target="d.route || ''"
-            @drill="goRoute"
-          />
-          <div v-else class="cp-unavailable" @click="goRoute(d.route)">
-            <div class="cp-unavailable__title">{{ d.label }}</div>
-            <div class="cp-unavailable__msg">{{ d.message || '统计暂不可用' }}</div>
-            <div v-if="d.route" class="cp-unavailable__link">进入业务页核查 →</div>
-          </div>
-          <div v-if="d.status === 'OK' && d.highlightLabel" class="cp-cell__hl">{{ d.highlightLabel }}：<b>{{ d.highlight }}</b></div>
-          <div v-if="d.status === 'OK' && metricPreview(d).length" class="cp-cell__metrics">
-            <span v-for="metric in metricPreview(d)" :key="metric.key">{{ metric.label }}：<b>{{ metric.value }}</b></span>
-          </div>
-        </div>
+      <div class="screen-panels">
+        <article class="screen-panel safety"><header><h2><Bell />安全与关怀</h2><span :class="{ alert: (metric('risk', 'highCritical') || 0) > 0 }">重点关注</span></header>
+          <div class="screen-primary"><span>高危 / 危急风险</span><strong>{{ number(metric('risk', 'highCritical')) }}<small>件</small></strong></div>
+          <LeadershipChart kind="bar" label="风险事项数量（分类可能重叠）" :rows="riskBars" color="#ffb782" /><dl class="risk-details"><div><dt>未关闭风险</dt><dd>{{ number(metric('risk', 'open')) }}</dd></div><div><dt>逾期风险</dt><dd>{{ number(metric('risk', 'overdue')) }}</dd></div><div><dt>未关闭心理危机</dt><dd>{{ number(metric('mental', 'openCrisis')) }}</dd></div></dl>
+          <button v-if="canDrill('risk')" class="screen-drill" @click="drill('risk')">查看风险情况 <ArrowRight /></button>
+        </article>
+        <article class="screen-panel leave-panel"><header><h2><Calendar />请假与返校</h2><span>当前记录</span></header>
+          <div class="screen-primary"><span>请假人数</span><strong>{{ number(metric('leave')) }}<small>人</small></strong></div>
+          <dl><div><dt>待审批</dt><dd>{{ number(metric('leave', 'pendingReview')) }}</dd></div><div><dt>逾期未销</dt><dd>{{ number(metric('leave', 'overdue')) }}</dd></div></dl>
+          <LeadershipChart kind="bar" label="请假待处理事项（分类可能重叠）" :rows="[{ label: '待审批', value: metric('leave', 'pendingReview') }, { label: '逾期未销', value: metric('leave', 'overdue') }]" color="#72b8ff" /><button v-if="canDrill('leave')" class="screen-drill" @click="drill('leave')">查看请假情况 <ArrowRight /></button>
+        </article>
+        <article class="screen-panel dorm-panel"><header><h2><House />住宿保障</h2><span>床位使用</span></header>
+<LeadershipChart class="dorm-ring" label="床位入住率" :value="occupancy" /><p v-if="occupancy === null" class="chart-unavailable">暂无有效床位占比</p>
+          <dl><div><dt>已入住床位</dt><dd>{{ number(metric('dorm', 'occupiedBeds')) }}</dd></div><div><dt>空床位</dt><dd>{{ number(metric('dorm', 'vacantBeds')) }}</dd></div></dl>
+          <button v-if="canDrill('dorm')" class="screen-drill" @click="drill('dorm')">查看住宿情况 <ArrowRight /></button>
+        </article>
       </div>
-
-      <AppSectionCard title="数据质量与使用说明">
-        <div class="cp-quality-grid">
-          <div class="cp-quality-item">
-            <span>处分投影对账</span>
-            <div v-if="reconcileOk !== null" class="cp-recon" :class="reconcileOk ? 'is-ok' : 'is-bad'">
-              <StatusTag :type="reconcileOk ? 'success' : 'danger'" :label="reconcileOk ? '一致' : '不一致（需核查）'" dot />
-            </div>
-            <div v-else class="cp-recon">统计暂不可用</div>
-          </div>
-          <div class="cp-quality-item">
-            <span>统计口径</span>
-            <strong>当前角色数据范围</strong>
-            <p>降级或错误域只显示原因，不把接口错误解释成 0。</p>
-          </div>
-          <div class="cp-quality-item">
-            <span>建议动作</span>
-            <strong>{{ domains.some((d) => d.status !== 'OK') || reconcileOk === false ? '优先核查异常域' : '可按业务需要下钻' }}</strong>
-            <p>点击正常业务域可进入对应页面查看明细和处理待办。</p>
-          </div>
-        </div>
-      </AppSectionCard>
-    </AppGlobalState>
-  </AppPageShell>
+      <div class="screen-support">
+        <article v-for="item in supportDomains" :key="item.key"><header><h2>{{ item.title }}</h2><span>{{ item.unit }}</span></header><strong>{{ number(metric(item.key)) }}</strong><div class="support-detail"><span>{{ item.detail }}</span><b>{{ number(metric(item.key, 'highlight')) }}{{ item.key === 'activity' ? ' 人' : '' }}</b></div><button v-if="canDrill(item.key)" @click="drill(item.key)" :aria-label="'查看' + item.title"><ArrowRight /></button></article>
+      </div>
+      <footer class="screen-footer"><span>每 60 秒更新 · 仅展示汇总数据</span><details><summary>{{ unavailable.length || reconcileOk === false ? '数据质量提示' : '数据状态正常' }}</summary><div class="screen-quality"><p v-for="item in unavailable" :key="item.key">{{ item.label }}：{{ item.message || '统计暂不可用' }}</p><p v-if="reconcileOk === false">处分数据存在对账差异，请核查。</p><p>各指标按对应业务口径统计，不能相加作为学生总人数。无数据或查询失败显示“—”。</p></div></details></footer>
+    </template>
+  </section>
 </template>
-
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { Refresh, FullScreen, Bell, Calendar, House, ArrowRight } from '@element-plus/icons-vue'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
-
+import { domainMetric, occupancyRate, SUPPORT_DOMAINS } from './leadershipScreen'
+import { getVisibleNavPlan } from '@/config/navPlan'
+import LeadershipChart from '@/components/workspace/LeadershipChart.vue'
 export default {
   name: 'StudentAffairsCockpitView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag },
-  data() { return { loading: true, errorMessage: '', domains: [], reconcileOk: true } },
+  components: { LeadershipChart, Refresh, FullScreen, Bell, Calendar, House, ArrowRight },
+  props: { ctx: { type: Object, default: null } },
+  data() { return { loading: false, errorMessage: '', domains: [], reconcileOk: null, updatedAt: '', autoRefresh: true, fullscreen: false, timer: null, loadSeq: 0, supportDomains: SUPPORT_DOMAINS } },
   computed: {
-    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
+    riskBars() { return [{ label: '未关闭', value: this.metric('risk', 'open') }, { label: '高危 / 危急', value: this.metric('risk', 'highCritical') }, { label: '逾期未处置', value: this.metric('risk', 'overdue') }] },
+    occupancy() { return occupancyRate(this.domains) },
+    unavailable() { return this.domains.filter(item => item.status !== 'OK') },
+    overview() { return [{ key: 'student', label: '学生规模', value: this.metric('student'), unit: '人' }, { key: 'class', label: '班级数量', value: this.metric('class'), unit: '个' }, { key: 'dorm', label: '住宿床位', value: this.metric('dorm'), unit: '张' }, { key: 'discipline', label: '生效中处分', value: this.metric('discipline', 'highlight'), unit: '件' }] },
+    updatedLabel() { if (!this.updatedAt) return '尚未更新'; const date = new Date(this.updatedAt); return Number.isNaN(date.getTime()) ? '更新时间待确认' : '更新于 ' + date.toLocaleString('zh-CN', { hour12: false }) }
   },
-  mounted() { this.load() },
+  mounted() { this.load(); this.timer = setInterval(() => { if (this.autoRefresh && !document.hidden) this.load() }, 60000); document.addEventListener('fullscreenchange', this.syncFullscreen) },
+  beforeUnmount() { ++this.loadSeq; clearInterval(this.timer); document.removeEventListener('fullscreenchange', this.syncFullscreen) },
   methods: {
-    metricPreview(domain) {
-      return Object.entries(domain.metrics || {})
-        .filter(([, value]) => typeof value === 'number' || typeof value === 'string')
-        .filter(([key]) => !['total', 'totalActivities'].includes(key))
-        .slice(0, 2)
-        .map(([key, value]) => ({ key, label: this.metricLabel(key), value }))
-    },
-    metricLabel(key) {
-      return {
-        occupiedBeds: '已入住床位', vacantBeds: '空床位', pendingReview: '待审批',
-        overdue: '逾期', highCritical: '高危/危急', open: '未关闭',
-        completed: '已完成', openCrisis: '未关闭危机', granted: '已获资助',
-        approved: '已认定', creditStudents: '获学分学生'
-      }[key] || (key ? '项目待确认' : '—')
-    },
+    metric(key, field = 'total') { return domainMetric(this.domains, key, field) },
+    number(value) { return value === null ? '—' : value.toLocaleString('zh-CN') },
+    canDrill(key) { const domain = this.domains.find(item => item.key === key); if (domain?.status !== 'OK' || !domain.route) return false; return getVisibleNavPlan({ permissionPatterns: this.ctx?.permissionPatterns || [] }).some(group => group.children.some(mod => mod.path === domain.route || mod.children.some(page => page.path === domain.route))) },
+    async drill(key) { const domain = this.domains.find(item => item.key === key); if (!this.canDrill(key)) return; if (document.fullscreenElement === this.$refs.screen) await document.exitFullscreen(); this.$router.push(domain.route) },
+    syncFullscreen() { this.fullscreen = document.fullscreenElement === this.$refs.screen },
+    async toggleFullscreen() { try { if (this.fullscreen) await document.exitFullscreen(); else await this.$refs.screen.requestFullscreen() } catch { this.errorMessage = '当前环境无法进入全屏，可使用右上角专注模式' } },
     async load() {
-      this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getStatsCockpit()
-      if (res.code === 0 && res.data) {
-        this.domains = res.data.domains || []
-        const rc = res.data.disciplineReconcileConsistent
-        this.reconcileOk = rc === null || rc === undefined ? null : rc !== false
-      } else {
-        this.errorMessage = res.message || '驾驶舱加载失败'
-      }
-      this.loading = false
-    },
-    goRoute(route) { if (route) this.$router.push(route) }
+      if (this.loading) return
+      const seq = ++this.loadSeq; this.loading = true; this.errorMessage = ''
+      try { const response = await studentAffairsApi.getStatsCockpit(); if (seq !== this.loadSeq) return; if (response.code !== 0 || !Array.isArray(response.data?.domains)) throw new Error(response.message || '学工统计暂不可用'); this.domains = response.data.domains; this.updatedAt = response.data.updatedAt; this.reconcileOk = response.data.disciplineReconcileConsistent ?? null }
+      catch (error) { if (seq === this.loadSeq) this.errorMessage = error.message || '学工统计暂不可用' }
+      finally { if (seq === this.loadSeq) this.loading = false }
+    }
   }
 }
 </script>
+<style scoped>
+.leadership-screen{--screen-muted:#9aacc7;box-sizing:border-box;min-height:calc(100dvh - 180px);padding:24px 28px 18px;border:1px solid #283b58;border-radius:14px;background:radial-gradient(ellipse at 50% 0,#1b3454 0,transparent 55%),#0e1a2e;color:#ecf3ff;font-family:inherit}.leadership-screen:fullscreen{border:0;border-radius:0;overflow:auto;min-height:100dvh;padding:32px 48px}.screen-header{display:flex;align-items:center;gap:22px;margin-bottom:26px}.screen-header h1{font-size:26px;letter-spacing:2px;margin:5px 0 0;font-weight:650}.screen-school{color:#98b7e3;font-size:12px}.screen-meta{margin-left:auto;display:grid;gap:7px;text-align:right;font-size:11px;color:var(--screen-muted)}.screen-actions{display:flex;gap:6px}.screen-actions button,.screen-alert button{border:1px solid #344c6e;background:#1c304c;color:#c9d9ef;border-radius:6px;padding:8px 10px;display:flex;gap:6px;align-items:center;font-size:11px;cursor:pointer}.screen-actions svg{width:14px;height:14px}.screen-overview{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid #344c6e;border-bottom:1px solid #344c6e;padding:20px 0;margin-bottom:22px}.screen-overview article{padding:0 24px;border-right:1px solid #293f5d}.screen-overview article:first-child{padding-left:0}.screen-overview article:last-child{border:0}.screen-overview article>span{font-size:13px;color:var(--screen-muted)}.screen-overview strong{font-size:38px;letter-spacing:1px;font-weight:600;font-variant-numeric:tabular-nums}.screen-overview article>div{margin-top:8px}.screen-overview small{font-size:12px;margin-left:10px;color:var(--screen-muted)}.screen-panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.screen-panel{padding:20px;background:#15243b;border:1px solid #2a405d;border-radius:9px;display:flex;flex-direction:column}.screen-panel header,.screen-support header{display:flex;align-items:center;justify-content:space-between;gap:10px}.screen-panel h2,.screen-support h2{font-size:15px;margin:0;font-weight:600;display:flex;align-items:center;gap:9px}.screen-panel h2 svg{width:18px;height:18px;color:#77a8e6}.screen-panel header>span,.screen-support header>span{font-size:11px;color:var(--screen-muted)}.screen-panel header>.alert{color:#ffb898}.screen-primary{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:26px 0 18px}.screen-primary>span{font-size:12px;color:var(--screen-muted)}.screen-primary strong{font-size:34px;font-weight:600;font-variant-numeric:tabular-nums}.screen-primary small{font-size:12px;margin-left:6px;color:var(--screen-muted)}.safety .screen-primary strong{color:#ffbd98}.screen-panel dl{display:flex;gap:16px;margin:0 0 18px;flex:1}.screen-panel dl>div{flex:1}.screen-panel dt{font-size:11px;color:var(--screen-muted);line-height:1.5}.screen-panel dd{font-size:22px;margin:6px 0 0;font-variant-numeric:tabular-nums}.screen-drill{border:0;border-top:1px solid #2a405d;background:transparent;padding:12px 0 0;color:#94b8eb;display:flex;align-items:center;justify-content:space-between;font-size:12px;cursor:pointer}.screen-drill svg{width:14px;height:14px}.occupancy-track{height:5px;background:#263d5a;border-radius:5px;overflow:hidden;margin:-4px 0 20px}.occupancy-track i{display:block;height:100%;background:#75bfb8}.screen-support{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:20px}.screen-support article{position:relative;background:#132239;border:1px solid #283d5a;border-radius:9px;padding:18px}.screen-support strong{display:block;font-size:28px;margin:14px 0;font-weight:600;font-variant-numeric:tabular-nums}.support-detail{display:flex;gap:10px;align-items:center;font-size:11px;color:var(--screen-muted)}.support-detail b{color:#a6c3ee;font-size:14px}.screen-support button{position:absolute;right:14px;bottom:14px;width:24px;height:24px;background:transparent;border:0;color:#94b8eb;cursor:pointer}.screen-support button svg{width:14px;height:14px}.screen-footer{display:flex;justify-content:space-between;gap:16px;margin-top:18px;font-size:11px;color:var(--screen-muted)}.screen-footer details{max-width:60%;text-align:right}.screen-footer summary{cursor:pointer}.screen-quality{text-align:left;line-height:1.6}.screen-alert{padding:12px 16px;border:1px solid #8c624e;background:#362c2b;color:#ffcead;margin-bottom:16px;font-size:12px;display:flex;gap:8px;align-items:center}.screen-empty{padding:80px;text-align:center;color:var(--screen-muted)}button:disabled{opacity:.5;cursor:default}button:focus-visible,summary:focus-visible{outline:2px solid #95bfff;outline-offset:3px}@media(min-width:1800px){.leadership-screen:fullscreen .screen-overview strong{font-size:64px}.leadership-screen:fullscreen .screen-panel{min-height:280px}.leadership-screen:fullscreen .screen-support{margin-top:30px}.leadership-screen:fullscreen .screen-support strong{font-size:44px}}@media(max-width:1100px){.screen-header{flex-wrap:wrap}.screen-meta{margin-left:auto}.screen-actions{margin-left:auto}.screen-panels{grid-template-columns:1fr 1fr}.screen-support{grid-template-columns:1fr 1fr}.screen-overview strong{font-size:30px}}@media(max-width:700px){.leadership-screen{padding:18px}.screen-header h1{font-size:22px}.screen-panels{grid-template-columns:1fr}.screen-overview{grid-template-columns:1fr 1fr;gap:20px}.screen-overview article{padding:0;border:0}.screen-meta{text-align:left;margin-left:0}}
+</style>
 
 <style scoped>
-.cockpit-summary.has-warning { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
-.cockpit-summary__status { display: grid; justify-items: end; gap: 5px; min-width: 120px; }
-.cockpit-summary__status > span:first-child { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.cockpit-summary__unknown { color: var(--warning-700); font-weight: 600; }
-.cockpit-legend { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); color: var(--text-secondary); font-size: var(--font-size-xs); }
-.cockpit-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.cockpit-legend i { width: 8px; height: 8px; border-radius: 50%; }
-.cockpit-legend i.is-ok { background: var(--success-500, #22c55e); }
-.cockpit-legend i.is-warning { background: var(--warning-500, #f59e0b); }
-.cp-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.cp-cell { position: relative; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: 10px; border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-card); }
-.cp-cell.is-error { border-color: var(--warning-200, #fde68a); background: var(--warning-50, #fffbeb); }
-.cp-cell__head { display: flex; justify-content: flex-end; min-height: 20px; }
-.cp-cell__status { padding: 2px 7px; border-radius: var(--radius-full); font-size: 11px; }
-.cp-cell__status.is-ok { background: var(--success-50, #f0fdf4); color: var(--success-700, #15803d); }
-.cp-cell__status.is-warning { background: var(--warning-100, #fef3c7); color: var(--warning-800, #92400e); }
-.cp-cell__hl { font-size: var(--font-size-sm); color: var(--text-secondary); padding: 0 var(--space-1); }
-.cp-cell__hl b { color: var(--text-primary); }
-.cp-cell__metrics { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--space-1); color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.cp-cell__metrics b { color: var(--text-secondary); }
-.cp-unavailable { padding: var(--space-4); border-radius: var(--radius-md); border: 1px dashed var(--warning-300, #fcd34d); background: rgba(255,255,255,.72); cursor: pointer; min-height: 108px; }
-.cp-unavailable__title { font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-2); }
-.cp-unavailable__msg { font-size: var(--font-size-md); color: var(--warning-800, #92400e); font-weight: 600; line-height: 1.5; }
-.cp-unavailable__link { margin-top: var(--space-3); color: var(--primary-700); font-size: var(--font-size-xs); }
-.cp-quality-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
-.cp-quality-item { padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
-.cp-quality-item > span { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.cp-quality-item > strong { display: block; margin-top: 5px; color: var(--text-primary); }
-.cp-quality-item p { margin: 5px 0 0; color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.55; }
-.cp-recon { margin-top: 6px; min-height: 24px; }
-@media (max-width: 1180px) { .cp-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-@media (max-width: 900px) { .cp-grid, .cp-quality-grid { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 640px) { .cp-grid, .cp-quality-grid { grid-template-columns: 1fr; } .cockpit-summary__status { justify-items: start; } }
+.leadership-screen{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 50% 0,#123f65 0,transparent 55%),radial-gradient(ellipse at 50% 100%,#0d2f51,transparent 55%),#061628;border-color:#1c4766;padding:20px 24px;box-shadow:inset 0 0 70px #1270a510}
+.screen-ambient{position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(#3982b509 1px,transparent 1px),linear-gradient(90deg,#3982b509 1px,transparent 1px);background-size:36px 36px;mask-image:linear-gradient(transparent,#000 30%,#000);animation:screen-ambient 16s ease-in-out infinite alternate}
+.screen-header{border-bottom:1px solid #2f7690;padding:0 0 18px;margin-bottom:16px;position:relative;display:grid;grid-template-columns:1fr auto;gap:8px 20px}
+.screen-header:after{content:'';position:absolute;bottom:-2px;left:32%;right:32%;height:3px;background:#6beafa;box-shadow:0 0 18px #27d9ff80}.screen-header>div:first-child{grid-column:1/-1;text-align:center}.screen-header h1{font-size:27px;letter-spacing:4px;color:#dbf8ff;text-shadow:0 0 24px #35ceff60;margin-top:6px}.screen-school{color:#91bcda;letter-spacing:2px}.screen-meta{margin:0;text-align:left;display:flex;gap:14px;align-items:center}.screen-actions{justify-content:flex-end}.screen-actions button{background:#11304a80;border-color:#275372;color:#a8d3e8;padding:6px 9px}
+.screen-overview{border:0;gap:12px;padding:4px 0 16px;margin:0}.screen-overview article,.screen-overview article:first-child{padding:14px 18px;background:linear-gradient(100deg,#113b5960,#0b254130);border:1px solid #214963;border-radius:5px;position:relative}.screen-overview article:last-child{border:1px solid #214963}.screen-overview article:before{content:'';position:absolute;left:-1px;top:12px;width:2px;height:24px;background:#6edfeb;box-shadow:0 0 12px #58e1ee80}.screen-overview strong{color:#a8f0ff;font-size:40px;text-shadow:0 0 18px #32b4e745}.screen-overview article>span{color:#a1c0d7;font-size:12px}
+.screen-panels{grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,1fr);gap:14px}.screen-panel{padding:16px;background:linear-gradient(155deg,#13395688,#0b2138b0);border:1px solid #245271;border-radius:5px;position:relative;min-width:0}.screen-panel:before,.screen-support article:before{content:'';position:absolute;top:-1px;left:14px;width:58px;height:2px;background:#63d8ed;box-shadow:0 0 12px #57cce660}.screen-panel h2{letter-spacing:1px;color:#c4e8fc}.screen-panel h2 svg{color:#64d0e2}.dorm-panel{grid-column:2;grid-row:1}.leave-panel{grid-column:3;grid-row:1}.screen-primary{padding:18px 0 6px}.screen-primary strong{font-size:30px}.screen-panel .leadership-chart{height:120px}.screen-panel .dorm-ring{height:218px;margin:0 auto}.screen-panel dl{flex:0;margin:10px 0 14px}.screen-panel .risk-details>div:not(:last-child){display:none}.screen-panel dd{color:#cdf1ff;font-size:23px}.screen-drill{margin-top:auto;border-color:#214760;color:#7dc8e6}.chart-unavailable{color:#94b5cc;text-align:center;font-size:11px;margin:0}
+.screen-support{gap:14px;margin-top:16px}.screen-support article{background:linear-gradient(110deg,#10365188,#0b223970);border:1px solid #234d69;border-radius:5px;padding:16px}.screen-support h2{font-size:13px;color:#afdcee}.screen-support strong{color:#b9e4ff;font-size:30px;margin:12px 0}.support-detail b{color:#70d6d2}.screen-support header>span{font-size:10px}.screen-support article:nth-child(2):before{background:#9eaffe}.screen-support article:nth-child(3):before{background:#73dfc0}.screen-support article:nth-child(4):before{background:#e2c37e}.screen-footer{margin-top:14px;color:#7d9fba}
+.leadership-screen:fullscreen{padding:26px 40px}.leadership-screen:fullscreen .screen-header h1{font-size:34px}.leadership-screen:fullscreen .screen-overview strong{font-size:50px}.leadership-screen:fullscreen .screen-panel .dorm-ring{height:280px}.leadership-screen:fullscreen .screen-panel .leadership-chart:not(.dorm-ring){height:170px}
+@keyframes screen-ambient{from{opacity:.4}to{opacity:1}}@media(prefers-reduced-motion:reduce){.screen-ambient{animation:none}}@media(max-width:1000px){.screen-panels{grid-template-columns:1fr 1fr}.dorm-panel{grid-column:2;grid-row:1}.leave-panel{grid-column:1/-1;grid-row:2}.screen-header h1{font-size:22px;letter-spacing:2px}.screen-meta{display:grid;gap:4px}}@media(max-width:700px){.screen-panels{display:flex;flex-direction:column}.screen-header{display:flex;flex-wrap:wrap}.screen-header>div:first-child{width:100%}.screen-overview strong{font-size:28px}}
 </style>

@@ -39,13 +39,6 @@
 
       <div class="sa-detail-layout">
         <AppSectionCard title="风险档案与来源证据">
-          <div class="sa-heading">
-            <div>
-              <h2>{{ detail.title || '风险记录' }}</h2>
-              <p>{{ detail.realName || '未命名学生' }} · {{ detail.studentNo || detail.studentId }}</p>
-            </div>
-            <AppRiskTag :level="detail.riskLevel" />
-          </div>
 
           <AppDescriptionList :items="detailItems" :columns="2" bordered>
             <template #detail>
@@ -56,7 +49,6 @@
         </AppSectionCard>
 
         <AppSectionCard title="当前可执行动作">
-          <p class="sa-action-hint">按钮由后端状态机和当前权限共同决定。先确认责任人、风险等级和已有处置记录，再执行分派、升级或关闭。</p>
           <div class="sa-actions">
             <AppPermissionButton v-if="canAct('ASSIGN')" :allowed="canBtn('studentAffairs.risk.assign')" code="studentAffairs.risk.assign" variant="secondary" :loading="actioning" @click="assign">
               分派

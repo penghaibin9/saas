@@ -60,6 +60,7 @@ export function workspaceTokens(key) {
 }
 export function workspacePages(modules) {
   const items = modules.flatMap(mod => (mod.children?.length ? mod.children : [mod])
+    .filter(item => !item.disabled)
     .map(item => ({ ...item, id: item.path || `${mod.key}:${item.label}`, title: item.label, moduleKey: mod.key, trail: mod.label })))
   const counts = new Map()
   for (const item of items) if (item.path) counts.set(item.path, (counts.get(item.path) || 0) + 1)
@@ -77,6 +78,22 @@ export function workspaceMenuItems(pages, moduleKey, currentId, expanded = false
   return pages.filter(item => item.moduleKey === moduleKey && !item.workspaceHidden)
     .filter(item => expanded || !item.menuSecondary || item.id === currentId)
     .filter(item => !needle || [item.label, item.menuSection, ...(item.searchAliases || [])].some(text => String(text || '').toLowerCase().includes(needle)))
+}
+export function workspaceCurrentPage(pages, fullPath, activeModule = '') {
+  const current = new URL(fullPath, 'https://workspace.invalid')
+  let best, bestScore = -1
+  for (const page of pages) {
+    for (const path of [page.path, ...(page.workspacePaths || [])]) {
+    const candidate = new URL(path, 'https://workspace.invalid')
+    const exact = current.pathname === candidate.pathname
+    if (!exact && !current.pathname.startsWith(candidate.pathname + '/')) continue
+    const query = [...candidate.searchParams]
+    const matches = query.every(([key, value]) => current.searchParams.get(key) === value)
+    const score = candidate.pathname.length * 10 + (exact ? 1 : 0) + (matches ? query.length * 10000 : 0)
+    if (score > bestScore) { best = page; bestScore = score }
+    }
+  }
+  return best || pages.find(page => page.moduleKey === activeModule && !page.workspaceHidden)
 }
 export function defaultShortcutIds(pages) {
   const paths = ['/admin/approval/todos', '/admin/student/list', '/admin/student-affairs/leave', '/admin/student-affairs/dorm', '/admin/orientation', '/admin/student-affairs/risk', '/admin/student-affairs/funding']
@@ -104,6 +121,6 @@ export function restoreWorkspace(value, pages) {
   }
 }
 const SHORT_NAMES = { 'sa-workbench': '工作', 'sa-profile': '学生', 'sa-classes': '班级', 'sa-orientation': '迎新', 'sa-leave': '请假', 'sa-dorm': '住宿', 'sa-risk': '风险', 'sa-difficulty': '认定', 'sa-aid': '奖助', 'sa-discipline': '处分', 'sa-talks': '家校', 'sa-mental': '心理', 'sa-activities': '活动', 'sa-archive-stats': '统计' }
-const PAGE_SHORT_NAMES = { '我的工作台': '首页', '我的待办': '待办', '审批中心': '审批', '消息中心': '消息', '学工大屏': '大屏', '最近访问': '最近', '帮助中心': '帮助', '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '认定申请与审核（工作台）': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
+const PAGE_SHORT_NAMES = { '我的工作台': '首页', '我的待办': '待办', '审批中心': '审批', '消息中心': '消息', '学工大屏': '大屏', '最近访问': '最近', '帮助中心': '帮助', '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '认定申请与审核（工作台）': '评审', '申请与审核': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
   '资助项目': '项目', '资助批次': '批次', '申请评审（工作台）': '评审', '公示申诉': '申诉', '发放台账': '发放', '资助统计': '统计', '助学金管理': '助学', '勤工助学': '勤工', '助学贷款': '贷款', '减免与临时补助': '减免' }
 export function workspaceShort(item) { return SHORT_NAMES[item.key] || PAGE_SHORT_NAMES[item.label] || String(item.label || '').slice(0, 2) }

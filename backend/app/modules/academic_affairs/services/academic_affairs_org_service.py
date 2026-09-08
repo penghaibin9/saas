@@ -30,6 +30,23 @@ _MAJOR_ENROLL = {"ENROLLING", "STOPPED"}
 _CLASS_STATUS = {"NORMAL", "GRADUATED", "DISBANDED"}
 _SECRETARY_USER_TYPES = {"TEACHER", "SCHOOL_ADMIN"}
 
+
+def _org_version_conflict(expected, current, subject="组织资料") -> AppException:
+    """Preserve DATA_CONFLICT while exposing a stable, machine-readable reason."""
+    return AppException(
+        "DATA_CONFLICT",
+        f"{subject}版本已变化，请刷新后重新核对",
+        details={
+            "reason": "VERSION_CONFLICT",
+            "expectedVersion": int(expected) if expected is not None else None,
+            "currentVersion": int(current or 0),
+            "recoveryAction": "REFRESH_AND_REVIEW",
+        },
+        http_status=409,
+    )
+
+
+
 # 06 专业方向：总开关（t_platform_config，config_type 独立于既有 FEATURES/PACKAGE 等控制面 KV，
 # 不复用 platform_defaults.FEATURE_KEYS 整模块开关列表——那是粗粒度模块级且默认 True，
 # 本开关要求默认关闭，业务政策待学校确认，故走独立 config_type，自成一体不影响其它平台配置）。
@@ -260,8 +277,7 @@ def update_college(user, college_id, body) -> dict:
         code = body.code if "code" in body.model_fields_set else before["code"]
         expected = getattr(body, "expectedVersion", None)
         if expected is not None and int(c.version or 0) != int(expected):
-            raise AppException('DATA_CONFLICT', '学院资料已被他人修改，请重新核对',
-                details={'reason': 'VERSION_CONFLICT', 'currentVersion': int(c.version or 0)})
+            raise _org_version_conflict(expected, c.version, "学院资料")
         if not name:
             raise AppException('VALIDATION_ERROR', '学院名称必填')
         scope_count = _sync_college_name_scopes(db, c, name)
@@ -318,7 +334,7 @@ def bind_secretary(user, college_id, body) -> dict:
         _require_college_write(ctx, db, c.id)
         expected = getattr(body, "expectedVersion", None)
         if expected is not None and int(expected) != int(c.version or 0):
-            raise AppException("DATA_CONFLICT", "学院记录已被更新，请刷新后重新核对绑定", {"reason": "VERSION_CONFLICT"})
+            raise _org_version_conflict(expected, c.version, "学院绑定")
         if sid is not None:
             target = db.scalar(select(User).where(User.id == sid, User.tenant_id == _tid())
                                .execution_options(populate_existing=True).with_for_update())
@@ -439,8 +455,7 @@ def update_major(user, major_id, body) -> dict:
         code = body.code if "code" in body.model_fields_set else before["code"]
         expected = getattr(body, "expectedVersion", None)
         if expected is not None and int(m.version or 0) != int(expected):
-            raise AppException('DATA_CONFLICT', '专业资料已被他人修改，请重新核对',
-                details={'reason': 'VERSION_CONFLICT', 'currentVersion': int(m.version or 0)})
+            raise _org_version_conflict(expected, m.version, "专业资料")
         yrs = getattr(body, "educationYears", None)
         if yrs is not None:
             yrs = int(yrs)
@@ -540,7 +555,10 @@ def list_classes(user, major_id=None, grade=None, class_status=None, keyword=Non
 
 
 def create_class(user, body) -> dict:
-    from app.models import SchoolClass
+    """Create the master row, counselor scope and both audits in one transaction."""
+    from app.services.org_master_service import apply_org_node_in_session
+    from app.services.db_service import audit_insert_in_session
+
     name = (getattr(body, "className", None) or "").strip()
     major_id = getattr(body, "majorId", None)
     if not name or not major_id:
@@ -551,11 +569,6 @@ def create_class(user, body) -> dict:
     class_status = (getattr(body, "classStatus", None) or "NORMAL")
     if class_status not in _CLASS_STATUS:
         raise AppException("VALIDATION_ERROR", "班级状态非法")
-    with session() as db:
-        ctx = _ctx(user, db)
-        m = _get_major(db, major_id)
-        _require_college_write(ctx, db, m.college_id)
-    from app.services.org_master_service import save_org_node
     extras = {
         "grade": getattr(body, "grade", None),
         "capacity": (int(cap) if cap is not None else None),
@@ -567,18 +580,31 @@ def create_class(user, body) -> dict:
         extras["counselor_id"] = int(body.counselorId) if body.counselorId else None
     if getattr(body, "headTeacherId", "__omit__") != "__omit__":
         extras["head_teacher_id"] = int(body.headTeacherId) if body.headTeacherId else None
-    result = save_org_node(
-        node_type="CLASS", name=name,
-        code=(getattr(body, "classCode", None) or ""),
-        parent_id=int(major_id), actor=user,
-        extras=extras,
-    )
+
     with session() as db:
-        c = db.get(SchoolClass, int(result["id"]))
+        ctx = _ctx(user, db)
+        # Authorize the current, locked parent, not an earlier transaction's view.
+        m = _get_major(db, major_id, for_update=True)
+        _require_college_write(ctx, db, m.college_id)
+        result = apply_org_node_in_session(
+            db, node_type="CLASS", name=name,
+            code=(getattr(body, "classCode", None) or ""),
+            parent_id=int(major_id), actor=user, extras=extras,
+            tenant_id=_tid(), commit=False,
+        )
+        c = result["row"]
         scope_note = _sync_counselor_scope(db, c, None) if c.counselor_id else ""
         _audit(db, "AA_ORG_CLASS", c.id, "CREATE", f"{name}({scope_note})" if scope_note else name)
+        audit_insert_in_session(
+            db, "ORG_NODE_SAVE", f"CLASS:{c.id}",
+            {"name": c.class_name, "code": c.class_code, "before": None, "reason": "",
+             "moduleCode": "systemAdmin", "actor": (user or {}).get("userId"), "extras": extras},
+            "SUCCESS", tenant_id=_tid(),
+        )
+        db.flush()
+        response = _class_dto(c)
         db.commit()
-        return _class_dto(c)
+        return response
 
 
 def _sync_counselor_scope(db, c, old_counselor_id) -> str:
@@ -673,7 +699,7 @@ def preview_class_state(user, class_id, body) -> dict:
         _require_college_write(ctx, db, _class_college_id(db, c.id))
         expected = getattr(body, 'expectedVersion', None)
         if expected is not None and int(c.version or 0) != int(expected):
-            raise AppException('DATA_CONFLICT', '组织数据已被他人修改，请刷新后重试')
+            raise _org_version_conflict(expected, c.version, "行政班资料")
         return _class_state_impact(db, ctx, c, getattr(body, 'classStatus', None))
 
 
@@ -692,7 +718,7 @@ def update_class(user, class_id, body) -> dict:
         code = body.classCode if "classCode" in body.model_fields_set else before["classCode"]
         expected = getattr(body, "expectedVersion", None)
         if expected is not None and int(c.version or 0) != int(expected):
-            raise AppException('DATA_CONFLICT', '组织数据已被他人修改，请刷新后重试')
+            raise _org_version_conflict(expected, c.version, "行政班资料")
         parent_id = getattr(body, "majorId", None)
         if parent_id is not None:
             destination = _get_major(db, parent_id)
@@ -1058,7 +1084,7 @@ def _direction_toggle_dto(row):
 
 def _check_direction_version(row, expected):
     if expected is not None and int(expected) != int(row.version or 0):
-        raise AppException("DATA_CONFLICT", "记录已被更新，请刷新后重试", {"reason": "VERSION_CONFLICT"})
+        raise _org_version_conflict(expected, row.version, "专业方向")
 
 
 def get_major_direction_toggle(user) -> dict:
@@ -1236,6 +1262,13 @@ def disable_direction(user, major_id, direction_id, expected_version=None) -> di
 # 只做行政班 class_status 层面的组织记录（合班/停用→DISBANDED，毕业清班→GRADUATED），
 # DRAFT→CHECKED→EXECUTED/CANCELLED，核对结果 24 小时内有效，执行前需未过期且无阻断项。
 
+from .academic_affairs_org_adjustment_storage import (
+    scope_json as _adjustment_scope_json, public_status as _adjustment_status,
+    set_status as _set_adjustment_status, store_check as _store_adjustment_check,
+    read_check as _read_adjustment_check,
+)
+
+
 def _adjustment_class_names(db, ids: list[int]) -> dict[int, str]:
     from app.models import SchoolClass
     ids = [i for i in ids if i]
@@ -1249,7 +1282,7 @@ def _adjustment_class_names(db, ids: list[int]) -> dict[int, str]:
 def _adjustment_dto(a, class_names: dict[int, str] | None = None) -> dict:
     import json
     try:
-        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+        from_ids = [int(x) for x in json.loads(_adjustment_scope_json(a))]
     except (TypeError, ValueError):
         from_ids = []
     cmap = class_names or {}
@@ -1260,9 +1293,9 @@ def _adjustment_dto(a, class_names: dict[int, str] | None = None) -> dict:
         "toClassId": str(a.to_class_id) if a.to_class_id else None,
         "toClassName": cmap.get(a.to_class_id) if a.to_class_id else None,
         "reason": a.reason,
-        "checkResult": json.loads(a.check_result_json) if a.check_result_json else None,
+        "checkResult": _read_adjustment_check(a),
         "checkedAt": a.checked_at.isoformat() if a.checked_at else None,
-        "status": a.status, "createdAt": a.created_at.isoformat() if a.created_at else None,
+        "status": _adjustment_status(a), "createdAt": a.created_at.isoformat() if a.created_at else None,
         "version": int(a.version or 0),
         "checkExpiresAt": (a.checked_at + timedelta(hours=_ADJUST_CHECK_TTL_HOURS)).isoformat() if a.checked_at else None,
     }
@@ -1286,7 +1319,7 @@ def _adjustment_colleges(db, a) -> set[int]:
     import json
     ids: set[int] = set()
     try:
-        ids |= {int(x) for x in json.loads(a.from_class_ids or "[]")}
+        ids |= {int(x) for x in json.loads(_adjustment_scope_json(a))}
     except (TypeError, ValueError):
         pass
     if a.to_class_id:
@@ -1307,7 +1340,7 @@ def _visible_adjustment_rows(rows, class_ids):
     result = []
     for row in rows:
         try:
-            ids = {int(value) for value in json.loads(row.from_class_ids or "[]")}
+            ids = {int(value) for value in json.loads(_adjustment_scope_json(row))}
         except (TypeError, ValueError):
             continue
         if not ids:
@@ -1327,7 +1360,7 @@ def list_class_adjustments(user, status=None, adjust_type=None, page=1, page_siz
         allowed = _allowed_class_ids(ctx, db)
         conds = [AaClassAdjustmentRequest.tenant_id == _tid(), AaClassAdjustmentRequest.is_deleted.is_(False)]
         if status:
-            conds.append(AaClassAdjustmentRequest.status == status)
+            conds.append(AaClassAdjustmentRequest.status.in_((status, "V2_" + status)))
         if adjust_type:
             conds.append(AaClassAdjustmentRequest.adjust_type == adjust_type)
         rows = db.scalars(select(AaClassAdjustmentRequest).where(*conds)
@@ -1338,7 +1371,7 @@ def list_class_adjustments(user, status=None, adjust_type=None, page=1, page_siz
         page_rows = filtered[offset:offset + page_size]
         all_ids = set()
         for row in page_rows:
-            all_ids.update(int(value) for value in json.loads(row.from_class_ids or "[]"))
+            all_ids.update(int(value) for value in json.loads(_adjustment_scope_json(row)))
             if row.to_class_id:
                 all_ids.add(row.to_class_id)
         cmap = _adjustment_class_names(db, list(all_ids))
@@ -1393,9 +1426,13 @@ def create_class_adjustment(user, body) -> dict:
         for cid in all_ids:
             if classes[cid].class_status != "NORMAL" or classes[cid].status != "ACTIVE":
                 raise AppException("VALIDATION_ERROR", f"班级「{classes[cid].class_name}」当前状态非在读，无法发起调整")
+        source_json = json.dumps(from_ids)
+        expanded = len(source_json) > 500
         a = AaClassAdjustmentRequest(tenant_id=_tid(), adjust_type=adjust_type,
-                                     from_class_ids=json.dumps(from_ids), to_class_id=to_id,
-                                     reason=reason, status="DRAFT")
+                                     from_class_ids="[]" if expanded else source_json,
+                                     from_class_ids_expanded=source_json if expanded else None,
+                                     to_class_id=to_id, reason=reason,
+                                     status="V2_DRAFT" if expanded else "DRAFT")
         db.add(a)
         db.flush()
         _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_CREATE", f"{adjust_type}: {reason}")
@@ -1407,7 +1444,7 @@ def create_class_adjustment(user, body) -> dict:
 
 def _require_adjustment_version(a, expected_version):
     if expected_version is not None and int(a.version or 0) != int(expected_version):
-        raise AppException("DATA_CONFLICT", "申请或核对结果已更新，请刷新后重新核对")
+        raise _org_version_conflict(expected_version, a.version, "调整申请")
 
 
 def _check_class_adjustment(db, ctx, a):
@@ -1421,7 +1458,7 @@ def _check_class_adjustment(db, ctx, a):
     from app.models import College, Major, SchoolClass
     from app.services.org_class_lifecycle_service import read_class_references, closing_blockers, reference_snapshot
 
-    source_ids = {int(value) for value in json.loads(a.from_class_ids or "[]")}
+    source_ids = {int(value) for value in json.loads(_adjustment_scope_json(a))}
     ids = source_ids | ({a.to_class_id} if a.to_class_id else set())
     classes = {row.id: row for row in db.scalars(select(SchoolClass).where(
         SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(sorted(ids)))
@@ -1479,12 +1516,12 @@ def precheck_class_adjustment(user, adjustment_id, expected_version=None) -> dic
         ctx = _ctx(user, db)
         a = _get_adjustment(db, adjustment_id, ctx)
         _require_adjustment_version(a, expected_version)
-        if a.status not in ("DRAFT", "CHECKED"):
+        if _adjustment_status(a) not in ("DRAFT", "CHECKED"):
             raise AppException("DATA_CONFLICT", "仅草稿/已核对状态可（重新）核对")
         result, classes = _check_class_adjustment(db, ctx, a)
-        a.check_result_json = json.dumps(result, ensure_ascii=False)
+        _store_adjustment_check(a, result)
         a.checked_at = datetime.utcnow()
-        a.status = "CHECKED"
+        _set_adjustment_status(a, "CHECKED")
         a.version = int(a.version or 0) + 1
         db.flush()
         _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "SYNC_CHECK", "存在待处理事项" if result["blocked"] else "核对通过")
@@ -1500,16 +1537,16 @@ def execute_class_adjustment(user, adjustment_id, expected_version=None) -> dict
     with session() as db:
         ctx = _ctx(user, db)
         a = _get_adjustment(db, adjustment_id, ctx)
-        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
-        if a.status == "EXECUTED":  # 幂等：重复执行直接返回已执行状态
+        from_ids = [int(x) for x in json.loads(_adjustment_scope_json(a))]
+        if _adjustment_status(a) == "EXECUTED":  # 幂等：重复执行直接返回已执行状态
             cmap = _adjustment_class_names(db, from_ids + ([a.to_class_id] if a.to_class_id else []))
             return _adjustment_dto(a, cmap)
         _require_adjustment_version(a, expected_version)
-        if a.status != "CHECKED":
+        if _adjustment_status(a) != "CHECKED":
             raise AppException("DATA_CONFLICT", "仅已核对状态可执行")
         if not a.checked_at or (datetime.utcnow() - a.checked_at).total_seconds() > _ADJUST_CHECK_TTL_HOURS * 3600:
             raise AppException("DATA_CONFLICT", "核对结果已过期（超过24小时），请重新核对")
-        result = json.loads(a.check_result_json or "{}")
+        result = _read_adjustment_check(a) or {}
         if result.get("blocked"):
             raise AppException("VALIDATION_ERROR", "核对结果存在阻断项，无法执行")
         if result.get("snapshotVersion") != 1 or not result.get("snapshotHash"):
@@ -1533,8 +1570,8 @@ def execute_class_adjustment(user, adjustment_id, expected_version=None) -> dict
                 _audit(db, "AA_ORG_CLASS", cid, "UPDATE", f"班级调整申请 {a.id}：{a.reason}", before=before, after=new_status)
         result["execution"] = {"executedAt": datetime.utcnow().isoformat(), "changedClassCount": changed,
                                "studentMoveCount": 0, "classStatus": new_status}
-        a.check_result_json = json.dumps(result, ensure_ascii=False)
-        a.status = "EXECUTED"
+        _store_adjustment_check(a, result)
+        _set_adjustment_status(a, "EXECUTED")
         a.version = int(a.version or 0) + 1
         db.flush()
         _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_EXECUTE", f"{a.adjust_type} executed")
@@ -1549,11 +1586,11 @@ def cancel_class_adjustment(user, adjustment_id, expected_version=None) -> dict:
         ctx = _ctx(user, db)
         a = _get_adjustment(db, adjustment_id, ctx)
         _require_adjustment_version(a, expected_version)
-        if a.status not in ("DRAFT", "CHECKED"):
+        if _adjustment_status(a) not in ("DRAFT", "CHECKED"):
             raise AppException("DATA_CONFLICT", "已执行/已撤销的申请单不可再撤销")
         for cg in _adjustment_colleges(db, a):
             _require_college_write(ctx, db, cg)
-        a.status = "CANCELLED"
+        _set_adjustment_status(a, "CANCELLED")
         a.version = int(a.version or 0) + 1
         db.flush()
         _audit(db, "AA_ORG_CLASS_ADJUST_REQUEST", a.id, "ADJUST_CANCEL", "撤销")

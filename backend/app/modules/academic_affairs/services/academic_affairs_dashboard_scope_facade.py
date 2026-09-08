@@ -46,6 +46,25 @@ def _assert_term_command_scope(user, db) -> None:
         raise no_data_scope("仅校级教务可发布或切换学期")
 
 
+def _lock_term_command_authority(db) -> None:
+    """Take the shared tenant anchor before any term row lock or authority read.
+
+    Model listeners still enforce the invariant for other callers. Taking the
+    anchor here avoids the inverse term-row -> tenant-row lock order and keeps
+    the public commands aligned with calendar publication and SYS-12 activation.
+    """
+    from app.core.academic_term_authority_lock import lock_term_authority
+
+    tenant_id = int(_legacy._tid())
+    if not lock_term_authority(db, tenant_id):
+        raise AppException(
+            "TENANT_CONTEXT_REQUIRED",
+            "学期写入未命中租户协调行，拒绝继续",
+            details={"tenantId": str(tenant_id)},
+            http_status=409,
+        )
+
+
 def _lock_target_term(db, term_id):
     from app.models import AaTerm
 
@@ -95,6 +114,7 @@ def publish_term(term_id, user) -> dict:
 
     with _legacy.session() as db:
         _assert_term_command_scope(user, db)
+        _lock_term_command_authority(db)
         resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
 
         if resolved.authority == "CALENDAR_GOVERNANCE":
@@ -137,6 +157,7 @@ def set_current_term(term_id, user) -> dict:
 
     with _legacy.session() as db:
         _assert_term_command_scope(user, db)
+        _lock_term_command_authority(db)
         resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
         if resolved.authority != "AA_TERM_COMPAT" or not resolved.can_direct_switch:
             raise _governance_switch_conflict(resolved)

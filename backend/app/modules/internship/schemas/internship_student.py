@@ -44,6 +44,7 @@ class EligibilityRequest(BaseModel):
     expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     status: str = Field(..., description="QUALIFIED / UNQUALIFIED / PENDING")
     reason: Optional[str] = ""
+    publishReason: bool = Field(False, description="本次认定说明是否向该学生本人公开")
 
 
 class DestinationRequest(BaseModel):

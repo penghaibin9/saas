@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from datetime import timedelta
+
+from sqlalchemy import case, func, select
 
 from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
@@ -23,6 +25,7 @@ def snapshot(user: dict, page_size: int = 8, *, client: str = "pc") -> dict:
         raise AppException("VALIDATION_ERROR", "不支持的工作台客户端")
 
     size = max(1, min(20, int(page_size or 8)))
+    mobile_summary = {"pending": 0, "overdue": 0, "nearDeadline": 0, "doneToday": 0}
 
     with session() as db:
         visibility = todo_svc._visibility_cond(db, user)
@@ -47,6 +50,19 @@ def snapshot(user: dict, page_size: int = 8, *, client: str = "pc") -> dict:
                                         UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
                               .limit(size)).all()
             items = [todo_svc._todo_dict(item, client=client) for item in rows]
+            if client == "teacherMini":
+                # 手机指标下钻统一待办，使用同一范围的全量聚合，不从分页预览估算。
+                now = todo_svc._utc_now()
+                soon = now + timedelta(hours=24)
+                today = todo_svc._local_today_start_utc()
+                overdue, near, done = db.execute(select(
+                    func.sum(case((pending & (UnifiedTodo.due_at < now), 1), else_=0)),
+                    func.sum(case((pending & (UnifiedTodo.due_at >= now) & (UnifiedTodo.due_at <= soon), 1), else_=0)),
+                    func.sum(case(((UnifiedTodo.status == "DONE") & (UnifiedTodo.completed_at >= today)
+                                   & (UnifiedTodo.completed_at <= now), 1), else_=0)),
+                ).where(*base)).one()
+                mobile_summary = {"pending": todo_pending, "overdue": int(overdue or 0),
+                                  "nearDeadline": int(near or 0), "doneToday": int(done or 0)}
 
     # TP-W03：pending/overdue/nearDeadline/doneToday 这组磁贴在前端全部下钻到 Approval 页
     # （/admin/approval/todos、/admin/approval/done）。这组页面读的是 WorkflowTask，不是
@@ -55,13 +71,16 @@ def snapshot(user: dict, page_size: int = 8, *, client: str = "pc") -> dict:
     # Authority，直接复用 Approval 中心自己的 summary()，不在这里重复一份口径。
     # UnifiedTodo 聚合（todo_pending / by_type / items）仍然是页面内嵌"最近待办"小组件与
     # 分类磁贴（typeCue，各自跳到真实业务域页面）的正确数据源，两者不是同一件事。
-    approval_summary = approval_runtime_service.summary(user=user)
-    summary = {
-        "pending": int(approval_summary.get("total") or 0),
-        "overdue": int(approval_summary.get("overdue") or 0),
-        "nearDeadline": int(approval_summary.get("nearDeadline") or 0),
-        "doneToday": int(approval_summary.get("doneToday") or 0),
-    }
+    if client == "teacherMini":
+        summary = mobile_summary
+    else:
+        approval_summary = approval_runtime_service.summary(user=user)
+        summary = {
+            "pending": int(approval_summary.get("total") or 0),
+            "overdue": int(approval_summary.get("overdue") or 0),
+            "nearDeadline": int(approval_summary.get("nearDeadline") or 0),
+            "doneToday": int(approval_summary.get("doneToday") or 0),
+        }
 
     try:
         messages = message_svc.count_messages(user)

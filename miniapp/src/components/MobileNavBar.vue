@@ -32,7 +32,8 @@ export default {
     subtitle: { type: String, default: '' },
     showBack: { type: Boolean, default: false },
     variant: { type: String, default: 'default' },
-    beforeBack: { type: Function, default: null }
+    beforeBack: { type: Function, default: null },
+    fallbackUrl: { type: String, default: '/pages/login/index' }
   },
   data() {
     return { statusBarHeight: 20, backing: false }
@@ -51,7 +52,7 @@ export default {
           const allowed = await this.beforeBack()
           if (allowed === false) return
         }
-        navBack()
+        navBack(this.fallbackUrl)
       } finally {
         this.backing = false
       }

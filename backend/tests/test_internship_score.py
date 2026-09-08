@@ -62,6 +62,7 @@ def _student(student_no, tid=TID):
 def _seed(db_mode):
     """两名学生均具备正式 ASSESS 过程事实；企业评价仍通过真实 API 生成。"""
     from uuid import uuid4
+    from app.core.context import get_tenant, set_tenant
 
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -85,7 +86,9 @@ def _seed(db_mode):
 
     db = get_sessionmaker()()
     ids = {}
+    previous_tenant = get_tenant()
     try:
+        set_tenant(TID)
         today = date.today()
         batch = InternshipBatch(
             tenant_id=TID,
@@ -174,6 +177,8 @@ def _seed(db_mode):
                     tenant_id=TID,
                     internship_id=record.id,
                     student_id=student.id,
+                    effective_date=today.isoformat(),
+                    expiry_date=today.isoformat(),
                     status="VERIFIED",
                 ),
                 InternshipAgreement(
@@ -241,6 +246,7 @@ def _seed(db_mode):
         return ids
     finally:
         db.close()
+        set_tenant(previous_tenant)
 
 
 def _config(client, **overrides):

@@ -217,12 +217,12 @@ export function findActiveMenu(path) {
 export const LEGACY_GROUP_KEY_MAP = {
   'student-center': 'student-affairs',
   practice: 'graduation',
-  'data-center': 'workbench',
+  'data-center': 'student-affairs',
   'wf-center': 'system'
 }
 
 export const SEARCH_ALIASES = [
-  { keywords: ['工作台', '我的工作台', '首页'], path: '/workbench', label: '工作台 / 我的工作台' },
+  { keywords: ['工作台', '我的工作台', '首页'], path: '/workbench', label: '学工中心 / 学工工作台 / 我的工作台' },
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
@@ -230,9 +230,9 @@ export const SEARCH_ALIASES = [
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报', '实习工作台', '今日工作'], path: '/admin/internship', label: '岗位实习中心 / 今日工作' },
   { keywords: ['就业服务', '就业', '未就业帮扶', '就业转化'], path: '/admin/employment', label: '就业服务（就业中心）' },
-  { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '工作台 / 领导驾驶舱' },
-  { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '工作台 / 审批中心' },
-  { keywords: ['消息中心', '我的消息', '站内信'], path: '/admin/messages/inbox', label: '工作台 / 消息中心' },
+  { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '学工中心 / 学工工作台 / 领导驾驶舱' },
+  { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '学工中心 / 学工工作台 / 审批中心' },
+  { keywords: ['消息中心', '我的消息', '站内信'], path: '/admin/messages/inbox', label: '学工中心 / 学工工作台 / 消息中心' },
   { keywords: ['权限与流程', '流程配置', '审批模板', '角色', '权限'], path: '/admin/workflow', label: '系统管理 / 权限与流程' },
   { keywords: ['系统管理', '用户', '菜单', '数据范围', '品牌'], path: '/admin/system', label: '系统管理' },
   { keywords: ['安全审计', '日志', '安全与审计'], path: '/admin/system/logs', label: '系统管理 / 安全与审计' }

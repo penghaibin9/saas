@@ -15,7 +15,7 @@
           </view>
         </view>
         <view class="wb__rolepill" v-if="wb" @click="go('/pages/role-switch/index')">
-          <text class="wb__rolepill-dot" />当前身份：{{ wb.contextTitle }}<text class="wb__rolepill-chev">▾</text>
+          <text class="wb__rolepill-dot" />当前身份：{{ currentRoleTitle }}<text class="wb__rolepill-chev">▾</text>
         </view>
         <view class="stat-strip" v-if="wb">
           <view class="stat-strip__item" v-for="m in wb.metrics" :key="m.key"><text class="stat-strip__val">{{ m.value }}</text><text class="stat-strip__label">{{ m.label }}</text></view>
@@ -83,7 +83,7 @@
               @view="handleTodo(t)"
             />
           </view>
-          <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无临近超时事项</text><text class="wb__quiet-text">当前待办没有需要立即处理的截止风险。</text></view>
+          <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无待办记录</text><text class="wb__quiet-text">有新的办理事项时会显示在这里。</text></view>
 
           <view class="section-head">
             <view><text class="section-head__title">风险学生</text><text class="wb__section-sub">关注高风险和长期未闭环问题</text></view>
@@ -148,6 +148,8 @@ import { getStatusBarHeight } from '@/utils/deviceInfo'
 const WORKBENCH_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
 const INTERNSHIP_PERMISSIONS = {
+  'internship-students': 'internship.student.view',
+  'internship-positions': 'internship.position.view',
   weekly: 'internship.report.review',
   checkin: 'internship.attendance.review',
   makeup: 'internship.makeup.review',
@@ -162,6 +164,7 @@ const INTERNSHIP_PERMISSIONS = {
   'process-report': 'internship.report.view',
   'plan-task': 'internship.task.view',
   'internship-application': 'internship.application.view',
+  'internship-volunteers': 'internship.application.view',
   'internship-risk': 'internship.risk.view'
 }
 
@@ -178,7 +181,7 @@ export default {
   computed: {
     todoBadge() {
       if (!this.wb) return 0
-      const m = this.wb.metrics.find((x) => ['todo', 'weekly', 'review', 'warning'].includes(x.key))
+      const m = this.wb.metrics.find((x) => ['pending', 'todo', 'weekly', 'review', 'warning'].includes(x.key))
       return m ? Number(m.value) || 0 : 0
     },
     visibleQuickActions() {
@@ -198,16 +201,25 @@ export default {
       if (session.currentRole !== 'intern_mentor') return null
       return useInternshipContextStore().selectedBatch
     },
-    dueSoonCount() { return Array.isArray(this.wb?.dueSoon) ? this.wb.dueSoon.length : 0 },
+    currentRoleTitle() {
+      const title = String(this.wb?.contextTitle || '').trim()
+      return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
+    },
+    dueSoonCount() { return Number(this.wb?.metrics?.find(m => m.key === 'near')?.value) || 0 },
+    overdueCount() { return Number(this.wb?.metrics?.find(m => m.key === 'overdue')?.value) || 0 },
     riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 },
     workbenchConclusion() {
       if (this.riskCount > 0) return `有 ${this.riskCount} 名风险学生需要关注`
+      if (this.overdueCount > 0) return `有 ${this.overdueCount} 项待办已逾期`
       if (this.dueSoonCount > 0) return `有 ${this.dueSoonCount} 项待办即将超时`
+      if (this.todoBadge > 0) return `有 ${this.todoBadge} 项待办可以处理`
       return '当前没有紧急风险或临近超时事项'
     },
     nextActionText() {
       if (this.riskCount > 0) return '先进入风险台账，查看高风险学生和未闭环事项。'
+      if (this.overdueCount > 0) return '先查看已逾期事项，完成办理或联系相关人员跟进。'
       if (this.dueSoonCount > 0) return '先处理临近截止的审批与批阅任务。'
+      if (this.todoBadge > 0) return '从下方待办开始办理，或进入全部待办按业务筛选。'
       if (this.visibleQuickActions.length > 0) return '按日常工作需要进入快捷操作，或查看最近学生动态。'
       return '当前身份暂无可执行入口，可查看待办和学生动态。'
     }
@@ -317,25 +329,29 @@ export default {
     quick(q) {
       const session = useSessionStore()
       const map = {
-        weekly: '/pages/teacher/internship-review/index',
+        weekly: '/pages/teacher-internship/internship-review/index',
         'review-open': '/pages/teacher/graduation-guide/index?tab=review&kind=proposal',
         'review-mid': '/pages/teacher/graduation-guide/index?tab=midterm',
         'review-result': '/pages/teacher/graduation-guide/index?tab=review&kind=final',
-        checkin: '/pages/teacher/internship-review/index',
-        makeup: '/pages/teacher/internship-approval/index',
-        leave: '/pages/teacher/internship-approval/index?tab=leave',
-        guidance: '/pages/teacher/internship-guidance/index',
-        'stu-eval': '/pages/teacher/student-eval/index',
-        'ent-eval': '/pages/teacher/enterprise-eval/index',
-        insurance: '/pages/teacher/insurance-verify/index',
-        'internship-change': '/pages/teacher/internship-change/index',
-        'internship-score': '/pages/teacher/internship-score/index',
-        'agreement-confirm': '/pages/teacher/agreement-confirm/index',
-        'process-report': '/pages/teacher/process-report-review/index',
-        'plan-task': '/pages/teacher/plan-task-review/index',
-        'internship-application': '/pages/teacher/internship-application/index',
-        'internship-risk': '/pages/teacher/internship-risk/index',
+        checkin: '/pages/teacher-internship/internship-review/index',
+        makeup: '/pages/teacher-internship/internship-approval/index',
+        leave: '/pages/teacher-internship/internship-approval/index?tab=leave',
+        'internship-students': '/pages/teacher-internship/internship-students/index',
+        'internship-positions': '/pages/teacher-internship/internship-positions/index',
+        guidance: '/pages/teacher-internship/internship-guidance/index',
+        'stu-eval': '/pages/teacher-internship/student-eval/index',
+        'ent-eval': '/pages/teacher-internship/enterprise-eval/index',
+        insurance: '/pages/teacher-internship/insurance-verify/index',
+        'internship-change': '/pages/teacher-internship/internship-change/index',
+        'internship-score': '/pages/teacher-internship/internship-score/index',
+        'agreement-confirm': '/pages/teacher-internship/agreement-confirm/index',
+        'process-report': '/pages/teacher-internship/process-report-review/index',
+        'plan-task': '/pages/teacher-internship/plan-task-review/index',
+        'internship-application': '/pages/teacher-internship/internship-application/index',
+        'internship-volunteers': '/pages/teacher-internship/internship-volunteers/index',
+        'internship-risk': '/pages/teacher-internship/internship-risk/index',
         approval: '/pages/teacher/approval/index',
+        todos: '/pages/teacher/todos/index',
         risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
         follow: '/pages/teacher/employment-follow/index',
         recommend: '/pages/teacher/employment-follow/index?tab=unemployed',
@@ -375,20 +391,20 @@ export default {
         orientationVerify: '/pages/teacher/orientation/verify/index',
         orientationDashboard: '/pages/teacher/orientation/dashboard/index'
       }
-      if (q.key === 'risk' && session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (q.key === 'risk' && session.currentRole === 'intern_mentor') return go('/pages/teacher-internship/internship-risk/index')
       if (map[q.key]) return go(map[q.key])
       toast('当前入口尚未配置，请联系管理员')
     },
     goRiskList() {
       const session = useSessionStore()
       go(session.currentRole === 'intern_mentor'
-        ? '/pages/teacher/internship-risk/index'
+        ? '/pages/teacher-internship/internship-risk/index'
         : '/pages/teacher/affairs-review/index?type=RISK_HANDLE')
     },
     handleTodo(t) { return runAction(t && t.action, { side: 'teacher' }) },
     handleRisk(r) {
       const session = useSessionStore()
-      if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (session.currentRole === 'intern_mentor') return go('/pages/teacher-internship/internship-risk/index')
       if (r && r.actionType === 'RISK_HANDLE') return go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')
       go('/pages/teacher/risk-students/index')
     },

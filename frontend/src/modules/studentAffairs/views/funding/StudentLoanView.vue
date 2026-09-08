@@ -1,180 +1,277 @@
 <template>
-  <AppPageShell title="助学贷款" subtitle="生源地/校园地贷款登记 → 回执 → 核对 → 确认。所有推进动作由后端状态机与当前版本共同裁定。"
-    role-name="学工处 / 资助老师" data-scope-name="资助范围（辅导员限本班）" watermark-purpose="助学贷款台账">
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载助学贷款台账..." @retry="load" @back="$router.push('/admin/student-affairs/funding')">
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">贷款办理台账</span>
-          <h3 class="sa-summary-strip__title">先核对回执与学生信息，再按顺序推进到确认</h3>
-          <p class="sa-summary-strip__text">页面只显示当前数据范围内记录。操作列展示当前状态允许的下一步，不需要老师猜流程。</p>
+  <AppPageShell
+    title="助学贷款"
+    subtitle="回执核验与贷款台账"
+    role-name="学工处 / 资助老师"
+    data-scope-name="资助范围（辅导员限本班）"
+    watermark-purpose="助学贷款台账"
+  >
+    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载助学贷款台账…" @retry="load" @back="$router.push('/admin/student-affairs/funding')">
+      <AppSectionCard title="贷款办理台账" compact>
+        <div v-if="focusId" class="ln-toolbar"><strong>当前记录 · {{ focusId }}</strong><button class="ln-secondary" type="button" @click="clearFocus">返回贷款台账</button></div>
+        <div v-else class="ln-statusbar" aria-label="按办理状态筛选">
+          <button v-for="item in quickStatuses" :key="item.value || 'ALL'" type="button" :class="{ active: filters.status === item.value }" @click="setStatus(item.value)"><span>{{ item.label }}</span><strong>{{ item.value ? count(item.value) : Number(statusCounts.ALL || 0) }}</strong></button>
+          <AppPermissionButton code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" @click="openRegister">代登记</AppPermissionButton>
         </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting === 'reg'" @click="formVisible = true">登记贷款</AppPermissionButton>
+        <div v-if="!focusId" class="ln-toolbar">
+          <AppTextInput v-model="filters.keyword" class="ln-search" type="search" placeholder="姓名、学号或经办银行" clearable @change="applyFilters" @clear="applyFilters" />
+          <AppSelect v-model="filters.status" class="ln-filter" :options="statusOptions" @change="applyFilters" />
+          <AppSelect v-model="filters.loanType" class="ln-filter" :options="typeOptions" @change="applyFilters" />
+          <AppTextInput v-model="filters.yearCode" class="ln-year" placeholder="学年，如 2026-2027" :maxlength="9" @change="applyFilters" />
+          <button type="button" class="ln-secondary" :disabled="loading" @click="applyFilters">查询</button>
         </div>
-      </div>
 
-      <div class="sa-workflow-strip" aria-label="贷款办理流程">
-        <div class="sa-workflow-step" data-step="1">登记学生、类型、学年和金额</div>
-        <div class="sa-workflow-step" data-step="2">收到回执后核对银行和学生信息</div>
-        <div class="sa-workflow-step" data-step="3">确认无误后完成贷款台账</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-        </div>
-      </div>
-
-      <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="登记助学贷款">
-        <p class="ln-intro">请按正式贷款材料填写。银行卡只录入后4位，避免保存完整敏感卡号。</p>
-        <div class="ln-grid">
-          <div class="ln-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
-          <label class="ln-field"><span>类型 *</span><AppSelect v-model="form.loanType" :options="LOAN_TYPE_OPTIONS" /></label>
-          <label class="ln-field"><span>学年 *</span><AppTextInput v-model="form.yearCode" :maxlength="9" placeholder="2025-2026" /></label>
-          <label class="ln-field"><span>金额 *</span><AppNumberInput v-model="form.amount" :min="0.01" :max="999999999999.99" :precision="2" /></label>
-          <label class="ln-field"><span>银行</span><AppTextInput v-model="form.bankName" :maxlength="100" placeholder="贷款经办银行" /></label>
-          <label class="ln-field"><span>银行卡后4位</span><AppTextInput v-model="form.bankLast4" :maxlength="4" placeholder="仅填写4位数字" /></label>
-        </div>
-        <AppInlineAlert v-if="formError" type="danger" :description="formError" />
-        <div class="ln-actions"><button type="button" class="ln-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" :loading="acting === 'reg'" @click="register">登记</AppPermissionButton></div>
-      </AppSectionCard>
-
-      <AppSectionCard title="贷款办理台账">
-        <p class="ln-section-hint">推进前请核对学生、贷款类型、学年和回执材料；已确认记录只保留查看。</p>
-        <DataTable v-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
-          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
-          <template #cell-loanType="{ row }">{{ row.loanType === 'ORIGIN' ? '生源地' : '校园地' }}</template>
-          <template #cell-bank="{ row }">{{ row.bankName || '—' }} {{ row.bankLast4 ? ('****' + row.bankLast4) : '' }}</template>
-          <template #cell-yearCode="{ row }">{{ row.yearCode || '—' }}</template>
+        <section v-if="focusId && loans.length" class="ln-focused" aria-label="贷款原单工作区">
+          <header><div><strong>{{ loans[0].realName }} · {{ loans[0].studentNo }}</strong><span>{{ typeLabel(loans[0].loanType) }} · {{ loans[0].yearCode }}</span></div><StatusTag :type="statusTone(loans[0].status)" :label="loans[0].statusLabel" dot /></header>
+          <dl>
+            <div><dt>贷款金额</dt><dd>{{ amountText(loans[0].amount) }}</dd></div>
+            <div><dt>经办银行</dt><dd>{{ loans[0].bankName || '待补充' }}<template v-if="loans[0].bankLast4"> · 尾号 {{ loans[0].bankLast4 }}</template></dd></div>
+            <div><dt>电子回执</dt><dd>{{ loans[0].receiptCodeMasked || '待补充' }}</dd></div>
+            <div><dt>回执材料</dt><dd><button v-if="loans[0].receiptFile" class="ln-file" type="button" :disabled="!!fileBusy" @click="openReceipt(loans[0])">{{ loans[0].receiptFile.fileName || '查看回执材料' }}</button><span v-else>未附材料</span></dd></div>
+          </dl>
+          <p v-if="loans[0].reviewOpinion" class="ln-focused-note"><strong>{{ loans[0].status === 'RETURNED' ? '需修改' : '核验意见' }}</strong>{{ loans[0].reviewOpinion }}</p>
+          <p v-if="loans[0].status === 'CONFIRMED'" class="ln-focused-note"><strong>校内回执台账已确认</strong>{{ loans[0].confirmedAt ? new Date(loans[0].confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}<span>银行放款请以经办银行结果为准。</span></p>
+          <footer><AppPermissionButton v-for="action in availableActions(loans[0])" :key="action.code" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" :variant="action.code === 'RETURN' ? 'secondary' : 'primary'" :disabled="saving" @click="openAction(loans[0], action.code)">{{ action.label }}</AppPermissionButton></footer>
+        </section>
+        <DataTable v-else-if="loans.length" :columns="loanColumns" :rows="loans" row-key="loanId">
+          <template #cell-student="{ row }">
+            <strong class="ln-main">{{ row.realName || `学生 ${row.studentId}` }}</strong>
+            <small>{{ row.studentNo || '学号待核对' }}</small>
+          </template>
+          <template #cell-loan="{ row }">
+            <strong>{{ typeLabel(row.loanType) }} · {{ row.yearCode || '学年待核对' }}</strong>
+            <small>{{ row.bankName || '银行待补充' }}<template v-if="row.bankLast4"> · 尾号 {{ row.bankLast4 }}</template></small>
+          </template>
           <template #cell-amount="{ row }">{{ amountText(row.amount) }}</template>
-          <template #cell-status="{ row }"><StatusTag :type="lnType(row.status)" :label="row.statusLabel || row.status" dot /></template>
+          <template #cell-receipt="{ row }">
+            <span>{{ row.receiptCodeMasked || '未填写回执编号' }}</span>
+            <button v-if="row.receiptFile" type="button" class="ln-file" :disabled="fileBusy === row.loanId" @click="openReceipt(row)">{{ row.receiptFile.fileName || '查看回执材料' }}</button>
+          </template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="statusTone(row.status)" :label="row.statusLabel || row.status" dot />
+            <small v-if="row.reviewOpinion" class="ln-opinion">{{ row.reviewOpinion }}</small>
+          </template>
           <template #cell-actions="{ row }">
-            <AppPermissionButton v-if="allowsAdvance(row)" :allowed="canBtn('studentAffairs.funding.loan.manage')" code="studentAffairs.funding.loan.manage" size="sm" :loading="acting === row.loanId" :disabled="!hasVersion(row)" @click="openAdvance(row)">{{ nextLabel(row.status) }}</AppPermissionButton>
-            <span v-else class="ln-muted">{{ row.status === 'CONFIRMED' ? '已确认' : '—' }}</span>
+            <div class="ln-actions">
+              <AppPermissionButton v-if="allows(row, 'SUBMIT_RECEIPT')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" variant="secondary" @click="openAction(row, 'SUBMIT_RECEIPT')">补录回执</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'VERIFY')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'VERIFY')">核验通过</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'RETURN')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" variant="secondary" @click="openAction(row, 'RETURN')">退回</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'CONFIRM')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'CONFIRM')">确认台账</AppPermissionButton>
+              <div v-if="row.status === 'CONFIRMED'" class="ln-muted"><span>台账已确认</span><small>{{ row.confirmedAt ? new Date(row.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</small></div><span v-else-if="!row.allowedActions?.length" class="ln-muted">只读</span>
+            </div>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">当前范围暂无贷款记录。需要办理时，可从页面上方登记学生贷款。</p>
-        <AppPagination v-if="pagination.total > pagination.pageSize" v-model:page="pagination.page" v-model:pageSize="pagination.pageSize" :total="pagination.total" @change="load" />
+        <div v-else class="ln-empty">
+          <strong>{{ focusId ? '该记录不存在或不在当前权限范围内' : hasFilters ? '没有匹配的贷款记录' : '当前范围还没有贷款记录' }}</strong>
+          <p v-if="!focusId">{{ hasFilters ? '调整筛选条件后再试。' : '学生提交电子回执后会自动进入待核验队列，也可由老师代登记纸质来件。' }}</p>
+        </div>
+        <AppPagination v-if="total > pageSize || page > 1" v-model:page="page" v-model:pageSize="pageSize" :total="total" :disabled="loading" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
 
-    <AppConfirmDialog v-model:visible="advanceDlg.visible" :title="nextLabel(advanceDlg.status)" type="warning"
-      :message="advanceMessage" :confirm-text="nextLabel(advanceDlg.status)" :submitting="acting === advanceDlg.loanId" @confirm="advance" />
+    <AppDrawer v-model:visible="registerDrawer.visible" title="代登记助学贷款" subtitle="可先建档，收到电子回执后再补录。" mode="modal" size="large">
+      <div class="ln-form">
+        <AppInlineAlert type="info" description="同一学生同一学年限一笔；银行卡仅填后4位。" />
+        <div class="ln-form-grid">
+          <AppFormItem label="学生" required><AppStudentPicker v-model="registerDrawer.form.studentId" placeholder="按姓名 / 学号搜索" :disabled="saving" /></AppFormItem>
+          <AppFormItem label="贷款类型" required><AppSelect v-model="registerDrawer.form.loanType" :options="typeOptions.slice(1)" :disabled="saving" /></AppFormItem>
+          <AppFormItem label="贷款学年" required><AppTextInput v-model="registerDrawer.form.yearCode" :maxlength="9" placeholder="2026-2027" :disabled="saving" /></AppFormItem>
+          <AppFormItem label="贷款金额（元）" required hint="高职当前政策区间 1000–20000 元"><AppNumberInput v-model="registerDrawer.form.amount" :min="1000" :max="20000" :precision="2" :disabled="saving" /></AppFormItem>
+          <AppFormItem label="经办银行"><AppTextInput v-model="registerDrawer.form.bankName" :maxlength="100" placeholder="如：国家开发银行" :disabled="saving" /></AppFormItem>
+          <AppFormItem label="银行卡后4位"><AppTextInput v-model="registerDrawer.form.bankLast4" :maxlength="4" placeholder="仅4位数字" :disabled="saving" /></AppFormItem>
+          <AppFormItem class="ln-span2" label="电子回执编号" hint="选填；不填则保存为“待补回执”"><AppTextInput v-model="registerDrawer.form.receiptCode" :maxlength="64" placeholder="6-64位字母、数字或短横线" :disabled="saving" /></AppFormItem>
+          <AppFormItem class="ln-span2" label="回执材料" hint="选填 PDF、图片或文档；高风险文件需安全扫描完成后才能提交。">
+            <FileUploader biz-type="LOAN" :disabled="saving" button-text="选择回执材料" @uploaded="onUploaded('register', $event)" @error="onUploadError" />
+            <div v-if="registerDrawer.form.receiptFile" class="ln-uploaded"><span>{{ registerDrawer.form.receiptFile.fileName }}</span><span>{{ registerDrawer.form.receiptFile.statusText }}</span><button v-if="!registerDrawer.form.receiptFile.readyForBusiness" type="button" @click="refreshUploaded('register')">检查状态</button></div>
+          </AppFormItem>
+        </div>
+        <AppInlineAlert v-if="registerDrawer.errorMessage" type="danger" :description="registerDrawer.errorMessage" />
+      </div>
+      <template #footer><button type="button" class="ln-secondary" :disabled="saving" @click="registerDrawer.visible = false">取消</button><AppPermissionButton code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" :loading="saving" @click="submitRegister">保存登记</AppPermissionButton></template>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="actionDrawer.visible" :title="actionTitle" :subtitle="actionSubtitle" mode="modal" size="large">
+      <div v-if="actionDrawer.row" class="ln-form">
+        <div class="ln-context">
+          <div><span>学生</span><strong>{{ actionDrawer.row.realName }} · {{ actionDrawer.row.studentNo }}</strong></div>
+          <div><span>贷款</span><strong>{{ typeLabel(actionDrawer.row.loanType) }} · {{ actionDrawer.row.yearCode }} · {{ amountText(actionDrawer.row.amount) }}</strong></div>
+          <div><span>回执</span><strong>{{ actionDrawer.row.receiptCodeMasked || '尚未填写' }}</strong></div>
+        </div>
+        <template v-if="actionDrawer.action === 'SUBMIT_RECEIPT'">
+          <div class="ln-form-grid">
+            <AppFormItem label="贷款类型" required><AppSelect v-model="actionDrawer.form.loanType" :options="typeOptions.slice(1)" :disabled="saving" /></AppFormItem>
+            <AppFormItem label="贷款学年" required><AppTextInput v-model="actionDrawer.form.yearCode" :maxlength="9" :disabled="saving" /></AppFormItem>
+            <AppFormItem label="贷款金额（元）" required><AppNumberInput v-model="actionDrawer.form.amount" :min="1000" :max="20000" :precision="2" :disabled="saving" /></AppFormItem>
+            <AppFormItem label="经办银行"><AppTextInput v-model="actionDrawer.form.bankName" :maxlength="100" :disabled="saving" /></AppFormItem>
+            <AppFormItem label="银行卡后4位"><AppTextInput v-model="actionDrawer.form.bankLast4" :maxlength="4" :disabled="saving" /></AppFormItem>
+            <AppFormItem label="电子回执编号" required><AppTextInput v-model="actionDrawer.form.receiptCode" :maxlength="64" :placeholder="actionDrawer.row.receiptCodeMasked ? '留空则沿用原回执编号' : '请输入完整回执编号'" :disabled="saving" /></AppFormItem>
+            <AppFormItem class="ln-span2" label="更新回执材料"><FileUploader biz-type="LOAN" :disabled="saving" button-text="选择新的回执材料" @uploaded="onUploaded('action', $event)" @error="onUploadError" /><div v-if="actionDrawer.form.receiptFile" class="ln-uploaded"><span>{{ actionDrawer.form.receiptFile.fileName }}</span><span>{{ actionDrawer.form.receiptFile.statusText }}</span><button v-if="!actionDrawer.form.receiptFile.readyForBusiness" type="button" @click="refreshUploaded('action')">检查状态</button></div></AppFormItem>
+          </div>
+        </template>
+        <AppFormItem v-else-if="actionDrawer.action === 'RETURN'" label="退回原因（5-1000字）" required><AppTextarea v-model="actionDrawer.form.reason" :rows="4" :maxlength="1000" placeholder="写明学生需要修改的具体信息或材料" :disabled="saving" /></AppFormItem>
+        <AppFormItem v-else-if="actionDrawer.action === 'VERIFY'" label="核验备注"><AppTextarea v-model="actionDrawer.form.reason" :rows="3" :maxlength="1000" placeholder="选填，如：已核对学生、学年、金额和电子回执" :disabled="saving" /></AppFormItem>
+        <AppInlineAlert v-else type="warning" description="确认后该记录进入贷款台账终态。请先核对学生、学年、金额、回执编号和材料。" />
+        <AppInlineAlert v-if="actionDrawer.errorMessage" type="danger" :description="actionDrawer.errorMessage" />
+      </div>
+      <template #footer><button type="button" class="ln-secondary" :disabled="saving" @click="actionDrawer.visible = false">取消</button><AppPermissionButton code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" :loading="saving" @click="submitAction">{{ actionConfirmText }}</AppPermissionButton></template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
-  AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
-  AppStatusTag, AppStudentPicker, AppTextInput
+  AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell, AppPagination,
+  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
 } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
+import FileUploader from '@/components/file/FileUploader.vue'
 import { DataTable } from '@/components/business'
+import { fileSdk } from '@/services/file/fileSdk'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
-import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { toast } from '@/utils/toast'
 
-const NEXT = { REGISTERED: '上传回执', RECEIPT: '确认已核对', VERIFIED: '确认贷款' }
-const LOAN_TYPE_OPTIONS = [{ value: 'ORIGIN', label: '生源地' }, { value: 'CAMPUS', label: '校园地' }]
 const LOAN_COLUMNS = [
-  { key: 'student', title: '学生' }, { key: 'loanType', title: '类型' }, { key: 'bank', title: '银行/卡' },
-  { key: 'yearCode', title: '学年' }, { key: 'amount', title: '金额' }, { key: 'status', title: '状态' },
-  { key: 'actions', title: '操作', align: 'right', width: '140px' }
+  { key: 'student', title: '学生', width: '145px' }, { key: 'loan', title: '贷款与银行' },
+  { key: 'amount', title: '金额', width: '110px' }, { key: 'receipt', title: '电子回执' },
+  { key: 'status', title: '状态', width: '160px' }, { key: 'actions', title: '下一步', align: 'right', width: '225px' }
 ]
+const TYPES = [{ label: '全部类型', value: '' }, { label: '生源地贷款', value: 'ORIGIN' }, { label: '校园地贷款', value: 'CAMPUS' }]
+const STATUSES = [
+  { label: '全部状态', value: '' }, { label: '待补回执', value: 'REGISTERED' },
+  { label: '待学校核验', value: 'RECEIPT' }, { label: '已退回修改', value: 'RETURNED' },
+  { label: '已核验', value: 'VERIFIED' }, { label: '已确认', value: 'CONFIRMED' },
+  { label: '已撤回', value: 'WITHDRAWN' }
+]
+const freshRegister = () => ({ studentId: '', loanType: 'ORIGIN', yearCode: '', amount: null, bankName: '', bankLast4: '', receiptCode: '', receiptFile: null })
 
 export default {
   name: 'StudentLoanView',
-  props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput,
-    AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
-    StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
+    AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppNumberInput, AppPageShell,
+    AppPagination, AppPermissionButton, AppSectionCard, AppSelect, AppStudentPicker, AppTextarea,
+    AppTextInput, DataTable, FileUploader, StatusTag: AppStatusTag
   },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      loanColumns: LOAN_COLUMNS, loading: true, acting: '', errorMessage: '', formError: '', loans: [], statusCounts: null,
-      formVisible: false, form: this.blank(), pagination: { page: 1, pageSize: 50, total: 0 },
-      advanceDlg: { visible: false, loanId: '', status: '', version: null }
+      loanColumns: LOAN_COLUMNS, typeOptions: TYPES, statusOptions: STATUSES,
+      quickStatuses: [{ label: '全部', value: '' }, { label: '待核验', value: 'RECEIPT' }, { label: '待补回执', value: 'REGISTERED' }, { label: '已退回', value: 'RETURNED' }, { label: '已确认', value: 'CONFIRMED' }],
+      loading: true, saving: false, fileBusy: '', loadSeq: 0, errorMessage: '', loans: [],
+      statusCounts: {}, policy: { minAmount: '1000.00', maxAmount: '20000.00', basis: '' },
+      filters: { keyword: '', status: '', loanType: '', yearCode: '' }, page: 1, pageSize: 20, total: 0,
+      registerDrawer: { visible: false, form: freshRegister(), errorMessage: '' },
+      actionDrawer: { visible: false, row: null, action: '', form: {}, errorMessage: '' }
     }
   },
   computed: {
-    LOAN_TYPE_OPTIONS: () => LOAN_TYPE_OPTIONS,
+    focusId() { return String(this.$route?.query?.recordId || '') },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    advanceMessage() { return ({ REGISTERED: '确认已收到贷款回执后推进。', RECEIPT: '确认回执与学生、银行和金额一致后推进。', VERIFIED: '确认后贷款进入终态并写入台账。' })[this.advanceDlg.status] || '' },
-    metricCards() {
-      const count = (key) => this.statusCounts === null ? '—' : Number(this.statusCounts[key] || 0)
-      return [
-        { key: 't', label: '贷款总数', value: this.statusCounts === null ? '—' : Number(this.statusCounts.ALL || 0), accent: 'primary' },
-        { key: 'p', label: '待核对/回执', value: this.statusCounts === null ? '—' : count('REGISTERED') + count('RECEIPT'), accent: 'warning' },
-        { key: 'c', label: '已确认', value: count('CONFIRMED'), accent: 'success' }
-      ]
-    }
+    hasFilters() { return Object.values(this.filters).some(Boolean) },
+    actionTitle() { return ({ SUBMIT_RECEIPT: '补录贷款回执', VERIFY: '核验贷款回执', RETURN: '退回学生修改', CONFIRM: '确认贷款台账' })[this.actionDrawer.action] || '处理贷款记录' },
+    actionSubtitle() { return ({ SUBMIT_RECEIPT: '补齐电子回执后进入学校待核验队列。', VERIFY: '核对学生、学年、金额和回执材料。', RETURN: '退回后学生 PC 与小程序会显示具体修改意见。', CONFIRM: '确认校内回执台账完成，不代表银行已经放款。' })[this.actionDrawer.action] || '' },
+    actionConfirmText() { return ({ SUBMIT_RECEIPT: '提交待核验', VERIFY: '确认核验通过', RETURN: '确认退回', CONFIRM: '确认台账' })[this.actionDrawer.action] || '确认' }
   },
-  mounted() { this.load() },
+  watch: { focusId: { immediate: true, handler() { this.page = 1; this.actionDrawer.visible = false; this.load() } } },
+  beforeUnmount() { this.loadSeq++ },
   methods: {
+    availableActions(row) { return [{ code: 'SUBMIT_RECEIPT', label: '补录回执' }, { code: 'VERIFY', label: '核验通过' }, { code: 'RETURN', label: '退回修改' }, { code: 'CONFIRM', label: '确认台账' }].filter(action => this.allows(row, action.code)) },
+    clearFocus() { const query = { ...this.$route.query }; delete query.recordId; this.$router.replace({ path: this.$route.path, query }) },
     canBtn(code) { return canCode(this.ctx, code) },
-    blank() { return { studentId: '', loanType: 'ORIGIN', bankName: '', bankLast4: '', yearCode: '', amount: null } },
-    hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
-    allowsAdvance(row) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes('ADVANCE') },
+    count(status) { return Number(this.statusCounts?.[status] || 0) },
+    allows(row, action) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes(action) },
+    typeLabel(type) { return type === 'CAMPUS' ? '校园地贷款' : '生源地贷款' },
+    statusTone(status) { return ({ REGISTERED: 'default', RECEIPT: 'warning', RETURNED: 'danger', VERIFIED: 'processing', CONFIRMED: 'success', WITHDRAWN: 'default' })[status] || 'default' },
+    amountText(value) { return value === null || value === undefined || value === '' ? '—' : (Number.isFinite(Number(value)) ? `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value) },
     async load() {
+      const seq = ++this.loadSeq
       this.loading = true; this.errorMessage = ''
-      const response = await studentAffairsApi.getLoans({ page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (response.code === 0 && response.data) {
-        this.loans = response.data.items || []
-        this.statusCounts = response.data.statusCounts || null
-        this.pagination.total = response.data.total != null ? response.data.total : this.loans.length
-      } else {
-        this.loans = []; this.statusCounts = null; this.pagination.total = 0
-        this.errorMessage = response.message || '贷款台账加载失败'
-      }
-      this.loading = false
+      try {
+        if (this.focusId && !/^[1-9]\d*$/.test(this.focusId)) throw new Error('贷款记录编号无效，请返回台账')
+        const response = await studentAffairsApi.getLoans(this.focusId ? { recordId: this.focusId, page: 1, pageSize: 1 } : { ...this.filters, keyword: this.filters.keyword.trim(), yearCode: this.filters.yearCode.trim(), page: this.page, pageSize: this.pageSize })
+        if (seq !== this.loadSeq) return
+        if (response.code !== 0 || !response.data) throw new Error(response.message || '贷款台账加载失败')
+        this.loans = response.data.items || []; this.total = Number(response.data.total || 0)
+        this.statusCounts = response.data.statusCounts || {}; this.policy = response.data.policy || this.policy
+        const lastPage = Math.max(1, Math.ceil(this.total / this.pageSize))
+        if (this.page > lastPage) { this.page = lastPage; await this.load() }
+      } catch (error) { if (seq === this.loadSeq) this.errorMessage = error.message || '贷款台账加载失败' }
+      finally { if (seq === this.loadSeq) this.loading = false }
     },
-    async register() {
-      const form = this.form
-      const year = form.yearCode.trim()
-      const last4 = form.bankLast4.trim()
-      if (!form.studentId) { this.formError = '请选择学生'; return }
-      if (!/^\d{4}-\d{4}$/.test(year) || Number(year.slice(5)) !== Number(year.slice(0, 4)) + 1) { this.formError = '学年格式应为连续的YYYY-YYYY'; return }
-      if (last4 && !/^\d{4}$/.test(last4)) { this.formError = '银行卡后4位必须为4位数字'; return }
-      if (form.amount == null || Number(form.amount) <= 0 || Number(form.amount) > 999999999999.99) { this.formError = '贷款金额应大于0且不超过999999999999.99'; return }
-      this.formError = ''; this.acting = 'reg'
-      const response = await studentAffairsApi.registerLoan({
-        studentId: Number(form.studentId), loanType: form.loanType,
-        bankName: form.bankName.trim() || undefined, bankLast4: last4 || undefined,
-        yearCode: year, amount: String(form.amount)
-      })
-      this.acting = ''
-      if (response.code === 0) { toast.success('贷款已登记'); this.formVisible = false; this.form = this.blank(); this.pagination.page = 1; await this.load() }
-      else this.formError = response.message || '登记失败'
+    applyFilters() { this.page = 1; this.load() },
+    setStatus(status) { this.filters.status = status; this.applyFilters() },
+    openRegister() { this.registerDrawer = { visible: true, form: freshRegister(), errorMessage: '' } },
+    validateFields(form, { requireReceipt = false } = {}) {
+      const year = String(form.yearCode || '').trim(); const last4 = String(form.bankLast4 || '').trim(); const amount = Number(form.amount)
+      if (!/^\d{4}-\d{4}$/.test(year) || Number(year.slice(5)) !== Number(year.slice(0, 4)) + 1) return '贷款学年应为连续的 YYYY-YYYY'
+      if (!Number.isFinite(amount) || amount < 1000 || amount > 20000) return '高职学生年度贷款金额应在1000至20000元之间'
+      if (last4 && !/^\d{4}$/.test(last4)) return '银行卡后4位必须为4位数字'
+      const code = String(form.receiptCode || '').replace(/\s+/g, '')
+      if (requireReceipt && !code && !this.actionDrawer.row?.receiptCodeMasked) return '请填写电子回执编号'
+      if (code && !/^[A-Za-z0-9-]{6,64}$/.test(code)) return '电子回执编号应为6-64位字母、数字或短横线'
+      if (form.receiptFile && !form.receiptFile.readyForBusiness) return '回执材料仍在安全检查，请稍后检查状态再提交'
+      return ''
     },
-    openAdvance(row) { if (this.allowsAdvance(row) && this.hasVersion(row)) this.advanceDlg = { visible: true, loanId: row.loanId, status: row.status, version: row.version } },
-    async advance() {
-      const dialog = this.advanceDlg
-      this.acting = dialog.loanId
-      const response = await studentAffairsApi.advanceLoan(dialog.loanId, dialog.version)
-      this.acting = ''
-      if (response.code === 0) { dialog.visible = false; toast.success('贷款状态已推进'); await this.load() }
-      else { toast.error(response.message || '操作失败'); if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.load() }
+    buildPayload(form) {
+      return { loanType: form.loanType, yearCode: String(form.yearCode || '').trim(), amount: String(form.amount), bankName: String(form.bankName || '').trim() || undefined, bankLast4: String(form.bankLast4 || '').trim() || undefined, receiptCode: String(form.receiptCode || '').replace(/\s+/g, '') || undefined, receiptFileId: form.receiptFile?.fileId || undefined }
     },
-    nextLabel(status) { return NEXT[status] || '推进' },
-    amountText(value) { return value == null || value === '' ? '—' : (typeof value === 'number' ? `¥${value}` : value) },
-    lnType(status) { return ({ REGISTERED: 'default', RECEIPT: 'warning', VERIFIED: 'processing', CONFIRMED: 'success' })[status] || 'default' }
+    async submitRegister() {
+      if (this.saving) return
+      const form = this.registerDrawer.form
+      if (!form.studentId) { this.registerDrawer.errorMessage = '请选择学生'; return }
+      const error = this.validateFields(form)
+      if (error) { this.registerDrawer.errorMessage = error; return }
+      this.saving = true; this.registerDrawer.errorMessage = ''
+      try {
+        const response = await studentAffairsApi.registerLoan({ studentId: Number(form.studentId), ...this.buildPayload(form) })
+        if (response.code !== 0) throw new Error(response.message || '贷款登记失败')
+        toast.success(response.data?.status === 'RECEIPT' ? '贷款与回执已进入待核验队列' : '贷款已登记，等待补录回执')
+        this.registerDrawer.visible = false; this.page = 1; await this.load()
+      } catch (error) { this.registerDrawer.errorMessage = error.message || '贷款登记失败' }
+      finally { this.saving = false }
+    },
+    openAction(row, action) {
+      this.actionDrawer = { visible: true, row, action, errorMessage: '', form: { loanType: row.loanType, yearCode: row.yearCode, amount: Number(row.amount), bankName: row.bankName || '', bankLast4: row.bankLast4 || '', receiptCode: '', receiptFile: null, reason: '' } }
+    },
+    async submitAction() {
+      if (this.saving || !this.actionDrawer.row) return
+      const { row, action, form } = this.actionDrawer
+      if (!this.allows(row, action)) { this.actionDrawer.errorMessage = '当前状态已变化，请刷新后重试'; return }
+      if (action === 'SUBMIT_RECEIPT') { const error = this.validateFields(form, { requireReceipt: true }); if (error) { this.actionDrawer.errorMessage = error; return } }
+      if (action === 'RETURN' && String(form.reason || '').trim().length < 5) { this.actionDrawer.errorMessage = '请填写至少5字的具体退回原因'; return }
+      this.saving = true; this.actionDrawer.errorMessage = ''
+      try {
+        const body = { action, version: row.version, reason: String(form.reason || '').trim() || undefined, ...(action === 'SUBMIT_RECEIPT' ? this.buildPayload(form) : {}) }
+        const response = await studentAffairsApi.actionLoan(row.loanId, body)
+        if (response.code !== 0) throw new Error(response.message || '贷款记录处理失败')
+        toast.success(({ SUBMIT_RECEIPT: '回执已提交待核验', VERIFY: '回执已核验', RETURN: '已退回学生修改', CONFIRM: '贷款台账已确认' })[action])
+        this.actionDrawer.visible = false; await this.load()
+      } catch (error) { this.actionDrawer.errorMessage = error.message || '贷款记录处理失败'; if (error.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.load() }
+      finally { this.saving = false }
+    },
+    onUploaded(target, file) { const drawer = target === 'register' ? this.registerDrawer : this.actionDrawer; drawer.form.receiptFile = file; drawer.errorMessage = '' },
+    onUploadError(error) { const message = error?.message || '回执材料上传失败'; if (this.actionDrawer.visible) this.actionDrawer.errorMessage = message; else this.registerDrawer.errorMessage = message },
+    async refreshUploaded(target) {
+      const drawer = target === 'register' ? this.registerDrawer : this.actionDrawer; const file = drawer.form.receiptFile
+      if (!file?.fileId) return
+      try { drawer.form.receiptFile = await fileSdk.metadata(file.fileId) } catch (error) { drawer.errorMessage = error.message || '文件状态检查失败' }
+    },
+    async openReceipt(row) {
+      if (!row.receiptFile?.fileId || this.fileBusy) return
+      this.fileBusy = row.loanId
+      try { if (row.receiptFile.canPreview) await fileSdk.preview(row.receiptFile.fileId, row.receiptFile.fileName); else if (row.receiptFile.canDownload) await fileSdk.download(row.receiptFile.fileId, row.receiptFile.fileName); else throw new Error('回执材料尚未通过安全检查') }
+      catch (error) { toast.error(error.message || '回执材料打开失败') }
+      finally { this.fileBusy = '' }
+    }
   }
 }
 </script>
 
 <style scoped>
-.sa-toolbar { align-items: stretch; }
-.ln-intro,
-.ln-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
-.ln-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
-.ln-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: var(--font-size-sm); }
-.ln-field > span { color: var(--text-secondary); font-weight: var(--font-weight-medium); }
-.ln-actions { display: flex; gap: var(--space-3); justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border-light); }
-.ln-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.ln-muted { color: var(--text-tertiary); }
-@media (max-width: 1100px) { .ln-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-@media (max-width: 720px) { .ln-grid { grid-template-columns: 1fr; } .ln-actions { justify-content: stretch; } .ln-actions > * { flex: 1; } }
+.ln-focused{padding:16px 0;min-width:0}.ln-focused>header{display:flex;justify-content:space-between;gap:16px;align-items:center}.ln-focused>header>div{display:grid;gap:6px}.ln-focused>header span,.ln-focused dt{color:var(--text-secondary)}.ln-focused dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 28px;margin:24px 0}.ln-focused dl>div{display:grid;gap:7px;min-width:0}.ln-focused dd{margin:0;overflow-wrap:anywhere}.ln-focused-note{display:grid;gap:7px;margin:0;padding:16px 0;border-top:1px solid var(--border-light);line-height:1.6;overflow-wrap:anywhere}.ln-focused>footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.ln-focused>footer:empty{display:none}@media(max-width:640px){.ln-focused dl{grid-template-columns:1fr;gap:14px}.ln-focused>header{align-items:flex-start}}
+
 @import '@/styles/module-page.css';
+.ln-statusbar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }.ln-statusbar > button:not(:last-child) { display: inline-flex; gap: 7px; align-items: center; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); background: transparent; cursor: pointer; }.ln-statusbar > button.active:not(:last-child) { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }.ln-statusbar > button:last-child { margin-left: auto; }.ln-statusbar strong { font-size: 12px; }.ln-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }.ln-search { flex: 1 1 240px; }.ln-filter { flex: 0 1 150px; }.ln-year { flex: 0 1 160px; }.ln-secondary { min-height: 36px; padding: 0 15px; border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); background: var(--bg-card); cursor: pointer; }.ln-secondary:disabled { opacity: .55; cursor: not-allowed; }.ln-main,.ln-main + small,.ln-table strong,.ln-table small { display: block; }.ln-main + small,[data-key='loan'] small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.ln-file { display: block; max-width: 190px; overflow: hidden; margin-top: 4px; padding: 0; border: 0; color: var(--color-primary); background: transparent; font: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.ln-opinion { display: block; max-width: 150px; overflow: hidden; margin-top: 4px; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.ln-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }.ln-muted { color: var(--text-tertiary); font-size: 12px; }.ln-empty { padding: 42px 20px; color: var(--text-secondary); text-align: center; }.ln-empty strong { color: var(--text-primary); }.ln-empty p { margin: 6px 0 0; font-size: 13px; }.ln-form { display: grid; gap: 14px; }.ln-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 16px; }.ln-span2 { grid-column: 1 / -1; }.ln-uploaded { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); font-size: 12px; }.ln-uploaded span:first-child { color: var(--text-primary); }.ln-uploaded button { margin-left: auto; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; }.ln-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-card); }.ln-context div { display: grid; gap: 4px; min-width: 0; }.ln-context span { color: var(--text-secondary); font-size: 11px; }.ln-context strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .ln-form-grid,.ln-context { grid-template-columns: 1fr; }.ln-span2 { grid-column: auto; } }
+@media (max-width: 640px) { .ln-statusbar { align-items: stretch; flex-wrap: wrap; }.ln-statusbar > button:last-child { margin-left: 0; }.ln-toolbar > * { flex: 1 1 100%; } }
 </style>

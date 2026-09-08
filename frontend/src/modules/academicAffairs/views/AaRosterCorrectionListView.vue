@@ -6,6 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton v-if="internshipReturn" variant="ghost" :disabled="submitting || materialBusy || acting || createVisible" @click="$router.push(internshipReturn)">返回上岗核验</AppButton>
       <AppButton variant="primary" @click="openCreate">＋ 发起更正</AppButton>
     </template>
 
@@ -40,13 +41,13 @@
           <button class="mp-link" @click="goRoster(row)">学籍档案</button>
         </template>
       </DataTable>
-      <p class="mp-note">仅支持学号/姓名/性别/证件号/年级四类身份数据纠错；学籍状态、院系专业班级变更须走「学籍异动」。</p>
+      <p class="mp-note">仅支持学号/姓名/性别/证件号/年级五类身份数据纠错；学籍状态、院系专业班级变更须走「学籍异动」。</p>
     </div>
 
-    <AppDrawer :visible="createVisible" title="发起学籍信息更正" mode="modal" size="large" @close="createVisible = false">
-      <div class="aa-form">
+    <AppDrawer :visible="createVisible" title="发起学籍信息更正" mode="modal" size="large" @close="closeCreate">
+      <fieldset class="aa-form" :disabled="submitting">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="form.studentId" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
+          <AppStudentPicker v-model="form.studentId" :disabled="submitting || materialBusy" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
         </AppFormItem>
 
         <AppFormItem label="更正字段" required>
@@ -62,11 +63,26 @@
           <AppTextarea v-model="form.reason" :rows="3" :maxlength="500" show-count placeholder="如：迎新录入笔误，据学生身份证原件核实更正" />
         </AppFormItem>
 
+        <AppFormItem label="证明材料" :required="materialRequired" :hint="materialRequired ? '姓名、性别、证件号更正须附户籍或公安部门出具的证明材料。' : '可上传用于核对的相关材料。'">
+          <FileUploader v-if="createVisible" :key="materialScope" biz-type="AA_STUDENT_CORRECTION"
+            :disabled="!form.studentId || submitting || materialBusy || materialFiles.length >= 10"
+            button-text="上传证明材料" @progress="materialBusy = true"
+            @uploaded="onMaterialUploaded" @error="onMaterialError" @cancelled="materialBusy = false" />
+          <div v-for="file in materialFiles" :key="file.fileId" class="rc-material">
+            <FilePreviewer :file="file" @error="onMaterialError" />
+            <div class="rc-material__actions">
+              <button v-if="!file.readyForBusiness" class="mp-link" :disabled="submitting" @click="refreshMaterial(file.fileId)">刷新安全状态</button>
+              <button class="mp-link" :disabled="submitting || materialBusy" @click="removeMaterial(file.fileId)">移除</button>
+            </div>
+          </div>
+          <p class="mp-note">最多 10 份；材料安全可用后再提交。上传失败不会清空已填写内容。</p>
+        </AppFormItem>
+
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
-      </div>
+      </fieldset>
       <template #footer>
-        <AppButton variant="ghost" :disabled="submitting" @click="createVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="submitting" @click="submitCreate">提交</AppButton>
+        <AppButton variant="ghost" :disabled="submitting" @click="closeCreate">取消</AppButton>
+        <AppButton variant="primary" :loading="submitting" :disabled="materialBusy" @click="submitCreate">提交更正申请</AppButton>
       </template>
     </AppDrawer>
 
@@ -75,9 +91,22 @@
       v-model:visible="approveDialog.visible" title="通过学籍更正申请" type="warning"
       confirm-text="确认通过并同步主档"
       description="通过后立即写入学籍主档，该动作不可撤销。请先核对下方新旧值。"
-      :submitting="acting" @confirm="doApprove"
+      :submitting="acting" :confirm-disabled="!reviewMaterialsReady" @confirm="doApprove"
     >
       <AppDescriptionList v-if="approveDialog.row" :items="approveItems" :columns="1" bordered />
+      <section class="rc-review-materials" aria-label="更正证明材料" :aria-busy="reviewMaterialsLoading">
+        <h3>证明材料</h3>
+        <p v-if="reviewMaterialsLoading">正在读取本申请的证明材料…</p>
+        <AppInlineAlert v-else-if="reviewMaterialsError" type="warning" :description="reviewMaterialsError">
+          <template #actions><AppButton size="sm" :disabled="acting" @click="loadReviewMaterials">重新读取材料</AppButton></template>
+        </AppInlineAlert>
+        <template v-else>
+          <FilePreviewer v-for="file in reviewMaterials" :key="file.fileId" :file="file" @error="reviewMaterialsError = $event?.message || '材料打开失败，请重试'" />
+          <p v-if="!reviewMaterials.length">此类更正未附证明材料，请核对申请信息后办理。</p>
+          <p v-else-if="!reviewMaterialsReady" role="alert">材料暂不可预览或下载，请确认安全状态与访问权限后重新读取。</p>
+          <AppButton v-if="reviewMaterials.length && !reviewMaterialsReady" size="sm" :disabled="acting" @click="loadReviewMaterials">重新读取材料</AppButton>
+        </template>
+      </section>
       <p v-if="approveDialog.row && approveDialog.row.sensitive" class="rc-mask-note">
         证件号按敏感字段脱敏显示，与列表页一致；如需核对完整号码请查阅申请人上传的证明材料。
       </p>
@@ -106,6 +135,9 @@ import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInl
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import FileUploader from '@/components/file/FileUploader.vue'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
+import { fileSdk } from '@/services/file/fileSdk'
 
 const FIELD_LABEL = { STUDENT_NO: '学号', REAL_NAME: '姓名', GENDER: '性别', ID_CARD: '证件号', GRADE: '年级' }
 const STATUS_LABEL = { PENDING: '待审核', APPROVED: '已通过', REJECTED: '已驳回' }
@@ -120,12 +152,13 @@ export default {
   name: 'AaRosterCorrectionListView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag,
                AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer,
-               AppConfirmDialog, AppDescriptionList, AppStudentPicker },
+               AppConfirmDialog, AppDescriptionList, AppStudentPicker, FileUploader, FilePreviewer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       FIELD_LABEL,
       approveDialog: { visible: false, row: null },
+      reviewMaterials: [], reviewMaterialsLoading: false, reviewMaterialsError: '', reviewMaterialsSeq: 0,
       rejectDialog: { visible: false, row: null },
       loading: true,
       error: '',
@@ -142,11 +175,23 @@ export default {
       acting: false,
       createVisible: false,
       submitting: false,
-      formError: '',
+      formError: '', materialFiles: [], materialBusy: false, materialScope: 0,
       form: emptyForm()
     }
   },
   computed: {
+    internshipReturn() {
+      const target = this.$route.query.returnTo
+      return typeof target === 'string' && /^\/admin\/internship\/compliance(?:\?|$)/.test(target) ? target : ''
+    },
+    reviewMaterialsReady() {
+      const row = this.approveDialog.row
+      if (!row || this.reviewMaterialsLoading || this.reviewMaterialsError) return false
+      const required = row.materialRequired || ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(row.fieldKey)
+      const ids = row.materialFileIds || []
+      return (!required || ids.length > 0) && this.reviewMaterials.length === ids.length && this.reviewMaterials.every(file => file.readyForBusiness && (file.canPreview || file.canDownload))
+    },
+    materialRequired() { return ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(this.form.fieldKey) },
     fieldOptions() {
       return Object.keys(FIELD_LABEL).map((k) => ({ label: FIELD_LABEL[k], value: k }))
     },
@@ -199,9 +244,32 @@ export default {
       this.openCreate()
       this.form.studentId = this.$route.query.studentId
       this.form.studentName = this.$route.query.name || ''
+      if (this.$route.query.fieldKey === 'ID_CARD') this.form.fieldKey = 'ID_CARD'
     }
   },
+  beforeUnmount() { this.reviewMaterialsSeq++; this.materialScope++ },
   methods: {
+    closeCreate() { if (!this.submitting && !this.materialBusy) this.createVisible = false },
+    onMaterialUploaded(file) {
+      this.materialBusy = false
+      const normalized = fileSdk.normalize(file || {})
+      if (!normalized.fileId) { this.formError = '上传未返回有效材料，请重试'; return }
+      if (!this.materialFiles.some(item => String(item.fileId) === String(normalized.fileId))) this.materialFiles.push(normalized)
+    },
+    onMaterialError(error) { this.materialBusy = false; this.formError = error?.message || '材料读取或上传失败，请重试' },
+    removeMaterial(fileId) {
+      if (this.submitting || this.materialBusy) return
+      this.materialFiles = this.materialFiles.filter(file => String(file.fileId) !== String(fileId))
+    },
+    async refreshMaterial(fileId) {
+      const scope = this.materialScope
+      try {
+        const latest = await fileSdk.metadata(fileId)
+        if (scope !== this.materialScope) return
+        const index = this.materialFiles.findIndex(file => String(file.fileId) === String(fileId))
+        if (index >= 0) this.materialFiles.splice(index, 1, latest)
+      } catch (error) { if (scope === this.materialScope) this.onMaterialError(error) }
+    },
     // 本模块 getContext().permissionActions 恒为 {}（真实权限边界始终以后端为准，见 API 文件头注释）；
     // 不做客户端按钮级权限遮蔽，越权由后端 403 + toast 提示（与本模块其余真实页面口径一致）。
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
@@ -217,50 +285,78 @@ export default {
     resetFilters() { this.filters.status = ''; this.filters.fieldKey = ''; this.search() },
     onFieldChange() { this.form.newValue = '' },
     openCreate() {
+      if (this.submitting || this.materialBusy) return
+      this.materialScope++; this.materialFiles = []; this.materialBusy = false
       this.form = emptyForm()
       this.formError = ''
       this.createVisible = true
     },
     onStudentChange(value, items) {
+      this.materialScope++; this.materialFiles = []; this.materialBusy = false
       const item = items?.[0]
       const student = item?.raw || item || {}
       this.form.studentName = student.realName || student.studentName || item?.label || ''
     },
     async submitCreate() {
+      if (this.submitting || this.materialBusy) return
       this.formError = ''
       if (!this.form.studentId) { this.formError = '请先选择学生'; return }
       if (!this.form.fieldKey) { this.formError = '请选择更正字段'; return }
-      if (!this.form.newValue || !this.form.newValue.trim()) { this.formError = '更正后的值不能为空'; return }
+      if (!this.form.newValue?.trim()) { this.formError = '更正后的值不能为空'; return }
       if (!this.form.reason || this.form.reason.trim().length < 5) { this.formError = '更正原因必填且不少于5字'; return }
+      if (this.materialRequired && !this.materialFiles.length) { this.formError = '请上传户籍或公安部门出具的证明材料'; return }
+      if (this.materialFiles.some(file => !file.readyForBusiness)) { this.formError = '材料尚未安全可用，请刷新安全状态或移除后重新上传'; return }
       this.submitting = true
-      const res = await academicAffairsApi.createRosterCorrection({
-        studentId: this.form.studentId, fieldKey: this.form.fieldKey,
-        newValue: this.form.newValue.trim(), reason: this.form.reason.trim()
-      })
-      this.submitting = false
-      if (res.code === 0) {
-        toast.success('更正申请已提交，待审核')
-        this.createVisible = false
-        this.load()
-      } else {
-        this.formError = res.message
-      }
+      try {
+        const res = await academicAffairsApi.createRosterCorrection({
+          studentId: String(this.form.studentId), fieldKey: this.form.fieldKey,
+          newValue: this.form.newValue.trim(), reason: this.form.reason.trim(),
+          materialFileIds: this.materialFiles.map(file => String(file.fileId))
+        })
+        if (res.code === 0) {
+          toast.success('更正申请已提交，待审核')
+          this.createVisible = false
+          this.load()
+        } else this.formError = res.message || '提交失败，请重试'
+      } catch (error) { this.formError = error?.message || '提交失败，已保留填写内容' }
+      finally { this.submitting = false }
     },
     approve(row) {
-      if (this.acting) return
+      if (this.acting || row.status !== 'PENDING') return
       this.approveDialog = { visible: true, row }
+      this.loadReviewMaterials()
+    },
+    async loadReviewMaterials() {
+      if (this.acting) return
+      const row = this.approveDialog.row
+      if (!row) return
+      const seq = ++this.reviewMaterialsSeq
+      this.reviewMaterials = []; this.reviewMaterialsError = ''; this.reviewMaterialsLoading = true
+      try {
+        const ids = row.materialFileIds || []
+        if (!ids.length && (row.materialRequired || ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(row.fieldKey))) {
+          throw new Error('该申请缺少必需证明材料，请取消通过并退回补齐。')
+        }
+        const files = await Promise.all(ids.map(id => fileSdk.metadata(String(id))))
+        if (seq !== this.reviewMaterialsSeq || this.approveDialog.row !== row) return
+        this.reviewMaterials = files
+      } catch (error) {
+        if (seq === this.reviewMaterialsSeq && this.approveDialog.row === row) this.reviewMaterialsError = error?.message || '证明材料读取失败，请重试'
+      } finally { if (seq === this.reviewMaterialsSeq) this.reviewMaterialsLoading = false }
     },
     async doApprove() {
       const row = this.approveDialog.row
-      if (!row) return
+      if (!row || this.acting || row.status !== 'PENDING' || !this.reviewMaterialsReady) return
       this.acting = true
-      const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'APPROVE', '')
-      this.acting = false
-      if (res.code === 0) {
-        this.approveDialog.visible = false
-        toast.success('已通过，主档已同步')
-        this.load()
-      } else toast.error(res.message)
+      try {
+        const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'APPROVE', '')
+        if (res.code === 0) {
+          this.approveDialog.visible = false
+          toast.success('已通过，主档已同步')
+          this.load()
+        } else toast.error(res.message)
+      } catch (error) { toast.error(error?.message || '审核失败，请重试') }
+      finally { this.acting = false }
     },
     reject(row) {
       if (this.acting) return
@@ -300,6 +396,11 @@ export default {
 </script>
 
 <style scoped>
+.rc-review-materials { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border, #e2e8f0); }
+.rc-review-materials h3 { font-size: 14px; margin: 0 0 10px; }
+fieldset.aa-form { border: 0; min-width: 0; margin: 0; }
+.rc-material { margin-top: 12px; padding: 12px; border: 1px solid var(--color-border, #e2e8f0); border-radius: 8px; }
+.rc-material__actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 @import '@/styles/module-page.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }

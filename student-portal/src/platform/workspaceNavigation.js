@@ -7,7 +7,12 @@ export const WORKSPACE_CENTERS = [
     group('leave', '请假返校', '请假', 'campusService', [page('leave', '请假与返校', '请假', '/campus-service?tab=leave')]),
     group('dorm', '我的住宿', '住宿', 'campusService', [page('dorm', '住宿与调宿', '住宿', '/campus-service?tab=dorm')]),
     group('aid', '困难认定', '认定', 'campusService', [page('aid', '申请与认定进度', '认定', '/campus-service?tab=aid')]),
-    group('funding', '奖助服务', '奖助', 'campusService', [page('funding', '奖助申请与进度', '奖助', '/campus-service?tab=funding')]),
+    group('funding', '奖助服务', '奖助', 'campusService', [
+      page('funding', '奖助申请与进度', '奖助', '/campus-service?tab=funding'),
+      page('work-study', '勤工助学', '勤工', '/campus-service?tab=work-study'),
+      page('loan', '助学贷款回执', '贷款', '/campus-service?tab=loan'),
+      page('reduction', '减免与临时补助', '减免', '/campus-service?tab=reduction')
+    ]),
     group('activity', '活动成长', '活动', 'campusService', [page('activity', '活动与第二课堂', '活动', '/campus-service?tab=activity')]),
     group('care', '谈心关怀', '关怀', 'campusService', [page('talk', '谈心谈话', '谈话', '/campus-service?tab=talk'), page('psy', '心理自评', '自评', '/campus-service?tab=psy')]),
     group('discipline', '决定与申诉', '申诉', 'campusService', [page('discipline', '本人处分与申诉', '申诉', '/campus-service?tab=discipline')]),
@@ -40,7 +45,7 @@ export function flattenPages(centers) {
   return centers.flatMap(center => center.groups.flatMap(group => group.pages.map(item => ({ ...item, centerId: center.id, groupId: group.id, module: group.module, trail: `${center.title} / ${group.title}` }))))
 }
 export function pageForRoute(route, pages) {
-  const base = route.path === '/campus-service' ? `/campus-service?tab=${['leave', 'dorm', 'aid', 'funding', 'activity', 'talk', 'psy', 'discipline'].includes(route.query?.tab) ? route.query.tab : 'leave'}` : route.path
+  const base = route.path === '/campus-service' ? `/campus-service?tab=${['leave', 'dorm', 'aid', 'funding', 'work-study', 'loan', 'reduction', 'activity', 'talk', 'psy', 'discipline'].includes(route.query?.tab) ? route.query.tab : 'leave'}` : route.path
   return pages.find(item => item.to === base) || null
 }
 export function searchPages(pages, query, currentCenter, recent = []) {

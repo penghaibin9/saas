@@ -18,16 +18,18 @@ test('change approval resets the formal relationship to re-onboard in one transa
 test('staff review leads with exact objects and preserves 409 input with a receipt', () => {
   const page = read('frontend/src/modules/internship/views/ChangeRequestListView.vue')
   const api = read('frontend/src/modules/internship/api/internship.api.js')
-  assert.ok(page.indexOf('CHANGE NOW') < page.indexOf('mp-tabs'))
+  assert.match(page, /targetEnterpriseName/)
+  assert.match(page, /currentEnterprise/)
+  assert.match(page, /impactItems/)
   assert.match(page, /ActionReceipt/)
-  assert.match(page, /ConflictNotice/)
+  assert.match(page, /:confirm-disabled="conflict.active"/)
   assert.match(page, /captureConflict/)
   assert.match(page, /recordExpectedVersion/)
   assert.match(api, /recordExpectedVersion/)
 })
 
 test('teacher Mini uses explicit batch and both application and record versions', () => {
-  const page = read('miniapp/src/pages/teacher/internship-change/index.vue')
+  const page = read('miniapp/src/pages/teacher-internship/internship-change/index.vue')
   const api = read('miniapp/src/services/internshipApi.js')
   assert.match(page, /useInternshipContextStore/)
   assert.match(page, /teacherInternshipChanges/)
@@ -38,7 +40,7 @@ test('teacher Mini uses explicit batch and both application and record versions'
 })
 
 test('student Mini selects a canonical candidate instead of asking for a raw database id', () => {
-  const page = read('miniapp/src/pages/student/internship/change/index.vue')
+  const page = read('miniapp/src/pages/student-internship/change/index.vue')
   assert.doesNotMatch(page, /岗位库 ID|目标岗位编号/)
   assert.match(page, /studentInternshipChangeTargets/)
   assert.match(page, /selectedTarget/)

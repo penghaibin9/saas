@@ -7,6 +7,48 @@ from app.core.security import create_access_token
 TENANT_ID = 1000000000000000001
 
 
+def test_mobile_summary_counts_all_visible_todos_and_real_completion(db_mode, monkeypatch):
+    from sqlalchemy import update
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedTodo
+    from app.services import workbench_snapshot_service as snapshot, workbench_todo_service as todos
+    from app.services import approval_runtime_service, message_center_service
+
+    now = datetime(2026, 9, 6, 6)
+    monkeypatch.setattr(snapshot, '_tid', lambda: TENANT_ID)
+    monkeypatch.setattr(todos, '_utc_now', lambda: now)
+    monkeypatch.setattr(todos, '_local_today_start_utc', lambda: datetime(2026, 9, 5, 16))
+    monkeypatch.setattr(todos, '_visibility_cond', lambda db, user: UnifiedTodo.assignee_id == 998801)
+    monkeypatch.setattr(message_center_service, 'count_messages', lambda user: {})
+    def wrong_authority(**kwargs):
+        raise AssertionError('Mobile Todo metrics must not read WorkflowTask summary')
+    monkeypatch.setattr(approval_runtime_service, 'summary', wrong_authority)
+    with get_sessionmaker()() as db:
+        def add(index, deadline=None, status='PENDING', assignee=998801):
+            row = UnifiedTodo(tenant_id=TENANT_ID, source_module='student-affairs',
+                source_biz_type='MATERIAL_REQUIREMENT', source_biz_id=998800 + index,
+                todo_type='MATERIAL_REVIEW', assignee_id=assignee, title='隔离材料待办',
+                status=status, due_at=deadline)
+            db.add(row)
+            return row
+        add(0, now - timedelta(hours=1))
+        for index in range(1, 8):
+            add(index, now + timedelta(hours=index))
+        add(8)
+        add(9, now + timedelta(days=2))
+        add(10, now + timedelta(hours=1), assignee=998802)
+        done, old = add(11, status='DONE'), add(12, status='DONE')
+        db.flush()
+        for row, stamp in [(done, now - timedelta(hours=1)), (old, now - timedelta(days=2))]:
+            db.execute(update(UnifiedTodo).where(UnifiedTodo.id == row.id)
+                .values(completed_at=stamp, updated_at=now))
+        db.commit()
+    data = snapshot.snapshot({'currentRoleCode':'COUNSELOR'}, page_size=2, client='teacherMini')
+    assert data['summary'] == {'pending':10, 'overdue':1, 'nearDeadline':7, 'doneToday':1, 'role':'COUNSELOR'}
+    assert data['count']['total'] == data['todos']['total'] == 10
+    assert len(data['todos']['items']) == 2 and data['todos']['hasMore'] is True
+
+
 def _headers(user_type: str, role: str) -> dict:
     token = create_access_token({
         "userId": "u-teacher" if user_type != "STUDENT" else "u-student",

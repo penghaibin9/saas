@@ -67,6 +67,7 @@ def _published_position(client, headers, batch_id=None):
     position = client.post(POS, headers=headers, json={
         "companyId": company, "title": "申请闭环岗位", "workLocation": "上海市浦东新区",
         "headcount": 1, "batchId": str(batch_id), **_RIGHTS_FACTS,
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
     }).json()["data"]["id"]
     assert client.post(f"{POS}/{position}/status", headers=headers, json={"action": "SUBMIT"}).json()["code"] == 0
     assert client.post(f"{POS}/{position}/status", headers=headers, json={"action": "PUBLISH"}).json()["code"] == 0
@@ -198,6 +199,7 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     batch_id = _mk_batch(client, auth_headers)
     position = client.post(POS, headers=auth_headers, json={
         "companyId": company, "title": "满员回滚岗位", "workLocation": "上海市浦东新区",
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
         "headcount": 1, "batchId": str(batch_id), **_RIGHTS_FACTS,
     }).json()["data"]["id"]
     assert client.post(f"{POS}/{position}/status", headers=auth_headers, json={"action": "SUBMIT"}).json()["code"] == 0

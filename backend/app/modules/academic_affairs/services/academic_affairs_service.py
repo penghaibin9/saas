@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import json
 import re
 from datetime import datetime, timedelta
@@ -940,7 +941,7 @@ def _resolve_org_names(db, s):
     from app.models import College, Major, SchoolClass
     college_name = major_name = class_name = ""
     if s.class_id:
-        c = db.get(SchoolClass, int(s.class_id))
+        c = tenant_get(db, SchoolClass, int(s.class_id))
         if c and not c.is_deleted and c.tenant_id == _tid():
             class_name = c.class_name
     if s.major_id:
@@ -1170,7 +1171,11 @@ def _correction_material_ids(db, field_key, material_file_ids):
     from app.models import FileObject
     ids = material_file_ids if isinstance(material_file_ids, list) else (
         [material_file_ids] if material_file_ids else [])
-    int_ids = [int(x) for x in ids if str(x).isdigit()]
+    if any(not str(x).isdigit() or int(x) <= 0 for x in ids):
+        raise AppException("VALIDATION_ERROR", "证明材料包含非法文件 ID")
+    int_ids = list(dict.fromkeys(int(x) for x in ids))
+    if len(int_ids) > 10:
+        raise AppException("VALIDATION_ERROR", "最多提交 10 份证明材料")
     if field_key in _CORRECTION_MATERIAL_REQUIRED and not int_ids:
         raise AppException(
             "VALIDATION_ERROR",
@@ -1221,6 +1226,17 @@ def create_roster_correction(user, student_id, field_key, new_value, reason,
                                 material_file_ids=material_json, status="PENDING")
         db.add(c)
         db.flush()
+        if material_json:
+            import json
+            from app.services.file_business_binding_service import bind_file_to_business
+            for file_id in json.loads(material_json):
+                bind_file_to_business(
+                    db, file_id=file_id, biz_type="AA_STUDENT_CORRECTION", biz_id=c.id,
+                    actor=user, subject_type="STUDENT", subject_id=s.id,
+                    relation_type="APPLICATION_MATERIAL", module_code="ACADEMIC_AFFAIRS",
+                    student_id=s.id, college_id=s.college_id, class_id=s.class_id,
+                    scope={"correctionId": str(c.id), "studentId": str(s.id)},
+                )
         _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPLY",
               f"{s.real_name} · {_CORRECTION_FIELD_LABEL[field_key]}更正："
               f"{_correction_audit_value(field_key, current)} → "
@@ -1645,7 +1661,7 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
 def _precheck(db, student_id) -> dict:
     """注册预检：只读迎新台账（报到/缴费/材料/绿通），不复制。无迎新数据则默认通过。"""
     from app.models import OrientationStudent, StudentProfile
-    s = db.get(StudentProfile, int(student_id))
+    s = tenant_get(db, StudentProfile, int(student_id))
     ori = db.scalars(select(OrientationStudent).where(
         OrientationStudent.tenant_id == _tid(),
         OrientationStudent.name == (s.real_name if s else ""),
@@ -1669,7 +1685,7 @@ def register_student(batch_id, user, student_id) -> dict:
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
         if b.status != "OPEN":
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
-        s = db.get(StudentProfile, int(student_id))
+        s = tenant_get(db, StudentProfile, int(student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
         dup = db.scalars(select(AaRegistration).where(
@@ -1828,11 +1844,11 @@ def _require_school_scope(ctx):
 
 def _counselor_of(db, student_id):
     from app.models import SchoolClass, StudentProfile
-    s = db.get(StudentProfile, int(student_id))
-    if not s or not s.class_id:
+    s = tenant_get(db, StudentProfile, int(student_id))
+    if not s or s.is_deleted or not s.class_id:
         return 0
-    c = db.get(SchoolClass, int(s.class_id))
-    return int(c.counselor_id) if c and c.counselor_id else 0
+    c = tenant_get(db, SchoolClass, int(s.class_id))
+    return int(c.counselor_id) if c and not c.is_deleted and c.counselor_id else 0
 
 
 def _push_todo(db, biz_type, biz_id, todo_type, assignee_id, student_id, title) -> bool:

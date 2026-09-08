@@ -10,7 +10,7 @@
         <section class="card">
           <div class="phead">
             <span class="avatar">{{ initial }}</span>
-            <div><div class="pname">{{ info.name || '同学' }}</div><div class="pmeta">{{ info.studentNo }} · {{ info.collegeName || '—' }} · 学生</div></div>
+            <div><div class="pname">{{ info.name || '同学' }}</div><div class="pmeta">{{ info.studentNo }} · {{ info.className || '未分班' }} · 辅导员 {{ info.counselorName || '待分配' }}</div></div>
           </div>
           <div class="srow"><span class="stitle">基本信息</span></div>
           <div class="basic">
@@ -57,6 +57,11 @@
               <div><div class="idlbl">年级</div><div class="idval">{{ info.grade || '—' }} 级</div></div>
             </div>
           </div>
+        </section>
+
+        <section class="card profile-materials">
+          <div><div class="stitle">档案材料</div><p class="sp-muted">查看学校登记的缺项、补交材料并跟踪验收结果。</p></div>
+          <RouterLink v-if="info.studentId" class="profile-materials__action" :to="{ path: '/materials', query: { bizType: 'PROFILE', bizId: info.studentId } }">查看档案材料</RouterLink>
         </section>
 
         <section class="card">
@@ -150,7 +155,8 @@ const basic = computed(() => {
     { label: '姓名', value: i.name || '—' }, { label: '学号', value: i.studentNo || '—' },
     { label: '性别', value: i.gender || '—' }, { label: '年级', value: (i.grade || '—') + ' 级' },
     { label: '学院', value: i.collegeName || '—' }, { label: '专业', value: i.majorName || '—' },
-    { label: '班级', value: i.className || '—' }, { label: '学籍状态', value: statusText(i.studentStatus) }
+    { label: '班级', value: i.className || '—' }, { label: '责任辅导员', value: i.counselorName || '待分配' },
+    { label: '学籍状态', value: statusText(i.studentStatus) }
   ]
 })
 const sens = computed(() => {
@@ -245,6 +251,9 @@ onBeforeUnmount(leaveProfile)
 .idcard { padding: 16px; border-radius: 12px; background: var(--pri-50); border: 1px solid var(--pri-100); }
 .idlbl { font-size: 11.5px; color: var(--t4); }
 .idval { font-size: 13px; color: var(--t1); margin-top: 2px; }
+.profile-materials { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+.profile-materials p { margin:6px 0 0; }
+.profile-materials__action { flex:none; border-radius:9px; padding:9px 13px; background:var(--pri); color:#fff; text-decoration:none; font-size:13px; font-weight:600; }
 .approw { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-bottom: 1px solid #F4F5F7; }
 .atag { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 500; }
 .atitle { font-size: 13.5px; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -252,5 +261,5 @@ onBeforeUnmount(leaveProfile)
 .bindform { margin-bottom: 12px; padding: 14px; background: #F9FAFB; border: 1px solid var(--line2); border-radius: 11px; }
 .prow { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; }
 .pav { width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--pri-50); color: var(--pri); font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .basic { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .basic { grid-template-columns: 1fr; } .profile-materials { align-items:stretch; flex-direction:column; } .profile-materials__action { text-align:center; } }
 </style>

@@ -20,6 +20,7 @@ import { getOrientationContext } from '@/modules/orientation/api/orientation.api
 export default {
   name: 'AdminOrientationLayout',
   components: { BasePortalLayout },
+  provide() { return { affairsWorkspace: true, conciseBusinessHeader: true } },
   data() {
     return { context: null, brand: null, roles: [], currentRoleId: '', dataScopeName: '' }
   },

@@ -44,11 +44,14 @@ def _position(client, h, cid, headcount=2, title="前端实习岗位", publish=T
     # 上架前必须挂在一个真实批次上（合规规则 BATCH_UNKNOWN）
     if batch_id is None:
         batch_id = _mk_batch(client, h)
-    body = {"companyId": cid, "title": title, "headcount": headcount, "batchId": str(batch_id), **_RIGHTS_FACTS}
+    body = {"companyId": cid, "title": title, "headcount": headcount, "batchId": str(batch_id),
+            "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300, **_RIGHTS_FACTS}
     pid = client.post(POS, headers=h, json=body).json()["data"]["id"]
     if publish:
-        client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
-        client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"})
+        submitted = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
+        assert submitted.status_code == 200, submitted.json()
+        published = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"})
+        assert published.status_code == 200, published.json()
     return pid
 
 
@@ -104,10 +107,11 @@ def _satisfy_onboard_prereqs(rid):
     这三项在真实业务里分别由协议、保险、指导教师分配三个模块产生；本用例只验状态机，
     故直接写库造前置，不绕过 set_status 本身的校验。"""
     from app.db.session import get_sessionmaker
-    from app.models import InternshipAgreement, InternshipInsurance, InternshipRecord, User
+    from app.models import InternshipAgreement, InternshipBatch, InternshipInsurance, InternshipRecord, User
     db = get_sessionmaker()()
     try:
         rec = db.get(InternshipRecord, int(rid))
+        batch = db.get(InternshipBatch, rec.batch_id)
         advisor = db.query(User).filter(
             User.tenant_id == rec.tenant_id, User.status == "ACTIVE",
             User.is_deleted.is_(False),
@@ -128,7 +132,9 @@ def _satisfy_onboard_prereqs(rid):
         db.add(InternshipAgreement(tenant_id=rec.tenant_id, internship_id=rec.id,
                                    student_id=rec.student_id, status="EFFECTIVE"))
         db.add(InternshipInsurance(tenant_id=rec.tenant_id, internship_id=rec.id,
-                                   student_id=rec.student_id, status="VERIFIED"))
+                                   student_id=rec.student_id, status="VERIFIED",
+                                   effective_date=batch.start_date.strftime("%Y-%m-%d"),
+                                   expiry_date=batch.end_date.strftime("%Y-%m-%d")))
         db.commit()
     finally:
         db.close()

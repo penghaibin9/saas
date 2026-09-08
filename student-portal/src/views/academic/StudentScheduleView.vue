@@ -41,11 +41,11 @@
       <div>
         <label class="schedule-toolbar__label" for="schedule-week">周课表 · {{ currentWeekHint }}</label>
         <div class="week-filter">
-          <select id="schedule-week" v-model="selectedWeek">
+          <select id="schedule-week" v-model="selectedWeek" :disabled="printing">
             <option :value="null">全部周次</option>
             <option v-for="week in weekOptions" :key="week" :value="week">第{{ week }}周</option>
           </select>
-          <button v-if="currentWeekInRange" class="sp-btn sp-btn--ghost" :disabled="selectedWeek === currentWeekInRange" @click="selectedWeek = currentWeekInRange">回到本周</button>
+          <button v-if="currentWeekInRange" class="sp-btn sp-btn--ghost" :disabled="printing || selectedWeek === currentWeekInRange" @click="selectedWeek = currentWeekInRange">回到本周</button>
         </div>
       </div>
       <div class="schedule-summary">
@@ -249,6 +249,16 @@ function appendText(parent, tag, text) {
 
 async function printSchedule() {
   if (printing.value || loading.value || error.value || !filteredItems.value.length) return
+  // Capture display values before the asynchronous audit request. The printed view
+  // must match the audited week even if data reloads while that request is pending.
+  const printWeek = selectedWeek.value
+  const printRows = filteredItems.value.slice()
+    .sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo))
+    .map((item) => {
+      const day = days.find((entry) => entry.value === Number(item.weekday))
+      return [day?.label || `周${item.weekday}`, slotLabel(item), item.courseName || '—',
+        item.classroom || '—', item.teacherName || '—', weekLabel(item)].map(String)
+    })
   const printWindow = window.open('', '_blank')
   if (!printWindow) {
     ui.notify('浏览器阻止了打印窗口，请允许弹出窗口后重试')
@@ -260,19 +270,19 @@ async function printSchedule() {
   printing.value = true
   try {
     const audit = await portalApi.academicSchedulePrint({
-      reason: selectedWeek.value ? `个人课表-第${selectedWeek.value}周` : '个人课表-全部周次'
+      reason: printWeek ? `个人课表-第${printWeek}周` : '个人课表-全部周次'
     })
     const documentRef = printWindow.document
     documentRef.head.textContent = ''
     documentRef.body.textContent = ''
-    documentRef.title = selectedWeek.value ? `个人课表-第${selectedWeek.value}周` : '个人课表'
+    documentRef.title = printWeek ? `个人课表-第${printWeek}周` : '个人课表'
     const style = documentRef.createElement('style')
     style.textContent = 'body{font-family:Segoe UI,Microsoft YaHei,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin:0 0 8px}.meta{color:#666;font-size:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #ddd;padding:7px 8px;text-align:left}th{background:#f5f7fa}.wm{position:fixed;inset:28% 8%;font-size:38px;color:rgba(0,0,0,.07);transform:rotate(-24deg);pointer-events:none;text-align:center}'
     documentRef.head.appendChild(style)
     const body = documentRef.body
     const watermark = appendText(body, 'div', audit?.watermark || '')
     watermark.className = 'wm'
-    appendText(body, 'h1', selectedWeek.value ? `个人课表 · 第${selectedWeek.value}周` : '个人课表 · 全部周次')
+    appendText(body, 'h1', printWeek ? `个人课表 · 第${printWeek}周` : '个人课表 · 全部周次')
     const meta = appendText(body, 'div', `留痕时间：${audit?.loggedAt || '—'} · 仅供本人查询使用`)
     meta.className = 'meta'
     const table = documentRef.createElement('table')
@@ -282,11 +292,9 @@ async function printSchedule() {
     tableHead.appendChild(headerRow)
     table.appendChild(tableHead)
     const tableBody = documentRef.createElement('tbody')
-    filteredItems.value.slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo)).forEach((item) => {
+    printRows.forEach((cells) => {
       const row = documentRef.createElement('tr')
-      const day = days.find((entry) => entry.value === Number(item.weekday))
-      ;[day?.label || `周${item.weekday}`, slotLabel(item), item.courseName || '—', item.classroom || '—', item.teacherName || '—', weekLabel(item)]
-        .forEach((text) => appendText(row, 'td', String(text)))
+      cells.forEach((text) => appendText(row, 'td', text))
       tableBody.appendChild(row)
     })
     table.appendChild(tableBody)
@@ -312,32 +320,32 @@ onMounted(load)
 .schedule-hero h1 { margin: 5px 0; color: var(--t1); font-size: 22px; line-height: 1.4; }
 .schedule-hero p { margin: 0; color: var(--t3); font-size: 13px; }
 .schedule-hero__actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.today-board { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.today-board { margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, var(--bg-card)); }
 .today-board__head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .today-board__eyebrow { color: var(--pri); font-size: 12px; font-weight: 600; }
 .today-board h2 { margin: 6px 0; color: var(--t1); font-size: 18px; }
 .today-board p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.6; }
 .today-board__week { flex-shrink: 0; padding: 6px 9px; border-radius: 6px; background: var(--pri-50); color: var(--pri); font-size: 12px; }
 .today-course-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 16px; }
-.today-course { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--pri); border-radius: 8px; background: var(--field-bg); }
+.today-course { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px; border: 1px solid var(--line); border-left: 3px solid var(--pri); border-radius: 8px; background: var(--field-bg, var(--bg-page)); }
 .today-course__time { width: 100%; color: var(--pri); font-size: 12px; font-weight: 600; }
 .today-course__body { min-width: 0; flex: 1; }
 .today-course__body strong, .today-course__body span { display: block; overflow-wrap: anywhere; }
 .today-course__body strong { color: var(--t1); font-size: 14px; }
 .today-course__body span { margin-top: 5px; color: var(--t3); font-size: 12px; line-height: 1.5; }
-.today-course__source, .course-card__source { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--pri); font-size: 12px; }
+.today-course__source, .course-card__source { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface, var(--bg-card)); color: var(--pri); font-size: 12px; }
 .today-empty { margin-top: 16px; padding: 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--t3); text-align: center; font-size: 13px; }
-.schedule-toolbar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; background: var(--surface); }
+.schedule-toolbar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; background: var(--surface, var(--bg-card)); }
 .schedule-toolbar__label { display: block; margin-bottom: 8px; color: var(--t2); font-size: 13px; font-weight: 600; }
 .week-filter { display: flex; align-items: center; gap: 8px; }
-.week-filter select { min-width: 160px; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--field-bg); color: var(--t1); font: inherit; font-size: 13px; }
+.week-filter select { min-width: 160px; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--field-bg, var(--bg-page)); color: var(--t1); font: inherit; font-size: 13px; }
 .schedule-page :is(button, select, [tabindex]):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
 .schedule-summary { display: flex; flex-wrap: wrap; gap: 16px; color: var(--t3); font-size: 13px; }
 .schedule-summary b { color: var(--t1); }
-.schedule-error { display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--surface); }
+.schedule-error { display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--surface, var(--bg-card)); }
 .week-board { display: grid; grid-template-columns: repeat(7, minmax(155px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 10px; }
-.day-column { min-width: 155px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
-.day-column.is-empty { background: var(--field-bg); }
+.day-column { min-width: 155px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, var(--bg-card)); overflow: hidden; }
+.day-column.is-empty { background: var(--field-bg, var(--bg-page)); }
 .day-column__head { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); color: var(--t1); font-size: 13px; font-weight: 600; }
 .day-column__head small { color: var(--t3); font-size: 12px; font-weight: 400; }
 .day-column__list { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
@@ -350,7 +358,7 @@ onMounted(load)
 .course-card__meta { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; color: var(--t3); font-size: 12px; }
 .course-card__weeks { margin-top: 10px; color: var(--t3); font-size: 12px; line-height: 1.5; }
 .course-card__source { display: inline-flex; margin-top: 8px; }
-.schedule-note { display: flex; gap: 12px; margin-top: 16px; background: var(--surface); color: var(--t3); font-size: 13px; line-height: 1.7; }
+.schedule-note { display: flex; gap: 12px; margin-top: 16px; background: var(--surface, var(--bg-card)); color: var(--t3); font-size: 13px; line-height: 1.7; }
 .schedule-note strong { color: var(--t1); white-space: nowrap; }
 @media (max-width: 760px) {
   .schedule-hero { align-items: flex-start; flex-direction: column; gap: 12px; }

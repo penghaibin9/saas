@@ -1740,10 +1740,12 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
 
     adjust_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
                                               comment="MERGE/SPLIT/DISBAND/GRADUATE_CLEAR")
-    from_class_ids: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False, comment="JSON数组，来源行政班id列表")
+    from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="N-1兼容来源范围；大范围由V2状态隔离")
+    from_class_ids_expanded: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=True)
     to_class_id: Mapped[int | None] = mapped_column(BigInteger, comment="合班目标班级（MERGE专用）")
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)
-    check_result_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
+    check_result_json: Mapped[str | None] = mapped_column(String(2000))
+    check_result_expanded: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")

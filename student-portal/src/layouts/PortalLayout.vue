@@ -27,7 +27,7 @@
           <button class="workspace-menu-toggle" :aria-expanded="mobileNav" aria-label="打开业务导航" @click="mobileNav = !mobileNav">目录</button>
           <div ref="tabStrip" class="workspace-tabs" role="tablist" aria-label="已打开页面" @keydown="onTabKeydown">
             <div v-for="item in openPages" :key="item.id" class="workspace-tab" :class="{ selected: item.to === route.fullPath || item.id === currentPage?.id }">
-              <button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)">{{ item.title }}<span v-if="edited && item.id === currentPage?.id" class="workspace-edited" aria-label="本页有编辑操作">●</span></button>
+              <button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)">{{ item.title }}<span v-if="hasEdits && item.id === currentPage?.id" class="workspace-edited" aria-label="本页有编辑操作">●</span></button>
               <button v-if="item.id !== 'home'" class="workspace-close" :aria-label="`关闭${item.title}`" @click="closePage(item)">×</button>
             </div>
           </div>
@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkspaceIcon from '../components/workspace/WorkspaceIcon.vue'
 import WorkspaceRail from '../components/workspace/WorkspaceRail.vue'
@@ -101,6 +101,14 @@ const pageById = id => pages.value.find(item => item.id === id)
 const prefs = ref(normalizePreferences(null, pages.value)), search = ref(''), unread = ref(0), focusMode = ref(false), mobileNav = ref(false)
 const themeKey = ref('blue'), themeName = computed(() => WORKSPACE_THEMES.find(item => item.key === themeKey.value)?.label)
 const recentlyClosed = ref(''), transientPage = ref(null), mainElement = ref(null), tabStrip = ref(null), edited = ref(false), loggingOut = ref(false)
+const activeFormCheck = shallowRef(null)
+const hasEdits = computed(() => activeFormCheck.value ? !!activeFormCheck.value.check() : edited.value)
+function registerWorkspaceForm(check, busy = () => false) {
+  const owner = { check, busy }
+  activeFormCheck.value = owner
+  return () => { if (activeFormCheck.value === owner) activeFormCheck.value = null }
+}
+provide('registerWorkspaceForm', registerWorkspaceForm)
 const leaveDialog = ref(null)
 const searchDialog = ref(null), accountDialog = ref(null), appearanceDialog = ref(null), shortcutsDialog = ref(null)
 const shortcutDraft = ref(normalizePreferences(null, pages.value))
@@ -197,13 +205,14 @@ function markEdited(event) {
 }
 let leavePromise = null, leaveResolver = null
 function mayLeave() {
-  if (!edited.value) return true
+  if (activeFormCheck.value?.busy()) { ui.notify('正在提交，请稍候再离开。'); return false }
+  if (!hasEdits.value) return true
   if (!leavePromise) { leavePromise = new Promise(resolve => { leaveResolver = resolve }); openDialog(leaveDialog.value) }
   return leavePromise
 }
 function resolveLeave(allowed) { const resolve = leaveResolver; leaveResolver = null; leavePromise = null; leaveDialog.value?.close(); resolve?.(allowed) }
 const removeGuard = router.beforeEach((to, from) => to.fullPath === from.fullPath || !session.isLoggedIn || mayLeave())
-function beforeUnload(event) { if (edited.value) { event.preventDefault(); event.returnValue = '' } }
+function beforeUnload(event) { if (hasEdits.value) { event.preventDefault(); event.returnValue = '' } }
 function onKeydown(event) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (!document.querySelector('dialog[open]')) openDialog(searchDialog.value) } if (event.key === 'Escape') { mobileNav.value = false; if (!document.querySelector('dialog[open]')) focusMode.value = false } }
 async function logout() {
   if (!await mayLeave()) return

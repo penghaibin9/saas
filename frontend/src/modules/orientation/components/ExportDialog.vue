@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="exd__mask" @click.self="close">
-    <div class="exd" role="dialog" aria-modal="true">
+    <div class="exd" role="dialog" aria-modal="true" :aria-label="title">
       <header class="exd__header">
         <h3>{{ title }}</h3>
         <button type="button" class="exd__close" aria-label="关闭" @click="close">×</button>

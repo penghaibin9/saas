@@ -62,8 +62,8 @@ export const internStudentApi = {
   getOnboardChecklist(id) {
     return call(() => request(`${BASE}/${id}/onboard-checklist`))
   },
-  setEligibility(id, { status, reason, expectedVersion }) {
-    return call(() => request(`${BASE}/${id}/eligibility`, { method: 'POST', body: { status, reason, expectedVersion } }))
+  setEligibility(id, { status, reason, expectedVersion, publishReason = false }) {
+    return call(() => request(`${BASE}/${id}/eligibility`, { method: 'POST', body: { status, reason, expectedVersion, publishReason } }))
   },
   setDestination(id, { destination, reason, expectedVersion }) {
     return call(() => request(`${BASE}/${id}/destination`, { method: 'POST', body: { destination, reason, expectedVersion } }))

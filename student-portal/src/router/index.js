@@ -18,6 +18,7 @@ const routes = [
       { path: 'campus-service', name: 'campus-service', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/AffairsFourEndView.vue') },
       { path: 'materials', name: 'material-supplement', meta: { modulePath: 'campus-service' }, component: () => import('../views/affairs/MaterialSupplementView.vue') },
       { path: 'internship', name: 'internship', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipView.vue') },
+      { path: 'internship/volunteer-result', name: 'internship-volunteer-result', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipVolunteerResultView.vue') },
       { path: 'internship/selection', name: 'internship-selection', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipSelectionView.vue') },
       { path: 'internship/selection/company/:companyId', name: 'internship-selection-company', meta: { modulePath: 'internship' }, component: () => import('../views/internship/EnterprisePublicView.vue') },
       { path: 'internship/profile', name: 'internship-profile', meta: { modulePath: 'internship' }, component: () => import('../views/internship/InternshipProfileView.vue') },
@@ -30,8 +31,7 @@ const routes = [
       { path: 'orientation/materials', name: 'orientation-materials', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       { path: 'orientation/green-channel', name: 'orientation-green', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       // SP-D04：离校与迎新相隔整个学制，权限、路由与消息 target 都不该混在一起。
-      // 正式入口独立成 /departure；Orientation 的旧「离校」tab 保留为兼容入口并引导过来，
-      // 不删除历史路径。（不使用 /clearance——仓库里那是"清考"语义。）
+      // 正式入口独立成 /departure（不使用 /clearance——仓库里那是"清考"语义）。
       { path: 'departure', name: 'departure', component: () => import('../views/departure/DepartureView.vue') },
       { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
       { path: 'service-hall', name: 'service-hall', component: () => import('../views/hall/ServiceHallView.vue') },

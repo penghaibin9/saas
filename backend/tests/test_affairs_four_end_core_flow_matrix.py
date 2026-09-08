@@ -77,6 +77,10 @@ def test_four_end_core_flow_routes_are_all_registered(client, db_mode):
         ("POST", "/api/v1/mobile/affairs/second-class/appeals"),
         ("GET", "/api/v1/mobile/affairs/second-class/appeals/my"),
         ("GET", "/api/v1/mobile/teacher/affairs/activities/ongoing"),
+        ("GET", "/api/v1/mobile/teacher/affairs/activities"),
+        ("GET", "/api/v1/mobile/teacher/affairs/activities/{activity_id}/participants"),
+        ("POST", "/api/v1/mobile/teacher/affairs/activities/{activity_id}/transition"),
+        ("POST", "/api/v1/mobile/teacher/affairs/activities/{activity_id}/confirm"),
         ("GET", "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token"),
         ("GET", "/api/v1/mobile/teacher/mental-stats"),
         ("GET", "/api/v1/mobile/teacher/mental"),
@@ -115,6 +119,7 @@ def test_all_teacher_mobile_state_changes_send_visible_version():
         "reviewAid", "reviewFunding", "reviewDiscipline", "processRisk", "closeRisk",
         "reviewDormTransfer", "handleDormException", "recordTalk", "followTalk",
         "followMental", "escalateMental", "closeMental",
+        "transitionTeacherActivity", "confirmTeacherActivity",
     ):
         start = source.index(f"{name}:")
         end = source.find("\n  }),", start)

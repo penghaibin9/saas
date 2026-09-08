@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="处分送达与申诉"
-    subtitle="已生效处分的送达登记与申诉复核；变更处分必须明确新的处分类型与事实，所有写操作携带当前版本。"
+    subtitle="送达登记与申诉复核"
     role-name="学工处 / 学院"
     data-scope-name="学院本院 / 学工处全校"
     watermark-purpose="处分送达与申诉复核"
@@ -13,30 +13,8 @@
       @back="$router.push('/admin/student-affairs/discipline')"
     >
       <p v-if="focusNotice" class="ap-focus-note">{{ focusNotice }}</p>
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前处理重点</span>
-          <h2 class="sa-summary-strip__title">
-            {{ pendingAppealCount === '—' ? '正在核对处分送达与申诉待办' : `待复核申诉 ${pendingAppealCount} 件，本页待送达 ${pageUndelivered} 件` }}
-          </h2>
-          <p class="sa-summary-strip__text">
-            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分类型、事实依据及有效投影。
-          </p>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="处分送达与申诉流程">
-        <div class="sa-workflow-step" data-step="1"><strong>处分已生效</strong><br>确认当前处分类型与决定内容</div>
-        <div class="sa-workflow-step" data-step="2"><strong>登记送达</strong><br>记录送达方式、时间和操作人</div>
-        <div class="sa-workflow-step" data-step="3"><strong>学生申诉</strong><br>完整陈述事实、理由与诉求</div>
-        <div class="sa-workflow-step" data-step="4"><strong>复核结论</strong><br>维持、真实变更或撤销并通知学生</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard title="已生效处分" :value="casePagination.total" accent="primary" />
-        <AppMetricCard title="本页待送达" :value="pageUndelivered" accent="warning" />
-        <AppMetricCard title="待复核申诉" :value="pendingAppealCount" accent="warning" />
-      </div>
 
       <AppSectionCard title="已生效处分 · 送达与申诉入口">
         <p class="ap-section-hint">先核对学生、处分类型和送达状态。未送达记录优先完成正式送达；允许申诉的记录可直接进入申诉流程。</p>
@@ -201,7 +179,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextarea, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -238,7 +216,7 @@ export default {
   name: 'DisciplineAppealView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
     AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextarea, AppTextInput, DataTable
   },
   data() {

@@ -38,7 +38,7 @@
           </div>
           <AppButton v-if="canViewGovernance" variant="primary" @click="goGovernance">前往学年学期与业务日历</AppButton>
         </div>
-        <p v-else class="mp-note">{{ loadingCurrent ? '正在核对学校的学期设置…' : currentError ? '当前学期读取失败，请在上方重试。' : '校级教务可将已发布学期设为全校当前学期。' }}</p>
+        <p v-else class="mp-note">{{ loadingCurrent ? '正在核对学校的学期设置…' : currentError ? '当前学期读取失败，请在上方重试。' : (current?.switchHint || '校级教务可将已发布学期设为全校当前学期。') }}</p>
       </AppSectionCard>
 
       <AppSectionCard title="已发布学期">
@@ -103,6 +103,9 @@ export default {
   data() {
     return {
       loadingCurrent: true,
+      currentRequestId: 0,
+      termsRequestId: 0,
+      termViewDisposed: false,
       currentError: '',
       current: null,
       loading: true,
@@ -129,6 +132,11 @@ export default {
     this.loadCurrent()
     this.load()
   },
+  beforeUnmount() {
+    this.termViewDisposed = true
+    this.currentRequestId += 1
+    this.termsRequestId += 1
+  },
   methods: {
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusType(s) { return STATUS_TYPE[s] || 'default' },
@@ -139,31 +147,49 @@ export default {
       this.$router.push(this.current?.switchRoute || '/admin/system/academic-calendar')
     },
     async loadCurrent() {
+      if (this.termViewDisposed) return
+      const requestId = ++this.currentRequestId
       this.loadingCurrent = true
       this.currentError = ''
       this.current = null
-      const res = await academicAffairsApi.getCurrentTerm()
-      if (res.code === 0) {
-        this.current = res.data || null
-      } else {
+      try {
+        const res = await academicAffairsApi.getCurrentTerm()
+        if (requestId !== this.currentRequestId) return
+        if (res?.code !== 0) throw new Error(res?.message || '当前学期解析失败，请核对全校学期治理与教务学期数据')
+        if (!res.data || typeof res.data !== 'object' || Array.isArray(res.data)) {
+          throw new Error('当前学期响应不完整，请刷新后重新核对')
+        }
+        this.current = res.data
+      } catch (exception) {
+        if (requestId !== this.currentRequestId) return
         this.current = null
-        this.currentError = res.message || '当前学期解析失败，请核对全校学期治理与教务学期数据'
+        this.currentError = exception?.message || '当前学期读取失败，请刷新后重试'
+      } finally {
+        if (requestId === this.currentRequestId) this.loadingCurrent = false
       }
-      this.loadingCurrent = false
     },
     async load() {
+      if (this.termViewDisposed) return
+      const requestId = ++this.termsRequestId
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
+      this.terms = []
+      try {
+        const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
+        if (requestId !== this.termsRequestId) return
+        if (res?.code !== 0) throw new Error(res?.message || '学期列表读取失败，请刷新后重试')
+        if (!Array.isArray(res.data?.list)) throw new Error('学期列表响应不完整，请刷新后重试')
         this.terms = res.data.list
-      } else {
-        this.error = res.message
+      } catch (exception) {
+        if (requestId !== this.termsRequestId) return
+        this.terms = []
+        this.error = exception?.message || '学期列表读取失败，请刷新后重试'
+      } finally {
+        if (requestId === this.termsRequestId) this.loading = false
       }
-      this.loading = false
     },
     askSwitch(row) {
-      if (row.status !== 'PUBLISHED' || this.isResolvedCurrent(row)) return
+      if (this.dialog.submitting || row.status !== 'PUBLISHED' || this.isResolvedCurrent(row)) return
       if (!this.directSwitchAllowed) {
         toast.warning(this.current?.switchHint || '当前学校已启用全校学期治理，请从统一治理入口切换')
         return
@@ -180,17 +206,23 @@ export default {
       if (!row || this.dialog.submitting || !this.directSwitchAllowed) return
       this.dialog.submitting = true
       this.switching = row.termId
-      const res = await academicAffairsApi.setCurrentTerm(row.termId)
-      this.dialog.submitting = false
-      this.switching = ''
-      if (res.code === 0) {
+      try {
+        const res = await academicAffairsApi.setCurrentTerm(row.termId)
+        if (this.termViewDisposed) return
+        if (res?.code !== 0) throw new Error(res?.message || '切换失败')
         this.dialog.visible = false
         toast.success(`已切换：${row.yearCode} 第 ${row.termNo} 学期为当前学期`)
-        this.loadCurrent()
-        this.load()
-      } else {
-        toast.error(res.message || '切换失败')
-        this.loadCurrent()
+      } catch (exception) {
+        // A timeout does not prove the server rolled back. Read back; never replay the write.
+        if (!this.termViewDisposed) toast.error(exception?.message || '切换结果暂未确认，请核对刷新后的当前学期')
+      } finally {
+        if (!this.termViewDisposed) {
+          await Promise.all([this.loadCurrent(), this.load()])
+          if (!this.termViewDisposed) {
+            this.dialog.submitting = false
+            this.switching = ''
+          }
+        }
       }
     }
   }

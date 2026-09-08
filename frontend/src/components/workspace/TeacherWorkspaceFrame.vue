@@ -36,8 +36,8 @@ import { SHORTCUT_ICONS } from './shortcutIcons'
 import { activeWorkspacePage } from './workspaceRouting'
 import WorkspaceDeskUtilities from './WorkspaceDeskUtilities.vue'
 import { RefreshLeft, Star, FullScreen, Close, Monitor, User, Calendar, House, Bell, ChatDotRound, Sunny, Help, Coin, DocumentChecked, Collection, DataAnalysis, School, Flag, DataBoard, SetUp, Reading, List, Select, Clock, Tickets, TrendCharts, Medal, Notebook, OfficeBuilding, CircleCheck, FolderChecked } from '@element-plus/icons-vue'
-import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
-const props = defineProps({ modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
+import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceCurrentPage, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
+const props = defineProps({ resolveDestination: { type: Function, default: (path) => path }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
 const emit = defineEmits(['tokens', 'theme-label'])
 const route = useRoute(), router = useRouter()
 const pages = computed(() => workspacePages(props.modules))
@@ -69,17 +69,18 @@ defineExpose({ openAppearance })
 watch(() => prefs.value.theme, key => emit('theme-label', WORKSPACE_THEMES.find(theme => theme.key === key)?.label || ''), { immediate: true })
 const destinations = new Map(), scrollPositions = new Map()
 const tokens = computed(() => workspaceTokens(prefs.value.theme))
-const currentPage = computed(() => activeWorkspacePage(pages.value, route, props.activeModule))
+const currentPage = computed(() => props.activeCenter === 'academic-affairs' ? activeWorkspacePage(pages.value, route, props.activeModule) : workspaceCurrentPage(pages.value, route.fullPath, props.activeModule))
 const currentMenuId = computed(() => pages.value.find(page => page.moduleKey === currentPage.value?.moduleKey && page.path === currentPage.value?.menuParentPath)?.id || currentPage.value?.id)
 const expandedMenu = ref(false), menuQuery = ref('')
 watch(() => selectedModule.value || props.activeModule, () => { expandedMenu.value = false; menuQuery.value = '' })
 const hasSecondaryMenu = computed(() => pages.value.some(item => item.moduleKey === selected.value?.key && item.menuSecondary && !item.workspaceHidden))
-const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || props.activeModule)) || props.modules[0])
+const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || currentPage.value?.moduleKey || props.activeModule)) || props.modules[0])
 const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: props.centers.find(center => center.key === props.activeCenter)?.label || '业务中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: workspaceMenuItems(pages.value, selected.value?.key, currentMenuId.value, expandedMenu.value, menuQuery.value), active: expandedMenu.value ? currentPage.value?.id : currentMenuId.value }])
 const openPages = computed(() => prefs.value.tabs.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 function confirmUnsubmitted(to, from) {
   if (to.path === from.path) return true
+  if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true
   const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
   return !editing || window.confirm('当前表单还有填写内容，请确认已经提交。继续离开会丢失未提交的内容。')
 }
@@ -107,7 +108,7 @@ onBeforeUnmount(() => { mounted = false; for (const [name, value] of originalBod
 watch(() => route.fullPath, async path => { selectedModule.value = ''; mobileOpen.value = false; rememberCurrent(); await nextTick(); if (path === route.fullPath && mainElement.value) mainElement.value.scrollTop = scrollPositions.get(currentPage.value?.id) || 0 }, { flush: 'post' })
 function rememberScroll() { if (currentPage.value) scrollPositions.set(currentPage.value.id, mainElement.value?.scrollTop || 0) }
 function rememberCurrent() { const id = currentPage.value?.id; if (id && !currentPage.value.disabled && id !== '/workbench?view=recent') prefs.value.recent = [id, ...prefs.value.recent.filter(key => key !== id)].slice(0, 30); if (id) destinations.set(id, route.fullPath); if (id && !currentPage.value.disabled && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
-async function navigate(path) { const page = pages.value.find(item => item.id === path); const destination = destinations.get(path) || page?.destination || page?.path || path; if (destination && destination !== route.fullPath) await router.push(destination); mobileOpen.value = false }
+async function navigate(path) { const page = pages.value.find(item => item.id === path); const destination = destinations.get(path) || page?.destination || page?.path || path; if (destination && destination !== route.fullPath) await router.push(props.resolveDestination(destination)); mobileOpen.value = false }
 function selectItem(level, item) {
   if (level === 'second') {
     selectedModule.value = item.key

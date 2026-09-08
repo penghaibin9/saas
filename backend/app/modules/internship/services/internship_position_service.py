@@ -4,9 +4,8 @@
 上架强约束——黑名单企业 / 非「合作中」企业不能上架。
 状态机：DRAFT→PENDING→PUBLISHED↔OFFLINE↔SUSPENDED，PUBLISHED→FULL，任意→RISK / →ARCHIVED。
 横切：租户隔离 + is_deleted 软删 + 审计到 t_internship_audit_trail(target_type=POSITION)。
-batch_id 仅预留（nullable），本模块不依赖实习批次模块已完成。
-
-隔离：本文件不引用批次表/服务；企业校验直接读 EmpCompany（不改企业库服务写逻辑）。
+发布检查复用批次权益规则与企业准入事实；历史岗位允许 batch_id 为空，但不能直接发布。
+状态与风险写入锁定当前租户岗位并推进版本；新客户端提供 expectedVersion 防止过期办理。
 """
 from __future__ import annotations
 
@@ -63,8 +62,11 @@ def _company(db, company_id) -> EmpCompany:
     return c
 
 
-def _get(db, pos_id) -> InternshipPosition:
-    p = db.get(InternshipPosition, _as_id(pos_id))
+def _get(db, pos_id, *, lock=False) -> InternshipPosition:
+    query = select(InternshipPosition).where(
+        InternshipPosition.id == _as_id(pos_id),
+        InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False))
+    p = db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
     if not p or p.is_deleted or p.tenant_id != _tid():
         raise not_found("岗位不存在或不在当前数据范围内")
     return p
@@ -74,6 +76,8 @@ def _row(p: InternshipPosition, db=None) -> dict:
     out = {
         "id": str(p.id), "companyId": str(p.company_id), "companyName": p.company_name or "",
         "batchId": str(p.batch_id) if p.batch_id else "",
+        "campaignId": str(p.campaign_id) if p.campaign_id else "",
+        "sourceType": p.source_type or "SCHOOL",
         "title": p.title, "category": p.category or "",
         "majorRequirement": p.major_requirement or "", "gradeRequirement": p.grade_requirement or "",
         "workLocation": p.work_location or "", "salaryRange": p.salary_range or "",
@@ -112,7 +116,16 @@ def _row(p: InternshipPosition, db=None) -> dict:
         company = tenant_get(db, EmpCompany, p.company_id)
         batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
         result = evaluate_position_publishability(p, company, batch, db=db)
+        checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
         out.update({
+            "batchName": batch.batch_name if batch else "",
+            "checkinRule": {
+                "requireDaily": bool(checkin_cfg.get("requireDaily", True)),
+                "defaultRadiusM": int(checkin_cfg.get("geofenceRadiusM") or 500),
+                "maxAccuracyM": int(checkin_cfg.get("maxAccuracyM") or 200),
+                "configured": all(v is not None for v in (
+                    p.geofence_lat, p.geofence_lng, p.geofence_radius_m)),
+            },
             "publishable": result["passed"],
             "complianceBlockerCount": len(result["blockers"]),
             "complianceWarningCount": len(result["warnings"]),
@@ -151,10 +164,10 @@ def list_positions(page: int, page_size: int, keyword=None, status=None,
         return [_row(p, db) for p in rows], total
 
 
-def get_position(pos_id) -> dict:
+def get_position(pos_id, *, user=None) -> dict:
     with session() as db:
         p = _get(db, pos_id)
-        c = db.get(EmpCompany, p.company_id)
+        c = tenant_get(db, EmpCompany, p.company_id)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(),
             InternshipAuditTrail.target_type == "POSITION",
@@ -167,10 +180,14 @@ def get_position(pos_id) -> dict:
                        "blacklist": bool(c.blacklist)}
         # 反向补：本岗位已分配学生（allocated_count 的真实来源，实习学生分配闭环回填）
         from app.models import InternshipRecord, StudentProfile
-        recs = db.scalars(select(InternshipRecord).where(
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        record_query = select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.position_id == p.id).order_by(InternshipRecord.id)).all()
+            InternshipRecord.position_id == p.id)
+        recs = db.scalars(apply_internship_record_scope(record_query, user or get_current_user_ctx() or {})
+                          .order_by(InternshipRecord.id)).all()
         smap = {s.id: s for s in db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
             StudentProfile.id.in_([r.student_id for r in recs]))).all()} if recs else {}
         assigned = [{"recordId": str(r.id), "studentId": str(r.student_id),
                      "name": (smap.get(r.student_id).real_name if smap.get(r.student_id) else "-"),
@@ -362,21 +379,44 @@ def update_position(pos_id, body) -> dict:
 
 # ═══════════ 状态机 ═══════════
 
-def set_status(pos_id, action: str, reason: str = "") -> dict:
-    """SUBMIT / PUBLISH / OFFLINE / SUSPEND / ARCHIVE。上架强约束黑名单/停用企业。"""
+def set_status(pos_id, action: str, reason: str = "", *, expected_version=None) -> dict:
+    """SUBMIT / RETURN / PUBLISH / OFFLINE / SUSPEND / ARCHIVE。"""
+    outbox_id = None
     with session() as db:
-        p = _get(db, pos_id)
+        if action == "RETURN":
+            if expected_version is None:
+                raise AppException("DATA_CONFLICT", "退回补正必须携带当前岗位版本")
+            reason = str(reason or "").strip()
+            if not reason or len(reason) > 1000:
+                raise AppException("VALIDATION_ERROR", "请填写 1 至 1000 字的补正意见，该意见将对企业可见")
+            candidate = _get(db, pos_id)
+            if candidate.campaign_id:
+                from app.modules.internship.services.internship_recruitment_campaign_service import _get_campaign
+                campaign = _get_campaign(db, candidate.campaign_id, tenant_id=_tid(), lock=True)
+                if campaign.status != "OPEN":
+                    raise AppException("DATA_CONFLICT", "招聘季当前不允许企业补正，请先核对招聘安排")
+        p = _get(db, pos_id, lock=True)
+        if expected_version is not None and int(p.version or 0) != expected_version:
+            raise AppException("DATA_CONFLICT", "岗位已被修改，请刷新后核对再办理")
         if p.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档岗位不可再变更状态")
         if action == "SUBMIT":
             if p.status != "DRAFT":
                 raise AppException("DATA_CONFLICT", "仅「草稿」可提交审核")
             p.status = "PENDING"
+        elif action == "RETURN":
+            if p.status != "PENDING" or int(p.allocated_count or 0) > 0:
+                raise AppException("DATA_CONFLICT", "仅未落岗的待审核岗位可退回补正")
+            p.status = "DRAFT"
         elif action == "PUBLISH":
             if p.status not in ("PENDING", "OFFLINE", "SUSPENDED"):
                 raise AppException("DATA_CONFLICT", "仅待审核/已下架/已暂停岗位可上架")
             c = _company(db, p.company_id)
             batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
+            checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
+            if checkin_cfg.get("requireDaily", True) and not all(v is not None for v in (
+                    p.geofence_lat, p.geofence_lng, p.geofence_radius_m)):
+                raise AppException("DATA_CONFLICT", "岗位发布检查未通过：每日打卡岗位须配置打卡中心和电子围栏半径")
             from app.modules.internship.services.internship_position_rights import (
                 evaluate_position_publishability)
             rights = evaluate_position_publishability(
@@ -412,15 +452,33 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
             p.archived_by = _op_name()
         else:
             raise AppException("VALIDATION_ERROR", "非法状态动作")
-        _trail(db, p.id, f"STATUS_{action}", {"reason": reason, "to": p.status})
+        p.version = int(p.version or 0) + 1
+        detail = {"reason": reason, "to": p.status}
+        if action == "RETURN":
+            detail.update(enterpriseVisible=True, positionVersion=int(p.version))
+        _trail(db, p.id, f"STATUS_{action}", detail)
+        from app.modules.internship.services.internship_position_notification_service import (
+            emit_school_position_notice_in_tx,
+        )
+        outbox = emit_school_position_notice_in_tx(db, position=p, action=action, reason=reason)
+        outbox_id = int(outbox.id) if outbox is not None else None
         db.commit()
         db.refresh(p)
-        return _row(p, db)
+        result = _row(p, db)
+    if outbox_id:
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(
+            worker_id="internship-position-inline",
+            outbox_ids=[outbox_id],
+        )
+    return result
 
 
-def mark_risk(pos_id, on: bool, note: str = "") -> dict:
+def mark_risk(pos_id, on: bool, note: str = "", *, expected_version=None) -> dict:
     with session() as db:
-        p = _get(db, pos_id)
+        p = _get(db, pos_id, lock=True)
+        if expected_version is not None and int(p.version or 0) != expected_version:
+            raise AppException("DATA_CONFLICT", "岗位已被修改，请刷新后核对再办理")
         if p.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档岗位不可标记风险")
         if on:
@@ -430,9 +488,12 @@ def mark_risk(pos_id, on: bool, note: str = "") -> dict:
             p.risk_note = note.strip()
             p.status = "RISK"
         else:
+            if not p.risk_flag and p.status != "RISK":
+                raise AppException("DATA_CONFLICT", "岗位当前没有风险标记，无需解除")
             p.risk_flag = False
             p.risk_note = None
             p.status = "OFFLINE"  # 解除风险后回到已下架，需重新上架
+        p.version = int(p.version or 0) + 1
         _trail(db, p.id, "RISK_ON" if on else "RISK_OFF", {"note": note})
         db.commit()
         db.refresh(p)

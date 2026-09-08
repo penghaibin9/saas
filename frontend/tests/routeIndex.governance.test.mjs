@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildRouteIndex, matchRouteExists } from '../../scripts/check/build-route-index.mjs'
+import { buildRouteIndex, matchRouteExists, extractRouteSource } from '../../scripts/check/build-route-index.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -82,4 +82,27 @@ test('hidden/detail/action nodes still get permissionPolicy in registry', async 
 test('buildRouteIndex non-empty', () => {
   const index = withRegexes(buildRouteIndex())
   assert.ok(index.exact.size > 20)
+})
+
+
+test('absolute child does not reparent sibling routes or invent redirect destinations', () => {
+  const index = extractRouteSource(`const routes = [{ path: '/admin/student-affairs', children: [
+    { path: '/admin/student-affairs/material-operations' },
+    { path: 'dorm', children: [{ path: 'check' }] },
+    { path: 'funding', alias: ['aid'], children: [{ path: ':id' }] },
+    { path: 'retired', redirect: '/not-registered' }
+  ] }]`)
+  assert.ok(index.exact.has('/admin/student-affairs/dorm/check'))
+  assert.ok(index.exact.has('/admin/student-affairs/aid'))
+  assert.ok(index.patterns.has('/admin/student-affairs/funding/:id'))
+  assert.ok(!index.exact.has('/admin/student-affairs/material-operations/dorm'))
+  assert.ok(!index.exact.has('/not-registered'))
+  assert.deepEqual(index.redirects, [{ from: '/admin/student-affairs/retired', to: '/not-registered' }])
+})
+
+test('parameterized redirect declarations remain redirects without inventing target routes', () => {
+  const parsed = extractRouteSource("const routes = [{ path: '/old/:id', redirect: '/new' }]")
+  const index = { ...parsed, patternRegexes: [] }
+  assert.deepEqual(matchRouteExists(index, '/old/:id'), { exists: true, matchType: 'redirect' })
+  assert.deepEqual(matchRouteExists(index, '/new'), { exists: false, matchType: 'missing' })
 })

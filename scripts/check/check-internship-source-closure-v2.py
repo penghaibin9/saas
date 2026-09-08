@@ -115,12 +115,12 @@ mini = {
     if p.startswith("miniapp/src/") and (
         "internship" in p.lower()
         or p.startswith("miniapp/src/pages/student/weekly-report/")
-        or p.startswith("miniapp/src/pages/teacher/student-eval/")
-        or p.startswith("miniapp/src/pages/teacher/enterprise-eval/")
-        or p.startswith("miniapp/src/pages/teacher/insurance-verify/")
-        or p.startswith("miniapp/src/pages/teacher/agreement-confirm/")
-        or p.startswith("miniapp/src/pages/teacher/process-report-review/")
-        or p.startswith("miniapp/src/pages/teacher/plan-task-review/")
+        or p.startswith("miniapp/src/pages/teacher-internship/student-eval/")
+        or p.startswith("miniapp/src/pages/teacher-internship/enterprise-eval/")
+        or p.startswith("miniapp/src/pages/teacher-internship/insurance-verify/")
+        or p.startswith("miniapp/src/pages/teacher-internship/agreement-confirm/")
+        or p.startswith("miniapp/src/pages/teacher-internship/process-report-review/")
+        or p.startswith("miniapp/src/pages/teacher-internship/plan-task-review/")
         or p.startswith("miniapp/src/pages/teacher/workbench/")
         or p.startswith("miniapp/src/pages/teacher/todos/")
     )
@@ -306,6 +306,8 @@ for job in ("internship_audit_outbox", "internship_overdue"):
 
 # ---- Local dependency closure -------------------------------------------------
 def resolve_js(source: Path, spec: str, surface_root: Path) -> Path | None:
+    # Vite query suffixes select a loader; the source file must still exist and be tracked.
+    spec = spec.split("?", 1)[0].split("#", 1)[0]
     if spec.startswith("@/"):
         base = surface_root / "src" / spec[2:]
     elif spec.startswith("."):

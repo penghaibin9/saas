@@ -22,6 +22,7 @@ test('岗位实习布局注入统一 Picker 适配器', async () => {
   for (const key of ['candidateInternshipStudent', 'internshipStudent', 'unassignedInternshipStudent', 'internshipPosition', 'internshipEnterprise', 'internshipAdvisor', 'internshipBatch', 'enterpriseMentor']) {
     assert.match(adapter, new RegExp(`\\b${key}\\b`))
   }
+  assert.match(adapter, /\(keyword\) => positionApi\.getEnterpriseOptions\(keyword, 30\)/)
 })
 
 test('岗位实习页面不再各自接线远程实体搜索或保留原生实体选择控件', async () => {

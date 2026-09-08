@@ -189,6 +189,7 @@
       :identity-key="workspaceIdentityKey"
       :legacy-identity-key="ctx.ctxKey || ''"
       :scope-name="scopeName"
+      :resolve-destination="workspaceNavigate"
       @tokens="workspaceColors = $event"
       @theme-label="workspaceThemeLabel = $event"
     >
@@ -387,6 +388,8 @@ export default {
     activeKey: { type: String, default: '' },
     hideAside: { type: Boolean, default: false },
     workspace: { type: Boolean, default: false },
+    hideGlobalWorkbench: { type: Boolean, default: false },
+    workspaceNavigate: { type: Function, default: (path) => path },
     /* v2 新增（可选）：角色上下文，注入后启用统一壳的一级图标轨与身份区 */
     ctx: { type: Object, default: null },
     /* v2 新增（可选）：产品名（命名规范：高校学生全生命周期管理平台） */
@@ -556,7 +559,7 @@ export default {
         const firstAllowed = this.menus.find((item) => item?.path)?.path
         return [{ key: 'platform', label: '平台运营', path: firstAllowed || this.$route?.path || '/security/403' }]
       }
-      return getVisibleAdminMenu(this.ctx).map((group) => {
+      return getVisibleAdminMenu(this.ctx).filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench').map((group) => {
         // 教务中心默认进入总览；大屏仍保留在二级菜单，且只从可见菜单选择入口。
         const first = (group.key === 'academic-affairs'
           ? group.children.find((item) => item.path === '/admin/academic-affairs')

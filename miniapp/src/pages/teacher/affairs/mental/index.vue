@@ -28,7 +28,7 @@
 
       <view class="page-pad" v-if="active">
         <text class="mt__back" @click="active = null">‹ 返回列表</text>
-        <view class="card"><view class="row-between"><text class="t-lg t-bold">{{ active.realName }}</text><text class="mt__level" :class="'is-' + (active.level || 'GENERAL').toLowerCase()">{{ active.levelLabel }}</text></view><text class="mt__sub">{{ active.studentNo }} · {{ active.statusLabel }}</text></view>
+        <view class="card"><view class="row-between"><text class="t-lg t-bold">{{ active.realName }}</text><text class="mt__level" :class="'is-' + (active.level || 'GENERAL').toLowerCase()">{{ active.levelLabel }}</text></view><text class="mt__sub">{{ active.studentNo }} · {{ active.statusLabel }}</text><button v-if="active.riskId" class="btn btn-ghost mt__risk-link" @click="openRisk">查看关联风险</button></view>
 
         <template v-if="active.noteMasked">
           <view class="section-head"><text class="section-head__title">查看明细需填写原因</text></view>
@@ -68,7 +68,6 @@ import { toast } from '@/utils/nav'
 
 const LEVEL_OPTS = [{ value: 'GENERAL', label: '一般关注' }, { value: 'FOCUS', label: '重点关注' }, { value: 'CRISIS', label: '危机' }]
 const STATUS_TAG = { REFERRED: 'warning', FOLLOWING: 'processing', ESCALATED: 'danger', CLOSED: 'success' }
-const FALLBACK_ACTIONS = { REFERRED: ['FOLLOW', 'ESCALATE', 'CLOSE'], FOLLOWING: ['FOLLOW', 'ESCALATE', 'CLOSE'], ESCALATED: ['FOLLOW', 'CLOSE'], CLOSED: [] }
 
 export default {
   data() {
@@ -76,7 +75,7 @@ export default {
       state: 'loading', loaded: false, all: [], showForm: false, creating: false,
       form: { studentId: '', level: 'FOCUS', reasonSummary: '' }, students: [],
       active: null, viewReason: '', actionContent: '', acting: false, levelOptions: LEVEL_OPTS,
-      prefillStudentId: '', prefillLocked: false
+      prefillStudentId: '', prefillLocked: false, focusReferralId: ''
     }
   },
   computed: {
@@ -86,6 +85,8 @@ export default {
     canCreate() { const n = this.form.reasonSummary.trim().length; return this.form.studentId && n >= 5 && n <= 200 }
   },
   onLoad(q) {
+    const rawId = String((q && (q.recordId || q.referralId)) || '').trim()
+    this.focusReferralId = /^[1-9]\d*$/.test(rawId) ? rawId : ''
     this.prefillStudentId = q && q.mode === 'create' ? String(q.studentId || '').trim() : ''
     if (this.prefillStudentId) { this.showForm = true; this.loadCandidates() }
     this.load()
@@ -93,7 +94,7 @@ export default {
   methods: {
     statusTag(s) { return STATUS_TAG[s] || 'default' },
     canAct(action) {
-      const actions = Array.isArray(this.active && this.active.allowedActions) ? this.active.allowedActions : (FALLBACK_ACTIONS[(this.active && this.active.status) || ''] || [])
+      const actions = Array.isArray(this.active && this.active.allowedActions) ? this.active.allowedActions : []
       return actions.includes(action)
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.reloadActive(); return n },
@@ -118,7 +119,10 @@ export default {
     onLevelChange(e) { this.form.level = LEVEL_OPTS[e.detail.value].value },
     load() {
       this.state = 'loading'
-      teacherApi.getMentalList().then((d) => { this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready' })
+      teacherApi.getMentalList().then((d) => {
+        this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready'
+        if (this.focusReferralId) this.openDetail({ referralId: this.focusReferralId })
+      })
         .catch((e) => { this.state = 'error'; this.showError(e, '心理关注加载失败') })
     },
     createReferral() {
@@ -135,6 +139,9 @@ export default {
     openDetail(r) {
       this.viewReason = ''; this.actionContent = ''
       teacherApi.getMentalDetail(r.referralId).then((d) => { this.active = d }).catch((e) => this.showError(e, '详情加载失败'))
+    },
+    openRisk() {
+      uni.navigateTo({ url: `/pages/teacher/risk-students/index?recordId=${encodeURIComponent(this.active.riskId)}` })
     },
     reloadActive() { if (!this.active || !this.active.referralId) return this.load(); teacherApi.getMentalDetail(this.active.referralId).then((d) => { this.active = d }).catch(() => this.load()) },
     revealDetail() {
@@ -171,5 +178,5 @@ export default {
 </script>
 
 <style scoped>
-.mt__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.mt__level { flex-shrink: 0; font-size: var(--font-size-xs); font-weight: 700; padding: 2px 10px; border-radius: var(--radius-full); margin-right: var(--space-2); color: #fff; }.mt__level.is-general { background: var(--gray-400); }.mt__level.is-focus { background: #f97316; }.mt__level.is-crisis { background: var(--danger-600); }.mt__input { width: 100%; height: 40px; line-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }.mt__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }.mt__ph { color: var(--text-tertiary); }.mt__hint { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); }.mt__counter { display: block; text-align: right; font-size: 11px; color: #94a3b8; }.mt__back { display: inline-block; font-size: var(--font-size-sm); color: var(--teacher-700); margin-bottom: var(--space-3); }.mt__text { display: block; font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.6; }.mt__danger { color: var(--danger-600); border-color: var(--danger-600); }
+.mt__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.mt__level { flex-shrink: 0; font-size: var(--font-size-xs); font-weight: 700; padding: 2px 10px; border-radius: var(--radius-full); margin-right: var(--space-2); color: #fff; }.mt__level.is-general { background: var(--gray-400); }.mt__level.is-focus { background: #f97316; }.mt__level.is-crisis { background: var(--danger-600); }.mt__input { width: 100%; height: 40px; line-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }.mt__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }.mt__ph { color: var(--text-tertiary); }.mt__hint { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); }.mt__counter { display: block; text-align: right; font-size: 11px; color: #94a3b8; }.mt__back { display: inline-block; font-size: var(--font-size-sm); color: var(--teacher-700); margin-bottom: var(--space-3); }.mt__text { display: block; font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.6; }.mt__danger { color: var(--danger-600); border-color: var(--danger-600); }.mt__risk-link { width: 100%; margin-top: var(--space-3); }
 </style>

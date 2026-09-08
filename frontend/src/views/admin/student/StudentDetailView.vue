@@ -45,9 +45,7 @@
 
       <section v-if="quickActions.length" class="mp-card sd-quick">
         <div class="sd-quick__copy">
-          <span>围绕当前学生办理</span>
-          <strong>从画像直接进入正式工作台</strong>
-          <small>学生信息会自动带入；资格、范围和状态仍由目标工作台与服务端校验。</small>
+          <strong>办理事项</strong>
         </div>
         <div class="sd-quick__actions">
           <button v-for="action in quickActions" :key="action.key" type="button" class="sd-quick__btn" @click="startStudentAction(action)">
@@ -385,6 +383,7 @@ export default {
     quickActions() {
       const actions = [
         { key: 'talk', label: '发起谈话', icon: '谈', permission: 'studentAffairs.talk.create', path: '/admin/student-affairs/talk' },
+        { key: 'profile-material', label: '登记档案缺项', icon: '档', permission: 'studentAffairs.archive.view', path: '/admin/student-affairs/material-operations', bizType: 'PROFILE' },
         { key: 'family', label: '登记家校联系', icon: '家', permission: 'studentAffairs.homeSchool.record.create', path: '/admin/student-affairs/family' },
         { key: 'risk', label: '新建风险', icon: '险', permission: 'studentAffairs.risk.create', path: '/admin/student-affairs/risk' },
         { key: 'dorm', label: '发起调宿', icon: '宿', permission: 'studentAffairs.dorm.transfer.create', path: '/admin/student-affairs/dorm/transfer' },
@@ -495,6 +494,8 @@ export default {
           studentNo: this.detail.studentNo || undefined,
           studentName: this.detail.name || undefined,
           intent: 'create',
+          bizType: action.bizType || undefined,
+          bizId: action.bizType === 'PROFILE' ? String(this.detail.studentId) : undefined,
           from: 'student360'
         }
       })

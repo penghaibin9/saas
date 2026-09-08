@@ -116,7 +116,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
   test('S1-03 BASE_PATH / route refresh：Student PC 深路由硬刷新仍可用', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     await page.goto(`${config.studentBaseUrl}/internship`)
-    await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '二级菜单', exact: true }).getByRole('button', { name: '我的实习', exact: true })).toBeVisible()
 
     const batchSelector = page.getByText('请选择要办理的实习批次', { exact: true })
     const companyName = page.getByText(fixture.companyName, { exact: false }).first()
@@ -132,7 +132,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     await expect(companyName).toBeVisible()
     assertHttpsRuntime(page)
     await page.reload()
-    await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '二级菜单', exact: true }).getByRole('button', { name: '我的实习', exact: true })).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
     assertHttpsRuntime(page)
   })
@@ -177,7 +177,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     const staff = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await page.goto(staff.url({ panel: 'all' }))
-    await expect(page.getByText('请假审批').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await staff.dismissGuideIfPresent()
     const responsePromise = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith('/api/v1/internship/leaves/export')
@@ -223,6 +223,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     const ruleResponse = await ruleResponsePromise
     expect(ruleResponse.ok(), `participant rule HTTP ${ruleResponse.status()}`).toBeTruthy()
     await expect(page.getByRole('heading', { name: new RegExp(fixture.batchName) })).toBeVisible()
+    await page.getByRole('link', { name: '参与名单', exact: true }).click()
     await expect(page.getByText('参与学生范围', { exact: true })).toBeVisible()
     await expect(page.getByText('参与学生范围加载失败', { exact: true })).toHaveCount(0)
     assertHttpsRuntime(page)

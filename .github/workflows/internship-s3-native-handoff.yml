@@ -123,10 +123,10 @@ jobs:
             for (const p of (sub.pages || [])) pages.add([root, p].filter(Boolean).join('/'))
           }
           const requiredInternshipPages = [
-            'pages/student/internship/index',
-            'pages/student/internship/checkin/index',
-            'pages/teacher/internship-review/index',
-            'pages/teacher/internship-risk/index'
+            'pages/student-internship/index',
+            'pages/student-internship/checkin/index',
+            'pages/teacher-internship/internship-review/index',
+            'pages/teacher-internship/internship-risk/index'
           ]
           const missing = requiredInternshipPages.filter((p) => !pages.has(p))
           if (missing.length) throw new Error(`missing internship native pages: ${missing.join(', ')}`)

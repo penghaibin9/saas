@@ -2,8 +2,8 @@
   <AppPageShell
     title="认定批次管理"
     subtitle="家庭经济困难认定批次：学年 / 申请窗口 / 公示天数配置。发布后学生与辅导员方可受理申请。"
-    role-name="学工处 / 资助老师"
-    data-scope-name="资助范围（学工处全校）"
+    :role-name="ctx?.currentRole?.roleName || ''"
+    :data-scope-name="ctx?.dataScope?.scopeName || ''"
     watermark-purpose="困难认定批次管理"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载认定批次..." @retry="load"
@@ -17,24 +17,6 @@
         </AppPermissionButton>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="新建认定批次">
-        <div class="bf-grid">
-          <label class="bf-field"><span>批次名称 *</span>
-            <input v-model.trim="form.batchName" class="bf-input" placeholder="如：2025-2026 学年家庭经济困难认定" /></label>
-          <label class="bf-field"><span>学年 *</span>
-            <input v-model.trim="form.schoolYear" class="bf-input" placeholder="如：2025-2026" /></label>
-          <label class="bf-field"><span>公示天数</span>
-            <input v-model.number="form.publicityDays" type="number" min="1" max="30" class="bf-input" placeholder="1-30 天，默认 5" /></label>
-          <label class="bf-field bf-field--check">
-            <input v-model="form.publish" type="checkbox" /> <span>立即发布（开放受理）</span></label>
-        </div>
-        <p v-if="form.error" class="bf-error">{{ form.error }}</p>
-        <div class="bf-actions">
-          <button type="button" class="bf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <AppSectionCard title="批次列表">
         <DataTable v-if="batches.length" :columns="batchColumns" :rows="batches" row-key="batchId">
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.batchName }}</span></template>
@@ -44,25 +26,50 @@
           <template #cell-window="{ row }">
             <span class="bf-window">
               <template v-if="row.applyStart || row.applyEnd">
-                <AppDateDisplay :value="row.applyStart" mode="date" empty-text="…" />
+                <AppDateDisplay :value="row.applyStart" mode="datetime" empty-text="发布后" />
                 至
-                <AppDateDisplay :value="row.applyEnd" mode="date" empty-text="…" />
+                <AppDateDisplay :value="row.applyEnd" mode="datetime" empty-text="未设截止" />
               </template>
               <span v-else>—</span>
             </span>
           </template>
+          <template #cell-actions="{ row }">
+            <AppPermissionButton v-if="row.status === 'DRAFT'" :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" size="sm" variant="secondary" :loading="publishingId === row.batchId" @click="publish(row)">发布批次</AppPermissionButton>
+            <button v-else type="button" class="bf-link" @click="$router.push({ path: '/admin/student-affairs/aid', query: { batchId: row.batchId } })">查看申请</button>
+          </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无认定批次，点右上「建批次」</p>
+        <p v-else class="sa-empty">{{ canBtn('studentAffairs.aid.batch.manage') ? '暂无认定批次，可新建本学年的申请批次。' : '暂无认定批次，请联系学校资助老师发布。' }}</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="新建认定批次" mode="modal" size="large">
+      <div class="bf-grid">
+        <label class="bf-field"><span>批次名称 *</span>
+          <input v-model.trim="form.batchName" class="bf-input" placeholder="如：2025-2026 学年家庭经济困难认定" /></label>
+        <label class="bf-field"><span>学年 *</span>
+          <input v-model.trim="form.schoolYear" class="bf-input" placeholder="如：2025-2026" /></label>
+        <label class="bf-field"><span>公示天数</span>
+          <input v-model.number="form.publicityDays" type="number" min="1" max="30" class="bf-input" placeholder="1-30 天，默认 5" /></label>
+        <label class="bf-field"><span>申请开始时间</span><input v-model="form.applyStart" type="datetime-local" class="bf-input" /><small>不填则发布后开放。</small></label>
+        <label class="bf-field"><span>申请截止时间</span><input v-model="form.applyEnd" type="datetime-local" class="bf-input" /><small>不填则不限制截止时间。</small></label>
+        <label class="bf-field bf-field--check">
+          <input v-model="form.publish" type="checkbox" /> <span>保存后立即开放受理</span></label>
+      </div>
+      <p v-if="form.error" class="bf-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.aid.batch.manage')" code="studentAffairs.aid.batch.manage" :loading="saving" @click="save">保存批次</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
 import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -74,19 +81,20 @@ const BATCH_COLUMNS = [
   { key: 'schoolYear', title: '学年' },
   { key: 'status', title: '状态' },
   { key: 'publicityDays', title: '公示天数' },
-  { key: 'window', title: '申请窗口' }
+  { key: 'window', title: '申请窗口' },
+  { key: 'actions', title: '操作', align: 'right' }
 ]
 
 export default {
   name: 'AidBatchView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  components: { AppButton, AppDateDisplay, AppDrawer, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       batchColumns: BATCH_COLUMNS,
-      loading: true, saving: false, errorMessage: '', batches: [], statusCounts: null,
+      loading: true, saving: false, publishingId: '', errorMessage: '', batches: [], statusCounts: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
-      formVisible: false, form: { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
+      formVisible: false, form: { batchName: '', schoolYear: '', applyStart: '', applyEnd: '', publicityDays: 5, publish: true, error: '' }
     }
   },
   computed: {
@@ -94,7 +102,7 @@ export default {
     metricCards() {
       return [
         { key: 'all', label: '批次总数', value: this.pagination.total, accent: 'primary' },
-        { key: 'open', label: '开放受理', value: this.statusCounts === null ? '—' : (this.statusCounts.OPEN || 0), accent: 'success' },
+        { key: 'open', label: '已发布', value: this.statusCounts?.OPEN ?? '—', accent: 'success' },
         { key: 'closed', label: '已截止/归档', value: this.statusCounts === null ? '—' : ((this.statusCounts.CLOSED || 0) + (this.statusCounts.ARCHIVED || 0)), accent: 'warning' }
       ]
     }
@@ -104,28 +112,39 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
       this.loading = true; this.errorMessage = ''
-      const pageRes = await studentAffairsApi.getAidBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const [pageRes, openRes, closedRes, archivedRes] = await Promise.all([
+        studentAffairsApi.getAidBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        studentAffairsApi.getAidBatches({ status: 'OPEN', pageSize: 1 }),
+        studentAffairsApi.getAidBatches({ status: 'CLOSED', pageSize: 1 }),
+        studentAffairsApi.getAidBatches({ status: 'ARCHIVED', pageSize: 1 })
+      ])
       if (pageRes.code === 0 && pageRes.data) {
         this.batches = pageRes.data.items || []
         this.pagination.total = pageRes.data.total != null ? pageRes.data.total : this.batches.length
-        this.statusCounts = pageRes.data.statusCounts || null
+        this.statusCounts = closedRes.code === 0 && archivedRes.code === 0 ? {
+          OPEN: openRes.code === 0 ? openRes.data?.total ?? null : null,
+          CLOSED: closedRes.data?.total ?? 0, ARCHIVED: archivedRes.data?.total ?? 0
+        } : null
       } else {
         this.errorMessage = pageRes.message || '认定批次加载失败'
       }
       this.loading = false
     },
     openForm() {
-      this.form = { batchName: '', schoolYear: '', publicityDays: 5, publish: true, error: '' }
+      this.form = { batchName: '', schoolYear: '', applyStart: '', applyEnd: '', publicityDays: 5, publish: true, error: '' }
       this.formVisible = true
     },
     async save() {
+      if (this.saving) return
       const m = this.form
       if (!m.batchName || !m.schoolYear) { m.error = '批次名称与学年必填'; return }
+      if (m.applyStart && m.applyEnd && m.applyEnd <= m.applyStart) { m.error = '申请截止时间必须晚于开始时间'; return }
       m.error = ''
       this.saving = true
       const res = await studentAffairsApi.createAidBatch({
         batchName: m.batchName, schoolYear: m.schoolYear,
-        publicityDays: Number(m.publicityDays) || 5, publish: !!m.publish
+        applyStart: m.applyStart || null, applyEnd: m.applyEnd || null,
+        publicityDays: Number(m.publicityDays), publish: !!m.publish
       })
       if (res.code === 0) {
         toast.success('批次已保存')
@@ -136,6 +155,18 @@ export default {
         m.error = res.message || '保存失败'
       }
       this.saving = false
+    },
+    async publish(row) {
+      if (this.publishingId || this.saving) return
+      this.publishingId = row.batchId
+      try {
+        const result = await studentAffairsApi.publishAidBatch(row.batchId, row.version)
+        if (result.code !== 0) { toast.error(result.message || '发布失败，请刷新核对批次状态'); return }
+        toast.success('批次已发布，按申请窗口开放受理')
+        await this.load()
+      } catch {
+        toast.error('发布结果暂未获取，请刷新核对批次状态')
+      } finally { this.publishingId = '' }
     },
     statusLabel(s) { return BATCH_STATUS[s] || (s ? '状态待确认' : '—') },
     statusType(s) {
@@ -160,6 +191,7 @@ export default {
 .bf-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 8px 18px; cursor: pointer; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .bf-window { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.bf-link { border: 0; background: transparent; color: var(--primary-600, #2563eb); padding: 8px 0; cursor: pointer; font: inherit; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .bf-grid { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 </style>

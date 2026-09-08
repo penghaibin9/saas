@@ -53,7 +53,10 @@ test('D1 workspaces retain formal transfer inspection and exception commands', (
   assert.match(inspection, /studentAffairsApi\.submitDormCheckRecord/)
   assert.match(exception, /studentAffairsApi\.listDormExceptions/)
   assert.match(exception, /studentAffairsApi\.handleDormException/)
-  assert.match(overview, /聚合待办数：后端未配置/)
+  assert.match(overview, /class="dc-workspace"/)
+  assert.match(overview, /filteredBuildings/)
+  assert.match(overview, /roomGroups/)
+  assert.doesNotMatch(overview, /聚合待办数：后端未配置/)
 })
 
 test('D1 dorm UI contains no local business fixture or fake count authority', () => {

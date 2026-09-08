@@ -21,8 +21,8 @@
 
       <view v-if="manualVisible" class="card ov__manual">
         <text class="t-md t-bold">粘贴签名凭证</text>
-        <textarea v-model.trim="manualToken" class="ov__token-input" placeholder="仅接受学生端签发的 oci1 签名凭证；录取编号无效" />
-        <button class="btn-primary" :disabled="verifying || !manualToken" @click="preflight(manualToken)">先预检，不直接报到</button>
+        <textarea v-model.trim="manualToken" class="ov__token-input" placeholder="请粘贴学生端出示的完整报到凭证" />
+        <button class="btn-primary" :disabled="verifying || !manualToken" @click="preflight(manualToken)">核验报到凭证</button>
       </view>
 
       <view v-if="preflightResult" class="card ov__preflight">
@@ -31,7 +31,7 @@
             <text class="t-lg t-bold">{{ preflightResult.student.name }}</text>
             <text class="ov__result-sub">{{ preflightResult.student.collegeName }} · {{ preflightResult.student.className || '待分班' }}</text>
           </view>
-          <text class="ov__qualified">资格通过</text>
+          <text class="ov__qualified">可现场报到</text>
         </view>
         <view class="ov__facts">
           <view><text>录取编号</text><strong>{{ preflightResult.student.admissionNo }}</strong></view>
@@ -70,7 +70,7 @@
       <view class="ov__dialog card">
         <text class="t-lg t-bold">确认现场报到</text>
         <text class="ov__dialog-copy">{{ preflightResult.student.name }} · {{ selectedPoint?.name }}</text>
-        <text class="ov__dialog-note">确认后一次性凭证立即失效，并形成不可重复的 CheckinRecord。</text>
+        <text class="ov__dialog-note">确认学生已到校。完成后报到码失效，办理结果同步到学生端。</text>
         <view class="ov__dialog-actions">
           <button class="btn-ghost" @click="confirmVisible = false">取消</button>
           <button class="btn-primary" :disabled="verifying" @click="confirmCheckin">确认现场报到</button>

@@ -97,7 +97,7 @@ def test_mb2_student_isolation(client, db_mode):
     assert len(r["data"]["items"]) == 0
 
 
-def test_mb3_discipline_count_only(client, db_mode):
+def test_mb3_discipline_student_view_keeps_removed_history(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     cid = client.post(f"{BASE}/discipline/cases", headers=admin, json={
@@ -106,7 +106,24 @@ def test_mb3_discipline_count_only(client, db_mode):
     post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
     post_versioned(client, f"{BASE}/discipline/cases/{cid}/review", headers=admin, json={"action": "APPROVE"})
     d = client.get(f"{MB}/affairs/discipline/my", headers=_stu_token("张三", "MB13A01")).json()["data"]
-    assert d["activeCount"] == 1 and "detailNote" in d  # 仅数量+提示，无明细
+    assert d["activeCount"] == 1 and "detailNote" in d
+    assert d["items"][0]["caseStatus"] == "EFFECTIVE"
+
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/remove", headers=admin,
+                   json={"reason": "处分期间表现良好，申请按规定解除"})
+    for _ in range(3):
+        post_versioned(client, f"{BASE}/discipline/cases/{cid}/remove-review", headers=admin,
+                       json={"action": "APPROVE"})
+
+    removed = client.get(
+        f"{MB}/affairs/discipline/my", headers=_stu_token("张三", "MB13A01")
+    ).json()["data"]
+    assert removed["activeCount"] == 0
+    assert removed["historyCount"] == 1
+    assert removed["items"][0]["caseStatus"] == "REMOVED"
+    assert removed["items"][0]["caseStatusLabel"] == "已解除"
+    assert removed["items"][0]["removedAt"]
+    assert removed["items"][0]["allowedActions"] == []
 
 
 def test_mb4_dorm_legacy_global_switch_is_not_authority(client, db_mode):

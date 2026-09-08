@@ -24,12 +24,13 @@ async function readEnvelope(response) {
 
 export class Api {
   constructor(token = '') { this.token = token }
-  async request(method, path, { params, body } = {}) {
+  async request(method, path, { params, body, headers = {} } = {}) {
     const response = await fetch(url(path, params), {
       method,
       headers: {
         Accept: 'application/json',
         'X-Forwarded-For': '10.255.0.31',
+        ...headers,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
       },

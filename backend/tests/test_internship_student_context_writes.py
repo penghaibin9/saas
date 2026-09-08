@@ -185,3 +185,29 @@ def test_weekly_context_write_carries_batch_record_and_version(client, db_mode):
     })
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == 409001
+
+
+def test_leave_ack_rejects_foreign_or_mismatched_associations_before_writing(monkeypatch):
+    """A school-wide role cannot bypass tenant checks through a stale leave association."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    import pytest
+    from app.core import tenant_scoped
+    from app.core.exceptions import AppException
+    from app.models import InternshipRecord, StudentProfile
+    from app.modules.internship.services import internship_student_leave_context_service as leaves
+
+    monkeypatch.setattr(tenant_scoped, "current_tenant_id_int", lambda: TID)
+    leave = SimpleNamespace(internship_id=71, student_id=81)
+    monkeypatch.setattr(leaves, "_locked", lambda _db, _id: leave)
+    for record_tenant, student_tenant, record_student in ((TID + 1, TID, 81), (TID, TID + 1, 81), (TID, TID, 82)):
+        rows = {
+            InternshipRecord: SimpleNamespace(tenant_id=record_tenant, student_id=record_student),
+            StudentProfile: SimpleNamespace(tenant_id=student_tenant),
+        }
+        # There are deliberately no write methods: denial must happen before any mutation.
+        db = SimpleNamespace(get=lambda model, _id: rows[model])
+        monkeypatch.setattr(leaves, "session", lambda: nullcontext(db))
+        with pytest.raises(AppException) as error:
+            leaves.ack_overdue_return({}, "91", {"note": "确认返校", "expectedVersion": 1})
+        assert error.value.code == "NO_PERMISSION"

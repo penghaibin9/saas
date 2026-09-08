@@ -68,7 +68,7 @@ export class StudentInternshipPage {
     await expect(this.page.getByText(this.fixture.positionName).first()).toBeVisible()
     await this.openGroupedTab('在岗办理', '实习请假')
     await expect(this.page.getByText('发起请假', { exact: true })).toBeVisible()
-    await expect(this.page.getByText('我的请假', { exact: true })).toBeVisible()
+    await expect(this.page.getByText('我的请假与返岗', { exact: true })).toBeVisible()
   }
 
   leaveForm() {
@@ -112,16 +112,15 @@ export class StudentInternshipPage {
     const button = row.getByRole('button', { name: '办理销假' })
     await expect(button).toBeEnabled()
 
-    this.page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('prompt')
-      expect(dialog.message()).toContain('销假说明')
-      await dialog.accept(note)
-    })
+    await button.click()
+    const editor = row.locator('.leave-return-editor')
+    await expect(editor.getByText('确认已经返岗', { exact: true })).toBeVisible()
+    await editor.getByRole('textbox').fill(note)
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response).endsWith(`/api/v1/portal/internship/context/leaves/${leaveId}/return`)
       && response.request().method() === 'POST'
     )
-    await button.click()
+    await editor.getByRole('button', { name: '确认销假', exact: true }).click()
     const body = await expectSuccessfulResponse(await responsePromise, '学生办理实习销假')
     expect(body?.data?.status).toBe('RETURNED')
 
@@ -156,7 +155,7 @@ export class StaffInternshipLeavePage {
 
   async openPending() {
     await this.page.goto(this.url({ panel: 'pending' }))
-    await expect(this.page.getByText('请假审批').first()).toBeVisible()
+    await expect(this.page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await this.dismissGuideIfPresent()
   }
 
@@ -216,7 +215,7 @@ export class StaffInternshipLeavePage {
 
   async openFinal(leaveId) {
     await this.page.goto(this.url({ panel: 'all' }))
-    await expect(this.page.getByText('请假审批').first()).toBeVisible()
+    await expect(this.page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await this.dismissGuideIfPresent()
 
     const { data } = await this.clickExactLeave(leaveId, '管理员读取请假最终详情')

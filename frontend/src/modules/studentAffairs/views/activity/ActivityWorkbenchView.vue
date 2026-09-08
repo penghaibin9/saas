@@ -1,74 +1,16 @@
 <template>
   <AppPageShell
     title="学生活动管理"
-    subtitle="活动发布→报名→签到→确认名单→生成第二课堂学时/积分（进学生画像·供综测评优引用）。"
+    subtitle="活动发布、签到与名单确认"
     role-name="团委 / 学工处 / 学院"
     data-scope-name="发布方范围（团委全校/学院本院）"
     watermark-purpose="学生活动管理"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载活动..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前活动运营</span>
-          <h2 class="sa-summary-strip__title">报名中 {{ statusCount('PUBLISHED') }} 场，待确认名单 {{ statusCount('FINISHED') }} 场</h2>
-          <p class="sa-summary-strip__text">活动必须按顺序完成发布、报名截止、开始、结束和名单确认。只有确认名单后才生成正式第二课堂学时、积分或志愿时长。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">新建活动</AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="学生活动流程">
-        <div class="sa-workflow-step" data-step="1"><strong>创建草稿</strong><br>配置活动、名额、时间和积分规则</div>
-        <div class="sa-workflow-step" data-step="2"><strong>发布报名</strong><br>学生报名，必要时进入候补队列</div>
-        <div class="sa-workflow-step" data-step="3"><strong>开始签到</strong><br>活动开始后使用可信签到方式</div>
-        <div class="sa-workflow-step" data-step="4"><strong>结束确认</strong><br>结束后核对名单与签到记录</div>
-        <div class="sa-workflow-step" data-step="5"><strong>积分入账</strong><br>确认名单后生成正式积分并归档</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">建活动</AppPermissionButton>
-      </div>
-
-      <AppSectionCard v-if="formVisible" title="新建活动草稿">
-        <div class="af-form-note">先填写活动基本信息，再配置第二课堂规则、名额和时间地点。保存后仅生成草稿，不会立即开放报名。</div>
-        <div class="af-form-section">
-          <h3>基本信息</h3>
-          <div class="af-grid">
-            <label class="af-field af-field--wide"><span>活动名称 *</span><AppTextInput v-model="form.activityName" placeholder="如：2026 迎新晚会" /></label>
-            <label class="af-field"><span>活动类型</span><AppSelect v-model="form.activityType" :options="TYPE_OPTIONS" placeholder="" /></label>
-            <label class="af-field"><span>地点</span><AppTextInput v-model="form.location" placeholder="如：学校大礼堂" /></label>
-            <label class="af-field"><span>名额</span><AppNumberInput v-model="form.quota" :min="0" placeholder="空=不限" /></label>
-          </div>
-        </div>
-        <div class="af-form-section">
-          <h3>第二课堂规则</h3>
-          <div class="af-grid">
-            <label class="af-field"><span>学分类型</span><AppSelect v-model="form.creditType" :options="CREDIT_TYPE_OPTIONS" placeholder="" /></label>
-            <label class="af-field"><span>学时 / 积分 / 时长</span><AppNumberInput v-model="form.creditValue" :min="0" :step="0.5" placeholder="如：2" /></label>
-            <label class="af-field"><span>二课类目</span><AppSelect v-model="form.categoryCode" :options="categoryOptions" placeholder="" /></label>
-          </div>
-        </div>
-        <div class="af-form-section">
-          <h3>时间安排</h3>
-          <div class="af-grid af-grid--two">
-            <label class="af-field"><span>开始时间</span><AppDateTimePicker v-model="form.startAt" role="start" :end-value="form.endAt" /></label>
-            <label class="af-field"><span>结束时间</span><AppDateTimePicker v-model="form.endAt" role="end" :start-value="form.startAt" /></label>
-          </div>
-        </div>
-        <p v-if="form.error" class="af-error">{{ form.error }}</p>
-        <div class="af-actions">
-          <button type="button" class="af-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">保存草稿</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
-      <AppSectionCard title="活动列表与阶段推进">
-        <p class="af-section-hint">优先处理“待确认”活动。操作按钮按当前状态显示，必须按发布、截止、开始、结束、确认名单、归档的顺序推进。</p>
+      <AppSectionCard title="活动列表">
         <div class="af-filters sa-filter-bar">
           <AppSelect v-model="activeType" :options="activityTypeFilters" placeholder="全部类型"
                      @change="setType" />
@@ -105,6 +47,38 @@
                        :total="pagination.total" @change="load" />
       </AppSectionCard>
 
+      <AppDrawer v-model:visible="formVisible" title="新建活动" subtitle="保存后为草稿，不会立即开放报名" mode="modal" size="large">
+        <div class="af-form-section">
+          <h3>基本信息</h3>
+          <div class="af-grid">
+            <label class="af-field af-field--wide"><span>活动名称 *</span><AppTextInput v-model="form.activityName" placeholder="如：2026 迎新晚会" /></label>
+            <label class="af-field"><span>活动类型</span><AppSelect v-model="form.activityType" :options="TYPE_OPTIONS" placeholder="" /></label>
+            <label class="af-field"><span>地点</span><AppTextInput v-model="form.location" placeholder="如：学校大礼堂" /></label>
+            <label class="af-field"><span>名额</span><AppNumberInput v-model="form.quota" :min="0" placeholder="空=不限" /></label>
+          </div>
+        </div>
+        <div class="af-form-section">
+          <h3>第二课堂规则</h3>
+          <div class="af-grid">
+            <label class="af-field"><span>学分类型</span><AppSelect v-model="form.creditType" :options="CREDIT_TYPE_OPTIONS" placeholder="" /></label>
+            <label class="af-field"><span>学时 / 积分 / 时长</span><AppNumberInput v-model="form.creditValue" :min="0" :step="0.5" placeholder="如：2" /></label>
+            <label class="af-field"><span>二课类目</span><AppSelect v-model="form.categoryCode" :options="categoryOptions" placeholder="" /></label>
+          </div>
+        </div>
+        <div class="af-form-section">
+          <h3>时间安排</h3>
+          <div class="af-grid af-grid--two">
+            <label class="af-field"><span>开始时间</span><AppDateTimePicker v-model="form.startAt" role="start" :end-value="form.endAt" /></label>
+            <label class="af-field"><span>结束时间</span><AppDateTimePicker v-model="form.endAt" role="end" :start-value="form.startAt" /></label>
+          </div>
+        </div>
+        <p v-if="form.error" class="af-error">{{ form.error }}</p>
+        <template #footer>
+          <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="save">保存草稿</AppPermissionButton>
+        </template>
+      </AppDrawer>
+
       <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" mode="modal" size="xlarge" @update:visible="pv.visible = $event">
         <div class="participant-note">确认名单前请核对报名状态与签到时间；名单确认后会生成正式第二课堂记录。</div>
         <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
@@ -124,7 +98,7 @@
 
 <script>
 import {
-  AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppDateTimePicker, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
   AppPagination, AppSectionCard, AppSelect, AppStatusTag, AppTextInput
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -161,7 +135,7 @@ export default {
   name: 'ActivityWorkbenchView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppDateTimePicker, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+    AppDateTimePicker, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
     AppPagination, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextInput, DataTable, AppButton, AppDrawer
   },
   data() {

@@ -41,7 +41,7 @@ test('T6/T8 file evidence is uploaded first by shared picker but formal binding 
 })
 
 test('T6 internship review uses real reminder, visit evidence and high-risk command then reloads truth', () => {
-  const page = read('src/pages/teacher/internship-review/index.vue')
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(page, /InternshipVisitEvidenceForm/)
   assert.match(page, /teacherInternshipEvidenceV3Api\.remindWeekly/)
   assert.match(page, /teacherInternshipEvidenceV3Api\.createVisit/)

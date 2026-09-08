@@ -10,6 +10,7 @@
     <template v-else>
       <ModuleToolbar :actions="[]" :hint="`共 ${total} 条绿色通道申请 · 审核动作全程留痕`" />
 
+      <p v-if="$route.query.batchId" class="ori-batch-context">当前限定工作台所选批次 <button type="button" @click="$router.push({ path: '/admin/orientation', query: { batchId: $route.query.batchId } })">返回工作台</button></p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <LoadingState v-if="loading" />
@@ -111,6 +112,7 @@ export default {
       return { title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '' }
     }
   },
+  watch: { '$route.query.batchId'() { this.page = 1; this.load() } },
   async created() {
     const ctx = await api.getOrientationContext()
     if (ctx.code === 0) this.ctx = ctx.data
@@ -118,11 +120,13 @@ export default {
   },
   methods: {
     async load() {
+      const serial = this.queueSerial = (this.queueSerial || 0) + 1
       this.loading = true; this.error = ''
       try {
-        const res = await api.getGreenChannelApplications({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getGreenChannelApplications({ ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.$route.query.batchId || undefined })
+        if (serial !== this.queueSerial) return
         if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
-      } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
+      } catch (e) { if (serial === this.queueSerial) this.error = e.message || '加载失败' } finally { if (serial === this.queueSerial) this.loading = false }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },

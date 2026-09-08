@@ -176,17 +176,25 @@ def _orientation_payload(o, db=None) -> dict:
     steps = student_step_projection(db, o)
     qualification = evaluate(db, o)
     from app.services.orientation_checkin_service import _dorm_projection, token_status
-    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord
+    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord, StudentProfile, SchoolClass
+    profile = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
+    if profile and profile.is_deleted:
+        profile = None
+    class_id = profile.class_id if profile else o.class_id
+    school_class = tenant_get(db, SchoolClass, int(class_id)) if class_id else None
+    if school_class and school_class.is_deleted:
+        school_class = None
     checkin_credential = token_status(db, o, qualification=qualification)
-    batch = db.get(OrientationBatch, int(o.batch_id))
-    dorm = _dorm_projection(db, o)
+    batch = tenant_get(db, OrientationBatch, int(o.batch_id))
+    dorm = _dorm_projection(db, o, for_student=True)
+    if dorm.get("status") == "HIDDEN":
+        qualification.get("facts", {}).get("dorm", {}).pop("bedId", None)
     contacts = []
     contact_name = o.counselor or ""
     contact_phone = ""
-    if o.class_id:
+    if school_class:
         from app.core.field_crypto import decrypt_field
-        from app.models import SchoolClass, User
-        school_class = db.get(SchoolClass, int(o.class_id))
+        from app.models import User
         if (school_class and not school_class.is_deleted
                 and int(school_class.tenant_id) == int(o.tenant_id)
                 and school_class.counselor_id):
@@ -205,11 +213,11 @@ def _orientation_payload(o, db=None) -> dict:
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")
-    return {"hasData": True, "batchName": batch.batch_name if batch else "",
+    return {"hasData": True, "stage": o.stage, "batchName": batch.batch_name if batch else "",
             "reportStatus": o.report_status, "paymentStatus": payment_status,
-            "materialStatus": o.material_status, "dormStatus": o.dorm_status,
+            "materialStatus": o.material_status, "dormStatus": dorm["dormStatus"],
             "greenChannelStatus": o.green_channel_status,
-            "building": o.building or "", "room": o.room or "", "dorm": dorm,
+            "building": dorm["building"], "room": dorm["room"], "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
             "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
@@ -225,7 +233,8 @@ def _orientation_payload(o, db=None) -> dict:
             },
             "contacts": contacts,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
-            "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
+            "className": (school_class.class_name if school_class else o.class_name) or "",
+            "grade": (school_class.grade if school_class else o.grade) or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
 
 
@@ -1081,7 +1090,10 @@ def internship_my(user: dict) -> dict:
                   current=assessing and st != "ARCHIVED"),
         ]
 
+        from app.modules.internship.services.internship_eligibility_result import eligibility_result
         return {"hasData": True,
+                "eligibilityReview": eligibility_result(db, rec),
+                "candidates": ctx.candidates,
                 "historyMode": history_mode,
                 "batchId": str(rec.batch_id or ""),
                 "recordId": str(rec.id),
@@ -1763,6 +1775,8 @@ def my_profile(user: dict) -> dict:
                 "gender": stu.gender or "", "collegeName": getattr(stu, "_college_name", "") or "",
                 "majorName": getattr(stu, "_major_name", "") or "",
                 "className": getattr(stu, "_class_name", "") or "",
+                "counselorId": str(getattr(stu, "_counselor_id", "") or ""),
+                "counselorName": getattr(stu, "_counselor_name", "") or "",
                 "grade": stu.grade or "",
                 "phoneMasked": _mask_phone(phone_plain) if phone_plain else "",
                 "idCardMasked": mask_id_card_encrypted(stu.id_card_encrypted),
@@ -2060,7 +2074,7 @@ def _file_id(value, *, required=False) -> str | None:
     return fid
 
 
-def internship_checkin_week(user: dict) -> dict:
+def internship_checkin_week(user: dict, *, batch_id=None) -> dict:
     """本周打卡记录（本人，周一~今日；未到的日期不返回）：供打卡页展示正常/迟到(超范围)/缺卡。"""
     u = _require_student(user)
     if not db_enabled():
@@ -2073,7 +2087,7 @@ def internship_checkin_week(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return {"hasData": False, "days": []}
-        rec, _ = _internship_record(db, u)
+        rec, _ = _internship_record(db, u, batch_id=batch_id)
         if not rec:
             return {"hasData": False, "days": []}
         today = _dt.now().date()
@@ -2095,15 +2109,47 @@ def internship_checkin_week(user: dict) -> dict:
         return {"hasData": True, "days": days}
 
 
-def internship_checkin(user: dict, body: dict) -> dict:
+def internship_checkin_preflight(user: dict, *, batch_id=None) -> dict:
+    """Check eligibility and issue a short-lived token before the device requests location."""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
+    from app.models import InternshipPosition
+    from app.modules.internship.services import internship_checkin_trust_service as trust
+    with _session() as db:
+        rec, stu = _internship_record(db, u, batch_id=batch_id, for_write=True)
+        if not rec or not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到当前实习记录")
+        if rec.status not in {"ONBOARD", "ASSESSING"}:
+            raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
+        today = f"{datetime.now():%Y-%m-%d}"
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
+        rule = trust.resolve_rule(db, rec, position)
+        credential = trust.issue_token(
+            tenant_id=_tid(), student_id=stu.id, internship_id=rec.id, checkin_date=today)
+        return {
+            **credential, "date": today,
+            "rule": {
+                "configured": rule["configured"], "radiusM": rule["radiusM"],
+                "maxAccuracyM": rule["maxAccuracyM"],
+                "coordinateSystem": rule["coordinateSystem"], "source": rule["source"],
+                "place": rec.position_name or rec.enterprise_name or "当前实习岗位",
+            },
+            "privacyNotice": "仅在点击打卡时采集一次定位，不后台持续定位",
+        }
+
+
+def internship_checkin(user: dict, body: dict, *, batch_id=None) -> dict:
     """Persist one daily check-in with server-side geofence/device evidence and retry-safe idempotency."""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
     key = str(body.get("idempotencyKey") or "").strip()[:100] or None
-    risk_flag = str(body.get("deviceRiskFlag") or "normal").lower().strip()
-    if risk_flag not in {"normal", "mock", "rooted"}:
+    client_risk_flag = str(body.get("deviceRiskFlag") or "").lower().strip()
+    if client_risk_flag not in {"", "normal", "mock", "rooted"}:
         raise AppException("VALIDATION_ERROR", "deviceRiskFlag 必须是 normal、mock 或 rooted")
+    # A client can report a risk, but "normal" is not trusted proof of device integrity.
+    risk_flag = client_risk_flag if client_risk_flag in {"mock", "rooted"} else "not_available"
     lat, lng = _float_or_none(body.get("lat")), _float_or_none(body.get("lng"))
     accuracy = _float_or_none(body.get("gpsAccuracy"))
     if (lat is None) != (lng is None) or (lat is not None and not (-90 <= lat <= 90 and -180 <= lng <= 180)):
@@ -2114,7 +2160,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
     with _session() as db:
         from datetime import datetime as _dt
         from app.models import AttendanceException, InternshipCheckin, InternshipPosition
-        rec, stu = _internship_record(db, u, for_write=True)
+        from app.modules.internship.services import internship_checkin_trust_service as trust
+        rec, stu = _internship_record(db, u, batch_id=batch_id, for_write=True)
         if rec.status not in {"ONBOARD", "ASSESSING"}:
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
         today = f"{_dt.now():%Y-%m-%d}"
@@ -2129,19 +2176,19 @@ def internship_checkin(user: dict, body: dict) -> dict:
 
         # 租户收口：实习岗位是带 tenant_id 的业务表，跨租户命中必须表现为“这行不存在”。
         position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
-        distance_m = radius_m = None
-        if risk_flag != "normal":
+        rule = trust.resolve_rule(db, rec, position)
+        distance_m = None
+        radius_m = rule.get("radiusM") if rule.get("configured") else None
+        if lat is not None:
+            trust.verify_token(str(body.get("checkinToken") or ""), tenant_id=_tid(),
+                               student_id=stu.id, internship_id=rec.id, checkin_date=today)
+        if risk_flag in {"mock", "rooted"}:
             result, exception_type = "MOCK_LOCATION", "MOCK_LOCATION"
-        elif lat is None:
-            result, exception_type = "NO_LOCATION", "MISSING"
-        elif position and position.geofence_lat is not None and position.geofence_lng is not None and position.geofence_radius_m:
-            distance_m = _distance_m(lat, lng, position.geofence_lat, position.geofence_lng)
-            radius_m = position.geofence_radius_m
-            result = "NORMAL" if distance_m <= radius_m else "OUT_OF_RANGE"
-            exception_type = "OUT_OF_RANGE" if result == "OUT_OF_RANGE" else None
         else:
-            # A real coordinate without an approved enterprise fence is evidence, not a false pass.
-            result, exception_type = "RECORDED", None
+            if lat is not None and rule.get("configured"):
+                distance_m = _distance_m(lat, lng, rule["centerLat"], rule["centerLng"])
+            result, exception_type = trust.classify_location(
+                lat=lat, lng=lng, accuracy=accuracy, rule=rule, distance_m=distance_m)
         row = InternshipCheckin(tenant_id=_tid(), internship_id=rec.id, checkin_date=today,
                                 checkin_at=_dt.utcnow(), lat=lat, lng=lng,
                                 address=str(body.get("address") or "")[:300] or None, result=result,
@@ -2178,6 +2225,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
             "message": {
                 "NORMAL": "打卡成功（围栏内）",
                 "OUT_OF_RANGE": "已打卡，但超出企业围栏，已记异常待核验",
+                "LOW_ACCURACY": "已记录，但定位精度不足，已转教师核验",
+                "LOCATION_UNCERTAIN": "已记录，定位误差覆盖围栏边界，已转教师核验",
                 "NO_LOCATION": "已记录打卡时间（无定位，不作作弊认定）",
                 "RECORDED": "已打卡留痕（岗位未配置围栏）",
                 "MOCK_LOCATION": "已打卡，设备风险标记异常，已转异常台",

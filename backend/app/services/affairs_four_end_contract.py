@@ -198,10 +198,14 @@ def _teacher_permissions(path: str, method: str) -> tuple[str, ...]:
         )
     if tail.startswith("/risk"):
         if not write:
-            return ("studentAffairs.risk.view",)
+            # 宿管只会读到服务端按 owner 精确放行的 DORM 风险原单。
+            return ("studentAffairs.risk.view", "studentAffairs.dorm.inspection.manage")
         if tail.endswith("/close"):
-            return ("studentAffairs.risk.close", "studentAffairs.risk.handle")
-        return ("studentAffairs.risk.handle",)
+            return (
+                "studentAffairs.risk.close", "studentAffairs.risk.handle",
+                "studentAffairs.dorm.inspection.manage",
+            )
+        return ("studentAffairs.risk.handle", "studentAffairs.dorm.inspection.manage")
     if tail.startswith("/dorm"):
         if not write:
             return ("studentAffairs.dorm.view",)
@@ -227,8 +231,14 @@ def _patch_teacher_permission() -> None:
 
     def require_teacher(user):
         u = original(user)
-        required = _teacher_permissions(request_path(), _REQUEST_METHOD.get())
-        if required and not any(has_permission(u, code) for code in required):
+        path = request_path()
+        required = _teacher_permissions(path, _REQUEST_METHOD.get())
+        dorm_risk_owner_entry = (
+            str(u.get("currentRoleCode") or "").upper() == "DORM_MANAGER"
+            and path.startswith("/api/v1/mobile/teacher/affairs/risk/")
+            and has_permission(u, "studentAffairs.dorm.inspection.manage")
+        )
+        if required and not any(has_permission(u, code) for code in required) and not dorm_risk_owner_entry:
             raise no_permission("当前身份无权执行该学工移动端操作")
         return u
 

@@ -251,6 +251,8 @@ def install() -> None:
                 old_bed.student_id, old_bed.status, old_bed.occupied_at = None, "VACANT", None
                 old_bed.cs_dorm_record_id = None
                 old_bed.version = int(old_bed.version or 0) + 1
+                from app.services.dorm_housing_projection import sync_orientation
+                sync_orientation(db, int(student.id))
                 transfer.status = transfer.current_node = "EXECUTED"
                 transfer.version = int(transfer.version or 0) + 1
                 dorm._todo_done(db, transfer.id, dorm.TODO_TRANSFER)

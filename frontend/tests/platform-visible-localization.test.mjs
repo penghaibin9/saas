@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { optionsInstance } from './platform-workspace-test-support.mjs'
 
 import {
   PLATFORM_FEATURE_LABELS,
@@ -65,6 +66,15 @@ test('租户规则页不再把未知英文键名直接显示给用户', () => {
   const source = readFileSync(new URL('../src/modules/platform/views/control/PlatformControlTenantDetail.vue', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /ruleLabels\[k\]\s*\|\|\s*k/)
   assert.doesNotMatch(source, /featureLabels\[k\]\s*\|\|\s*k/)
-  assert.match(source, /PLATFORM_RULE_LABELS/)
+  const rules = readFileSync(new URL('../src/modules/platform/components/TenantRulesWorkspace.vue', import.meta.url), 'utf8')
+  assert.match(source, /TenantRulesWorkspace/)
+  assert.match(rules, /PLATFORM_RULE_LABELS/)
   assert.match(source, /platformRoleLabel/)
+  const { state } = optionsInstance('../src/modules/platform/components/TenantRulesWorkspace.vue', {}, {
+    PLATFORM_RULE_GROUP_LABELS, PLATFORM_RULE_LABELS
+  })
+  assert.equal(state.fieldLabel('studentNoRequired'), '学号必填')
+  assert.equal(state.groupLabel('approval'), '审批规则')
+  assert.equal(state.fieldLabel('unknownRawKey'), '待命名规则项')
+  assert.equal(state.groupLabel('unknownRawGroup'), '其他规则')
 })
