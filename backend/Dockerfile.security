@@ -33,7 +33,10 @@ RUN if command -v microdnf >/dev/null 2>&1; then \
       && rm -rf /var/lib/apt/lists/*; \
     fi
 WORKDIR /app/backend
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend
+# UBI Python images export ENV=/opt/app-root/bin/activate for shell activation.
+# This application reserves ENV as a legacy deployment-mode alias, so never let
+# the base-image shell helper leak into application configuration.
+ENV ENV="" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend
 COPY backend/requirements.txt ./requirements.txt
 COPY --from=wheels /wheels /tmp/wheels
 RUN pip install --no-cache-dir --no-index --find-links /tmp/wheels -r requirements.txt \
