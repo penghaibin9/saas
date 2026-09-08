@@ -1,4 +1,4 @@
-import { workspaceSection, foundationStyles, legacyStyleImportLayout } from './graduation-workspace-style-sections.mjs'
+import { workspaceSection, foundationStyles, legacyStyleImportLayout, stripFinalIntegrationPresentation } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -7,7 +7,7 @@ import vm from 'node:vm'
 
 const base = new URL('../src/modules/graduation/', import.meta.url)
 const rawLayout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', base), 'utf8')
-const layout = rawLayout.replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+const layout = stripFinalIntegrationPresentation(rawLayout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
 const css = workspaceSection('process')
 const marker = layout.match(/:data-graduation-process-workspace="([\s\S]*?)"/)?.[1]
 const script = layout.match(/<script>([\s\S]*?)<\/script>/)[1]
@@ -55,7 +55,7 @@ test('students, planning pages, other modules and unknown names omit the boundar
 })
 
 test('normalizing only the new marker and stylesheet restores the complete parent file', () => {
-  // Exclude the later, independently protected material presentation addition.
+  // Exclude later, independently protected material/defense/final-closeout presentation additions.
   const withoutMaterial = legacyStyleImportLayout(layout).replace(/      :data-graduation-material-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-material-workspace\.css"><\/style>\n?$/, '')
   const original = withoutMaterial.replace(/      :data-graduation-process-workspace="[\s\S]*?"\n/, '')
