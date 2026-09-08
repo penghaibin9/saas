@@ -106,7 +106,7 @@ def enforce_student_import(user: dict) -> None:
     """学生导入同时受精确权限与租户商业特性控制，任一不满足即拒绝。"""
     enforce_import_perm(user, "students")
     from app.core.context import current_tenant_id
-    from app.services.platform_service import feature_enabled
+    from app.services.commercial_authority_read import feature_enabled
 
     try:
         tenant_id = int(current_tenant_id() or 0)

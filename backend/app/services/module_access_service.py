@@ -74,7 +74,7 @@ def _load_effective_state(tenant_id: int) -> tuple[str, str]:
 def _load_request_snapshot(tenant_id: int) -> dict[str, Any]:
     """读取本次请求的模块授权输入快照；同 traceId+tenantId 只做一次 DB/配置读取。"""
     from app.core.context import get_trace_id
-    from app.services.platform_service import effective_features
+    from app.services.commercial_authority_read import effective_features
 
     tid = int(tenant_id)
     trace_id = str(get_trace_id() or "-")
@@ -82,11 +82,8 @@ def _load_request_snapshot(tenant_id: int) -> dict[str, Any]:
     if trace_id != "-" and cached and cached.get("traceId") == trace_id and cached.get("tenantId") == tid:
         return cached
 
-    # feature_enabled 的既有安全语义是：功能配置读取异常时 fail-closed 为未授权。
-    try:
-        entitled_features = effective_features(tid)
-    except Exception:
-        entitled_features = {}
+    # 读取故障必须返回 503，不能伪装成“未购买”或把故障快照缓存到本请求。
+    entitled_features = effective_features(tid)
 
     # 学校开关读取失败必须向上抛出，不能伪装成“全部启用”。
     school_gate = _school_gate(tid)
