@@ -220,11 +220,21 @@ export default {
     }
   },
   computed: {
-    hasBatch() { return !!this.batchStore.selectedBatchId },
-    activeTab() { return this.tabs.find((item) => item.value === this.filters.status) || this.tabs[this.tabs.length - 1] },
-    activeTabLabel() { return this.activeTab?.label || '全部' },
-    pendingCount() { return this.statusCount('PENDING_REVIEW') },
-    notSubmittedCount() { return this.stats?.notSubmitted ?? 0 },
+    hasBatch() {
+      return !!this.batchStore.selectedBatchId
+    },
+    activeTab() {
+      return this.tabs.find((item) => item.value === this.filters.status) || this.tabs[this.tabs.length - 1]
+    },
+    activeTabLabel() {
+      return this.activeTab?.label || '全部'
+    },
+    pendingCount() {
+      return this.statusCount('PENDING_REVIEW')
+    },
+    notSubmittedCount() {
+      return this.stats?.notSubmitted ?? 0
+    },
     queueConclusion() {
       if (this.reviewSubmitting && this.selectedRow) return `正在提交 ${this.selectedRow.studentName} 的批阅结论，请勿切换对象。`
       if (this.filters.status === 'PENDING_REVIEW' && this.pendingCount > 0) return `待审阅 ${this.pendingCount} 份；从当前选中学生开始连续处理。`
@@ -239,16 +249,28 @@ export default {
       if (!p) return `${batch}学生提交开题材料，教师连续批阅 · 驳回需填写原因并即时同步学生端`
       return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 逾期未交 ${p.notSubmitted ?? 0} · 连续批阅不返回列表`
     },
-    emptyTitle() { return this.hasBatch ? '当前页签暂无开题材料' : '请先选择或创建毕设批次' },
-    emptyDesc() { return this.hasBatch ? '可切换页签或调整搜索条件' : '顶部批次条选择当前工作批次后，再批阅开题材料。' },
+    emptyTitle() {
+      return this.hasBatch ? '当前页签暂无开题材料' : '请先选择或创建毕设批次'
+    },
+    emptyDesc() {
+      return this.hasBatch ? '可切换页签或调整搜索条件' : '顶部批次条选择当前工作批次后，再批阅开题材料。'
+    },
     exportPerm() {
       const pa = this.ctx.permissionActions.exportProposals || {}
       return { visible: !!pa.visible && this.hasBatch, allowed: !!pa.allowed }
     },
-    filterFields() { return [] },
-    pageStartIndex() { return (this.page - 1) * this.pageSize },
-    selectedRow() { return this.rows.find((r) => this.rowKey(r) === this.selKey) || null },
-    selIndex() { return this.rows.findIndex((r) => this.rowKey(r) === this.selKey) },
+    filterFields() {
+      return []
+    },
+    pageStartIndex() {
+      return (this.page - 1) * this.pageSize
+    },
+    selectedRow() {
+      return this.rows.find((r) => this.rowKey(r) === this.selKey) || null
+    },
+    selIndex() {
+      return this.rows.findIndex((r) => this.rowKey(r) === this.selKey)
+    },
     hasNext() {
       if (this.selIndex < this.rows.length - 1) return true
       return this.page * this.pageSize < this.total
@@ -272,7 +294,9 @@ export default {
     },
     '$route.query': {
       deep: true,
-      handler(query) { this.onRouteQueryChanged(query) }
+      handler(query) {
+        this.onRouteQueryChanged(query)
+      }
     }
   },
   mounted() {
@@ -296,7 +320,9 @@ export default {
     window.removeEventListener('keydown', this._onKey)
   },
   methods: {
-    routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
+    routeText(value) {
+      return Array.isArray(value) ? String(value[0] || '') : String(value || '')
+    },
     normalizePage(value) {
       const page = Number.parseInt(this.routeText(value), 10)
       return Number.isFinite(page) && page > 0 ? page : 1
@@ -319,6 +345,7 @@ export default {
       const listChanged = nextStatus !== this.filters.status || nextKeyword !== this.filters.keyword || nextPage !== this.page
       const selectionChanged = nextSel !== this.selKey
       if (!listChanged && !selectionChanged) return
+
       this.filters.status = nextStatus
       this.filters.keyword = nextKeyword
       this.page = nextPage
@@ -337,14 +364,23 @@ export default {
         sel: this.selKey || undefined,
         ...overrides
       }
-      Object.keys(query).forEach((key) => { if (query[key] == null || query[key] === '') delete query[key] })
+      Object.keys(query).forEach((key) => {
+        if (query[key] == null || query[key] === '') delete query[key]
+      })
       return query
     },
-    replaceListQuery(overrides = {}) { return this.$router.replace({ query: this.buildListQuery(overrides) }) },
-    listReturnTo(row) {
-      return this.$router.resolve({ path: '/admin/graduation/proposals', query: this.buildListQuery({ sel: this.rowKey(row) }) }).fullPath
+    replaceListQuery(overrides = {}) {
+      return this.$router.replace({ query: this.buildListQuery(overrides) })
     },
-    rowKey(row) { return row.id != null ? String(row.id) : 'ns-' + row.gdStudentId },
+    listReturnTo(row) {
+      return this.$router.resolve({
+        path: '/admin/graduation/proposals',
+        query: this.buildListQuery({ sel: this.rowKey(row) })
+      }).fullPath
+    },
+    rowKey(row) {
+      return row.id != null ? String(row.id) : 'ns-' + row.gdStudentId
+    },
     statusCount(status) {
       const s = (this.stats?.byStatus || []).find((x) => x.status === status)
       return s ? s.count : 0
@@ -355,11 +391,16 @@ export default {
       if (v === 'NOT_SUBMITTED') return this.stats.notSubmitted ?? 0
       return this.statusCount(v)
     },
-    onReviewSubmittingChange(value) { this.reviewSubmitting = Boolean(value) },
+    onReviewSubmittingChange(value) {
+      this.reviewSubmitting = Boolean(value)
+    },
     async loadStats() {
       const batchId = this.batchStore.selectedBatchId
       const token = ++this.statsToken
-      if (!batchId) { this.stats = null; return false }
+      if (!batchId) {
+        this.stats = null
+        return false
+      }
       try {
         const res = await graduationMoreApi.getProposalStats({ batchId })
         if (token !== this.statsToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
@@ -434,6 +475,7 @@ export default {
         this.turnPage(this.page - 1)
       }
     },
+    /** 批阅成功：待审页签重新取同一服务端页，避免 offset 收缩后跳过学生。 */
     async onReviewed(payload) {
       const reviewedIndex = Math.max(0, this.rows.findIndex((r) => String(r.id) === String(payload.id)))
       const row = this.rows.find((r) => String(r.id) === String(payload.id))
@@ -442,6 +484,7 @@ export default {
       await this.loadStats()
       if (!this.autoNext) return
       if (!pendingQueue) { this.nextPending({ force: true }); return }
+
       this.selKey = ''
       this._selectIndexAfterLoad = reviewedIndex
       await this.load()
@@ -452,7 +495,10 @@ export default {
       }
       if (!this.rows.length) toast.success('待审记录已全部处理完')
     },
-    onConflict() { this.loadStats(); this.load() },
+    onConflict() {
+      this.loadStats()
+      this.load()
+    },
     nextPending({ force = false } = {}) {
       if (this.reviewSubmitting && !force) return
       const from = this.selIndex
@@ -465,7 +511,9 @@ export default {
       if (this.page * this.pageSize < this.total) {
         this._selectPendingAfterLoad = true
         this.turnPage(this.page + 1, { force })
-      } else toast.success('本页待审记录已全部处理完')
+      } else {
+        toast.success('本页待审记录已全部处理完')
+      }
     },
     ensureSelection() {
       if (this.selectedRow) return
@@ -476,8 +524,9 @@ export default {
         return
       }
       let target = null
-      if (Number.isInteger(this._selectIndexAfterLoad)) target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
-      else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
+      if (Number.isInteger(this._selectIndexAfterLoad)) {
+        target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
+      } else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
       else if (this._selectPendingAfterLoad) target = this.rows.find((r) => r.status === 'PENDING_REVIEW') || this.rows[0]
       else target = this.rows.find((r) => r.status === 'PENDING_REVIEW') || this.rows[0]
       this._selectIndexAfterLoad = null
@@ -490,7 +539,9 @@ export default {
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, '开题材料')
       const p = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
       return graduationApi.exportProposals(p).then((res) => {
-        if (res.code === 0 && res.data) res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        if (res.code === 0 && res.data) {
+          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
+        }
         return res
       })
     },
@@ -503,7 +554,9 @@ export default {
         else toast.error(res.message || '催交失败')
       } catch (error) {
         toast.error(error?.message || '催交失败')
-      } finally { this.reminding = false }
+      } finally {
+        this.reminding = false
+      }
     },
     async load() {
       const batchId = this.batchStore.selectedBatchId
@@ -519,13 +572,19 @@ export default {
       this.loading = true
       this.error = ''
       try {
-        const res = await graduationApi.getProposals(buildMaterialQuery(this.filters, { page: this.page, pageSize: this.pageSize, batchId }))
+        const res = await graduationApi.getProposals(buildMaterialQuery(this.filters, {
+          page: this.page,
+          pageSize: this.pageSize,
+          batchId
+        }))
         if (token !== this.loadToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
         if (res.code === 0) {
           this.rows = Array.isArray(res.data?.list) ? res.data.list : []
           this.total = Number(res.data?.total) || 0
           this.ensureSelection()
-        } else this.error = res.message
+        } else {
+          this.error = res.message
+        }
         return res.code === 0
       } catch (error) {
         if (token === this.loadToken && String(batchId) === String(this.batchStore.selectedBatchId)) {
@@ -561,7 +620,7 @@ export default {
 .pr-hero__metrics { display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 8px; }
 .pr-hero__metrics div { display: grid; justify-items: center; gap: 2px; padding: 9px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255, 255, 255, .76); }
 .pr-hero__metrics span { color: var(--primary-700, #1d4ed8); font-size: 20px; font-weight: 700; }
-.pr-hero__metrics small { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; }
+.pr-hero__metrics small { color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
 .pr-tab-count { margin-left: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .mp-tab.is-active .pr-tab-count { color: inherit; }
 .mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
