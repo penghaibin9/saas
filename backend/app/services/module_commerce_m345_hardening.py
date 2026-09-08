@@ -2,13 +2,15 @@
 
 This layer strengthens the already-installed lifecycle service without creating a
 second authority. It keeps delivery acceptance bound to the *current* source set,
-serializes tenant-wide and module-only exit requests across MySQL workers, and
-verifies final export evidence against the real manifest items and storage object.
-It never grants physical purge or changes customer business data.
+serializes tenant-wide and module-only exit requests across MySQL workers, verifies
+final export evidence against real manifest items/storage, and exposes only
+server-verified export candidates to the platform workspace. It never grants
+physical purge or changes customer business data.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -70,11 +72,7 @@ def _assert_no_active_module_exit(tenant_id: int, lifecycle_module) -> None:
             raise AppException(
                 "DATA_CONFLICT",
                 "该学校仍有未结束的单模块退出任务，禁止同时发起整校退出",
-                details={
-                    "jobId": str(row.id),
-                    "moduleKey": row.module_key,
-                    "state": row.state,
-                },
+                details={"jobId": str(row.id), "moduleKey": row.module_key, "state": row.state},
                 http_status=409,
             )
     finally:
@@ -142,6 +140,66 @@ def _harden_export_evidence(db, job, export, manifest, file_row, result, lifecyc
         raise AppException("DATA_CONFLICT", "最终交付文件在受治理存储中不存在", http_status=409)
 
 
+def _verified_export_candidates(job_id: int, lifecycle_module) -> list[dict[str, Any]]:
+    """Return only final-export rows that pass the exact same bind-time contract."""
+    from app.db.session import get_sessionmaker
+    from app.models import TenantModuleOffboardingJob
+    from app.models.data_exchange import ExportJob
+
+    db = get_sessionmaker()()
+    try:
+        job = db.scalars(select(TenantModuleOffboardingJob).where(
+            TenantModuleOffboardingJob.id == int(job_id),
+            TenantModuleOffboardingJob.is_deleted.is_(False),
+        )).first()
+        if job is None or job.state not in {"FROZEN", "EXPORTING", "WAIT_EXPORT_ACCEPT"}:
+            return []
+        rows = list(db.scalars(select(ExportJob).where(
+            ExportJob.tenant_id == int(job.tenant_id),
+            ExportJob.status == "SUCCEEDED",
+            ExportJob.file_object_id.is_not(None),
+            ExportJob.revoked_at.is_(None),
+            ExportJob.is_deleted.is_(False),
+        ).order_by(ExportJob.id.desc()).limit(50)).all())
+        output: list[dict[str, Any]] = []
+        now = datetime.utcnow()
+        for export in rows:
+            if export.expires_at is not None and export.expires_at <= now:
+                continue
+            result = dict(export.result_json or {})
+            filters = dict(export.filter_snapshot_json or {})
+            manifest_raw = str(result.get("manifestId") or "")
+            if not manifest_raw.isdigit():
+                continue
+            if str(filters.get("scopeHash") or "") != str(job.scope_hash):
+                continue
+            if int(filters.get("moduleGeneration") or 0) != int(job.module_generation):
+                continue
+            try:
+                verified_export, manifest, file_row, verified_result = lifecycle_module._validate_export_contract(
+                    db, job,
+                    export_job_id=int(export.id),
+                    manifest_id=int(manifest_raw),
+                    scope_hash=str(job.scope_hash),
+                )
+            except AppException:
+                continue
+            output.append({
+                "exportJobId": str(verified_export.id),
+                "manifestId": str(manifest.id),
+                "fileId": str(file_row.id),
+                "fileName": file_row.file_name,
+                "fileSizeBytes": int(file_row.size_bytes or 0),
+                "fileSha256": str(file_row.sha256 or ""),
+                "objectCount": int(verified_result.get("objectCount") or 0),
+                "attachmentCount": int(verified_result.get("attachmentCount") or 0),
+                "finishedAt": verified_export.finished_at.isoformat(timespec="seconds") if verified_export.finished_at else None,
+            })
+        return output
+    finally:
+        db.close()
+
+
 def install(lifecycle_module, tenant_offboarding_module):
     if getattr(lifecycle_module, "_m345_hardening_installed", False):
         return lifecycle_module
@@ -149,6 +207,7 @@ def install(lifecycle_module, tenant_offboarding_module):
     original_portfolio = lifecycle_module.tenant_module_portfolio
     original_module_request = lifecycle_module.request_module_offboarding
     original_validate_export = lifecycle_module._validate_export_contract
+    original_get_job = lifecycle_module.get_module_offboarding_job
     original_tenant_request = tenant_offboarding_module.request_offboarding
 
     def tenant_module_portfolio(tenant_id: int) -> dict[str, Any]:
@@ -176,14 +235,18 @@ def install(lifecycle_module, tenant_offboarding_module):
 
     def validate_export_contract(db, job, **kwargs):
         export, manifest, file_row, result = original_validate_export(db, job, **kwargs)
-        _harden_export_evidence(
-            db, job, export, manifest, file_row, result, lifecycle_module,
-        )
+        _harden_export_evidence(db, job, export, manifest, file_row, result, lifecycle_module)
         return export, manifest, file_row, result
+
+    def get_module_offboarding_job(job_id: int) -> dict[str, Any]:
+        result = original_get_job(int(job_id))
+        result["exportCandidates"] = _verified_export_candidates(int(job_id), lifecycle_module)
+        return result
 
     lifecycle_module.tenant_module_portfolio = tenant_module_portfolio
     lifecycle_module.request_module_offboarding = request_module_offboarding
     lifecycle_module._validate_export_contract = validate_export_contract
+    lifecycle_module.get_module_offboarding_job = get_module_offboarding_job
     lifecycle_module._m345_hardening_installed = True
     tenant_offboarding_module.request_offboarding = request_tenant_offboarding
     tenant_offboarding_module._module_exit_coordination_installed = True
