@@ -5,6 +5,7 @@ on:
       - "backend/Dockerfile.security*"
       - "backend/scripts/security_profile_probe.py"
       - "backend/tests/test_security_deployment_profile.py"
+      - "backend/tests/test_security_mysql_bootstrap.py"
       - "deploy/docker/docker-compose.security.yml"
       - "deploy/docker/mysql-security-init/**"
       - "deploy/nginx/**"
@@ -23,6 +24,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -35,8 +38,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nginx
       - name: Reject unsafe generated and effective deployment configurations
-        run: python -m pytest --noconftest backend/tests/test_security_deployment_profile.py -q
+        run: python -m pytest --noconftest backend/tests/test_security_deployment_profile.py backend/tests/test_security_mysql_bootstrap.py -q
       - name: Validate TLS, all four portals, private paths and proxy headers on loopback
         run: python scripts/check/check-security-profile-tls.py
-      - name: Build real image, render Compose and prove isolated MySQL privilege separation
-        run: python scripts/check/check-security-profile-containers.py --disposable-ci-only
+      - name: Build real image, render Compose and prove MySQL initialization, scoped privileges and image migration
+        run: python scripts/check/check-security-profile-containers.py --disposable-ci-only --report-file artifacts/security-profile/result.json
+      - name: Upload sanitized deployment check receipt (no raw logs or env files)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/security-profile/result.json
+          if-no-files-found: warn
+          retention-days: 7

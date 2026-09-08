@@ -18,17 +18,89 @@ import tempfile
 import time
 
 
+class CheckFailure(RuntimeError):
+    """Failure metadata contains enums/numbers only, never command output."""
+    def __init__(self, label, result=None, *, timed_out=False):
+        super().__init__(label + '_FAILED')
+        self.safe_details = {'timedOut': bool(timed_out)}
+        if result is not None:
+            self.safe_details['exitCode'] = int(result.returncode)
+            text = (result.stdout or '') + (result.stderr or '')
+            self.safe_details['exceptionKinds'] = [kind for kind in (
+                'ModuleNotFoundError', 'PermissionError', 'OperationalError',
+                'ProgrammingError', 'IntegrityError', 'AssertionError',
+            ) if kind in text]
+            self.safe_details['mysqlErrorCodes'] = sorted({int(code) for code in re.findall(
+                r'(?:ERROR |\()(\d{4})(?:[ ,(])', text)
+                if 1000 <= int(code) <= 4999})[:8]
+
+
 def run(label, command, *, timeout=60, **kwargs):
-    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, **kwargs)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        raise CheckFailure(label, timed_out=True) from exc
     if result.returncode:
-        # Commands/container output may contain environment variables: do not echo them.
-        raise RuntimeError(label + '_FAILED')
+        raise CheckFailure(label, result)
     return result.stdout.strip()
+
+
+def mysql_diagnostics(container):
+    """Read bounded diagnostics but publish only whitelisted state and flags."""
+    result = {}
+    try:
+        state = json.loads(run('MYSQL_STATE', ['docker', 'inspect', '--format', '{{json .State}}', container]))
+        result.update(running=state.get('Running') is True,
+                      oomKilled=state.get('OOMKilled') is True,
+                      exitCode=int(state.get('ExitCode', -1)))
+    except Exception:
+        result['stateUnavailable'] = True
+    try:
+        # docker logs sends the server's stderr to stderr; collect both privately.
+        # Do not return excerpts: MySQL initialization can echo temporary secrets.
+        raw = subprocess.run(['docker', 'logs', '--tail', '120', container],
+                             capture_output=True, text=True, timeout=10, check=False)
+        if raw.returncode:
+            raise RuntimeError('MYSQL_LOG_FAILED')
+        output = (raw.stdout or '') + (raw.stderr or '')
+        result['entrypointUnboundVariable'] = 'unbound variable' in output
+        result['accessDenied'] = 'Access denied' in output
+        result['initializationComplete'] = 'MySQL init process done' in output
+    except Exception:
+        result['logUnavailable'] = True
+    return result
+
+
+def wait_mysql(command, container, *, attempts=60):
+    for attempt in range(attempts):
+        try:
+            run('MYSQL_WAIT', command)
+            return
+        except CheckFailure:
+            state = mysql_diagnostics(container)
+            if state.get('running') is False or attempt == attempts - 1:
+                raise
+            time.sleep(2)
+
+
+def complete(checks, name):
+    checks.append(name)
+    print(json.dumps({'check': name, 'passed': True}), flush=True)
+
+
+def write_report(path, report):
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Never include env files, raw docker inspect/logs, SQL or command argv.
+        with path.open('x', encoding='utf-8') as stream:
+            json.dump(report, stream, indent=2)
+            stream.write('\n')
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--disposable-ci-only', action='store_true')
+    parser.add_argument('--report-file', type=Path)
     args = parser.parse_args(argv)
     if not args.disposable_ci_only or os.environ.get('GITHUB_ACTIONS') != 'true':
         parser.error('This check is restricted to an explicitly acknowledged disposable GitHub runner')
@@ -37,6 +109,7 @@ def main(argv=None):
     image, network, mysql = ('pr265-security-' + kind + '-' + suffix for kind in ('image', 'net', 'mysql'))
     created_mysql = created_network = False
     checks = []
+    report = {}
     try:
         with tempfile.TemporaryDirectory(prefix='pr265-container-check-') as directory:
             folder = Path(directory)
@@ -46,17 +119,17 @@ def main(argv=None):
                                                   '--format', '{{index .RepoDigests 0}}'])
             run('BUILD', ['docker', 'build', '-f', 'backend/Dockerfile.security', '--build-arg',
                           'PYTHON_BASE_IMAGE=' + python_digest, '-t', image, '.'], timeout=900, cwd=root)
-            checks.append('security-image-build')
+            complete(checks, 'security-image-build')
             run('IMAGE_CONTRACT', ['docker', 'run', '--rm', '--network', 'none', '--read-only',
                                    '--cap-drop=ALL', '--security-opt=no-new-privileges', image,
                                    'python', 'scripts/security_profile_probe.py', 'image'])
-            checks.append('nonroot-image-runtime-contracts')
+            complete(checks, 'nonroot-image-runtime-contracts')
             run('APP_IMPORT', ['docker', 'run', '--rm', '--network', 'none', '--read-only',
                               '--tmpfs', '/tmp:rw,nosuid,nodev,noexec', '--cap-drop=ALL',
                               '--security-opt=no-new-privileges', '-e', 'APP_ENV=test', '-e', 'DB_ENABLED=false',
                               '-e', 'DEBUG=false', '-e', 'MOCK_LOGIN_ENABLED=false', image,
                               'python', '-c', 'import app.main; from app.core.module_registry import load_module_manifest; assert load_module_manifest()["modules"]'], timeout=90)
-            checks.append('complete-app-route-import-no-database')
+            complete(checks, 'complete-app-route-import-no-database')
             # Render the real YAML in an isolated layout; relative runtime.env is generated here.
             (folder / 'deploy/docker').mkdir(parents=True)
             (folder / 'deploy/docker/docker-compose.security.yml').write_bytes(
@@ -77,7 +150,7 @@ def main(argv=None):
             env_path.write_text(content)
             run('COMPOSE_SYNTAX', ['docker', 'compose', '--env-file', str(env_path), '-f',
                                   str(folder / 'deploy/docker/docker-compose.security.yml'), 'config', '-q'])
-            checks.append('real-docker-compose-render')
+            complete(checks, 'real-docker-compose-render')
             passwords = {key: secrets.token_hex(32) for key in ('root', 'runtime', 'migrator')}
             mysql_env = folder / 'mysql.env'
             mysql_env.write_text('MYSQL_DATABASE=saas_lifecycle\nMYSQL_USER=saas_runtime\n' +
@@ -86,11 +159,12 @@ def main(argv=None):
             mysql_env.chmod(0o600)
             run('CREATE_NETWORK', ['docker', 'network', 'create', '--internal', network])
             created_network = True
-            run('MYSQL_START', ['docker', 'run', '-d', '--name', mysql, '--network', network, '--network-alias', 'mysql',
+            run('MYSQL_CREATE', ['docker', 'create', '--name', mysql, '--network', network, '--network-alias', 'mysql',
                                '--env-file', str(mysql_env), '--mount',
                                f'type=bind,src={root / "deploy/docker/mysql-security-init/01-accounts.sh"},dst=/docker-entrypoint-initdb.d/01-accounts.sh,readonly',
                                'mysql:8.0'], timeout=180)
             created_mysql = True
+            run('MYSQL_START', ['docker', 'start', mysql])
             base = ['docker', 'run', '--rm', '--network', network, '--read-only', '--cap-drop=ALL',
                     '--security-opt=no-new-privileges']
             client = ('import os,pymysql; c=pymysql.connect(host="mysql",user=os.environ["PROBE_USER"],'
@@ -102,17 +176,17 @@ def main(argv=None):
                 path.chmod(0o600)
                 envs[role] = path
             # SQL grants are exercised over the Docker network, never the runner's host MySQL.
-            for attempt in range(60):
-                try:
-                    run('MYSQL_WAIT', base + ['--env-file', str(envs['migrator']), image, 'python', '-c', client + 'q.execute("SELECT 1")'])
-                    break
-                except RuntimeError:
-                    if attempt == 59:
-                        raise
-                    time.sleep(2)
+            wait_mysql(base + ['--env-file', str(envs['migrator']), image, 'python', '-c',
+                               client + 'q.execute("SELECT 1")'], mysql)
+            complete(checks, 'mysql-official-entrypoint-completed')
+            # A look-alike schema proves that the underscore is NOT a wildcard.
+            # Both databases exist solely in this randomly named disposable container.
+            run('SCOPE_FIXTURE', ['docker', 'exec', '-i', mysql, 'sh', '-c',
+                                 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --protocol=socket -uroot'],
+                input='CREATE DATABASE saasXlifecycle; CREATE TABLE saasXlifecycle.sentinel (id INT);')
             run('MIGRATOR_DDL', base + ['--env-file', str(envs['migrator']), image, 'python', '-c',
                                       client + 'q.execute("CREATE TABLE pr265_privilege_probe (id INT PRIMARY KEY, value INT)")'])
-            checks.append('migrator-schema-ddl-allowed')
+            complete(checks, 'migrator-schema-ddl-allowed')
             sql_test = client + '''
 q.execute("INSERT INTO pr265_privilege_probe VALUES (1,2)")
 q.execute("UPDATE pr265_privilege_probe SET value=3 WHERE id=1")
@@ -129,20 +203,84 @@ for sql in ("CREATE TABLE forbidden_probe (id INT)", "SELECT User FROM mysql.use
 c.close()
 '''
             run('RUNTIME_PRIVILEGES', base + ['--env-file', str(envs['runtime']), image, 'python', '-c', sql_test])
-            checks.append('runtime-dml-allowed-ddl-system-users-denied')
+            complete(checks, 'runtime-dml-allowed-ddl-system-users-denied')
+            for role in ('runtime', 'migrator'):
+                scope_proof = client + '''
+for sql in ("SELECT id FROM saasXlifecycle.sentinel", "CREATE TABLE saasXlifecycle.forbidden (id INT)"):
+    try:
+        q.execute(sql)
+    except pymysql.MySQLError as exc:
+        assert exc.args[0] in {1044, 1142, 1227}, exc.args[0]
+    else:
+        raise AssertionError("look-alike schema incorrectly authorized")
+c.close()
+'''
+                run('EXACT_SCHEMA_SCOPE', base + ['--env-file', str(envs[role]), image,
+                                                'python', '-c', scope_proof])
+            complete(checks, 'runtime-and-migrator-lookalike-schema-denied')
+            run('DROP_PROBE', base + ['--env-file', str(envs['migrator']), image, 'python', '-c',
+                                     client + 'q.execute("DROP TABLE pr265_privilege_probe")'])
+            # Now exercise the actual image's Alembic path, not create_all or
+            # hand-written application DDL. No account or business seed is run.
+            migration_env = folder / 'migration.env'
+            migration_env.write_text(
+                'APP_ENV=production\nDEPLOYMENT_MODE=production\nDEBUG=false\nMOCK_LOGIN_ENABLED=false\n'
+                'DB_ENABLED=true\nDB_DRIVER=mysql\nDB_HOST=mysql\nDB_PORT=3306\n'
+                'DB_NAME=saas_lifecycle\nDB_USER=saas_migrator\nDATABASE_URL=\n'
+                + f'DB_PASSWORD={passwords["migrator"]}\n')
+            migration_env.chmod(0o600)
+            run('IMAGE_ALEMBIC_UPGRADE', base + ['--tmpfs', '/tmp:rw,nosuid,nodev,noexec',
+                                              '--env-file', str(migration_env), image,
+                                              'alembic', 'upgrade', 'head'], timeout=900)
+            complete(checks, 'nonroot-image-alembic-empty-schema-to-head')
+            version_proof = client + '''
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from app.db.base import metadata
+expected = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
+assert len(expected) == 1
+q.execute("SELECT version_num FROM alembic_version")
+assert [item[0] for item in q.fetchall()] == expected
+q.execute("SHOW TABLES")
+assert set(metadata.tables).issubset({item[0] for item in q.fetchall()})
+c.close()
+'''
+            run('RUNTIME_MIGRATED_SCHEMA', base + ['--env-file', str(envs['runtime']),
+                                                '-e', 'APP_ENV=test', '-e', 'DB_ENABLED=false',
+                                                image, 'python', '-c', version_proof])
+            complete(checks, 'runtime-sees-actual-migration-head-and-model-tables')
+        report = {'passed': True, 'checks': checks, 'releaseApproved': False,
+                  'fullComposeStarted': False, 'realClamAVScan': 'NOT_RUN', 'productionDataAccessed': False}
     except Exception as exc:
-        print(json.dumps({'passed': False, 'errorType': type(exc).__name__, 'completedChecks': checks,
-                          'releaseApproved': False, 'productionDataAccessed': False,
-                          'failedCheck': str(exc) if re.fullmatch(r'[A-Z_]+_FAILED', str(exc)) else 'CHECK_ERROR'}))
-        return 1
-    finally:
+        report = {'passed': False, 'errorType': type(exc).__name__, 'completedChecks': checks,
+                  'releaseApproved': False, 'productionDataAccessed': False,
+                  'failedCheck': str(exc) if re.fullmatch(r'[A-Z_]+_FAILED', str(exc)) else 'CHECK_ERROR'}
+        if isinstance(exc, CheckFailure):
+            report['failureDetails'] = exc.safe_details
         if created_mysql:
-            subprocess.run(['docker', 'rm', '-f', '-v', mysql], capture_output=True, timeout=30)
+            report['mysqlDiagnostics'] = mysql_diagnostics(mysql)
+    finally:
+        cleanup_failed = []
+        resources = []
+        if created_mysql:
+            resources.append(('mysql', ['docker', 'rm', '-f', '-v', mysql]))
         if created_network:
-            subprocess.run(['docker', 'network', 'rm', network], capture_output=True, timeout=30)
-    print(json.dumps({'passed': True, 'checks': checks, 'releaseApproved': False,
-                      'fullComposeStarted': False, 'realClamAVScan': 'NOT_RUN', 'productionDataAccessed': False}, indent=2))
-    return 0
+            resources.append(('network', ['docker', 'network', 'rm', network]))
+        for kind, command in resources:
+            try:
+                result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+                if result.returncode:
+                    cleanup_failed.append(kind)
+            except Exception:
+                cleanup_failed.append(kind)
+        if cleanup_failed:
+            report.update(passed=False, cleanupFailed=cleanup_failed)
+    try:
+        write_report(args.report_file, report)
+    except Exception as exc:
+        report.update(passed=False, reportWriteFailure=type(exc).__name__)
+    print(json.dumps(report, indent=2))
+    return 0 if report.get('passed') else 1
 
 
 if __name__ == '__main__':
