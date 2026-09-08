@@ -9,17 +9,23 @@
             :key="w.week"
             class="wr__week"
             :class="{ 'is-on': selectedWeek === w.week }"
-            @click="selectedWeek = w.week"
+            @click="selectWeek(w.week)"
           >
             <text class="wr__week-num">第{{ w.week }}周</text>
             <text class="wr__week-tag">{{ w.tagText }}</text>
           </view>
         </view>
 
+        <view v-if="receipt" class="card wr__receipt">
+          <text class="t-md t-bold">{{ receipt.actionLabel }}</text>
+          <text>#{{ receipt.id }} · v{{ receipt.version }} · {{ receipt.statusLabel }}</text>
+          <text>{{ receipt.nextStep }}</text>
+        </view>
+
         <!-- 当前可填写周 -->
         <template v-if="isEditableWeek">
           <view class="card wr__form">
-            <view class="row-between"><text class="card-title">第 {{ selectedWeek }} 周 · 填写中</text><MobileStatusTag label="填写中" type="processing" /></view>
+            <view class="row-between"><text class="card-title">第 {{ selectedWeek }} 周 · {{ selectedReport ? '修改重交' : '填写中' }}</text><MobileStatusTag :label="selectedReport ? '已退回' : '填写中'" :type="selectedReport ? 'warning' : 'processing'" /></view>
             <view class="wr__field">
               <text class="wr__label">本周工作内容 <text class="wr__req">*</text></text>
               <textarea class="wr__textarea" v-model="form.workContent" :maxlength="500" placeholder="描述本周完成的主要任务" placeholder-class="wr__ph" />
@@ -45,7 +51,7 @@
             </view>
           </view>
 
-          <MobileInlineAlert type="info" description="周报提交后由校内指导教师批阅；逾期未交会计入实习考核。" />
+          <MobileInlineAlert :type="selectedReport ? 'warning' : 'info'" :description="selectedReport ? ('教师意见：' + (selectedReport.reviewComment || '请修改后重新提交')) : '周报提交后由校内指导教师批阅；逾期未交会计入实习考核。'" />
         </template>
 
         <!-- 历史周只读 -->
@@ -71,17 +77,16 @@
     </MobileGlobalState>
 
     <MobileSafeAreaBar v-if="loaded && isEditableWeek">
-      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交周报' }}</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : (selectedReport ? '重新提交周报' : '提交周报') }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { createSubmitLock, normalizeError } from '@/services/request'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
-const submitLock = createSubmitLock(1500)
 const STATUS_TAG = { PENDING_REVIEW: '待批阅', APPROVED: '已批阅', RETURNED: '已退回', OVERDUE: '已逾期' }
 
 export default {
@@ -91,7 +96,7 @@ export default {
       company: '', post: '', schoolMentor: '', lastFeedback: '',
       currentWeek: 1, weeklyList: [], selectedWeek: 1,
       form: { workContent: '', harvestContent: '', planContent: '' },
-      submitting: false
+      submitting: false, receipt: null, loadSequence: 0, batchId: '', internshipId: ''
     }
   },
   computed: {
@@ -106,52 +111,77 @@ export default {
       return this.weeklyList.find((r) => r.week === this.selectedWeek) || null
     },
     isEditableWeek() {
-      return this.selectedWeek === this.currentWeek && !this.selectedReport
+      return (!this.selectedReport && this.selectedWeek === this.currentWeek) || this.selectedReport?.status === 'RETURNED'
     }
   },
   onLoad() { this.load() },
   methods: {
-    load() {
+    async load() {
+      const sequence = ++this.loadSequence
       this.state = 'loading'
-      studentApi.getInternship().then((d) => {
+      try {
+        const d = await studentApi.getInternship()
+        if (sequence !== this.loadSequence) return
         this.company = d.company || ''
         this.post = d.post || ''
         this.schoolMentor = d.schoolMentor || ''
         this.lastFeedback = (d.weekly && d.weekly.lastFeedback) || ''
-        this.weeklyList = d.weeklyList || []
+        this.batchId = d.batchId || ''
+        this.internshipId = d.recordId || ''
+        const result = await studentApi.getInternshipWeeklyReports(this.batchId, this.internshipId)
+        if (sequence !== this.loadSequence) return
+        this.weeklyList = result.items || []
         const m = String((d.weekly && d.weekly.week) || '第 1 周').match(/\d+/)
         this.currentWeek = m ? Number(m[0]) : 1
         this.selectedWeek = this.currentWeek
+        this.selectWeek(this.selectedWeek)
         this.loaded = true
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      } catch (e) {
+        if (sequence === this.loadSequence) this.state = 'error'
+      }
     },
-    submit() {
+    selectWeek(week) {
+      if (this.submitting) return
+      this.selectedWeek = Number(week)
+      const row = this.weeklyList.find((item) => Number(item.week) === this.selectedWeek)
+      if (row?.status === 'RETURNED') {
+        this.form = { workContent: row.workContent || '', harvestContent: row.harvestContent || '', planContent: row.planContent || '' }
+      } else if (!row) {
+        this.form = { workContent: '', harvestContent: '', planContent: '' }
+      }
+    },
+    async submit() {
       if (this.submitting) return
       if (this.form.workContent.trim().length < 10 || this.form.harvestContent.trim().length < 10) {
         toast('本周工作内容与本周收获均至少 10 个字')
         return
       }
       this.submitting = true
-      submitLock.run(() => studentApi.submitWeeklyReport({
-        weekNo: this.selectedWeek,
-        workContent: this.form.workContent.trim(),
-        harvestContent: this.form.harvestContent.trim(),
-        planContent: this.form.planContent.trim()
-      })).then(() => {
-        uni.showToast({ title: '周报已提交', icon: 'success' })
-        this.load()
-      }).catch((e) => {
+      const current = this.selectedReport
+      try {
+        const result = await studentApi.submitInternshipWeeklyReport({
+          batchId: this.batchId, internshipId: this.internshipId,
+          expectedVersion: current?.version ?? 0, weekNo: this.selectedWeek,
+          workContent: this.form.workContent.trim(), harvestContent: this.form.harvestContent.trim(),
+          planContent: this.form.planContent.trim()
+        })
+        this.receipt = {
+          actionLabel: current ? '周报已重新提交' : '周报已提交', id: result.id,
+          version: result.version, statusLabel: '待批阅', nextStep: '等待指导教师批阅；退回后可继续修改。'
+        }
+        await this.load()
+      } catch (e) {
         if (e && e.code === 'LOCKED') return
         if (e && e.biz) {
-          if (String(e.code).startsWith('409')) toast('本周周报已提交，请勿重复提交')
+          if (String(e.code).startsWith('409')) toast('周报已被更新，填写内容已保留，请刷新核对')
           else toast(normalizeError(e).text)
         } else {
-          toast('网络异常，提交未成功，请稍后重试')
+          toast('网络异常，填写内容已保留，请稍后重试')
         }
-      }).finally(() => {
+      } finally {
         this.submitting = false
-      })
+      }
     }
   }
 }
@@ -159,6 +189,7 @@ export default {
 
 <style scoped>
 .wr__weeks { display: flex; gap: var(--space-2); overflow-x: auto; }
+.wr__receipt { display: flex; flex-direction: column; gap: 4px; margin-top: var(--card-gap-mobile); border-color: #86efac; background: #f0fdf4; color: #166534; font-size: var(--font-size-xs); }
 .wr__week { flex-shrink: 0; min-width: 64px; text-align: center; padding: var(--space-2) var(--space-1); border-radius: var(--radius-md); border: 1.5px solid var(--border-base); }
 .wr__week.is-on { border-color: var(--brand-primary); background: var(--primary-50); }
 .wr__week-num { display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--text-secondary); }

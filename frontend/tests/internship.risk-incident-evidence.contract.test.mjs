@@ -18,7 +18,8 @@ test('Staff risk card shows canonical source, latest event, current action and d
 
 test('Staff incident workbench explains close blockers and leads to regulatory evidence package', () => {
   const view = read('frontend/src/modules/internship/views/InternshipComplianceView.vue')
-  assert.match(view, /编号 \/ 风险源/)
+  assert.match(view, /row\.incidentNo/)
+  assert.match(view, /row\.riskId/)
   assert.match(view, /row\.latestEvent/)
   assert.match(view, /row\.currentAction/)
   assert.match(view, /row\.closeBlockers/)
@@ -30,7 +31,7 @@ test('Staff incident workbench explains close blockers and leads to regulatory e
 })
 
 test('Teacher Mini uses server versions, source facts, conflict draft and receipt', () => {
-  const view = read('miniapp/src/pages/teacher/internship-risk/index.vue')
+  const view = read('miniapp/src/pages/teacher-internship/internship-risk/index.vue')
   assert.match(view, /sourceText\(r\)/)
   assert.match(view, /r\.latestEvent/)
   assert.match(view, /r\.currentAction/)

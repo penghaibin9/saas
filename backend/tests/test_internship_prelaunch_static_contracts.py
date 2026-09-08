@@ -80,7 +80,7 @@ def test_staff_student_api_forwards_versions_and_destination_contract():
     assert 'destination: extra' in detail
     assert 'destinationType: extra' not in detail
     assert 'expectedVersion: this.advisorRow.version' in listing
-    assert 'expectedVersion: row.version' in listing
+    assert "row.status !== 'ARCHIVED'" in listing
 
 def test_enterprise_edit_and_contact_type_keep_concurrency_invariants():
     form = (ROOT.parent / "frontend/src/modules/internship/views/EnterpriseFormView.vue").read_text(encoding="utf-8")

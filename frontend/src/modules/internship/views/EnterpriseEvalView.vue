@@ -1,17 +1,16 @@
 <template>
-  <ModulePageShell title="评价管理" subtitle="完成学生、企业和教师评价，并进行成绩核算、审核、发布和复核 · 企业评价 · 企业导师五维评价 · 学校审核 · 来源可追溯"
+  <ModulePageShell title="企业评价" subtitle="核对企业评分与扫描件，由授权审核人确认评价结果。"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
       <AppButton variant="ghost" @click="goStudentEvals">学生自评与教师评价</AppButton>
       <AppButton variant="ghost" @click="goScores">综合成绩</AppButton>
       <AppPermissionButton code="internship.eval.enterprise.manage" :allowed="canBtn('internship.eval.enterprise.manage')" variant="primary"
-        @click="goCreate">＋ 录入企业评价</AppPermissionButton>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
+        @click="goCreate">录入企业评价</AppPermissionButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="canBtn('internship.eval.enterprise.export')" @exported="onExported">导出评价台账</AppExportButton>
     </template>
 
     <div class="mp-stack">
       <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
-      <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
@@ -40,17 +39,17 @@
           </ul>
         </template>
         <template #aside-foot>
-          <AppPagination v-model:page="page" :page-size="pageSize" :total="total"
-                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
+          <AppPagination :page="page" :page-size="pageSize" :total="total"
+                        :show-size-changer="false" :disabled="loading" @change="onPageChange" />
         </template>
 
         <!-- 右栏：当前企业评价详情与审核操作 -->
         <section class="mp-card lv-main">
           <template v-if="!selectedId">
-            <EmptyState v-if="doneHint" title="当前列表企业评价已全部处理"
-              description="可翻页或切换筛选条件，继续审核其他企业评价" />
-            <EmptyState v-else title="从左侧选择一条企业评价开始审核"
-              description="点击列表项查看五维评分与评语，通过或退回后自动跳到下一条待审核" />
+            <EmptyState v-if="doneHint" title="已处理到当前列表末尾"
+              description="可翻页或调整筛选，核对其他评价"><template #actions><AppButton variant="ghost" @click="load">刷新列表</AppButton></template></EmptyState>
+            <EmptyState v-else title="选择一条企业评价"
+              description="在此核对评分、材料与审核结果"><template #actions><AppButton variant="ghost" @click="load">刷新列表</AppButton></template></EmptyState>
           </template>
           <div v-else-if="detail.loading" class="state lv-main__state">详情加载中…</div>
           <div v-else-if="detail.error" class="state is-err lv-main__state">
@@ -67,15 +66,17 @@
               <div class="sec-t">学生与企业岗位摘要</div>
               <AppDescriptionList :items="summaryItems" :columns="2" />
 
-              <div class="sec-t">五维评分</div>
-              <AppDescriptionList :items="scoreItems" :columns="3" />
+              <h2 class="sec-t">五维评分</h2>
+              <dl class="score-grid"><div v-for="item in scoreItems" :key="item.label" class="score-item" :class="{ 'is-average': item.label === '均分' }"><dt>{{ item.label }}</dt><dd>{{ item.value ?? '—' }}<small v-if="item.value != null">分</small></dd></div></dl>
 
               <div class="sec-t">评语与建议</div>
               <AppDescriptionList :items="commentItems" :columns="1" />
 
               <template v-if="detail.data.attachment">
                 <div class="sec-t">评价扫描件</div>
-                <AppFilePreview :files="attachmentFiles" @download="downloadAtt" />
+                <AppButton variant="secondary" :loading="downloading" @click="downloadAtt">下载评价扫描件</AppButton>
+                <span class="mp-note">{{ detail.data.attachment.fileName }}</span>
+                <p v-if="attachmentError" class="attachment-error" role="alert">{{ attachmentError }}</p>
               </template>
 
               <template v-if="hasReviewResult">
@@ -88,9 +89,10 @@
             </div>
 
             <div v-if="detail.data.reviewStatus === 'PENDING'" class="lv-foot">
-              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="ghost" :danger="true"
+              <span class="mp-note lv-foot__hint">录入人与审核人须分离</span>
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="secondary" :disabled="cd.submitting"
                 @click="openReview(detail.data, 'RETURN')">退回</AppPermissionButton>
-              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="secondary"
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="primary" :disabled="cd.submitting"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -100,7 +102,12 @@
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
-      reason-label="审核意见" :submitting="cd.submitting" @confirm="onConfirm" />
+      :reason-label="cd.requireReason ? '退回原因（至少 5 字）' : '审核意见'" :submitting="cd.submitting" :confirm-disabled="conflict.active" @confirm="onConfirm">
+      <AppInlineAlert v-if="conflict.active" type="warning" title="评价已更新，本次审核已暂停" description="意见已保留。请取消后核对最新详情，再重新选择可用操作。">
+        <p v-if="conflict.stale">最新详情暂时无法读取，请关闭后重试加载。</p>
+        <AppDescriptionList v-else :items="conflict.latest" :columns="1" />
+      </AppInlineAlert>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -108,11 +115,11 @@
 import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
+  AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination, AppInlineAlert } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
-import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import ActionReceipt from './components/ActionReceipt.vue'
-import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
+import { enterpriseEvalApi, downloadAttachment } from '@/modules/internship/api/enterprise-eval.api'
+import { emptyConflict, isConflict, captureConflict } from '@/modules/internship/composables/conflictGuard'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
@@ -120,10 +127,9 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已退回', value: 'RETURNED' }]
 /* 右栏只渲染 /internship/enterprise-evals/{id} 真实返回字段（见 internship_enterprise_eval_service._row + get_eval） */
 const SUMMARY_FIELDS = [
-  { key: 'studentName', label: '学生' }, { key: 'studentNo', label: '学号' },
   { key: 'advisorName', label: '指导教师' }, { key: 'mentorName', label: '企业导师' },
   { key: 'positionName', label: '岗位' }, { key: 'sourceLabel', label: '来源' },
-  { key: 'createdAt', label: '录入时间' }
+  { key: 'createdAt', label: '录入时间' }, { key: 'recordedByName', label: '录入人' }
 ]
 const SCORE_FIELDS = [
   { key: 'attendanceScore', label: '出勤' }, { key: 'skillScore', label: '技能' },
@@ -134,42 +140,34 @@ const COMMENT_FIELDS = [
   { key: 'overallComment', label: '综合评语' }, { key: 'recommendHire', label: '建议录用', bool: true }
 ]
 const REVIEW_FIELDS = [
-  { key: 'reviewStatusLabel', label: '审核状态' }, { key: 'reviewComment', label: '审核意见' }
+  { key: 'reviewStatusLabel', label: '审核状态' }, { key: 'reviewedByName', label: '审核人' }, { key: 'reviewComment', label: '审核意见' }
 ]
 
 export default {
   name: 'EnterpriseEvalView',
   props: { ctx: { type: Object, default: () => ({}) } },
-  components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
+  components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination, ActionReceipt },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination, ActionReceipt, AppInlineAlert },
   data() {
     return {
-      rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
+      rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '', listSequence: 0,
       keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS,
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
-      pending: null,
+      pending: null, conflict: emptyConflict(), downloading: false, attachmentError: '',
       lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
-    summaryMetrics() {
-      // 仅在列表真实加载成功后展示服务端 total；loading / error 一律不展示
-      if (this.loading || this.error) return []
-      const cur = this.statusOptions.find((o) => o.value === this.statusFilter)
-      return [{ label: '企业评价 · ' + (cur ? cur.label : '全部'), value: this.total,
-        tone: this.statusFilter === 'PENDING' && this.total ? 'warn' : undefined }]
-    },
     summaryItems() { const d = this.detail.data || {}; return SUMMARY_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     scoreItems() { const d = this.detail.data || {}; return SCORE_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     commentItems() { const d = this.detail.data || {}; return COMMENT_FIELDS.map((f) => ({ label: f.label, value: f.bool ? (d[f.key] ? '是' : '否') : d[f.key] })) },
     reviewItems() { const d = this.detail.data || {}; return REVIEW_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     hasReviewResult() { const d = this.detail.data || {}; return !!d.reviewStatus && d.reviewStatus !== 'PENDING' },
-    attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
     auditRecords() {
       return (this.detail.data?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actor: t.operator, reason: t.detail && (t.detail.comment || ''), at: t.occurredAt
@@ -177,35 +175,55 @@ export default {
     }
   },
   watch: {
-    '$route.query.id': {
+    '$route.query': {
+      deep: true,
       immediate: true,
-      handler(id) {
-        const sid = (id || '').toString()
+      handler(query, previous) {
+        if (!previous || ['keyword', 'reviewStatus', 'page', 'batchId'].some(key => Object.hasOwn(query, key) !== Object.hasOwn(previous, key) || String(query[key] ?? '') !== String(previous[key] ?? ''))) this.applyQuery()
+        const sid = String(query.id || '')
         if (sid === this.selectedId) return
+        this.resetDetail()
         this.selectedId = sid
         if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
       }
     },
     'batchStore.selectedBatchId'() {
       this.page = 1
+      this.lastReceipt = null
       this.clearSelection()
       this.load()
     }
   },
-  created() { this.load() },
+  beforeUnmount() { this.listSequence++; this.resetDetail() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     goStudentEvals() { this.$router.push({ path: '/admin/internship/student-evals', query: this.batchStore.withBatchQuery() }) },
     goScores() { this.$router.push({ path: '/admin/internship/scores', query: this.batchStore.withBatchQuery() }) },
-    goCreate() { this.$router.push({ path: '/admin/internship/enterprise-evals/new', query: this.batchStore.withBatchQuery() }) },
+    goCreate() { if (this.canBtn('internship.eval.enterprise.manage')) this.$router.push({ path: '/admin/internship/enterprise-evals/new', query: this.batchStore.withBatchQuery() }) },
     exportFn() {
       if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
       return enterpriseEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter, batchId: this.batchStore.selectedBatchId })
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 条（水印 + 导出留痕）`) },
-    reload() { this.page = 1; this.load() },
+    applyQuery() {
+      const q = this.$route.query || {}
+      this.keyword = String(q.keyword || '')
+      this.statusFilter = q.reviewStatus != null ? String(q.reviewStatus) : 'PENDING'
+      this.page = Math.max(1, Number.parseInt(q.page, 10) || 1)
+      this.doneHint = false; this.load()
+    },
+    syncQuery() {
+      const query = this.batchStore.withBatchQuery({ ...this.$route.query, keyword: this.keyword, reviewStatus: this.statusFilter, page: String(this.page) })
+      if (Object.keys(query).every(key => Object.hasOwn(this.$route.query, key) && String(query[key]) === String(this.$route.query[key]))) this.load()
+      else this.$router.replace({ query })
+    },
+    reload() { this.page = 1; this.doneHint = false; this.syncQuery() },
+    onPageChange({ page }) { this.page = page; this.syncQuery() },
     async load() {
+      const sequence = ++this.listSequence
+      const batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.total = 0
       if (!this.batchStore.selectedBatchId) {
         this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
         return
@@ -214,64 +232,100 @@ export default {
       const params = { page: this.page, pageSize: this.pageSize, keyword: this.keyword, batchId: this.batchStore.selectedBatchId }
       if (this.statusFilter) params.reviewStatus = this.statusFilter
       const res = await enterpriseEvalApi.getEvals(params)
+      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId) return
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
       // 处理完当前页最后一条后翻页越界（如筛选=待审核时该页清空）：自动回到最后一个有效页
       const pc = Math.max(1, Math.ceil(this.total / this.pageSize))
-      if (!this.rows.length && this.total > 0 && this.page > pc) { this.page = pc; return this.load() }
+      if (!this.rows.length && this.total > 0 && this.page > pc) { this.page = pc; this.syncQuery(); return false }
+      return true
     },
     select(id) {
+      if (id == null || id === '') return
       const sid = String(id)
       this.doneHint = false
-      if (String(this.$route.query.id || '') === sid) {
-        if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
-        return
-      }
-      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
+      if (this.selectedId === sid) return
+      this.resetDetail(); this.selectedId = sid; this.loadDetail(sid)
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid, page: String(this.page) }) })
+    },
+    resetDetail() {
+      this.detail = { loading: false, error: '', data: null }
+      this.pending = null; this.cd = { ...this.cd, visible: false, submitting: false }; this.conflict = emptyConflict()
+      this.downloading = false; this.attachmentError = ''
     },
     clearSelection() {
-      const query = { ...this.$route.query }
+      this.resetDetail(); this.selectedId = ''
+      const query = { ...this.$route.query, page: String(this.page) }
       delete query.id
       this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
+      if (!id || !this.batchStore.selectedBatchId) return
+      const batchId = this.batchStore.selectedBatchId
+      this.downloading = false; this.attachmentError = ''
       this.detail = { loading: true, error: '', data: null }
+      const workspace = this.detail
       const res = await enterpriseEvalApi.getDetail(id)
-      if (String(this.selectedId) !== String(id)) return
+      if (workspace !== this.detail || batchId !== this.batchStore.selectedBatchId || String(this.selectedId) !== String(id)) return
       this.detail.loading = false
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
       this.detail.data = res.data
     },
     async downloadAtt() {
-      const a = this.detail.data?.attachment
-      if (!a) return
-      try { await enterpriseEvalApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+      const workspace = this.detail
+      const a = workspace.data?.attachment
+      if (!a?.fileId || this.downloading || workspace.loading || workspace.error) return
+      this.downloading = true; this.attachmentError = ''
+      try { await downloadAttachment(String(a.fileId), a.fileName) }
+      catch (e) { if (this.detail === workspace) this.attachmentError = e.message || '材料下载失败，请重试' }
+      finally { if (this.detail === workspace) this.downloading = false }
     },
     openReview(r, action) {
+      if (!r || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.eval.enterprise.review') || r.reviewStatus !== 'PENDING' || String(r.id) !== this.selectedId || !['APPROVE', 'RETURN'].includes(action)) return
       const ap = action === 'APPROVE'
+      this.conflict = emptyConflict()
       this.pending = { id: r.id, action, version: r.version, studentName: r.studentName }
       this.cd = { visible: true, title: ap ? '企业评价 · 通过' : '企业评价 · 退回',
         content: `${ap ? '通过' : '退回'}「${r.studentName}」的企业评价，意见将写入审计。`,
         danger: !ap, confirmText: ap ? '通过' : '退回', requireReason: !ap, submitting: false }
     },
     async onConfirm({ reason }) {
-      this.cd.submitting = true
-      const res = await enterpriseEvalApi.review(this.pending.id, { action: this.pending.action,
-        comment: reason || '', expectedVersion: this.pending.version })
-      this.cd.submitting = false
-      if (res.code !== 0) return toast.error(res.message || '操作失败')
-      this.lastReceipt = { actionLabel: this.pending.action === 'APPROVE' ? '企业评价已通过' : '企业评价已退回',
-        objectLabel: this.pending.studentName, id: res.data.id, version: res.data.version,
+      const pending = this.pending
+      if (!pending || this.cd.submitting || this.conflict.active || !this.canBtn('internship.eval.enterprise.review') || this.detail.loading || this.detail.error || this.detail.data?.reviewStatus !== 'PENDING' || String(pending.id) !== this.selectedId) return
+      if (pending.action === 'RETURN' && String(reason || '').trim().length < 5) return toast.error('退回原因至少填写 5 字')
+      const dialog = this.cd, batchId = this.batchStore.selectedBatchId
+      dialog.submitting = true
+      const res = await enterpriseEvalApi.review(pending.id, { action: pending.action,
+        comment: reason || '', expectedVersion: pending.version })
+      if (this.cd === dialog) dialog.submitting = false
+      if (this.pending !== pending || this.cd !== dialog || batchId !== this.batchStore.selectedBatchId || String(pending.id) !== this.selectedId) return
+      if (res.code !== 0) {
+        if (isConflict(res)) {
+          this.conflict = { ...emptyConflict(), active: true, kept: reason || '' }
+          const conflict = await captureConflict({ res, kept: reason || '', refresh: async () => {
+            await this.loadDetail(pending.id)
+            if (this.detail.error || !this.detail.data) throw new Error('最新评价加载失败')
+          }, latest: () => [{ label: '审核状态', value: this.detail.data?.reviewStatusLabel }, { label: '审核意见', value: this.detail.data?.reviewComment || '—' }] })
+          if (this.pending === pending && this.cd === dialog) this.conflict = conflict
+          return
+        }
+        return toast.error(res.message || '操作失败')
+      }
+      this.detail.data = { ...this.detail.data, ...res.data }
+      this.lastReceipt = { actionLabel: pending.action === 'APPROVE' ? '企业评价已通过' : '企业评价已退回',
+        objectLabel: pending.studentName, id: res.data.id, version: res.data.version,
         statusLabel: res.data.reviewStatusLabel || res.data.reviewStatus,
-        auditText: '当前安置评价与审核版本已提交', nextStep: this.pending.action === 'APPROVE' ? '成绩核算将读取该安置版本' : '等待企业或原录入人修改重交' }
+        auditText: '评价审核结果已保存', nextStep: pending.action === 'APPROVE' ? '可继续核对综合成绩' : '等待原录入人按意见修改重交' }
       this.cd.visible = false; toast.success('审核完成，已写审计')
-      await this.advanceAfterReview(this.pending.id)
+      await this.advanceAfterReview(pending.id)
     },
     /** 审核成功后：刷新当前页并自动选中下一条待审核；无下一条则清空选中并提示已处理完 */
     async advanceAfterReview(oldId) {
+      const batchId = this.batchStore.selectedBatchId, route = this.$route.fullPath
       const oldIndex = Math.max(0, this.rows.findIndex((r) => String(r.id) === String(oldId)))
-      await this.load()
+      const loaded = await this.load()
+      if (!loaded || this.error || batchId !== this.batchStore.selectedBatchId || route !== this.$route.fullPath || String(oldId) !== this.selectedId) return
       let after = null, before = null
       this.rows.forEach((r, i) => {
         if (r.reviewStatus !== 'PENDING' || String(r.id) === String(oldId)) return
@@ -310,4 +364,15 @@ export default {
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
+.score-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 0; border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; background: var(--border-light); }
+.score-item { background: var(--bg-card, #fff); padding: 12px 16px; }
+.score-item dt { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.score-item dd { margin: 6px 0 0; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.score-item small { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.score-item.is-average { background: var(--primary-50, #eff6ff); color: var(--primary-700); }
+.lv-foot { align-items: center; flex-wrap: wrap; }
+.lv-foot__hint { margin-right: auto; }
+.lv-item:focus-visible { outline: 2px solid var(--primary-600); outline-offset: 2px; }
+.attachment-error { color: var(--danger-600); font-size: var(--font-size-sm); }
+@media (max-width: 600px) { .score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.lv-foot__hint { width: 100%; } }
 </style>

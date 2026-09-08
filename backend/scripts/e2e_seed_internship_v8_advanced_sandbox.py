@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
+from app.core.context import get_tenant, set_tenant
 from app.core.field_crypto import encrypt_sensitive, hash_sensitive
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
@@ -695,8 +696,6 @@ def ensure_score_facts(db, *, record: InternshipRecord) -> None:
         return db.scalars(select(model).where(*conditions)).first() is None
 
     common = [lambda model: model.tenant_id == TENANT_ID, lambda model: model.internship_id == record.id]
-    if missing(InternshipInsurance, common[0](InternshipInsurance), common[1](InternshipInsurance), InternshipInsurance.is_deleted.is_(False)):
-        db.add(InternshipInsurance(tenant_id=TENANT_ID, internship_id=record.id, student_id=record.student_id, status="VERIFIED"))
     if missing(InternshipAgreement, common[0](InternshipAgreement), common[1](InternshipAgreement), InternshipAgreement.is_deleted.is_(False)):
         db.add(InternshipAgreement(tenant_id=TENANT_ID, internship_id=record.id, student_id=record.student_id, status="EFFECTIVE"))
     start = record.intern_start_date
@@ -705,6 +704,18 @@ def ensure_score_facts(db, *, record: InternshipRecord) -> None:
     end_date = end.date() if isinstance(end, datetime) else end
     if not isinstance(start_date, date) or not isinstance(end_date, date) or start_date > end_date:
         raise SystemExit(f"record #{record.id} has no valid internship period")
+
+    insurance = db.scalars(select(InternshipInsurance).where(
+        InternshipInsurance.tenant_id == TENANT_ID,
+        InternshipInsurance.internship_id == record.id,
+        InternshipInsurance.is_deleted.is_(False))).first()
+    if insurance is None:
+        insurance = InternshipInsurance(tenant_id=TENANT_ID, internship_id=record.id,
+                                        student_id=record.student_id, status="VERIFIED")
+        db.add(insurance)
+    # Historical score prerequisites must include the coverage period, not just a status.
+    insurance.effective_date = start_date.isoformat()
+    insurance.expiry_date = end_date.isoformat()
 
     # The score gate counts scheduled weekdays inside the internship period. Seed
     # one independently auditable normal check-in for every scheduled weekday.
@@ -775,6 +786,8 @@ def main() -> int:
         actor_user_id=None,
         source_commit_sha="internship-v8-advanced-e2e",
     )
+    previous_tenant = get_tenant()
+    set_tenant(TENANT_ID)
     db = get_sessionmaker()()
     try:
         student_a = db.scalars(select(StudentProfile).where(StudentProfile.tenant_id == TENANT_ID, StudentProfile.student_no == "E2E20260001", StudentProfile.is_deleted.is_(False))).first()
@@ -848,6 +861,7 @@ def main() -> int:
         raise
     finally:
         db.close()
+        set_tenant(previous_tenant)
 
 
 if __name__ == "__main__":

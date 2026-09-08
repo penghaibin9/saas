@@ -4,6 +4,7 @@
       <AppSelect
         class="app-region-picker__col"
         :model-value="provinceCode"
+        aria-label="省或直辖市"
         :options="provinceOptions"
         placeholder="省 / 直辖市"
         :disabled="disabled"
@@ -13,6 +14,7 @@
       <AppSelect
         class="app-region-picker__col"
         :model-value="cityCode"
+        aria-label="城市"
         :options="cityOptions"
         :placeholder="provinceCode ? '市' : '请先选省'"
         :disabled="disabled || !provinceCode"
@@ -23,6 +25,7 @@
         v-if="level === 'county'"
         class="app-region-picker__col"
         :model-value="countyCode"
+        aria-label="区或县"
         :options="countyOptions"
         :placeholder="cityCode ? '区 / 县（可选）' : '请先选市'"
         :disabled="disabled || !cityCode"

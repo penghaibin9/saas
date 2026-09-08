@@ -356,6 +356,73 @@ def affairs_funding(user=Depends(get_current_user)):
     return success(affairs.funding(user))
 
 
+@router.get("/affairs/funding/applications/{application_id}", summary="我的奖助申请详情与发放结果")
+def affairs_funding_detail(application_id: str, user=Depends(get_current_user)):
+    return success(affairs.funding_detail(user, application_id))
+
+
+@router.get("/affairs/work-study/posts", summary="本人可申请勤工岗位")
+def affairs_work_study_posts(keyword: str = Query("", max_length=100),
+                             page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                             user=Depends(get_current_user)):
+    return success(affairs.work_study_posts(user, keyword, page, pageSize))
+
+
+@router.get("/affairs/work-study/my", summary="本人勤工申请、上岗与月度补贴")
+def affairs_work_study_my(user=Depends(get_current_user)):
+    return success(affairs.work_study_my(user))
+
+
+@router.post("/affairs/work-study/posts/{post_id}/apply", summary="本人申请勤工岗位")
+def affairs_work_study_apply(post_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.work_study_apply(user, post_id, body), message="勤工申请已提交")
+
+
+@router.post("/affairs/work-study/records/{record_id}/withdraw", summary="本人撤回待审核勤工申请")
+def affairs_work_study_withdraw(record_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.work_study_withdraw(user, record_id, body), message="申请已撤回")
+
+
+@router.get("/affairs/loans", summary="我的助学贷款与回执状态（本人）")
+def affairs_loans(user=Depends(get_current_user)):
+    return success(affairs.loans_my(user))
+
+
+@router.post("/affairs/loans", summary="提交助学贷款电子回执（本人）")
+def affairs_loan_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_submit(user, body), message="贷款回执已提交学校核验")
+
+
+@router.post("/affairs/loans/{loan_id}/resubmit", summary="退回后修正并重提贷款回执（本人）")
+def affairs_loan_resubmit(loan_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_resubmit(user, loan_id, body), message="贷款回执已重新提交")
+
+
+@router.post("/affairs/loans/{loan_id}/withdraw", summary="学校核验前撤回贷款回执（本人）")
+def affairs_loan_withdraw(loan_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_withdraw(user, loan_id, body), message="贷款回执已撤回")
+
+
+@router.get("/affairs/fee-reductions", summary="我的学费减免与临时困难补助（本人）")
+def affairs_reductions(user=Depends(get_current_user)):
+    return success(affairs.reductions_my(user))
+
+
+@router.post("/affairs/fee-reductions", summary="提交减免或临时困难补助申请（本人）")
+def affairs_reduction_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_submit(user, body), message="申请已提交学校审核")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/resubmit", summary="补正并重提减免或临补申请（本人）")
+def affairs_reduction_resubmit(fee_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_resubmit(user, fee_id, body), message="申请已重新提交")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/withdraw", summary="审核前撤回减免或临补申请（本人）")
+def affairs_reduction_withdraw(fee_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_withdraw(user, fee_id, body), message="申请已撤回")
+
+
 @router.get("/affairs/aid", summary="我的困难资助等级（本人）")
 def affairs_aid(user=Depends(get_current_user)):
     return success(affairs.aid(user))
@@ -405,8 +472,10 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/affairs/funding/batches", summary="当前开放的奖助勤贷补批次（本人可申请）")
-def affairs_funding_batches(user=Depends(get_current_user)):
-    return success(affairs.funding_batches_open(user))
+def affairs_funding_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           keyword: str = Query("", max_length=100), projectType: str | None = None,
+                           user=Depends(get_current_user)):
+    return success(affairs.funding_batches_open(user, page, pageSize, keyword, projectType))
 
 
 @router.post("/affairs/funding/apply", summary="奖助勤贷补申请（本人·承诺书签署）")
@@ -420,8 +489,9 @@ def affairs_funding_appeal(user=Depends(get_current_user), body: dict = Body(...
 
 
 @router.get("/affairs/aid/batches", summary="当前开放的困难认定批次（本人可申请）")
-def affairs_aid_batches(user=Depends(get_current_user)):
-    return success(affairs.aid_batches_open(user))
+def affairs_aid_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                       keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
+    return success(affairs.aid_batches_open(user, page, pageSize, keyword))
 
 
 @router.post("/affairs/aid/apply", summary="困难认定申请（本人·长表+承诺书签署）")

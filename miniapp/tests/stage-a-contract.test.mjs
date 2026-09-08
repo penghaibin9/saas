@@ -226,7 +226,7 @@ test('release build fails at the proactive 1.80 MiB split threshold', () => {
 test('teacher weekly review carries the CAS version from list to mutation', () => {
   const adapter = read('src/services/realApi.js')
   const api = read('src/services/teacherApi.js')
-  const page = read('src/pages/teacher/internship-review/index.vue')
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(adapter, /expectedVersion: Number\(r\.version\)/)
   assert.match(adapter, /reportVersion/)
   assert.match(adapter, /data: \{ action, comment: comment \|\| '', expectedVersion \}/)

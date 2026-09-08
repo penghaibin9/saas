@@ -64,7 +64,7 @@ async function assertRoleHomeDestination(page, entryLabel, expectedPath) {
 async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-  const graduationRail = page.locator('.bpl-rail__item').filter({ hasText: '毕业设计中心' }).first()
+  const graduationRail = page.getByRole('navigation', { name: '一级菜单', exact: true }).getByRole('button', { name: '毕业设计中心', exact: true })
   await expect(graduationRail).toBeVisible()
   await graduationRail.click()
   await expect(page).toHaveURL(/\/admin\/graduation(?:\?|$)/)
@@ -126,7 +126,7 @@ async function openStudentFromRoleHome(page, { materials = false } = {}) {
   await expect(page).toHaveURL(/\/portal\/graduation(?:\?|$)/)
   await assertHealthyPage(page)
   if (materials) {
-    const library = page.getByRole('button', { name: '我的材料库', exact: true }).first()
+    const library = page.getByRole('button', { name: '毕业设计材料库', exact: true }).first()
     await expect(library).toBeVisible()
     await library.click()
     await expect(page).toHaveURL(/\/portal\/graduation\/materials/)
@@ -190,7 +190,8 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff)
-      await expect(handoff.getByText(/当前身份：\s*GD_MENTOR/).first()).toBeVisible()
+      await expect(handoff.getByText(/当前身份：\s*.*指导教师/).first()).toBeVisible()
+      await expect(handoff.getByText(/当前身份：\s*GD_MENTOR/)).toHaveCount(0)
       const screenshotC = await capture(handoff, 'GDJ-01', 'C-handoff')
       const students = await adminApi.get('/graduation/gd-students', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-01', { screenshotA, screenshotB, screenshotC, action: '打开批次详情/配置', serverTruth: { studentCount: items(students).length, teacherBatchId: teacherFixture.batchId } })
@@ -261,14 +262,17 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
   test('GDJ-05 final review and human material evidence handoff', async ({ page }) => {
     await openStaffFromRoleHome(page, '待评阅成果', '/admin/graduation/finals')
     const screenshotA = await capture(page, 'GDJ-05', 'A-first-screen')
-    const action = await clickFirstVisible(page, ['待评阅', '全部', '已退回'])
+    const pending = page.locator('[aria-label="成果状态筛选"]').getByRole('button', { name: /^待审阅/ })
+    await pending.click()
+    await expect(pending).toHaveAttribute('aria-pressed', 'true')
+    const action = '待审阅'
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-05', 'B-action-receipt')
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
       await openStudentFromRoleHome(handoff, { materials: true })
-      await expect(handoff.getByText(/材料库|材料状态/).first()).toBeVisible()
+      await expect(handoff.getByRole('heading', { name: '查看材料状态并按退回意见重交', exact: true })).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-05', 'C-handoff')
       const finals = await adminApi.get('/graduation/finals', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-05', { screenshotA, screenshotB, screenshotC, action, serverTruth: { finalCount: items(finals).length } })
@@ -324,7 +328,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await openStudentFromRoleHome(handoff, { materials: true })
-      await expect(handoff.getByText(/尚未上传版本|等待扫描|材料库/).first()).toBeVisible()
+      await expect(handoff.getByRole('heading', { name: '查看材料状态并按退回意见重交', exact: true })).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-08', 'C-handoff')
       const archives = await adminApi.get('/graduation/gd-archives', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-08', {

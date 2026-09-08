@@ -242,6 +242,8 @@ def issue_company_invite(
         )
         if member and member.status == "DISABLED":
             raise AppException("NO_PERMISSION", "企业成员已被学校停用，不能重新发放邀请")
+        if user.status == "ACTIVE" and (not member or member.status != "ACTIVE"):
+            raise AppException("DATA_CONFLICT", "该账号已激活，请先核对其在本企业的有效成员关系后再邀请")
         if not member:
             member = InternshipEnterpriseMember(
                 tenant_id=tenant_id,
@@ -254,23 +256,29 @@ def issue_company_invite(
             )
             db.add(member)
             db.flush()
-        elif member.status == "ACTIVE":
-            raise AppException("DATA_CONFLICT", "该联系人已是 ACTIVE 企业成员，请使用企业登录处理新招聘季")
+        elif member.status == "ACTIVE" and user.status != "ACTIVE":
+            raise AppException("NO_PERMISSION", "现有企业账号已停用，不能接受新招聘季邀请")
 
         raw = f"{_INVITE_PREFIX}.{campaign.id}.{member.id}.{secrets.token_urlsafe(32)}"
-        member.member_role = role
+        existing_member = member.status == "ACTIVE"
+        if not existing_member:
+            member.member_role = role
         member.invited_phone_hash = hash_sensitive(str(phone or "").strip(), "phone")
         member.invite_token_hash = _invite_hash(raw)
         member.invite_expires_at = expires_at
         member.invited_at = now
-        member.version = int(member.version or 0) + 1
+        # A new round invitation does not alter an active member's permission identity.
+        if not existing_member:
+            member.version = int(member.version or 0) + 1
         db.commit()
         return {
             "campaignId": str(campaign.id),
             "companyId": str(company.id),
             "memberId": str(member.id),
+            "inviteMode": "EXISTING_MEMBER" if existing_member else "NEW_MEMBER",
+            "memberRole": member.member_role,
             "inviteToken": raw,
-            "expiresAt": member.invite_expires_at.isoformat(),
+            "expiresAt": member.invite_expires_at.isoformat() + "Z",
         }
     except Exception:
         db.rollback()
@@ -279,7 +287,7 @@ def issue_company_invite(
         db.close()
 
 
-def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool):
+def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool, allow_active: bool = False):
     campaign_id, member_id = _parse_invite_token(token)
     member_stmt = select(InternshipEnterpriseMember).where(
         InternshipEnterpriseMember.id == member_id,
@@ -287,15 +295,25 @@ def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool):
         InternshipEnterpriseMember.is_deleted.is_(False),
         InternshipEnterpriseMember.invite_token_hash == _invite_hash(token),
     )
-    if lock:
-        member_stmt = member_stmt.with_for_update()
     member = db.scalar(member_stmt)
-    if not member or member.status != "INVITED":
+    if not member:
+        raise unauthorized("邀请链接无效、已使用或成员已停用")
+    # Match issuance ordering: campaign -> user -> member. The preliminary hash lookup
+    # prevents arbitrary campaign enumeration; the locked re-read revalidates token replacement.
+    campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=lock)
+    user_stmt = select(User).where(
+        User.id == member.user_id,
+        User.tenant_id == tenant_id,
+        User.is_deleted.is_(False),
+    )
+    user = db.scalar(user_stmt.with_for_update() if lock else user_stmt)
+    if lock:
+        member = db.scalar(member_stmt.with_for_update().execution_options(populate_existing=True))
+    if not member or (member.status != "INVITED" and not (allow_active and member.status == "ACTIVE")):
         raise unauthorized("邀请链接无效、已使用或成员已停用")
     current = _now()
     if member.invite_expires_at is None or member.invite_expires_at <= current:
         raise unauthorized("邀请链接已过期")
-    campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=lock)
     _assert_invite_window(campaign, current, public_token=True)
     participation_stmt = select(InternshipCampaignEnterprise).where(
         InternshipCampaignEnterprise.tenant_id == tenant_id,
@@ -309,15 +327,10 @@ def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool):
     if not participation or participation.status != "INVITED":
         raise unauthorized("企业邀请已撤销、已接受或状态已变化")
     company = _get_company(db, member.company_id, tenant_id=tenant_id, require_admission=True)
-    user = db.scalar(
-        select(User).where(
-            User.id == member.user_id,
-            User.tenant_id == tenant_id,
-            User.is_deleted.is_(False),
-        )
-    )
-    if not user or (user.user_type or "").upper() != "ENTERPRISE_MENTOR":
+    if not user or user.id != member.user_id or (user.user_type or "").upper() != "ENTERPRISE_MENTOR":
         raise unauthorized("邀请账号不存在或身份无效")
+    if member.status == "ACTIVE" and user.status != "ACTIVE":
+        raise unauthorized("企业账号已停用")
     return campaign, participation, company, member, user
 
 
@@ -326,7 +339,7 @@ def inspect_invite(*, tenant_code: str, token: str):
     try:
         tenant = _tenant_by_code(db, tenant_code)
         campaign, _participation, company, member, user = _load_invite_in_tx(
-            db, tenant_id=tenant.id, token=token, lock=False
+            db, tenant_id=tenant.id, token=token, lock=False, allow_active=True
         )
         phone_plain = decrypt_sensitive(user.phone_encrypted, "phone") if user.phone_encrypted else ""
         return {
@@ -340,7 +353,9 @@ def inspect_invite(*, tenant_code: str, token: str):
             "inviteeName": user.real_name,
             "phoneMasked": mask_phone(phone_plain),
             "memberRole": member.member_role,
-            "expiresAt": member.invite_expires_at.isoformat(),
+            "memberId": str(member.id),
+            "inviteMode": "EXISTING_MEMBER" if member.status == "ACTIVE" else "NEW_MEMBER",
+            "expiresAt": member.invite_expires_at.isoformat() + "Z",
         }
     finally:
         db.close()
@@ -398,6 +413,8 @@ def accept_invite(*, tenant_code: str, token: str, phone: str, password: str):
         campaign, participation, _company, member, user = _load_invite_in_tx(
             db, tenant_id=tenant.id, token=token, lock=True
         )
+        if user.status == "ACTIVE":
+            raise unauthorized("已有账号不能通过首次邀请激活重设密码，请联系学校核对成员关系")
         if not phone_hash or not member.invited_phone_hash or phone_hash != member.invited_phone_hash:
             raise unauthorized("邀请手机号验证失败")
         if user.phone_hash and user.phone_hash != phone_hash:
@@ -429,6 +446,49 @@ def accept_invite(*, tenant_code: str, token: str, phone: str, password: str):
         )
         db.commit()
         return _token_result(tenant=tenant, user=user, member=member)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def accept_existing_invite(*, principal, tenant_code: str, token: str):
+    """Bind an already authenticated invited member to one new recruitment round.
+
+    The public first-activation endpoint deliberately cannot consume ACTIVE-member tokens.
+    Neither this endpoint nor invitation issuance changes existing credentials or roles.
+    """
+    db = get_sessionmaker()()
+    try:
+        tenant = _tenant_by_code(db, tenant_code)
+        if tenant.id != principal.tenant_id:
+            raise unauthorized("请使用受邀学校的企业账号登录")
+        campaign, participation, company, member, user = _load_invite_in_tx(
+            db, tenant_id=tenant.id, token=token, lock=True, allow_active=True,
+        )
+        if (member.status != "ACTIVE" or user.status != "ACTIVE"
+                or member.id != principal.member_id or user.id != principal.user_id
+                or company.id != principal.company_id):
+            raise unauthorized("当前登录账号不是本次受邀企业成员")
+        expected_version = f"u{int(user.version or 0)}|m{int(member.version or 0)}"
+        if principal.claims.get("permissionVersion") != expected_version:
+            raise unauthorized("企业成员权限已更新，请重新登录")
+        now = _now()
+        participation.status = "ACCEPTED"
+        participation.accepted_at = now
+        participation.version = int(participation.version or 0) + 1
+        member.invite_token_hash = None
+        member.invite_expires_at = None
+        member.last_active_at = now
+        db.flush()
+        access_svc.issue_grant_in_tx(
+            db, tenant_id=tenant.id, member_id=member.id, grant_type="RECRUITMENT",
+            campaign_id=campaign.id, batch_id=campaign.batch_id,
+            valid_from=now, valid_until=campaign.enterprise_access_end_at,
+        )
+        db.commit()
+        return {"campaignId": str(campaign.id), "companyId": str(company.id), "memberId": str(member.id)}
     except Exception:
         db.rollback()
         raise

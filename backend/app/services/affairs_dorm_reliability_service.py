@@ -29,56 +29,7 @@ def install() -> None:
     )
     from app.services import affairs_dorm_service as dorm
 
-    def checkin(bed_id, user, student_id):
-        with session() as db:
-            student = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == _tid(),
-                StudentProfile.id == int(student_id),
-                StudentProfile.is_deleted.is_(False),
-            ).with_for_update()).first()
-            if not student:
-                raise not_found("学生不存在")
-            existing = db.scalars(select(DormBed).where(
-                DormBed.tenant_id == _tid(),
-                DormBed.student_id == int(student.id),
-                DormBed.status == "OCCUPIED",
-                DormBed.is_deleted.is_(False),
-            ).with_for_update()).all()
-            target = db.scalars(select(DormBed).where(
-                DormBed.tenant_id == _tid(),
-                DormBed.id == int(bed_id),
-                DormBed.is_deleted.is_(False),
-            ).with_for_update()).first()
-            if not target:
-                raise not_found("床位不存在")
-            dorm._require_dorm_scope(db, target.building_id, user)
-            if any(int(row.id) != int(target.id) for row in existing):
-                raise AppException("DATA_CONFLICT", "该学生已有床位，请通过正式调宿流程变更")
-            if existing and int(existing[0].id) == int(target.id):
-                raise AppException("DATA_CONFLICT", "该学生已入住此床位")
-            if target.status not in ("VACANT", "LOCKED") or target.student_id is not None:
-                raise AppException("DATA_CONFLICT", "该床位已被占用或锁定")
-            building = db.get(DormBuilding, int(target.building_id))
-            if not building or building.is_deleted or building.tenant_id != _tid():
-                raise not_found("楼栋不存在")
-            if not _strict_gender_ok(building.gender_limit, student.gender):
-                raise AppException("DATA_CONFLICT", "学生性别信息缺失或与楼栋限制不符")
-            room = db.get(DormRoom, int(target.room_id))
-            if not room or room.is_deleted or room.tenant_id != _tid():
-                raise not_found("房间不存在")
-            from app.services.affairs_dorm_stay_service import activate_checkin
-            activate_checkin(db, bed=target, student=student, user=user)
-            record_id = dorm._writeback_dorm_record(
-                db, student.id, building.building_name, room.room_no, target.bed_no,
-            )
-            target.cs_dorm_record_id = record_id
-            dorm._audit(db, "DORM_BED", target.id, "CHECKIN", f"student={student.id}")
-            db.commit()
-            return {
-                "bedId": str(target.id), "bedNo": target.bed_no,
-                "studentId": str(student.id), "building": building.building_name,
-                "room": room.room_no, "status": "OCCUPIED",
-            }
+    from app.services.dorm_checkin_command import checkin
 
     def checkout(bed_id, user):
         from app.models import CsDormRecord

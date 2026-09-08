@@ -15,13 +15,16 @@ test('D3 exposes one allocation-plan workspace with dry-run, manual assignment, 
     assert.match(api, new RegExp(`dorm/allocation-batches[^\n]*${suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   }
   assert.match(allocation, /发布后学生范围与精确床位资源池将冻结/)
-  assert.match(allocation, /Dry Run/)
-  assert.match(allocation, /下载异常行\.xlsx/)
+  assert.match(allocation, /生成分配方案/)
+  assert.match(allocation, /dryRunDormAllocation/)
+  assert.match(allocation, />导出异常</)
 })
 
 test('D3 separates allocation from formal check-in and retires the legacy global switch UI', () => {
   assert.match(checkin, /dorm\/allocation/)
   assert.doesNotMatch(checkin, /isSelfSelectEnabled|updateDormConfig|开启学生自选|关闭学生自选/)
   assert.match(allocation, /RESERVED/)
-  assert.doesNotMatch(allocation, /Math\.random|\bmock\b|setTimeout\s*\(/i)
+  assert.doesNotMatch(allocation, /Math\.random|\bmock\b/i)
+  assert.match(allocation, /getDormAllocationPublishJob/)
+  assert.match(allocation, /clearTimeout\(this\.jobTimer\)/)
 })

@@ -133,11 +133,16 @@ def test_material_closed_loop(client, auth_headers, db_mode):
 
 def test_dorm_closed_loop(client, auth_headers, db_mode):
     ids = _seed(db_mode)
+    before = client.get("/api/v1/orientation/dorms", headers=auth_headers).json()["data"]["items"][0]
     ex = client.post(f"/api/v1/orientation/dorms/{ids['student']}/exception", headers=auth_headers,
                      json={"note": "床位与系统记录不一致"}).json()
     assert ex["code"] == 0
-    dorms = client.get("/api/v1/orientation/dorms?dormStatus=EXCEPTION", headers=auth_headers).json()
-    assert dorms["data"]["total"] == 1
+    exceptions = client.get("/api/v1/orientation/exceptions?exceptionType=DORM&status=OPEN", headers=auth_headers).json()
+    assert exceptions["data"]["total"] == 1
+    after = client.get("/api/v1/orientation/dorms", headers=auth_headers).json()["data"]["items"][0]
+    # 登记待处理异常不能伪造或覆盖权威床位入住事实。
+    for field in ("housingStatus", "dormStatus", "bedId"):
+        assert after.get(field) == before.get(field)
 
 
 def test_exception_closed_loop(client, auth_headers, db_mode):
@@ -166,11 +171,15 @@ def test_dashboard_and_audit(client, auth_headers, db_mode):
 
 def test_update_student(client, auth_headers, db_mode):
     ids = _seed(db_mode)
+    denied = client.put(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers,
+                        json={"reportStatus": "CHECKED_IN", "counselor": "王辅导"})
+    assert denied.status_code == 400
+    assert "正式办理流程" in denied.json()["message"]
     ok = client.put(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers,
-                    json={"reportStatus": "CHECKED_IN", "counselor": "王辅导"}).json()
+                    json={"counselor": "王辅导"}).json()
     assert ok["code"] == 0
     det = client.get(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers).json()
-    assert det["data"]["student"]["reportStatus"] == "CHECKED_IN"
+    assert det["data"]["student"]["reportStatus"] == "PREPARED"
     assert det["data"]["student"]["counselor"] == "王辅导"
 
 
@@ -233,16 +242,16 @@ def test_canonical_student_step_overwrites_tampered_json_projection(client, auth
     assert second["data"]["student"]["steps"]["PAYMENT"] == "BLOCKED"
 
 
-def test_update_dorm(client, auth_headers, db_mode):
+def test_update_dorm_rejects_legacy_state_write(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    ok = client.put(f"/api/v1/orientation/dorms/{ids['student']}", headers=auth_headers,
-                    json={"building": "梧桐苑 2 号楼", "room": "2-105-1", "dormStatus": "ASSIGNED"}).json()
-    assert ok["code"] == 0
-    dorms = client.get("/api/v1/orientation/dorms", headers=auth_headers).json()
-    row = dorms["data"]["items"][0]
-    assert row["building"] == "梧桐苑 2 号楼"
-    assert row["room"] == "2-105-1"
-    assert row["dormStatus"] == "ASSIGNED"
+    before = client.get("/api/v1/orientation/dorms", headers=auth_headers).json()["data"]["items"][0]
+    denied = client.put(f"/api/v1/orientation/dorms/{ids['student']}", headers=auth_headers,
+                        json={"building": "梧桐苑 2 号楼", "room": "2-105-1", "dormStatus": "ASSIGNED"})
+    assert denied.status_code == 400
+    assert "房态图" in denied.json()["message"]
+    after = client.get("/api/v1/orientation/dorms", headers=auth_headers).json()["data"]["items"][0]
+    for field in ("building", "room", "bedId", "dormStatus", "housingStatus"):
+        assert after.get(field) == before.get(field)
 
 
 def test_requires_login(client):
@@ -381,12 +390,14 @@ def test_notice_send(client, auth_headers, db_mode):
     assert s2["code"] == 0 and s2["data"]["status"] == "DISABLED" and s2["data"]["failReason"]
 
 
-def test_archive_run(client, auth_headers, db_mode):
+def test_archive_requires_finished_batch(client, auth_headers, db_mode):
     _seed(db_mode)
     c = client.post("/api/v1/orientation/archives", headers=auth_headers,
-                    json={"archiveName": "2026 迎新归档", "scope": "全校"}).json()
+                    json={"archiveName": "2026 迎新归档", "batchNo": "ORI-TEST-2026"}).json()
     assert c["code"] == 0
     aid = c["data"]["id"]
     r = client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()
-    assert r["code"] == 0 and r["data"]["status"] == "DONE" and r["data"]["itemCount"] >= 1
-    assert client.post(f"/api/v1/orientation/archives/{aid}/run", headers=auth_headers).json()["code"] != 0
+    assert r["code"] != 0 and "关闭迎新批次" in r["message"]
+    # 完整报到→学院确认→关闭批次→归档及幂等回读由 O5 同一业务故事验证。
+    rows = client.get("/api/v1/orientation/archives", headers=auth_headers).json()["data"]["items"]
+    assert next(row for row in rows if row["id"] == aid)["status"] == "PENDING"

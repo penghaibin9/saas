@@ -125,7 +125,11 @@ def _projection_expectation(*, plane: str, role_code: str, patterns: list[str]) 
     return {
         "visibleGroup": "平台运营" if platform else school_visible_group[role_code],
         "hiddenGroup": "工作台" if platform else "平台运营",
-        "visiblePath": str((preferred or {}).get("path") or "/admin/platform") if platform else "/workbench",
+        "visiblePath": (
+            str((preferred or {}).get("path") or "/admin/platform") if platform
+            else "/workbench" if _match("workbench.home.view", patterns)
+            else str((preferred or {}).get("path") or "/security/403")
+        ),
         "hiddenPath": str(denied.get("path") or ("/workbench" if platform else "/admin/platform/product-iam")),
         "visibleGroupCount": len(visible_groups),
     }

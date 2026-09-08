@@ -6,40 +6,12 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-link" @click="$router.push('/admin/internship/plans')">任务与计划</button>
+      <button class="mp-link" @click="$router.push({ path: '/admin/internship/plans', query: { batchId: batchStore.selectedBatchId } })">任务与计划</button>
       <AppExportButton :export-fn="exportFn" :has-permission="canExport">{{ exportLabel }}</AppExportButton>
     </template>
 
     <div class="mp-stack">
       <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
-
-      <section v-if="!error" class="report-now" aria-label="当前报告批阅对象">
-        <header class="report-now__head">
-          <div>
-            <span>REPORT NOW</span>
-            <h2>先批阅这 {{ priorityRows.length }} 份真实报告</h2>
-            <p>重交件与风险学生优先；列表只负责找对象，正文、版本对比、评语和最终动作都在详情完成。</p>
-          </div>
-          <b>{{ pageTitle }}</b>
-        </header>
-        <div v-if="loading" class="report-now__state">正在读取当前报告对象…</div>
-        <div v-else-if="priorityRows.length" class="report-now__list">
-          <article v-for="row in priorityRows" :key="row.id" class="report-now__item">
-            <div class="report-now__identity">
-              <small>{{ row.className }} · {{ row.reportVersion || ('v' + (row.version ?? '-')) }}</small>
-              <strong>{{ row.studentName }} · {{ row.week || row.periodKey }}</strong>
-              <span>{{ row.enterpriseName || '企业信息未记录' }}</span>
-            </div>
-            <dl>
-              <div><dt>为什么到这里</dt><dd>{{ reportWhy(row) }}</dd></div>
-              <div><dt>最近变化</dt><dd>{{ reportRecent(row) }}</dd></div>
-              <div><dt>下一责任人</dt><dd>{{ reportNextActor(row) }}</dd></div>
-            </dl>
-            <AppButton variant="primary" size="sm" @click="goDetail(row)">核对正文与版本 →</AppButton>
-          </article>
-        </div>
-        <div v-else class="report-now__state">当前状态没有报告对象，可切换报告类型或审核状态。</div>
-      </section>
 
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
@@ -82,7 +54,7 @@
         </template>
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.studentName }}</div>
-          <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
+          <div class="mp-cell-sub">{{ [row.className, row.enterpriseName].filter((item) => item && item !== '-' && item !== 'null').join(' · ') || '未关联班级或企业' }}</div>
         </template>
         <template #cell-version="{ row }">
           <AppStatusTag v-if="row.isResubmit" type="info">{{ row.reportVersion || row.version }} 重交</AppStatusTag>
@@ -112,7 +84,6 @@ import {
   ModulePageShell, DataTable,
   LoadingState, ErrorState, EmptyState
 } from '@/components/business'
-import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import ActionReceipt from './components/ActionReceipt.vue'
@@ -149,12 +120,12 @@ const PROCESS_COLUMNS = [
 
 export default {
   name: 'WeeklyReportListView',
-  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppRiskTag, AppExportButton,
+  components: { ModulePageShell, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
     AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
+      loading: true, loadSequence: 0,
       error: '',
       rows: [],
       selected: [],
@@ -199,13 +170,13 @@ export default {
       return TYPE_MAP[this.reportTypeKey] || null
     },
     pageTitle() {
-      return this.isProcessReport ? `${this.typeConfig.label}批阅` : '周报任务批阅'
+      return this.isProcessReport ? `${this.typeConfig.label}批阅` : '周报批阅'
     },
     pageSubtitle() {
       if (this.isProcessReport) {
-        return `查看学生任务和实习报告，连续完成批阅、退回和催交 · 学生端提交${this.typeConfig.label}，教师在此批阅`
+        return `核对${this.typeConfig.label}内容与材料，批阅结果同步学生。`
       }
-      return '查看学生任务和实习报告，连续完成批阅、退回和催交 · 退回原因必填并同步学生端'
+      return '核对周报正文与重交修改，批阅结果同步学生。'
     },
     typeTabs() {
       return [
@@ -221,12 +192,8 @@ export default {
       const label = (this.isProcessReport ? this.typeConfig.label : '周报') + (cur ? ' · ' + cur.label : '')
       return [{ label, value: this.pagination.total, tone: this.filters.status === 'PENDING_REVIEW' && this.pagination.total ? 'warn' : undefined }]
     },
-    priorityRows() {
-      const score = (row) => (row.isResubmit ? 4 : 0) + (row.riskFlag ? 2 : 0) + (row.status === 'PENDING_REVIEW' ? 1 : 0)
-      return [...this.rows].sort((a, b) => score(b) - score(a)).slice(0, 3)
-    },
     exportLabel() {
-      return this.isProcessReport ? `⬇ 导出${this.typeConfig.label}` : '⬇ 导出周报'
+      return this.isProcessReport ? `导出${this.typeConfig.label}` : '导出周报'
     },
     emptyTitle() {
       return this.isProcessReport ? `当前页签暂无${this.typeConfig.label}` : '当前页签暂无周报'
@@ -266,6 +233,7 @@ export default {
     if (restored) this.load()
   },
   watch: {
+    'batchStore.selectedBatchId'() { this.pagination.page = 1; this.selected = []; this.lastReceipt = null; this.load() },
     '$route.query.type': {
       immediate: true,
       handler(type) {
@@ -283,24 +251,8 @@ export default {
     }
   },
   methods: {
-    reportWhy(row) {
-      if (row.isResubmit) return '这是退回后的新版本，必须先对比上版意见与本次修正'
-      if (row.riskFlag) return '该学生带风险标记，禁止用批量通过绕过逐篇判断'
-      if (row.status === 'PENDING_REVIEW') return '报告已提交，等待本人指导教师批阅'
-      if (row.status === 'OVERDUE') return '报告已逾期，需催交或进入过程风险跟进'
-      return '该报告已有批阅结果，可回看正文与审计留痕'
-    },
-    reportRecent(row) {
-      const when = row.submitAt ? String(row.submitAt).replace('T', ' ').replace('Z', '').slice(0, 16) : '未提交'
-      return `${when} · ${row.statusLabel || row.status || '状态待确认'} · ${row.wordCount ?? 0} 字`
-    },
-    reportNextActor(row) {
-      if (row.status === 'PENDING_REVIEW') return '本人指导教师 / 管理员'
-      if (row.status === 'RETURNED') return '学生本人（按意见重交）'
-      if (row.status === 'OVERDUE') return '学生本人 / 指导教师催办'
-      return '学生查看批阅结果'
-    },
     goDetail(row) {
+      const query = { ...this.$route.query, batchId: this.batchStore.selectedBatchId, page: String(this.pagination.page) }
       // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
       const tab = this.activeTabs.find((t) => t.value === this.filters.status)
       const tabLabel = tab ? tab.label : '全部'
@@ -308,19 +260,19 @@ export default {
         kind: this.isProcessReport ? 'process-report' : 'weekly-report',
         title: this.isProcessReport ? `${tabLabel} · ${this.typeConfig.label}` : tabLabel,
         listPath: this.$route.path,
-        listQuery: { ...this.$route.query },
+        listQuery: query,
         ids: this.rows.map((r) => r.id)
       })
       if (this.isProcessReport) {
-        this.$router.push(`/admin/internship/process-reports/${row.id}`)
+        this.$router.push({ path: `/admin/internship/process-reports/${row.id}`, query })
       } else {
-        this.$router.push(`/admin/internship/reports/${row.id}`)
+        this.$router.push({ path: `/admin/internship/reports/${row.id}`, query })
       }
     },
     applyPanel(panel) {
       const status = Object.prototype.hasOwnProperty.call(PANEL_STATUS, panel) ? PANEL_STATUS[panel] : PANEL_STATUS.review
       this.filters.status = status
-      this.pagination.page = 1
+      this.pagination.page = Math.max(1, Number(this.$route.query.page) || 1)
       this.selected = []
       this.load()
     },
@@ -329,7 +281,7 @@ export default {
       if (typeKey) query.type = typeKey
       else delete query.type
       // 切换报告类型时状态页签回到「待批阅」
-      query.panel = 'review'
+      query.panel = 'review'; query.page = '1'
       this.$router.replace({ path: this.$route.path, query })
       this.reportTypeKey = typeKey
       this.applyPanel('review')
@@ -337,7 +289,7 @@ export default {
     switchTab(v) {
       const panel = Object.keys(PANEL_STATUS).find((k) => PANEL_STATUS[k] === v) || 'all'
       if (this.$route.query.panel !== panel) {
-        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel, page: '1' } })
       } else {
         this.applyPanel(panel)
       }
@@ -396,6 +348,8 @@ export default {
       }
     },
     async load() {
+      const sequence = ++this.loadSequence, batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.selected = []; this.pagination.total = 0
       if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
@@ -403,6 +357,7 @@ export default {
       const res = this.isProcessReport
         ? await internshipApi.getProcessReports({ ...params, reportType: this.typeConfig.reportType })
         : await internshipApi.getWeeklyReports(params)
+      if (sequence !== this.loadSequence || batchId !== this.batchStore.selectedBatchId) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
@@ -417,7 +372,6 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.report-now { overflow: hidden; border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--card-b)); border-radius: 14px; background: var(--card); box-shadow: 0 14px 38px rgba(30,64,175,.08); }.report-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 16px 18px; background: linear-gradient(120deg, var(--pri-bg), #fff 72%); }.report-now__head > div { display: grid; gap: 3px; }.report-now__head span { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }.report-now__head h2 { margin: 0; color: var(--t1); font-size: 17px; }.report-now__head p { margin: 0; color: var(--t3); font-size: 12px; }.report-now__head b { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 12px; }.report-now__list { display: grid; gap: 10px; padding: 14px; }.report-now__item { display: grid; grid-template-columns: minmax(170px,.9fr) minmax(0,2fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--card-b); border-left: 4px solid var(--warning-500,#f59e0b); border-radius: 10px; }.report-now__identity { display: grid; gap: 3px; min-width: 0; }.report-now__identity small { color: var(--pri); font-weight: 700; }.report-now__identity strong,.report-now__identity span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.report-now__identity span { color: var(--t3); font-size: 12px; }.report-now__item dl { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; margin: 0; }.report-now__item dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--fill-2,#f8fafc); }.report-now__item dt { margin-bottom: 3px; color: var(--t3); font-size: 10px; font-weight: 700; }.report-now__item dd { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.45; }.report-now__state { padding: 24px; color: var(--t3); font-size: 13px; text-align: center; }
 .wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
 .wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
 .wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
@@ -425,5 +379,4 @@ export default {
 .wr-tabs .mp-tab:hover { color: var(--pri); background: var(--pri-bg); }
 .wr-tabs .mp-tab.is-active { border-color: var(--pri-100); background: var(--card); color: var(--pri); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .07); }
 .wr-tabs--status .mp-tab.is-active { background: var(--pri-bg); box-shadow: none; }
-@media (max-width: 900px) { .report-now__item { grid-template-columns: 1fr; }.report-now__item dl { grid-template-columns: 1fr; }.report-now__head { align-items: flex-start; flex-direction: column; } }
 </style>

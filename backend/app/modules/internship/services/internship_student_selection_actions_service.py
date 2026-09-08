@@ -211,12 +211,12 @@ def request_my_unlock(*, user: dict, body: dict, batch_id=None) -> dict:
         return _result(group, record, rows)
 
 
-def list_my_submissions(*, user: dict, batch_id=None) -> dict:
+def list_my_submissions(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id,
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id,
         )
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
@@ -252,7 +252,7 @@ def list_my_submissions(*, user: dict, batch_id=None) -> dict:
         return {"items": items, "total": len(items)}
 
 
-def get_my_submission(*, user: dict, submission_version: int, batch_id=None) -> dict:
+def get_my_submission(*, user: dict, submission_version: int, batch_id=None, campaign_id=None, record_id=None) -> dict:
     try:
         version = int(submission_version)
     except (TypeError, ValueError) as exc:
@@ -263,7 +263,7 @@ def get_my_submission(*, user: dict, submission_version: int, batch_id=None) -> 
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id,
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id,
         )
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,

@@ -6,7 +6,10 @@
 
     <StateBlock v-if="loading" type="loading" text="正在加载报到信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
+    <StateBlock v-else-if="my.hasData === false" type="empty" :text="my.message || '暂未关联迎新记录，请联系学校'" />
     <template v-else>
+      <div class="orientation-tools"><strong>{{ arrivalHold?.title || (my.checkinCredential?.status === 'FINALIZED' ? '入学手续已完成' : '我的迎新') }}</strong><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="load">刷新进度</button></div>
+      <section v-if="arrivalHold" class="sp-notice"><p class="sp-muted">{{ arrivalHold.description }}</p></section>
       <!-- 我的迎新 -->
       <template v-if="tab === 'overview'">
         <section v-if="my.blockedReason" class="sp-notice">
@@ -14,23 +17,23 @@
           <div><strong style="color:#B42318">有环节受阻</strong><p class="sp-muted" style="margin:5px 0 0">{{ stepLabel(my.blockedStep) }}：{{ my.blockedReason }}</p></div>
         </section>
         <section class="sp-card">
-          <div class="sp-panel__head">报到进度 <StatusTag :text="allDone ? '已完成' : '进行中'" :tone="allDone ? 'success' : 'warn'" /></div>
+          <div class="sp-panel__head">必办事项进度 <StatusTag :text="arrivalHold ? (my.stage === 'CANCELLED' ? '已停止' : '暂缓办理') : allDone ? '事项齐备' : '待办齐'" :tone="allDone ? 'success' : 'warn'" /></div>
           <FlowSteps :steps="flowSteps" />
         </section>
-        <section class="sp-card">
-          <div class="sp-panel__head">报到资格 <StatusTag :text="qualificationText" :tone="qualificationTone" /></div>
-          <p class="sp-muted">资格由学校服务器按当前正式材料、缴费/绿色通道、住宿和异常事实统一计算。</p>
+        <section v-if="!arrivalHold && my.checkinCredential?.status !== 'FINALIZED'" class="sp-card">
+          <div class="sp-panel__head">待办核对 <StatusTag :text="qualificationText" :tone="qualificationTone" /></div>
+          <p class="sp-muted">完成以下必办事项后，由学院确认入学。现场报到进度请查看报到码。</p>
           <ul v-if="my.qualification?.blockers?.length" class="qualification-blockers">
             <li v-for="item in my.qualification.blockers" :key="`${item.code}-${item.step}`">{{ item.message }}</li>
           </ul>
         </section>
-        <section class="sp-card checkin-card">
+        <section v-if="!arrivalHold && my.checkinCredential?.status !== 'FINALIZED'" class="sp-card checkin-card">
           <div>
-            <div class="sp-panel__head">一次性现场报到凭证 <StatusTag :text="credentialStatusText" :tone="my.checkinCredential?.canIssue ? 'success' : 'default'" /></div>
-            <p class="sp-muted">凭证含学校、迎新批次、本人迎新记录、随机数、有效期和服务器签名；录取编号不能代替本凭证。</p>
+            <div class="sp-panel__head">现场报到码 <StatusTag :text="credentialStatusText" :tone="my.checkinCredential?.canIssue ? 'success' : 'default'" /></div>
+            <p class="sp-muted">{{ my.checkinCredential?.status === 'CHECKED_IN' ? '现场核验已完成，无需再次出示报到码。' : '到校后出示二维码，由报到点老师扫码确认。' }}</p>
             <p v-if="checkinToken.expiresAt" class="credential-expiry">有效至 {{ checkinToken.expiresAt.replace('T', ' ').slice(0, 19) }}</p>
             <button class="sp-btn" :disabled="busy || !my.checkinCredential?.canIssue" @click="issueCheckinToken">
-              {{ checkinToken.token ? '刷新一次性凭证' : '签发一次性凭证' }}
+              {{ checkinToken.token ? '刷新报到码' : '打开报到码' }}
             </button>
           </div>
           <div v-if="checkinToken.qrDataUrl" class="credential-qr">
@@ -49,23 +52,24 @@
             <div><dt>姓名</dt><dd>{{ my.name || studentName }}</dd></div>
             <div><dt>班级</dt><dd>{{ my.className || '—' }}</dd></div>
             <div><dt>年级</dt><dd>{{ my.grade || '—' }}</dd></div>
+            <div><dt>住宿状态</dt><dd>{{ my.dorm?.housingStatusLabel || my.dorm?.dormStatusLabel || '待安排' }} <button class="sp-btn sp-btn--ghost" @click="router.push('/campus-service?tab=dorm')">我的住宿</button></dd></div>
             <div><dt>宿舍楼</dt><dd>{{ my.building || '—' }}</dd></div>
             <div><dt>房间/床位</dt><dd>{{ my.room || '—' }}</dd></div>
             <div><dt>缴费状态</dt><dd><StatusTag :text="payText(my.paymentStatus)" :tone="my.paymentStatus==='PAID'?'success':'warn'" /></dd></div>
-            <div><dt>应缴金额</dt><dd>¥{{ my.payment?.payableAmount || '0.00' }}</dd></div>
-            <div><dt>已缴金额</dt><dd>¥{{ my.payment?.paidAmount || '0.00' }}</dd></div>
+            <div><dt>应缴金额</dt><dd>{{ ['MISSING', 'UNAVAILABLE'].includes(my.paymentStatus) ? '—' : '¥' + (my.payment?.payableAmount ?? '0.00') }}</dd></div>
+            <div><dt>已缴金额</dt><dd>{{ ['MISSING', 'UNAVAILABLE'].includes(my.paymentStatus) ? '—' : '¥' + (my.payment?.paidAmount ?? '0.00') }}</dd></div>
             <div><dt>材料状态</dt><dd><StatusTag :text="matText(my.materialStatus)" :tone="my.materialStatus==='APPROVED'?'success':'warn'" /></dd></div>
             <div><dt>绿色通道</dt><dd><StatusTag :text="gcText(my.greenChannelStatus)" :tone="my.greenChannelStatus==='APPROVED'?'success':my.greenChannelStatus==='NOT_APPLIED'?'default':'warn'" /></dd></div>
           </dl>
         </section>
       </template>
 
-      <section v-if="my.hasData && my.selfService && !my.selfService.available" class="sp-notice">
-        <div><strong>预报到暂不可办理</strong><p class="sp-muted" style="margin:5px 0 0">{{ my.selfService.reason }}</p></div>
+      <section v-if="!arrivalHold && my.hasData && my.selfService && !my.selfService.available && my.checkinCredential?.status !== 'FINALIZED'" class="sp-notice">
+        <div><strong>信息与到校计划已锁定</strong><p class="sp-muted" style="margin:5px 0 0">{{ my.selfService.reason }}</p></div>
       </section>
 
       <!-- 信息采集 -->
-      <template v-if="tab === 'info'">
+      <template v-if="tab === 'info' && !arrivalHold">
         <section class="sp-card" style="max-width:640px">
           <div class="sp-panel__head">预报到信息采集 <StatusTag :text="selfService.information?.complete ? '已填写' : '待填写'" :tone="selfService.information?.complete ? 'success' : 'warn'" /></div>
           <div class="two">
@@ -80,10 +84,10 @@
       </template>
 
       <!-- 到校计划 -->
-      <template v-if="tab === 'arrival'">
+      <template v-if="tab === 'arrival' && !arrivalHold">
         <section class="sp-card" style="max-width:720px">
           <div class="sp-panel__head">到校计划 <StatusTag :text="selfService.arrivalPlan ? '已提交' : '待提交'" :tone="selfService.arrivalPlan ? 'success' : 'warn'" /></div>
-          <p class="sp-muted">计划到校时间须在本批次报到窗口内；修改时使用当前版本，避免覆盖其他终端刚保存的内容。</p>
+          <p class="sp-muted">请在学校报到日期内选择到校时间。</p>
           <div class="two">
             <div><div class="sp-fieldlabel">到校方式</div><select v-model="arrivalForm.arrivalMode" class="sp-inp"><option value="TRAIN">高铁/火车</option><option value="AIR">飞机</option><option value="COACH">长途客车</option><option value="SELF_DRIVE">自驾</option><option value="CITY_TRANSIT">市内公共交通</option><option value="OTHER">其他</option></select></div>
             <div><div class="sp-fieldlabel">计划到校日期</div><AppDatePicker v-model="arrivalForm.plannedArrivalDate" class="sp-inp" label="计划到校日期" /></div>
@@ -98,16 +102,16 @@
       </template>
 
       <!-- 材料 -->
-      <template v-if="tab === 'materials'">
+      <template v-if="tab === 'materials' && !arrivalHold">
         <section class="sp-card" style="max-width:760px">
           <div class="sp-panel__head">预报到材料 <StatusTag :text="matText(my.materialStatus)" :tone="my.materialStatus==='APPROVED'?'success':'warn'" /></div>
-          <p class="sp-muted">上传先进入私有安全扫描；提交成功后形成不可覆盖的文件版本。审核中或已通过的材料不可重复提交。</p>
+          <p class="sp-muted">按学校要求上传材料。被退回时查看原因，修改后重新提交。</p>
           <div class="material-submit">
             <select v-model="materialForm.materialType" class="sp-inp">
               <option value="ID_CARD">身份证明</option><option value="ADMISSION_LETTER">录取通知书</option><option value="PHOTO">证件照</option><option value="ARCHIVE">纸质档案凭证</option>
             </select>
             <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt" @change="pickMaterial" />
-            <button class="sp-btn" :disabled="busy || !materialFile || !selfService.available" @click="submitMaterial">上传并提交</button>
+            <button class="sp-btn" :disabled="busy || !materialFile || !selfService.canSubmitMaterials" @click="submitMaterial">上传并提交</button>
           </div>
           <div v-if="selfService.materials?.length" class="material-list">
             <div v-for="m in selfService.materials" :key="m.id" class="material-row">
@@ -120,7 +124,7 @@
       </template>
 
       <!-- 绿色通道 -->
-      <template v-if="tab === 'green'">
+      <template v-if="tab === 'green' && !arrivalHold">
         <section class="sp-card" style="max-width:640px">
           <div class="sp-panel__head">绿色通道 <StatusTag :text="gcText(my.greenChannelStatus)" :tone="my.greenChannelStatus==='APPROVED'?'success':'warn'" /></div>
           <p class="sp-muted" style="margin-bottom:14px">入学时家庭经济困难可暂缓缴纳学费，凭材料先行报到。</p>
@@ -133,9 +137,6 @@
           <button class="sp-btn" :disabled="busy || !greenForm.reason" @click="submitGreen">提交申请</button>
         </section>
       </template>
-
-      <!-- 历史兼容入口：离校本身由独立 /departure Authority 页面承载。 -->
-      <button v-if="false" type="button" @click="$router.push('/departure')">前往离校清单</button>
 
     </template>
   </div>
@@ -162,7 +163,6 @@ const tabs = [
   { key: 'arrival', label: '到校计划', path: '/orientation/arrival' },
   { key: 'materials', label: '材料', path: '/orientation/materials' },
   { key: 'green', label: '绿色通道', path: '/orientation/green-channel' },
-  { key: 'departure', label: '离校', path: '/departure' }
 ]
 const tab = computed(() => ({
   '/orientation/info': 'info', '/orientation/arrival': 'arrival',
@@ -187,18 +187,23 @@ function createRequestId(prefix) {
 }
 const greenRequestId = ref(createRequestId('orientation-green'))
 
+const arrivalHold = computed(() => ({
+  DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已有预留床位继续保留，实际安排以住宿信息为准。' },
+  NO_SHOW: { title: '已登记未到校', description: '原预留床位已释放。如仍需入学，请联系学校恢复报到并重新安排住宿。' },
+  CANCELLED: { title: '已取消入学', description: '本次迎新办理已停止，原预留床位已释放。如登记有误，请联系学校核实。' },
+})[my.value.stage] || null)
 const studentName = computed(() => session.user?.realName || '同学')
-const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '注册确认', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '宿舍入住', ACTIVATE: '一卡通激活' }
-const PAY = { PAID: '已缴费', UNPAID: '待缴费', PARTIAL: '部分缴费', WAIVED: '已减免' }
+const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '注册确认', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '住宿安排', ACTIVATE: '账号激活' }
+const PAY = { MISSING: '尚未登记缴费', UNAVAILABLE: '缴费信息暂不可用', PAID: '已缴费', UNPAID: '待缴费', PARTIAL: '部分缴费', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道' }
 const MAT = { APPROVED: '已通过', UPLOADED: '待审核', PENDING: '待审核', RETURNED: '已退回', REJECTED: '已驳回', NOT_UPLOADED: '未提交', NONE: '未提交' }
-const GC = { NOT_APPLIED: '未申请', PENDING: '审核中', APPROVED: '已通过', REJECTED: '已退回' }
+const GC = { NOT_APPLIED: '未申请', PENDING: '审核中', SUBMITTED: '待审核', REVIEWING: '审核中', RETURNED: '已退回', WITHDRAWN: '已撤回', APPROVED: '已通过', REJECTED: '已退回' }
 function stepLabel(k) { return STEP_LABELS[k] || k || '' }
 function payText(s) { return PAY[s] || s || '—' }
 function matText(s) { return MAT[s] || s || '—' }
 function gcText(s) { return GC[s] || s || '—' }
 
 const terminalStep = (status) => ['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(status)
-const flowSteps = computed(() => (my.value.steps || []).map((s) => ({ name: stepLabel(s.key), state: terminalStep(s.status) ? 'done' : s.status === 'BLOCKED' ? 'todo' : 'current' })))
+const flowSteps = computed(() => { const steps = my.value.steps || []; const current = steps.findIndex(s => !terminalStep(s.status)); return steps.map((s, index) => ({ name: stepLabel(s.key), state: terminalStep(s.status) ? 'done' : index === current ? 'current' : 'todo' })) })
 const allDone = computed(() => (my.value.steps || []).length > 0 && (my.value.steps || []).every((s) => terminalStep(s.status)))
 const qualificationText = computed(() => my.value.qualification?.verdictLabel || '资格待计算')
 const qualificationTone = computed(() => ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warn' })[my.value.qualification?.verdict] || 'default')
@@ -278,6 +283,8 @@ onMounted(load)
 </script>
 
 <style scoped>
+.orientation-tools { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.orientation-tools strong { font-size:20px; }
 .desc { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 24px; margin: 0; }
 .desc dt { font-size: 12px; color: var(--t3); margin-bottom: 5px; }
 .desc dd { margin: 0; font-size: 14px; color: var(--t1); }

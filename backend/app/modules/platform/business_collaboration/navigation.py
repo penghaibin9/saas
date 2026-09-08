@@ -81,8 +81,8 @@ class NavigationTargetResolver:
         "INTERNSHIP": {
             "pc": _TargetSpec("internship-student-detail", "/admin/internship/students/{id}", "id", None, "DETAIL", True),
             "studentPc": _TargetSpec("internship", "/internship", None, None, "NONE", False),
-            "teacherMini": _TargetSpec("teacher-internship-review", "/pages/teacher/internship-review/index", None, None, "NONE", False),
-            "studentMini": _TargetSpec("student-internship", "/pages/student/internship/index", None, None, "NONE", False),
+            "teacherMini": _TargetSpec("teacher-internship-review", "/pages/teacher-internship/internship-review/index", None, None, "NONE", False),
+            "studentMini": _TargetSpec("student-internship", "/pages/student-internship/index", None, None, "NONE", False),
         },
         "AFFAIRS": {
             "pc": _TargetSpec("student-affairs-risk-detail", "/admin/student-affairs/risk/{riskId}", "riskId", None, "DETAIL", True),

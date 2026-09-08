@@ -1,31 +1,17 @@
 <template>
   <AppPageShell
     title="心理危机升级"
-    subtitle="危机升级复用风险中枢：升级后自动生成 source=MENTAL 的风险记录并接入处置闭环；升级幂等，不重复建单。"
+    subtitle="危机升级与风险转办"
     role-name="心理老师 / 授权辅导员 / 学工处(专项授权)"
     data-scope-name="PSY_STUDENT 逐生授权范围"
     watermark-purpose="心理危机升级处理"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载心理危机记录..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip mental-crisis-summary">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">高风险操作提醒</span>
-          <h2 class="sa-summary-strip__title">只有客观危机信号明确、已采取初步措施时，才升级到风险中枢</h2>
-          <p class="sa-summary-strip__text">升级会生成正式风险单并通知责任人。请先核对学生身份、当前状态、事由摘要和是否已经存在关联风险，避免重复或无依据升级。</p>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="心理危机升级流程">
-        <div class="sa-workflow-step" data-step="1"><strong>核对学生</strong><br>确认学生身份、关注等级与当前状态</div>
-        <div class="sa-workflow-step" data-step="2"><strong>记录依据</strong><br>写明危机信号、来源和已采取措施</div>
-        <div class="sa-workflow-step" data-step="3"><strong>升级风险</strong><br>生成风险中枢记录并通知责任人</div>
-        <div class="sa-workflow-step" data-step="4"><strong>持续处置</strong><br>后续进入风险详情完成闭环</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" /></div>
 
       <AppSectionCard title="危机与可升级记录">
-        <AppInlineAlert type="warning" description="升级危机会生成正式风险单并通知相关责任人。必须填写客观危机信号和已采取措施，禁止空说明或诊断性结论。" />
+        <p class="mental-crisis-policy">升级会生成正式风险单并通知责任人；需填写客观信号和已采取措施。</p>
         <DataTable
           v-if="items.length || pagination.total > 0"
           :columns="crisisColumns"
@@ -82,7 +68,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
   AppPermissionButton, AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -100,7 +86,7 @@ export default {
   name: 'MentalCrisisView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppPageShell,
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell,
     AppPermissionButton, AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea, DataTable
   },
   data() {
@@ -180,6 +166,7 @@ export default {
 
 <style scoped>
 .sa-grid--metrics { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);margin-bottom:var(--space-4) }
+.mental-crisis-policy { margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--warning-200,#fde68a);color:var(--text-secondary);font-size:var(--font-size-xs) }
 :deep(.dt__tr.sa-crisis) .dt__td { background:var(--danger-50,var(--warning-50)) }
 .sa-actions { display:flex;flex-wrap:wrap;gap:var(--space-2) }
 .sa-link { color:var(--primary-600);cursor:pointer;font-weight:600 }

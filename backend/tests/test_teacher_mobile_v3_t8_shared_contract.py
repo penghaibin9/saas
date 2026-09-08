@@ -25,7 +25,7 @@ def test_t8_teacher_todo_routes_live_in_the_single_shared_registry():
         "routeName": "todo-route:teacher-mini-internship-review",
         "routeParams": {"recordId": "17"},
         "query": {"recordId": "17"},
-        "path": "/pages/teacher/internship-review/index",
+        "path": "/pages/teacher-internship/internship-review/index",
         "focusMode": "NONE",
         "exact": False,
     }

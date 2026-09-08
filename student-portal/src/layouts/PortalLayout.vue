@@ -1,273 +1,232 @@
 <template>
-  <div class="sp-shell" :class="shellClasses">
-    <aside class="sp-aside">
-      <div class="sp-brand">
-        <span class="sp-brand__logo">
-          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5 12 4.5l9.5 4-9.5 4z" /><path d="M6.5 11v4.2c0 1.3 2.5 2.3 5.5 2.3s5.5-1 5.5-2.3V11M21.5 8.5V13" /></svg>
-        </span>
-        <div class="sp-brand__text">
-          <div class="sp-brand__school">{{ brand.schoolName || brand.platformName }}</div>
-          <div class="sp-brand__portal">{{ portalName }}</div>
-        </div>
+  <div class="sp-shell student-workspace" :class="shellClasses">
+    <a class="workspace-skip" href="#student-workspace-main" @click.prevent="mainElement?.focus()">跳到工作区</a>
+    <header class="workspace-header">
+      <a class="workspace-brand" :href="homeHref" @click.prevent="navigate('/home')">
+        <img v-if="brand.logo" :src="brand.logo" alt="学校标识" />
+        <span v-else class="workspace-logo"><WorkspaceIcon name="employment" /></span>
+        <strong :title="brand.platformName || cfg.portalName">{{ brand.platformName || cfg.portalName }}</strong>
+      </a>
+      <button class="workspace-search" @click="openDialog(searchDialog)"><WorkspaceIcon name="hall" /><span>搜索我的事项或服务</span><kbd>Ctrl K</kbd></button>
+      <time class="workspace-clock" :datetime="now.toISOString()">{{ clockText }}</time>
+      <button class="workspace-message" :disabled="!cfg.isModuleEnabled('messages')" aria-label="消息通知" title="消息通知" @click="navigate('/messages')"><WorkspaceIcon name="messages" /><span v-if="unread > 0" class="workspace-badge">{{ unread > 99 ? '99+' : unread }}</span></button>
+      <button class="workspace-account" aria-label="打开学生账户" @click="openDialog(accountDialog)"><span class="workspace-avatar">{{ initial }}</span><span class="workspace-account-name"><strong>{{ user?.realName || '同学' }}</strong><small>在读学生</small></span><span aria-hidden="true">⌄</span></button>
+    </header>
+    <div class="workspace-centerbar">
+      <nav aria-label="一级菜单"><button v-for="center in centers" :key="center.id" :class="{ selected: center.id === activeCenter.id }" :aria-current="center.id === activeCenter.id ? 'true' : undefined" @click="selectCenter(center)">{{ center.title }}</button></nav>
+      <div class="workspace-utilities"><span title="所有业务仅限当前学生本人">本人范围</span><button :aria-pressed="timerPaused" :title="timerPaused ? '继续本次计时' : '暂停本次计时'" @click="timerPaused = !timerPaused">{{ timerPaused ? '已暂停' : '本次使用' }} <time>{{ durationText }}</time></button></div>
+    </div>
+    <div class="workspace-body">
+      <button v-if="mobileNav" class="workspace-nav-backdrop" aria-label="关闭业务导航" @click="mobileNav = false" />
+      <div class="workspace-rails" :class="{ 'mobile-open': mobileNav }">
+        <WorkspaceRail v-model:mode="prefs.second" label="二级菜单" :title="activeCenter.title" :items="activeCenter.groups" :active="activeGroup.id" @select="selectGroup" />
+        <WorkspaceRail v-model:mode="prefs.third" label="三级菜单" :title="activeGroup.title" :items="activeGroup.pages" :active="currentPage?.id" tertiary @select="item => navigate(item.to)" />
       </div>
-
-      <div class="sp-nav__label">门户导航</div>
-      <nav class="sp-nav">
-        <button v-for="m in nav" :key="m.key" type="button" class="sp-nav__item"
-                :class="{ 'is-active': m.active, 'is-locked': m.locked }" :title="m.title" @click="onNav(m)">
-          <span class="sp-nav__icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="m.d1" /><path :d="m.d2" /></svg>
-          </span>
-          <span class="sp-nav__text">{{ m.title }}</span>
-          <span v-if="m.badge" class="sp-nav__badge">{{ m.badge }}</span>
-          <svg v-else-if="m.locked" class="sp-nav__lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-        </button>
-      </nav>
-    </aside>
-
-    <div class="sp-body">
-      <header class="sp-header">
-        <div class="sp-header__left">
-          <div class="sp-header__heading">
-            <span class="sp-header__eyebrow">STUDENT SERVICE PORTAL</span>
-            <span class="sp-header__title">{{ pageTitle }}</span>
-          </div>
-          <button v-if="activeModulePath === 'internship'" class="sp-context-link" type="button" @click="toggleInternshipView">
-            {{ route.name === 'internship-compliance' ? '返回实习工作台' : '上岗合规与安全教育' }}
-          </button>
-          <button v-if="activeModulePath === 'graduation'" class="sp-context-link" type="button" @click="toggleGraduationView">
-            {{ route.name === 'graduation-material-library' ? '返回毕业设计工作台' : '我的材料库' }}
-          </button>
-        </div>
-        <div class="sp-header__right">
-          <label class="sp-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg>
-            <input v-model.trim="search" placeholder="搜索办事项、通知…" @keyup.enter="doSearch" />
-          </label>
-          <div class="sp-theme-switch" role="group" aria-label="切换门户主题">
-            <button v-for="item in themes" :key="item.key" type="button" class="sp-theme-switch__item"
-                    :class="{ 'is-active': themeKey === item.key }"
-                    :title="item.label" :aria-label="`切换为${item.label}`"
-                    :aria-pressed="themeKey === item.key" @click="selectTheme(item.key)">
-              <span class="sp-theme-switch__dot" :style="{ background: item.color }" />
-            </button>
-          </div>
-          <div class="sp-scope">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8-7 10-4-2-7-5.6-7-10V6z" /><path d="m9 12 2 2 4-4" /></svg>
-            本人数据
-          </div>
-          <button class="sp-bell" type="button" title="消息通知" @click="goMsg">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>
-            <span v-if="unread > 0" class="sp-bell__badge">{{ unread > 99 ? '99+' : unread }}</span>
-          </button>
-          <div class="sp-user">
-            <span class="sp-user__avatar">{{ initial }}</span>
-            <div class="sp-user__meta">
-              <div class="sp-user__name">{{ user?.realName || '同学' }}</div>
-              <div class="sp-user__role">学生 · 数据范围本人</div>
+      <div class="workspace-working">
+        <div class="workspace-tabbar">
+          <button class="workspace-menu-toggle" :aria-expanded="mobileNav" aria-label="打开业务导航" @click="mobileNav = !mobileNav">目录</button>
+          <div ref="tabStrip" class="workspace-tabs" role="tablist" aria-label="已打开页面" @keydown="onTabKeydown">
+            <div v-for="item in openPages" :key="item.id" class="workspace-tab" :class="{ selected: item.to === route.fullPath || item.id === currentPage?.id }">
+              <button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)">{{ item.title }}<span v-if="hasEdits && item.id === currentPage?.id" class="workspace-edited" aria-label="本页有编辑操作">●</span></button>
+              <button v-if="item.id !== 'home'" class="workspace-close" :aria-label="`关闭${item.title}`" @click="closePage(item)">×</button>
             </div>
           </div>
-          <button type="button" class="sp-logout" title="退出登录" aria-label="退出登录" @click="logout">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9" /></svg>
-          </button>
+          <div class="workspace-tab-actions"><button :disabled="!recentlyClosed" title="重新打开已关闭页签" aria-label="恢复关闭页签" @click="reopenPage">恢复</button><button :disabled="!currentPage || currentPage.id === 'current'" :aria-pressed="prefs.shortcuts.includes(currentPage?.id)" title="加入或移出快捷栏" @click="toggleShortcut(currentPage.id)">{{ prefs.shortcuts.includes(currentPage?.id) ? '已收藏' : '收藏' }}</button><button :aria-pressed="focusMode" @click="focusMode = !focusMode">{{ focusMode ? '退出专注' : '专注' }}</button></div>
         </div>
-      </header>
-
-      <main class="sp-main">
-        <div v-if="showWatermark" class="sp-watermark" :style="{ backgroundImage: wmUri }" />
-        <div class="sp-content" :class="{ 'has-academic-context': showAcademicContext }">
-          <AcademicContextNav v-if="showAcademicContext" />
-          <div class="sp-content__page"><router-view /></div>
+        <main id="student-workspace-main" ref="mainElement" class="workspace-main" tabindex="-1" :aria-label="currentTitle" @input.capture="markEdited" @change.capture="markEdited">
+          <div class="workspace-watermark" :style="{ backgroundImage: wmUri }" aria-hidden="true" />
+          <div class="sp-content"><div class="sp-content__page"><router-view /></div></div>
+        </main>
+        <div class="workspace-dock-wrap">
+          <button v-if="prefs.collapsed" class="workspace-dock-pill" @click="prefs.collapsed = false">我的常用 <span aria-hidden="true">⌃</span></button>
+          <nav v-else class="workspace-dock" aria-label="快捷操作">
+            <span class="workspace-dock-label">我的<br />常用</span>
+            <div class="workspace-dock-items"><button v-for="item in shortcuts" :key="item.id" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)"><span class="workspace-dock-icon" :class="`tone-${prefs.appearance[item.id]?.color || 'blue'}`"><WorkspaceIcon :name="item.id" /></span><span>{{ prefs.appearance[item.id]?.label || item.title }}</span></button></div>
+            <div class="workspace-dock-tools"><button aria-label="编辑快捷栏" @click="openShortcutEditor">编辑</button><button aria-label="收起快捷栏" @click="prefs.collapsed = true">收起</button></div>
+          </nav>
         </div>
-      </main>
+      </div>
     </div>
+
+    <dialog ref="leaveDialog" class="workspace-dialog workspace-account-dialog" aria-labelledby="workspace-leave-title" @cancel.prevent="resolveLeave(false)">
+      <h2 id="workspace-leave-title">离开当前页面？</h2>
+      <p class="workspace-setting-hint">当前页面有编辑操作，请确认已保存。离开后未提交的内容会丢失。</p>
+      <div class="workspace-dialog-footer"><button autofocus @click="resolveLeave(false)">继续编辑</button><button class="workspace-primary-button" @click="resolveLeave(true)">确认离开</button></div>
+    </dialog>
+    <dialog ref="searchDialog" class="workspace-dialog workspace-search-dialog" aria-labelledby="workspace-search-title" @click="dismissBackdrop($event)">
+      <form method="dialog" class="workspace-dialog-heading"><h2 id="workspace-search-title">查找我的服务</h2><button aria-label="关闭搜索">×</button></form>
+      <input v-model="search" class="workspace-search-input" type="search" aria-label="搜索我的事项或服务" placeholder="输入事项名称，例如请假、材料、课表" autofocus @keydown.down.prevent="focusSearchResult" />
+      <div class="workspace-search-results"><p v-if="!results.length" class="workspace-empty">没有找到相关事项，试试其他名称。</p><button v-for="item in results" :key="item.id" @click="openSearchResult(item)"><WorkspaceIcon :name="item.id" /><span><strong>{{ item.title }}</strong><small>{{ item.trail }}</small></span><span aria-hidden="true">→</span></button></div>
+    </dialog>
+    <dialog ref="accountDialog" class="workspace-dialog workspace-account-dialog" aria-labelledby="workspace-account-title" @click="dismissBackdrop($event)">
+      <form method="dialog" class="workspace-dialog-heading"><h2 id="workspace-account-title">我的账户</h2><button aria-label="关闭账户">×</button></form>
+      <div class="workspace-account-summary"><span class="workspace-avatar">{{ initial }}</span><div><strong>{{ user?.realName || '同学' }}</strong><p>{{ brand.schoolName || cfg.portalName }}</p><small>学生 · 数据范围仅限本人</small></div></div>
+      <button class="workspace-setting-row" @click="accountDialog.close(); openDialog(appearanceDialog)"><span>外观设置</span><small>{{ themeName }} →</small></button>
+      <button class="workspace-setting-row" @click="accountDialog.close(); openShortcutEditor()"><span>编辑我的快捷栏</span><small>{{ shortcuts.length }} 个入口 →</small></button>
+      <button class="workspace-setting-row workspace-danger" :disabled="loggingOut" @click="logout">{{ loggingOut ? '正在退出…' : '退出登录' }}</button>
+    </dialog>
+    <dialog ref="appearanceDialog" class="workspace-dialog" aria-labelledby="workspace-appearance-title" @click="dismissBackdrop($event)">
+      <form method="dialog" class="workspace-dialog-heading"><h2 id="workspace-appearance-title">外观设置</h2><button aria-label="关闭外观设置">×</button></form>
+      <div class="workspace-theme-grid" role="group" aria-label="切换门户主题"><button v-for="theme in WORKSPACE_THEMES" :key="theme.key" class="sp-theme-switch__item" :aria-label="`切换为${theme.label}`" :aria-pressed="themeKey === theme.key" @click="selectTheme(theme.key)"><span class="workspace-theme-swatches"><i v-for="color in [theme.bg, theme.surface, theme.soft, theme.accent]" :key="color" :style="{ background: color }" /></span><strong>{{ theme.label }}<span v-if="themeKey === theme.key" aria-hidden="true">✓</span></strong><small>{{ theme.description }}</small></button></div>
+      <p class="workspace-setting-hint">配色、菜单宽度和快捷栏保存在当前浏览器。</p><button class="workspace-text-button" @click="resetPreferences">恢复界面默认设置</button>
+    </dialog>
+    <dialog ref="shortcutsDialog" class="workspace-dialog" aria-labelledby="workspace-shortcuts-title" @click="dismissBackdrop($event)">
+      <form method="dialog" class="workspace-dialog-heading"><h2 id="workspace-shortcuts-title">编辑我的快捷栏</h2><button aria-label="关闭快捷栏编辑">×</button></form>
+      <p class="workspace-setting-hint">最多 8 个入口。可以改名称、颜色和顺序。</p>
+      <div class="workspace-shortcut-editor"><div v-for="(id, index) in shortcutDraft.shortcuts" :key="id" class="workspace-shortcut-row"><input v-model="shortcutDraft.appearance[id].label" :placeholder="pageById(id)?.title" :aria-label="`${pageById(id)?.title}的快捷名称`" maxlength="12" /><select v-model="shortcutDraft.appearance[id].color" :aria-label="`${pageById(id)?.title}的颜色`"><option v-for="(color, key) in colorLabels" :key="key" :value="key">{{ color }}</option></select><button :disabled="index === 0" :aria-label="`上移${pageById(id)?.title}`" @click="moveShortcut(index, -1)">↑</button><button :disabled="index === shortcutDraft.shortcuts.length - 1" :aria-label="`下移${pageById(id)?.title}`" @click="moveShortcut(index, 1)">↓</button><button :aria-label="`移除${pageById(id)?.title}`" @click="shortcutDraft.shortcuts.splice(index, 1)">×</button></div></div>
+      <label class="workspace-add-shortcut">添加事项<select :disabled="shortcutDraft.shortcuts.length >= 8" aria-label="添加快捷事项" @change="addDraftShortcut($event)"><option value="">选择一个事项</option><option v-for="item in pages.filter(item => !shortcutDraft.shortcuts.includes(item.id))" :key="item.id" :value="item.id">{{ item.title }} · {{ item.trail }}</option></select></label>
+      <div class="workspace-dialog-footer"><button @click="shortcutsDialog.close()">取消</button><button class="workspace-primary-button" @click="saveShortcuts">保存快捷栏</button></div>
+    </dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AcademicContextNav from '../components/academic/AcademicContextNav.vue'
+import WorkspaceIcon from '../components/workspace/WorkspaceIcon.vue'
+import WorkspaceRail from '../components/workspace/WorkspaceRail.vue'
 import { usePortalConfigStore } from '../stores/portalConfig'
 import { useSessionStore } from '../stores/session'
 import { useUiStore } from '../stores/ui'
 import { portalApi } from '../services/portalApi'
-import { MODULES, SERVICE_HALL } from '../platform/moduleRegistry'
+import { availableCenters, flattenPages, normalizePreferences, pageForRoute, searchPages } from '../platform/workspaceNavigation'
+import { normalizeTheme, WORKSPACE_THEMES } from '../platform/workspaceTheme'
+import '../styles/student-workspace.css'
 
-const route = useRoute()
-const router = useRouter()
-const cfg = usePortalConfigStore()
-const session = useSessionStore()
-const ui = useUiStore()
-
-const brand = computed(() => cfg.brand)
-const portalName = computed(() => cfg.portalName)
-const user = computed(() => session.user)
-const initial = computed(() => (session.user?.realName || '同').slice(0, 1))
-const search = ref('')
-const unread = ref(0)
-const themeKey = ref('blue')
-
-const themes = computed(() => [
-  { key: 'blue', label: '校园蓝', color: '#78add3' },
-  { key: 'purple', label: '科技紫', color: '#7b61ff' },
-  { key: 'green', label: '薄荷绿', color: '#16a078' },
-  { key: 'orange', label: '活力橙', color: '#f59b23' },
-  { key: 'pink', label: '樱花粉', color: '#f36ca5' },
-  { key: 'dark', label: '深邃黑', color: '#1e2433' }
-])
-
-const rawPath = computed(() => {
-  const value = route.path.replace(/^\//, '')
-  return value === '' ? 'home' : value.split('/')[0]
-})
-const activeModulePath = computed(() => route.meta?.modulePath || rawPath.value)
-const showAcademicContext = computed(() => activeModulePath.value === 'academic')
-const shellClasses = computed(() => ({
-  'is-home': route.name === 'home',
-  [`route-${String(activeModulePath.value || 'home').replace(/[^a-z0-9-]/gi, '-')}`]: true,
-  [`view-${String(route.name || 'page').replace(/[^a-z0-9-]/gi, '-')}`]: true
-}))
-
-const nav = computed(() => {
-  const items = MODULES.map((m) => {
-    const enabled = m.key === 'dashboard' || cfg.isModuleEnabled(m.key)
-    return {
-      key: m.key,
-      title: m.title,
-      d1: m.d1,
-      d2: m.d2,
-      to: '/' + m.path,
-      active: activeModulePath.value === m.path,
-      locked: !enabled,
-      badge: m.key === 'messages' && unread.value > 0 ? (unread.value > 99 ? '99+' : unread.value) : ''
-    }
-  })
-  items.push({ ...SERVICE_HALL, to: '/' + SERVICE_HALL.path, active: activeModulePath.value === SERVICE_HALL.path, locked: false, badge: '' })
-  return items
-})
-
-const TITLES = {
-  home: '首页工作台', profile: '我的档案', academic: '教务学业', graduation: '毕业设计',
-  internship: '岗位实习', employment: '就业服务', 'campus-service': '学工事务',
-  orientation: '迎新报到', departure: '离校手续', messages: '消息通知', 'service-hall': '办事大厅'
+const route = useRoute(), router = useRouter(), cfg = usePortalConfigStore(), session = useSessionStore(), ui = useUiStore()
+const brand = computed(() => cfg.brand), user = computed(() => session.user)
+const initial = computed(() => (user.value?.realName || '学').slice(0, 1))
+const centers = computed(() => availableCenters(cfg.config)), pages = computed(() => flattenPages(centers.value))
+const pageById = id => pages.value.find(item => item.id === id)
+const prefs = ref(normalizePreferences(null, pages.value)), search = ref(''), unread = ref(0), focusMode = ref(false), mobileNav = ref(false)
+const themeKey = ref('blue'), themeName = computed(() => WORKSPACE_THEMES.find(item => item.key === themeKey.value)?.label)
+const recentlyClosed = ref(''), transientPage = ref(null), mainElement = ref(null), tabStrip = ref(null), edited = ref(false), loggingOut = ref(false)
+const activeFormCheck = shallowRef(null)
+const hasEdits = computed(() => activeFormCheck.value ? !!activeFormCheck.value.check() : edited.value)
+function registerWorkspaceForm(check, busy = () => false) {
+  const owner = { check, busy }
+  activeFormCheck.value = owner
+  return () => { if (activeFormCheck.value === owner) activeFormCheck.value = null }
 }
-const SPECIAL_TITLES = {
-  'material-supplement': '材料补交中心',
-  'internship-compliance': '上岗合规与安全教育',
-  'graduation-material-library': '毕业设计材料库',
-  'module-disabled': '模块未开通',
-  'not-enabled': '门户未开通'
-}
-const pageTitle = computed(() => SPECIAL_TITLES[route.name] || TITLES[activeModulePath.value] || '学生服务门户')
+provide('registerWorkspaceForm', registerWorkspaceForm)
+const leaveDialog = ref(null)
+const searchDialog = ref(null), accountDialog = ref(null), appearanceDialog = ref(null), shortcutsDialog = ref(null)
+const shortcutDraft = ref(normalizePreferences(null, pages.value))
+const colorLabels = { blue: '学院蓝', teal: '松石绿', purple: '柔紫', amber: '琥珀', coral: '珊瑚' }
+const now = ref(new Date()), elapsed = ref(0), timerPaused = ref(false)
+const clockText = computed(() => new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(now.value))
+const durationText = computed(() => [Math.floor(elapsed.value / 3600), Math.floor(elapsed.value / 60) % 60, elapsed.value % 60].map(value => String(value).padStart(2, '0')).join(':'))
+const currentPage = computed(() => pageForRoute(route, pages.value) || transientPage.value)
+const currentTitle = computed(() => currentPage.value?.title || '我的服务')
+const activeCenter = computed(() => centers.value.find(item => item.id === currentPage.value?.centerId) || centers.value[0])
+const activeGroup = computed(() => activeCenter.value.groups.find(item => item.id === currentPage.value?.groupId) || activeCenter.value.groups[0])
+const openPages = computed(() => [...prefs.value.tabs.map(pageById).filter(Boolean), ...(transientPage.value ? [transientPage.value] : [])])
+const shortcuts = computed(() => prefs.value.shortcuts.map(pageById).filter(Boolean))
+const results = computed(() => searchPages(pages.value, search.value, activeCenter.value.id, prefs.value.tabs))
+const homeHref = computed(() => router.resolve('/home').href)
+const rawModule = computed(() => route.meta?.modulePath || route.path.split('/')[1] || 'home')
+const shellClasses = computed(() => ({ 'is-home': route.name === 'home', 'workspace-focus': focusMode.value, 'dock-collapsed': prefs.value.collapsed, [`route-${rawModule.value}`]: true, [`view-${String(route.name || 'page')}`]: true }))
+// 不保存表单值、搜索内容、消息、动态详情 URL 或学生资料。账号与学校隔离个人偏好。
+const preferenceKey = computed(() => user.value?.userId ? `sp-workspace-v1:${encodeURIComponent(String(cfg.config?.tenantId || brand.value.schoolName || 'school'))}:${user.value.userId}` : '')
+const xmlEscape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]))
+const wmUri = computed(() => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="310" height="210"><text x="4" y="110" fill="${themeKey.value === 'dark' ? '#ffffff' : '#263c31'}" fill-opacity="0.035" font-size="14" font-family="sans-serif" transform="rotate(-24 4 110)">${xmlEscape(brand.value.watermark || user.value?.realName || '学生')} · 本人范围</text></svg>`)}")`)
 
-const showWatermark = computed(() => true)
-const wmUri = computed(() => {
-  const name = session.user?.realName || '同学'
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='270' height='175'><text x='0' y='95' fill='%231D2129' fill-opacity='0.025' font-size='15' font-family='sans-serif' transform='rotate(-24 0 95)'>${name} · 数据范围:本人</text></svg>`
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
-})
-
-function onNav(m) {
-  if (m.locked) {
-    ui.notify('该模块未开通，请联系学校管理员')
-    return
-  }
-  router.push(m.to)
-}
 function selectTheme(key) {
-  themeKey.value = key
-  window.localStorage.setItem('student-portal-theme', key)
-  window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: key }))
-}
-function toggleInternshipView() {
-  router.push(route.name === 'internship-compliance' ? '/internship' : '/internship/compliance')
-}
-function toggleGraduationView() {
-  router.push(route.name === 'graduation-material-library' ? '/graduation' : '/graduation/materials')
-}
-function goMsg() { router.push('/messages') }
-function doSearch() {
-  if (!search.value) return
-  router.push({ path: '/service-hall', query: { kw: search.value } })
-}
-function logout() {
-  session.logout()
-  cfg.reset()
-  router.replace('/login')
-}
-
-onMounted(async () => {
-  themeKey.value = window.localStorage.getItem('student-portal-theme') || 'blue'
+  themeKey.value = normalizeTheme(key)
+  prefs.value.theme = themeKey.value
   window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: themeKey.value }))
-  try {
-    // SP-M05/M07：铃铛角标只需要"通知" Authority 的真实未读数，不再依赖旧的
-    // 合并聚合 unreadCount 字段（该字段已随三 tab 真分页改造移除）。
-    const data = await portalApi.messagesInbox('notice', 1, 1)
-    unread.value = data?.tabs?.find((t) => t.key === 'notice')?.badge || 0
-  } catch (e) { /* 铃铛角标非关键，失败静默 */ }
+}
+function readPreferences() {
+  let saved = null
+  try { saved = preferenceKey.value ? JSON.parse(localStorage.getItem(preferenceKey.value) || 'null') : null } catch { /* 存储不可用时仍可使用当前会话 */ }
+  prefs.value = normalizePreferences(saved, pages.value)
+  let legacyTheme = 'blue'
+  try { legacyTheme = localStorage.getItem('student-portal-theme') || 'blue' } catch { /* 无存储权限 */ }
+  selectTheme(saved?.theme || legacyTheme)
+}
+watch(preferenceKey, () => { edited.value = false; recentlyClosed.value = ''; transientPage.value = null; unread.value = 0; readPreferences(); rememberRoute() }, { immediate: true })
+watch(pages, () => { prefs.value = normalizePreferences(prefs.value, pages.value); rememberRoute() })
+watch(prefs, value => {
+  if (!preferenceKey.value) return
+  try { localStorage.setItem(preferenceKey.value, JSON.stringify(normalizePreferences(value, pages.value))) } catch { /* 关闭持久化不影响办理 */ }
+}, { deep: true })
+function rememberRoute() {
+  const page = pageForRoute(route, pages.value)
+  if (page) {
+    transientPage.value = null
+    if (!prefs.value.tabs.includes(page.id)) prefs.value.tabs = [...prefs.value.tabs, page.id].slice(-16)
+  } else {
+    const modulePage = pages.value.find(item => item.to.split('?')[0] === `/${rawModule.value}`)
+    const titles = { 'module-disabled': '模块未开通', 'not-enabled': '门户未开通', 'internship-selection-company': '企业详情', 'business-form': '业务表单' }
+    transientPage.value = { id: 'current', title: titles[route.name] || route.meta?.academicTitle || '事项详情', to: route.fullPath, trail: modulePage?.trail || '我的服务', centerId: modulePage?.centerId || 'student', groupId: modulePage?.groupId || 'work' }
+  }
+  nextTick(() => tabStrip.value?.querySelector('.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+}
+watch(() => route.fullPath, () => { mobileNav.value = false; edited.value = false; rememberRoute(); nextTick(() => { if (mainElement.value) mainElement.value.scrollTop = 0 }) }, { immediate: true })
+function navigate(to) { return router.push(to) }
+function selectCenter(center) { navigate(center.groups[0].pages[0].to) }
+function selectGroup(group) { navigate(group.pages[0].to) }
+async function closePage(item) {
+  if (item.id === currentPage.value?.id) {
+    const others = openPages.value.filter(page => page.id !== item.id)
+    const failure = await navigate(others.at(-1)?.to || '/home')
+    if (failure) return
+  }
+  prefs.value.tabs = prefs.value.tabs.filter(id => id !== item.id)
+  recentlyClosed.value = pageById(item.id) ? item.id : ''
+}
+function reopenPage() { const page = pageById(recentlyClosed.value); if (page) navigate(page.to); recentlyClosed.value = '' }
+function onTabKeydown(event) {
+  if (event.target.getAttribute('role') !== 'tab' || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  const buttons = [...tabStrip.value.querySelectorAll('[role="tab"]')], index = buttons.indexOf(event.target)
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length
+  event.preventDefault(); buttons[next]?.focus(); buttons[next]?.click()
+}
+function openDialog(element) { element?.showModal() }
+function dismissBackdrop(event) { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) event.currentTarget.close() } }
+function focusSearchResult() { searchDialog.value?.querySelector('.workspace-search-results button')?.focus() }
+async function openSearchResult(item) { const failure = await navigate(item.to); if (!failure) searchDialog.value.close() }
+function toggleShortcut(id) {
+  if (prefs.value.shortcuts.includes(id)) prefs.value.shortcuts = prefs.value.shortcuts.filter(value => value !== id)
+  else if (prefs.value.shortcuts.length >= 8) ui.notify('快捷栏最多 8 个入口，请先移除一个')
+  else { prefs.value.shortcuts.push(id); prefs.value.appearance[id] = { label: '', color: 'blue' } }
+}
+function openShortcutEditor() { shortcutDraft.value = normalizePreferences(prefs.value, pages.value); openDialog(shortcutsDialog.value) }
+function moveShortcut(index, delta) { const list = shortcutDraft.value.shortcuts; [list[index], list[index + delta]] = [list[index + delta], list[index]] }
+function addDraftShortcut(event) { const id = event.target.value; if (pageById(id) && shortcutDraft.value.shortcuts.length < 8) { shortcutDraft.value.shortcuts.push(id); shortcutDraft.value.appearance[id] = { label: '', color: 'blue' } } event.target.value = '' }
+function saveShortcuts() { const draft = normalizePreferences(shortcutDraft.value, pages.value); prefs.value.shortcuts = draft.shortcuts; prefs.value.appearance = draft.appearance; shortcutsDialog.value.close(); ui.notify('快捷栏已保存') }
+function resetPreferences() { const tabs = prefs.value.tabs; prefs.value = normalizePreferences(null, pages.value); prefs.value.tabs = tabs; selectTheme('blue'); ui.notify('界面设置已恢复默认') }
+// 跨业务页不缓存组件，避免 useRoute 监听和后台请求在隐藏页面继续运行。
+// 离开编辑过的页面前明确确认；草稿内容留在当前页面内存，不落浏览器存储。
+function markEdited(event) {
+  const field = event.target
+  if (!field.matches('input,textarea,select') || field.type === 'search' || field.readOnly || field.disabled || field.closest('.search,.filters,.filter-bar,[data-workspace-filter]')) return
+  edited.value = true
+}
+let leavePromise = null, leaveResolver = null
+function mayLeave() {
+  if (activeFormCheck.value?.busy()) { ui.notify('正在提交，请稍候再离开。'); return false }
+  if (!hasEdits.value) return true
+  if (!leavePromise) { leavePromise = new Promise(resolve => { leaveResolver = resolve }); openDialog(leaveDialog.value) }
+  return leavePromise
+}
+function resolveLeave(allowed) { const resolve = leaveResolver; leaveResolver = null; leavePromise = null; leaveDialog.value?.close(); resolve?.(allowed) }
+const removeGuard = router.beforeEach((to, from) => to.fullPath === from.fullPath || !session.isLoggedIn || mayLeave())
+function beforeUnload(event) { if (hasEdits.value) { event.preventDefault(); event.returnValue = '' } }
+function onKeydown(event) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (!document.querySelector('dialog[open]')) openDialog(searchDialog.value) } if (event.key === 'Escape') { mobileNav.value = false; if (!document.querySelector('dialog[open]')) focusMode.value = false } }
+async function logout() {
+  if (!await mayLeave()) return
+  edited.value = false; loggingOut.value = true
+  await session.logout(); cfg.reset(); accountDialog.value?.close(); await router.replace('/login')
+}
+let timer, previousTick = Date.now()
+onMounted(async () => {
+  window.addEventListener('keydown', onKeydown); window.addEventListener('beforeunload', beforeUnload)
+  timer = window.setInterval(() => { const tick = Date.now(); if (!timerPaused.value) elapsed.value += Math.max(0, Math.floor((tick - previousTick) / 1000)); previousTick = tick; now.value = new Date(tick) }, 1000)
+  if (cfg.isModuleEnabled('messages')) {
+    const identity = preferenceKey.value
+    try { const data = await portalApi.messagesInbox('notice', 1, 1); if (identity === preferenceKey.value) unread.value = Math.max(0, Number(data?.tabs?.find(item => item.key === 'notice')?.badge) || 0) } catch { /* 不用假数据替代未读数 */ }
+  }
 })
+onBeforeUnmount(() => { resolveLeave(false); clearInterval(timer); removeGuard(); window.removeEventListener('keydown', onKeydown); window.removeEventListener('beforeunload', beforeUnload) })
 </script>
-
-<style scoped>
-.sp-shell { display:flex; height:100vh; width:100%; overflow:hidden; background:var(--bg); }
-.sp-aside { position:relative; width:224px; flex:none; overflow:hidden; display:flex; flex-direction:column; color:#fff; background:linear-gradient(180deg, color-mix(in srgb,var(--pri) 45%,#071b47) 0%, var(--pri) 57%, color-mix(in srgb,var(--pri) 58%,#fff) 100%); transition:width .18s ease; }
-.sp-aside::before { content:""; position:absolute; width:260px; height:260px; right:-150px; top:-120px; border-radius:50%; background:rgba(255,255,255,.08); pointer-events:none; }
-.sp-shell.is-compact .sp-aside { width:76px; }
-.sp-brand { position:relative; display:flex; align-items:center; gap:11px; padding:18px 14px 16px; min-height:72px; }
-.sp-brand__logo { width:43px; height:43px; flex:none; border-radius:14px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.2); box-shadow:0 8px 24px rgba(0,0,0,.12); }
-.sp-brand__text { min-width:0; }
-.sp-brand__school { font-size:14px; font-weight:700; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.sp-brand__portal { margin-top:3px; font-size:11px; color:rgba(255,255,255,.7); }
-.sp-nav__label { position:relative; padding:3px 18px 7px; font-size:10.5px; letter-spacing:.12em; color:rgba(255,255,255,.54); }
-.sp-nav { position:relative; flex:1; overflow-y:auto; padding:0 11px 12px; }
-.sp-nav::-webkit-scrollbar { width:0; }
-.sp-nav__item { all:unset; box-sizing:border-box; cursor:pointer; width:100%; min-height:43px; margin:3px 0; padding:0 11px; border-radius:13px; display:flex; align-items:center; gap:10px; color:rgba(255,255,255,.8); font-size:13.5px; transition:background .15s ease,color .15s ease,transform .15s ease; }
-.sp-nav__item:hover { background:rgba(255,255,255,.09); color:#fff; }
-.sp-nav__item.is-active { background:#fff; color:var(--pri-text,var(--pri)); font-weight:750; box-shadow:0 10px 26px rgba(3,18,56,.18); }
-.sp-nav__item.is-locked { color:rgba(255,255,255,.38); cursor:not-allowed; }
-.sp-nav__item.is-locked:hover { background:transparent; }
-.sp-nav__icon { width:28px; height:28px; flex:none; display:grid; place-items:center; }
-.sp-nav__text { flex:1; white-space:nowrap; }
-.sp-nav__lock { flex:none; opacity:.65; }
-.sp-nav__badge { min-width:19px; height:19px; padding:0 5px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:#ff5d67; color:#fff; font-size:10px; font-weight:700; }
-.sp-shell.is-compact :where(.sp-brand__text,.sp-nav__label,.sp-nav__text,.sp-nav__lock) { display:none; }
-.sp-shell.is-compact .sp-brand { justify-content:center; padding-inline:0; }
-.sp-shell.is-compact .sp-nav { padding-inline:10px; }
-.sp-shell.is-compact .sp-nav__item { justify-content:center; padding:0; }
-.sp-shell.is-compact .sp-nav__badge { position:absolute; top:2px; right:1px; }
-.sp-body { flex:1; min-width:0; display:flex; flex-direction:column; }
-.sp-header { height:72px; flex:none; display:flex; align-items:center; justify-content:space-between; gap:18px; padding:0 26px; background:var(--surface,#fff); border-bottom:1px solid var(--line); }
-.sp-header__left,.sp-header__right { display:flex; align-items:center; gap:12px; min-width:0; }
-.sp-header__right { flex:none; gap:11px; }
-.sp-header__heading { min-width:0; display:flex; flex-direction:column; }
-.sp-header__eyebrow { color:var(--t4); font-size:9.5px; letter-spacing:.12em; line-height:1; }
-.sp-header__title { margin-top:5px; color:var(--t1); font-size:20px; font-weight:750; line-height:1.15; white-space:nowrap; }
-.sp-context-link { height:33px; padding:0 12px; border:1px solid var(--pri); border-radius:9px; background:var(--pri-50); color:var(--pri-text,var(--pri)); font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
-.sp-search { width:280px; height:40px; padding:0 12px; display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:12px; background:var(--field-bg,#f8faff); color:var(--t4); }
-.sp-search input { width:100%; border:0; outline:0; background:transparent; color:var(--t1); font-size:13px; }
-.sp-theme-switch { height:32px; flex:none; display:flex; align-items:center; gap:3px; padding:0 5px; border:1px solid var(--line); border-radius:17px; background:var(--surface,#fff); }
-.sp-theme-switch__item { all:unset; box-sizing:border-box; width:18px; height:18px; cursor:pointer; display:grid; place-items:center; border-radius:50%; transition:background .15s ease,transform .15s ease; }
-.sp-theme-switch__item:hover { background:var(--pri-50); transform:scale(1.08); }
-.sp-theme-switch__dot { width:10px; height:10px; border-radius:50%; box-shadow:0 1px 3px rgba(16,35,58,.2); transition:box-shadow .15s ease,transform .15s ease; }
-.sp-theme-switch__item.is-active .sp-theme-switch__dot { box-shadow:0 0 0 2px var(--surface,#fff),0 0 0 3px var(--t3); transform:scale(1.04); }
-.sp-scope { height:31px; padding:0 10px; display:flex; align-items:center; gap:6px; border-radius:9px; background:var(--pri-50); color:var(--pri-text,var(--pri)); font-size:11.5px; font-weight:700; white-space:nowrap; }
-.sp-bell { all:unset; position:relative; cursor:pointer; width:38px; height:38px; border:1px solid var(--line); border-radius:11px; display:grid; place-items:center; color:var(--t2); }
-.sp-bell:hover { background:var(--field-bg,#f6f8fc); }
-.sp-bell__badge { position:absolute; top:-4px; right:-4px; min-width:17px; height:17px; padding:0 4px; border-radius:9px; display:grid; place-items:center; background:var(--danger-fg); color:#fff; border:2px solid var(--surface,#fff); font-size:9px; font-weight:700; }
-.sp-user { display:flex; align-items:center; gap:9px; padding-left:11px; border-left:1px solid var(--line); }
-.sp-user__avatar { width:38px; height:38px; border-radius:12px; display:grid; place-items:center; background:linear-gradient(135deg,var(--pri-50),var(--pri-100)); color:var(--pri-text,var(--pri)); border:1px solid var(--pri-100); font-size:14px; font-weight:800; }
-.sp-user__name { color:var(--t1); font-size:12.5px; font-weight:700; }
-.sp-user__role { margin-top:3px; color:var(--t3); font-size:10.5px; }
-.sp-logout { all:unset; box-sizing:border-box; width:36px; height:36px; flex:none; cursor:pointer; display:grid; place-items:center; border:1px solid var(--line); border-radius:11px; color:var(--t3); transition:background .15s ease,border-color .15s ease,color .15s ease; }
-.sp-logout:hover { color:var(--danger-fg); border-color:color-mix(in srgb,var(--danger-fg) 28%,var(--line)); background:var(--danger-bg); }
-.sp-main { flex:1; overflow-y:auto; position:relative; background:var(--bg); }
-.sp-watermark { position:absolute; inset:0; pointer-events:none; background-repeat:repeat; z-index:0; }
-.sp-content { position:relative; z-index:1; margin:0 auto; }
-.sp-content.has-academic-context { display:grid; grid-template-columns:208px minmax(0,1fr); gap:18px; align-items:start; }
-.sp-content__page { min-width:0; }
-@media(max-width:1180px){.sp-search{width:210px}.sp-user__meta{display:none}.sp-user{border-left:0;padding-left:0}.sp-scope{display:none}.sp-content.has-academic-context{grid-template-columns:196px minmax(0,1fr)}}
-@media(max-width:900px){.sp-aside,.sp-shell.is-home .sp-aside{width:64px}.sp-brand__text,.sp-nav__label,.sp-nav__text,.sp-nav__lock{display:none}.sp-brand{justify-content:center;padding-inline:0}.sp-nav{padding-inline:7px}.sp-nav__item{justify-content:center;padding:0}.sp-header{padding:0 16px}.sp-search{width:160px}.sp-context-link{display:none}}
-@media(max-width:820px){.sp-content.has-academic-context{display:block}.sp-content.has-academic-context > :first-child{margin-bottom:14px}}
-@media(max-width:700px){.sp-header__eyebrow,.sp-search{display:none}.sp-header{height:62px}.sp-header__title{font-size:17px}.sp-user__avatar{width:34px;height:34px}}
-</style>

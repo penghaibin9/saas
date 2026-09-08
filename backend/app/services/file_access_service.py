@@ -169,8 +169,8 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
 
 
 @register_file_resolver(
-    "DISCIPLINE", "DISCIPLINE_APPEAL", "LEAGUE", "CLUB", "FUNDING",
-    "REDUCTION", "LOAN", "HOME_SCHOOL",
+    "DISCIPLINE", "DISCIPLINE_APPEAL", "LEAGUE", "CLUB",
+    "HOME_SCHOOL",
 )
 def _student_affairs_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
     """学工 resolver 直接调用权威业务范围校验，不再通过运行时 monkey-patch 改写 file_service。"""

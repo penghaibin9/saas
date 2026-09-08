@@ -118,7 +118,7 @@ def appeal_pending(
     _require_any(user, spec["review"])
     if key == "AID_OBJECTION":
         from app.services import affairs_aid_service as service
-        items, total = service.list_objections(user, status="SUBMITTED", page=page, page_size=pageSize)
+        items, total = service.list_objections(user, status="SUBMITTED", page=page, page_size=pageSize, pending_only=True)
     elif key == "FUNDING_APPEAL":
         from app.services import affairs_funding_service as service
         items, total = service.list_appeals(user, status="SUBMITTED", page=page, page_size=pageSize)
@@ -137,6 +137,26 @@ def appeal_pending(
         item["version"] = versions[int(raw)]
         item["appealKind"] = key
     return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/mobile/teacher/affairs/appeals/AID_OBJECTION/{objection_id}/detail", summary="教师查看具体困难认定异议")
+def aid_objection_detail(objection_id: int = Path(...), user=Depends(get_current_user)):
+    from app.services import affairs_aid_service as service
+    _require_any(user, _KINDS["AID_OBJECTION"]["review"])
+    items, _ = service.list_objections(user, objection_id=objection_id, page=1, page_size=1)
+    if not items:
+        raise AppException("DATA_NOT_FOUND", "异议不存在或超出当前范围")
+    return success({**items[0], "appealKind": "AID_OBJECTION"})
+
+
+@router.get("/mobile/teacher/affairs/appeals/FUNDING_APPEAL/{appeal_id}/detail", summary="教师查看具体奖助申诉")
+def funding_appeal_detail(appeal_id: int = Path(..., ge=1), user=Depends(get_current_user)):
+    from app.services import affairs_funding_service as service
+    _require_any(user, _KINDS['FUNDING_APPEAL']['review'])
+    items, _ = service.list_appeals(user, appeal_id=appeal_id, page=1, page_size=1)
+    if not items:
+        raise AppException('DATA_NOT_FOUND', '申诉不存在或超出当前范围')
+    return success({**items[0], 'appealKind': 'FUNDING_APPEAL'})
 
 
 @router.post("/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review", summary="教师复核异议/申诉")

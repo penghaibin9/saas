@@ -1,4 +1,5 @@
 import { realDownload, realRequest, realUpload } from '@/services/request'
+import { presentLeave } from './leavePresentation'
 
 async function loadAllTransferPages(path) {
   const pageSize = 200
@@ -23,6 +24,7 @@ async function loadAllTransferPages(path) {
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
  */
 export const affairsContractApi = {
+  getLeaveDetail: async (id) => presentLeave(await realRequest(`/mobile/affairs/leave/${encodeURIComponent(id)}/detail`)),
   getStudentCandidates: (purpose = 'TALK', q = '', page = 1, pageSize = 20) =>
     realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}&q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),
 
@@ -66,6 +68,7 @@ export const affairsContractApi = {
   getMyDormTransfers: () => realRequest('/mobile/affairs/dorm/transfers/my'),
   getMyDormStays: () => realRequest('/mobile/affairs/dorm/stays/my'),
   getMyDormRectifications: (status = '') => realRequest(`/mobile/affairs/dorm/rectifications/my?pageSize=200${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+  getMyDormRectification: id => realRequest(`/mobile/affairs/dorm/rectifications/${id}`),
   startDormRectification: (rectificationId, expectedVersion) => realRequest(`/mobile/affairs/dorm/rectifications/${rectificationId}/start`, {
     method: 'POST', data: { expectedVersion }
   }),
@@ -118,8 +121,10 @@ export const affairsContractApi = {
   }),
 
   // 教师材料审核和安全批量提醒
-  getMaterialRequirements: (status = '', page = 1, pageSize = 20) => realRequest('/student-affairs/material-requirements', {
-    data: { status, page, pageSize }
+  getMaterialRequirements: (status = '', page = 1, pageSize = 20, context = {}) => realRequest('/student-affairs/material-requirements', {
+    // uni-app H5 serializes undefined query values as empty strings; optional integer IDs must be absent.
+    data: Object.fromEntries(Object.entries({ status, page, pageSize, ...context })
+      .filter(([, value]) => value !== '' && value != null))
   }),
   reviewMaterialRequirement: (requirementId, action, reason, version) =>
     realRequest(`/student-affairs/material-requirements/${requirementId}/review`, {
@@ -165,6 +170,16 @@ export const affairsContractApi = {
   }),
   closeMental: (referralId, conclusion, version) => realRequest(`/mobile/teacher/mental/${referralId}/close`, {
     method: 'POST', data: { conclusion, version }
+  }),
+  getTeacherActivities: (params = {}) => realRequest('/mobile/teacher/affairs/activities', {
+    data: Object.fromEntries(Object.entries(params).filter(([, value]) => value !== '' && value != null))
+  }),
+  getTeacherActivityParticipants: (activityId) => realRequest(`/mobile/teacher/affairs/activities/${activityId}/participants`),
+  transitionTeacherActivity: (activityId, action, version) => realRequest(`/mobile/teacher/affairs/activities/${activityId}/transition`, {
+    method: 'POST', data: { action, version }
+  }),
+  confirmTeacherActivity: (activityId, version) => realRequest(`/mobile/teacher/affairs/activities/${activityId}/confirm`, {
+    method: 'POST', data: { version }
   }),
   getOngoingActivities: () => realRequest('/mobile/teacher/affairs/activities/ongoing'),
   getActivityCheckinToken: (activityId) => realRequest(`/mobile/teacher/affairs/activities/${activityId}/checkin-token`)

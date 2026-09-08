@@ -1,37 +1,21 @@
 <template>
   <ModulePageShell
-    title="实习变更审核"
-    subtitle="换岗 · 换实习单位 · 自主实习 · 退岗"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
+    title="调岗退岗"
+    subtitle="核对学生变更去向与审批影响，再完成审核。"
+    :role-name="ctx.currentRole?.roleName"
+    :data-scope-name="ctx.dataScope?.scopeName"
+    :watermark="false"
   >
     <div class="mp-stack">
       <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
 
-      <section v-if="priorityRows.length" class="mp-card change-now">
-        <div class="change-now__head">
-          <div><span class="change-now__eyebrow">CHANGE NOW · 优先 3 条</span><h3>先看清谁从哪里变到哪里</h3></div>
-          <span class="mp-note">审批后旧关系冻结，并强制重新合规上岗</span>
-        </div>
-        <div class="change-now__grid">
-          <button v-for="row in priorityRows" :key="row.id" type="button" class="change-now__item" @click="select(row.id)">
-            <span class="change-now__identity">{{ row.studentName }} · {{ row.studentNo }}</span>
-            <span class="change-now__type">{{ row.changeTypeLabel }} · 申请 #{{ row.id }}</span>
-            <span class="change-now__route">
-              <span>{{ row.currentEnterprise || '未落实单位' }} / {{ row.currentPosition || '未落实岗位' }}</span>
-              <b>→</b>
-              <span>{{ row.targetEnterpriseName || (row.changeType === 'WITHDRAW_POST' ? '退岗' : '自主实习') }} / {{ row.targetPositionName || '待重新落实' }}</span>
-            </span>
-            <span class="change-now__why">原因：{{ row.reason }}</span>
-            <span class="change-now__next">下一责任人：审核教师 · 审批影响 {{ row.impactItems?.length || 0 }} 项</span>
-          </button>
-        </div>
-      </section>
-
-      <div class="mp-tabs">
-        <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
+      <div class="change-toolbar">
+      <div class="mp-tabs" aria-label="申请状态">
+        <button v-for="t in tabs" :key="t.value" type="button" class="mp-tab" :aria-pressed="filters.status === t.value" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}
         </button>
+      </div>
+      <AppSearchBox v-model="filters.keyword" placeholder="搜索学生姓名或学号" @search="search" />
       </div>
 
       <DualPaneWorkspace aside-title="变更申请" :aside-count="pagination.total">
@@ -39,7 +23,7 @@
         <template #aside>
           <div v-if="loading" class="state">加载中…</div>
           <div v-else-if="error" class="state is-err">{{ error }} <button type="button" class="mp-link" @click="load">重试</button></div>
-          <div v-else-if="!rows.length" class="state">暂无变更申请，学生可在小程序发起换岗/换单位/退岗申请</div>
+          <div v-else-if="!rows.length" class="state">当前筛选下暂无申请<button v-if="filters.keyword" type="button" class="mp-link" @click="clearSearch">清空搜索</button></div>
           <ul v-else class="lv-list">
             <li v-for="r in rows" :key="r.id">
               <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
@@ -54,17 +38,17 @@
           </ul>
         </template>
         <template #aside-foot>
-          <AppPagination v-model:page="pagination.page" :page-size="pagination.pageSize" :total="pagination.total"
-                        :show-total="false" :show-size-changer="false" :disabled="loading" @change="load" />
+          <AppPagination :page="pagination.page" :page-size="pagination.pageSize" :total="pagination.total"
+                        :show-size-changer="false" :disabled="loading" @change="onPageChange" />
         </template>
 
         <!-- 右栏：当前变更申请详情与审核操作 -->
         <section class="mp-card lv-main">
           <template v-if="!selectedId">
-            <EmptyState v-if="doneHint" title="当前列表变更申请已全部处理"
-              description="可翻页或切换页签，继续审核其他变更申请" />
-            <EmptyState v-else title="从左侧选择一条变更申请开始审核"
-              description="点击列表项查看变更详情与审计留痕，通过或驳回后自动跳到下一条待审核" />
+            <EmptyState v-if="doneHint" title="已处理到当前列表末尾"
+              description="可翻页或切换状态，继续核对其他申请"><template #actions><AppButton variant="ghost" @click="load">刷新列表</AppButton></template></EmptyState>
+            <EmptyState v-else title="选择一条变更申请"
+              description="在此核对变更去向、审批影响与处理记录"><template #actions><AppButton variant="ghost" @click="load">刷新列表</AppButton></template></EmptyState>
           </template>
           <div v-else-if="detail.loading" class="state lv-main__state">详情加载中…</div>
           <div v-else-if="detail.error" class="state is-err lv-main__state">
@@ -76,17 +60,18 @@
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }}</span>
                 <AppStatusTag :status="detail.data.status">{{ detail.data.statusLabel }}</AppStatusTag>
+                <AppButton v-if="detail.data.internId" variant="ghost" class="lv-head__link" @click="goStudent">学生档案</AppButton>
               </div>
 
               <div class="sec-t">变更申请</div>
               <AppDescriptionList :items="detailItems" :columns="2" />
 
-              <div class="sec-t">当前关系 → 目标关系与审批影响</div>
+              <h2 class="sec-t">当前去向与申请目标</h2>
               <div class="change-impact">
                 <div class="change-impact__route">
-                  <div><small>当前关系</small><strong>{{ detail.data.currentEnterprise || '未落实单位' }}</strong><span>{{ detail.data.currentPosition || '未落实岗位' }}</span></div>
+                  <div><small>当前实习去向</small><strong>{{ detail.data.currentEnterprise || '未落实单位' }}</strong><span>{{ detail.data.currentPosition || '未落实岗位' }}</span></div>
                   <b>→</b>
-                  <div class="is-target"><small>目标关系</small><strong>{{ detail.data.targetEnterpriseName || (detail.data.changeType === 'WITHDRAW_POST' ? '退岗' : '自主实习') }}</strong><span>{{ detail.data.targetPositionName || '待重新落实' }}</span></div>
+                  <div class="is-target"><small>本次申请目标</small><strong>{{ targetEnterpriseLabel(detail.data) }}</strong><span>{{ detail.data.targetPositionName || (detail.data.changeType === 'WITHDRAW_POST' ? '结束当前岗位' : '未填写岗位') }}</span></div>
                 </div>
                 <div v-if="detail.data.targetPosition" class="change-impact__truth">
                   <span>目标岗位：{{ detail.data.targetPosition.exists ? '存在' : '已失效' }}</span>
@@ -95,19 +80,22 @@
                   <span>同批次：{{ detail.data.targetPosition.sameBatch ? '是' : '否' }}</span>
                   <span>当前可分配：{{ detail.data.targetPosition.capacityAvailable ? '是' : '否' }}</span>
                 </div>
-                <ul class="change-impact__list">
+                <AppInlineAlert v-if="approvalBlockers.length && detail.data.status === 'PENDING'" type="warning" title="通过前需解决" :description="approvalBlockers.join('；')" />
+                <h2 v-if="detail.data.status === 'PENDING'" class="sec-t">通过后的影响</h2>
+                <ul v-if="detail.data.status === 'PENDING'" class="change-impact__list">
                   <li v-for="item in detail.data.impactItems || []" :key="item.label"><b>{{ item.label }}</b><span>{{ item.detail }}</span></li>
                 </ul>
-                <p class="change-impact__next">审批通过后的主记录：{{ detail.data.nextRecordStatusLabel }}。{{ detail.data.nextStep }}</p>
+                <p v-if="detail.data.status === 'PENDING'" class="change-impact__next">通过后：{{ detail.data.nextRecordStatusLabel }}。{{ detail.data.nextStep }}</p>
               </div>
 
-              <div class="sec-t">审计留痕</div>
+              <h2 class="sec-t">处理记录</h2>
               <AppAuditTrail :records="auditRecords" compact empty-text="暂无留痕" />
             </div>
 
             <div v-if="detail.data.status === 'PENDING'" class="lv-foot">
-              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="danger" @click="openReview(detail.data, 'REJECT')">驳回</AppPermissionButton>
-              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="secondary" @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
+              <span class="lv-foot__hint">{{ canReview ? '审核后继续当前列表下一条' : '当前账号无变更审核权限' }}</span>
+              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="secondary" :disabled="cd.submitting" @click="openReview(detail.data, 'REJECT')">驳回申请</AppPermissionButton>
+              <AppPermissionButton :allowed="canReview" code="internship.change.review" variant="primary" :disabled="cd.submitting || approvalBlockers.length > 0" @click="openReview(detail.data, 'APPROVE')">通过申请</AppPermissionButton>
             </div>
           </template>
         </section>
@@ -117,8 +105,11 @@
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
       :reason-chips="cd.requireReason ? REJECT_CHANGE : []"
-      reason-label="审核意见" :submitting="cd.submitting" @confirm="onConfirm">
-      <ConflictNotice :state="conflict" />
+      :reason-label="cd.requireReason ? '驳回原因（至少 5 字）' : '审核意见'" :submitting="cd.submitting" :confirm-disabled="conflict.active" @confirm="onConfirm">
+      <AppInlineAlert v-if="conflict.active" type="warning" title="申请已更新，本次审核已暂停" description="意见已保留，请取消后核对最新详情，再重新选择可用操作。">
+        <p v-if="conflict.stale">最新详情暂时无法读取，请关闭后重试加载。</p>
+        <AppDescriptionList v-else :items="conflict.latest" :columns="1" />
+      </AppInlineAlert>
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -131,10 +122,10 @@
  * 页签（panel 深链 pending/approved/rejected/all）沿用原映射。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, AppSearchBox, AppInlineAlert } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ActionReceipt from './components/ActionReceipt.vue'
-import ConflictNotice from './components/ConflictNotice.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
@@ -145,13 +136,13 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 export default {
   name: 'ChangeRequestListView',
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog,
-    AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, ActionReceipt, ConflictNotice },
+    AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, ActionReceipt, AppSearchBox, AppInlineAlert, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       REJECT_CHANGE,
-      loading: true, error: '', rows: [],
-      filters: { status: 'PENDING' },
+      loading: true, error: '', rows: [], listSequence: 0,
+      filters: { status: 'PENDING', keyword: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
         { value: 'PENDING', label: '待审核' },
@@ -168,15 +159,22 @@ export default {
   computed: {
     batchStore() { return useInternshipBatchStore() },
     canReview() { return canCode(this.ctx, 'internship.change.review') },
-    priorityRows() { return this.filters.status === 'PENDING' ? this.rows.filter((row) => row.status === 'PENDING').slice(0, 3) : [] },
+    approvalBlockers() {
+      const d = this.detail.data
+      if (!d || d.status !== 'PENDING') return []
+      const blockers = [...(d.targetPosition?.blockers || [])]
+      if (d.recordVersion != null && d.recordVersionSnapshot != null && String(d.recordVersion) !== String(d.recordVersionSnapshot)) blockers.push('学生实习信息在申请后已变化，请驳回并由学生按最新情况重新申请')
+      if (d.targetPosition?.sameBatch === false) blockers.push('目标岗位不属于当前批次')
+      if (d.targetPosition?.capacityAvailable === false) blockers.push('目标岗位当前不可分配')
+      return [...new Set(blockers)]
+    },
     detailItems() {
       const d = this.detail.data || {}
       return [
-        { label: '学生', value: d.studentName },
+        { label: '申请编号', value: d.id },
         { label: '变更类型', value: d.changeTypeLabel },
-        { label: '当前', value: `${d.currentEnterprise} / ${d.currentPosition}` },
-        { label: '目标', value: `${d.targetEnterpriseName || '—'} / ${d.targetPositionName || '—'}` },
-        { label: '原因', value: d.reason },
+        { label: '申请时间', value: d.createdAt },
+        { label: '申请原因', value: d.reason },
         { label: '审核意见', value: d.reviewComment || '—' }
       ]
     },
@@ -191,42 +189,58 @@ export default {
     'batchStore.selectedBatchId'() {
       this.pagination.page = 1
       this.doneHint = false
+      this.lastReceipt = null
+      this.clearSelection()
       this.load()
     },
-    '$route.query.panel': {
+    '$route.query': {
+      deep: true,
       immediate: true,
-      handler(panel) {
-        const map = { pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED', all: '' }
-        this.filters.status = map[(panel || 'pending').toString()] ?? 'PENDING'
-        this.pagination.page = 1
-        this.doneHint = false
-        this.load()
-      }
-    },
-    '$route.query.id': {
-      immediate: true,
-      handler(id) {
-        const sid = (id || '').toString()
+      handler(query, previous) {
+        if (!previous || ['panel', 'keyword', 'page', 'batchId'].some(key => String(query[key] || '') !== String(previous[key] || ''))) this.applyQuery()
+        const sid = String(query.id || '')
         if (sid === this.selectedId) return
+        this.resetDetail()
         this.selectedId = sid
-        if (sid) { this.doneHint = false; this.loadDetail(sid) } else { this.detail = { loading: false, error: '', data: null } }
+        if (sid) { this.doneHint = false; this.loadDetail(sid) }
       }
     }
   },
+  beforeUnmount() { this.listSequence++; this.resetDetail() },
   methods: {
-    positionStatusLabel(value) { return ({ OPEN: '招聘中', ACTIVE: '招聘中', PAUSED: '已暂停', CLOSED: '已关闭', FILLED: '已招满', CANCELLED: '已取消' })[value] || (value ? '状态待确认' : '—') },
+    positionStatusLabel(value) { return ({ PUBLISHED: '招聘中', DRAFT: '草稿', OPEN: '招聘中', ACTIVE: '招聘中', PAUSED: '已暂停', CLOSED: '已关闭', FILLED: '已招满', CANCELLED: '已取消', MISSING: '已失效' })[value] || (value ? '状态待确认' : '—') },
+    targetEnterpriseLabel(row) { return row.targetEnterpriseName || ({ WITHDRAW_POST: '退岗', SELF_ARRANGED: '自主实习' })[row.changeType] || '未填写目标单位' },
+    applyQuery() {
+      const q = this.$route.query || {}
+      this.filters.status = ({ pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED', all: '' })[q.panel || 'pending'] ?? 'PENDING'
+      this.filters.keyword = String(q.keyword || '')
+      this.pagination.page = Math.max(1, Number.parseInt(q.page, 10) || 1)
+      this.doneHint = false
+      this.load()
+    },
+    syncQuery() {
+      const query = this.batchStore.withBatchQuery({ ...this.$route.query, keyword: this.filters.keyword, page: String(this.pagination.page) })
+      if (Object.keys(query).every(key => String(query[key] ?? '') === String(this.$route.query[key] ?? ''))) this.load()
+      else this.$router.replace({ query })
+    },
+    search() { this.pagination.page = 1; this.doneHint = false; this.syncQuery() },
+    clearSearch() { this.filters.keyword = ''; this.search() },
+    onPageChange({ page }) { this.pagination.page = page; this.syncQuery() },
     switchTab(v) {
       const map = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected', '': 'all' }
       const panel = map[v] || 'all'
       if (this.$route.query.panel !== panel) {
-        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ panel }) })
+        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ panel, keyword: this.filters.keyword, page: '1' }) })
       } else {
         this.filters.status = v
         this.pagination.page = 1
-        this.load()
+        this.syncQuery()
       }
     },
     async load() {
+      const sequence = ++this.listSequence
+      const batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.pagination.total = 0
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
         this.error = '请先选择实习批次'
@@ -238,15 +252,17 @@ export default {
       this.error = ''
       const res = await internshipApi.getChangeRequests({
         status: this.filters.status,
+        keyword: this.filters.keyword,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize,
         batchId: this.batchStore.selectedBatchId
       })
+      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
       } else {
-        this.error = res.message
+        this.error = res.message || '变更申请加载失败，请重试'
         this.rows = []
         this.pagination.total = 0
       }
@@ -255,33 +271,47 @@ export default {
       const pc = Math.max(1, Math.ceil(this.pagination.total / this.pagination.pageSize))
       if (!this.error && !this.rows.length && this.pagination.total > 0 && this.pagination.page > pc) {
         this.pagination.page = pc
-        return this.load()
+        this.syncQuery()
+        return false
       }
+      return !this.error
     },
     select(id) {
+      if (id == null || id === '') return
       const sid = String(id)
       this.doneHint = false
-      if (String(this.$route.query.id || '') === sid) {
-        if (this.selectedId !== sid) { this.selectedId = sid; this.loadDetail(sid) }
-        return
-      }
-      this.$router.replace({ query: { ...this.$route.query, id: sid } })
+      if (this.selectedId === sid) return
+      this.resetDetail(); this.selectedId = sid; this.loadDetail(sid)
+      this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid, page: String(this.pagination.page) }) })
+    },
+    resetDetail() {
+      this.detail = { loading: false, error: '', data: null }
+      this.pending = null; this.cd = { ...this.cd, visible: false, submitting: false }; this.conflict = emptyConflict()
     },
     clearSelection() {
-      const query = { ...this.$route.query }
+      this.resetDetail(); this.selectedId = ''
+      const query = this.batchStore.withBatchQuery({ ...this.$route.query, page: String(this.pagination.page) })
       delete query.id
       this.$router.replace({ query })
     },
     async loadDetail(id) {
+      if (!id || !this.batchStore.selectedBatchId) return
+      const batchId = this.batchStore.selectedBatchId
       this.detail = { loading: true, error: '', data: null }
+      const workspace = this.detail
       const res = await internshipApi.getChangeRequestDetail(id)
-      if (String(this.selectedId) !== String(id)) return
+      if (this.detail !== workspace || batchId !== this.batchStore.selectedBatchId || String(this.selectedId) !== String(id)) return
       this.detail.loading = false
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
       this.detail.data = res.data
     },
+    goStudent() {
+      if (this.detail.data?.internId) this.$router.push({ path: `/admin/internship/students/${this.detail.data.internId}`, query: this.batchStore.withBatchQuery({}) })
+    },
     openReview(row, action) {
       if (!this.canReview) return toast.error('无实习变更审核权限')
+      if (!row || this.detail.loading || this.detail.error || this.cd.submitting || row.status !== 'PENDING' || String(row.id) !== this.selectedId || !['APPROVE', 'REJECT'].includes(action)) return
+      if (action === 'APPROVE' && this.approvalBlockers.length) return
       const ap = action === 'APPROVE'
       this.pending = {
         id: row.id, action, expectedVersion: row.version,
@@ -291,62 +321,72 @@ export default {
       this.cd = {
         visible: true,
         title: ap ? '通过变更申请' : '驳回变更申请',
-        content: `${ap ? '通过' : '驳回'}「${row.studentName}」的${row.changeTypeLabel}申请，将写入审计。`,
+        content: ap ? `通过「${row.studentName}」的${row.changeTypeLabel}申请。原岗位关系与协议将按本次申请调整，学生需重新完成上岗核验。` : `驳回「${row.studentName}」的${row.changeTypeLabel}申请，请说明需要修改的内容。`,
         danger: !ap, confirmText: ap ? '通过' : '驳回', requireReason: !ap, submitting: false
       }
     },
     async onConfirm({ reason }) {
-      this.cd.submitting = true
-      const ver = this.pending.expectedVersion ?? this.detail.data?.version
-      const res = await internshipApi.reviewChangeRequest(this.pending.id, {
-        action: this.pending.action,
+      const pending = this.pending
+      if (!pending || this.cd.submitting || this.conflict.active || !this.canReview || this.detail.loading || this.detail.error || this.detail.data?.status !== 'PENDING' || String(pending.id) !== this.selectedId) return
+      if (pending.action === 'APPROVE' && this.approvalBlockers.length) return
+      if (pending.action === 'REJECT' && String(reason || '').trim().length < 5) return toast.error('请填写至少 5 字的驳回原因')
+      const dialog = this.cd
+      const batchId = this.batchStore.selectedBatchId
+      const reviewed = this.detail.data
+      dialog.submitting = true
+      const res = await internshipApi.reviewChangeRequest(pending.id, {
+        action: pending.action,
         comment: reason || '',
-        expectedVersion: ver,
-        recordExpectedVersion: this.pending.recordExpectedVersion
+        expectedVersion: pending.expectedVersion,
+        recordExpectedVersion: pending.recordExpectedVersion
       })
-      this.cd.submitting = false
+      if (this.cd === dialog) dialog.submitting = false
+      if (this.pending !== pending || this.cd !== dialog || batchId !== this.batchStore.selectedBatchId || String(pending.id) !== this.selectedId) return
       if (res.code !== 0) {
         if (isConflict(res)) {
-          this.conflict = await captureConflict({
+          this.conflict = { ...emptyConflict(), active: true, kept: reason || '' }
+          const conflict = await captureConflict({
             res,
             kept: reason || '',
             refresh: async () => {
-              await this.loadDetail(this.pending.id)
+              await this.loadDetail(pending.id)
               if (this.detail.error || !this.detail.data) throw new Error(this.detail.error || '刷新失败')
-              this.pending.expectedVersion = this.detail.data.version
-              this.pending.recordExpectedVersion = this.detail.data.recordVersionSnapshot
             },
             latest: () => [
               { label: '申请状态', value: this.detail.data?.statusLabel },
-              { label: '申请版本', value: `v${this.detail.data?.version}` },
-              { label: '主记录版本', value: `v${this.detail.data?.recordVersion}` },
+              { label: '最新审核意见', value: this.detail.data?.reviewComment || '—' },
               { label: '当前关系', value: `${this.detail.data?.currentEnterprise || '—'} / ${this.detail.data?.currentPosition || '—'}` }
             ]
           })
+          if (this.pending === pending && this.cd === dialog) this.conflict = conflict
           return
         }
-        return toast.error(res.message)
+        return toast.error(res.message || '审核未完成，请重试')
       }
       const data = res.data || {}
+      this.detail.data = { ...reviewed, ...data }
       this.lastReceipt = {
-        actionLabel: this.pending.action === 'APPROVE' ? '变更审批通过' : '变更申请驳回',
-        objectLabel: `${this.detail.data?.studentName || '学生'} · ${this.detail.data?.changeTypeLabel || '实习变更'}`,
+        actionLabel: pending.action === 'APPROVE' ? '变更审批通过' : '变更申请驳回',
+        objectLabel: `${reviewed.studentName || '学生'} · ${reviewed.changeTypeLabel || '实习变更'}`,
         id: data.id, status: data.status, statusLabel: data.statusLabel,
         version: data.version,
-        auditText: this.pending.action === 'APPROVE'
+        auditText: pending.action === 'APPROVE'
           ? `主记录已回退为${data.recordStatusLabel || data.recordStatus || '待重新上岗'}`
           : '驳回意见与审批结果已写入审计',
-        nextStep: data.nextStep || (this.pending.action === 'REJECT' ? '等待学生按意见重新申请' : '重新办理合规、协议与上岗')
+        nextStep: data.nextStep || (pending.action === 'REJECT' ? '等待学生按意见重新申请' : '重新办理合规、协议与上岗')
       }
       this.cd.visible = false
       this.conflict = emptyConflict()
       toast.success('审核完成')
-      await this.advanceAfterReview(this.pending.id)
+      await this.advanceAfterReview(pending.id)
     },
     /** 审核成功后：刷新当前页并自动选中下一条待审核；无下一条则清空选中并提示已处理完 */
     async advanceAfterReview(oldId) {
+      const batchId = this.batchStore.selectedBatchId
+      const query = this.$route.fullPath
       const oldIndex = Math.max(0, this.rows.findIndex((r) => String(r.id) === String(oldId)))
-      await this.load()
+      const loaded = await this.load()
+      if (!loaded || this.error || batchId !== this.batchStore.selectedBatchId || query !== this.$route.fullPath || String(this.selectedId) !== String(oldId)) return
       let after = null, before = null
       this.rows.forEach((r, i) => {
         if (r.status !== 'PENDING' || String(r.id) === String(oldId)) return
@@ -366,8 +406,8 @@ export default {
 
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); margin: var(--space-3); }
 .state.is-err { color: var(--danger-600); }
+.state .mp-link { margin-inline-start: 8px; }
 .sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
-.change-now { padding: var(--space-4); }.change-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }.change-now__head h3 { margin: 3px 0 0; font-size: var(--font-size-lg); }.change-now__eyebrow { color: var(--primary-600); font-size: 10px; font-weight: 800; letter-spacing: .08em; }.change-now__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }.change-now__item { display: grid; gap: 6px; padding: 13px; border: 1px solid var(--border-light); border-radius: 12px; background: linear-gradient(145deg, var(--bg-card), var(--primary-50, #eff6ff)); color: inherit; text-align: left; cursor: pointer; }.change-now__identity { font-weight: 700; }.change-now__type,.change-now__why,.change-now__next { color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.5; }.change-now__route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 7px; font-size: var(--font-size-xs); }.change-now__route b { color: var(--primary-600); }.change-now__next { color: var(--primary-700); font-weight: 600; }
 .change-impact { padding: 14px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--bg-subtle, #f8fafc); }.change-impact__route { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 12px; }.change-impact__route > div { display: grid; gap: 4px; padding: 12px; border-radius: 9px; background: var(--bg-card, #fff); }.change-impact__route > b { align-self: center; color: var(--primary-600); font-size: 22px; }.change-impact__route small { color: var(--text-tertiary); }.change-impact__route strong,.change-impact__route span { overflow-wrap: anywhere; }.change-impact__route .is-target { border: 1px solid var(--primary-200, #bfdbfe); }.change-impact__truth { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; padding: 9px 11px; border-radius: 8px; background: var(--bg-card, #fff); color: var(--text-secondary); font-size: var(--font-size-xs); }.change-impact__list { display: grid; gap: 7px; margin: 12px 0 0; padding: 0; list-style: none; }.change-impact__list li { display: grid; grid-template-columns: 6em 1fr; gap: 10px; font-size: var(--font-size-sm); line-height: 1.55; }.change-impact__list span { color: var(--text-secondary); }.change-impact__next { margin: 12px 0 0; padding: 9px 11px; border-radius: 8px; background: var(--warning-50, #fffbeb); color: var(--warning-700, #b45309); font-size: var(--font-size-sm); }
 
 /* 左栏紧凑列表 */
@@ -386,5 +426,15 @@ export default {
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
-@media (max-width: 980px) { .change-now__grid { grid-template-columns: 1fr; }.change-now__head { align-items: flex-start; flex-direction: column; }.change-impact__route { grid-template-columns: 1fr; }.change-impact__route > b { justify-self: center; transform: rotate(90deg); } }
+@media (max-width: 980px) { .change-impact__route { grid-template-columns: 1fr; }.change-impact__route > b { justify-self: center; transform: rotate(90deg); } }
+.change-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.change-toolbar .mp-tabs { margin: 0; }
+.change-toolbar :deep(.app-search-box) { width: min(100%, 300px); }
+.lv-head__link { margin-left: auto; }
+.lv-item:focus-visible { outline: 2px solid var(--primary-600, #2563eb); outline-offset: 2px; }
+.lv-item__sub { overflow-wrap: anywhere; }
+.lv-foot { align-items: center; flex-wrap: wrap; }
+.lv-foot__hint { margin-right: auto; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.change-impact :deep(.app-inline-alert) { margin-top: 12px; }
+@media (max-width: 600px) { .lv-foot__hint { flex-basis: 100%; }.change-impact__list li { grid-template-columns: 1fr; gap: 2px; } }
 </style>

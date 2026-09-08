@@ -4,7 +4,7 @@ export const coreControlRoutes = [
     path: '/workbench',
     name: 'admin-workbench',
     component: () => import('../views/AdminWorkbenchView.vue'),
-    meta: { requiresAuth: true, permissionKey: 'workbench.home.view' }
+    meta: { requiresAuth: true, moduleCode: 'WORKBENCH', permissionKey: 'workbench.home.view' }
   },
   {
     path: '/admin/help',

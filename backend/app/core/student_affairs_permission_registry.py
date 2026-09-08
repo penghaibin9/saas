@@ -143,6 +143,18 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "/api/v1/mobile/teacher/affairs/activities/ongoing": (
         "studentAffairs.activity.publish",
     ),
+    "/api/v1/mobile/teacher/affairs/activities": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/participants": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/transition": (
+        "studentAffairs.activity.publish",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/confirm": (
+        "studentAffairs.activity.confirm",
+    ),
     "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token": (
         "studentAffairs.activity.publish",
     ),
@@ -163,6 +175,12 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
         "studentAffairs.funding.publicity.manage",
         "studentAffairs.discipline.appeal.review",
         "studentAffairs.activity.confirm",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/AID_OBJECTION/{objection_id}/detail": (
+        "studentAffairs.aid.approve",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/FUNDING_APPEAL/{appeal_id}/detail": (
+        "studentAffairs.funding.publicity.manage",
     ),
     "/api/v1/mobile/teacher/affairs/appeals/repair/metrics": (
         "studentAffairs.aid.approve",

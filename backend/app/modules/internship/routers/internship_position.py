@@ -133,7 +133,7 @@ def create_position(body: PositionCreate, user=Depends(require_permission(_P_MAN
 
 @router.get("/positions/{position_id}", summary="岗位详情（含企业合作状态/导师/审计）")
 def position_detail(position_id: str, user=Depends(require_permission(_P_VIEW))):
-    return success(pos.get_position(position_id))
+    return success(pos.get_position(position_id, user=user))
 
 
 @router.put("/positions/{position_id}", summary="编辑岗位（已归档不可编辑）")
@@ -144,15 +144,15 @@ def update_position(position_id: str, body: PositionUpdate, user=Depends(require
 
 
 @router.post("/positions/{position_id}/status",
-             summary="岗位状态机（提交/上架/下架/暂停/归档；黑名单·停用企业不能上架）")
+             summary="岗位状态机（提交/退回补正/上架/下架/暂停/归档；黑名单·停用企业不能上架）")
 def position_status(position_id: str, body: PositionStatusAction, user=Depends(require_permission(_P_PUBLISH))):
-    result = pos.set_status(position_id, body.action, body.reason or "")
+    result = pos.set_status(position_id, body.action, body.reason or "", expected_version=body.expectedVersion)
     audit_log.record("岗位状态变更", f"internship-position:{position_id}", detail={"action": body.action})
     return success(result, message="已更新")
 
 
 @router.post("/positions/{position_id}/risk", summary="风险岗位标记/解除（标记须说明）")
 def position_risk(position_id: str, body: PositionRiskRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.mark_risk(position_id, body.on, body.note or "")
+    result = pos.mark_risk(position_id, body.on, body.note or "", expected_version=body.expectedVersion)
     audit_log.record("岗位风险标记", f"internship-position:{position_id}", detail={"on": body.on})
     return success(result, message="已更新")

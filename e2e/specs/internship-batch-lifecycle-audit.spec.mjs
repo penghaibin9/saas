@@ -85,7 +85,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
   test('管理员真实创建批次：规则权重错误先在浏览器阻断，修正后创建并刷新持久化', async ({ page }) => {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches`)
-    await expect(page.getByText('实习批次设置').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '批次管理', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '新建批次' }).click()
     await expect(page.getByText('新建实习批次').first()).toBeVisible()
 
@@ -94,7 +94,10 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     await page.getByRole('button', { name: '＋ 添加阶段' }).click()
     const stage = page.locator('.bf-row').first()
     await stage.locator('input').nth(0).fill('浏览器岗前准备')
-    await stage.locator('input').nth(1).fill('E2E_PREP')
+    await stage.locator('input').nth(1).fill(startDate)
+    await stage.locator('input').nth(1).press('Tab')
+    await stage.locator('input').nth(2).fill(endDate)
+    await stage.locator('input').nth(2).press('Tab')
 
     await fillText(page, '电子围栏半径（米）', 650)
 
@@ -106,9 +109,8 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     })
 
     await fillText(page, '企业评价 %', 30)
-    await page.getByRole('button', { name: '创建批次' }).click()
+    await page.getByRole('button', { name: '保存并配置名单' }).click()
     await expect(page.getByText(/评价权重合计须为 100%，当前 90%/)).toBeVisible()
-    await page.waitForTimeout(300)
     expect(createRequests, 'invalid evaluation weights must not send create request').toBe(0)
 
     await fillText(page, '企业评价 %', 40)
@@ -116,20 +118,20 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
       apiPath(response) === '/api/v1/internship/batches'
       && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '创建批次' }).click()
+    await page.getByRole('button', { name: '保存并配置名单' }).click()
     const body = await expectBusinessOk(await createResponsePromise, '创建实习批次')
     batchId = String(body.data.id)
     expect(batchId).not.toBe('')
 
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}`)
-    await expect(page.getByRole('heading', { name: `${batchName} · 批次详情` })).toBeVisible()
+    await expect(page.getByRole('heading', { name: batchName, exact: true })).toBeVisible()
     await expect(page.locator('main p').filter({ hasText: batchNo }).first()).toBeVisible()
+    await page.getByRole('link', { name: '阶段与规则', exact: true }).click()
     await expect(page.getByText('浏览器岗前准备').first()).toBeVisible()
     await expect(page.getByText(/电子围栏 650 米/).first()).toBeVisible()
-    await expect(page.getByText('新建批次').first()).toBeVisible()
 
     await page.reload()
-    await expect(page.getByRole('heading', { name: `${batchName} · 批次详情` })).toBeVisible()
+    await expect(page.getByRole('heading', { name: batchName, exact: true })).toBeVisible()
     await expect(page.getByText('浏览器岗前准备').first()).toBeVisible()
     await expect(page.getByText(/电子围栏 650 米/).first()).toBeVisible()
   })
@@ -149,7 +151,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
       apiPath(response) === '/api/v1/internship/batches'
       && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '创建批次' }).click()
+    await page.getByRole('button', { name: '保存并配置名单' }).click()
     const response = await duplicateResponsePromise
     const { text, body } = await responseJson(response)
     expect(response.status(), `duplicate batchNo must be a handled business rejection: ${text.slice(0, 800)}`).toBeLessThan(500)
@@ -180,7 +182,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     await expect(page.getByText('37 / 0').first()).toBeVisible()
     await expect(page.getByText('编辑批次').first()).toBeVisible()
 
-    await page.getByRole('button', { name: '选择学生并启用' }).click()
+    await page.getByRole('button', { name: '配置名单并启用' }).click()
     const participantCard = page.locator('.bps-card')
     await expect(participantCard.getByText('参与学生范围')).toBeVisible()
 
@@ -216,10 +218,9 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     const activated = await expectBusinessOk(await freezeResponsePromise, '冻结参与学生并启用实习批次')
     expect(activated.data.batchStatus).toBe('RUNNING')
     await expect(participantCard.getByText('名单已冻结')).toBeVisible()
-    const statusCard = page.locator('.mp-card').filter({ hasText: '状态与操作' }).first()
-    await expect(statusCard.getByText('进行中').first()).toBeVisible()
+    await expect(page.locator('.bdv-identity')).toContainText('进行中')
+    await page.getByRole('link', { name: '批次概况', exact: true }).click()
     await expect(page.getByText('37 / 1').first()).toBeVisible()
-    await expect(page.getByText('启用批次').first()).toBeVisible()
 
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}/edit`)
     await expect(page.getByText('当前批次不可编辑').first()).toBeVisible()
@@ -228,7 +229,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     // 新参与学生未完成资格/企业/岗位等 BATCH_CLOSE 前置时，普通结束必须继续被后端闸门阻断。
     // 页面先读 readiness，再显式切换为“强制结束”并要求管理员填写原因，不能绕过真实 UI 直调接口。
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}`)
-    await page.getByRole('button', { name: '结束' }).click()
+    await page.getByRole('button', { name: '结束批次', exact: true }).click()
     const closeDialog = page.getByRole('dialog')
     await expect(closeDialog).toContainText('强制结束批次')
     await expect(closeDialog).toContainText(/当前有 1 名学生存在结束阻断/)
@@ -244,7 +245,8 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     expect(closed.data.forced).toBe(true)
     await expect(page.getByText('已结束').first()).toBeVisible()
 
-    const auditCard = page.locator('.mp-card').filter({ hasText: '操作留痕' }).first()
+    await page.getByRole('link', { name: '操作记录', exact: true }).click()
+    const auditCard = page.locator('.mp-card').filter({ hasText: '操作记录' }).first()
     await expect(auditCard).toContainText('新建批次')
     await expect(auditCard).toContainText('编辑批次')
     await expect(auditCard).toContainText('启用批次')
@@ -258,7 +260,9 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
         E2E_INTERNSHIP_BATCH_ID: batchId,
         E2E_INTERNSHIP_BATCH_NO: batchNo,
         E2E_INTERNSHIP_BATCH_NAME: batchName,
-        E2E_INTERNSHIP_BATCH_REMARK: editedRemark
+        E2E_INTERNSHIP_BATCH_REMARK: editedRemark,
+        E2E_INTERNSHIP_STAGE_START: startDate,
+        E2E_INTERNSHIP_STAGE_END: endDate
       }
     })
     expect(output).toContain('DB_EVIDENCE_OK')

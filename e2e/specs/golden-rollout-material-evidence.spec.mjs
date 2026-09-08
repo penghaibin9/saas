@@ -204,7 +204,7 @@ test.describe.serial('Golden rollout · materials / archive / evidence · Batch 
     await openGoldenStaffPage(page, '/admin/student-affairs/archive')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/archive/)
-    await expect(page.locator('.av-workspace')).toBeVisible()
+    await expect(page.locator('.archive-workspace')).toBeVisible()
     await expect(page.locator('.av-blist')).toBeVisible()
     const batch = page.locator('.av-bitem').filter({ hasText: affairsFixture.batchName }).first()
     await expect(batch).toBeVisible()

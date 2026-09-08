@@ -54,7 +54,7 @@ def _phone(value: Any, field: str) -> str:
     return raw
 
 
-def _own_context(db, user: dict, *, lock: bool = False):
+def _own_context(db, user: dict, *, lock: bool = False, allow_materials: bool = False):
     from app.services.mobile_student_service import resolve_student
 
     profile = resolve_student(db, user or {})
@@ -86,12 +86,14 @@ def _own_context(db, user: dict, *, lock: bool = False):
     if len(rows) > 1:
         raise AppException("DATA_CONFLICT", "本人同时存在多个开放迎新批次，请联系学校处理")
     orientation, batch = rows[0]
-    if orientation.report_status in {"CHECKED_IN", "COLLEGE_CONFIRMED"}:
-        raise AppException("DATA_CONFLICT", "已完成现场报到，预报到信息不可继续修改")
+    if orientation.stage in {"ENROLLED", "NO_SHOW", "CANCELLED", "DEFERRED"} or orientation.report_status == "COLLEGE_CONFIRMED":
+        raise AppException("DATA_CONFLICT", "当前迎新阶段不可继续提交，请联系学校")
+    if orientation.report_status == "CHECKED_IN" and not allow_materials:
+        raise AppException("DATA_CONFLICT", "已完成现场报到，信息和到校计划不可继续修改")
     now = datetime.utcnow()
     if batch.start_date and now < batch.start_date:
         raise AppException("DATA_CONFLICT", "预报到尚未开放")
-    if batch.end_date and now > batch.end_date:
+    if batch.end_date and now > batch.end_date and not (allow_materials and orientation.report_status == "CHECKED_IN"):
         raise AppException("DATA_CONFLICT", "预报到已结束")
     return profile, orientation, batch
 
@@ -170,7 +172,7 @@ def _material_payload(db, row: OrientationMaterial) -> dict:
 
 def snapshot(user: dict) -> dict:
     with session() as db:
-        profile, orientation, batch = _own_context(db, user)
+        profile, orientation, batch = _own_context(db, user, allow_materials=True)
         phone = _contact(db, profile.id, "PHONE")
         emergency = _contact(db, profile.id, "EMERGENCY_PHONE")
         arrival = db.scalars(select(OrientationArrivalPlan).where(
@@ -186,6 +188,9 @@ def snapshot(user: dict) -> dict:
             OrientationMaterial.is_deleted.is_(False),
         ).order_by(OrientationMaterial.material_type, OrientationMaterial.submission_no.desc())).all())
         return {
+            "available": orientation.report_status != "CHECKED_IN",
+            "canSubmitMaterials": True,
+            "reason": "已完成现场报到，仍可补交待办材料" if orientation.report_status == "CHECKED_IN" else "",
             "orientationStudentId": str(orientation.id), "studentId": str(profile.id),
             "batch": {
                 "id": str(batch.id), "name": batch.batch_name,
@@ -398,7 +403,7 @@ def submit_material(user: dict, body: dict) -> dict:
     if not file_id.isdigit() or len(client_id) < 8:
         raise AppException("VALIDATION_ERROR", "fileId 与 clientSubmissionId 必填")
     with session() as db:
-        profile, orientation, _batch = _own_context(db, user, lock=True)
+        profile, orientation, _batch = _own_context(db, user, lock=True, allow_materials=True)
         prior = db.scalars(select(OrientationMaterial).where(
             OrientationMaterial.tenant_id == _tid(),
             OrientationMaterial.client_submission_id == client_id,

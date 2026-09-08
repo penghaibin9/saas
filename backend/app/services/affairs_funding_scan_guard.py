@@ -164,7 +164,7 @@ def _grant_one(db, application):
     return _ORIGINAL_GRANT_ONE(db, application)
 
 
-def scan_publicity() -> dict:
+def scan_publicity(user=None, batch_id=None) -> dict:
     """逐申请确认公示，保证单条冲突不会回滚整批成功项。"""
     from app.models import FundingApplication, FundingBatch
 
@@ -173,9 +173,22 @@ def scan_publicity() -> dict:
     candidates: list[int] = []
     skipped_appeal = 0
     invalid_batch = 0
+    not_due = 0
+    invalid_publicity = 0
 
     # 第一阶段只读取候选，不持有跨申请长事务锁。
     with session() as db:
+        filters = []
+        if batch_id is not None:
+            filters.append(FundingApplication.batch_id == int(batch_id))
+        if user is not None:
+            from app.models import StudentProfile
+            from app.services.affairs_dashboard_service import _allowed_class_ids
+            allowed, _ = _allowed_class_ids(db, user)
+            student_filters = [StudentProfile.tenant_id == tenant_id, StudentProfile.is_deleted.is_(False)]
+            if allowed is not None:
+                student_filters.append(StudentProfile.class_id.in_(allowed or {-1}))
+            filters.append(FundingApplication.student_id.in_(select(StudentProfile.id).where(*student_filters)))
         rows = db.execute(
             select(
                 FundingApplication.id,
@@ -185,11 +198,10 @@ def scan_publicity() -> dict:
             .where(
                 FundingApplication.tenant_id == tenant_id,
                 FundingApplication.status == "PUBLICITY",
-                FundingApplication.publicity_at.is_not(None),
                 FundingApplication.is_deleted.is_(False),
+                *filters,
             )
             .order_by(FundingApplication.id)
-            .limit(200)
         ).all()
         pending = legacy._pending_appeal_ids(db, [row.id for row in rows])
         batch_ids = {int(row.batch_id) for row in rows if row.batch_id}
@@ -212,9 +224,14 @@ def scan_publicity() -> dict:
             if not batch:
                 invalid_batch += 1
                 continue
+            if row.publicity_at is None:
+                invalid_publicity += 1
+                continue
             due = row.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
             if due <= now:
                 candidates.append(app_id)
+            else:
+                not_due += 1
 
     confirmed = 0
     quota_conflict = 0
@@ -237,6 +254,17 @@ def scan_publicity() -> dict:
             if not application:
                 stale += 1
                 continue
+            if batch_id is not None and int(application.batch_id or 0) != int(batch_id):
+                stale += 1
+                continue
+            if user is not None:
+                try:
+                    legacy._scope_or_403(db, application.student_id, user)
+                except AppException as exc:
+                    if exc.code not in {"NO_PERMISSION", "NO_DATA_SCOPE"}:
+                        raise
+                    stale += 1
+                    continue
 
             # 候选读取后可能新产生申诉，正式写入前必须再次核验。
             if legacy._pending_appeal_ids(db, [app_id]):
@@ -249,6 +277,9 @@ def scan_publicity() -> dict:
             )
             if not batch or batch.is_deleted:
                 invalid_batch += 1
+                continue
+            if application.publicity_at is None:
+                invalid_publicity += 1
                 continue
             due = application.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
             if due > datetime.utcnow():
@@ -273,6 +304,9 @@ def scan_publicity() -> dict:
     legacy._drain_message_outbox()
     return {
         "count": confirmed,
+        "examined": len(rows),
+        "notDue": not_due,
+        "invalidPublicity": invalid_publicity,
         "skippedAppeal": skipped_appeal,
         "invalidBatch": invalid_batch,
         "quotaConflict": quota_conflict,

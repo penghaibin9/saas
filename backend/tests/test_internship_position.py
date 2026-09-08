@@ -74,7 +74,8 @@ def test_list_filter_by_batch(client, auth_headers, db_mode):
 def test_status_machine_publish(client, auth_headers, db_mode):
     cid = _company(client, auth_headers)  # 已审核 → 合作中
     bid = _batch(client, auth_headers)
-    pid = _mk(client, auth_headers, cid, batchId=str(bid))["data"]["id"]
+    pid = _mk(client, auth_headers, cid, batchId=str(bid),
+              geofenceLat=31.23, geofenceLng=121.47, geofenceRadiusM=300)["data"]["id"]
     # 草稿直接上架 → 非法（须先提交/或从待审核）
     assert client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()["code"] != 0
     # 提交 → 待审核

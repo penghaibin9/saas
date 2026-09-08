@@ -14,9 +14,9 @@ test('SP-D04 离校有独立正式路由，且不使用仓库里已被占用的 
   assert.doesNotMatch(router, /path: 'clearance'/)
 })
 
-test('SP-D04 迎新页保留兼容入口并引导到正式离校页，不删除历史路径', () => {
-  assert.match(orientation, /key: 'departure'/)
-  assert.match(orientation, /\$router\.push\('\/departure'\)/)
+test('SP-D04 迎新页不再混入离校办理入口', () => {
+  assert.doesNotMatch(orientation, /key: 'departure'/)
+  assert.doesNotMatch(orientation, /\$router\.push\('\/departure'\)/)
   // 旧的"待学校启用后开放"静态空态必须消失——它并不是真实业务状态
   assert.doesNotMatch(orientation, /离校清单待学校启用后开放/)
 })

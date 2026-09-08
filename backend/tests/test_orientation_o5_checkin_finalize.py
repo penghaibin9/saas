@@ -117,15 +117,42 @@ def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth
     db.add(point)
     db.commit()
     point_id = int(point.id)
+    batch_id, batch_no = batch.id, batch.batch_no
     db.close()
 
     student_headers = _student_headers(ids["user"], ids["profile"], ids["studentNo"], ids["name"])
-    issued = client.post("/api/v1/mobile/orientation/checkin-token", headers=student_headers)
+    issued = client.post("/api/v1/portal/orientation/checkin-token", headers=student_headers)
     assert issued.status_code == 200, issued.text
     token_data = issued.json()["data"]
     token = token_data["token"]
     assert token.startswith("oci1.")
     assert token_data["ttlSeconds"] == 600
+
+    # A disabled onsite step must not offer a credential or a successful preview.
+    with get_sessionmaker()() as db:
+        step = db.query(OrientationFlowStep).filter_by(
+            tenant_id=TID, flow_version_id=batch.flow_version_id, step_key="CHECKIN",
+        ).one()
+        step.enabled = False
+        db.commit()
+    blocked_issue = client.post("/api/v1/portal/orientation/checkin-token", headers=student_headers)
+    assert blocked_issue.status_code == 409
+    blocked_preview = client.post(
+        "/api/v1/mobile/teacher/orientation/checkin/preflight",
+        headers=auth_headers, json={"token": token},
+    )
+    assert blocked_preview.status_code == 409
+    blocked_confirm = client.post(
+        "/api/v1/mobile/teacher/orientation/checkin/confirm",
+        headers=auth_headers, json={"token": token, "checkinPointId": str(point_id)},
+    )
+    assert blocked_confirm.status_code == 409
+    with get_sessionmaker()() as db:
+        step = db.query(OrientationFlowStep).filter_by(
+            tenant_id=TID, flow_version_id=batch.flow_version_id, step_key="CHECKIN",
+        ).one()
+        step.enabled = True
+        db.commit()
 
     tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
     rejected = client.post(
@@ -238,6 +265,27 @@ def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth
 
     cannot_reissue = client.post("/api/v1/mobile/orientation/checkin-token", headers=student_headers)
     assert cannot_reissue.status_code == 409
+    # Student PC and mini read the same check-in, housing and finalization facts.
+    portal = client.get("/api/v1/portal/orientation/my", headers=student_headers)
+    assert portal.status_code == 200, portal.text
+    for field in ("reportStatus", "dorm", "checkin", "stage"):
+        assert portal.json()["data"][field] == mine_data[field]
+    queue = client.get("/api/v1/orientation/qualifications", headers=auth_headers, params={"queue": "ready", "pageSize": 1})
+    assert queue.json()["data"]["total"] == 0
+    assert client.post(f"/api/v1/orientation/batches/{batch_id}/close", headers=auth_headers).status_code == 200
+    archive = client.post("/api/v1/orientation/archives", headers=auth_headers,
+        json={"archiveName": "四端迎新闭环归档", "batchNo": batch_no})
+    assert archive.status_code == 200, archive.text
+    archive_id = archive.json()["data"]["id"]
+    for _ in range(2):
+        response = client.post(f"/api/v1/orientation/archives/{archive_id}/run", headers=auth_headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["itemCount"] == 1
+    snapshots = client.get(f"/api/v1/orientation/archives/{archive_id}/items", headers=auth_headers).json()["data"]
+    assert snapshots["total"] == 1
+    assert snapshots["items"][0]["stage"] == "ENROLLED"
+    assert client.get(f"/api/v1/orientation/archives/{archive_id}/items", headers=student_headers).status_code == 403
+
 
 
 def test_o5_migration_is_serial_and_downgrade_safe():

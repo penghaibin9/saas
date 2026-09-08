@@ -85,6 +85,52 @@ def test_activity_full_flow_and_credit(client, db_mode):
     assert len(ev) >= 1
 
 
+def test_teacher_mobile_can_finish_activity_and_confirm_credits(client, db_mode):
+    """教师移动端可完成现场状态推进；复用同一活动服务和积分台账。"""
+    hdr = _hdr(client, "school_admin01")
+    sid = db_mode["student"]
+    activity = client.post(f"{BASE}/activities", headers=hdr, json={
+        "activityName": "移动端现场闭环", "activityType": "ACTIVITY",
+        "creditType": "SECOND_CLASS", "creditValue": 1, "quota": 30,
+    }).json()["data"]
+    activity = _publish(client, hdr, activity)
+    aid = activity["activityId"]
+
+    listed = client.get(
+        "/api/v1/mobile/teacher/affairs/activities",
+        headers=hdr,
+        params={"status": "PUBLISHED,ENROLL_CLOSED,ONGOING,FINISHED"},
+    ).json()
+    assert listed["code"] == 0
+    assert any(x["activityId"] == aid and "ENROLL_CLOSE" in x["allowedActions"] for x in listed["data"]["items"])
+
+    for action in ("ENROLL_CLOSE", "START", "FINISH"):
+        moved = client.post(
+            f"/api/v1/mobile/teacher/affairs/activities/{aid}/transition",
+            headers=hdr,
+            json={"action": action, "version": activity["version"]},
+        ).json()
+        assert moved["code"] == 0, (action, moved)
+        activity = moved["data"]
+
+    _seed_checkin(aid, sid)
+    participants = client.get(
+        f"/api/v1/mobile/teacher/affairs/activities/{aid}/participants",
+        headers=hdr,
+    ).json()
+    assert participants["code"] == 0
+    assert any(x["studentId"] == str(sid) and x["signupStatus"] == "CHECKED_IN" for x in participants["data"]["items"])
+
+    confirmed = client.post(
+        f"/api/v1/mobile/teacher/affairs/activities/{aid}/confirm",
+        headers=hdr,
+        json={"version": activity["version"]},
+    ).json()
+    assert confirmed["code"] == 0
+    assert confirmed["data"]["status"] == "CONFIRMED"
+    assert confirmed["data"]["creditsGranted"] == 1
+
+
 def test_activity_unconfirm_no_duplicate_credit(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]
