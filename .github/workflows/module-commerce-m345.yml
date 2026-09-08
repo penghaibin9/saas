@@ -7,6 +7,10 @@ on:
       - backend/app/models/platform.py
       - backend/app/services/__init__.py
       - backend/app/services/module_commerce_access_guard.py
+      - backend/app/services/dorm_allocation_publish_job.py
+      - backend/tests/test_module_commerce_dorm_worker_contract.py
+      - backend/tests/test_module_commerce_dorm_worker_runtime.py
+      - backend/tests/test_dorm_allocation_publish_job.py
       - backend/app/services/module_commerce_lifecycle_service.py
       - backend/app/services/module_commerce_m345_hardening.py
       - backend/app/services/module_commerce_quota_guard.py
@@ -70,6 +74,9 @@ jobs:
             backend/app/models/commercial.py \
             backend/app/models/platform.py \
             backend/app/services/module_commerce_access_guard.py \
+            backend/app/services/dorm_allocation_publish_job.py \
+            backend/tests/test_module_commerce_dorm_worker_contract.py \
+            backend/tests/test_module_commerce_dorm_worker_runtime.py \
             backend/app/services/module_commerce_lifecycle_service.py \
             backend/app/services/module_commerce_m345_hardening.py \
             backend/app/services/module_commerce_quota_guard.py \
@@ -86,6 +93,10 @@ jobs:
             backend/tests/test_module_commerce_enterprise_gate.py \
             backend/tests/test_module_commerce_student_portal_gate.py \
             backend/tests/test_commercial_surface_module_gate.py
+      - name: Durable dorm publication generation contracts
+        run: |
+          set -euo pipefail
+          python -B backend/tests/test_module_commerce_dorm_worker_contract.py -v 2>&1 | tee "$OUT/dorm-worker-contract.log"
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
         working-directory: backend
         run: |
@@ -97,6 +108,8 @@ jobs:
             tests/test_module_commerce_m345_runtime.py \
             tests/test_module_commerce_quota_guard_runtime.py \
             tests/test_module_commerce_write_fence_runtime.py \
+            tests/test_module_commerce_dorm_worker_runtime.py \
+            tests/test_dorm_allocation_publish_job.py \
             tests/test_module_commerce_consumer_dependency_runtime.py \
             tests/test_module_commerce_enterprise_gate.py \
             tests/test_module_commerce_student_portal_gate.py \
