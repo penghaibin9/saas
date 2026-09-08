@@ -9,11 +9,11 @@
 /* Unique signature: .ap-note only exists on the aid publicity workbench.    */
 /* ========================================================================== */
 
-#app .base-portal-layout .mps:has(.ap-note) {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) {
   gap: 12px;
 }
 
-#app .base-portal-layout .mps:has(.ap-note) > .mps__head {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) > .mps__head {
   position: relative;
   overflow: hidden;
   align-items: center;
@@ -24,7 +24,7 @@
   box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 52%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.ap-note) > .mps__head::before {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) > .mps__head::before {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
@@ -32,12 +32,12 @@
   background: linear-gradient(180deg, var(--pri), color-mix(in srgb, var(--pri) 42%, #60a5fa));
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .mps__title {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .mps__title {
   font-size: 26px;
   letter-spacing: -.02em;
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .sa-toolbar {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 720px) auto;
   align-items: stretch;
@@ -45,30 +45,30 @@
   margin-bottom: 12px;
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-grid--metrics {
   grid-template-columns: 1.25fr .9fr .9fr;
   gap: 10px;
   min-width: 0;
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics > * {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-grid--metrics > * {
   min-height: 92px;
   border-radius: 14px;
   box-shadow: 0 13px 28px -30px color-mix(in srgb, var(--deep1) 48%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics > :first-child {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-grid--metrics > :first-child {
   border-color: color-mix(in srgb, var(--pri) 18%, var(--card-b));
   background: linear-gradient(135deg, color-mix(in srgb, var(--pri-bg) 70%, #fff), #fff 72%);
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .sa-toolbar > :last-child {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-toolbar > :last-child {
   align-self: center;
   min-height: 40px;
   box-shadow: 0 10px 22px -16px color-mix(in srgb, var(--pri) 70%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .ap-note {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .ap-note {
   margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--pri) 9%, var(--card-b));
@@ -78,14 +78,14 @@
   line-height: 1.6;
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .dt {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .dt {
   overflow: hidden;
   border-color: color-mix(in srgb, var(--pri) 9%, var(--card-b));
   border-radius: 14px;
   box-shadow: 0 16px 34px -34px color-mix(in srgb, var(--deep1) 54%, transparent);
 }
 
-#app .base-portal-layout .mps:has(.ap-note) .dt__th {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .dt__th {
   background: #f7f9fc;
 }
 
@@ -324,23 +324,23 @@
 }
 
 @media (max-width: 1100px) {
-  #app .base-portal-layout .mps:has(.ap-note) > .mps__head,
+  #app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) > .mps__head,
   #app .base-portal-layout .mps:has(.lv-list):has(.lv-main) > .mps__head,
   #app .base-portal-layout .mps:has(.pr-split) > .mps__head {
     padding: 14px;
   }
 
-  #app .base-portal-layout .mps:has(.ap-note) .sa-toolbar {
+  #app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-toolbar {
     grid-template-columns: 1fr;
   }
 
-  #app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+  #app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-grid--metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  #app .base-portal-layout .mps:has(.ap-note) .sa-grid--metrics {
+  #app .base-portal-layout:not(.bpl-workspace) .mps:has(.ap-note) .sa-grid--metrics {
     grid-template-columns: 1fr;
   }
 }

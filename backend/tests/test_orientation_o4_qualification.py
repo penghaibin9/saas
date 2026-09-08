@@ -52,6 +52,7 @@ def _seed(db_mode):
         ("ACTIVATE", "账号激活"), ("INFO", "信息核对"),
         ("MATERIAL", "材料上传"), ("PAYMENT", "缴费/绿色通道"),
         ("DORM", "宿舍确认"),
+        ("CHECKIN", "现场报到"),
     )):
         db.add(OrientationFlowStep(
             tenant_id=TID, flow_version_id=flow.id, step_key=key,
@@ -105,7 +106,7 @@ def _seed(db_mode):
     db.add(room); db.flush()
     bed = DormBed(
         tenant_id=TID, building_id=building.id, room_id=room.id,
-        bed_no="1", status="VACANT",
+        bed_no="1", status="LOCKED",
     )
     db.add(bed); db.flush()
     stay = DormStay(
@@ -182,6 +183,12 @@ def test_o4_server_verdict_green_idempotency_payment_cas_and_exception(
     )
     assert initial.status_code == 200, initial.text
     initial_data = initial.json()["data"]
+    queue = client.get('/api/v1/orientation/qualifications', headers=auth_headers,
+                       params={'keyword': ids['name'], 'queue': 'blocked'})
+    assert queue.status_code == 200, queue.text
+    queue_row = next(r for r in queue.json()['data']['items'] if r['id'] == str(ids['orientation']))
+    for key in ('facts', 'blockers', 'inputHash', 'verdict', 'checkinEligibility'):
+        assert queue_row[key] == initial_data[key]
     assert initial_data["verdict"] == "NOT_QUALIFIED"
     assert {item["code"] for item in initial_data["blockers"]} >= {"PAYMENT_INCOMPLETE"}
     assert initial_data["checkinEligibility"]["eligible"] is True

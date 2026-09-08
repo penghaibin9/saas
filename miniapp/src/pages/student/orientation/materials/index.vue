@@ -35,7 +35,7 @@ const labels = { ID_CARD: '身份证明', ADMISSION_LETTER: '录取通知书', P
 export default {
   data() { return { o: null, state: 'loading', uploading: false, submitting: false, typeIndex: 0, typeLabels: types.map((x) => labels[x]), fileId: '', fileName: '', clientSubmissionId: '' } },
   computed: {
-    available() { return !!this.o?.selfService?.available },
+    available() { return !!this.o?.selfService?.canSubmitMaterials },
     materials() { return this.o?.selfService?.materials || [] }
   },
   onLoad() { this.load() },

@@ -30,8 +30,11 @@ test('critical Staff and Student PC navigation exposes semantic state', () => {
   assert.match(archive, /role="tab"/)
   assert.match(archive, /:aria-selected="tab === t\.key"/)
   assert.match(archive, /role="region" aria-labelledby="archive-workspace-title" aria-live="polite"/)
-  assert.match(dashboard, /role="progressbar"/)
-  assert.match(dashboard, /:aria-valuenow="batchProgress"/)
+  assert.match(dashboard, /aria-label="按实习流程办理"/)
+  assert.match(dashboard, /aria-label="待办类型"/)
+  assert.match(dashboard, /:aria-pressed="workFilter === kind\.value"/)
+  assert.match(dashboard, /class="idb-empty" role="status"/)
+  assert.doesNotMatch(dashboard, /role="progressbar"/)
   assert.match(student, /:aria-current="tab === item\.key \? 'page' : undefined"/)
 })
 
@@ -45,7 +48,8 @@ test('409 keeps the entered decision and 422 leaves all unrelated fields intact'
   assert.match(attendanceSubmit, /else \{[\s\S]*?this\.formError = res\.message/)
   assert.match(leave, /isConflict\(res\)[\s\S]*?kept: reason \|\| ''/)
   assert.match(leave, /if \(res\.code !== 0\) return toast\.error[\s\S]*?this\.cd\.visible = false/)
-  assert.match(score, /if \(res\.code !== 0\) return toast\.error\(res\.message \|\| '核算失败'\)[\s\S]*?this\.closePanel\(\)/)
+  assert.match(score, /if \(res\.code !== 0\) \{[\s\S]*?this\.panelError = res\.message \|\| '核算失败，填写内容已保留'[\s\S]*?if \(isConflict\(res\)\)[\s\S]*?return/)
+  assert.match(score, /this\.navigateWorkspace\(doneId, 'detail', true\)/)
 })
 
 test('unknown command results are reconciled by a read and are never blindly replayed', () => {

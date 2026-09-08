@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const apiUrl = new URL('../src/modules/graduation/api/graduation-defense-grade.api.js', import.meta.url)
 const apiSource = fs.readFileSync(apiUrl, 'utf8')
-  .replace(/^import .*\n/gm, '')
+  .replace(/^import .*\r?\n/gm, '')
   .replace(/\bexport const /g, 'const ')
   .replace(/^export default .*$/gm, '')
 
@@ -65,8 +65,8 @@ test('plagiarism type normalization never bypasses the original permission or ba
 const gateUrl = new URL('../../scripts/check/check-graduation-browser-architecture.mjs', import.meta.url)
 const scenarioPath = fileURLToPath(new URL('../../e2e/lib/graduation-scenario-fixture.mjs', import.meta.url))
 const gateSource = fs.readFileSync(gateUrl, 'utf8')
-  .replace(/^#!.*\n/, '')
-  .replace(/^import .*\n/gm, '')
+  .replace(/^#!.*\r?\n/, '')
+  .replace(/^import .*\r?\n/gm, '')
   .replaceAll('import.meta.url', 'entryUrl')
 const scenarioSource = fs.readFileSync(scenarioPath, 'utf8')
 

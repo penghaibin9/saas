@@ -1,27 +1,14 @@
 <template>
   <AppPageShell
     title="宿舍异常"
-    subtitle="汇总检查/夜不归宿等宿舍异常，宿管逐条处置并留痕；涉事学生异常已联动风险处置。"
+    subtitle="待办异常与处理记录"
     role-name="宿管 / 辅导员 / 学工处"
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍异常处置"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载宿舍异常..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip dorm-exception-summary">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">异常处置重点</span>
-          <h2 class="sa-summary-strip__title">优先处理待处置和夜不归宿等高风险异常，完成事实核查、处置说明和闭环留痕</h2>
-          <p class="sa-summary-strip__text">当前范围异常合计 {{ statusCounts === null ? '—' : (statusCounts.ALL || 0) }} 条。异常记录来自宿舍检查等业务，处置时应说明核查结果、处理措施和后续安排。</p>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="宿舍异常处置流程">
-        <div class="sa-workflow-step" data-step="1"><strong>识别异常</strong><br>查看类型、发生时间和原始说明</div>
-        <div class="sa-workflow-step" data-step="2"><strong>核查事实</strong><br>联系学生、宿舍成员或值班人员</div>
-        <div class="sa-workflow-step" data-step="3"><strong>记录处置</strong><br>填写处理措施和后续要求</div>
-        <div class="sa-workflow-step" data-step="4"><strong>完成闭环</strong><br>异常转为已处置并保留审计</div>
-      </div>
 
       <section class="presence-provider" :class="{ 'is-disabled': !provider.configured }">
         <div><span>门禁 Provider</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
@@ -30,9 +17,6 @@
         <p>{{ provider.notice || '未接入归寝数据' }}。“归寝未知”表示缺少可靠事实，不等同于未归。</p>
       </section>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
       <AppSectionCard title="今日归寝状态">
         <p class="dorm-exception-hint">仅依据批准请假和已标准化的 Provider 事件研判；无数据时保持“未知”，不会生成“未归”结论。</p>
         <DataTable v-if="presenceItems.length" :columns="presenceColumns" :rows="presenceItems" row-key="studentId">
@@ -83,7 +67,7 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+  AppConfirmDialog, AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -115,7 +99,7 @@ export default {
   name: 'DormExceptionView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard,
+    AppConfirmDialog, AppGlobalState, AppPageShell, AppPermissionButton, AppSectionCard,
     AppSelect, AppStatusTag, DataTable
   },
   data() {

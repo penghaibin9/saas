@@ -51,10 +51,10 @@ def _seed_o3(db_mode):
         status="PUBLISHED", source_type="MANUAL", published_at=datetime.utcnow(),
     )
     db.add(flow); db.flush()
-    for order, key in enumerate(("INFO", "MATERIAL")):
+    for order, key in enumerate(("INFO", "MATERIAL", "CHECKIN")):
         db.add(OrientationFlowStep(
             tenant_id=TID, flow_version_id=flow.id, step_key=key,
-            step_name={"INFO": "信息采集", "MATERIAL": "材料上传"}[key],
+            step_name={"INFO": "信息采集", "MATERIAL": "材料上传", "CHECKIN": "现场报到"}[key],
             enabled=True, required=True, sort_order=order,
         ))
     db.flush()
@@ -214,6 +214,21 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
     assert second.status_code == 200, second.text
     second_data = second.json()["data"]
     assert second_data["submissionNo"] == 2
+
+    review_queue = client.get(
+        "/api/v1/orientation/materials",
+        headers=auth_headers,
+        params={"status": "UPLOADED", "page": 1, "pageSize": 20},
+    )
+    assert review_queue.status_code == 200, review_queue.text
+    review_row = next(
+        row for row in review_queue.json()["data"]["items"]
+        if row["id"] == second_data["id"]
+    )
+    assert review_row["fileId"] == second_file
+    assert review_row["fileVersionId"] == second_data["fileVersionId"]
+    assert review_row["canPreview"] is True
+    assert review_row["canDownload"] is True
 
     db = get_sessionmaker()()
     old = db.get(OrientationMaterial, int(first_data["id"]))

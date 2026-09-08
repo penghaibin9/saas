@@ -39,9 +39,12 @@ test('S2 只跳本端分包与共享页，越界 fail-closed', () => {
   assert.equal(canNavigate(studentTarget, 'teacher'), false, '学生页不得在教师端跳转')
   assert.equal(canNavigate({ target: { path: '/pages/common/message-detail/index' } }, 'student'), true)
   assert.equal(canNavigate({ target: { path: '/pages/common/message-detail/index' } }, 'teacher'), true)
+  assert.equal(canNavigate({ target: { path: '/pages/student-internship/index' } }, 'student'), true)
+  assert.equal(canNavigate({ target: { path: '/pages/teacher-internship/internship-review/index' } }, 'teacher'), true)
+  assert.equal(canNavigate({ target: { path: '/pages/teacher-internship/internship-review/index' } }, 'student'), false)
   assert.equal(canNavigate({ target: { path: '/admin/student-affairs/leave' } }, 'student'), false, 'PC 路径不得进入小程序导航')
-  assert.deepEqual(ALLOWED_PREFIXES.student, ['/pages/student/', '/pages/common/'])
-  assert.deepEqual(ALLOWED_PREFIXES.teacher, ['/pages/teacher/', '/pages/common/'])
+  assert.deepEqual(ALLOWED_PREFIXES.student, ['/pages/student/', '/pages/student-internship/', '/pages/common/'])
+  assert.deepEqual(ALLOWED_PREFIXES.teacher, ['/pages/teacher/', '/pages/teacher-internship/', '/pages/common/'])
 })
 
 test('S2 无 target / 空 action 一律不可跳转', () => {
@@ -79,7 +82,7 @@ test('S2 runAction 只拼服务端已校验的 query 并统一 encode', () => {
 
 test('S2 routeExact 决定是否真的对象级闭环', () => {
   assert.equal(isObjectFocused(studentTarget), true)
-  assert.equal(isObjectFocused({ target: { path: '/pages/student/internship/index', routeExact: false } }), false)
+  assert.equal(isObjectFocused({ target: { path: '/pages/student-internship/index', routeExact: false } }), false)
   assert.equal(isObjectFocused(null), false)
 })
 

@@ -240,7 +240,7 @@ export const RECIPES = {
       { label: '违纪处分', to: '/admin/student-affairs/discipline' },
       { label: '困难认定', to: '/admin/student-affairs/aid' },
       { label: '资助评审', to: '/admin/student-affairs/funding' },
-      { label: '学工看板', to: '/admin/student-affairs' }
+      { label: '学工总览', to: '/admin/student-affairs' }
     ]
   },
 
@@ -464,7 +464,7 @@ export const RECIPES = {
     statsCues: SCHOOL_STATS,
     typeCues: [],
     quickLinks: [
-      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '学工大屏', to: COCKPIT },
       { label: '生命周期总览', to: '/admin/data-center/lifecycle' },
       { label: '风险预警', to: '/admin/data-center/risk' },
       { label: '排行分析', to: '/admin/data-center/rankings' }
@@ -480,11 +480,11 @@ export const RECIPES = {
     statsCues: SCHOOL_STATS,
     typeCues: [],
     quickLinks: [
-      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '学工大屏', to: COCKPIT },
       { label: '系统管理', to: SYSTEM_HOME },
       { label: '安全审计', to: AUDIT_LOGS },
       { label: '全部待办', to: TODO_ALL },
-      { label: '学工看板', to: '/admin/student-affairs' }
+      { label: '学工总览', to: '/admin/student-affairs' }
     ]
   },
 
@@ -516,7 +516,7 @@ export const RECIPES = {
     typeCues: [],
     quickLinks: [
       { label: '安全审计', to: AUDIT_LOGS },
-      { label: '领导驾驶舱', to: COCKPIT },
+      { label: '学工大屏', to: COCKPIT },
       { label: '风险预警', to: '/admin/data-center/risk' },
       { label: '实习风险', to: '/admin/internship/risks' }
     ]
@@ -532,7 +532,7 @@ export const RECIPES = {
     typeCues: [],
     quickLinks: [
       { label: '辅导员考评', to: '/admin/student-affairs/counselor-eval' },
-      { label: '学工看板', to: '/admin/student-affairs' },
+      { label: '学工总览', to: '/admin/student-affairs' },
       { label: '全部待办', to: TODO_ALL }
     ]
   },

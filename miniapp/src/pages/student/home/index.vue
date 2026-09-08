@@ -161,7 +161,7 @@
             v-for="t in home.todos"
             :key="t.id"
             :title="t.title"
-            :source-module="t.module"
+            :source-module="t.module === 'student-affairs' ? '学工服务' : t.module"
             :deadline="fmtDeadline(t.deadline)"
             :status="t.status"
             :action-text="t.action && t.action.label ? '去办理' : '去办理'"
@@ -307,7 +307,7 @@ export default {
   },
   methods: {
     go, toast, deadlineText,
-    fmtDeadline(value) { return deadlineText(value) },
+    fmtDeadline(value) { return value ? deadlineText(value) : '' },
     gradClass(index) { return GRAD_CLASSES[index % GRAD_CLASSES.length] },
     goMessages() { go('/pages/student/messages/index') },
     retryLoad() { return this.load({ force: true }) },

@@ -151,7 +151,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
       && response.request().method() === 'GET')
     await workbench.openGroupedTab('在岗办理', '周报/月报/总结')
     await reportsLoaded
-    const form = page.locator('section.sp-card').filter({ hasText: '周报编辑' }).first()
+    const form = page.locator('.report-editor')
     await form.locator('input[type="number"]').fill(String(weeklyNumber))
     const textareas = form.locator('textarea')
     await textareas.nth(0).fill('完成质量巡检、缺陷复现与安全记录，形成第一版过程事实。')
@@ -178,10 +178,12 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     await page.reload()
     await returnedReportsLoaded
     await workbench.selectExactBatchIfNeeded()
-    if (!(await page.getByText('周报编辑', { exact: true }).isVisible().catch(() => false))) {
+    if (!(await page.locator('.report-editor').isVisible())) {
       await workbench.openGroupedTab('在岗办理', '周报/月报/总结')
     }
-    const resubmitForm = page.locator('section.sp-card').filter({ hasText: '周报编辑' }).first()
+    await page.locator('.report-item').filter({ hasText: `第 ${weeklyNumber} 周周报` })
+      .getByRole('button', { name: '按意见修改', exact: true }).click()
+    const resubmitForm = page.locator('.report-editor')
     await resubmitForm.locator('input[type="number"]').fill(String(weeklyNumber))
     const revised = resubmitForm.locator('textarea')
     await revised.nth(0).fill('完成质量巡检；复现 3 个缺陷，修复后复测 3 个并全部通过，安全记录已归档。')
@@ -190,7 +192,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     const resubmitted = page.waitForResponse((response) =>
       apiPath(response) === '/api/v1/portal/internship/context/weekly-reports'
       && response.request().method() === 'POST')
-    await resubmitForm.getByRole('button', { name: '提交周报', exact: true }).click()
+    await resubmitForm.getByRole('button', { name: '重新提交周报', exact: true }).click()
     const secondVersion = await responseData(await resubmitted, '学生按退回意见重交周报')
     expect(Number(secondVersion.reportVersion || secondVersion.version)).toBeGreaterThan(1)
 
@@ -536,7 +538,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     await staffLogin(page, config.sandboxAdmin, null)
     await page.evaluate((batchId) => localStorage.setItem('internship.selectedBatchId', String(batchId)), fixture.gj08.batchId)
     await page.goto(`${config.staffBaseUrl}/admin/internship/archive?panel=records&batchId=${fixture.gj08.batchId}&id=${fixture.gj08.internshipId}`)
-    const workspace = page.getByRole('region', { name: /归档完整性核验/ })
+    const workspace = page.getByRole('region', { name: new RegExp(fixture.student.name) })
     await expect(workspace).toBeVisible()
     await expect(workspace).toContainText(fixture.student.name)
 
@@ -592,7 +594,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     }, /就业老师|EMPLOYMENT_TEACHER/)
     await page.evaluate((batchId) => localStorage.setItem('internship.selectedBatchId', String(batchId)), fixture.gj08.batchId)
     await page.goto(`${config.staffBaseUrl}/admin/internship/archive?panel=records&batchId=${fixture.gj08.batchId}&id=${fixture.gj08.internshipId}`)
-    const employmentWorkspace = page.getByRole('region', { name: /归档完整性核验/ })
+    const employmentWorkspace = page.getByRole('region', { name: new RegExp(fixture.student.name) })
     await expect(employmentWorkspace).toBeVisible()
     await expect(employmentWorkspace).toContainText('已归档')
     const employmentResponse = page.waitForResponse((response) =>

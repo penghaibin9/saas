@@ -5,7 +5,7 @@ from app.services import affairs_funding_service as funding
 
 class _Session:
     def __enter__(self):
-        return object()
+        return SimpleNamespace(scalars=lambda _statement: SimpleNamespace(all=lambda: []))
 
     def __exit__(self, exc_type, exc, tb):
         return False
@@ -32,6 +32,7 @@ def test_funding_statement_is_detail_only(monkeypatch):
     student = SimpleNamespace(student_no="E2E20260001", real_name="E2E学生A")
 
     monkeypatch.setattr(funding, "session", lambda: _Session())
+    monkeypatch.setattr(funding, "_tid", lambda: 1)
     monkeypatch.setattr(funding, "_load", lambda _db, _app_id: (application, student))
     monkeypatch.setattr(funding, "_scope_or_403", lambda _db, _student_id, _user: None)
     monkeypatch.setattr(funding, "_pending_appeal_ids", lambda _db, _ids: set())

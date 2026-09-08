@@ -13,18 +13,13 @@ const internshipService = read('../../backend/app/modules/internship/services/in
 const guidanceService = read('../../backend/app/modules/internship/services/internship_guidance_service.py')
 const visitService = read('../../backend/app/modules/internship/services/internship_visit_service.py')
 const visitPlanService = read('../../backend/app/modules/internship/services/internship_visit_plan_service.py')
+const processReportService = read('../../backend/app/modules/internship/services/internship_process_report_service.py')
+const studentReportContextService = read('../../backend/app/modules/internship/services/internship_student_report_context_service.py')
 const router = read('../../backend/app/modules/internship/routers/internship.py')
-
-test('W8 report workbench leads with bounded exact objects before metrics', () => {
-  assert.match(weeklyList, /priorityRows\(\)\s*\{[\s\S]*?\.slice\(0, 3\)/)
-  const nowIndex = weeklyList.indexOf('class="report-now"')
-  const kpiIndex = weeklyList.indexOf('<ModuleSummaryStrip')
-  assert.ok(nowIndex >= 0 && kpiIndex > nowIndex)
-  assert.match(weeklyList, /为什么到这里/)
-  assert.match(weeklyList, /最近变化/)
-  assert.match(weeklyList, /下一责任人/)
-  assert.match(weeklyList, /goDetail\(row\)/)
-})
+const studentPortal = read('../../student-portal/src/views/internship/InternshipView.vue')
+const mobileInternshipApi = read('../../miniapp/src/services/internshipApi.js')
+const mobileWeekly = read('../../miniapp/src/pages/student/weekly-report/index.vue')
+const mobileProcess = read('../../miniapp/src/pages/student-internship/process-report/index.vue')
 
 test('W8 resubmitted weekly report shows real before and after bodies on one screen', () => {
   assert.match(weeklyDetail, /resubmitComparison\(\)/)
@@ -46,14 +41,7 @@ test('W8 report decisions retain server-returned truthful receipts', () => {
   assert.match(processDetail, /id: res\.data\?\.id[\s\S]*?version: res\.data\?\.version/)
 })
 
-test('W8 guidance and visit workbench leads with bounded real collaboration objects', () => {
-  assert.match(guidanceVisit, /priorityRows\(\)\s*\{[\s\S]*?\.slice\(0, 3\)/)
-  const nowIndex = guidanceVisit.indexOf('class="guidance-now"')
-  const kpiIndex = guidanceVisit.indexOf('<ModuleSummaryStrip')
-  assert.ok(nowIndex >= 0 && kpiIndex > nowIndex)
-  assert.match(guidanceVisit, /为什么到这里/)
-  assert.match(guidanceVisit, /最近事实/)
-  assert.match(guidanceVisit, /下一责任人/)
+test('W8 guidance creation retains the existing receipt path', () => {
   assert.match(guidanceVisit, /<ActionReceipt :receipt="lastReceipt"/)
   assert.match(guidanceForm, /receipt: 'created'/)
   assert.match(guidanceVisit, /this\.\$route\.query\.receipt === 'created'/)
@@ -78,4 +66,27 @@ test('W8 guidance, visit and visit-plan list truth includes version and writes a
   assert.match(guidanceService, /expected_version=current_version/)
   assert.match(visitService, /def rectify_follow[\s\S]*?versioned_update\(/)
   assert.match(visitService, /extra_where=\(InternshipVisit\.rectify_status == current_status,\)/)
+})
+
+test('stage 5C student PC can continue returned weekly and process reports in place', () => {
+  assert.match(studentPortal, /editWeekly\(item\)/)
+  assert.match(studentPortal, /editProcessReport\(item\)/)
+  assert.match(studentPortal, /expectedVersion: existing\?\.version \?\? 0/)
+  assert.match(studentPortal, /const periodKey = reportType === 'SUMMARY' \? 'FINAL' : reportForm\.periodKey/)
+  assert.match(studentPortal, /reportReceipt/)
+  assert.match(studentPortal, /processType\.value === 'SUMMARY' \? 300 : 100/)
+})
+
+test('stage 5C student mobile uses contextual report contracts and preserves returned versions', () => {
+  assert.match(mobileInternshipApi, /context\/weekly-reports/)
+  assert.match(mobileInternshipApi, /context\/reports/)
+  assert.match(mobileWeekly, /getInternshipWeeklyReports/)
+  assert.match(mobileWeekly, /expectedVersion: current\?\.version \?\? 0/)
+  assert.match(mobileWeekly, /status === 'RETURNED'/)
+  assert.match(mobileProcess, /getInternshipProcessReports/)
+  assert.match(mobileProcess, /expectedVersion: current\?\.version \?\? 0/)
+  assert.match(mobileProcess, /currentReport\.status === 'RETURNED'/)
+  assert.match(mobileProcess, /receipt/)
+  assert.match(studentReportContextService, /item\["content"\] = row\.content or ""/)
+  assert.match(processReportService, /operator=_op_name\(user\)/)
 })

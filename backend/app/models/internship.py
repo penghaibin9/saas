@@ -112,7 +112,7 @@ class AttendanceException(PKMixin, TenantMixin, CommonMixin, Base):
 
 class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_checkin 实习每日打卡（真实落库；一天一次，唯一约束兜底并发）。
-    企业电子围栏未配置时 result=RECORDED（仅留痕定位），配置后可算 NORMAL/OUT_OF_RANGE。"""
+    企业电子围栏未配置时 result=RECORDED；已配置时由服务端按定位精度和距离分类。"""
     __tablename__ = "t_internship_checkin"
     __table_args__ = (UniqueConstraint("tenant_id", "internship_id", "checkin_date",
                                        name="uk_internship_checkin_day"),)
@@ -123,11 +123,15 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
     address: Mapped[str | None] = mapped_column(String(300))
-    result: Mapped[str] = mapped_column(String(30), nullable=False, default="RECORDED",
-                                        comment="RECORDED/NORMAL/OUT_OF_RANGE/NO_LOCATION")
+    result: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="RECORDED",
+        comment="RECORDED/NORMAL/OUT_OF_RANGE/NO_LOCATION/LOW_ACCURACY/LOCATION_UNCERTAIN/MOCK_LOCATION",
+    )
     note: Mapped[str | None] = mapped_column(String(500), comment="学生备注")
     gps_accuracy: Mapped[float | None] = mapped_column(Float, comment="定位精度(m)")
-    device_risk_flag: Mapped[str | None] = mapped_column(String(30), comment="normal/mock/rooted")
+    device_risk_flag: Mapped[str | None] = mapped_column(
+        String(30), comment="not_available/mock/rooted（客户端 normal 不作为可信证明）"
+    )
     distance_m: Mapped[float | None] = mapped_column(Float, comment="距岗位围栏中心距离(m)")
     evidence_file_id: Mapped[str | None] = mapped_column(String(64), comment="打卡凭证文件")
     idempotency_key: Mapped[str | None] = mapped_column(String(100), comment="客户端幂等键")

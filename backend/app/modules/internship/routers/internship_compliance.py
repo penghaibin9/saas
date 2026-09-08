@@ -137,10 +137,16 @@ def inspection_action(iid: str, action: str, body: dict = Body(default={}),
                       user=Depends(require_permission("internship.enterprise.inspection.manage"))):
     normalized = str(action or "").lower()
     if normalized == "submit":
-        return success(insp.submit(iid, user))
+        return success(insp.submit(iid, user, expected_version=body.get("expectedVersion")))
     return success(insp.review(
         iid, normalized.upper(), body.get("comment", ""),
-        body.get("validUntil"), user))
+        body.get("validUntil"), user, expected_version=body.get("expectedVersion")))
+
+
+@router.put("/inspections/{iid}")
+def inspection_update(iid: str, body: dict = Body(...),
+                      user=Depends(require_permission("internship.enterprise.inspection.manage"))):
+    return success(insp.update(iid, body, user))
 
 
 @router.post("/consents")

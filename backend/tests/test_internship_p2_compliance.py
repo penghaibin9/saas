@@ -384,6 +384,7 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
     })
     pos = client.post(POS, headers=h, json={
         "companyId": eid, "title": _uniq("岗"), "headcount": 2, "batchId": bid,
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
         "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,
         "overtimeAllowed": False, "restDaysPerWeek": 2, "remunerationType": "MONTHLY",
         "accommodationProvided": True, "mealProvided": True, "hazardousFlag": False,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 
@@ -17,8 +18,6 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.tenant_scoped import tenant_get
 from app.models import (
-    DormBed,
-    DormStay,
     GreenChannelApplication,
     OrientationBatch,
     OrientationException,
@@ -31,6 +30,7 @@ from app.models import (
     OrientationStudentStep,
     StudentAccountLink,
     StudentProfile,
+    SchoolClass,
 )
 from app.models.file import FileBinding, FileObject, FileVersion
 from app.services.db_service import _iso, _tid, session
@@ -42,6 +42,7 @@ TERMINAL_STEP = {"DONE", "WAIVED", "NOT_REQUIRED"}
 PAYMENT_PASS = {"PAID", "WAIVED", "DEFERRED"}
 BLOCKING_EXCEPTION = {"OPEN", "PROCESSING", "ESCALATED"}
 CHECKIN_HARD_BLOCKER_CODES = {
+    "ADMISSION_STOPPED",
     "FLOW_CONFIGURATION_MISSING",
     "IDENTITY_NOT_LINKED",
     "ACCOUNT_NOT_LINKED",
@@ -89,7 +90,52 @@ def _blocks_on_site_checkin(item: dict) -> bool:
     return False
 
 
-def _flow_context(db, student):
+def _queue_facts(db, students):
+    """Request-local facts for at most 200 visible/scanned students, never cached across requests."""
+    from app.services.dorm_housing_projection import housing_map
+    if len(students) > 200:
+        raise ValueError("qualification fact chunk exceeds 200")
+    ids = [s.id for s in students]
+    profile_ids = [s.student_id for s in students if s.student_id]
+    def rows(model, *conditions):
+        return list(db.scalars(select(model).where(model.tenant_id == _tid(),
+            model.is_deleted.is_(False), *conditions).order_by(model.id)).all())
+    def grouped(values, key):
+        result = defaultdict(list)
+        for value in values:
+            result[getattr(value, key)].append(value)
+        return result
+    batches = {b.id:b for b in rows(OrientationBatch, OrientationBatch.id.in_({s.batch_id for s in students}))}
+    flow_ids = {b.flow_version_id for b in batches.values()}
+    definitions = grouped(rows(OrientationFlowStep, OrientationFlowStep.flow_version_id.in_(flow_ids)), 'flow_version_id')
+    for values in definitions.values():
+        values.sort(key=lambda s: (s.sort_order, s.id))
+    requirements = grouped(rows(OrientationMaterialRequirement, OrientationMaterialRequirement.flow_version_id.in_(flow_ids), OrientationMaterialRequirement.required.is_(True)), 'flow_version_id')
+    for values in requirements.values():
+        values.sort(key=lambda s: (s.sort_order, s.id))
+    materials = rows(OrientationMaterial, OrientationMaterial.ori_student_id.in_(ids), OrientationMaterial.is_current.is_(True))
+    versions = {v.id:v for v in rows(FileVersion, FileVersion.id.in_({m.file_version_id for m in materials if m.file_version_id}))}
+    files = {f.id:f for f in rows(FileObject, FileObject.id.in_({v.file_object_id for v in versions.values()}))}
+    bindings = rows(FileBinding, FileBinding.biz_type == 'ORIENTATION_MATERIAL',
+        FileBinding.biz_id.in_([str(m.id) for m in materials]), FileBinding.is_current.is_(True), FileBinding.status == 'ACTIVE')
+    return dict(
+        batches=batches, definitions=definitions,
+        states=grouped(rows(OrientationStudentStep, OrientationStudentStep.orientation_student_id.in_(ids)), 'orientation_student_id'),
+        linked={r.student_id for r in rows(StudentAccountLink, StudentAccountLink.student_id.in_(profile_ids), StudentAccountLink.link_status == 'ACTIVE')},
+        requirements=requirements,
+        materials={(m.ori_student_id,m.student_id,m.material_type):m for m in materials},
+        versions=versions, files=files, bindings={(b.biz_id,b.version_id,b.student_id):b for b in bindings},
+        payments={r.orientation_student_id:r for r in rows(OrientationPaymentAccount, OrientationPaymentAccount.orientation_student_id.in_(ids))},
+        green={r.ori_student_id:r for r in rows(GreenChannelApplication, GreenChannelApplication.ori_student_id.in_(ids), GreenChannelApplication.status == 'APPROVED')},
+        exceptions=grouped(rows(OrientationException, OrientationException.ori_student_id.in_(ids), OrientationException.status.in_(BLOCKING_EXCEPTION)), 'ori_student_id'),
+        housing=housing_map(db, profile_ids),
+    )
+
+
+def _flow_context(db, student, prefetched=None):
+    if prefetched is not None:
+        batch = prefetched['batches'].get(student.batch_id)
+        return (batch, prefetched['definitions'].get(batch.flow_version_id, []), prefetched['states'].get(student.id, [])) if batch else (None, [], [])
     batch = db.get(OrientationBatch, int(student.batch_id))
     if not batch or batch.is_deleted or int(batch.tenant_id) != int(student.tenant_id):
         return None, [], []
@@ -106,8 +152,8 @@ def _flow_context(db, student):
     return batch, definitions, states
 
 
-def _material_fact(db, student, requirement) -> tuple[dict, dict | None]:
-    material = db.scalars(select(OrientationMaterial).where(
+def _material_fact(db, student, requirement, prefetched=None) -> tuple[dict, dict | None]:
+    material = prefetched['materials'].get((student.id, student.student_id, requirement.material_type)) if prefetched is not None else db.scalars(select(OrientationMaterial).where(
         OrientationMaterial.tenant_id == student.tenant_id,
         OrientationMaterial.ori_student_id == student.id,
         OrientationMaterial.student_id == student.student_id,
@@ -125,9 +171,9 @@ def _material_fact(db, student, requirement) -> tuple[dict, dict | None]:
         return base, _block(
             "MATERIAL_MISSING", "MATERIAL", f"缺少必交材料：{requirement.material_name}"
         )
-    version = db.get(FileVersion, int(material.file_version_id or 0)) if material.file_version_id else None
-    file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
-    binding = db.scalars(select(FileBinding).where(
+    version = (prefetched['versions'].get(material.file_version_id) if prefetched is not None else db.get(FileVersion, int(material.file_version_id or 0))) if material.file_version_id else None
+    file_obj = (prefetched['files'].get(version.file_object_id) if prefetched is not None else db.get(FileObject, int(version.file_object_id))) if version else None
+    binding = prefetched['bindings'].get((str(material.id), material.file_version_id, student.student_id)) if prefetched is not None else db.scalars(select(FileBinding).where(
         FileBinding.tenant_id == student.tenant_id,
         FileBinding.biz_type == "ORIENTATION_MATERIAL",
         FileBinding.biz_id == str(material.id),
@@ -178,9 +224,13 @@ def _sync_fact_steps(db, student, state_by_key: dict, facts: dict) -> None:
             )
 
 
-def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id=None) -> dict:
+def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id=None, prefetched=None) -> dict:
+    if persist and prefetched is not None:
+        raise ValueError("persisted qualification must read current facts directly")
     blockers: list[dict] = []
-    batch, definitions, states = _flow_context(db, student)
+    if student.stage in {"NO_SHOW", "CANCELLED", "DEFERRED"}:
+        blockers.append(_block("ADMISSION_STOPPED", "ACTIVATE", "报到安排已暂停，请联系学校确认"))
+    batch, definitions, states = _flow_context(db, student, prefetched)
     if not batch or not definitions:
         blockers.append(_block(
             "FLOW_CONFIGURATION_MISSING", "FLOW", "冻结流程配置缺失，须人工核查", review=True
@@ -190,7 +240,7 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
 
     account_linked = False
     if student.student_id and student.identity_status == "LINKED":
-        account_linked = bool(db.scalars(select(StudentAccountLink.id).where(
+        account_linked = student.student_id in prefetched['linked'] if prefetched is not None else bool(db.scalars(select(StudentAccountLink.id).where(
             StudentAccountLink.tenant_id == student.tenant_id,
             StudentAccountLink.student_id == student.student_id,
             StudentAccountLink.link_status == "ACTIVE",
@@ -212,7 +262,7 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
         if not batch:
             requirements = []
         else:
-            requirements = list(db.scalars(select(OrientationMaterialRequirement).where(
+            requirements = prefetched['requirements'].get(batch.flow_version_id, []) if prefetched is not None else list(db.scalars(select(OrientationMaterialRequirement).where(
                 OrientationMaterialRequirement.tenant_id == student.tenant_id,
                 OrientationMaterialRequirement.flow_version_id == batch.flow_version_id,
                 OrientationMaterialRequirement.required.is_(True),
@@ -223,19 +273,19 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
                 "MATERIAL_REQUIREMENTS_MISSING", "MATERIAL", "必交材料规则未配置，须人工核查", review=True
             ))
         for requirement in requirements:
-            fact, blocker = _material_fact(db, student, requirement)
+            fact, blocker = _material_fact(db, student, requirement, prefetched)
             required_materials.append(fact)
             if blocker:
                 material_blockers.append(blocker)
     blockers.extend(material_blockers)
     material_satisfied = not material_blockers
 
-    payment = db.scalars(select(OrientationPaymentAccount).where(
+    payment = prefetched['payments'].get(student.id) if prefetched is not None else db.scalars(select(OrientationPaymentAccount).where(
         OrientationPaymentAccount.tenant_id == student.tenant_id,
         OrientationPaymentAccount.orientation_student_id == student.id,
         OrientationPaymentAccount.is_deleted.is_(False),
     )).first()
-    green = db.scalars(select(GreenChannelApplication).where(
+    green = prefetched['green'].get(student.id) if prefetched is not None else db.scalars(select(GreenChannelApplication).where(
         GreenChannelApplication.tenant_id == student.tenant_id,
         GreenChannelApplication.ori_student_id == student.id,
         GreenChannelApplication.status == "APPROVED",
@@ -263,27 +313,16 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
     dorm_step = definition_by_key.get("DORM")
     dorm_state = state_by_key.get("DORM")
     if dorm_step and dorm_step.required and not (dorm_state and dorm_state.status == "WAIVED"):
-        stay = db.scalars(select(DormStay).where(
-            DormStay.tenant_id == student.tenant_id,
-            DormStay.student_id == student.student_id,
-            DormStay.status.in_(["RESERVED", "ACTIVE"]),
-            DormStay.is_deleted.is_(False),
-        ).order_by(DormStay.id.desc())).first() if student.student_id else None
-        bed = db.get(DormBed, int(stay.bed_id)) if stay else None
-        consistent = bool(
-            stay and bed and int(bed.tenant_id) == int(student.tenant_id)
-            and ((stay.status == "ACTIVE" and bed.status == "OCCUPIED" and bed.student_id == student.student_id)
-                 or stay.status == "RESERVED")
-        )
-        dorm_fact = {
-            "status": stay.status if stay else "MISSING",
-            "satisfied": consistent,
-            "bedId": str(stay.bed_id) if stay else "",
-        }
+        from app.services.dorm_housing_projection import housing_map, housing_fields
+        housing = (prefetched['housing'] if prefetched is not None else housing_map(db, [student.student_id])).get(int(student.student_id or 0),
+            housing_fields(linked=bool(student.student_id)))
+        consistent = housing["housingStatus"] in ("RESERVED", "ACTIVE")
+        dorm_fact = {"status": housing["housingStatus"], "satisfied": consistent,
+                     "bedId": housing["bedId"]}
         if not consistent:
             blockers.append(_block("DORM_NOT_CONFIRMED", "DORM", "必办住宿尚未形成有效预留或入住事实"))
 
-    open_exceptions = list(db.scalars(select(OrientationException).where(
+    open_exceptions = prefetched['exceptions'].get(student.id, []) if prefetched is not None else list(db.scalars(select(OrientationException).where(
         OrientationException.tenant_id == student.tenant_id,
         OrientationException.ori_student_id == student.id,
         OrientationException.status.in_(BLOCKING_EXCEPTION),
@@ -415,7 +454,7 @@ def _scope_query(q, user):
     return q
 
 
-def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None, user=None):
+def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None, queue=None, user=None):
     with session() as db:
         q = select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(),
@@ -428,25 +467,56 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
             q = q.where(
                 (OrientationStudent.name.like(value)) | (OrientationStudent.admission_no.like(value))
             )
-        rows = list(db.scalars(q.order_by(OrientationStudent.id)).all())
-        items = []
-        for row in rows:
-            decision = evaluate(db, row)
-            if verdict and decision["verdict"] != str(verdict).upper():
-                continue
-            profile = tenant_get(db, StudentProfile, int(row.student_id)) if row.student_id else None
-            items.append({
-                "id": str(row.id), "name": row.name, "admissionNo": row.admission_no,
-                "className": row.class_name or "", "reportStatus": row.report_status,
-                "stage": row.stage, "version": int(row.version or 0),
-                "profileStudentId": str(row.student_id or ""),
-                "studentNo": profile.student_no if profile else (row.student_no or ""),
-                "canFinalize": decision["verdict"] == "QUALIFIED" and row.report_status == "CHECKED_IN",
-                **decision,
-            })
-        total = len(items)
+        # The default queue needs only the visible page's live qualification.
+        # Derived verdict filters still have to be evaluated before pagination.
+        direct_page = not verdict and queue not in {"ready", "blocked"}
         start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if direct_page:
+            total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+            q = q.order_by(OrientationStudent.id).offset(start).limit(page_size)
+        else:
+            if queue == "ready":
+                q = q.where(OrientationStudent.report_status == "CHECKED_IN")
+            elif queue == "blocked":
+                q = q.where(OrientationStudent.stage.notin_({"ENROLLED", "NO_SHOW", "CANCELLED"}))
+            q = q.order_by(OrientationStudent.id)
+        items, matched, last_id = [], 0, 0
+        while True:
+            rows = list(db.scalars(q if direct_page else q.where(OrientationStudent.id > last_id).limit(200)).all())
+            if not rows:
+                break
+            prefetched = _queue_facts(db, rows)
+            profiles = {str(profile.id): (profile.student_no, class_name) for profile, class_name in db.execute(
+                select(StudentProfile, SchoolClass.class_name).outerjoin(SchoolClass,
+                    (SchoolClass.id == StudentProfile.class_id)
+                    & (SchoolClass.tenant_id == _tid()) & SchoolClass.is_deleted.is_(False)
+                ).where(StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.id.in_([row.student_id for row in rows if row.student_id]))
+            )}
+            for row in rows:
+                decision = evaluate(db, row, prefetched=prefetched)
+                can_finalize = decision["verdict"] == "QUALIFIED" and row.report_status == "CHECKED_IN"
+                if verdict and decision["verdict"] != str(verdict).upper():
+                    continue
+                if queue == 'ready' and not can_finalize:
+                    continue
+                if queue == 'blocked' and not decision['blockers']:
+                    continue
+                matched += 1
+                if not direct_page and not (start < matched <= start + page_size):
+                    continue
+                student_no, class_name = profiles.get(str(row.student_id), (row.student_no or "", row.class_name or ""))
+                items.append({
+                    "id": str(row.id), "name": row.name, "admissionNo": row.admission_no,
+                    "className": class_name or row.class_name or "", "reportStatus": row.report_status,
+                    "stage": row.stage, "version": int(row.version or 0),
+                    "profileStudentId": str(row.student_id or ""), "studentNo": student_no,
+                    "canFinalize": can_finalize, **decision,
+                })
+            if direct_page:
+                break
+            last_id = rows[-1].id
+        return items, total if direct_page else matched
 
 
 def qualification_detail(student_id, *, user=None, recalculate=False):

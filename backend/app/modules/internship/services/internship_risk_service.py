@@ -342,8 +342,6 @@ def student_help_report(user, body=None) -> dict:
 
     不替代企业投诉台（complaint）；就业/监管政策不在此伪造闭环。
     """
-    from app.modules.internship.services.internship_leave_service import _student_record
-
     b = body or {}
     title = (b.get("title") or b.get("riskTitle") or "").strip() or "学生实习求助"
     content = (b.get("content") or b.get("note") or b.get("reason") or "").strip()
@@ -353,7 +351,14 @@ def student_help_report(user, body=None) -> dict:
     if level not in ("LOW", "MEDIUM", "HIGH"):
         raise AppException("VALIDATION_ERROR", "riskLevel 须为 LOW/MEDIUM/HIGH")
     with session() as db:
-        rec, stu = _student_record(db, user, for_write=True)
+        if b.get("batchId") is not None or b.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            rec, stu, _batch_id = require_explicit_context(db, user, b, for_write=True)
+        else:
+            from app.modules.internship.services.internship_leave_service import _student_record
+            rec, stu = _student_record(db, user, for_write=True)
         open_help = db.scalars(select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
             RiskRecord.risk_code == "INT-R-HELP",
@@ -405,6 +410,40 @@ def student_help_report(user, body=None) -> dict:
         return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status],
                 "riskTitle": r.risk_title, "riskLevel": r.risk_level,
                 "message": "求助已提交，指导教师将跟进"}
+
+
+def my_student_help(user, *, batch_id, internship_id) -> dict:
+    """学生按所选实习记录回读本人求助状态，不暴露内部处置范围。"""
+    from app.modules.internship.services.internship_student_context_guard import (
+        require_explicit_context,
+    )
+    with session() as db:
+        rec, stu, _batch_id = require_explicit_context(
+            db,
+            user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        rows = db.scalars(select(RiskRecord).where(
+            RiskRecord.tenant_id == _tid(),
+            RiskRecord.internship_id == rec.id,
+            RiskRecord.risk_code == "INT-R-HELP",
+            RiskRecord.is_deleted.is_(False),
+        ).order_by(RiskRecord.id.desc())).all()
+        return {
+            "items": [{
+                "id": str(row.id),
+                "title": row.risk_title or "学生实习求助",
+                "riskLevel": row.risk_level,
+                "status": row.status,
+                "statusLabel": STATUS_LABEL.get(row.status, row.status),
+                "latestFeedback": row.last_follow_note or "",
+                "updatedAt": _iso(row.last_follow_at or row.updated_at or row.created_at) or "",
+                "version": int(row.version or 0),
+            } for row in rows],
+            "total": len(rows),
+            "studentName": stu.real_name if stu else "",
+        }
 
 
 def list_risks(page, page_size, level=None, status=None, keyword=None, user=None, batch_id=None,

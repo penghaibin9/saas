@@ -33,6 +33,10 @@
           <view class="row-between"><text class="t-lg t-bold">{{ active.realName }}</text><MobileStatusTag :label="active.statusLabel" :type="statusTag(active.status)" /></view>
           <text class="tk__sub">{{ typeLabel(active.talkType) }} · {{ active.topic }}</text>
           <template v-if="active.content"><text class="tk__label">谈话内容</text><text class="tk__text">{{ active.content }}</text><template v-if="active.result"><text class="tk__label">谈话结果</text><text class="tk__text">{{ active.result }}</text></template></template>
+          <view v-if="active.relatedContactId || active.relatedRiskId" class="tk__handoffs">
+            <button v-if="active.relatedContactId" class="btn btn-ghost" @click="openFamilyContact">继续家校联系</button>
+            <button v-if="active.relatedRiskId" class="btn btn-ghost" @click="openRisk">查看关联风险</button>
+          </view>
         </view>
 
         <template v-if="['PLANNED', 'SCHEDULED'].includes(active.status)">
@@ -78,7 +82,6 @@ const TYPE_OPTS = [
 const TYPE_LABEL = Object.fromEntries(TYPE_OPTS.map((o) => [o.value, o.label]))
 const STATUS_TAG = { PLANNED: 'warning', SCHEDULED: 'warning', COMPLETED: 'processing', FOLLOW_UP: 'processing', CLOSED: 'success', CANCELLED: 'default' }
 const FILTERS = [{ key: 'all', label: '全部' }, { key: 'PLANNED', label: '待谈' }, { key: 'FOLLOW_UP', label: '跟进中' }, { key: 'CLOSED', label: '已办结' }]
-const FALLBACK_ACTIONS = { COMPLETED: ['FOLLOW', 'CLOSE', 'TO_RISK', 'TO_HOME_SCHOOL'], FOLLOW_UP: ['FOLLOW', 'CLOSE', 'TO_RISK', 'TO_HOME_SCHOOL'] }
 
 export default {
   data() {
@@ -86,7 +89,8 @@ export default {
       state: 'loading', loaded: false, all: [], filter: 'all', showForm: false, creating: false,
       form: { talkType: 'DAILY', topic: '', studentIds: [] }, students: [], prefillLocked: false,
       active: null, recordForm: { content: '', result: '', needFollow: false },
-      recording: false, acting: false, followContent: '', topicOptions: TYPE_OPTS, filters: FILTERS
+      recording: false, acting: false, followContent: '', topicOptions: TYPE_OPTS, filters: FILTERS,
+      focusTalkId: ''
     }
   },
   computed: {
@@ -103,9 +107,14 @@ export default {
       return this.form.studentIds.length ? `已选择 ${this.form.studentIds.length} 人，继续点击可添加或移除` : '选择学生（可连续添加）'
     },
     canCreate() { const len = this.form.topic.trim().length; return len >= 2 && len <= 100 && this.form.studentIds.length > 0 },
-    availableActions() { return Array.isArray(this.active && this.active.allowedActions) ? this.active.allowedActions : (FALLBACK_ACTIONS[(this.active && this.active.status) || ''] || []) }
+    availableActions() { return Array.isArray(this.active && this.active.allowedActions) ? this.active.allowedActions : [] }
   },
-  onLoad(q) { this.applyPrefill(q || {}); this.load() },
+  onLoad(q) {
+    const rawId = String((q && (q.recordId || q.talkId)) || '').trim()
+    this.focusTalkId = /^[1-9]\d*$/.test(rawId) ? rawId : ''
+    this.applyPrefill(q || {})
+    this.load()
+  },
   methods: {
     applyPrefill(q) {
       const studentId = String(q.studentId || '').trim()
@@ -142,7 +151,10 @@ export default {
     removeStudent(id) { if (!this.prefillLocked) this.form.studentIds = this.form.studentIds.filter((x) => String(x) !== String(id)) },
     load() {
       this.state = 'loading'
-      teacherApi.getTalkList().then((d) => { this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready' })
+      teacherApi.getTalkList().then((d) => {
+        this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready'
+        if (this.focusTalkId) this.openTalk({ talkId: this.focusTalkId })
+      })
         .catch((e) => { this.state = 'error'; this.showError(e, '谈话记录加载失败') })
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
@@ -160,6 +172,12 @@ export default {
     openTalk(t) {
       teacherApi.getTalkDetail(t.talkId).then((d) => { this.active = d; this.recordForm = { content: '', result: '', needFollow: false }; this.followContent = '' })
         .catch((e) => this.showError(e, '详情加载失败'))
+    },
+    openFamilyContact() {
+      uni.navigateTo({ url: `/pages/teacher/family-contact/index?contactId=${encodeURIComponent(this.active.relatedContactId)}` })
+    },
+    openRisk() {
+      uni.navigateTo({ url: `/pages/teacher/risk-students/index?recordId=${encodeURIComponent(this.active.relatedRiskId)}` })
     },
     submitRecord() {
       const content = this.recordForm.content.trim(); if (this.recording || content.length < 20 || content.length > 500) return
@@ -186,5 +204,5 @@ export default {
 </script>
 
 <style scoped>
-.tk__filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }.tk__filter { padding: 5px 14px; border-radius: var(--radius-full); background: var(--bg-card); font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); }.tk__filter.is-active { background: var(--teacher-600); color: #fff; border-color: var(--teacher-600); }.tk__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.tk__input { width: 100%; height: 40px; line-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }.tk__ph { color: var(--text-tertiary); }.tk__selected { display: flex; flex-wrap: wrap; gap: 6px; }.tk__chip { font-size: 11px; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 4px 8px; }.tk__clear { font-size: 11px; color: #dc2626; padding: 4px 6px; }.tk__back { display: inline-block; color: var(--teacher-700); margin-bottom: var(--space-3); }.tk__label { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: var(--space-3); }.tk__text { display: block; margin-top: 4px; line-height: 1.6; }.tk__textarea { width: 100%; min-height: 76px; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); }.tk__counter { display: block; text-align: right; font-size: 11px; color: #94a3b8; }.tk__checkbox { display: flex; align-items: center; gap: 8px; }.tk__checkbox-box { width: 18px; height: 18px; border: 1px solid var(--border-base); border-radius: 4px; text-align: center; line-height: 18px; }.tk__checkbox-box.is-on { background: var(--teacher-600); color: #fff; }.row-between { display: flex; justify-content: space-between; align-items: center; }
+.tk__filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }.tk__filter { padding: 5px 14px; border-radius: var(--radius-full); background: var(--bg-card); font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); }.tk__filter.is-active { background: var(--teacher-600); color: #fff; border-color: var(--teacher-600); }.tk__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.tk__input { width: 100%; height: 40px; line-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }.tk__ph { color: var(--text-tertiary); }.tk__selected { display: flex; flex-wrap: wrap; gap: 6px; }.tk__chip { font-size: 11px; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 4px 8px; }.tk__clear { font-size: 11px; color: #dc2626; padding: 4px 6px; }.tk__back { display: inline-block; color: var(--teacher-700); margin-bottom: var(--space-3); }.tk__label { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: var(--space-3); }.tk__text { display: block; margin-top: 4px; line-height: 1.6; }.tk__textarea { width: 100%; min-height: 76px; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); }.tk__counter { display: block; text-align: right; font-size: 11px; color: #94a3b8; }.tk__checkbox { display: flex; align-items: center; gap: 8px; }.tk__checkbox-box { width: 18px; height: 18px; border: 1px solid var(--border-base); border-radius: 4px; text-align: center; line-height: 18px; }.tk__checkbox-box.is-on { background: var(--teacher-600); color: #fff; }.tk__handoffs { display: flex; gap: var(--space-2); margin-top: var(--space-3); }.tk__handoffs .btn { flex: 1; }.row-between { display: flex; justify-content: space-between; align-items: center; }
 </style>

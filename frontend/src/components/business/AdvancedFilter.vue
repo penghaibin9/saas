@@ -3,6 +3,7 @@
     <div class="af__fields">
       <label
         v-for="f in fields"
+        v-show="!primaryCount || expanded || fields.indexOf(f) < primaryCount"
         :key="f.key"
         class="af__field"
         :class="{ 'af__field--range': f.type === 'daterange' || f.type === 'date-range' }"
@@ -56,6 +57,7 @@
       </label>
     </div>
     <div class="af__ops">
+      <AppButton v-if="primaryCount && fields.length > primaryCount" variant="ghost" :aria-expanded="expanded" @click="expanded = !expanded">{{ expanded ? '收起筛选' : '更多筛选' }}{{ extraActive ? ` · ${extraActive}` : '' }}</AppButton>
       <AppButton variant="primary" @click="$emit('search')">查询</AppButton>
       <AppButton variant="ghost" @click="$emit('reset')">重置</AppButton>
       <slot name="ops" />
@@ -79,7 +81,12 @@ export default {
   components: { AppButton, AppDatePicker, AppDateRangePicker, AppGraduationDesignBatchPicker },
   props: {
     modelValue: { type: Object, required: true },
-    fields: { type: Array, default: () => [] }
+    fields: { type: Array, default: () => [] },
+    primaryCount: { type: Number, default: 0 }
+  },
+  data() { return { expanded: false } },
+  computed: {
+    extraActive() { return this.fields.slice(this.primaryCount).filter(f => { const value = this.modelValue[f.key]; return value !== '' && value != null && value !== false }).length }
   },
   emits: ['update:modelValue', 'search', 'reset'],
   methods: {

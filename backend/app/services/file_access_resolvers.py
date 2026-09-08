@@ -67,6 +67,88 @@ def _student_scope_values(db, file_obj, user: dict) -> set[str]:
     return {item for item in values if item}
 
 
+@register_file_resolver("FUNDING")
+def funding_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """Student-submitted evidence stays readable by its applicant after formal binding."""
+    if str(user.get("userType") or "").upper() != "STUDENT":
+        from app.services.file_access_service import _student_affairs_resolver
+        return _student_affairs_resolver(db, file_obj, bindings, user, action)
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    from app.models import FundingApplication
+    from app.services.mobile_student_service import resolve_student
+    student = resolve_student(db, user)
+    row = db.get(FundingApplication, int(file_obj.biz_id))
+    if not student or not row or row.is_deleted or row.tenant_id != file_obj.tenant_id or row.student_id != student.id:
+        return False
+    # Only evidence uploaded by this applicant. Staff investigation files do not
+    # become student-visible merely because they reference the same application.
+    return _owner_allows(file_obj, user) and any(
+        not item.is_deleted and item.status == "ACTIVE" and item.is_current
+        and item.biz_type == "FUNDING" and str(item.biz_id) == str(row.id)
+        and item.relation_type == "BUSINESS_EVIDENCE" and item.subject_type == "STUDENT"
+        and str(item.subject_id) == str(student.id)
+        for item in bindings
+    )
+
+
+@register_file_resolver("LOAN")
+def loan_receipt_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """贷款回执按当前贷款记录授权，本人和经办教师读取同一份正式材料。"""
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    try:
+        from app.models import StudentLoan
+
+        loan = db.get(StudentLoan, int(file_obj.biz_id))
+        if (not loan or loan.is_deleted or loan.tenant_id != file_obj.tenant_id
+                or int(loan.receipt_file_id or 0) != int(file_obj.id)):
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            from app.services.mobile_student_service import resolve_student
+            student = resolve_student(db, user)
+            return bool(student and int(student.id) == int(loan.student_id))
+        if not has_permission(user or {}, "studentAffairs.funding.view"):
+            return False
+        from app.services.affairs_attachment_service import _require_biz_scope
+        _require_biz_scope(db, "LOAN", loan.id, user)
+        return True
+    except Exception:
+        return False
+
+
+@register_file_resolver("REDUCTION")
+def reduction_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """减免/临补材料仅向申请本人和数据范围内经办教师开放。"""
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    try:
+        from app.models import FeeReduction
+
+        row = db.get(FeeReduction, int(file_obj.biz_id))
+        if not row or row.is_deleted or row.tenant_id != file_obj.tenant_id:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            from app.services.mobile_student_service import resolve_student
+            student = resolve_student(db, user)
+            if not student or int(student.id) != int(row.student_id) or not _owner_allows(file_obj, user):
+                return False
+            return any(
+                not item.is_deleted and item.status == "ACTIVE" and item.is_current
+                and item.biz_type == "REDUCTION" and str(item.biz_id) == str(row.id)
+                and item.relation_type == "BUSINESS_EVIDENCE" and item.subject_type == "STUDENT"
+                and str(item.subject_id) == str(student.id)
+                for item in bindings
+            )
+        if not has_permission(user or {}, "studentAffairs.funding.view"):
+            return False
+        from app.services.affairs_attachment_service import _require_biz_scope
+        _require_biz_scope(db, "REDUCTION", row.id, user)
+        return True
+    except Exception:
+        return False
+
+
 def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[int], set[int]]:
     """从文件对象、绑定与请假单中还原权威实习记录/学生范围。"""
     student_ids: set[int] = set()
@@ -263,6 +345,36 @@ def orientation_file_resolver(db, file_obj, bindings: list[Any], user: dict, act
         return True
     except Exception:
         return False
+
+
+@register_file_resolver("INTERNSHIP_ENTERPRISE_INSPECTION")
+def enterprise_inspection_file_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """学校考察材料仅随当前考察引用和学校查看权限开放，不进入学生/企业目录。"""
+    if db is None or str(user.get("userType") or "").upper() in {"STUDENT", "ENTERPRISE"}:
+        return False
+    if not has_permission(user or {}, "internship.enterprise.inspection.view"):
+        return False
+    from app.models import EmpCompany, InternshipEnterpriseInspection
+    raw_id = str(file_obj.biz_id or "")
+    if not raw_id.isascii() or not raw_id.isdigit():
+        return False
+    tenant_id = int(file_obj.tenant_id)
+    record = db.scalar(select(InternshipEnterpriseInspection).where(
+        InternshipEnterpriseInspection.id == int(raw_id),
+        InternshipEnterpriseInspection.tenant_id == tenant_id,
+        InternshipEnterpriseInspection.is_deleted.is_(False),
+    ))
+    if not record or str(file_obj.id) not in {str(fid) for fid in (record.file_ids or [])}:
+        return False
+    company = db.scalar(select(EmpCompany).where(
+        EmpCompany.id == record.company_id, EmpCompany.tenant_id == tenant_id, EmpCompany.is_deleted.is_(False),
+    ))
+    return bool(company and any(
+        not b.is_deleted and b.status == "ACTIVE" and b.is_current
+        and b.biz_type == "INTERNSHIP_ENTERPRISE_INSPECTION" and str(b.biz_id) == raw_id
+        and int(b.tenant_id) == tenant_id and str(b.subject_id) == str(company.id)
+        and b.subject_type == "ENTERPRISE" for b in bindings
+    ))
 
 
 @register_file_resolver("DORM_CHECK_RECORD", "DORM_RECTIFICATION")
@@ -618,6 +730,44 @@ def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict,
         if requirement.material_scope == "PSY_STUDENT":
             return center._psy_scope_allows(db, requirement.student_id, user or {})
         center._require_student_scope(db, requirement.student_id, user or {}, hide=True)
+        return True
+    except Exception:
+        return False
+
+
+@register_file_resolver("AA_STUDENT_CORRECTION")
+def student_correction_file_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """更正材料只允许有更正查看/审核权且命中学生范围的教职工读取。"""
+    if db is None or str((user or {}).get("userType") or "").upper() == "STUDENT":
+        return False
+    if not any(has_permission(user or {}, code) for code in (
+        "academicAffairs.roster.correction.view", "academicAffairs.roster.correction.review"
+    )):
+        return False
+    biz_id = str(file_obj.biz_id or "")
+    if not biz_id.isdigit():
+        return False
+    try:
+        import json
+        from app.models import AaStudentCorrection
+        from app.core.affairs_security import build_affairs_context
+        correction = db.scalar(select(AaStudentCorrection).where(
+            AaStudentCorrection.id == int(biz_id),
+            AaStudentCorrection.tenant_id == file_obj.tenant_id,
+            AaStudentCorrection.is_deleted.is_(False),
+        ))
+        if not correction or str(file_obj.id) not in [str(value) for value in json.loads(correction.material_file_ids or "[]")]:
+            return False
+        if not any(
+            not item.is_deleted and item.is_current and item.status == "ACTIVE"
+            and item.tenant_id == file_obj.tenant_id and item.file_id == file_obj.id
+            and item.biz_type == "AA_STUDENT_CORRECTION" and str(item.biz_id) == biz_id
+            and item.subject_type == "STUDENT" and str(item.subject_id) == str(correction.student_id)
+            and item.student_id == correction.student_id
+            for item in bindings
+        ):
+            return False
+        build_affairs_context(user, db).require_student(db, correction.student_id)
         return True
     except Exception:
         return False

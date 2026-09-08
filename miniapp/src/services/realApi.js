@@ -3,6 +3,8 @@
  * 全部经 realFirst() 使用：后端挂了自动回退 mock。
  */
 import { ENV } from '@/config/env'
+import { roleConfigs, roleKeyFromBackendRole } from '@/config/roles.config'
+import { presentLeave } from './leavePresentation'
 import { commitNewSessionTokens, realRequest } from './request'
 
 /* 小程序角色 key → 正式演示租户真实账号（demo-school，数据只读，行级隔离）。
@@ -190,15 +192,16 @@ export async function enrichOrientation() {
   const r = await realRequest('/mobile/orientation/my')
   if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
-    COLLEGE_CONFIRMED: '学院已确认' }
+    COLLEGE_CONFIRMED: '学院已确认', DELAYED: '已延期报到', NO_SHOW: '已登记未到校', CANCELLED: '已取消入学' }
   const rawSteps = r.steps || []
   const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
-    hasData: true, _real: true,
+    hasData: true, _real: true, stage: r.stage,
     batch: r.batchName || r.selfService?.batch?.name || '迎新报到',
-    overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
+    overallStatus: r.reportStatus, overallText: r.stage === 'CANCELLED' ? '已取消入学' : stMap[r.reportStatus] || '报到状态待核实',
     dorm: {
       building: r.building || '', room: r.room || '', status: r.dorm?.status || r.dormStatus || '',
+      statusLabel: r.dorm?.housingStatusLabel || r.dorm?.dormStatusLabel || '',
       label: r.dorm?.label || [r.building, r.room].filter(Boolean).join(' / '),
       buildingId: r.dorm?.buildingId || '', roomId: r.dorm?.roomId || '', bedId: r.dorm?.bedId || ''
     },
@@ -370,9 +373,15 @@ export const teacherFamilyContactReceipt = (contactId, note) =>
 
 /** 学工请假审批链：待审批队列 / 后续处理台账 / 详情 / 审批通过驳回退回 / 销假确认代登记 /
  * 逾期处置 / 续假审批（owner+审批节点校验，真实接口，无 mock 兜底） */
-export const teacherAffairsLeavePending = () => realRequest('/mobile/teacher/affairs/leaves/pending')
-export const teacherAffairsLeaveFollowup = () => realRequest('/mobile/teacher/affairs/leaves/followup')
-export const teacherAffairsLeaveDetail = (leaveId) => realRequest(`/mobile/teacher/affairs/leaves/${leaveId}`)
+export const teacherAffairsLeavePending = async (params = {}) => {
+  const data = await realRequest('/mobile/teacher/affairs/leaves/pending', { data: params })
+  return { ...data, list: (data.list || []).map(presentLeave) }
+}
+export const teacherAffairsLeaveFollowup = async (params = {}) => {
+  const data = await realRequest('/mobile/teacher/affairs/leaves/followup', { data: params })
+  return { ...data, list: (data.list || []).map(presentLeave) }
+}
+export const teacherAffairsLeaveDetail = async (leaveId) => presentLeave(await realRequest(`/mobile/teacher/affairs/leaves/${leaveId}`))
 export const teacherAffairsLeaveApprove = (leaveId, comment) =>
   realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/approve`, { method: 'POST', data: { comment: comment || '' } })
 export const teacherAffairsLeaveReject = (leaveId, reason) =>
@@ -393,14 +402,32 @@ export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
     { method: 'POST', data: { action, reason: reason || '' } })
 
 /** 学工待办处置：困难/奖助/处分/风险（复用 PC 服务层校验，真实接口） */
-export const teacherAffairsAidPending = () => realRequest('/mobile/teacher/affairs/aid/pending')
+export const teacherAffairsAidPending = (params = {}) => realRequest('/mobile/teacher/affairs/aid/pending', { data: params })
 export const teacherAffairsAidDetail = (applyId) => realRequest(`/mobile/teacher/affairs/aid/${applyId}`)
 export const teacherAffairsAidReview = (applyId, body) =>
   realRequest(`/mobile/teacher/affairs/aid/${applyId}/review`, { method: 'POST', data: body || {} })
-export const teacherAffairsFundingPending = () => realRequest('/mobile/teacher/affairs/funding/pending')
+export const teacherAffairsFundingPending = (params = {}) => realRequest('/mobile/teacher/affairs/funding/pending', { data: params })
 export const teacherAffairsFundingDetail = (appId) => realRequest(`/mobile/teacher/affairs/funding/${appId}`)
 export const teacherAffairsFundingReview = (appId, body) =>
   realRequest(`/mobile/teacher/affairs/funding/${appId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsWorkStudyPosts = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/work-study/posts', { data: params })
+export const teacherAffairsWorkStudyRecords = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/work-study/records', { data: params })
+export const teacherAffairsWorkStudyAction = (recordId, body) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/action`, { method: 'POST', data: body || {} })
+export const teacherAffairsWorkStudyMonthly = (recordId) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/monthly`)
+export const teacherAffairsWorkStudyMonthlyAdd = (recordId, body) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/monthly`, { method: 'POST', data: body || {} })
+export const teacherAffairsLoans = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/loans', { data: params })
+export const teacherAffairsLoanAction = (loanId, body) =>
+  realRequest(`/mobile/teacher/affairs/loans/${encodeURIComponent(loanId)}/action`, { method: 'POST', data: body || {} })
+export const teacherAffairsFeeReductions = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/fee-reductions', { data: params })
+export const teacherAffairsFeeReductionAction = (feeId, body) =>
+  realRequest(`/mobile/teacher/affairs/fee-reductions/${encodeURIComponent(feeId)}/action`, { method: 'POST', data: body || {} })
 export const teacherAffairsDisciplinePending = () => realRequest('/mobile/teacher/affairs/discipline/pending')
 export const teacherAffairsDisciplineDetail = (caseId) => realRequest(`/mobile/teacher/affairs/discipline/${caseId}`)
 export const teacherAffairsDisciplineReview = (caseId, body) =>
@@ -787,24 +814,24 @@ export async function teacherWorkbenchReal(roleKey) {
   const metrics = [
     { key: 'pending', label: '待我处理', value: pending },
     { key: 'overdue', label: '已逾期', value: overdue },
-    { key: 'near', label: '24h到期', value: near },
+    { key: 'near', label: '24小时内到期', value: near },
     { key: 'done', label: '今日完成', value: doneToday }
   ]
   const typeEntries = Object.entries(byType).filter(([, n]) => Number(n) > 0).slice(0, 2)
   if (typeEntries.length) {
     metrics.splice(2, 2, ...typeEntries.map(([key, value]) => ({
-      key, label: key, value: Number(value) || 0
+      key, label: ({ LEAVE: '请假审批', LEAVE_APPROVAL: '请假审批', LEAVE_CANCEL: '返校核实', LEAVE_EXTENSION: '续假审批', MATERIAL_REVIEW: '材料审核', LEAVE_OVERDUE: '逾期跟进' })[key] || '业务待办', value: Number(value) || 0
     })))
   }
   const items = (list && (list.items || list.list)) || []
   return {
-    contextTitle: role,
+    contextTitle: roleConfigs[roleKeyFromBackendRole(role) || role]?.label || '教师',
     metrics,
     pendingTotal: pending,
     dueSoon: (Array.isArray(items) ? items : []).slice(0, 5).map((t) => ({
       id: t.todoId || t.id,
       title: t.title || '',
-      module: t.sourceModule || t.todoType || '',
+      module: ({ 'student-affairs': '学工事务', studentAffairs: '学工事务', internship: '岗位实习', graduation: '毕业设计', 'academic-affairs': '教务学业', academicAffairs: '教务学业', student: '学生事务', orientation: '迎新报到', employment: '就业服务' })[t.sourceModule] || '业务待办',
       student: t.studentName || '',
       deadline: t.dueAt || t.deadline || '',
       status: t.status || 'PENDING',
@@ -841,6 +868,9 @@ export const submitWeeklyReport = (body) =>
   realRequest('/mobile/internship/weekly', { method: 'POST', data: body })
 
 /** 实习每日打卡（真实落库，一天一次，409=今日已打） */
+export const internshipCheckinPreflight = () =>
+  realRequest('/mobile/internship/checkin/preflight', { method: 'POST' })
+
 export const submitCheckin = (body) =>
   realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
 
@@ -974,7 +1004,8 @@ export async function enrichProfileReal() {
       idCard: d.idCardMasked || '' },
     contact: { ...contact, phone: d.phoneMasked || '' },
     org: { ...org, college: d.collegeName || '', major: d.majorName || '',
-      className: d.className || '', grade: d.grade || '' },
+      className: d.className || '', grade: d.grade || '',
+      counselorId: d.counselorId || '', counselorName: d.counselorName || '' },
     status: { stageText: STAGE_TEXT[d.stage] || d.stage || '', statusText: d.status || '', enrollStatus: '' },
     editableFields, lockedFields, summaries, credentials: [],
     _identity: { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
@@ -1046,12 +1077,12 @@ export const teacherMentalList = (level) =>
 export const teacherMentalDetail = (refId, reason) =>
   realRequest(`/mobile/teacher/mental/${refId}` + (reason ? `?reason=${encodeURIComponent(reason)}` : ''))
 export const teacherMentalCreate = (body) => realRequest('/mobile/teacher/mental', { method: 'POST', data: body })
-export const teacherMentalFollow = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content } })
-export const teacherMentalEscalate = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content } })
-export const teacherMentalClose = (refId, conclusion) =>
-  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion } })
+export const teacherMentalFollow = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content, version } })
+export const teacherMentalEscalate = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content, version } })
+export const teacherMentalClose = (refId, conclusion, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion, version } })
 
 /** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
 export async function teacherStudent360(id) {
@@ -1194,7 +1225,10 @@ export async function teacherApprovalsReal() {
 
 // ── 13A 学工中心（P7 多端收口，学生自视图 + 自选床位；教师待办卡）──
 export const affairsOverview = () => realRequest('/mobile/affairs/overview')
-export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')
+export const affairsLeaveMy = async () => {
+  const data = await realRequest('/mobile/affairs/leave/my')
+  return { ...data, items: (data.items || []).map(presentLeave) }
+}
 export const affairsLeaveApply = (body) =>
   realRequest('/mobile/affairs/leave', { method: 'POST', data: body || {} })
 export const affairsLeaveResubmit = (leaveId, body) =>
@@ -1205,7 +1239,11 @@ export const affairsLeaveExtend = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/extension`, { method: 'POST', data: body || {} })
 
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
-export const affairsAidBatches = () => realRequest('/mobile/affairs/aid/batches')
+export const affairsAidBatches = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/aid/batches${query ? `?${query}` : ''}`)
+}
 export const affairsAidApply = (body) =>
   realRequest('/mobile/affairs/aid/apply', { method: 'POST', data: body || {} })
 
@@ -1213,12 +1251,39 @@ export const affairsAidObjection = (body) =>
   realRequest('/mobile/affairs/aid/objection', { method: 'POST', data: body || {} })
 export const affairsTalkMy = () => realRequest('/mobile/affairs/talk/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
-export const affairsFundingBatches = () => realRequest('/mobile/affairs/funding/batches')
+export const affairsFundingDetail = (id) => realRequest(`/mobile/affairs/funding/applications/${encodeURIComponent(id)}`)
+export const affairsFundingBatches = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/funding/batches${query ? `?${query}` : ''}`)
+}
 export const affairsFundingApply = (body) =>
   realRequest('/mobile/affairs/funding/apply', { method: 'POST', data: body || {} })
 
 export const affairsFundingAppeal = (body) =>
   realRequest('/mobile/affairs/funding/appeal', { method: 'POST', data: body || {} })
+export const affairsWorkStudyPosts = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/work-study/posts${query ? `?${query}` : ''}`)
+}
+export const affairsWorkStudyMy = () => realRequest('/mobile/affairs/work-study/my')
+export const affairsWorkStudyApply = (postId, body) =>
+  realRequest(`/mobile/affairs/work-study/posts/${encodeURIComponent(postId)}/apply`, { method: 'POST', data: body || {} })
+export const affairsWorkStudyWithdraw = (recordId, version) =>
+  realRequest(`/mobile/affairs/work-study/records/${encodeURIComponent(recordId)}/withdraw`, { method: 'POST', data: { version } })
+export const affairsLoans = () => realRequest('/mobile/affairs/loans')
+export const affairsLoanSubmit = (body) => realRequest('/mobile/affairs/loans', { method: 'POST', data: body || {} })
+export const affairsLoanResubmit = (loanId, body) =>
+  realRequest(`/mobile/affairs/loans/${encodeURIComponent(loanId)}/resubmit`, { method: 'POST', data: body || {} })
+export const affairsLoanWithdraw = (loanId, version) =>
+  realRequest(`/mobile/affairs/loans/${encodeURIComponent(loanId)}/withdraw`, { method: 'POST', data: { version } })
+export const affairsFeeReductions = () => realRequest('/mobile/affairs/fee-reductions')
+export const affairsFeeReductionSubmit = (body) => realRequest('/mobile/affairs/fee-reductions', { method: 'POST', data: body || {} })
+export const affairsFeeReductionResubmit = (feeId, body) =>
+  realRequest(`/mobile/affairs/fee-reductions/${encodeURIComponent(feeId)}/resubmit`, { method: 'POST', data: body || {} })
+export const affairsFeeReductionWithdraw = (feeId, version) =>
+  realRequest(`/mobile/affairs/fee-reductions/${encodeURIComponent(feeId)}/withdraw`, { method: 'POST', data: { version } })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
 export const affairsDisciplineAppeal = (body) =>
   realRequest('/mobile/affairs/discipline/appeal', { method: 'POST', data: body || {} })

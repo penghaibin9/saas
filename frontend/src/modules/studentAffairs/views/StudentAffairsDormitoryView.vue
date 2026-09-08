@@ -1,15 +1,21 @@
 <template>
-  <AppPageShell
-    title="宿舍管理"
-    subtitle="宿舍看板、楼栋、房间、床位、入住退宿、调宿审批、检查异常和夜不归宿风险入口。"
-    data-scope-name="后端按宿舍/楼栋范围返回"
-    watermark-purpose="宿舍管理查看"
-  >
+  <ModulePageShell flat title="宿舍驾驶舱" watermark-purpose="宿舍房态查看">
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="load">
-        刷新
+      <AppPermissionButton
+        :allowed="canBtn('studentAffairs.dorm.view')"
+        code="studentAffairs.dorm.view"
+        variant="secondary"
+        :loading="loading"
+        @click="load"
+      >
+        刷新房态
       </AppPermissionButton>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="$router.push('/admin/student-affairs/risk')">
+      <AppPermissionButton
+        :allowed="canBtn('studentAffairs.risk.view')"
+        code="studentAffairs.risk.view"
+        variant="secondary"
+        @click="$router.push('/admin/student-affairs/risk')"
+      >
         宿舍风险
       </AppPermissionButton>
     </template>
@@ -17,167 +23,195 @@
     <AppGlobalState
       :state="pageState"
       :description="errorMessage"
-      loading-text="正在加载宿舍管理数据…"
+      loading-text="正在同步宿舍房态…"
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <div class="dorm-overview">
-        <AppSectionCard title="住宿运行结论">
-          <div class="dorm-conclusion">
-            <AppStatusTag :type="dormConclusion.type" :label="dormConclusion.label" />
-            <p>{{ dormConclusion.text }}</p>
+      <section class="dc-summary" aria-label="宿舍房态总览">
+        <div class="dc-health" :class="{ 'is-warning': dormConclusion.type === 'warning' }">
+          <span class="dc-health__dot" aria-hidden="true" />
+          <div>
+            <strong>{{ dormConclusion.label }}</strong>
+            <span>{{ dormConclusion.text }}</span>
           </div>
-        </AppSectionCard>
+        </div>
+        <dl class="dc-metrics">
+          <div><dt>总床位</dt><dd>{{ occupancy.totalBeds || 0 }}</dd></div>
+          <div><dt>已入住</dt><dd>{{ occupancy.occupiedBeds || 0 }}</dd></div>
+          <div><dt>空床</dt><dd>{{ occupancy.vacantBeds || 0 }}</dd></div>
+          <div><dt>入住率</dt><dd>{{ rateLabel }}</dd></div>
+        </dl>
+      </section>
 
-        <AppSectionCard title="待办工作区">
-          <div class="dorm-entry-list">
+      <nav class="dc-shortcuts" aria-label="宿舍业务快捷入口">
+        <button
+          v-for="item in operationalEntries"
+          :key="item.path"
+          type="button"
+          :disabled="!canBtn(item.permission)"
+          :title="canBtn(item.permission) ? `进入${item.title}` : '当前身份无权限'"
+          @click="go(item.path)"
+        >
+          <span>{{ item.title }}</span><b aria-hidden="true">›</b>
+        </button>
+      </nav>
+
+      <section class="dc-workspace" aria-label="楼栋房间床位联动工作区">
+        <aside class="dc-buildings" aria-label="选择楼栋">
+          <header class="dc-pane-head">
+            <div><h2>楼栋</h2><span>{{ filteredBuildings.length }} / {{ buildings.length }}</span></div>
+          </header>
+          <label class="dc-search">
+            <span class="sr-only">搜索楼栋</span>
+            <input v-model.trim="buildingQuery" type="search" placeholder="搜索楼栋" />
+          </label>
+          <div class="dc-building-list">
             <button
-              v-for="item in todoEntries"
-              :key="item.path"
+              v-for="building in filteredBuildings"
+              :key="building.buildingId"
               type="button"
-              class="dorm-entry"
-              :disabled="!canBtn(item.permission)"
-              @click="go(item.path)"
+              class="dc-building"
+              :class="{ 'is-selected': sameId(building.buildingId, selectedBuildingId) }"
+              :aria-pressed="sameId(building.buildingId, selectedBuildingId)"
+              @click="selectBuilding(building.buildingId)"
             >
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.description }}</span>
-              <small>聚合待办数：后端未配置 · 进入工作区查看真实列表</small>
+              <span class="dc-building__line">
+                <strong>{{ building.buildingName }}</strong>
+                <small>{{ genderLabel(building.genderLimit) }}</small>
+              </span>
+              <span class="dc-building__data">空 {{ building.vacantBeds ?? 0 }} · 共 {{ building.totalBeds ?? 0 }}</span>
+              <span class="dc-progress" aria-hidden="true">
+                <i :style="{ width: `${buildingOccupancyRate(building)}%` }" />
+              </span>
             </button>
+            <p v-if="!filteredBuildings.length" class="dc-empty">
+              {{ buildings.length ? '没有匹配的楼栋' : '暂无可见楼栋' }}
+            </p>
           </div>
-        </AppSectionCard>
+        </aside>
 
-        <AppSectionCard title="房态与入住入口">
-          <div class="dorm-entry-list">
-            <button
-              v-for="item in roomStateEntries"
-              :key="item.path"
-              type="button"
-              class="dorm-entry dorm-entry--primary"
-              :disabled="!canBtn(item.permission)"
-              @click="go(item.path)"
-            >
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.description }}</span>
-            </button>
+        <section class="dc-rooms" aria-label="选择房间" :aria-busy="roomsLoading">
+          <header class="dc-pane-head dc-pane-head--rooms">
+            <div>
+              <h2>{{ selectedBuilding?.buildingName || '房间' }}</h2>
+              <span v-if="selectedBuilding">{{ genderLabel(selectedBuilding.genderLimit) }} · 空床 {{ selectedBuilding.vacantBeds ?? 0 }}</span>
+            </div>
+            <button type="button" class="dc-text-link" @click="openSelectedBuildingResource">管理房源</button>
+          </header>
+          <div class="dc-room-filters">
+            <div class="dc-floor-tabs" aria-label="楼层筛选">
+              <button type="button" :class="{ 'is-active': selectedFloor === '' }" @click="selectedFloor = ''">全部</button>
+              <button
+                v-for="floor in floorOptions"
+                :key="floor"
+                type="button"
+                :class="{ 'is-active': String(selectedFloor) === String(floor) }"
+                @click="selectedFloor = String(floor)"
+              >
+                {{ floor }} 层
+              </button>
+            </div>
+            <select v-model="roomFilter" aria-label="筛选房间状态">
+              <option value="ALL">全部房间</option>
+              <option value="VACANT">有空床</option>
+              <option value="FULL">已住满</option>
+            </select>
           </div>
-        </AppSectionCard>
-      </div>
+          <p v-if="roomsLoading" class="dc-empty" role="status">正在加载房间…</p>
+          <div v-else class="dc-floor-list">
+            <section v-for="group in roomGroups" :key="group.floor" class="dc-floor">
+              <h3><span>{{ group.floor }} 层</span><small>{{ group.rooms.length }} 间</small></h3>
+              <div class="dc-room-grid">
+                <button
+                  v-for="room in group.rooms"
+                  :key="room.roomId"
+                  type="button"
+                  class="dc-room"
+                  :class="{
+                    'is-selected': sameId(room.roomId, selectedRoomId),
+                    'is-full': Number(room.vacantBeds || 0) === 0
+                  }"
+                  :aria-pressed="sameId(room.roomId, selectedRoomId)"
+                  @click="selectRoom(room.roomId)"
+                >
+                  <strong>{{ room.roomNo }}</strong>
+                  <span>{{ Number(room.vacantBeds || 0) > 0 ? `空 ${room.vacantBeds}` : '已满' }}</span>
+                  <small>{{ roomOccupiedBeds(room) }}/{{ room.capacity || 0 }}</small>
+                </button>
+              </div>
+            </section>
+            <p v-if="!roomGroups.length" class="dc-empty">
+              {{ rooms.length ? '当前筛选下没有房间' : '该楼栋暂无房间' }}
+            </p>
+          </div>
+        </section>
 
-      <div class="sa-grid">
-        <AppMetricCard title="总床位" :value="occupancy.totalBeds || 0" unit="张" />
-        <AppMetricCard title="已入住" :value="occupancy.occupiedBeds || 0" unit="张" accent="success" />
-        <AppMetricCard title="空床" :value="occupancy.vacantBeds || 0" unit="张" />
-        <AppMetricCard title="入住率" :value="rateLabel" accent="primary" />
-      </div>
-
-      <div class="sa-grid sa-grid--two">
-        <AppSectionCard title="楼栋管理">
-          <ul class="sa-list">
-            <li v-for="b in buildings" :key="b.buildingId" :class="{ active: b.buildingId === selectedBuildingId }">
-              <button type="button" @click="selectBuilding(b.buildingId)">
-                <strong>{{ b.buildingName }}</strong>
-                <small>{{ b.genderLimit }} · 空床 {{ b.vacantBeds ?? 0 }}/{{ b.totalBeds ?? 0 }}</small>
-              </button>
-              <AppStatusTag :status="b.status" />
-            </li>
-          </ul>
-        </AppSectionCard>
-
-        <AppSectionCard title="房间管理">
-          <ul class="sa-list">
-            <li v-for="room in rooms" :key="room.roomId" :class="{ active: room.roomId === selectedRoomId }">
-              <button type="button" @click="selectRoom(room.roomId)">
-                <strong>{{ room.roomNo }}</strong>
-                <small>{{ room.floorNo }} 层 · 容量 {{ room.capacity }} · 空床 {{ room.vacantBeds }}</small>
-              </button>
-              <AppStatusTag :status="room.status" />
-            </li>
-          </ul>
-        </AppSectionCard>
-
-        <AppSectionCard title="床位管理 / 入住退宿">
-          <div class="sa-bed-grid">
+        <aside class="dc-beds" aria-label="床位与入住办理" :aria-busy="bedsLoading">
+          <header class="dc-pane-head">
+            <div>
+              <h2>{{ selectedRoom ? `${selectedRoom.roomNo} 房` : '床位' }}</h2>
+              <span v-if="selectedRoom">{{ selectedRoom.floorNo }} 层 · 已住 {{ selectedRoomOccupiedBeds }}/{{ selectedRoom.capacity || 0 }}</span>
+            </div>
+          </header>
+          <div class="dc-bed-legend" aria-label="床位状态说明">
+            <span><i class="is-vacant" />空床</span>
+            <span><i class="is-occupied" />已入住</span>
+            <span><i class="is-locked" />预留 / 锁定</span>
+          </div>
+          <p v-if="bedsLoading" class="dc-empty" role="status">正在加载床位…</p>
+          <div v-else class="dc-bed-grid">
             <button
               v-for="bed in beds"
               :key="bed.bedId"
               type="button"
-              class="sa-bed"
-              :aria-label="`${bed.bedNo}号床，${bed.status === 'OCCUPIED' ? '查看入住与退宿' : '办理入住'}`"
+              class="dc-bed"
+              :class="`is-${bedVisualState(bed)}`"
+              :aria-label="`${bed.bedNo}号床，${bedStatusLabel(bed.status)}，${bed.status === 'VACANT' ? '办理入住' : '查看详情'}`"
               @click="openBedAction(bed)"
             >
-              <strong>{{ bed.bedNo }}</strong>
-              <AppStatusTag
-                :type="bed.status === 'OCCUPIED' ? 'warning' : 'success'"
-                :label="bed.status === 'OCCUPIED' ? '已入住' : '空床'"
-                size="sm"
-              />
-              <small>{{ bed.occupantName || '空床' }}</small>
-              <small class="sa-bed__action">{{ bed.status === 'OCCUPIED' ? '查看入住与退宿 →' : '办理入住 →' }}</small>
+              <span class="dc-bed__number">{{ bed.bedNo }} 号床</span>
+              <span class="dc-bed__state">{{ bedStatusLabel(bed.status) }}</span>
+              <strong>{{ bed.occupantName || (bed.status === 'VACANT' ? '办理入住' : '查看详情') }}</strong>
+              <small>{{ bed.status === 'VACANT' ? '选择学生 →' : '住宿记录 →' }}</small>
             </button>
           </div>
-        </AppSectionCard>
-
-        <AppSectionCard title="调宿申请 / 审批入口">
-          <div class="sa-bridge">
-            <AppStatusTag type="processing" label="审批流已接后端" />
-            <p>调宿按“辅导员审核 → 宿管审核 → 执行”流转，执行后回写学生宿舍记录。</p>
-          </div>
-        </AppSectionCard>
-
-        <AppSectionCard title="宿舍检查 / 夜不归宿">
-          <div class="sa-bridge">
-            <AppRiskTag level="MEDIUM" label="异常转风险" />
-            <p>宿舍检查异常会回写宿舍异常并生成 DORM 来源风险，B3 风险预警页承接处置。</p>
-          </div>
-        </AppSectionCard>
-
-        <AppSectionCard title="宿舍归档入口">
-          <AppDescriptionList :items="configItems" bordered />
-        </AppSectionCard>
-      </div>
+          <p v-if="!bedsLoading && !beds.length" class="dc-empty">
+            {{ selectedRoom ? '该房间尚未配置床位' : '选择房间查看床位' }}
+          </p>
+          <button v-if="selectedRoom" type="button" class="dc-bed-footer" @click="openSelectedRoomOperations">
+            查看本房入住与退宿记录 <span aria-hidden="true">→</span>
+          </button>
+        </aside>
+      </section>
     </AppGlobalState>
-  </AppPageShell>
+  </ModulePageShell>
 </template>
 
 <script>
-import {
-  AppDescriptionList,
-  AppGlobalState,
-  AppMetricCard,
-  AppPageShell,
-  AppPermissionButton,
-  AppRiskTag,
-  AppSectionCard,
-  AppStatusTag
-} from '@/components/common'
+import { ModulePageShell } from '@/components/business'
+import { AppGlobalState, AppPermissionButton } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
-
 
 export default {
   name: 'StudentAffairsDormitoryView',
   props: { ctx: { type: Object, default: null } },
-  components: {
-    AppDescriptionList,
-    AppGlobalState,
-    AppMetricCard,
-    AppPageShell,
-    AppPermissionButton,
-    AppRiskTag,
-    AppSectionCard,
-    AppStatusTag
-  },
+  components: { ModulePageShell, AppGlobalState, AppPermissionButton },
   data() {
     return {
       loading: true,
+      roomsLoading: false,
+      bedsLoading: false,
       errorMessage: '',
       occupancy: {},
       buildings: [],
       rooms: [],
       beds: [],
-      config: {},
       selectedBuildingId: '',
-      selectedRoomId: ''
+      selectedRoomId: '',
+      buildingQuery: '',
+      selectedFloor: '',
+      roomFilter: 'ALL'
     }
   },
   computed: {
@@ -191,77 +225,67 @@ export default {
     },
     dormConclusion() {
       if (!this.buildings.length) {
-        return {
-          type: 'warning',
-          label: '房源未配置',
-          text: '当前数据范围内没有可见楼栋。请先进入房源管理配置，或联系管理员核对宿舍楼数据范围。'
-        }
+        return { type: 'warning', label: '房源未配置', text: '请先建立楼栋、房间和床位' }
       }
-      const total = Number(this.occupancy.totalBeds || 0)
       const vacant = Number(this.occupancy.vacantBeds || 0)
       return {
         type: vacant > 0 ? 'success' : 'warning',
-        label: vacant > 0 ? '房态已同步' : '暂无空床',
-        text: `当前范围共 ${this.buildings.length} 栋、${total} 张床，空床 ${vacant} 张；以下数据均来自宿舍正式接口。`
+        label: vacant > 0 ? '房态正常' : '床位已满',
+        text: `当前范围 ${this.buildings.length} 栋 · 数据已同步`
       }
     },
-    todoEntries() {
+    operationalEntries() {
       return [
-        {
-          title: '调宿与退宿',
-          description: '审核、执行并回写住宿记录',
-          path: '/admin/student-affairs/dorm/transfer',
-          permission: 'studentAffairs.dorm.view'
-        },
-        {
-          title: '宿舍检查',
-          description: '创建检查任务并登记检查结果',
-          path: '/admin/student-affairs/dorm/check',
-          permission: 'studentAffairs.dorm.view'
-        },
-        {
-          title: '宿舍异常',
-          description: '处理检查异常与夜不归宿风险',
-          path: '/admin/student-affairs/dorm/exception',
-          permission: 'studentAffairs.dorm.view'
-        }
+        { title: '分配计划', path: '/admin/student-affairs/dorm/allocation', permission: 'studentAffairs.dorm.view' },
+        { title: '房源管理', path: '/admin/student-affairs/dorm/resource', permission: 'studentAffairs.dorm.view' },
+        { title: '入住管理', path: '/admin/student-affairs/dorm/checkin', permission: 'studentAffairs.dorm.view' },
+        { title: '调宿与退宿', path: '/admin/student-affairs/dorm/transfer', permission: 'studentAffairs.dorm.view' },
+        { title: '宿舍检查', path: '/admin/student-affairs/dorm/check', permission: 'studentAffairs.dorm.view' },
+        { title: '异常处置', path: '/admin/student-affairs/dorm/exception', permission: 'studentAffairs.dorm.view' },
+        { title: '宿舍统计', path: '/admin/student-affairs/dorm/stats', permission: 'studentAffairs.dorm.view' }
       ]
     },
-    roomStateEntries() {
-      return [
-        {
-          title: '分配计划',
-          description: '创建批次、Dry Run、人工调整并发布冻结资源池',
-          path: '/admin/student-affairs/dorm/allocation',
-          permission: 'studentAffairs.dorm.view'
-        },
-        {
-          title: '房源管理',
-          description: '查看楼栋、房间、床位真实状态',
-          path: '/admin/student-affairs/dorm/resource',
-          permission: 'studentAffairs.dorm.view'
-        },
-        {
-          title: '入住管理',
-          description: '办理入住、换床与退宿',
-          path: '/admin/student-affairs/dorm/checkin',
-          permission: 'studentAffairs.dorm.view'
-        },
-        {
-          title: '宿舍统计',
-          description: '按楼栋查看入住率并下钻房态',
-          path: '/admin/student-affairs/dorm/stats',
-          permission: 'studentAffairs.dorm.view'
-        }
-      ]
+    filteredBuildings() {
+      const keyword = this.buildingQuery.trim().toLowerCase()
+      if (!keyword) return this.buildings
+      return this.buildings.filter((building) =>
+        String(building.buildingName || '').toLowerCase().includes(keyword)
+      )
     },
-    configItems() {
-      return [
-        { label: '分配模式', value: this.config.assignMode || '未设置' },
-        { label: '学生自选', value: this.config.selfSelectEnabled ? '已开放' : '未开放' },
-        { label: '学生提示', value: this.config.studentNotice || '未设置', span: 2 },
-        { label: '归档状态', value: this.config.archived ? '已归档' : '未归档' }
-      ]
+    selectedBuilding() {
+      return this.buildings.find((building) => this.sameId(building.buildingId, this.selectedBuildingId)) || null
+    },
+    selectedRoom() {
+      return this.rooms.find((room) => this.sameId(room.roomId, this.selectedRoomId)) || null
+    },
+    floorOptions() {
+      return [...new Set(this.rooms.map((room) => Number(room.floorNo)).filter(Number.isFinite))].sort((a, b) => a - b)
+    },
+    filteredRooms() {
+      return this.rooms.filter((room) => {
+        if (this.selectedFloor !== '' && String(room.floorNo) !== String(this.selectedFloor)) return false
+        const vacant = Number(room.vacantBeds || 0)
+        if (this.roomFilter === 'VACANT') return vacant > 0
+        if (this.roomFilter === 'FULL') return vacant === 0
+        return true
+      })
+    },
+    roomGroups() {
+      const groups = new Map()
+      for (const room of this.filteredRooms) {
+        const floor = Number(room.floorNo) || 0
+        if (!groups.has(floor)) groups.set(floor, [])
+        groups.get(floor).push(room)
+      }
+      return [...groups.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([floor, rooms]) => ({
+          floor,
+          rooms: rooms.sort((a, b) => String(a.roomNo || '').localeCompare(String(b.roomNo || ''), 'zh-CN', { numeric: true }))
+        }))
+    },
+    selectedRoomOccupiedBeds() {
+      return this.selectedRoom ? this.roomOccupiedBeds(this.selectedRoom) : 0
     }
   },
   created() {
@@ -269,7 +293,44 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    sameId(left, right) { return String(left ?? '') === String(right ?? '') },
     go(path) { this.$router.push(path) },
+    genderLabel(value) {
+      return { MALE: '男生', FEMALE: '女生', MIXED: '混合', NONE: '不限' }[String(value || '').toUpperCase()] || '待核对'
+    },
+    buildingOccupancyRate(building) {
+      const total = Number(building.totalBeds || 0)
+      if (!total) return 0
+      return Math.max(0, Math.min(100, Math.round(((total - Number(building.vacantBeds || 0)) / total) * 100)))
+    },
+    roomOccupiedBeds(room) {
+      return Math.max(0, Number(room.capacity || 0) - Number(room.vacantBeds || 0))
+    },
+    bedVisualState(bed) {
+      if (bed.status === 'VACANT') return 'vacant'
+      if (bed.status === 'OCCUPIED') return 'occupied'
+      return 'locked'
+    },
+    bedStatusLabel(status) {
+      return {
+        VACANT: '空床',
+        OCCUPIED: '已入住',
+        LOCKED: '已锁定',
+        RESERVED: '已预留',
+        DISABLED: '已停用',
+        MAINTENANCE: '维护中'
+      }[status] || '待核对'
+    },
+    openSelectedBuildingResource() {
+      const query = this.selectedBuildingId ? { buildingId: String(this.selectedBuildingId) } : {}
+      this.$router.push({ name: 'student-affairs-dorm-resource', query })
+    },
+    openSelectedRoomOperations() {
+      this.$router.push({
+        name: 'student-affairs-dorm-checkin',
+        query: { buildingId: String(this.selectedBuildingId), roomId: String(this.selectedRoomId) }
+      })
+    },
     openBedAction(bed) {
       this.$router.push({
         name: 'student-affairs-dorm-checkin',
@@ -284,46 +345,66 @@ export default {
       this.loading = true
       this.errorMessage = ''
       try {
-        const [occRes, buildingRes, configRes] = await Promise.all([
+        const [occRes, buildingRes] = await Promise.all([
           studentAffairsApi.getDormOccupancy(),
-          studentAffairsApi.listDormBuildings({ page: 1, pageSize: 100 }),
-          studentAffairsApi.getDormConfig().catch(() => ({ data: {} }))
+          studentAffairsApi.listDormBuildings({ page: 1, pageSize: 100 })
         ])
         this.occupancy = occRes.data || {}
         this.buildings = buildingRes.data.items || []
-        this.config = configRes.data || {}
-        this.selectedBuildingId = this.selectedBuildingId || this.buildings[0]?.buildingId || ''
+        const preferredBuildingId = this.$route.query.buildingId || this.selectedBuildingId
+        this.selectedBuildingId = this.buildings.some((item) => this.sameId(item.buildingId, preferredBuildingId))
+          ? preferredBuildingId
+          : (this.buildings[0]?.buildingId || '')
         await this.loadRooms()
-      } catch (e) {
-        this.errorMessage = e?.message || '宿舍管理数据加载失败'
+      } catch (error) {
+        this.errorMessage = error?.message || '宿舍房态加载失败'
       } finally {
         this.loading = false
       }
     },
     async loadRooms() {
+      this.selectedFloor = ''
+      this.roomFilter = 'ALL'
       if (!this.selectedBuildingId) {
         this.rooms = []
         this.beds = []
         return
       }
-      const res = await studentAffairsApi.listDormRooms(this.selectedBuildingId, { page: 1, pageSize: 100 })
-      this.rooms = res.data.items || []
-      this.selectedRoomId = this.rooms[0]?.roomId || ''
-      await this.loadBeds()
+      this.roomsLoading = true
+      try {
+        const response = await studentAffairsApi.listDormRooms(this.selectedBuildingId, { page: 1, pageSize: 100 })
+        this.rooms = response.data.items || []
+        const preferredRoomId = this.$route.query.roomId || this.selectedRoomId
+        this.selectedRoomId = this.rooms.some((item) => this.sameId(item.roomId, preferredRoomId))
+          ? preferredRoomId
+          : (this.rooms[0]?.roomId || '')
+        await this.loadBeds()
+      } finally {
+        this.roomsLoading = false
+      }
     },
     async loadBeds() {
       if (!this.selectedRoomId) {
         this.beds = []
         return
       }
-      const res = await studentAffairsApi.listDormBeds(this.selectedRoomId)
-      this.beds = res.data.items || []
+      this.bedsLoading = true
+      try {
+        const response = await studentAffairsApi.listDormBeds(this.selectedRoomId)
+        this.beds = response.data.items || []
+      } finally {
+        this.bedsLoading = false
+      }
     },
     async selectBuilding(id) {
+      if (this.sameId(id, this.selectedBuildingId)) return
       this.selectedBuildingId = id
+      this.selectedRoomId = ''
+      this.beds = []
       await this.loadRooms()
     },
     async selectRoom(id) {
+      if (this.sameId(id, this.selectedRoomId)) return
       this.selectedRoomId = id
       await this.loadBeds()
     }
@@ -332,119 +413,342 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid {
+.dc-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: minmax(230px, 1.15fr) minmax(500px, 2fr);
+  min-height: 58px;
+  border-bottom: 1px solid var(--line);
 }
-.dorm-overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-.dorm-conclusion {
+.dc-health {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
+  align-items: center;
+  gap: 11px;
+  padding: 6px 20px 9px 0;
+  border-right: 1px solid var(--line);
 }
-.dorm-conclusion p {
+.dc-health__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--success-500, #16a36a);
+  box-shadow: 0 0 0 4px var(--success-50, #ecfdf5);
+}
+.dc-health.is-warning .dc-health__dot {
+  background: var(--warning-500, #d97706);
+  box-shadow: 0 0 0 4px var(--warning-50, #fffbeb);
+}
+.dc-health div { display: grid; gap: 2px; min-width: 0; }
+.dc-health strong { color: var(--t1); font-size: 14px; }
+.dc-health span:last-child { color: var(--t3); font-size: 11px; }
+.dc-metrics { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); margin: 0; }
+.dc-metrics div {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  padding: 4px 16px 7px;
+  border-right: 1px solid var(--line);
+}
+.dc-metrics div:last-child { border-right: 0; }
+.dc-metrics dt { color: var(--t3); font-size: 11px; }
+.dc-metrics dd {
   margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.6;
+  color: var(--t1);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 27px;
+  font-variant-numeric: tabular-nums;
 }
-.dorm-entry-list {
-  display: grid;
-  gap: var(--space-2);
+.dc-shortcuts {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: thin;
 }
-.dorm-entry {
-  width: 100%;
-  display: grid;
-  gap: 4px;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-base);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  text-align: left;
+.dc-shortcuts button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 124px;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--t2);
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
-.dorm-entry--primary {
-  border-color: var(--primary-200);
-  background: var(--primary-50);
-}
-.dorm-entry span,
-.dorm-entry small {
-  color: var(--text-tertiary);
-}
-.dorm-entry:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.sa-grid--two {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-.sa-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.dc-shortcuts button:first-child { padding-left: 0; }
+.dc-shortcuts button:hover { color: var(--pri); background: var(--pri-bg); }
+.dc-shortcuts button:disabled { color: var(--t3); cursor: not-allowed; opacity: .55; }
+.dc-shortcuts b { color: var(--t3); font-size: 17px; font-weight: 400; }
+.dc-workspace {
   display: grid;
-  gap: var(--space-2);
+  grid-template-columns: minmax(190px, 224px) minmax(400px, 1fr) minmax(270px, 310px);
+  min-width: 0;
+  height: clamp(360px, calc(100dvh - 396px), 600px);
+  min-height: 360px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface, var(--bg-card));
 }
-.sa-list li {
+.dc-buildings, .dc-rooms, .dc-beds { min-width: 0; min-height: 0; overflow: hidden; }
+.dc-buildings, .dc-beds { display: flex; flex-direction: column; }
+.dc-buildings { padding-right: 14px; border-right: 1px solid var(--line); }
+.dc-rooms { padding: 0 18px; border-right: 1px solid var(--line); }
+.dc-beds { padding-left: 18px; }
+.dc-pane-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-base);
+  gap: 10px;
+  min-height: 44px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
 }
-.sa-list li.active {
-  border-color: var(--primary-300);
-  background: var(--primary-50);
-}
-.sa-list button,
-.sa-bed {
+.dc-pane-head > div { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.dc-pane-head h2 { margin: 0; color: var(--t1); font-size: 14px; line-height: 22px; }
+.dc-pane-head span { color: var(--t3); font-size: 11px; white-space: nowrap; }
+.dc-pane-head--rooms > div { overflow: hidden; }
+.dc-pane-head--rooms h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-text-link {
+  flex: 0 0 auto;
+  padding: 4px 0;
   border: 0;
   background: transparent;
-  text-align: left;
-  color: inherit;
+  color: var(--pri);
+  font: inherit;
+  font-size: 11px;
   cursor: pointer;
 }
-.sa-bed__action {
-  color: var(--primary-700, #1d4ed8) !important;
-  font-weight: 600;
+.dc-search { display: block; padding: 8px 0 6px; }
+.dc-search input, .dc-room-filters select {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--field-bg, var(--surface));
+  color: var(--t1);
+  font: inherit;
+  font-size: 11px;
 }
-.sa-list small,
-.sa-bed small {
-  display: block;
-  color: var(--text-tertiary);
-  margin-top: 2px;
+.dc-search input:focus, .dc-room-filters select:focus { border-color: var(--pri); }
+.dc-building-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 3px 12px 0;
+  scrollbar-width: thin;
 }
-.sa-bed-grid {
+.dc-building {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--space-2);
+  gap: 4px;
+  width: 100%;
+  padding: 8px 8px 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--t2);
+  text-align: left;
+  cursor: pointer;
 }
-.sa-bed {
-  min-height: 76px;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-base);
+.dc-building::before {
+  content: '';
+  position: absolute;
+  inset: 6px auto 6px 0;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+.dc-building:hover { background: var(--bg-soft, var(--surface-2)); }
+.dc-building.is-selected { background: var(--pri-bg); color: var(--t1); }
+.dc-building.is-selected::before { background: var(--pri); }
+.dc-building__line { display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+.dc-building__line strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dc-building__line small, .dc-building__data { color: var(--t3); font-size: 10px; font-weight: 400; }
+.dc-progress { display: block; height: 2px; overflow: hidden; border-radius: 2px; background: var(--line); }
+.dc-progress i { display: block; height: 100%; border-radius: inherit; background: var(--pri); }
+.dc-room-filters {
   display: grid;
-  gap: var(--space-1);
+  grid-template-columns: minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
 }
-.sa-bridge {
+.dc-floor-tabs {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  color: var(--text-secondary);
+  gap: 1px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.sa-bridge p {
-  margin: 0;
-  line-height: 1.6;
+.dc-floor-tabs::-webkit-scrollbar { display: none; }
+.dc-floor-tabs button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.dc-floor-tabs button:hover { color: var(--t1); background: var(--bg-soft); }
+.dc-floor-tabs button.is-active { color: var(--pri); background: var(--pri-bg); font-weight: 600; }
+.dc-floor-list {
+  height: calc(100% - 88px);
+  overflow-y: auto;
+  padding: 2px 3px 12px 0;
+  scrollbar-width: thin;
+}
+.dc-floor { padding: 8px 0 2px; }
+.dc-floor h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  color: var(--t2);
+  font-size: 11px;
+  font-weight: 600;
+}
+.dc-floor h3 small { color: var(--t3); font-weight: 400; }
+.dc-room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.dc-room {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 3px 6px;
+  min-height: 50px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--t2);
+  text-align: left;
+  cursor: pointer;
+}
+.dc-room:hover { border-color: var(--pri); }
+.dc-room.is-selected { border-color: var(--pri); background: var(--pri-bg); box-shadow: inset 0 0 0 1px var(--pri); }
+.dc-room.is-full:not(.is-selected) { background: var(--bg-soft, var(--surface-2)); color: var(--t3); }
+.dc-room strong { color: var(--t1); font-size: 12px; }
+.dc-room span { color: var(--success-700, #047857); font-size: 10px; }
+.dc-room.is-full span { color: var(--t3); }
+.dc-room small { grid-column: 1 / -1; color: var(--t3); font-size: 9px; font-variant-numeric: tabular-nums; }
+.dc-bed-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--line);
+  color: var(--t3);
+  font-size: 10px;
+}
+.dc-bed-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.dc-bed-legend i { width: 6px; height: 6px; border-radius: 50%; background: var(--t3); }
+.dc-bed-legend i.is-vacant { background: var(--success-500, #16a36a); }
+.dc-bed-legend i.is-occupied { background: var(--pri); }
+.dc-bed-legend i.is-locked { background: var(--warning-500, #d97706); }
+.dc-bed-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 9px 3px 10px 0;
+  scrollbar-width: thin;
+}
+.dc-bed {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-height: 78px;
+  padding: 9px 9px 8px 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t2);
+  text-align: left;
+  cursor: pointer;
+}
+.dc-bed::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--warning-500, #d97706);
+}
+.dc-bed.is-vacant::before { background: var(--success-500, #16a36a); }
+.dc-bed.is-occupied::before { background: var(--pri); }
+.dc-bed:hover { border-color: var(--pri); transform: translateY(-1px); }
+.dc-bed__number { color: var(--t3); font-size: 10px; }
+.dc-bed__state { position: absolute; top: 8px; right: 8px; color: var(--t3); font-size: 9px; }
+.dc-bed.is-vacant .dc-bed__state { color: var(--success-700, #047857); }
+.dc-bed.is-occupied .dc-bed__state { color: var(--pri); }
+.dc-bed strong { max-width: 100%; overflow: hidden; color: var(--t1); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.dc-bed small { color: var(--t3); font-size: 9px; }
+.dc-bed-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--pri);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.dc-empty { margin: 0; padding: 24px 8px; color: var(--t3); font-size: 11px; text-align: center; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 1240px) {
+  .dc-workspace { grid-template-columns: 190px minmax(350px, 1fr) 260px; }
+  .dc-room-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+}
+@media (max-width: 1000px) {
+  .dc-summary { grid-template-columns: 1fr; }
+  .dc-health { border-right: 0; border-bottom: 1px solid var(--line); }
+  .dc-workspace { height: auto; grid-template-columns: 190px minmax(0, 1fr); }
+  .dc-buildings, .dc-rooms { min-height: 430px; }
+  .dc-beds { grid-column: 1 / -1; min-height: 280px; padding: 0; border-top: 1px solid var(--line); }
+  .dc-bed-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
+@media (max-width: 700px) {
+  .dc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dc-metrics div:nth-child(2) { border-right: 0; }
+  .dc-metrics div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .dc-shortcuts button { min-width: 110px; }
+  .dc-workspace { display: block; }
+  .dc-buildings, .dc-rooms, .dc-beds { min-height: 0; max-height: none; padding: 0; border: 0; border-bottom: 1px solid var(--line); }
+  .dc-building-list { max-height: 260px; }
+  .dc-floor-list { height: auto; max-height: 400px; }
+  .dc-room-filters { grid-template-columns: 1fr; }
+  .dc-bed-grid { max-height: 380px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
-

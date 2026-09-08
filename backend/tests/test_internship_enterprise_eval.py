@@ -39,6 +39,7 @@ def _student(sno, tid=TID):
 
 def _seed(db_mode):
     from uuid import uuid4
+    from app.core.context import get_tenant, set_tenant
     from app.db.session import get_sessionmaker
     from app.models import (
         EmpCompany,
@@ -52,7 +53,9 @@ def _seed(db_mode):
     )
     db = get_sessionmaker()()
     ids = {}
+    previous_tenant = get_tenant()
     try:
+        set_tenant(TID)
         b = InternshipBatch(tenant_id=TID, batch_name="企业评价测试批次",
                             batch_no=f"EEBATCH-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
         db.add(b); db.flush()
@@ -95,6 +98,7 @@ def _seed(db_mode):
         return ids
     finally:
         db.close()
+        set_tenant(previous_tenant)
 
 
 def _payload(client, h, iid, **over):

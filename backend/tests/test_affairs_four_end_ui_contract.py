@@ -40,7 +40,7 @@ def test_pc_and_mobile_dorm_approval_require_source_target_and_version():
         assert "toBedLabel" in source
         assert "allowedActions" in source
         assert "version" in source
-    assert "审批人必须核对原床、目标床" in pc
+    assert ':disabled="!row.fromBedLabel || !row.toBedLabel || !hasVersion(row)"' in pc
     assert "核对后通过" in pc
     assert "床位信息不完整" in mobile
 
@@ -50,7 +50,7 @@ def test_funding_publicity_manual_confirm_keeps_optimistic_lock_version():
     api = _read("frontend/src/modules/studentAffairs/api/studentAffairs.api.js")
     backend = _read("backend/app/api/v1/student_affairs.py")
     service = _read("backend/app/services/affairs_funding_service.py")
-    assert "confirmFundingPublicity(it.applicationId, it.version)" in pc
+    assert "confirmFundingPublicity(row.applicationId, row.version)" in pc
     assert "confirmFundingPublicity(id, version)" in api
     assert "class FundingVersionOnlyBody(BaseModel):" in backend
     assert 'version: int = Field(..., description="乐观锁版本（必填）")' in backend
@@ -83,7 +83,9 @@ def test_teacher_dangerous_actions_have_nonempty_evidence_guards():
     assert "处理说明需5-300字" in talk
     assert "实际返校时间不能晚于当前时间" in leave
     assert "确认关闭风险" in review
-    assert "选择等级并通过" in review
+    assert "adjustment.targetLevel" in review
+    assert "确认困难等级调整" in review
+    assert "this.visibleVersion(row, detail)" in review
 
 
 def test_mental_allowed_actions_are_centralized_and_match_backend_transitions():
@@ -106,8 +108,8 @@ def test_date_only_leave_range_is_inclusive_and_same_day_is_valid():
     from app.services.affairs_leave_date_contract import normalize_range
 
     start, end = normalize_range("2026-08-01", "2026-08-01")
-    assert start == datetime(2026, 8, 1, 0, 0, 0)
-    assert end == datetime(2026, 8, 1, 23, 59, 59)
+    assert start == datetime(2026, 7, 31, 16, 0, 0)
+    assert end == datetime(2026, 8, 1, 15, 59, 59)
     assert end > start
 
     with pytest.raises(AppException):

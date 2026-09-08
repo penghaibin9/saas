@@ -35,7 +35,7 @@ test('S9 路由清单与分包结构都被哈希固定', () => {
   assert.match(current.subpackageHash, /^[0-9a-f]{64}$/)
   assert.ok(current.routeCount >= 134, '页面总数不得低于 S1 基线')
   const roots = current.subpackages.map((pkg) => pkg.root)
-  assert.deepEqual(roots, ['pages/student', 'pages/teacher'])
+  assert.deepEqual(roots, ['pages/student', 'pages/student-internship', 'pages/teacher', 'pages/teacher-internship'])
 })
 
 test('S9 共享组件版本来自源码里的显式版本号，不靠人手维护', () => {

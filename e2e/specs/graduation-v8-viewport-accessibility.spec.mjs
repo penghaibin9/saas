@@ -116,7 +116,7 @@ async function loginMini(page, account, kind) {
   await loginButton.click()
   await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })
   await expect(page.locator('body')).not.toContainText(/操作过于频繁|登录失败|验证码加载失败/)
-  if (kind === 'teacher') await expect(page.getByText('当前身份：GD_MENTOR', { exact: false })).toBeVisible()
+  if (kind === 'teacher') await expect(page.getByText('当前身份：指导教师', { exact: false })).toBeVisible()
 }
 
 test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidence', () => {
@@ -193,7 +193,7 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
     for (const viewport of MOBILE_VIEWPORTS) {
       await page.setViewportSize(viewport)
       await page.goto(`${MINI_BASE_URL}/#/pages/teacher/workbench/index`)
-      await expect(page.getByText('当前身份：GD_MENTOR', { exact: false })).toBeVisible()
+      await expect(page.getByText('当前身份：指导教师', { exact: false })).toBeVisible()
       await expect(page.getByText('批阅开题', { exact: true })).toBeVisible()
       await expect(page.getByText('任务书', { exact: true }).first()).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/真实接口不可用|加载失败|网络不稳定，开发演示数据/)

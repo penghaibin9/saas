@@ -42,12 +42,14 @@ def test_student_message_detail_never_routes_students_into_teacher_pages():
     # 服务端：studentMini 只允许落到学生页/公共页，教师前缀一律 fail-closed。
     from app.services.mobile_action_service import CLIENT_STUDENT_MINI, _ALLOWED_PREFIXES
     student_prefixes = _ALLOWED_PREFIXES[CLIENT_STUDENT_MINI]
-    assert student_prefixes == ("/pages/student/", "/pages/common/")
+    assert student_prefixes == (
+        "/pages/student/", "/pages/student-internship/", "/pages/common/",
+    )
     assert not any(prefix.startswith("/pages/teacher/") for prefix in student_prefixes)
 
     # 客户端：同一道白名单在 actionRouter 里再拦一次，服务端被绕过也跳不过去。
     router = _read("miniapp/src/services/actionRouterCore.mjs")
-    assert "student: ['/pages/student/', '/pages/common/']" in router
+    assert "student: ['/pages/student/', '/pages/student-internship/', '/pages/common/']" in router
     assert "export function canNavigate" in router
 
 

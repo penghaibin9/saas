@@ -75,7 +75,7 @@ def test_base_portal_has_exactly_two_real_header_search_inputs_and_current_conca
     assert 'ref="stuInput"' in search_block
     assert 'ref="fnInput"' in search_block
     assert 'placeholder="搜学生（姓名 / 学号）"' in search_block
-    assert 'placeholder="搜功能、帮助文档、流程图"' in search_block
+    assert ":placeholder=\"useWorkspace ? '搜索学生、功能或帮助' : '搜功能、帮助文档、流程图'\"" in search_block
 
     # C1 builds the private typed target first.  This shared seam remains an
     # explicit integration blocker until the Header owner is released.

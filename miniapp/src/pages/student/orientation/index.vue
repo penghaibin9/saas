@@ -7,7 +7,7 @@
           <view class="or__hero-main">
             <text class="or__hero-icon">{{ reportDone ? '✓' : '迎' }}</text>
             <view class="flex-1">
-              <text class="or__hero-title">{{ reportDone ? (finalConfirmed ? '报到完成' : '现场报到成功') : '你好，' + (o.identity.name || '新同学') }}</text>
+              <text class="or__hero-title">{{ arrivalHold ? arrivalHold.title : reportDone ? (finalConfirmed ? '报到完成' : '现场报到成功') : '你好，' + (o.identity.name || '新同学') }}</text>
               <text class="or__hero-sub">{{ heroSub }}</text>
             </view>
           </view>
@@ -19,13 +19,22 @@
           </view>
         </view>
 
+        <view v-if="!reportDone && !arrivalHold && hasDormArrangement" class="or__housing-summary">
+          <view class="flex-1">
+            <text class="or__arrangement-label">{{ o.dorm.statusLabel || (o.dorm.status === 'ACTIVE' ? '已入住' : '已预留 · 待入住') }}</text>
+            <text class="or__arrangement-value">{{ dormArrangement }}</text>
+          </view>
+          <button plain @click="go('/pages/student/affairs/dorm')">查看住宿</button>
+        </view>
+
         <template v-if="reportDone">
+          <view v-if="!finalConfirmed && o.selfService?.canSubmitMaterials" class="or__after-item" @click="go('/pages/student/orientation/materials/index')"><text>查看待补材料与审核结果</text><text> →</text></view>
           <view class="or__result card">
             <view class="row-between">
               <text class="or__result-title">{{ finalConfirmed ? '手续已经办妥' : '现场核验已经完成' }}</text>
               <text class="or__done-tag">已完成</text>
             </view>
-            <text class="or__result-desc">{{ finalConfirmed ? '不用再提交迎新材料或刷新报到状态，接下来按下面的安排入校即可。' : '学院将在后台完成入学确认，你无需留在本页等待，可以按下面的安排继续办理。' }}</text>
+            <text class="or__result-desc">{{ finalConfirmed ? '不用再提交迎新材料或刷新报到状态，接下来按下面的安排入校即可。' : '现场报到已完成；如有待补材料或缴费事项，请继续办理，完成后由学院确认入学。' }}</text>
             <view v-if="checkinSummary" class="or__result-meta">{{ checkinSummary }}</view>
           </view>
 
@@ -35,7 +44,7 @@
               <text class="or__arrangement-icon">🏠</text>
               <view class="flex-1">
                 <text class="or__arrangement-label">住宿安排</text>
-                <text class="or__arrangement-value">{{ dormArrangement }}</text>
+                <text class="or__arrangement-value">{{ dormArrangement }}</text><text class="or__arrangement-label">{{ o.dorm.statusLabel }}</text>
               </view>
             </view>
             <view class="or__arrangement">
@@ -55,11 +64,11 @@
             </view>
           </view>
 
-          <view class="section-head"><text class="section-head__title">接下来</text></view>
+          <view class="section-head"><text class="section-head__title">接下来</text><text @click="go('/pages/student/affairs/dorm')">我的住宿 →</text></view>
           <view class="card or__after-list">
             <view v-if="hasDormArrangement" class="or__after-item">
               <text class="or__after-no">1</text>
-              <text>到校后前往 {{ o.dorm.label }} 办理入住。</text>
+              <text>{{ o.dorm.status === 'ACTIVE' ? '已入住：' : '已预留，请前往办理入住：' }}{{ o.dorm.label }}</text>
             </view>
             <view class="or__after-item">
               <text class="or__after-no">{{ hasDormArrangement ? '2' : '1' }}</text>
@@ -83,7 +92,7 @@
             <button v-if="nextAction.path" class="btn btn-primary" @click="go(nextAction.path)">{{ nextAction.button }}</button>
           </view>
 
-          <view v-if="schoolItems.length" class="or__fold card" @click="showSchool = !showSchool">
+          <view v-if="!arrivalHold && schoolItems.length" class="or__fold card" @click="showSchool = !showSchool">
             <view class="row-between">
               <view>
                 <text class="or__fold-title">学校正在办理</text>
@@ -98,7 +107,7 @@
             </view>
           </view>
 
-          <view class="or__fold card" @click="showSubmitted = !showSubmitted">
+          <view v-if="!arrivalHold" class="or__fold card" @click="showSubmitted = !showSubmitted">
             <view class="row-between">
               <view>
                 <text class="or__fold-title">已填内容与便民服务</text>
@@ -153,6 +162,13 @@ export default {
   },
   onShow() { this.load() },
   computed: {
+    arrivalHold() {
+      return ({
+        DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已有预留床位继续保留，实际安排以住宿信息为准。' },
+        NO_SHOW: { title: '已登记未到校', description: '原预留床位已释放。如仍需入学，请联系学校恢复报到并重新安排住宿。' },
+        CANCELLED: { title: '已取消入学', description: '本次迎新办理已停止，原预留床位已释放。如登记有误，请联系学校核实。' },
+      })[this.o?.stage] || null
+    },
     reportDone() {
       return ['CHECKED_IN', 'COLLEGE_CONFIRMED', 'REGISTERED'].includes(this.o?.overallStatus)
     },
@@ -172,6 +188,7 @@ export default {
       return this.requiredMaterialFacts.length > 0 && this.requiredMaterialFacts.every((item) => item.status === 'UPLOADED')
     },
     nextAction() {
+      if (this.arrivalHold) return { owner: '报到安排有调整', ...this.arrivalHold, button: '', path: '' }
       const done = (key) => DONE.includes(this.stepMap[key])
       if (!done('INFO')) return { owner: '需要你完成', title: '确认个人信息', description: '学校已有的信息已经带出，你只需确认联系方式和紧急联系人。', button: '确认个人信息', path: '/pages/student/orientation/collect/index' }
       if (!this.o?.selfService?.arrivalPlan) return { owner: '需要你完成', title: '告诉学校何时到校', description: '选择到校时间和交通方式，需要接站时顺手登记。', button: '填写到校计划', path: '/pages/student/orientation/arrival/index' }
@@ -180,8 +197,9 @@ export default {
       return { owner: '学校处理中', title: '你暂时不用操作', description: '线上信息已经提交。学校正在处理剩余事项，结果会自动更新。', button: '', path: '' }
     },
     heroSub() {
+      if (this.arrivalHold) return '报到安排已更新'
       if (this.finalConfirmed) return '欢迎入学，下面是你的入学安排'
-      if (this.reportDone) return '学院确认由后台继续办理，你不用等待'
+      if (this.reportDone) return this.schoolItems.length ? '请关注待补办事项，办结后由学院确认入学' : '等待学院确认入学'
       return this.nextAction.owner === '学校处理中' ? '你的线上事项已提交' : this.nextAction.title
     },
     qualificationBlockers() {
@@ -191,6 +209,7 @@ export default {
       return this.o && this.o.qualification ? this.o.qualification.verdict : ''
     },
     schoolItems() {
+      if (this.finalConfirmed) return []
       if (this.qualificationVerdict === 'QUALIFIED') return []
       const messages = this.qualificationBlockers
         .filter((item) => !this.isStudentAction(item))
@@ -202,11 +221,12 @@ export default {
     },
     hasDormArrangement() {
       const status = this.o?.dorm?.status
-      return !!this.o?.dorm?.label && !['NOT_REQUIRED', 'MISSING', 'UNASSIGNED', 'UNLINKED'].includes(status)
+      return !!this.o?.dorm?.label && ['RESERVED', 'ACTIVE'].includes(status)
     },
     dormArrangement() {
       if (this.hasDormArrangement) return this.o.dorm.label
       if (this.o?.dorm?.status === 'NOT_REQUIRED') return '无需住宿'
+      if (this.o?.dorm?.statusLabel) return this.o.dorm.statusLabel
       return '学校正在安排，确定后会自动显示'
     },
     checkinSummary() {
@@ -246,6 +266,8 @@ export default {
 </script>
 
 <style scoped>
+.or__housing-summary { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border-light); }
+.or__housing-summary button { margin: 0; padding: 6px 12px; min-height: 40px; font-size: 14px; color: var(--brand-primary); border: 1px solid var(--border-light); border-radius: 6px; }
 .or__hero { padding: 20px; border-radius: 20px; color: #fff; background: linear-gradient(135deg, #1859d8, #2f74ed); box-shadow: 0 12px 30px rgba(31, 95, 219, .18); }
 .or__hero.is-done { background: linear-gradient(135deg, #087f5b, #13a477); box-shadow: 0 12px 30px rgba(8, 127, 91, .18); }
 .or__hero-batch { font-size: var(--font-size-xs); opacity: .82; }

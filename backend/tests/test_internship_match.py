@@ -45,10 +45,13 @@ def _position(client, h, cid, bid, title="软件开发岗", major="软件技术"
     pid = client.post(POS, headers=h, json={
         "companyId": cid, "title": title, "majorRequirement": major,
         "workLocation": "上海浦东", "headcount": headcount, "batchId": str(bid), **_RIGHTS_FACTS,
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
     }).json()["data"]["id"]
     if publish:
-        client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
-        client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"})
+        submitted = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
+        assert submitted.status_code == 200, submitted.json()
+        published = client.post(f"{POS}/{pid}/status", headers=h, json={"action": "PUBLISH"})
+        assert published.status_code == 200, published.json()
     return pid
 
 

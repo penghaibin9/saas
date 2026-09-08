@@ -310,6 +310,15 @@ def test_d5_four_end_inspection_rectification_recheck_and_negative_gates(client,
     waiting = submitted.json()["data"]
     assert waiting["status"] == "WAITING_RECHECK"
     assert [row["fileId"] for row in waiting["rectificationFiles"]] == [rectification_file]
+    # Both teacher surfaces must receive the student's actual note and bound photos.
+    for base in (f"{PC}/dorm", f"{MOBILE}/teacher/affairs/dorm"):
+        review = client.get(f"{base}/rectifications/{rect['rectificationId']}", headers=manager)
+        assert review.status_code == 200, review.text
+        evidence = review.json()["data"]
+        assert evidence["rectifyNote"] == submit_body["note"]
+        assert [f["fileId"] for f in evidence["rectificationFiles"]] == [rectification_file]
+        denied = client.get(f"{base}/rectifications/{rect['rectificationId']}", headers=other_manager)
+        assert denied.status_code == 403, denied.text
     exact_replay = client.post(
         f"{MOBILE}/affairs/dorm/rectifications/{rect['rectificationId']}/submit",
         headers=student_mobile,
@@ -350,6 +359,43 @@ def test_d5_four_end_inspection_rectification_recheck_and_negative_gates(client,
         },
     )
     assert stale_recheck.status_code == 409
+
+    # 宿舍高风险与整改分别闭环：楼栋宿管只能处理明确指派给本人的 DORM 风险，
+    # 另一宿管即使有宿舍检查权限也不能读取或处置该原单。
+    risk_id = record["relatedRiskId"]
+    risk_detail = client.get(
+        f"{MOBILE}/teacher/affairs/risk/{risk_id}", headers=manager,
+    )
+    assert risk_detail.status_code == 200, risk_detail.text
+    risk_data = risk_detail.json()["data"]
+    assert risk_data["source"] == "DORM"
+    assert "PROCESS" in risk_data["allowedActions"]
+    assert client.get(
+        f"{MOBILE}/teacher/affairs/risk/{risk_id}", headers=other_manager,
+    ).status_code == 403
+
+    processed = client.post(
+        f"{MOBILE}/teacher/affairs/risk/{risk_id}/process",
+        headers=manager,
+        json={
+            "content": "已现场断电并督促学生完成整改与照片复检",
+            "version": risk_data["version"],
+        },
+    )
+    assert processed.status_code == 200, processed.text
+    processed_data = processed.json()["data"]
+    assert processed_data["status"] == "PROCESSING"
+
+    risk_closed = client.post(
+        f"{MOBILE}/teacher/affairs/risk/{risk_id}/close",
+        headers=manager,
+        json={
+            "conclusion": "整改材料和现场复检均通过，宿舍用电风险解除",
+            "version": processed_data["version"],
+        },
+    )
+    assert risk_closed.status_code == 200, risk_closed.text
+    assert risk_closed.json()["data"]["status"] == "CLOSED"
 
     hygiene_task = client.post(f"{PC}/dorm/check-tasks", headers=admin, json={
         "taskName": "D5房间卫生检查",
@@ -406,6 +452,7 @@ def test_d5_four_end_inspection_rectification_recheck_and_negative_gates(client,
         assert len(risks) == 1
         assert risks[0].student_id == student_id
         assert risks[0].source_ref_id == stored_rect.id
+        assert risks[0].status == "CLOSED"
         hygiene_rect = db.get(DormRectification, int(hygiene_record["rectificationId"]))
         assert hygiene_rect.student_id is None and hygiene_rect.related_risk_id is None
         assert not db.query(AffairsRiskRecord).filter_by(

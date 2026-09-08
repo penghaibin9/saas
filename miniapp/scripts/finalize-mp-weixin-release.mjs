@@ -28,7 +28,9 @@ const TOTAL_PACKAGE_LIMIT = 20 * 1024 * 1024
 const V3_PACKAGE_BUDGET = {
   main: 520 * 1024,
   'pages/student': 850 * 1024,
-  'pages/teacher': 950 * 1024
+  'pages/student-internship': 300 * 1024,
+  'pages/teacher': 950 * 1024,
+  'pages/teacher-internship': 380 * 1024
 }
 const TOP_FILE_COUNT = 20
 const WXSS_COMPONENT_TAG_PATTERN = /(^|[\s>+~])(view|text|button|input|textarea|image|scroll-view|swiper|swiper-item|picker|form|label|switch|slider|navigator|web-view|video|canvas|map)(?=$|[\s.:>#\[])/
@@ -189,7 +191,8 @@ async function main() {
   let files = await walk(OUTPUT_DIR)
   const sourceMaps = files.filter((file) => file.endsWith('.map'))
   await Promise.all(sourceMaps.map((file) => fs.unlink(file)))
-  files = files.filter((file) => !file.endsWith('.map'))
+  // Re-running finalize must not count its own prior report and release note as app code.
+  files = files.filter((file) => !file.endsWith('.map') && file !== PACKAGE_REPORT && file !== RELEASE_INFO)
 
   const textFiles = files.filter((file) => TEXT_EXTENSIONS.has(path.extname(file).toLowerCase()))
   let apiBaseFound = false

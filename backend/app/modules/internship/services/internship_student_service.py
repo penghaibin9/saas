@@ -370,8 +370,12 @@ def get_student(rec_id, user=None) -> dict:
             InternshipAuditTrail.target_type == "INTERN_STUDENT",
             InternshipAuditTrail.target_id == r.id).order_by(
             InternshipAuditTrail.occurred_at.desc()).limit(20)).all()
+        from app.modules.internship.services.internship_eligibility_result import eligibility_result
+        batch = tenant_get(db, InternshipBatch, r.batch_id) if r.batch_id else None
         return {
-            **_row(r, stu),
+            **_row_of(db, r),
+            "batchStatus": batch.status if batch else "",
+            "eligibilityReview": eligibility_result(db, r, include_internal=True),
             "phone": mask_phone_encrypted(phone.contact_value_encrypted if phone else None),
             "insurance": r.insurance_info or "", "agreement": r.agreement_info or "",
             "remark": r.remark or "", "company": company, "position": position,
@@ -485,7 +489,7 @@ _CLAIM_SQL = (
 )
 
 
-def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_version, user=None) -> InternshipRecord:
+def _assign_position_core_in_tx(db, record: InternshipRecord, position_id, expected_version, user=None) -> InternshipRecord:
     from sqlalchemy import text
     from app.modules.internship.services.internship_version import extract_expected_version
     r = record
@@ -535,6 +539,26 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
         "recordVersion": r.version,
     })
     return r
+
+
+def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_version, user=None) -> InternshipRecord:
+    """Canonical placement command, including immutable placement evidence.
+
+    Keep the authority call explicit so every caller gets the same behavior regardless
+    of which router or service happened to be imported first.
+    """
+    from app.modules.internship.services.internship_assignment_snapshot_authority import (
+        assign_position_with_snapshot_in_tx,
+    )
+
+    return assign_position_with_snapshot_in_tx(
+        db,
+        record,
+        position_id,
+        expected_version,
+        user=user,
+        core_assign=_assign_position_core_in_tx,
+    )
 
 
 def _assert_direct_position_change_allowed(record: InternshipRecord) -> None:
@@ -696,16 +720,23 @@ def set_status(rec_id, action: str, reason: str = "", user=None, expected_versio
         return _row_of(db, r)
 
 
-def set_eligibility(rec_id, status: str, reason: str = "", user=None, expected_version=None) -> dict:
+def set_eligibility(rec_id, status: str, reason: str = "", user=None, expected_version=None,
+                    publish_reason: bool = False) -> dict:
     if status not in ("QUALIFIED", "UNQUALIFIED", "PENDING"):
         raise AppException("VALIDATION_ERROR", "非法资格状态")
     with session() as db:
         r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
         _require_record_version(r, expected_version)
+        if r.status == "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "已归档实习记录不可修改资格认定")
+        batch = tenant_get(db, InternshipBatch, r.batch_id) if r.batch_id else None
+        if batch and batch.status in ("CLOSED", "ARCHIVED", "VOIDED"):
+            raise AppException("DATA_CONFLICT", "当前批次已结束、归档或作废，不可修改资格认定")
         r.eligibility_status = status
         r.version = int(r.version or 0) + 1
         _trail(db, r.id, "ELIGIBILITY", {"status": status, "reason": reason,
+                                          "studentVisible": bool(publish_reason),
                                           "recordVersion": int(r.version or 0)})
         db.commit()
         return _row_of(db, r)

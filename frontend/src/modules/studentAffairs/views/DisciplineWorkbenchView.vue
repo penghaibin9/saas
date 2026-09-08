@@ -1,20 +1,13 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell flat
     title="违纪处分工作台"
     subtitle="登记 · 学院初审 / 学工处复核 / 校级 · 生效与解除闭环"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="违纪处分"
   >
-    <TaskContextBar
-      :role-name="roleName"
-      :scope-name="dataScopeName"
-      :pending="pendingCount"
-      :filter-summary="taskFilterSummary"
-      next-hint="选择审批中的处分记录，完成当前处理。"
-      :degraded="!!listError"
-      @clear-filter="clearTaskFilters"
-    />
+    <template #actions><AppPermissionButton code="studentAffairs.discipline.create" :allowed="canBtn('studentAffairs.discipline.create')" variant="primary" size="sm" @click="openRegister">登记处分</AppPermissionButton></template>
+    <div v-if="taskFilterSummary" class="flat-note">{{ taskFilterSummary }}<button class="mp-link" @click="clearTaskFilters">清除筛选</button></div>
     <p v-if="focusNotice" class="dp-focus-note">{{ focusNotice }}</p>
     <div v-if="studentFilterLabel" class="dp-student-filter">
       <span>{{ studentFilterLabel }}</span>
@@ -36,16 +29,16 @@
       </div>
       <div class="dp-tools">
         <AppSelect v-model="typeFilter" class="dp-typepick" :options="typeFilterOptions" placeholder="" title="按处分类型筛选" />
-        <AppPermissionButton code="studentAffairs.discipline.view" :allowed="canBtn('studentAffairs.discipline.view')" variant="secondary" size="sm" :loading="reconciling" @click="onReconcile">投影对账</AppPermissionButton>
-        <AppPermissionButton code="studentAffairs.discipline.create" :allowed="canBtn('studentAffairs.discipline.create')" variant="primary" size="sm" @click="openRegister">登记处分</AppPermissionButton>
+        <AppPermissionButton code="studentAffairs.discipline.view" :allowed="canBtn('studentAffairs.discipline.view')" variant="secondary" size="sm" :loading="reconciling" @click="onReconcile">数据核对</AppPermissionButton>
+
       </div>
     </div>
 
-    <div class="dp-workspace">
+    <div class="dp-workspace" :class="{ 'is-empty': !filteredList.length && !selected }">
       <div class="dp-list">
         <LoadingState v-if="loading" text="正在加载处分记录…" />
         <ErrorState v-else-if="listError" :description="listError" @retry="loadList" />
-        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="暂无处分记录" description="可点「登记处分」录入，或调整筛选条件" />
+        <EmptyState v-else-if="!filteredList.length && pagination.total === 0" title="暂无处分记录" description="可登记处分，或调整筛选条件"><template #actions><button class="mp-link" @click="clearTaskFilters">重置筛选</button></template></EmptyState>
         <ul v-else class="dp-queue">
           <li
             v-for="it in filteredList"
@@ -70,8 +63,8 @@
         />
       </div>
 
-      <div class="dp-detail">
-        <EmptyState v-if="!selected" title="请从左侧选择一条处分" description="查看详情并进行提交 / 审批 / 生效 / 解除等操作" />
+      <div v-if="selected || filteredList.length" class="dp-detail">
+        <p v-if="!selected" class="flat-note">从左侧选择记录，在此办理。</p>
         <template v-else>
           <div class="dp-dhead">
             <div>
@@ -173,7 +166,6 @@
  * 列表端点服务端 status/discType 过滤；review 单端点带 action=APPROVE/REJECT/RETURN；解除 remove-review 带 action=APPROVE/REJECT。
  */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppConfirmDialog, AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, AppStatusTag,
   AppStudentPicker, AppTextarea, AppTextInput
@@ -198,7 +190,7 @@ const DISC_TYPE = {
 export default {
   name: 'DisciplineWorkbenchView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState, TaskContextBar, AppConfirmDialog, AppDateDisplay, AppDrawer,
+    ModulePageShell, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDateDisplay, AppDrawer,
     AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton, AppQuickPhrases, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextarea, AppTextInput
   },
   props: { ctx: { type: Object, default: null } },

@@ -1,19 +1,19 @@
 <template>
   <ModulePageShell
-    title="风险异常处置"
-    :subtitle="'发现并处理学生实习中的安全、失联、打卡、协议和企业风险 · 风险来源统一挂 INT-R 编码 · 关闭风险需填写原因并留痕'"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
+    title="风险预警"
+    subtitle="按风险等级和处理期限排查问题，进入处置详情继续跟进。"
+    :role-name="ctx.currentRole?.roleName || '教师 / 管理员'"
+    :data-scope-name="ctx.dataScope?.scopeName || '当前授权范围'" :watermark="false"
   >
     <template #actions>
-      <AppExportButton :export-fn="exportFn" :has-permission="canExport" @exported="onExported">⬇ 导出风险名单</AppExportButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="canExport" @exported="onExported">导出风险台账</AppExportButton>
     </template>
 
-    <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+    <ModuleSummaryStrip v-if="summaryMetrics.length" :metrics="summaryMetrics" />
 
     <div class="mp-stack">
       <nav class="ir-focus" aria-label="风险处置视图">
-        <span class="ir-focus__title">风险聚焦</span>
+
         <button
           v-for="focus in focusViews"
           :key="focus.key"
@@ -23,11 +23,12 @@
           @click="goPanel(focus.key)"
         >{{ focus.label }}</button>
       </nav>
+      <AppSearchBox v-model="filters.keyword" placeholder="搜索学生姓名或学号" @search="search" />
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="当前数据范围内暂无风险学生" description="系统预警（INT-R01~R17）命中后会自动生成风险记录" />
+      <EmptyState v-else-if="!rows.length" title="当前筛选下暂无风险记录" description="可调整风险类型、等级或跟进状态。"><template #actions><AppButton variant="ghost" @click="reset">清空筛选</AppButton></template></EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.studentName }}</div>
@@ -47,18 +48,18 @@
           <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="goStudent(row)">查看学生</button>
+          <button type="button" class="mp-link" @click="goStudent(row)">学生档案</button>
           <button
-            v-if="row.status !== 'CLOSED' && row.status !== 'RESOLVED'"
+            v-if="canHandle && row.status !== 'CLOSED' && row.status !== 'RESOLVED'" type="button"
             class="mp-link"
             style="margin-left: var(--space-2)"
             @click="goDispose(row)"
-          >处理</button>
-          <button class="mp-link" style="margin-left: var(--space-2)" @click="remind(row)">提醒</button>
+          >去处置</button>
+          <button v-if="canHandle && !['CLOSED', 'RESOLVED'].includes(row.status)" type="button" class="mp-link" :disabled="remindingIds.includes(String(row.id))" style="margin-left: var(--space-2)" @click="remind(row)">{{ remindingIds.includes(String(row.id)) ? '催办中…' : '催办' }}</button>
         </template>
       </DataTable>
 
-      <p class="mp-note">跟进 / 升级 / 关闭请进入「风险处置」工作台完成；关闭为审慎操作：原因必填 + 二次确认 + 永久留痕。</p>
+
     </div>
   </ModulePageShell>
 </template>
@@ -69,7 +70,9 @@ import {
   ModulePageShell, AdvancedFilter, DataTable,
   LoadingState, ErrorState, EmptyState
 } from '@/components/business'
-import { AppStatusTag, AppRiskTag, AppExportButton } from '@/components/common'
+import { AppStatusTag, AppRiskTag, AppExportButton, AppSearchBox } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { canCode } from '@/modules/internship/composables/permission'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { riskApi } from '@/modules/internship/api/leave-risk.api'
@@ -77,7 +80,7 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 import { safeLocalizedText } from '@/utils/presentationSafety'
 
-const EMPTY_FILTERS = () => ({ level: '', status: '', riskCode: '' })
+const EMPTY_FILTERS = () => ({ level: '', status: '', riskCode: '', keyword: '' })
 const PANEL_PRESETS = {
   board: () => EMPTY_FILTERS(),
   'no-position': () => ({ level: '', status: '', riskCode: 'INT-R02' }),
@@ -91,13 +94,13 @@ const PANEL_PRESETS = {
 
 export default {
   name: 'InternshipRiskView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
+  components: { ModulePageShell, AppSearchBox, AppButton, AdvancedFilter, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
     LoadingState, ErrorState, EmptyState, ModuleSummaryStrip },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
-      error: '',
+      error: '', listSequence: 0, remindingIds: [],
       rows: [],
       filters: EMPTY_FILTERS(), activePanel: 'board',
       pagination: { page: 1, pageSize: 10, total: 0 },
@@ -109,11 +112,12 @@ export default {
         { key: 'deadline', title: '处理期限' },
         { key: 'lastFollow', title: '最近跟进' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '140px' }
+        { key: 'actions', title: '操作', width: '200px' }
       ]
     }
   },
   computed: {
+    canHandle() { return canCode(this.ctx, 'internship.risk.handle') },
     focusViews() {
       return [
         { key: 'board', label: '全部风险' },
@@ -127,7 +131,7 @@ export default {
     },
     filterFields() {
       return [
-        { key: 'level', label: '风险等级', type: 'select', options: this.ctx.statusOptions.riskLevel },
+        { key: 'level', label: '风险等级', type: 'select', options: (this.ctx.statusOptions?.riskLevel || []) },
         {
           key: 'status', label: '跟进状态', type: 'select',
           options: [
@@ -139,7 +143,7 @@ export default {
     },
     summaryMetrics() {
       if (this.loading || this.error) return []
-      return [{ label: '风险学生', value: this.pagination.total, tone: this.pagination.total ? 'warn' : undefined }]
+      return [{ label: '当前筛选风险记录', value: this.pagination.total, tone: this.pagination.total ? 'warn' : undefined }]
     },
     canExport() {
       const pa = this.ctx.permissionActions?.exportRiskList
@@ -149,15 +153,15 @@ export default {
     batchStore() { return useInternshipBatchStore() }
   },
   watch: {
-    '$route.query.panel': {
+    '$route.query': {
       immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'board').toString())
-      }
+      deep: true,
+      handler() { this.applyPanel(String(this.$route.query.panel || 'board')) }
     },
     'batchStore.selectedBatchId'() {
       this.pagination.page = 1
-      this.load()
+      this.remindingIds = []
+      this.syncQuery()
     }
   },
   methods: {
@@ -170,15 +174,17 @@ export default {
     applyPanel(panel) {
       const preset = PANEL_PRESETS[panel] || PANEL_PRESETS.board
       this.activePanel = PANEL_PRESETS[panel] ? panel : 'board'
-      this.filters = { ...preset() }
-      this.pagination.page = 1
+      const query = this.$route.query
+      this.filters = { ...EMPTY_FILTERS(), ...preset() }
+      for (const key of Object.keys(this.filters)) { if (query[key] != null) this.filters[key] = String(query[key]) }
+      this.pagination.page = Math.max(1, Number.parseInt(query.page, 10) || 1)
       this.load()
     },
     goPanel(panel) {
       if (this.activePanel === panel) return
       this.$router.replace({
         path: this.$route.path,
-        query: this.batchStore.withBatchQuery({ ...this.$route.query, panel })
+        query: this.batchStore.withBatchQuery({ panel, page: '1' })
       })
     },
     goStudent(row) {
@@ -201,30 +207,35 @@ export default {
       const diff = (due.getTime() - Date.now()) / (24 * 3600 * 1000)
       return diff <= 3
     },
-    onPageChange(page) {
-      this.pagination.page = page
-      this.load()
+    syncQuery() {
+      const query = this.batchStore.withBatchQuery({ panel: this.activePanel, page: String(this.pagination.page), ...this.filters })
+      const current = this.$route.query || {}
+      const keys = new Set([...Object.keys(query), ...Object.keys(current)])
+      if ([...keys].every(key => String(query[key] || '') === String(current[key] || ''))) this.load()
+      else this.$router.replace({ query })
     },
-    search() {
-      this.pagination.page = 1
-      this.load()
-    },
+    onPageChange(page) { this.pagination.page = page; this.syncQuery() },
+    search() { this.pagination.page = 1; this.syncQuery() },
     reset() {
-      this.filters = EMPTY_FILTERS()
-      this.pagination.page = 1
-      this.load()
+      this.activePanel = 'board'; this.filters = EMPTY_FILTERS()
+      this.pagination.page = 1; this.syncQuery()
     },
-    remind(row) {
-      riskApi.remind(row.id).then((res) => {
-        if (res.code === 0) {
-          const owner = (res.data && res.data.ownerName) || row.owner || '责任人'
-          toast.success(`已提醒 ${owner} 跟进 ${row.studentName} 的风险记录，已留痕`)
-        } else {
-          toast.error(res.message || '提醒失败')
-        }
-      })
+    async remind(row) {
+      const id = String(row.id)
+      if (!this.canHandle || ['CLOSED', 'RESOLVED'].includes(row.status) || this.remindingIds.includes(id)) return
+      const batchId = this.batchStore.selectedBatchId
+      this.remindingIds = [...this.remindingIds, id]
+      const res = await riskApi.remind(id)
+      if (batchId !== this.batchStore.selectedBatchId) return
+      this.remindingIds = this.remindingIds.filter(value => value !== id)
+      if (res.code !== 0) { toast.error(res.message || '催办失败'); return }
+      const owner = res.data?.ownerName || row.owner || '责任人'
+      toast.success(`已提醒 ${owner} 跟进该风险`)
     },
     async load() {
+      const sequence = ++this.listSequence
+      const batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.pagination.total = 0
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
         this.rows = []
@@ -240,11 +251,12 @@ export default {
         pageSize: this.pagination.pageSize,
         batchId: this.batchStore.selectedBatchId
       })
+      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
       } else {
-        this.error = res.message
+        this.error = res.message || '风险记录加载失败'
       }
       this.loading = false
     }
@@ -254,9 +266,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.ir-focus { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--danger-100); border-radius: 12px; background: linear-gradient(100deg, var(--danger-50), var(--card) 58%); box-shadow: var(--s1); overflow-x: auto; }
-.ir-focus__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--danger-600); font-size: 12px; font-weight: var(--font-weight-semibold); }
+.ir-focus { display: flex; align-items: center; gap: 6px; padding: 4px 0 12px; border-bottom: 1px solid var(--border-light); overflow-x: auto; }
 .ir-focus__item { flex: 0 0 auto; padding: 6px 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); cursor: pointer; font-size: 12px; transition: .16s ease; }
-.ir-focus__item:hover { color: var(--danger-600); background: var(--danger-50); }
-.ir-focus__item.is-active { border-color: var(--danger-100); background: var(--card); color: var(--danger-600); box-shadow: 0 2px 5px rgba(127, 29, 29, .08); font-weight: var(--font-weight-semibold); }
+.ir-focus__item:hover { color: var(--primary-600); background: var(--primary-50); }
+.ir-focus__item.is-active { border-color: var(--primary-100); background: var(--card); color: var(--primary-600); box-shadow: 0 2px 5px rgba(127, 29, 29, .08); font-weight: var(--font-weight-semibold); }
 </style>
