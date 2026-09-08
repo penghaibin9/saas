@@ -129,9 +129,11 @@ jobs:
 
       - name: Seed sixteen paid-order entitlement combinations
         working-directory: backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
         run: |
           set -euo pipefail
-          python scripts/e2e_seed_module_commerce_m2.py | tee ../artifacts/module-commerce-m2/seed.log
+          python scripts/e2e_seed_module_commerce_m2.py 2>&1 | tee ../artifacts/module-commerce-m2/seed.log
 
       - name: Start exact-head backend
         run: |
