@@ -11,12 +11,14 @@ on:
       - backend/app/services/module_commerce_m345_hardening.py
       - backend/app/services/module_commerce_quota_guard.py
       - backend/app/services/file_storage_quota_reservation_service.py
+      - backend/app/modules/internship/dependencies/enterprise_context.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
       - backend/tests/test_module_commerce_quota_guard_runtime.py
       - backend/tests/test_module_commerce_write_fence_runtime.py
       - backend/tests/test_module_commerce_consumer_dependency_runtime.py
+      - backend/tests/test_module_commerce_enterprise_gate.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
       - frontend/tests/module-commerce-lifecycle-workspace.test.mjs
@@ -66,12 +68,14 @@ jobs:
             backend/app/services/module_commerce_lifecycle_service.py \
             backend/app/services/module_commerce_m345_hardening.py \
             backend/app/services/module_commerce_quota_guard.py \
+            backend/app/modules/internship/dependencies/enterprise_context.py \
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/alembic/versions/20260908_module_commerce_m345.py \
             backend/tests/test_module_commerce_m345_runtime.py \
             backend/tests/test_module_commerce_quota_guard_runtime.py \
             backend/tests/test_module_commerce_write_fence_runtime.py \
-            backend/tests/test_module_commerce_consumer_dependency_runtime.py
+            backend/tests/test_module_commerce_consumer_dependency_runtime.py \
+            backend/tests/test_module_commerce_enterprise_gate.py
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
         working-directory: backend
         run: |
@@ -84,6 +88,7 @@ jobs:
             tests/test_module_commerce_quota_guard_runtime.py \
             tests/test_module_commerce_write_fence_runtime.py \
             tests/test_module_commerce_consumer_dependency_runtime.py \
+            tests/test_module_commerce_enterprise_gate.py \
             -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
       - name: Assert scope stops before irreversible purge
         working-directory: backend
@@ -95,15 +100,17 @@ jobs:
           hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
           quota=Path('app/services/module_commerce_quota_guard.py').read_text(encoding='utf-8')
           fence=Path('app/services/module_commerce_access_guard.py').read_text(encoding='utf-8')
+          enterprise=Path('app/modules/internship/dependencies/enterprise_context.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          for source in (service, hardening, quota, fence):
+          for source in (service, hardening, quota, fence, enterprise):
               assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
           assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
           assert 'consumerDependencySnapshot' in hardening and 'SOURCE_BOUND_EVIDENCE_RETAIN_REQUIRED' in hardening
           assert 'M6_M7_BEFORE_PURGE' in hardening and 'physicalPurgeAuthorized' in hardening
           assert 'COMMERCIAL_MODULE_STORAGE_QUOTA_EXCEEDED' in quota and 'MODULE_NOT_AUTHORIZED' in quota
           assert 'before_commit' in fence and 'with_for_update' in fence and 'module_write_fence' in fence
-          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_CONSUMER_EVIDENCE_VERIFIED')
+          assert 'assert_module_access' in enterprise and '"internship"' in enterprise
+          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_CONSUMER_ENTERPRISE_GATE_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
