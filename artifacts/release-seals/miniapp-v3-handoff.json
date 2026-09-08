@@ -1,23 +1,31 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-09-07T22:34:16.299Z",
-  "studentMergeSha": "18904623776a8219343c1a7fa5242b1240549814",
+  "generatedAt": "2026-09-08T00:14:01.478Z",
+  "studentMergeSha": "86f7e08a1979fb8368e236977c7d59ff5a13b884",
   "actionSchemaVersion": "1.0.0",
-  "routeInventoryHash": "b2f310a0ba82b308c3827b6f3ffa4e938f267aad091c8b4188c740f00948eed4",
-  "routeCount": 151,
-  "subpackageHash": "76fce784f9692bb40b4f04b82c5eeb6d03e071dfdce671b91112f1b3e9e3d948",
+  "routeInventoryHash": "071d4f2de72486b3cfbf5172699db478c5f2449437aa59abe1e6aaae2e55ce23",
+  "routeCount": 158,
+  "subpackageHash": "ea4109b620d02cf0d35e773ed433c9a4f631914e3f49e4bd9c946065ddd469c9",
   "subpackages": [
     {
       "root": "pages/student",
-      "pages": 75
+      "pages": 57
+    },
+    {
+      "root": "pages/student-internship",
+      "pages": 20
     },
     {
       "root": "pages/teacher",
-      "pages": 63
+      "pages": 50
+    },
+    {
+      "root": "pages/teacher-internship",
+      "pages": 18
     }
   ],
   "networkPagerVersion": "1.0.0",
   "attachmentPickerVersion": "1.0.0",
   "alembicHead": "20260906_fee_reduction_four_end",
-  "packageReportSha": "1d0b5ae6092aed4ab968a3be99abbff2c71f0c8a9ccd3f366c6139545ec9d296"
+  "packageReportSha": "a10889e80aa703cc819c8855d0f6d2471f85be9f4241d8fc1708a9effed78ef6"
 }
