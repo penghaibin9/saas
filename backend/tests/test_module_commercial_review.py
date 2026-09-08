@@ -144,15 +144,73 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(result['keyContractReviewRequired'], 1)
         self.assertFalse(result['m0Complete'])
 
+    def test_reanchor_receipt_only_relocates_stale_evidence_after_reviewed_window(self):
+        old = b'changed\nanchor\n'
+        old_sha = hashlib.sha256(old).hexdigest()
+        self.path.write_text('changed-a\nchanged-b\nanchor\n')
+        current_sha = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        review = {
+            'evidence': {
+                'E1': {'path': 'model.py', 'sha256': old_sha, 'startLine': 2, 'endLine': 2},
+            },
+        }
+        receipt = {
+            'schemaVersion': 1,
+            'artifactType': 'M0_SCHEMA_EVIDENCE_REANCHORS_NOT_APPROVAL',
+            'deletionAuthorized': False,
+            'purgeAuthorized': False,
+            'entries': [{
+                'path': 'model.py',
+                'fromSha256': old_sha,
+                'toSha256': current_sha,
+                'sourceChangeCommit': 'b' * 40,
+                'lineOffset': 1,
+                'changeWindow': {'oldStart': 1, 'oldEnd': 1, 'newStart': 1, 'newEnd': 2},
+                'evidenceIds': ['E1'],
+                'reason': 'one reviewed line inserted before unchanged evidence',
+            }],
+        }
+        resolved = D.validate_review_evidence(self.root, {'model.py': current_sha}, review, receipt)
+        self.assertEqual(resolved['E1']['startLine'], 3)
+        self.assertEqual(resolved['E1']['endLine'], 3)
+        self.assertTrue(resolved['E1']['reanchored'])
+
+        for field in ('deletionAuthorized', 'purgeAuthorized'):
+            bad = copy.deepcopy(receipt)
+            bad[field] = True
+            with self.assertRaises(ValueError):
+                D.validate_review_evidence(self.root, {'model.py': current_sha}, review, bad)
+
+        overlap = copy.deepcopy(receipt)
+        overlap['entries'][0]['changeWindow']['oldEnd'] = 2
+        overlap['entries'][0]['changeWindow']['newEnd'] = 3
+        with self.assertRaisesRegex(ValueError, 'OVERLAPS'):
+            D.validate_review_evidence(self.root, {'model.py': current_sha}, review, overlap)
+
+        incomplete = copy.deepcopy(receipt)
+        incomplete['entries'][0]['evidenceIds'] = ['OTHER']
+        with self.assertRaises(ValueError):
+            D.validate_review_evidence(self.root, {'model.py': current_sha}, review, incomplete)
+
     def test_committed_review_has_unique_cases_and_valid_anchored_source(self):
         review = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json').read_text(encoding='utf-8'))
+        reanchors = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-evidence-reanchors.json').read_text(encoding='utf-8'))
         self.assertEqual(len(review['cases']), len({c['table'] for c in review['cases']}))
         for row in review['cases']:
             self.assertFalse(row['purgeAuthorized'])
             self.assertFalse(row['remediationComplete'])
             self.assertTrue(row['evidence'])
             self.assertIn(row['code'], review['decisions'])
+        source_files = {}
         for anchor in review['evidence'].values():
+            path = ROOT / anchor['path']
+            source_files[anchor['path']] = hashlib.sha256(path.read_bytes()).hexdigest()
+        resolved = D.validate_review_evidence(ROOT, source_files, review, reanchors)
+        self.assertEqual(set(resolved), set(review['evidence']))
+        self.assertEqual(sum(1 for item in resolved.values() if item['reanchored']), 16)
+        self.assertFalse(reanchors['deletionAuthorized'])
+        self.assertFalse(reanchors['purgeAuthorized'])
+        for anchor in resolved.values():
             content = (ROOT / anchor['path']).read_bytes()
             self.assertEqual(hashlib.sha256(content).hexdigest(), anchor['sha256'])
             self.assertTrue(1 <= anchor['startLine'] <= anchor['endLine'] <= len(content.decode('utf-8-sig').splitlines()))

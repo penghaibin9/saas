@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "M0_SCHEMA_EVIDENCE_REANCHORS_NOT_APPROVAL",
+  "designSource": "M0 T03 source-drift re-review; this relocates previously reviewed source line anchors only and never grants deletion or purge approval.",
+  "deletionAuthorized": false,
+  "purgeAuthorized": false,
+  "entries": [
+    {
+      "path": "backend/app/models/internship.py",
+      "fromSha256": "54b48dd2a19d7c71fd1609a52b19e9bef3f439cc4b7e200ea3b00588eae4c330",
+      "toSha256": "f183c4a30482ba843f20c829508045fcf30aa38f688b81f2dcff80586f7b975e",
+      "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
+      "lineOffset": 4,
+      "changeWindow": {
+        "oldStart": 112,
+        "oldEnd": 133,
+        "newStart": 112,
+        "newEnd": 137
+      },
+      "evidenceIds": [
+        "S100",
+        "S108",
+        "S112",
+        "S116",
+        "S120",
+        "S124",
+        "S126",
+        "S130",
+        "S134",
+        "S142",
+        "S146",
+        "S154",
+        "S159",
+        "S161",
+        "S165",
+        "S169"
+      ],
+      "reason": "Commit 605d1ef only changed InternshipCheckin documentation/result-device-risk declaration inside old lines 112-133, adding four net lines. Every listed M0 anchor begins after that reviewed change window, so its source range relocates by +4 lines; the schema disposition, purgeAuthorized=false and deletionAuthorized=false remain unchanged."
+    }
+  ]
+}

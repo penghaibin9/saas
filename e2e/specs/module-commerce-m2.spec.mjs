@@ -128,6 +128,30 @@ async function assertRoute(page, route, expectedAllowed) {
   }).toBe(true)
 }
 
+async function renderedCoreNavigation(page, coreLabels) {
+  // The public shell has two legitimate navigation surfaces:
+  // - TeacherWorkspaceFrame uses the accessible "一级菜单" center nav;
+  // - legacy/non-workspace layouts use .bpl-rail.
+  // Never require one implementation unconditionally; require the rendered
+  // commercial module labels to stay exact on whichever formal shell is active.
+  const workspaceNav = page.locator('.tw-centers nav[aria-label="一级菜单"]')
+  const legacyRail = page.locator('.bpl-rail')
+  const workspaceVisible = await workspaceNav.isVisible().catch(() => false)
+  const legacyVisible = await legacyRail.isVisible().catch(() => false)
+  const workspaceLabels = workspaceVisible
+    ? await workspaceNav.getByRole('button').allInnerTexts()
+    : []
+  const legacyLabels = legacyVisible
+    ? await page.locator('.bpl-rail__lb').allInnerTexts()
+    : []
+  return {
+    surface: workspaceVisible ? 'WORKSPACE_CENTERS' : legacyVisible ? 'LEGACY_RAIL' : 'NONE',
+    workspaceVisible,
+    legacyVisible,
+    labels: [...workspaceLabels, ...legacyLabels].filter((label) => coreLabels.has(label)).sort(),
+  }
+}
+
 function writeEvidence(rows) {
   const target = path.resolve(process.cwd(), 'test-results/module-commerce-m2-evidence.json')
   fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -179,22 +203,19 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
       }
 
       // A successful API request does not mean Vue has rendered its own context.
-      // Require both the shared shell and a ctx-dependent control before checking
-      // the rail. For mask=0 the correct loaded UI has no primary rail because
-      // there are no purchased core modules.
+      // Require the shared shell and a ctx-dependent control, then verify the
+      // actual formal navigation surface. Workspace mode intentionally replaces
+      // the old .bpl-rail with TeacherWorkspaceFrame center navigation.
       await expect(page.locator('.base-portal-layout')).toBeVisible({ timeout: 30_000 })
       await expect(page.locator('.bpl-help')).toBeVisible({ timeout: 30_000 })
       const coreLabels = new Set(Object.values(CORE).map((contract) => contract.label))
       const expectedRail = [...selected].map((key) => CORE[key].label).sort()
-      if (expectedRail.length) {
-        await expect(page.locator('.bpl-rail')).toBeVisible({ timeout: 30_000 })
-      } else {
-        await expect(page.locator('.bpl-rail')).toHaveCount(0)
-      }
       await expect.poll(async () => (
-        (await page.locator('.bpl-rail__lb').allInnerTexts())
-          .filter((label) => coreLabels.has(label)).sort()
-      ), { message: `${session.mask}:exact-rendered-core-rail`, timeout: 30_000 }).toEqual(expectedRail)
+        (await renderedCoreNavigation(page, coreLabels)).labels
+      ), { message: `${session.mask}:exact-rendered-core-navigation`, timeout: 30_000 }).toEqual(expectedRail)
+      const navigation = await renderedCoreNavigation(page, coreLabels)
+      if (expectedRail.length) expect(navigation.surface, `${session.mask}:navigation-surface`).not.toBe('NONE')
+      expect(navigation.workspaceVisible && navigation.legacyVisible, `${session.mask}:duplicate-navigation-surfaces`).toBe(false)
 
       const row = {
         mask: session.mask,
@@ -202,6 +223,7 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
         selectedModules: [...selected].sort(),
         currentContextCoreExact: true,
         railCoreExact: true,
+        navigationSurface: navigation.surface,
         routes: {},
         apis: {},
         batches: {},
