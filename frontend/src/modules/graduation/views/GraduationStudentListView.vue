@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="gd-student-workspace"
     :title="pageTitle"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
@@ -26,10 +27,6 @@
         </div>
       </section>
 
-      <section v-if="hasBatch && activePanel === 'roster'" class="gd-import-contract" aria-label="学生导入四步闭环">
-        <span>名单导入</span>
-        <ol><li>下载模板</li><li>上传并预览</li><li>下载错误行</li><li>确认导入并留痕</li></ol>
-      </section>
 
       <section v-if="hasBatch && activePanel === 'grad-qual'" class="gd-readonly-banner" role="status">
         <div><strong>毕业资格是教务只读镜像</strong><span>毕设中心只展示教务侧最新预审结果与说明，不提供“通过/不通过”写入，避免形成第二套毕业资格主档。</span></div>
@@ -40,6 +37,8 @@
         <button
           v-for="group in primaryGroups"
           :key="group.key"
+          type="button"
+          :aria-pressed="activeGroupKey === group.key"
           class="mp-tab"
           :class="{ 'is-active': activeGroupKey === group.key }"
           @click="switchGroup(group)"
@@ -51,6 +50,7 @@
           v-for="panel in activeGroupPanels"
           :key="panel.key"
           type="button"
+          :aria-pressed="activePanel === panel.key"
           :class="{ 'is-active': activePanel === panel.key }"
           @click="switchPanel(panel.key)"
         >{{ panel.label }}</button>
@@ -119,6 +119,10 @@
           <button v-if="activePanel === 'archive' && row.stage !== 'ARCHIVED'" class="mp-link gd-row-action" @click="askArchiveOne(row)">归档</button>
         </template>
       </DataTable>
+      <section v-if="hasBatch && activePanel === 'roster'" class="gd-import-contract" aria-label="学生导入四步闭环">
+        <span>名单导入</span>
+        <ol><li>下载模板</li><li>上传并预览</li><li>下载错误行</li><li>确认导入并留痕</li></ol>
+      </section>
       <p v-if="hasBatch" class="mp-note">列表、统计、导出均绑定当前批次与当前数据范围；页码和关键词写入 URL，返回时恢复原工作位置。</p>
     </div>
 
@@ -192,9 +196,9 @@ const PANEL_TABS = [
 const PRIMARY_GROUPS = [
   { key: 'roster', label: '名单', defaultPanel: 'roster', panels: ['roster'] },
   { key: 'progress', label: '进度与风险', defaultPanel: 'progress', panels: ['progress', 'risk'] },
-  { key: 'relations', label: '关系与资格', defaultPanel: 'topic', panels: ['topic', 'mentor', 'eligibility', 'grouping'] },
-  { key: 'materials', label: '材料与答辩', defaultPanel: 'materials', panels: ['materials', 'defense'] },
-  { key: 'closure', label: '收口与归档', defaultPanel: 'grad-qual', panels: ['grad-qual', 'archive'] }
+  { key: 'relations', label: '选题 / 导师 / 资格', defaultPanel: 'topic', panels: ['topic', 'mentor', 'eligibility', 'grouping'] },
+  { key: 'materials', label: '材料 / 答辩', defaultPanel: 'materials', panels: ['materials', 'defense'] },
+  { key: 'closure', label: '毕业资格 / 归档', defaultPanel: 'grad-qual', panels: ['grad-qual', 'archive'] }
 ]
 const PANEL_HINTS = {
   roster: '建档、导入、导出全量名单', progress: '按真实节点查看推进情况', risk: '处理高风险学生',
@@ -551,6 +555,88 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gd-student-page{gap:var(--space-3)}.gd-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}.gd-student-hero{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.45fr);align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--primary-100,#dbeafe);border-radius:12px;background:linear-gradient(120deg,var(--primary-50,#eff6ff),#fff 72%);box-shadow:0 14px 30px -28px rgba(37,99,235,.7)}.gd-student-hero__copy{display:grid;min-width:0;gap:3px}.gd-student-hero__copy>span{color:var(--primary-600,#2563eb);font-size:10px;font-weight:700;letter-spacing:.08em}.gd-student-hero__copy strong{color:var(--text-primary);font-size:15px;line-height:1.45}.gd-student-hero__copy p{margin:0;color:var(--text-secondary);font-size:11px}.gd-student-hero__metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.gd-student-hero__metrics div{display:grid;justify-items:center;gap:1px;padding:7px 5px;border:1px solid var(--border-light);border-radius:8px;background:rgba(255,255,255,.82)}.gd-student-hero__metrics b{color:var(--primary-700,#1d4ed8);font-size:18px}.gd-student-hero__metrics span{overflow:hidden;max-width:100%;color:var(--text-tertiary);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.gd-import-contract{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--border-light);border-radius:9px;background:var(--gray-50,#f8fafc)}.gd-import-contract>span{flex:none;color:var(--text-primary);font-size:11px;font-weight:700}.gd-import-contract ol{display:flex;align-items:center;flex-wrap:wrap;gap:5px 18px;margin:0;padding:0;counter-reset:step;list-style:none}.gd-import-contract li{position:relative;color:var(--text-secondary);font-size:10px}.gd-import-contract li::before{counter-increment:step;content:counter(step);display:inline-grid;place-items:center;width:17px;height:17px;margin-right:5px;border-radius:50%;background:var(--primary-100,#dbeafe);color:var(--primary-700,#1d4ed8);font-weight:700}.gd-import-contract li:not(:last-child)::after{content:'→';position:absolute;right:-13px;color:var(--text-tertiary)}.gd-readonly-banner{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--info-100,#dbeafe);border-radius:9px;background:#f8fbff}.gd-readonly-banner>div{display:grid;gap:2px}.gd-readonly-banner strong{color:var(--text-primary);font-size:12px}.gd-readonly-banner span,.gd-readonly-banner small{color:var(--text-secondary);font-size:10px;line-height:1.5}.gd-readonly-banner small{max-width:260px;text-align:right}.mp-tabs{overflow-x:auto;scrollbar-width:thin;flex-wrap:nowrap;padding-bottom:1px}.mp-tab{flex:0 0 auto;white-space:nowrap}.mp-tab:hover:not(.is-active){color:var(--text-primary);background:var(--gray-50,#f8fafc);border-radius:var(--radius-sm)}.gd-primary-tabs{overflow:visible}.gd-local-views{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border-light);border-radius:var(--radius-md);background:var(--gray-50,#f8fafc)}.gd-local-views>span{margin-right:4px;color:var(--text-tertiary);font-size:var(--font-size-xs)}.gd-local-views button{padding:5px 10px;border:1px solid transparent;border-radius:var(--radius-full);background:transparent;color:var(--text-secondary);cursor:pointer}.gd-local-views button.is-active{border-color:var(--primary-200,#bfdbfe);background:var(--primary-50,#eff6ff);color:var(--primary-700,#1d4ed8);font-weight:600}.gd-topic-title{font-size:var(--font-size-sm)}.gd-row-action{margin-left:var(--space-2)}.gd-readonly-action{margin-left:var(--space-2);padding:2px 6px;border-radius:999px;background:var(--gray-100,#f1f5f9);color:var(--text-tertiary);font-size:10px}
-@media(max-width:1180px){.gd-student-hero{grid-template-columns:1fr}.gd-student-hero__metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.gd-actions{width:100%;justify-content:space-between}.gd-readonly-banner{align-items:flex-start;flex-direction:column}.gd-readonly-banner small{max-width:none;text-align:left}.gd-student-hero__metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* The existing page owns its presentation; shared shell and business components stay unchanged. */
+.gd-student-workspace { container: gd-students / inline-size; min-width: 0; color: var(--text-primary); }
+.gd-student-workspace :deep(.mps__title) { font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; }
+.gd-student-workspace :deep(.mps__subtitle) { font-size: 12px; line-height: 1.5; }
+.gd-student-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: 13px; line-height: 1.5; }
+.gd-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gd-actions :deep(button) { min-height: 36px; font-size: 13px; }
+.gd-student-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 1.2fr); align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--primary-100, #dbeafe); border-radius: 12px; background: var(--bg-card, #fff); }
+.gd-student-hero__copy { display: grid; gap: 6px; min-width: 0; }
+.gd-student-hero__copy > span { color: var(--primary-600, #2563eb); font-size: 12px; font-weight: 700; }
+.gd-student-hero__copy strong { color: var(--text-primary); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-student-hero__copy p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.gd-student-hero__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.gd-student-hero__metrics div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-section, #f8fafc); }
+.gd-student-hero__metrics b { color: var(--primary-700, #1d4ed8); font-size: 20px; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gd-student-hero__metrics span { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.gd-import-contract { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.gd-import-contract > span { color: var(--text-primary); font-size: 13px; font-weight: 650; }
+.gd-import-contract ol { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; counter-reset: step; list-style: none; }
+.gd-import-contract li { color: var(--text-secondary); font-size: 12px; }
+.gd-import-contract li::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); font-size: 12px; font-weight: 700; }
+.gd-student-page .gd-primary-tabs { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-section, #f8fafc); overflow: visible; }
+.gd-student-page .gd-primary-tabs .mp-tab { flex: 1 1 auto; min-height: 36px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px; color: var(--text-secondary); background: transparent; font-size: 13px; line-height: 20px; white-space: normal; cursor: pointer; }
+.gd-student-page .gd-primary-tabs .mp-tab.is-active { border-color: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); background: var(--bg-card, #fff); font-weight: 700; box-shadow: none; }
+.gd-local-views { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-left: 3px solid var(--primary-500, #2563eb); border-radius: 0 8px 8px 0; background: var(--bg-card, #fff); }
+.gd-local-views > span { color: var(--text-secondary); font-size: 12px; }
+.gd-local-views button { min-height: 34px; padding: 5px 12px; border: 1px solid var(--border-light); border-radius: 7px; color: var(--text-secondary); background: var(--bg-card, #fff); font-size: 13px; line-height: 22px; cursor: pointer; }
+.gd-local-views button.is-active { border-color: var(--primary-500, #2563eb); color: var(--primary-700, #1d4ed8); background: var(--primary-50, #eff6ff); font-weight: 650; }
+.gd-primary-tabs button:focus-visible,
+.gd-local-views button:focus-visible,
+.gd-student-page :deep(.mp-link:focus-visible) { outline: 2px solid var(--primary-500, #2563eb); outline-offset: 2px; }
+.gd-student-page :deep(.af) { min-width: 0; gap: 10px; padding: 12px; border-radius: 10px; box-shadow: none; }
+.gd-student-page :deep(.af__fields) { display: grid; grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(120px, 1fr)); gap: 10px; min-width: 0; flex: 1 1 510px; }
+.gd-student-page :deep(.af__field) { min-width: 0; gap: 5px; }
+.gd-student-page :deep(.af__label) { font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.gd-student-page :deep(.af__control) { width: 100%; min-width: 0; min-height: 36px; height: 36px; padding: 0 10px; background: var(--field-bg, var(--bg-card, #fff)); color: var(--text-primary); border-color: var(--border-base); font-size: 13px; }
+.gd-student-page :deep(.af__ops) { flex-wrap: wrap; gap: 8px; }
+.gd-student-page :deep(.af__ops button) { min-height: 36px; font-size: 13px; }
+/* Keep the real DataTable and its selection/pagination; only the table may scroll horizontally. */
+.gd-student-page :deep(.dt) { min-width: 0; max-width: 100%; border-radius: 10px; box-shadow: none; }
+.gd-student-page :deep(.dt__scroll) { min-width: 0; max-width: 100%; overflow-x: auto; }
+.gd-student-page :deep(.dt__table) { min-width: 900px; }
+.gd-student-page :deep(.dt__th) { padding: 10px 12px; background: var(--bg-section, #f8fafc); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.gd-student-page :deep(.dt__td) { padding: 10px 12px; color: var(--text-primary); font-size: 13px; line-height: 1.55; }
+.gd-student-page :deep(.dt__tr:hover) { background: var(--bg-hover, #eff6ff); }
+.gd-student-page :deep(.dt__batch) { background: var(--primary-50, #eff6ff); color: var(--text-primary); }
+.gd-student-page :deep(.dt__batch-clear) { min-height: 34px; color: var(--primary-700, #1d4ed8); font-size: 13px; }
+.gd-student-page :deep(.dt__pager) { padding: 10px 12px; background: var(--bg-card, #fff); }
+.gd-student-page :deep(.mp-cell-main) { color: var(--text-primary); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.gd-student-page :deep(.mp-cell-sub),
+.gd-student-page :deep(.mp-note) { font-size: 12px; line-height: 1.55; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gd-student-page :deep(.mp-link),
+.gd-student-page :deep(.mp-btn) { min-height: 34px; padding: 6px 8px; font-size: 13px; line-height: 22px; }
+.gd-student-page :deep(.mp-link) { color: var(--primary-700, #1d4ed8); }
+.gd-row-action { margin-left: 4px; }
+.gd-readonly-banner { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--primary-100, #dbeafe); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.gd-readonly-banner > div { display: grid; flex: 1 1 320px; gap: 6px; min-width: 0; }
+.gd-readonly-banner strong { font-size: 13px; color: var(--text-primary); }
+.gd-readonly-banner span,
+.gd-readonly-banner small { font-size: 12px; line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gd-readonly-banner small { flex: 0 1 260px; }
+.gd-readonly-action { display: inline-block; margin-left: 4px; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--bg-section, #f8fafc); color: var(--text-secondary); font-size: 12px; }
+@container gd-students (max-width: 1000px) {
+  .gd-student-hero { grid-template-columns: 1fr; gap: 12px; }
+  .gd-student-hero__metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .gd-student-hero__metrics div { display: grid; justify-content: stretch; padding: 8px; }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(100px, 1fr)); }
+}
+@container gd-students (max-width: 650px) {
+  .gd-student-hero__metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); flex-basis: 100%; }
+  .gd-student-page :deep(.af__ops) { justify-content: flex-end; width: 100%; }
+}
+@container gd-students (max-width: 420px) {
+  .gd-student-hero { padding: 12px; }
+  .gd-student-hero__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: minmax(0, 1fr); }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 1200px) {
+    .gd-student-hero { grid-template-columns: 1fr; }
+    .gd-student-page :deep(.af__fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}
 </style>
