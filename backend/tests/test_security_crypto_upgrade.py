@@ -41,6 +41,19 @@ class DependencyUpgradeContracts(unittest.TestCase):
         pins = [p for p in requirements('requirements.in') if p.lower().startswith('cryptography')]
         self.assertEqual(pins, ['cryptography>=50.0.1,<51.0'])
 
+    def test_sdk_freeze_supports_crypto_upgrade_without_forcing_install(self):
+        for name in ('requirements.txt', 'requirements.lock'):
+            with self.subTest(name=name):
+                pins = [p for p in requirements(name) if p.lower().startswith('alibabacloud-tea-openapi')]
+                self.assertEqual(pins, ['alibabacloud-tea-openapi==0.4.6'])
+        self.assertIn('alibabacloud-tea-openapi>=0.4.6,<0.5', requirements('requirements.in'))
+        # The final offline install must resolve the WHOLE frozen graph and run
+        # pip check; do not use --no-deps to force the previously conflicting pair.
+        runtime = (ROOT / 'backend/Dockerfile.security').read_text().split('FROM ${PYTHON_BASE_IMAGE}\n', 1)[1]
+        self.assertIn('pip install --no-cache-dir --no-index --find-links /tmp/wheels -r requirements.txt', runtime)
+        self.assertNotIn('--no-deps', runtime)
+        self.assertIn('&& pip check', runtime)
+
     def test_runtime_stage_receives_available_distribution_updates(self):
         text = (ROOT / 'backend/Dockerfile.security').read_text()
         runtime = text.split('FROM ${PYTHON_BASE_IMAGE}\n', 1)[1]
