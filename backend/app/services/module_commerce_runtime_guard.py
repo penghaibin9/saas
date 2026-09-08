@@ -93,6 +93,41 @@ def install(platform_service_module: Any) -> Any:
                 return "REPAIR_REQUIRED", True
         return original_activation_state(order, tenant, meta)
 
+    def _mark_itemized_paid(order_no: str, *, expected_version: int, reason: str) -> dict:
+        """Persist payment truth without invoking legacy package activation."""
+        from sqlalchemy import select
+        from app.core.exceptions import AppException
+        from app.models import PlatformOrder
+        from app.services import audit_log
+
+        with platform_service_module.session() as db:
+            order = db.scalars(select(PlatformOrder).where(
+                PlatformOrder.order_no == str(order_no),
+                PlatformOrder.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if order is None:
+                raise platform_service_module.not_found("订单不存在")
+            current_version = max(1, int(order.version or 0))
+            if int(expected_version) != current_version:
+                raise AppException("DATA_CONFLICT", "订单已更新，请刷新后重试", http_status=409)
+            if str(order.status or "").lower() != "unpaid":
+                raise AppException("DATA_CONFLICT", f"订单状态为 {order.status}，不能标记支付", http_status=409)
+            order.status = "paid"
+            order.paid_amount = order.amount
+            order.version = current_version + 1
+            audit_log.record_critical_in_session(
+                db, "PLATFORM_ORDER_PAID", f"order:{order.order_no}",
+                detail={"tenantId": str(order.tenant_id), "packageCode": order.package_code,
+                        "reason": reason, "expectedVersion": int(expected_version)},
+                tenant_id=int(order.tenant_id), resource_id=str(order.id),
+            )
+            db.commit()
+            return {
+                "orderNo": order.order_no, "status": "paid", "version": int(order.version),
+                "tenantActivated": False, "repairTaskRequired": True,
+                "rightsMaterialized": False,
+            }
+
     def order_action(order_no: str, action: str, *, expected_version: int, reason: str):
         native_itemized = False
         try:
@@ -108,25 +143,30 @@ def install(platform_service_module: Any) -> Any:
         except Exception:
             native_itemized = False
 
-        if native_itemized and action == "repair-activation":
+        if not native_itemized:
+            return original_order_action(
+                order_no, action, expected_version=int(expected_version), reason=reason,
+            )
+        if action == "repair-activation":
             return subscriptions.activate_paid_order_items(
                 order_no, expected_version=int(expected_version), reason=reason,
             )
+        if action != "mark-paid":
+            return original_order_action(
+                order_no, action, expected_version=int(expected_version), reason=reason,
+            )
 
-        result = original_order_action(
-            order_no, action, expected_version=int(expected_version), reason=reason,
+        paid = _mark_itemized_paid(
+            order_no, expected_version=int(expected_version), reason=str(reason or "").strip(),
         )
-        if not (native_itemized and action == "mark-paid"):
-            return result
         try:
             return subscriptions.activate_paid_order_items(
-                order_no, expected_version=int(result["version"]), reason=reason,
+                order_no, expected_version=int(paid["version"]), reason=reason,
             )
         except Exception:
-            return {
-                **result, "status": "paid", "tenantActivated": False,
-                "repairTaskRequired": True, "rightsMaterialized": False,
-            }
+            # Payment truth is already committed. A later repair may retry only
+            # source materialization and must never charge or mark-paid again.
+            return paid
 
     authority.legacy_commercial_state_for_reconciliation = legacy_commercial_state_for_reconciliation
     authority.commercial_state = commercial_state
