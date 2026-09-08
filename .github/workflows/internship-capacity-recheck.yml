@@ -2,7 +2,7 @@ name: Internship capacity repair recheck
 on:
   push:
     branches: [fix/internship-download-repair-20260909]
-    paths: ['.github/workflows/internship-capacity-recheck.yml']
+    paths: ['.github/workflows/internship-capacity-recheck.yml', 'scripts/repair-payload/08-capacity-entitlement.patch']
 permissions:
   contents: read
 jobs:
@@ -66,6 +66,7 @@ jobs:
           mkdir -p performance/results
           cp /tmp/repair-proof/manifest.json performance/results/source-manifest.json
           (cd backend && alembic upgrade head)
+          python performance/tools/seed_local_capacity_env.py --out performance/secrets --token-count 2
           python performance/tools/seed_local_capacity_env.py --out performance/secrets --token-count 2
           (cd backend && nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --log-config ../performance/uvicorn-capacity-log.json > ../performance/results/backend.log 2>&1 &)
           ready=false
