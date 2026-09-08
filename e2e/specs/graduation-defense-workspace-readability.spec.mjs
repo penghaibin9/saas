@@ -42,7 +42,10 @@ async function inspect(page, zoom) {
 
 test.describe.serial('graduation existing defense and grade workspaces', () => {
   let fixture
-  test.beforeAll(async () => { fixture = await prepareGraduationFixture({ fixtureKey: 'ui-defense-workspace' }) })
+  // Readability probes are read-only and must reuse the canonical fixture.
+  // Creating a second RUNNING batch for the same student would correctly trip
+  // the student portal's multiple-current-batch safety gate and pollute later suites.
+  test.beforeAll(async () => { fixture = await prepareGraduationFixture() })
 
   test('four original entries keep identity, batch and readable work surfaces', async ({ page }, testInfo) => {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
