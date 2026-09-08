@@ -38,9 +38,9 @@ class RuntimeCveSurfaceTests(unittest.TestCase):
 
     def test_dockerfile_removes_exact_tools_and_all_perl_entrypoints(self):
         text = DOCKERFILE.read_text()
-        match = re.search(r"for tool in (.*?)\\; do", text, flags=re.S)
+        match = re.search(r"for tool in (.*?); do", text, flags=re.S)
         self.assertIsNotNone(match)
-        docker_tools = set(match.group(1).replace("\\\\\n", " ").split())
+        docker_tools = set(match.group(1).replace("\\\n", " ").split())
         self.assertTrue(CVE_TRIGGER_TOOLS.issubset(docker_tools))
         self.assertIn("-name 'perl*'", text)
         self.assertIn("-delete", text)
