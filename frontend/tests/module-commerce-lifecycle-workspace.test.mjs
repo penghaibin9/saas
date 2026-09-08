@@ -11,4 +11,10 @@ test('source changes invalidate stale delivery acceptance visibly',()=>{assert.m
 test('retention copy clearly stops before physical purge',()=>{assert.match(view,/保留期从签收时间开始/);assert.match(view,/未启动物理销毁/);assert.match(view,/M5 到此停止/)})
 test('workspace retains original reconciliation instead of replacing it',()=>{assert.match(view,/全校商业与存储对账/);assert.match(view,/commercialStorageLimitBytes/);assert.match(view,/actualConsumptionBytes/);assert.match(view,/UNAUTHORIZED_MODULE_USAGE/)})
 test('four canonical product centers stay explicit',()=>{for(const label of ['岗位实习中心','毕业设计中心','学工中心','教务中心'])assert.match(view,new RegExp(label))})
-test('risky module freeze requires an explicit acknowledgement',()=>{assert.match(view,/offboardForm\.confirmed/);assert.match(view,/physicalPurgeAuthorized/);assert.match(view,/冻结此模块 generation/)})
+test('risky module freeze requires explicit acknowledgement and a successful server preview',()=>{
+  assert.match(view,/offboardForm\.confirmed/)
+  assert.match(view,/:disabled="busy\|\|!offboardForm\.confirmed\|\|!preview\.canRequest"/)
+  assert.match(view,/if\(!m\|\|!this\.preview\?\.canRequest\)return/)
+  assert.match(view,/当前不执行物理销毁/)
+  assert.match(view,/冻结此模块 generation/)
+})
