@@ -1,0 +1,164 @@
+diff --git a/backend/app/modules/academic_affairs/services/academic_affairs_org_service.py b/backend/app/modules/academic_affairs/services/academic_affairs_org_service.py
+--- a/backend/app/modules/academic_affairs/services/academic_affairs_org_service.py
++++ b/backend/app/modules/academic_affairs/services/academic_affairs_org_service.py
+@@ -31,0 +32,17 @@
++
++
++def _org_version_conflict(expected, current, subject="组织资料") -> AppException:
++    """Preserve DATA_CONFLICT while exposing a stable, machine-readable reason."""
++    return AppException(
++        "DATA_CONFLICT",
++        f"{subject}版本已变化，请刷新后重新核对",
++        details={
++            "reason": "VERSION_CONFLICT",
++            "expectedVersion": int(expected) if expected is not None else None,
++            "currentVersion": int(current or 0),
++            "recoveryAction": "REFRESH_AND_REVIEW",
++        },
++        http_status=409,
++    )
++
++
+@@ -263,2 +280 @@
+-            raise AppException('DATA_CONFLICT', '学院资料已被他人修改，请重新核对',
+-                details={'reason': 'VERSION_CONFLICT', 'currentVersion': int(c.version or 0)})
++            raise _org_version_conflict(expected, c.version, "学院资料")
+@@ -321 +337 @@
+-            raise AppException("DATA_CONFLICT", "学院记录已被更新，请刷新后重新核对绑定", {"reason": "VERSION_CONFLICT"})
++            raise _org_version_conflict(expected, c.version, "学院绑定")
+@@ -442,2 +458 @@
+-            raise AppException('DATA_CONFLICT', '专业资料已被他人修改，请重新核对',
+-                details={'reason': 'VERSION_CONFLICT', 'currentVersion': int(m.version or 0)})
++            raise _org_version_conflict(expected, m.version, "专业资料")
+@@ -543 +558,4 @@
+-    from app.models import SchoolClass
++    """Create the master row, counselor scope and both audits in one transaction."""
++    from app.services.org_master_service import apply_org_node_in_session
++    from app.services.db_service import audit_insert_in_session
++
+@@ -554,5 +571,0 @@
+-    with session() as db:
+-        ctx = _ctx(user, db)
+-        m = _get_major(db, major_id)
+-        _require_college_write(ctx, db, m.college_id)
+-    from app.services.org_master_service import save_org_node
+@@ -570,8 +583,13 @@
+-    result = save_org_node(
+-        node_type="CLASS", name=name,
+-        code=(getattr(body, "classCode", None) or ""),
+-        parent_id=int(major_id), actor=user,
+-        extras=extras,
+-    )
+-    with session() as db:
+-        c = db.get(SchoolClass, int(result["id"]))
++
++    with session() as db:
++        ctx = _ctx(user, db)
++        # Authorize the current, locked parent, not an earlier transaction's view.
++        m = _get_major(db, major_id, for_update=True)
++        _require_college_write(ctx, db, m.college_id)
++        result = apply_org_node_in_session(
++            db, node_type="CLASS", name=name,
++            code=(getattr(body, "classCode", None) or ""),
++            parent_id=int(major_id), actor=user, extras=extras,
++            tenant_id=_tid(), commit=False,
++        )
++        c = result["row"]
+@@ -580,2 +598,10 @@
+-        db.commit()
+-        return _class_dto(c)
++        audit_insert_in_session(
++            db, "ORG_NODE_SAVE", f"CLASS:{c.id}",
++            {"name": c.class_name, "code": c.class_code, "before": None, "reason": "",
++             "moduleCode": "systemAdmin", "actor": (user or {}).get("userId"), "extras": extras},
++            "SUCCESS", tenant_id=_tid(),
++        )
++        db.flush()
++        response = _class_dto(c)
++        db.commit()
++        return response
+@@ -676 +702 @@
+-            raise AppException('DATA_CONFLICT', '组织数据已被他人修改，请刷新后重试')
++            raise _org_version_conflict(expected, c.version, "行政班资料")
+@@ -695 +721 @@
+-            raise AppException('DATA_CONFLICT', '组织数据已被他人修改，请刷新后重试')
++            raise _org_version_conflict(expected, c.version, "行政班资料")
+@@ -1061 +1087 @@
+-        raise AppException("DATA_CONFLICT", "记录已被更新，请刷新后重试", {"reason": "VERSION_CONFLICT"})
++        raise _org_version_conflict(expected, row.version, "专业方向")
+@@ -1238,0 +1265,7 @@
++from .academic_affairs_org_adjustment_storage import (
++    scope_json as _adjustment_scope_json, public_status as _adjustment_status,
++    set_status as _set_adjustment_status, store_check as _store_adjustment_check,
++    read_check as _read_adjustment_check,
++)
++
++
+@@ -1252 +1285 @@
+-        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
++        from_ids = [int(x) for x in json.loads(_adjustment_scope_json(a))]
+@@ -1263 +1296 @@
+-        "checkResult": json.loads(a.check_result_json) if a.check_result_json else None,
++        "checkResult": _read_adjustment_check(a),
+@@ -1265 +1298 @@
+-        "status": a.status, "createdAt": a.created_at.isoformat() if a.created_at else None,
++        "status": _adjustment_status(a), "createdAt": a.created_at.isoformat() if a.created_at else None,
+@@ -1289 +1322 @@
+-        ids |= {int(x) for x in json.loads(a.from_class_ids or "[]")}
++        ids |= {int(x) for x in json.loads(_adjustment_scope_json(a))}
+@@ -1310 +1343 @@
+-            ids = {int(value) for value in json.loads(row.from_class_ids or "[]")}
++            ids = {int(value) for value in json.loads(_adjustment_scope_json(row))}
+@@ -1330 +1363 @@
+-            conds.append(AaClassAdjustmentRequest.status == status)
++            conds.append(AaClassAdjustmentRequest.status.in_((status, "V2_" + status)))
+@@ -1341 +1374 @@
+-            all_ids.update(int(value) for value in json.loads(row.from_class_ids or "[]"))
++            all_ids.update(int(value) for value in json.loads(_adjustment_scope_json(row)))
+@@ -1395,0 +1429,2 @@
++        source_json = json.dumps(from_ids)
++        expanded = len(source_json) > 500
+@@ -1397,2 +1432,4 @@
+-                                     from_class_ids=json.dumps(from_ids), to_class_id=to_id,
+-                                     reason=reason, status="DRAFT")
++                                     from_class_ids="[]" if expanded else source_json,
++                                     from_class_ids_expanded=source_json if expanded else None,
++                                     to_class_id=to_id, reason=reason,
++                                     status="V2_DRAFT" if expanded else "DRAFT")
+@@ -1410 +1447 @@
+-        raise AppException("DATA_CONFLICT", "申请或核对结果已更新，请刷新后重新核对")
++        raise _org_version_conflict(expected_version, a.version, "调整申请")
+@@ -1424 +1461 @@
+-    source_ids = {int(value) for value in json.loads(a.from_class_ids or "[]")}
++    source_ids = {int(value) for value in json.loads(_adjustment_scope_json(a))}
+@@ -1482 +1519 @@
+-        if a.status not in ("DRAFT", "CHECKED"):
++        if _adjustment_status(a) not in ("DRAFT", "CHECKED"):
+@@ -1485 +1522 @@
+-        a.check_result_json = json.dumps(result, ensure_ascii=False)
++        _store_adjustment_check(a, result)
+@@ -1487 +1524 @@
+-        a.status = "CHECKED"
++        _set_adjustment_status(a, "CHECKED")
+@@ -1503,2 +1540,2 @@
+-        from_ids = [int(x) for x in json.loads(a.from_class_ids or "[]")]
+-        if a.status == "EXECUTED":  # 幂等：重复执行直接返回已执行状态
++        from_ids = [int(x) for x in json.loads(_adjustment_scope_json(a))]
++        if _adjustment_status(a) == "EXECUTED":  # 幂等：重复执行直接返回已执行状态
+@@ -1508 +1545 @@
+-        if a.status != "CHECKED":
++        if _adjustment_status(a) != "CHECKED":
+@@ -1512 +1549 @@
+-        result = json.loads(a.check_result_json or "{}")
++        result = _read_adjustment_check(a) or {}
+@@ -1536,2 +1573,2 @@
+-        a.check_result_json = json.dumps(result, ensure_ascii=False)
+-        a.status = "EXECUTED"
++        _store_adjustment_check(a, result)
++        _set_adjustment_status(a, "EXECUTED")
+@@ -1552 +1589 @@
+-        if a.status not in ("DRAFT", "CHECKED"):
++        if _adjustment_status(a) not in ("DRAFT", "CHECKED"):
+@@ -1556 +1593 @@
+-        a.status = "CANCELLED"
++        _set_adjustment_status(a, "CANCELLED")
