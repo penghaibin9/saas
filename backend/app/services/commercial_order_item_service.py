@@ -73,14 +73,6 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
         if tenant is None:
             raise AppException("DATA_NOT_FOUND", "租户不存在", http_status=404)
 
-        try:
-            draft = compile_order_draft(
-                contract,
-                resolve_sku=lambda code, revision: get_sku_snapshot(code, revision, db_session=db),
-            )
-        except ContractError as exc:
-            raise AppException("VALIDATION_ERROR", str(exc), http_status=422) from exc
-        compiled = draft.as_dict()
         fingerprint = _fingerprint(contract, order_type, remark)
         key_hash = _idempotency_hash(key)
         idem = db.scalars(select(IdempotencyRecord).where(
@@ -95,6 +87,17 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
             if idem.state == "COMPLETED" and isinstance(idem.result_json, dict):
                 return {**dict(idem.result_json), "replayed": True}
             raise AppException("DATA_CONFLICT", "同一订单命令仍在处理中，请稍后核对结果", http_status=409)
+
+        # Completed commands are durable receipts, independent of catalogue availability.
+        # Only a new command resolves currently published SKU versions.
+        try:
+            draft = compile_order_draft(
+                contract,
+                resolve_sku=lambda code, revision: get_sku_snapshot(code, revision, db_session=db),
+            )
+        except ContractError as exc:
+            raise AppException("VALIDATION_ERROR", str(exc), http_status=422) from exc
+        compiled = draft.as_dict()
 
         idem = IdempotencyRecord(
             tenant_id=tenant_id,
