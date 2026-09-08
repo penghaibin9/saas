@@ -63,9 +63,13 @@ services:
     image: ${MYSQL_IMAGE:?reviewed MySQL image digest required}
     restart: unless-stopped
     logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    # Only the trusted migrator owns schema DDL/TRIGGER privileges. Runtime is
+    # DML-only. Keep binary logging/ROW recovery while allowing migration triggers
+    # without granting either account global SUPER/SYSTEM_VARIABLES_ADMIN.
     command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci,
               --innodb-buffer-pool-size=512M, --max-connections=200,
-              --log-bin=mysql-bin, --binlog-format=ROW, --binlog-expire-logs-seconds=604800,
+              --log-bin=mysql-bin, --binlog-format=ROW, --log-bin-trust-function-creators=1,
+              --binlog-expire-logs-seconds=604800,
               --sync-binlog=1, --innodb-flush-log-at-trx-commit=1]
     environment:
       MYSQL_DATABASE: saas_lifecycle

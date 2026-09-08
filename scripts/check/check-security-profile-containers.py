@@ -151,6 +151,40 @@ def main(argv=None):
             run('COMPOSE_SYNTAX', ['docker', 'compose', '--env-file', str(env_path), '-f',
                                   str(folder / 'deploy/docker/docker-compose.security.yml'), 'config', '-q'])
             complete(checks, 'real-docker-compose-render')
+            # Validate actual Compose JSON, not the hand-normalized policy fixture.
+            # Temporary tags are intentional here: the validator MUST still report
+            # IMMUTABLE_IMAGE_REQUIRED for them. This is not a release bypass.
+            for relative in ('deploy/docker/mysql-security-init/01-accounts.sh',
+                             'deploy/nginx/security-http.conf', 'deploy/nginx/security-server.conf',
+                             'deploy/nginx/security-headers.conf'):
+                path = folder / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes((root / relative).read_bytes())
+            for relative in ('frontend/dist', 'student-portal/dist', 'enterprise-portal/dist',
+                             'miniapp/dist/build/h5'):
+                path = folder / relative
+                path.mkdir(parents=True, exist_ok=True)
+                (path / 'index.html').write_text('CI mount identity fixture; not a production UI')
+            spec = importlib.util.spec_from_file_location(
+                'ci_profile_preflight', root / 'scripts/deploy/check-security-profile.py')
+            preflight = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(preflight)
+            model = json.loads(run('COMPOSE_JSON', ['docker', 'compose', '--env-file', str(env_path),
+                                  '-f', str(folder / 'deploy/docker/docker-compose.security.yml'),
+                                  'config', '--format', 'json']))
+            violations = preflight.validate_rendered(model, root=folder)
+            tag_rejections = sorted(name + ':IMMUTABLE_IMAGE_REQUIRED'
+                                    for name, service in model['services'].items()
+                                    if not preflight.DIGEST.fullmatch(service['image']))
+            if violations != tag_rejections:
+                failure = CheckFailure('COMPOSE_BOUNDARY')
+                # Only include validator identifiers when the service names are
+                # the known profile set. No paths, commands, environment or model.
+                if set(model['services']) == {'backend', 'scheduler', 'file-scan', 'migrate',
+                                             'prepare-storage', 'mysql', 'redis', 'nginx', 'clamav'}:
+                    failure.safe_details['policyErrors'] = violations
+                raise failure
+            complete(checks, 'real-compose-execution-and-checked-input-boundaries')
             passwords = {key: secrets.token_hex(32) for key in ('root', 'runtime', 'migrator')}
             mysql_env = folder / 'mysql.env'
             mysql_env.write_text('MYSQL_DATABASE=saas_lifecycle\nMYSQL_USER=saas_runtime\n' +
@@ -162,7 +196,7 @@ def main(argv=None):
             run('MYSQL_CREATE', ['docker', 'create', '--name', mysql, '--network', network, '--network-alias', 'mysql',
                                '--env-file', str(mysql_env), '--mount',
                                f'type=bind,src={root / "deploy/docker/mysql-security-init/01-accounts.sh"},dst=/docker-entrypoint-initdb.d/01-accounts.sh,readonly',
-                               'mysql:8.0'], timeout=180)
+                               'mysql:8.0', *model['services']['mysql']['command']], timeout=180)
             created_mysql = True
             run('MYSQL_START', ['docker', 'start', mysql])
             base = ['docker', 'run', '--rm', '--network', network, '--read-only', '--cap-drop=ALL',
@@ -187,13 +221,21 @@ def main(argv=None):
             run('MIGRATOR_DDL', base + ['--env-file', str(envs['migrator']), image, 'python', '-c',
                                       client + 'q.execute("CREATE TABLE pr265_privilege_probe (id INT PRIMARY KEY, value INT)")'])
             complete(checks, 'migrator-schema-ddl-allowed')
+            run('MIGRATOR_TRIGGER', base + ['--env-file', str(envs['migrator']), image, 'python', '-c',
+                    client + 'q.execute("SELECT @@log_bin, @@binlog_format, @@log_bin_trust_function_creators"); '
+                    'assert q.fetchone() == (1, "ROW", 1); '
+                    'q.execute("CREATE TRIGGER pr265_migration_trigger BEFORE INSERT ON pr265_privilege_probe FOR EACH ROW SET NEW.value=NEW.value")'])
+            complete(checks, 'trusted-migrator-trigger-with-row-binlog-no-super')
             sql_test = client + '''
 q.execute("INSERT INTO pr265_privilege_probe VALUES (1,2)")
 q.execute("UPDATE pr265_privilege_probe SET value=3 WHERE id=1")
 q.execute("SELECT value FROM pr265_privilege_probe WHERE id=1")
 assert q.fetchone() == (3,)
 q.execute("DELETE FROM pr265_privilege_probe WHERE id=1")
-for sql in ("CREATE TABLE forbidden_probe (id INT)", "SELECT User FROM mysql.user", "CREATE USER 'forbidden_probe'@'%'"):
+for sql in ("CREATE TABLE forbidden_probe (id INT)", "SELECT User FROM mysql.user", "CREATE USER 'forbidden_probe'@'%'",
+            "CREATE TRIGGER forbidden_trigger BEFORE UPDATE ON pr265_privilege_probe FOR EACH ROW SET NEW.value=1",
+            "CREATE FUNCTION forbidden_function() RETURNS INT DETERMINISTIC RETURN 1",
+            "SET GLOBAL log_bin_trust_function_creators=0"):
     try:
         q.execute(sql)
     except pymysql.MySQLError as exc:
@@ -203,10 +245,11 @@ for sql in ("CREATE TABLE forbidden_probe (id INT)", "SELECT User FROM mysql.use
 c.close()
 '''
             run('RUNTIME_PRIVILEGES', base + ['--env-file', str(envs['runtime']), image, 'python', '-c', sql_test])
-            complete(checks, 'runtime-dml-allowed-ddl-system-users-denied')
+            complete(checks, 'runtime-dml-allowed-ddl-trigger-function-global-settings-denied')
             for role in ('runtime', 'migrator'):
                 scope_proof = client + '''
-for sql in ("SELECT id FROM saasXlifecycle.sentinel", "CREATE TABLE saasXlifecycle.forbidden (id INT)"):
+for sql in ("SELECT id FROM saasXlifecycle.sentinel", "CREATE TABLE saasXlifecycle.forbidden (id INT)",
+            "SET GLOBAL log_bin_trust_function_creators=0"):
     try:
         q.execute(sql)
     except pymysql.MySQLError as exc:

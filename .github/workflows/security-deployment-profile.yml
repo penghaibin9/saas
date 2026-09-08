@@ -6,6 +6,7 @@ on:
       - "backend/scripts/security_profile_probe.py"
       - "backend/tests/test_security_deployment_profile.py"
       - "backend/tests/test_security_mysql_bootstrap.py"
+      - "backend/tests/test_security_profile_boundary.py"
       - "deploy/docker/docker-compose.security.yml"
       - "deploy/docker/mysql-security-init/**"
       - "deploy/nginx/**"
@@ -37,8 +38,8 @@ jobs:
           python -m pip check
           sudo apt-get update
           sudo apt-get install -y nginx
-      - name: Reject unsafe generated and effective deployment configurations
-        run: python -m pytest --noconftest backend/tests/test_security_deployment_profile.py backend/tests/test_security_mysql_bootstrap.py -q
+      - name: Reject unsafe execution overrides and mismatched checked deployment inputs
+        run: python -m pytest --noconftest backend/tests/test_security_deployment_profile.py backend/tests/test_security_mysql_bootstrap.py backend/tests/test_security_profile_boundary.py -q
       - name: Validate TLS, all four portals, private paths and proxy headers on loopback
         run: python scripts/check/check-security-profile-tls.py
       - name: Build real image, render Compose and prove MySQL initialization, scoped privileges and image migration

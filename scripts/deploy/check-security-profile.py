@@ -54,7 +54,7 @@ def _no_new_privileges(service: dict) -> bool:
                for item in service.get('security_opt', []))
 
 
-def validate_rendered(config: dict) -> list[str]:
+def validate_rendered(config: dict, *, root: Path | None = None) -> list[str]:
     """Validate Docker's normalized JSON, not the unexpanded YAML anchors."""
     errors = []
     if not isinstance(config, dict) or not isinstance(config.get('services'), dict):
@@ -175,6 +175,18 @@ def validate_rendered(config: dict) -> list[str]:
         errors.append('EDGE_CONFIG_MOUNT_BOUNDARY_REQUIRED')
     if nginx.get('networks', {}).get('edge', {}).get('ipv4_address') != '172.30.40.10':
         errors.append('EDGE_PROXY_ADDRESS_DRIFT')
+    spec = importlib.util.spec_from_file_location(
+        'security_profile_boundary', Path(__file__).with_name('security_profile_boundary.py'))
+    boundary = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(boundary)
+    try:
+        errors.extend(boundary.execution_errors(config))
+        if root is not None:
+            folder = root / 'deploy/env/security'
+            errors.extend(boundary.release_input_errors(
+                config, root, read_env(folder / 'compose.env'), read_env(folder / 'runtime.env')))
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        errors.append('EXECUTION_BOUNDARY_NOT_VALIDATED')
     return sorted(set(errors))
 
 
@@ -262,7 +274,7 @@ def main(argv=None) -> int:
             if result.returncode:
                 errors.append('COMPOSE_RENDER_FAILED_OUTPUT_SUPPRESSED')
             else:
-                errors.extend(validate_rendered(json.loads(result.stdout)))
+                errors.extend(validate_rendered(json.loads(result.stdout), root=root))
         except (OSError, ValueError, TypeError, AttributeError, KeyError, subprocess.TimeoutExpired):
             errors.append('COMPOSE_NOT_VALIDATED')
     print(json.dumps({'preflightPassed': not errors, 'errors': sorted(set(errors)),
