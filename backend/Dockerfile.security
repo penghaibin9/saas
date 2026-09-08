@@ -30,20 +30,25 @@ FROM ${RUNTIME_BASE_IMAGE} AS micro-root
 FROM ${SECURITY_PYTHON_BASE_IMAGE} AS rootfs
 USER 0
 ARG INSTALL_ROOT=/runtime-root
-RUN mkdir -p "$INSTALL_ROOT/usr" /var/cache/microdnf
+RUN microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 install dnf \
+    && microdnf -y clean all --enablerepo='*' \
+    && mkdir -p "$INSTALL_ROOT/usr"
 COPY --from=micro-root / /runtime-root/
-# Red Hat UBI Micro pattern: use the builder's UBI repositories with --installroot.
-# Only runtime RPMs enter the future rootfs. Keep the RPM database intact so Trivy
-# can audit the real native package inventory; never delete scanner metadata.
+# Red Hat's documented UBI Micro pattern: use a builder-side full dnf with
+# --installroot against the mounted/future micro rootfs. Only runtime RPMs enter
+# the shipped filesystem; the builder's dnf/rpm/curl dependency chain never does.
+# Keep the target RPM database intact so Trivy audits the real native inventory.
 # Keep /var/lib/dpkg metadata on any legacy Debian compatibility root; this UBI
 # production path instead retains /usr/lib/sysimage/rpm (or /var/lib/rpm).
-RUN microdnf -y \
-      --installroot="$INSTALL_ROOT" --releasever=9 \
-      --setopt=reposdir=/etc/yum.repos.d \
-      --setopt=varsdir= --setopt=cachedir=/var/cache/microdnf \
-      --setopt=install_weak_deps=0 --setopt=tsflags=nodocs \
-      install python3.12 ca-certificates tzdata \
-    && rm -rf "$INSTALL_ROOT/var/cache/dnf" "$INSTALL_ROOT/var/cache/yum" "$INSTALL_ROOT/var/cache/microdnf" \
+RUN dnf install \
+      --installroot "$INSTALL_ROOT" \
+      --releasever=/ \
+      --setopt install_weak_deps=false \
+      --setopt=reposdir=/etc/yum.repos.d/ \
+      --nodocs -y \
+      python3.12 ca-certificates tzdata \
+    && dnf clean all --installroot "$INSTALL_ROOT" \
+    && rm -rf "$INSTALL_ROOT/var/cache/dnf" "$INSTALL_ROOT/var/cache/yum" \
     && rpm --root "$INSTALL_ROOT" -q python3.12 ca-certificates tzdata >/dev/null \
     && for pkg in curl-minimal libcurl-minimal; do \
          if rpm --root "$INSTALL_ROOT" -q "$pkg" >/dev/null 2>&1; then \
