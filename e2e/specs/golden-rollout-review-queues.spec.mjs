@@ -168,16 +168,17 @@ async function prepareAidPublicity(admin, studentId) {
 }
 
 async function prepareInternshipChange(studentApi, internshipFixture) {
-  const existing = items(await studentApi.get('/portal/internship/change'))
+  const headers = { 'X-Internship-Batch-Id': String(internshipFixture.batchId) }
+  const existing = items(await studentApi.request('GET', '/portal/internship/change', { headers }))
     .find((row) => String(row.status || '') === 'PENDING')
   if (existing) return { id: String(existing.id), batchId: internshipFixture.batchId }
 
-  const created = await studentApi.post('/portal/internship/change', {
+  const created = await studentApi.request('POST', '/portal/internship/change', { headers, body: {
     changeType: 'WITHDRAW_POST',
     reason: '当前岗位与后续实践方向不一致，申请退岗后重新接受学校岗位匹配。',
     targetEnterpriseName: '',
     targetPositionName: ''
-  })
+  } })
   if (!created.id) throw new Error('Golden internship change request did not return id')
   if (String(created.status || '') !== 'PENDING') {
     throw new Error(`Golden internship change request must be PENDING, got ${created.status || 'UNKNOWN'}`)
@@ -369,13 +370,13 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await page.reload()
 
     await expect(page).toHaveURL(/\/admin\/internship\/changes/)
-    await expect(page.getByRole('heading', { name: '实习变更审核', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '调岗退岗', exact: true })).toBeVisible()
     await expect(page.locator('.mp-tabs')).toBeVisible()
     await expect(page.locator('.lv-list')).toBeVisible()
     await expect(page.locator('.lv-main')).toBeVisible()
     await expect(page.locator('.lv-main')).toContainText(internshipFixture.studentName)
     await expect(page.locator('.lv-main')).toContainText(/退岗|当前岗位与后续实践方向不一致/)
-    expect(await page.locator('.lv-main').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('17px')
+    await expect(page.locator('.lv-item.is-active')).toContainText(internshipFixture.studentName)
 
     await capture(page, testInfo, 'rollout-review-internship-change-b')
   })

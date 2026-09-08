@@ -53,12 +53,6 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function setBatchStorage(page, key, value) {
-  await page.evaluate(({ storageKey, storageValue }) => {
-    window.localStorage.setItem(storageKey, String(storageValue))
-  }, { storageKey: key, storageValue: value })
-}
-
 async function findStudent(admin, studentNo) {
   const rows = items(await admin.get('/students', { keyword: studentNo, page: 1, pageSize: 50 }))
   const student = rows.find((item) => String(item.studentNo || item.loginName || '') === studentNo)
@@ -166,35 +160,20 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
 
   test('Internship batch configuration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openGoldenStaffPage(page, '/admin/internship/batches?panel=list')
-    await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
-    await page.reload()
+    await openGoldenStaffPage(page, `/admin/internship/batches?panel=list&batchId=${encodeURIComponent(internshipFixture.batchId)}&keyword=${encodeURIComponent(internshipFixture.batchName)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship\/batches/)
     await expect(page.locator('.dt')).toBeVisible()
     const target = page.locator('.dt__tr').filter({ hasText: internshipFixture.batchName }).first()
     await expect(target).toBeVisible()
 
-    const internshipContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(> .msr + .mtb + .af)')
-      if (!root) return null
-      const duplicateBatch = root.querySelector(':scope > .msr .msr__batch')
-      const header = root.querySelector(':scope > .mps__head')
-      const filter = root.querySelector(':scope > .af')
-      const table = root.querySelector(':scope > .dt')
-      if (!duplicateBatch || !header || !filter || !table) return null
-      return {
-        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
-        headerRadius: getComputedStyle(header).borderRadius,
-        filterShadow: getComputedStyle(filter).boxShadow,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(internshipContract).not.toBeNull()
-    expect(internshipContract.duplicateBatchDisplay).toBe('none')
-    expect(internshipContract.headerRadius).toBe('18px')
-    expect(internshipContract.filterShadow).toBe('none')
-    expect(internshipContract.tableRadius).toBe('16px')
+    await expect(page.getByRole('region', { name: '实习批次列表' })).toBeVisible()
+    const detailLink = target.getByRole('link', { name: internshipFixture.batchName, exact: true })
+    await expect(detailLink).toBeVisible()
+    await expect(detailLink).toHaveAttribute('href', /\/admin\/internship\/batches\//)
+    const box = await page.locator('.ibl-workspace').boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(VIEWPORT.width)
 
     await capture(page, testInfo, 'rollout-config-internship-batches-b')
   })

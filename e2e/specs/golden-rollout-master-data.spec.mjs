@@ -155,30 +155,17 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await openWithApiSession(page, adminApi, '/admin/internship/enterprises?panel=list')
 
     await expect(page).toHaveURL(/\/admin\/internship\/enterprises/)
-    await expect(page.getByRole('heading', { name: '企业岗位库', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '企业库', exact: true })).toBeVisible()
     await expect(page.locator('.af')).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: internshipFixture.companyName }).first()).toBeVisible()
 
-    const enterpriseContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(> .mp-stack > .msr + .af)')
-      const duplicateBatch = root?.querySelector(':scope > .mp-stack > .msr .msr__batch')
-      const summary = root?.querySelector(':scope > .mp-stack > .msr')
-      const filter = root?.querySelector('.af')
-      const table = root?.querySelector('.dt')
-      if (!root || !duplicateBatch || !summary || !filter || !table) return null
-      return {
-        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
-        summaryRadius: getComputedStyle(summary).borderRadius,
-        filterRadius: getComputedStyle(filter).borderRadius,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(enterpriseContract).not.toBeNull()
-    expect(enterpriseContract.duplicateBatchDisplay).toBe('none')
-    expect(enterpriseContract.summaryRadius).toBe('14px')
-    expect(enterpriseContract.filterRadius).toBe('14px')
-    expect(enterpriseContract.tableRadius).toBe('16px')
+    const company = page.locator('.dt__tr').filter({ hasText: internshipFixture.companyName }).first()
+    await expect(company.getByRole('link', { name: internshipFixture.companyName, exact: true })).toHaveAttribute('href', /\/admin\/internship\/enterprises\//)
+    await expect(page.getByRole('button', { name: '刷新列表', exact: true })).toBeEnabled()
+    const box = await page.locator('.dt').boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(VIEWPORT.width)
 
     await capture(page, testInfo, 'rollout-master-internship-enterprises-b')
   })
