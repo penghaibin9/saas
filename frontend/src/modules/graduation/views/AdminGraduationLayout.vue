@@ -42,6 +42,10 @@
         'graduation-mentors', 'graduation-mentor-conflicts', 'graduation-topic-lib',
         'graduation-topic-rounds', 'graduation-topic-changes'
       ].includes($route.name) || undefined"
+      :data-graduation-process-workspace="
+        $route.name === 'graduation-process' ? 'workbench'
+          : $route.name === 'graduation-process-action' ? 'form' : undefined
+      "
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert
@@ -355,3 +359,5 @@ export default {
   .gd-business-view :deep(.mp-grid-2) { grid-template-columns: 1fr; }
 }
 </style>
+
+<style src="../styles/graduation-process-workspace.css"></style>
