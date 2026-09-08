@@ -65,12 +65,12 @@
   content: '仅审核当前提交版本；历史版本只读，文件未通过安全检查时不可预览。';
   font-size: 10px;
 }
-.gd-business-view .mc-summary {
+.gd-business-view .mc-page .mc-summary {
   display: grid !important;
   grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   gap: 4px !important;
 }
-.gd-business-view .mc-summary article {
+.gd-business-view .mc-page .mc-summary article {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: center !important;
@@ -79,15 +79,15 @@
   padding: 4px 7px !important;
   border-radius: 7px !important;
 }
-.gd-business-view .mc-summary article > span {
+.gd-business-view .mc-page .mc-summary article > span {
   overflow: hidden;
   color: var(--text-tertiary, #64748b);
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.gd-business-view .mc-summary article > strong { font-size: 14px !important; }
-.gd-business-view .mc-summary article > small { display: none !important; }
+.gd-business-view .mc-page .mc-summary article > strong { font-size: 14px !important; }
+.gd-business-view .mc-page .mc-summary article > small { display: none !important; }
 .gd-business-view .mc-tabs { min-height: 34px; }
 .gd-business-view .mc-tabs button {
   min-height: 32px;
@@ -173,13 +173,13 @@
 }
 
 @media (max-width: 1180px) {
-  .gd-business-view .mc-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .gd-business-view .mc-page .mc-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
   .gd-business-view .mc-filters { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .gd-business-view .mc-table-wrap { max-height: none !important; }
 }
 
 @media (max-width: 760px) {
-  .gd-business-view .mc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .gd-business-view .mc-page .mc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .gd-business-view .mc-hero > div:first-child { display: grid; gap: 2px; }
   .gd-business-view .mc-hero p { white-space: normal; }
 }
@@ -187,3 +187,136 @@
 /* Student roster presentation now lives in GraduationStudentListView.vue.
  * Its container queries preserve readable controls instead of compressing them
  * with viewport-wide !important overrides. Other workspace styles stay intact. */
+
+/* Planning workspaces: presentation only, selected by existing route names.
+ * Do not style the shared shell, nested editor routes, or unrelated centers. */
+.gd-business-view[data-planning-workspace] {
+  container: gd-planning / inline-size;
+  min-width: 0;
+  color: var(--text-primary, #203450);
+  font-size: 13px;
+}
+.gd-business-view[data-planning-workspace] :is(.mps, .mp-stack) { min-width: 0; gap: 16px; }
+.gd-business-view[data-planning-workspace] .mps__head { gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.gd-business-view[data-planning-workspace] .mps__title { font-size: 22px; line-height: 1.35; }
+.gd-business-view[data-planning-workspace] .mps__subtitle { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] :is(.gd-actions, .mp-toolbar) { flex-wrap: wrap; gap: 8px; }
+.gd-business-view[data-planning-workspace] :is(.mp-btn, .mp-link, .gm-tabs__item, .gd-local-views button, .mp-tab, .gd-form-back) {
+  min-height: 36px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.gd-business-view[data-planning-workspace] .mp-btn { background: var(--bg-card, #fff); color: var(--text-primary, #203450); border-color: var(--border-base, #dce5f3); }
+.gd-business-view[data-planning-workspace] .mp-btn--primary { background: var(--pri, #285bb5); border-color: var(--pri, #285bb5); color: var(--pri-on, #fff); }
+.gd-business-view[data-planning-workspace] .mp-link { padding: 6px 4px; color: var(--pri, #285bb5); white-space: normal; text-align: left; }
+.gd-business-view[data-planning-workspace] .mp-link--danger { color: var(--danger, #dc2626); }
+.gd-business-view[data-planning-workspace] :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--pri, #285bb5); outline-offset: 2px; }
+
+/* Keep both original levels of local task navigation, with no new menu source. */
+.gd-business-view[data-planning-workspace] :is(.gm-tabs, .gd-primary-tabs, .gd-local-views) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  margin-bottom: 0;
+  padding: 6px;
+  border: 1px solid var(--border-light, #dce5f3);
+  border-radius: 10px;
+  background: var(--bg-section, #edf3fc);
+}
+.gd-business-view[data-planning-workspace] :is(.gm-tabs__item, .gd-primary-tabs .mp-tab, .gd-local-views button) {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #586d89);
+  white-space: normal;
+  text-align: left;
+}
+.gd-business-view[data-planning-workspace] :is(.gm-tabs__item.is-active, .gd-primary-tabs .mp-tab.is-active, .gd-local-views button.is-active) {
+  background: var(--bg-card, #fff);
+  border-color: var(--border-light, #dce5f3);
+  color: var(--pri, #285bb5);
+  font-weight: 650;
+  box-shadow: none;
+}
+.gd-business-view[data-planning-workspace] .gd-local-views > span { padding: 0 6px; font-size: 12px; color: var(--text-tertiary, #586d89); }
+
+/* Reuse the existing filter and table components; changes stay in these hosts. */
+.gd-business-view[data-planning-workspace] .af { padding: 12px 14px; gap: 12px; border-radius: 12px; background: var(--bg-card, #fff); box-shadow: none; }
+.gd-business-view[data-planning-workspace] .af__fields { flex-wrap: wrap; min-width: 0; gap: 10px; }
+.gd-business-view[data-planning-workspace] .af__field { flex: 1 1 160px; min-width: 0; max-width: 320px; gap: 5px; }
+.gd-business-view[data-planning-workspace] .af__label { font-size: 12px; line-height: 1.5; color: var(--text-secondary, #586d89); }
+.gd-business-view[data-planning-workspace] .af__control { width: 100%; min-width: 0; min-height: 36px; height: 36px; padding: 0 10px; background: var(--field-bg, #edf3fc); color: var(--text-primary, #203450); border-color: var(--border-base, #dce5f3); font-size: 13px; }
+.gd-business-view[data-planning-workspace] .af__ops { flex-wrap: wrap; gap: 8px; }
+.gd-business-view[data-planning-workspace] .af__ops button { min-height: 36px; font-size: 13px; }
+.gd-business-view[data-planning-workspace] .dt { min-width: 0; max-width: 100%; border-color: var(--border-light, #dce5f3); border-radius: 12px; box-shadow: none; }
+.gd-business-view[data-planning-workspace] .dt__scroll { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.gd-business-view[data-planning-workspace] .dt__table { min-width: 780px; }
+.gd-business-view[data-planning-workspace] :is(.dt__th, .dt__td) { padding: 12px 14px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .dt__th { color: var(--text-secondary, #586d89); background: var(--bg-section, #edf3fc); letter-spacing: 0; }
+.gd-business-view[data-planning-workspace] .dt__td { color: var(--text-primary, #203450); }
+.gd-business-view[data-planning-workspace] .mp-cell-main { font-size: 13px; font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] :is(.mp-cell-sub, .mp-note) { font-size: 12px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .dt__pager { flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-color: var(--border-light, #dce5f3); }
+.gd-business-view[data-planning-workspace] .dt__pager button { min-height: 34px; }
+.gd-business-view[data-planning-workspace] :is(.mp-stats, .trc-stats) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.gd-business-view[data-planning-workspace] :is(.mp-stat, .trc-stat) { min-width: 0; padding: 12px; border: 1px solid var(--border-light, #dce5f3); border-radius: 10px; background: var(--bg-card, #fff); }
+.gd-business-view[data-planning-workspace] :is(.mp-stat__val, .trc-stat b) { font-size: 24px; font-variant-numeric: tabular-nums; }
+.gd-business-view[data-planning-workspace] :is(.mp-stat__lbl, .mp-stat__sub, .trc-stat span) { color: var(--text-secondary, #586d89); font-size: 12px; line-height: 1.6; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] :is(.gm-section-title, .mp-card__title) { font-size: 16px; line-height: 1.5; }
+.gd-business-view[data-planning-workspace] .gm-assign-hint { padding: 12px 14px; border: 1px solid var(--border-light, #dce5f3); border-radius: 10px; background: var(--bg-section, #edf3fc); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .gm-assign-hint b { color: var(--pri, #285bb5); font-size: 18px; }
+.gd-business-view[data-planning-workspace] .trc-row { flex-wrap: wrap; gap: 12px; }
+.gd-business-view[data-planning-workspace] .trc-row > div { min-width: 0; }
+
+/* The conflict summary is NOT the material center's six-metric summary. */
+.gd-business-view[data-planning-workspace] .mc-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px 16px; padding: 16px; border: 1px solid var(--border-light, #dce5f3); border-radius: 12px; background: var(--bg-card, #fff); }
+.gd-business-view[data-planning-workspace] .mc-summary > div:first-child { min-width: 0; gap: 5px; }
+.gd-business-view[data-planning-workspace] .mc-summary > div:first-child > span { font-size: 12px; }
+.gd-business-view[data-planning-workspace] .mc-summary strong { font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-summary small { font-size: 12px; line-height: 1.6; }
+.gd-business-view[data-planning-workspace] .mc-summary > button { grid-column: 2; grid-row: 1; align-self: start; }
+.gd-business-view[data-planning-workspace] .mc-summary__facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gd-business-view[data-planning-workspace] .mc-summary__facts div { min-width: 0; gap: 3px; padding: 10px 12px; border: 1px solid var(--border-light, #dce5f3); border-radius: 9px; background: var(--bg-section, #edf3fc); }
+.gd-business-view[data-planning-workspace] .mc-summary__facts b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.gd-business-view[data-planning-workspace] .mc-summary__facts span { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-scope-note { font-size: 12px; line-height: 1.7; padding: 10px 12px; background: var(--bg-section, #edf3fc); color: var(--text-secondary, #586d89); overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.gd-business-view[data-planning-workspace] .mc-card { padding: 14px; border-radius: 12px; background: var(--bg-card, #fff); }
+.gd-business-view[data-planning-workspace] .mc-card__head span { font-size: 12px; }
+.gd-business-view[data-planning-workspace] .mc-card__head strong { font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-card > p { min-height: 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-list { gap: 8px; padding: 2px; }
+.gd-business-view[data-planning-workspace] .mc-list li { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px; background: var(--bg-section, #edf3fc); }
+.gd-business-view[data-planning-workspace] :is(.mc-list strong, .mc-list span) { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .mc-list strong { font-size: 13px; }
+.gd-business-view[data-planning-workspace] .mc-list span { font-size: 12px; line-height: 1.6; }
+.gd-business-view[data-planning-workspace] .mc-list .mp-link { justify-self: start; }
+
+/* Keep the original change-request table, command lock and receipt controls. */
+.gd-business-view[data-planning-workspace] .tc-command { gap: 16px; padding: 14px 16px; border: 1px solid var(--border-light, #dce5f3); border-radius: 12px; background: var(--bg-card, #fff); }
+.gd-business-view[data-planning-workspace] :is(.tc-command > div, .tc-receipt > div) { min-width: 0; }
+.gd-business-view[data-planning-workspace] :is(.tc-command span, .tc-command small) { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .tc-command strong { font-size: 17px; line-height: 1.5; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .tc-command__next strong { font-size: 13px; }
+.gd-business-view[data-planning-workspace] .tc-receipt { flex-wrap: wrap; gap: 12px; padding: 12px 14px; border-color: var(--border-light, #dce5f3); background: var(--bg-section, #edf3fc); color: var(--text-primary, #203450); }
+.gd-business-view[data-planning-workspace] :is(.tc-receipt strong, .tc-receipt span) { color: var(--text-primary, #203450); font-size: 13px; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .tc-receipt small { color: var(--text-secondary, #586d89); font-size: 12px; overflow-wrap: anywhere; }
+.gd-business-view[data-planning-workspace] .tc-receipt button { min-height: 34px; font-size: 13px; }
+
+@container gd-planning (max-width: 1080px) {
+  .gd-business-view[data-planning-workspace] .mc-grid { grid-template-columns: 1fr; }
+  .gd-business-view[data-planning-workspace] .mc-list li { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+}
+@container gd-planning (max-width: 760px) {
+  .gd-business-view[data-planning-workspace] :is(.af, .tc-command) { flex-direction: column; align-items: stretch; grid-template-columns: 1fr; }
+  .gd-business-view[data-planning-workspace] .af__fields { width: 100%; }
+  .gd-business-view[data-planning-workspace] .tc-command__next { padding-left: 0; padding-top: 12px; border-left: 0; border-top: 1px solid var(--border-light, #dce5f3); }
+  .gd-business-view[data-planning-workspace] .af__field { max-width: none; }
+  .gd-business-view[data-planning-workspace] .mc-summary { grid-template-columns: 1fr; }
+  .gd-business-view[data-planning-workspace] .mc-summary > button { grid-column: 1; grid-row: auto; justify-self: start; }
+  .gd-business-view[data-planning-workspace] .mc-list li { grid-template-columns: 1fr; }
+  .gd-business-view[data-planning-workspace] .mc-summary__facts { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}

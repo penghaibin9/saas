@@ -38,6 +38,10 @@
     <div
       v-if="canRenderBusiness"
       class="gd-business-view"
+      :data-planning-workspace="[
+        'graduation-mentors', 'graduation-mentor-conflicts', 'graduation-topic-lib',
+        'graduation-topic-rounds', 'graduation-topic-changes'
+      ].includes($route.name) || undefined"
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert

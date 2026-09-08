@@ -141,8 +141,14 @@ test('student presentation uses container width and readable controls without gl
   assert.match(style, /min-height:\s*36px/)
 })
 
-test('unrelated material and risk styles remain byte-identical to the construction parent', () => {
+test('material and risk declarations stay frozen with material summary selectors confined to their owner', () => {
   const boundary = moduleCss.indexOf('/* Student roster')
   assert.ok(boundary > 0)
-  assert.equal(createHash('sha256').update(moduleCss.slice(0, boundary)).digest('hex'), 'a5f6dcbf3e5f859ab9fa99895f1119ddd5cc535040fb926fd91bc750eff2e544')
+  const styles = moduleCss.slice(0, boundary)
+  // Planning polish tightens exactly the seven material-summary selectors.
+  // Keep the original byte-level check for every declaration and all risk CSS.
+  assert.doesNotMatch(styles, /\.gd-business-view\s+\.mc-summary\b/)
+  assert.equal((styles.match(/\.gd-business-view \.mc-page \.mc-summary/g) || []).length, 7)
+  const normalized = styles.replaceAll('.gd-business-view .mc-page .mc-summary', '.gd-business-view .mc-summary')
+  assert.equal(createHash('sha256').update(normalized).digest('hex'), 'a5f6dcbf3e5f859ab9fa99895f1119ddd5cc535040fb926fd91bc750eff2e544')
 })
