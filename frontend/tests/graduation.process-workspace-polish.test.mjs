@@ -54,13 +54,16 @@ test('students, planning pages, other modules and unknown names omit the boundar
 })
 
 test('normalizing only the new marker and stylesheet restores the complete parent file', () => {
-  const original = layout.replace(/      :data-graduation-process-workspace="[\s\S]*?"\n/, '')
+  // Exclude the later, independently protected material presentation addition.
+  const withoutMaterial = layout.replace(/      :data-graduation-material-workspace="[\s\S]*?"\n/, '')
+    .replace(/\n<style src="\.\.\/styles\/graduation-material-workspace\.css"><\/style>\n?$/, '')
+  const original = withoutMaterial.replace(/      :data-graduation-process-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>\n?$/, '')
   assert.equal(hash(original), 'b783e18b64d6a7dccefa27457358401507f9f2b73f8c03bb3b03cb09ffcb04ff')
 })
 
-test('existing module styles remain byte-identical; the process stylesheet is imported once', () => {
-  assert.equal(hash(fs.readFileSync(new URL('styles/graduation-workspaces.css', base), 'utf8')), '142f0fbf07e81df62bf0bfd3cbd08e393ca6b39f4c0ffe5192d452f044d99132')
+test('non-material module styles remain frozen; the process stylesheet is imported once', () => {
+  assert.equal(hash(fs.readFileSync(new URL('styles/graduation-workspaces.css', base), 'utf8')), 'ab00fa350f0927d7d9250c03bdede1ccfae3bf39878b489993b38488079aff64')
   assert.equal((layout.match(/<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>/g) || []).length, 1)
 })
 

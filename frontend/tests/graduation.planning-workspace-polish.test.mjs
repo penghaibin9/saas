@@ -90,16 +90,17 @@ test('real navigation adapter keeps queries, explicit batch and cross-center iso
   assert.equal(calls.reads, 0)
 })
 
-test('material metric grid is owned by the actual material page and no longer leaks into mentor conflicts', () => {
-  assert.doesNotMatch(css, /\.gd-business-view\s+\.mc-summary\b/)
-  assert.match(css, /\.gd-business-view \.mc-page \.mc-summary\s*\{[\s\S]*?repeat\(6, minmax\(0, 1fr\)\)/)
-  for (const count of [3, 2]) assert.ok(css.includes(`.gd-business-view .mc-page .mc-summary { grid-template-columns: repeat(${count}, minmax(0, 1fr)) !important; }`))
+test('material metric grid is owned only by the material route and cannot leak into mentor conflicts', () => {
+  const material = fs.readFileSync(new URL('../src/modules/graduation/styles/graduation-material-workspace.css', import.meta.url), 'utf8')
+  assert.doesNotMatch(css.slice(0, css.indexOf(START)), /\.mc-summary/)
+  assert.match(material, /\[data-graduation-material-workspace='materials'\] \.mc-page \.mc-summary\s*\{[^}]*repeat\(auto-fit, minmax\(min\(136px, 100%\), 1fr\)\)/)
+  assert.doesNotMatch(material, /\[data-planning-workspace\]/)
 })
 
-test('unrelated existing module CSS is unchanged after normalizing material ownership', () => {
+test('unrelated preamble, risk and student boundary text remains unchanged after material extraction', () => {
   assert.ok(css.includes(START))
-  const original = css.slice(0, css.indexOf(START)).replaceAll('.gd-business-view .mc-page .mc-summary', '.gd-business-view .mc-summary').replace(/\n$/, '')
-  assert.equal(hash(original), '8c03d97e1cbe3916a4ebacaefad7a9e96977e0832df2254ae523cead126b24c0')
+  const original = css.slice(0, css.indexOf(START))
+  assert.equal(hash(original), '3881968e4e39c06624b275203205028bf3e4a2cc5757ca99ef351e5a2b230993')
 })
 
 test('every new selector is inside the five-page marker and no hiding or new importance is introduced', () => {

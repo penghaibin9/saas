@@ -141,14 +141,10 @@ test('student presentation uses container width and readable controls without gl
   assert.match(style, /min-height:\s*36px/)
 })
 
-test('material and risk declarations stay frozen with material summary selectors confined to their owner', () => {
+test('unrelated risk and preamble styles remain frozen after material presentation moved to its owner', () => {
   const boundary = moduleCss.indexOf('/* Student roster')
   assert.ok(boundary > 0)
-  const styles = moduleCss.slice(0, boundary)
-  // Planning polish tightens exactly the seven material-summary selectors.
-  // Keep the original byte-level check for every declaration and all risk CSS.
-  assert.doesNotMatch(styles, /\.gd-business-view\s+\.mc-summary\b/)
-  assert.equal((styles.match(/\.gd-business-view \.mc-page \.mc-summary/g) || []).length, 7)
-  const normalized = styles.replaceAll('.gd-business-view .mc-page .mc-summary', '.gd-business-view .mc-summary')
-  assert.equal(createHash('sha256').update(normalized).digest('hex'), 'a5f6dcbf3e5f859ab9fa99895f1119ddd5cc535040fb926fd91bc750eff2e544')
+  // Only the audited material compression block and its two media rules moved out.
+  assert.doesNotMatch(moduleCss.slice(0, boundary), /\.mc-(?:summary|hero|filters|tabs|panel|table-wrap)/)
+  assert.equal(createHash('sha256').update(moduleCss.slice(0, boundary)).digest('hex'), '3c5cb582374510e172953f14c98c12d96f643a567804caf3d22f2d8d6f2481fd')
 })

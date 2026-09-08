@@ -46,6 +46,11 @@
         $route.name === 'graduation-process' ? 'workbench'
           : $route.name === 'graduation-process-action' ? 'form' : undefined
       "
+      :data-graduation-material-workspace="
+        $route.name === 'graduation-material-center' ? 'materials'
+          : $route.name === 'graduation-plagiarism-ledger' ? 'plagiarism'
+          : $route.name === 'graduation-review-tasks' ? 'review' : undefined
+      "
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert
@@ -361,3 +366,5 @@ export default {
 </style>
 
 <style src="../styles/graduation-process-workspace.css"></style>
+
+<style src="../styles/graduation-material-workspace.css"></style>
