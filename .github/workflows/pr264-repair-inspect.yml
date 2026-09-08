@@ -12,11 +12,11 @@ jobs:
   prepare:
     if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/codex/academic-affairs-delivery-20260907'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       MAIN_SHA: b9ef56ff4e29fc76679c590964b7b3273c32d7f2
     steps:
-      - name: Read exact public repository revisions without persisted credentials
+      - name: Fetch frozen integration recipe and current exact head
         shell: bash
         run: |
           set -euo pipefail
@@ -28,145 +28,49 @@ jobs:
           test "$(git ls-remote origin "$GITHUB_REF" | cut -f1)" = "$GITHUB_SHA"
           git config user.name PR264-Repair
           git config user.email pr264-repair@users.noreply.github.com
-          git -c core.quotePath=false merge --no-commit --no-ff "$MAIN_SHA" || test -n "$(git diff --name-only --diff-filter=U)"
-      - name: Reconcile the fourteen reviewed conflicts without discarding either business delivery
-        shell: bash
-        run: |
+          python -m pip install --quiet PyYAML==6.0.3
           python - <<'PY'
           from pathlib import Path
-          import os, re, subprocess
-          main = os.environ['MAIN_SHA']
-          conflicts = subprocess.check_output(['git','diff','--name-only','--diff-filter=U','-z']).decode().strip('\0').split('\0')
-          expected = {
-            'docs/03-业务模块设计/教务中心/文档关联索引.md',
-            'docs/06-开发施工与质量验收/ai-prompts/04-教务核心业务四端分批落地固定提示词.md',
-            'frontend/src/components/business/ModulePageShell.vue',
-            'frontend/src/components/workspace/TeacherWorkspaceFrame.vue',
-            'frontend/src/components/workspace/teacherWorkspace.js',
-            'frontend/src/components/workspace/workspaceRouting.js',
-            'frontend/src/layouts/BasePortalLayout.vue',
-            'miniapp/src/pages/teacher/my-students/index.vue',
-            'shared/contracts/navigation-surface-contract.json',
-            'shared/generated/capability-registry.json',
-            'shared/generated/route-index.json',
-            'student-portal/src/layouts/PortalLayout.vue',
-            'student-portal/src/platform/workspaceNavigation.js',
-            'student-portal/src/styles/student-workspace.css',
-          }
-          assert set(conflicts) == expected, conflicts
-          main_blocks = {
-            'frontend/src/components/business/ModulePageShell.vue',
-            'student-portal/src/layouts/PortalLayout.vue',
-            'student-portal/src/platform/workspaceNavigation.js',
-            'student-portal/src/styles/student-workspace.css',
-            'shared/contracts/navigation-surface-contract.json',
-            'shared/generated/capability-registry.json',
-            'shared/generated/route-index.json',
-          }
-          marker = re.compile(r'^<<<<<<< .*\n(.*?)^=======\n(.*?)^>>>>>>> .*\n', re.M | re.S)
-          for filename in conflicts:
-              p = Path(filename)
-              text = p.read_text()
-              def resolve(m):
-                  ours, theirs = m.group(1), m.group(2)
-                  if filename in main_blocks: return theirs
-                  if filename.endswith('BasePortalLayout.vue'):
-                      if 'usesAcademicWorkspace' in ours: return ours
-                      if 'return getVisibleAdminMenu' in ours:
-                          return ours.replace('return getVisibleAdminMenu(this.ctx).map', "return getVisibleAdminMenu(this.ctx).filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench').map")
-                      return theirs
-                  if filename == 'miniapp/src/pages/teacher/my-students/index.vue':
-                      return theirs.replace('    this.reload()\n', '')
-                  return ours
-              text, count = marker.subn(resolve, text)
-              assert count and not re.search(r'^(<<<<<<<|=======|>>>>>>>)', text, re.M), filename
-              p.write_text(text)
-              print('RESOLVED', filename, count)
-          def replace(filename, old, new, count=1):
-              p=Path(filename); text=p.read_text()
-              assert text.count(old)==count, (filename,old,text.count(old))
-              p.write_text(text.replace(old,new))
-          frame='frontend/src/components/workspace/TeacherWorkspaceFrame.vue'
-          replace(frame, 'defineProps({ modules:', 'defineProps({ resolveDestination: { type: Function, default: (path) => path }, modules:')
-          replace(frame, 'workspacePages, workspaceMenuItems,', 'workspacePages, workspaceCurrentPage, workspaceMenuItems,')
-          replace(frame, 'const currentPage = computed(() => activeWorkspacePage(pages.value, route, props.activeModule))', "const currentPage = computed(() => props.activeCenter === 'academic-affairs' ? activeWorkspacePage(pages.value, route, props.activeModule) : workspaceCurrentPage(pages.value, route.fullPath, props.activeModule))")
-          replace(frame, '(selectedModule.value || props.activeModule)) || props.modules[0])', '(selectedModule.value || currentPage.value?.moduleKey || props.activeModule)) || props.modules[0])')
-          replace(frame, "  if (to.path === from.path) return true\n", "  if (to.path === from.path) return true\n  if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true\n")
-          replace(frame, 'await router.push(destination); mobileOpen.value = false', 'await router.push(props.resolveDestination(destination)); mobileOpen.value = false')
-          workspace='frontend/src/components/workspace/teacherWorkspace.js'
-          main_workspace=subprocess.check_output(['git','show',f'{main}:{workspace}']).decode()
-          exported=main_workspace.split('export function workspaceCurrentPage',1)[1].split('export function defaultShortcutIds',1)[0]
-          replace(workspace, 'export function defaultShortcutIds', 'export function workspaceCurrentPage'+exported+'export function defaultShortcutIds')
-          replace(workspace, "'认定申请与审核（工作台）': '评审',", "'认定申请与审核（工作台）': '评审', '申请与审核': '评审',")
-          subprocess.run(['git','add','--',*conflicts],check=True)
-          assert not subprocess.check_output(['git','diff','--name-only','--diff-filter=U']).strip()
+          import subprocess,yaml
+          raw=subprocess.check_output(['git','show','2a88cf3a91d28c12cc8245ad6e6f0ce326eb3ebf:.github/workflows/pr264-repair-inspect.yml']).decode()
+          steps=yaml.safe_load(raw)['jobs']['prepare']['steps']
+          names={'Reconcile the fourteen reviewed conflicts without discarding either business delivery':'merge', 'Regenerate derived navigation from the merged sources':'generate', 'Run complete frontend unit suite on the integration candidate':'units', 'Publish inspectable Git objects only (never update any branch)':'publish'}
+          for step in steps:
+              if step.get('name') not in names: continue
+              script=step['run']
+              if names[step['name']]=='merge':
+                  old="r'^<<<<<<< .*\\n(.*?)^=======\\n(.*?)^>>>>>>> .*\\n'"
+                  new="r'^<<<<<<< [^\\n]*\\n(.*?)^=======\\n(.*?)^>>>>>>> [^\\n]*\\n'"
+                  assert script.count(old)==1
+                  script=script.replace(old,new)
+              Path('/tmp/pr264-'+names[step['name']]+'.sh').write_text(script)
           PY
+          git -c core.quotePath=false merge --no-commit --no-ff "$MAIN_SHA" || test -n "$(git diff --name-only --diff-filter=U)"
+          bash /tmp/pr264-merge.sh
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - name: Regenerate derived navigation from the merged sources
-        run: |
-          set -euo pipefail
-          npm ci --prefix frontend --no-audit --no-fund > /tmp/pr264-npm.log 2>&1 || { tail -n 60 /tmp/pr264-npm.log; exit 1; }
-          node scripts/generate-navigation-surface-contract.mjs
-          node scripts/check/generate-capability-registry.mjs
-          git add -- shared/contracts/navigation-surface-contract.json shared/generated/capability-registry.json shared/generated/route-index.json
-          python -m compileall -q backend/app
-      - name: Run complete frontend unit suite on the integration candidate
+      - name: Generate merged source contracts
+        run: bash /tmp/pr264-generate.sh
+      - name: Full frontend unit suite on integration candidate
         id: units
-        shell: bash
-        run: |
-          set +e
-          npm test --prefix frontend > /tmp/pr264-frontend-tests.log 2>&1
-          result=$?
-          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
-          python - <<'PY'
-          from pathlib import Path
-          lines=Path('/tmp/pr264-frontend-tests.log').read_text().splitlines()
-          keep=set(range(max(0,len(lines)-15),len(lines)))
-          for i,line in enumerate(lines):
-              if line.startswith('not ok') or 'Error:' in line:
-                  keep.update(range(max(0,i-2),min(len(lines),i+35)))
-          for i in sorted(keep): print(lines[i][:1800])
-          PY
-          exit "$result"
-      - name: Publish inspectable Git objects only (never update any branch)
+        run: bash /tmp/pr264-units.sh
+      - name: Preserve inspectable candidate objects without moving the branch
         if: always() && steps.units.outputs.exit_code != ''
         env:
           GH_TOKEN: ${{ github.token }}
           UNIT_EXIT: ${{ steps.units.outputs.exit_code }}
-        shell: bash
+        run: bash /tmp/pr264-publish.sh
+      - name: Archive exact tracked candidate source and test log
+        if: always() && steps.units.outputs.exit_code != ''
         run: |
-          python - <<'PY'
-          import base64,json,os,subprocess,urllib.request
-          root='https://api.github.com/repos/penghaibin9/saas'
-          def git(*args): return subprocess.check_output(['git',*args])
-          def api(path, data=None):
-              req=urllib.request.Request(root+path,data=json.dumps(data).encode() if data is not None else None,headers={'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST' if data is not None else 'GET')
-              req.add_unredirected_header('Authorization','Bearer '+os.environ['GH_TOKEN'])
-              with urllib.request.urlopen(req,timeout=90) as response: return json.load(response)
-          parent=os.environ['GITHUB_SHA']; main=os.environ['MAIN_SHA']
-          assert git('rev-parse','HEAD').decode().strip()==parent
-          assert api('/git/ref/heads/codex/academic-affairs-delivery-20260907')['object']['sha']==parent
-          assert api('/git/ref/heads/main')['object']['sha']==main
-          tree=git('write-tree').decode().strip()
-          changed=git('diff','--name-only','-z',main,tree).decode().strip('\0').split('\0')
-          entries=[]
-          for path in changed:
-              record=git('ls-tree','-z',tree,'--',path).decode().strip('\0')
-              if not record:
-                  entries.append({'path':path,'mode':'100644','type':'blob','sha':None});continue
-              mode,kind,sha=record.split('\t')[0].split()
-              assert kind=='blob',(path,kind)
-              raw=git('cat-file','blob',sha)
-              blob=api('/git/blobs',{'encoding':'base64','content':base64.b64encode(raw).decode()})
-              assert blob['sha']==sha,(path,sha)
-              entries.append({'path':path,'mode':mode,'type':kind,'sha':sha})
-          base_tree=git('rev-parse',main+'^{tree}').decode().strip()
-          result=api('/git/trees',{'base_tree':base_tree,'tree':entries})
-          assert result['sha']==tree,(result['sha'],tree)
-          commit=api('/git/commits',{'message':'fix(academic): reconcile current main workspaces without losing academic navigation or student-affairs safeguards','tree':tree,'parents':[parent,main]})
-          receipt={'candidateCommit':commit['sha'],'tree':tree,'parents':[parent,main],'changedFromMain':len(changed),'frontendUnitExit':int(os.environ['UNIT_EXIT']),'branchUpdated':False,'releaseApproved':False}
-          print(json.dumps(receipt,ensure_ascii=False,indent=2),flush=True)
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f: f.write('Integration candidate objects only; branch unchanged.\n```json\n'+json.dumps(receipt,indent=2)+'\n```\n')
-          PY
+          git archive --format=tar "$(git write-tree)" | gzip > /tmp/pr264-source.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && steps.units.outputs.exit_code != ''
+        with:
+          name: pr264-integration-source-${{ github.sha }}
+          path: |
+            /tmp/pr264-source.tar.gz
+            /tmp/pr264-frontend-tests.log
+          retention-days: 3
+          if-no-files-found: error
