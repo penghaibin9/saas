@@ -67,3 +67,18 @@ _install_module_commerce_guard(_platform_service)
 _module_access_service = importlib.import_module(f"{__name__}.module_access_service")
 from app.services.module_commerce_access_guard import install as _install_module_access_guard
 _install_module_access_guard(_module_access_service)
+
+# M3-M5 hardening: keep delivery acceptance tied to the current paid-source set,
+# serialize tenant-wide vs module-only exit requests across MySQL workers, and
+# strengthen final export evidence before retention can begin.
+_module_commerce_lifecycle_service = importlib.import_module(
+    f"{__name__}.module_commerce_lifecycle_service"
+)
+_tenant_offboarding_service = importlib.import_module(
+    f"{__name__}.tenant_offboarding_service"
+)
+from app.services.module_commerce_m345_hardening import install as _install_m345_hardening
+_install_m345_hardening(
+    _module_commerce_lifecycle_service,
+    _tenant_offboarding_service,
+)

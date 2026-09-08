@@ -8,6 +8,7 @@ on:
       - backend/app/services/__init__.py
       - backend/app/services/module_commerce_access_guard.py
       - backend/app/services/module_commerce_lifecycle_service.py
+      - backend/app/services/module_commerce_m345_hardening.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
@@ -53,7 +54,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$OUT"; test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"; git rev-parse HEAD > "$OUT/revision.txt"
           python -m pip install -r backend/requirements.txt
-          python -m py_compile backend/app/models/commercial.py backend/app/models/platform.py backend/app/services/module_commerce_access_guard.py backend/app/services/module_commerce_lifecycle_service.py backend/app/modules/platform/routers/module_commerce_router.py backend/alembic/versions/20260908_module_commerce_m345.py backend/tests/test_module_commerce_m345_runtime.py
+          python -m py_compile backend/app/models/commercial.py backend/app/models/platform.py backend/app/services/module_commerce_access_guard.py backend/app/services/module_commerce_lifecycle_service.py backend/app/services/module_commerce_m345_hardening.py backend/app/modules/platform/routers/module_commerce_router.py backend/alembic/versions/20260908_module_commerce_m345.py backend/tests/test_module_commerce_m345_runtime.py
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
         working-directory: backend
         run: |
@@ -69,9 +70,12 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
+          hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          assert 'execute_tenant_purge' not in service and '_purge_file_objects' not in service and 'tenant.status =' not in service
-          print('M345_NON_PURGE_SCOPE_VERIFIED')
+          for source in (service, hardening):
+              assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
+          assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
+          print('M345_NON_PURGE_SCOPE_AND_HARDENING_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
