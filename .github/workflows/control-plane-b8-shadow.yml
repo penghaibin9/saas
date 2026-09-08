@@ -71,7 +71,7 @@ jobs:
       B8_EVIDENCE_PATH: ../artifacts/control-plane/b8-shadow.json
       B8_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exact branch HEAD assertion

@@ -86,7 +86,7 @@ jobs:
       RESTORE_EVIDENCE_FILE: /tmp/restore-drill-evidence.txt
       RESTORE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify exact restore head checkout

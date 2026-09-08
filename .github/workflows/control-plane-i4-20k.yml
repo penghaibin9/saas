@@ -70,7 +70,7 @@ jobs:
       I4_EVIDENCE_PATH: ../artifacts/control-plane/i4-20k.json
       I4_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Exact branch HEAD assertion

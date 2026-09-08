@@ -46,7 +46,7 @@ jobs:
       SECRET_KEY: academic-int-task-pc-provenance-targeted
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
