@@ -15,6 +15,7 @@ on:
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
       - backend/tests/test_module_commerce_quota_guard_runtime.py
+      - backend/tests/test_module_commerce_write_fence_runtime.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
       - frontend/tests/module-commerce-lifecycle-workspace.test.mjs
@@ -29,7 +30,7 @@ jobs:
   m345-runtime:
     name: M3-M5 migrated MySQL lifecycle and non-purge exit
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       APP_ENV: test
       DB_ENABLED: 'true'
@@ -67,7 +68,8 @@ jobs:
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/alembic/versions/20260908_module_commerce_m345.py \
             backend/tests/test_module_commerce_m345_runtime.py \
-            backend/tests/test_module_commerce_quota_guard_runtime.py
+            backend/tests/test_module_commerce_quota_guard_runtime.py \
+            backend/tests/test_module_commerce_write_fence_runtime.py
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
         working-directory: backend
         run: |
@@ -75,7 +77,11 @@ jobs:
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head 2>&1 | tee "$OUT/migration.log"
           alembic current | tee "$OUT/current.log"
-          pytest tests/test_module_commerce_m345_runtime.py tests/test_module_commerce_quota_guard_runtime.py -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
+          pytest \
+            tests/test_module_commerce_m345_runtime.py \
+            tests/test_module_commerce_quota_guard_runtime.py \
+            tests/test_module_commerce_write_fence_runtime.py \
+            -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
       - name: Assert scope stops before irreversible purge
         working-directory: backend
         run: |
@@ -85,12 +91,14 @@ jobs:
           service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
           hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
           quota=Path('app/services/module_commerce_quota_guard.py').read_text(encoding='utf-8')
+          fence=Path('app/services/module_commerce_access_guard.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          for source in (service, hardening, quota):
+          for source in (service, hardening, quota, fence):
               assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
           assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
           assert 'COMMERCIAL_MODULE_STORAGE_QUOTA_EXCEEDED' in quota and 'MODULE_NOT_AUTHORIZED' in quota
-          print('M345_NON_PURGE_SCOPE_QUOTA_AND_HARDENING_VERIFIED')
+          assert 'before_commit' in fence and 'with_for_update' in fence and 'module_write_fence' in fence
+          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_FENCE_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
