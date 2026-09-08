@@ -1,0 +1,148 @@
+diff --git a/backend/tests/test_aa_term_current_mysql.py b/backend/tests/test_aa_term_current_mysql.py
+--- a/backend/tests/test_aa_term_current_mysql.py
++++ b/backend/tests/test_aa_term_current_mysql.py
+@@ -12,0 +13 @@
++from contextvars import copy_context
+@@ -168,0 +170,18 @@
++def _submit_term_request(pool, invoke, *args):
++    """Each simulated request owns a fresh context; never default tenants in production."""
++    from app.core.context import get_tenant, set_tenant
++
++    context = copy_context()
++
++    def run():
++        previous = get_tenant()
++        try:
++            # Explicit test-school identity also reaches unpatched service imports.
++            set_tenant({"tenantId": str(TID)})
++            return invoke(*args)
++        finally:
++            set_tenant(previous)
++
++    return pool.submit(context.run, run)
++
++
+@@ -182 +201 @@
+-            future = pool.submit(invoke)
++            future = _submit_term_request(pool, invoke)
+@@ -200 +219 @@
+-            future = pool.submit(invoke)
++            future = _submit_term_request(pool, invoke)
+@@ -381,2 +400,2 @@
+-        first = pool.submit(svc.set_current_term, ids["target"], {})
+-        second = pool.submit(svc.publish_term, ids["publish_target"], {})
++        first = _submit_term_request(pool, svc.set_current_term, ids["target"], {})
++        second = _submit_term_request(pool, svc.publish_term, ids["publish_target"], {})
+diff --git a/backend/tests/test_aa_org_adjustment_expand_contract.py b/backend/tests/test_aa_org_adjustment_expand_contract.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_aa_org_adjustment_expand_contract.py
+@@ -0,0 +1,97 @@
++"""Additive storage keeps complete evidence and fails closed for N-1 writers."""
++import json
++from types import SimpleNamespace
++
++import pytest
++
++from app.core.exceptions import AppException
++from app.modules.academic_affairs.services import academic_affairs_org_adjustment_storage as storage
++
++
++def row(**values):
++    defaults = dict(status='DRAFT', from_class_ids='[1]',
++        from_class_ids_expanded=None, check_result_json=None, check_result_expanded=None)
++    return SimpleNamespace(**(defaults | values))
++
++
++def test_small_receipt_is_compatible_with_legacy_readers():
++    r = row(); payload = {'blocked': False, 'refs': [{'classId': '1'}]}
++    storage.store_check(r, payload)
++    assert json.loads(r.check_result_json) == payload
++    assert storage.read_check(r) == payload
++
++
++def test_large_receipt_preserves_all_rows_and_legacy_projection_is_not_an_approval():
++    r = row(); payload = {'blocked': False, 'refs': [{'classId': str(i), 'name': '完整核对证据' * 20} for i in range(30)]}
++    storage.store_check(r, payload)
++    assert len(r.check_result_json) <= 2000
++    assert json.loads(r.check_result_json)['blocked'] is True
++    assert storage.read_check(r) == payload
++
++
++def test_legacy_write_invalidates_expanded_receipt_instead_of_replaying_old_success():
++    r = row(); storage.store_check(r, {'blocked': False, 'snapshotHash': 'prior'})
++    r.check_result_json = json.dumps({'blocked': True, 'snapshotHash': 'new'})
++    assert storage.read_check(r) == {'blocked': True, 'snapshotHash': 'new'}
++
++
++@pytest.mark.parametrize('content', ['{', '[]', '{"schemaVersion":99}'])
++def test_corrupt_expansion_fails_closed(content):
++    r = row(); r.check_result_expanded = content
++    with pytest.raises(AppException): storage.read_check(r)
++
++
++def test_expanded_scope_keeps_legacy_state_guards_closed_through_all_transitions():
++    r = row(); r.from_class_ids_expanded = json.dumps(list(range(1, 501)))
++    for state in ('DRAFT', 'CHECKED', 'EXECUTED', 'CANCELLED'):
++        storage.set_status(r, state)
++        assert r.status == 'V2_' + state
++        assert r.status not in ('DRAFT', 'CHECKED', 'EXECUTED', 'CANCELLED')
++        assert storage.public_status(r) == state
++        assert len(json.loads(storage.scope_json(r))) == 500
++
++
++def test_missing_expanded_scope_never_falls_back_to_an_empty_legacy_scope():
++    r = row(); r.status = 'V2_CHECKED'
++    with pytest.raises(AppException): storage.scope_json(r)
++
++
++def test_model_retains_legacy_varchar_contract_and_nullable_expansion():
++    from app.models import AaClassAdjustmentRequest
++    columns = AaClassAdjustmentRequest.__table__.c
++    assert columns.from_class_ids.type.length == 500
++    assert columns.check_result_json.type.length == 2000
++    assert columns.from_class_ids_expanded.nullable
++    assert columns.check_result_expanded.nullable
++
++
++def test_expanded_request_uses_complete_scope_on_real_http_and_mysql(client, db_mode):
++    from sqlalchemy import select
++    from app.db.session import get_sessionmaker
++    from app.models import AaClassAdjustmentRequest, SchoolClass
++    from test_aa_org_adjustment_roundtrip import _create, _act
++    from test_aa_orgs import TID, _hdr
++    from test_aa_orgs_tier1_r2 import _seed_scoped
++    ids = _seed_scoped(db_mode)
++    headers = _hdr(client, 'school_admin01')
++    sources = [900000000000005000 + i for i in range(30)]
++    with get_sessionmaker()() as db:
++        db.add_all([SchoolClass(id=cid, tenant_id=TID, major_id=ids['majSw'],
++            class_name=f'扩展兼容验收{i}', class_status='NORMAL', status='ACTIVE') for i, cid in enumerate(sources)])
++        db.commit()
++    created = _create(client, headers, sources)
++    assert set(created['fromClassIds']) == {str(cid) for cid in sources}
++    checked = _act(client, headers, created, 'precheck')
++    assert checked.status_code == 200, checked.text
++    assert len(checked.json()['data']['checkResult']['refs']) == 30
++    with get_sessionmaker()() as db:
++        persisted = db.scalar(select(AaClassAdjustmentRequest).where(
++            AaClassAdjustmentRequest.id == int(created['id']), AaClassAdjustmentRequest.tenant_id == TID))
++        assert persisted.status == 'V2_CHECKED'
++        assert len(persisted.from_class_ids) <= 500
++        assert json.loads(persisted.from_class_ids_expanded) == sources
++        assert json.loads(persisted.check_result_json)['blocked'] is True
++    executed = _act(client, headers, created, 'execute', expectedVersion=checked.json()['data']['version'])
++    assert executed.status_code == 200, executed.text
++    assert executed.json()['data']['status'] == 'EXECUTED'
++    assert executed.json()['data']['checkResult']['execution']['changedClassCount'] == 30
+diff --git a/backend/app/models/academic_affairs.py b/backend/app/models/academic_affairs.py
+--- a/backend/app/models/academic_affairs.py
++++ b/backend/app/models/academic_affairs.py
+@@ -1743 +1743,2 @@
+-    from_class_ids: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False, comment="JSON数组，来源行政班id列表")
++    from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="N-1兼容来源范围；大范围由V2状态隔离")
++    from_class_ids_expanded: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=True)
+@@ -1746 +1747,2 @@
+-    check_result_json: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"))
++    check_result_json: Mapped[str | None] = mapped_column(String(2000))
++    check_result_expanded: Mapped[str | None] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=True)
