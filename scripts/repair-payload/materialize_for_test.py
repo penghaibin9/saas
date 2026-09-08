@@ -15,6 +15,7 @@ HASHES={
  '05-capacity.patch':'fdf3cc5266a9419ac65af5e4551ba303f99bdc76ec01537f54e39a2ae66d519f',
  '06-capacity-tests.patch':'0cfbc159a01d6af81c907dfb1ebeffe628a00324cc113b79726095e734562fc3',
  '07-runtime-config.patch':'d292595abb345df23c842efeed9fa40af249c49eb60482b1c05cb467dad95db8',
+ '08-capacity-entitlement.patch':'47ec64419555086d401d89c34d98386f9de94ddc8d67657ca7decd37a1f6fdab',
 }
 chunks=[]
 for name,expected in HASHES.items():
@@ -32,8 +33,7 @@ if len(paths)!=26:raise SystemExit('unexpected file count')
 for path in paths:
  if Path(path).is_absolute() or '..' in Path(path).parts:raise SystemExit('unsafe path')
  subprocess.run(['git','diff','--exit-code',BASE,'HEAD','--',path],check=True)
-# The runtime correction is explicitly based on the earlier repair postimage.
-for payload in (b''.join(chunks[:6]),chunks[6]):
+for payload in (b''.join(chunks[:6]),*chunks[6:]):
  with tempfile.NamedTemporaryFile(suffix='.patch') as f:
   f.write(payload);f.flush()
   subprocess.run(['git','apply','--check','--unidiff-zero','--whitespace=error',f.name],check=True)
