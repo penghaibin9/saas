@@ -39,7 +39,7 @@ jobs:
     name: 能力清单 + 调用扫描 + 兼容合同裁决
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
@@ -97,7 +97,7 @@ jobs:
       FILE_SCAN_ENABLED: 'false'
       FILE_SCAN_REQUIRED: 'false'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -160,7 +160,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: frontend } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: student-portal } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -192,7 +192,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: miniapp } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -206,7 +206,7 @@ jobs:
     name: PR Draft 与禁止施工残留
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: No newly added one-shot triggers, patch scripts, secrets or runtime files

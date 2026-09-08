@@ -82,7 +82,7 @@ jobs:
       FILE_STORAGE_PROVIDER: local
       LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5

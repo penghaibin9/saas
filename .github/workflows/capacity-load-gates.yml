@@ -73,7 +73,7 @@ jobs:
     name: 压测边界与脚本合同
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -159,7 +159,7 @@ jobs:
           --health-timeout=5s
           --health-retries=20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -331,7 +331,7 @@ jobs:
       INTERNAL_OPS_TOKEN: ${{ secrets.PERF_INTERNAL_OPS_TOKEN }}
       SUMMARY_PATH: /work/performance/results/k6-summary.json
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
