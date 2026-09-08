@@ -1,0 +1,127 @@
+diff --git a/frontend/tests/routeIndex.governance.test.mjs b/frontend/tests/routeIndex.governance.test.mjs
+--- a/frontend/tests/routeIndex.governance.test.mjs
++++ b/frontend/tests/routeIndex.governance.test.mjs
+@@ -101,0 +102,7 @@
++
++test('parameterized redirect declarations remain redirects without inventing target routes', () => {
++  const parsed = extractRouteSource("const routes = [{ path: '/old/:id', redirect: '/new' }]")
++  const index = { ...parsed, patternRegexes: [] }
++  assert.deepEqual(matchRouteExists(index, '/old/:id'), { exists: true, matchType: 'redirect' })
++  assert.deepEqual(matchRouteExists(index, '/new'), { exists: false, matchType: 'missing' })
++})
+diff --git a/frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue b/frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue
+--- a/frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue
++++ b/frontend/src/modules/academicAffairs/views/AaTermCurrentView.vue
+@@ -41 +41 @@
+-        <p v-else class="mp-note">{{ loadingCurrent ? '正在核对学校的学期设置…' : currentError ? '当前学期读取失败，请在上方重试。' : '校级教务可将已发布学期设为全校当前学期。' }}</p>
++        <p v-else class="mp-note">{{ loadingCurrent ? '正在核对学校的学期设置…' : currentError ? '当前学期读取失败，请在上方重试。' : (current?.switchHint || '校级教务可将已发布学期设为全校当前学期。') }}</p>
+@@ -105,0 +106,3 @@
++      currentRequestId: 0,
++      termsRequestId: 0,
++      termViewDisposed: false,
+@@ -131,0 +135,5 @@
++  beforeUnmount() {
++    this.termViewDisposed = true
++    this.currentRequestId += 1
++    this.termsRequestId += 1
++  },
+@@ -141,0 +150,2 @@
++      if (this.termViewDisposed) return
++      const requestId = ++this.currentRequestId
+@@ -145,4 +155,10 @@
+-      const res = await academicAffairsApi.getCurrentTerm()
+-      if (res.code === 0) {
+-        this.current = res.data || null
+-      } else {
++      try {
++        const res = await academicAffairsApi.getCurrentTerm()
++        if (requestId !== this.currentRequestId) return
++        if (res?.code !== 0) throw new Error(res?.message || '当前学期解析失败，请核对全校学期治理与教务学期数据')
++        if (!res.data || typeof res.data !== 'object' || Array.isArray(res.data)) {
++          throw new Error('当前学期响应不完整，请刷新后重新核对')
++        }
++        this.current = res.data
++      } catch (exception) {
++        if (requestId !== this.currentRequestId) return
+@@ -150,3 +166,4 @@
+-        this.currentError = res.message || '当前学期解析失败，请核对全校学期治理与教务学期数据'
+-      }
+-      this.loadingCurrent = false
++        this.currentError = exception?.message || '当前学期读取失败，请刷新后重试'
++      } finally {
++        if (requestId === this.currentRequestId) this.loadingCurrent = false
++      }
+@@ -154,0 +172,2 @@
++      if (this.termViewDisposed) return
++      const requestId = ++this.termsRequestId
+@@ -157,2 +176,6 @@
+-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
+-      if (res.code === 0) {
++      this.terms = []
++      try {
++        const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
++        if (requestId !== this.termsRequestId) return
++        if (res?.code !== 0) throw new Error(res?.message || '学期列表读取失败，请刷新后重试')
++        if (!Array.isArray(res.data?.list)) throw new Error('学期列表响应不完整，请刷新后重试')
+@@ -160,4 +183,7 @@
+-      } else {
+-        this.error = res.message
+-      }
+-      this.loading = false
++      } catch (exception) {
++        if (requestId !== this.termsRequestId) return
++        this.terms = []
++        this.error = exception?.message || '学期列表读取失败，请刷新后重试'
++      } finally {
++        if (requestId === this.termsRequestId) this.loading = false
++      }
+@@ -166 +192 @@
+-      if (row.status !== 'PUBLISHED' || this.isResolvedCurrent(row)) return
++      if (this.dialog.submitting || row.status !== 'PUBLISHED' || this.isResolvedCurrent(row)) return
+@@ -183,4 +209,4 @@
+-      const res = await academicAffairsApi.setCurrentTerm(row.termId)
+-      this.dialog.submitting = false
+-      this.switching = ''
+-      if (res.code === 0) {
++      try {
++        const res = await academicAffairsApi.setCurrentTerm(row.termId)
++        if (this.termViewDisposed) return
++        if (res?.code !== 0) throw new Error(res?.message || '切换失败')
+@@ -189,5 +215,11 @@
+-        this.loadCurrent()
+-        this.load()
+-      } else {
+-        toast.error(res.message || '切换失败')
+-        this.loadCurrent()
++      } catch (exception) {
++        // A timeout does not prove the server rolled back. Read back; never replay the write.
++        if (!this.termViewDisposed) toast.error(exception?.message || '切换结果暂未确认，请核对刷新后的当前学期')
++      } finally {
++        if (!this.termViewDisposed) {
++          await Promise.all([this.loadCurrent(), this.load()])
++          if (!this.termViewDisposed) {
++            this.dialog.submitting = false
++            this.switching = ''
++          }
++        }
+diff --git a/frontend/src/components/workspace/teacherWorkspace.js b/frontend/src/components/workspace/teacherWorkspace.js
+--- a/frontend/src/components/workspace/teacherWorkspace.js
++++ b/frontend/src/components/workspace/teacherWorkspace.js
+@@ -62,0 +63 @@
++    .filter(item => !item.disabled)
+diff --git a/scripts/check/build-route-index.mjs b/scripts/check/build-route-index.mjs
+--- a/scripts/check/build-route-index.mjs
++++ b/scripts/check/build-route-index.mjs
+@@ -165,0 +166,3 @@
++  // Redirect/alias sources may themselves be parameterized route declarations.
++  if ((index.aliases || []).some((a) => a.from === clean)) return { exists: true, matchType: 'alias' }
++  if ((index.redirects || []).some((r) => r.from === clean)) return { exists: true, matchType: 'redirect' }
+@@ -167,2 +169,0 @@
+-    if ((index.aliases || []).some((a) => a.from === clean)) return { exists: true, matchType: 'alias' }
+-    if ((index.redirects || []).some((r) => r.from === clean)) return { exists: true, matchType: 'redirect' }
+diff --git a/scripts/check/check-internship-source-closure-v2.py b/scripts/check/check-internship-source-closure-v2.py
+--- a/scripts/check/check-internship-source-closure-v2.py
++++ b/scripts/check/check-internship-source-closure-v2.py
+@@ -308,0 +309,2 @@
++    # Vite query suffixes select a loader; the source file must still exist and be tracked.
++    spec = spec.split("?", 1)[0].split("#", 1)[0]
