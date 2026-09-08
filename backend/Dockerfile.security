@@ -55,12 +55,14 @@ COPY docs/architecture /app/docs/architecture
 # Numeric UID keeps the application independent of image-specific passwd data.
 # Strip set-id bits and remove administration/network/shell CLIs after all build
 # work. Package databases remain intact; this is attack-surface reduction, never
-# a vulnerability-scan suppression mechanism.
+# a vulnerability-scan suppression mechanism. Remove every exact deny-list name
+# from every directory inspected by the runtime probe; command -v alone can leave
+# an alternate same-name entry or symlink in another executable directory.
 RUN mkdir -p /app/backend/data /app/backend/uploads /app/backend/exports \
     && chown 10001:10001 /app/backend/data /app/backend/uploads /app/backend/exports \
     && chmod 0770 /app/backend/data /app/backend/uploads /app/backend/exports \
     && find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} + \
-    && find /usr/bin /usr/local/bin -xdev \( -type f -o -type l \) -name 'perl*' -delete \
+    && find /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin -maxdepth 1 \( -type f -o -type l \) -name 'perl*' -delete \
     && for tool in apt apt-get apt-cache apt-cdrom apt-config apt-mark \
          dpkg dpkg-deb dpkg-divert dpkg-maintscript-helper dpkg-query dpkg-realpath \
          dpkg-split dpkg-statoverride dpkg-trigger update-alternatives \
@@ -70,10 +72,9 @@ RUN mkdir -p /app/backend/data /app/backend/uploads /app/backend/exports \
          groupadd groupdel groupmod gpasswd newgrp mount umount nsenter \
          gzip gunzip zcat infocmp sqlite3 systemd-homed getfacl setfacl \
          pcre2grep grep egrep fgrep sh dash bash; do \
-         if command -v "$tool" >/dev/null 2>&1; then \
-           path="$(command -v "$tool")"; \
-           rm -f -- "$path"; \
-         fi; \
+         for dir in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do \
+           rm -f -- "$dir/$tool"; \
+         done; \
        done
 USER 10001:10001
 EXPOSE 8000
