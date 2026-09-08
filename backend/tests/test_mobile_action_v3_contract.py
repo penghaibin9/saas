@@ -188,8 +188,12 @@ def test_adapter_holds_no_route_map_of_its_own():
     assert "/admin/" not in body
     # 只允许保留端前缀白名单
     snapshot = adapter.action_contract_snapshot()
-    assert snapshot["allowedPrefixes"]["studentMini"] == ["/pages/student/", "/pages/common/"]
-    assert snapshot["allowedPrefixes"]["teacherMini"] == ["/pages/teacher/", "/pages/common/"]
+    assert snapshot["allowedPrefixes"]["studentMini"] == [
+        "/pages/student/", "/pages/student-internship/", "/pages/common/",
+    ]
+    assert snapshot["allowedPrefixes"]["teacherMini"] == [
+        "/pages/teacher/", "/pages/teacher-internship/", "/pages/common/",
+    ]
 
 
 def test_adapter_only_reads_from_the_two_existing_authorities():
@@ -260,4 +264,6 @@ def test_affairs_keys_never_send_students_into_teacher_pages():
         path = messages.ACTION_REGISTRY[key].get("studentMini")
         if not path:
             continue
-        assert path.startswith(("/pages/student/", "/pages/common/")), f"{key} -> {path}"
+        assert path.startswith((
+            "/pages/student/", "/pages/student-internship/", "/pages/common/",
+        )), f"{key} -> {path}"

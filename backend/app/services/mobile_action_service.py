@@ -39,8 +39,16 @@ _MINI_CLIENTS = frozenset({CLIENT_STUDENT_MINI, CLIENT_TEACHER_MINI})
 
 #: 每个端只允许跳自己的分包与共享页，越界一律 fail-closed。
 _ALLOWED_PREFIXES: dict[str, tuple[str, ...]] = {
-    CLIENT_STUDENT_MINI: ("/pages/student/", "/pages/common/"),
-    CLIENT_TEACHER_MINI: ("/pages/teacher/", "/pages/common/"),
+    CLIENT_STUDENT_MINI: (
+        "/pages/student/",
+        "/pages/student-internship/",
+        "/pages/common/",
+    ),
+    CLIENT_TEACHER_MINI: (
+        "/pages/teacher/",
+        "/pages/teacher-internship/",
+        "/pages/common/",
+    ),
 }
 
 _NO_TARGET_REASON = "当前端暂无安全处理入口"
