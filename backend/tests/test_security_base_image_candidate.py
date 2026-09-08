@@ -57,8 +57,10 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
     def test_runtime_is_built_from_micro_installroot_not_python_base(self):
         text = DOCKERFILE.read_text()
         self.assertIn('FROM ${RUNTIME_BASE_IMAGE} AS micro-root', text)
-        self.assertIn('--installroot="$INSTALL_ROOT"', text)
-        self.assertIn('install python3.12 ca-certificates tzdata', text)
+        self.assertIn('dnf install', text)
+        self.assertIn('--installroot "$INSTALL_ROOT"', text)
+        self.assertIn('python3.12 ca-certificates tzdata', text)
+        self.assertIn('dnf clean all --installroot "$INSTALL_ROOT"', text)
         self.assertIn('FROM scratch', text)
         self.assertIn('COPY --from=rootfs /runtime-root/ /', text)
         self.assertNotIn('rpm -e --nodeps', text)
