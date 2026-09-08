@@ -179,11 +179,17 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
       }
 
       // A successful API request does not mean Vue has rendered its own context.
-      // Wait for the actual rail, then assert the complete purchased core set;
-      // an empty loading shell must not pass the zero-module case by accident.
-      await expect(page.locator('.bpl-rail')).toBeVisible({ timeout: 30_000 })
+      // First require the real shared shell. For mask=0 the correct UI has no
+      // primary rail because there are no purchased core modules; treating that
+      // absence as a loading failure would make the zero-module contract impossible.
+      await expect(page.locator('.base-portal-layout')).toBeVisible({ timeout: 30_000 })
       const coreLabels = new Set(Object.values(CORE).map((contract) => contract.label))
       const expectedRail = [...selected].map((key) => CORE[key].label).sort()
+      if (expectedRail.length) {
+        await expect(page.locator('.bpl-rail')).toBeVisible({ timeout: 30_000 })
+      } else {
+        await expect(page.locator('.bpl-rail')).toHaveCount(0)
+      }
       await expect.poll(async () => (
         (await page.locator('.bpl-rail__lb').allInnerTexts())
           .filter((label) => coreLabels.has(label)).sort()
