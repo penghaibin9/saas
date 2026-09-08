@@ -38,7 +38,7 @@ jobs:
           echo "MAIN_HEAD=$(git rev-parse origin/main)"
           git merge-base --is-ancestor 457dc8821876b8e1b67e0fb5911a9eec33e37616 HEAD
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

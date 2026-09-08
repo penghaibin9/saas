@@ -70,7 +70,7 @@ jobs:
           git diff --check
           git status --short
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.prepare.outcome == 'success'
         with:
           python-version: '3.12'
