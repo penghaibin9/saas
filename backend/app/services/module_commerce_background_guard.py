@@ -4,8 +4,12 @@ HTTP routes receive the M4 final-commit fence through the canonical module gate.
 Recurring schedulers do not have HTTP request intent or a durable task generation,
 so their current-generation business calls are wrapped here. Unpurchased/frozen
 modules are expected skips; authority/storage failures still propagate fail-closed.
-Audit/outbox/control-plane workers are intentionally not wrapped because they must
-continue carrying compliance evidence while a module is frozen or retained.
+
+Only module-owned business writers belong in ``_TARGETS``. Shared approval export,
+message/outbox delivery, document derivatives, frozen-package integrity workers and
+control-plane maintenance remain outside this guard: stopping one purchased module
+must never stop cross-module compliance evidence or another module's shared job.
+Those shared resources are resolved by object ownership/dependency policy during M5.
 """
 from __future__ import annotations
 
@@ -16,13 +20,33 @@ import logging
 _LOG = logging.getLogger("platform.module-commerce-background")
 
 _TARGETS: tuple[tuple[str, str, str], ...] = (
+    # Internship business state.
     ("app.modules.internship.services.internship_leave_service", "refresh_overdue", "internship"),
+
+    # Student-affairs business state and tenant-scoped business exports. Generic
+    # approval/file/message workers are intentionally not included because they are
+    # shared foundations and require object-bound ownership rather than a broad gate.
     ("app.services.affairs_appeal_repair_service", "repair_pending", "studentAffairs"),
     ("app.services.affairs_leave_export_service", "run_pending", "studentAffairs"),
+    ("app.services.affairs_funding_export_service", "run_pending", "studentAffairs"),
     ("app.services.affairs_archive_service", "run_pending_packages", "studentAffairs"),
     ("app.services.affairs_leave_service", "scan_overdue", "studentAffairs"),
     ("app.services.affairs_risk_service", "scan_timeout", "studentAffairs"),
     ("app.services.affairs_counselor_service", "scan_expired_temps", "studentAffairs"),
+
+    # Academic-affairs recurring writers. These can create durable academic facts or
+    # deadline state, so a tenant being writable is not enough: the purchased module
+    # and the same module generation must still be writable at final commit.
+    (
+        "app.modules.academic_affairs.services.academic_affairs_change_temporal_guard",
+        "apply_due_changes",
+        "academicAffairs",
+    ),
+    (
+        "app.modules.academic_affairs.services.academic_affairs_grade_deadline_scheduler_service",
+        "scan_grade_deadlines",
+        "academicAffairs",
+    ),
 )
 
 
@@ -86,8 +110,19 @@ def _wrap(module, function_name: str, module_key: str) -> bool:
 
 
 def install() -> int:
+    """Install every reviewed module-owned recurring writer exactly once.
+
+    Import/name drift is a deployment error, not a reason to silently leave a
+    production writer unfenced. Therefore missing target modules/functions fail
+    startup instead of being swallowed.
+    """
     installed = 0
     for module_name, function_name, module_key in _TARGETS:
         module = importlib.import_module(module_name)
+        original = getattr(module, function_name, None)
+        if not callable(original):
+            raise RuntimeError(
+                f"module commerce background writer missing: {module_name}.{function_name}"
+            )
         installed += int(_wrap(module, function_name, module_key))
     return installed
