@@ -10,7 +10,9 @@ from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
 from app.services import platform_defaults as D
 from app.services.commercial_catalog_contract import ContractError, Snapshot, compile_sku
-from sqlalchemy.exc import IntegrityError
+from time import sleep
+
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 
 APPROVED_FEATURE_SCOPES: dict[str, tuple[str, ...]] = {
@@ -74,7 +76,35 @@ def get_sku_snapshot(sku_code: str, revision: int, *, published_only: bool = Tru
         db.close()
 
 
+_MAX_PUBLISH_ATTEMPTS = 4
+
+
 def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> dict:
+    """Publish atomically; retry only a confirmed, fully rolled-back deadlock.
+
+    Never retry a lost connection/unknown commit result, a business conflict or
+    an audit outage. Each attempt owns a fresh session and closes it before any
+    backoff. The immutable unique key still decides the winner and replay.
+    """
+    for attempt in range(_MAX_PUBLISH_ATTEMPTS):
+        try:
+            return _publish_sku_once(payload, reason=reason, actor_id=actor_id)
+        except OperationalError as exc:
+            args = getattr(exc.orig, "args", ())
+            if exc.connection_invalidated or not args or args[0] != 1213:
+                raise
+            if attempt + 1 == _MAX_PUBLISH_ATTEMPTS:
+                raise AppException(
+                    "COMMERCIAL_PUBLISH_BUSY",
+                    "商品发布并发繁忙，本次事务已回滚，请使用相同内容重试",
+                    details={"retryable": True},
+                    http_status=503,
+                ) from exc
+            sleep(0.01 * (2 ** attempt))
+    raise AssertionError("unreachable publication retry state")
+
+
+def _publish_sku_once(payload: dict, *, reason: str, actor_id: int | None = None) -> dict:
     _require_db()
     from sqlalchemy import select
     from app.models import CommercialSkuVersion
@@ -98,11 +128,14 @@ def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> d
         except ContractError as exc:
             raise AppException("VALIDATION_ERROR", str(exc), http_status=422) from exc
         data = snapshot.as_dict()
+        # The snapshot is immutable: this is only an optimistic replay check.
+        # Do not gap-lock a missing version before INSERT. The database unique
+        # constraint serializes publishers; duplicate losers read after rollback.
         existing = db.scalars(select(CommercialSkuVersion).where(
             CommercialSkuVersion.sku_code == data["skuCode"],
             CommercialSkuVersion.sku_revision == int(data["revision"]),
             CommercialSkuVersion.is_deleted.is_(False),
-        ).with_for_update()).first()
+        )).first()
         if existing is not None:
             if existing.content_hash != snapshot.content_hash:
                 raise AppException("DATA_CONFLICT", "同一SKU版本已经发布且内容不可修改", http_status=409)
@@ -163,8 +196,9 @@ def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> d
             tenant_id=0,
             resource_id=str(row.id),
         )
-        db.commit()
-        return {
+        # Build the response before COMMIT so a post-commit lazy read cannot
+        # accidentally cause the outer wrapper to replay an already committed write.
+        response = {
             "skuCode": row.sku_code,
             "revision": int(row.sku_revision),
             "contentHash": row.content_hash,
@@ -172,6 +206,8 @@ def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> d
             "version": int(row.version or 0),
             "replayed": False,
         }
+        db.commit()
+        return response
     except Exception:
         db.rollback()
         raise

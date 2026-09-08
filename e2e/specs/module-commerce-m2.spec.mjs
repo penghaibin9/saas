@@ -152,10 +152,16 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
         expect(hasAny(moduleEntitlements, contract.contextKeys), `${session.mask}:${moduleKey}:context`).toBe(expected)
       }
 
-      const railLabels = await page.locator('.bpl-rail__lb').allInnerTexts()
-      for (const [moduleKey, contract] of Object.entries(CORE)) {
-        expect(railLabels.includes(contract.label), `${session.mask}:${moduleKey}:rail`).toBe(selected.has(moduleKey))
-      }
+      // A successful API request does not mean Vue has rendered its own context.
+      // Wait for the actual rail, then assert the complete purchased core set;
+      // an empty loading shell must not pass the zero-module case by accident.
+      await expect(page.locator('.bpl-rail')).toBeVisible({ timeout: 30_000 })
+      const coreLabels = new Set(Object.values(CORE).map((contract) => contract.label))
+      const expectedRail = [...selected].map((key) => CORE[key].label).sort()
+      await expect.poll(async () => (
+        (await page.locator('.bpl-rail__lb').allInnerTexts())
+          .filter((label) => coreLabels.has(label)).sort()
+      ), { message: `${session.mask}:exact-rendered-core-rail`, timeout: 30_000 }).toEqual(expectedRail)
 
       const row = {
         mask: session.mask,

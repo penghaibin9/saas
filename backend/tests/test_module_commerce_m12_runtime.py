@@ -72,13 +72,15 @@ def _mysql():
     if get_engine().dialect.name != "mysql": pytest.skip("MySQL concurrency proof")
 
 
-def test_m1_concurrent_publish_and_order_idempotency(db_mode):
+@pytest.mark.parametrize("round_id", range(4))
+def test_m1_concurrent_publish_and_order_idempotency(db_mode, round_id):
     _mysql()
     from app.db.session import get_sessionmaker
-    from app.models import CommercialOrderItem, CommercialSkuVersion, PlatformOrder
+    from app.models import CommercialOrderItem, CommercialSkuVersion, PlatformOrder, SecurityAuditLog
     from app.services import commercial_catalog_service as catalog, commercial_order_item_service as item_svc
-    tid=BASE+1; _seed_tenant(tid)
-    payload={"skuCode":"M12-CONCURRENT","revision":1,"name":"并发商品","productType":"MODULE",
+    tid=BASE+1+round_id*10000; _seed_tenant(tid)
+    sku_code=f"M12-CONCURRENT-{round_id}"
+    payload={"skuCode":sku_code,"revision":1,"name":"并发商品","productType":"MODULE",
              "moduleKey":"internship","features":{"internship":True,"studentProfile":True},"quotas":{},
              "pricePolicy":{"unitPrice":"100.00","currency":"CNY","taxTreatment":"UNSPECIFIED"},
              "lifecyclePolicyVersion":"M12-TEST-1"}
@@ -86,15 +88,20 @@ def test_m1_concurrent_publish_and_order_idempotency(db_mode):
     def pub(_): barrier.wait(10); return catalog.publish_sku(payload, reason="并发发布不可变商品")
     with ThreadPoolExecutor(max_workers=8) as pool: published=list(pool.map(pub,range(8)))
     assert sum(not r["replayed"] for r in published)==1
-    snapshot=catalog.get_sku_snapshot("M12-CONCURRENT",1); body=_body(tid,[snapshot]); barrier=threading.Barrier(8)
-    def create(_): barrier.wait(10); return item_svc.create_itemized_order(body,idempotency_key="m12-concurrent-order",actor_id="7")
+    snapshot=catalog.get_sku_snapshot(sku_code,1); body=_body(tid,[snapshot]); barrier=threading.Barrier(8)
+    def create(_): barrier.wait(10); return item_svc.create_itemized_order(body,idempotency_key=f"m12-concurrent-order-{round_id}",actor_id="7")
     with ThreadPoolExecutor(max_workers=8) as pool: orders=list(pool.map(create,range(8)))
     assert len({r["orderNo"] for r in orders})==1 and sum(not r["replayed"] for r in orders)==1
     db=get_sessionmaker()()
     try:
-        assert len(db.scalars(select(CommercialSkuVersion).where(CommercialSkuVersion.sku_code=="M12-CONCURRENT")).all())==1
+        assert len(db.scalars(select(CommercialSkuVersion).where(CommercialSkuVersion.sku_code==sku_code)).all())==1
         assert len(db.scalars(select(PlatformOrder).where(PlatformOrder.tenant_id==tid)).all())==1
         assert len(db.scalars(select(CommercialOrderItem).where(CommercialOrderItem.tenant_id==tid)).all())==1
+        assert len(db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.tenant_id==0,
+            SecurityAuditLog.action=="COMMERCIAL_SKU_PUBLISH",
+            SecurityAuditLog.resource==f"sku:{sku_code}:1",
+        )).all())==1
     finally: db.close()
 
 
@@ -182,3 +189,95 @@ def test_m2_legacy_classifier_never_manufactures_sources(db_mode):
     for source in ("PAID_ORDER","LEGACY_PAID_ORDER","TRIAL","CONTROLLED_EXCEPTION","PACKAGE_NOT_FOUND"):
         row=subs.classify_legacy_authority({"authoritySource":source})
         assert row["autoCutoverAllowed"] is False and row["moduleSourcesCreated"] is False
+
+
+def test_m1_catalog_deadlock_after_audit_retries_atomically(db_mode, monkeypatch):
+    """Inject 1213 after a real audit flush; verify the real MySQL rollback."""
+    _mysql()
+    from sqlalchemy.exc import OperationalError
+    from app.db.session import get_sessionmaker
+    from app.models import CommercialSkuVersion, SecurityAuditLog
+    from app.services import audit_log
+
+    original = audit_log.record_critical_in_session
+    attempts = []
+
+    def deadlock_after_first_audit(db, action, resource, **kwargs):
+        original(db, action, resource, **kwargs)
+        attempts.append(id(db))
+        if len(attempts) == 1:
+            raise OperationalError("injected after real audit", {}, Exception(1213, "deadlock"))
+
+    monkeypatch.setattr(audit_log, "record_critical_in_session", deadlock_after_first_audit)
+    _sku("internship", code="M12-RETRY-AUDIT")
+    assert len(attempts) == 2
+    db = get_sessionmaker()()
+    try:
+        assert len(db.scalars(select(CommercialSkuVersion).where(
+            CommercialSkuVersion.sku_code == "M12-RETRY-AUDIT")).all()) == 1
+        assert len(db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.action == "COMMERCIAL_SKU_PUBLISH",
+            SecurityAuditLog.resource == "sku:M12-RETRY-AUDIT:1")).all()) == 1
+    finally:
+        db.close()
+
+
+def test_m1_catalog_audit_outage_rolls_back_without_retry(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import CommercialSkuVersion, SecurityAuditLog
+    from app.services import audit_log
+
+    calls = []
+
+    def audit_outage(*args, **kwargs):
+        calls.append(1)
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(audit_log, "record_critical_in_session", audit_outage)
+    with pytest.raises(RuntimeError, match="audit unavailable"):
+        _sku("internship", code="M12-SKU-AUDIT-DOWN")
+    assert len(calls) == 1
+    db = get_sessionmaker()()
+    try:
+        assert not db.scalars(select(CommercialSkuVersion).where(
+            CommercialSkuVersion.sku_code == "M12-SKU-AUDIT-DOWN")).all()
+        assert not db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.resource == "sku:M12-SKU-AUDIT-DOWN:1")).all()
+    finally:
+        db.close()
+
+
+def test_m1_concurrent_different_sku_content_stays_conflict(db_mode):
+    _mysql()
+    from app.db.session import get_sessionmaker
+    from app.models import CommercialSkuVersion, SecurityAuditLog
+    from app.services import commercial_catalog_service as catalog
+
+    barrier = threading.Barrier(8)
+    def publish(index):
+        payload = {"skuCode": "M12-CONTENT-RACE", "revision": 1,
+                   "name": f"immutable alternative {index % 2}", "productType": "MODULE",
+                   "moduleKey": "internship", "features": {"internship": True},
+                   "quotas": {}, "pricePolicy": {"unitPrice": "100.00", "currency": "CNY",
+                   "taxTreatment": "UNSPECIFIED"}, "lifecyclePolicyVersion": "M12-TEST-1"}
+        barrier.wait(10)
+        try:
+            return catalog.publish_sku(payload, reason="不可变商品内容竞争验收")
+        except AppException as exc:
+            assert exc.http_status == 409 and exc.code == "DATA_CONFLICT"
+            return {"conflict": True}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(publish, range(8)))
+    successes = [row for row in results if not row.get("conflict")]
+    assert len(successes) == 4 and sum(not row["replayed"] for row in successes) == 1
+    assert len({row["contentHash"] for row in successes}) == 1
+    db = get_sessionmaker()()
+    try:
+        assert len(db.scalars(select(CommercialSkuVersion).where(
+            CommercialSkuVersion.sku_code == "M12-CONTENT-RACE")).all()) == 1
+        assert len(db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.action == "COMMERCIAL_SKU_PUBLISH",
+            SecurityAuditLog.resource == "sku:M12-CONTENT-RACE:1")).all()) == 1
+    finally:
+        db.close()
