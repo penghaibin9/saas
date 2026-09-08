@@ -17,12 +17,13 @@ EXECUTABLE_DIRS = tuple(Path(value) for value in (
 ))
 # Exact CLI names removed by Dockerfile.security after build-time setup. Python is
 # the only production command interpreter; POSIX shells are explicitly absent.
-# This is attack-surface reduction, not a vulnerability waiver. Package inventory
-# remains available to Trivy through /var/lib/dpkg.
+# This is attack-surface reduction, not a vulnerability waiver. Native RPM/dpkg
+# inventory remains available to Trivy in the final image.
 DISALLOWED_RUNTIME_TOOLS = (
     "apt", "apt-get", "apt-cache", "apt-cdrom", "apt-config", "apt-mark",
     "dpkg", "dpkg-deb", "dpkg-divert", "dpkg-maintscript-helper", "dpkg-query",
     "dpkg-realpath", "dpkg-split", "dpkg-statoverride", "dpkg-trigger", "update-alternatives",
+    "microdnf", "dnf", "yum", "rpm", "rpmkeys", "rpm2cpio", "rpmdb", "rpmquery",
     "curl", "wget", "git", "ssh", "scp", "sftp", "nc", "netcat", "ncat", "socat",
     "telnet", "ftp", "su", "passwd", "chfn", "chsh", "chpasswd", "useradd", "userdel",
     "usermod", "groupadd", "groupdel", "groupmod", "gpasswd", "newgrp", "mount", "umount",
@@ -30,8 +31,6 @@ DISALLOWED_RUNTIME_TOOLS = (
     "getfacl", "setfacl", "pcre2grep", "grep", "egrep", "fgrep",
     "sh", "dash", "bash",
 )
-# Perl's versioned interpreter path changes with the Debian point release. Fail closed
-# on all runtime executable names beginning with perl rather than pinning one basename.
 DISALLOWED_RUNTIME_PREFIXES = ("perl",)
 
 
@@ -76,7 +75,6 @@ def filesystem(root: Path = ROOT) -> None:
         folder = root / relative
         if folder.is_symlink() or not folder.is_dir():
             raise RuntimeError("WRITABLE_DIRECTORY_INVALID")
-        # Only create/delete a uniquely named probe file, never modify business data.
         with tempfile.TemporaryFile(dir=folder) as stream:
             stream.write(b"probe")
             stream.flush()

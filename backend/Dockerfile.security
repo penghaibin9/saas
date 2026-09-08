@@ -1,21 +1,37 @@
 # Build from REPOSITORY ROOT, not backend/: shared runtime contracts are required.
-# Build a release, scan it, publish it, then pin APP_IMAGE to its registry digest.
-# Historical Dockerfile/volumes are deliberately not changed by this profile.
+# PYTHON_BASE_IMAGE must be a reviewed immutable digest. The Dockerfile supports
+# Debian during disposable compatibility checks, while the security-image gate
+# uses the maintained UBI9 Python 3.12 minimal runtime to avoid Debian CVEs that
+# remain unfixed in trixie. The final scanner always audits the actual image.
 ARG PYTHON_BASE_IMAGE
 FROM ${PYTHON_BASE_IMAGE} AS wheels
+USER 0
 WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
-    && rm -rf /var/lib/apt/lists/*
+RUN if command -v microdnf >/dev/null 2>&1; then \
+      microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 update \
+      && microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 install gcc python3.12-devel \
+      && microdnf -y clean all --enablerepo='*'; \
+    else \
+      apt-get update -o APT::Update::Error-Mode=any \
+      && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY backend/requirements.txt ./requirements.txt
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
 
 FROM ${PYTHON_BASE_IMAGE}
-# Apply available distribution fixes in the FINAL image, not only the builder.
-# Failed index updates abort. Keep dpkg inventory so unfixed findings stay visible.
-# Re-scan/pin the final image; an apt upgrade is not evidence of zero vulnerabilities.
-RUN apt-get update -o APT::Update::Error-Mode=any \
-    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+USER 0
+# Apply all available distribution fixes in the FINAL image. Keep /var/lib/dpkg metadata
+# on the Debian compatibility path and keep the UBI RPM database too: Trivy must see
+# the real native package inventory rather than a scanner-blind filesystem copy.
+RUN if command -v microdnf >/dev/null 2>&1; then \
+      microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 update \
+      && microdnf -y clean all --enablerepo='*'; \
+    else \
+      apt-get update -o APT::Update::Error-Mode=any \
+      && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 WORKDIR /app/backend
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend
 COPY backend/requirements.txt ./requirements.txt
@@ -25,9 +41,6 @@ RUN pip install --no-cache-dir --no-index --find-links /tmp/wheels -r requiremen
 COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./alembic.ini
-# Runtime image gets only scripts referenced by the production profile, health
-# checks, scheduler, or security audit. Do not ship maintenance/bootstrap/audit
-# one-shots that expand post-compromise tooling inside the web container.
 RUN mkdir -p ./scripts
 COPY backend/scripts/security_profile_probe.py \
      backend/scripts/security_runtime_launcher.py \
@@ -38,17 +51,12 @@ COPY backend/scripts/security_profile_probe.py \
      backend/scripts/check_crypto_compatibility.py \
      ./scripts/
 COPY shared /app/shared
-# Only schema/contract documentation, not the entire audit/history collection.
 COPY docs/architecture /app/docs/architecture
-# no-new-privileges already blocks privilege gain at runtime; stripping SUID/SGID
-# bits too removes that executable escalation primitive from the shipped image.
-# Keep /var/lib/dpkg metadata so vulnerability scanners still see installed OS
-# packages, but remove package/network/account/shell administration CLIs not used
-# by any production entrypoint. This narrows post-compromise tooling; it is NOT a
-# substitute for fixing vulnerable packages and does not relax the Trivy gate.
-RUN groupadd --gid 10001 schoolapp \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin schoolapp \
-    && mkdir -p /app/backend/data /app/backend/uploads /app/backend/exports \
+# Numeric UID keeps the application independent of image-specific passwd data.
+# Strip set-id bits and remove administration/network/shell CLIs after all build
+# work. Package databases remain intact; this is attack-surface reduction, never
+# a vulnerability-scan suppression mechanism.
+RUN mkdir -p /app/backend/data /app/backend/uploads /app/backend/exports \
     && chown 10001:10001 /app/backend/data /app/backend/uploads /app/backend/exports \
     && chmod 0770 /app/backend/data /app/backend/uploads /app/backend/exports \
     && find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} + \
@@ -56,6 +64,7 @@ RUN groupadd --gid 10001 schoolapp \
     && for tool in apt apt-get apt-cache apt-cdrom apt-config apt-mark \
          dpkg dpkg-deb dpkg-divert dpkg-maintscript-helper dpkg-query dpkg-realpath \
          dpkg-split dpkg-statoverride dpkg-trigger update-alternatives \
+         microdnf dnf yum rpm rpmkeys rpm2cpio rpmdb rpmquery \
          curl wget git ssh scp sftp nc netcat ncat socat telnet ftp \
          su passwd chfn chsh chpasswd useradd userdel usermod \
          groupadd groupdel groupmod gpasswd newgrp mount umount nsenter \
@@ -68,7 +77,6 @@ RUN groupadd --gid 10001 schoolapp \
        done
 USER 10001:10001
 EXPOSE 8000
-# No password/ops token on process argv. Parse readiness JSON, not a fragile grep.
 HEALTHCHECK --interval=30s --timeout=8s --start-period=60s --retries=3 \
     CMD ["python", "scripts/security_profile_probe.py", "ready"]
 CMD ["python", "scripts/security_runtime_launcher.py", "backend"]

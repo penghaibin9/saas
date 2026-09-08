@@ -32,9 +32,9 @@ PROBE = load_probe()
 
 
 class SecurityProductionImageSurfaceContracts(unittest.TestCase):
-    def test_production_scan_is_explicit_trixie_after_bookworm_comparison(self):
+    def test_production_scan_uses_reviewed_ubi_python312_minimal(self):
         text = WORKFLOW.read_text()
-        self.assertIn('export PYTHON_BASE_TAG="python:3.12-slim-trixie"', text)
+        self.assertIn('export PYTHON_BASE_TAG="registry.access.redhat.com/ubi9/python-312-minimal:9.8"', text)
         self.assertNotIn('python:3.12-slim-bookworm', text)
         self.assertNotIn('python:3.12-alpine', text)
 
@@ -71,6 +71,19 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
         self.assertIn('-exec chmod a-s {} +', text)
         self.assertLess(text.index(find), text.index('USER 10001:10001'))
 
+    def test_final_image_keeps_native_inventory_but_removes_admin_tools(self):
+        text = DOCKERFILE.read_text()
+        self.assertNotIn('rm -rf /var/lib/dpkg', text)
+        self.assertNotIn('rm -rf /usr/lib/sysimage/rpm', text)
+        match = re.search(r'for tool in (.*?); do', text, flags=re.S)
+        self.assertIsNotNone(match)
+        docker_tools = set(match.group(1).replace('\\\n', ' ').split())
+        self.assertEqual(docker_tools, set(PROBE.DISALLOWED_RUNTIME_TOOLS))
+        for required in ('python', 'uvicorn', 'alembic'):
+            self.assertNotIn(required, docker_tools)
+        for tool in ('sh', 'dash', 'bash', 'microdnf', 'rpm', 'apt-get', 'dpkg'):
+            self.assertIn(tool, docker_tools)
+
     def test_native_runtime_surface_check_is_mandatory_before_scan(self):
         text = WORKFLOW.read_text()
         surface = text.index('- name: Verify shell-free runtime and production entrypoint families')
@@ -78,6 +91,7 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
         self.assertLess(surface, scan)
         block = text[surface:scan]
         self.assertIn('python scripts/security_profile_probe.py image', block)
+        self.assertIn('import app.main', block)
         for name in EXPECTED_RUNTIME_SCRIPTS:
             self.assertIn(name, block)
         self.assertIn('/bin/sh', block)
@@ -92,28 +106,10 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
         self.assertIn("--vex ''", text)
         self.assertIn('Require fresh matching image evidence and zero blocking findings', text)
 
-    def test_dockerfile_cli_pruning_matches_runtime_probe_contract(self):
-        text = DOCKERFILE.read_text()
-        match = re.search(r'for tool in (.*?); do', text, flags=re.S)
-        self.assertIsNotNone(match)
-        docker_tools = set(match.group(1).replace('\\\n', ' ').split())
-        self.assertEqual(docker_tools, set(PROBE.DISALLOWED_RUNTIME_TOOLS))
-        for required in ('python', 'uvicorn', 'alembic'):
-            self.assertNotIn(required, docker_tools)
-        for shell in ('sh', 'dash', 'bash'):
-            self.assertIn(shell, docker_tools)
-
-    def test_cli_pruning_runs_after_account_creation_and_before_nonroot_switch(self):
-        text = DOCKERFILE.read_text()
-        self.assertLess(text.index('useradd --uid 10001'), text.index('for tool in apt apt-get'))
-        self.assertLess(text.index('for tool in apt apt-get'), text.index('USER 10001:10001'))
-        self.assertIn('Keep /var/lib/dpkg metadata', text)
-        self.assertNotIn('rm -rf /var/lib/dpkg', text)
-
-    def test_runtime_probe_rejects_disallowed_regular_cli(self):
+    def test_probe_rejects_disallowed_regular_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            path = folder / 'apt-get'
+            path = folder / 'microdnf'
             path.write_text('fixture')
             path.chmod(0o755)
             with self.assertRaisesRegex(RuntimeError, 'DISALLOWED_RUNTIME_TOOL_PRESENT'):
@@ -147,7 +143,7 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
         surface = text.index('- name: Verify shell-free runtime and production entrypoint families')
         scan = text.index('- name: Scan OS and language packages')
         block = text[surface:scan]
-        for evidence in ('uvicorn --help', 'alembic --help',
+        for evidence in ('uvicorn --help', 'alembic --help', 'import app.main',
                          'security_runtime_launcher.py', 'scripts/run_scheduled_jobs.py',
                          'app/workers/file_scan_worker.py'):
             self.assertIn(evidence, block)

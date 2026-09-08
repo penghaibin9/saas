@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed policy for an actual Trivy image report, not a source-only audit.
-
-The workflow pins the scanner, updates its DB, includes OS and Python packages,
-uses no ignore file/policy and scans the exact built image. This validator binds
-that report to the build receipt. Passing never constitutes release approval.
-No raw report fields, exception messages, package paths or image environment are
-printed. The retained JSON report is for controlled vulnerability triage.
-"""
+"""Fail-closed policy for an actual Trivy image report, not a source-only audit."""
 from __future__ import annotations
 
 import argparse
@@ -20,12 +13,18 @@ SEVERITIES = ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL")
 BLOCKING = frozenset({"UNKNOWN", "HIGH", "CRITICAL"})
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 IMAGE_ID = re.compile(r"sha256:[a-f0-9]{64}\Z")
-BASE_DIGEST = re.compile(r"(?:docker\.io/library/)?python@sha256:[a-f0-9]{64}\Z")
+# The workflow owns the reviewed tag choice. The receipt must contain an immutable
+# digest from either the historical Docker Hub Python base or the reviewed UBI9
+# Python 3.12 minimal base; mutable tags can never satisfy this identity check.
+BASE_DIGEST = re.compile(
+    r"(?:(?:docker\.io/library/)?python|registry\.access\.redhat\.com/ubi9/python-312-minimal)"
+    r"@sha256:[a-f0-9]{64}\Z"
+)
 MAX_REPORT_BYTES = 64 * 1024 * 1024
 
 
 class InvalidEvidence(ValueError):
-    """Only constant identifiers are used as error messages."""
+    pass
 
 
 def require(condition: bool, reason: str) -> None:
@@ -48,7 +47,6 @@ def _timestamp(value) -> datetime:
 
 
 def evaluate(report, receipt, *, source_sha: str, head_sha: str, now=None) -> dict:
-    """Validate identity/completeness first, then count every returned finding."""
     require(bool(SHA.fullmatch(source_sha)) and bool(SHA.fullmatch(head_sha)), "EXPECTED_COMMIT_INVALID")
     require(isinstance(receipt, dict), "BUILD_RECEIPT_REQUIRED")
     require(receipt.get("sourceSha") == source_sha and receipt.get("headSha") == head_sha,
@@ -139,12 +137,10 @@ def main(argv=None) -> int:
                            read_json(args.build_receipt, limit=16384),
                            source_sha=args.expected_source_sha, head_sha=args.expected_head_sha)
     except (InvalidEvidence, OSError, ValueError, TypeError, OverflowError, RecursionError) as exc:
-        # Never echo malformed evidence, raw scan output or filesystem errors.
         summary = {"scanEvidenceValid": False, "imageAuditPassed": False, "releaseApproved": False,
                    "errors": [str(exc) if isinstance(exc, InvalidEvidence) else "EVIDENCE_NOT_VALIDATED"]}
     try:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        # Never replace a previous receipt, even after a failed scan.
         with args.output.open("x", encoding="utf-8") as stream:
             json.dump(summary, stream, indent=2)
             stream.write("\n")
