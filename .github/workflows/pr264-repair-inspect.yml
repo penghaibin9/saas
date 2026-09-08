@@ -20,35 +20,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Inspect recorded failures (read-only)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os, re, urllib.request
-          root = 'https://api.github.com/repos/penghaibin9/saas'
-          token = os.environ['GH_TOKEN']
-          def get(path):
-              request = urllib.request.Request(root + path, headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json'})
-              with urllib.request.urlopen(request, timeout=60) as response:
-                  return response.read().decode('utf-8-sig', errors='replace')
-          run_ids = [34123793952, 34123794039, 34123793936, 34123793960, 34123793780, 34123793795, 34123794008, 34123793984, 34123793963]
-          for run_id in run_ids:
-              jobs = json.loads(get(f'/actions/runs/{run_id}/jobs?per_page=100'))['jobs']
-              for job in jobs:
-                  if job['conclusion'] != 'failure':
-                      continue
-                  print(f'::group::FAILED JOB {run_id} / {job["id"]} / {job["name"]}', flush=True)
-                  lines = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', get(f'/actions/jobs/{job["id"]}/logs')).splitlines()
-                  hits = [i for i, line in enumerate(lines) if re.search(r'FAILED tests/|ERROR tests/|short test summary|not ok |AssertionError|\[error\]|FAIL |Error:|❌|^.*\d+ failed', line)]
-                  selected = set()
-                  for hit in hits:
-                      selected.update(range(max(0, hit - 3), min(len(lines), hit + 9)))
-                  for i in sorted(selected)[-200:]:
-                      print(lines[i][:1800])
-                  print('::endgroup::', flush=True)
-          PY
       - name: Inspect merge conflicts in disposable checkout (no push)
         shell: bash
         run: |
@@ -68,3 +39,42 @@ jobs:
           git ls-files | grep -E '(^|/)(AGENTS|CLAUDE)\.md$|copilot-instructions\.md$' || true
           echo '::endgroup::'
           echo 'Inspection only: no tests run, no merge committed, no release approval.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Inspect recorded failures (read-only)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, urllib.request
+          root = 'https://api.github.com/repos/penghaibin9/saas'
+          token = os.environ['GH_TOKEN']
+          def get(path):
+              request = urllib.request.Request(root + path, headers={'Accept': 'application/vnd.github+json'})
+              # Signed blob redirects must not receive the GitHub API Authorization header.
+              request.add_unredirected_header('Authorization', 'Bearer ' + token)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return response.read().decode('utf-8-sig', errors='replace')
+          run_ids = [34123793952, 34123794039, 34123793936, 34123793960, 34123793780, 34123793795, 34123794008, 34123793984, 34123793963]
+          errors = []
+          for run_id in run_ids:
+              try:
+                  jobs = json.loads(get(f'/actions/runs/{run_id}/jobs?per_page=100'))['jobs']
+                  for job in jobs:
+                      if job['conclusion'] != 'failure':
+                          continue
+                      print(f'::group::FAILED JOB {run_id} / {job["id"]} / {job["name"]}', flush=True)
+                      lines = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', get(f'/actions/jobs/{job["id"]}/logs')).splitlines()
+                      hits = [i for i, line in enumerate(lines) if re.search(r'FAILED tests/|ERROR tests/|short test summary|not ok |AssertionError|\[error\]|FAIL |Error:|❌|^.*\d+ failed', line)]
+                      selected = set()
+                      for hit in hits:
+                          selected.update(range(max(0, hit - 3), min(len(lines), hit + 9)))
+                      for i in sorted(selected)[-120:]:
+                          print(lines[i][:1800])
+                      print('::endgroup::', flush=True)
+              except Exception as exc:
+                  errors.append(f'{run_id}: {type(exc).__name__}')
+                  print(f'Failed to retrieve run {run_id}: {type(exc).__name__}', flush=True)
+          if errors:
+              raise SystemExit('; '.join(errors))
+          PY
