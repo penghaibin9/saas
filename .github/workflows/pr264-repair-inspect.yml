@@ -1,80 +1,172 @@
-name: PR264 repair inspection (not a release gate)
+name: PR264 integration preparation (not a release gate)
 on:
   push:
     branches: [codex/academic-affairs-delivery-20260907]
     paths: [.github/workflows/pr264-repair-inspect.yml]
-  workflow_dispatch:
 permissions:
-  contents: read
-  actions: read
+  contents: write
 concurrency:
   group: pr264-repair-inspection
   cancel-in-progress: false
 jobs:
-  inspect:
+  prepare:
     if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/codex/academic-affairs-delivery-20260907'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      MAIN_SHA: b9ef56ff4e29fc76679c590964b7b3273c32d7f2
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Inspect merge conflicts in disposable checkout (no push)
+      - name: Read exact public repository revisions without persisted credentials
         shell: bash
         run: |
           set -euo pipefail
-          git status --short
-          git merge-base --is-ancestor 1ff31956ae9acbe763d723f2d12ebd051e724ff8 HEAD
-          base=b9ef56ff4e29fc76679c590964b7b3273c32d7f2
-          test "$(git rev-parse origin/main)" = "$base"
-          git -c user.name=PR264-Inspection -c user.email=pr264-inspection@users.noreply.github.com merge --no-commit --no-ff "$base" || test -n "$(git diff --name-only --diff-filter=U)"
-          echo '::group::CONFLICTED PATHS'
-          git diff --name-only --diff-filter=U
-          echo '::endgroup::'
-          echo '::group::CONFLICT HUNKS'
-          git diff --cc
-          echo '::endgroup::'
-          echo '::group::SCOPED INSTRUCTION FILES'
-          git ls-files | grep -E '(^|/)(AGENTS|CLAUDE)\.md$|copilot-instructions\.md$' || true
-          echo '::endgroup::'
-          echo 'Inspection only: no tests run, no merge committed, no release approval.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Inspect recorded failures (read-only)
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
+          git init -q
+          git remote add origin https://github.com/penghaibin9/saas.git
+          git fetch --quiet --no-tags origin "$GITHUB_SHA" "$MAIN_SHA"
+          git checkout --quiet --detach "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$MAIN_SHA"
+          test "$(git ls-remote origin "$GITHUB_REF" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name PR264-Repair
+          git config user.email pr264-repair@users.noreply.github.com
+          git -c core.quotePath=false merge --no-commit --no-ff "$MAIN_SHA" || test -n "$(git diff --name-only --diff-filter=U)"
+      - name: Reconcile the fourteen reviewed conflicts without discarding either business delivery
         shell: bash
         run: |
           python - <<'PY'
-          import json, os, re, urllib.request
-          root = 'https://api.github.com/repos/penghaibin9/saas'
-          token = os.environ['GH_TOKEN']
-          def get(path):
-              request = urllib.request.Request(root + path, headers={'Accept': 'application/vnd.github+json'})
-              # Signed blob redirects must not receive the GitHub API Authorization header.
-              request.add_unredirected_header('Authorization', 'Bearer ' + token)
-              with urllib.request.urlopen(request, timeout=60) as response:
-                  return response.read().decode('utf-8-sig', errors='replace')
-          run_ids = [34123793952, 34123794039, 34123793936, 34123793960, 34123793780, 34123793795, 34123794008, 34123793984, 34123793963]
-          errors = []
-          for run_id in run_ids:
-              try:
-                  jobs = json.loads(get(f'/actions/runs/{run_id}/jobs?per_page=100'))['jobs']
-                  for job in jobs:
-                      if job['conclusion'] != 'failure':
-                          continue
-                      print(f'::group::FAILED JOB {run_id} / {job["id"]} / {job["name"]}', flush=True)
-                      lines = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', get(f'/actions/jobs/{job["id"]}/logs')).splitlines()
-                      hits = [i for i, line in enumerate(lines) if re.search(r'FAILED tests/|ERROR tests/|short test summary|not ok |AssertionError|\[error\]|FAIL |Error:|❌|^.*\d+ failed', line)]
-                      selected = set()
-                      for hit in hits:
-                          selected.update(range(max(0, hit - 3), min(len(lines), hit + 9)))
-                      for i in sorted(selected)[-120:]:
-                          print(lines[i][:1800])
-                      print('::endgroup::', flush=True)
-              except Exception as exc:
-                  errors.append(f'{run_id}: {type(exc).__name__}')
-                  print(f'Failed to retrieve run {run_id}: {type(exc).__name__}', flush=True)
-          if errors:
-              raise SystemExit('; '.join(errors))
+          from pathlib import Path
+          import os, re, subprocess
+          main = os.environ['MAIN_SHA']
+          conflicts = subprocess.check_output(['git','diff','--name-only','--diff-filter=U','-z']).decode().strip('\0').split('\0')
+          expected = {
+            'docs/03-业务模块设计/教务中心/文档关联索引.md',
+            'docs/06-开发施工与质量验收/ai-prompts/04-教务核心业务四端分批落地固定提示词.md',
+            'frontend/src/components/business/ModulePageShell.vue',
+            'frontend/src/components/workspace/TeacherWorkspaceFrame.vue',
+            'frontend/src/components/workspace/teacherWorkspace.js',
+            'frontend/src/components/workspace/workspaceRouting.js',
+            'frontend/src/layouts/BasePortalLayout.vue',
+            'miniapp/src/pages/teacher/my-students/index.vue',
+            'shared/contracts/navigation-surface-contract.json',
+            'shared/generated/capability-registry.json',
+            'shared/generated/route-index.json',
+            'student-portal/src/layouts/PortalLayout.vue',
+            'student-portal/src/platform/workspaceNavigation.js',
+            'student-portal/src/styles/student-workspace.css',
+          }
+          assert set(conflicts) == expected, conflicts
+          main_blocks = {
+            'frontend/src/components/business/ModulePageShell.vue',
+            'student-portal/src/layouts/PortalLayout.vue',
+            'student-portal/src/platform/workspaceNavigation.js',
+            'student-portal/src/styles/student-workspace.css',
+            'shared/contracts/navigation-surface-contract.json',
+            'shared/generated/capability-registry.json',
+            'shared/generated/route-index.json',
+          }
+          marker = re.compile(r'^<<<<<<< .*\n(.*?)^=======\n(.*?)^>>>>>>> .*\n', re.M | re.S)
+          for filename in conflicts:
+              p = Path(filename)
+              text = p.read_text()
+              def resolve(m):
+                  ours, theirs = m.group(1), m.group(2)
+                  if filename in main_blocks: return theirs
+                  if filename.endswith('BasePortalLayout.vue'):
+                      if 'usesAcademicWorkspace' in ours: return ours
+                      if 'return getVisibleAdminMenu' in ours:
+                          return ours.replace('return getVisibleAdminMenu(this.ctx).map', "return getVisibleAdminMenu(this.ctx).filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench').map")
+                      return theirs
+                  if filename == 'miniapp/src/pages/teacher/my-students/index.vue':
+                      return theirs.replace('    this.reload()\n', '')
+                  return ours
+              text, count = marker.subn(resolve, text)
+              assert count and not re.search(r'^(<<<<<<<|=======|>>>>>>>)', text, re.M), filename
+              p.write_text(text)
+              print('RESOLVED', filename, count)
+          def replace(filename, old, new, count=1):
+              p=Path(filename); text=p.read_text()
+              assert text.count(old)==count, (filename,old,text.count(old))
+              p.write_text(text.replace(old,new))
+          frame='frontend/src/components/workspace/TeacherWorkspaceFrame.vue'
+          replace(frame, 'defineProps({ modules:', 'defineProps({ resolveDestination: { type: Function, default: (path) => path }, modules:')
+          replace(frame, 'workspacePages, workspaceMenuItems,', 'workspacePages, workspaceCurrentPage, workspaceMenuItems,')
+          replace(frame, 'const currentPage = computed(() => activeWorkspacePage(pages.value, route, props.activeModule))', "const currentPage = computed(() => props.activeCenter === 'academic-affairs' ? activeWorkspacePage(pages.value, route, props.activeModule) : workspaceCurrentPage(pages.value, route.fullPath, props.activeModule))")
+          replace(frame, '(selectedModule.value || props.activeModule)) || props.modules[0])', '(selectedModule.value || currentPage.value?.moduleKey || props.activeModule)) || props.modules[0])')
+          replace(frame, "  if (to.path === from.path) return true\n", "  if (to.path === from.path) return true\n  if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true\n")
+          replace(frame, 'await router.push(destination); mobileOpen.value = false', 'await router.push(props.resolveDestination(destination)); mobileOpen.value = false')
+          workspace='frontend/src/components/workspace/teacherWorkspace.js'
+          main_workspace=subprocess.check_output(['git','show',f'{main}:{workspace}']).decode()
+          exported=main_workspace.split('export function workspaceCurrentPage',1)[1].split('export function defaultShortcutIds',1)[0]
+          replace(workspace, 'export function defaultShortcutIds', 'export function workspaceCurrentPage'+exported+'export function defaultShortcutIds')
+          replace(workspace, "'认定申请与审核（工作台）': '评审',", "'认定申请与审核（工作台）': '评审', '申请与审核': '评审',")
+          subprocess.run(['git','add','--',*conflicts],check=True)
+          assert not subprocess.check_output(['git','diff','--name-only','--diff-filter=U']).strip()
+          PY
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Regenerate derived navigation from the merged sources
+        run: |
+          set -euo pipefail
+          npm ci --prefix frontend --no-audit --no-fund > /tmp/pr264-npm.log 2>&1 || { tail -n 60 /tmp/pr264-npm.log; exit 1; }
+          node scripts/generate-navigation-surface-contract.mjs
+          node scripts/check/generate-capability-registry.mjs
+          git add -- shared/contracts/navigation-surface-contract.json shared/generated/capability-registry.json shared/generated/route-index.json
+          python -m compileall -q backend/app
+      - name: Run complete frontend unit suite on the integration candidate
+        id: units
+        shell: bash
+        run: |
+          set +e
+          npm test --prefix frontend > /tmp/pr264-frontend-tests.log 2>&1
+          result=$?
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          from pathlib import Path
+          lines=Path('/tmp/pr264-frontend-tests.log').read_text().splitlines()
+          keep=set(range(max(0,len(lines)-15),len(lines)))
+          for i,line in enumerate(lines):
+              if line.startswith('not ok') or 'Error:' in line:
+                  keep.update(range(max(0,i-2),min(len(lines),i+35)))
+          for i in sorted(keep): print(lines[i][:1800])
+          PY
+          exit "$result"
+      - name: Publish inspectable Git objects only (never update any branch)
+        if: always() && steps.units.outputs.exit_code != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UNIT_EXIT: ${{ steps.units.outputs.exit_code }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64,json,os,subprocess,urllib.request
+          root='https://api.github.com/repos/penghaibin9/saas'
+          def git(*args): return subprocess.check_output(['git',*args])
+          def api(path, data=None):
+              req=urllib.request.Request(root+path,data=json.dumps(data).encode() if data is not None else None,headers={'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST' if data is not None else 'GET')
+              req.add_unredirected_header('Authorization','Bearer '+os.environ['GH_TOKEN'])
+              with urllib.request.urlopen(req,timeout=90) as response: return json.load(response)
+          parent=os.environ['GITHUB_SHA']; main=os.environ['MAIN_SHA']
+          assert git('rev-parse','HEAD').decode().strip()==parent
+          assert api('/git/ref/heads/codex/academic-affairs-delivery-20260907')['object']['sha']==parent
+          assert api('/git/ref/heads/main')['object']['sha']==main
+          tree=git('write-tree').decode().strip()
+          changed=git('diff','--name-only','-z',main,tree).decode().strip('\0').split('\0')
+          entries=[]
+          for path in changed:
+              record=git('ls-tree','-z',tree,'--',path).decode().strip('\0')
+              if not record:
+                  entries.append({'path':path,'mode':'100644','type':'blob','sha':None});continue
+              mode,kind,sha=record.split('\t')[0].split()
+              assert kind=='blob',(path,kind)
+              raw=git('cat-file','blob',sha)
+              blob=api('/git/blobs',{'encoding':'base64','content':base64.b64encode(raw).decode()})
+              assert blob['sha']==sha,(path,sha)
+              entries.append({'path':path,'mode':mode,'type':kind,'sha':sha})
+          base_tree=git('rev-parse',main+'^{tree}').decode().strip()
+          result=api('/git/trees',{'base_tree':base_tree,'tree':entries})
+          assert result['sha']==tree,(result['sha'],tree)
+          commit=api('/git/commits',{'message':'fix(academic): reconcile current main workspaces without losing academic navigation or student-affairs safeguards','tree':tree,'parents':[parent,main]})
+          receipt={'candidateCommit':commit['sha'],'tree':tree,'parents':[parent,main],'changedFromMain':len(changed),'frontendUnitExit':int(os.environ['UNIT_EXIT']),'branchUpdated':False,'releaseApproved':False}
+          print(json.dumps(receipt,ensure_ascii=False,indent=2),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f: f.write('Integration candidate objects only; branch unchanged.\n```json\n'+json.dumps(receipt,indent=2)+'\n```\n')
           PY
