@@ -3,12 +3,17 @@ name: Security runtime acceptance
 on:
   pull_request:
     paths:
+      - "backend/app/api/v1/auth.py"
+      - "backend/app/core/security_legacy.py"
       - "backend/app/core/token_store.py"
+      - "backend/app/services/browser_auth_session_blocklist.py"
       - "backend/app/services/auth_service_db.py"
       - "backend/app/services/control_plane_auth_service.py"
       - "backend/app/services/clamav_client.py"
       - "backend/app/services/file_scan_*.py"
       - "backend/app/workers/file_scan_worker.py"
+      - "backend/scripts/_seed_login_accounts_only.py"
+      - "backend/scripts/_seed_fixture_roles.py"
       - "backend/tests/test_security_hardening_revocation.py"
       - "backend/tests/file_scan_mysql_acceptance.py"
       - "backend/tests/file_scan_recovery_acceptance.py"
@@ -26,7 +31,7 @@ concurrency:
 
 jobs:
   runtime:
-    name: 双 HTTP 撤销 + ClamAV 故障恢复
+    name: 多 HTTP 撤销 + Redis 故障 + ClamAV 恢复
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:
@@ -69,7 +74,7 @@ jobs:
       SCHEDULER_MODE: external
       MOCK_LOGIN_ENABLED: "false"
       JWT_SECRET: security-runtime-acceptance-only-secret-at-least-32
-      CORS_ORIGINS: http://127.0.0.1:8000,http://127.0.0.1:8001
+      CORS_ORIGINS: http://127.0.0.1:8000,http://127.0.0.1:8001,http://127.0.0.1:8002
       UPLOAD_DIR: /tmp/security-runtime-uploads
       FILE_STORAGE_BACKEND: local
       FILE_ALLOW_ZIP: "true"
@@ -84,6 +89,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/backend
       E2E_AUTH_A: http://127.0.0.1:8000
       E2E_AUTH_B: http://127.0.0.1:8001
+      E2E_AUTH_C: http://127.0.0.1:8002
       E2E_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/security-runtime
       SECURITY_RUNTIME_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/security-runtime
 
@@ -128,14 +134,16 @@ jobs:
       - name: Targeted revocation and scan unit contracts
         working-directory: backend
         run: pytest -q tests/test_security_hardening_revocation.py tests/test_file_scan_clamav.py tests/test_file_scan_state.py -p no:warnings
-      - name: Start two independent FastAPI processes
+      - name: Start three independent FastAPI processes
         working-directory: backend
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/security-runtime-a.log 2>&1 &
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/security-runtime-b.log 2>&1 &
+          REDIS_URL=redis://127.0.0.1:9/14 REDIS_CONNECT_TIMEOUT=0.2 REDIS_SOCKET_TIMEOUT=0.2 \
+            nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8002 > /tmp/security-runtime-c.log 2>&1 &
           python - <<'PY'
           import time, urllib.request
-          for port in (8000, 8001):
+          for port in (8000, 8001, 8002):
               url=f"http://127.0.0.1:{port}/health"
               for _ in range(90):
                   try:
@@ -146,7 +154,7 @@ jobs:
               else:
                   raise SystemExit(f"backend {port} did not become ready")
           PY
-      - name: Real HTTP cross-process logout revocation
+      - name: Real HTTP cross-process logout revocation including Redis read failure
         run: python scripts/e2e/auth_two_process_revocation.py
       - name: Real MySQL and ClamAV clean infected and outage acceptance
         working-directory: backend
@@ -167,3 +175,4 @@ jobs:
         run: |
           echo "===== backend A ====="; tail -n 120 /tmp/security-runtime-a.log || true
           echo "===== backend B ====="; tail -n 120 /tmp/security-runtime-b.log || true
+          echo "===== backend C (Redis unavailable) ====="; tail -n 120 /tmp/security-runtime-c.log || true

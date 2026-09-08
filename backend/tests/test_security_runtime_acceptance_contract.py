@@ -20,16 +20,19 @@ class SecurityRuntimeAcceptanceContractTests(unittest.TestCase):
         self.assertNotIn("workflow_run:", text)
         self.assertIn("persist-credentials: false", text)
 
-    def test_two_independent_http_processes_and_cross_process_script_are_mandatory(self):
+    def test_three_independent_http_processes_cover_shared_and_failed_redis_reads(self):
         text = WORKFLOW.read_text()
-        self.assertIn("--port 8000", text)
-        self.assertIn("--port 8001", text)
+        for port in (8000, 8001, 8002):
+            self.assertIn(f"--port {port}", text)
+        self.assertIn("REDIS_URL=redis://127.0.0.1:9/14", text)
         self.assertIn("auth_two_process_revocation.py", text)
         script = REVOCATION.read_text()
-        self.assertIn('E2E_AUTH_A', script)
-        self.assertIn('E2E_AUTH_B', script)
+        for name in ("E2E_AUTH_A", "E2E_AUTH_B", "E2E_AUTH_C"):
+            self.assertIn(name, script)
         self.assertIn('"clientType": "STUDENT_PC"', script)
-        self.assertIn('after.status_code == 401', script)
+        self.assertIn('after_shared.status_code == 401', script)
+        self.assertIn('after_no_redis.status_code == 401', script)
+        self.assertIn('workerCDurableMysqlFallback', script)
         self.assertIn('tokenInvalidated', script)
 
     def test_clamav_acceptance_covers_infected_outage_and_recovery(self):
@@ -53,6 +56,14 @@ class SecurityRuntimeAcceptanceContractTests(unittest.TestCase):
         self.assertIn('"fixtureOnly": True', recovery)
         workflow = WORKFLOW.read_text()
         self.assertIn('${{ github.workspace }}/artifacts/security-runtime', workflow)
+
+    def test_auth_route_and_fixture_changes_retrigger_this_gate(self):
+        text = WORKFLOW.read_text()
+        for path in (
+            'backend/app/api/v1/auth.py', 'backend/app/core/security_legacy.py',
+            'backend/scripts/_seed_login_accounts_only.py', 'backend/scripts/_seed_fixture_roles.py',
+        ):
+            self.assertIn(path, text)
 
 
 if __name__ == "__main__":
