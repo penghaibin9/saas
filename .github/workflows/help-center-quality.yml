@@ -56,7 +56,7 @@ jobs:
       - name: Compile V3-08 metrics backend
         run: python -m py_compile backend/app/api/v1/help_metrics.py backend/app/services/help_metrics_service.py
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
