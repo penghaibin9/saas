@@ -136,3 +136,95 @@ def test_m5_student_affairs_and_academic_stay_fail_closed_for_future_purge(db_mo
     assert dep["reviewStage"] == "M6_M7_BEFORE_PURGE"
     assert set(dep["consumers"]) == consumers
     assert preview["purgeBlockers"][0]["code"] == "CONSUMER_DEPENDENCY_NOT_DISPOSED"
+
+
+def test_m6_readonly_preflight_never_authorizes_physical_purge(db_mode):
+    from datetime import timedelta
+    import importlib
+
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import TenantModuleOffboardingJob, TenantModuleState
+
+    tid = BASE + 6
+    _seed_state(tid, "internship")
+    db = get_sessionmaker()()
+    try:
+        state = db.scalars(select(TenantModuleState).where(
+            TenantModuleState.tenant_id == tid,
+            TenantModuleState.module_key == "internship",
+        )).one()
+        state.data_state = "RETAINED"
+        state.lifecycle_version = 2
+        job = TenantModuleOffboardingJob(
+            tenant_id=tid,
+            module_key="internship",
+            module_generation=1,
+            state="RETENTION",
+            expected_lifecycle_version=1,
+            reason="M6只读销毁预演测试，不执行任何删除",
+            requested_at=datetime.utcnow() - timedelta(days=31),
+            retention_days=30,
+            retention_policy_version="TEST-RETENTION-1",
+            retention_until=datetime.utcnow() - timedelta(days=1),
+            scope_hash="c" * 64,
+            acceptance_ref="SCHOOL-M6-001",
+            accepted_at=datetime.utcnow() - timedelta(days=30),
+            result_json={"physicalPurgeAuthorized": False},
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        job_id = int(job.id)
+    finally:
+        db.close()
+
+    preflight_service = importlib.import_module("app.services.module_commerce_m6_preflight")
+    preview = preflight_service.preview_module_purge(job_id)
+
+    assert preview["dryRunOnly"] is True
+    assert preview["destructiveExecutionAvailable"] is False
+    assert preview["physicalPurgeAuthorized"] is False
+    assert preview["deletionAuthorized"] is False
+    assert preview["canExecutePhysicalPurge"] is False
+    assert preview["destructiveStatements"] == []
+    assert preview["fullResourceClosureComplete"] is False
+    assert len(preview["preflightDigest"]) == 64
+    blocker_codes = {row["code"] for row in preview["blockers"]}
+    assert "M0_FULL_RESOURCE_CLOSURE_REQUIRED" in blocker_codes
+    assert "MODULE_PURGE_EXECUTION_DISABLED" in blocker_codes
+    assert "BACKUP_DISPOSITION_POLICY_REQUIRED" in blocker_codes
+    assert "VERIFIED_EXPORT_EVIDENCE_MISSING" in blocker_codes
+    assert all(row["purgeAuthorized"] is False for row in preview["sharedFoundation"])
+
+
+def test_m6_table_inventory_is_discovery_only_and_fail_closed(db_mode):
+    import importlib
+
+    preflight_service = importlib.import_module("app.services.module_commerce_m6_preflight")
+    for module in ("internship", "graduationDesign", "studentAffairs", "academicAffairs"):
+        inventory = preflight_service.module_table_inventory(module)
+        assert inventory["registryVersion"] == preflight_service.REGISTRY_VERSION
+        assert inventory["metadataOnly"] is True
+        assert inventory["sqlOnlyAndDynamicResourcesIncluded"] is False
+        assert inventory["fullResourceClosureComplete"] is False
+        assert inventory["deletionAuthorized"] is False
+        assert len(inventory["inventoryDigest"]) == 64
+        assert all(row["purgeAuthorized"] is False for row in inventory["candidateTables"])
+
+
+def test_m6_preflight_source_contains_no_destructive_primitive():
+    from pathlib import Path
+
+    source = Path("app/services/module_commerce_m6_preflight.py").read_text(encoding="utf-8")
+    forbidden = (
+        "sqlalchemy import delete",
+        "session.delete(",
+        "db.delete(",
+        "backend.delete(",
+        "execute_tenant_purge",
+        "_purge_file_objects",
+    )
+    for marker in forbidden:
+        assert marker not in source
