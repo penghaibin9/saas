@@ -33,6 +33,23 @@ DISALLOWED_RUNTIME_TOOLS = (
 )
 DISALLOWED_RUNTIME_PREFIXES = ("perl",)
 
+# Only these constant identifiers may leave the probe. Never print the offending
+# path, executable name, environment value, HTTP body or exception text.
+SAFE_FAILURE_CODES = frozenset({
+    "DISALLOWED_RUNTIME_TOOL_PRESENT",
+    "PRIVILEGED_EXECUTABLE_PRESENT",
+    "NONROOT_UID_REQUIRED",
+    "RUNTIME_CONTRACT_MISSING",
+    "APPLICATION_CODE_WRITABLE",
+    "WRITABLE_DIRECTORY_INVALID",
+    "STORAGE_PREPARATION_REQUIRES_OWNER",
+    "STORAGE_DIRECTORY_INVALID",
+    "NONEMPTY_VOLUME_REQUIRES_REVIEWED_MIGRATION",
+    "UNEXPECTED_EMPTY_VOLUME_OWNER",
+    "OPS_TOKEN_REQUIRED",
+    "APPLICATION_NOT_READY",
+})
+
 
 def runtime_surface(directories=None) -> None:
     """Fail closed if reviewed runtime CLI or set-id boundaries drift."""
@@ -123,7 +140,14 @@ def main(argv=None) -> int:
         {"image": image_contract, "filesystem": filesystem,
          "prepare-storage": prepare_storage, "ready": ready}[args.action]()
     except Exception as exc:
-        print(json.dumps({"probePassed": False, "action": args.action, "errorType": type(exc).__name__}))
+        raw_code = str(exc) if type(exc) is RuntimeError else ""
+        error_code = raw_code if raw_code in SAFE_FAILURE_CODES else "PROBE_FAILED"
+        print(json.dumps({
+            "probePassed": False,
+            "action": args.action,
+            "errorType": type(exc).__name__,
+            "errorCode": error_code,
+        }))
         return 1
     print(json.dumps({"probePassed": True, "action": args.action}))
     return 0
