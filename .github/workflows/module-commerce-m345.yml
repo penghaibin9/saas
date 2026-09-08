@@ -11,6 +11,9 @@ on:
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
+      - frontend/src/modules/platform/api/moduleCommerce.api.js
+      - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+      - frontend/tests/module-commerce-lifecycle-workspace.test.mjs
       - .github/workflows/module-commerce-m345.yml
   workflow_dispatch:
 permissions:
@@ -35,30 +38,20 @@ jobs:
     services:
       mysql:
         image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: module_commerce_m345
+        env: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: module_commerce_m345 }
         ports: ["3306:3306"]
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
           --health-interval=10s --health-timeout=5s --health-retries=15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.EXPECTED_HEAD }}
-          fetch-depth: 0
-          persist-credentials: false
+        with: { ref: "${{ env.EXPECTED_HEAD }}", fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+        with: { python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt }
       - name: Install exact backend and compile changed lifecycle code
         run: |
           set -euo pipefail
-          mkdir -p "$OUT"
-          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          git rev-parse HEAD > "$OUT/revision.txt"
+          mkdir -p "$OUT"; test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"; git rev-parse HEAD > "$OUT/revision.txt"
           python -m pip install -r backend/requirements.txt
           python -m py_compile backend/app/models/commercial.py backend/app/models/platform.py backend/app/services/module_commerce_access_guard.py backend/app/services/module_commerce_lifecycle_service.py backend/app/modules/platform/routers/module_commerce_router.py backend/alembic/versions/20260908_module_commerce_m345.py backend/tests/test_module_commerce_m345_runtime.py
       - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
@@ -77,15 +70,29 @@ jobs:
           from pathlib import Path
           service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          assert 'execute_tenant_purge' not in service
-          assert '_purge_file_objects' not in service
-          assert 'tenant.status =' not in service
+          assert 'execute_tenant_purge' not in service and '_purge_file_objects' not in service and 'tenant.status =' not in service
           print('M345_NON_PURGE_SCOPE_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
-        with:
-          name: module-commerce-m345-${{ env.EXPECTED_HEAD }}
-          path: /tmp/module-commerce-m345
-          if-no-files-found: error
-          retention-days: 14
+        with: { name: "module-commerce-m345-${{ env.EXPECTED_HEAD }}", path: /tmp/module-commerce-m345, if-no-files-found: error, retention-days: 14 }
+  m345-frontend:
+    name: M3-M5 platform workspace contract and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: { EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.EXPECTED_HEAD }}", fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Exact-head workspace contract
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          npm ci
+          node --test tests/module-commerce-lifecycle-workspace.test.mjs
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
