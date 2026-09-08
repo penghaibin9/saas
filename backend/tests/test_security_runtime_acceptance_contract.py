@@ -35,6 +35,22 @@ class SecurityRuntimeAcceptanceContractTests(unittest.TestCase):
         self.assertIn('workerCDurableMysqlFallback', script)
         self.assertIn('tokenInvalidated', script)
 
+    def test_destructive_pytest_uses_a_separate_mysql_database(self):
+        text = WORKFLOW.read_text()
+        prepare = text.index("- name: Prepare isolated MySQL for destructive targeted pytest")
+        targeted = text.index("- name: Targeted revocation and scan unit contracts")
+        processes = text.index("- name: Start three independent FastAPI processes")
+        self.assertLess(prepare, targeted)
+        self.assertLess(targeted, processes)
+        prepare_block = text[prepare:targeted]
+        targeted_block = text[targeted:processes]
+        self.assertIn("CREATE DATABASE security_runtime_unit", prepare_block)
+        self.assertIn(
+            "TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/security_runtime_unit?charset=utf8mb4",
+            targeted_block,
+        )
+        self.assertNotIn("security_runtime_acceptance?charset=utf8mb4", targeted_block)
+
     def test_clamav_acceptance_covers_infected_outage_and_recovery(self):
         text = WORKFLOW.read_text()
         self.assertIn("file_scan_mysql_acceptance.py", text)

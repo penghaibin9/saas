@@ -131,8 +131,27 @@ jobs:
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head
           python scripts/_seed_login_accounts_only.py
+      - name: Prepare isolated MySQL for destructive targeted pytest
+        run: |
+          python - <<'PY'
+          import pymysql
+          connection = pymysql.connect(
+              host="127.0.0.1", port=3306, user="root", password="root", autocommit=True,
+          )
+          try:
+              with connection.cursor() as cursor:
+                  cursor.execute("DROP DATABASE IF EXISTS security_runtime_unit")
+                  cursor.execute(
+                      "CREATE DATABASE security_runtime_unit "
+                      "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                  )
+          finally:
+              connection.close()
+          PY
       - name: Targeted revocation and scan unit contracts
         working-directory: backend
+        env:
+          TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/security_runtime_unit?charset=utf8mb4
         run: pytest -q tests/test_security_hardening_revocation.py tests/test_file_scan_clamav.py tests/test_file_scan_state.py -p no:warnings
       - name: Start three independent FastAPI processes
         working-directory: backend
