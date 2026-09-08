@@ -263,10 +263,22 @@ def test_sql_init_is_syntax_valid_and_schema_scoped():
 def test_security_image_preserves_repository_paths_and_excludes_secrets():
     image = (ROOT / 'backend/Dockerfile.security').read_text()
     ignore = (ROOT / 'backend/Dockerfile.security.dockerignore').read_text()
-    assert 'WORKDIR /app/backend' in image and 'COPY shared /app/shared' in image
+    assert 'WORKDIR /app/backend' in image
+    assert 'FROM scratch' in image and 'COPY --from=rootfs /runtime-root/ /' in image
+    assert 'COPY backend/app /runtime-root/app/backend/app' in image
+    assert 'COPY shared /runtime-root/app/shared' in image
     assert 'USER 10001:10001' in image and 'security_profile_probe.py' in image
     assert 'COPY . ' not in image and '**/.env' in ignore
     assert '!backend/tests' not in ignore and 'MYSQL_ROOT_PASSWORD' not in image
+
+
+def test_container_acceptance_uses_same_reviewed_ubi_bases_as_image_gate():
+    source = (ROOT / 'scripts/check/check-security-profile-containers.py').read_text()
+    assert 'registry.access.redhat.com/ubi9/python-312-minimal:9.8' in source
+    assert 'registry.access.redhat.com/ubi9/ubi-micro:9.8' in source
+    assert 'SECURITY_PYTHON_BASE_IMAGE=' in source
+    assert 'RUNTIME_BASE_IMAGE=' in source
+    assert 'python:3.12-slim' not in source
 
 
 def test_image_probe_refuses_root(monkeypatch, tmp_path):
