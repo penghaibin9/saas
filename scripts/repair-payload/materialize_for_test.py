@@ -1,6 +1,4 @@
-"""Read-only-to-GitHub verification: apply reviewed patches to a disposable CI worktree.
-No commit, push, credential changes, deployment or production access.
-"""
+"""Apply checksum-verified repairs to disposable CI source only; never commit or push."""
 from pathlib import Path
 import hashlib
 import json
@@ -16,12 +14,15 @@ HASHES={
  '04-browser.patch':'1cf6b4275518833bb390c8820eb417f6aad2612b3b405ede16ae04a739781a49',
  '05-capacity.patch':'fdf3cc5266a9419ac65af5e4551ba303f99bdc76ec01537f54e39a2ae66d519f',
  '06-capacity-tests.patch':'0cfbc159a01d6af81c907dfb1ebeffe628a00324cc113b79726095e734562fc3',
+ '07-runtime-config.patch':'d292595abb345df23c842efeed9fa40af249c49eb60482b1c05cb467dad95db8',
 }
 chunks=[]
 for name,expected in HASHES.items():
  data=(Path('scripts/repair-payload')/name).read_bytes()
  if name=='06-capacity-tests.patch':
   data=data.replace(b"'uniqueTeacherSubjects':300,'uniqueTeacherSubjects':300,",b"'uniqueTeacherSubjects':300,")
+ if name=='07-runtime-config.patch':
+  data=data.replace(b'\n diff --git ',b'\ndiff --git ')
  actual=hashlib.sha256(data).hexdigest()
  if actual!=expected:raise SystemExit(f'checksum mismatch: {name}: {actual}, expected {expected}')
  chunks.append(data)
@@ -31,17 +32,19 @@ if len(paths)!=26:raise SystemExit('unexpected file count')
 for path in paths:
  if Path(path).is_absolute() or '..' in Path(path).parts:raise SystemExit('unsafe path')
  subprocess.run(['git','diff','--exit-code',BASE,'HEAD','--',path],check=True)
-with tempfile.NamedTemporaryFile(suffix='.patch') as f:
- f.write(patch);f.flush()
- subprocess.run(['git','apply','--check','--unidiff-zero','--whitespace=error',f.name],check=True)
- subprocess.run(['git','apply','--unidiff-zero','--whitespace=error',f.name],check=True)
+# The runtime correction is explicitly based on the earlier repair postimage.
+for payload in (b''.join(chunks[:6]),chunks[6]):
+ with tempfile.NamedTemporaryFile(suffix='.patch') as f:
+  f.write(payload);f.flush()
+  subprocess.run(['git','apply','--check','--unidiff-zero','--whitespace=error',f.name],check=True)
+  subprocess.run(['git','apply','--unidiff-zero','--whitespace=error',f.name],check=True)
 out=Path('/tmp/repair-proof');out.mkdir(exist_ok=True)
 head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-manifest={'base':BASE,'transportCommit':head,'testedSource':'base-plus-verified-patch',
- 'patchSha256':hashlib.sha256(patch).hexdigest(),
+manifest={'base':BASE,'transportCommit':head,'testedSource':'base-plus-verified-patches',
+ 'patchSequence':list(HASHES),'patchSha256':hashlib.sha256(patch).hexdigest(),
  'files':[{'path':p,'after':hashlib.sha256(Path(p).read_bytes()).hexdigest()} for p in paths]}
 (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
-(out/'repair-zero-context.patch').write_bytes(patch)
+for name,data in zip(HASHES,chunks):(out/name).write_bytes(data)
 with tarfile.open(out/'source-after.tar.gz','w:gz') as archive:
  for path in paths:archive.add(path,arcname=path,recursive=False)
 print(json.dumps(manifest,indent=2))
