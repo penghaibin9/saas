@@ -12,11 +12,52 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ("shared/contracts/module-manifest.json", "shared/contracts/permission-catalog.json")
 WRITABLE = ("backend/uploads", "backend/exports", "backend/data")
+EXECUTABLE_DIRS = tuple(Path(value) for value in (
+    "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"
+))
+# Exact CLI names removed by Dockerfile.security after build-time setup. Python and
+# the POSIX shell remain because they are production entrypoints; this list is an
+# attack-surface reduction contract, not a claim that arbitrary egress is impossible.
+DISALLOWED_RUNTIME_TOOLS = (
+    "apt", "apt-get", "apt-cache", "apt-cdrom", "apt-config", "apt-mark",
+    "dpkg", "dpkg-deb", "dpkg-divert", "dpkg-maintscript-helper", "dpkg-query",
+    "dpkg-realpath", "dpkg-split", "dpkg-statoverride", "dpkg-trigger", "update-alternatives",
+    "curl", "wget", "git", "ssh", "scp", "sftp", "nc", "netcat", "ncat", "socat",
+    "telnet", "ftp", "su", "passwd", "chfn", "chsh", "chpasswd", "useradd", "userdel",
+    "usermod", "groupadd", "groupdel", "groupmod", "gpasswd", "newgrp", "mount", "umount",
+)
+
+
+def runtime_surface(directories=None) -> None:
+    """Fail closed if reviewed runtime CLI or set-id boundaries drift."""
+    directories = EXECUTABLE_DIRS if directories is None else tuple(Path(value) for value in directories)
+    for name in DISALLOWED_RUNTIME_TOOLS:
+        for folder in directories:
+            candidate = folder / name
+            try:
+                info = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                raise RuntimeError("DISALLOWED_RUNTIME_TOOL_PRESENT")
+    for folder in directories:
+        try:
+            entries = folder.iterdir()
+        except FileNotFoundError:
+            continue
+        for candidate in entries:
+            try:
+                info = candidate.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+                raise RuntimeError("PRIVILEGED_EXECUTABLE_PRESENT")
 
 
 def image_contract(root: Path = ROOT) -> None:
     if not hasattr(os, "geteuid") or os.geteuid() != 10001:
         raise RuntimeError("NONROOT_UID_REQUIRED")
+    runtime_surface()
     for relative in CONTRACTS:
         path = root / relative
         if path.is_symlink() or not json.loads(path.read_text(encoding="utf-8")):
