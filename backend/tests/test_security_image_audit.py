@@ -25,7 +25,9 @@ SOURCE, HEAD = 'a' * 40, 'b' * 40
 
 def receipt():
     return {'sourceSha': SOURCE, 'headSha': HEAD, 'imageId': 'sha256:' + 'c' * 64,
-            'imageRef': 'pr265-image-audit:' + SOURCE, 'pythonBaseDigest': 'python@sha256:' + 'd' * 64}
+            'imageRef': 'pr265-image-audit:' + SOURCE,
+            'pythonBaseDigest': 'python@sha256:' + 'd' * 64,
+            'runtimeBaseDigest': 'registry.access.redhat.com/ubi9/ubi-micro@sha256:' + 'e' * 64}
 
 
 def report():
@@ -98,11 +100,19 @@ class ImageEvidenceTests(unittest.TestCase):
                     POLICY.evaluate(report(), receipt(), source_sha=value, head_sha=HEAD, now=NOW)
 
     def test_receipt_requires_concrete_image_and_base_identities(self):
-        for field, value in [('imageId', 'tag'), ('imageRef', 'latest'), ('pythonBaseDigest', 'python:3.12-slim')]:
-            with self.subTest(field=field):
+        for field, value in [
+            ('imageId', 'tag'), ('imageRef', 'latest'),
+            ('pythonBaseDigest', 'python:3.12-slim'),
+            ('runtimeBaseDigest', 'registry.access.redhat.com/ubi9/ubi-micro:9.8'),
+            ('runtimeBaseDigest', 'registry.access.redhat.com/ubi9/python-312-minimal@sha256:' + 'f' * 64),
+        ]:
+            with self.subTest(field=field, value=value):
                 build = receipt(); build[field] = value
                 with self.assertRaises(POLICY.InvalidEvidence):
                     evaluate(build=build)
+        build = receipt(); del build['runtimeBaseDigest']
+        with self.assertRaisesRegex(POLICY.InvalidEvidence, 'BUILD_RUNTIME_BASE_DIGEST_REQUIRED'):
+            evaluate(build=build)
 
     def test_wrong_scanned_image_ref_is_rejected(self):
         r = report(); r['ArtifactName'] = 'other-image:latest'
@@ -172,7 +182,7 @@ class ImageEvidenceTests(unittest.TestCase):
         for value in (None, [], [{}], [{'Name': 'name-only'}]):
             with self.subTest(value=value):
                 r = report(); r['Results'][1]['Packages'] = value
-                with self.assertRaises(POLICY.InvalidEvidence):
+                with self.assertRaisesRegex(POLICY.InvalidEvidence, 'PACKAGE_INVENTORY_MISSING'):
                     evaluate(r)
 
     def test_suppression_or_adjusted_severity_is_not_allowed(self):
@@ -287,6 +297,7 @@ class WorkflowContractTests(unittest.TestCase):
                 self.assertIn(flag, source)
         self.assertIn('docker build -f backend/Dockerfile.security', source)
         self.assertIn("{{.Id}}", source)
+        self.assertIn("'runtimeBaseDigest': os.environ['RUNTIME_BASE_DIGEST']", source)
 
 
 if __name__ == '__main__':
