@@ -177,7 +177,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     const staff = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await page.goto(staff.url({ panel: 'all' }))
-    await expect(page.getByText('请假审批').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await staff.dismissGuideIfPresent()
     const responsePromise = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith('/api/v1/internship/leaves/export')

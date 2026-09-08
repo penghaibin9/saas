@@ -282,7 +282,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
       apiPath(response) === `/api/v1/internship/agreements/${newAgreementId}/pdf`
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '下载 PDF 套打', exact: true }).click()
+    await page.getByRole('button', { name: '下载 PDF', exact: true }).click()
     const pdfResponse = await pdfPromise
     const pdfPayload = await payloadOf(pdfResponse)
     expect(pdfPayload.body?.code, pdfPayload.text).toBe(0)
@@ -292,7 +292,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
       apiPath(response) === `/api/v1/internship/agreements/${newAgreementId}/archive`
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '归档', exact: true }).click()
+    await page.getByRole('button', { name: '归档协议', exact: true }).click()
     const archiveDialog = page.getByRole('dialog')
     await archiveDialog.getByRole('button', { name: '归档', exact: true }).click()
     const archived = await archivePromise
@@ -302,7 +302,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText('已归档', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('仅可查看与打印，不可再变更', { exact: false }).first()).toBeVisible()
     await expect(page.getByRole('button', { name: '学校确认生效', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '归档', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '归档协议', exact: true })).toHaveCount(0)
 
     execFileSync('python', ['../backend/scripts/e2e_verify_internship_agreement_db.py'], {
       cwd: process.cwd(),

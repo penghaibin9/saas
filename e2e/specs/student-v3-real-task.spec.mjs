@@ -137,8 +137,11 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
     await expect(focused.getByText(fixture.leave.returnReason, { exact: false })).toBeVisible()
 
     // 修改重提：改事由 → 保存并重新提交。
-    await focused.getByText('查看进度与办理', { exact: true }).click()
-    await page.getByText('修改后重提', { exact: true }).click()
+    // recordId 深链已自动打开同一申请详情，直接在前景工作区办理。
+    const detail = page.locator('.leave-detail-page')
+    await expect(detail).toBeVisible()
+    await expect(detail.getByText(fixture.leave.returnReason, { exact: false })).toBeVisible()
+    await detail.getByText('修改后重提', { exact: true }).click()
     const sheet = page.locator('.lv__sheet')
     await expect(sheet).toBeVisible()
     const reason = sheet.locator('textarea')

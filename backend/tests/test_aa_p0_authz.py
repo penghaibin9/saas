@@ -63,9 +63,13 @@ def test_student_token_forbidden(client, db_mode):
 
 
 def test_module_not_authorized_academic_affairs(client, db_mode, monkeypatch):
-    monkeypatch.setattr("app.services.platform_service.feature_enabled",
-                        lambda tid, key: False if key == "academicAffairs" else True)
+    from app.services import platform_service
+
     hdr = _hdr(client, "school_admin01")
+    assert client.get(f"{BASE}/dashboard", headers=hdr).status_code == 200
+    original = platform_service.effective_features
+    monkeypatch.setattr(platform_service, "effective_features",
+                        lambda tid: {**original(tid), "academicAffairs": False})
     r = client.get(f"{BASE}/dashboard", headers=hdr)
     assert r.status_code == 403
     assert r.json()["bizCode"] == "NO_PERMISSION"

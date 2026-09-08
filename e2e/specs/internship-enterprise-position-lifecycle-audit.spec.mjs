@@ -179,16 +179,22 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/positions/${positionId}`)
     await expect(page.getByText(originalPositionTitle(), { exact: false }).first()).toBeVisible()
-    await page.getByRole('button', { name: '编辑', exact: true }).click()
+    await page.getByRole('link', { name: '编辑完整资料', exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/positions/${positionId}/edit`))
 
     await expect(page.getByText('编辑岗位', { exact: true })).toBeVisible()
-    await page.locator('.ie-fld').filter({ hasText: '岗位名称' }).locator('input').fill(finalPositionTitle())
+    await formItem(page, '岗位名称').locator('input').fill(finalPositionTitle())
+    await formItem(page, '启用岗位围栏').getByText('启用', { exact: true }).click()
+    await expect(formItem(page, '启用岗位围栏').getByRole('radio', { name: '启用', exact: true })).toBeChecked()
+    await formItem(page, '中心纬度').locator('input').fill('28.2282')
+    await formItem(page, '中心经度').locator('input').fill('112.9388')
+    await formItem(page, '围栏半径（米）').locator('input').fill('500')
 
     const updatePromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/positions/${positionId}`
         && response.request().method() === 'PUT'
     )
-    await page.locator('.ie-actions').getByRole('button', { name: '保存', exact: true }).click()
+    await page.getByRole('button', { name: '保存修改', exact: true }).click()
     const updated = await updatePromise
     const requestBody = updated.request().postDataJSON()
     expect(Number.isInteger(Number(requestBody?.expectedVersion))).toBeTruthy()
@@ -196,9 +202,9 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     expect(updatedPayload.body?.code, updatedPayload.text).toBe(0)
     await expect(page.getByText(finalPositionTitle(), { exact: false }).first()).toBeVisible()
 
-    const published = await confirmStatusAction(page, positionId, '上架', '确认上架')
+    const published = await confirmStatusAction(page, positionId, '上架')
     expect(published.body?.code, published.text).toBe(0)
-    await expect(page.getByRole('button', { name: '下架', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下架岗位', exact: true })).toBeVisible()
   })
 
   test('IX-003/005：Student PC 只看到 server truth 的已发布、已准入岗位', async ({ page }) => {
@@ -214,10 +220,13 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     await page.goto(`${config.staffBaseUrl}/admin/internship/enterprises`)
     let row = companyRow(page, companyName())
     await expect(row).toBeVisible()
-    await row.getByRole('button', { name: '拉黑', exact: true }).click()
+    await row.getByRole('link', { name: '合作与资质', exact: true }).click()
+    await page.getByRole('button', { name: '拉黑', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.locator('textarea').fill('IX003真实浏览器黑名单验证')
     await dialog.getByRole('button', { name: '确认拉黑', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     row = companyRow(page, companyName())
     await expect(row).toContainText('黑名单')
 
@@ -228,26 +237,35 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
 
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/positions/${positionId}`)
-    let result = await confirmStatusAction(page, positionId, '下架', '确认下架')
+    let result = await confirmStatusAction(page, positionId, '下架')
     expect(result.body?.code, result.text).toBe(0)
 
-    result = await confirmStatusAction(page, positionId, '上架', '确认上架')
-    expect(result.body?.code, result.text).not.toBe(0)
-    expect(String(result.body?.message || result.text)).toMatch(/黑名单|合作状态|准入/)
+    await expect(page.getByRole('button', { name: '上架岗位', exact: true })).toBeDisabled()
+    // 页面阻止上架后，仍验证同一登录上下文的正式命令独立拒绝黑名单企业。
+    const rejected = await page.request.post(`${config.staffBaseUrl}/api/v1/internship/positions/${positionId}/status`, {
+      headers: { Authorization: await result.response.request().headerValue('authorization') },
+      data: { action: 'PUBLISH', expectedVersion: result.body.data.version }
+    })
+    const rejection = await payloadOf(rejected)
+    expect(rejection.body?.code, rejection.text).not.toBe(0)
+    expect(String(rejection.body?.message || rejection.text)).toMatch(/黑名单|合作状态|准入/)
   })
 
   test('IX-003/005：移出黑名单后恢复上架，并真实完成风险、暂停/恢复状态机', async ({ page }) => {
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/enterprises`)
     let row = companyRow(page, companyName())
-    await row.getByRole('button', { name: '移出黑名单', exact: true }).click()
+    await row.getByRole('link', { name: '合作与资质', exact: true }).click()
+    await page.getByRole('button', { name: '移出黑名单', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: '确认移出', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     row = companyRow(page, companyName())
     await expect(row).toContainText('合作中')
 
     await page.goto(`${config.staffBaseUrl}/admin/internship/positions/${positionId}`)
-    let result = await confirmStatusAction(page, positionId, '上架', '确认上架')
+    let result = await confirmStatusAction(page, positionId, '上架')
     expect(result.body?.code, result.text).toBe(0)
 
     await page.getByRole('button', { name: '标记风险', exact: true }).click()
@@ -257,7 +275,7 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
       apiPath(response) === `/api/v1/internship/positions/${positionId}/risk`
         && response.request().method() === 'POST'
     )
-    await dialog.getByRole('button', { name: '确认标记', exact: true }).click()
+    await dialog.getByRole('button', { name: '标记风险', exact: true }).click()
     let riskResponse = await riskOnPromise
     let riskPayload = await payloadOf(riskResponse)
     expect(riskPayload.body?.code, riskPayload.text).toBe(0)
@@ -269,16 +287,16 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
       apiPath(response) === `/api/v1/internship/positions/${positionId}/risk`
         && response.request().method() === 'POST'
     )
-    await dialog.getByRole('button', { name: '确认解除', exact: true }).click()
+    await dialog.getByRole('button', { name: '解除风险', exact: true }).click()
     riskResponse = await riskOffPromise
     riskPayload = await payloadOf(riskResponse)
     expect(riskPayload.body?.code, riskPayload.text).toBe(0)
 
-    result = await confirmStatusAction(page, positionId, '上架', '确认上架')
+    result = await confirmStatusAction(page, positionId, '上架')
     expect(result.body?.code, result.text).toBe(0)
-    result = await confirmStatusAction(page, positionId, '暂停', '确认暂停')
+    result = await confirmStatusAction(page, positionId, '暂停')
     expect(result.body?.code, result.text).toBe(0)
-    result = await confirmStatusAction(page, positionId, '上架', '确认上架')
+    result = await confirmStatusAction(page, positionId, '上架')
     expect(result.body?.code, result.text).toBe(0)
 
     execFileSync('python', ['../backend/scripts/e2e_verify_internship_enterprise_position_db.py'], {
