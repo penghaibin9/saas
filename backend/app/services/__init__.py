@@ -91,3 +91,12 @@ _install_m345_hardening(
     _module_commerce_lifecycle_service,
     _tenant_offboarding_service,
 )
+
+# M4 recurring writers: unlike HTTP requests, schedulers do not pass through a
+# route dependency on every invocation. Install reviewed module-owned worker
+# wrappers at service-package bootstrap so web-mode jobs, the external scheduler
+# and CLI imports all share the same commercial generation/final-commit fence.
+# Missing target modules/functions deliberately fail startup: silently running an
+# unfenced business writer would be less safe than refusing the process.
+from app.services.module_commerce_background_guard import install as _install_module_commerce_background_guard
+_install_module_commerce_background_guard()
