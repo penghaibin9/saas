@@ -382,6 +382,12 @@ class _Ticker:
 
 
 def main() -> int:
+    # Install module-owned recurring-writer fences only after the broad service
+    # package has finished importing. This avoids service-package circular imports
+    # while guaranteeing the standalone scheduler is fenced before its first tick.
+    from app.services.module_commerce_background_guard import install as _install_module_background_guards
+    _install_module_background_guards()
+
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
     log.info(

@@ -92,11 +92,10 @@ _install_m345_hardening(
     _tenant_offboarding_service,
 )
 
-# M4 recurring writers: unlike HTTP requests, schedulers do not pass through a
-# route dependency on every invocation. Install reviewed module-owned worker
-# wrappers at service-package bootstrap so web-mode jobs, the external scheduler
-# and CLI imports all share the same commercial generation/final-commit fence.
-# Missing target modules/functions deliberately fail startup: silently running an
-# unfenced business writer would be less safe than refusing the process.
-from app.services.module_commerce_background_guard import install as _install_module_commerce_background_guard
-_install_module_commerce_background_guard()
+# M4 recurring module-owned writers are intentionally NOT imported/installed from
+# this broad package initializer. Doing so makes ordinary service imports pull the
+# entire internship/student-affairs/academic graph while Python still considers
+# ``app.services`` partially initialized, which creates circular-import failures.
+# Web bootstrap installs them from ``app.middleware.context``; the standalone
+# scheduler installs them explicitly in ``scripts.run_scheduled_jobs.main`` before
+# its first tick. Both call the same idempotent fail-closed guard.

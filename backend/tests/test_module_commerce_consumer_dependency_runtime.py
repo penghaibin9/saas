@@ -65,18 +65,31 @@ def test_m5_internship_preview_marks_departure_and_academic_source_evidence_reta
 
 def test_m5_graduation_preview_marks_published_grade_and_filed_archive_as_consumer_bound(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import GraduationArchiveRecord, GraduationGrade
+    from app.models import GraduationArchiveRecord, GraduationGrade, GraduationStudent
     from app.services import module_commerce_lifecycle_service as lifecycle
 
     tid = BASE + 2
     _seed_state(tid, "graduationDesign")
     db = get_sessionmaker()()
     try:
-        db.add(GraduationGrade(
+        # This test exercises the M5 consumer-dependency reader, not the package-9
+        # archival writer. Seed one real graduation student and already-persisted
+        # upstream facts at table level so immutable archive-version creation stays
+        # under its own dedicated regression suite rather than being bypassed or
+        # accidentally re-entered here.
+        db.add(GraduationStudent(
+            id=9101,
+            tenant_id=tid,
+            student_id=8101,
+            student_no="M5GD9101",
+            name="M5 Consumer Student",
+        ))
+        db.flush()
+        db.execute(GraduationGrade.__table__.insert().values(
             tenant_id=tid, gd_student_id=9101, total_score=88, grade_level="良好",
             status="PUBLISHED", published_at=datetime.utcnow(), source_snapshot_hash="a" * 64,
         ))
-        db.add(GraduationArchiveRecord(
+        db.execute(GraduationArchiveRecord.__table__.insert().values(
             tenant_id=tid, gd_student_id=9101, status="FILED", filed_at=datetime.utcnow(),
             manifest_hash="b" * 64,
         ))
