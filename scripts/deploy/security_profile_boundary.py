@@ -7,6 +7,9 @@ All diagnostics are fixed identifiers: never echo paths, commands or secrets.
 from __future__ import annotations
 
 from pathlib import Path
+import copy
+
+import yaml
 
 PROJECT = 'school-lifecycle-security'
 APPS = ('backend', 'scheduler', 'file-scan')
@@ -55,6 +58,50 @@ MYSQL_COMMAND = [
     '--binlog-expire-logs-seconds=604800', '--sync-binlog=1', '--innodb-flush-log-at-trx-commit=1',
 ]
 MYSQL_HEALTH = ['CMD-SHELL', 'MYSQL_PWD="${MYSQL_PASSWORD}" mysql --protocol=TCP -h127.0.0.1 -u"${MYSQL_USER}" -Nse "SELECT 1"']
+
+
+def normalize_checked_bind_options(config: dict, root: Path) -> tuple[dict, list[str]]:
+    """Recover only an omitted serialized flag from an explicit checked source.
+
+    Compose generations differ in serializing default/false bind options. Never
+    interpret a missing JSON flag as permission: require an explicit long-syntax
+    false in the exact source file AND the exact resolved host source. A true or
+    malformed flag returned by Docker is not overwritten. Input is not mutated.
+    """
+    root = root.resolve()
+    source = root / 'deploy/docker/docker-compose.security.yml'
+    if source.is_symlink() or source.resolve() != source or source.stat().st_size > 1024 * 1024:
+        return config, ['CHECKED_COMPOSE_SOURCE_INVALID']
+    try:
+        raw = yaml.safe_load(source.read_text(encoding='utf-8'))
+    except yaml.YAMLError:
+        return config, ['CHECKED_COMPOSE_SOURCE_INVALID']
+    model = copy.deepcopy(config)
+    errors = []
+    for service, expected in BIND_MOUNTS.items():
+        declared = raw['services'][service].get('volumes', [])
+        for target, relative in expected.items():
+            declarations = [m for m in declared if isinstance(m, dict) and m.get('target') == target]
+            declaration = declarations[0] if len(declarations) == 1 else {}
+            host_source = declaration.get('source')
+            valid_source = (
+                declaration.get('type') == 'bind' and declaration.get('read_only') is True
+                and isinstance(declaration.get('bind'), dict)
+                and declaration['bind'].get('create_host_path') is False
+                and isinstance(host_source, str)
+                and (source.parent / host_source).absolute().resolve() == root / relative
+            )
+            if not valid_source:
+                errors.append(service + ':EXPLICIT_SOURCE_BIND_SAFETY_REQUIRED')
+                continue
+            for mount in model['services'].get(service, {}).get('volumes', []):
+                if (not isinstance(mount, dict) or mount.get('type') != 'bind'
+                        or mount.get('target') != target or mount.get('source') != str(root / relative)):
+                    continue
+                options = mount.get('bind', {})
+                if isinstance(options, dict) and 'create_host_path' not in options:
+                    mount['bind'] = {**options, 'create_host_path': False}
+    return model, sorted(set(errors))
 
 
 def execution_errors(config: dict) -> list[str]:

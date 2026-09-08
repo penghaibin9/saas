@@ -62,6 +62,17 @@ def validate_rendered(config: dict, *, root: Path | None = None) -> list[str]:
     services = config['services']
     if any(not isinstance(service, dict) for service in services.values()):
         return ['COMPOSE_SERVICE_STRUCTURE_INVALID']
+    spec = importlib.util.spec_from_file_location(
+        'security_profile_boundary', Path(__file__).with_name('security_profile_boundary.py'))
+    boundary = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(boundary)
+    if root is not None:
+        try:
+            config, source_errors = boundary.normalize_checked_bind_options(config, root)
+            errors.extend(source_errors)
+            services = config['services']
+        except (OSError, ValueError, TypeError, AttributeError, KeyError):
+            return ['CHECKED_SOURCE_BIND_NOT_VALIDATED']
     required = set(APPS) | {'nginx', 'mysql', 'redis', 'migrate', 'prepare-storage', 'clamav'}
     if set(services) != required:
         errors.append('EXACT_SERVICE_SET_REQUIRED')
@@ -175,10 +186,6 @@ def validate_rendered(config: dict, *, root: Path | None = None) -> list[str]:
         errors.append('EDGE_CONFIG_MOUNT_BOUNDARY_REQUIRED')
     if nginx.get('networks', {}).get('edge', {}).get('ipv4_address') != '172.30.40.10':
         errors.append('EDGE_PROXY_ADDRESS_DRIFT')
-    spec = importlib.util.spec_from_file_location(
-        'security_profile_boundary', Path(__file__).with_name('security_profile_boundary.py'))
-    boundary = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(boundary)
     try:
         errors.extend(boundary.execution_errors(config))
         if root is not None:

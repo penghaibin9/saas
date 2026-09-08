@@ -183,6 +183,22 @@ def main(argv=None):
                 if set(model['services']) == {'backend', 'scheduler', 'file-scan', 'migrate',
                                              'prepare-storage', 'mysql', 'redis', 'nginx', 'clamav'}:
                     failure.safe_details['policyErrors'] = violations
+                    flags = {}
+                    for service in ('mysql', 'nginx'):
+                        counts = {'missing': 0, 'false': 0, 'true': 0, 'invalid': 0}
+                        for mount in model['services'][service].get('volumes', []):
+                            if mount.get('type') != 'bind':
+                                continue
+                            options = mount.get('bind', {})
+                            if not isinstance(options, dict):
+                                counts['invalid'] += 1
+                            elif 'create_host_path' not in options:
+                                counts['missing'] += 1
+                            else:
+                                flag = options['create_host_path']
+                                counts['true' if flag is True else 'false' if flag is False else 'invalid'] += 1
+                        flags[service] = counts
+                    failure.safe_details['bindOptionShape'] = flags
                 raise failure
             complete(checks, 'real-compose-execution-and-checked-input-boundaries')
             passwords = {key: secrets.token_hex(32) for key in ('root', 'runtime', 'migrator')}

@@ -24,7 +24,8 @@ check = _helpers.check
 def checked_rendered(root):
     import shutil
     config = rendered(root)
-    for relative in ('deploy/docker/mysql-security-init/01-accounts.sh',
+    for relative in ('deploy/docker/docker-compose.security.yml',
+                     'deploy/docker/mysql-security-init/01-accounts.sh',
                      'deploy/nginx/security-http.conf', 'deploy/nginx/security-server.conf',
                      'deploy/nginx/security-headers.conf'):
         target = root / relative
@@ -226,3 +227,53 @@ def test_mysql_migration_prerequisite_never_disables_recovery_or_grants_global_a
     }[mutation]
     command[command.index(before)] = after
     assert 'MYSQL_TRUSTED_MIGRATOR_BINLOG_CONTRACT_REQUIRED' in check.validate_rendered(config)
+
+
+@pytest.mark.parametrize('service', ['mysql', 'nginx'])
+@pytest.mark.parametrize('form', ['empty-options', 'missing-options'])
+def test_missing_serialized_flag_needs_explicit_checked_source(tmp_path, service, form):
+    config = checked_rendered(tmp_path)
+    mount = next(m for m in config['services'][service]['volumes'] if m['type'] == 'bind')
+    if form == 'empty-options':
+        mount['bind'].pop('create_host_path')
+    else:
+        mount.pop('bind')
+    assert check.validate_rendered(config, root=tmp_path) == []
+    # No mutation of the observed Docker model and no rootless default-allow.
+    assert 'create_host_path' not in mount.get('bind', {})
+    assert service + ':UNSAFE_BIND_MOUNT' in check.validate_rendered(config)
+
+
+@pytest.mark.parametrize('source_flag', [True, None, 'false', 'omitted'])
+def test_missing_serialized_flag_does_not_rescue_unsafe_raw_source(tmp_path, source_flag):
+    import yaml
+    config = checked_rendered(tmp_path)
+    mount = next(m for m in config['services']['mysql']['volumes'] if m['type'] == 'bind')
+    mount['bind'].pop('create_host_path')
+    path = tmp_path / 'deploy/docker/docker-compose.security.yml'
+    raw = yaml.safe_load(path.read_text())
+    declared = next(m for m in raw['services']['mysql']['volumes'] if isinstance(m, dict))
+    if source_flag == 'omitted':
+        declared['bind'].pop('create_host_path')
+    else:
+        declared['bind']['create_host_path'] = source_flag
+    path.write_text(yaml.safe_dump(raw))
+    assert 'mysql:EXPLICIT_SOURCE_BIND_SAFETY_REQUIRED' in check.validate_rendered(config, root=tmp_path)
+
+
+@pytest.mark.parametrize('effective', [True, None, 'false', 1])
+def test_explicit_source_cannot_override_unsafe_effective_flag(tmp_path, effective):
+    config = checked_rendered(tmp_path)
+    mount = next(m for m in config['services']['mysql']['volumes'] if m['type'] == 'bind')
+    mount['bind']['create_host_path'] = effective
+    assert 'mysql:UNSAFE_BIND_MOUNT' in check.validate_rendered(config, root=tmp_path)
+
+
+def test_missing_flag_and_changed_host_source_are_not_repaired(tmp_path):
+    config = checked_rendered(tmp_path)
+    mount = config['services']['nginx']['volumes'][0]
+    mount['bind'].pop('create_host_path')
+    mount['source'] = '/different-source'
+    errors = check.validate_rendered(config, root=tmp_path)
+    assert 'nginx:UNSAFE_BIND_MOUNT' in errors
+    assert 'nginx:CHECKED_BIND_SOURCE_MISMATCH' in errors
