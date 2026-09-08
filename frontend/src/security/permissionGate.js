@@ -15,6 +15,7 @@
  *   5. 后端仍是最终安全边界。
  */
 import { matchPermission } from '../config/navPlan.js'
+import { moduleEntitled } from './moduleEntitlement.js'
 
 /** 纳入本门拦截的业务中心 moduleCode（与路由 meta.moduleCode 对齐）。 */
 export const GUARDED_MODULES = new Set([
@@ -48,11 +49,6 @@ function _isProd() {
   }
 }
 
-/**
- * 身份切换会执行整页工作台重建，随后业务深链又可能立即发生第二次导航。
- * 浏览器会把这些旧 document 上的 current-context fetch 以 AbortError 结束；它不代表
- * RBAC 服务故障。只允许对明确的取消/Abort 做有限重试，真实 401/403/5xx 绝不重试。
- */
 function _isRetryablePermissionAbort(error) {
   const name = String(error?.name || '').toLowerCase()
   const code = String(error?.code || '').toLowerCase()
@@ -74,19 +70,16 @@ async function _loadPermissionContext(requestFn) {
   let lastError = null
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      // RBAC 是安全门禁真值：必须探测真实后端，不得被普通读请求的 mock/offline 冷却短路。
       return await requestFn('/rbac/current-context', { forceProbe: true })
     } catch (error) {
       lastError = error
       if (!_isRetryablePermissionAbort(error) || attempt === maxAttempts - 1) throw error
-      // 等待整页替换/深链导航完成后再发下一次，避免连续把请求挂在即将销毁的 document 上。
       await _retryDelay(90 * (attempt + 1))
     }
   }
   throw lastError
 }
 
-/** 由 getContext 落库当前身份权限码模式集（与后端 enforce_permission 同一套码）。 */
 export function setPermissionPatterns(patterns) {
   _patterns = Array.isArray(patterns) ? patterns : null
 }
@@ -95,7 +88,6 @@ export function getPermissionPatterns() {
   return _patterns
 }
 
-/** 可选：模块授权集合（来自 current-context / 租户 entitlement）。null=未配置，不拦截模块。 */
 export function setModuleEntitlements(codes) {
   if (codes == null) {
     _moduleEntitlements = null
@@ -126,7 +118,6 @@ export function getRbacLoadFailed() {
   return _rbacLoadFailed ? (_rbacLoadError || '权限服务加载失败') : ''
 }
 
-/** 登出 / 强制重算时清空。 */
 export function clearPermissionPatterns() {
   _patterns = null
   _moduleEntitlements = null
@@ -137,11 +128,6 @@ export function clearPermissionPatterns() {
   _ensurePromise = null
 }
 
-/**
- * 冷加载时拉取 /rbac/current-context 并落库 patterns，避免「先进页再 403」。
- * 可识别的导航 Abort/取消做有限重试；达到上限或遇真实业务错误仍保持 patterns=null，
- * 并标记 rbacLoadFailed（不得伪装成无权限，也不得 fail-open）。
- */
 export async function ensurePermissionPatterns(requestFn) {
   if (Array.isArray(_patterns) && !_rbacLoadFailed) return _patterns
   if (_ensurePromise) return _ensurePromise
@@ -173,51 +159,18 @@ export async function ensurePermissionPatterns(requestFn) {
   return _ensurePromise
 }
 
-const MODULE_CODE_TO_KEYS = {
-  // 对齐 shared/contracts/module-manifest.json 的 studentProfile（别名 student360）
-  STUDENT: ['studentProfile', 'student360', 'student', 'STUDENT'],
-  STUDENT_AFFAIRS: ['studentAffairs', 'STUDENT_AFFAIRS'],
-  INTERNSHIP: ['internship', 'INTERNSHIP'],
-  GRADUATION: ['graduation', 'graduationDesign', 'GRADUATION'],
-  ACADEMIC_AFFAIRS: ['academicAffairs', 'academicLegacy', 'ACADEMIC_AFFAIRS'],
-  CAMPUS_SERVICE: ['campusService', 'CAMPUS_SERVICE'],
-  EMPLOYMENT: ['employment', 'EMPLOYMENT'],
-  ORIENTATION: ['orientation', 'ORIENTATION'],
-  SYSTEM: ['systemAdmin', 'system', 'SYSTEM', 'auditLog'],
-  WORKBENCH: ['workbench', 'todoMessage', 'WORKBENCH', 'approval'],
-  APPROVAL: ['approval', 'workbench', 'todoMessage', 'APPROVAL'],
-  PLATFORM: ['platform', 'PLATFORM', 'apiAccess'],
+function currentModuleEntitled(moduleCode) {
+  return moduleEntitled(moduleCode, _moduleEntitlements, _moduleAccessHealthy)
 }
 
-function moduleEntitled(moduleCode) {
-  // 授权计算失败：不得按「未购买」拦截；由布局展示服务错误，后端 require_module 仍是边界
-  if (!_moduleAccessHealthy) return true
-  if (!Array.isArray(_moduleEntitlements)) return true // 未下发时不在前端阻断
-  if (_moduleEntitlements.includes('*')) return true
-  const keys = MODULE_CODE_TO_KEYS[moduleCode] || [moduleCode, String(moduleCode || '').toLowerCase()]
-  return keys.some((k) => _moduleEntitlements.includes(k))
-}
-
-/**
- * 路由守卫判定：是否允许进入该路由。
- * @param {object} meta 目标路由 to.meta（含 moduleCode / permissionKey）
- * @returns {boolean} false=拦截（跳 403；若权限服务失败见 getRbacLoadFailed）
- */
 export function canEnterRoute(meta) {
   if (!meta || !GUARDED_MODULES.has(meta.moduleCode)) return true
   const key = meta.permissionKey
   const prod = _isProd()
 
-  if (_rbacLoadFailed) {
-    return false
-  }
+  if (_rbacLoadFailed) return false
+  if (!currentModuleEntitled(meta.moduleCode)) return false
 
-  if (!moduleEntitled(meta.moduleCode)) {
-    return false
-  }
-
-  // permissionAny：任一命中即可进入（如导入导出同页，有 import 或 export 之一即可）
-  // permissionAny 优先于展示/索引用 permissionKey；permissionAll 仅在前两者均未声明时生效。
   const anyKeys = Array.isArray(meta.permissionAny) ? meta.permissionAny.filter(Boolean) : []
   const allKeys = Array.isArray(meta.permissionAll) ? meta.permissionAll.filter(Boolean) : []
 

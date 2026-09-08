@@ -22,8 +22,6 @@ def _install_platform_service_guards():
     from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
 
     module = install_order_schedule_guard(module)
-    # Publish the fully imported module first so the authority installers can use
-    # ``from app.services import platform_service`` without depending on __getattr__.
     globals()[_PLATFORM_SERVICE_MODULE] = module
 
     from app.services.commercial_entitlement_authority_service import (
@@ -65,4 +63,10 @@ def __getattr__(name: str):
     return module
 
 
-_install_platform_service_guards()
+_platform_service = _install_platform_service_guards()
+
+# M1/M2 is an approved platform runtime extension. Installing it here gives
+# HTTP, CLI and workers the exact same commercial reader/order facade; it does
+# not create a second authority or touch the frozen platform bundle.
+from app.services.module_commerce_runtime_guard import install as _install_module_commerce_guard
+_install_module_commerce_guard(_platform_service)
