@@ -15,12 +15,14 @@ const CORE = {
     label: '岗位实习中心',
     route: '/admin/internship',
     api: '/internship/dashboard',
+    batchApi: '/internship/batches',
     contextKeys: ['internship'],
   },
   graduationDesign: {
     label: '毕业设计中心',
     route: '/admin/graduation',
     api: '/graduation/dashboard',
+    batchApi: '/graduation/batches',
     contextKeys: ['graduationDesign', 'graduation'],
   },
   studentAffairs: {
@@ -74,16 +76,20 @@ async function openWorkbench(page) {
   return token
 }
 
-async function apiRaw(page, token, requestPath) {
-  return page.evaluate(async ({ apiBaseUrl, tokenValue, pathValue }) => {
+async function apiRaw(page, token, requestPath, options = {}) {
+  return page.evaluate(async ({ apiBaseUrl, tokenValue, pathValue, method, payload }) => {
     const response = await fetch(`${apiBaseUrl}${pathValue}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${tokenValue}` },
+      method,
+      headers: { Accept: 'application/json', Authorization: `Bearer ${tokenValue}`,
+        ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
     })
     const text = await response.text()
     let json
     try { json = JSON.parse(text) } catch { json = { message: text.slice(0, 1000) } }
     return { status: response.status, json }
-  }, { apiBaseUrl: config.apiBaseUrl, tokenValue: token, pathValue: requestPath })
+  }, { apiBaseUrl: config.apiBaseUrl, tokenValue: token, pathValue: requestPath,
+    method: options.method || 'GET', payload: options.body })
 }
 
 function dataOf(result) {
@@ -132,9 +138,16 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
   expect(FIXTURE.realPaidOrderItemSources).toBe(true)
   expect(FIXTURE.legacyFeatureOverrideUsed).toBe(false)
   expect(FIXTURE.sessions).toHaveLength(16)
+  // This matrix now creates only disposable business batches through real APIs.
+  // Refuse non-local servers or fixtures outside the dedicated sixteen schools.
+  expect(process.env.E2E_ALLOW_DESTRUCTIVE_TESTS).toBe('true')
+  for (const url of [config.apiBaseUrl, config.staffBaseUrl]) {
+    expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(url).hostname)
+  }
   const evidence = []
 
   for (const [index, session] of FIXTURE.sessions.entries()) {
+    expect(String(session.tenantId)).toBe(String(1000000000000003000n + BigInt(session.mask)))
     const selected = new Set(session.selectedModules || [])
     const context = await browser.newContext({
       extraHTTPHeaders: { 'X-Forwarded-For': `10.253.16.${index + 20}` },
@@ -171,6 +184,7 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
         railCoreExact: true,
         routes: {},
         apis: {},
+        batches: {},
         employmentDenied: false,
         apiAccessDenied: false,
         platformPlaneDenied: false,
@@ -178,13 +192,42 @@ test('M2 sixteen commercial module combinations stay exact across browser, route
 
       for (const [moduleKey, contract] of Object.entries(CORE)) {
         const expected = selected.has(moduleKey)
-        await assertRoute(page, contract.route, expected)
+        let batchId = ''
+        if (contract.batchApi) {
+          const batch = await apiRaw(page, token, contract.batchApi, {
+            method: 'POST',
+            body: {
+              batchName: `M2组合${session.mask} ${contract.label}授权验收`,
+              batchNo: `M2-${session.mask}-${moduleKey}-${crypto.randomUUID().slice(0, 8)}`,
+              startDate: new Date().toISOString().slice(0, 10),
+              endDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+              plannedCount: 0,
+              remark: 'M2浏览器授权验收，仅隔离测试学校',
+            },
+          })
+          if (expected) {
+            batchId = String(dataOf(batch)?.id || '')
+            expect(batchId).toMatch(/^[1-9]\d*$/)
+            const persisted = dataOf(await apiRaw(page, token, `${contract.batchApi}/${batchId}`))
+            expect(String(persisted?.id)).toBe(batchId)
+            row.batches[moduleKey] = { id: batchId, createdViaApi: true, readBack: true }
+          } else {
+            expect(batch.status, JSON.stringify(batch.json)).toBe(403)
+            expect(batch.json?.code).not.toBe(0)
+            row.batches[moduleKey] = { createDenied: true }
+          }
+        }
+        // A batch-scoped dashboard must remain batch-scoped, not be relaxed to
+        // an unscoped 200 merely to satisfy this entitlement acceptance matrix.
+        const batchQuery = batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''
+        await assertRoute(page, contract.route + batchQuery, expected)
         row.routes[moduleKey] = expected ? 'ALLOWED' : 'DENIED'
 
-        const result = await apiRaw(page, token, contract.api)
+        const result = await apiRaw(page, token, contract.api + batchQuery)
         if (expected) {
           expect(result.status, `${session.mask}:${moduleKey}:${JSON.stringify(result.json)}`).toBe(200)
           expect(result.json?.code, JSON.stringify(result.json)).toBe(0)
+          if (moduleKey === 'internship') expect(String(result.json?.data?.batchId)).toBe(batchId)
           row.apis[moduleKey] = 'ALLOWED'
         } else {
           expect(result.status, `${session.mask}:${moduleKey}:${JSON.stringify(result.json)}`).toBe(403)
