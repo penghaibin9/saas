@@ -10,6 +10,12 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
 
 FROM ${PYTHON_BASE_IMAGE}
+# Apply available distribution fixes in the FINAL image, not only the builder.
+# Failed index updates abort. Keep dpkg inventory so unfixed findings stay visible.
+# Re-scan/pin the final image; an apt upgrade is not evidence of zero vulnerabilities.
+RUN apt-get update -o APT::Update::Error-Mode=any \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/backend
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend
 COPY backend/requirements.txt ./requirements.txt
