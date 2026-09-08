@@ -1,0 +1,48 @@
+name: Internship audit repair source delivery
+
+on:
+  push:
+    branches: [fix/internship-final-audit-20260909]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internship-audit-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-package:
+    name: Exact source package (not acceptance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Package tracked source and provenance only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/internship-delivery"
+          git archive --format=zip HEAD > "$RUNNER_TEMP/internship-delivery/source.zip"
+          python - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'internship-delivery'
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip()
+          (out / 'provenance.json').write_text(json.dumps({
+              'sourceSha': sha, 'sourceTree': tree,
+              'archiveSha256': hashlib.sha256((out / 'source.zip').read_bytes()).hexdigest(),
+              'runId': os.environ['GITHUB_RUN_ID'],
+              'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'acceptanceExecuted': False, 'releaseApproved': False,
+              'productionDataAccessed': False
+          }, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: internship-audit-source-${{ github.sha }}
+          path: ${{ runner.temp }}/internship-delivery/
+          if-no-files-found: error
+          retention-days: 7
