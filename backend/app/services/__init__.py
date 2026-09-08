@@ -91,9 +91,3 @@ _install_m345_hardening(
     _module_commerce_lifecycle_service,
     _tenant_offboarding_service,
 )
-
-# Recurring module business writers have no HTTP request intent. Wrap only the
-# current-tenant business mutation workers; audit/control-plane delivery remains
-# outside the fence so compliance evidence continues while a module is frozen.
-from app.services.module_commerce_background_guard import install as _install_module_background_guards
-_install_module_background_guards()
