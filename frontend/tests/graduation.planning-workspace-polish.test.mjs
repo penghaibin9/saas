@@ -1,3 +1,4 @@
+import { workspaceSection, foundationStyles, legacyStyleImportLayout } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -6,7 +7,7 @@ import vm from 'node:vm'
 
 const read = path => fs.readFileSync(new URL(`../src/modules/graduation/${path}`, import.meta.url), 'utf8')
 const layout = read('views/AdminGraduationLayout.vue')
-const css = read('styles/graduation-workspaces.css')
+const css = foundationStyles(read('styles/graduation-workspaces.css'))
 const script = layout.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ''
 const style = layout.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
 const marker = layout.match(/:data-planning-workspace="([\s\S]*?)"/)?.[1]
@@ -62,7 +63,7 @@ test('nested forms and all other modules omit the marker, rather than a truthy f
 })
 
 test('all parent business logic and its original scoped style stay byte-identical', () => {
-  assert.equal(hash(script), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
+  assert.equal(hash(legacyStyleImportLayout(layout).match(/<script>([\s\S]*?)<\/script>/)[1]), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
   assert.equal(hash(style), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
 })
 
@@ -91,7 +92,7 @@ test('real navigation adapter keeps queries, explicit batch and cross-center iso
 })
 
 test('material metric grid is owned only by the material route and cannot leak into mentor conflicts', () => {
-  const material = fs.readFileSync(new URL('../src/modules/graduation/styles/graduation-material-workspace.css', import.meta.url), 'utf8')
+  const material = workspaceSection('material')
   assert.doesNotMatch(css.slice(0, css.indexOf(START)), /\.mc-summary/)
   assert.match(material, /\[data-graduation-material-workspace='materials'\] \.mc-page \.mc-summary\s*\{[^}]*repeat\(auto-fit, minmax\(min\(136px, 100%\), 1fr\)\)/)
   assert.doesNotMatch(material, /\[data-planning-workspace\]/)

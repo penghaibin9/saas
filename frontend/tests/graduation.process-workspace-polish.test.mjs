@@ -1,3 +1,4 @@
+import { workspaceSection, foundationStyles, legacyStyleImportLayout } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -5,9 +6,9 @@ import test from 'node:test'
 import vm from 'node:vm'
 
 const base = new URL('../src/modules/graduation/', import.meta.url)
-const layout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', base), 'utf8')
-const cssFile = new URL('styles/graduation-process-workspace.css', base)
-const css = fs.existsSync(cssFile) ? fs.readFileSync(cssFile, 'utf8') : ''
+const rawLayout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', base), 'utf8')
+const layout = rawLayout.replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+const css = workspaceSection('process')
 const marker = layout.match(/:data-graduation-process-workspace="([\s\S]*?)"/)?.[1]
 const script = layout.match(/<script>([\s\S]*?)<\/script>/)[1]
 const hash = text => createHash('sha256').update(text).digest('hex')
@@ -55,16 +56,17 @@ test('students, planning pages, other modules and unknown names omit the boundar
 
 test('normalizing only the new marker and stylesheet restores the complete parent file', () => {
   // Exclude the later, independently protected material presentation addition.
-  const withoutMaterial = layout.replace(/      :data-graduation-material-workspace="[\s\S]*?"\n/, '')
+  const withoutMaterial = legacyStyleImportLayout(layout).replace(/      :data-graduation-material-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-material-workspace\.css"><\/style>\n?$/, '')
   const original = withoutMaterial.replace(/      :data-graduation-process-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>\n?$/, '')
   assert.equal(hash(original), 'b783e18b64d6a7dccefa27457358401507f9f2b73f8c03bb3b03cb09ffcb04ff')
 })
 
-test('non-material module styles remain frozen; the process stylesheet is imported once', () => {
-  assert.equal(hash(fs.readFileSync(new URL('styles/graduation-workspaces.css', base), 'utf8')), 'ab00fa350f0927d7d9250c03bdede1ccfae3bf39878b489993b38488079aff64')
-  assert.equal((layout.match(/<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>/g) || []).length, 1)
+test('foundation remains frozen and the canonical stylesheet is imported once', () => {
+  assert.equal(hash(foundationStyles()), 'ab00fa350f0927d7d9250c03bdede1ccfae3bf39878b489993b38488079aff64')
+  assert.equal((rawLayout.match(/<style src="@\/modules\/graduation\/styles\/graduation-workspaces\.css"><\/style>/g) || []).length, 1)
+  assert.equal((rawLayout.match(/<style\s+src=/g) || []).length, 1)
 })
 
 test('every process selector stays within the route marker, with no suppression of business states', () => {

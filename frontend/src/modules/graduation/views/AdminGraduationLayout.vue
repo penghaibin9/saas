@@ -51,6 +51,12 @@
           : $route.name === 'graduation-plagiarism-ledger' ? 'plagiarism'
           : $route.name === 'graduation-review-tasks' ? 'review' : undefined
       "
+      :data-graduation-defense-workspace="
+        $route.name === 'graduation-defense' ? 'schedule'
+          : $route.name === 'graduation-defense-scoring' ? 'scoring'
+          : $route.name === 'graduation-defense-confirmation' ? 'confirmation'
+          : $route.name === 'graduation-grade-ledger' ? 'grades' : undefined
+      "
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert
@@ -91,7 +97,6 @@ import { AppInlineAlert } from '@/components/common'
 import { matchPermission } from '@/config/navPlan'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
-import '@/modules/graduation/styles/graduation-workspaces.css'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import GraduationExtensionAdminPanel from './GraduationExtensionAdminPanel.vue'
@@ -365,6 +370,4 @@ export default {
 }
 </style>
 
-<style src="../styles/graduation-process-workspace.css"></style>
-
-<style src="../styles/graduation-material-workspace.css"></style>
+<style src="@/modules/graduation/styles/graduation-workspaces.css"></style>

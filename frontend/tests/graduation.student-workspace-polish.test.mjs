@@ -1,3 +1,4 @@
+import { foundationStyles } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -5,7 +6,7 @@ import vm from 'node:vm'
 import test from 'node:test'
 
 const source = fs.readFileSync(process.env.STUDENT_SOURCE || new URL('../src/modules/graduation/views/GraduationStudentListView.vue', import.meta.url), 'utf8')
-const moduleCss = fs.readFileSync(process.env.GRADUATION_CSS || new URL('../src/modules/graduation/styles/graduation-workspaces.css', import.meta.url), 'utf8')
+const moduleCss = foundationStyles(fs.readFileSync(process.env.GRADUATION_CSS || new URL('../src/modules/graduation/styles/graduation-workspaces.css', import.meta.url), 'utf8'))
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
 const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)[1]
 const plain = value => JSON.parse(JSON.stringify(value))
