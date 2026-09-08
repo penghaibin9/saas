@@ -47,29 +47,32 @@ class DependencyUpgradeContracts(unittest.TestCase):
                 pins = [p for p in requirements(name) if p.lower().startswith('alibabacloud-tea-openapi')]
                 self.assertEqual(pins, ['alibabacloud-tea-openapi==0.4.6'])
         self.assertIn('alibabacloud-tea-openapi>=0.4.6,<0.5', requirements('requirements.in'))
-        # The final offline install must resolve the WHOLE frozen graph and run
-        # pip check; do not use --no-deps to force the previously conflicting pair.
-        runtime = (ROOT / 'backend/Dockerfile.security').read_text().split('FROM ${PYTHON_BASE_IMAGE}\n', 1)[1]
-        self.assertIn('pip install --no-cache-dir --no-index --find-links /tmp/wheels -r requirements.txt', runtime)
-        self.assertNotIn('--no-deps', runtime)
-        self.assertIn('&& pip check', runtime)
-
-    def test_runtime_stage_receives_available_distribution_updates(self):
         text = (ROOT / 'backend/Dockerfile.security').read_text()
-        runtime = text.split('FROM ${PYTHON_BASE_IMAGE}\n', 1)[1]
-        self.assertIn('apt-get update -o APT::Update::Error-Mode=any', runtime)
-        self.assertIn('apt-get upgrade -y --no-install-recommends', runtime)
-        self.assertLess(runtime.index('apt-get upgrade'), runtime.index('USER 10001:10001'))
-        self.assertNotIn('|| true', runtime)
-        self.assertNotIn('--allow-unauthenticated', runtime)
+        appenv = text.split('FROM ${SECURITY_PYTHON_BASE_IMAGE} AS appenv\n', 1)[1].split(
+            'FROM ${RUNTIME_BASE_IMAGE} AS micro-root', 1)[0]
+        self.assertIn('/opt/secure-venv/bin/pip install --no-cache-dir --no-index --find-links /tmp/wheels -r /tmp/requirements.txt', appenv)
+        self.assertNotIn('pip install --no-deps', appenv)
+        self.assertIn('&& /opt/secure-venv/bin/pip check', appenv)
+
+    def test_runtime_root_receives_reviewed_distribution_packages(self):
+        text = (ROOT / 'backend/Dockerfile.security').read_text()
+        rootfs = text.split('FROM ${SECURITY_PYTHON_BASE_IMAGE} AS rootfs\n', 1)[1].split('FROM scratch', 1)[0]
+        self.assertIn('--installroot="$INSTALL_ROOT"', rootfs)
+        self.assertIn('--releasever=9', rootfs)
+        self.assertIn('install python3.12 ca-certificates tzdata', rootfs)
+        self.assertIn('rpm --root "$INSTALL_ROOT" -q python3.12 ca-certificates tzdata', rootfs)
+        self.assertNotIn('|| true', rootfs)
+        self.assertNotIn('--allow-unauthenticated', rootfs)
+        self.assertNotIn('rpm -e --nodeps', rootfs)
 
     def test_image_preserves_package_inventory_and_nonroot_readiness(self):
         text = (ROOT / 'backend/Dockerfile.security').read_text()
         self.assertNotIn('rm -rf /var/lib/dpkg', text)
-        self.assertNotIn('rm -rf /usr/lib', text)
+        self.assertNotIn('rm -rf /usr/lib/sysimage/rpm', text)
+        self.assertIn('(test -d "$INSTALL_ROOT/usr/lib/sysimage/rpm" || test -d "$INSTALL_ROOT/var/lib/rpm")', text)
         self.assertIn('USER 10001:10001', text)
         self.assertIn('scripts/security_profile_probe.py', text)
-        self.assertIn('&& pip check', text)
+        self.assertIn('/opt/secure-venv/bin/pip check', text)
 
     def test_native_smoke_is_mandatory_in_same_scanned_image(self):
         text = (ROOT / '.github/workflows/security-image-vulnerability.yml').read_text()

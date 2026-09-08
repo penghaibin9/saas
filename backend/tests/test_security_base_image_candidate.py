@@ -32,27 +32,44 @@ PROBE = load_probe()
 
 
 class SecurityProductionImageSurfaceContracts(unittest.TestCase):
-    def test_production_scan_uses_reviewed_ubi_python312_minimal(self):
+    def test_production_scan_uses_reviewed_ubi_python_and_micro_runtime(self):
         text = WORKFLOW.read_text()
         self.assertIn('export PYTHON_BASE_TAG="registry.access.redhat.com/ubi9/python-312-minimal:9.8"', text)
+        self.assertIn('export RUNTIME_BASE_TAG="registry.access.redhat.com/ubi9/ubi-micro:9.8"', text)
         self.assertNotIn('python:3.12-slim-bookworm', text)
         self.assertNotIn('python:3.12-alpine', text)
 
-    def test_base_is_resolved_to_digest_before_build(self):
+    def test_both_bases_are_resolved_to_digest_before_build(self):
         text = WORKFLOW.read_text()
-        pull = text.index('docker pull "$PYTHON_BASE_TAG"')
-        inspect = text.index('export PYTHON_BASE_DIGEST=')
+        python_pull = text.index('docker pull "$PYTHON_BASE_TAG"')
+        runtime_pull = text.index('docker pull "$RUNTIME_BASE_TAG"')
+        python_inspect = text.index('export PYTHON_BASE_DIGEST=')
+        runtime_inspect = text.index('export RUNTIME_BASE_DIGEST=')
         build = text.index('docker build -f backend/Dockerfile.security')
-        self.assertLess(pull, inspect)
-        self.assertLess(inspect, build)
-        self.assertIn('--build-arg "PYTHON_BASE_IMAGE=$PYTHON_BASE_DIGEST"', text)
-        self.assertIn("'pythonBaseTag': os.environ['PYTHON_BASE_TAG']", text)
-        self.assertIn("'pythonBaseDigest': os.environ['PYTHON_BASE_DIGEST']", text)
+        self.assertLess(python_pull, python_inspect)
+        self.assertLess(runtime_pull, runtime_inspect)
+        self.assertLess(python_inspect, build)
+        self.assertLess(runtime_inspect, build)
+        self.assertIn('--build-arg "SECURITY_PYTHON_BASE_IMAGE=$PYTHON_BASE_DIGEST"', text)
+        self.assertIn('--build-arg "RUNTIME_BASE_IMAGE=$RUNTIME_BASE_DIGEST"', text)
+        self.assertIn("'runtimeBaseDigest': os.environ['RUNTIME_BASE_DIGEST']", text)
+
+    def test_runtime_is_built_from_micro_installroot_not_python_base(self):
+        text = DOCKERFILE.read_text()
+        self.assertIn('FROM ${RUNTIME_BASE_IMAGE} AS micro-root', text)
+        self.assertIn('--installroot="$INSTALL_ROOT"', text)
+        self.assertIn('install python3.12 ca-certificates tzdata', text)
+        self.assertIn('FROM scratch', text)
+        self.assertIn('COPY --from=rootfs /runtime-root/ /', text)
+        self.assertNotIn('rpm -e --nodeps', text)
+        self.assertNotIn('rm -rf /usr/lib/sysimage/rpm', text)
+        self.assertIn('unexpected runtime package: $pkg', text)
+        self.assertIn('curl-minimal libcurl-minimal', text)
 
     def test_runtime_does_not_copy_entire_backend_scripts_tree(self):
         text = DOCKERFILE.read_text()
         self.assertNotIn('COPY backend/scripts ./scripts', text)
-        copy_block = text[text.index('RUN mkdir -p ./scripts'):text.index('COPY shared /app/shared')]
+        copy_block = text[text.index('RUN mkdir -p /runtime-root/app/backend/scripts'):text.index('COPY shared /runtime-root/app/shared')]
         copied = set(re.findall(r'backend/scripts/([A-Za-z0-9_.-]+\.py)', copy_block))
         self.assertEqual(copied, EXPECTED_RUNTIME_SCRIPTS)
         self.assertNotIn('seed_demo_data.py', copy_block)
@@ -65,7 +82,7 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
 
     def test_setuid_and_setgid_bits_are_stripped_before_nonroot_user(self):
         text = DOCKERFILE.read_text()
-        find = 'find /usr/bin /usr/sbin /bin /sbin -xdev -type f'
+        find = 'find "$INSTALL_ROOT/usr/bin" "$INSTALL_ROOT/usr/sbin" "$INSTALL_ROOT/bin" "$INSTALL_ROOT/sbin"'
         self.assertIn(find, text)
         self.assertIn('-perm -4000 -o -perm -2000', text)
         self.assertIn('-exec chmod a-s {} +', text)
