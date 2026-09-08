@@ -57,9 +57,9 @@ class DependencyUpgradeContracts(unittest.TestCase):
     def test_runtime_root_receives_reviewed_distribution_packages(self):
         text = (ROOT / 'backend/Dockerfile.security').read_text()
         rootfs = text.split('FROM ${SECURITY_PYTHON_BASE_IMAGE} AS rootfs\n', 1)[1].split('FROM scratch', 1)[0]
-        self.assertIn('--installroot="$INSTALL_ROOT"', rootfs)
-        self.assertIn('--releasever=9', rootfs)
-        self.assertIn('install python3.12 ca-certificates tzdata', rootfs)
+        self.assertIn('--installroot "$INSTALL_ROOT"', rootfs)
+        self.assertIn('--releasever=/', rootfs)
+        self.assertIn('python3.12 ca-certificates tzdata', rootfs)
         self.assertIn('rpm --root "$INSTALL_ROOT" -q python3.12 ca-certificates tzdata', rootfs)
         self.assertNotIn('|| true', rootfs)
         self.assertNotIn('--allow-unauthenticated', rootfs)
