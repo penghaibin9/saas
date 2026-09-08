@@ -1,5 +1,9 @@
 <template>
   <BasePortalLayout
+    class="graduation-portal"
+    workspace
+    hide-global-workbench
+    :workspace-navigate="resolveWorkspaceDestination"
     :title="brandTitle"
     subtitle="毕业设计中心"
     :ctx="layoutCtx"
@@ -150,6 +154,21 @@ export default {
   },
   async created() { await this.loadContext() },
   methods: {
+    resolveWorkspaceDestination(path) {
+      // The shared frame also navigates to other centers. Only Graduation
+      // destinations inherit this module's batch; explicit deep links win.
+      if (typeof path !== 'string' || !/^\/admin\/graduation(?:[/?#]|$)/.test(path)) return path
+      const hashAt = path.indexOf('#')
+      const target = hashAt < 0 ? path : path.slice(0, hashAt)
+      const hash = hashAt < 0 ? '' : path.slice(hashAt)
+      const queryAt = target.indexOf('?')
+      const query = new URLSearchParams(queryAt < 0 ? '' : target.slice(queryAt + 1))
+      if (query.has('batchId')) return path
+      const batchId = useGraduationBatchStore().selectedBatchId
+      if (!batchId) return path
+      const separator = queryAt < 0 ? '?' : /[?&]$/.test(target) ? '' : '&'
+      return `${target}${separator}batchId=${encodeURIComponent(String(batchId))}${hash}`
+    },
     async loadContext() {
       this.loading = true
       this.contextError = ''
@@ -225,9 +244,10 @@ export default {
 .gd-batch-bar :deep(.gbs__select) {
   min-width: 210px;
   max-width: min(420px, 48vw);
-  min-height: 28px;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  min-height: 34px;
+  font-size: 13px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   border-color: var(--primary-200, #bfdbfe);
 }
 .gd-batch-bar :deep(.gbs__meta),
