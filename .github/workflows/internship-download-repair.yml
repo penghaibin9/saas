@@ -1,0 +1,40 @@
+name: Internship downloadable repair
+
+on:
+  push:
+    branches: [fix/internship-download-repair-20260909]
+    paths:
+      - '.github/workflows/internship-download-repair.yml'
+      - 'scripts/check/verify-internship-download-repair.py'
+      - 'scripts/check/internship-download-repair-trigger.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internship-download-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Package exact checked-out source (no credentials or runtime data)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/internship-source
+          git rev-parse HEAD > /tmp/internship-source/checkout-sha.txt
+          git archive --format=tar.gz --output=/tmp/internship-source/source.tar.gz HEAD
+          sha256sum /tmp/internship-source/source.tar.gz > /tmp/internship-source/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: internship-repair-source-${{ github.sha }}
+          path: /tmp/internship-source/
+          if-no-files-found: error
+          retention-days: 7
