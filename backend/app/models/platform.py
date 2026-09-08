@@ -3,6 +3,7 @@ t_platform_config 为控制面 KV（tenant_id=0 表示全局默认）；t_order 
 from __future__ import annotations
 
 from datetime import datetime
+import sys as _sys
 
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -58,3 +59,27 @@ class PlatformNotice(PKMixin, CommonMixin, Base):
                                         comment="DRAFT/PUBLISHED/OFFLINE")
     publish_at: Mapped[datetime | None] = mapped_column(DateTime)
     remark: Mapped[str | None] = mapped_column(String(500))
+
+
+# Register M1/M2 tables in Base.metadata while leaving the long app.models
+# aggregator byte-identical to the verified baseline. Existing services in this
+# repository import models from ``app.models``; expose the five additions there
+# without deleting or reordering any legacy model registration.
+from app.models.commercial import (  # noqa: E402,F401
+    CommercialOrderItem,
+    CommercialSkuVersion,
+    TenantCommercialProfile,
+    TenantModuleState,
+    TenantModuleSubscriptionSource,
+)
+
+_models_package = _sys.modules.get("app.models")
+if _models_package is not None:
+    for _model_name in (
+        "CommercialOrderItem",
+        "CommercialSkuVersion",
+        "TenantCommercialProfile",
+        "TenantModuleState",
+        "TenantModuleSubscriptionSource",
+    ):
+        setattr(_models_package, _model_name, globals()[_model_name])

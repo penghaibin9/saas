@@ -30,8 +30,6 @@ from app.models.file import FileObject  # noqa: F401
 from app.models.platform_integrity import IntegrityException  # noqa: F401
 from app.models.data_exchange import ExportJob, ImportJob, ImportRowError  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
-from app.models.commercial import (CommercialOrderItem, CommercialSkuVersion,  # noqa: F401
-    TenantCommercialProfile, TenantModuleState, TenantModuleSubscriptionSource)
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
                                     InternshipArchive, InternshipAuditTrail, InternshipBatch,
                                     InternshipBatchParticipant, InternshipBatchPlan,
@@ -61,7 +59,7 @@ from app.models.internship_match import InternshipApplication, InternshipIntenti
 from app.models.excel_import_job import ExcelImportJob  # noqa: F401  (å…¬å…± Excel åº•åº§Â·é€šç”¨å¯¼å…¥è®°å½•)
 from app.models.identity_import_batch import IdentityImportBatch  # noqa: F401
 from app.models.shared_import_batch import SharedImportBatch  # noqa: F401
-from app.models.internship_agreement_template import InternshipAgreementTemplate  # noqa: F401  (å®ä¹ åè®®æ¨¡æ¿åº“Â·ç‹¬ç«‹æ–°æ–‡ä»¶)
+from app.models.internship_agreement_template import InternshipAgreementTemplate  # noqa: F401  (å®ä¹ åè®®æ¨¡æ¿åº“Â·ç‹¬ç«‹æ–‡ä»¶)
 from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
                                      OrientationActivationChallenge, OrientationAuditTrail, OrientationBatch,
                                      OrientationCheckinPoint, OrientationCheckinRecord,
@@ -105,15 +103,151 @@ from app.models.teacher_scope import TeacherStudentScope  # noqa: F401
 from app.models.affairs import (AffairsAuditTrail, AffairsClassCadre,  # noqa: F401
                                 AffairsLeaveCancelRecord, AffairsLeaveExtension)
 from app.models.affairs_class import (AffairsClassMaterial,  # noqa: F401
-                                    AffairsCounselorAssessment,
+                                      AffairsCounselorAssessment,
                                       AffairsCounselorAssessmentPeriod)
 from app.models.affairs_aid import (AidApply, AidBatch, AidFamilyEconomy,  # noqa: F401
-                                AidLevelHistory, AidObjection, FundingAppeal,
-                                FundingApplication,
-                                FundingBatch, FundingDisbursement, FundingProject)
+                                    AidLevelHistory, AidObjection, FundingAppeal,
+                                    FundingApplication,
+                                    FundingBatch, FundingDisbursement, FundingProject)
 from app.models.affairs_discipline import (AffairsRiskHandle,  # noqa: F401
-                                     AffairsRiskRecord, DisciplineAppeal,
-                                    DisciplineCase, DisciplineRemoveApply)
-# åŒ… 10 çš„ä¸§å¼ å®Œæ•´æ€§è¡¨ã€æ–‡ä»¶é…é¢é¢„è¡¨ï¼šmodel æ–‡ä»¶éƒ½å·²å†™å¥¼ï¼Œä¸€ç›´æ²£åœ¨è¿™å¯¿å…¤ï¼Œ(Œµ•Ñ…‘…Ñ„ƒ¦3r/’â7–"Ã–º’î³¾ò1‘É½Á}…±°½É•…Ñ•}…±°ƒ’â;¢şï–âO’â¢ÓšŸšš~—–£¦÷šò?š:'jŠ"SŠ"S¢†—’â+šÎ£–3)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}‘¥Í¥Á±¥¹•}¥¹Ñ•É¥Ñä¥µÁ½ÉĞ€¡¥Í¥Á±¥¹••¥Í¥½¹Y•ÉÍ¥½¸°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥Í¥Á±¥¹•MÕ‰™±½İ1½¬¤)™É½´…ÁÀ¹µ½‘•±Ì¹™¥±•}ÅÕ½Ñ„¥µÁ½ÉĞ¥±•MÑ½É…•EÕ½Ñ…I•Í•ÉÙ…Ñ¥½¸€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}Ñ…±¬¥µÁ½ÉĞ€¡…µ¥±å½¹Ñ…Ñ1½œ°Q…±­A±…¸°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Q…±­I•½É¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}µ•¹Ñ…°¥µÁ½ÉĞAÍåI•™•ÉÉ…°€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}ÁÍå}ÍÕÉÙ•ä¥µÁ½ÉĞAÍåMÕÉÙ•åMÕ‰µ¥ÍÍ¥½¸€€Œ¹½Å„èĞÀÄ€€£–şB–—–êß’öO¢¾
-ß¾³’âšZÃšZ’îØ¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}‘½É´¥µÁ½ÉĞ€¡½Éµ•ÍÍÙ•¹Ğ°½Éµ±±½…Ñ¥½¹	…Ñ °€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½Éµ±±½…Ñ¥½¹%Ñ•´°½Éµ	•°½Éµ	Õ¥±‘¥¹œ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½Éµ¡•­½ÕÑI•ÅÕ•ÍĞ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½Éµ¡•­I•½É°½Éµ¡•­Q…Í¬°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½ÉµI•Ñ¥™¥…Ñ¥½¸°½ÉµI½½´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½ÉµMÑ…ä°½ÉµQÉ…¹Í™•È¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}…É¡¥Ù”¥µÁ½ÉĞÉ¡¥Ù•	…Ñ °É¡¥Ù•A…­…”€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}…Ñ¥Ù¥Ñä¥µÁ½ÉĞ€¡™™…¥ÉÍÑ¥Ù¥Ñä°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍÑ¥Ù¥ÑåÉ•‘¥Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍÑ¥Ù¥ÑåM¥¹ÕÀ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍÉ•‘¥ÑÁÁ•…°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍÉ•‘¥Ñ…Ñ•½Éä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍY½±Õ¹Ñ••ÉI•½É¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}…ÑÑ…¡µ•¹Ğ¥µÁ½ÉĞ™™…¥ÉÍÑÑ…¡µ•¹Ğ€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}±Õˆ¥µÁ½ÉĞ€¡™™…¥ÉÍ±Õˆ°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍ±Õ‰¹¹Õ…±I•Ù¥•Ü°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍ±Õ‰5•µ‰•È¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}½Éœ¥µÁ½ÉĞ€¡™™…¥ÉÍ=ÉA½Í¥Ñ¥½¸°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍMÑÕ‘•¹Ñ=Éœ¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}±•…Õ”¥µÁ½ÉĞ€¡™™…¥ÉÍ1•…Õ••Ø°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€™™…¥ÉÍ1•…Õ••ÙMÑ…”¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}½Õ¹Í•±½É}•Ù…°¥µÁ½ÉĞ€¡½Õ¹Í•±½ÉÙ…°°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½Õ¹Í•±½ÉÙ…±%¹‘¥…Ñ½È¤)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}½Õ¹Í•±½É}…ÍÍ¥¹µ•¹Ğ¥µÁ½ÉĞ™™…¥ÉÍ½Õ¹Í•±½ÉÍÍ¥¹µ•¹Ğ€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}™Õ¹‘¥¹}•áĞ¥µÁ½ÉĞ€¡••I•‘ÕÑ¥½¸°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÑÕ‘•¹Ñ1½…¸°]½É­MÑÕ‘å5½¹Ñ¡±ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€]½É­MÑÕ‘åA½ÍĞ°]½É­MÑÕ‘åI•½É¤)™É½´…ÁÀ¹µ½‘•±Ì¹……‘•µ¥}…™™…¥ÉÌ¥µÁ½ÉĞ€¡…É¡¥Ù•	…Ñ °€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É¡¥Ù•%Ñ•´°…ÑÑ•¹‘…¹•M•ÍÍ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€……±•¹‘…ÉÙ•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…±…ÍÍ‘©ÕÍÑµ•¹ÑI•ÅÕ•ÍĞ°…±…ÍÍQ¥µ•	…¹°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…±…ÍÍÉ½½´°…±…ÍÍÉ½½µ	½½­¥¹œ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…½ÕÉÍ”°…½ÕÉÍ•5…Ñ•É¥…°°…•™•ÉÉ•‘á…´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…1…‰I•Í½ÕÉ”°…ÅÕ¥Áµ•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…1…‰	½½­¥¹œ°…I•Í½ÕÉ•I•Á…¥È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…5…©½É¥É•Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ù…±Õ…Ñ¥½¹ÁÁ•…°°…Ù…±Õ…Ñ¥½¹	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ù…±Õ…Ñ¥½¹I•½É°…Ù…±Õ…Ñ¥½¹I•ÍÕ±Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ù…±Õ…Ñ¥½¹Q…Í¬°…á•µÁÑ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…á…µÕ‘¥ÑQÉ…¥°°…á…µ	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…5…­•ÕÁ	…Ñ °…I•Ñ…­•ÁÁ±ä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…á…µ½ÕÉÍ”°…á…µ%¹¥‘•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…á…µ%¹Ù¥¥±…Ñ½È°…á…µA…ÑÉ½°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…á…µI½½´°…á…µI½½µMÑÕ‘•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…á…µQ•…¡•É1½¬°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É…‘•I•¡•¬°…]½É­±½…‘•±…É…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É…‘•I•½É°…É…‘•Q…Í¬°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É…‘Õ…Ñ¥½¹Õ‘¥Ñ	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É…‘Õ…Ñ¥½¹Õ‘¥ÑI•ÍÕ±Ğ°…AÉ½É…´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…AÉ½É…µ	¥¹‘¥¹œ°…AÉ½É…µ½ÕÉÍ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…AÉ½É…µÉ…‘Õ…Ñ¥½¹I•ÅÕ¥É•µ•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…AÉ½É…µAÉ…Ñ¥•M•µ•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…EÕ…±¥ÑåI•½É°…EÕ…±¥ÑåI•Ñ¥™¥…Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…I•¥ÍÑÉ…Ñ¥½¸°…I•¥ÍÑÉ…Ñ¥½¹	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…I•¥ÍÑÉ…Ñ¥½¹•™•ÉÉ…°°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…I•¥ÍÑÉ…Ñ¥½¹á•ÁÑ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M¡•‘Õ±•	…Ñ °…M¡•‘Õ±•¡…¹”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M¡•‘Õ±•%Ñ•´°…M¡•‘Õ±•AÕ‰±¥Í °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M¡•‘Õ±•IÕ±”°…M¡•‘Õ±•M½Á•!•…°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M•±•Ñ¥½¹	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•…¡•ÉÙ…¥±…‰¥±¥Ñä°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…É…‘•I•½¹¥Ñ¥½¸°…É…‘Õ…Ñ¥½¹•ÉÑ¥™¥…Ñ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…1•Ù•±á…´°…1•Ù•±á…µI•œ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…5…©½ÉMÁ±¥Ñ	…Ñ °…5…©½ÉMÁ±¥Ñ=ÁÑ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…5…©½ÉMÁ±¥ÑY½±Õ¹Ñ••È°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M•±•Ñ¥½¹½ÕÉÍ”°…M•±•Ñ¥½¹I•½É°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…M•±•Ñ¥½¹I½Õ¹°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…MÑ…ÑÕÍ¡…¹”°…MÑÕ‘•¹Ñ½ÉÉ•Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•…¡¥¹Q…Í¬°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•…¡¥¹Q…Í­	…Ñ °…Q•É´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½¬°…Q•áÑ‰½½­¥ÍÑÉ¥‰ÕÑ¥½¹	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½­¥ÍÑÉ¥‰ÕÑ¥½¹I•½É°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½­••1•‘•È°…Q•áÑ‰½½­=É‘•É	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½­=É‘•É%Ñ•´°…Q•áÑ‰½½­I•Ù¥•İ	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½­I•Ù¥•İ	…Ñ¡%Ñ•´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Q•áÑ‰½½­M•±•Ñ¥½¸°…Q¥µ•M±½Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹……‘•µ¥}…™™…¥ÉÍ}É•¥ÍÑÉä¥µÁ½ÉĞ€¨€€Œ¹½Å„èĞÀÄ±ĞÀÌ)™É½´…ÁÀ¹µ½‘•±Ì¹……‘•µ¥}…±•¹‘…È¥µÁ½ÉĞ€¡…‘•µ¥…±•¹‘…É½Ù•É¹…¹”°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄÈƒ–¶›šršÊïBš*W–öÄ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…±•¹‘…ÉQÉ…¹Í¥Ñ¥½¹Ù•¹Ğ°…±•¹‘…É]¥¹‘½Ü¤)™É½´…ÁÀ¹µ½‘•±Ì¹½É…¹¥é…Ñ¥½¹}Ù•ÉÍ¥½¸¥µÁ½ÉĞ€¡=ÉY•ÉÍ¥½¸°=ÉY•ÉÍ¥½¹%Ñ•´°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÀĞƒîî&#šr³’â;’îï¢0¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MÑ…™™ÍÍ¥¹µ•¹Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹½¹™¥}½Ù•É¹…¹”¥µÁ½ÉĞ€¡½¹™¥Ñ¥Ù…Ñ¥½¸°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄÄƒ¦7ö»šÊïB¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹™¥•™¥¹¥Ñ¥½¸°½¹™¥=Ù•ÉÉ¥‘”¤)™É½´…ÁÀ¹µ½‘•±Ì¹Á•Éµ¥ÍÍ¥½¹}½Ù•É¹…¹”¥µÁ½ÉĞ€¡ÕÍÑ½µI½±•M½ÕÉ”°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÀØƒšv¦fC–2’â;¢K¢&Ëš¢‡švü¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€A•Éµ¥ÍÍ¥½¹	Õ¹‘±”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€A•Éµ¥ÍÍ¥½¹	Õ¹‘±•%Ñ•´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€I½±•Q•µÁ±…Ñ”°I½±•Q•µÁ±…Ñ•A•Éµ¥ÍÍ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€]¥±‘…É‘I•Ñ¥É•µ•¹Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹Í½Á•}Á½±¥ä¥µÁ½ÉĞ€¡M½Á•A½±¥å•¥Í¥½¹1½œ°€€Œ¹½Å„èĞÀÄ€€¡MeL´Ààƒîî–º'–£š‚G’â;šbû–ò=9d¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€M½Á•A½±¥åQ…É•Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹Í•ÕÉ¥Ñå}¡…¹”¥µÁ½ÉĞ€¡M•ÕÉ¥ÑåÑ¥Ù…Ñ¥½¸°€€Œ¹½Å„èĞÀÄ€€¡MeL´Àäƒ–º'–£–>cšnÓ’â;šşšÒì¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€M•ÕÉ¥Ñå¡…¹•%Ñ•´°M•ÕÉ¥Ñå¡…¹•M•Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹…•ÍÍ}½Ù•É¹…¹”¥µÁ½ÉĞ€¡•ÍÍ•¥Í¥½¹QÉ…”°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄÀƒ¢ºÿ¦^»¢¦+’â;šÊïB¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€•ÍÍI•Ù¥•İ…µÁ…¥¸°•ÍÍI•Ù¥•İ%Ñ•´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€µ•É•¹å•ÍÍM•ÍÍ¥½¸°M½‘IÕ±”°M½‘Y¥½±…Ñ¥½¸¤)™É½´…ÁÀ¹µ½‘•±Ì¹Ñ•¹…¹Ñ}…Á…‰¥±¥Ñä¥µÁ½ÉĞQ•¹…¹Ñ…Á…‰¥±¥ÑåM•ÑÑ¥¹œ€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄÌƒ–¶›š‚‡¢÷–*o–B¿R ¤)™É½´…ÁÀ¹µ½‘•±Ì¹É½±•}…ÍÍ¥¹µ•¹Ğ¥µÁ½ÉĞI½±•ÍÍ¥¹µ•¹ÑY…±¥‘¥Ñä€€Œ¹½Å„èĞÀÄ€€¡MeL´ÀÜƒ¢K¢&Ëš"C–Fcšr'šV#šr|¤)™É½´…ÁÀ¹µ½‘•±Ì¹É½±•}…ÍÍ¥¹µ•¹Ñ}Í½Á”¥µÁ½ÉĞI½±•ÍÍ¥¹µ•¹ÑM½Á”€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹µ…ÍÑ•É}‘…Ñ…}½Ù•É¹…¹”¥µÁ½ÉĞ€¡…Ñ…½µ…¥¸°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄÜƒ’âïšVÃš6»šÊïB¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ñ…=İ¹•È°…Ñ…EÕ…±¥Ñå%ÍÍÕ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€…Ñ…EÕ…±¥ÑåIÕ±”°5…ÍÑ•É5•É•Ù•¹Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹İ½É­™±½İ}Í•ÕÉ¥Ñå}Á½±¥ä¥µÁ½ÉĞ€¡]½É­™±½İÑ¥½¹A½±¥ä°€€Œ¹½Å„èĞÀÄ€€¡MeL´ÄĞƒšÖ¢/–º'–£¶[V”¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€]½É­™±½İY•ÉÍ¥½¹5¥É…Ñ¥½¹Ù•¹Ğ¤)™É½´…ÁÀ¹µ½‘•±Ì¹¹½Ñ¥™¥…Ñ¥½¸¥µÁ½ÉĞ9½Ñ¥™¥…Ñ¥½¹1½œ°9½Ñ¥™¥…Ñ¥½¹Q…Í¬°9½Ñ¥™¥…Ñ¥½¹Q•µÁ±…Ñ”€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹İ½É­‰•¹ ¥µÁ½ÉĞI½±•]½É­‰•¹¡½¹™¥œ€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹…ÕÑ¡}Ñ½­•¸¥µÁ½ÉĞÕÑ¡	±½­•‘)Ñ¤°ÕÑ¡I•™É•Í¡Q½­•¸€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹Á½ÉÑ…°¥µÁ½ÉĞQ•¹…¹ÑA½ÉÑ…±½¹™¥œ€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹Í…¹‘‰½à¥µÁ½ÉĞM…¹‘‰½á	…Í•±¥¹”€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘•±Ì¹™••‘‰…¬¥µÁ½ÉĞ••‘‰…¬€€Œ¹½Å„èĞÀÄ€€£–â»–*§’â;–>7¦š#
-ß.³®/šZÃšZ’îØ¤)™É½´…ÁÀ¹µ½‘•±Ì¹ÍåÍÑ•µ}¥µÁ±•µ•¹Ñ…Ñ¥½¸¥µÁ½ÉĞ€¡MåÍÑ•µ%µÁ±•µ•¹Ñ…Ñ¥½¹¡•¬°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•µ	ÕÍ¥¹•ÍÍI•±…Ñ¥½¹	…Ñ °(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•µ	ÕÍ¥¹•ÍÍI•±…Ñ¥½¹%¹ÍÑ…±±%Ñ•´°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•µ%µÁ±•µ•¹Ñ…Ñ¥½¹AÉ½©•Ğ°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•µ%µÁ±•µ•¹Ñ…Ñ¥½¹M•Ñ¥½¸°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€MåÍÑ•µAÉ•Í•Ñ%¹ÍÑ…±±…Ñ¥½¸¤)™É½´…ÁÀ¹µ½‘•±Ì¹¹…Ñ¥½¹…±}ÍÑ…¹‘…É¥µÁ½ÉĞ€¡9…Ñ¥½¹…±5…©½É…Ñ…±½œ°9…Ñ¥½¹…±MÑ…¹‘…É‘½Õµ•¹Ğ°€€Œ¹½Å„èĞÀÄ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€9…Ñ¥½¹…±MÑ…¹‘…É‘M•Ñ¥½¸°9…Ñ¥½¹…±MÑ…¹‘…É‘M½ÕÉ”°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€M¡½½±5…©½ÉMÑ…¹‘…É‘	¥¹‘¥¹œ¤()™É½´…ÁÀ¹µ½‘•±Ì¹…™™…¥ÉÍ}É•Á…¥É}©½ˆ¥µÁ½ÉĞ™™…¥ÉÍI•Á…¥É)½ˆ€€Œ¹½Å„èĞÀÄ€€£–¶›–Ş—RÏ¢¾'¢†—–ÿê›’îï–*„¤)™É½´…ÁÀ¹µ½‘•±Ì¹Á…ÍÍİ½É‘}É•Í•Ğ¥µÁ½ÉĞA…ÍÍİ½É‘I•Í•ÑMµÍ)½ˆ€€Œ¹½Å„èĞÀÄ)™É½´…ÁÀ¹µ½‘Õ±•Ì¹Á±…Ñ™½É´¹‰ÕÍ¥¹•ÍÍ}™½ÉµÌ¹µ½‘•±Ì¥µÁ½ÉĞ€ €€Œ¹½Å„èĞÀÄ(€€€	ÕÍ¥¹•ÍÍ½Éµ•™¥¹¥Ñ¥½¸°(€€€	ÕÍ¥¹•ÍÍ½ÉµY•ÉÍ¥½¸°(¤)™É½´…ÁÀ¹µ½‘Õ±•Ì¹Á±…Ñ™½É´¹‘½Õµ•¹Ñ}±¥™•å±”¹µ½‘•±Ì¥µÁ½ÉĞ€ €€Œ¹½Å„èĞÀÄ(€€€½Õµ•¹Ñ½µÁ…É•I•ÍÕ±Ğ°(€€€¥±••É¥Ù•‘ÉÑ¥™…Ğ°(€€€MÑÕ‘•¹Ñ1¥™•å±•…Ğ°(¤(
+                                           AffairsRiskRecord, DisciplineAppeal,
+                                           DisciplineCase, DisciplineRemoveApply)
+# åŒ… 11 çš„ä¸¤å¼ å®Œæ•´æ€§è¡¨ã€æ–‡ä»¶é…é¢é¢„ç•™è¡¨ï¼šmodel æ–‡ä»¶éƒ½å·²å†™å¥½ï¼Œå´ä¸€ç›´æ²¡åœ¨è¿™é‡Œå¯¼å…¥ï¼Œ
+# metadata é‡Œçœ‹ä¸åˆ°å®ƒä»¬ï¼Œdrop_all/create_all ä¸è¿ç§»åº“ä¸€è‡´æ€§æ£€æŸ¥å…¨éƒ½æ¼æ‰â€”â€”è¡¥ä¸Šæ³¨å†Œã€‚
+from app.models.affairs_discipline_integrity import (DisciplineDecisionVersion,  # noqa: F401
+                                                     DisciplineSubflowLock)
+from app.models.file_quota import FileStorageQuotaReservation  # noqa: F401
+from app.models.affairs_talk import (FamilyContactLog, TalkPlan,  # noqa: F401
+                                     TalkRecord)
+from app.models.affairs_mental import PsyReferral  # noqa: F401
+from app.models.affairs_psy_survey import PsySurveySubmission  # noqa: F401  (å¿ƒç†å¥åº·è‡ªè¯„Â·ç‹¬ç«‹æ–°æ–‡ä»¶)
+from app.models.affairs_dorm import (DormAccessEvent, DormAllocationBatch,  # noqa: F401
+                                     DormAllocationItem, DormBed, DormBuilding,
+                                     DormCheckoutRequest,
+                                     DormCheckRecord, DormCheckTask,
+                                     DormRectification, DormRoom,
+                                     DormStay, DormTransfer)
+from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
+from app.models.affairs_activity import (AffairsActivity,  # noqa: F401
+                                         AffairsActivityCredit,
+                                         AffairsActivitySignup,
+                                         AffairsCreditAppeal,
+                                         AffairsCreditCategory,
+                                         AffairsVolunteerRecord)
+from app.models.affairs_attachment import AffairsAttachment  # noqa: F401
+from app.models.affairs_club import (AffairsClub,  # noqa: F401
+                                     AffairsClubAnnualReview,
+                                     AffairsClubMember)
+from app.models.affairs_org import (AffairsOrgPosition,  # noqa: F401
+                                    AffairsStudentOrg)
+from app.models.affairs_league import (AffairsLeagueDev,  # noqa: F401
+                                       AffairsLeagueDevStage)
+from app.models.affairs_counselor_eval import (CounselorEval,  # noqa: F401
+                                               CounselorEvalIndicator)
+from app.models.affairs_counselor_assignment import AffairsCounselorAssignment  # noqa: F401
+from app.models.affairs_funding_ext import (FeeReduction,  # noqa: F401
+                                            StudentLoan, WorkStudyMonthly,
+                                            WorkStudyPost, WorkStudyRecord)
+from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
+                                         AaArchiveItem, AaAttendanceSession,
+                                         AaCalendarEvent,
+                                         AaClassAdjustmentRequest, AaClassTimeBand,
+                                         AaClassroom, AaClassroomBooking,
+                                         AaCourse, AaCourseMaterial, AaDeferredExam,
+                                         AaLabResource, AaEquipment,
+                                         AaLabBooking, AaResourceRepair,
+                                         AaMajorDirection,
+                                         AaEvaluationAppeal, AaEvaluationBatch,
+                                         AaEvaluationRecord, AaEvaluationResult,
+                                         AaEvaluationTask, AaExemption,
+                                         AaExamAuditTrail, AaExamBatch,
+                                         AaMakeupBatch, AaRetakeApply,
+                                         AaExamCourse, AaExamIncident,
+                                         AaExamInvigilator, AaExamPatrol,
+                                         AaExamRoom, AaExamRoomStudent,
+                                         AaExamTeacherLock,
+                                         AaGradeRecheck, AaWorkloadDeclaration,
+                                         AaGradeRecord, AaGradeTask,
+                                         AaGraduationAuditBatch,
+                                         AaGraduationAuditResult, AaProgram,
+                                         AaProgramBinding, AaProgramCourse,
+                                         AaProgramGraduationRequirement,
+                                         AaProgramPracticeSegment,
+                                         AaQualityRecord, AaQualityRectification,
+                                         AaRegistration, AaRegistrationBatch,
+                                         AaRegistrationDeferral,
+                                         AaRegistrationException,
+                                         AaScheduleBatch, AaScheduleChange,
+                                         AaScheduleItem, AaSchedulePublish,
+                                         AaScheduleRule, AaScheduleScopeHead,
+                                         AaSelectionBatch,
+                                         AaTeacherAvailability,
+                                         AaGradeRecognition, AaGraduationCertificate,
+                                         AaLevelExam, AaLevelExamReg,
+                                         AaMajorSplitBatch, AaMajorSplitOption,
+                                         AaMajorSplitVolunteer,
+                                         AaSelectionCourse, AaSelectionRecord,
+                                         AaSelectionRound,
+                                         AaStatusChange, AaStudentCorrection,
+                                         AaTeachingTask,
+                                         AaTeachingTaskBatch, AaTerm,
+                                         AaTextbook, AaTextbookDistributionBatch,
+                                         AaTextbookDistributionRecord,
+                                         AaTextbookFeeLedger, AaTextbookOrderBatch,
+                                         AaTextbookOrderItem, AaTextbookReviewBatch,
+                                         AaTextbookReviewBatchItem,
+                                         AaTextbookSelection, AaTimeSlot)
+from app.models.academic_affairs_registry import *  # noqa: F401,F403
+from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 å­¦æœŸæ²»ç†æŠ•å½±)
+                                          CalendarTransitionEvent, CalendarWindow)
+from app.models.organization_version import (OrgVersion, OrgVersionItem,  # noqa: F401  (SYS-04 ç»„ç»‡ç‰ˆæœ¬ä¸ä»»èŒ)
+                                             StaffAssignment)
+from app.models.config_governance import (ConfigActivation,  # noqa: F401  (SYS-11 é…ç½®æ²»ç†)
+                                          ConfigDefinition, ConfigOverride)
+from app.models.permission_governance import (CustomRoleSource,  # noqa: F401  (SYS-06 æƒé™åŒ…ä¸è§’è‰²æ¨¡æ¿)
+                                              PermissionBundle,
+                                              PermissionBundleItem,
+                                              RoleTemplate, RoleTemplatePermission,
+                                              WildcardRetirement)
+from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS-08 ç»„ç»‡å®‰å…¨æ ‘ä¸æ˜¾å¼DENY)
+                                     ScopePolicyTarget)
+from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-09 å®‰å…¨å˜æ›´ä¸æ¿€æ´»)
+                                       SecurityChangeItem, SecurityChangeSet)
+from app.models.access_governance import (AccessDecisionTrace,  # noqa: F401  (SYS-10 è®¿é—®è§£é‡Šä¸æ²»ç†)
+                                          AccessReviewCampaign, AccessReviewItem,
+                                          EmergencyAccessSession, SodRule, SodViolation)
+from app.models.tenant_capability import TenantCapabilitySetting  # noqa: F401  (SYS-13 å­¦æ ¡èƒ½åŠ›å¯ç”¨)
+from app.models.role_assignment import RoleAssignmentValidity  # noqa: F401  (SYS-07 è§’è‰²æˆå‘˜æœ‰æ•ˆæœŸ)
+from app.models.role_assignment_scope import RoleAssignmentScope  # noqa: F401
+from app.models.master_data_governance import (DataDomain,  # noqa: F401  (SYS-17 ä¸»æ•°æ®æ²»ç†)
+                                               DataOwner, DataQualityIssue,
+                                               DataQualityRule, MasterMergeEvent)
+from app.models.workflow_security_policy import (WorkflowActionPolicy,  # noqa: F401  (SYS-14 æµç¨‹å®‰å…¨ç­–ç•¥)
+                                                 WorkflowVersionMigrationEvent)
+from app.models.notification import NotificationLog, NotificationTask, NotificationTemplate  # noqa: F401
+from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
+from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
+from app.models.portal import TenantPortalConfig  # noqa: F401
+from app.models.sandbox import SandboxBaseline  # noqa: F401
+from app.models.feedback import Feedback  # noqa: F401  (å¸®åŠ©ä¸åé¦ˆÂ·ç‹¬ç«‹æ–°æ–‡ä»¶)
+from app.models.system_implementation import (SystemImplementationCheck,  # noqa: F401
+                                               SystemBusinessRelationBatch,
+                                               SystemBusinessRelationInstallItem,
+                                               SystemImplementationProject,
+                                               SystemImplementationSection,
+                                               SystemPresetInstallation)
+from app.models.national_standard import (NationalMajorCatalog, NationalStandardDocument,  # noqa: F401
+                                          NationalStandardSection, NationalStandardSource,
+                                          SchoolMajorStandardBinding)
+
+from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (å­¦å·¥ç”³è¯‰è¡¥å¿ç§Ÿçº¦ä»»åŠ¡)
+from app.models.password_reset import PasswordResetSmsJob  # noqa: F401
+from app.modules.platform.business_forms.models import (  # noqa: F401
+    BusinessFormDefinition,
+    BusinessFormVersion,
+)
+from app.modules.platform.document_lifecycle.models import (  # noqa: F401
+    DocumentCompareResult,
+    FileDerivedArtifact,
+    StudentLifecycleFact,
+)
