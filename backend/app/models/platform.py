@@ -1,5 +1,6 @@
 """平台总控（P6）：通用配置存储 + 订单 + 公告。
-t_platform_config 为控制面 KV（tenant_id=0 表示全局默认）；t_order 按冻结册 §4.1.5。"""
+t_platform_config 为控制面 KV（tenant_id=0 表示全局默认）；t_order 按冻结册 §4.1.5。
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -61,14 +62,16 @@ class PlatformNotice(PKMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
-# Register M1/M2 tables in Base.metadata while leaving the long app.models
-# aggregator byte-identical to the verified baseline. Existing services in this
-# repository import models from ``app.models``; expose the five additions there
-# without deleting or reordering any legacy model registration.
+# Register M1-M5 tables in Base.metadata while preserving the existing large
+# app.models aggregator. Existing services import models from ``app.models``;
+# expose the additions there without introducing a second model registry.
 from app.models.commercial import (  # noqa: E402,F401
     CommercialOrderItem,
     CommercialSkuVersion,
     TenantCommercialProfile,
+    TenantModuleCancellationPlan,
+    TenantModuleOffboardingJob,
+    TenantModuleOffboardingStep,
     TenantModuleState,
     TenantModuleSubscriptionSource,
 )
@@ -79,6 +82,9 @@ if _models_package is not None:
         "CommercialOrderItem",
         "CommercialSkuVersion",
         "TenantCommercialProfile",
+        "TenantModuleCancellationPlan",
+        "TenantModuleOffboardingJob",
+        "TenantModuleOffboardingStep",
         "TenantModuleState",
         "TenantModuleSubscriptionSource",
     ):

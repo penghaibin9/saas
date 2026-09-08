@@ -1,16 +1,15 @@
-"""Module-commerce persistence for M1/M2.
+"""Module-commerce persistence for M1-M5.
 
-These tables extend the existing ``t_order`` payment truth. They do not replace
-IAM, tenant capability settings, or the commercial entitlement read facade.
-Existing tenants remain on the legacy reader until an explicit cutover profile
-is created; new itemized contracts can use MODULE_V2 without rewriting legacy
-orders.
+M1/M2 store catalogue, itemized order and entitlement-source truth. M3-M5 add
+reversible cancellation/offboarding control facts only. These records do not
+replace IAM, tenant-wide offboarding, or the commercial entitlement facade.
+Physical purge is intentionally outside this file's M3-M5 scope.
 """
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, JSON, Numeric, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -112,3 +111,70 @@ class TenantModuleSubscriptionSource(PKMixin, CommonMixin, TenantMixin, Base):
     approval_ref: Mapped[str | None] = mapped_column(String(100))
     activated_at: Mapped[datetime | None] = mapped_column(DateTime)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class TenantModuleCancellationPlan(PKMixin, CommonMixin, TenantMixin, Base):
+    """Reversible stop-renew instruction. The source remains authoritative until effective_at."""
+    __tablename__ = "t_tenant_module_cancellation_plan"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_id", name="uk_tenant_module_cancel_source"),
+        Index("ix_tenant_module_cancel_due", "status", "effective_at", "tenant_id", "id"),
+    )
+
+    source_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("t_tenant_module_subscription_source.id"), nullable=False, index=True)
+    module_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    module_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="SCHEDULED")
+    effective_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_by: Mapped[int | None] = mapped_column(BigInteger)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class TenantModuleOffboardingJob(PKMixin, CommonMixin, TenantMixin, Base):
+    """M4/M5 reversible module exit. M6 owns any irreversible purge executor."""
+    __tablename__ = "t_tenant_module_offboarding_job"
+    __table_args__ = (
+        Index("ix_module_offboard_active", "tenant_id", "module_key", "state", "id"),
+        Index("ix_module_offboard_state", "state", "created_at", "id"),
+    )
+
+    module_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    module_generation: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="REQUESTED", index=True)
+    expected_lifecycle_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_by: Mapped[int | None] = mapped_column(BigInteger)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    retention_policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime)
+    scope_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    export_job_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    manifest_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    export_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    acceptance_ref: Mapped[str | None] = mapped_column(String(160))
+    accepted_by: Mapped[int | None] = mapped_column(BigInteger)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    irreversible_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_completed_step: Mapped[str | None] = mapped_column(String(40))
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class TenantModuleOffboardingStep(PKMixin, CommonMixin, TenantMixin, Base):
+    __tablename__ = "t_tenant_module_offboarding_step"
+    __table_args__ = (
+        UniqueConstraint("job_id", "step_code", name="uk_module_offboard_step"),
+        Index("ix_module_offboard_step_job", "tenant_id", "job_id", "step_code"),
+    )
+
+    job_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("t_tenant_module_offboarding_job.id"), nullable=False, index=True)
+    step_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)

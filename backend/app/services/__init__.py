@@ -10,14 +10,7 @@ _PLATFORM_SERVICE_MODULE = "platform_service"
 
 
 def _install_platform_service_guards():
-    """Install platform invariants before any caller can bind legacy functions.
-
-    Python initializes this package before resolving ``app.services.platform_service``.
-    The order scheduler, commercial entitlement authority and tenant-brand authority
-    must therefore all be installed here, not only when the HTTP platform router is
-    imported. Workers, CLI commands and background scripts routinely import service
-    functions directly and must observe the same production truth as FastAPI.
-    """
+    """Install platform invariants before any caller can bind legacy functions."""
     module = importlib.import_module(f"{__name__}.{_PLATFORM_SERVICE_MODULE}")
     from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
 
@@ -65,8 +58,12 @@ def __getattr__(name: str):
 
 _platform_service = _install_platform_service_guards()
 
-# M1/M2 is an approved platform runtime extension. Installing it here gives
-# HTTP, CLI and workers the exact same commercial reader/order facade; it does
-# not create a second authority or touch the frozen platform bundle.
+# M1/M2: shared commercial reader/order facade for HTTP, CLI and workers.
 from app.services.module_commerce_runtime_guard import install as _install_module_commerce_guard
 _install_module_commerce_guard(_platform_service)
+
+# M4: install the module generation/data-state fence on the canonical access
+# service before routers/workers can cache an unfenced function reference.
+_module_access_service = importlib.import_module(f"{__name__}.module_access_service")
+from app.services.module_commerce_access_guard import install as _install_module_access_guard
+_install_module_access_guard(_module_access_service)
