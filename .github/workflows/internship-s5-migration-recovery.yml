@@ -110,7 +110,7 @@ jobs:
 
       - name: Upload S5 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: internship-s5-migration-recovery-${{ github.run_id }}
           path: |

@@ -86,7 +86,7 @@ jobs:
           node e2e/tools/verify-platform-audit-safety.mjs 2>&1 | tee artifacts/platform-workspace/audited-ui.log
       - name: Upload exact-head validation evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: platform-workspace-${{ github.event.pull_request.head.sha }}
           path: artifacts/platform-workspace/
@@ -135,7 +135,7 @@ jobs:
         run: python scripts/check/check-platform-control-authority-writers.py > artifacts/platform-rules/writers.json
       - name: Upload transaction evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: platform-rules-${{ github.event.pull_request.head.sha }}
           path: artifacts/platform-rules/
