@@ -33,8 +33,8 @@ DISALLOWED_RUNTIME_TOOLS = (
 )
 DISALLOWED_RUNTIME_PREFIXES = ("perl",)
 
-# Only these constant identifiers may leave the probe. Never print the offending
-# path, executable name, environment value, HTTP body or exception text.
+# Only these constant identifiers may leave the probe. Never print an absolute
+# path, environment value, HTTP body or arbitrary exception string.
 SAFE_FAILURE_CODES = frozenset({
     "DISALLOWED_RUNTIME_TOOL_PRESENT",
     "PRIVILEGED_EXECUTABLE_PRESENT",
@@ -69,7 +69,9 @@ def runtime_surface(directories=None) -> None:
                 candidate.name in DISALLOWED_RUNTIME_TOOLS
                 or any(candidate.name.startswith(prefix) for prefix in DISALLOWED_RUNTIME_PREFIXES)
             ):
-                raise RuntimeError("DISALLOWED_RUNTIME_TOOL_PRESENT")
+                # The basename is selected only from the fixed deny-list/prefix set.
+                # main() exposes it as bounded diagnostic evidence, never the path.
+                raise RuntimeError("DISALLOWED_RUNTIME_TOOL_PRESENT:" + candidate.name)
             if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
                 raise RuntimeError("PRIVILEGED_EXECUTABLE_PRESENT")
 
@@ -132,6 +134,23 @@ def ready() -> None:
             raise RuntimeError("APPLICATION_NOT_READY")
 
 
+def _bounded_failure(exc: Exception) -> tuple[str, str | None]:
+    if type(exc) is not RuntimeError:
+        return "PROBE_FAILED", None
+    raw = str(exc)
+    prefix = "DISALLOWED_RUNTIME_TOOL_PRESENT:"
+    if raw.startswith(prefix):
+        name = raw[len(prefix):]
+        if name in DISALLOWED_RUNTIME_TOOLS or any(
+            name.startswith(item) for item in DISALLOWED_RUNTIME_PREFIXES
+        ):
+            return "DISALLOWED_RUNTIME_TOOL_PRESENT", name
+        return "PROBE_FAILED", None
+    if raw in SAFE_FAILURE_CODES:
+        return raw, None
+    return "PROBE_FAILED", None
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("image", "filesystem", "prepare-storage", "ready"))
@@ -140,14 +159,16 @@ def main(argv=None) -> int:
         {"image": image_contract, "filesystem": filesystem,
          "prepare-storage": prepare_storage, "ready": ready}[args.action]()
     except Exception as exc:
-        raw_code = str(exc) if type(exc) is RuntimeError else ""
-        error_code = raw_code if raw_code in SAFE_FAILURE_CODES else "PROBE_FAILED"
-        print(json.dumps({
+        error_code, tool = _bounded_failure(exc)
+        payload = {
             "probePassed": False,
             "action": args.action,
             "errorType": type(exc).__name__,
             "errorCode": error_code,
-        }))
+        }
+        if tool is not None:
+            payload["blockedTool"] = tool
+        print(json.dumps(payload))
         return 1
     print(json.dumps({"probePassed": True, "action": args.action}))
     return 0
