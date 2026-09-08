@@ -13,12 +13,15 @@ SEVERITIES = ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL")
 BLOCKING = frozenset({"UNKNOWN", "HIGH", "CRITICAL"})
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 IMAGE_ID = re.compile(r"sha256:[a-f0-9]{64}\Z")
-# The workflow owns the reviewed tag choice. The receipt must contain an immutable
-# digest from either the historical Docker Hub Python base or the reviewed UBI9
-# Python 3.12 minimal base; mutable tags can never satisfy this identity check.
-BASE_DIGEST = re.compile(
+# Build evidence must identify both immutable inputs. The Python image is build-only;
+# the shipped native runtime root is UBI Micro, so validating only the builder digest
+# would allow a different runtime root to be scanned under apparently valid evidence.
+PYTHON_BASE_DIGEST = re.compile(
     r"(?:(?:docker\.io/library/)?python|registry\.access\.redhat\.com/ubi9/python-312-minimal)"
     r"@sha256:[a-f0-9]{64}\Z"
+)
+RUNTIME_BASE_DIGEST = re.compile(
+    r"registry\.access\.redhat\.com/ubi9/ubi-micro@sha256:[a-f0-9]{64}\Z"
 )
 MAX_REPORT_BYTES = 64 * 1024 * 1024
 
@@ -55,7 +58,11 @@ def evaluate(report, receipt, *, source_sha: str, head_sha: str, now=None) -> di
     require(isinstance(image_id, str) and bool(IMAGE_ID.fullmatch(image_id)), "BUILD_IMAGE_ID_INVALID")
     require(receipt.get("imageRef") == "pr265-image-audit:" + source_sha, "BUILD_IMAGE_REF_INVALID")
     require(isinstance(receipt.get("pythonBaseDigest"), str)
-            and bool(BASE_DIGEST.fullmatch(receipt["pythonBaseDigest"])), "BUILD_BASE_DIGEST_REQUIRED")
+            and bool(PYTHON_BASE_DIGEST.fullmatch(receipt["pythonBaseDigest"])),
+            "BUILD_PYTHON_BASE_DIGEST_REQUIRED")
+    require(isinstance(receipt.get("runtimeBaseDigest"), str)
+            and bool(RUNTIME_BASE_DIGEST.fullmatch(receipt["runtimeBaseDigest"])),
+            "BUILD_RUNTIME_BASE_DIGEST_REQUIRED")
     require(isinstance(report, dict), "SCAN_REPORT_REQUIRED")
     require(type(report.get("SchemaVersion")) is int and report["SchemaVersion"] == 2,
             "SCAN_SCHEMA_UNSUPPORTED")
