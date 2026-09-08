@@ -18,6 +18,24 @@ def _clear_request_context():
     set_tenant(None)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_http_write_fence_context():
+    """Each test is one synthetic HTTP request boundary.
+
+    Production requests get a fresh trace/request context from middleware. These direct
+    service tests bypass that middleware, so clear the commercial ContextVar before and
+    after every case; otherwise a successful previous request can fence db_mode setup for
+    the next test and manufacture cross-test DATA_CONFLICT/lock timeouts.
+    """
+    from app.services import module_commerce_access_guard as guard
+
+    guard._write_fence_ctx.set(None)
+    _clear_request_context()
+    yield
+    guard._write_fence_ctx.set(None)
+    _clear_request_context()
+
+
 def _seed(tid: int):
     _clear_request_context()
     from app.db.session import get_sessionmaker

@@ -192,6 +192,44 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             D.validate_review_evidence(self.root, {'model.py': current_sha}, review, incomplete)
 
+    def test_reanchor_can_partition_unchanged_evidence_before_and_after_change_window(self):
+        old = b'before\nchanged\nafter\n'
+        old_sha = hashlib.sha256(old).hexdigest()
+        self.path.write_text('before\nchanged-a\nchanged-b\nafter\n')
+        current_sha = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        review = {
+            'evidence': {
+                'E0': {'path': 'model.py', 'sha256': old_sha, 'startLine': 1, 'endLine': 1},
+                'E1': {'path': 'model.py', 'sha256': old_sha, 'startLine': 3, 'endLine': 3},
+            },
+        }
+        base = {
+            'path': 'model.py',
+            'fromSha256': old_sha,
+            'toSha256': current_sha,
+            'sourceChangeCommit': 'c' * 40,
+            'changeWindow': {'oldStart': 2, 'oldEnd': 2, 'newStart': 2, 'newEnd': 3},
+        }
+        receipt = {
+            'schemaVersion': 1,
+            'artifactType': 'M0_SCHEMA_EVIDENCE_REANCHORS_NOT_APPROVAL',
+            'deletionAuthorized': False,
+            'purgeAuthorized': False,
+            'entries': [
+                {**base, 'lineOffset': 0, 'evidenceIds': ['E0'], 'reason': 'unchanged evidence before the reviewed source window'},
+                {**base, 'lineOffset': 1, 'evidenceIds': ['E1'], 'reason': 'unchanged evidence after the reviewed source window'},
+            ],
+        }
+        resolved = D.validate_review_evidence(self.root, {'model.py': current_sha}, review, receipt)
+        self.assertEqual(resolved['E0']['startLine'], 1)
+        self.assertEqual(resolved['E1']['startLine'], 4)
+        self.assertEqual(set(resolved), {'E0', 'E1'})
+
+        bad = copy.deepcopy(receipt)
+        bad['entries'][0]['lineOffset'] = 1
+        with self.assertRaisesRegex(ValueError, 'OFFSET_MISMATCH'):
+            D.validate_review_evidence(self.root, {'model.py': current_sha}, review, bad)
+
     def test_committed_review_has_unique_cases_and_valid_anchored_source(self):
         review = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json').read_text(encoding='utf-8'))
         reanchors = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-evidence-reanchors.json').read_text(encoding='utf-8'))

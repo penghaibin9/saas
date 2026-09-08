@@ -10,6 +10,23 @@
       "fromSha256": "54b48dd2a19d7c71fd1609a52b19e9bef3f439cc4b7e200ea3b00588eae4c330",
       "toSha256": "f183c4a30482ba843f20c829508045fcf30aa38f688b81f2dcff80586f7b975e",
       "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
+      "lineOffset": 0,
+      "changeWindow": {
+        "oldStart": 112,
+        "oldEnd": 133,
+        "newStart": 112,
+        "newEnd": 137
+      },
+      "evidenceIds": [
+        "S154"
+      ],
+      "reason": "S154 is backend/app/models/internship.py old lines 49-83, wholly before the reviewed old source-change window 112-133. The file hash changed later in the file, but this evidence range itself does not move, so its reviewed line offset is 0. This receipt remains review-only and grants neither purge nor deletion approval."
+    },
+    {
+      "path": "backend/app/models/internship.py",
+      "fromSha256": "54b48dd2a19d7c71fd1609a52b19e9bef3f439cc4b7e200ea3b00588eae4c330",
+      "toSha256": "f183c4a30482ba843f20c829508045fcf30aa38f688b81f2dcff80586f7b975e",
+      "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
       "lineOffset": 4,
       "changeWindow": {
         "oldStart": 112,
@@ -29,13 +46,12 @@
         "S134",
         "S142",
         "S146",
-        "S154",
         "S159",
         "S161",
         "S165",
         "S169"
       ],
-      "reason": "Commit 605d1ef only changed InternshipCheckin documentation/result-device-risk declaration inside old lines 112-133, adding four net lines. Every listed M0 anchor begins after that reviewed change window, so its source range relocates by +4 lines; the schema disposition, purgeAuthorized=false and deletionAuthorized=false remain unchanged."
+      "reason": "Commit 605d1ef changed only the reviewed InternshipCheckin documentation/result-device-risk declaration inside old lines 112-133 and added four net lines. These 15 M0 anchors all begin after old line 133, so their unchanged source ranges relocate by +4 lines. The schema dispositions and purgeAuthorized=false/deletionAuthorized=false remain unchanged."
     }
   ]
 }

@@ -105,11 +105,45 @@ def enforce_commercial_surface_access(request: Request) -> None:
     return None
 
 
+def _route_signature(route) -> tuple[str, frozenset[str]]:
+    return (
+        str(getattr(route, "path", "")),
+        frozenset(str(method).upper() for method in (getattr(route, "methods", None) or ())),
+    )
+
+
+def _mount_reviewed_commercial_supplements(router) -> None:
+    """Mount reviewed late business routes before the final graph-wide gate is attached.
+
+    The student graduation guard intentionally lives outside the staff graduation bundle.
+    It must therefore be present on the final API graph before commercial gating; otherwise
+    the route exists as code but is unreachable from the application router.
+    """
+    from fastapi.routing import APIRoute
+    from app.api.v1.student_portal_graduation_guard import router as graduation_portal_router
+
+    existing = {
+        _route_signature(route)
+        for route in router.routes
+        if isinstance(route, APIRoute)
+    }
+    for route in graduation_portal_router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        signature = _route_signature(route)
+        if signature in existing:
+            continue
+        router.routes.append(route)
+        existing.add(signature)
+
+
 def install_on_router(router) -> int:
     """Attach the dependency to final APIRoutes, including late-appended supplements."""
     from fastapi import Depends
     from fastapi.dependencies.utils import get_parameterless_sub_dependant
     from fastapi.routing import APIRoute
+
+    _mount_reviewed_commercial_supplements(router)
 
     added = 0
     for route in router.routes:

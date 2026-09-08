@@ -97,21 +97,14 @@ def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, re
         new_start, new_end = window['newStart'], window['newEnd']
         if not (1 <= old_start <= old_end and 1 <= new_start <= new_end):
             raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
-        expected_offset = (new_end - new_start + 1) - (old_end - old_start + 1)
-        if old_start != new_start or offset != expected_offset:
+        if old_start != new_start:
             raise ValueError('REANCHOR_WINDOW_OFFSET_MISMATCH')
+        net_offset = (new_end - new_start + 1) - (old_end - old_start + 1)
 
         content = current_path.read_bytes()
         if source_files.get(name) != current_sha or _sha256(content) != current_sha:
             raise ValueError('REANCHOR_CURRENT_SOURCE_CHANGED')
         line_count = len(content.decode('utf-8-sig').splitlines())
-
-        stale_for_entry = {
-            key for key, item in review['evidence'].items()
-            if item.get('path') == name and item.get('sha256') == previous_sha
-        }
-        if stale_for_entry != set(evidence_ids):
-            raise ValueError('REANCHOR_EVIDENCE_COVERAGE_MISMATCH')
 
         for evidence_id in evidence_ids:
             if evidence_id in resolved:
@@ -119,14 +112,26 @@ def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, re
             item = review['evidence'].get(evidence_id)
             if not item:
                 raise ValueError('REANCHOR_EVIDENCE_MISSING')
+            if item.get('path') != name or item.get('sha256') != previous_sha:
+                raise ValueError('REANCHOR_EVIDENCE_SOURCE_MISMATCH')
             start, end = item.get('startLine'), item.get('endLine')
             if type(start) is not int or type(end) is not int or not 1 <= start <= end:
                 raise ValueError('INVALID_REVIEW_LINE_RANGE')
-            # This receipt only permits a pure line relocation of evidence that
-            # begins after the explicitly reviewed source-change window. Any
-            # anchor touching the changed window requires a fresh M0 disposition.
-            if start <= old_end:
+
+            # One source edit can leave reviewed evidence on both sides of the
+            # changed window. Evidence wholly before the window keeps offset 0;
+            # evidence wholly after it moves by the net line delta. Any anchor
+            # touching the changed window requires a fresh M0 disposition instead
+            # of a line-only reanchor receipt.
+            if end < old_start:
+                expected_offset = 0
+            elif start > old_end:
+                expected_offset = net_offset
+            else:
                 raise ValueError('REANCHOR_OVERLAPS_CHANGED_EVIDENCE')
+            if offset != expected_offset:
+                raise ValueError('REANCHOR_WINDOW_OFFSET_MISMATCH')
+
             current_start, current_end = start + offset, end + offset
             if not 1 <= current_start <= current_end <= line_count:
                 raise ValueError('INVALID_REANCHOR_RESOLVED_LINE_RANGE')
@@ -231,7 +236,7 @@ def assess(repo: Path, source: dict, schema: dict, review: dict, reanchors: dict
         'status': 'REVIEW_REQUIRED' if absent or any(row['status'] != 'DISPOSITION_VERIFIED' for row in results) else 'DISPOSITIONS_VERIFIED_NOT_REMEDIATED',
         'limitations': ['This verifies explicit column-difference dispositions, not absence of all defects.',
                        'PK/FK/unique differences are separate; column review never suppresses them.',
-                       'Evidence re-anchors only relocate previously reviewed line ranges after an explicit source-change window; they do not approve a purge.',
+                       'Evidence re-anchors only relocate previously reviewed line ranges wholly outside an explicit source-change window; they do not approve a purge.',
                        'No customer rows, policy approvals, consumer closures or executable selectors are proven.'],
         'm0Complete': False, 'm1EntryApproved': False, 'deletionAuthorized': False}
 
