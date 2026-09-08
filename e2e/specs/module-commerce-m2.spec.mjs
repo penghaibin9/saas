@@ -103,7 +103,20 @@ function hasAny(set, candidates) {
 }
 
 async function assertRoute(page, route, expectedAllowed) {
+  // Every hard navigation bootstraps the staff SPA through a rotating, one-time
+  // browser refresh token. Do not navigate away after the route verdict until
+  // this refresh has completed and the rotated cookie reached the browser;
+  // otherwise an in-flight successful rotation can be cancelled client-side and
+  // the next hard navigation correctly rejects the already-consumed old token.
+  const refresh = page.waitForResponse((response) => (
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/api/v1/auth/browser-refresh'
+  ), { timeout: 60_000 })
   await page.goto(new URL(route, config.staffBaseUrl).toString())
+  const refreshResponse = await refresh
+  expect(refreshResponse.status(), `${route}: browser-refresh`).toBe(200)
+  const refreshBody = await refreshResponse.json()
+  expect(refreshBody?.code, `${route}: ${JSON.stringify(refreshBody)}`).toBe(0)
   await expect.poll(async () => {
     const final = new URL(page.url())
     const body = await page.locator('body').innerText().catch(() => '')
