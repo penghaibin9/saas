@@ -11,6 +11,17 @@ from starlette.responses import JSONResponse
 from app.middleware import context_legacy as _legacy
 from app.middleware.context_legacy import *  # noqa: F401,F403
 
+# Recurring module writers must be wrapped before the web process starts serving
+# requests or scheduler loops, but never as a side effect of importing the broad
+# ``app.services`` package. Some legacy SQLAlchemy before_flush listeners import a
+# service module while they are already dispatching; registering/importing more
+# before_flush listeners from that point mutates SQLAlchemy's active listener deque.
+# This middleware facade is imported by app.main during deterministic application
+# bootstrap, before the first request/scheduler transaction, so installation is
+# stable and remains idempotent.
+from app.services.module_commerce_background_guard import install as _install_module_background_guards
+_install_module_background_guards()
+
 
 class RequestContextMiddleware(_legacy.RequestContextMiddleware):
     async def dispatch(self, request, call_next):
