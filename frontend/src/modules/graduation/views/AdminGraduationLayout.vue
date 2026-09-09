@@ -1,5 +1,9 @@
 <template>
   <BasePortalLayout
+    class="graduation-portal"
+    workspace
+    hide-global-workbench
+    :workspace-navigate="resolveWorkspaceDestination"
     :title="brandTitle"
     subtitle="毕业设计中心"
     :ctx="layoutCtx"
@@ -34,6 +38,33 @@
     <div
       v-if="canRenderBusiness"
       class="gd-business-view"
+      :data-planning-workspace="[
+        'graduation-mentors', 'graduation-mentor-conflicts', 'graduation-topic-lib',
+        'graduation-topic-rounds', 'graduation-topic-changes'
+      ].includes($route.name) || undefined"
+      :data-graduation-process-workspace="
+        $route.name === 'graduation-process' ? 'workbench'
+          : $route.name === 'graduation-process-action' ? 'form' : undefined
+      "
+      :data-graduation-material-workspace="
+        $route.name === 'graduation-material-center' ? 'materials'
+          : $route.name === 'graduation-plagiarism-ledger' ? 'plagiarism'
+          : $route.name === 'graduation-review-tasks' ? 'review' : undefined
+      "
+      :data-graduation-defense-workspace="
+        $route.name === 'graduation-defense' ? 'schedule'
+          : $route.name === 'graduation-defense-scoring' ? 'scoring'
+          : $route.name === 'graduation-defense-confirmation' ? 'confirmation'
+          : $route.name === 'graduation-grade-ledger' ? 'grades' : undefined
+      "
+      :data-graduation-risk-workspace="
+        $route.name === 'graduation-risk-archive' ? String($route.query.panel || 'risk') : undefined
+      "
+      :data-graduation-template-workspace="$route.name === 'graduation-templates' ? 'templates' : undefined"
+      :data-graduation-content-workspace="
+        $route.name === 'graduation-finals' ? 'final'
+          : $route.name === 'graduation-proposals' ? 'proposal' : undefined
+      "
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert
@@ -74,7 +105,6 @@ import { AppInlineAlert } from '@/components/common'
 import { matchPermission } from '@/config/navPlan'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationPickerAdapters } from '@/modules/graduation/pickerAdapters'
-import '@/modules/graduation/styles/graduation-workspaces.css'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import GraduationExtensionAdminPanel from './GraduationExtensionAdminPanel.vue'
@@ -133,8 +163,12 @@ export default {
         // only schedule a repair when the live Graduation route truly lost its
         // query. Explicit URL batchId always remains authoritative.
         if (!id && this.$route?.path?.startsWith('/admin/graduation')) {
+          const sourceFullPath = this.$route.fullPath
           void Promise.resolve(loading)
-            .then(() => this.syncBatchToUrl?.())
+            .then(() => {
+              // A delayed repair belongs only to the route that requested it.
+              if (this.$route.fullPath === sourceFullPath) return this.syncBatchToUrl?.()
+            })
             .catch(() => {})
         }
       }
@@ -150,6 +184,21 @@ export default {
   },
   async created() { await this.loadContext() },
   methods: {
+    resolveWorkspaceDestination(path) {
+      // The shared frame also navigates to other centers. Only Graduation
+      // destinations inherit this module's batch; explicit deep links win.
+      if (typeof path !== 'string' || !/^\/admin\/graduation(?:[/?#]|$)/.test(path)) return path
+      const hashAt = path.indexOf('#')
+      const target = hashAt < 0 ? path : path.slice(0, hashAt)
+      const hash = hashAt < 0 ? '' : path.slice(hashAt)
+      const queryAt = target.indexOf('?')
+      const query = new URLSearchParams(queryAt < 0 ? '' : target.slice(queryAt + 1))
+      if (query.has('batchId')) return path
+      const batchId = useGraduationBatchStore().selectedBatchId
+      if (!batchId) return path
+      const separator = queryAt < 0 ? '?' : /[?&]$/.test(target) ? '' : '&'
+      return `${target}${separator}batchId=${encodeURIComponent(String(batchId))}${hash}`
+    },
     async loadContext() {
       this.loading = true
       this.contextError = ''
@@ -178,6 +227,8 @@ export default {
       await this.syncBatchToUrl()
     },
     async syncBatchToUrl() {
+      // Context loading may finish after the shared frame leaves this center.
+      if (!/^\/admin\/graduation(?:\/|$)/.test(this.$route?.path || '')) return
       const store = useGraduationBatchStore()
       const cur = this.$route.query.batchId ? String(this.$route.query.batchId) : ''
       const next = store.selectedBatchId || ''
@@ -186,12 +237,9 @@ export default {
       }
     },
     onMenuSelect(item) {
-      if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
-        const store = useGraduationBatchStore()
-        const path = item.path
-        const batchQ = store.selectedBatchId ? `batchId=${encodeURIComponent(store.selectedBatchId)}` : ''
-        let target = path
-        if (batchQ && !/[?&]batchId=/.test(path)) target = path.includes('?') ? `${path}&${batchQ}` : `${path}?${batchQ}`
+      if (!item?.path) return
+      const target = this.resolveWorkspaceDestination(item.path)
+      if (target && target !== this.$route.fullPath) {
         router.push(target).catch(() => {})
       }
     }
@@ -225,9 +273,10 @@ export default {
 .gd-batch-bar :deep(.gbs__select) {
   min-width: 210px;
   max-width: min(420px, 48vw);
-  min-height: 28px;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  min-height: 34px;
+  font-size: 13px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   border-color: var(--primary-200, #bfdbfe);
 }
 .gd-batch-bar :deep(.gbs__meta),
@@ -327,4 +376,329 @@ export default {
   }
   .gd-business-view :deep(.mp-grid-2) { grid-template-columns: 1fr; }
 }
+</style>
+
+<style src="@/modules/graduation/styles/graduation-workspaces.css"></style>
+
+<style scoped>
+/* Final graduation-only integration polish. The public shell and business engines remain untouched. */
+.gd-business-view :deep(.gd-scope-alert) {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__content) {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__title),
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__desc) {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__title) { font-size: 13px; }
+
+/* Final submission: compact layout, never compact type. */
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack) { gap: 7px; min-width: 0; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--card, #fff);
+  box-shadow: none;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__copy > span) { font-size: 12px; letter-spacing: .02em; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__copy strong) {
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts) { gap: 5px; flex-wrap: nowrap; overflow-x: auto; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts span) { min-height: 32px; padding: 4px 7px; font-size: 12px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts b) { font-size: 16px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack > .mp-tabs) {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 3px;
+  overflow-x: auto;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack > .mp-tabs .mp-tab) {
+  min-height: 34px;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-tab-count) { font-size: 12px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row) { gap: 7px; min-width: 0; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row input),
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row button) { min-height: 34px; font-size: 13px; }
+
+/* Real bundle cascade still resolved a few planning/student controls to 12.5px. */
+.gd-business-view[data-planning-workspace] :deep(.gd-primary-tabs > button),
+.gd-business-view[data-planning-workspace] :deep(.gm-tabs__item),
+.gd-business-view[data-planning-workspace] :deep(.af__control),
+.gd-business-view[data-planning-workspace] :deep(.af__ops button),
+.gd-business-view[data-planning-workspace] :deep(.mp-cell-main),
+.gd-business-view[data-planning-workspace] :deep(.mp-link) { font-size: 13px !important; }
+.gd-business-view :deep(.gd-student-page .gd-primary-tabs button),
+.gd-business-view :deep(.gd-student-page .gd-local-views button),
+.gd-business-view :deep(.gd-student-page .af__control) { font-size: 13px !important; }
+
+/* Proposal workbench: keep the real queue compact without allowing 11px operational copy. */
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__copy > p),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__metrics small),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-list__head small) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+  min-height: 38px;
+  font-size: 13px !important;
+}
+
+/* Real shared-shell geometry scales proposal tabs below the audit floor at 100%.
+   Keep a 40px logical hit area so the rendered control remains >=33px. */
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
+  min-height: 40px !important;
+}
+
+/* At constrained content width, reclaim vertical space from chrome rather than shrinking type. */
+@container gd-planning (max-width: 1080px) {
+  .gd-business-view[data-planning-workspace] :deep(.mps),
+  .gd-business-view[data-planning-workspace] :deep(.mp-stack) { gap: 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.mps__head) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.gm-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-primary-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-local-views) { gap: 4px; padding: 4px; }
+  .gd-business-view[data-planning-workspace] :deep(.af) { gap: 8px; padding: 8px 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__fields) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__field) { gap: 3px; }
+}
+
+@container gd-students (max-width: 1000px) {
+  .gd-business-view :deep(.gd-student-workspace .mps__subtitle) { display: none; }
+  .gd-business-view :deep(.gd-student-page) { gap: 8px; }
+  .gd-business-view :deep(.gd-student-hero) {
+    grid-template-columns: minmax(250px, .8fr) minmax(0, 1.35fr);
+    gap: 10px;
+    padding: 11px 12px;
+  }
+  .gd-business-view :deep(.gd-student-hero__copy) { gap: 3px; }
+  .gd-business-view :deep(.gd-student-hero__metrics) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .gd-business-view :deep(.gd-student-hero__metrics div) { display: flex; padding: 6px 8px; }
+  .gd-business-view :deep(.gd-student-hero__metrics b) { font-size: 18px; }
+  .gd-business-view :deep(.gd-student-page .gd-primary-tabs) {
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 4px;
+    overflow-x: auto;
+  }
+  .gd-business-view :deep(.gd-student-page .gd-primary-tabs .mp-tab) {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+  .gd-business-view :deep(.gd-local-views) {
+    flex-wrap: nowrap;
+    gap: 5px;
+    padding: 5px 8px;
+    overflow-x: auto;
+  }
+  .gd-business-view :deep(.gd-local-views > span),
+  .gd-business-view :deep(.gd-local-views button) { flex: 0 0 auto; }
+  .gd-business-view :deep(.gd-local-views button) { min-height: 34px; padding: 5px 10px; white-space: nowrap; }
+  .gd-business-view :deep(.gd-student-page .af) { gap: 6px; padding: 7px 8px; }
+  .gd-business-view :deep(.gd-student-page .af__fields) { gap: 6px; }
+  .gd-business-view :deep(.gd-student-page .af__field) { gap: 2px; }
+  .gd-business-view :deep(.gd-student-page .af__label) { line-height: 16px; }
+  .gd-business-view :deep(.gd-student-page .af__ops) { gap: 5px; }
+}
+
+/* 1366 / 125%: compact material chrome, never compact typography. */
+@media (min-width: 981px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page) { gap: 8px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero) { padding: 10px 12px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero h2) { margin: 2px 0; font-size: 20px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary) { gap: 6px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary article) { padding: 7px 9px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-tabs) { gap: 4px; padding: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page button) { min-height: 34px; padding: 5px 10px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters) {
+    grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters label) { gap: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters :is(input, select)) { min-height: 34px; padding: 5px 8px; }
+}
+
+/* Risk / archive: restore readable evidence and put the real queue before the rule catalogue. */
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-rules) { order: 20; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command) {
+  min-height: auto;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy) { gap: 4px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline > span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy > span) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline strong),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy strong) { font-size: 16px !important; line-height: 1.5; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy small) {
+  display: block !important;
+  font-size: 12px !important;
+  line-height: 1.55;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics) { gap: 6px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics div) {
+  min-height: 0;
+  padding: 8px 6px !important;
+  border-radius: 8px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics b) { font-size: 20px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics span) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules) { padding: 12px !important; border-radius: 10px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head) { margin-bottom: 8px !important; flex-wrap: wrap; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head strong) { font-size: 16px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head small) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid) {
+  display: flex !important;
+  gap: 8px !important;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid > span) {
+  flex: 0 0 auto;
+  padding: 8px !important;
+  border-radius: 7px !important;
+  font-size: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid b) { font-size: 11px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid i),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid em) { font-size: 12px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-pane) {
+  padding: 12px !important;
+  border-radius: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head strong) { font-size: 16px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head > span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__sub),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__meta),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-pane__bar),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-detail__eyebrow),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing-head span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt small) { font-size: 12px; line-height: 1.55; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__name),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-kv__v),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__name),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-anomaly),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence strong),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt span) { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-card__title),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing-head strong) { font-size: 16px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-btn),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-link),
+.gd-business-view[data-graduation-risk-workspace] :deep(.af__control),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt button) { min-height: 36px; font-size: 13px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.af__label),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-kv__k) { font-size: 12px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__item) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__name) { flex: 1 1 200px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence) { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 8px; }
+
+/* 1366 / 125%: keep the real risk queue in the first fold without shrinking type. */
+@media (min-width: 1300px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-panel) { gap: 7px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command) {
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, .95fr) auto;
+    gap: 7px !important;
+    padding: 8px 10px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics) {
+    grid-column: auto;
+    gap: 4px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics div) { padding: 5px 4px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline) { gap: 2px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline small) { line-height: 1.4; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-filter) { margin: 0 !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af) { gap: 6px; padding: 7px 9px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__fields) { gap: 6px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__field) { gap: 2px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__control),
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__ops button) { min-height: 34px; height: 34px; }
+}
+
+/* Templates stay a calm low-frequency configuration list. */
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__title) { font-size: 22px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__subtitle),
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__chip),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-cell-sub),
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types small),
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-readonly) { font-size: 12px; line-height: 1.55; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card, #fff);
+  box-shadow: none;
+}
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command > div:first-child) { flex: 1 1 300px; min-width: 0; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command > div:first-child > span) { font-size: 12px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command strong) { font-size: 16px; line-height: 1.5; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command__facts) { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command__facts b) { font-size: 16px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types) { display: flex; flex-wrap: wrap; gap: 8px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types button) {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: left;
+}
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__scroll) { overflow-x: auto; }
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__table) { min-width: 720px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__th),
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__td),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-cell-main),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-link) { font-size: 13px; line-height: 1.6; }
 </style>

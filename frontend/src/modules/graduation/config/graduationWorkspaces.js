@@ -6,6 +6,11 @@
 /** @typedef {{ label: string, path: string, permissionKey?: string, entryType?: string, hidden?: boolean }} GradLeaf */
 /** @typedef {{ key: string, label: string, path: string, permissionKey?: string, children: GradLeaf[] }} GradWorkspace */
 
+/**
+ * `workspace=...` 只区分公共工作台中“快捷入口”和“正式三级入口”的 UI 身份。
+ * Vue Router 仍命中原 path，业务页忽略该参数，旧书签继续兼容；不产生第二套路由或业务状态。
+ */
+
 /** @type {GradWorkspace[]} */
 export const GRADUATION_WORKSPACES = [
   {
@@ -41,10 +46,10 @@ export const GRADUATION_WORKSPACES = [
     ]
   },
   {
-    key: 'gd-proposal-final', label: '开题与成果', path: '/admin/graduation/proposals',
+    key: 'gd-proposal-final', label: '开题与成果', path: '/admin/graduation/proposals?workspace=proposal-final',
     children: [
-      { label: '开题报告批阅', path: '/admin/graduation/proposals', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
-      { label: '成果提交与批阅', path: '/admin/graduation/finals', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
+      { label: '开题报告批阅', path: '/admin/graduation/proposals?workspace=proposal-final', permissionKey: 'graduationDesign.proposal.view', entryType: 'TASK_QUEUE' },
+      { label: '成果提交与批阅', path: '/admin/graduation/finals?workspace=proposal-final', permissionKey: 'graduationDesign.final.view', entryType: 'TASK_QUEUE' },
       { label: '毕设材料中心', path: '/admin/graduation/material-center', permissionKey: 'graduationDesign.student.view', entryType: 'WORKBENCH' },
       { label: '查重记录', path: '/admin/graduation/plagiarism-ledger', permissionKey: 'graduationDesign.plagiarism.view', entryType: 'TASK_QUEUE' },
       { label: '统一评阅中心', path: '/admin/graduation/review-tasks', permissionKey: 'graduationDesign.review.view', entryType: 'TASK_QUEUE' }
@@ -54,7 +59,7 @@ export const GRADUATION_WORKSPACES = [
     key: 'gd-defense', label: '答辩与成绩', path: '/admin/graduation/defense',
     children: [
       { label: '答辩安排', path: '/admin/graduation/defense', permissionKey: 'graduationDesign.defense.view', entryType: 'TASK_QUEUE' },
-      { label: '答辩评分', path: '/admin/graduation/defense-scoring', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
+      { label: '答辩评分', path: '/admin/graduation/defense-scoring?workspace=defense-grade', permissionKey: 'graduationDesign.defense.score', entryType: 'TASK_QUEUE' },
       { label: '答辩秘书确认', path: '/admin/graduation/defense-confirmation', permissionKey: 'graduationDesign.defense.scoreConfirm', entryType: 'TASK_QUEUE' },
       { label: '成绩台账', path: '/admin/graduation/grade-ledger', permissionKey: 'graduationDesign.grade.view', entryType: 'TASK_QUEUE' }
     ]
