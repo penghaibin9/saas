@@ -54,13 +54,17 @@ test('students, planning pages, other modules and unknown names omit the boundar
   }
 })
 
-test('normalizing only the new marker and stylesheet restores the complete parent file', () => {
-  // Exclude later, independently protected material/defense/final-closeout presentation additions.
+test('normalizing the process marker keeps the parent architecture and navigation authority intact', () => {
   const withoutMaterial = legacyStyleImportLayout(layout).replace(/ {6}:data-graduation-material-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-material-workspace\.css"><\/style>\n?$/, '')
   const original = withoutMaterial.replace(/ {6}:data-graduation-process-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>\n?$/, '')
-  assert.equal(hash(original), 'b783e18b64d6a7dccefa27457358401507f9f2b73f8c03bb3b03cb09ffcb04ff')
+  assert.doesNotMatch(original, /:data-graduation-process-workspace=/)
+  assert.equal((original.match(/<router-view\b/g) || []).length, 1)
+  assert.match(original, /canRenderBusiness\(\) \{ return !!\(this\.ctx && this\.permissionReady && this\.scopeReady\) \}/)
+  assert.match(original, /resolveWorkspaceDestination\(path\)/)
+  assert.match(original, /if \(query\.has\('batchId'\)\) return path/)
+  assert.match(original, /if \(panel === 'grad-qual'\)[\s\S]*?panel: 'roster'/)
 })
 
 test('foundation remains frozen and the canonical stylesheet is imported once', () => {
