@@ -1,0 +1,230 @@
+name: Module commerce M8 finance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/models/commercial.py
+      - backend/app/models/commercial_operations.py
+      - backend/app/models/platform.py
+      - backend/app/models/customer_success.py
+      - backend/app/services/audit_log.py
+      - backend/app/services/customer_success_p1_guard_service.py
+      - backend/app/services/module_commerce_finance_service.py
+      - backend/app/services/module_commerce_finance_projection_service.py
+      - backend/app/services/module_commerce_operations_service.py
+      - backend/app/services/module_commerce_sla_policy_service.py
+      - backend/app/modules/platform/routers/__init__.py
+      - backend/app/modules/platform/routers/module_commerce_router.py
+      - backend/app/modules/platform/routers/module_commerce_finance_router.py
+      - backend/app/modules/platform/routers/module_commerce_operations_router.py
+      - backend/alembic/versions/20260909_module_commerce_m8_finance.py
+      - backend/alembic/versions/20260909_module_commerce_m8_operations.py
+      - backend/tests/test_module_commerce_m8_finance.py
+      - backend/tests/test_module_commerce_m8_finance_projection.py
+      - backend/tests/test_module_commerce_m8_finance_router.py
+      - backend/tests/test_module_commerce_m8_operations.py
+      - backend/tests/test_module_commerce_m8_operations_router.py
+      - backend/tests/test_module_commerce_m8_sla_policy.py
+      - backend/tests/test_module_commercial_model_bootstrap.py
+      - frontend/src/modules/platform/api/moduleCommerce.api.js
+      - frontend/src/modules/platform/views/control/ModuleFinanceWorkspace.vue
+      - frontend/src/modules/platform/views/control/ModuleOperationsWorkspace.vue
+      - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+      - frontend/tests/module-commerce-finance.test.mjs
+      - frontend/tests/module-commerce-operations.test.mjs
+      - .github/workflows/module-commerce-m8.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-commerce-m8-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  m8-backend:
+    name: M8 finance and operations migrated MySQL contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m8
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m8
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTEST_PRESERVE_MIGRATED_SCHEMA: '1'
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      OUT: /tmp/module-commerce-m8
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: module_commerce_m8
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install exact backend and assert exact source
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -m pip install -r backend/requirements.txt
+      - name: Compile M8 sources and tests
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            backend/app/models/commercial.py \
+            backend/app/models/commercial_operations.py \
+            backend/app/models/platform.py \
+            backend/app/services/audit_log.py \
+            backend/app/services/module_commerce_finance_service.py \
+            backend/app/services/module_commerce_finance_projection_service.py \
+            backend/app/services/module_commerce_operations_service.py \
+            backend/app/services/module_commerce_sla_policy_service.py \
+            backend/app/modules/platform/routers/__init__.py \
+            backend/app/modules/platform/routers/module_commerce_router.py \
+            backend/app/modules/platform/routers/module_commerce_finance_router.py \
+            backend/app/modules/platform/routers/module_commerce_operations_router.py \
+            backend/alembic/versions/20260909_module_commerce_m8_finance.py \
+            backend/alembic/versions/20260909_module_commerce_m8_operations.py \
+            backend/tests/test_module_commerce_m8_finance.py \
+            backend/tests/test_module_commerce_m8_finance_projection.py \
+            backend/tests/test_module_commerce_m8_finance_router.py \
+            backend/tests/test_module_commerce_m8_operations.py \
+            backend/tests/test_module_commerce_m8_operations_router.py \
+            backend/tests/test_module_commerce_m8_sla_policy.py \
+            backend/tests/test_module_commercial_model_bootstrap.py
+      - name: Migrate fresh MySQL and prove one canonical Alembic head
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic heads | tee "$OUT/alembic-heads.txt"
+          alembic upgrade head 2>&1 | tee "$OUT/migration.log"
+          alembic current | tee "$OUT/alembic-current.txt"
+      - name: Run M8 finance, operations, SLA, route and registry contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest \
+            tests/test_module_commerce_m8_finance.py \
+            tests/test_module_commerce_m8_finance_projection.py \
+            tests/test_module_commerce_m8_finance_router.py \
+            tests/test_module_commerce_m8_operations.py \
+            tests/test_module_commerce_m8_operations_router.py \
+            tests/test_module_commerce_m8_sla_policy.py \
+            tests/test_module_commercial_model_bootstrap.py \
+            tests/test_module_commerce_router_install.py \
+            -q -p no:warnings --junitxml="$OUT/m8-junit.xml" 2>&1 | tee "$OUT/m8-pytest.log"
+      - name: Assert M8 control facts only and no implicit business promises
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          model = Path('app/models/commercial.py').read_text(encoding='utf-8')
+          ops_model = Path('app/models/commercial_operations.py').read_text(encoding='utf-8')
+          service = Path('app/services/module_commerce_finance_service.py').read_text(encoding='utf-8')
+          projection = Path('app/services/module_commerce_finance_projection_service.py').read_text(encoding='utf-8')
+          operations = Path('app/services/module_commerce_operations_service.py').read_text(encoding='utf-8')
+          sla_policy = Path('app/services/module_commerce_sla_policy_service.py').read_text(encoding='utf-8')
+          finance_router = Path('app/modules/platform/routers/module_commerce_finance_router.py').read_text(encoding='utf-8')
+          operations_router = Path('app/modules/platform/routers/module_commerce_operations_router.py').read_text(encoding='utf-8')
+          frozen_router = Path('app/modules/platform/routers/module_commerce_router.py').read_text(encoding='utf-8')
+          installer = Path('app/modules/platform/routers/__init__.py').read_text(encoding='utf-8')
+          migration = Path('alembic/versions/20260909_module_commerce_m8_finance.py').read_text(encoding='utf-8')
+          ops_migration = Path('alembic/versions/20260909_module_commerce_m8_operations.py').read_text(encoding='utf-8')
+
+          assert 'CommercialRefundCase' in model and 'CommercialInvoiceCase' in model
+          assert 'CommercialAfterSalesLink' in ops_model and 'CommercialServiceCostRecord' in ops_model
+          assert 'receivableDerivedNotDuplicated' in service and 'paymentAuthority' in service
+          assert 'externalRefundExecutedBySystem' in service and 'externalInvoiceIssuedBySystem' in service
+          assert 'entitlementChangeApplied' in service and 'False' in service
+          assert 'COMMERCIAL_ORDER_ITEM' in projection and 'LEGACY_UNSPECIFIED' in projection
+          assert 'currencyConflict' in projection and 'financeActionAllowed' in projection
+          assert 'COMMERCIAL_SLA_POLICY' in operations and 'UNASSESSED' in operations
+          assert 'currencyConverted' in operations and 'entitlementChangeApplied' in operations
+          assert 'SupportTicket' in operations and 'CommercialAfterSalesLink' in operations
+          assert '_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in sla_policy
+          assert 'with_for_update' in sla_policy and 'expectedVersion' in sla_policy
+          assert 'COMMERCIAL_SLA_POLICY_UPDATE' in sla_policy and 'COMMERCIAL_SLA_POLICY_RESET' in sla_policy
+          assert '系统不会补默认承诺' in operations_router
+          assert 'module_commerce_finance_projection_service' in finance_router
+          assert 'module_commerce_operations_router' in installer
+          assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
+          assert 'Separate from both the frozen M1-M5 routes' in operations_router
+          assert 'M1-M5 module-commerce control-plane API' in frozen_router
+          assert 'Revision ID: 20260909_module_commerce_m8_finance' in migration
+          assert 'Revision ID: 20260909_module_commerce_m8_operations' in ops_migration
+
+          forbidden = (
+              'payment_gateway', 'tax_provider', 'refund_payment(', 'execute_refund(',
+              'cancel_subscription_source_now(', 'execute_tenant_purge', '_purge_file_objects',
+          )
+          for token in forbidden:
+              assert token not in service, token
+              assert token not in finance_router, token
+              assert token not in operations, token
+              assert token not in operations_router, token
+              assert token not in sla_policy, token
+          assert 'order.status = "refunded"' not in service
+          assert 'order.paid_amount =' not in service
+          assert '_SLA_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in operations
+          assert 'targetsHours' in operations and 'targetsHours' in sla_policy
+          assert 'P0": 2' not in operations and 'P1": 8' not in operations and 'P2": 24' not in operations
+          assert 'P0": 2' not in sla_policy and 'P1": 8' not in sla_policy and 'P2": 24' not in sla_policy
+          print('M8_FINANCE_AFTERSALES_SLA_COST_CONTROL_VERIFIED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-m8-${{ env.EXPECTED_HEAD }}
+          path: /tmp/module-commerce-m8
+          if-no-files-found: error
+          retention-days: 14
+
+  m8-frontend:
+    name: M8 finance and operations workspace build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install exact frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run M8 workspace contracts
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          node --test tests/module-commerce-finance.test.mjs tests/module-commerce-operations.test.mjs
+      - name: Production build
+        working-directory: frontend
+        run: npm run build

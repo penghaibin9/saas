@@ -6,6 +6,7 @@
 import { request } from '@/services/http'
 import { currentUserFromToken, getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
+import { projectModuleAccess } from '@/security/moduleEntitlement'
 import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
 /**
@@ -158,6 +159,7 @@ export async function fetchLayoutContext() {
     currentRole,
     dataScope,
     permissionPatterns,
+    ...projectModuleAccess(contextPayload),
     messageUnreadCount,
     ctxKey,
     readonlyTenant,

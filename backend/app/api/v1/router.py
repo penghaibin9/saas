@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 
 from app.api.v1.route_registration import register_all_routes
+from app.core.commercial_surface_module_gate import install_on_router as install_commercial_surface_gate
 # 必须早于 register_all_routes：sandbox_story_api 会先把 platform.router 的历史
 # reset-sandbox-data 原位替换。这样即使循环导入导致应用提前复制主 Router，
 # 拿到的也已经是 standard-20k/legacy-100 兼容语义。
@@ -211,3 +212,7 @@ install_student_contract()
 install_student_contract_security_guard()
 install_funding_authority()
 install_affairs_four_end_terminal_guard(api_router)
+
+# Install last, after every late supplemental router and route-replacement guard.
+# This closes commercial-module bypasses without forcing auth on unmapped/public routes.
+install_commercial_surface_gate(api_router)

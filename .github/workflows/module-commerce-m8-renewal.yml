@@ -1,0 +1,131 @@
+name: Module commerce M8 renewal bridge
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/models/commercial_operations.py
+      - backend/app/models/platform.py
+      - backend/app/services/audit_log.py
+      - backend/app/services/customer_success_p1_guard_service.py
+      - backend/app/services/module_commerce_renewal_service.py
+      - backend/app/modules/platform/routers/__init__.py
+      - backend/app/modules/platform/routers/module_commerce_renewal_router.py
+      - backend/alembic/versions/20260909_module_commerce_m8_renewal.py
+      - backend/tests/test_module_commerce_m8_renewal.py
+      - backend/tests/test_module_commerce_m8_renewal_router.py
+      - backend/tests/test_module_commercial_model_bootstrap.py
+      - frontend/src/modules/platform/api/moduleCommerce.api.js
+      - frontend/src/modules/platform/views/control/ModuleRenewalWorkspace.vue
+      - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+      - frontend/tests/module-commerce-renewal.test.mjs
+      - .github/workflows/module-commerce-m8-renewal.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: module-commerce-m8-renewal-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  renewal-backend:
+    name: M8 renewal bridge migrated MySQL contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m8_renewal
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m8_renewal
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTEST_PRESERVE_MIGRATED_SCHEMA: '1'
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      OUT: /tmp/module-commerce-m8-renewal
+    services:
+      mysql:
+        image: mysql:8.0
+        env: {MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: module_commerce_m8_renewal}
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ env.EXPECTED_HEAD }}', fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt}
+      - name: Install exact backend and assert exact source
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -m pip install -r backend/requirements.txt
+      - name: Compile renewal bridge sources and tests
+        run: |
+          set -euo pipefail
+          python -m py_compile backend/app/models/commercial_operations.py backend/app/models/platform.py backend/app/services/audit_log.py backend/app/services/customer_success_p1_guard_service.py backend/app/services/module_commerce_renewal_service.py backend/app/modules/platform/routers/__init__.py backend/app/modules/platform/routers/module_commerce_renewal_router.py backend/alembic/versions/20260909_module_commerce_m8_renewal.py backend/tests/test_module_commerce_m8_renewal.py backend/tests/test_module_commerce_m8_renewal_router.py backend/tests/test_module_commercial_model_bootstrap.py
+      - name: Migrate fresh MySQL and prove one canonical Alembic head
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic heads | tee "$OUT/alembic-heads.txt"
+          alembic upgrade head 2>&1 | tee "$OUT/migration.log"
+          alembic current | tee "$OUT/alembic-current.txt"
+      - name: Run renewal bridge, route and cold-registry contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest tests/test_module_commerce_m8_renewal.py tests/test_module_commerce_m8_renewal_router.py tests/test_module_commercial_model_bootstrap.py tests/test_control_plane_p1_concurrency_contract.py -q -p no:warnings --junitxml="$OUT/renewal-junit.xml" 2>&1 | tee "$OUT/renewal-pytest.log"
+      - name: Assert one renewal truth and no automatic sales/payment/entitlement mutation
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          service=Path('app/services/module_commerce_renewal_service.py').read_text(encoding='utf-8')
+          guard=Path('app/services/customer_success_p1_guard_service.py').read_text(encoding='utf-8')
+          router=Path('app/modules/platform/routers/module_commerce_renewal_router.py').read_text(encoding='utf-8')
+          model=Path('app/models/commercial_operations.py').read_text(encoding='utf-8')
+          migration=Path('alembic/versions/20260909_module_commerce_m8_renewal.py').read_text(encoding='utf-8')
+          assert 'CommercialRenewalFollowupLink' in model
+          assert 'create_renewal_task_in_session' in guard and 'customer_success.create_renewal_task_in_session' in service
+          assert 'LATEST_PAID_SOURCE_PER_MODULE_GENERATION' in service and 'PlatformOrder.status=="paid"' in service
+          assert 'CANCEL_SCHEDULED' in service and 'priceMustBeReconfirmed' in service and 'endAtMustBeExplicit' in service
+          assert 'customerSuccess.manage' in router and 'commercial.view' in router
+          assert 'Revision ID: 20260909_module_commerce_m8_renewal' in migration
+          assert 'RenewalTask(' not in service
+          for token in ('create_sales_order(','mark_order_paid(','payment_gateway','cancel_subscription_source_now(','execute_tenant_purge'):
+              assert token not in service and token not in router, token
+          print('M8_RENEWAL_BRIDGE_SINGLE_TRUTH_VERIFIED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-m8-renewal-${{ env.EXPECTED_HEAD }}
+          path: /tmp/module-commerce-m8-renewal
+          if-no-files-found: error
+          retention-days: 14
+
+  renewal-frontend:
+    name: M8 renewal workspace contract and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ env.EXPECTED_HEAD }}', persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - name: Install exact frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run renewal workspace contract
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          node --test tests/module-commerce-renewal.test.mjs
+      - name: Production build
+        working-directory: frontend
+        run: npm run build

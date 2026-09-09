@@ -4,6 +4,10 @@ The legacy customer-health service remains the read/health-score authority. Its 
 helpers predate concurrent platform operators and commit before platform audit. The P1
 workspace routes all writes through this guard so state transitions are row-locked,
 optimistic-version checked, state-machine checked, and audited in the same transaction.
+
+The in-session renewal-task constructor is also the only creation implementation used by
+the commercial renewal bridge. The caller owns commit/rollback so RenewalTask plus its
+commercial source link and both critical audit facts can remain one MySQL transaction.
 """
 from __future__ import annotations
 
@@ -107,7 +111,6 @@ def _renewal_dto(row: RenewalTask) -> dict:
 def create_ticket(*, tenant_id: int, title: str, description: str = "", severity: str = "P2",
                   reporter_name: str = "", user: dict | None = None) -> dict:
     from app.services import audit_log
-
     title = _text(title, field="工单标题", max_len=200, required_min=2)
     description = _text(description, field="工单描述", max_len=2000)
     reporter_name = _text(reporter_name, field="反馈人", max_len=100)
@@ -116,23 +119,16 @@ def create_ticket(*, tenant_id: int, title: str, description: str = "", severity
         raise AppException("VALIDATION_ERROR", f"不支持的优先级：{severity}")
     db = get_sessionmaker()()
     try:
-        row = SupportTicket(
-            tenant_id=int(tenant_id), title=title, description=description,
-            severity=severity, status="OPEN", reporter_name=reporter_name,
-        )
-        db.add(row)
-        db.flush()
+        row = SupportTicket(tenant_id=int(tenant_id), title=title, description=description,
+                            severity=severity, status="OPEN", reporter_name=reporter_name)
+        db.add(row); db.flush()
         audit_log.record_critical_in_session(
             db, "PLATFORM_SUPPORT_TICKET_CREATE", f"support-ticket:{row.id}",
             detail={"tenantId": str(tenant_id), "severity": severity, "title": title, "actor": _actor(user)},
-            tenant_id=int(tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _ticket_dto(row)
+            tenant_id=int(tenant_id), resource_id=str(row.id))
+        db.commit(); db.refresh(row); return _ticket_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()
 
@@ -140,38 +136,28 @@ def create_ticket(*, tenant_id: int, title: str, description: str = "", severity
 def transition_ticket(ticket_id: int, *, status: str, resolution_note: str = "",
                       expected_version, user: dict | None = None) -> dict:
     from app.services import audit_log
-
     target = str(status or "").upper()
     resolution_note = _text(resolution_note, field="处理结论", max_len=2000)
     db = get_sessionmaker()()
     try:
         row = _lock_row(db, SupportTicket, ticket_id, "工单")
-        current = str(row.status or "").upper()
-        current_version = _require_version(row, expected_version)
+        current = str(row.status or "").upper(); current_version = _require_version(row, expected_version)
         if target not in _TICKET_TRANSITIONS.get(current, set()):
             raise AppException("STATE_TRANSITION_DENIED", f"工单不能从 {current} 变更为 {target}", http_status=409)
-        row.status = target
-        row.version = current_version + 1
+        row.status = target; row.version = current_version + 1
         if target in {"RESOLVED", "CLOSED"}:
             row.resolved_at = _now()
-            if resolution_note:
-                row.resolution_note = resolution_note
+            if resolution_note: row.resolution_note = resolution_note
         elif target == "IN_PROGRESS" and current == "RESOLVED":
-            # Re-opened work is no longer resolved; preserve note as history but clear the timestamp.
             row.resolved_at = None
         audit_log.record_critical_in_session(
             db, "PLATFORM_SUPPORT_TICKET_TRANSITION", f"support-ticket:{row.id}",
-            detail={
-                "tenantId": str(row.tenant_id), "before": current, "after": target,
-                "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user),
-            }, tenant_id=int(row.tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _ticket_dto(row)
+            detail={"tenantId": str(row.tenant_id), "before": current, "after": target,
+                    "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user)},
+            tenant_id=int(row.tenant_id), resource_id=str(row.id))
+        db.commit(); db.refresh(row); return _ticket_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()
 
@@ -179,28 +165,20 @@ def transition_ticket(ticket_id: int, *, status: str, resolution_note: str = "",
 def create_training(*, tenant_id: int, topic: str, scheduled_at: datetime,
                     trainer_name: str = "", user: dict | None = None) -> dict:
     from app.services import audit_log
-
     topic = _text(topic, field="培训主题", max_len=200, required_min=2)
     trainer_name = _text(trainer_name, field="培训讲师", max_len=100)
     db = get_sessionmaker()()
     try:
-        row = TrainingRecord(
-            tenant_id=int(tenant_id), topic=topic, trainer_name=trainer_name,
-            scheduled_at=scheduled_at, status="SCHEDULED",
-        )
-        db.add(row)
-        db.flush()
+        row = TrainingRecord(tenant_id=int(tenant_id), topic=topic, trainer_name=trainer_name,
+                             scheduled_at=scheduled_at, status="SCHEDULED")
+        db.add(row); db.flush()
         audit_log.record_critical_in_session(
             db, "PLATFORM_TRAINING_CREATE", f"training:{row.id}",
             detail={"tenantId": str(tenant_id), "topic": topic, "scheduledAt": scheduled_at.isoformat(), "actor": _actor(user)},
-            tenant_id=int(tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _training_dto(row)
+            tenant_id=int(tenant_id), resource_id=str(row.id))
+        db.commit(); db.refresh(row); return _training_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()
 
@@ -208,69 +186,61 @@ def create_training(*, tenant_id: int, topic: str, scheduled_at: datetime,
 def complete_training(training_id: int, *, attendee_count: int, note: str = "",
                       expected_version=None, user: dict | None = None) -> dict:
     from app.services import audit_log
-
     try:
         count = int(attendee_count)
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "参训人数必须是整数") from None
-    if count < 0:
-        raise AppException("VALIDATION_ERROR", "参训人数不能为负数")
+    if count < 0: raise AppException("VALIDATION_ERROR", "参训人数不能为负数")
     note = _text(note, field="培训备注", max_len=1000)
     db = get_sessionmaker()()
     try:
         row = _lock_row(db, TrainingRecord, training_id, "培训记录")
-        current = str(row.status or "").upper()
-        current_version = _require_version(row, expected_version)
+        current = str(row.status or "").upper(); current_version = _require_version(row, expected_version)
         if current != "SCHEDULED":
             raise AppException("STATE_TRANSITION_DENIED", f"培训处于 {current}，不能标记完成", http_status=409)
-        row.status = "COMPLETED"
-        row.attendee_count = count
-        row.completed_at = _now()
-        if note:
-            row.note = note
+        row.status = "COMPLETED"; row.attendee_count = count; row.completed_at = _now()
+        if note: row.note = note
         row.version = current_version + 1
         audit_log.record_critical_in_session(
             db, "PLATFORM_TRAINING_COMPLETE", f"training:{row.id}",
-            detail={
-                "tenantId": str(row.tenant_id), "attendeeCount": count,
-                "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user),
-            }, tenant_id=int(row.tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _training_dto(row)
+            detail={"tenantId": str(row.tenant_id), "attendeeCount": count,
+                    "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user)},
+            tenant_id=int(row.tenant_id), resource_id=str(row.id))
+        db.commit(); db.refresh(row); return _training_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()
 
 
-def create_renewal_task(*, tenant_id: int, due_at: datetime, owner_name: str = "",
-                        note: str = "", user: dict | None = None) -> dict:
+def create_renewal_task_in_session(db, *, tenant_id: int, due_at: datetime,
+                                   owner_name: str = "", note: str = "",
+                                   user: dict | None = None) -> RenewalTask:
+    """Create and audit one RenewalTask without committing the caller-owned transaction."""
     from app.services import audit_log
-
+    if not isinstance(due_at, datetime):
+        raise AppException("VALIDATION_ERROR", "续费跟进截止时间无效")
     owner_name = _text(owner_name, field="跟进负责人", max_len=100)
     note = _text(note, field="跟进备注", max_len=1000)
+    row = RenewalTask(tenant_id=int(tenant_id), due_at=due_at, status="PENDING",
+                      owner_name=owner_name, note=note)
+    db.add(row); db.flush()
+    audit_log.record_critical_in_session(
+        db, "PLATFORM_RENEWAL_TASK_CREATE", f"renewal-task:{row.id}",
+        detail={"tenantId": str(tenant_id), "dueAt": due_at.isoformat(), "ownerName": owner_name, "actor": _actor(user)},
+        tenant_id=int(tenant_id), resource_id=str(row.id))
+    return row
+
+
+def create_renewal_task(*, tenant_id: int, due_at: datetime, owner_name: str = "",
+                        note: str = "", user: dict | None = None) -> dict:
     db = get_sessionmaker()()
     try:
-        row = RenewalTask(
-            tenant_id=int(tenant_id), due_at=due_at, status="PENDING",
-            owner_name=owner_name, note=note,
-        )
-        db.add(row)
-        db.flush()
-        audit_log.record_critical_in_session(
-            db, "PLATFORM_RENEWAL_TASK_CREATE", f"renewal-task:{row.id}",
-            detail={"tenantId": str(tenant_id), "dueAt": due_at.isoformat(), "ownerName": owner_name, "actor": _actor(user)},
-            tenant_id=int(tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _renewal_dto(row)
+        row = create_renewal_task_in_session(db, tenant_id=int(tenant_id), due_at=due_at,
+                                             owner_name=owner_name, note=note, user=user)
+        db.commit(); db.refresh(row); return _renewal_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()
 
@@ -278,36 +248,24 @@ def create_renewal_task(*, tenant_id: int, due_at: datetime, owner_name: str = "
 def transition_renewal_task(task_id: int, *, status: str, note: str = "",
                             expected_version=None, user: dict | None = None) -> dict:
     from app.services import audit_log
-
-    target = str(status or "").upper()
-    note = _text(note, field="续费跟进备注", max_len=1000)
+    target = str(status or "").upper(); note = _text(note, field="续费跟进备注", max_len=1000)
     db = get_sessionmaker()()
     try:
         row = _lock_row(db, RenewalTask, task_id, "续费任务")
-        current = str(row.status or "").upper()
-        current_version = _require_version(row, expected_version)
+        current = str(row.status or "").upper(); current_version = _require_version(row, expected_version)
         if target not in _RENEWAL_TRANSITIONS.get(current, set()):
             raise AppException("STATE_TRANSITION_DENIED", f"续费任务不能从 {current} 变更为 {target}", http_status=409)
-        row.status = target
-        row.version = current_version + 1
-        if note:
-            row.note = note
-        if target == "CONTACTED":
-            row.last_contacted_at = _now()
-        if target in {"RENEWED", "CHURNED"}:
-            row.closed_at = _now()
+        row.status = target; row.version = current_version + 1
+        if note: row.note = note
+        if target == "CONTACTED": row.last_contacted_at = _now()
+        if target in {"RENEWED", "CHURNED"}: row.closed_at = _now()
         audit_log.record_critical_in_session(
             db, "PLATFORM_RENEWAL_TASK_TRANSITION", f"renewal-task:{row.id}",
-            detail={
-                "tenantId": str(row.tenant_id), "before": current, "after": target,
-                "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user),
-            }, tenant_id=int(row.tenant_id), resource_id=str(row.id),
-        )
-        db.commit()
-        db.refresh(row)
-        return _renewal_dto(row)
+            detail={"tenantId": str(row.tenant_id), "before": current, "after": target,
+                    "expectedVersion": current_version, "newVersion": int(row.version), "actor": _actor(user)},
+            tenant_id=int(row.tenant_id), resource_id=str(row.id))
+        db.commit(); db.refresh(row); return _renewal_dto(row)
     except Exception:
-        db.rollback()
-        raise
+        db.rollback(); raise
     finally:
         db.close()

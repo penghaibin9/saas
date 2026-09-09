@@ -1,0 +1,353 @@
+name: Module commerce foundation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/check/module-commercial-*.py
+      - backend/tests/test_module_commercial_*.py
+      - backend/tests/test_module_commerce_*.py
+      - backend/tests/test_commercial_catalog_contract.py
+      - frontend/src/modules/platform/**
+      - frontend/tests/module-commerce-sales.test.mjs
+      - frontend/tests/module-commerce-workbench.test.mjs
+      - frontend/package.json
+      - frontend/package-lock.json
+      - backend/app/**
+      - backend/alembic/**
+      - backend/requirements.txt
+      - backend/requirements.lock
+      - backend/requirements.in
+      - backend/pyproject.toml
+      - backend/alembic.ini
+      - shared/contracts/module-manifest.json
+      - docs/07-部署运维交付与商业化/module-commerce/**
+      - .github/workflows/module-commerce-foundation.yml
+      - .github/workflows/playwright-production-e2e.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: module-commerce-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-inventory:
+    name: Exact-source read-only commercial inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test read-only inventory and draft contracts without application imports
+        env:
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python -B backend/tests/test_module_commercial_inventory.py -v 2>&1 | tee "$OUT/inventory-tests.log"
+          python -B backend/tests/test_commercial_catalog_contract.py -v 2>&1 | tee "$OUT/catalogue-tests.log"
+      - name: Inventory the exact source without importing application or touching MySQL
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -B scripts/check/module-commercial-inventory.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --output "$OUT/inventory.json" | tee "$OUT/inventory.log"
+      - name: Package only committed code for subsequent review
+        if: always()
+        env:
+          OUT: ${{ runner.temp }}/module-commerce
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src/modules/platform scripts/check/module-commercial-inventory.py backend/tests/test_module_commercial_inventory.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-foundation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/module-commerce
+          if-no-files-found: error
+          retention-days: 14
+
+  schema-evidence:
+    name: M0 metadata and migrated MySQL evidence (not stage approval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      APP_ENV: test
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/m0_commercial_audit
+      M0_DATABASE_URL: mysql+pymysql://m0_reader:m0-read-only-ci@127.0.0.1:3306/m0_commercial_audit
+      M0_EPHEMERAL_MYSQL: '1'
+      OUT: /tmp/module-commerce-schema
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: m0_commercial_audit
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install the committed dependency lock
+        run: python -m pip install -r backend/requirements.txt
+      - name: Test M0 evidence validation and candidate indexing
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python -B backend/tests/test_module_commercial_reconcile.py -v 2>&1 | tee "$OUT/reconciliation-tests.log"
+          python -B backend/tests/test_module_commercial_key_contracts.py -v 2>&1 | tee "$OUT/key-contract-tests.log"
+          python -B backend/tests/test_module_commercial_review.py -v 2>&1 | tee "$OUT/review-tests.log"
+          python -B backend/tests/test_module_commercial_boundaries.py -v 2>&1 | tee "$OUT/boundary-tests.log"
+          python -B backend/tests/test_module_commercial_stage_gate.py -v 2>&1 | tee "$OUT/stage-gate-tests.log"
+          python -B backend/tests/test_module_commercial_model_bootstrap.py -v 2>&1 | tee "$OUT/model-bootstrap.log"
+          python -B backend/tests/test_module_commerce_router_install.py -v 2>&1 | tee "$OUT/router-install-tests.log"
+          python -B backend/tests/test_module_commercial_authority_failure.py -v 2>&1 | tee "$OUT/authority-fault-tests.log"
+          python -B backend/tests/test_module_commercial_catalog_retry.py -v 2>&1 | tee "$OUT/catalog-retry-tests.log"
+          python -B backend/tests/test_module_commercial_order_replay.py -v 2>&1 | tee "$OUT/order-replay-tests.log"
+          python -B backend/tests/test_module_commerce_sales_contract.py -v 2>&1 | tee "$OUT/sales-contract-tests.log"
+          python -B backend/tests/test_module_commerce_exit_review.py -v 2>&1 | tee "$OUT/exit-review-tests.log"
+      - name: Collect the clean exact-head AST and reference candidates
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -B scripts/check/module-commercial-inventory.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --output "$OUT/inventory.json" | tee "$OUT/inventory.log"
+          python -B scripts/check/module-commercial-references.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --output "$OUT/references.json" | tee "$OUT/references.log"
+      - name: Upgrade only the newly created disposable MySQL database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade head 2>&1 | tee "$OUT/migration.log"
+      - name: Provision a SELECT-only schema evidence reader in this disposable service
+        run: |
+          python - <<'PY'
+          import pymysql
+          connection = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='root', database='m0_commercial_audit')
+          with connection.cursor() as cursor:
+              cursor.execute("CREATE USER 'm0_reader'@'%' IDENTIFIED BY 'm0-read-only-ci'")
+              cursor.execute("GRANT SELECT ON m0_commercial_audit.* TO 'm0_reader'@'%'")
+          connection.close()
+          PY
+      - name: Collect official metadata and read-only MySQL schema; keep every discrepancy
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-reconcile.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --output "$OUT/reconciliation.json" --mysql | tee "$OUT/reconciliation.log"
+      - name: Index the union of declarations, runtime tables and migrated tables
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-references.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --output "$OUT/reference-union.json" | tee "$OUT/reference-union.log"
+      - name: Verify explicit schema dispositions without granting M0 or deletion approval
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-review.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --review "docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json" --output "$OUT/schema-dispositions.json" | tee "$OUT/schema-dispositions.log"
+      - name: Verify exceptional and shared resource boundaries without runtime approval
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-boundaries.py --repo "$PWD" --expected-head "$EXPECTED_HEAD" --inventory "$OUT/inventory.json" --schema-evidence "$OUT/reconciliation.json" --contract "docs/07-部署运维交付与商业化/module-commerce/M0-resource-boundaries.json" --output "$OUT/resource-boundaries.json" | tee "$OUT/resource-boundaries.log"
+      - name: Seal M0 commerce-construction exit while deletion remains blocked
+        run: |
+          set -euo pipefail
+          python -B scripts/check/module-commercial-stage-gate.py \
+            --inventory "$OUT/inventory.json" \
+            --schema-review "$OUT/schema-dispositions.json" \
+            --boundaries "$OUT/resource-boundaries.json" \
+            --contract "docs/07-部署运维交付与商业化/module-commerce/M0-stage-contract.json" \
+            --output "$OUT/m0-stage-exit.json" | tee "$OUT/m0-stage-exit.log"
+          python - <<'PY2'
+          import json, os
+          from pathlib import Path
+          row=json.loads((Path(os.environ['OUT'])/'m0-stage-exit.json').read_text())
+          assert row['m0Complete'] is True
+          assert row['m1EntryApproved'] is True
+          assert row['purgeScopeComplete'] is False
+          assert row['deletionAuthorized'] is False
+          PY2
+      - name: Archive committed review sources, never database rows or credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py backend/tests/test_module_commerce_sales_contract.py backend/tests/test_module_commerce_sales_runtime.py frontend/tests/module-commerce-sales.test.mjs frontend/tests/module-commerce-workbench.test.mjs backend/tests/test_module_commerce_exit_review.py backend/tests/test_module_commerce_exit_review_runtime.py .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_rbac_module_access_snapshot.py backend/tests/test_system_admin_governance_http.py backend/tests/test_teacher_mobile_position_catalog.py backend/tests/test_internship_position_publish_versions.py backend/conftest.py backend/tests/conftest.py backend/pytest_migrated_schema.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-commerce-schema-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/module-commerce-schema
+          if-no-files-found: error
+          retention-days: 14
+
+  commercial-runtime:
+    name: M1/M2 migrated MySQL commercial runtime and legacy upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_runtime
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_runtime
+      PYTHONDONTWRITEBYTECODE: '1'
+      OUT: /tmp/module-commerce-runtime
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      PYTEST_PRESERVE_MIGRATED_SCHEMA: '1'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: module_commerce_runtime
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install locked backend and assert exact source
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD > "$OUT/revision.txt"
+          python -m pip install -r backend/requirements.txt
+          python -m py_compile \
+            backend/app/models/commercial.py \
+            backend/app/services/commercial_catalog_service.py \
+            backend/app/services/commercial_order_item_service.py \
+            backend/app/services/module_subscription_service.py \
+            backend/app/services/commercial_entitlement_authority_service.py
+      - name: Upgrade fresh MySQL to current head and run M1/M2 runtime contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m alembic upgrade head 2>&1 | tee "$OUT/fresh-migration.log"
+          python -m alembic current | tee "$OUT/fresh-current.log"
+          pytest tests/test_module_commerce_m12_runtime.py tests/test_module_commerce_order_replay_runtime.py \
+            tests/test_module_commerce_sales_runtime.py tests/test_module_commerce_exit_review_runtime.py \
+            tests/test_rbac_module_access_snapshot.py \
+            tests/test_system_admin_governance_http.py::test_overview_board_http \
+            tests/test_system_admin_governance_http.py::test_overview_board_authority_outage_remains_503 \
+            tests/test_teacher_mobile_position_catalog.py \
+            -q -p no:warnings \
+            --junitxml="$OUT/runtime-junit.xml" 2>&1 | tee "$OUT/runtime-pytest.log"
+      - name: Prove legacy orders upgrade without manufactured module rights
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY2'
+          import pymysql
+          c=pymysql.connect(host='127.0.0.1',port=3306,user='root',password='root',autocommit=True)
+          with c.cursor() as cur:
+              cur.execute('DROP DATABASE IF EXISTS module_commerce_upgrade')
+              cur.execute('CREATE DATABASE module_commerce_upgrade CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+          c.close()
+          PY2
+          export DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_upgrade'
+          export TEST_DATABASE_URL="$DATABASE_URL"
+          python -m alembic upgrade 20260901_orientation_self_activate_o6 2>&1 | tee "$OUT/legacy-base-migration.log"
+          python - <<'PY2'
+          import pymysql
+          c=pymysql.connect(host='127.0.0.1',port=3306,user='root',password='root',database='module_commerce_upgrade',autocommit=True)
+          with c.cursor() as cur:
+              cur.execute("""INSERT INTO t_tenant (id,tenant_code,school_name,deploy_mode,db_mode,status,created_at,updated_at,is_deleted,version) VALUES (900000000000000001,'m12-legacy-upgrade','M12旧合同升级校','SAAS','SHARED','ACTIVE',NOW(),NOW(),0,0)""")
+              cur.execute("""INSERT INTO t_order (tenant_id,order_no,order_type,package_code,amount,paid_amount,status,start_at,end_at,remark,created_at,updated_at,is_deleted,version) VALUES (900000000000000001,'LEGACY-M12-001','NEW','professional',99800.00,99800.00,'paid',NOW(),DATE_ADD(NOW(), INTERVAL 365 DAY),'legacy upgrade evidence',NOW(),NOW(),0,3)""")
+          c.close()
+          PY2
+          python -m alembic upgrade head 2>&1 | tee "$OUT/legacy-upgrade.log"
+          python -m alembic upgrade head 2>&1 | tee "$OUT/legacy-upgrade-reentry.log"
+          python - <<'PY2'
+          import pymysql
+          c=pymysql.connect(host='127.0.0.1',port=3306,user='root',password='root',database='module_commerce_upgrade')
+          with c.cursor(pymysql.cursors.DictCursor) as cur:
+              cur.execute("SELECT * FROM t_commercial_order_item WHERE tenant_id=900000000000000001")
+              rows=cur.fetchall()
+              assert len(rows)==1, rows
+              row=rows[0]
+              assert row['fulfillment_status']=='LEGACY_UNALLOCATED'
+              assert row['module_key'] is None and row['sku_code'] is None and row['sku_revision'] is None
+              assert row['feature_snapshot_json'] in ('{}', b'{}')
+              cur.execute("SELECT COUNT(*) AS n FROM t_tenant_module_subscription_source WHERE tenant_id=900000000000000001")
+              assert cur.fetchone()['n']==0
+          c.close()
+          print('legacy_upgrade=VERIFIED_NO_MANUFACTURED_MODULE_RIGHTS')
+          PY2
+      - name: Upload exact-head M0/M1/M2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-commerce-runtime-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/module-commerce-runtime
+          if-no-files-found: error
+          retention-days: 14
+
+  sales-workspace:
+    name: M3 itemized sales workspace tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install committed frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Exact-head sales contract and Vue production build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/module-sales-workspace"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD > "$RUNNER_TEMP/module-sales-workspace/revision.txt"
+          node --test tests/module-commerce-sales.test.mjs tests/module-commerce-workbench.test.mjs 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/tests.log"
+          npm run build 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/build.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-sales-workspace-${{ env.EXPECTED_HEAD }}
+          path: ${{ runner.temp }}/module-sales-workspace
+          if-no-files-found: error
+          retention-days: 14
