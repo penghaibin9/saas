@@ -77,13 +77,19 @@ from app.models.commercial import (  # noqa: E402,F401
     TenantModuleState,
     TenantModuleSubscriptionSource,
 )
+from app.models.commercial_operations import (  # noqa: E402,F401
+    CommercialAfterSalesLink,
+    CommercialServiceCostRecord,
+)
 
 _models_package = _sys.modules.get("app.models")
 if _models_package is not None:
     for _model_name in (
+        "CommercialAfterSalesLink",
         "CommercialInvoiceCase",
         "CommercialOrderItem",
         "CommercialRefundCase",
+        "CommercialServiceCostRecord",
         "CommercialSkuVersion",
         "TenantCommercialProfile",
         "TenantModuleCancellationPlan",
