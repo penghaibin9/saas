@@ -12,6 +12,7 @@
 - Docker 运行态端口/容器边界只读审计：`scripts/check/check-docker-port-exposure.py`；
 - 实际 dockerd 启动参数只读审计：`scripts/check/check-dockerd-launch-flags.py`；
 - SSH / sysctl / Docker daemon 样板；
+- 腾讯云控制面人工验收清单；
 - 明确的现场操作与回滚顺序。
 
 本阶段 **不会自动执行**：
@@ -40,9 +41,9 @@
 7. 已确认当前 Docker/Compose/Nginx 配置位置并做离机备份；
 8. 已确认生产密钥不在 Git 仓库、不在 shell history、不在可公开日志中。
 
-## 2. 第一遍：三份只读审计
+## 2. 第一遍：部署前只读预检
 
-从待部署仓库根目录连续执行：
+从待部署仓库根目录执行：
 
 ```bash
 sudo python3 scripts/check/check-host-security.py \
@@ -51,7 +52,8 @@ sudo python3 scripts/check/check-host-security.py \
   --report /var/tmp/school-lifecycle-host-security.json
 
 sudo python3 scripts/check/check-docker-port-exposure.py \
-  --report /var/tmp/school-lifecycle-docker-port-exposure.json
+  --preflight-empty-ok \
+  --report /var/tmp/school-lifecycle-docker-port-preflight.json
 
 sudo python3 scripts/check/check-dockerd-launch-flags.py \
   --report /var/tmp/school-lifecycle-dockerd-launch-flags.json
@@ -59,26 +61,44 @@ sudo python3 scripts/check/check-dockerd-launch-flags.py \
 
 如果 SSH 不是 22，必须把 `--ssh-port` 改为真实值。如果正式环境变量文件位置不同，可重复传入 `--secret-path`。
 
-**三条命令返回码都必须为 0 才能进入下一阶段。** `WARN` 仍需人工判断。三份报告都必须记录 `mutatedHost=false` 与 `productionDataAccessed=false`。
+如果确有经过批准的账号必须加入 `docker` 组，只能显式声明，例如：
 
-三份审计合计至少覆盖：
+```bash
+--allow-docker-user <APPROVED_ADMIN_USER>
+```
+
+未声明的 docker 组成员是 FAIL；已声明成员仍保留 WARN，因为 docker 组具备接近 root 的主机控制能力。优先使用 `sudo docker ...`，不要为了方便批量把普通账号加入 docker 组。
+
+部署前预检允许 Docker 尚无运行容器，所以第二条命令使用 `--preflight-empty-ok`。如果此时没有容器，报告必须明确：
+
+```json
+{
+  "preflightEmptyAllowed": true,
+  "runtimeEvidenceComplete": false
+}
+```
+
+这只允许继续**主机加固施工**，不代表 Docker 最终运行态已验收。`--preflight-empty-ok` **禁止用于最终上线证据**。
+
+预检至少覆盖：
 
 - SSH root/password/kbd-interactive 登录；
 - SSH 会话/重试/转发策略；
 - 主机真实 TCP/UDP 监听端口；
+- 任意非 loopback 的非批准监听，包括绑定到具体 VPC/实例网卡 IP 的端口；
 - 3306/6379/3310/2375/2376/8000 等敏感端口；
-- UFW active/default-deny/SSH 来源限制；
+- UFW active/default-deny/SSH 来源限制及覆盖敏感端口的端口范围规则；
 - Nginx 有效配置、TLS 1.2/1.3 与安全 include；
 - 内核基础 hardening sysctl；
 - Docker daemon TCP socket / insecure registry / live-restore / no-new-privileges / 日志轮转；
-- Docker socket权限；
-- 运行中容器 `Privileged` / `host` network / `-P` / docker.sock bind；
-- Docker 真实 published ports 与 bridge gateway mode；
+- Docker socket 权限与 docker 组成员；
 - 实际 dockerd 启动参数中的 `--iptables=false` / `--ip6tables=false` / `-H tcp://...`；
 - NTP、systemd、AppArmor、persistent journald；
 - 指定密钥文件权限。
 
 ## 3. 腾讯云安全组：第一层网络边界
+
+修改前先导出/备份安全组规则，详见 `deploy/host/TENCENT_CLOUD_CONTROL_PLANE.md`。
 
 生产建议只保留下列互联网入站：
 
@@ -134,7 +154,7 @@ sudo ufw enable
 sudo ufw status verbose
 ```
 
-不允许新增 3306/6379/3310/2375/2376/8000 的公网放行。
+不允许新增 3306/6379/3310/2375/2376/8000 的公网放行，也不允许用宽端口范围间接覆盖这些端口。
 
 ## 6. sysctl：保守型云主机基线
 
@@ -164,7 +184,8 @@ cat deploy/host/docker-daemon.json.example
 - 有界日志轮转；
 - 不存在 Docker TCP 管理监听；
 - 不允许 insecure registries；
-- Docker `iptables/ip6tables` 集成不被关闭。
+- Docker `iptables/ip6tables` 集成不被关闭；
+- docker 组成员为零，或只有逐个审批并在审计命令中显式列出的例外账号。
 
 合并完成后：
 
@@ -175,7 +196,9 @@ sudo dockerd --validate --config-file=/etc/docker/daemon.json
 
 如当前 Docker 版本不支持 `--validate`，不要跳过人工配置复核。
 
-在维护窗口内才允许重启/重载 Docker。重启前确认当前容器、Compose 项目、备份任务和回滚路径均已记录。变更后必须连续执行：
+在维护窗口内才允许重启/重载 Docker。重启前确认当前容器、Compose 项目、备份任务和回滚路径均已记录。
+
+生产容器启动后，必须执行**最终严格模式**，这里禁止带 `--preflight-empty-ok`：
 
 ```bash
 sudo python3 scripts/check/check-docker-port-exposure.py \
@@ -183,6 +206,14 @@ sudo python3 scripts/check/check-docker-port-exposure.py \
 sudo python3 scripts/check/check-dockerd-launch-flags.py \
   --report /var/tmp/school-lifecycle-dockerd-launch-flags.json
 ```
+
+最终 Docker 端口报告必须同时满足：
+
+- `passed=true`；
+- `preflightEmptyAllowed=false`；
+- `runtimeEvidenceComplete=true`。
+
+运行态检查覆盖真实 `docker inspect` / `docker network inspect`，包括 `Privileged`、host network、`-P`、docker.sock bind、published ports、`nat-unprotected` 和 trusted host interfaces。
 
 `daemon.json` 安全但实际 dockerd 启动参数出现 `--iptables=false`、`--ip6tables=false` 或 `-H/--host tcp://...`，仍判定不通过。详见 `deploy/host/DOCKER_PORT_EXPOSURE.md`。
 
@@ -240,20 +271,21 @@ bash deploy/backup/machine-restore-drill.sh <manifest.json> <drill_db_name>
 按以下顺序，不并行跳步：
 
 1. 云控制台/VNC/快照可回滚；
-2. 三份只读审计；
-3. 腾讯云安全组；
+2. 部署前主机只读预检；
+3. 腾讯云安全组与控制面检查；
 4. 第二 SSH 公钥会话；
 5. SSH hardening；
 6. 主机防火墙；
 7. sysctl；
 8. Docker daemon；
-9. Docker 运行态端口 + 实际 dockerd 参数审计；
-10. Nginx/TLS；
-11. 补丁/NTP/CWP/AppArmor/日志；
-12. 备份；
-13. 隔离恢复演练；
-14. 再跑三份只读审计并归档 JSON；
-15. 最后才进入真实学校账号、CAS/微信、首管权限与生产数据验收。
+9. 启动正式容器；
+10. Docker 运行态端口 + 实际 dockerd 参数最终严格审计；
+11. Nginx/TLS；
+12. 补丁/NTP/CWP/AppArmor/日志；
+13. 备份；
+14. 隔离恢复演练；
+15. 再跑主机审计 + Docker 最终严格审计并归档 JSON；
+16. 最后才进入真实学校账号、CAS/微信、首管权限与生产数据验收。
 
 ## 12. 最终发布判定
 
@@ -261,7 +293,8 @@ bash deploy/backup/machine-restore-drill.sh <manifest.json> <drill_db_name>
 
 - PR #265 exact-head 自动化绿灯证据；
 - 主机安全审计 `passed=true`；
-- Docker 运行态端口审计 `passed=true`；
+- Docker 运行态端口审计 `passed=true` 且 `runtimeEvidenceComplete=true`；
+- Docker 最终报告 `preflightEmptyAllowed=false`；
 - dockerd 实际启动参数审计 `passed=true`；
 - 安全组截图/导出；
 - SSH 二次登录验收；
@@ -271,3 +304,5 @@ bash deploy/backup/machine-restore-drill.sh <manifest.json> <drill_db_name>
 - 隔离恢复演练证据；
 - 真实首管岗位最小权限盘点；
 - 微信/CAS 等真实身份源验收。
+
+任何 `--preflight-empty-ok` 产生的报告都只能作为部署前施工证据，**不得作为最终发布证据**。
