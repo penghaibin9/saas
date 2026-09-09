@@ -2,7 +2,8 @@
 
 Separate from both the frozen M1-M5 routes and the M8 finance 10-route contract.
 This API reuses the existing customer-success ticket truth, observes SLA only from an
-explicit policy, and records actual service costs without currency conversion.
+explicit policy, records actual service costs without currency conversion, and exposes
+a governed PlatformConfig SLA editor. No default SLA hours are invented.
 """
 from fastapi import APIRouter, Body, Depends, Header, Query
 
@@ -71,6 +72,44 @@ def record_service_cost(
     return success(
         operations.record_service_cost(user, int(tenant_id), body, idempotency_key=idempotency_key),
         message="实际服务成本已登记；未进行币种换算或估算",
+    )
+
+
+@router.get("/commercial/tenants/{tenant_id}/sla-policy", summary="读取商业SLA有效政策与学校覆盖")
+def sla_policy(
+    tenant_id: int,
+    user=Depends(require_platform_capability("commercial.view")),
+):
+    from app.services import module_commerce_sla_policy_service as policy
+    return success(policy.policy_editor(int(tenant_id)))
+
+
+@router.put("/commercial/tenants/{tenant_id}/sla-policy", summary="按expectedVersion保存学校商业SLA政策")
+def update_sla_policy(
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("commercial.manage")),
+):
+    from app.services import module_commerce_sla_policy_service as policy
+    return success(
+        policy.update_tenant_policy(user, int(tenant_id), body),
+        message="学校商业SLA政策已保存；四级目标均来自本次明确输入，没有系统默认承诺",
+    )
+
+
+@router.post("/commercial/tenants/{tenant_id}/sla-policy/reset", summary="恢复平台SLA默认或未评估状态")
+def reset_sla_policy(
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("commercial.manage")),
+):
+    from app.services import module_commerce_sla_policy_service as policy
+    return success(
+        policy.reset_tenant_policy(
+            user, int(tenant_id), expected_version=body.get("expectedVersion"),
+            reason=str(body.get("reason") or ""),
+        ),
+        message="学校SLA覆盖已停用；后续回落到平台明确默认，若无默认则保持未评估",
     )
 
 
