@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only Docker runtime exposure audit for production hosts.
+"""Read-only Docker runtime exposure and isolation audit for production hosts.
 
 Docker-published ports can bypass UFW's INPUT/OUTPUT filtering. This auditor reads
-Docker's actual running container/network state and fails closed on unexpected
-public bindings. `--preflight-empty-ok` exists only for a not-yet-deployed host;
-final production acceptance must run without it and therefore requires real
-running-container evidence. The script never mutates Docker, firewall, networks,
-or production data.
+actual running container/network state and fails closed on unexpected public
+bindings or host-isolation escapes. `--preflight-empty-ok` exists only before
+application deployment; final production acceptance must run without it.
 """
 from __future__ import annotations
 
@@ -23,6 +21,7 @@ FAIL = "FAIL"
 SENSITIVE_PORTS = {2375, 2376, 3306, 3310, 6379, 8000}
 DEFAULT_PUBLIC_PORTS = {80, 443}
 WILDCARDS = {"", "0.0.0.0", "::", "[::]", "*"}
+DOCKER_SOCKET = "/var/run/docker.sock"
 
 
 @dataclass(frozen=True)
@@ -66,6 +65,93 @@ def evaluate_daemon(config: dict) -> list[Finding]:
     return findings
 
 
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else []
+
+
+def evaluate_container_isolation(item: dict) -> list[Finding]:
+    """Evaluate actual docker-inspect isolation knobs that can expose the host."""
+    cid = str(item.get("Id", "unknown"))[:12]
+    host_config = item.get("HostConfig") if isinstance(item.get("HostConfig"), dict) else {}
+    mounts = _as_list(item.get("Mounts"))
+    findings: list[Finding] = []
+
+    privileged = host_config.get("Privileged") is True
+    findings.append(Finding(
+        "docker.runtime.privileged", FAIL if privileged else PASS,
+        "production containers must not run privileged", f"container={cid}",
+    ))
+
+    for field, check, message in (
+        ("NetworkMode", "docker.runtime.host_network", "host network mode bypasses normal published-port boundaries"),
+        ("PidMode", "docker.runtime.host_pid", "host PID namespace exposes host processes to the container"),
+        ("IpcMode", "docker.runtime.host_ipc", "host IPC namespace weakens host/container isolation"),
+        ("UTSMode", "docker.runtime.host_uts", "host UTS namespace weakens host/container isolation"),
+        ("UsernsMode", "docker.runtime.host_userns", "host user namespace disables user-namespace isolation for this container"),
+    ):
+        mode = str(host_config.get(field, "") or "")
+        is_host = mode == "host"
+        findings.append(Finding(
+            check, FAIL if is_host else PASS, message,
+            f"container={cid},mode={mode or 'default'}",
+        ))
+
+    publish_all = host_config.get("PublishAllPorts") is True
+    findings.append(Finding(
+        "docker.runtime.publish_all", FAIL if publish_all else PASS,
+        "--publish-all/-P is not allowed in production", f"container={cid}",
+    ))
+
+    cap_add = [str(value) for value in _as_list(host_config.get("CapAdd")) if str(value)]
+    findings.append(Finding(
+        "docker.runtime.cap_add", FAIL if cap_add else PASS,
+        "production containers must not add Linux capabilities beyond the reviewed image/compose contract",
+        f"container={cid},added={len(cap_add)}",
+    ))
+
+    devices = _as_list(host_config.get("Devices"))
+    device_requests = _as_list(host_config.get("DeviceRequests"))
+    findings.append(Finding(
+        "docker.runtime.devices", FAIL if devices or device_requests else PASS,
+        "production application containers must not receive host devices or device requests without separate review",
+        f"container={cid},devices={len(devices)},requests={len(device_requests)}",
+    ))
+
+    security_opts = [str(value).lower() for value in _as_list(host_config.get("SecurityOpt"))]
+    unsafe_opts = [
+        value for value in security_opts
+        if any(token in value for token in (
+            "seccomp=unconfined",
+            "apparmor=unconfined",
+            "systempaths=unconfined",
+            "label=disable",
+        ))
+    ]
+    findings.append(Finding(
+        "docker.runtime.security_opt", FAIL if unsafe_opts else PASS,
+        "production containers must not explicitly disable seccomp/AppArmor/system-path/label confinement",
+        f"container={cid},unsafe={len(unsafe_opts)}",
+    ))
+
+    binds = [str(value) for value in _as_list(host_config.get("Binds"))]
+    bind_socket = any(DOCKER_SOCKET in value for value in binds)
+    mount_socket = any(
+        isinstance(mount, dict)
+        and str(mount.get("Type", "")).lower() == "bind"
+        and (
+            str(mount.get("Source", "")) == DOCKER_SOCKET
+            or str(mount.get("Destination", "")) == DOCKER_SOCKET
+        )
+        for mount in mounts
+    )
+    findings.append(Finding(
+        "docker.runtime.socket_bind", FAIL if bind_socket or mount_socket else PASS,
+        "production containers must not mount the Docker daemon socket",
+        f"container={cid}",
+    ))
+    return findings
+
+
 def evaluate_containers(
     containers: list[dict],
     allowed_public_ports: set[int],
@@ -76,14 +162,12 @@ def evaluate_containers(
     if not containers:
         if allow_empty:
             return [Finding(
-                "docker.runtime.containers",
-                WARN,
+                "docker.runtime.containers", WARN,
                 "no running containers yet; preflight may continue but final runtime evidence is incomplete",
                 "preflight-empty",
             )]
         return [Finding(
-            "docker.runtime.containers",
-            FAIL,
+            "docker.runtime.containers", FAIL,
             "no running containers were returned; final production runtime exposure is not proven",
             "empty-runtime",
         )]
@@ -92,40 +176,7 @@ def evaluate_containers(
         cid = str(item.get("Id", "unknown"))[:12]
         host_config = item.get("HostConfig") if isinstance(item.get("HostConfig"), dict) else {}
         network_settings = item.get("NetworkSettings") if isinstance(item.get("NetworkSettings"), dict) else {}
-
-        privileged = host_config.get("Privileged") is True
-        findings.append(Finding(
-            "docker.runtime.privileged",
-            FAIL if privileged else PASS,
-            "production containers must not run privileged",
-            f"container={cid}",
-        ))
-
-        network_mode = str(host_config.get("NetworkMode", ""))
-        host_network = network_mode == "host"
-        findings.append(Finding(
-            "docker.runtime.host_network",
-            FAIL if host_network else PASS,
-            "host network mode bypasses normal published-port boundaries",
-            f"container={cid},mode={network_mode or 'default'}",
-        ))
-
-        publish_all = host_config.get("PublishAllPorts") is True
-        findings.append(Finding(
-            "docker.runtime.publish_all",
-            FAIL if publish_all else PASS,
-            "--publish-all/-P is not allowed in production",
-            f"container={cid}",
-        ))
-
-        binds = host_config.get("Binds") if isinstance(host_config.get("Binds"), list) else []
-        socket_bind = any("/var/run/docker.sock" in str(bind) for bind in binds)
-        findings.append(Finding(
-            "docker.runtime.socket_bind",
-            FAIL if socket_bind else PASS,
-            "production containers must not mount the Docker daemon socket",
-            f"container={cid}",
-        ))
+        findings.extend(evaluate_container_isolation(item))
 
         ports = network_settings.get("Ports") if isinstance(network_settings.get("Ports"), dict) else {}
         saw_binding = False
@@ -176,8 +227,7 @@ def evaluate_containers(
                 unexpected_public = public_binding and host_port not in allowed_public_ports
                 blocked = (sensitive and public_binding) or unexpected_public
                 findings.append(Finding(
-                    "docker.runtime.port_binding",
-                    FAIL if blocked else PASS,
+                    "docker.runtime.port_binding", FAIL if blocked else PASS,
                     "only approved web ports may bind non-loopback interfaces; sensitive host or target ports remain blocked",
                     f"container={cid},host={host_ip or '*'},port={host_port},target={target_port}",
                 ))
@@ -185,8 +235,7 @@ def evaluate_containers(
         if not saw_binding:
             findings.append(Finding(
                 "docker.runtime.port_binding", PASS,
-                "container has no host-published ports",
-                f"container={cid}",
+                "container has no host-published ports", f"container={cid}",
             ))
     return findings
 
@@ -210,8 +259,7 @@ def evaluate_networks(networks: list[dict]) -> list[Finding]:
         trusted = str(options.get("com.docker.network.bridge.trusted_host_interfaces", "")).strip()
         if trusted:
             findings.append(Finding(
-                "docker.network.trusted_host_interfaces",
-                WARN,
+                "docker.network.trusted_host_interfaces", WARN,
                 "trusted host interfaces enable direct routed access; require explicit architecture review",
                 f"network={network_id},configured=yes",
             ))
@@ -322,8 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-public-port", type=int, action="append", default=[])
     parser.add_argument(
-        "--preflight-empty-ok",
-        action="store_true",
+        "--preflight-empty-ok", action="store_true",
         help="allow an empty container runtime only before application deployment; never use for final acceptance",
     )
     parser.add_argument("--docker-daemon-json", default="/etc/docker/daemon.json")
@@ -356,9 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     containers, networks, collection_findings = collect_runtime()
     findings.extend(collection_findings)
     findings.extend(evaluate_containers(
-        containers,
-        allowed_public_ports,
-        allow_empty=args.preflight_empty_ok,
+        containers, allowed_public_ports, allow_empty=args.preflight_empty_ok,
     ))
     findings.extend(evaluate_networks(networks))
 
