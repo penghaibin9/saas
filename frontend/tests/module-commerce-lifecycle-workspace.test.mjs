@@ -58,11 +58,12 @@ test('M4 M5 UI exposes object-level consumer evidence without ownership guessing
   assert.match(view, /当前只允许办理冻结与交付/)
 })
 
-test('school export acceptance is hard-disabled until the bound consumer snapshot is current', () => {
+test('school export acceptance is hard-disabled until the effective consumer snapshot is current', () => {
   assert.match(view, /deliveryAcceptanceReady/)
   assert.match(view, /deliveryAcceptanceBlockers/)
-  assert.match(view, /consumerSnapshotCurrent/)
   assert.match(view, /deliveryEvidenceDigest/)
+  assert.match(view, /交付包与当前消费者对象快照一致，可以签收/)
+  assert.match(view, /当前交付包不能签收/)
   assert.match(view, /:disabled="busy \|\| !job\.deliveryAcceptanceReady"/)
   assert.match(view, /if \(!this\.job\?\.deliveryAcceptanceReady\)/)
   assert.match(view, /当前交付包与消费者对象快照不一致，不能签收/)
