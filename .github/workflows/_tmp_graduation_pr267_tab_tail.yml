@@ -1,0 +1,65 @@
+name: Temporary Graduation PR267 Tab Tail
+
+on:
+  push:
+    branches:
+      - ui/graduation-shared-workspace-polish-20260908
+    paths:
+      - '.github/workflows/_tmp_graduation_pr267_tab_tail.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/graduation-shared-workspace-polish-20260908
+          fetch-depth: 0
+
+      - name: Apply proposal tab hit-area tail fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontend/src/modules/graduation/views/AdminGraduationLayout.vue')
+          text = path.read_text(encoding='utf-8')
+          anchor = """.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+          .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+          .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+            min-height: 38px;
+            font-size: 13px !important;
+          }
+          """
+          override = """
+          /* Real shared-shell geometry scales proposal tabs below the audit floor at 100%.
+             Keep a 40px logical hit area so the rendered control remains >=33px. */
+          .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
+            min-height: 40px;
+          }
+          """
+          if override.strip() not in text:
+              if anchor not in text:
+                  raise SystemExit('proposal control anchor not found')
+              text = text.replace(anchor, anchor + override, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Verify focused graduation presentation contract
+        working-directory: frontend
+        run: node --test tests/graduation.final-integration-polish.test.mjs
+
+      - name: Commit exact scoped patch and remove executor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/_tmp_graduation_pr267_tab_tail.yml
+          git add frontend/src/modules/graduation/views/AdminGraduationLayout.vue
+          git add -u .github/workflows/_tmp_graduation_pr267_tab_tail.yml
+          git diff --cached --check
+          git commit -m "fix(graduation): raise proposal tab hit area"
+          git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
