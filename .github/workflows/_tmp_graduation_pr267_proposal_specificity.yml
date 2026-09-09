@@ -1,0 +1,77 @@
+name: Temporary Graduation PR267 Proposal Specificity
+
+on:
+  push:
+    branches:
+      - ui/graduation-shared-workspace-polish-20260908
+    paths:
+      - '.github/workflows/_tmp_graduation_pr267_proposal_specificity.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/graduation-shared-workspace-polish-20260908
+          fetch-depth: 0
+
+      - name: Apply graduation-local specificity fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          layout = Path('frontend/src/modules/graduation/views/AdminGraduationLayout.vue')
+          text = layout.read_text(encoding='utf-8')
+          old = """.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
+            min-height: 40px;
+          }"""
+          new = """.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
+            min-height: 40px !important;
+          }"""
+          if old not in text:
+              raise SystemExit('proposal 40px rule not found exactly once')
+          if text.count(old) != 1:
+              raise SystemExit(f'proposal rule count={text.count(old)}')
+          layout.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('frontend/tests/graduation.final-integration-polish.test.mjs')
+          source = test.read_text(encoding='utf-8')
+          old_assert = "assert.match(integration, /data-graduation-content-workspace='proposal'\\] :deep\\(\\.mp-tabs \\.mp-tab\\) \\{\\s*min-height: 40px;/)"
+          new_assert = "assert.match(integration, /data-graduation-content-workspace='proposal'\\] :deep\\(\\.mp-tabs \\.mp-tab\\) \\{\\s*min-height: 40px !important;/)"
+          if old_assert not in source:
+              raise SystemExit('proposal regression assertion not found')
+          test.write_text(source.replace(old_assert, new_assert, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Verify focused graduation regression contracts
+        working-directory: frontend
+        run: |
+          node --test tests/graduation.final-integration-polish.test.mjs tests/graduation.content-workspace-polish.test.mjs
+
+      - name: Verify only intended product and regression files changed
+        shell: bash
+        run: |
+          git diff --name-only | sort > /tmp/changed.txt
+          printf '%s\n' \
+            frontend/src/modules/graduation/views/AdminGraduationLayout.vue \
+            frontend/tests/graduation.final-integration-polish.test.mjs | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/changed.txt
+
+      - name: Commit exact fix and remove executor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/_tmp_graduation_pr267_proposal_specificity.yml
+          git add frontend/src/modules/graduation/views/AdminGraduationLayout.vue
+          git add frontend/tests/graduation.final-integration-polish.test.mjs
+          git add -u .github/workflows/_tmp_graduation_pr267_proposal_specificity.yml
+          git diff --cached --check
+          git commit -m "fix(graduation): override proposal tab shell specificity"
+          git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
