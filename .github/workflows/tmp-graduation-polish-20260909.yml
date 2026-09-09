@@ -73,7 +73,7 @@ jobs:
           nav = "this.submitting = false\n          await this.$router.push(snapshot.backTo)\n          return"
           if nav not in form:
               raise SystemExit('defense success navigation lock release is missing')
-          if "beforeRouteLeave(to, from, next)" not in form or "if (this.submitting)" not in form:
+          if "beforeRouteLeave(_to, _from, next)" not in form or "if (this.submitting)" not in form or "next(false)" not in form:
               raise SystemExit('unsafe-exit guard was lost')
           print('focused product boundary checks: PASS')
           PY
