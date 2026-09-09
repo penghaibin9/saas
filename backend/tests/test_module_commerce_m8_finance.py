@@ -99,17 +99,14 @@ def test_m8_approved_refunds_reserve_balance_and_second_approval_rechecks_under_
     tid = BASE + 3
     order_id = _seed_order(tid)
     first = finance.request_refund({"tenantId": str(tid), "orderId": str(order_id), "amount": "60.00", "currency": "CNY", "reason": "第一笔退款申请用于并发额度复核"}, idempotency_key="refund-capacity-001", actor_id=72)
-    second = finance.request_refund({"tenantId": str(tid), "orderId": str(order_id), "amount": "40.00", "currency": "CNY", "reason": "第二笔退款申请用于并发额度复核"}, idempotency_key="refund-capacity-002", actor_id=72)
+    # REQUESTED cases do not reserve money; both may enter review before either is approved.
+    second = finance.request_refund({"tenantId": str(tid), "orderId": str(order_id), "amount": "50.00", "currency": "CNY", "reason": "第二笔退款申请用于锁内重新核算"}, idempotency_key="refund-capacity-002", actor_id=72)
     approved = finance.approve_refund(tid, first["caseId"], expected_version=first["version"], note="合同与财务复核通过", actor_id=73)
     assert approved["status"] == "APPROVED"
     with pytest.raises(AppException) as caught:
         finance.approve_refund(tid, second["caseId"], expected_version=second["version"], note="再次复核退款额度", actor_id=73)
-    # 60 + 40 is exactly 100, so this should still fit. Make a third request to prove lock-time capacity.
-    assert caught.value.http_status == 409 if False else True
-    third = finance.request_refund({"tenantId": str(tid), "orderId": str(order_id), "amount": "41.00", "currency": "CNY", "reason": "第三笔退款超过剩余额度必须拒绝"}, idempotency_key="refund-capacity-003", actor_id=72)
-    with pytest.raises(AppException) as third_caught:
-        finance.approve_refund(tid, third["caseId"], expected_version=third["version"], note="额度不足应拒绝", actor_id=73)
-    assert third_caught.value.http_status == 409
+    assert caught.value.http_status == 409
+    assert caught.value.details["availableAmount"] == "40.00"
 
 
 def test_m8_invoice_and_refund_share_one_paid_cash_capacity_and_void_releases_it(db_mode):
@@ -147,8 +144,9 @@ def test_m8_settlement_records_external_evidence_without_mutating_order_or_entit
     assert settled["entitlementImpact"]["activeEntitlementSourceCount"] == 1
     db = get_sessionmaker()()
     try:
-        order = db.scalars(__import__("sqlalchemy").select(PlatformOrder).where(PlatformOrder.id == order_id, PlatformOrder.tenant_id == tid)).first()
-        source = db.scalars(__import__("sqlalchemy").select(TenantModuleSubscriptionSource).where(TenantModuleSubscriptionSource.tenant_id == tid)).first()
+        from sqlalchemy import select
+        order = db.scalars(select(PlatformOrder).where(PlatformOrder.id == order_id, PlatformOrder.tenant_id == tid)).first()
+        source = db.scalars(select(TenantModuleSubscriptionSource).where(TenantModuleSubscriptionSource.tenant_id == tid)).first()
         assert order.status == "paid"
         assert Decimal(str(order.paid_amount)) == Decimal("100.00")
         assert source.status == "ACTIVE"
