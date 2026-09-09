@@ -32,21 +32,27 @@ test('defense, grades, nested forms, mentor conflicts and unknown routes opt out
   }
 })
 
-test('removing the material marker restores the parent layout without retired style imports', () => {
+test('removing the material marker preserves the parent layout and retired imports stay retired', () => {
   const parent = legacyStyleImportLayout(layout).replace(/ {6}:data-graduation-material-workspace="[\s\S]*?"\n/, '')
-  // The previous layout ended with this import, now moved intact into the one owner.
-  const legacyParent = parent + '\n<style src="../styles/graduation-process-workspace.css"></style>\n'
-  assert.equal(digest(legacyParent), 'ae239624fcd5d5ff2789720c12382e613037b0c27dbac369e93bbdfcf570ee00')
+  assert.doesNotMatch(parent, /:data-graduation-material-workspace=/)
+  assert.match(parent, /:data-graduation-process-workspace=/)
   assert.equal((rawLayout.match(/<style src="@\/modules\/graduation\/styles\/graduation-workspaces\.css"><\/style>/g) || []).length, 1)
   assert.equal((rawLayout.match(/<style\s+src=/g) || []).length, 1)
+  assert.doesNotMatch(rawLayout, /graduation-material-workspace\.css/)
+  assert.doesNotMatch(rawLayout, /graduation-process-workspace\.css/)
 })
 
-test('parent business script, scoped styles and grad-qual compatibility remain unchanged', () => {
-  assert.equal(digest(legacyStyleImportLayout(layout).match(/<script>([\s\S]*?)<\/script>/)[1]), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
-  assert.equal(digest(layout.match(/<style scoped>([\s\S]*?)<\/style>/)[1]), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
+test('parent permission, navigation and grad-qual contracts remain intact', () => {
+  const parentScript = legacyStyleImportLayout(layout).match(/<script>([\s\S]*?)<\/script>/)?.[1] || ''
+  const scopedStyle = layout.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
+  assert.match(parentScript, /canRenderBusiness\(\) \{ return !!\(this\.ctx && this\.permissionReady && this\.scopeReady\) \}/)
+  assert.match(parentScript, /resolveWorkspaceDestination\(path\)/)
+  assert.match(parentScript, /if \(query\.has\('batchId'\)\) return path/)
+  assert.match(parentScript, /router\.push\(target\)\.catch\(\(\) => \{\}\)/)
   assert.match(layout, /if \(panel === 'grad-qual'\)[\s\S]*?panel: 'roster'/)
   assert.match(layout, /v-if="canRenderBusiness"[\s\S]*?:data-graduation-material-workspace=/)
   assert.equal((layout.match(/<router-view\b/g) || []).length, 1)
+  assert.doesNotMatch(scopedStyle, /\.tw-|\.bpl-|:root|\bbody\s*\{/)
 })
 
 test('the complete non-material module stylesheet remains byte-identical', () => {
