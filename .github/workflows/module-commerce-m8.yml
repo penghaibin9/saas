@@ -27,8 +27,10 @@ on:
       - backend/tests/test_module_commercial_model_bootstrap.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/ModuleFinanceWorkspace.vue
+      - frontend/src/modules/platform/views/control/ModuleOperationsWorkspace.vue
       - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
       - frontend/tests/module-commerce-finance.test.mjs
+      - frontend/tests/module-commerce-operations.test.mjs
       - .github/workflows/module-commerce-m8.yml
   workflow_dispatch:
 
@@ -173,7 +175,6 @@ jobs:
               assert token not in operations_router, token
           assert 'order.status = "refunded"' not in service
           assert 'order.paid_amount =' not in service
-          # SLA may be evaluated only from explicit configured targets; never bake contractual hours here.
           assert '_SLA_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in operations
           assert 'targetsHours' in operations
           assert 'P0": 2' not in operations and 'P1": 8' not in operations and 'P2": 24' not in operations
@@ -188,7 +189,7 @@ jobs:
           retention-days: 14
 
   m8-frontend:
-    name: M8 finance workspace contract and production build
+    name: M8 finance and operations workspace build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -206,12 +207,12 @@ jobs:
       - name: Install exact frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Run M8 finance workspace contract
+      - name: Run M8 workspace contracts
         working-directory: frontend
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          node --test tests/module-commerce-finance.test.mjs
+          node --test tests/module-commerce-finance.test.mjs tests/module-commerce-operations.test.mjs
       - name: Production build
         working-directory: frontend
         run: npm run build
