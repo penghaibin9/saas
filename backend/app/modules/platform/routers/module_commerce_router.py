@@ -1,10 +1,8 @@
-"""M1-M8 module-commerce control-plane API.
+"""M1-M5 module-commerce control-plane API.
 
 Runtime authority remains the canonical commercial entitlement facade. M3-M5
 commands expose module portfolio, reversible stop/exit and verified export
-acceptance. M8 exposes manual finance control facts only: it never calls a payment
-or tax provider, never marks an order paid/refunded and never changes entitlement.
-No endpoint in this router performs physical purge.
+acceptance. No endpoint in this router performs physical purge.
 """
 from fastapi import APIRouter, Body, Depends, Header, Query
 
@@ -24,10 +22,6 @@ def _required_int(body: dict, key: str) -> int:
         raise AppException("VALIDATION_ERROR", f"{key} 必须是整数", http_status=422) from None
 
 
-def _actor(user: dict):
-    return user.get("userId") or "0"
-
-
 @router.post("/commercial/skus", summary="发布不可变模块SKU")
 def publish_sku(body: dict = Body(...), user=Depends(require_platform_capability("commercial.manage"))):
     from app.services import commercial_catalog_service as catalogue
@@ -38,7 +32,7 @@ def publish_sku(body: dict = Body(...), user=Depends(require_platform_capability
 @router.post("/commercial/orders", summary="创建模块分项订单")
 def create_order(body: dict = Body(...), idempotency_key: str = Header(..., alias="Idempotency-Key"), user=Depends(require_platform_capability("order.manage"))):
     from app.services import commercial_order_item_service as orders
-    return success(orders.create_itemized_order(body, idempotency_key=idempotency_key, actor_id=_actor(user)), message="分项订单已创建（未支付、未授权）")
+    return success(orders.create_itemized_order(body, idempotency_key=idempotency_key, actor_id=user.get("userId") or "0"), message="分项订单已创建（未支付、未授权）")
 
 
 @router.get("/commercial/tenants/{tenant_id}/projection", summary="查看商业授权唯一投影")
@@ -156,7 +150,7 @@ def sales_order_preview(body: dict = Body(...), user=Depends(require_platform_ca
 @router.post("/commercial/sales-orders", summary="创建已核对代次的未支付销售订单")
 def create_sales_order(body: dict = Body(...), idempotency_key: str = Header(..., alias="Idempotency-Key"), user=Depends(require_platform_capability("order.manage"))):
     from app.services import module_commerce_sales_service as sales
-    return success(sales.create_sales_order(body, idempotency_key=idempotency_key, actor_id=_actor(user)), message="未支付订单已创建；请在订单中心核对收款，不会自动开通")
+    return success(sales.create_sales_order(body, idempotency_key=idempotency_key, actor_id=user.get("userId") or "0"), message="未支付订单已创建；请在订单中心核对收款，不会自动开通")
 
 
 @router.get("/commercial/sales-orders", summary="学校分项订单台账")
@@ -175,70 +169,6 @@ def sales_order_detail(order_id: int, tenantId: str = Query(...), user=Depends(r
 def sales_orders_export(body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
     from app.services import module_commerce_sales_service as sales
     return success(sales.export_sales_orders(body))
-
-
-# M8 finance controls. Receivable is derived from PlatformOrder and never copied into
-# a second balance table. Writes only record reviewed control facts / external evidence.
-@router.get("/commercial/tenants/{tenant_id}/finance-orders", summary="订单应收、退款与发票实时财务投影")
-def finance_orders(tenant_id: int, page: int = Query(1, ge=1, le=10000), pageSize: int = Query(20, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.list_finance_orders(int(tenant_id), page=page, page_size=pageSize))
-
-
-@router.get("/commercial/tenants/{tenant_id}/refunds", summary="退款申请与外部结算台账")
-def refunds(tenant_id: int, status: str = "", page: int = Query(1, ge=1, le=10000), pageSize: int = Query(20, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.list_refunds(int(tenant_id), status=status, page=page, page_size=pageSize))
-
-
-@router.post("/commercial/tenants/{tenant_id}/refunds", summary="发起人工退款申请（不执行退款）")
-def request_refund(tenant_id: int, body: dict = Body(...), idempotency_key: str = Header(..., alias="Idempotency-Key"), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    payload = {**body, "tenantId": str(tenant_id)}
-    return success(finance.request_refund(payload, idempotency_key=idempotency_key, actor_id=_actor(user)), message="退款申请已登记；系统未执行资金退款，也未改变模块授权")
-
-
-@router.post("/commercial/tenants/{tenant_id}/refunds/{case_id}/approve", summary="批准退款额度（不执行退款）")
-def approve_refund(tenant_id: int, case_id: int, body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.approve_refund(int(tenant_id), int(case_id), expected_version=_required_int(body, "expectedVersion"), note=str(body.get("note") or ""), actor_id=_actor(user)), message="退款额度已批准；仍需在外部资金渠道实际退款后登记凭据")
-
-
-@router.post("/commercial/tenants/{tenant_id}/refunds/{case_id}/reject", summary="驳回退款申请")
-def reject_refund(tenant_id: int, case_id: int, body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.reject_refund(int(tenant_id), int(case_id), expected_version=_required_int(body, "expectedVersion"), reason=str(body.get("reason") or ""), actor_id=_actor(user)), message="退款申请已驳回")
-
-
-@router.post("/commercial/tenants/{tenant_id}/refunds/{case_id}/settle", summary="登记外部退款已完成凭据")
-def settle_refund(tenant_id: int, case_id: int, body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.settle_refund(int(tenant_id), int(case_id), expected_version=_required_int(body, "expectedVersion"), settlement_ref=str(body.get("settlementRef") or ""), actor_id=_actor(user)), message="外部退款凭据已登记；订单支付真值和模块授权未被自动修改")
-
-
-@router.get("/commercial/tenants/{tenant_id}/invoices", summary="发票申请、开具与作废台账")
-def invoices(tenant_id: int, status: str = "", page: int = Query(1, ge=1, le=10000), pageSize: int = Query(20, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.list_invoices(int(tenant_id), status=status, page=page, page_size=pageSize))
-
-
-@router.post("/commercial/tenants/{tenant_id}/invoices", summary="发起发票申请（不自动开票）")
-def request_invoice(tenant_id: int, body: dict = Body(...), idempotency_key: str = Header(..., alias="Idempotency-Key"), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    payload = {**body, "tenantId": str(tenant_id)}
-    return success(finance.request_invoice(payload, idempotency_key=idempotency_key, actor_id=_actor(user)), message="发票申请已登记；系统未调用税控或第三方开票服务")
-
-
-@router.post("/commercial/tenants/{tenant_id}/invoices/{invoice_case_id}/issue", summary="登记外部发票已开具")
-def issue_invoice(tenant_id: int, invoice_case_id: int, body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.issue_invoice(int(tenant_id), int(invoice_case_id), expected_version=_required_int(body, "expectedVersion"), external_invoice_ref=str(body.get("externalInvoiceRef") or ""), invoice_file_id=body.get("invoiceFileId"), actor_id=_actor(user)), message="外部发票凭据已登记")
-
-
-@router.post("/commercial/tenants/{tenant_id}/invoices/{invoice_case_id}/void", summary="登记外部发票已作废")
-def void_invoice(tenant_id: int, invoice_case_id: int, body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.void_invoice(int(tenant_id), int(invoice_case_id), expected_version=_required_int(body, "expectedVersion"), reason=str(body.get("reason") or ""), actor_id=_actor(user)), message="发票作废事实已登记；系统未执行外部作废动作")
 
 
 def install_into_platform_router(target: APIRouter) -> int:
