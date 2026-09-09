@@ -17,6 +17,7 @@ on:
       - shared/contracts/module-manifest.json
       - docs/07-部署运维交付与商业化/module-commerce/**
       - .github/workflows/module-commerce-foundation.yml
+      - .github/workflows/playwright-production-e2e.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -118,6 +119,7 @@ jobs:
           python -B backend/tests/test_module_commercial_boundaries.py -v 2>&1 | tee "$OUT/boundary-tests.log"
           python -B backend/tests/test_module_commercial_stage_gate.py -v 2>&1 | tee "$OUT/stage-gate-tests.log"
           python -B backend/tests/test_module_commercial_model_bootstrap.py -v 2>&1 | tee "$OUT/model-bootstrap.log"
+          python -B backend/tests/test_module_commerce_router_install.py -v 2>&1 | tee "$OUT/router-install-tests.log"
           python -B backend/tests/test_module_commercial_authority_failure.py -v 2>&1 | tee "$OUT/authority-fault-tests.log"
           python -B backend/tests/test_module_commercial_catalog_retry.py -v 2>&1 | tee "$OUT/catalog-retry-tests.log"
           python -B backend/tests/test_module_commercial_order_replay.py -v 2>&1 | tee "$OUT/order-replay-tests.log"
@@ -183,7 +185,7 @@ jobs:
           mkdir -p "$OUT"
           git rev-parse HEAD > "$OUT/revision.txt"
           mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
-          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
           sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()

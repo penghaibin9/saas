@@ -124,6 +124,14 @@ jobs:
           head_sha: ${{ env.E2E_EXPECTED_SHA }}
           verify_gold_manifest: 'false'
 
+      - name: Seed exact-head commercial browser matrix
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+          python scripts/e2e_seed_module_commerce_m2.py > ../e2e/runtime-logs/module-commerce-m2-seed.log
+          test -s ../e2e/runtime-fixtures/module-commerce-m2.json
+
       - name: Run non-graduation functional browser suite
         run: bash scripts/e2e/run-browser-suite.sh production-non-graduation
 

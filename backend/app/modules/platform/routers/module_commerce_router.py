@@ -121,3 +121,40 @@ def cutover(tenant_id: int, body: dict = Body(...), user=Depends(require_platfor
     from app.services import module_subscription_service as subscriptions
     legacy = commercial.legacy_commercial_state_for_reconciliation(int(tenant_id))
     return success(subscriptions.switch_reader_to_module_v2(int(tenant_id), expected_version=_required_int(body, "expectedVersion"), reason=str(body.get("reason") or ""), legacy_features=legacy["features"]), message="商业读取已切换到MODULE_V2")
+
+
+def install_into_platform_router(target: APIRouter) -> int:
+    """Install additive routes atomically; reject collisions, preserve same-object retries.
+
+    The production registration path imports platform_router, not the compatibility
+    facade. Installing here during package bootstrap makes both imports observe the
+    same guarded endpoints without changing the frozen bundle or replacing PAM.
+    """
+    from fastapi.routing import APIRoute
+
+    def keys(route):
+        return {(str(method).upper(), getattr(route, "path", ""))
+                for method in (getattr(route, "methods", None) or ())}
+
+    existing = {}
+    for route in target.routes:
+        for key in keys(route):
+            existing.setdefault(key, []).append(route)
+    declared = set()
+    pending = []
+    for route in router.routes:
+        signatures = keys(route)
+        if not isinstance(route, APIRoute) or not signatures or declared & signatures:
+            raise RuntimeError("Invalid or duplicate module-commerce route declaration")
+        declared.update(signatures)
+        if all(len(existing.get(key, [])) == 1 and existing[key][0] is route
+               for key in signatures):
+            continue
+        collisions = sorted(key for key in signatures if key in existing)
+        if collisions:
+            raise RuntimeError(f"Module-commerce route collision: {collisions}")
+        pending.append(route)
+    # No mutation until every route has passed collision review. Never remove a
+    # pre-existing route, silently replace a capability, or add a duplicate handler.
+    target.routes.extend(pending)
+    return len(pending)
