@@ -13,6 +13,10 @@ const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
 
 export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
+    key: 'plt-website-content', label: '官网内容运营', icon: '▤', description: '上传新闻资源包，整包审核后自动排期与发布。',
+    items: [{ key: 'plt-website-news', label: '新闻资源包发布', path: '/admin/platform/website-news', permissionKey: 'platform.websiteNews.manage', view: 'website-news', actions: [action('website-news:import', '上传新闻包'), action('website-news:approve', '整包确认发布', 'HIGH')] }]
+  },
+  {
     key: 'plt-command', label: '平台总控', icon: '◎', description: '经营、租户生命周期和运行事件的跨租户总览。',
     items: [
       { key: 'plt-overview', label: '平台经营总览', path: '/admin/platform/overview', permissionKey: 'platform.control.view', view: 'overview', actions: [action('platform:overview:view', '查看平台总览')] },
