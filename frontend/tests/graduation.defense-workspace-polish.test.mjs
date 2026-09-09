@@ -45,26 +45,16 @@ test('consolidation retains every previous process and material declaration byte
   assert.equal(workspaceSection('student-host'), '.gd-business-view .gd-student-page { min-width: 0; }\n')
 })
 
-test('removing the defense marker leaves the parent architecture and prior workspace boundaries intact', () => {
+test('reversing only display marker and stylesheet consolidation restores the entire previous parent', () => {
   const prior = legacyStyleImportLayout(historicalLayout).replace(/ {6}:data-graduation-defense-workspace="[\s\S]*?"\n/, '')
     + '\n<style src="../styles/graduation-process-workspace.css"></style>\n'
     + '\n<style src="../styles/graduation-material-workspace.css"></style>\n'
-  assert.doesNotMatch(prior, /:data-graduation-defense-workspace=/)
-  assert.match(prior, /:data-graduation-process-workspace=/)
-  assert.match(prior, /:data-graduation-material-workspace=/)
-  assert.equal((prior.match(/<router-view\b/g) || []).length, 1)
-  assert.match(prior, /resolveWorkspaceDestination\(path\)/)
-  assert.match(prior, /if \(query\.has\('batchId'\)\) return path/)
+  assert.equal(hash(prior), 'f27e5500b3c8ebbe517750202ca1dd96366a26bcc6e36fb9f91314498373c48e')
 })
 
-test('parent permission, router outlet, navigation and grad-qual compatibility are intact', () => {
-  const parentScript = legacyStyleImportLayout(historicalLayout).match(/<script>([\s\S]*?)<\/script>/)?.[1] || ''
-  const scopedStyle = layout.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
-  assert.match(parentScript, /canRenderBusiness\(\) \{ return !!\(this\.ctx && this\.permissionReady && this\.scopeReady\) \}/)
-  assert.match(parentScript, /resolveWorkspaceDestination\(path\)/)
-  assert.match(parentScript, /if \(query\.has\('batchId'\)\) return path/)
-  assert.match(parentScript, /router\.push\(target\)\.catch\(\(\) => \{\}\)/)
-  assert.doesNotMatch(scopedStyle, /\.tw-|\.bpl-|:root|\bbody\s*\{/)
+test('parent business script, permission gate, router outlet and grad-qual compatibility are untouched', () => {
+  assert.equal(hash(legacyStyleImportLayout(historicalLayout).match(/<script>([\s\S]*?)<\/script>/)[1]), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
+  assert.equal(hash(layout.match(/<style scoped>([\s\S]*?)<\/style>/)[1]), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
   assert.match(layout, /v-if="canRenderBusiness"[\s\S]*?:data-graduation-defense-workspace=/)
   assert.equal((layout.match(/<router-view\b/g) || []).length, 1)
   assert.match(layout, /if \(panel === 'grad-qual'\)[\s\S]*?panel: 'roster'/)
