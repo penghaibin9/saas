@@ -5,17 +5,25 @@ on:
     branches: [main]
     paths:
       - backend/app/models/commercial.py
+      - backend/app/models/commercial_operations.py
       - backend/app/models/platform.py
+      - backend/app/models/customer_success.py
       - backend/app/services/audit_log.py
+      - backend/app/services/customer_success_p1_guard_service.py
       - backend/app/services/module_commerce_finance_service.py
       - backend/app/services/module_commerce_finance_projection_service.py
+      - backend/app/services/module_commerce_operations_service.py
       - backend/app/modules/platform/routers/__init__.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/app/modules/platform/routers/module_commerce_finance_router.py
+      - backend/app/modules/platform/routers/module_commerce_operations_router.py
       - backend/alembic/versions/20260909_module_commerce_m8_finance.py
+      - backend/alembic/versions/20260909_module_commerce_m8_operations.py
       - backend/tests/test_module_commerce_m8_finance.py
       - backend/tests/test_module_commerce_m8_finance_projection.py
       - backend/tests/test_module_commerce_m8_finance_router.py
+      - backend/tests/test_module_commerce_m8_operations.py
+      - backend/tests/test_module_commerce_m8_operations_router.py
       - backend/tests/test_module_commercial_model_bootstrap.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/ModuleFinanceWorkspace.vue
@@ -33,9 +41,9 @@ concurrency:
 
 jobs:
   m8-backend:
-    name: M8 finance migrated MySQL and route contract
+    name: M8 finance and operations migrated MySQL contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       APP_ENV: test
       DB_ENABLED: 'true'
@@ -74,22 +82,28 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           git rev-parse HEAD > "$OUT/revision.txt"
           python -m pip install -r backend/requirements.txt
-      - name: Compile M8 finance sources and tests
+      - name: Compile M8 sources and tests
         run: |
           set -euo pipefail
           python -m py_compile \
             backend/app/models/commercial.py \
+            backend/app/models/commercial_operations.py \
             backend/app/models/platform.py \
             backend/app/services/audit_log.py \
             backend/app/services/module_commerce_finance_service.py \
             backend/app/services/module_commerce_finance_projection_service.py \
+            backend/app/services/module_commerce_operations_service.py \
             backend/app/modules/platform/routers/__init__.py \
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/app/modules/platform/routers/module_commerce_finance_router.py \
+            backend/app/modules/platform/routers/module_commerce_operations_router.py \
             backend/alembic/versions/20260909_module_commerce_m8_finance.py \
+            backend/alembic/versions/20260909_module_commerce_m8_operations.py \
             backend/tests/test_module_commerce_m8_finance.py \
             backend/tests/test_module_commerce_m8_finance_projection.py \
             backend/tests/test_module_commerce_m8_finance_router.py \
+            backend/tests/test_module_commerce_m8_operations.py \
+            backend/tests/test_module_commerce_m8_operations_router.py \
             backend/tests/test_module_commercial_model_bootstrap.py
       - name: Migrate fresh MySQL and prove one canonical Alembic head
         working-directory: backend
@@ -99,7 +113,7 @@ jobs:
           alembic heads | tee "$OUT/alembic-heads.txt"
           alembic upgrade head 2>&1 | tee "$OUT/migration.log"
           alembic current | tee "$OUT/alembic-current.txt"
-      - name: Run M8 finance, currency, route and model registry contracts
+      - name: Run M8 finance, operations, route and registry contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -107,34 +121,46 @@ jobs:
             tests/test_module_commerce_m8_finance.py \
             tests/test_module_commerce_m8_finance_projection.py \
             tests/test_module_commerce_m8_finance_router.py \
+            tests/test_module_commerce_m8_operations.py \
+            tests/test_module_commerce_m8_operations_router.py \
             tests/test_module_commercial_model_bootstrap.py \
             tests/test_module_commerce_router_install.py \
             -q -p no:warnings --junitxml="$OUT/m8-junit.xml" 2>&1 | tee "$OUT/m8-pytest.log"
-      - name: Assert M8 is control facts only and does not weaken M1-M5
+      - name: Assert M8 control facts only and no implicit business promises
         working-directory: backend
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           model = Path('app/models/commercial.py').read_text(encoding='utf-8')
+          ops_model = Path('app/models/commercial_operations.py').read_text(encoding='utf-8')
           service = Path('app/services/module_commerce_finance_service.py').read_text(encoding='utf-8')
           projection = Path('app/services/module_commerce_finance_projection_service.py').read_text(encoding='utf-8')
+          operations = Path('app/services/module_commerce_operations_service.py').read_text(encoding='utf-8')
           finance_router = Path('app/modules/platform/routers/module_commerce_finance_router.py').read_text(encoding='utf-8')
+          operations_router = Path('app/modules/platform/routers/module_commerce_operations_router.py').read_text(encoding='utf-8')
           frozen_router = Path('app/modules/platform/routers/module_commerce_router.py').read_text(encoding='utf-8')
           installer = Path('app/modules/platform/routers/__init__.py').read_text(encoding='utf-8')
           migration = Path('alembic/versions/20260909_module_commerce_m8_finance.py').read_text(encoding='utf-8')
+          ops_migration = Path('alembic/versions/20260909_module_commerce_m8_operations.py').read_text(encoding='utf-8')
 
           assert 'CommercialRefundCase' in model and 'CommercialInvoiceCase' in model
+          assert 'CommercialAfterSalesLink' in ops_model and 'CommercialServiceCostRecord' in ops_model
           assert 'receivableDerivedNotDuplicated' in service and 'paymentAuthority' in service
           assert 'externalRefundExecutedBySystem' in service and 'externalInvoiceIssuedBySystem' in service
           assert 'entitlementChangeApplied' in service and 'False' in service
           assert 'COMMERCIAL_ORDER_ITEM' in projection and 'LEGACY_UNSPECIFIED' in projection
           assert 'currencyConflict' in projection and 'financeActionAllowed' in projection
+          assert 'COMMERCIAL_SLA_POLICY' in operations and 'UNASSESSED' in operations
+          assert 'currencyConverted' in operations and 'entitlementChangeApplied' in operations
+          assert 'SupportTicket' in operations and 'CommercialAfterSalesLink' in operations
           assert 'module_commerce_finance_projection_service' in finance_router
-          assert 'module_commerce_finance_router' in installer
+          assert 'module_commerce_operations_router' in installer
           assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
+          assert 'Separate from both the frozen M1-M5 routes' in operations_router
           assert 'M1-M5 module-commerce control-plane API' in frozen_router
           assert 'Revision ID: 20260909_module_commerce_m8_finance' in migration
+          assert 'Revision ID: 20260909_module_commerce_m8_operations' in ops_migration
 
           forbidden = (
               'payment_gateway', 'tax_provider', 'refund_payment(', 'execute_refund(',
@@ -143,9 +169,15 @@ jobs:
           for token in forbidden:
               assert token not in service, token
               assert token not in finance_router, token
+              assert token not in operations, token
+              assert token not in operations_router, token
           assert 'order.status = "refunded"' not in service
           assert 'order.paid_amount =' not in service
-          print('M8_FINANCE_CONTROL_FACTS_AND_CURRENCY_VERIFIED')
+          # SLA may be evaluated only from explicit configured targets; never bake contractual hours here.
+          assert '_SLA_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in operations
+          assert 'targetsHours' in operations
+          assert 'P0": 2' not in operations and 'P1": 8' not in operations and 'P2": 24' not in operations
+          print('M8_FINANCE_AFTERSALES_SLA_COST_CONTROL_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
