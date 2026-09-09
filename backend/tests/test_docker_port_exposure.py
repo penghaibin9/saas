@@ -54,6 +54,12 @@ class DockerRuntimeExposureTests(unittest.TestCase):
         )
         self.assertIn(AUDIT.FAIL, statuses(findings, "docker.runtime.port_binding"))
 
+    def test_sensitive_target_remapped_to_public_web_port_is_blocking(self):
+        findings = AUDIT.evaluate_containers(
+            [container(host_port="443", target="3306/tcp")], {80, 443}
+        )
+        self.assertIn(AUDIT.FAIL, statuses(findings, "docker.runtime.port_binding"))
+
     def test_loopback_only_internal_binding_is_allowed(self):
         findings = AUDIT.evaluate_containers(
             [container(host_ip="127.0.0.1", host_port="3306", target="3306/tcp")], {80, 443}
@@ -96,9 +102,9 @@ class DockerRuntimeExposureTests(unittest.TestCase):
         findings = AUDIT.evaluate_containers([item], {80, 443})
         self.assertNotIn(AUDIT.FAIL, statuses(findings, "docker.runtime.port_binding"))
 
-    def test_no_running_container_is_visible_not_green(self):
+    def test_no_running_container_fails_runtime_evidence(self):
         findings = AUDIT.evaluate_containers([], {80, 443})
-        self.assertEqual(findings[0].status, AUDIT.WARN)
+        self.assertEqual(findings[0].status, AUDIT.FAIL)
 
 
 class DockerFirewallPolicyTests(unittest.TestCase):
