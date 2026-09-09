@@ -154,6 +154,11 @@ class HostPolicyTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertTrue(all(item.status == HOST.PASS for item in result))
 
+    def test_nginx_spacing_variation_remains_valid(self):
+        text = SAFE_NGINX.replace("server_tokens off;", "server_tokens    off ;")
+        result = statuses(HOST.evaluate_nginx(text))
+        self.assertEqual(result["nginx.server_tokens"], HOST.PASS)
+
     def test_nginx_legacy_tls_is_blocking(self):
         text = SAFE_NGINX.replace("ssl_protocols TLSv1.2 TLSv1.3;",
                                   "ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;")
@@ -162,6 +167,14 @@ class HostPolicyTests(unittest.TestCase):
 
     def test_nginx_missing_security_contract_is_blocking(self):
         text = SAFE_NGINX.replace("include /etc/nginx/conf.d/security-server.conf;", "")
+        result = statuses(HOST.evaluate_nginx(text))
+        self.assertEqual(result["nginx.security_server_contract"], HOST.FAIL)
+
+    def test_nginx_commented_security_contract_does_not_pass(self):
+        text = SAFE_NGINX.replace(
+            "include /etc/nginx/conf.d/security-server.conf;",
+            "# include /etc/nginx/conf.d/security-server.conf;",
+        )
         result = statuses(HOST.evaluate_nginx(text))
         self.assertEqual(result["nginx.security_server_contract"], HOST.FAIL)
 
