@@ -205,9 +205,10 @@ test('G10 behavior: menu navigation retains the selected batch without overwriti
     router: { push(target) { destinations.push(target); return Promise.resolve() } }
   })
   const context = { $route: { fullPath: '/admin/graduation' } }
-  options.methods.onMenuSelect.call(context, { path: '/admin/graduation/finals' })
-  options.methods.onMenuSelect.call(context, { path: '/admin/graduation/proposals?tab=PENDING_REVIEW' })
-  options.methods.onMenuSelect.call(context, { path: '/admin/graduation/finals?batchId=other' })
+  for (const [name, method] of Object.entries(options.methods)) context[name] = method.bind(context)
+  context.onMenuSelect({ path: '/admin/graduation/finals' })
+  context.onMenuSelect({ path: '/admin/graduation/proposals?tab=PENDING_REVIEW' })
+  context.onMenuSelect({ path: '/admin/graduation/finals?batchId=other' })
   assert.equal(destinations[0], '/admin/graduation/finals?batchId=batch%201')
   assert.equal(destinations[1], '/admin/graduation/proposals?tab=PENDING_REVIEW&batchId=batch%201')
   assert.equal(destinations[2], '/admin/graduation/finals?batchId=other')
