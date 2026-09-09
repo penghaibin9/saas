@@ -17,7 +17,6 @@ import shutil
 import socket
 import stat
 import subprocess
-import sys
 from typing import Iterable
 
 PASS = "PASS"
@@ -86,12 +85,17 @@ def evaluate_sshd(text: str, ssh_port: int) -> list[Finding]:
         port = -1
     findings.append(Finding("ssh.port", PASS if port == ssh_port else FAIL,
                             "effective SSH port must match audited port", str(port)))
-    numeric_limits = {"maxauthtries": (1, 4), "logingracetime": (1, 60),
-                      "clientaliveinterval": (1, 300), "clientalivecountmax": (0, 2)}
+    numeric_limits = {
+        "maxauthtries": (1, 4),
+        "logingracetime": (1, 60),
+        "clientaliveinterval": (1, 300),
+        "clientalivecountmax": (0, 2),
+    }
     for key, (minimum, maximum) in numeric_limits.items():
         raw = cfg.get(key, "")
+        match = re.match(r"\d+", raw)
         try:
-            value = int(re.match(r"\d+", raw).group(0)) if re.match(r"\d+", raw) else -1
+            value = int(match.group(0)) if match else -1
         except ValueError:
             value = -1
         findings.append(Finding("ssh." + key,
@@ -162,6 +166,64 @@ def evaluate_listeners(listeners: Iterable[tuple[str, int]], ssh_port: int,
     return findings
 
 
+def evaluate_ufw(text: str, ssh_port: int) -> list[Finding]:
+    """Evaluate `ufw status verbose` without copying administrator source IPs to evidence."""
+    lower = text.lower()
+    findings = [
+        Finding("firewall.ufw_active", PASS if "status: active" in lower else FAIL,
+                "UFW must be active on the production host"),
+        Finding("firewall.default_deny", PASS if "default: deny (incoming)" in lower else FAIL,
+                "UFW default incoming policy must be deny"),
+    ]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    ssh_rules = [line for line in lines if re.search(rf"(^|\s){re.escape(str(ssh_port))}(/tcp)?(\s|$)", line)
+                 and "allow" in line.lower()]
+    if not ssh_rules:
+        findings.append(Finding("firewall.ssh_rule", FAIL,
+                                "UFW must contain an allow rule for the audited SSH port"))
+    else:
+        unrestricted = any("anywhere" in line.lower() for line in ssh_rules)
+        findings.append(Finding("firewall.ssh_rule", FAIL if unrestricted else PASS,
+                                "SSH firewall rule must be source-restricted, not Anywhere",
+                                "unrestricted" if unrestricted else "source-restricted"))
+    for port in sorted(SENSITIVE_PORTS):
+        allowed = any(re.search(rf"(^|\s){port}(/tcp)?(\s|$)", line)
+                      and "allow" in line.lower() for line in lines)
+        findings.append(Finding(f"firewall.sensitive.{port}", FAIL if allowed else PASS,
+                                "sensitive host port must not have an explicit UFW allow rule",
+                                "allow-present" if allowed else "no-allow"))
+    return findings
+
+
+def evaluate_nginx(text: str) -> list[Finding]:
+    lower = text.lower()
+    findings: list[Finding] = []
+    findings.append(Finding("nginx.server_tokens", PASS if "server_tokens off;" in lower else FAIL,
+                            "effective Nginx config must disable server_tokens"))
+    protocols = re.findall(r"ssl_protocols\s+([^;]+);", text, flags=re.IGNORECASE)
+    if not protocols:
+        findings.append(Finding("nginx.tls_protocols", FAIL,
+                                "effective Nginx config must declare TLS protocols"))
+    else:
+        protocol_sets = [{token.strip() for token in item.split()} for item in protocols]
+        allowed = {"TLSv1.2", "TLSv1.3"}
+        secure = all(items and items.issubset(allowed) and "TLSv1.2" in items and "TLSv1.3" in items
+                     for items in protocol_sets)
+        findings.append(Finding("nginx.tls_protocols", PASS if secure else FAIL,
+                                "all effective ssl_protocols directives must be exactly TLSv1.2/TLSv1.3",
+                                ";".join(" ".join(sorted(items)) for items in protocol_sets)))
+    listens_tls = bool(re.search(r"listen\s+[^;\n]*443[^;\n]*\bssl\b", text, flags=re.IGNORECASE))
+    findings.append(Finding("nginx.https_listener", PASS if listens_tls else FAIL,
+                            "effective Nginx config must expose an SSL listener on 443"))
+    for include_name, check_name in (
+        ("security-http.conf", "nginx.security_http_contract"),
+        ("security-server.conf", "nginx.security_server_contract"),
+    ):
+        findings.append(Finding(check_name, PASS if include_name in text else FAIL,
+                                f"effective Nginx config must include {include_name}"))
+    return findings
+
+
 def evaluate_sysctl(values: dict[str, str]) -> list[Finding]:
     exact = {
         "kernel.dmesg_restrict": "1",
@@ -193,6 +255,10 @@ def evaluate_docker_daemon(config: dict) -> list[Finding]:
     findings: list[Finding] = []
     findings.append(Finding("docker.live_restore", PASS if config.get("live-restore") is True else FAIL,
                             "Docker live-restore must be enabled", repr(config.get("live-restore"))))
+    findings.append(Finding("docker.no_new_privileges",
+                            PASS if config.get("no-new-privileges") is True else FAIL,
+                            "Docker daemon must default new containers to no-new-privileges",
+                            repr(config.get("no-new-privileges"))))
     hosts = config.get("hosts", [])
     tcp_hosts = [item for item in hosts if isinstance(item, str) and item.startswith("tcp://")]
     findings.append(Finding("docker.tcp_socket", FAIL if tcp_hosts else PASS,
@@ -261,6 +327,27 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
     else:
         findings.append(Finding("listener.collect", FAIL, "ss command is required for listener audit"))
 
+    if shutil.which("ufw"):
+        code, output = _run(["ufw", "status", "verbose"])
+        if code == 0 and output:
+            findings.extend(evaluate_ufw(output, args.ssh_port))
+        else:
+            findings.append(Finding("firewall.ufw", FAIL, "UFW status could not be read; run host audit with sudo"))
+    else:
+        findings.append(Finding("firewall.ufw", FAIL,
+                                "UFW is required as the Ubuntu host firewall second layer"))
+
+    if shutil.which("nginx"):
+        code, output = _run(["nginx", "-T"])
+        if code == 0 and output:
+            findings.extend(evaluate_nginx(output))
+        else:
+            findings.append(Finding("nginx.effective_config", FAIL,
+                                    "nginx -T failed; effective production TLS config cannot be proven"))
+    else:
+        findings.append(Finding("nginx.effective_config", FAIL,
+                                "Nginx is required on the production host"))
+
     keys = [
         "kernel.dmesg_restrict", "kernel.kptr_restrict", "kernel.yama.ptrace_scope",
         "fs.protected_hardlinks", "fs.protected_symlinks", "fs.suid_dumpable",
@@ -315,6 +402,15 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
         enabled, _ = _run(["systemctl", "is-enabled", "--quiet", "apt-daily-upgrade.timer"])
         findings.append(Finding("patching.timer", PASS if enabled == 0 else WARN,
                                 "automatic security-update timer should be enabled on Ubuntu/Debian hosts"))
+        for renewal_unit in ("certbot.timer", "certbot-renew.timer"):
+            enabled, _ = _run(["systemctl", "is-enabled", "--quiet", renewal_unit])
+            if enabled == 0:
+                findings.append(Finding("tls.renewal_timer", PASS,
+                                        "automatic TLS certificate renewal timer is enabled", renewal_unit))
+                break
+        else:
+            findings.append(Finding("tls.renewal_timer", WARN,
+                                    "certbot renewal timer not detected; document equivalent ACME renewal"))
     else:
         findings.append(Finding("systemd.available", WARN, "systemd checks skipped"))
 
@@ -326,6 +422,8 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
             enabled = False
         findings.append(Finding("lsm.apparmor", PASS if enabled else WARN,
                                 "AppArmor should be enabled on Ubuntu production hosts"))
+    else:
+        findings.append(Finding("lsm.apparmor", WARN, "AppArmor status is not available"))
 
     journal = Path("/var/log/journal")
     findings.append(Finding("logging.persistent_journal", PASS if journal.is_dir() else WARN,
