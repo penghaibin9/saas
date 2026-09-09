@@ -6,6 +6,7 @@ on:
       - "scripts/check/check-host-security.py"
       - "scripts/check/check-docker-port-exposure.py"
       - "scripts/check/check-dockerd-launch-flags.py"
+      - "scripts/check/check-host-release-evidence.py"
       - "deploy/host/**"
       - "backend/tests/test_host_security_audit.py"
       - "backend/tests/test_host_security_baseline.py"
@@ -13,6 +14,7 @@ on:
       - "backend/tests/test_docker_preflight_contract.py"
       - "backend/tests/test_docker_runtime_isolation.py"
       - "backend/tests/test_dockerd_launch_flags.py"
+      - "backend/tests/test_host_release_evidence.py"
       - ".github/workflows/host-security-baseline.yml"
   workflow_dispatch:
 
@@ -39,6 +41,7 @@ jobs:
           python -m py_compile scripts/check/check-host-security.py
           python -m py_compile scripts/check/check-docker-port-exposure.py
           python -m py_compile scripts/check/check-dockerd-launch-flags.py
+          python -m py_compile scripts/check/check-host-release-evidence.py
       - name: Validate Docker daemon template JSON
         run: python -m json.tool deploy/host/docker-daemon.json.example >/dev/null
       - name: Run host security policy and artifact contracts
@@ -49,3 +52,4 @@ jobs:
           python -m unittest discover -s backend/tests -p test_docker_preflight_contract.py -v
           python -m unittest discover -s backend/tests -p test_docker_runtime_isolation.py -v
           python -m unittest discover -s backend/tests -p test_dockerd_launch_flags.py -v
+          python -m unittest discover -s backend/tests -p test_host_release_evidence.py -v
