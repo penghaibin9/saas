@@ -267,7 +267,7 @@ export default {
   data() {
     return {
       loading: true, error: '', student: null, formKey: '', formFields: [], form: {}, formError: '',
-      submitting: false, recordId: '', commandSnapshot: null, actorName: ''
+      submitting: false, completionNavigating: false, recordId: '', commandSnapshot: null, actorName: ''
     }
   },
   computed: {
@@ -309,7 +309,7 @@ export default {
   },
   created() { this.init() },
   beforeRouteLeave(_to, _from, next) {
-    if (this.submitting) {
+    if (this.submitting && !this.completionNavigating) {
       toast.info('当前毕业设计操作正在等待服务器回执，请完成后再离开')
       next(false)
       return
@@ -432,6 +432,7 @@ export default {
         backTo: this.backTo
       })
       this.commandSnapshot = snapshot
+      this.completionNavigating = false
       this.submitting = true
       try {
         let res
@@ -462,9 +463,10 @@ export default {
 
         if (res?.code === 0) {
           toast.success(`${this.activePreset.title}已提交`)
-          // The server has acknowledged the write. Release the submit lock before
-          // our own completion navigation so beforeRouteLeave only blocks unsafe exits.
-          this.submitting = false
+          // The server acknowledged the write. Keep controls locked while the
+          // completion navigation runs so the shared frame cannot misclassify
+          // the already-saved textarea as an unsubmitted draft.
+          this.completionNavigating = true
           await this.$router.push(snapshot.backTo)
           return
         } else if (res && isGraduationConflictResponse(res)) {
@@ -477,6 +479,7 @@ export default {
         this.formError = error?.message || '操作未完成，请稍后重试'
       } finally {
         this.submitting = false
+        this.completionNavigating = false
         this.commandSnapshot = null
       }
     }

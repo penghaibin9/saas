@@ -464,7 +464,7 @@ export default {
 .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
 .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
 .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
-  min-height: 34px;
+  min-height: 38px;
   font-size: 13px !important;
 }
 
@@ -633,6 +633,29 @@ export default {
 }
 .gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__name) { flex: 1 1 200px; }
 .gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence) { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 8px; }
+
+/* 1366 / 125%: keep the real risk queue in the first fold without shrinking type. */
+@media (min-width: 1300px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-panel) { gap: 7px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command) {
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, .95fr) auto;
+    gap: 7px !important;
+    padding: 8px 10px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics) {
+    grid-column: auto;
+    gap: 4px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics div) { padding: 5px 4px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline) { gap: 2px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline small) { line-height: 1.4; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-filter) { margin: 0 !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af) { gap: 6px; padding: 7px 9px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__fields) { gap: 6px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__field) { gap: 2px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__control),
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__ops button) { min-height: 34px; height: 34px; }
+}
 
 /* Templates stay a calm low-frequency configuration list. */
 .gd-business-view[data-graduation-template-workspace] :deep(.mps__title) { font-size: 22px; }

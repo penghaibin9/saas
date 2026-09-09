@@ -46,7 +46,7 @@ test('consolidation retains every previous process and material declaration byte
 })
 
 test('reversing only display marker and stylesheet consolidation restores the entire previous parent', () => {
-  const prior = legacyStyleImportLayout(historicalLayout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+  const prior = legacyStyleImportLayout(historicalLayout).replace(/ {6}:data-graduation-defense-workspace="[\s\S]*?"\n/, '')
     + '\n<style src="../styles/graduation-process-workspace.css"></style>\n'
     + '\n<style src="../styles/graduation-material-workspace.css"></style>\n'
   assert.equal(hash(prior), 'f27e5500b3c8ebbe517750202ca1dd96366a26bcc6e36fb9f91314498373c48e')

@@ -50,13 +50,15 @@ test('final integration styles remain graduation-local and preserve business blo
   assert.match(integration, /1366 \/ 125%: compact material chrome[\s\S]*data-graduation-material-workspace='materials'[\s\S]*grid-template-columns: minmax\(220px, 1\.5fr\) repeat\(3, minmax\(130px, 1fr\)\) auto/)
 })
 
-test('deep grade form keeps a readable type floor without touching its business script', () => {
+test('deep grade form keeps a readable type floor and a guarded completion return', () => {
   const source = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')
   const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
   const sizes = [...style.matchAll(/font-size:\s*([\d.]+)px/g)].map(match => Number(match[1]))
   assert.ok(sizes.length > 10)
   assert.ok(Math.min(...sizes) >= 12)
-  assert.match(source, /await this\.\$router\.push\(snapshot\.backTo\)/)
+  assert.match(source, /if \(this\.submitting && !this\.completionNavigating\)/)
+  assert.match(source, /this\.completionNavigating = true[\s\S]*?await this\.\$router\.push\(snapshot\.backTo\)/)
+  assert.doesNotMatch(source, /this\.submitting = false\s*\n\s*await this\.\$router\.push\(snapshot\.backTo\)/)
 })
 
 test('single menu truth remains eight workspaces and twenty-four leaves', () => {

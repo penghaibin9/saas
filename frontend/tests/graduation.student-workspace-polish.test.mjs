@@ -1,6 +1,7 @@
 import { foundationStyles } from './graduation-workspace-style-sections.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import process from 'node:process'
 import { createHash } from 'node:crypto'
 import vm from 'node:vm'
 import test from 'node:test'

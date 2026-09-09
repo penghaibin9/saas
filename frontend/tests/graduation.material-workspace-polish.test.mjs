@@ -8,7 +8,7 @@ import vm from 'node:vm'
 const root = new URL('../src/modules/graduation/', import.meta.url)
 const read = path => fs.readFileSync(new URL(path, root), 'utf8')
 const rawLayout = read('views/AdminGraduationLayout.vue')
-const layout = stripFinalIntegrationPresentation(rawLayout).replace(/      :data-graduation-defense-workspace="[\s\S]*?"\n/, '')
+const layout = stripFinalIntegrationPresentation(rawLayout).replace(/ {6}:data-graduation-defense-workspace="[\s\S]*?"\n/, '')
 const css = workspaceSection('material')
 const oldCss = foundationStyles(read('styles/graduation-workspaces.css'))
 const marker = layout.match(/:data-graduation-material-workspace="([\s\S]*?)"/)?.[1]
@@ -33,7 +33,7 @@ test('defense, grades, nested forms, mentor conflicts and unknown routes opt out
 })
 
 test('removing the material marker restores the parent layout without retired style imports', () => {
-  const parent = legacyStyleImportLayout(layout).replace(/      :data-graduation-material-workspace="[\s\S]*?"\n/, '')
+  const parent = legacyStyleImportLayout(layout).replace(/ {6}:data-graduation-material-workspace="[\s\S]*?"\n/, '')
   // The previous layout ended with this import, now moved intact into the one owner.
   const legacyParent = parent + '\n<style src="../styles/graduation-process-workspace.css"></style>\n'
   assert.equal(digest(legacyParent), 'ae239624fcd5d5ff2789720c12382e613037b0c27dbac369e93bbdfcf570ee00')
