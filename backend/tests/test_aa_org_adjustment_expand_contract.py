@@ -89,9 +89,66 @@ def test_expanded_request_uses_complete_scope_on_real_http_and_mysql(client, db_
             AaClassAdjustmentRequest.id == int(created['id']), AaClassAdjustmentRequest.tenant_id == TID))
         assert persisted.status == 'V2_CHECKED'
         assert len(persisted.from_class_ids) <= 500
+        assert json.loads(persisted.from_class_ids) == [sources[0]]
         assert json.loads(persisted.from_class_ids_expanded) == sources
         assert json.loads(persisted.check_result_json)['blocked'] is True
     executed = _act(client, headers, created, 'execute', expectedVersion=checked.json()['data']['version'])
     assert executed.status_code == 200, executed.text
     assert executed.json()['data']['status'] == 'EXECUTED'
     assert executed.json()['data']['checkResult']['execution']['changedClassCount'] == 30
+
+
+def test_legacy_scope_projection_covers_every_involved_college():
+    sources = [900000000000006000 + index for index in range(40)]
+    colleges = {cid: 100 + index % 3 for index, cid in enumerate(sources)}
+    projection = storage.legacy_scope_projection(sources, colleges)
+    representatives = json.loads(projection)
+    assert len(projection) <= 500 and representatives
+    assert set(representatives).issubset(sources)
+    assert {colleges[cid] for cid in representatives} == set(colleges.values())
+
+
+def test_legacy_scope_projection_rejects_unrepresentable_scope_instead_of_dropping_colleges():
+    sources = [900000000000007000 + index for index in range(40)]
+    with pytest.raises(AppException) as error:
+        storage.legacy_scope_projection(sources, {cid: index + 1 for index, cid in enumerate(sources)})
+    assert error.value.details["reason"] == "LEGACY_SCOPE_PROJECTION_TOO_LARGE"
+
+
+def test_expanded_request_preserves_college_visibility_in_n_and_n_minus_one(client, db_mode):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import AaClassAdjustmentRequest, Major, SchoolClass
+    from test_aa_org_adjustment_roundtrip import _create
+    from test_aa_orgs import BASE, TID, _hdr
+    from test_aa_orgs_tier1_r2 import _seed_scoped
+
+    ids = _seed_scoped(db_mode)
+    admin = _hdr(client, 'school_admin01')
+    sources = [900000000000008000 + index for index in range(30)]
+    with get_sessionmaker()() as db:
+        db.add_all([SchoolClass(id=cid, tenant_id=TID,
+            major_id=ids['majSw'] if index % 2 else ids['majWl'],
+            class_name=f'跨学院兼容验收{index}', class_status='NORMAL', status='ACTIVE')
+            for index, cid in enumerate(sources)])
+        db.commit()
+    created = _create(client, admin, sources)
+    assert len(created['fromClassIds']) == 30
+    with get_sessionmaker()() as db:
+        persisted = db.scalar(select(AaClassAdjustmentRequest).where(
+            AaClassAdjustmentRequest.tenant_id == TID,
+            AaClassAdjustmentRequest.id == int(created['id'])))
+        assert persisted.status == 'V2_DRAFT'  # N-1 cannot precheck/execute/cancel.
+        legacy_ids = json.loads(persisted.from_class_ids)
+        legacy_colleges = set(db.scalars(select(Major.college_id).join(
+            SchoolClass, SchoolClass.major_id == Major.id).where(
+            SchoolClass.tenant_id == TID, Major.tenant_id == TID,
+            SchoolClass.id.in_(legacy_ids))).all())
+        # Exact N-1 visibility predicate at main b9ef56f: reject nonempty colleges
+        # outside the caller's allowed set. An empty projection would fail open.
+        assert legacy_colleges == {ids['colSw'], ids['colWl']}
+        assert legacy_colleges and not legacy_colleges.issubset({ids['colSw']})
+    college = _hdr(client, 'college_admin01')
+    visible = client.get(f'{BASE}/class-adjustment-requests', headers=college)
+    assert visible.status_code == 200, visible.text
+    assert created['id'] not in {item['id'] for item in visible.json()['data']['items']}

@@ -1266,6 +1266,7 @@ from .academic_affairs_org_adjustment_storage import (
     scope_json as _adjustment_scope_json, public_status as _adjustment_status,
     set_status as _set_adjustment_status, store_check as _store_adjustment_check,
     read_check as _read_adjustment_check,
+    legacy_scope_projection as _legacy_adjustment_scope,
 )
 
 
@@ -1414,11 +1415,13 @@ def create_class_adjustment(user, body) -> dict:
         if len(classes) != len(all_ids):
             raise not_found("涉及班级不存在")
         colleges: set[int] = set()
+        class_colleges: dict[int, int] = {}
         for cid in all_ids:
             cg = _class_college_id(db, cid)
             if cg is None:
                 raise AppException("VALIDATION_ERROR", "班级未归属有效专业/学院，无法发起调整")
             colleges.add(cg)
+            class_colleges[cid] = cg
         if adjust_type == "MERGE" and len(colleges) > 1:
             raise AppException("VALIDATION_ERROR", "合班登记仅支持同学院内班级")
         for cg in colleges:
@@ -1429,7 +1432,7 @@ def create_class_adjustment(user, body) -> dict:
         source_json = json.dumps(from_ids)
         expanded = len(source_json) > 500
         a = AaClassAdjustmentRequest(tenant_id=_tid(), adjust_type=adjust_type,
-                                     from_class_ids="[]" if expanded else source_json,
+                                     from_class_ids=_legacy_adjustment_scope(from_ids, class_colleges),
                                      from_class_ids_expanded=source_json if expanded else None,
                                      to_class_id=to_id, reason=reason,
                                      status="V2_DRAFT" if expanded else "DRAFT")

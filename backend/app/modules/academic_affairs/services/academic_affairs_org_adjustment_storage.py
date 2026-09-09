@@ -13,6 +13,33 @@ from app.core.exceptions import AppException
 PREFIX = "V2_"
 
 
+def legacy_scope_projection(source_ids: list[int], college_by_class: dict[int, int]) -> str:
+    """Preserve every involved college in the N-1 read-authorization projection.
+
+    V2 states prohibit N-1 writes, but N-1 list visibility still reads this column.
+    An empty or truncated-college projection would broaden that visibility. Keep
+    one real source class per college, or reject an unrepresentable request.
+    """
+    raw = json.dumps(source_ids)
+    if not source_ids:
+        raise AppException("VALIDATION_ERROR", "来源班级至少选择1个")
+    if len(raw) <= 500:
+        return raw
+    representatives: dict[int, int] = {}
+    for class_id in source_ids:
+        college_id = college_by_class.get(class_id)
+        if college_id is None:
+            raise AppException("DATA_CONFLICT", "调整范围缺少学院归属，请重新核对", http_status=409)
+        representatives.setdefault(college_id, class_id)
+    projection = json.dumps(list(representatives.values()))
+    if len(projection) > 500:
+        raise AppException(
+            "VALIDATION_ERROR", "本次调整涉及学院过多，请按学院分批办理",
+            details={"reason": "LEGACY_SCOPE_PROJECTION_TOO_LARGE", "recoveryAction": "SPLIT_BY_COLLEGE"},
+        )
+    return projection
+
+
 def scope_json(row) -> str:
     expanded = getattr(row, "from_class_ids_expanded", None)
     if expanded is not None:
