@@ -44,5 +44,8 @@ export const moduleCommerceApi = {
   listServiceCosts: (tenantId, params = {}) => request(`${financeBase(tenantId)}/service-costs`, { params }),
   recordServiceCost: (tenantId, body, key) => request(`${financeBase(tenantId)}/service-costs`, {
     method: 'POST', body, headers: { 'Idempotency-Key': key }, timeoutMs: 15000
-  })
+  }),
+  getSlaPolicy: (tenantId) => request(`${financeBase(tenantId)}/sla-policy`),
+  updateSlaPolicy: (tenantId, body) => request(`${financeBase(tenantId)}/sla-policy`, { method: 'PUT', body }),
+  resetSlaPolicy: (tenantId, body) => request(`${financeBase(tenantId)}/sla-policy/reset`, { method: 'POST', body })
 }
