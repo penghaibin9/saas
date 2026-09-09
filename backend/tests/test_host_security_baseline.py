@@ -36,6 +36,31 @@ clientaliveinterval 300
 clientalivecountmax 2
 """
 
+SAFE_UFW = """
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    203.0.113.0/24
+80/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+"""
+
+SAFE_NGINX = """
+http {
+    server_tokens off;
+    include /etc/nginx/conf.d/security-http.conf;
+    server {
+        listen 443 ssl http2;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        include /etc/nginx/conf.d/security-server.conf;
+    }
+}
+"""
+
 SAFE_SYSCTL = {
     "kernel.dmesg_restrict": "1",
     "kernel.kptr_restrict": "2",
@@ -105,6 +130,46 @@ class HostPolicyTests(unittest.TestCase):
         result = HOST.evaluate_listeners([("0.0.0.0", 9000)], 22, {9000})
         self.assertFalse(any(item.status == HOST.FAIL for item in result))
 
+    def test_safe_ufw_contract_passes(self):
+        result = HOST.evaluate_ufw(SAFE_UFW, 22)
+        self.assertTrue(result)
+        self.assertTrue(all(item.status == HOST.PASS for item in result))
+
+    def test_ufw_requires_active_default_deny_and_source_restricted_ssh(self):
+        text = SAFE_UFW.replace("Status: active", "Status: inactive")
+        text = text.replace("Default: deny (incoming)", "Default: allow (incoming)")
+        text = text.replace("203.0.113.0/24", "Anywhere")
+        result = statuses(HOST.evaluate_ufw(text, 22))
+        self.assertEqual(result["firewall.ufw_active"], HOST.FAIL)
+        self.assertEqual(result["firewall.default_deny"], HOST.FAIL)
+        self.assertEqual(result["firewall.ssh_rule"], HOST.FAIL)
+
+    def test_ufw_sensitive_allow_rule_is_blocking(self):
+        text = SAFE_UFW + "\n3306/tcp                   ALLOW IN    Anywhere\n"
+        result = statuses(HOST.evaluate_ufw(text, 22))
+        self.assertEqual(result["firewall.sensitive.3306"], HOST.FAIL)
+
+    def test_safe_effective_nginx_contract_passes(self):
+        result = HOST.evaluate_nginx(SAFE_NGINX)
+        self.assertTrue(result)
+        self.assertTrue(all(item.status == HOST.PASS for item in result))
+
+    def test_nginx_legacy_tls_is_blocking(self):
+        text = SAFE_NGINX.replace("ssl_protocols TLSv1.2 TLSv1.3;",
+                                  "ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;")
+        result = statuses(HOST.evaluate_nginx(text))
+        self.assertEqual(result["nginx.tls_protocols"], HOST.FAIL)
+
+    def test_nginx_missing_security_contract_is_blocking(self):
+        text = SAFE_NGINX.replace("include /etc/nginx/conf.d/security-server.conf;", "")
+        result = statuses(HOST.evaluate_nginx(text))
+        self.assertEqual(result["nginx.security_server_contract"], HOST.FAIL)
+
+    def test_nginx_without_ssl_443_listener_is_blocking(self):
+        text = SAFE_NGINX.replace("listen 443 ssl http2;", "listen 443;")
+        result = statuses(HOST.evaluate_nginx(text))
+        self.assertEqual(result["nginx.https_listener"], HOST.FAIL)
+
     def test_safe_sysctl_contract_passes(self):
         result = HOST.evaluate_sysctl(SAFE_SYSCTL)
         self.assertTrue(all(item.status == HOST.PASS for item in result))
@@ -121,6 +186,12 @@ class HostPolicyTests(unittest.TestCase):
         result = HOST.evaluate_docker_daemon(SAFE_DOCKER)
         self.assertTrue(all(item.status == HOST.PASS for item in result))
 
+    def test_docker_requires_no_new_privileges_default(self):
+        bad = dict(SAFE_DOCKER)
+        bad.pop("no-new-privileges")
+        result = statuses(HOST.evaluate_docker_daemon(bad))
+        self.assertEqual(result["docker.no_new_privileges"], HOST.FAIL)
+
     def test_docker_tcp_or_insecure_registry_is_blocking(self):
         bad = dict(SAFE_DOCKER)
         bad["hosts"] = ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
@@ -130,7 +201,7 @@ class HostPolicyTests(unittest.TestCase):
         self.assertEqual(result["docker.insecure_registries"], HOST.FAIL)
 
     def test_unbounded_json_file_logs_are_blocking(self):
-        bad = {"live-restore": True, "log-driver": "json-file"}
+        bad = {"live-restore": True, "no-new-privileges": True, "log-driver": "json-file"}
         result = statuses(HOST.evaluate_docker_daemon(bad))
         self.assertEqual(result["docker.log_rotation"], HOST.FAIL)
 
@@ -152,6 +223,8 @@ class HostArtifactContractTests(unittest.TestCase):
         for token in forbidden:
             with self.subTest(token=token):
                 self.assertNotIn(token, source)
+        self.assertIn('["ufw", "status", "verbose"]', source)
+        self.assertIn('["nginx", "-T"]', source)
         self.assertIn('"mutatedHost": False', source)
         self.assertIn('"productionDataAccessed": False', source)
 
@@ -189,6 +262,8 @@ class HostArtifactContractTests(unittest.TestCase):
         self.assertIn("3306", text)
         self.assertIn("6379", text)
         self.assertIn("2375", text)
+        self.assertIn("ufw status verbose", text)
+        self.assertIn("nginx -t", text)
 
 
 if __name__ == "__main__":
