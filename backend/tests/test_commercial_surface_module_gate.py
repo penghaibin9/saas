@@ -53,20 +53,30 @@ def test_public_or_cross_product_surface_is_not_accidentally_gated(path):
 
 def test_final_api_graph_gate_covers_late_supplemental_routes():
     from app.api.v1.router import api_router
+    from app.core.commercial_surface_module_gate import iter_effective_route_contexts
     from fastapi.routing import APIRoute
 
+    # FastAPI >=0.137 retains included routers as a route tree.  The production
+    # gate deliberately walks the effective contexts, so this regression must
+    # inspect the same public routing model rather than assuming api_router.routes
+    # is a flat list.  On older FastAPI the helper falls back to APIRoute entries.
     targets = {
         "/mobile/teacher/affairs/activities/ongoing",
         "/mobile/academic/status-changes/{change_id}/resubmit",
         "/portal/graduation/taskbook/sign",
     }
     found = set()
-    for route in api_router.routes:
-        if not isinstance(route, APIRoute) or route.path not in targets:
+    for context in iter_effective_route_contexts(api_router):
+        route = getattr(context, "route", context)
+        if not isinstance(route, APIRoute):
             continue
-        found.add(route.path)
-        calls = {getattr(dep.call, "__name__", "") for dep in route.dependant.dependencies}
-        assert "enforce_commercial_surface_access" in calls, route.path
+        path = str(getattr(context, "path", route.path))
+        if path not in targets:
+            continue
+        found.add(path)
+        dependant = getattr(context, "dependant", route.dependant)
+        calls = {getattr(dep.call, "__name__", "") for dep in dependant.dependencies}
+        assert "enforce_commercial_surface_access" in calls, path
     assert found == targets
 
 
