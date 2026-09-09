@@ -47,6 +47,7 @@ test('final integration styles remain graduation-local and preserve business blo
   assert.match(integration, /data-graduation-template-workspace[\s\S]*\.dt__td\)[^{]*\{ font-size: 13px/)
   assert.match(integration, /@container gd-students \(max-width: 1000px\)/)
   assert.match(integration, /data-graduation-content-workspace='final'[\s\S]*\.fr-command__copy strong\)[^{]*\{[^}]*font-size: 15px/)
+  assert.match(integration, /data-graduation-content-workspace='proposal'\] :deep\(\.mp-tabs \.mp-tab\) \{\s*min-height: 40px;/)
   assert.match(integration, /1366 \/ 125%: compact material chrome[\s\S]*data-graduation-material-workspace='materials'[\s\S]*grid-template-columns: minmax\(220px, 1\.5fr\) repeat\(3, minmax\(130px, 1fr\)\) auto/)
 })
 
