@@ -210,12 +210,20 @@ def collect_runtime() -> tuple[list[dict], list[dict], list[Finding]]:
             findings.append(Finding("docker.runtime.inspect", FAIL,
                                     "running containers could not be inspected"))
         else:
-            value = _load_json(inspect_text, "docker inspect")
-            if not isinstance(value, list):
+            try:
+                value = _load_json(inspect_text, "docker inspect")
+            except ValueError:
                 findings.append(Finding("docker.runtime.inspect", FAIL,
-                                        "docker inspect did not return a list"))
+                                        "docker inspect returned invalid or unexpected JSON"))
             else:
-                containers = [item for item in value if isinstance(item, dict)]
+                if not isinstance(value, list):
+                    findings.append(Finding("docker.runtime.inspect", FAIL,
+                                            "docker inspect did not return a list"))
+                else:
+                    containers = [item for item in value if isinstance(item, dict)]
+                    if len(containers) != len(ids):
+                        findings.append(Finding("docker.runtime.inspect", FAIL,
+                                                "not every running container produced a valid inspect record"))
 
     code, network_ids_text = _run(["docker", "network", "ls", "-q"])
     networks: list[dict] = []
@@ -228,12 +236,20 @@ def collect_runtime() -> tuple[list[dict], list[dict], list[Finding]]:
             if code != 0:
                 findings.append(Finding("docker.network.inspect", FAIL, "Docker networks could not be inspected"))
             else:
-                value = _load_json(network_text, "docker network inspect")
-                if isinstance(value, list):
-                    networks = [item for item in value if isinstance(item, dict)]
-                else:
+                try:
+                    value = _load_json(network_text, "docker network inspect")
+                except ValueError:
                     findings.append(Finding("docker.network.inspect", FAIL,
-                                            "docker network inspect did not return a list"))
+                                            "docker network inspect returned invalid or unexpected JSON"))
+                else:
+                    if isinstance(value, list):
+                        networks = [item for item in value if isinstance(item, dict)]
+                        if len(networks) != len(network_ids):
+                            findings.append(Finding("docker.network.inspect", FAIL,
+                                                    "not every Docker network produced a valid inspect record"))
+                    else:
+                        findings.append(Finding("docker.network.inspect", FAIL,
+                                                "docker network inspect did not return a list"))
     return containers, networks, findings
 
 
