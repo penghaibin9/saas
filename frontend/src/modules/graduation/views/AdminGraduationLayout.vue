@@ -521,6 +521,24 @@ export default {
   .gd-business-view :deep(.gd-student-page .af__ops) { gap: 5px; }
 }
 
+/* 1366 / 125%: compact material chrome, never compact typography. */
+@media (min-width: 981px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page) { gap: 8px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero) { padding: 10px 12px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero h2) { margin: 2px 0; font-size: 20px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary) { gap: 6px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary article) { padding: 7px 9px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-tabs) { gap: 4px; padding: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page button) { min-height: 34px; padding: 5px 10px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters) {
+    grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters label) { gap: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters :is(input, select)) { min-height: 34px; padding: 5px 8px; }
+}
+
 /* Risk / archive: restore readable evidence and put the real queue before the rule catalogue. */
 .gd-business-view[data-graduation-risk-workspace] :deep(.ra-panel) {
   display: flex;

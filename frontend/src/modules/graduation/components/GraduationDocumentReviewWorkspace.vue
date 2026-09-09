@@ -231,7 +231,7 @@ function emitUnlocked(event, payload) {
 :global(.gd-business-view .pr-page .pr-subject__identity small) { white-space: normal; overflow-wrap: anywhere; }
 :global(.gd-business-view .pr-page .pr-pane__nav .mp-link),
 :global(.gd-business-view .pr-page .mp-tabs .mp-tab),
-:global(.gd-business-view .fr-workbench-stack .mp-tabs .mp-tab) { min-height: 34px; font-size: 13px; }
+:global(.gd-business-view .fr-workbench-stack .mp-tabs .mp-tab) { box-sizing: border-box; min-height: 36px; padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
 :global(.gd-business-view .fr-workbench-stack .fr-command) { padding: 12px 14px; border-radius: 12px; background: var(--card, #fff); }
 :global(.gd-business-view .fr-workbench-stack .fr-command__copy strong) { font-size: 16px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
 :global(.gd-business-view .fr-workbench-stack .fr-command__copy > span),

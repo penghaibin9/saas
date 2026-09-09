@@ -17,7 +17,7 @@ function marker(name) {
 }
 
 test('business script and original scoped presentation foundation stay byte-identical', () => {
-  assert.equal(hash(script), '04895c6dfa36018a5bb0a50b45d2e841689d56048b01dbaaa4c30d915a224c91')
+  assert.equal(hash(script), 'd6534752a2849f40095079715ac779d69399527e06775ac74e118ded997e508b')
   assert.equal(hash(scopedStyles[0]), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
   assert.equal((layout.match(/<router-view\b/g) || []).length, 1)
   assert.match(layout, /if \(panel === 'grad-qual'\)[\s\S]*?panel: 'roster'/)
@@ -45,7 +45,17 @@ test('final integration styles remain graduation-local and preserve business blo
   assert.match(integration, /\.rk-command__headline strong\)[^{]*\{ font-size: 16px !important/)
   assert.match(integration, /data-graduation-template-workspace[\s\S]*\.dt__td\)[^{]*\{ font-size: 13px/)
   assert.match(integration, /@container gd-students \(max-width: 1000px\)/)
-  assert.match(integration, /data-graduation-content-workspace='final'[\s\S]*\.fr-command__copy strong\)[^{]*font-size: 15px/)
+  assert.match(integration, /data-graduation-content-workspace='final'[\s\S]*\.fr-command__copy strong\)[^{]*\{[^}]*font-size: 15px/)
+  assert.match(integration, /1366 \/ 125%: compact material chrome[\s\S]*data-graduation-material-workspace='materials'[\s\S]*grid-template-columns: minmax\(220px, 1\.5fr\) repeat\(3, minmax\(130px, 1fr\)\) auto/)
+})
+
+test('deep grade form keeps a readable type floor without touching its business script', () => {
+  const source = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')
+  const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
+  const sizes = [...style.matchAll(/font-size:\s*([\d.]+)px/g)].map(match => Number(match[1]))
+  assert.ok(sizes.length > 10)
+  assert.ok(Math.min(...sizes) >= 12)
+  assert.match(source, /await this\.\$router\.push\(snapshot\.backTo\)/)
 })
 
 test('single menu truth remains eight workspaces and twenty-four leaves', () => {
