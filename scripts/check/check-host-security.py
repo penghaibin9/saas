@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only production host security audit for the school lifecycle SaaS.
 
-The auditor never changes SSH, firewall, Docker, Nginx, sysctl, users, packages,
+The auditor never mutates SSH, firewall, Docker, Nginx, sysctl, users, packages,
 or application data. It reads effective host state, emits a JSON receipt, and
-fails closed when production exposure cannot be proven safe.
+fails closed when production security state cannot be proven.
 """
 from __future__ import annotations
 
@@ -40,8 +40,7 @@ def _run(args: list[str]) -> tuple[int, str]:
         proc = subprocess.run(args, check=False, text=True, capture_output=True, timeout=15)
     except (OSError, subprocess.TimeoutExpired):
         return 127, ""
-    output = (proc.stdout or proc.stderr or "").strip()
-    return proc.returncode, output
+    return proc.returncode, (proc.stdout or proc.stderr or "").strip()
 
 
 def _parse_key_value_lines(text: str) -> dict[str, str]:
@@ -62,16 +61,15 @@ def _parse_key_value_lines(text: str) -> dict[str, str]:
 
 def evaluate_sshd(text: str, ssh_port: int) -> list[Finding]:
     cfg = _parse_key_value_lines(text)
-    required = {
+    findings: list[Finding] = []
+    for key, expected in {
         "permitrootlogin": "no",
         "passwordauthentication": "no",
         "kbdinteractiveauthentication": "no",
         "pubkeyauthentication": "yes",
         "x11forwarding": "no",
         "allowagentforwarding": "no",
-    }
-    findings: list[Finding] = []
-    for key, expected in required.items():
+    }.items():
         actual = cfg.get(key)
         findings.append(Finding(
             "ssh." + key,
@@ -89,19 +87,15 @@ def evaluate_sshd(text: str, ssh_port: int) -> list[Finding]:
         "effective SSH port must match audited port", str(port),
     ))
 
-    numeric_limits = {
+    for key, (minimum, maximum) in {
         "maxauthtries": (1, 4),
         "logingracetime": (1, 60),
         "clientaliveinterval": (1, 300),
         "clientalivecountmax": (0, 2),
-    }
-    for key, (minimum, maximum) in numeric_limits.items():
+    }.items():
         raw = cfg.get(key, "")
         match = re.match(r"\d+", raw)
-        try:
-            value = int(match.group(0)) if match else -1
-        except ValueError:
-            value = -1
+        value = int(match.group(0)) if match else -1
         findings.append(Finding(
             "ssh." + key,
             PASS if minimum <= value <= maximum else FAIL,
@@ -109,14 +103,14 @@ def evaluate_sshd(text: str, ssh_port: int) -> list[Finding]:
             raw or "missing",
         ))
 
-    if cfg.get("allowtcpforwarding", "yes") != "no":
+    if cfg.get("allowtcpforwarding", "yes") == "no":
+        findings.append(Finding("ssh.allowtcpforwarding", PASS, "TCP forwarding disabled", "no"))
+    else:
         findings.append(Finding(
             "ssh.allowtcpforwarding", WARN,
             "TCP forwarding is enabled; disable unless an operational use-case is approved",
             cfg.get("allowtcpforwarding", "default=yes"),
         ))
-    else:
-        findings.append(Finding("ssh.allowtcpforwarding", PASS, "TCP forwarding disabled", "no"))
     return findings
 
 
@@ -134,9 +128,8 @@ def parse_ss_listeners(text: str) -> list[tuple[str, int]]:
             host, port_text = local.rsplit(":", 1)
         else:
             continue
-        if port_text == "*" or not port_text.isdigit():
-            continue
-        listeners.append((host or "0.0.0.0", int(port_text)))
+        if port_text.isdigit():
+            listeners.append((host or "0.0.0.0", int(port_text)))
     return listeners
 
 
@@ -150,33 +143,26 @@ def evaluate_listeners(
     ssh_port: int,
     extra_public_ports: set[int],
 ) -> list[Finding]:
-    """Reject every unexpected non-loopback host listener, not only wildcards."""
     allowed_non_loopback = {ssh_port, 80, 443} | extra_public_ports
     findings: list[Finding] = []
     seen_sensitive: set[int] = set()
-
     for host, port in listeners:
         loopback = _is_loopback(host)
         if port in SENSITIVE_PORTS:
             seen_sensitive.add(port)
             findings.append(Finding(
-                f"listener.sensitive.{port}",
-                PASS if loopback else FAIL,
+                f"listener.sensitive.{port}", PASS if loopback else FAIL,
                 "sensitive service must not bind a non-loopback host interface",
                 f"{host}:{port}",
             ))
-
         if not loopback and port not in allowed_non_loopback:
             findings.append(Finding(
-                f"listener.public.{port}",
-                FAIL,
+                f"listener.public.{port}", FAIL,
                 "unexpected non-loopback listener; only SSH/80/443 and explicit exceptions are allowed",
                 f"{host}:{port}",
             ))
-
     if not findings:
         findings.append(Finding("listener.surface", PASS, "no unexpected non-loopback/sensitive listeners found"))
-
     for port in sorted(SENSITIVE_PORTS - seen_sensitive):
         findings.append(Finding(
             f"listener.sensitive.{port}", PASS,
@@ -186,10 +172,10 @@ def evaluate_listeners(
 
 
 def _ufw_rule_covers_port(line: str, port: int) -> bool:
-    """Detect exact numeric ports and UFW numeric ranges without parsing source CIDRs."""
     if "allow" not in line.lower():
         return False
-    for match in re.finditer(r"(?<![\d.])(\d{1,5})(?::(\d{1,5}))?(?:/(?:tcp|udp))?(?=\s|$)", line, re.I):
+    pattern = r"(?<![\d.])(\d{1,5})(?::(\d{1,5}))?(?:/(?:tcp|udp))?(?=\s|$)"
+    for match in re.finditer(pattern, line, re.I):
         start = int(match.group(1))
         end = int(match.group(2) or start)
         if 1 <= start <= port <= end <= 65535:
@@ -198,22 +184,18 @@ def _ufw_rule_covers_port(line: str, port: int) -> bool:
 
 
 def evaluate_ufw(text: str, ssh_port: int) -> list[Finding]:
-    """Evaluate UFW without copying administrator source IPs to evidence."""
     lower = text.lower()
     findings = [
         Finding(
-            "firewall.ufw_active",
-            PASS if "status: active" in lower else FAIL,
+            "firewall.ufw_active", PASS if "status: active" in lower else FAIL,
             "UFW must be active on the production host",
         ),
         Finding(
-            "firewall.default_deny",
-            PASS if "default: deny (incoming)" in lower else FAIL,
+            "firewall.default_deny", PASS if "default: deny (incoming)" in lower else FAIL,
             "UFW default incoming policy must be deny",
         ),
     ]
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-
     exact_ssh = re.compile(rf"(^|\s){re.escape(str(ssh_port))}(/tcp)?(\s|$)", re.I)
     ssh_rules = [line for line in lines if exact_ssh.search(line) and "allow" in line.lower()]
     if not ssh_rules:
@@ -224,17 +206,14 @@ def evaluate_ufw(text: str, ssh_port: int) -> list[Finding]:
     else:
         unrestricted = any("anywhere" in line.lower() for line in ssh_rules)
         findings.append(Finding(
-            "firewall.ssh_rule",
-            FAIL if unrestricted else PASS,
+            "firewall.ssh_rule", FAIL if unrestricted else PASS,
             "SSH firewall rule must be source-restricted, not Anywhere",
             "unrestricted" if unrestricted else "source-restricted",
         ))
-
     for port in sorted(SENSITIVE_PORTS):
         allowed = any(_ufw_rule_covers_port(line, port) for line in lines)
         findings.append(Finding(
-            f"firewall.sensitive.{port}",
-            FAIL if allowed else PASS,
+            f"firewall.sensitive.{port}", FAIL if allowed else PASS,
             "sensitive host port must not be covered by an explicit UFW allow rule or range",
             "allow-present" if allowed else "no-allow",
         ))
@@ -242,54 +221,49 @@ def evaluate_ufw(text: str, ssh_port: int) -> list[Finding]:
 
 
 def _nginx_active_text(text: str) -> str:
-    active: list[str] = []
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if line:
-            active.append(line)
-    return "\n".join(active)
+    return "\n".join(
+        line for raw in text.splitlines()
+        if (line := raw.split("#", 1)[0].strip())
+    )
 
 
 def evaluate_nginx(text: str) -> list[Finding]:
     active = _nginx_active_text(text)
     findings: list[Finding] = []
-
-    server_tokens_off = bool(re.search(r"\bserver_tokens\s+off\s*;", active, re.I))
+    tokens_off = bool(re.search(r"\bserver_tokens\s+off\s*;", active, re.I))
     findings.append(Finding(
-        "nginx.server_tokens", PASS if server_tokens_off else FAIL,
+        "nginx.server_tokens", PASS if tokens_off else FAIL,
         "effective Nginx config must disable server_tokens",
     ))
 
     protocols = re.findall(r"\bssl_protocols\s+([^;]+);", active, re.I)
-    if not protocols:
+    if protocols:
+        allowed = {"TLSv1.2", "TLSv1.3"}
+        protocol_sets = [{token.strip() for token in item.split()} for item in protocols]
+        secure = all(items == allowed for items in protocol_sets)
+        evidence = ";".join(" ".join(sorted(items)) for items in protocol_sets)
+        findings.append(Finding(
+            "nginx.tls_protocols", PASS if secure else FAIL,
+            "all effective ssl_protocols directives must be exactly TLSv1.2/TLSv1.3",
+            evidence,
+        ))
+    else:
         findings.append(Finding(
             "nginx.tls_protocols", FAIL,
             "effective Nginx config must declare TLS protocols",
         ))
-    else:
-        protocol_sets = [{token.strip() for token in item.split()} for item in protocols]
-        allowed = {"TLSv1.2", "TLSv1.3"}
-        secure = all(items == allowed for items in protocol_sets)
-        findings.append(Finding(
-            "nginx.tls_protocols", PASS if secure else FAIL,
-            "all effective ssl_protocols directives must be exactly TLSv1.2/TLSv1.3",
-            ";".join(" ".join(sorted(items)) for items in protocol_sets),
-        ))
 
-    listens_tls = bool(re.search(r"\blisten\s+[^;\n]*443[^;\n]*\bssl\b[^;\n]*;", active, re.I))
+    https = bool(re.search(r"\blisten\s+[^;\n]*443[^;\n]*\bssl\b[^;\n]*;", active, re.I))
     findings.append(Finding(
-        "nginx.https_listener", PASS if listens_tls else FAIL,
+        "nginx.https_listener", PASS if https else FAIL,
         "effective Nginx config must expose an SSL listener on 443",
     ))
-
     for include_name, check_name in (
         ("security-http.conf", "nginx.security_http_contract"),
         ("security-server.conf", "nginx.security_server_contract"),
     ):
         included = bool(re.search(
-            rf"\binclude\s+[^;\n]*{re.escape(include_name)}\s*;",
-            active,
-            re.I,
+            rf"\binclude\s+[^;\n]*{re.escape(include_name)}\s*;", active, re.I
         ))
         findings.append(Finding(
             check_name, PASS if included else FAIL,
@@ -314,10 +288,8 @@ def evaluate_sysctl(values: dict[str, str]) -> list[Finding]:
     }
     findings = [
         Finding(
-            "sysctl." + key,
-            PASS if values.get(key) == expected else FAIL,
-            f"{key} must be {expected}",
-            values.get(key, "missing"),
+            "sysctl." + key, PASS if values.get(key) == expected else FAIL,
+            f"{key} must be {expected}", values.get(key, "missing"),
         )
         for key, expected in exact.items()
     ]
@@ -327,29 +299,24 @@ def evaluate_sysctl(values: dict[str, str]) -> list[Finding]:
         except ValueError:
             current = -1
         findings.append(Finding(
-            "sysctl." + key,
-            PASS if current >= minimum else FAIL,
-            f"{key} must be >= {minimum}",
-            values.get(key, "missing"),
+            "sysctl." + key, PASS if current >= minimum else FAIL,
+            f"{key} must be >= {minimum}", values.get(key, "missing"),
         ))
     return findings
 
 
 def evaluate_docker_daemon(config: dict) -> list[Finding]:
-    findings: list[Finding] = []
-    findings.append(Finding(
-        "docker.live_restore",
-        PASS if config.get("live-restore") is True else FAIL,
-        "Docker live-restore must be enabled",
-        repr(config.get("live-restore")),
-    ))
-    findings.append(Finding(
-        "docker.no_new_privileges",
-        PASS if config.get("no-new-privileges") is True else FAIL,
-        "Docker daemon must default new containers to no-new-privileges",
-        repr(config.get("no-new-privileges")),
-    ))
-
+    findings = [
+        Finding(
+            "docker.live_restore", PASS if config.get("live-restore") is True else FAIL,
+            "Docker live-restore must be enabled", repr(config.get("live-restore")),
+        ),
+        Finding(
+            "docker.no_new_privileges", PASS if config.get("no-new-privileges") is True else FAIL,
+            "Docker daemon must default new containers to no-new-privileges",
+            repr(config.get("no-new-privileges")),
+        ),
+    ]
     hosts = config.get("hosts", [])
     if not isinstance(hosts, list):
         hosts = [hosts]
@@ -359,13 +326,11 @@ def evaluate_docker_daemon(config: dict) -> list[Finding]:
         "Docker daemon must not expose a TCP management socket",
         ",".join(tcp_hosts) or "none",
     ))
-
     insecure = config.get("insecure-registries", [])
     findings.append(Finding(
         "docker.insecure_registries", FAIL if insecure else PASS,
         "insecure container registries are not allowed", repr(insecure),
     ))
-
     driver = config.get("log-driver", "json-file")
     opts = config.get("log-opts", {}) if isinstance(config.get("log-opts", {}), dict) else {}
     rotated = driver == "local" or (
@@ -380,14 +345,13 @@ def evaluate_docker_daemon(config: dict) -> list[Finding]:
 
 
 def evaluate_docker_group(group_line: str, allowed_users: set[str]) -> list[Finding]:
-    """Docker-group membership is root-equivalent and must be explicit."""
     if not group_line.strip():
         return [Finding("docker.group_members", PASS, "docker group is absent or has no readable record", "none")]
     parts = group_line.strip().split(":")
     if len(parts) < 4 or parts[0] != "docker":
         return [Finding("docker.group_members", FAIL, "docker group record is malformed")]
     members = {item.strip() for item in parts[3].split(",") if item.strip()}
-    unexpected = sorted(members - allowed_users)
+    unexpected = members - allowed_users
     if unexpected:
         return [Finding(
             "docker.group_members", FAIL,
@@ -404,21 +368,18 @@ def evaluate_docker_group(group_line: str, allowed_users: set[str]) -> list[Find
 
 
 def evaluate_secret_mode(mode: int, owner_uid: int, current_uid: int) -> list[Finding]:
-    writable_by_group_or_other = bool(mode & (stat.S_IWGRP | stat.S_IWOTH))
-    readable_by_other = bool(mode & stat.S_IROTH)
+    unsafe = bool(mode & (stat.S_IWGRP | stat.S_IWOTH | stat.S_IROTH))
     owner_ok = owner_uid in {0, current_uid}
-    ok = not writable_by_group_or_other and not readable_by_other and owner_ok
     return [Finding(
-        "file.secret_permissions", PASS if ok else FAIL,
+        "file.secret_permissions", PASS if not unsafe and owner_ok else FAIL,
         "secret files must be root/current-user owned, not other-readable, not group/other-writable",
         f"mode={oct(mode & 0o777)},uid={owner_uid}",
     )]
 
 
 def _read_sysctl(key: str) -> str:
-    path = Path("/proc/sys") / key.replace(".", "/")
     try:
-        return path.read_text().strip()
+        return (Path("/proc/sys") / key.replace(".", "/")).read_text().strip()
     except OSError:
         return ""
 
@@ -444,8 +405,9 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
     if sshd:
         findings.extend(evaluate_sshd(sshd, args.ssh_port))
         findings.append(Finding(
-            "ssh.source", PASS if source == "sshd -T" else WARN,
-            "effective sshd -T is preferred over raw config", source,
+            "ssh.source", PASS if source == "sshd -T" else FAIL,
+            "final host PASS requires effective sshd -T output; raw config is diagnostic only",
+            source,
         ))
     else:
         findings.append(Finding("ssh.available", FAIL, "SSH effective configuration could not be read"))
@@ -524,8 +486,7 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
 
     if shutil.which("getent"):
         code, output = _run(["getent", "group", "docker"])
-        group_line = output if code == 0 else ""
-        findings.extend(evaluate_docker_group(group_line, set(args.allow_docker_user)))
+        findings.extend(evaluate_docker_group(output if code == 0 else "", set(args.allow_docker_user)))
     else:
         findings.append(Finding("docker.group_members", WARN, "getent unavailable; docker-group membership not proven"))
 
@@ -545,19 +506,16 @@ def _collect_findings(args: argparse.Namespace) -> list[Finding]:
                 "service." + unit, PASS if active == 0 else FAIL,
                 f"{unit} must be active",
             ))
-
         ntp, value = _run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"])
         findings.append(Finding(
             "time.ntp", PASS if ntp == 0 and value.lower() == "yes" else FAIL,
             "host clock must be NTP synchronized", value or "unknown",
         ))
-
         enabled, _ = _run(["systemctl", "is-enabled", "--quiet", "apt-daily-upgrade.timer"])
         findings.append(Finding(
             "patching.timer", PASS if enabled == 0 else WARN,
             "automatic security-update timer should be enabled on Ubuntu/Debian hosts",
         ))
-
         for renewal_unit in ("certbot.timer", "certbot-renew.timer"):
             enabled, _ = _run(["systemctl", "is-enabled", "--quiet", renewal_unit])
             if enabled == 0:
@@ -605,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    if not (1 <= args.ssh_port <= 65535):
+    if not 1 <= args.ssh_port <= 65535:
         parser.error("--ssh-port must be 1..65535")
     if any(port < 1 or port > 65535 for port in args.allow_public_port):
         parser.error("--allow-public-port must be 1..65535")
