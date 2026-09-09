@@ -1,0 +1,156 @@
+from pathlib import Path
+
+
+def replace_once(path, old, new):
+    p = Path(path)
+    text = p.read_text(encoding='utf-8')
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{path}: expected exactly one match, got {count}')
+    p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+
+layout = 'frontend/src/modules/graduation/views/AdminGraduationLayout.vue'
+replace_once(
+    layout,
+    """.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+  min-height: 34px;
+  font-size: 13px !important;
+}""",
+    """.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+  min-height: 38px;
+  font-size: 13px !important;
+}""",
+)
+
+risk_block = """
+/* 1366 / 125%: keep the real risk queue in the first fold without shrinking type. */
+@media (min-width: 1300px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-panel) { gap: 7px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command) {
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, .95fr) auto;
+    gap: 7px !important;
+    padding: 8px 10px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics) {
+    grid-column: auto;
+    gap: 4px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics div) { padding: 5px 4px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline) { gap: 2px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline small) { line-height: 1.4; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-filter) { margin: 0 !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af) { gap: 6px; padding: 7px 9px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__fields) { gap: 6px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__field) { gap: 2px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__control),
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__ops button) { min-height: 34px; height: 34px; }
+}
+"""
+p = Path(layout)
+text = p.read_text(encoding='utf-8')
+marker = '\n/* Templates stay a calm low-frequency configuration list. */'
+if risk_block.strip() in text:
+    raise SystemExit('risk closeout block already present')
+if text.count(marker) != 1:
+    raise SystemExit('template marker not unique')
+p.write_text(text.replace(marker, risk_block + marker, 1), encoding='utf-8')
+
+form = 'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue'
+replace_once(
+    form,
+    "submitting: false, recordId: '', commandSnapshot: null, actorName: ''",
+    "submitting: false, completionNavigating: false, recordId: '', commandSnapshot: null, actorName: ''",
+)
+replace_once(
+    form,
+    """  beforeRouteLeave(_to, _from, next) {
+    if (this.submitting) {
+      toast.info('当前毕业设计操作正在等待服务器回执，请完成后再离开')
+      next(false)
+      return
+    }
+    next()
+  },""",
+    """  beforeRouteLeave(_to, _from, next) {
+    if (this.submitting && !this.completionNavigating) {
+      toast.info('当前毕业设计操作正在等待服务器回执，请完成后再离开')
+      next(false)
+      return
+    }
+    next()
+  },""",
+)
+replace_once(
+    form,
+    """      this.commandSnapshot = snapshot
+      this.submitting = true
+      try {""",
+    """      this.commandSnapshot = snapshot
+      this.completionNavigating = false
+      this.submitting = true
+      try {""",
+)
+replace_once(
+    form,
+    """        if (res?.code === 0) {
+          toast.success(`${this.activePreset.title}已提交`)
+          // The server has acknowledged the write. Release the submit lock before
+          // our own completion navigation so beforeRouteLeave only blocks unsafe exits.
+          this.submitting = false
+          await this.$router.push(snapshot.backTo)
+          return
+""",
+    """        if (res?.code === 0) {
+          toast.success(`${this.activePreset.title}已提交`)
+          // The server acknowledged the write. Keep controls locked while the
+          // completion navigation runs so the shared frame cannot misclassify
+          // the already-saved textarea as an unsubmitted draft.
+          this.completionNavigating = true
+          await this.$router.push(snapshot.backTo)
+          return
+""",
+)
+replace_once(
+    form,
+    """      } finally {
+        this.submitting = false
+        this.commandSnapshot = null
+      }""",
+    """      } finally {
+        this.submitting = false
+        this.completionNavigating = false
+        this.commandSnapshot = null
+      }""",
+)
+
+final_test = 'frontend/tests/graduation.final-integration-polish.test.mjs'
+replace_once(
+    final_test,
+    "test('deep grade form keeps a readable type floor without touching its business script', () => {",
+    "test('deep grade form keeps a readable type floor and a guarded completion return', () => {",
+)
+replace_once(
+    final_test,
+    """  assert.ok(Math.min(...sizes) >= 12)
+  assert.match(source, /await this\\.\\$router\\.push\\(snapshot\\.backTo\\)/)
+})""",
+    """  assert.ok(Math.min(...sizes) >= 12)
+  assert.match(source, /if \\(this\\.submitting && !this\\.completionNavigating\\)/)
+  assert.match(source, /this\\.completionNavigating = true[\\s\\S]*?await this\\.\\$router\\.push\\(snapshot\\.backTo\\)/)
+  assert.doesNotMatch(source, /this\\.submitting = false\\s*\\n\\s*await this\\.\\$router\\.push\\(snapshot\\.backTo\\)/)
+})""",
+)
+
+student_test = Path('frontend/tests/graduation.student-workspace-polish.test.mjs')
+text = student_test.read_text(encoding='utf-8')
+if "from 'node:process'" not in text:
+    anchor = "import fs from 'node:fs'\n"
+    if text.count(anchor) != 1:
+        raise SystemExit('student test fs import anchor missing')
+    text = text.replace(anchor, anchor + "import process from 'node:process'\n", 1)
+    student_test.write_text(text, encoding='utf-8')
