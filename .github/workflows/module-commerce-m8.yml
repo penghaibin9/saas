@@ -13,6 +13,7 @@ on:
       - backend/app/services/module_commerce_finance_service.py
       - backend/app/services/module_commerce_finance_projection_service.py
       - backend/app/services/module_commerce_operations_service.py
+      - backend/app/services/module_commerce_sla_policy_service.py
       - backend/app/modules/platform/routers/__init__.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/app/modules/platform/routers/module_commerce_finance_router.py
@@ -24,6 +25,7 @@ on:
       - backend/tests/test_module_commerce_m8_finance_router.py
       - backend/tests/test_module_commerce_m8_operations.py
       - backend/tests/test_module_commerce_m8_operations_router.py
+      - backend/tests/test_module_commerce_m8_sla_policy.py
       - backend/tests/test_module_commercial_model_bootstrap.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
       - frontend/src/modules/platform/views/control/ModuleFinanceWorkspace.vue
@@ -95,6 +97,7 @@ jobs:
             backend/app/services/module_commerce_finance_service.py \
             backend/app/services/module_commerce_finance_projection_service.py \
             backend/app/services/module_commerce_operations_service.py \
+            backend/app/services/module_commerce_sla_policy_service.py \
             backend/app/modules/platform/routers/__init__.py \
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/app/modules/platform/routers/module_commerce_finance_router.py \
@@ -106,6 +109,7 @@ jobs:
             backend/tests/test_module_commerce_m8_finance_router.py \
             backend/tests/test_module_commerce_m8_operations.py \
             backend/tests/test_module_commerce_m8_operations_router.py \
+            backend/tests/test_module_commerce_m8_sla_policy.py \
             backend/tests/test_module_commercial_model_bootstrap.py
       - name: Migrate fresh MySQL and prove one canonical Alembic head
         working-directory: backend
@@ -115,7 +119,7 @@ jobs:
           alembic heads | tee "$OUT/alembic-heads.txt"
           alembic upgrade head 2>&1 | tee "$OUT/migration.log"
           alembic current | tee "$OUT/alembic-current.txt"
-      - name: Run M8 finance, operations, route and registry contracts
+      - name: Run M8 finance, operations, SLA, route and registry contracts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -125,6 +129,7 @@ jobs:
             tests/test_module_commerce_m8_finance_router.py \
             tests/test_module_commerce_m8_operations.py \
             tests/test_module_commerce_m8_operations_router.py \
+            tests/test_module_commerce_m8_sla_policy.py \
             tests/test_module_commercial_model_bootstrap.py \
             tests/test_module_commerce_router_install.py \
             -q -p no:warnings --junitxml="$OUT/m8-junit.xml" 2>&1 | tee "$OUT/m8-pytest.log"
@@ -139,6 +144,7 @@ jobs:
           service = Path('app/services/module_commerce_finance_service.py').read_text(encoding='utf-8')
           projection = Path('app/services/module_commerce_finance_projection_service.py').read_text(encoding='utf-8')
           operations = Path('app/services/module_commerce_operations_service.py').read_text(encoding='utf-8')
+          sla_policy = Path('app/services/module_commerce_sla_policy_service.py').read_text(encoding='utf-8')
           finance_router = Path('app/modules/platform/routers/module_commerce_finance_router.py').read_text(encoding='utf-8')
           operations_router = Path('app/modules/platform/routers/module_commerce_operations_router.py').read_text(encoding='utf-8')
           frozen_router = Path('app/modules/platform/routers/module_commerce_router.py').read_text(encoding='utf-8')
@@ -156,6 +162,10 @@ jobs:
           assert 'COMMERCIAL_SLA_POLICY' in operations and 'UNASSESSED' in operations
           assert 'currencyConverted' in operations and 'entitlementChangeApplied' in operations
           assert 'SupportTicket' in operations and 'CommercialAfterSalesLink' in operations
+          assert '_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in sla_policy
+          assert 'with_for_update' in sla_policy and 'expectedVersion' in sla_policy
+          assert 'COMMERCIAL_SLA_POLICY_UPDATE' in sla_policy and 'COMMERCIAL_SLA_POLICY_RESET' in sla_policy
+          assert '系统不会补默认承诺' in operations_router
           assert 'module_commerce_finance_projection_service' in finance_router
           assert 'module_commerce_operations_router' in installer
           assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
@@ -173,11 +183,13 @@ jobs:
               assert token not in finance_router, token
               assert token not in operations, token
               assert token not in operations_router, token
+              assert token not in sla_policy, token
           assert 'order.status = "refunded"' not in service
           assert 'order.paid_amount =' not in service
           assert '_SLA_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in operations
-          assert 'targetsHours' in operations
+          assert 'targetsHours' in operations and 'targetsHours' in sla_policy
           assert 'P0": 2' not in operations and 'P1": 8' not in operations and 'P2": 24' not in operations
+          assert 'P0": 2' not in sla_policy and 'P1": 8' not in sla_policy and 'P2": 24' not in sla_policy
           print('M8_FINANCE_AFTERSALES_SLA_COST_CONTROL_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
