@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - "scripts/check/check-host-security.py"
+      - "scripts/check/check-docker-port-exposure.py"
       - "deploy/host/**"
       - "backend/tests/test_host_security_baseline.py"
+      - "backend/tests/test_docker_port_exposure.py"
       - ".github/workflows/host-security-baseline.yml"
   workflow_dispatch:
 
@@ -27,9 +29,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile read-only host auditor
-        run: python -m py_compile scripts/check/check-host-security.py
+      - name: Compile read-only host auditors
+        run: |
+          python -m py_compile scripts/check/check-host-security.py
+          python -m py_compile scripts/check/check-docker-port-exposure.py
       - name: Validate Docker daemon template JSON
         run: python -m json.tool deploy/host/docker-daemon.json.example >/dev/null
       - name: Run host security policy and artifact contracts
-        run: python -m unittest discover -s backend/tests -p test_host_security_baseline.py -v
+        run: |
+          python -m unittest discover -s backend/tests -p test_host_security_baseline.py -v
+          python -m unittest discover -s backend/tests -p test_docker_port_exposure.py -v
