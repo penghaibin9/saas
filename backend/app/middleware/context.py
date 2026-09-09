@@ -14,6 +14,10 @@ from app.middleware.context_legacy import *  # noqa: F401,F403
 
 class RequestContextMiddleware(_legacy.RequestContextMiddleware):
     async def dispatch(self, request, call_next):
+        from app.core.config import settings
+        from app.core.forwarded_ip_security import normalize_forwarded_request
+        # Clean the untrusted boundary before the frozen middleware reads headers.
+        normalize_forwarded_request(request, settings.TRUSTED_PROXY_IPS)
         async def _platform_gated_call_next(req):
             path = req.url.path
             is_platform_path = path == "/api/v1/platform" or path.startswith("/api/v1/platform/")
