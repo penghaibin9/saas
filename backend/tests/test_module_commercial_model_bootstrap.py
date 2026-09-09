@@ -11,18 +11,22 @@ import unittest
 
 BACKEND = Path(__file__).resolve().parents[1]
 COMMERCE_DYNAMIC_MODELS = {
+    "CommercialAfterSalesLink",
     "CommercialInvoiceCase",
     "CommercialOrderItem",
     "CommercialRefundCase",
+    "CommercialServiceCostRecord",
     "CommercialSkuVersion",
     "TenantCommercialProfile",
     "TenantModuleState",
     "TenantModuleSubscriptionSource",
 }
 REQUIRED_MODELS = {
+    "CommercialAfterSalesLink": "t_commercial_after_sales_link",
     "CommercialInvoiceCase": "t_commercial_invoice_case",
     "CommercialOrderItem": "t_commercial_order_item",
     "CommercialRefundCase": "t_commercial_refund_case",
+    "CommercialServiceCostRecord": "t_commercial_service_cost_record",
     "CommercialSkuVersion": "t_commercial_sku_version",
     "TenantCommercialProfile": "t_tenant_commercial_profile",
     "TenantModuleState": "t_tenant_module_state",
@@ -39,7 +43,6 @@ class ModelBootstrapTests(unittest.TestCase):
     def test_all_registered_model_sources_are_utf8_python(self):
         for path in sorted((BACKEND / "app/models").rglob("*.py")):
             with self.subTest(path=path.relative_to(BACKEND).as_posix()):
-                # Strict decoding catches corruption, including bytes in comments.
                 ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
     def test_critical_registry_imports_are_not_truncated(self):
@@ -49,8 +52,6 @@ class ModelBootstrapTests(unittest.TestCase):
             for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
             for item in node.names
         }
-        # Commerce models are intentionally exposed by app.models.platform while that
-        # module is imported by the aggregator; legacy consumers remain explicit imports.
         legacy_names = set(REQUIRED_MODELS) - COMMERCE_DYNAMIC_MODELS
         self.assertTrue(legacy_names.issubset(names), legacy_names - names)
 
