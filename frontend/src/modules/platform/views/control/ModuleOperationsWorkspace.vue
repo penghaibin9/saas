@@ -51,7 +51,7 @@
         <div class="section-head"><div><h4>登记实际服务成本</h4><p>只登记已实际发生的支持、交付、培训、退款手续费等成本；不同币种永不自动换算或合计。</p></div></div>
         <div v-if="costPending" class="pending"><strong>上次成本登记结果仍需核对</strong><p>原请求与幂等键已保留，请重试原请求。</p><button class="primary" :disabled="savingCost||!canManage" @click="submitCost">重试原请求</button></div>
         <fieldset :disabled="savingCost||locked||!canManage||!!costPending">
-          <div class="form-grid"><label>成本类型<select v-model="costForm.costType"><option value="">请选择</option><option value="SUPPORT">支持</option><option value="DELIVERY">交付</option><option value="TRAINING">培训</option><option value="REFUND_FEE">退款手续费</option><option value="OTHER">其他</option></select></label><label>金额<input v-model.trim="costForm.amount" inputmode="decimal" placeholder="0.00"></label><label>币种<input v-model.trim="costForm.currency" maxlength="3" placeholder="如 CNY"></label><label>发生时间<input v-model="costForm.occurredAt" type="datetime-local" step="1"></label></div>
+          <div class="form-grid"><label>成本类型<select v-model="costForm.costType"><option value="">请选择</option><option value="SUPPORT">支持</option><option value="DELIVERY">交付</option><option value="TRAINING">培训</option><option value="REFUND_FEE">退款手续费</option><option value="OTHER">其他</option></select></label><label>金额<input v-model.trim="costForm.amount" inputmode="decimal" placeholder="0.00"></label><label>币种<input v-model.trim="costForm.currency" maxlength="3" placeholder="如 CNY"></label><label>发生时间（北京时间）<input v-model="costForm.occurredAt" type="datetime-local" step="1"></label></div>
           <div class="form-grid refs"><label>关联售后工单<select v-model="costForm.afterSalesLink" @change="useAfterSales"><option value="">不从退款售后工单带入</option><option v-for="row in afterSales" :key="row.linkId" :value="row.linkId">工单 #{{ row.supportTicketId }} · 退款 #{{ row.refundCaseId }}</option></select></label><label>订单 ID<input v-model.trim="costForm.orderId" inputmode="numeric" placeholder="至少关联订单/退款/工单一个对象"></label><label>退款记录 ID<input v-model.trim="costForm.refundCaseId" inputmode="numeric"></label><label>工单 ID<input v-model.trim="costForm.supportTicketId" inputmode="numeric"></label></div>
           <div class="form-grid refs"><label>外部凭据<input v-model.trim="costForm.externalRef" maxlength="160" placeholder="工资、采购、渠道手续费等真实凭据编号（可选）"></label><label>说明<input v-model.trim="costForm.note" maxlength="500" placeholder="说明实际成本来源"></label></div>
           <button class="primary" :disabled="!costReady" @click="submitCost">{{ savingCost?'正在登记…':'登记实际成本' }}</button>
@@ -66,10 +66,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { moduleCommerceApi as api } from '@/modules/platform/api/moduleCommerce.api'
 import { ensurePlatformAccessContext } from '@/security/platformAccessGate'
-import { isDefinitiveRejection } from '../../lib/moduleCommerceSales.mjs'
+import { isDefinitiveRejection, localInputToUtc, utcToLocalInput } from '../../lib/moduleCommerceSales.mjs'
+import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 
 const props=defineProps({tenantId:{type:String,default:''},locked:Boolean})
 const severities=['P0','P1','P2','P3']
@@ -83,27 +84,131 @@ const moneyOk=v=>/^\d+(?:\.\d{1,2})?$/.test(String(v||''))&&Number(v)>0
 const refsOk=computed(()=>[costForm.value.orderId,costForm.value.refundCaseId,costForm.value.supportTicketId].some(v=>/^\d+$/.test(String(v||''))))
 const costReady=computed(()=>canManage.value&&!savingCost.value&&!props.locked&&!costPending.value&&['SUPPORT','DELIVERY','TRAINING','REFUND_FEE','OTHER'].includes(costForm.value.costType)&&moneyOk(costForm.value.amount)&&/^[A-Za-z]{3}$/.test(costForm.value.currency)&&!!costForm.value.occurredAt&&refsOk.value)
 const slaReady=computed(()=>canCommercialManage.value&&!savingSla.value&&!props.locked&&slaForm.value.policyVersion.length>=3&&slaForm.value.reason.length>=5&&severities.every(s=>moneyOk(slaForm.value.targets[s])))
-function showTime(v){return v?String(v).replace('T',' ').slice(0,19):'—'}
-function modulesText(rows){return(rows||[]).map(r=>`${r.moduleKey} ×${r.sourceCount}`).join('、')||'—'}
-function ticketStatus(v){return({OPEN:'待处理',IN_PROGRESS:'处理中',RESOLVED:'已解决',CLOSED:'已关闭'})[v]||v||'—'}
+function showTime(v){return v?utcToLocalInput(v).replace('T',' '):'—'}
+function modulesText(rows){return(rows||[]).map(r=>`${safeEnumLabel({value:r.moduleKey,dictionary:{internship:'岗位实习',graduationDesign:'毕业设计',studentAffairs:'学工',academicAffairs:'教务'}})} ×${r.sourceCount}`).join('、')||'—'}
+function ticketStatus(v){return safeEnumLabel({value:v,dictionary:{OPEN:'待处理',IN_PROGRESS:'处理中',RESOLVED:'已解决',CLOSED:'已关闭'}})}
 function slaText(sla){if(!sla?.policyConfigured)return`已耗时 ${sla?.elapsedHours??0}h · 未配置SLA`;return`${sla.status==='BREACHED'?'已超目标':'目标内'} · ${sla.elapsedHours}h / ${sla.targetHours}h`}
-function costTypeLabel(v){return({SUPPORT:'支持',DELIVERY:'交付',TRAINING:'培训',REFUND_FEE:'退款手续费',OTHER:'其他'})[v]||v}
+function costTypeLabel(v){return safeEnumLabel({value:v,dictionary:{SUPPORT:'支持',DELIVERY:'交付',TRAINING:'培训',REFUND_FEE:'退款手续费',OTHER:'其他'}})}
+let epoch=0, overviewSeq=0, afterSeq=0, costSeq=0, slaSeq=0, disposed=false
+const current=(id,token)=>id===props.tenantId&&token===epoch
 function storageKey(){return`gx_module_service_cost_pending_v1:${access.value?.subjectId||''}:${props.tenantId}`}
 function newKey(){const s=globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;return`m8-cost-${s}`.slice(0,160)}
-function savePending(v){costPending.value=v;try{v?sessionStorage.setItem(storageKey(),JSON.stringify(v)):sessionStorage.removeItem(storageKey())}catch{/* memory fallback */}}
-function restorePending(){costPending.value=null;if(!access.value?.subjectId||!props.tenantId)return;try{const raw=sessionStorage.getItem(storageKey());const p=raw?JSON.parse(raw):null;if(p?.tenantId===props.tenantId&&p.key&&p.body)costPending.value=p}catch{savePending(null)}}
-async function recheckDuty(duty,message){const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(access.value?.subjectId)||!current.duties?.some(d=>['*',duty].includes(d)))throw new Error(message)}
-async function loadOverview(){overview.value=await api.getOperationsOverview(props.tenantId)}
-async function loadAfterSales(page=1){const d=await api.listAfterSales(props.tenantId,{page,pageSize:20});afterSales.value=d.items||[];afterTotal.value=d.total||0;afterPage.value=page}
-async function loadCosts(page=1){const d=await api.listServiceCosts(props.tenantId,{page,pageSize:20});if(d.currencyConverted!==false)throw new Error('服务成本接口返回了不允许的币种换算结果');costs.value=d.items||[];costTotal.value=d.total||0;costPage.value=page;costSummary.value=d.summaryByCurrency||{}}
-async function loadSla(){const d=await api.getSlaPolicy(props.tenantId);slaEditor.value=d;const source=d.tenantOverride?.enabled?d.tenantOverride?.policy:(d.effective?.configured?{version:d.effective.version,targetsHours:d.effective.targetsHours}:null);slaForm.value={policyVersion:String(source?.version||''),targets:Object.fromEntries(severities.map(s=>[s,source?.targetsHours?.[s]??''])),reason:''}}
-async function loadAll(){if(!props.tenantId)return;loading.value=true;error.value='';try{await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadCosts(costPage.value),loadSla()])}catch(e){error.value=e.message}finally{loading.value=false}}
+function savePending(v){v?sessionStorage.setItem(storageKey(),JSON.stringify(v)):sessionStorage.removeItem(storageKey());costPending.value=v}
+function restorePending(){
+  costPending.value=null
+  if(!access.value?.subjectId||!props.tenantId)return
+  try {
+    const raw=sessionStorage.getItem(storageKey())
+    if(!raw)return
+    const p=JSON.parse(raw)
+    if(p?.tenantId!==props.tenantId||typeof p.key!=='string'||!p.key||!p.body)throw new Error('原成本请求无法核对，请联系管理员，勿重复登记')
+    costPending.value=p
+  } catch(e) { error.value=safeBusinessMessage(e,'无法读取原成本请求，请先核对台账');access.value=null }
+}
+async function recheckDuty(duty,message){const previous=access.value?.subjectId;const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(previous)||!current.duties?.some(d=>['*',duty].includes(d)))throw new Error(message)}
+async function loadOverview(){
+  const id=props.tenantId,token=epoch,seq=++overviewSeq
+  if(!id)return
+  try{const d=await api.getOperationsOverview(id);if(current(id,token)&&seq===overviewSeq)overview.value=d}
+  catch(e){if(current(id,token)&&seq===overviewSeq){overview.value=null;error.value=safeBusinessMessage(e)}}
+}
+async function loadAfterSales(page=1){
+  const id=props.tenantId,token=epoch,seq=++afterSeq
+  if(!id)return
+  try{const d=await api.listAfterSales(id,{page,pageSize:20});if(!current(id,token)||seq!==afterSeq)return;afterSales.value=d.items||[];afterTotal.value=d.total||0;afterPage.value=page}
+  catch(e){if(current(id,token)&&seq===afterSeq){afterSales.value=[];afterTotal.value=0;error.value=safeBusinessMessage(e)}}
+}
+async function loadCosts(page=1){
+  const id=props.tenantId,token=epoch,seq=++costSeq
+  if(!id)return
+  try{
+    const d=await api.listServiceCosts(id,{page,pageSize:20})
+    if(!current(id,token)||seq!==costSeq)return
+    if(d.currencyConverted!==false)throw new Error('成本币种核对未通过，请重新读取台账')
+    costs.value=d.items||[];costTotal.value=d.total||0;costPage.value=page;costSummary.value=d.summaryByCurrency||{}
+  }catch(e){if(current(id,token)&&seq===costSeq){costs.value=[];costTotal.value=0;costSummary.value={};error.value=safeBusinessMessage(e)}}
+}
+async function loadSla(){
+  const id=props.tenantId,token=epoch,seq=++slaSeq
+  if(!id)return
+  try {
+    const d=await api.getSlaPolicy(id)
+    if(!current(id,token)||seq!==slaSeq)return
+    slaEditor.value=d
+    const source=d.tenantOverride?.enabled?d.tenantOverride?.policy:(d.effective?.configured?{version:d.effective.version,targetsHours:d.effective.targetsHours}:null)
+    slaForm.value={policyVersion:String(source?.version||''),targets:Object.fromEntries(severities.map(s=>[s,source?.targetsHours?.[s]??''])),reason:''}
+  }catch(e){if(current(id,token)&&seq===slaSeq){slaEditor.value=null;error.value=safeBusinessMessage(e)}}
+}
+async function loadAll(){const id=props.tenantId,token=epoch;if(!id)return;loading.value=true;error.value='';try{await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadCosts(costPage.value),loadSla()])}finally{if(current(id,token))loading.value=false}}
 function useAfterSales(){const row=afterSales.value.find(r=>r.linkId===costForm.value.afterSalesLink);if(!row)return;costForm.value.orderId=row.orderId;costForm.value.refundCaseId=row.refundCaseId;costForm.value.supportTicketId=row.supportTicketId}
-async function submitCost(){if(savingCost.value||!canManage.value)return;savingCost.value=true;error.value='';notice.value='';try{await recheckDuty('order.manage','平台身份或职责已变化，成本写操作已停止');let attempt=costPending.value;if(!attempt){const local=costForm.value.occurredAt;const date=new Date(local);if(!Number.isFinite(date.getTime()))throw new Error('发生时间无效');const body={costType:costForm.value.costType,amount:costForm.value.amount,currency:costForm.value.currency.toUpperCase(),occurredAt:date.toISOString(),orderId:costForm.value.orderId||null,refundCaseId:costForm.value.refundCaseId||null,supportTicketId:costForm.value.supportTicketId||null,externalRef:costForm.value.externalRef,note:costForm.value.note};attempt={tenantId:props.tenantId,key:newKey(),body};savePending(attempt)}await api.recordServiceCost(props.tenantId,attempt.body,attempt.key);savePending(null);costForm.value=blankCost();notice.value='实际服务成本已登记；不同币种仍分开汇总，未做换算';await Promise.all([loadCosts(1),loadOverview()])}catch(e){error.value=e.message||'登记结果不明，请重试原请求';if(isDefinitiveRejection(e))savePending(null)}finally{savingCost.value=false}}
-async function saveSla(){if(!slaReady.value)return;savingSla.value=true;error.value='';notice.value='';try{await recheckDuty('commercial.manage','平台身份或职责已变化，SLA政策写操作已停止');const body={expectedVersion:slaEditor.value?.tenantOverride?.rowVersion??0,policyVersion:slaForm.value.policyVersion,targetsHours:Object.fromEntries(severities.map(s=>[s,slaForm.value.targets[s]])),reason:slaForm.value.reason};slaEditor.value=await api.updateSlaPolicy(props.tenantId,body);notice.value='学校商业SLA覆盖已保存；P0–P3均来自本次明确输入，没有系统默认承诺';await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadSla()])}catch(e){error.value=e.message}finally{savingSla.value=false}}
-async function resetSla(){if(!slaEditor.value?.tenantOverride?.enabled||slaForm.value.reason.length<5)return;savingSla.value=true;error.value='';notice.value='';try{await recheckDuty('commercial.manage','平台身份或职责已变化，SLA政策写操作已停止');slaEditor.value=await api.resetSlaPolicy(props.tenantId,{expectedVersion:slaEditor.value.tenantOverride.rowVersion,reason:slaForm.value.reason});notice.value=slaEditor.value.effective?.configured?'学校SLA覆盖已停用，当前回落到平台明确默认政策':'学校SLA覆盖已停用；平台未配置默认，因此保持未评估';await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadSla()])}catch(e){error.value=e.message}finally{savingSla.value=false}}
-watch(()=>props.tenantId,()=>{overview.value=null;afterSales.value=[];costs.value=[];slaEditor.value=null;afterPage.value=1;costPage.value=1;costForm.value=blankCost();slaForm.value=blankSla();error.value='';notice.value='';restorePending();if(props.tenantId)loadAll()})
-onMounted(async()=>{access.value=await ensurePlatformAccessContext({force:true});restorePending();if(props.tenantId)await loadAll()})
+async function submitCost(){
+  if(savingCost.value||props.locked||!props.tenantId||!canManage.value)return
+  const id=props.tenantId,token=epoch,form={...costForm.value},saved=costPending.value
+  savingCost.value=true;error.value='';notice.value=''
+  try{
+    await recheckDuty('order.manage','平台身份或职责已变化，成本写操作已停止')
+    if(!current(id,token)||props.locked)return
+    let attempt=saved
+    if(!attempt){
+      const body={costType:form.costType,amount:form.amount,currency:form.currency.toUpperCase(),occurredAt:localInputToUtc(form.occurredAt),orderId:form.orderId||null,refundCaseId:form.refundCaseId||null,supportTicketId:form.supportTicketId||null,externalRef:form.externalRef,note:form.note}
+      attempt={tenantId:id,key:newKey(),body};savePending(attempt)
+    }
+    if(attempt.tenantId!==id)throw new Error('原请求不属于当前学校，请先核对台账')
+    const result=await api.recordServiceCost(id,attempt.body,attempt.key)
+    if(!current(id,token))return
+    if(!result?.costId||String(result.tenantId)!==id)throw new Error('未取得匹配的成本回执，请核对原请求；勿重复登记')
+    savePending(null);costForm.value=blankCost();notice.value='实际服务成本已登记；不同币种仍分开汇总，未做换算'
+    await Promise.all([loadCosts(1),loadOverview()])
+  }catch(e){if(current(id,token)){error.value=safeBusinessMessage(e,'登记结果不明，请重试原请求');if(isDefinitiveRejection(e))savePending(null)}}
+  finally{if(current(id,token))savingCost.value=false}
+}
+async function saveSla(){
+  if(!slaReady.value||!props.tenantId)return
+  const id=props.tenantId,token=epoch
+  const body={expectedVersion:slaEditor.value?.tenantOverride?.rowVersion??0,policyVersion:slaForm.value.policyVersion,targetsHours:Object.fromEntries(severities.map(s=>[s,slaForm.value.targets[s]])),reason:slaForm.value.reason}
+  savingSla.value=true;error.value='';notice.value=''
+  try{
+    await recheckDuty('commercial.manage','平台身份或职责已变化，服务政策写操作已停止')
+    if(!current(id,token)||props.locked)return
+    const result=await api.updateSlaPolicy(id,body)
+    if(!current(id,token))return
+    slaEditor.value=result;notice.value='学校服务目标已保存，各级目标均按本次填写内容执行'
+    await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadSla()])
+  }catch(e){if(current(id,token))error.value=safeBusinessMessage(e)}
+  finally{if(current(id,token))savingSla.value=false}
+}
+async function resetSla(){
+  if(savingSla.value||props.locked||!canCommercialManage.value||!props.tenantId||!slaEditor.value?.tenantOverride?.enabled||slaForm.value.reason.length<5)return
+  const id=props.tenantId,token=epoch,body={expectedVersion:slaEditor.value.tenantOverride.rowVersion,reason:slaForm.value.reason}
+  savingSla.value=true;error.value='';notice.value=''
+  try{
+    await recheckDuty('commercial.manage','平台身份或职责已变化，服务政策写操作已停止')
+    if(!current(id,token)||props.locked)return
+    const result=await api.resetSlaPolicy(id,body)
+    if(!current(id,token))return
+    slaEditor.value=result;notice.value=result.effective?.configured?'学校服务目标已恢复为平台明确的默认政策':'学校服务目标已停用；平台未配置默认，保持未评估'
+    await Promise.all([loadOverview(),loadAfterSales(afterPage.value),loadSla()])
+  }catch(e){if(current(id,token))error.value=safeBusinessMessage(e)}
+  finally{if(current(id,token))savingSla.value=false}
+}
+watch(()=>props.tenantId,()=>{
+  epoch++;overviewSeq++;afterSeq++;costSeq++;slaSeq++
+  overview.value=null;afterSales.value=[];costs.value=[];costSummary.value={};slaEditor.value=null
+  afterPage.value=1;costPage.value=1;afterTotal.value=0;costTotal.value=0;loading.value=false;savingCost.value=false;savingSla.value=false
+  costForm.value=blankCost();slaForm.value=blankSla();error.value='';notice.value='';restorePending()
+  if(props.tenantId)loadAll()
+},{flush:'sync'})
+onMounted(async()=>{
+  try{
+    const result=await ensurePlatformAccessContext({force:true})
+    if(disposed)return
+    access.value=result
+    if(!result){error.value='平台职责核验失败，售后操作已关闭';return}
+    restorePending()
+    if(access.value&&props.tenantId)await loadAll()
+  }catch(e){if(!disposed){access.value=null;error.value=safeBusinessMessage(e,'平台职责核验失败，请重新登录')}}
+})
+onBeforeUnmount(()=>{disposed=true;epoch++})
 </script>
 
 <style scoped>

@@ -73,12 +73,34 @@ async function loadCatalog(page=1){const seq=++catalogSeq;catalogLoading.value=t
 function chooseSchool(event){const next=event.target.value;if(attempt.value||((rows.value.length>0)&&!window.confirm('切换学校将清空未提交的销售草稿，确认继续？'))){event.target.value=props.tenantId;return}emit('update:tenantId',next)}
 async function loadContext(){const id=props.tenantId,seq=++contextSeq;context.value=null;contextLoading.value=!!id;if(!id)return;try{const data=await api.getSalesContext(id);if(seq===contextSeq&&id===props.tenantId)context.value=data}catch(e){if(seq===contextSeq)error.value=e.message}finally{if(seq===contextSeq)contextLoading.value=false}}
 function loadPending(){attempt.value=null;if(!props.tenantId||!access.value?.subjectId)return;try{attempt.value=restoreOrderAttempt(sessionStorage.getItem(storageKey()),props.tenantId)}catch(e){error.value=e.message;access.value=null}}
-watch(()=>props.tenantId,()=>{epoch++;orderSeq++;detailSeq++;ordersLoading.value=false;detailLoading.value=false;invalidateQuote();rows.value=[];remark.value='';orders.value=[];orderTotal.value=0;detail.value=null;receipt.value=null;error.value='';notice.value='';loadPending();loadContext();if(tab.value==='ledger')loadOrders(1)})
+watch(()=>props.tenantId,()=>{epoch++;orderSeq++;detailSeq++;sending.value=false;previewing.value=false;ordersLoading.value=false;detailLoading.value=false;invalidateQuote();rows.value=[];remark.value='';orders.value=[];orderTotal.value=0;detail.value=null;receipt.value=null;error.value='';notice.value='';loadPending();loadContext();if(tab.value==='ledger')loadOrders(1)},{flush:'sync'})
 function addSku(sku){if(rows.value.some(r=>r.moduleKey===sku.moduleKey))return;rows.value.push({moduleKey:sku.moduleKey,skuCode:sku.skuCode,skuRevision:sku.revision,skuContentHash:sku.contentHash,currency:sku.pricePolicy.currency,quantity:1,unitPrice:sku.pricePolicy.unitPrice,discountAmount:'0.00',startLocal:'',endLocal:''});invalidateQuote()}
 function removeLine(index){rows.value.splice(index,1);invalidateQuote()}
 function useRenewalBoundary(row){row.startLocal=renewalInputFromUtc(context.value.paidThrough[row.moduleKey]);invalidateQuote()}
 async function previewOrder(){error.value='';notice.value='';const startStamp=stamp(),seq=++previewSeq,token=epoch;previewing.value=true;quote.value=null;confirmed.value=false;try{const body={tenantId:props.tenantId,orderType:orderType.value,remark:remark.value,items:rows.value.map(r=>({skuCode:r.skuCode,skuRevision:r.skuRevision,skuContentHash:r.skuContentHash,quantity:r.quantity,unitPrice:r.unitPrice,discountAmount:r.discountAmount,startAt:localInputToUtc(r.startLocal),endAt:localInputToUtc(r.endLocal)}))};const result=await api.previewSalesOrder(body);if(token===epoch&&seq===previewSeq&&startStamp===stamp())quote.value=result}catch(e){if(token===epoch&&seq===previewSeq)error.value=e.message}finally{previewing.value=false}}
-async function submitOrder(){if(sending.value||!canOrder.value||(!attempt.value&&(!confirmed.value||!quote.value)))return;sending.value=true;error.value='';const token=epoch;try{const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(access.value?.subjectId)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，未发送订单；请先恢复原身份并核对台账');if(!attempt.value)attempt.value=newOrderAttempt(quote.value.order);sessionStorage.setItem(storageKey(),JSON.stringify(attempt.value));const result=await api.createSalesOrder(attempt.value.order,attempt.value.key);if(token!==epoch)return;if(!result?.orderNo||result.paymentRecorded!==false||result.rightsMaterialized!==false)throw new Error('未取得明确的未支付创建回执，请核对原请求');sessionStorage.removeItem(storageKey());attempt.value=null;receipt.value=result;rows.value=[];invalidateQuote();emit('order-created',result);await loadOrders(1)}catch(e){if(token!==epoch)return;error.value=e.message||'提交结果不明，请核对原请求';if(isDefinitiveRejection(e)){sessionStorage.removeItem(storageKey());attempt.value=null;invalidateQuote()}}finally{sending.value=false}}
+async function submitOrder(){
+  if(sending.value||props.locked||!props.tenantId||!canOrder.value||(!attempt.value&&(!confirmed.value||!quote.value)))return
+  const id=props.tenantId,token=epoch,subject=access.value?.subjectId,key=storageKey()
+  const saved=attempt.value,draft=quote.value?JSON.parse(JSON.stringify(quote.value.order)):null
+  sending.value=true;error.value=''
+  try{
+    const current=await ensurePlatformAccessContext({force:true})
+    if(token!==epoch||id!==props.tenantId||props.locked)return
+    if(!current||String(current.subjectId)!==String(subject)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，未发送订单；请先恢复原身份并核对台账')
+    const command=saved||newOrderAttempt(draft)
+    if(command.order.tenantId!==id)throw new Error('原订单不属于当前学校，请先核对台账')
+    sessionStorage.setItem(key,JSON.stringify(command))
+    attempt.value=command
+    const result=await api.createSalesOrder(command.order,command.key)
+    if(token!==epoch||id!==props.tenantId)return
+    if(!result?.orderNo||result.paymentRecorded!==false||result.rightsMaterialized!==false)throw new Error('未取得明确的未支付创建回执，请核对原请求')
+    sessionStorage.removeItem(key);attempt.value=null;receipt.value=result;rows.value=[];invalidateQuote();emit('order-created',result);await loadOrders(1)
+  }catch(e){
+    if(token!==epoch||id!==props.tenantId)return
+    error.value=e.message||'提交结果不明，请核对原请求'
+    if(isDefinitiveRejection(e)){sessionStorage.removeItem(key);attempt.value=null;invalidateQuote()}
+  }finally{if(token===epoch&&id===props.tenantId)sending.value=false}
+}
 async function selectTab(key){tab.value=key;if(key==='ledger')await loadOrders(1)}
 async function loadOrders(page=1){const id=props.tenantId,token=epoch,seq=++orderSeq;detailSeq++;detailLoading.value=false;orders.value=[];detail.value=null;ordersLoading.value=!!id;if(!id)return;try{const data=await api.listSalesOrders({tenantId:id,status:orderStatus.value,page,pageSize:20});if(token!==epoch||seq!==orderSeq)return;orders.value=data.items;orderTotal.value=data.total;orderPage.value=page}catch(e){if(token===epoch&&seq===orderSeq){orderTotal.value=0;error.value=e.message}}finally{if(seq===orderSeq)ordersLoading.value=false}}
 async function openOrder(order){const token=epoch,seq=++detailSeq;detail.value=null;detailLoading.value=true;try{const data=await api.getSalesOrder(props.tenantId,order.orderId);if(token===epoch&&seq===detailSeq)detail.value=data}catch(e){if(token===epoch&&seq===detailSeq)error.value=e.message}finally{if(seq===detailSeq)detailLoading.value=false}}

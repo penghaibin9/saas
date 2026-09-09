@@ -12,7 +12,7 @@
           <h3>{{ conclusion }}</h3>
           <p>单模块退订不会停用整所学校，也不会影响其他已购模块、共享账号与学生主档。</p>
         </div>
-        <button class="btn primary" :disabled="loading" @click="loadAll">刷新真实状态</button>
+        <button class="btn primary" :disabled="loading || busy" @click="loadAll">刷新真实状态</button>
       </section>
 
       <ModuleSalesWorkspace
@@ -300,7 +300,7 @@ export default {
     items: [], selectedTenantId: '', portfolio: null, selectedModuleKey: '', preview: null, job: null,
     loading: false, busy: false, portfolioSeq: 0, moduleSeq: 0, message: '', messageType: 'success', cancelReason: '',
     deliveryForm: { acceptanceRef: '', reason: '' },
-    offboardForm: { reason: '', retentionDays: 30, retentionPolicyVersion: 'SCHOOL-CONTRACT', confirmed: false },
+    offboardForm: { reason: '', retentionDays: '', retentionPolicyVersion: '', confirmed: false },
     exportForm: { acceptanceRef: '' }
   }),
   computed: {
@@ -324,7 +324,9 @@ export default {
   created () { this.loadAll() },
   methods: {
     changeSalesSchool (id) {
+      if (this.busy) return
       this.selectedTenantId = id; this.portfolio = null; this.preview = null; this.job = null; this.selectedModuleKey = ''; this.cancelReason = ''
+      this.offboardForm = { reason: '', retentionDays: '', retentionPolicyVersion: '', confirmed: false }
       this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }; this.loadPortfolio()
     },
     moduleName (key) { return MODULE_LABEL[key] || key },
@@ -362,6 +364,7 @@ export default {
     },
     errorText (error) { return error?.message || error?.response?.data?.message || '操作失败，请刷新后重试' },
     async loadAll () {
+      if (this.loading || this.busy) return
       this.loading = true
       try {
         const res = await platformControlApi.listReconciliations(); this.items = res?.data?.items || res?.data || []
@@ -383,7 +386,13 @@ export default {
         if (id === this.selectedTenantId && seq === this.portfolioSeq) { this.portfolio = null; this.notify(this.errorText(error), 'error') }
       } finally { if (seq === this.portfolioSeq) this.busy = false }
     },
-    async selectModule (key) { this.selectedModuleKey = key; this.preview = null; this.job = null; await this.afterModuleRefresh() },
+    async selectModule (key) {
+      if (this.busy || key === this.selectedModuleKey) return
+      this.selectedModuleKey = key; this.preview = null; this.job = null; this.cancelReason = ''
+      this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }
+      this.offboardForm = { reason: '', retentionDays: '', retentionPolicyVersion: '', confirmed: false }
+      await this.afterModuleRefresh()
+    },
     async afterModuleRefresh () {
       const module = this.selectedModule; const id = this.selectedTenantId; const seq = ++this.moduleSeq
       this.job = null; if (!module?.offboardingJobId) return
@@ -420,6 +429,9 @@ export default {
     },
     async requestOffboarding () {
       const module = this.selectedModule; if (!module || !this.preview?.canRequest) return
+      if (!this.offboardForm.confirmed || !Number.isInteger(this.offboardForm.retentionDays) || this.offboardForm.retentionDays < 1 || this.offboardForm.retentionDays > 3650 || !this.offboardForm.retentionPolicyVersion.trim()) {
+        this.notify('请按已确认合同填写保留天数、政策版本，并勾选冻结确认；系统不预设保留政策', 'warning'); return
+      }
       await this.run(async () => {
         this.job = await moduleCommerceApi.requestOffboarding(this.selectedTenantId, module.moduleKey, { expectedLifecycleVersion: this.preview.lifecycleVersion, reason: this.offboardForm.reason, retentionDays: this.offboardForm.retentionDays, retentionPolicyVersion: this.offboardForm.retentionPolicyVersion })
         this.notify('目标模块 generation 已冻结；其他模块和整校状态未改变'); await this.loadPortfolio()

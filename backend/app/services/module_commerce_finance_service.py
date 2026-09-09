@@ -54,7 +54,7 @@ def _actor_id(value) -> int | None:
     try:
         if isinstance(value, bool):
             return None
-        result = int(value)
+        result = int(str(value).removeprefix("db-"))
         return result if result > 0 else None
     except (TypeError, ValueError, OverflowError):
         return None

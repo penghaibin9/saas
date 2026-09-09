@@ -8,7 +8,7 @@ on:
       - backend/tests/test_module_commerce_*.py
       - backend/tests/test_commercial_catalog_contract.py
       - frontend/src/modules/platform/**
-      - frontend/tests/module-commerce-sales.test.mjs
+      - frontend/tests/module-commerce-*.test.mjs
       - frontend/package.json
       - frontend/package-lock.json
       - backend/app/**
@@ -258,6 +258,7 @@ jobs:
           python -m alembic current | tee "$OUT/fresh-current.log"
           pytest tests/test_module_commerce_m12_runtime.py tests/test_module_commerce_order_replay_runtime.py \
             tests/test_module_commerce_sales_runtime.py \
+            tests/test_module_commerce_actor_identity.py \
             tests/test_rbac_module_access_snapshot.py \
             tests/test_system_admin_governance_http.py::test_overview_board_http \
             tests/test_system_admin_governance_http.py::test_overview_board_authority_outage_remains_503 \
@@ -340,7 +341,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/module-sales-workspace"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           git rev-parse HEAD > "$RUNNER_TEMP/module-sales-workspace/revision.txt"
-          node --test tests/module-commerce-sales.test.mjs 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/tests.log"
+          node --test tests/module-commerce-*.test.mjs 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/tests.log"
           npm run build 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/build.log"
       - uses: actions/upload-artifact@v4
         if: always()

@@ -55,7 +55,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { moduleCommerceApi as api } from '@/modules/platform/api/moduleCommerce.api'
 import { ensurePlatformAccessContext } from '@/security/platformAccessGate'
-import { isDefinitiveRejection } from '../../lib/moduleCommerceSales.mjs'
+import { isDefinitiveRejection, utcToLocalInput } from '../../lib/moduleCommerceSales.mjs'
+import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 import ModuleOperationsWorkspace from './ModuleOperationsWorkspace.vue'
 
 const props=defineProps({tenantId:{type:String,default:''},locked:Boolean})
@@ -66,47 +67,93 @@ const refunds=ref([]),refundPage=ref(1),refundTotal=ref(0),refundsLoading=ref(fa
 const invoices=ref([]),invoicePage=ref(1),invoiceTotal=ref(0),invoicesLoading=ref(false),invoiceStatusFilter=ref(''),selectedInvoice=ref(null)
 const refundForm=ref({orderId:'',amount:'',currency:'',reason:''}),invoiceForm=ref({orderId:'',amount:'',currency:'',invoiceTitle:''})
 const refundAction=ref({note:'',rejectReason:'',settlementRef:''}),invoiceAction=ref({externalRef:'',voidReason:''}),afterSalesForm=ref({severity:'',reason:''})
-let epoch=0
+let epoch=0, orderSeq=0, refundSeq=0, invoiceSeq=0, disposed=false
+const current=(id,token)=>id===props.tenantId&&token===epoch
 const canManage=computed(()=>!!access.value?.duties?.some(d=>['*','order.manage'].includes(d)))
 const moneyOk=v=>/^\d+(?:\.\d{1,2})?$/.test(String(v||''))&&Number(v)>0
 const currencyOk=v=>/^[A-Za-z]{3}$/.test(String(v||''))
 const refundReady=computed(()=>canManage.value&&!sending.value&&!props.locked&&!pendingCommand.value&&/^\d+$/.test(refundForm.value.orderId)&&moneyOk(refundForm.value.amount)&&currencyOk(refundForm.value.currency)&&refundForm.value.reason.length>=10)
 const invoiceReady=computed(()=>canManage.value&&!sending.value&&!props.locked&&!pendingCommand.value&&/^\d+$/.test(invoiceForm.value.orderId)&&moneyOk(invoiceForm.value.amount)&&currencyOk(invoiceForm.value.currency)&&invoiceForm.value.invoiceTitle.length>=2)
-function showTime(v){return v?String(v).replace('T',' ').slice(0,19):'—'}
-function orderStatus(v){return({paid:'已支付',unpaid:'未支付',cancelled:'已取消',refunded:'历史已退款'})[v]||v||'—'}
-function refundStatus(v){return({REQUESTED:'待审批',APPROVED:'已批准待结算',REJECTED:'已驳回',SETTLED:'已结算'})[v]||v||'—'}
-function invoiceStatus(v){return({REQUESTED:'待开具',ISSUED:'已开具',VOIDED:'已作废'})[v]||v||'—'}
+function showTime(v){return v?utcToLocalInput(v).replace('T',' '):'—'}
+function orderStatus(v){return safeEnumLabel({value:v,dictionary:{paid:'已支付',unpaid:'未支付',cancelled:'已取消',refunded:'历史已退款'}})}
+function refundStatus(v){return safeEnumLabel({value:v,dictionary:{REQUESTED:'待审批',APPROVED:'已批准待结算',REJECTED:'已驳回',SETTLED:'已结算'}})}
+function invoiceStatus(v){return safeEnumLabel({value:v,dictionary:{REQUESTED:'待开具',ISSUED:'已开具',VOIDED:'已作废'}})}
 function amountText(row,value){return`${row?.orderCurrency||'币种待核'} ${value??'0.00'}`}
 function currencyStateLabel(row){if(row.currencyState==='KNOWN')return`订单币种 ${row.orderCurrency}`;if(row.currencyState==='CONFLICT')return'分项币种冲突：已禁止财务办理';return'历史订单未冻结币种：办理前需人工核对'}
 function newKey(kind){const suffix=globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;return`m8-${kind}-${suffix}`.slice(0,160)}
 function storageKey(){return`gx_module_finance_pending_v1:${access.value?.subjectId||''}:${props.tenantId}`}
-function savePending(v){pendingCommand.value=v;try{v?sessionStorage.setItem(storageKey(),JSON.stringify(v)):sessionStorage.removeItem(storageKey())}catch{/* memory fallback */}}
-function loadPending(){pendingCommand.value=null;if(!props.tenantId||!access.value?.subjectId)return;try{const raw=sessionStorage.getItem(storageKey());if(!raw)return;const p=JSON.parse(raw);if(p?.tenantId===props.tenantId&&['refund','invoice'].includes(p.kind)&&p.key&&p.body)pendingCommand.value=p}catch{savePending(null)}}
-async function recheckAccess(){const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(access.value?.subjectId)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，财务写操作已停止；请刷新身份后重试')}
+function savePending(v){v?sessionStorage.setItem(storageKey(),JSON.stringify(v)):sessionStorage.removeItem(storageKey());pendingCommand.value=v}
+function loadPending(){
+  pendingCommand.value=null
+  if(!props.tenantId||!access.value?.subjectId)return
+  try{
+    const raw=sessionStorage.getItem(storageKey())
+    if(!raw)return
+    const p=JSON.parse(raw)
+    if(p?.tenantId!==props.tenantId||!['refund','invoice'].includes(p.kind)||typeof p.key!=='string'||!p.key||!p.body)throw new Error('原财务请求无法核对，请联系管理员，勿重复申请')
+    pendingCommand.value=p
+  }catch(e){error.value=safeBusinessMessage(e,'无法读取原财务请求，请先核对台账');access.value=null}
+}
+async function recheckAccess(){const previous=access.value?.subjectId;const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(previous)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，财务写操作已停止；请刷新身份后重试')}
 function clearMessage(){error.value='';notice.value=''}
-async function loadOrders(page=1){const id=props.tenantId,token=epoch;orders.value=[];orderTotal.value=0;loading.value=!!id;if(!id)return;try{const d=await api.listFinanceOrders(id,{page,pageSize:20});if(token!==epoch||id!==props.tenantId)return;orders.value=d.items||[];orderTotal.value=d.total||0;orderPage.value=page}catch(e){if(token===epoch)error.value=e.message}finally{if(token===epoch)loading.value=false}}
-async function loadRefunds(page=1){const id=props.tenantId,token=epoch;refundsLoading.value=!!id;if(!id)return;try{const d=await api.listRefunds(id,{status:refundStatusFilter.value,page,pageSize:20});if(token!==epoch||id!==props.tenantId)return;refunds.value=d.items||[];refundTotal.value=d.total||0;refundPage.value=page;selectedRefund.value=selectedRefund.value?refunds.value.find(r=>r.caseId===selectedRefund.value.caseId)||null:null}catch(e){if(token===epoch)error.value=e.message}finally{if(token===epoch)refundsLoading.value=false}}
-async function loadInvoices(page=1){const id=props.tenantId,token=epoch;invoicesLoading.value=!!id;if(!id)return;try{const d=await api.listInvoices(id,{status:invoiceStatusFilter.value,page,pageSize:20});if(token!==epoch||id!==props.tenantId)return;invoices.value=d.items||[];invoiceTotal.value=d.total||0;invoicePage.value=page;selectedInvoice.value=selectedInvoice.value?invoices.value.find(r=>r.invoiceCaseId===selectedInvoice.value.invoiceCaseId)||null:null}catch(e){if(token===epoch)error.value=e.message}finally{if(token===epoch)invoicesLoading.value=false}}
+async function loadOrders(page=1){const id=props.tenantId,token=epoch,seq=++orderSeq;orders.value=[];orderTotal.value=0;loading.value=!!id;if(!id)return;try{const d=await api.listFinanceOrders(id,{page,pageSize:20});if(!current(id,token)||seq!==orderSeq)return;orders.value=d.items||[];orderTotal.value=d.total||0;orderPage.value=page}catch(e){if(current(id,token)&&seq===orderSeq)error.value=safeBusinessMessage(e)}finally{if(current(id,token)&&seq===orderSeq)loading.value=false}}
+async function loadRefunds(page=1){const id=props.tenantId,token=epoch,seq=++refundSeq;refundsLoading.value=!!id;if(!id)return;try{const d=await api.listRefunds(id,{status:refundStatusFilter.value,page,pageSize:20});if(!current(id,token)||seq!==refundSeq)return;refunds.value=d.items||[];refundTotal.value=d.total||0;refundPage.value=page;selectedRefund.value=selectedRefund.value?refunds.value.find(r=>r.caseId===selectedRefund.value.caseId)||null:null}catch(e){if(current(id,token)&&seq===refundSeq)error.value=safeBusinessMessage(e)}finally{if(current(id,token)&&seq===refundSeq)refundsLoading.value=false}}
+async function loadInvoices(page=1){const id=props.tenantId,token=epoch,seq=++invoiceSeq;invoicesLoading.value=!!id;if(!id)return;try{const d=await api.listInvoices(id,{status:invoiceStatusFilter.value,page,pageSize:20});if(!current(id,token)||seq!==invoiceSeq)return;invoices.value=d.items||[];invoiceTotal.value=d.total||0;invoicePage.value=page;selectedInvoice.value=selectedInvoice.value?invoices.value.find(r=>r.invoiceCaseId===selectedInvoice.value.invoiceCaseId)||null:null}catch(e){if(current(id,token)&&seq===invoiceSeq)error.value=safeBusinessMessage(e)}finally{if(current(id,token)&&seq===invoiceSeq)invoicesLoading.value=false}}
 async function reloadCurrent(){clearMessage();if(tab.value==='overview')await loadOrders(orderPage.value);else if(tab.value==='refunds')await loadRefunds(refundPage.value);else await loadInvoices(invoicePage.value)}
 async function selectTab(key){tab.value=key;clearMessage();if(key==='overview')await loadOrders(1);else if(key==='refunds')await loadRefunds(1);else await loadInvoices(1)}
 function startRefund(row){if(!row.financeActionAllowed)return;refundForm.value={orderId:String(row.orderId),amount:row.availableFinanceCapacity,currency:row.orderCurrency||'',reason:''};tab.value='refunds';loadRefunds(1)}
 function startInvoice(row){if(!row.financeActionAllowed)return;invoiceForm.value={orderId:String(row.orderId),amount:row.availableFinanceCapacity,currency:row.orderCurrency||'',invoiceTitle:''};tab.value='invoices';loadInvoices(1)}
 function selectRefund(row){selectedRefund.value={...row};refundAction.value={note:'',rejectReason:'',settlementRef:''};afterSalesForm.value={severity:'',reason:''}}
 function selectInvoice(row){selectedInvoice.value={...row};invoiceAction.value={externalRef:'',voidReason:''}}
-async function submitRequest(kind,body){if(sending.value||!canManage.value)return;sending.value=true;clearMessage();const token=epoch;try{await recheckAccess();let attempt=pendingCommand.value;if(!attempt){attempt={tenantId:props.tenantId,kind,key:newKey(kind),body:{...body}};savePending(attempt)}const result=kind==='refund'?await api.requestRefund(props.tenantId,attempt.body,attempt.key):await api.requestInvoice(props.tenantId,attempt.body,attempt.key);if(token!==epoch)return;savePending(null);notice.value=kind==='refund'?'退款申请已登记；系统未执行资金退款，也未改变模块授权':'发票申请已登记；系统未调用税控或第三方开票服务';if(kind==='refund'){refundForm.value={orderId:'',amount:'',currency:'',reason:''};await Promise.all([loadRefunds(1),loadOrders(1)])}else{invoiceForm.value={orderId:'',amount:'',currency:'',invoiceTitle:''};await Promise.all([loadInvoices(1),loadOrders(1)])}return result}catch(e){if(token!==epoch)return;error.value=e.message||'请求结果不明，请重试原请求';if(isDefinitiveRejection(e))savePending(null)}finally{sending.value=false}}
+async function submitRequest(kind,body){
+  if(sending.value||props.locked||!props.tenantId||!canManage.value)return
+  const id=props.tenantId,token=epoch,snapshot={...body}
+  sending.value=true;clearMessage()
+  try{
+    await recheckAccess()
+    if(!current(id,token)||props.locked)return
+    let attempt=pendingCommand.value
+    if(!attempt){attempt={tenantId:id,kind,key:newKey(kind),body:snapshot};savePending(attempt)}
+    if(attempt.tenantId!==id||attempt.kind!==kind)throw new Error('原请求与当前办理事项不一致，请先核对台账')
+    const result=kind==='refund'?await api.requestRefund(id,attempt.body,attempt.key):await api.requestInvoice(id,attempt.body,attempt.key)
+    if(!current(id,token))return
+    if(!result?.[kind==='refund'?'caseId':'invoiceCaseId']||String(result.tenantId)!==id||String(result.orderId)!==String(attempt.body.orderId))throw new Error('未取得匹配的财务回执，请核对原请求；勿重复申请')
+    savePending(null);notice.value=kind==='refund'?'退款申请已登记；系统未执行资金退款，也未改变模块授权':'发票申请已登记；系统未调用税控或第三方开票服务'
+    if(kind==='refund'){refundForm.value={orderId:'',amount:'',currency:'',reason:''};await Promise.all([loadRefunds(1),loadOrders(1)])}
+    else{invoiceForm.value={orderId:'',amount:'',currency:'',invoiceTitle:''};await Promise.all([loadInvoices(1),loadOrders(1)])}
+    if(current(id,token))return result
+  }catch(e){if(current(id,token)){error.value=safeBusinessMessage(e,'请求结果不明，请重试原请求');if(isDefinitiveRejection(e))savePending(null)}}
+  finally{if(current(id,token))sending.value=false}
+}
 async function submitRefund(){if(refundReady.value)await submitRequest('refund',{orderId:refundForm.value.orderId,amount:refundForm.value.amount,currency:refundForm.value.currency.toUpperCase(),reason:refundForm.value.reason})}
 async function submitInvoice(){if(invoiceReady.value)await submitRequest('invoice',{orderId:invoiceForm.value.orderId,amount:invoiceForm.value.amount,currency:invoiceForm.value.currency.toUpperCase(),invoiceTitle:invoiceForm.value.invoiceTitle})}
 async function retryPending(){if(pendingCommand.value)await submitRequest(pendingCommand.value.kind,pendingCommand.value.body)}
-async function mutate(call,text,reload){if(sending.value||!canManage.value)return;sending.value=true;clearMessage();const token=epoch;try{await recheckAccess();const result=await call();if(token!==epoch)return;notice.value=text;await Promise.all([reload(),loadOrders(orderPage.value)]);return result}catch(e){if(token===epoch)error.value=e.message}finally{sending.value=false}}
-async function approveSelectedRefund(){const row=selectedRefund.value;if(!row)return;const r=await mutate(()=>api.approveRefund(props.tenantId,row.caseId,{expectedVersion:row.version,note:refundAction.value.note}),'退款额度已批准；仍未执行外部退款',()=>loadRefunds(refundPage.value));if(r?.entitlementImpact?.followUpRequired)notice.value+='；该订单仍有有效模块授权来源，退款结算后还需人工办理售后授权处置'}
-async function rejectSelectedRefund(){const row=selectedRefund.value;if(row)await mutate(()=>api.rejectRefund(props.tenantId,row.caseId,{expectedVersion:row.version,reason:refundAction.value.rejectReason}),'退款申请已驳回',()=>loadRefunds(refundPage.value))}
-async function settleSelectedRefund(){const row=selectedRefund.value;if(!row)return;const r=await mutate(()=>api.settleRefund(props.tenantId,row.caseId,{expectedVersion:row.version,settlementRef:refundAction.value.settlementRef}),'外部退款凭据已登记；订单支付真值未自动修改',()=>loadRefunds(refundPage.value));if(r?.entitlementImpact?.followUpRequired)notice.value+='；仍存在有效模块来源，必须继续人工处理售后授权，不得把退款等同于停权'}
-async function createRefundAfterSales(){const row=selectedRefund.value;if(!row||row.status!=='SETTLED')return;const r=await mutate(()=>api.createAfterSalesTicket(props.tenantId,row.caseId,{severity:afterSalesForm.value.severity,reason:afterSalesForm.value.reason}),'退款后授权复核已交给现有客户成功工单；模块授权未自动修改',()=>loadRefunds(refundPage.value));if(r?.followUpRequired===false)notice.value='当前订单没有有效模块授权来源，无需生成售后授权复核工单';else if(r?.supportTicketId)notice.value+=`；工单 #${r.supportTicketId}`;opsEpoch.value++}
-async function issueSelectedInvoice(){const row=selectedInvoice.value;if(row)await mutate(()=>api.issueInvoice(props.tenantId,row.invoiceCaseId,{expectedVersion:row.version,externalInvoiceRef:invoiceAction.value.externalRef}),'外部发票凭据已登记；系统未执行开票动作',()=>loadInvoices(invoicePage.value))}
-async function voidSelectedInvoice(){const row=selectedInvoice.value;if(row)await mutate(()=>api.voidInvoice(props.tenantId,row.invoiceCaseId,{expectedVersion:row.version,reason:invoiceAction.value.voidReason}),'外部发票作废事实已登记',()=>loadInvoices(invoicePage.value))}
-watch(()=>props.tenantId,()=>{epoch++;opsEpoch.value++;orders.value=[];refunds.value=[];invoices.value=[];selectedRefund.value=null;selectedInvoice.value=null;refundForm.value={orderId:'',amount:'',currency:'',reason:''};invoiceForm.value={orderId:'',amount:'',currency:'',invoiceTitle:''};afterSalesForm.value={severity:'',reason:''};clearMessage();loadPending();if(props.tenantId)loadOrders(1)})
-onMounted(async()=>{access.value=await ensurePlatformAccessContext({force:true});if(!access.value)error.value='平台职责核验失败，商业财务写操作已关闭';loadPending();if(props.tenantId)await loadOrders(1)})
-onBeforeUnmount(()=>{epoch++})
+async function mutate(call,text,reload){
+  if(sending.value||props.locked||!props.tenantId||!canManage.value)return
+  const id=props.tenantId,token=epoch
+  sending.value=true;clearMessage()
+  try{await recheckAccess();if(!current(id,token)||props.locked)return;const result=await call();if(!current(id,token))return;notice.value=text;await Promise.all([reload(),loadOrders(orderPage.value)]);if(current(id,token))return result}
+  catch(e){if(current(id,token))error.value=safeBusinessMessage(e)}
+  finally{if(current(id,token))sending.value=false}
+}
+async function approveSelectedRefund(){const id=props.tenantId,refund={...refundAction.value};const row=selectedRefund.value;if(!row)return;const r=await mutate(()=>api.approveRefund(id,row.caseId,{expectedVersion:row.version,note:refund.note}),'退款额度已批准；仍未执行外部退款',()=>loadRefunds(refundPage.value));if(r?.entitlementImpact?.followUpRequired)notice.value+='；该订单仍有有效模块授权来源，退款结算后还需人工办理售后授权处置'}
+async function rejectSelectedRefund(){const id=props.tenantId,refund={...refundAction.value};const row=selectedRefund.value;if(row)await mutate(()=>api.rejectRefund(id,row.caseId,{expectedVersion:row.version,reason:refund.rejectReason}),'退款申请已驳回',()=>loadRefunds(refundPage.value))}
+async function settleSelectedRefund(){const id=props.tenantId,refund={...refundAction.value};const row=selectedRefund.value;if(!row)return;const r=await mutate(()=>api.settleRefund(id,row.caseId,{expectedVersion:row.version,settlementRef:refund.settlementRef}),'外部退款凭据已登记；订单支付真值未自动修改',()=>loadRefunds(refundPage.value));if(r?.entitlementImpact?.followUpRequired)notice.value+='；仍存在有效模块来源，必须继续人工处理售后授权，不得把退款等同于停权'}
+async function createRefundAfterSales(){const id=props.tenantId,afterSales={...afterSalesForm.value};const row=selectedRefund.value;if(!row||row.status!=='SETTLED')return;const r=await mutate(()=>api.createAfterSalesTicket(id,row.caseId,{severity:afterSales.severity,reason:afterSales.reason}),'退款后授权复核已交给现有客户成功工单；模块授权未自动修改',()=>loadRefunds(refundPage.value));if(r?.followUpRequired===false)notice.value='当前订单没有有效模块授权来源，无需生成售后授权复核工单';else if(r?.supportTicketId)notice.value+=`；工单 #${r.supportTicketId}`;if(r)opsEpoch.value++}
+async function issueSelectedInvoice(){const id=props.tenantId,invoice={...invoiceAction.value};const row=selectedInvoice.value;if(row)await mutate(()=>api.issueInvoice(id,row.invoiceCaseId,{expectedVersion:row.version,externalInvoiceRef:invoice.externalRef}),'外部发票凭据已登记；系统未执行开票动作',()=>loadInvoices(invoicePage.value))}
+async function voidSelectedInvoice(){const id=props.tenantId,invoice={...invoiceAction.value};const row=selectedInvoice.value;if(row)await mutate(()=>api.voidInvoice(id,row.invoiceCaseId,{expectedVersion:row.version,reason:invoice.voidReason}),'外部发票作废事实已登记',()=>loadInvoices(invoicePage.value))}
+watch(()=>props.tenantId,()=>{epoch++;orderSeq++;refundSeq++;invoiceSeq++;opsEpoch.value++;sending.value=false;loading.value=false;refundsLoading.value=false;invoicesLoading.value=false;orderTotal.value=0;refundTotal.value=0;invoiceTotal.value=0;orderPage.value=1;refundPage.value=1;invoicePage.value=1;refundAction.value={note:'',rejectReason:'',settlementRef:''};invoiceAction.value={externalRef:'',voidReason:''};orders.value=[];refunds.value=[];invoices.value=[];selectedRefund.value=null;selectedInvoice.value=null;refundForm.value={orderId:'',amount:'',currency:'',reason:''};invoiceForm.value={orderId:'',amount:'',currency:'',invoiceTitle:''};afterSalesForm.value={severity:'',reason:''};clearMessage();loadPending();if(props.tenantId){if(tab.value==='overview')loadOrders(1);else if(tab.value==='refunds')loadRefunds(1);else loadInvoices(1)}},{flush:'sync'})
+onMounted(async()=>{
+  try{
+    const result=await ensurePlatformAccessContext({force:true})
+    if(disposed)return
+    access.value=result
+    if(!result){error.value='平台职责核验失败，商业财务写操作已关闭';return}
+    loadPending()
+    if(access.value&&props.tenantId)await loadOrders(1)
+  }catch(e){if(!disposed){access.value=null;error.value=safeBusinessMessage(e,'平台职责核验失败，请重新登录')}}
+})
+onBeforeUnmount(()=>{disposed=true;epoch++})
 </script>
 
 <style scoped>

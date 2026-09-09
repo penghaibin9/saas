@@ -79,7 +79,7 @@ def get_sku_snapshot(sku_code: str, revision: int, *, published_only: bool = Tru
 _MAX_PUBLISH_ATTEMPTS = 4
 
 
-def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> dict:
+def publish_sku(payload: dict, *, reason: str, actor_id: int | str | None = None) -> dict:
     """Publish atomically; retry only a confirmed, fully rolled-back deadlock.
 
     Never retry a lost connection/unknown commit result, a business conflict or
@@ -104,7 +104,7 @@ def publish_sku(payload: dict, *, reason: str, actor_id: int | None = None) -> d
     raise AssertionError("unreachable publication retry state")
 
 
-def _publish_sku_once(payload: dict, *, reason: str, actor_id: int | None = None) -> dict:
+def _publish_sku_once(payload: dict, *, reason: str, actor_id: int | str | None = None) -> dict:
     _require_db()
     from sqlalchemy import select
     from app.models import CommercialSkuVersion
@@ -113,6 +113,11 @@ def _publish_sku_once(payload: dict, *, reason: str, actor_id: int | None = None
     reason_text = str(reason or "").strip()
     if len(reason_text) < 5:
         raise AppException("VALIDATION_ERROR", "商品发布原因至少5个字符", http_status=422)
+    # Authenticated database subjects use db-<id>; CommonMixin stores BIGINT.
+    raw_actor = str(actor_id).removeprefix("db-") if actor_id is not None else ""
+    if raw_actor and (not raw_actor.isascii() or not raw_actor.isdigit() or int(raw_actor) > 9223372036854775807):
+        raise AppException("VALIDATION_ERROR", "商品发布操作人标识无效", http_status=422)
+    database_actor_id = int(raw_actor) if raw_actor else None
     db = get_sessionmaker()()
     try:
         def resolve_component(code: str, revision: int) -> Snapshot:
@@ -158,8 +163,8 @@ def _publish_sku_once(payload: dict, *, reason: str, actor_id: int | None = None
             lifecycle_policy_version=data["lifecyclePolicyVersion"],
             publish_status="PUBLISHED",
             remark=reason_text,
-            created_by=actor_id,
-            updated_by=actor_id,
+            created_by=database_actor_id,
+            updated_by=database_actor_id,
         )
         db.add(row)
         try:

@@ -50,7 +50,7 @@ test('workspace uses actual APIs, authenticated duties and no implicit paid acti
   assert.ok(source.includes('ensurePlatformAccessContext({force:true})'))
   assert.ok(source.includes('id===props.tenantId'))
   assert.ok(source.indexOf('sessionStorage.setItem(storageKey()') < source.indexOf('await api.createSalesOrder'))
-  assert.ok(source.includes('attempt.value.order,attempt.value.key'))
+  assert.ok(source.includes('api.createSalesOrder(command.order,command.key)'))
   assert.ok(!source.includes("'mark-paid'"))
   const parent=fs.readFileSync(fileURLToPath(new URL('../src/modules/platform/views/control/PlatformCommercialControlView.vue',import.meta.url)),'utf8')
   assert.ok(parent.includes('<ModuleSalesWorkspace'))

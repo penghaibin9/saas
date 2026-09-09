@@ -132,8 +132,8 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
             end_at=max(ends),
             remark=remark,
             version=1,
-            created_by=int(actor_id) if str(actor_id).isdigit() else None,
-            updated_by=int(actor_id) if str(actor_id).isdigit() else None,
+            created_by=int(str(actor_id).removeprefix("db-")) if str(actor_id).removeprefix("db-").isdigit() else None,
+            updated_by=int(str(actor_id).removeprefix("db-")) if str(actor_id).removeprefix("db-").isdigit() else None,
         )
         db.add(order)
         db.flush()
