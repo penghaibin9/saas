@@ -35,8 +35,8 @@ def finance_orders(
     pageSize: int = Query(20, ge=1, le=100),
     user=Depends(require_platform_capability("commercial.view")),
 ):
-    from app.services import module_commerce_finance_service as finance
-    return success(finance.list_finance_orders(int(tenant_id), page=page, page_size=pageSize))
+    from app.services import module_commerce_finance_projection_service as projection
+    return success(projection.list_finance_orders(int(tenant_id), page=page, page_size=pageSize))
 
 
 @router.get("/commercial/tenants/{tenant_id}/refunds", summary="退款申请与外部结算台账")
