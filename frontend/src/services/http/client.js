@@ -521,7 +521,7 @@ export async function logoutRemote() {
   clearAuthSession()
 }
 
-export async function requestUpload(path, file, fieldName = 'file') {
+export async function requestUpload(path, file, fieldName = 'file', { timeoutMs = 15000 } = {}) {
   assertNoRoleSwitchTransition()
   await ensureToken()
   assertNoRoleSwitchTransition()
@@ -530,7 +530,8 @@ export async function requestUpload(path, file, fieldName = 'file') {
   const fd = new FormData()
   fd.append(fieldName, file)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  const uploadTimeout = Math.min(120000, Math.max(15000, Number(timeoutMs) || 15000))
+  const timer = setTimeout(() => controller.abort(), uploadTimeout)
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       method: 'POST',
