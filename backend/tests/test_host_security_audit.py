@@ -54,6 +54,14 @@ class HostAuditFocusedContracts(unittest.TestCase):
         self.assertEqual(result["listener.public.3306"], host_security.FAIL)
         self.assertEqual(result["listener.sensitive.6379"], host_security.PASS)
 
+    def test_specific_non_loopback_unapproved_listener_is_rejected(self):
+        result = statuses(host_security.evaluate_listeners([("10.20.30.40", 9000)], 22, set()))
+        self.assertEqual(result["listener.public.9000"], host_security.FAIL)
+
+    def test_specific_non_loopback_listener_needs_explicit_exception(self):
+        findings = host_security.evaluate_listeners([("10.20.30.40", 9000)], 22, {9000})
+        self.assertFalse(any(item.status == host_security.FAIL for item in findings))
+
     def test_ufw_requires_source_restricted_ssh_and_no_sensitive_allows(self):
         secure = """
 Status: active
@@ -77,6 +85,18 @@ Default: deny (incoming), allow (outgoing), disabled (routed)
 """
         result = statuses(host_security.evaluate_ufw(text, 22))
         self.assertEqual(result["firewall.ssh_rule"], host_security.FAIL)
+
+    def test_ufw_range_covering_sensitive_port_is_rejected(self):
+        text = """
+Status: active
+Default: deny (incoming), allow (outgoing), disabled (routed)
+22/tcp ALLOW IN 203.0.113.10
+3000:7000/tcp ALLOW IN Anywhere
+"""
+        result = statuses(host_security.evaluate_ufw(text, 22))
+        self.assertEqual(result["firewall.sensitive.3306"], host_security.FAIL)
+        self.assertEqual(result["firewall.sensitive.3310"], host_security.FAIL)
+        self.assertEqual(result["firewall.sensitive.6379"], host_security.FAIL)
 
     def test_nginx_contract_requires_tls12_tls13_and_security_includes(self):
         text = """
@@ -107,6 +127,14 @@ http {
         self.assertEqual(result["docker.tcp_socket"], host_security.FAIL)
         self.assertEqual(result["docker.insecure_registries"], host_security.FAIL)
         self.assertEqual(result["docker.log_rotation"], host_security.FAIL)
+
+    def test_unapproved_docker_group_member_is_blocking(self):
+        finding = host_security.evaluate_docker_group("docker:x:999:alice", set())[0]
+        self.assertEqual(finding.status, host_security.FAIL)
+
+    def test_approved_docker_group_member_remains_visible_warning(self):
+        finding = host_security.evaluate_docker_group("docker:x:999:alice", {"alice"})[0]
+        self.assertEqual(finding.status, host_security.WARN)
 
     def test_secret_permissions_fail_when_other_readable(self):
         findings = host_security.evaluate_secret_mode(stat.S_IFREG | 0o644, 0, 0)
