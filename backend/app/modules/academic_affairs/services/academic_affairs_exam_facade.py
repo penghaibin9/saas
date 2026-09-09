@@ -725,22 +725,45 @@ def _lock_teacher_timeline(db, teacher_key: str):
     if not key:
         raise AppException("VALIDATION_ERROR", "教师工号不能为空")
 
+    tenant_id = _legacy._tid()
+
     def _query():
         return db.query(AaExamTeacherLock).filter(
-            AaExamTeacherLock.tenant_id == _legacy._tid(),
+            AaExamTeacherLock.tenant_id == tenant_id,
             AaExamTeacherLock.teacher_key == key,
             AaExamTeacherLock.is_deleted.is_(False),
         )
 
+    # MySQL REPEATABLE READ 对“不存在的唯一键”先 SELECT ... FOR UPDATE 会持有 gap lock。
+    # 两个并发请求若都先读空再 INSERT 同一 (tenant_id, teacher_key)，会互相持 gap lock，
+    # 随后插入升级时形成 1213 deadlock；旧实现又在 begin_nested() 内插入，死锁会让 MySQL
+    # 丢失 SAVEPOINT，最终把本应可识别的并发竞争覆盖成 1305 SAVEPOINT not exists。
+    #
+    # 因此 MySQL 必须反过来：先用唯一键原子 upsert“建锁/占锁”，该 DML 本身会在重复键上
+    # 串行等待并持有记录排他锁，再 FOR UPDATE 取 ORM 行。这样不存在“双方先拿 gap lock”
+    # 的窗口，也不需要依赖死锁后仍然存活的 savepoint。
+    db.flush()
+    if db.get_bind().dialect.name == "mysql":
+        from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+        stmt = mysql_insert(AaExamTeacherLock).values(
+            tenant_id=tenant_id,
+            teacher_key=key,
+        )
+        db.execute(stmt.on_duplicate_key_update(is_deleted=False))
+        lock_row = _query().with_for_update().first()
+        if not lock_row:
+            raise AppException("SYSTEM_ERROR", "教师时间线互斥锁建立失败", http_status=500)
+        return lock_row
+
+    # PostgreSQL/其它方言不存在 MySQL 这种缺失唯一键 gap-lock 插入死锁路径，保留 savepoint
+    # 兼容创建竞争；先 flush 可避免建锁行撞键回滚时把调用方已有 pending 对象一起撤销。
     lock_row = _query().with_for_update().first()
     if lock_row:
         return lock_row
-    # 进 savepoint 前先 flush 已有待写数据：begin_nested 之后的 flush 会把 session 里所有
-    # pending 对象一起写进这个 savepoint，建锁行撞键回滚时不能连调用方已写的数据一起撤销。
-    db.flush()
     try:
         with db.begin_nested():
-            lock_row = AaExamTeacherLock(tenant_id=_legacy._tid(), teacher_key=key)
+            lock_row = AaExamTeacherLock(tenant_id=tenant_id, teacher_key=key)
             db.add(lock_row)
             db.flush()
     except IntegrityError:
