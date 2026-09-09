@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import stat
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,6 +13,7 @@ SCRIPT = ROOT / "scripts/check/check-host-security.py"
 SPEC = importlib.util.spec_from_file_location("host_security", SCRIPT)
 HOST = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = HOST
 SPEC.loader.exec_module(HOST)
 
 
