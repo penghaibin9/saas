@@ -1,4 +1,4 @@
-name: Temporary graduation final review URL polish
+name: Temporary graduation remaining frontend polish
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
           ref: ui/graduation-shared-workspace-polish-20260908
           fetch-depth: 0
 
-      - name: Apply guarded final review URL patch
+      - name: Apply guarded remaining frontend polish
         shell: bash
         run: |
           python - <<'PY'
@@ -33,37 +33,82 @@ jobs:
                   raise SystemExit(f'{path}: expected one anchor, found {count}: {old!r}')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          view = 'frontend/src/modules/graduation/views/FinalSubmissionListView.vue'
-          replace_once(view, '        page: String(this.page),', '        page: this.page > 1 ? String(this.page) : undefined,')
-          replace_once(view, "        if (query[key] == null || query[key] === '') delete query[key]", "        if (key === 'page' && this.normalizePage(query[key]) === 1) { delete query[key]; return }\n        if (query[key] == null || query[key] === '') delete query[key]")
+          review_workspace = 'frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue'
+          replace_once(
+              review_workspace,
+              ":global(.gd-business-view .fr-workbench-stack .mp-tabs .mp-tab) { min-height: 34px; font-size: 13px; }",
+              ":global(.gd-business-view .fr-workbench-stack .mp-tabs .mp-tab) { box-sizing: border-box; min-height: 36px; padding-top: 7px; padding-bottom: 7px; font-size: 13px; }"
+          )
 
-          contract = 'frontend/tests/graduation.v9-final-review.contract.test.mjs'
-          replace_once(contract, '  assert.match(source, /page: String\\(this\\.page\\)/)', "  assert.match(source, /page: this\\.page > 1 \\? String\\(this\\.page\\) : undefined/)\n  assert.match(source, /key === 'page' && this\\.normalizePage\\(query\\[key\\]\\) === 1/)")
+          review_center = 'frontend/src/modules/graduation/views/GraduationReviewCenterView.vue'
+          replace_once(
+              review_center,
+              '<template>\n  <div class="w74-center">\n    <section class="w74-summary" aria-label="评阅中心摘要">',
+              '<template>\n  <div class="w74-center">\n    <h1 class="w74-page-title">统一评阅中心</h1>\n    <section class="w74-summary" aria-label="评阅中心摘要">'
+          )
+          replace_once(
+              review_center,
+              '.w74-center{display:grid;gap:10px;min-width:0}.w74-summary{',
+              '.w74-center{display:grid;gap:10px;min-width:0}.w74-page-title{margin:0;color:var(--text-primary,#0f172a);font-size:20px;line-height:1.3;font-weight:700}.w74-summary{'
+          )
+
+          css = 'frontend/src/modules/graduation/styles/graduation-workspaces.css'
+          marker = '/* Only the plagiarism route receives these rules; the same view\'s grade and defense routes do not. */'
+          compact = '''/* 1366 / 125%: compact vertical structure, never compact typography. */
+          @media (min-width: 981px) and (max-width: 1400px) {
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page { gap: 8px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-hero { padding: 10px 12px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-hero h2 { margin: 2px 0; font-size: 20px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-summary { gap: 6px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page .mc-summary article { padding: 7px 9px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-tabs { gap: 4px; padding: 3px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page button { min-height: 34px; padding: 5px 10px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters {
+              grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;
+              gap: 6px;
+              padding: 8px 10px;
+            }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters label { gap: 3px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters :is(input, select) { min-height: 34px; padding: 5px 8px; }
+          }
+
+          '''
+          replace_once(css, marker, compact + marker)
+
+          defense_form = 'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue'
+          replace_once(
+              defense_form,
+              "          this.submitting = false\n          await this.$router.push(snapshot.backTo)\n          return",
+              "          this.submitting = false\n          this.commandSnapshot = null\n          await this.$nextTick()\n          await this.$router.replace(snapshot.backTo)\n          return"
+          )
           PY
 
-      - name: Validate scoped URL behavior
+      - name: Validate scoped frontend patch
         shell: bash
         run: |
           git diff --check
-          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/views/FinalSubmissionListView.vue\nfrontend/tests/graduation.v9-final-review.contract.test.mjs'
-          node --test frontend/tests/graduation.v9-final-review.contract.test.mjs frontend/tests/graduation-document-review-workspace-contract.test.mjs
+          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue\nfrontend/src/modules/graduation/styles/graduation-workspaces.css\nfrontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue\nfrontend/src/modules/graduation/views/GraduationReviewCenterView.vue'
+          node --test \
+            frontend/tests/graduation.content-workspace-polish.test.mjs \
+            frontend/tests/graduation.material-workspace-polish.test.mjs \
+            frontend/tests/graduation.defense-workspace-polish.test.mjs \
+            frontend/tests/graduation.final-integration-polish.test.mjs
           python - <<'PY'
           from pathlib import Path
-          source = Path('frontend/src/modules/graduation/views/FinalSubmissionListView.vue').read_text(encoding='utf-8')
+          review = Path('frontend/src/modules/graduation/views/GraduationReviewCenterView.vue').read_text(encoding='utf-8')
+          workspace = Path('frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue').read_text(encoding='utf-8')
+          css = Path('frontend/src/modules/graduation/styles/graduation-workspaces.css').read_text(encoding='utf-8')
+          form = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue').read_text(encoding='utf-8')
           required = [
-              'page: this.page > 1 ? String(this.page) : undefined',
-              "if (key === 'page' && this.normalizePage(query[key]) === 1) { delete query[key]; return }",
-              'page: this.page,',
-              'pageSize: this.pageSize,',
-              'turnPage(page)',
-              'this.replaceListQuery({ page: String(page), sel: undefined })',
+              (review, '<h1 class="w74-page-title">统一评阅中心</h1>'),
+              (workspace, 'min-height: 36px; padding-top: 7px; padding-bottom: 7px; font-size: 13px;'),
+              (css, "grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;"),
+              (form, 'this.commandSnapshot = null\n          await this.$nextTick()\n          await this.$router.replace(snapshot.backTo)')
           ]
-          for marker in required:
+          for source, marker in required:
               if marker not in source:
-                  raise SystemExit(f'missing final-review URL marker: {marker}')
-          if 'page: String(this.page),' in source:
-              raise SystemExit('implicit first-page URL serialization still present')
-          print('final-review URL state boundary: PASS')
+                  raise SystemExit(f'missing guarded polish marker: {marker}')
+          print('remaining graduation frontend polish: PASS')
           PY
 
       - name: Commit product patch and remove temporary workflow
@@ -72,7 +117,12 @@ jobs:
           rm .github/workflows/tmp-graduation-final-url-state-20260909.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/modules/graduation/views/FinalSubmissionListView.vue frontend/tests/graduation.v9-final-review.contract.test.mjs .github/workflows/tmp-graduation-final-url-state-20260909.yml
+          git add \
+            frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue \
+            frontend/src/modules/graduation/styles/graduation-workspaces.css \
+            frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue \
+            frontend/src/modules/graduation/views/GraduationReviewCenterView.vue \
+            .github/workflows/tmp-graduation-final-url-state-20260909.yml
           git diff --cached --check
-          git commit -m "fix(graduation): keep first-page review URL stable"
+          git commit -m "fix(graduation): close remaining workspace readability gaps"
           git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
