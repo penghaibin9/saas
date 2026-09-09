@@ -3,7 +3,9 @@
 
 Docker-published ports can bypass UFW's INPUT/OUTPUT filtering. This auditor reads
 Docker's actual running container/network state and fails closed on unexpected
-public bindings. It does not mutate Docker, firewall rules, containers, networks,
+public bindings. `--preflight-empty-ok` exists only for a not-yet-deployed host;
+final production acceptance must run without it and therefore requires real
+running-container evidence. The script never mutates Docker, firewall, networks,
 or production data.
 """
 from __future__ import annotations
@@ -40,7 +42,7 @@ def _run(args: list[str]) -> tuple[int, str]:
 
 
 def _is_loopback(host: str) -> bool:
-    normalized = (host or "").strip("[]")
+    normalized = (host or "").strip("[]").lower()
     return normalized == "::1" or normalized == "localhost" or normalized.startswith("127.")
 
 
@@ -64,11 +66,27 @@ def evaluate_daemon(config: dict) -> list[Finding]:
     return findings
 
 
-def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) -> list[Finding]:
+def evaluate_containers(
+    containers: list[dict],
+    allowed_public_ports: set[int],
+    *,
+    allow_empty: bool = False,
+) -> list[Finding]:
     findings: list[Finding] = []
     if not containers:
-        return [Finding("docker.runtime.containers", FAIL,
-                        "no running containers were returned; production runtime exposure is not proven")]
+        if allow_empty:
+            return [Finding(
+                "docker.runtime.containers",
+                WARN,
+                "no running containers yet; preflight may continue but final runtime evidence is incomplete",
+                "preflight-empty",
+            )]
+        return [Finding(
+            "docker.runtime.containers",
+            FAIL,
+            "no running containers were returned; final production runtime exposure is not proven",
+            "empty-runtime",
+        )]
 
     for item in containers:
         cid = str(item.get("Id", "unknown"))[:12]
@@ -116,22 +134,29 @@ def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) 
             try:
                 target_port = int(target_text)
             except ValueError:
-                findings.append(Finding("docker.runtime.port_binding", FAIL,
-                                        "Docker target port identity is invalid",
-                                        f"container={cid},target=invalid"))
+                findings.append(Finding(
+                    "docker.runtime.port_binding", FAIL,
+                    "Docker target port identity is invalid",
+                    f"container={cid},target=invalid",
+                ))
                 continue
             if not bindings:
                 continue
             if not isinstance(bindings, list):
-                findings.append(Finding("docker.runtime.port_binding", FAIL,
-                                        "Docker port binding structure is unexpected",
-                                        f"container={cid},target={container_port}"))
+                findings.append(Finding(
+                    "docker.runtime.port_binding", FAIL,
+                    "Docker port binding structure is unexpected",
+                    f"container={cid},target={container_port}",
+                ))
                 continue
+
             for binding in bindings:
                 if not isinstance(binding, dict):
-                    findings.append(Finding("docker.runtime.port_binding", FAIL,
-                                            "Docker port binding structure is unexpected",
-                                            f"container={cid},target={container_port}"))
+                    findings.append(Finding(
+                        "docker.runtime.port_binding", FAIL,
+                        "Docker port binding structure is unexpected",
+                        f"container={cid},target={container_port}",
+                    ))
                     continue
                 saw_binding = True
                 host_ip = str(binding.get("HostIp") or "")
@@ -139,9 +164,11 @@ def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) 
                 try:
                     host_port = int(host_port_text)
                 except ValueError:
-                    findings.append(Finding("docker.runtime.port_binding", FAIL,
-                                            "Docker published host port is invalid",
-                                            f"container={cid},host={host_ip or '*'},port=invalid"))
+                    findings.append(Finding(
+                        "docker.runtime.port_binding", FAIL,
+                        "Docker published host port is invalid",
+                        f"container={cid},host={host_ip or '*'},port=invalid",
+                    ))
                     continue
 
                 public_binding = host_ip in WILDCARDS or not _is_loopback(host_ip)
@@ -154,10 +181,13 @@ def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) 
                     "only approved web ports may bind non-loopback interfaces; sensitive host or target ports remain blocked",
                     f"container={cid},host={host_ip or '*'},port={host_port},target={target_port}",
                 ))
+
         if not saw_binding:
-            findings.append(Finding("docker.runtime.port_binding", PASS,
-                                    "container has no host-published ports",
-                                    f"container={cid}"))
+            findings.append(Finding(
+                "docker.runtime.port_binding", PASS,
+                "container has no host-published ports",
+                f"container={cid}",
+            ))
     return findings
 
 
@@ -186,8 +216,10 @@ def evaluate_networks(networks: list[dict]) -> list[Finding]:
                 f"network={network_id},configured=yes",
             ))
     if not findings:
-        findings.append(Finding("docker.network.bridge_policy", PASS,
-                                "no unsafe bridge gateway mode found"))
+        findings.append(Finding(
+            "docker.network.bridge_policy", PASS,
+            "no unsafe bridge gateway mode found",
+        ))
     return findings
 
 
@@ -204,69 +236,100 @@ def _load_json(text: str, description: str) -> list | dict:
 def collect_runtime() -> tuple[list[dict], list[dict], list[Finding]]:
     findings: list[Finding] = []
     if not shutil.which("docker"):
-        return [], [], [Finding("docker.runtime.cli", FAIL, "Docker CLI is required on the production host")]
+        return [], [], [Finding(
+            "docker.runtime.cli", FAIL,
+            "Docker CLI is required on the production host",
+        )]
 
     code, ids_text = _run(["docker", "ps", "-q"])
     if code != 0:
-        return [], [], [Finding("docker.runtime.inspect", FAIL,
-                                "running containers could not be enumerated; run audit with Docker read access")]
+        return [], [], [Finding(
+            "docker.runtime.inspect", FAIL,
+            "running containers could not be enumerated; run audit with Docker read access",
+        )]
     ids = [item for item in ids_text.splitlines() if item.strip()]
     containers: list[dict] = []
     if ids:
         code, inspect_text = _run(["docker", "inspect", *ids])
         if code != 0:
-            findings.append(Finding("docker.runtime.inspect", FAIL,
-                                    "running containers could not be inspected"))
+            findings.append(Finding(
+                "docker.runtime.inspect", FAIL,
+                "running containers could not be inspected",
+            ))
         else:
             try:
                 value = _load_json(inspect_text, "docker inspect")
             except ValueError:
-                findings.append(Finding("docker.runtime.inspect", FAIL,
-                                        "docker inspect returned invalid or unexpected JSON"))
+                findings.append(Finding(
+                    "docker.runtime.inspect", FAIL,
+                    "docker inspect returned invalid or unexpected JSON",
+                ))
             else:
                 if not isinstance(value, list):
-                    findings.append(Finding("docker.runtime.inspect", FAIL,
-                                            "docker inspect did not return a list"))
+                    findings.append(Finding(
+                        "docker.runtime.inspect", FAIL,
+                        "docker inspect did not return a list",
+                    ))
                 else:
                     containers = [item for item in value if isinstance(item, dict)]
                     if len(containers) != len(ids):
-                        findings.append(Finding("docker.runtime.inspect", FAIL,
-                                                "not every running container produced a valid inspect record"))
+                        findings.append(Finding(
+                            "docker.runtime.inspect", FAIL,
+                            "not every running container produced a valid inspect record",
+                        ))
 
     code, network_ids_text = _run(["docker", "network", "ls", "-q"])
     networks: list[dict] = []
     if code != 0:
-        findings.append(Finding("docker.network.inspect", FAIL, "Docker networks could not be enumerated"))
+        findings.append(Finding(
+            "docker.network.inspect", FAIL,
+            "Docker networks could not be enumerated",
+        ))
     else:
         network_ids = [item for item in network_ids_text.splitlines() if item.strip()]
         if network_ids:
             code, network_text = _run(["docker", "network", "inspect", *network_ids])
             if code != 0:
-                findings.append(Finding("docker.network.inspect", FAIL, "Docker networks could not be inspected"))
+                findings.append(Finding(
+                    "docker.network.inspect", FAIL,
+                    "Docker networks could not be inspected",
+                ))
             else:
                 try:
                     value = _load_json(network_text, "docker network inspect")
                 except ValueError:
-                    findings.append(Finding("docker.network.inspect", FAIL,
-                                            "docker network inspect returned invalid or unexpected JSON"))
+                    findings.append(Finding(
+                        "docker.network.inspect", FAIL,
+                        "docker network inspect returned invalid or unexpected JSON",
+                    ))
                 else:
                     if isinstance(value, list):
                         networks = [item for item in value if isinstance(item, dict)]
                         if len(networks) != len(network_ids):
-                            findings.append(Finding("docker.network.inspect", FAIL,
-                                                    "not every Docker network produced a valid inspect record"))
+                            findings.append(Finding(
+                                "docker.network.inspect", FAIL,
+                                "not every Docker network produced a valid inspect record",
+                            ))
                     else:
-                        findings.append(Finding("docker.network.inspect", FAIL,
-                                                "docker network inspect did not return a list"))
+                        findings.append(Finding(
+                            "docker.network.inspect", FAIL,
+                            "docker network inspect did not return a list",
+                        ))
     return containers, networks, findings
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-public-port", type=int, action="append", default=[])
+    parser.add_argument(
+        "--preflight-empty-ok",
+        action="store_true",
+        help="allow an empty container runtime only before application deployment; never use for final acceptance",
+    )
     parser.add_argument("--docker-daemon-json", default="/etc/docker/daemon.json")
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args(argv)
+
     allowed_public_ports = DEFAULT_PUBLIC_PORTS | set(args.allow_public_port)
     if any(port < 1 or port > 65535 for port in allowed_public_ports):
         parser.error("public ports must be 1..65535")
@@ -280,15 +343,23 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError
             findings.extend(evaluate_daemon(daemon))
         except (OSError, json.JSONDecodeError, ValueError):
-            findings.append(Finding("docker.daemon_json", FAIL,
-                                    "Docker daemon.json is unreadable or invalid"))
+            findings.append(Finding(
+                "docker.daemon_json", FAIL,
+                "Docker daemon.json is unreadable or invalid",
+            ))
     else:
-        findings.append(Finding("docker.daemon_json", FAIL,
-                                "Docker daemon.json is required for runtime exposure audit"))
+        findings.append(Finding(
+            "docker.daemon_json", FAIL,
+            "Docker daemon.json is required for runtime exposure audit",
+        ))
 
     containers, networks, collection_findings = collect_runtime()
     findings.extend(collection_findings)
-    findings.extend(evaluate_containers(containers, allowed_public_ports))
+    findings.extend(evaluate_containers(
+        containers,
+        allowed_public_ports,
+        allow_empty=args.preflight_empty_ok,
+    ))
     findings.extend(evaluate_networks(networks))
 
     failures = [item for item in findings if item.status == FAIL]
@@ -299,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
         "failureCount": len(failures),
         "warningCount": len(warnings),
         "allowedPublicPorts": sorted(allowed_public_ports),
+        "preflightEmptyAllowed": args.preflight_empty_ok,
+        "runtimeEvidenceComplete": bool(containers),
         "mutatedHost": False,
         "productionDataAccessed": False,
         "findings": [asdict(item) for item in findings],
