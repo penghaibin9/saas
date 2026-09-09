@@ -462,7 +462,11 @@ export default {
 
         if (res?.code === 0) {
           toast.success(`${this.activePreset.title}已提交`)
-          this.$router.push(snapshot.backTo)
+          // The server has acknowledged the write. Release the submit lock before
+          // our own completion navigation so beforeRouteLeave only blocks unsafe exits.
+          this.submitting = false
+          await this.$router.push(snapshot.backTo)
+          return
         } else if (res && isGraduationConflictResponse(res)) {
           const draft = this.captureEditableDraft()
           await this.refreshConflictTruth()

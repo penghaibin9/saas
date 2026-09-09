@@ -449,10 +449,37 @@ export default {
 .gd-business-view[data-planning-workspace] :deep(.af__control),
 .gd-business-view[data-planning-workspace] :deep(.af__ops button),
 .gd-business-view[data-planning-workspace] :deep(.mp-cell-main),
-.gd-business-view[data-planning-workspace] :deep(.mp-link) { font-size: 13px; }
+.gd-business-view[data-planning-workspace] :deep(.mp-link) { font-size: 13px !important; }
 .gd-business-view :deep(.gd-student-page .gd-primary-tabs button),
 .gd-business-view :deep(.gd-student-page .gd-local-views button),
-.gd-business-view :deep(.gd-student-page .af__control) { font-size: 13px; }
+.gd-business-view :deep(.gd-student-page .af__control) { font-size: 13px !important; }
+
+/* Proposal workbench: keep the real queue compact without allowing 11px operational copy. */
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__copy > p),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__metrics small),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-list__head small) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+  min-height: 34px;
+  font-size: 13px !important;
+}
+
+/* At constrained content width, reclaim vertical space from chrome rather than shrinking type. */
+@container gd-planning (max-width: 1080px) {
+  .gd-business-view[data-planning-workspace] :deep(.mps),
+  .gd-business-view[data-planning-workspace] :deep(.mp-stack) { gap: 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.mps__head) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.gm-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-primary-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-local-views) { gap: 4px; padding: 4px; }
+  .gd-business-view[data-planning-workspace] :deep(.af) { gap: 8px; padding: 8px 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__fields) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__field) { gap: 3px; }
+}
 
 @container gd-students (max-width: 1000px) {
   .gd-business-view :deep(.gd-student-workspace .mps__subtitle) { display: none; }
