@@ -62,11 +62,13 @@ class PlatformNotice(PKMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
-# Register M1-M5 tables in Base.metadata while preserving the existing large
+# Register M1-M8 tables in Base.metadata while preserving the existing large
 # app.models aggregator. Existing services import models from ``app.models``;
 # expose the additions there without introducing a second model registry.
 from app.models.commercial import (  # noqa: E402,F401
+    CommercialInvoiceCase,
     CommercialOrderItem,
+    CommercialRefundCase,
     CommercialSkuVersion,
     TenantCommercialProfile,
     TenantModuleCancellationPlan,
@@ -79,7 +81,9 @@ from app.models.commercial import (  # noqa: E402,F401
 _models_package = _sys.modules.get("app.models")
 if _models_package is not None:
     for _model_name in (
+        "CommercialInvoiceCase",
         "CommercialOrderItem",
+        "CommercialRefundCase",
         "CommercialSkuVersion",
         "TenantCommercialProfile",
         "TenantModuleCancellationPlan",
