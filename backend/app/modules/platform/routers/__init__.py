@@ -19,6 +19,10 @@ _module_commerce.install_into_platform_router(_platform_router.router)
 # audit boundaries are shared; no finance route may replace a prior handler.
 from . import module_commerce_finance_router as _module_commerce_finance
 _module_commerce_finance.install_into_platform_router(_platform_router.router)
+# M8 after-sales/SLA/cost governance is isolated again so customer-success bridge
+# changes cannot silently expand either frozen commerce or finance contracts.
+from . import module_commerce_operations_router as _module_commerce_operations
+_module_commerce_operations.install_into_platform_router(_platform_router.router)
 router = _platform_router.router
 
 __all__ = ["router"]
