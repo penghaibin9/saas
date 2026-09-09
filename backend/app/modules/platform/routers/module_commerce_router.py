@@ -171,6 +171,21 @@ def sales_orders_export(body: dict = Body(...), user=Depends(require_platform_ca
     return success(sales.export_sales_orders(body))
 
 
+@router.get("/commercial/tenants/{tenant_id}/module-offboarding/{job_id}/exit-review",
+            summary="查看所选学校的退出交付检查清单（只读、不能执行清理）")
+def module_exit_review(
+    tenant_id: int, job_id: int,
+    expectedGeneration: int = Query(..., ge=1, le=2**63 - 1),
+    expectedVersion: int = Query(..., ge=0, le=2**63 - 1),
+    user=Depends(require_platform_capability("commercial.view")),
+):
+    from app.services.module_commerce_m6_preflight import preview_module_purge
+    return success(preview_module_purge(
+        job_id, tenant_id=tenant_id,
+        expected_generation=expectedGeneration, expected_version=expectedVersion,
+    ), message="只读检查已完成；这不是销毁批准，也不会修改保留期或客户数据")
+
+
 def install_into_platform_router(target: APIRouter) -> int:
     """Install additive routes atomically; reject collisions, preserve same-object retries.
 

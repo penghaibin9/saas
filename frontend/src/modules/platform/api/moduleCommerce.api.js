@@ -18,6 +18,7 @@ export const moduleCommerceApi = {
   resumeRenewal: (tenantId, sourceId, body) => request(`/platform/commercial/tenants/${tenantId}/sources/${sourceId}/resume-renewal`, { method: 'POST', body }),
   previewOffboarding: (tenantId, moduleKey) => request(`/platform/commercial/tenants/${tenantId}/modules/${encodeURIComponent(moduleKey)}/offboarding-preview`),
   requestOffboarding: (tenantId, moduleKey, body) => request(`/platform/commercial/tenants/${tenantId}/modules/${encodeURIComponent(moduleKey)}/offboarding`, { method: 'POST', body }),
+  getExitReview: (tenantId, jobId, params) => request(`${financeBase(tenantId)}/module-offboarding/${encodeURIComponent(jobId)}/exit-review`, { params }),
   getOffboarding: (jobId) => request(`/platform/commercial/module-offboarding/${jobId}`),
   cancelOffboarding: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/cancel`, { method: 'POST', body }),
   bindExport: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/export`, { method: 'POST', body }),

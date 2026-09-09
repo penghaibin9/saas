@@ -69,9 +69,9 @@ class CommerceRouterTests(unittest.TestCase):
         self.assertIs(self.facade.platform_context, self.canonical.platform_context)
         self.assertIs(self.facade.require_platform_super_admin, self.bundle.require_platform_super_admin)
 
-    def test_all_twenty_four_commerce_routes_reach_real_registration_once(self):
+    def test_all_twenty_five_commerce_routes_reach_real_registration_once(self):
         declared = self.commerce.router.routes
-        self.assertEqual(len(declared), 24)
+        self.assertEqual(len(declared), 25)
         for route in declared:
             for method in route.methods:
                 with self.subTest(method=method, path=route.path):
@@ -103,7 +103,7 @@ class CommerceRouterTests(unittest.TestCase):
         from fastapi import APIRouter
         target = APIRouter()
         target.add_api_route('/untouched', lambda: {}, methods=['GET'])
-        target.add_api_route(self.commerce.router.routes[-1].path, lambda: {}, methods=['POST'])
+        target.add_api_route(self.commerce.router.routes[-1].path, lambda: {}, methods=sorted(self.commerce.router.routes[-1].methods))
         before = tuple(target.routes)
         with self.assertRaisesRegex(RuntimeError, 'route collision'):
             self.commerce.install_into_platform_router(target)
@@ -194,6 +194,26 @@ class CommerceRouterTests(unittest.TestCase):
                     json={"tenantId":"42"}, headers={"Idempotency-Key":"sales-route-42"})
                 self.assertEqual(response.status_code, 200, response.text)
                 call.assert_called_once_with(*args, **kwargs)
+
+    def test_exit_review_transports_scoped_optimistic_context_and_preserves_errors(self):
+        from app.services import module_commerce_m6_preflight as preflight
+        from app.core.exceptions import AppException
+        url = '/api/v1/platform/commercial/tenants/42/module-offboarding/9/exit-review'
+        params = {'expectedGeneration': 2, 'expectedVersion': 0}
+        with patch.object(preflight, 'preview_module_purge', return_value={'dryRunOnly': True}) as reader:
+            response = self.client.get(url, params=params)
+            self.assertEqual(response.status_code, 200, response.text)
+            reader.assert_called_once_with(9, tenant_id=42, expected_generation=2, expected_version=0)
+        for status, code in [(404, 'DATA_NOT_FOUND'), (409, 'DATA_CONFLICT'), (503, 'SERVER_ERROR')]:
+            with self.subTest(status=status), patch.object(preflight, 'preview_module_purge',
+                    side_effect=AppException(code, 'read rejected', http_status=status)):
+                self.assertEqual(self.client.get(url, params=params).status_code, status)
+        for invalid in ({}, {'expectedGeneration': 0, 'expectedVersion': 0},
+                        {'expectedGeneration': 2, 'expectedVersion': -1}):
+            with patch.object(preflight, 'preview_module_purge') as reader:
+                self.assertEqual(self.client.get(url, params=invalid).status_code, 400)
+                reader.assert_not_called()
+        self.assertEqual(self.client.post(url, json=params).status_code, 405)
 
     def test_sales_order_requires_stable_key_before_writer(self):
         from app.services import module_commerce_sales_service as sales

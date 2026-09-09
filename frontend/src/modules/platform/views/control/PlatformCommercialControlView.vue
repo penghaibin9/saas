@@ -5,7 +5,7 @@
     role-name="平台商业/交付负责人"
     data-scope-name="全平台商业控制"
   >
-    <div class="commerce">
+    <div ref="commerceRoot" class="commerce">
       <section class="hero">
         <div>
           <span class="eyebrow">MODULE COMMERCE</span>
@@ -15,7 +15,13 @@
         <button class="btn primary" :disabled="loading" @click="loadAll">刷新真实状态</button>
       </section>
 
+      <nav class="workbench-nav" aria-label="商业办理区导航">
+        <div class="workbench-context"><strong>办理区直达</strong><span>{{ portfolio?.tenantName || (selectedTenantId ? '已选学校：' + selectedTenantId : '先在商品与订购区选择学校') }}</span></div>
+        <div class="workbench-links"><button v-for="item in destinations" :key="item.key" type="button" @click="jumpToWorkspace(item.key)"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></button></div>
+      </nav>
+
       <ModuleSalesWorkspace
+        ref="salesWorkspace"
         :tenant-id="selectedTenantId"
         :locked="busy"
         @update:tenant-id="changeSalesSchool"
@@ -239,6 +245,8 @@
         </section>
       </template>
 
+      <ModuleExitReviewPanel :tenant-id="selectedTenantId" :job="job" :locked="busy" @focus-delivery="jumpToWorkspace('lifecycle')" />
+
       <section class="panel reconcile-panel">
         <header class="section-title">
           <div>
@@ -269,6 +277,8 @@ import { moduleCommerceApi } from '@/modules/platform/api/moduleCommerce.api'
 import ModuleSalesWorkspace from './ModuleSalesWorkspace.vue'
 import ModuleRenewalWorkspace from './ModuleRenewalWorkspace.vue'
 import ModuleFinanceWorkspace from './ModuleFinanceWorkspace.vue'
+import ModuleExitReviewPanel from './ModuleExitReviewPanel.vue'
+import { COMMERCIAL_DESTINATIONS } from '../../lib/moduleCommerceWorkbench.mjs'
 
 const MODULE_LABEL = {
   internship: '岗位实习中心',
@@ -302,12 +312,12 @@ const EVIDENCE_LABEL = {
 
 export default {
   name: 'PlatformCommercialControlView',
-  components: { ModulePageShell, ModuleSalesWorkspace, ModuleRenewalWorkspace, ModuleFinanceWorkspace },
+  components: { ModulePageShell, ModuleSalesWorkspace, ModuleRenewalWorkspace, ModuleFinanceWorkspace, ModuleExitReviewPanel },
   data: () => ({
-    items: [], selectedTenantId: '', portfolio: null, selectedModuleKey: '', preview: null, job: null,
+    destinations: COMMERCIAL_DESTINATIONS, items: [], selectedTenantId: '', portfolio: null, selectedModuleKey: '', preview: null, job: null,
     loading: false, busy: false, portfolioSeq: 0, moduleSeq: 0, message: '', messageType: 'success', cancelReason: '',
     deliveryForm: { acceptanceRef: '', reason: '' },
-    offboardForm: { reason: '', retentionDays: 30, retentionPolicyVersion: 'SCHOOL-CONTRACT', confirmed: false },
+    offboardForm: { reason: '', retentionDays: null, retentionPolicyVersion: '', confirmed: false },
     exportForm: { acceptanceRef: '' }
   }),
   computed: {
@@ -331,15 +341,33 @@ export default {
   created () { this.loadAll() },
   methods: {
     changeSalesSchool (id) {
+      if (this.busy || id === this.selectedTenantId) return
       this.selectedTenantId = id; this.portfolio = null; this.preview = null; this.job = null; this.selectedModuleKey = ''; this.cancelReason = ''
-      this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }; this.loadPortfolio()
+      this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }; this.offboardForm = { reason: '', retentionDays: null, retentionPolicyVersion: '', confirmed: false }; this.loadPortfolio()
     },
-    focusSalesRenewal (candidate) {
-      if (candidate?.moduleKey) this.selectedModuleKey = candidate.moduleKey
-      this.notify(`已定位原分项续费：${this.moduleName(candidate?.moduleKey)}，已付截止 ${this.dateTime(candidate?.sourceEndsAt)}。请在上方选择“续费”，重新核对当前商品版本、成交价与新的服务截止。`, 'warning')
+    jumpToWorkspace (key) {
+      const selectors = {
+        sales: '[aria-label="模块商品销售工作区"]', renewal: '[aria-label="模块续费治理工作区"]',
+        finance: '[aria-label="商业财务工作区"]', operations: '[aria-label="商业售后与持续治理"]',
+        lifecycle: '.workspace-head', review: '[aria-label="模块退出完整性检查"]', reconciliation: '.reconcile-panel'
+      }
+      const selector = selectors[key]
+      if (!selector) return
       this.$nextTick(() => {
-        this.$el?.querySelector?.('[aria-label="模块商品销售工作区"]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+        const target = this.$refs.commerceRoot?.querySelector?.(selector)
+        if (!target) { this.notify('请先选择学校与模块，读取成功后即可办理交付和退出', 'warning'); return }
+        target.setAttribute('tabindex', '-1'); target.focus?.({ preventScroll: true })
+        const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+        target.scrollIntoView?.({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
       })
+    },
+    async focusSalesRenewal (candidate) {
+      const ready = await this.$refs.salesWorkspace?.prepareRenewal?.(candidate)
+      if (ready) {
+        await this.selectModule(candidate.moduleKey)
+        this.notify('已带入同校同模块的续费上下文；请明确选择商品、核对成交价和新的服务截止')
+      }
+      this.jumpToWorkspace('sales')
     },
     moduleName (key) { return MODULE_LABEL[key] || key },
     bytes (value) {
@@ -397,7 +425,13 @@ export default {
         if (id === this.selectedTenantId && seq === this.portfolioSeq) { this.portfolio = null; this.notify(this.errorText(error), 'error') }
       } finally { if (seq === this.portfolioSeq) this.busy = false }
     },
-    async selectModule (key) { this.selectedModuleKey = key; this.preview = null; this.job = null; await this.afterModuleRefresh() },
+    async selectModule (key) {
+      if (this.busy || key === this.selectedModuleKey || !this.portfolio?.modules?.some(row => row.moduleKey === key)) return false
+      this.selectedModuleKey = key; this.preview = null; this.job = null; this.cancelReason = ''
+      this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }
+      this.offboardForm = { reason: '', retentionDays: null, retentionPolicyVersion: '', confirmed: false }
+      await this.afterModuleRefresh(); return true
+    },
     async afterModuleRefresh () {
       const module = this.selectedModule; const id = this.selectedTenantId; const seq = ++this.moduleSeq
       this.job = null; if (!module?.offboardingJobId) return
@@ -426,14 +460,24 @@ export default {
       })
     },
     async loadOffboardPreview () {
-      if (!this.selectedModule) return
+      if (!this.selectedModule || this.busy) return
+      const id = this.selectedTenantId, key = this.selectedModule.moduleKey, generation = this.selectedModule.generation, seq = this.moduleSeq
+      this.preview = null
       await this.run(async () => {
-        this.preview = await moduleCommerceApi.previewOffboarding(this.selectedTenantId, this.selectedModule.moduleKey)
+        const preview = await moduleCommerceApi.previewOffboarding(id, key)
+        if (id !== this.selectedTenantId || key !== this.selectedModuleKey || seq !== this.moduleSeq) return
+        if (preview.tenantId !== id || preview.moduleKey !== key || preview.moduleGeneration !== generation) {
+          this.notify('退出预检与所选学校、模块或代次不一致，请刷新后重试', 'error'); return
+        }
+        this.preview = preview
         if (this.preview.blockers?.length) this.notify('预检发现阻断项，请先处理订阅来源或整校退出冲突', 'warning')
       })
     },
     async requestOffboarding () {
       const module = this.selectedModule; if (!module || !this.preview?.canRequest) return
+      if (this.preview.tenantId !== this.selectedTenantId || this.preview.moduleKey !== module.moduleKey || this.preview.moduleGeneration !== module.generation) {
+        this.preview = null; this.notify('不能使用其他学校或模块的预检发起退出，请重新预检', 'warning'); return
+      }
       await this.run(async () => {
         this.job = await moduleCommerceApi.requestOffboarding(this.selectedTenantId, module.moduleKey, { expectedLifecycleVersion: this.preview.lifecycleVersion, reason: this.offboardForm.reason, retentionDays: this.offboardForm.retentionDays, retentionPolicyVersion: this.offboardForm.retentionPolicyVersion })
         this.notify('目标模块 generation 已冻结；其他模块和整校状态未改变'); await this.loadPortfolio()
@@ -471,5 +515,6 @@ export default {
 </script>
 
 <style scoped>
+.workbench-nav{background:#fff;border:1px solid #dce5f0;padding:18px;border-radius:14px;display:grid;gap:14px}.workbench-context{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;color:#21354e}.workbench-context span{font-size:13px;color:#63748a}.workbench-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px}.workbench-links button{background:#f7faff;border:1px solid #dce5f0;border-radius:9px;padding:12px;text-align:left;color:#355274;cursor:pointer}.workbench-links strong,.workbench-links small{display:block}.workbench-links small{margin-top:5px;font-size:11px;line-height:1.6;color:#63748a}.workbench-links button:focus-visible{outline:2px solid #2563eb;outline-offset:3px}.commerce :deep(section[tabindex="-1"]),.workspace-head,.reconcile-panel{scroll-margin-top:90px}
 .commerce{display:grid;gap:18px;position:relative}.hero,.panel,.workspace-head{background:#fff;border:1px solid #e5eaf2;border-radius:16px;padding:20px;box-shadow:0 1px 2px rgba(16,24,40,.03)}.hero,.workspace-head,.section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.hero h3,.workspace-head h3,.section-title h3{margin:4px 0 7px;font-size:20px;color:#17233d}.hero p,.workspace-head p,.section-title p,.flow-step p{margin:0;color:#667085;line-height:1.6}.eyebrow{font-size:11px;letter-spacing:.12em;color:#356ae6;font-weight:700}.btn{border:1px solid #d0d8e6;background:#fff;border-radius:9px;padding:8px 12px;cursor:pointer;color:#344054}.btn:hover{border-color:#8aa8ef}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.primary{background:#315fda;border-color:#315fda;color:#fff}.btn.danger{background:#b42318;border-color:#b42318;color:#fff}select,input{border:1px solid #d6deea;border-radius:9px;padding:10px 11px;background:#fff;min-height:40px;box-sizing:border-box}select:focus,input:focus{outline:none;border-color:#6f91eb;box-shadow:0 0 0 3px rgba(53,106,230,.1)}.module-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.module-card{background:#fff;border:1px solid #e5eaf2;border-radius:14px;padding:16px;cursor:pointer;transition:.15s ease}.module-card:hover,.module-card.active{border-color:#7f9fee;box-shadow:0 4px 16px rgba(42,89,190,.08)}.module-card.active{background:#f8faff}.module-card header,.source-row,.job-title,.consumer-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.module-name{display:block;font-weight:700;color:#17233d}.module-card small,.source-row small,.consumer-head small{display:block;margin-top:4px;color:#98a2b3}.pill,.state-chip{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:600}.pill.ok{background:#ecfdf3;color:#067647}.pill.muted{background:#f2f4f7;color:#667085}.pill.warn,.state-chip{background:#fff6e6;color:#b54708}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}.metrics div{padding:9px;background:#f8fafc;border-radius:10px}.metrics strong,.metrics span{display:block}.metrics strong{font-size:14px;color:#344054}.metrics span{font-size:11px;color:#98a2b3;margin-top:3px}.module-card footer{display:flex;flex-wrap:wrap;gap:7px;color:#667085;font-size:12px}.flow-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.flow-step{position:relative;padding-top:46px}.step-no{position:absolute;top:16px;left:20px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#315fda;color:#fff;font-size:12px;font-weight:700}.flow-step h4{margin:0 0 7px;color:#17233d}.form-grid{display:grid;gap:9px;margin-top:14px}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:8px}.full-input{width:100%;margin:12px 0 8px}.source-list{display:grid;gap:8px}.source-row{padding:10px;border:1px solid #eaecf0;border-radius:10px}.source-action{display:flex;align-items:center;gap:7px}.preview-box,.job-box,.success-box,.warning-box,.empty,.rebind-box{margin-top:12px;border-radius:10px;padding:12px}.preview-box,.job-box,.rebind-box{background:#f8fafc;border:1px solid #e4e7ec}.success-box{background:#ecfdf3;color:#067647;border:1px solid #abefc6}.warning-box{background:#fff6e6;color:#b54708;border:1px solid #fedf89}.warning-box p{color:#b54708;margin-top:6px}.empty{background:#f8fafc;color:#667085}.blockers{background:#fff4ed;color:#b54708;padding:10px;border-radius:8px}.blockers p{color:#b54708;margin-top:5px}.check{display:flex;gap:8px;align-items:flex-start;color:#475467;font-size:13px}.check input{min-height:auto;margin-top:2px}.export-candidate{align-items:flex-start}.export-candidate .btn{white-space:nowrap}.consumer-evidence{display:grid;gap:10px;margin-top:12px;padding:12px;border:1px solid #dfe7f5;background:#fff;border-radius:10px}.consumer-evidence p{font-size:12px}.evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.evidence-card{padding:8px 9px;border-radius:8px;background:#f8fafc;border:1px solid #eaecf0}.evidence-card strong,.evidence-card span{display:block}.evidence-card strong{font-size:15px;color:#344054}.evidence-card span{margin-top:2px;font-size:11px;color:#667085}.evidence-card.unsettled{background:#fff8eb;border-color:#fedf89}.evidence-card.unsettled strong,.evidence-card.unsettled span{color:#b54708}.digest-line,.job-consumer-summary{display:flex;flex-wrap:wrap;gap:8px 14px;color:#667085;font-size:11px}.safety-note{padding:8px 10px;border-radius:8px;background:#f2f4f7;color:#475467;font-size:12px;line-height:1.5}.evidence-ready{display:grid;gap:4px}.evidence-ready span{font-size:12px}.rebind-box{display:grid;gap:9px;color:#344054}.rebind-box>.empty{margin-top:0}code{word-break:break-all;font-size:11px;color:#475467}.reconcile-panel{overflow:auto}table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:11px 10px;border-bottom:1px solid #eaecf0;text-align:left;font-size:13px}th{color:#667085;font-weight:600}.ok-text{color:#067647}.bad-text{color:#b42318}.toast{position:fixed;right:28px;bottom:28px;max-width:420px;padding:12px 16px;border-radius:10px;color:#fff;background:#067647;box-shadow:0 8px 24px rgba(16,24,40,.2);z-index:40}.toast.error{background:#b42318}.toast.warning{background:#b54708}@media(max-width:1200px){.module-grid{grid-template-columns:1fr 1fr}.evidence-grid{grid-template-columns:1fr 1fr}}@media(max-width:860px){.module-grid,.flow-grid,.evidence-grid{grid-template-columns:1fr}.hero,.workspace-head{display:grid}.source-row{align-items:flex-start;display:grid}.source-action{flex-wrap:wrap}}
 </style>

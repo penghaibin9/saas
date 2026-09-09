@@ -54,7 +54,7 @@ test('workspace uses actual APIs, authenticated duties and no implicit paid acti
   assert.ok(!source.includes("'mark-paid'"))
   const parent=fs.readFileSync(fileURLToPath(new URL('../src/modules/platform/views/control/PlatformCommercialControlView.vue',import.meta.url)),'utf8')
   assert.ok(parent.includes('<ModuleSalesWorkspace'))
-  assert.ok(parent.includes('id!==this.selectedTenantId||seq!==this.portfolioSeq'))
+  assert.ok(parent.replace(/\s+/g, '').includes('id!==this.selectedTenantId||seq!==this.portfolioSeq'))
 })
 
 test('legacy fractional paid boundaries round upward rather than overlap', () => {

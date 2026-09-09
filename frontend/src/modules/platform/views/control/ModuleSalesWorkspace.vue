@@ -4,7 +4,7 @@
     <div class="school-tools">
       <label>检索学校<input v-model.trim="schoolKeyword" maxlength="100" placeholder="学校名称或编码" @keyup.enter="loadSchools(1)"></label>
       <button type="button" :disabled="schoolsLoading" @click="loadSchools(1)">查询</button>
-      <label class="school-select">办理学校<select :value="tenantId" :disabled="locked || sending || !!attempt" @change="chooseSchool"><option value="">请选择学校</option><option v-if="tenantId && !schools.some(s => s.tenantId === tenantId)" :value="tenantId">{{ context?.tenantName || '当前已选学校' }} · {{ tenantId }}</option><option v-for="school in schools" :key="school.tenantId" :value="school.tenantId">{{ school.tenantName }} · {{ school.tenantCode }}</option></select></label>
+      <label class="school-select">办理学校<select :value="tenantId" :disabled="locked || sending || handoffLoading || !!attempt" @change="chooseSchool"><option value="">请选择学校</option><option v-if="tenantId && !schools.some(s => s.tenantId === tenantId)" :value="tenantId">{{ context?.tenantName || '当前已选学校' }} · {{ tenantId }}</option><option v-for="school in schools" :key="school.tenantId" :value="school.tenantId">{{ school.tenantName }} · {{ school.tenantCode }}</option></select></label>
       <div class="pager"><button :disabled="schoolsLoading || schoolPage === 1" @click="loadSchools(schoolPage - 1)">上一页</button><span>{{ schoolPage }} / {{ Math.max(1, Math.ceil(schoolTotal / 30)) }}</span><button :disabled="schoolsLoading || schoolPage * 30 >= schoolTotal" @click="loadSchools(schoolPage + 1)">下一页</button></div>
     </div>
     <p v-if="schoolError" class="error" role="alert">{{ schoolError }}</p>
@@ -13,9 +13,11 @@
     <div class="tabs" role="tablist" aria-label="商业办理步骤"><button v-for="item in tabs" :id="`sales-tab-${item.key}`" :key="item.key" role="tab" :aria-selected="tab === item.key" :aria-controls="`sales-panel-${item.key}`" @click="selectTab(item.key)">{{ item.label }}</button></div>
     <p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="notice" class="success" role="status">{{ notice }}</p>
     <section v-show="tab === 'order'" id="sales-panel-order" role="tabpanel" aria-labelledby="sales-tab-order">
+      <p v-if="handoffLoading" class="notice" role="status">正在重新核对续费学校、模块代次和当前已付截止；没有创建订单。</p>
+      <div v-if="renewalHandoff" class="notice" role="status"><strong>{{ moduleLabel(renewalHandoff.moduleKey) }} · 续费办理上下文已带入</strong><p>服务开始建议：{{ renewalHandoff.startLocal.replace('T', ' ') }}（北京时间）。请选择本次商品版本并确认价格，新的服务截止必须自行明确；不会复用旧价格或自动下单。</p></div>
       <div v-if="attempt" class="pending"><strong>上次请求的结果仍需核对</strong><p>请保留原请求重试。系统复用同一幂等键，不另建第二张单；草稿和学校已暂时锁定。</p><button :disabled="sending || !canOrder" @click="submitOrder">{{ sending ? '正在核对原请求…' : '核对原请求结果' }}</button></div>
       <div v-if="receipt" class="success"><strong>订单 {{ receipt.orderNo }} 已创建或找回</strong><p>创建回执不代表已收款或开通。实际支付与履约状态以订单台账为准。</p><button @click="selectTab('ledger')">查看该校分项台账</button> <router-link :to="{ path:'/admin/platform/orders', query:{ tenantId, orderNo:receipt.orderNo } }">到原订单中心核对收款</router-link></div>
-      <fieldset :disabled="!canOrder || sending || !!attempt || locked || contextLoading || !context">
+      <fieldset :disabled="!canOrder || sending || handoffLoading || !!attempt || locked || contextLoading || !context">
         <div class="draft-head"><label>业务类型<select v-model="orderType" @change="invalidateQuote"><option value="NEW">新购 / 增购模块</option><option value="RENEW">续费（延续当前代次）</option></select></label><label class="grow">合同 / 报价说明<input v-model.trim="remark" minlength="5" maxlength="500" placeholder="填写可追溯的合同编号和成交说明，至少5字符" @input="invalidateQuote"></label></div>
         <div class="catalog-tools"><label>可售模块<select v-model="catalogModule" @change="loadCatalog(1)"><option value="">全部核心模块</option><option v-for="mod in modules" :key="mod.moduleKey" :value="mod.moduleKey">{{ mod.label }}</option></select></label><label class="grow">检索商品<input v-model.trim="catalogKeyword" maxlength="100" placeholder="商品名称或SKU编码" @keyup.enter="loadCatalog(1)"></label><button type="button" @click="loadCatalog(1)">查询商品</button></div>
         <p v-if="catalogLoading" role="status">正在读取已发布商品…</p><p v-else-if="catalogError" class="error" role="alert">{{ catalogError }}</p><p v-else-if="!skus.length" class="empty">没有符合条件的已发布商品。请先在“商品版本”发布真实价格与政策，不会自动生成套餐价格。</p>
@@ -44,7 +46,9 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { moduleCommerceApi as api } from '@/modules/platform/api/moduleCommerce.api'
 import { ensurePlatformAccessContext } from '@/security/platformAccessGate'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { buildRenewalHandoff } from '../../lib/moduleCommerceWorkbench.mjs'
 import { lineAmount, localInputToUtc, utcToLocalInput, renewalInputFromUtc, moneyCents, newOrderAttempt, restoreOrderAttempt, isDefinitiveRejection } from '../../lib/moduleCommerceSales.mjs'
+const renewalHandoff=ref(null), handoffLoading=ref(false)
 const props = defineProps({ tenantId: { type:String, default:'' }, locked:Boolean })
 const emit = defineEmits(['update:tenantId', 'order-created'])
 const tabs = [{ key:'order', label:'分项订购与续费' }, { key:'catalog', label:'商品版本' }, { key:'ledger', label:'分项订单台账' }]
@@ -73,17 +77,43 @@ async function loadCatalog(page=1){const seq=++catalogSeq;catalogLoading.value=t
 function chooseSchool(event){const next=event.target.value;if(attempt.value||((rows.value.length>0)&&!window.confirm('切换学校将清空未提交的销售草稿，确认继续？'))){event.target.value=props.tenantId;return}emit('update:tenantId',next)}
 async function loadContext(){const id=props.tenantId,seq=++contextSeq;context.value=null;contextLoading.value=!!id;if(!id)return;try{const data=await api.getSalesContext(id);if(seq===contextSeq&&id===props.tenantId)context.value=data}catch(e){if(seq===contextSeq)error.value=e.message}finally{if(seq===contextSeq)contextLoading.value=false}}
 function loadPending(){attempt.value=null;if(!props.tenantId||!access.value?.subjectId)return;try{attempt.value=restoreOrderAttempt(sessionStorage.getItem(storageKey()),props.tenantId)}catch(e){error.value=e.message;access.value=null}}
-watch(()=>props.tenantId,()=>{epoch++;orderSeq++;detailSeq++;ordersLoading.value=false;detailLoading.value=false;invalidateQuote();rows.value=[];remark.value='';orders.value=[];orderTotal.value=0;detail.value=null;receipt.value=null;error.value='';notice.value='';loadPending();loadContext();if(tab.value==='ledger')loadOrders(1)})
-function addSku(sku){if(rows.value.some(r=>r.moduleKey===sku.moduleKey))return;rows.value.push({moduleKey:sku.moduleKey,skuCode:sku.skuCode,skuRevision:sku.revision,skuContentHash:sku.contentHash,currency:sku.pricePolicy.currency,quantity:1,unitPrice:sku.pricePolicy.unitPrice,discountAmount:'0.00',startLocal:'',endLocal:''});invalidateQuote()}
+watch(()=>props.tenantId,()=>{epoch++;renewalHandoff.value=null;handoffLoading.value=false;orderSeq++;detailSeq++;ordersLoading.value=false;detailLoading.value=false;invalidateQuote();rows.value=[];remark.value='';orders.value=[];orderTotal.value=0;detail.value=null;receipt.value=null;error.value='';notice.value='';loadPending();loadContext();if(tab.value==='ledger')loadOrders(1)})
+function addSku(sku){if(rows.value.some(r=>r.moduleKey===sku.moduleKey))return;const handoff=orderType.value==='RENEW'&&renewalHandoff.value?.moduleKey===sku.moduleKey?renewalHandoff.value:null;rows.value.push({moduleKey:sku.moduleKey,skuCode:sku.skuCode,skuRevision:sku.revision,skuContentHash:sku.contentHash,currency:sku.pricePolicy.currency,quantity:1,unitPrice:sku.pricePolicy.unitPrice,discountAmount:'0.00',startLocal:handoff?.startLocal||'',endLocal:''});invalidateQuote()}
 function removeLine(index){rows.value.splice(index,1);invalidateQuote()}
 function useRenewalBoundary(row){row.startLocal=renewalInputFromUtc(context.value.paidThrough[row.moduleKey]);invalidateQuote()}
 async function previewOrder(){error.value='';notice.value='';const startStamp=stamp(),seq=++previewSeq,token=epoch;previewing.value=true;quote.value=null;confirmed.value=false;try{const body={tenantId:props.tenantId,orderType:orderType.value,remark:remark.value,items:rows.value.map(r=>({skuCode:r.skuCode,skuRevision:r.skuRevision,skuContentHash:r.skuContentHash,quantity:r.quantity,unitPrice:r.unitPrice,discountAmount:r.discountAmount,startAt:localInputToUtc(r.startLocal),endAt:localInputToUtc(r.endLocal)}))};const result=await api.previewSalesOrder(body);if(token===epoch&&seq===previewSeq&&startStamp===stamp())quote.value=result}catch(e){if(token===epoch&&seq===previewSeq)error.value=e.message}finally{previewing.value=false}}
-async function submitOrder(){if(sending.value||!canOrder.value||(!attempt.value&&(!confirmed.value||!quote.value)))return;sending.value=true;error.value='';const token=epoch;try{const current=await ensurePlatformAccessContext({force:true});if(!current||String(current.subjectId)!==String(access.value?.subjectId)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，未发送订单；请先恢复原身份并核对台账');if(!attempt.value)attempt.value=newOrderAttempt(quote.value.order);sessionStorage.setItem(storageKey(),JSON.stringify(attempt.value));const result=await api.createSalesOrder(attempt.value.order,attempt.value.key);if(token!==epoch)return;if(!result?.orderNo||result.paymentRecorded!==false||result.rightsMaterialized!==false)throw new Error('未取得明确的未支付创建回执，请核对原请求');sessionStorage.removeItem(storageKey());attempt.value=null;receipt.value=result;rows.value=[];invalidateQuote();emit('order-created',result);await loadOrders(1)}catch(e){if(token!==epoch)return;error.value=e.message||'提交结果不明，请核对原请求';if(isDefinitiveRejection(e)){sessionStorage.removeItem(storageKey());attempt.value=null;invalidateQuote()}}finally{sending.value=false}}
+async function submitOrder(){if(sending.value||handoffLoading.value||!canOrder.value||(!attempt.value&&(!confirmed.value||!quote.value)))return;sending.value=true;error.value='';const token=epoch,tenantAtStart=props.tenantId;try{const current=await ensurePlatformAccessContext({force:true});if(token!==epoch||tenantAtStart!==props.tenantId)return;if(!current||String(current.subjectId)!==String(access.value?.subjectId)||!current.duties?.some(d=>['*','order.manage'].includes(d)))throw new Error('平台身份或职责已变化，未发送订单；请先恢复原身份并核对台账');if(!attempt.value)attempt.value=newOrderAttempt(quote.value.order);sessionStorage.setItem(storageKey(),JSON.stringify(attempt.value));const result=await api.createSalesOrder(attempt.value.order,attempt.value.key);if(token!==epoch||tenantAtStart!==props.tenantId)return;if(!result?.orderNo||result.paymentRecorded!==false||result.rightsMaterialized!==false)throw new Error('未取得明确的未支付创建回执，请核对原请求');sessionStorage.removeItem(storageKey());attempt.value=null;receipt.value=result;rows.value=[];invalidateQuote();emit('order-created',result);await loadOrders(1)}catch(e){if(token!==epoch||tenantAtStart!==props.tenantId)return;error.value=e.message||'提交结果不明，请核对原请求';if(isDefinitiveRejection(e)){sessionStorage.removeItem(storageKey());attempt.value=null;invalidateQuote()}}finally{sending.value=false}}
 async function selectTab(key){tab.value=key;if(key==='ledger')await loadOrders(1)}
 async function loadOrders(page=1){const id=props.tenantId,token=epoch,seq=++orderSeq;detailSeq++;detailLoading.value=false;orders.value=[];detail.value=null;ordersLoading.value=!!id;if(!id)return;try{const data=await api.listSalesOrders({tenantId:id,status:orderStatus.value,page,pageSize:20});if(token!==epoch||seq!==orderSeq)return;orders.value=data.items;orderTotal.value=data.total;orderPage.value=page}catch(e){if(token===epoch&&seq===orderSeq){orderTotal.value=0;error.value=e.message}}finally{if(seq===orderSeq)ordersLoading.value=false}}
 async function openOrder(order){const token=epoch,seq=++detailSeq;detail.value=null;detailLoading.value=true;try{const data=await api.getSalesOrder(props.tenantId,order.orderId);if(token===epoch&&seq===detailSeq)detail.value=data}catch(e){if(token===epoch&&seq===detailSeq)error.value=e.message}finally{if(seq===detailSeq)detailLoading.value=false}}
 async function exportLedger(){if(exporting.value)return;exporting.value=true;error.value='';const token=epoch;try{const data=await api.exportSalesOrders({tenantId:props.tenantId,status:orderStatus.value,reason:exportReason.value});if(token!==epoch)return;if(!data?.contentBase64||data.truncated!==false)throw new Error('导出未返回完整文件');downloadXlsxFromApi(data);notice.value=`已生成并审计 ${data.rowCount} 条分项`}catch(e){if(token===epoch)error.value=e.message}finally{exporting.value=false}}
 async function publishProduct(){if(!canPublish.value||publishing.value)return;publishing.value=true;error.value='';notice.value='';try{moneyCents(product.value.unitPrice);const quotas={};for(const [field,key,unit,factor] of [['students','students','COUNT',1],['storageGiB','storageBytes','BYTES',1024**3]]){const raw=product.value[field];if(raw!==''){if(!/^\d+$/.test(String(raw))||!Number.isSafeInteger(Number(raw)*factor))throw new Error('额度须为安全范围内的非负整数');quotas[key]={limit:Number(raw)*factor,unit,aggregation:'MAX'}}}const sku={skuCode:product.value.skuCode,revision:product.value.revision,name:product.value.name,productType:'MODULE',moduleKey:product.value.moduleKey,features:Object.fromEntries(product.value.features.map(f=>[f,true])),quotas,pricePolicy:{unitPrice:product.value.unitPrice,currency:'CNY',taxTreatment:'UNSPECIFIED'},lifecyclePolicyVersion:product.value.lifecyclePolicyVersion};const result=await api.publishSku({sku,reason:product.value.reason});notice.value=`商品 ${result.skuCode} 第${result.revision}版已发布；没有给学校新增授权`;await loadCatalog(1)}catch(e){error.value=e.message}finally{publishing.value=false}}
+async function prepareRenewal(candidate) {
+  if (!canOrder.value || sending.value || props.locked || handoffLoading.value || attempt.value) {
+    error.value = attempt.value ? '先核对原订单请求结果，不能覆盖待核对请求进入另一笔续费' : '当前不能转入续费，请先完成当前办理并核对订单职责'
+    return false
+  }
+  // Snapshot the selection. A row refresh must not mutate the in-flight intent.
+  const selected = JSON.parse(JSON.stringify(candidate || {})), token = epoch, initialDraft = stamp()
+  if (rows.value.length && !window.confirm('进入此模块续费会清空尚未提交的销售草稿，是否继续？')) return false
+  handoffLoading.value = true; error.value = ''
+  try {
+    const fresh = await api.getSalesContext(props.tenantId)
+    if (token !== epoch || initialDraft !== stamp() || sending.value || attempt.value) return false
+    const handoff = buildRenewalHandoff(selected, fresh, props.tenantId)
+    context.value = fresh; contextSeq++; contextLoading.value = false
+    rows.value = []; remark.value = ''; receipt.value = null; notice.value = ''
+    invalidateQuote(); renewalHandoff.value = handoff; orderType.value = 'RENEW'; tab.value = 'order'
+    catalogModule.value = handoff.moduleKey; catalogKeyword.value = ''
+    await loadCatalog(1)
+    return token === epoch
+  } catch (e) {
+    if (token === epoch) error.value = e.message || '未能核对续费上下文，原销售草稿保持不变'
+    return false
+  } finally { if (token === epoch) handoffLoading.value = false }
+}
+defineExpose({ prepareRenewal })
+
 onBeforeRouteLeave(()=>!(attempt.value||rows.value.length)||window.confirm(attempt.value?'原订单结果尚未核对。离开后原请求仍保留在本标签页，请回到同一学校核对，不能重新建单。确认离开？':'离开将丢弃尚未提交的销售草稿，确认继续？'))
 function beforeUnload(event){if(attempt.value||rows.value.length){event.preventDefault();event.returnValue=''}}
 onMounted(async()=>{window.addEventListener('beforeunload',beforeUnload);access.value=await ensurePlatformAccessContext({force:true});if(!access.value)error.value='平台职责核验失败，销售操作已关闭';loadPending();await Promise.all([loadSchools(1),loadCatalog(1),loadContext()])})

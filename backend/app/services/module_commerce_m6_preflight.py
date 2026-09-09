@@ -186,8 +186,24 @@ def _module_file_risk(db, tenant_id: int, module_key: str) -> dict[str, Any]:
     }
 
 
-def preview_module_purge(job_id: int) -> dict[str, Any]:
-    """Read-only M6 preflight. The result can never authorize deletion."""
+def preview_module_purge(
+    job_id: int, *, tenant_id: int | None = None,
+    expected_generation: int | None = None, expected_version: int | None = None,
+) -> dict[str, Any]:
+    """Read-only preflight, optionally bound to the operator's selected school/job.
+
+    The HTTP reader supplies all three context fields. Check ownership in the first
+    query and optimistic context before collecting any consumer or file information.
+    Existing internal callers retain the same read-only behavior without these fields.
+    """
+    for name, value, minimum in (
+        ("jobId", job_id, 1), ("tenantId", tenant_id, 1),
+        ("expectedGeneration", expected_generation, 1), ("expectedVersion", expected_version, 0),
+    ):
+        if value is not None and (type(value) is not int or not minimum <= value <= 2**63 - 1):
+            raise AppException("VALIDATION_ERROR", f"{name} 必须是有效整数", http_status=422)
+    if job_id is None:
+        raise AppException("VALIDATION_ERROR", "jobId 必填", http_status=422)
     _require_db()
     from app.models import TenantModuleOffboardingJob, TenantModuleState
     from app.services import tenant_purge_registry
@@ -196,15 +212,21 @@ def preview_module_purge(job_id: int) -> dict[str, Any]:
 
     db = get_sessionmaker()()
     try:
-        job = db.scalars(
-            select(TenantModuleOffboardingJob).where(
-                TenantModuleOffboardingJob.id == int(job_id),
-                TenantModuleOffboardingJob.is_deleted.is_(False),
-            )
-        ).first()
+        filters = [
+            TenantModuleOffboardingJob.id == job_id,
+            TenantModuleOffboardingJob.is_deleted.is_(False),
+        ]
+        if tenant_id is not None:
+            filters.append(TenantModuleOffboardingJob.tenant_id == tenant_id)
+        job = db.scalars(select(TenantModuleOffboardingJob).where(*filters)).first()
         if job is None:
             raise AppException("DATA_NOT_FOUND", "模块退出任务不存在", http_status=404)
 
+        if (expected_generation is not None and int(job.module_generation) != expected_generation
+                or expected_version is not None and int(job.version or 0) != expected_version):
+            raise AppException(
+                "DATA_CONFLICT", "退出任务代次或版本已变化，请刷新当前学校的任务后重新检查", http_status=409,
+            )
         module = _canonical_module(job.module_key)
         state = db.scalars(
             select(TenantModuleState).where(
@@ -325,6 +347,7 @@ def preview_module_purge(job_id: int) -> dict[str, Any]:
 
         stable_basis = {
             "jobId": str(job.id),
+            "jobVersion": int(job.version or 0),
             "tenantId": str(job.tenant_id),
             "moduleKey": module,
             "moduleGeneration": int(job.module_generation),
