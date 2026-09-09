@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期状态"
-    subtitle="管理学期从编制、发布到冻结的状态流转 · 当前学期结论统一来自 A-C1"
+    subtitle="查看学期所处阶段，按需冻结或恢复业务办理。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -198,5 +199,6 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-form { display: flex; flex-direction: column; gap: 12px; }
 </style>

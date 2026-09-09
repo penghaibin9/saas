@@ -46,7 +46,7 @@
         <view v-for="dayGroup in grouped" :key="dayGroup.day" class="sc__day">
           <text class="sc__day-t">{{ WEEK[dayGroup.day] }}</text>
           <view v-for="item in dayGroup.list" :key="item.itemId" class="sc__item">
-            <view class="sc__slot">第{{ item.slotNo }}节</view>
+            <view class="sc__slot"><text>第{{ item.slotNo }}节</text><text v-if="slotTime(item)" class="sc__time">{{ slotTime(item) }}</text></view>
             <view class="sc__main">
               <text class="sc__course">{{ item.courseName }}</text>
               <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }} · {{ parity(item) }}</text>
@@ -184,30 +184,37 @@ export default {
 
 <style scoped>
 .sc__week { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
-.sc__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid rgba(22,163,74,.20); border-radius: 18px; background: linear-gradient(135deg, rgba(248,255,250,.98), rgba(238,249,242,.96)); box-shadow: var(--shadow-card); }
+.sc__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); }
 .sc__today-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
-.sc__today-kicker { display: block; color: #15803d; font-size: 10px; font-weight: 700; }
-.sc__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 800; }
-.sc__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
-.sc__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: #fff; color: #15803d; font-size: 10px; }
+.sc__today-kicker { display: block; color: #15803d; font-size: 12px; font-weight: 700; }
+.sc__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 700; }
+.sc__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
+.sc__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: var(--bg-card); color: #15803d; font-size: 12px; }
 .sc__today-list { margin-top: var(--space-3); }
-.sc__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid #16a34a; border-radius: 12px; background: rgba(255,255,255,.88); }
+.sc__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid #16a34a; border-radius: 12px; background: var(--bg-page); }
 .sc__today-time { flex-shrink: 0; width: 82px; color: #15803d; font-size: var(--font-size-sm); font-weight: 700; }
 .sc__today-time text { display: block; }
-.sc__today-time text + text { margin-top: 2px; font-size: 10px; font-weight: 500; }
+.sc__today-time text + text { margin-top: 2px; font-size: 12px; font-weight: 500; }
 .sc__today-empty { margin-top: var(--space-3); padding: var(--space-4); border: 1px dashed rgba(22,163,74,.25); border-radius: 12px; color: var(--text-tertiary); text-align: center; font-size: var(--font-size-xs); }
 .sc__week-title { display: block; color: var(--brand-primary); font-size: var(--font-size-lg); font-weight: 700; }
 .sc__week-sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.sc__week-picker { min-width: 88px; height: 34px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 34px; text-align: center; }
+.sc__week-picker { min-width: 88px; height: 40px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 40px; text-align: center; }
 .sc__actions { margin-bottom: var(--space-3); }
 .sc__copy { background: var(--brand-primary); color: #fff; border-radius: var(--radius-full); font-size: var(--font-size-sm); }
 .sc__hint { display: block; margin-top: var(--space-2); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sc__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .sc__day { margin-bottom: var(--space-4); }
 .sc__day-t { display: block; font-weight: 700; color: var(--brand-primary); margin-bottom: var(--space-2); }
-.sc__item { display: flex; gap: var(--space-3); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
-.sc__slot { flex-shrink: 0; width: 56px; text-align: center; font-size: var(--font-size-sm); color: var(--text-secondary); align-self: center; }
+.sc__item { display: flex; gap: var(--space-3); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3); margin-bottom: var(--space-2); border: 1px solid var(--border-base); }
+.sc__slot { flex-shrink: 0; width: 82px; text-align: center; font-size: var(--font-size-sm); color: var(--text-secondary); align-self: center; }
 .sc__course { display: block; font-weight: 600; }
 .sc__meta { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); margin-top: 2px; }
-.sc__source { display: inline-block; margin-top: 4px; padding: 1px 6px; border-radius: var(--radius-full); background: var(--primary-50); color: var(--primary-700); font-size: 10px; }
+.sc__source { display: inline-block; margin-top: 4px; padding: 1px 6px; border-radius: var(--radius-full); background: var(--primary-50); color: var(--primary-700); font-size: 12px; }
+.sc__today-head { flex-wrap: wrap; }
+.sc__week > view { flex: 1; min-width: 0; }
+.sc__week picker { flex-shrink: 0; }
+.sc__main { flex: 1; min-width: 0; }
+.sc__course { overflow-wrap: anywhere; line-height: 1.5; }
+.sc__slot text { display: block; }
+.sc__time { margin-top: 4px; font-size: 12px; line-height: 1.5; }
 </style>

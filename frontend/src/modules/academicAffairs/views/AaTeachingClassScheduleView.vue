@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="教学班课表"
-    subtitle="按教学班（派生自教学任务，含合班后的教学单元）查看当前已发布课表"
+    subtitle="选择教学班，查看已发布的课程安排。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -14,7 +15,8 @@
         <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
       </div>
 
-      <template v-if="teachingClassCode">
+      <EmptyState v-if="!teachingClassCode" title="请先选择教学班" description="搜索教学班名称或课程名称，选择后查看已发布课表。" />
+      <template v-else>
         <div class="aa-filter">
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
@@ -32,8 +34,8 @@
         <LoadingState v-else-if="loading" />
         <template v-else>
           <p v-if="note" class="mp-note">{{ note }}</p>
-          <AppSectionCard :title="teachingClassName ? `${teachingClassName} · 课表` : '教学班课表'">
-            <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+          <AppSectionCard compact :title="teachingClassName ? `${teachingClassName} · 课表` : '教学班课表'">
+            <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
           </AppSectionCard>
         </template>
       </template>
@@ -49,7 +51,7 @@
  * GET /academic-affairs/schedule/teaching-class/{code}?termId=&week=；数据范围校验同班级课表口径，
  * 越范围 → 403002；未知教学班代码 → 404。
  */
-import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
@@ -58,7 +60,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeachingClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -110,6 +112,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-reg-search { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
 .aa-input--grow { flex: 1; }

@@ -3,7 +3,7 @@
     <div class="aa-copy-toolbar">
       <label class="aa-copy-field">
         来源学期
-        <AppSelect v-model="sourceTermId" :options="sourceOptions" placeholder="选择要参考的历史学期" />
+        <AppSelect v-model="sourceTermId" :options="sourceOptions" :disabled="applying" placeholder="选择要参考的历史学期" />
       </label>
       <AppButton variant="primary" :disabled="disabled || !sourceTermId" :loading="loading" @click="loadPreview">
         预览复制结果
@@ -49,7 +49,7 @@
       </label>
 
       <div class="aa-copy-actions">
-        <AppButton variant="ghost" :disabled="applying" @click="loadPreview">刷新权威预览</AppButton>
+        <AppButton variant="ghost" :disabled="applying" @click="loadPreview">重新核对</AppButton>
         <AppButton
           variant="primary"
           :loading="applying"
@@ -81,10 +81,11 @@ export default {
     targetTermId: { type: [String, Number], default: '' },
     disabled: { type: Boolean, default: false }
   },
-  emits: ['applied'],
+  emits: ['applied', 'busy'],
   data() {
     return {
       sourceTermId: '',
+      requestVersion: 0,
       preview: null,
       loading: false,
       applying: false,
@@ -98,7 +99,7 @@ export default {
         .filter((term) => String(term.termId) !== String(this.targetTermId))
         .map((term) => ({
           value: term.termId,
-          label: `${term.yearCode} 第 ${term.termNo} 学期${term.isCurrent ? '（当前）' : ''}`
+          label: term.termName || `${term.yearCode} 第 ${term.termNo} 学期`
         }))
     },
     canApply() {
@@ -108,28 +109,32 @@ export default {
     }
   },
   watch: {
+    sourceTermId() { this.invalidatePreview() },
     targetTermId: {
       immediate: true,
       handler() {
-        this.preview = null
-        this.reviewConfirmed = false
-        this.error = ''
+        this.invalidatePreview()
         if (!this.sourceOptions.some((item) => String(item.value) === String(this.sourceTermId))) {
           this.sourceTermId = this.sourceOptions[0]?.value || ''
         }
       }
     }
   },
+  beforeUnmount() { this.requestVersion++ },
   methods: {
+    invalidatePreview() { this.requestVersion++; this.preview = null; this.reviewConfirmed = false; this.error = ''; this.loading = false },
     eventTypeLabel(type) { return EVENT_TYPES[type] || (type ? '类型待确认' : '—') },
     statusLabel(status) { return { READY: '可复制', REVIEW: '需复核', BLOCKED: '阻断' }[status] || (status ? '状态待确认' : '—') },
     statusTone(status) { return { READY: 'success', REVIEW: 'warning', BLOCKED: 'danger' }[status] || 'default' },
     async loadPreview() {
-      if (!this.targetTermId || !this.sourceTermId || this.loading) return
+      if (!this.targetTermId || !this.sourceTermId || this.loading || this.applying || this.disabled) return
+      const version = ++this.requestVersion
+      this.preview = null
       this.loading = true
       this.error = ''
       this.reviewConfirmed = false
       const res = await termCalendarConvenienceApi.previewCalendarCopy(this.targetTermId, this.sourceTermId)
+      if (version !== this.requestVersion) return
       this.loading = false
       if (res.code === 0) {
         this.preview = res.data
@@ -141,9 +146,12 @@ export default {
     async applyCopy() {
       if (!this.canApply) return
       this.applying = true
+      this.$emit('busy', true)
       this.error = ''
+      const targetTermId = this.targetTermId
+      const items = this.preview.items
       let applied = 0
-      for (const row of this.preview.items) {
+      for (const row of items) {
         if (!['READY', 'REVIEW'].includes(row.status)) continue
         const body = {
           eventType: row.eventType,
@@ -152,16 +160,19 @@ export default {
           swapToDate: row.eventType === 'SWAP' ? row.swapToDate : undefined,
           remark: row.remark || undefined
         }
-        const res = await academicAffairsApi.addCalendarEvent(this.targetTermId, body)
+        const res = await academicAffairsApi.addCalendarEvent(targetTermId, body)
         if (res.code !== 0) {
-          this.error = `已成功复制 ${applied} 项；第 ${applied + 1} 项被服务端拒绝：${res.message || '发生冲突'}。已保留本次预览，请刷新权威事实后再处理。`
+          this.error = `已复制 ${applied} 项；第 ${applied + 1} 项未能复制：${res.message || '发生冲突'}。请重新核对目标校历，已复制的安排无需重复添加。`
+          this.preview = null
           this.applying = false
+          this.$emit('busy', false)
           this.$emit('applied', { applied, partial: true })
           return
         }
         applied += 1
       }
       this.applying = false
+      this.$emit('busy', false)
       toast.success(`已复制 ${applied} 项校历事件`)
       this.$emit('applied', { applied, partial: false })
       this.preview = null

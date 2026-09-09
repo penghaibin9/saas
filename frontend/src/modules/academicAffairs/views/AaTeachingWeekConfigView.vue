@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="教学周配置"
-    subtitle="设置学期教学周总数与考试周起始周次 · 仅草稿（DRAFT）状态学期可调整结构"
+    subtitle="按学校校历配置教学周与考试开始周；草稿学期可修改。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,7 +10,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
-          <AppTermEntityPicker v-model="termId" :options="termOptions" placeholder="选择学期" @change="onTermChange" />
+          <AppTermEntityPicker v-model="termId" :options="termOptions" :disabled="saving || termsLoading" placeholder="选择学期" @change="onTermChange" />
         </label>
       </div>
 
@@ -19,8 +20,10 @@
         :description="`当前学期解析失败，未自动猜测“当前”；仍可显式选择草稿学期维护教学周。${currentError}`"
       />
 
+      <ErrorState v-if="catalogError" :description="catalogError" @retry="refreshTermCatalog" />
+      <LoadingState v-else-if="termsLoading" />
       <EmptyState
-        v-if="!termsLoading && !terms.length"
+        v-else-if="!terms.length"
         title="还没有学年学期"
         description="请先到「学年学期」创建一个学期"
       >
@@ -31,7 +34,7 @@
         <AppInlineAlert
           v-if="current.status !== 'DRAFT'"
           type="warning"
-          description="该学期已发布/冻结/归档，结构性调整（教学周总数/考试周起始周次）已锁定；如需调整请走冻结-解冻或新建学期。"
+          description="该学期的教学周已锁定。解冻只恢复业务办理，不会恢复草稿编辑权限。"
         />
         <AppSectionCard title="教学周配置">
           <div class="aa-form">
@@ -54,22 +57,24 @@
 
 <script>
 /** 教学周配置（/admin/academic-affairs/terms/teaching-weeks）：显式 term 可编辑；默认 term 由 A-C1 /terms/current 决定。 */
-import { ModulePageShell, EmptyState } from '@/components/business'
+import { ModulePageShell, EmptyState, ErrorState, LoadingState } from '@/components/business'
 import { AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 
 const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中', FROZEN: '已冻结', ARCHIVED: '已归档' }
 
 export default {
   name: 'AaTeachingWeekConfigView',
-  components: { ModulePageShell, EmptyState, AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker, AppButton },
+  components: { ModulePageShell, EmptyState, ErrorState, LoadingState, AppSectionCard, AppFormItem, AppNumberInput, AppInlineAlert, AppTermEntityPicker, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       termsLoading: true,
+      catalogError: '',
       terms: [],
       termId: '',
       currentContext: null,
@@ -91,7 +96,7 @@ export default {
       return this.terms.find((t) => String(t.termId) === String(this.termId)) || null
     },
     editable() {
-      return !!this.current && this.current.status === 'DRAFT'
+      return !this.termsLoading && !this.saving && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.term.manage') && !!this.current && this.current.status === 'DRAFT'
     }
   },
   created() {
@@ -114,17 +119,18 @@ export default {
     },
     async refreshTermCatalog() {
       this.termsLoading = true
+      this.catalogError = ''
       try {
         this.terms = await loadAcademicTermCatalog()
         await this.loadCurrentContext()
         const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
-        const selected = resolved || this.terms[0]
+        const selected = this.terms.find(t => String(t.termId) === String(this.termId || this.$route.query.termId || '')) || resolved || this.terms[0]
         if (selected) {
           this.termId = selected.termId
           this.onTermChange()
         }
       } catch (error) {
-        this.formError = error.message || '学期数据加载失败'
+        this.catalogError = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
@@ -137,10 +143,10 @@ export default {
       }
     },
     async submit() {
-      if (!this.termId || this.saving) return
+      if (!this.termId || !this.editable) return
       this.formError = ''
-      if (!this.form.teachingWeeks || this.form.teachingWeeks <= 0) {
-        this.formError = '教学周总数必填且须为正整数'
+      if (!Number.isInteger(Number(this.form.teachingWeeks)) || this.form.teachingWeeks < 1 || this.form.teachingWeeks > 30) {
+        this.formError = '教学周总数须为 1—30 之间的整数'
         return
       }
       if (this.form.examWeekStart && Number(this.form.examWeekStart) > Number(this.form.teachingWeeks)) {
@@ -150,7 +156,7 @@ export default {
       this.saving = true
       const res = await academicAffairsApi.updateTeachingWeeks(this.termId, {
         teachingWeeks: Number(this.form.teachingWeeks),
-        examWeekStart: this.form.examWeekStart ? Number(this.form.examWeekStart) : undefined
+        examWeekStart: this.form.examWeekStart ? Number(this.form.examWeekStart) : null
       })
       this.saving = false
       if (res.code === 0) {
@@ -166,6 +172,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; margin-bottom: 4px; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-select {

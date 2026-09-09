@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="课表管理"
-    subtitle="按学期建立课表批次 → 手工/导入排课（三重冲突检测）→ 预发布 → 发布通知师生"
+    subtitle="建立学期批次、安排课程，检查通过后发布给师生。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,7 +12,7 @@
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard v-if="showCreate" title="新建课表批次">
+      <AppSectionCard compact v-if="showCreate" title="新建课表批次">
         <div class="aa-cal-form">
           <label class="aa-cal-form__item">
             学期
@@ -154,6 +155,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }

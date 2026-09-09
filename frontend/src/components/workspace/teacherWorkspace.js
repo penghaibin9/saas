@@ -59,11 +59,26 @@ export function workspaceTokens(key) {
   }
 }
 export function workspacePages(modules) {
-  return modules.flatMap(mod => (mod.children?.length ? mod.children : [mod])
-    .filter(item => item.path && !item.disabled)
-    .map(item => ({ ...item, id: item.path, title: item.label, moduleKey: mod.key, trail: mod.label })))
+  const items = modules.flatMap(mod => (mod.children?.length ? mod.children : [mod])
+    .filter(item => !item.disabled)
+    .map(item => ({ ...item, id: item.path || `${mod.key}:${item.label}`, title: item.label, moduleKey: mod.key, trail: mod.label })))
+  const counts = new Map()
+  for (const item of items) if (item.path) counts.set(item.path, (counts.get(item.path) || 0) + 1)
+  return items.map(item => {
+    if (!item.path || counts.get(item.path) === 1) return item
+    const id = `${item.moduleKey}:${item.label}`
+    const url = new URL(item.path, 'http://workspace.local')
+    url.searchParams.set('_workspace', id)
+    return { ...item, id, destination: url.pathname + url.search }
+  })
 }
-// 菜单参数是页面身份，批次/分页等额外参数不应破坏高亮。
+// 模块可声明低频目录项。完整 pages 不变，搜索、收藏、已打开页签继续可达。
+export function workspaceMenuItems(pages, moduleKey, currentId, expanded = false, query = '') {
+  const needle = query.trim().toLowerCase()
+  return pages.filter(item => item.moduleKey === moduleKey && !item.workspaceHidden)
+    .filter(item => expanded || !item.menuSecondary || item.id === currentId)
+    .filter(item => !needle || [item.label, item.menuSection, ...(item.searchAliases || [])].some(text => String(text || '').toLowerCase().includes(needle)))
+}
 export function workspaceCurrentPage(pages, fullPath, activeModule = '') {
   const current = new URL(fullPath, 'https://workspace.invalid')
   let best, bestScore = -1
@@ -83,11 +98,11 @@ export function workspaceCurrentPage(pages, fullPath, activeModule = '') {
 export function defaultShortcutIds(pages) {
   const paths = ['/admin/approval/todos', '/admin/student/list', '/admin/student-affairs/leave', '/admin/student-affairs/dorm', '/admin/orientation', '/admin/student-affairs/risk', '/admin/student-affairs/funding']
   const ids = paths.map(path => pages.find(page => page.path === path)?.id).filter(Boolean)
-  return ids.length ? ids : pages.slice(0, 4).map(page => page.id)
+  return ids.length ? ids : pages.filter(page => page.path && !page.disabled).slice(0, 4).map(page => page.id)
 }
 export function restoreWorkspace(value, pages) {
   const saved = value && typeof value === 'object' ? value : {}
-  const allowed = new Set(pages.map(item => item.id))
+  const allowed = new Set(pages.filter(item => item.path && !item.disabled).map(item => item.id))
   const safeIds = (ids, max) => Array.isArray(ids) ? [...new Set(ids.filter(id => allowed.has(id)))].slice(0, max) : []
   const appearance = {}
   for (const id of allowed) {
@@ -106,6 +121,6 @@ export function restoreWorkspace(value, pages) {
   }
 }
 const SHORT_NAMES = { 'sa-workbench': '工作', 'sa-profile': '学生', 'sa-classes': '班级', 'sa-orientation': '迎新', 'sa-leave': '请假', 'sa-dorm': '住宿', 'sa-risk': '风险', 'sa-difficulty': '认定', 'sa-aid': '奖助', 'sa-discipline': '处分', 'sa-talks': '家校', 'sa-mental': '心理', 'sa-activities': '活动', 'sa-archive-stats': '统计' }
-const PAGE_SHORT_NAMES = { '我的工作台': '首页', '我的待办': '待办', '审批中心': '审批', '消息中心': '消息', '学工大屏': '大屏', '最近访问': '最近', '帮助中心': '帮助', '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '申请与审核': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
+const PAGE_SHORT_NAMES = { '我的工作台': '首页', '我的待办': '待办', '审批中心': '审批', '消息中心': '消息', '学工大屏': '大屏', '最近访问': '最近', '帮助中心': '帮助', '请假审批': '审批', '销假与续假': '返校', '请假台账': '台账', '请假统计': '统计', '认定批次': '批次', '认定申请与审核（工作台）': '评审', '申请与审核': '评审', '公示待办': '公示', '认定台账': '台账', '困难学生库': '名册', '认定统计': '统计', '异议复核': '异议',
   '资助项目': '项目', '资助批次': '批次', '申请评审（工作台）': '评审', '公示申诉': '申诉', '发放台账': '发放', '资助统计': '统计', '助学金管理': '助学', '勤工助学': '勤工', '助学贷款': '贷款', '减免与临时补助': '减免' }
 export function workspaceShort(item) { return SHORT_NAMES[item.key] || PAGE_SHORT_NAMES[item.label] || String(item.label || '').slice(0, 2) }

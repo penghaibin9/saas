@@ -591,8 +591,8 @@ export default {
 .aaexam-readiness__item span { font-size: 12px; color: var(--text-secondary, #64748b); }
 .aaexam-readiness__item strong { font-size: 20px; line-height: 1.2; }
 .aaexam-readiness__item small { color: var(--text-secondary, #64748b); overflow-wrap: anywhere; }
-.aaexam-readiness__item.is-risk { border-color: var(--warning-color, #d97706); background: #fffbeb; }
-.aaexam-readiness__item.is-ready { border-color: var(--success-color, #16a34a); background: #f0fdf4; }
+.aaexam-readiness__item.is-risk { border-color: var(--warning-color, #d97706); background: var(--aa-warning-bg, #fffbeb); }
+.aaexam-readiness__item.is-ready { border-color: var(--success-color, #16a34a); background: var(--aa-success-bg, #f0fdf4); }
 .aaexam-readiness__item.is-conclusion strong { font-size: 16px; }
 .aaexam-stats { display: flex; gap: 16px; flex-wrap: wrap; padding: 10px 12px; background: var(--fill-light, #f8fafc); border-radius: 8px; margin: 12px 0; font-size: 13px; }
 .aaexam-stats .is-warn { color: var(--warning-color, #d97706); font-weight: 600; }

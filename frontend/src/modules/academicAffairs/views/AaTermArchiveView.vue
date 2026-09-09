@@ -1,12 +1,13 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期归档"
-    subtitle="按学期查看归档批次状态（只读联动）· 归档批次创建/13数据域完整性检查/确认封存请到「教务归档」执行"
+    subtitle="查看各学期的归档进度，衔接 13 数据域完整性检查与正式封存。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/archive')">前往教务归档</AppButton>
+      <AppButton v-if="canViewArchive" variant="primary" @click="$router.push('/admin/academic-affairs/archive')">前往13数据域完整性检查</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -29,7 +30,7 @@
         </template>
         <template #cell-archivedAt="{ row }">{{ row.archivedAt ? row.archivedAt.replace('T', ' ').slice(0, 16) : '—' }}</template>
       </DataTable>
-      <p class="mp-note">「学期归档」仅提供只读总览；建批次、13 数据域完整性检查、确认归档封存等实际动作统一在「教务归档」执行，避免双写。归档后发现错误必须走纠错版本链，不普通解冻。</p>
+      <p class="mp-note">归档检查与封存在「教务归档」办理。归档后发现错误必须走纠错版本链，不普通解冻。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -40,6 +41,7 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { matchPermission } from '@/config/navPlan'
 
 const TERM_STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中', FROZEN: '已冻结', ARCHIVED: '已归档' }
 const TERM_STATUS_TYPE = { DRAFT: 'default', PUBLISHED: 'success', FROZEN: 'warning', ARCHIVED: 'info' }
@@ -50,6 +52,9 @@ export default {
   name: 'AaTermArchiveView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag },
   props: { ctx: { type: Object, required: true } },
+  computed: {
+    canViewArchive() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.archive.view') }
+  },
   data() {
     return {
       loading: true,
@@ -88,4 +93,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 </style>

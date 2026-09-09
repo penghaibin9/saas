@@ -12,10 +12,8 @@
 
     <div class="mp-stack">
       <div class="aa-filter">
-        <span class="aa-filter__label">学期</span>
-        <AppTermCodePicker v-model="term" placeholder="全部学期" style="max-width:220px" />
-        <span class="aa-filter__label">分组维度</span>
-        <AppSelect v-model="dimension" :options="dimensionOptions" style="min-width:130px" @change="load" />
+        <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="term" placeholder="全部学期" /></label>
+        <label class="aa-filter-field"><span>分组维度</span><AppSelect v-model="dimension" :options="dimensionOptions" @change="load" /></label>
         <AppButton variant="ghost" @click="load">查询</AppButton>
       </div>
 
@@ -152,11 +150,16 @@ export default {
 @import '@/styles/module-page.css';
 .aa-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }
-.aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.aa-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.aa-metric-grid :deep(.app-metric-card) { min-height: 86px; max-height: 92px; padding: 10px 12px; gap: 3px; border-radius: 10px; box-shadow: none; }
+.aa-metric-grid :deep(.app-metric-card__value) { font-size: 28px; }
+.aa-metric-grid :deep(.app-metric-card__footer) { min-height: 0; }
 .aa-dist__row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .aa-dist__label { width: 72px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-dist__bar-wrap { flex: 1; height: 18px; background: var(--fill-100, #f2f3f5); border-radius: 4px; overflow: hidden; }
 .aa-dist__bar { height: 100%; background: var(--primary-400, #60a5fa); border-radius: 4px; }
 .aa-dist__count { width: 48px; text-align: right; font-size: 13px; color: var(--text-900, #1f2329); }
 .aa-export { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+@media (max-width: 1100px) { .aa-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .aa-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

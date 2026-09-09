@@ -1,0 +1,23 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/classroom-batches
+    page: backend/app/modules/academic_affairs/routers/teaching_resource_router.py, backend/app/modules/academic_affairs/services/academic_affairs_classroom_catalog_service.py
+    action: upload+preview+import+export+download
+    fileCategory: CLASSROOM_CATALOG_XLSX
+    api: GET classroom-batches/template.xlsx; POST classroom-batches/import-preview; POST classroom-batches/{batchNo}/confirm; GET classroom-batches/{batchNo}/result.xlsx
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_classroom_catalog_service.py::import_preview+preview_rows+confirm_batch+batch_workbook
+    storageMode: bounded-in-memory-xlsx+persisted-tenant-operator-preview
+    authMode: authenticated+academicAffairs.classroom.create+tenant-operator-owned-preview+server-snapshotted-building-versions
+    dataScope: tenant+operator+classroom-catalog
+    versioned: true
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: XLSX is parsed synchronously without persisting the uploaded file; bounded upload, ZIP member/expanded-byte limits, 1000-row cap, strict template columns and formula rejection. Confirm consumes the server-owned preview with locked building-version and expiry checks. This is not a FileObject antivirus-scanned upload or a ZIP archive export. Regression owner is backend/tests/test_aa_classroom_bulk.py.

@@ -10,7 +10,7 @@
 
     <AppInlineAlert
       type="info"
-      description="快照 payload、payloadHash 与完整性结果全部以后端持久化事实为准；浏览器不计算、不覆盖权威哈希。"
+      description="快照保存当时的统计结果，便于期末留档和历史对照；后续数据更新不会改变已保存的快照。"
     />
 
     <div v-if="canView" class="assw-filter">
@@ -34,7 +34,7 @@
     <AppInlineAlert
       v-if="!canView"
       type="warning"
-      description="当前身份没有 academicAffairs.stats.snapshot.view 权限，统计快照保持不可见。"
+      description="当前身份没有查看统计快照的权限，请联系学校管理员。"
     />
     <ErrorState v-else-if="error" title="统计快照加载失败" :description="error" @retry="load" />
     <LoadingState v-else-if="loading && !loadedOnce" />
@@ -251,9 +251,8 @@ export default {
           page: this.pagination.page,
           pageSize: this.pagination.pageSize
         })
-        if (res.code !== 0) throw new Error(res.message || '统计快照加载失败')
-        this.rows = Array.isArray(res.data?.list) ? res.data.list : []
-        this.pagination.total = Number(res.data?.total || 0)
+        this.rows = Array.isArray(res?.list) ? res.list : []
+        this.pagination.total = Number(res?.total || 0)
       } catch (error) {
         this.rows = []
         this.pagination.total = 0
@@ -299,9 +298,7 @@ export default {
       this.saving = true
       this.createError = ''
       try {
-        const res = await academicStatsSnapshotApi.create(this.createForm)
-        if (res.code !== 0) throw new Error(res.message || '统计快照冻结失败')
-        const snapshot = res.data
+        const snapshot = await academicStatsSnapshotApi.create(this.createForm)
         this.confirmVisible = false
         this.createVisible = false
         toast.success('统计快照已冻结')
@@ -323,8 +320,7 @@ export default {
       this.detail = null
       try {
         const res = await academicStatsSnapshotApi.detail(row.snapshotId)
-        if (res.code !== 0) throw new Error(res.message || '统计快照详情读取失败')
-        this.detail = res.data
+        this.detail = res
         this.verified = { ...this.verified, [row.snapshotId]: true }
       } catch (error) {
         this.detailError = error?.message || '统计快照详情读取失败'
@@ -347,8 +343,7 @@ export default {
       this.verifying = true
       try {
         const res = await academicStatsSnapshotApi.verify(this.detail.snapshotId)
-        if (res.code !== 0) throw new Error(res.message || '完整性校验失败')
-        if (res.data?.integrityValid !== true || res.data?.immutable !== true) throw new Error('后端未返回有效的不可变完整性结论')
+        if (res?.integrityValid !== true || res?.immutable !== true) throw new Error('后端未返回有效的不可变完整性结论')
         this.verified = { ...this.verified, [this.detail.snapshotId]: true }
         toast.success('统计快照完整性校验通过')
       } catch (error) {

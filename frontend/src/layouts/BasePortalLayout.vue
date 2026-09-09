@@ -304,7 +304,7 @@
 <script>
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
-import { usesStudentAffairsWorkspace, workspaceIdentity, workspaceRouteOwner } from '@/components/workspace/workspaceRouting'
+import { usesStudentAffairsWorkspace, usesAcademicWorkspace, workspaceIdentity, workspaceRouteOwner } from '@/components/workspace/workspaceRouting'
 import { currentUserFromToken } from '@/services/http/client'
 import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
 import WorkbenchPageTabs from '@/components/workspace/WorkbenchPageTabs.vue'
@@ -432,7 +432,7 @@ export default {
   },
   computed: {
     useWorkspace() {
-      return !this.isPlatformMode && (this.workspace || usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path))
+      return !this.isPlatformMode && (this.workspace || usesAcademicWorkspace(this.$route.path, this.$route.fullPath) || usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path))
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)
@@ -559,17 +559,18 @@ export default {
         const firstAllowed = this.menus.find((item) => item?.path)?.path
         return [{ key: 'platform', label: '平台运营', path: firstAllowed || this.$route?.path || '/security/403' }]
       }
-      return getVisibleAdminMenu(this.ctx)
-        .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
-        .map((group) => {
-          const first = group.children[0]
-          return {
-            key: group.key,
-            label: group.label,
-            path: first ? first.path : '',
-            badge: group.badge
-          }
-        })
+      return getVisibleAdminMenu(this.ctx).filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench').map((group) => {
+        // 教务中心默认进入总览；大屏仍保留在二级菜单，且只从可见菜单选择入口。
+        const first = (group.key === 'academic-affairs'
+          ? group.children.find((item) => item.path === '/admin/academic-affairs')
+          : null) || group.children[0]
+        return {
+          key: group.key,
+          label: group.label,
+          path: first ? first.path : '',
+          badge: group.badge
+        }
+      })
     },
     railActiveKey() {
       // 依路径定位一级模块；根路径 / 命中「工作台」首叶，未知路径兜底高亮工作台。

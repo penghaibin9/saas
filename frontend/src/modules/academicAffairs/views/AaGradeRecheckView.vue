@@ -7,8 +7,7 @@
   >
     <div class="mp-stack">
       <div class="aa-filter">
-        <span class="aa-filter__label">状态</span>
-        <AppSelect v-model="status" :options="statusOptions" style="min-width:150px" @change="load" />
+        <label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" @change="load" /></label>
         <AppButton variant="ghost" @click="load">查询</AppButton>
       </div>
 

@@ -195,16 +195,20 @@ def test_academic_org_service_uses_org_master():
     import inspect
     from app.modules.academic_affairs.services import academic_affairs_org_service as svc
 
-    src = (
-        inspect.getsource(svc.create_college)
-        + inspect.getsource(svc.update_college)
-        + inspect.getsource(svc.create_major)
-        + inspect.getsource(svc.update_major)
-        + inspect.getsource(svc.create_class)
-        + inspect.getsource(svc.update_class)
-    )
-    assert "org_master_service" in src
-    assert "save_org_node" in src
+    import ast
+    for writer in (svc.create_college, svc.update_college, svc.create_major,
+                   svc.update_major, svc.create_class, svc.update_class):
+        src = inspect.getsource(writer)
+        tree = ast.parse(src)
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+        names = [ast.unparse(node.func) for node in calls]
+        assert "org_master_service" in src, writer.__name__
+        assert names.count("apply_org_node_in_session") == 1, writer.__name__
+        assert "save_org_node" not in names, "an independently committing writer breaks atomicity"
+        assert names.count("db.commit") == 1, writer.__name__
+        apply = next(node for node in calls if ast.unparse(node.func) == "apply_org_node_in_session")
+        assert apply.args and ast.unparse(apply.args[0]) == "db"
+        assert not any(kw.arg == "commit" and ast.unparse(kw.value) != "False" for kw in apply.keywords)
 
 
 def test_mysql_college_major_class_via_org_master(client, db_mode):
@@ -298,18 +302,36 @@ def test_mysql_disabled_parent_and_optimistic_lock(client, db_mode):
     ver = int(row.version or 0)
     db.close()
 
+    # A negative expectedVersion tests schema validation, not optimistic locking.
+    # Advance through a valid writer, then replay the earlier nonnegative version.
+    advanced = client.put(
+        f"{AA_ORGS}/colleges/{col_id}", headers=hdr,
+        json={"collegeName": "已更新的父级学院", "code": "GOV_COL_DIS", "expectedVersion": ver},
+    )
+    assert advanced.status_code == 200, advanced.text
+    current_version = advanced.json()["data"]["version"]
+    assert current_version > ver
+
     conflict = client.put(
         f"{AA_ORGS}/colleges/{col_id}",
         headers=hdr,
         json={
             "collegeName": "改名冲突",
             "code": "GOV_COL_DIS",
-            "expectedVersion": ver - 1 if ver > 0 else -1,
+            "expectedVersion": ver,
         },
     )
-    assert conflict.status_code in (400, 409, 422)
-    msg = conflict.json().get("message") or conflict.text
-    assert any(x in msg for x in ("冲突", "修改", "刷新", "version", "Version"))
+    assert conflict.status_code == 409, conflict.text
+    result = conflict.json()
+    assert result["bizCode"] == "DATA_CONFLICT"
+    assert result["details"]["reason"] == "VERSION_CONFLICT"
+    assert result["details"]["expectedVersion"] == ver
+    assert result["details"]["currentVersion"] == current_version
+    assert result["details"]["recoveryAction"] == "REFRESH_AND_REVIEW"
+    with get_sessionmaker()() as db:
+        persisted = db.get(College, col_id)
+        assert persisted.college_name == "已更新的父级学院"
+        assert persisted.version == current_version
 
 
 def test_mysql_cross_tenant_parent_blocked(client, db_mode):
@@ -334,3 +356,37 @@ def test_mysql_cross_tenant_parent_blocked(client, db_mode):
     body = r.json()
     msg = str(body.get("message") or "") + str(body.get("details") or "") + r.text
     assert any(x in msg for x in ("租户", "不存在", "学院"))
+
+
+def test_mysql_class_creation_rolls_back_when_security_audit_fails(client, db_mode, monkeypatch):
+    """A late security-audit failure must not leave either a class or its domain audit."""
+    from sqlalchemy import func, select
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsAuditTrail, SchoolClass
+    from app.services import db_service
+    from test_aa_orgs_tier1_r2 import _seed_scoped
+
+    ids = _seed_scoped(db_mode)
+    hdr = _hdr(client)
+    with get_sessionmaker()() as db:
+        before = db.scalar(select(func.count()).select_from(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == TID, AffairsAuditTrail.biz_type == "AA_ORG_CLASS"))
+    original = db_service.audit_insert_in_session
+
+    def fail_class_audit(db, action, resource, *args, **kwargs):
+        if action == "ORG_NODE_SAVE" and str(resource).startswith("CLASS:"):
+            raise AppException("DATA_CONFLICT", "验收注入：安全审计不可写")
+        return original(db, action, resource, *args, **kwargs)
+
+    monkeypatch.setattr(db_service, "audit_insert_in_session", fail_class_audit)
+    response = client.post(f"{AA_ORGS}/classes", headers=hdr, json={
+        "majorId": str(ids["majSw"]), "className": "事务回滚验收班", "classCode": "GOV_ATOMIC_CLS",
+    })
+    assert response.status_code == 409, response.text
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(SchoolClass).where(
+            SchoolClass.tenant_id == TID, SchoolClass.class_code == "GOV_ATOMIC_CLS")) == 0
+        after = db.scalar(select(func.count()).select_from(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == TID, AffairsAuditTrail.biz_type == "AA_ORG_CLASS"))
+        assert after == before

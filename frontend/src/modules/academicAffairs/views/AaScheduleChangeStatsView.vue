@@ -94,7 +94,7 @@ export default {
 .sc-filter { display: flex; align-items: flex-end; gap: var(--space-3); }
 .sc-filter__item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--t2, #475569); }
 .sc-in--sm { padding: 6px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; width: 180px; }
-.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; height: 33px; }
+.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: var(--bg-card); cursor: pointer; font-size: 13px; height: 33px; }
 .sc-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-3); }
 .sc-charts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
 @media (max-width: 960px) { .sc-charts { grid-template-columns: 1fr; } }

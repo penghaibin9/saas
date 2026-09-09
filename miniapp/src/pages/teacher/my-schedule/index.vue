@@ -165,26 +165,31 @@ export default {
 
 <style scoped>
 .ts__week { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
-.ts__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid rgba(14,116,144,.20); border-radius: 18px; background: linear-gradient(135deg, rgba(248,253,255,.98), rgba(236,254,255,.94)); box-shadow: var(--shadow-card); }
+.ts__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); }
 .ts__today-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
-.ts__today-kicker { display: block; color: var(--teacher-700); font-size: 10px; font-weight: 700; }
-.ts__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 800; }
-.ts__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
-.ts__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: #fff; color: var(--teacher-700); font-size: 10px; }
+.ts__today-kicker { display: block; color: var(--teacher-700); font-size: 12px; font-weight: 700; }
+.ts__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 700; }
+.ts__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
+.ts__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: var(--bg-card); color: var(--teacher-700); font-size: 12px; }
 .ts__today-list { margin-top: var(--space-3); }
-.ts__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid var(--teacher-600); border-radius: 12px; background: rgba(255,255,255,.88); }
-.ts__today-action { flex-shrink: 0; color: var(--teacher-700); font-size: 10px; }
+.ts__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid var(--teacher-600); border-radius: 12px; background: var(--bg-page); }
+.ts__today-action { flex-shrink: 0; color: var(--teacher-700); font-size: 12px; }
 .ts__today-empty { margin-top: var(--space-3); padding: var(--space-4); border: 1px dashed rgba(14,116,144,.25); border-radius: 12px; color: var(--text-tertiary); text-align: center; font-size: var(--font-size-xs); }
 .ts__week-title { display: block; color: var(--teacher-700); font-size: var(--font-size-lg); font-weight: 700; }
 .ts__week-sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
-.ts__week-picker { min-width: 88px; height: 34px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 34px; text-align: center; }
+.ts__week-picker { min-width: 88px; height: 40px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 40px; text-align: center; }
 .ts__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-5); }
 .ts__day { margin-bottom: var(--space-4); }
 .ts__day-t { display: block; font-weight: 700; color: var(--teacher-600); margin-bottom: var(--space-2); }
-.ts__item { display: flex; gap: var(--space-3); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
+.ts__item { display: flex; gap: var(--space-3); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3); margin-bottom: var(--space-2); border: 1px solid var(--border-base); }
 .ts__slot { display: flex; flex-direction: column; justify-content: center; flex-shrink: 0; width: 82px; text-align: center; font-size: var(--font-size-sm); color: var(--text-secondary); }
-.ts__time { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; line-height: 1.3; }
+.ts__time { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 12px; line-height: 1.3; }
 .ts__main { min-width: 0; }
 .ts__course { display: block; font-weight: 600; }
 .ts__meta { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); margin-top: 2px; line-height: 1.45; }
+.ts__today-head { flex-wrap: wrap; }
+.ts__week > view { flex: 1; min-width: 0; }
+.ts__week picker { flex-shrink: 0; }
+.ts__main { flex: 1; min-width: 0; }
+.ts__course { overflow-wrap: anywhere; line-height: 1.5; }
 </style>

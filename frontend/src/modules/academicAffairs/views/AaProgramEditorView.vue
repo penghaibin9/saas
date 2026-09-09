@@ -74,7 +74,8 @@
             <AppButton variant="primary" :disabled="!canAddCourse" :loading="adding" @click="addCourse">添加</AppButton>
           </div>
           <EmptyState v-if="!program.courses.length" title="方案内暂无课程" description="从课程库添加课程并设置开课学期、模块和学分快照" />
-          <table v-else class="aa-course-table">
+          <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else>
+<table  class="aa-course-table">
             <thead><tr><th>学期</th><th>模块</th><th>课程</th><th>学分</th><th>校验</th></tr></thead>
             <tbody>
               <tr v-for="course in program.courses" :key="course.programCourseId" :id="`course-${course.programCourseId}`">
@@ -86,6 +87,7 @@
               </tr>
             </tbody>
           </table>
+</div>
         </AppSectionCard>
 
         <AppSectionCard v-show="activeStep === 'standards'" title="③ 国家标准依据">
@@ -340,7 +342,7 @@ export default {
 .aa-program-nav, .aa-validation-panel { position: sticky; top: 16px; padding: 14px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--bg-white, #fff); }
 .aa-nav-title { margin-bottom: 10px; font-size: 12px; font-weight: 700; color: var(--text-500, #64748b); }
 .aa-program-nav > button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; }
-.aa-program-nav > button span { color: var(--text-400, #94a3b8); font-size: 11px; }
+.aa-program-nav > button span { color: var(--text-400, #94a3b8); font-size: 12px; }
 .aa-program-nav > button.active { background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); }
 .aa-nav-links { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-200, #e5e7eb); }
 .aa-nav-links button { display: block; width: 100%; padding: 7px 4px; border: 0; background: transparent; color: var(--primary-700, #1d4ed8); text-align: left; cursor: pointer; }
@@ -376,7 +378,7 @@ export default {
 .aa-validation-head span { margin-top: 3px; font-size: 12px; color: var(--text-500, #64748b); }
 .aa-issue-list { display: grid; gap: 8px; max-height: calc(100vh - 170px); overflow: auto; }
 .aa-issue { display: block; width: 100%; padding: 10px; border: 1px solid var(--border-200, #e5e7eb); border-left-width: 4px; border-radius: 6px; background: var(--bg-white, #fff); text-align: left; cursor: pointer; }
-.aa-issue span { font-size: 11px; font-weight: 700; }
+.aa-issue span { font-size: 12px; font-weight: 700; }
 .aa-issue b, .aa-issue small { display: block; margin-top: 4px; }
 .aa-issue small { color: var(--text-500, #64748b); line-height: 1.5; }
 .aa-issue.is-blocker { border-left-color: var(--danger-500, #ef4444); }

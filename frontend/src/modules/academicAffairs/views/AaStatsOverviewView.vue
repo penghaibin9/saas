@@ -1,18 +1,30 @@
 <template>
   <ModulePageShell
-    title="教务统计"
+    class="aa-statistics"
+    :title="currentTopic.label"
     subtitle="15 项教务运行指标 · 按学年学期 / 学院 / 专业多维筛选 · 汇总卡下钻明细"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <div class="aa-tabs">
-      <button v-for="t in TABS" :key="t.key" :class="['aa-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+    <template #actions>
+      <label class="stats-topic-select">统计专题
+        <select :value="currentTopic.key" @change="switchTopic($event.target.value)">
+          <option v-for="topic in visibleTopics" :key="topic.key" :value="topic.key">{{ topic.label }}</option>
+        </select>
+      </label>
+    </template>
+    <div class="stats-intro">
+      <p>{{ currentTopic.description }}</p>
+      <span v-if="updatedAt" role="status">更新于 {{ updatedAt }}</span>
     </div>
+    <nav v-if="topicTabs.length > 1" class="stats-dimensions" aria-label="本专题统计维度">
+      <button v-for="item in topicTabs" :key="item.key" type="button" :aria-current="tab === item.key ? 'page' : undefined" :class="{ active: tab === item.key }" @click="switchTab(item.key)">{{ item.label }}</button>
+    </nav>
 
     <div class="mp-stack">
       <!-- 多维筛选栏（导出报表 Tab 使用自己的表单，不复用此栏；教学资源为校级共享资产，
            无学期/学院维度，见 resource_stats 后端注释，本栏对该 Tab 不适用） -->
-      <div v-if="tab !== 'export' && tab !== 'resource' && tab !== 'snapshot'" class="aa-filter">
+      <form v-if="tab !== 'export' && tab !== 'resource' && tab !== 'snapshot'" class="aa-filter" @submit.prevent="search">
         <label class="aa-filter__item">学期
           <AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" />
         </label>
@@ -31,20 +43,25 @@
         <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次
           <AppGraduationBatchPicker v-model="filters.batchId" placeholder="全部批次" />
         </label>
-        <AppButton :loading="loading" @click="search">查询</AppButton>
-        <AppButton v-if="tab === 'overview'" variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
-      </div>
+        <AppButton :loading="loading" @click="search">更新统计</AppButton>
+        <AppButton v-if="tab === 'overview' && canExport" variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
+      </form>
+      <p v-if="tab !== 'snapshot' && tab !== 'export'" class="stats-scope">{{ tab === 'resource' ? '资源统计按当前授权范围汇总，不随学期筛选。' : '统计范围由当前账号权限限定；修改筛选后点击更新统计。' }} 比例显示“—”表示暂无统计基数。</p>
 
       <ErrorState v-if="error" :description="error" @retry="loadTab" />
       <LoadingState v-else-if="loading" />
       <template v-else>
         <p v-if="scopeBlocked" class="aa-scope-note">当前账号未配置教务数据范围，暂无可见统计数据（如为学院教务员请联系管理员配置本院范围）。</p>
 
+        <template v-else>
         <!-- ══ 教务总览（既有实现，保持不变） ══ -->
         <template v-if="tab === 'overview'">
+          <section v-for="section in overviewSections" :key="section.key" class="stats-section">
+            <header><h2>{{ section.label }}</h2><span>{{ section.description }}</span></header>
           <div class="aa-cards">
-            <button
-              v-for="ind in indicators"
+            <component
+              :is="drillable(ind) ? 'button' : 'div'"
+              v-for="ind in section.items"
               :key="ind.key"
               class="aa-card"
               :class="{ 'aa-card--muted': ind.status === 'MODULE_NOT_ENABLED', 'aa-card--active': activeDrill === ind.key, 'aa-card--drill': drillable(ind) }"
@@ -58,26 +75,28 @@
               </template>
               <template v-else-if="ind.rate !== null && ind.rate !== undefined && ind.denominator !== undefined && ind.numerator !== undefined && ind.unit === '%'">
                 <span class="aa-card__value">{{ ind.rate }}<em>%</em></span>
-                <span class="aa-card__sub">{{ ind.numerator }} / {{ ind.denominator }}</span>
+                <span class="aa-card__sub">{{ ind.denominator ? `${ind.numerator} / ${ind.denominator}` : '暂无统计基数' }}</span>
               </template>
               <template v-else-if="ind.unit === '%'">
                 <span class="aa-card__value aa-card__value--empty">—</span>
-                <span class="aa-card__sub">{{ ind.numerator }} / {{ ind.denominator }}</span>
+                <span class="aa-card__sub">{{ ind.denominator ? `${ind.numerator} / ${ind.denominator}` : '暂无统计基数' }}</span>
               </template>
               <template v-else>
                 <span class="aa-card__value">{{ ind.value }}<em v-if="ind.unit">{{ ind.unit }}</em></span>
                 <span v-if="ind.groups && ind.groups.length" class="aa-card__sub">{{ groupSummary(ind) }}</span>
               </template>
               <span v-if="drillable(ind)" class="aa-card__drill-hint">点击下钻 →</span>
-            </button>
+            </component>
           </div>
 
+          </section>
           <div v-if="activeDrill" class="aa-drill">
             <div class="aa-drill__head">
               <strong>{{ drillTitle }}</strong>
               <button class="mp-link" @click="closeDrill">收起</button>
             </div>
             <LoadingState v-if="drill.loading" />
+            <ErrorState v-else-if="drill.error" :description="drill.error" @retry="loadDrill" />
             <EmptyState v-else-if="!drill.rows.length" title="无明细数据" description="当前范围内没有可下钻的记录" />
             <DataTable v-else :columns="drillColumns" :rows="drill.rows" row-key="rowKey" :pagination="drill.pagination" @page-change="onDrillPage" />
           </div>
@@ -86,7 +105,7 @@
         <!-- ══ 学籍统计（02）══ -->
         <template v-else-if="tab === 'statusChange'">
           <div class="aa-metric-grid">
-            <AppMetricCard title="学籍异动人数（本学期 EFFECTIVE）" :value="sSummary.total ?? 0" />
+            <AppMetricCard title="已生效学籍异动人数" :value="sSummary.total ?? 0" />
           </div>
           <div v-if="sSummary.byType && sSummary.byType.length" class="aa-groups">
             <AppG2Chart :spec="distSpec(sSummary.byType)" :height="200" />
@@ -244,7 +263,7 @@
 
         <!-- ══ 教师工作量统计（13，基础参考，非正式核算）══ -->
         <template v-else-if="tab === 'workload'">
-          <AppInlineAlert type="warning" description="本页为教学任务量基础统计（学时合计+任务数），非学校正式工作量核算结果；如需正式核算（含课程/班型/职称系数），需学校教务处/人事处明确规则后另行实现。" />
+          <AppInlineAlert type="warning" description="本页汇总教学任务数与计划学时，供教学安排参考，不作为绩效结算依据。" />
           <EmptyState v-if="!sSummary.ranking || !sSummary.ranking.length" title="暂无数据" description="当前范围内没有可统计的教学任务" />
           <DataTable v-else :columns="workloadColumns" :rows="sSummary.ranking" row-key="teacherKey">
             <template #cell-ops="{ row }"><button class="mp-link" @click="viewWorkloadDetail(row)">查看明细</button></template>
@@ -292,12 +311,12 @@
             <label class="aa-filter__item">学院
               <AppCollegePicker v-model="exp.collegeId" placeholder="全部学院" />
             </label>
-            <label class="aa-filter__item">导出用途（必填，≥5字，写审计+水印）
+            <label class="aa-filter__item">导出用途（至少5个字）
               <input v-model="exp.purpose" class="aa-input" placeholder="如：教务处月度汇报" />
             </label>
             <AppButton :loading="exp.downloading" @click="doExport">发起导出</AppButton>
           </div>
-          <p class="aa-scope-note">当前为同步下载：点击后立即生成并下载 xlsx 文件（不保留异步导出历史列表，如需"导出历史/失败重试"请登记待办）。</p>
+          <p class="aa-scope-note">报表以 Excel 文件下载，并记录导出用途。请妥善保管涉及学生信息的文件。</p>
         </template>
 
         <!-- 通用下钻明细面板（除总览/工作量/导出外的 11 个 Tab 共用） -->
@@ -307,12 +326,14 @@
             <button class="mp-link" @click="detail.open = false">收起</button>
           </div>
           <LoadingState v-if="detail.loading" />
+          <ErrorState v-else-if="detail.error" :description="detail.error" @retry="loadDetail" />
           <EmptyState v-else-if="!detail.rows.length" title="无明细数据" description="当前范围内没有可查看的记录" />
           <DataTable v-else :columns="detail.columns" :rows="detail.rows" row-key="rowKey" :pagination="detail.pagination" @page-change="onDetailPage">
             <template #cell-abnormalItems="{ row }">{{ (row.abnormalItems || []).join('、') }}</template>
             <template #cell-courses="{ row }">{{ (row.courses || []).map((c) => c.courseName).join('、') }}</template>
           </DataTable>
         </div>
+        </template>
       </template>
     </div>
   </ModulePageShell>
@@ -334,6 +355,8 @@ import {
 } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { STATS_TOPICS, statsTopic } from '@/modules/academicAffairs/config/academicNavigation.js'
+import { matchPermission } from '@/config/navPlan.js'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import AaStatsSnapshotWorkspace from '@/modules/academicAffairs/components/AaStatsSnapshotWorkspace.vue'
 import { toast } from '@/utils/toast'
@@ -512,7 +535,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      TABS,
+      TABS, STATS_TOPICS, requestId: 0, detailRequestId: 0, updatedAt: '',
       tab: 'overview',
       loading: true,
       error: '',
@@ -521,11 +544,11 @@ export default {
       indicators: [],
       scopeBlocked: false,
       activeDrill: '',
-      drill: { loading: false, rows: [], pagination: { page: 1, pageSize: 20, total: 0 } },
+      drill: { error: '', loading: false, rows: [], pagination: { page: 1, pageSize: 20, total: 0 } },
       // 其余 9 个 Tab 的聚合结果
       sSummary: {},
       // 通用下钻明细面板（8 个 Tab 共用）
-      detail: { open: false, loading: false, title: '', rows: [], columns: [], pagination: { page: 1, pageSize: 20, total: 0 } },
+      detail: { error: '', open: false, loading: false, title: '', rows: [], columns: [], pagination: { page: 1, pageSize: 20, total: 0 } },
       // 导出报表
       exp: { domain: 'overview', termId: '', collegeId: '', purpose: '', downloading: false },
       workloadTeacherKey: '',
@@ -536,6 +559,21 @@ export default {
     }
   },
   computed: {
+    canExport() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.stats.export') },
+    canViewSnapshot() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.stats.snapshot.view') },
+    visibleTopics() { return STATS_TOPICS.filter(topic => topic.tabs.some(tab => this.allowedTab(tab))) },
+    currentTopic() { return statsTopic(this.tab) },
+    topicTabs() { return TABS.filter(item => this.currentTopic.tabs.includes(item.key) && this.allowedTab(item.key)) },
+    overviewSections() {
+      const groups = [
+        { key: 'preparation', label: '开学与教学准备', description: '培养方案 · 开课任务 · 课表', keys: ['registration', 'program', 'course', 'teachingTask', 'schedule'] },
+        { key: 'teaching', label: '教学运行', description: '选课 · 调停课 · 考试 · 资源', keys: ['courseSelection', 'scheduleChange', 'exam', 'resource'] },
+        { key: 'achievement', label: '学业与毕业', description: '成绩 · 学籍 · 学业风险 · 毕业资格', keys: ['gradePublish', 'failRate', 'makeupRetake', 'statusChange', 'warning', 'graduation'] }
+      ]
+      const known = new Set(groups.flatMap(group => group.keys))
+      return [...groups.map(group => ({ ...group, items: this.indicators.filter(item => group.keys.includes(item.key)) })),
+        { key: 'other', label: '其他统计', description: '', items: this.indicators.filter(item => !known.has(item.key)) }].filter(group => group.items.length)
+    },
     exportDomainOptions() { return EXPORT_DOMAINS.map((d) => ({ value: d.key, label: d.label })) },
     drillTitle() {
       return this.activeDrill ? (DRILL_META[this.activeDrill]?.title || '明细') : ''
@@ -544,12 +582,34 @@ export default {
       return this.activeDrill ? (DRILL_META[this.activeDrill]?.columns || []) : []
     }
   },
-  created() {
-    const q = this.$route && this.$route.query && this.$route.query.tab
-    if (q && TABS.some((t) => t.key === q)) this.tab = q
-    this.loadTab()
+  created() { this.restoreRoute() },
+  beforeUnmount() { this.requestId++; this.detailRequestId++ },
+  watch: {
+    '$route.query': { deep: true, handler() { this.restoreRoute() } },
+    'ctx.ctxKey'() { this.requestId++; this.detailRequestId++; this.updatedAt = ''; this.loadTab() }
   },
   methods: {
+    allowedTab(tab) { return tab === 'export' ? this.canExport : tab === 'snapshot' ? this.canViewSnapshot : true },
+    restoreRoute() {
+      const query = this.$route.query || {}
+      this.tab = TABS.some(item => item.key === query.tab) ? query.tab : 'overview'
+      for (const key of Object.keys(this.filters)) this.filters[key] = typeof query[key] === 'string' ? query[key] : ''
+      this.activeDrill = ''; this.detail.open = false; this.detailRequestId++; this.workloadTeacherKey = ''
+      this.loadTab()
+    },
+    switchTopic(key) {
+      const topic = STATS_TOPICS.find(item => item.key === key)
+      if (topic) this.switchTab(topic.tabs.find(tab => this.allowedTab(tab)))
+    },
+    routeQuery(tab = this.tab) {
+      const query = { ...this.$route.query, tab }
+      delete query._workspace
+      for (const [key, value] of Object.entries(this.filters)) {
+        if (value) query[key] = String(value)
+        else delete query[key]
+      }
+      return query
+    },
     drillable(ind) {
       return !!DRILL_META[ind.key] && ind.status !== 'MODULE_NOT_ENABLED'
     },
@@ -564,18 +624,18 @@ export default {
       }
     },
     groupSummary(ind) {
-      return (ind.groups || []).map((g) => `${g.key}:${g.count}`).join('  ')
+      const names = { makeup: '补考', retake: '重修' }
+      return (ind.groups || []).map((g) => `${names[g.key] || g.key} ${g.count}`).join(' · ')
     },
     switchTab(k) {
-      this.tab = k
-      this.activeDrill = ''
-      this.detail.open = false
-      this.loadTab()
+      if (!TABS.some(item => item.key === k)) return
+      this.$router.push({ path: this.$route.path, query: this.routeQuery(k) })
     },
     search() {
-      this.activeDrill = ''
-      this.detail.open = false
-      this.loadTab()
+      const query = this.routeQuery()
+      if (JSON.stringify(query) === JSON.stringify(this.$route.query)) {
+        this.activeDrill = ''; this.detail.open = false; this.loadTab()
+      } else this.$router.push({ path: this.$route.path, query })
     },
     baseParams() {
       return {
@@ -585,53 +645,30 @@ export default {
       }
     },
     async loadTab() {
-      this.loading = true
-      this.error = ''
-      if (this.tab === 'overview') {
-        await this.loadOverview()
-      } else if (this.tab === 'workload') {
-        await this.loadWorkload()
-      } else if (this.tab === 'export' || this.tab === 'snapshot') {
-        this.loading = false
-      } else {
-        await this.loadSummaryTab()
-      }
-      this.loading = false
-    },
-    async loadOverview() {
-      const res = await academicAffairsApi.getStatsOverview(this.baseParams())
-      if (res.code === 0) {
-        this.indicators = res.data.indicators || []
+      const request = ++this.requestId
+      this.detailRequestId++
+      this.loading = true; this.error = ''; this.updatedAt = ''
+      this.indicators = []; this.sSummary = {}; this.scopeBlocked = false
+      const tab = this.tab
+      try {
+        if (!this.allowedTab(tab)) throw new Error(tab === 'export' ? '当前账号没有报表导出权限' : '当前账号没有统计快照查看权限')
+        if (tab === 'export' || tab === 'snapshot') return
+        const params = { ...this.baseParams() }
+        if (tab === 'course') params.category = this.filters.category || undefined
+        if (tab === 'graduation') params.batchId = this.filters.batchId || undefined
+        const res = tab === 'overview' ? await academicAffairsApi.getStatsOverview(params)
+          : tab === 'workload' ? await academicAffairsApi.getStatsWorkload(params)
+            : await TAB_META[tab].summary(academicAffairsApi, params)
+        if (request !== this.requestId) return
+        if (res.code !== 0 || !res.data) throw new Error(res.message || '统计读取失败，请重试')
         this.scopeBlocked = !!res.data.scope?.blocked
-      } else {
-        this.error = res.message || '加载失败'
-      }
-      if (this.activeDrill) this.loadDrill()
-    },
-    async loadSummaryTab() {
-      const meta = TAB_META[this.tab]
-      if (!meta) return
-      const params = { ...this.baseParams() }
-      if (this.tab === 'course') params.category = this.filters.category || undefined
-      if (this.tab === 'graduation') params.batchId = this.filters.batchId || undefined
-      const res = await meta.summary(academicAffairsApi, params)
-      if (res.code === 0) {
-        this.sSummary = res.data || {}
-        this.scopeBlocked = !!this.sSummary.scope?.blocked
-      } else {
-        this.error = res.message || '加载失败'
-        this.sSummary = {}
-      }
-      if (this.detail.open) this.loadDetail()
-    },
-    async loadWorkload() {
-      const res = await academicAffairsApi.getStatsWorkload(this.baseParams())
-      if (res.code === 0) {
-        this.sSummary = res.data || {}
-        this.scopeBlocked = !!this.sSummary.scope?.blocked
-      } else {
-        this.error = res.message || '加载失败'
-        this.sSummary = {}
+        if (tab === 'overview') this.indicators = res.data.indicators || []
+        else this.sSummary = res.data
+        this.updatedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+      } catch (error) {
+        if (request === this.requestId) this.error = error.message || '统计读取失败，请重试'
+      } finally {
+        if (request === this.requestId) this.loading = false
       }
     },
     onCardClick(ind) {
@@ -645,6 +682,7 @@ export default {
       this.loadDrill()
     },
     closeDrill() {
+      this.detailRequestId++
       this.activeDrill = ''
       this.drill.rows = []
     },
@@ -655,17 +693,25 @@ export default {
     async loadDrill() {
       const meta = DRILL_META[this.activeDrill]
       if (!meta) return
+      const request = ++this.detailRequestId
+      this.drill.error = ''; this.drill.rows = []
       this.drill.loading = true
+      try {
       const params = { ...this.baseParams(), page: this.drill.pagination.page, pageSize: this.drill.pagination.pageSize }
       const res = await meta.fetch(academicAffairsApi, params)
+      if (request !== this.detailRequestId) return
       if (res.code === 0) {
         this.drill.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${this.activeDrill}-${i}-${r.studentNo || ''}` }))
         this.drill.pagination.total = res.data.total || 0
       } else {
-        toast.error(res.message || '下钻失败')
+        this.drill.error = res.message || '明细读取失败，请重试'
         this.drill.rows = []
       }
-      this.drill.loading = false
+      } catch (error) {
+        if (request === this.detailRequestId) this.drill.error = error.message || '明细读取失败，请重试'
+      } finally {
+        if (request === this.detailRequestId) this.drill.loading = false
+      }
     },
     openDetail() {
       const meta = TAB_META[this.tab]
@@ -681,9 +727,14 @@ export default {
       this.loadDetail()
     },
     async loadDetail() {
-      const meta = TAB_META[this.tab]
+      const meta = this.tab === 'workload' && this.workloadTeacherKey
+        ? { detailFetch: (api, params) => api.getStatsWorkloadDetail({ ...params, teacherKey: this.workloadTeacherKey }) }
+        : TAB_META[this.tab]
       if (!meta) return
+      const request = ++this.detailRequestId
+      this.detail.error = ''; this.detail.rows = []
       this.detail.loading = true
+      try {
       const params = {
         ...this.baseParams(),
         category: this.filters.category || undefined,
@@ -694,47 +745,54 @@ export default {
         pageSize: this.detail.pagination.pageSize
       }
       const res = await meta.detailFetch(academicAffairsApi, params)
+      if (request !== this.detailRequestId) return
       if (res.code === 0) {
         this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${this.tab}-${i}-${r.studentNo || r.courseId || r.taskId || r.gradeId || r.resultId || r.incidentId || r.bookingId || ''}` }))
         this.detail.pagination.total = res.data.total || 0
       } else {
-        toast.error(res.message || '下钻失败')
+        this.detail.error = res.message || '明细读取失败，请重试'
         this.detail.rows = []
       }
-      this.detail.loading = false
+      } catch (error) {
+        if (request === this.detailRequestId) this.detail.error = error.message || '明细读取失败，请重试'
+      } finally {
+        if (request === this.detailRequestId) this.detail.loading = false
+      }
     },
     async viewWorkloadDetail(row) {
-      const res = await academicAffairsApi.getStatsWorkloadDetail({ teacherKey: row.teacherKey, termId: this.filters.termId || undefined, collegeId: this.filters.collegeId || undefined, page: 1, pageSize: 20 })
-      if (res.code !== 0) {
-        toast.error(res.message || '加载失败')
-        return
-      }
+      this.workloadTeacherKey = row.teacherKey
       this.detail.open = true
       this.detail.title = `${row.teacherName || row.teacherKey} · 授课明细`
       this.detail.columns = [
         { key: 'courseName', title: '课程' }, { key: 'teachingClassName', title: '教学班' },
         { key: 'weeklyHours', title: '周学时' }, { key: 'totalHours', title: '计划总学时' }, { key: 'status', title: '状态' }
       ]
-      this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `wl-${i}-${r.taskId}` }))
-      this.detail.pagination = { page: 1, pageSize: 20, total: res.data.total || 0 }
+      this.detail.pagination = { page: 1, pageSize: 20, total: 0 }
+      await this.loadDetail()
     },
     async openExport() {
-      this.tab = 'export'
-      this.exp.domain = 'overview'
+      this.exp.domain = this.tab === 'snapshot' ? 'overview' : this.tab
+      this.exp.termId = this.filters.termId
+      this.exp.collegeId = this.filters.collegeId
+      this.switchTab('export')
     },
     async doExport() {
+      if (this.exp.downloading) return
+      if (!this.canExport) { toast.error('当前账号没有报表导出权限'); return }
       if (!this.exp.purpose || this.exp.purpose.trim().length < 5) {
         toast.error('导出用途必填且不少于 5 个字')
         return
       }
       this.exp.downloading = true
+      const contextKey = this.ctx.ctxKey
+      try {
       const res = await academicAffairsApi.exportStats({
         domain: this.exp.domain,
-        termId: this.exp.termId ? Number(this.exp.termId) : undefined,
-        collegeId: this.exp.collegeId ? Number(this.exp.collegeId) : undefined,
+        termId: this.exp.termId || undefined,
+        collegeId: this.exp.collegeId || undefined,
         purpose: this.exp.purpose.trim()
       })
-      this.exp.downloading = false
+      if (contextKey !== this.ctx.ctxKey) return
       if (res.code !== 0) {
         toast.error(res.message || '导出失败')
         return
@@ -749,6 +807,11 @@ export default {
       a.remove()
       URL.revokeObjectURL(href)
       toast.success('导出成功')
+      } catch (error) {
+        toast.error(error.message || '导出失败，请重试')
+      } finally {
+        this.exp.downloading = false
+      }
     }
   }
 }
@@ -780,7 +843,7 @@ export default {
 .aa-card__value--empty { color: var(--text-400, #c9cdd4); }
 .aa-card__sub { font-size: 12px; color: var(--text-500, #86909c); }
 .aa-card__na { font-size: 18px; font-weight: 600; color: var(--text-400, #c9cdd4); }
-.aa-card__drill-hint { font-size: 11px; color: var(--primary-500, #165dff); margin-top: 2px; }
+.aa-card__drill-hint { font-size: 12px; color: var(--primary-500, #165dff); margin-top: 2px; }
 .aa-groups { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; background: var(--bg-white, #fff); }
 .aa-groups__title { font-size: 12px; color: var(--text-500, #86909c); margin-bottom: 6px; }
 .aa-group-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px dashed var(--border-100, #f0f1f3); }
@@ -789,4 +852,39 @@ export default {
 .aa-drill__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .aa-export-form { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); }
 .mp-link { margin-top: 10px; }
+
+/* Statistics stays inside the shared shell; styles are limited to this page. */
+.aa-statistics { --stats-accent: var(--pri, #285bb5); }
+.stats-topic-select { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.stats-topic-select select { max-width: 100%; height: 38px; padding: 0 30px 0 12px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 13px; }
+.stats-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: -10px; color: var(--text-secondary); font-size: 13px; }
+.stats-intro p { margin: 0; line-height: 1.6; }
+.stats-intro span { font-size: 12px; white-space: nowrap; }
+.stats-dimensions { display: flex; gap: 20px; border-bottom: 1px solid var(--border-base); overflow-x: auto; }
+.stats-dimensions button { flex: 0 0 auto; min-height: 40px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; }
+.stats-dimensions button.active { border-bottom-color: var(--stats-accent); color: var(--stats-accent); font-weight: 650; }
+.aa-statistics .aa-filter { display: flex; align-items: flex-end; gap: 14px; padding: 16px; margin: 0; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-statistics .aa-filter__item { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 160px; max-width: 240px; flex: 1 1 170px; white-space: nowrap; font-size: 12px; }
+.aa-statistics .aa-filter__item :deep(.app-entity-picker) { width: 100%; min-width: 0; }
+.stats-scope { margin: 8px 0 16px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.stats-section { margin-bottom: 22px; }
+.stats-section > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
+.stats-section h2 { margin: 0; font-size: 15px; color: var(--text-primary); font-weight: 650; }
+.stats-section header span { font-size: 12px; color: var(--text-secondary); }
+.aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.aa-statistics .aa-card { min-height: 118px; padding: 16px 18px; gap: 10px; box-shadow: none; border-color: var(--border-base); background: var(--bg-card); }
+.aa-statistics .aa-card__value { font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+.aa-statistics .aa-card__label { font-size: 13px; }
+.aa-statistics .aa-card__sub { line-height: 1.5; }
+.aa-statistics .aa-card__drill-hint { margin-top: auto; }
+.aa-statistics :is(button, select, input):focus-visible { outline: 2px solid var(--stats-accent); outline-offset: 2px; }
+@container academic-body (max-width: 550px) {
+  .aa-statistics .aa-filter__item { max-width: none; min-width: 120px; flex-basis: 135px; }
+  .aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aa-statistics .aa-card { padding: 14px; }
+}
+@container academic-body (max-width: 350px) {
+  .aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 </style>

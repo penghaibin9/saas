@@ -23,7 +23,8 @@
         <EmptyState v-if="!data.byType.length" title="暂无数据" />
         <template v-else>
           <AppG2Chart :spec="byTypeSpec" :height="260" />
-          <table class="aa-table">
+          <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0">
+<table class="aa-table">
             <thead><tr><th>类型</th><th>数量</th></tr></thead>
             <tbody>
               <tr v-for="g in data.byType" :key="g.key">
@@ -32,6 +33,7 @@
               </tr>
             </tbody>
           </table>
+</div>
         </template>
       </AppSectionCard>
 
@@ -39,7 +41,8 @@
         <EmptyState v-if="!data.byStatus.length" title="暂无数据" />
         <template v-else>
           <AppG2Chart :spec="byStatusSpec" :height="260" />
-          <table class="aa-table">
+          <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0">
+<table class="aa-table">
             <thead><tr><th>状态</th><th>数量</th></tr></thead>
             <tbody>
               <tr v-for="g in data.byStatus" :key="g.key">
@@ -48,6 +51,7 @@
               </tr>
             </tbody>
           </table>
+</div>
         </template>
       </AppSectionCard>
 
@@ -55,7 +59,8 @@
         <EmptyState v-if="!data.pendingByNode.length" title="当前无在途异动" />
         <template v-else>
           <AppG2Chart :spec="pendingByNodeSpec" :height="260" />
-          <table class="aa-table">
+          <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0">
+<table class="aa-table">
             <thead><tr><th>审批节点</th><th>待处理数</th></tr></thead>
             <tbody>
               <tr v-for="g in data.pendingByNode" :key="g.key">
@@ -64,6 +69,7 @@
               </tr>
             </tbody>
           </table>
+</div>
         </template>
       </AppSectionCard>
     </div>

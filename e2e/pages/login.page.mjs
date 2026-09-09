@@ -130,7 +130,10 @@ export class StaffLoginPage {
     await expect(menu).toBeVisible()
     const target = menu.locator('button.uchip__ctx').filter({ hasText: rolePattern }).first()
     await expect(target, `missing role context ${rolePattern}`).toBeVisible()
-    if (await target.isDisabled()) return
+    if (await target.isDisabled()) {
+      await expect.poll(async () => roleMatches(await this.currentRoleText(), rolePattern)).toBe(true)
+      return
+    }
 
     const oldRefreshToken = await browserRefreshCookie(this.page, 'staff')
     expect(oldRefreshToken, 'staff role switch must start from an HttpOnly refresh session').toBeTruthy()

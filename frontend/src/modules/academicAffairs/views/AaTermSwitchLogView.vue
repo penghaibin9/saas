@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期切换记录"
-    subtitle="谁在什么时候把「当前学期」从哪个学期切到了哪个学期 · 只读审计，数据来自学期发布/当前学期设置留痕"
+    subtitle="按时间查看教务操作与全校学期激活记录。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -25,19 +26,21 @@
         <template #cell-switch="{ row }">
           <div class="aa-switch-cell">
             <span v-if="row.fromTermLabel" class="aa-switch-from">{{ row.fromTermLabel }}</span>
-            <span v-else class="aa-switch-from aa-switch-from--empty">（首次设置）</span>
+            <span v-else class="aa-switch-from aa-switch-from--empty">无前序记录</span>
             <span class="aa-switch-arrow">→</span>
             <span class="aa-switch-to">{{ row.toTermLabel || '—' }}</span>
           </div>
         </template>
         <template #cell-action="{ row }">
           <AppStatusTag :type="actionType(row.action)" dot>{{ actionLabel(row.action) }}</AppStatusTag>
+          <div class="mp-cell-sub">{{ row.sourceLabel || '教务操作记录' }}</div>
         </template>
         <template #cell-operator="{ row }">
           <div class="mp-cell-main">{{ row.operator || '—' }}</div>
-          <div class="mp-cell-sub" v-if="row.roleName">{{ row.roleName }}</div>
+          <div class="mp-cell-sub" v-if="row.roleName">{{ roleLabel(row.roleName) }}</div>
         </template>
       </DataTable>
+      <p class="mp-note">学期前后关系按已有记录顺序还原。历史发布记录未保存切换快照，可结合学校的学期启用记录核对。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -50,9 +53,11 @@
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { formatDateTime } from '@/utils/dateUtils'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
-const ACTION_LABEL = { PUBLISH: '发布并设为当前', SET_CURRENT: '切换当前学期' }
-const ACTION_TYPE = { PUBLISH: 'success', SET_CURRENT: 'processing' }
+const ACTION_LABEL = { PUBLISH: '发布记录', SET_CURRENT: '切换当前学期', ACTIVATE: '统一启用学期' }
+const ACTION_TYPE = { PUBLISH: 'success', SET_CURRENT: 'processing', ACTIVATE: 'success' }
 
 export default {
   name: 'AaTermSwitchLogView',
@@ -76,10 +81,11 @@ export default {
     this.load()
   },
   methods: {
-    actionLabel(a) { return ACTION_LABEL[a] || a || '' },
+    actionLabel(a) { return ACTION_LABEL[a] || '学期操作' },
+    roleLabel(actorRole) { return presentAuditRecord({ actorRole }).displayRole },
     actionType(a) { return ACTION_TYPE[a] || 'default' },
     formatTime(t) {
-      return t ? String(t).replace('T', ' ').slice(0, 19) : '—'
+      return formatDateTime(t, '—')
     },
     onPageChange(page) {
       this.pagination.page = page
@@ -106,6 +112,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-switch-cell {
   display: flex;
   align-items: center;

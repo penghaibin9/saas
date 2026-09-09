@@ -14,7 +14,7 @@
       <AppInlineAlert v-if="scanResult" type="success" :message="`扫描完成：阈值 ${scanResult.threshold ?? '-'} · 新增 ${scanResult.created} · 更新 ${scanResult.updated} · 通知 ${scanResult.notified}`" />
 
       <div class="aa-filter">
-        <AppSelect v-model="filters.level" :options="levelOptions" @change="search" />
+        <label class="aa-filter-field"><span>预警级别</span><AppSelect v-model="filters.level" :options="levelOptions" placeholder="全部级别" @change="search" /></label>
         <AppButton @click="search">查询</AppButton>
       </div>
 
@@ -26,7 +26,7 @@
           <AppStatusTag :type="warningColor(row.level)" dot>{{ levelLabel(row.level) }}</AppStatusTag>
         </template>
       </DataTable>
-      <p class="mp-note">预警阈值来自规则中心默认值（待校确认）；预警处置、跟进、统计沿用现有「学业预警」处置页，不在此重建。</p>
+      <p class="mp-note">扫描使用本校预警规则。请先确认规则阈值，扫描后通过「前往处置页」继续跟进学生。</p>
     </div>
   </ModulePageShell>
 </template>

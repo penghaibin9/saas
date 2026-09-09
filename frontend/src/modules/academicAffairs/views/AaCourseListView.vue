@@ -36,7 +36,7 @@
 
     <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="课程库权威 XLSX 导入"
+      title="批量导入课程"
       template-name="课程库权威导入模板.xlsx"
       :preview-fields="['courseCode', 'courseName', 'version', 'credit', 'category', 'nature']"
       :download-template-fn="academicFileExchangeApi.downloadCourseCatalogTemplate"

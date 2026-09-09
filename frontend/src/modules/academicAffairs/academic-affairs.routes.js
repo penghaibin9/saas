@@ -6,7 +6,7 @@
  *
  * 说明：本模块与同目录「学业过程」旧路由（/admin/academic，routes/academic.routes.js）并存、互不覆盖。
  * 页面均接真实后端 /api/v1/academic-affairs/*（手册 D1，无 mock）。
- * 打印页为顶层独立路由（无导航布局，A4，D7）。
+ * 考务打印入口保留公共工作区；其他专用打印页为顶层独立路由（A4，D7）。
  */
 const MOD = 'ACADEMIC_AFFAIRS'
 const meta = (permissionKey, title) => ({ moduleCode: MOD, requiresAuth: true, permissionKey, title })
@@ -16,6 +16,7 @@ const layoutRoute = {
   component: () => import('@/modules/academicAffairs/views/AdminAcademicAffairsLayout.vue'),
   meta: { moduleCode: MOD },
   children: [
+    { path: 'exam/print/seating', name: 'aa-exam-seating-print', component: () => import('@/modules/academicAffairs/views/AaExamSeatingPrintView.vue'), meta: meta('academicAffairs.exam.view', '考务打印') },
     // ── W1 骨架与时间轴 ──
     { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: meta('academicAffairs.dashboard.view', '教务看板') },
     { path: 'terms', name: 'aa-terms', component: () => import('@/modules/academicAffairs/views/AaTermListView.vue'), meta: meta('academicAffairs.term.view', '学年学期') },
@@ -29,6 +30,7 @@ const layoutRoute = {
     // ── 续工 R3：学年管理（按学年汇总） / 学期切换记录（当前学期切换审计，只读，不新增写端点） ──
     { path: 'terms/years', name: 'aa-term-years', component: () => import('@/modules/academicAffairs/views/AaAcademicYearView.vue'), meta: meta('academicAffairs.term.view', '学年管理') },
     { path: 'terms/switch-log', name: 'aa-term-switch-log', component: () => import('@/modules/academicAffairs/views/AaTermSwitchLogView.vue'), meta: meta('academicAffairs.term.view', '学期切换记录') },
+    { path: 'terms/:termId', name: 'aa-term-detail', component: () => import('@/modules/academicAffairs/views/AaTermDetailView.vue'), meta: meta('academicAffairs.term.view', '学期详情') },
     { path: 'calendar', name: 'aa-calendar', component: () => import('@/modules/academicAffairs/views/AaCalendarView.vue'), meta: meta('academicAffairs.calendar.view', '校历管理') },
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──
@@ -53,7 +55,7 @@ const layoutRoute = {
     { path: 'certificates', name: 'aa-certificates', component: () => import('@/modules/academicAffairs/views/AaCertificateView.vue'), meta: meta('academicAffairs.graduationCert.view', '毕业证书管理') },
     { path: 'grade-recognition', name: 'aa-grade-recognition', component: () => import('@/modules/academicAffairs/views/AaGradeRecognitionView.vue'), meta: meta('academicAffairs.gradeRecognition.view', '成绩认定') },
     { path: 'status-changes', name: 'aa-status-changes', component: () => import('@/modules/academicAffairs/views/AaStatusChangeListView.vue'), meta: meta('academicAffairs.statusChange.view', '学籍异动') },
-    { path: 'status-changes/new', name: 'aa-status-change-new', component: () => import('@/modules/academicAffairs/views/AaStatusChangeFormView.vue'), meta: meta('academicAffairs.statusChange.manage', '发起异动') },
+    { path: 'status-changes/new', name: 'aa-status-change-new', component: () => import('@/modules/academicAffairs/views/AaStatusChangeFormView.vue'), meta: meta('academicAffairs.statusChange.apply', '发起异动') },
     // ── Tier1 R1：分类申请入口（休学/复学/退学/转专业，共用 AaStatusChangeTypedListView + changeType meta） ──
     { path: 'status-changes/suspend', name: 'aa-status-change-suspend', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '休学申请'), changeType: 'SUSPEND' } },
     { path: 'status-changes/resume', name: 'aa-status-change-resume', component: () => import('@/modules/academicAffairs/views/AaStatusChangeTypedListView.vue'), meta: { ...meta('academicAffairs.statusChange.apply', '复学申请'), changeType: 'RESUME' } },
@@ -178,13 +180,6 @@ const layoutRoute = {
   ]
 }
 
-const printExamSeatingRoute = {
-  path: '/admin/academic-affairs/exam/print/seating',
-  name: 'aa-exam-seating-print',
-  component: () => import('@/modules/academicAffairs/views/AaExamSeatingPrintView.vue'),
-  meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.exam.view', title: '座位表/准考证打印' }
-}
-
 const printScheduleChangeNoticeRoute = {
   path: '/admin/academic-affairs/print/schedule-change/:id/notice',
   name: 'aa-schedule-change-notice',
@@ -220,6 +215,6 @@ const printMakeupBatchRoute = {
   meta: { moduleCode: MOD, requiresAuth: true, permissionKey: 'academicAffairs.makeup.archive', title: '补考安排表打印' }
 }
 
-export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printExamSeatingRoute, printMakeupBatchRoute]
+export const academicAffairsRoutes = [layoutRoute, printStatusChangeRoute, printScheduleRoute, printTranscriptRoute, printScheduleChangeNoticeRoute, printMakeupBatchRoute]
 
 export default academicAffairsRoutes

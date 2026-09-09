@@ -323,7 +323,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.task-workbench__hero { display: flex; justify-content: space-between; gap: 24px; padding: 22px 24px; border: 1px solid var(--primary-100); border-radius: 14px; background: linear-gradient(135deg, var(--primary-50), #fff); }
+.task-workbench__hero { display: flex; justify-content: space-between; gap: 24px; padding: 22px 24px; border: 1px solid var(--primary-100); border-radius: 14px; background: linear-gradient(135deg, var(--primary-50), var(--bg-card)); }
 .task-workbench__eyebrow { margin-bottom: 8px; color: var(--primary-700); font-size: 12px; font-weight: 600; }
 .task-workbench__headline { display: flex; align-items: center; gap: 12px; font-size: 17px; }
 .task-workbench__hero p { margin: 9px 0 0; color: var(--gray-600); font-size: 13px; line-height: 1.6; }
@@ -332,25 +332,25 @@ export default {
 .task-workbench__scope-note span { color: var(--gray-500); font-size: 12px; }
 .task-workbench__scope-note strong { margin-top: 5px; color: var(--gray-800); font-size: 13px; }
 .task-workbench__metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.task-metric { padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
+.task-metric { padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: var(--bg-card); }
 .task-metric span, .task-metric small { display: block; color: var(--gray-500); font-size: 12px; }
 .task-metric strong { display: block; margin: 8px 0 5px; color: var(--gray-900); font-size: 24px; }
 .task-workbench__blockers { padding: 18px; border: 1px solid var(--warning-100); border-radius: 12px; background: var(--warning-50); }
 .task-workbench__blockers header p { margin: 4px 0 12px; color: var(--gray-600); font-size: 12px; }
 .task-blocker { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 0; border: 0; border-top: 1px solid rgba(180,120,0,.16); background: transparent; text-align: left; cursor: pointer; }
-.task-blocker__count { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 28px; border-radius: 14px; background: #fff; color: var(--warning-700); font-weight: 700; }
+.task-blocker__count { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 28px; border-radius: 14px; background: var(--bg-card); color: var(--warning-700); font-weight: 700; }
 .task-blocker__main { flex: 1; }
 .task-blocker__main strong, .task-blocker__main small { display: block; }
 .task-blocker__main small { margin-top: 3px; color: var(--gray-600); }
 .task-blocker__go { color: var(--primary-700); }
 .task-workbench__ready { display: flex; justify-content: space-between; padding: 15px 18px; border: 1px solid var(--success-100); border-radius: 12px; background: var(--success-50); color: var(--success-700); }
-.task-workbench__filters { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
+.task-workbench__filters { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid var(--gray-200); border-radius: 12px; background: var(--bg-card); }
 .task-workbench__filters .mp-input { max-width: 360px; }
 .task-workbench__select { max-width: 190px !important; }
 .task-workbench__result { margin-left: auto; color: var(--gray-500); font-size: 12px; }
 .aa-assign-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .aa-assign-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--gray-700); }
-.aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--gray-300); border-radius: 6px; background: #fff; color: var(--gray-900); font-size: 14px; box-sizing: border-box; }
+.aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--gray-300); border-radius: 6px; background: var(--bg-card); color: var(--gray-900); font-size: 14px; box-sizing: border-box; }
 .task-dialog-note { margin: 12px 0 0; color: var(--warning-700); font-size: 12px; }
 .task-review-reason { display: flex; flex-direction: column; gap: 7px; color: var(--gray-700); font-size: 13px; }
 .task-review-reason textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: 8px; resize: vertical; }

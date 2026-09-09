@@ -10,6 +10,7 @@ SYS-12 full-school calendar activation.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import datetime
 import importlib
 from threading import Event
@@ -166,6 +167,24 @@ def _hold_tenant_lock(tenant_id: int):
     return db
 
 
+def _submit_term_request(pool, invoke, *args):
+    """Each simulated request owns a fresh context; never default tenants in production."""
+    from app.core.context import get_tenant, set_tenant
+
+    context = copy_context()
+
+    def run():
+        previous = get_tenant()
+        try:
+            # Explicit test-school identity also reaches unpatched service imports.
+            set_tenant({"tenantId": str(TID)})
+            return invoke(*args)
+        finally:
+            set_tenant(previous)
+
+    return pool.submit(context.run, run)
+
+
 def _assert_writer_waits_for_tenant_lock(monkeypatch, action: str, invoke):
     started_mutation = Event()
     original_audit = svc._audit
@@ -179,7 +198,7 @@ def _assert_writer_waits_for_tenant_lock(monkeypatch, action: str, invoke):
     blocker = _hold_tenant_lock(TID)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(invoke)
+            future = _submit_term_request(pool, invoke)
             waited = not started_mutation.wait(timeout=0.35)
             blocker.commit()
             result = future.result(timeout=8)
@@ -197,7 +216,7 @@ def _assert_future_waits_for_tenant_lock(invoke):
     blocker = _hold_tenant_lock(TID)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(invoke)
+            future = _submit_term_request(pool, invoke)
             sleep(0.35)
             waited = not future.done()
             blocker.commit()
@@ -378,8 +397,8 @@ def test_two_current_term_writers_finish_with_one_current_and_keep_neighbor(db_m
     _patch_writer_tenant(monkeypatch)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(svc.set_current_term, ids["target"], {})
-        second = pool.submit(svc.publish_term, ids["publish_target"], {})
+        first = _submit_term_request(pool, svc.set_current_term, ids["target"], {})
+        second = _submit_term_request(pool, svc.publish_term, ids["publish_target"], {})
         first.result(timeout=10)
         second.result(timeout=10)
 

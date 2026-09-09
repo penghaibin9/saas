@@ -122,7 +122,13 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await dismissPageGuide(page)
     await chooseTerm(page, targetYearCode)
 
-    const copyPanel = page.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
+    const copySection = page.locator('details.aa-calendar-copy')
+    await expect(copySection).toBeVisible()
+    if (!(await copySection.evaluate((element) => element.open))) {
+      await copySection.locator('summary').click()
+    }
+    await expect(copySection).toHaveAttribute('open', '')
+    const copyPanel = copySection.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
     await expect(page.getByText('快速复制上一学期校历', { exact: true })).toBeVisible()
     await page.locator('.aa-copy-field select').selectOption(String(source.termId))
     await page.getByRole('button', { name: '预览复制结果' }).click()

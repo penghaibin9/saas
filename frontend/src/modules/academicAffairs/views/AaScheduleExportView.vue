@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="课表导出"
-    subtitle="按班级/教师/教室导出当前已发布课表 xlsx（水印+审计留痕）"
+    subtitle="按班级、教师或教室导出带水印的已发布课表。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,7 +11,7 @@
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard title="导出条件">
+      <AppSectionCard compact title="导出条件">
         <div class="aa-form">
           <label class="aa-form__item">
             导出范围
@@ -118,6 +119,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 180px; }
 .aa-form__item--grow { flex: 1; min-width: 240px; }

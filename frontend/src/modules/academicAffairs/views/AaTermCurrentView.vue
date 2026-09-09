@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="当前学期"
     subtitle="查看全校当前学期；已启用统一治理时，切换必须从“学年学期与业务日历”执行"
     :role-name="ctx.currentRole.roleName"
@@ -29,30 +30,30 @@
         </div>
       </AppSectionCard>
 
-      <AppSectionCard title="当前学期 Authority">
+      <AppSectionCard title="学期启用方式">
         <div v-if="governanceManaged" class="aa-authority-card">
           <div>
             <strong>全校统一治理已启用</strong>
             <p>{{ current.switchHint }}</p>
           </div>
-          <AppButton variant="primary" @click="goGovernance">前往学年学期与业务日历</AppButton>
+          <AppButton v-if="canViewGovernance" variant="primary" @click="goGovernance">前往学年学期与业务日历</AppButton>
         </div>
-        <p v-else class="mp-note">{{ current?.switchHint || '当前沿用教务学期兼容切换；后续启用全校学期治理后将统一从系统管理切换。' }}</p>
+        <p v-else class="mp-note">{{ loadingCurrent ? '正在核对学校的学期设置…' : currentError ? '当前学期读取失败，请在上方重试。' : (current?.switchHint || '校级教务可将已发布学期设为全校当前学期。') }}</p>
       </AppSectionCard>
 
-      <AppSectionCard :title="governanceManaged ? '进行中学期' : '切换当前学期'">
+      <AppSectionCard title="已发布学期">
         <p class="mp-note">
           {{ governanceManaged
-            ? '这里仅展示教务侧进行中的学期。当前结论来自全校 ACTIVE 学期，不能在本页旁路切换。'
-            : '仅「进行中（PUBLISHED）」学期可设为当前；冻结/归档学期须先在「学期状态」解冻。' }}
+            ? '学校在「学年学期与业务日历」统一启用当前学期。'
+            : '仅已发布学期可设为当前。冻结学期需先解冻，已归档学期保持只读。' }}
         </p>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!candidates.length" title="暂无进行中的学期" />
+        <EmptyState v-else-if="!candidates.length" title="暂无已发布学期" />
         <ul v-else class="aa-current-list">
           <li v-for="t in candidates" :key="t.termId" class="aa-current-item">
             <div class="aa-current-item__main">
-              <span>{{ t.yearCode }} 第 {{ t.termNo }} 学期</span>
+              <button type="button" class="mp-link" @click="$router.push({ name: 'aa-term-detail', params: { termId: t.termId } })">{{ t.yearCode }} 第 {{ t.termNo }} 学期</button>
               <AppStatusTag v-if="isResolvedCurrent(t)" type="success" dot>当前学期</AppStatusTag>
             </div>
             <AppButton
@@ -90,8 +91,9 @@ import { AppSectionCard, AppStatusTag, AppConfirmDialog } from '@/components/com
 import { AppButton } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 
-const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '进行中', FROZEN: '已冻结', ARCHIVED: '已归档' }
+const STATUS_LABEL = { DRAFT: '草稿', PUBLISHED: '已发布', FROZEN: '已冻结', ARCHIVED: '已归档' }
 const STATUS_TYPE = { DRAFT: 'default', PUBLISHED: 'success', FROZEN: 'warning', ARCHIVED: 'info' }
 
 export default {
@@ -101,6 +103,9 @@ export default {
   data() {
     return {
       loadingCurrent: true,
+      currentRequestId: 0,
+      termsRequestId: 0,
+      termViewDisposed: false,
       currentError: '',
       current: null,
       loading: true,
@@ -111,6 +116,8 @@ export default {
     }
   },
   computed: {
+    canManageSchoolTerm() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.term.manage') && ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) },
+    canViewGovernance() { return matchPermission(this.ctx.permissionPatterns || [], 'systemAdmin.academicCalendar.view') },
     candidates() {
       return this.terms.filter((t) => t.status === 'PUBLISHED')
     },
@@ -118,12 +125,17 @@ export default {
       return this.current?.currentAuthority === 'CALENDAR_GOVERNANCE'
     },
     directSwitchAllowed() {
-      return !this.governanceManaged && this.current?.canDirectSwitch !== false
+      return this.canManageSchoolTerm && !this.loadingCurrent && !this.currentError && !this.governanceManaged && this.current?.canDirectSwitch === true
     }
   },
   created() {
     this.loadCurrent()
     this.load()
+  },
+  beforeUnmount() {
+    this.termViewDisposed = true
+    this.currentRequestId += 1
+    this.termsRequestId += 1
   },
   methods: {
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
@@ -135,29 +147,49 @@ export default {
       this.$router.push(this.current?.switchRoute || '/admin/system/academic-calendar')
     },
     async loadCurrent() {
+      if (this.termViewDisposed) return
+      const requestId = ++this.currentRequestId
       this.loadingCurrent = true
       this.currentError = ''
-      const res = await academicAffairsApi.getCurrentTerm()
-      if (res.code === 0) {
-        this.current = res.data || null
-      } else {
+      this.current = null
+      try {
+        const res = await academicAffairsApi.getCurrentTerm()
+        if (requestId !== this.currentRequestId) return
+        if (res?.code !== 0) throw new Error(res?.message || '当前学期解析失败，请核对全校学期治理与教务学期数据')
+        if (!res.data || typeof res.data !== 'object' || Array.isArray(res.data)) {
+          throw new Error('当前学期响应不完整，请刷新后重新核对')
+        }
+        this.current = res.data
+      } catch (exception) {
+        if (requestId !== this.currentRequestId) return
         this.current = null
-        this.currentError = res.message || '当前学期解析失败，请核对全校学期治理与教务学期数据'
+        this.currentError = exception?.message || '当前学期读取失败，请刷新后重试'
+      } finally {
+        if (requestId === this.currentRequestId) this.loadingCurrent = false
       }
-      this.loadingCurrent = false
     },
     async load() {
+      if (this.termViewDisposed) return
+      const requestId = ++this.termsRequestId
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
-      if (res.code === 0) {
+      this.terms = []
+      try {
+        const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
+        if (requestId !== this.termsRequestId) return
+        if (res?.code !== 0) throw new Error(res?.message || '学期列表读取失败，请刷新后重试')
+        if (!Array.isArray(res.data?.list)) throw new Error('学期列表响应不完整，请刷新后重试')
         this.terms = res.data.list
-      } else {
-        this.error = res.message
+      } catch (exception) {
+        if (requestId !== this.termsRequestId) return
+        this.terms = []
+        this.error = exception?.message || '学期列表读取失败，请刷新后重试'
+      } finally {
+        if (requestId === this.termsRequestId) this.loading = false
       }
-      this.loading = false
     },
     askSwitch(row) {
+      if (this.dialog.submitting || row.status !== 'PUBLISHED' || this.isResolvedCurrent(row)) return
       if (!this.directSwitchAllowed) {
         toast.warning(this.current?.switchHint || '当前学校已启用全校学期治理，请从统一治理入口切换')
         return
@@ -171,20 +203,26 @@ export default {
     },
     async doSwitch() {
       const row = this.dialog.row
-      if (!row || !this.directSwitchAllowed) return
+      if (!row || this.dialog.submitting || !this.directSwitchAllowed) return
       this.dialog.submitting = true
       this.switching = row.termId
-      const res = await academicAffairsApi.setCurrentTerm(row.termId)
-      this.dialog.submitting = false
-      this.switching = ''
-      if (res.code === 0) {
+      try {
+        const res = await academicAffairsApi.setCurrentTerm(row.termId)
+        if (this.termViewDisposed) return
+        if (res?.code !== 0) throw new Error(res?.message || '切换失败')
         this.dialog.visible = false
         toast.success(`已切换：${row.yearCode} 第 ${row.termNo} 学期为当前学期`)
-        this.loadCurrent()
-        this.load()
-      } else {
-        toast.error(res.message || '切换失败')
-        this.loadCurrent()
+      } catch (exception) {
+        // A timeout does not prove the server rolled back. Read back; never replay the write.
+        if (!this.termViewDisposed) toast.error(exception?.message || '切换结果暂未确认，请核对刷新后的当前学期')
+      } finally {
+        if (!this.termViewDisposed) {
+          await Promise.all([this.loadCurrent(), this.load()])
+          if (!this.termViewDisposed) {
+            this.dialog.submitting = false
+            this.switching = ''
+          }
+        }
       }
     }
   }
@@ -193,6 +231,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-current-card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 4px 0; }
 .aa-current-card__title { font-size: 16px; font-weight: 600; color: var(--text-900, #1f2329); }
 .aa-current-card__sub { font-size: 13px; color: var(--text-500, #646a73); margin-top: 2px; }

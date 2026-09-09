@@ -306,6 +306,8 @@ for job in ("internship_audit_outbox", "internship_overdue"):
 
 # ---- Local dependency closure -------------------------------------------------
 def resolve_js(source: Path, spec: str, surface_root: Path) -> Path | None:
+    # Vite query suffixes select a loader; the source file must still exist and be tracked.
+    spec = spec.split("?", 1)[0].split("#", 1)[0]
     if spec.startswith("@/"):
         base = surface_root / "src" / spec[2:]
     elif spec.startswith("."):

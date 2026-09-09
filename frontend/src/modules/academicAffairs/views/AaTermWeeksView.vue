@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期周次"
     subtitle="按开学日期与教学周数展开逐周日期，叠加校历假期/考试/实习安排，标注当前所在周"
     :role-name="ctx.currentRole.roleName"
@@ -15,8 +16,10 @@
 
       <p v-if="currentError" class="mp-note">当前学期解析失败，未自动猜测“当前”；已保留显式学期选择供历史周次查询。{{ currentError }}</p>
 
+      <ErrorState v-if="catalogError" :description="catalogError" @retry="refreshTermCatalog" />
+      <LoadingState v-else-if="termsLoading" />
       <EmptyState
-        v-if="!termsLoading && !terms.length"
+        v-else-if="!terms.length"
         title="还没有学年学期"
         description="学期周次依附于学期，请先到「学年学期」创建并发布一个学期"
       >
@@ -29,9 +32,9 @@
         <EmptyState
           v-else-if="!weeks.length"
           title="该学期尚未配置教学周"
-          description="请先到「教学周配置」设置教学周总数与开学日期"
+          description="在学期详情中补齐开学日期与教学周数后，可查看逐周安排。"
         >
-          <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms/teaching-weeks')">前往教学周配置</AppButton>
+          <AppButton variant="primary" @click="$router.push({ name: 'aa-term-detail', params: { termId } })">查看学期详情</AppButton>
         </EmptyState>
         <DataTable v-else :columns="columns" :rows="weeks" row-key="weekNo">
           <template #cell-weekNo="{ row }">
@@ -39,7 +42,7 @@
           </template>
           <template #cell-range="{ row }">{{ row.startDate }} ~ {{ row.endDate }}</template>
           <template #cell-weekType="{ row }">
-            <AppStatusTag :type="typeColor(row.weekType)" dot>{{ TYPE_LABEL[row.weekType] || row.weekType }}</AppStatusTag>
+            <AppStatusTag :type="typeColor(row.weekType)" dot>{{ TYPE_LABEL[row.weekType] || '类型待确认' }}</AppStatusTag>
           </template>
           <template #cell-remark="{ row }">{{ row.remark || '—' }}</template>
         </DataTable>
@@ -67,6 +70,8 @@ export default {
     return {
       TYPE_LABEL,
       termsLoading: true,
+      catalogError: '',
+      requestVersion: 0,
       terms: [],
       termId: '',
       currentContext: null,
@@ -110,25 +115,29 @@ export default {
     },
     async refreshTermCatalog() {
       this.termsLoading = true
+      this.catalogError = ''
       try {
         this.terms = await loadAcademicTermCatalog()
         await this.loadCurrentContext()
         const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
-        const selected = resolved || this.terms[0]
+        const selected = this.terms.find(t => String(t.termId) === String(this.termId || this.$route.query.termId || '')) || resolved || this.terms[0]
         if (selected) {
           this.termId = selected.termId
           this.loadWeeks()
         }
       } catch (error) {
-        this.error = error.message || '学期数据加载失败'
+        this.catalogError = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
     async loadWeeks() {
-      if (!this.termId) return
+      const version = ++this.requestVersion
+      this.weeks = []
+      if (!this.termId) { this.loading = false; return }
       this.loading = true
       this.error = ''
       const res = await academicAffairsApi.getTermWeeks(this.termId)
+      if (version !== this.requestVersion) return
       if (res.code === 0) {
         this.weeks = res.data || []
       } else {
@@ -142,6 +151,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-select {

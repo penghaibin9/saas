@@ -251,3 +251,5 @@ from app.modules.platform.document_lifecycle.models import (  # noqa: F401
     FileDerivedArtifact,
     StudentLifecycleFact,
 )
+
+from app.models.academic_classroom_building import AaTeachingBuilding

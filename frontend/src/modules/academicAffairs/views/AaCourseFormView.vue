@@ -11,6 +11,9 @@
 
     <LoadingState v-if="loading" />
     <AppSectionCard v-else title="课程信息">
+      <p class="aa-form-intro">先填写课程基本信息，再核对学分学时与适用范围。保存为草稿后，可在详情页提交审核。</p>
+      <fieldset class="aa-form-group">
+        <legend>基本信息</legend>
       <div class="aa-grid">
         <AppFormItem label="课程编码" required hint="大写字母(1-4位)+数字(3-8位)，如 CS101">
           <AppTextInput v-model="form.courseCode" :maxlength="30" placeholder="如 CS101" />
@@ -27,6 +30,11 @@
         <AppFormItem label="课程性质" required>
           <AppSelect v-model="form.nature" :options="natureOptions" />
         </AppFormItem>
+      </div>
+      </fieldset>
+      <fieldset class="aa-form-group">
+        <legend>学分、学时与考核</legend>
+      <div class="aa-grid">
         <AppFormItem label="学分" required>
           <AppNumberInput v-model="form.credit" :min="0" :step="0.5" />
         </AppFormItem>
@@ -40,6 +48,11 @@
         <AppFormItem label="考核方式">
           <AppSelect v-model="form.examMode" :options="examModeOptions" />
         </AppFormItem>
+      </div>
+      </fieldset>
+      <fieldset class="aa-form-group">
+        <legend>开课责任与适用范围</legend>
+      <div class="aa-grid">
         <AppFormItem label="开课单位" hint="学院管理员只能选择本学院">
           <AppCollegePicker v-model="form.ownerCollegeId" :options="collegeOptions" clearable />
         </AppFormItem>
@@ -62,8 +75,9 @@
           <AppMajorPicker v-model="form.applicableMajors" multiple :options="majorOptions" />
         </AppFormItem>
       </div>
+      </fieldset>
       <AppInlineAlert v-if="formError" type="danger" :description="formError" />
-      <div class="aa-actions">
+      <div class="aa-actions aa-form-footer">
         <AppButton @click="goBack">取消</AppButton>
         <AppButton variant="primary" :loading="submitting" @click="submit">保存</AppButton>
       </div>

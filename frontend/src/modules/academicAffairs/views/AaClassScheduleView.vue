@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="班级课表"
-    subtitle="按班级查看当前已发布课表（自动取最近一次发布批次，周次可选过滤）"
+    subtitle="查看班级已发布课表，可按学期和周次筛选。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -31,8 +32,8 @@
       <EmptyState v-else-if="!classId" title="请先选择班级" description="搜索并选择班级后自动加载课表" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
-        <AppSectionCard :title="className ? `${className} · 周课表` : '班级课表'">
-          <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+        <AppSectionCard compact :title="className ? `${className} · 周课表` : '班级课表'">
+          <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
       </template>
     </div>
@@ -104,6 +105,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-filter__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 200px; }
 .aa-filter__item--grow { flex: 1; min-width: 260px; }

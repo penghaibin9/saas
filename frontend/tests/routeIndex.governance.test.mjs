@@ -99,3 +99,10 @@ test('absolute child does not reparent sibling routes or invent redirect destina
   assert.ok(!index.exact.has('/not-registered'))
   assert.deepEqual(index.redirects, [{ from: '/admin/student-affairs/retired', to: '/not-registered' }])
 })
+
+test('parameterized redirect declarations remain redirects without inventing target routes', () => {
+  const parsed = extractRouteSource("const routes = [{ path: '/old/:id', redirect: '/new' }]")
+  const index = { ...parsed, patternRegexes: [] }
+  assert.deepEqual(matchRouteExists(index, '/old/:id'), { exists: true, matchType: 'redirect' })
+  assert.deepEqual(matchRouteExists(index, '/new'), { exists: false, matchType: 'missing' })
+})

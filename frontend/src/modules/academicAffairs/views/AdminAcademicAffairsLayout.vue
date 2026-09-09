@@ -1,24 +1,26 @@
 <template>
   <BasePortalLayout
+    class="aa-workspace-ui"
     :title="brandTitle"
     subtitle="教务中心"
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <template v-if="ctx">
-      <div v-if="isArchiveArea && canManageArchive" class="aa-ops-strip">
+    <div v-if="ctx" class="aa-business-area">
+      <details v-if="isArchiveArea && canManageArchive" class="aa-ops-strip">
+        <summary>归档检查工具</summary>
         <div>
-          <strong>{{ isSemesterPilot ? '真实学期验收' : '生产验收工具' }}</strong>
-          <span>{{ isSemesterPilot ? '只读取真实学校正式事实并冻结六阶段证据，不生成业务数据。' : '真实学校完整学期上线时，可进入隐藏验收工作区。' }}</span>
+          <strong>{{ isSemesterPilot ? '学期验收' : '学期完整性检查' }}</strong>
+          <span>{{ isSemesterPilot ? '核对本学期六个阶段的办理记录与验收证据。' : '归档前可核对本学期各阶段的办理记录。' }}</span>
         </div>
         <button v-if="!isSemesterPilot" type="button" @click="openSemesterPilot">真实学期验收</button>
         <button v-else type="button" @click="closeSemesterPilot">返回教务归档</button>
-      </div>
+      </details>
       <AaSemesterPilotView v-if="isSemesterPilot && canManageArchive" />
       <template v-if="!(isSemesterPilot && canManageArchive)">
         <router-view v-if="ctx" :ctx="ctx" />
       </template>
-    </template>
+    </div>
     <ErrorState
       v-else-if="error"
       title="教务中心加载失败"
@@ -45,12 +47,14 @@ import { academicAffairsPickerAdapters } from '@/modules/academicAffairs/pickerA
 import AaSemesterPilotView from '@/modules/academicAffairs/views/AaSemesterPilotView.vue'
 import { matchPermission } from '@/config/navPlan'
 import router from '@/router'
+import '@/modules/academicAffairs/styles/business-workspace.css'
+import '@/modules/academicAffairs/styles/module-navigation.css'
 
 export default {
   name: 'AdminAcademicAffairsLayout',
   components: { BasePortalLayout, ErrorState, LoadingState, AaSemesterPilotView },
   provide() {
-    return { appPickerAdapters: academicAffairsPickerAdapters }
+    return { appPickerAdapters: academicAffairsPickerAdapters, conciseBusinessHeader: true }
   },
   data() {
     return { ctx: null, error: '' }
@@ -113,7 +117,9 @@ export default {
 </script>
 
 <style scoped>
-.aa-ops-strip { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-light, #e5e7eb); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.aa-ops-strip { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-ops-strip summary { color: var(--text-secondary); font-size: 13px; cursor: pointer; }
+.aa-ops-strip[open] > div { margin: 12px 0; }
 .aa-ops-strip > div { min-width: 0; display: grid; gap: 3px; }
 .aa-ops-strip strong { color: var(--text-primary, #0f172a); font-size: 13px; }
 .aa-ops-strip span { color: var(--text-tertiary, #64748b); font-size: 12px; }

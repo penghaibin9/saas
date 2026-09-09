@@ -1,5 +1,6 @@
 <template>
-  <div class="aaesp">
+  <div class="aa-print-preview aaesp">
+    <h1 class="no-print">考务打印</h1>
     <div class="aaesp-toolbar no-print">
       <AppTextInput v-model="roomId" placeholder="考场 ID" style="max-width:160px" @keyup.enter="load" />
       <AppButton size="small" variant="primary" :disabled="loading" @click="load">
@@ -245,5 +246,22 @@ export default {
   .aaesp-ticket { page-break-inside: avoid; }
   .aaesp-sheet.is-ticket .aaesp-door-section { display: none !important; }
   .aaesp-sheet.is-door_list .aaesp-tickets { display: none !important; }
+}
+</style>
+
+<style src="../styles/print-preview.css"></style>
+
+<style>
+/* 仅考务打印使用工作区布局，纸张输出不包含导航或滚动容器。 */
+@media print {
+  body:has(.aaesp) :is(.bpl-topbar, .tw-centers, .tw-rails, .tw-tabbar, .tw-dock-wrap) { display: none !important; }
+  body:has(.aaesp), body:has(.aaesp) :is(#app, .base-portal-layout, .tw-frame, .tw-body, .tw-working, .tw-main, .aa-business-area) {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }
 </style>

@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="教师课表"
-    subtitle="按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师"
+    subtitle="查看授课安排；教师本人可从课位发起调停课申请。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -29,33 +30,36 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!teacherKey" title="请先输入教师工号" description="或点击「查看本人课表」" />
+      <EmptyState v-else-if="!teacherKey" title="请先选择教师" description="搜索教师姓名、工号，或点击「查看本人课表」。" />
       <template v-else>
-        <AppSectionCard v-if="isSelfView" title="今天的授课安排" class="aa-today-card">
-          <div class="aa-today-head">
-            <div>
-              <strong>{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</strong>
-              <p>{{ todayNote }}</p>
+        <AppSectionCard compact v-if="isSelfView" title="今天的授课安排" class="aa-today-card">
+          <ErrorState v-if="todayError" :description="todayError" @retry="load" />
+          <template v-else>
+            <div class="aa-today-head">
+              <div>
+                <strong>{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</strong>
+                <p>{{ todayNote }}</p>
+              </div>
+              <span v-if="todayDate">{{ todayDate }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
             </div>
-            <span v-if="todayDate">{{ todayDate }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
-          </div>
-          <div v-if="todayItems.length" class="aa-today-list">
-            <button v-for="item in todayItems" :key="item.scheduleItemId" type="button" class="aa-today-item" @click="openTodayItem(item)">
-              <b>第{{ item.slotNo }}节</b>
-              <span><strong>{{ item.courseName }}</strong><small>{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</small></span>
-              <em>查看课位与调停课 ›</em>
-            </button>
-          </div>
-          <EmptyState v-else title="今天无课" :description="todayNote" />
+            <div v-if="todayItems.length" class="aa-today-list">
+              <button v-for="item in todayItems" :key="item.scheduleItemId" type="button" class="aa-today-item" @click="openTodayItem(item)">
+                <b>第{{ item.slotNo }}节</b>
+                <span><strong>{{ item.courseName }}</strong><small>{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</small></span>
+                <em>查看课位与调停课 ›</em>
+              </button>
+            </div>
+            <EmptyState v-else title="今天无课" :description="todayNote" />
+          </template>
         </AppSectionCard>
         <div class="aa-summary">
           <span v-if="weeklyHours" class="aa-summary__item">本学期周学时合计（近似）：<b>{{ weeklyHours }}</b></span>
           <p v-if="note" class="mp-note">{{ note }}</p>
         </div>
-        <AppSectionCard :title="`${teacherName || '本人'} · 周课表`">
-          <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+        <AppSectionCard compact :title="`${teacherName || '本人'} · 周课表`">
+          <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
-        <AppSectionCard v-if="selectedItem" title="课位详情" class="aa-item-detail">
+        <AppSectionCard compact v-if="selectedItem" title="课位详情" class="aa-item-detail" tabindex="-1">
           <div class="aa-item-detail__head">
             <div>
               <strong>{{ selectedItem.courseName || '课程' }}</strong>
@@ -105,7 +109,7 @@ export default {
       selfKey: String(u.loginName || u.userId || ''),
       termId: '', week: null,
       slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: '',
-      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', selectedItem: null
+      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', selectedItem: null, todayError: ''
     }
   },
   created() {
@@ -118,7 +122,7 @@ export default {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
       if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
-      return this.todayItems.length ? '来自同一份正式课表和校历课次投影。' : '已核对学校校历和本人最新正式课表。'
+      return this.todayItems.length ? '已按学校校历和最新正式课表筛选。' : '已核对学校校历和本人最新正式课表。'
     }
   },
   methods: {
@@ -138,10 +142,14 @@ export default {
     },
     openTodayItem(item) {
       this.selectedItem = { ...item, itemId: item.itemId || item.scheduleItemId }
-      this.$nextTick(() => document.querySelector('.aa-item-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
+      this.$nextTick(() => {
+        const detail = this.$el.querySelector('.aa-item-detail')
+        detail?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        detail?.focus({ preventScroll: true })
+      })
     },
     onItemClick(it) {
-      this.selectedItem = it
+      this.openTodayItem(it)
     },
     weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || (value ? '待确认' : '')}` },
     parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
@@ -164,29 +172,36 @@ export default {
       if (!this.teacherKey) return
       this.loading = true
       this.error = ''
-      const [res, todayRes] = await Promise.all([
-        academicAffairsApi.getTeacherSchedule(this.teacherKey, {
-          termId: this.termId || undefined, week: this.week || undefined
-        }),
-        this.isSameTeacherKey(this.teacherKey)
-          ? academicAffairsApi.getMyTeacherToday()
-          : Promise.resolve(null)
-      ])
-      this.loading = false
-      if (res.code === 0) {
-        this.items = res.data.items || []
-        if (res.data.teacherName) this.teacherName = res.data.teacherName
-        this.selectedItem = null
-        this.weeklyHours = res.data.weeklyHours || 0
-        this.note = res.data.note || ''
-        this.todayItems = todayRes?.code === 0 ? (todayRes.data.todayItems || []) : []
-        this.todayDate = todayRes?.code === 0 ? (todayRes.data.todayDate || '') : ''
-        this.todayWeek = todayRes?.code === 0 ? (todayRes.data.currentWeek ?? null) : null
-        this.calendarSource = todayRes?.code === 0 ? (todayRes.data.calendarSource || '') : ''
-        this.$router.replace(`/admin/academic-affairs/schedule/teacher/${this.teacherKey}`).catch(() => {})
-      } else {
-        this.error = res.message
-        this.items = []
+      try {
+        const [res, todayRes] = await Promise.all([
+          academicAffairsApi.getTeacherSchedule(this.teacherKey, {
+            termId: this.termId || undefined, week: this.week || undefined
+          }),
+          this.isSameTeacherKey(this.teacherKey)
+            ? academicAffairsApi.getMyTeacherToday().catch((exception) => ({ code: -1, message: exception?.message }))
+            : Promise.resolve(null)
+        ])
+        this.loading = false
+        if (res.code === 0) {
+          this.items = res.data.items || []
+          if (res.data.teacherName) this.teacherName = res.data.teacherName
+          this.selectedItem = null
+          this.weeklyHours = res.data.weeklyHours || 0
+          this.note = res.data.note || ''
+          this.todayError = this.isSelfView && todayRes?.code !== 0 ? (todayRes?.message || '今日授课安排读取失败，请重试。周课表仍可查看。') : ''
+          this.todayItems = todayRes?.code === 0 ? (todayRes.data.todayItems || []) : []
+          this.todayDate = todayRes?.code === 0 ? (todayRes.data.todayDate || '') : ''
+          this.todayWeek = todayRes?.code === 0 ? (todayRes.data.currentWeek ?? null) : null
+          this.calendarSource = todayRes?.code === 0 ? (todayRes.data.calendarSource || '') : ''
+          this.$router.replace(`/admin/academic-affairs/schedule/teacher/${this.teacherKey}`).catch(() => {})
+        } else {
+          this.error = res.message || '教师课表读取失败，请重试'
+          this.items = []
+        }
+      } catch (exception) {
+        this.error = exception?.message || '教师课表读取失败，请重试'
+      } finally {
+        this.loading = false
       }
     }
   }
@@ -195,6 +210,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-filter { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-filter__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); min-width: 160px; }
 .aa-input, .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
@@ -207,7 +223,7 @@ export default {
 .aa-today-head p { margin: 4px 0 0; color: var(--text-500, #86909c); font-size: 12px; }
 .aa-today-head > span { color: var(--success-600, #16a34a); font-size: 12px; }
 .aa-today-list { display: grid; gap: 8px; margin-top: 14px; }
-.aa-today-item { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; padding: 12px 14px; border: 1px solid var(--border-200, #e5e6eb); border-left: 4px solid var(--success-500, #22c55e); border-radius: 10px; background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.aa-today-item { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; padding: 12px 14px; border: 1px solid var(--border-200, #e5e6eb); border-left: 4px solid var(--success-500, #22c55e); border-radius: 10px; background: var(--bg-card); color: inherit; text-align: left; cursor: pointer; }
 .aa-today-item > b { color: var(--success-600, #16a34a); }
 .aa-today-item span strong, .aa-today-item span small { display: block; }
 .aa-today-item span small { margin-top: 3px; color: var(--text-500, #86909c); }

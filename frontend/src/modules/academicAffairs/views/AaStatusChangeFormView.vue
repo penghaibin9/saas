@@ -457,7 +457,7 @@ export default {
 .aa-transition__title { display: block; margin-bottom: 14px; font-size: 15px; color: var(--text-900, #1f2329); }
 .aa-transition__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .aa-transition__grid div { min-width: 0; }
-.aa-transition__grid dt { margin-bottom: 3px; font-size: 11px; color: var(--text-400, #8a9099); }
+.aa-transition__grid dt { margin-bottom: 3px; font-size: 12px; color: var(--text-400, #8a9099); }
 .aa-transition__grid dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--text-800, #31343a); }
 .aa-transition__arrow { align-self: center; justify-self: center; font-size: 22px; color: var(--text-400, #8a9099); }
 .aa-radio-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -465,13 +465,13 @@ export default {
 .aa-radio input { margin-top: 3px; }
 .aa-radio span { display: flex; flex-direction: column; gap: 3px; }
 .aa-radio strong { font-size: 13px; font-weight: 600; color: var(--text-900, #1f2329); }
-.aa-radio small { font-size: 11px; line-height: 1.4; color: var(--text-400, #8a9099); }
+.aa-radio small { font-size: 12px; line-height: 1.4; color: var(--text-400, #8a9099); }
 .aa-effective-date { margin-top: 10px; max-width: 360px; }
 .aa-materials { display: grid; gap: 8px; margin-top: 10px; }
 .aa-material { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; background: var(--fill-50, #f7f8fa); }
 .aa-material__meta { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .aa-material__meta strong { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.aa-material__status { flex-shrink: 0; font-size: 11px; color: var(--warning-700, #b76700); }
+.aa-material__status { flex-shrink: 0; font-size: 12px; color: var(--warning-700, #b76700); }
 .aa-material__status.is-ready { color: var(--success-700, #16803c); }
 .aa-material__actions { display: flex; gap: 8px; }
 .aa-material__actions button { border: 0; background: transparent; color: var(--primary-600, #1769e0); cursor: pointer; font-size: 12px; }

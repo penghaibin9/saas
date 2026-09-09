@@ -226,7 +226,7 @@ export const SEARCH_ALIASES = [
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
-  { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic', label: '教务中心 / 学业过程' },
+  { keywords: ['学业过程', '教务中心', '成绩', '课程', '学业预警'], path: '/admin/academic-affairs?panel=academicProgress', label: '教务中心 / 学业过程' },
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报', '实习工作台', '今日工作'], path: '/admin/internship', label: '岗位实习中心 / 今日工作' },
   { keywords: ['就业服务', '就业', '未就业帮扶', '就业转化'], path: '/admin/employment', label: '就业服务（就业中心）' },

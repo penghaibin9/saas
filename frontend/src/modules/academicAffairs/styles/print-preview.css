@@ -1,0 +1,11 @@
+/* Screen controls only: preserve the authoritative A4 sheet, fields and print media rules. */
+@media screen {
+  .aa-print-preview { box-sizing: border-box; min-height: 100vh; overflow-x: auto; padding: 20px; background: var(--bg-page, #f4f7fb); }
+  .aa-print-preview :is(.aa-print__bar, .scn-bar, .aaesp-toolbar) { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 20px; padding: 12px 16px; border: 1px solid var(--border-base, #dfe5ed); border-radius: 10px; background: var(--bg-card, #fff); }
+  .aa-print-preview :is(.aa-print__sheet, .scn-sheet, .aaesp-official) { background: #fff; color: #111; box-shadow: 0 3px 18px rgb(15 23 42 / 8%); }
+  .aa-print-preview :is(button, a):focus-visible { outline: 2px solid var(--pri, #2563eb); outline-offset: 3px; }
+}
+@media screen and (max-width: 600px) {
+  .aa-print-preview { padding: 12px; }
+  .aa-print-preview :is(.aa-print__bar, .scn-bar, .aaesp-toolbar) { padding: 10px; }
+}

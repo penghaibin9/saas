@@ -161,7 +161,7 @@ export default {
 .sc-arrow { margin: 0 6px; color: var(--t3, #94a3b8); }
 .sc-stop { color: var(--warning, #d97706); font-weight: 600; font-size: 12px; }
 .mp-link--danger { color: var(--danger, #dc2626); }
-.sc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(180px,auto) auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
-.sc-receipt strong, .sc-receipt span, .sc-receipt small, .sc-receipt b { display: block; }.sc-receipt strong { color: #15803d; }.sc-receipt span, .sc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.sc-receipt b { margin-top: 3px; font-size: 12px; }
+.sc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(180px,auto) auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: var(--aa-success-bg, #f3fbf5); }
+.sc-receipt strong, .sc-receipt span, .sc-receipt small, .sc-receipt b { display: block; }.sc-receipt strong { color: var(--success-color, #16803c); }.sc-receipt span, .sc-receipt small { margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.sc-receipt b { margin-top: 3px; font-size: 12px; }
 @media (max-width: 760px) { .sc-receipt { grid-template-columns: 1fr; gap: 10px; } }
 </style>

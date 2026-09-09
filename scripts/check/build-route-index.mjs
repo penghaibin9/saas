@@ -163,9 +163,10 @@ export function buildRouteIndex() {
 export function matchRouteExists(index, fullPath) {
   if (!fullPath) return { exists: false, matchType: 'missing' }
   const clean = normalizeExact(String(fullPath).split('?')[0])
+  // Redirect/alias sources may themselves be parameterized route declarations.
+  if ((index.aliases || []).some((a) => a.from === clean)) return { exists: true, matchType: 'alias' }
+  if ((index.redirects || []).some((r) => r.from === clean)) return { exists: true, matchType: 'redirect' }
   if (index.exact.has(clean)) {
-    if ((index.aliases || []).some((a) => a.from === clean)) return { exists: true, matchType: 'alias' }
-    if ((index.redirects || []).some((r) => r.from === clean)) return { exists: true, matchType: 'redirect' }
     return { exists: true, matchType: 'exact' }
   }
   for (const { pattern, re } of index.patternRegexes || []) {

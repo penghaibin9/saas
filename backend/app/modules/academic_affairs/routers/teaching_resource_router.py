@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query, UploadFile, File
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -32,6 +34,99 @@ RepairReportBody = legacy.RepairReportBody
 RepairCompleteBody = legacy.RepairCompleteBody
 RepairCancelBody = legacy.RepairCancelBody
 resource_svc = legacy.resource_svc
+from app.modules.academic_affairs.services import academic_affairs_classroom_catalog_service as catalog
+
+
+class BuildingBody(BaseModel):
+    buildingCode: str = Field(min_length=1, max_length=50)
+    buildingName: str = Field(min_length=1, max_length=100)
+    campusCode: str = Field(default="", max_length=50)
+    floorCount: int = Field(ge=1, le=100)
+    expectedVersion: int | None = Field(default=None, ge=0)
+
+
+class GenerateClassroomsBody(BaseModel):
+    buildingId: str = Field(pattern=r"^[0-9]+$")
+    startFloor: int = Field(ge=1, le=100)
+    endFloor: int = Field(ge=1, le=100)
+    roomsPerFloor: int = Field(ge=1, le=100)
+    startSequence: int = Field(default=1, ge=0, le=9999)
+    digits: int = Field(default=2, ge=1, le=4)
+    prefix: str = Field(default="", max_length=20)
+    excludeCodes: list[str] = Field(default_factory=list, max_length=1000)
+    capacity: int = Field(ge=0, le=1000)
+    examSeats: int | None = Field(default=None, ge=0, le=1000)
+    roomType: str = Field(default="LECTURE", max_length=30)
+    isExclusive: bool = False
+
+
+class ClassroomRowsBody(BaseModel):
+    rows: list[dict] = Field(min_length=1, max_length=1000)
+
+
+@router.get("/classroom-buildings")
+def classroom_buildings(keyword: str = Query(default="", max_length=100), page: int = Query(default=1, ge=1),
+    user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success(catalog.list_buildings(keyword, page))
+
+
+@router.post("/classroom-buildings")
+def classroom_building_create(body: BuildingBody, user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(catalog.save_building(body))
+
+
+@router.put("/classroom-buildings/{buildingId}")
+def classroom_building_update(body: BuildingBody, buildingId: int,
+    user=Depends(require_permission("academicAffairs.classroom.update"))):
+    return success(catalog.save_building(body, buildingId))
+
+
+@router.post("/classroom-batches/generate-preview")
+def classroom_generate_preview(body: GenerateClassroomsBody,
+    user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(catalog.generate_preview(body))
+
+
+@router.post("/classroom-batches/preview")
+def classroom_rows_preview(body: ClassroomRowsBody, user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(catalog.preview_rows(body.rows))
+
+
+def _xlsx(content, filename):
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})
+
+
+@router.get("/classroom-batches/template.xlsx")
+def classroom_template(user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return _xlsx(catalog.workbook([]), "classroom-template.xlsx")
+
+
+@router.post("/classroom-batches/import-preview")
+async def classroom_import_preview(file: UploadFile = File(...),
+    user=Depends(require_permission("academicAffairs.classroom.create"))):
+    try:
+        content = await file.read(5 * 1024 * 1024 + 1)
+        if not (file.filename or "").lower().endswith(".xlsx") or len(content) > 5 * 1024 * 1024:
+            catalog._bad("请上传不超过5MB的 xlsx 文件")
+        return success(catalog.import_preview(content))
+    finally:
+        await file.close()
+
+
+@router.get("/classroom-batches/{batchNo}/result.xlsx")
+def classroom_batch_export(batchNo: str, user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return _xlsx(catalog.batch_workbook(batchNo), "classroom-result.xlsx")
+
+
+@router.get("/classroom-batches/{batchNo}")
+def classroom_batch_get(batchNo: str, user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(catalog.get_batch(batchNo))
+
+
+@router.post("/classroom-batches/{batchNo}/confirm")
+def classroom_batch_confirm(batchNo: str, user=Depends(require_permission("academicAffairs.classroom.create"))):
+    return success(catalog.confirm_batch(batchNo))
 
 
 # ── 教室字典 ──
@@ -39,13 +134,15 @@ resource_svc = legacy.resource_svc
 def classroom_list(
     keyword: Optional[str] = None,
     buildingCode: Optional[str] = None,
+    buildingId: Optional[str] = Query(default=None, pattern=r"^[0-9]+$"),
+    floorNo: Optional[int] = Query(default=None, ge=0, le=100),
     roomType: Optional[str] = None,
     status: Optional[str] = None,
-    page: int = 1,
-    pageSize: int = 20,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
     user=Depends(require_permission("academicAffairs.classroom.view")),
 ):
-    items, total = resource_svc.list_classrooms(user, keyword, buildingCode, roomType, status, page, pageSize)
+    items, total = resource_svc.list_classrooms(user, keyword, buildingCode, roomType, status, page, pageSize, buildingId, floorNo)
     return success(paginate(items, total, page, pageSize))
 
 
