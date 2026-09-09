@@ -1,5 +1,7 @@
 import { request } from '@/services/http/client'
 
+const financeBase = (tenantId) => `/platform/commercial/tenants/${encodeURIComponent(tenantId)}`
+
 export const moduleCommerceApi = {
   listSaleSkus: (params) => request('/platform/commercial/skus', { params }),
   publishSku: (body) => request('/platform/commercial/skus', { method: 'POST', body }),
@@ -19,5 +21,20 @@ export const moduleCommerceApi = {
   getOffboarding: (jobId) => request(`/platform/commercial/module-offboarding/${jobId}`),
   cancelOffboarding: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/cancel`, { method: 'POST', body }),
   bindExport: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/export`, { method: 'POST', body }),
-  acceptExport: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/export-acceptance`, { method: 'POST', body })
+  acceptExport: (jobId, body) => request(`/platform/commercial/module-offboarding/${jobId}/export-acceptance`, { method: 'POST', body }),
+
+  listFinanceOrders: (tenantId, params = {}) => request(`${financeBase(tenantId)}/finance-orders`, { params }),
+  listRefunds: (tenantId, params = {}) => request(`${financeBase(tenantId)}/refunds`, { params }),
+  requestRefund: (tenantId, body, key) => request(`${financeBase(tenantId)}/refunds`, {
+    method: 'POST', body, headers: { 'Idempotency-Key': key }, timeoutMs: 15000
+  }),
+  approveRefund: (tenantId, caseId, body) => request(`${financeBase(tenantId)}/refunds/${encodeURIComponent(caseId)}/approve`, { method: 'POST', body }),
+  rejectRefund: (tenantId, caseId, body) => request(`${financeBase(tenantId)}/refunds/${encodeURIComponent(caseId)}/reject`, { method: 'POST', body }),
+  settleRefund: (tenantId, caseId, body) => request(`${financeBase(tenantId)}/refunds/${encodeURIComponent(caseId)}/settle`, { method: 'POST', body }),
+  listInvoices: (tenantId, params = {}) => request(`${financeBase(tenantId)}/invoices`, { params }),
+  requestInvoice: (tenantId, body, key) => request(`${financeBase(tenantId)}/invoices`, {
+    method: 'POST', body, headers: { 'Idempotency-Key': key }, timeoutMs: 15000
+  }),
+  issueInvoice: (tenantId, invoiceCaseId, body) => request(`${financeBase(tenantId)}/invoices/${encodeURIComponent(invoiceCaseId)}/issue`, { method: 'POST', body }),
+  voidInvoice: (tenantId, invoiceCaseId, body) => request(`${financeBase(tenantId)}/invoices/${encodeURIComponent(invoiceCaseId)}/void`, { method: 'POST', body })
 }
