@@ -93,7 +93,7 @@ def update_sla_policy(
     from app.services import module_commerce_sla_policy_service as policy
     return success(
         policy.update_tenant_policy(user, int(tenant_id), body),
-        message="学校商业SLA政策已保存；四级目标均来自本次明确输入，没有系统默认承诺",
+        message="学校商业SLA政策已保存；四级目标均来自本次明确输入，系统不会补默认承诺",
     )
 
 
