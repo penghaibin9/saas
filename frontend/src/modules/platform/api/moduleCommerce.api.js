@@ -36,5 +36,13 @@ export const moduleCommerceApi = {
     method: 'POST', body, headers: { 'Idempotency-Key': key }, timeoutMs: 15000
   }),
   issueInvoice: (tenantId, invoiceCaseId, body) => request(`${financeBase(tenantId)}/invoices/${encodeURIComponent(invoiceCaseId)}/issue`, { method: 'POST', body }),
-  voidInvoice: (tenantId, invoiceCaseId, body) => request(`${financeBase(tenantId)}/invoices/${encodeURIComponent(invoiceCaseId)}/void`, { method: 'POST', body })
+  voidInvoice: (tenantId, invoiceCaseId, body) => request(`${financeBase(tenantId)}/invoices/${encodeURIComponent(invoiceCaseId)}/void`, { method: 'POST', body }),
+
+  getOperationsOverview: (tenantId) => request(`${financeBase(tenantId)}/operations`),
+  listAfterSales: (tenantId, params = {}) => request(`${financeBase(tenantId)}/after-sales`, { params }),
+  createAfterSalesTicket: (tenantId, refundCaseId, body) => request(`${financeBase(tenantId)}/refunds/${encodeURIComponent(refundCaseId)}/after-sales-ticket`, { method: 'POST', body }),
+  listServiceCosts: (tenantId, params = {}) => request(`${financeBase(tenantId)}/service-costs`, { params }),
+  recordServiceCost: (tenantId, body, key) => request(`${financeBase(tenantId)}/service-costs`, {
+    method: 'POST', body, headers: { 'Idempotency-Key': key }, timeoutMs: 15000
+  })
 }
