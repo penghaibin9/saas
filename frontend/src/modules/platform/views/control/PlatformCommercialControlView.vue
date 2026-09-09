@@ -375,7 +375,7 @@ export default {
       this.busy = true
       try {
         const portfolio = await moduleCommerceApi.getPortfolio(id)
-        if (id !== this.selectedTenantId || seq !== this.portfolioSeq) return
+        if(id!==this.selectedTenantId||seq!==this.portfolioSeq) return
         this.portfolio = portfolio
         if (!this.selectedModuleKey || !this.portfolio.modules.some(item => item.moduleKey === this.selectedModuleKey)) this.selectedModuleKey = this.portfolio.modules[0]?.moduleKey || ''
         await this.afterModuleRefresh()
