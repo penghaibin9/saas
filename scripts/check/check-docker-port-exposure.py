@@ -67,7 +67,7 @@ def evaluate_daemon(config: dict) -> list[Finding]:
 def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) -> list[Finding]:
     findings: list[Finding] = []
     if not containers:
-        return [Finding("docker.runtime.containers", WARN,
+        return [Finding("docker.runtime.containers", FAIL,
                         "no running containers were returned; production runtime exposure is not proven")]
 
     for item in containers:
@@ -112,6 +112,14 @@ def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) 
         ports = network_settings.get("Ports") if isinstance(network_settings.get("Ports"), dict) else {}
         saw_binding = False
         for container_port, bindings in ports.items():
+            target_text = str(container_port).split("/", 1)[0]
+            try:
+                target_port = int(target_text)
+            except ValueError:
+                findings.append(Finding("docker.runtime.port_binding", FAIL,
+                                        "Docker target port identity is invalid",
+                                        f"container={cid},target=invalid"))
+                continue
             if not bindings:
                 continue
             if not isinstance(bindings, list):
@@ -137,14 +145,14 @@ def evaluate_containers(containers: list[dict], allowed_public_ports: set[int]) 
                     continue
 
                 public_binding = host_ip in WILDCARDS or not _is_loopback(host_ip)
-                sensitive = host_port in SENSITIVE_PORTS
+                sensitive = host_port in SENSITIVE_PORTS or target_port in SENSITIVE_PORTS
                 unexpected_public = public_binding and host_port not in allowed_public_ports
                 blocked = (sensitive and public_binding) or unexpected_public
                 findings.append(Finding(
                     "docker.runtime.port_binding",
                     FAIL if blocked else PASS,
-                    "only approved web ports may bind non-loopback interfaces; other published ports must be loopback-only",
-                    f"container={cid},host={host_ip or '*'},port={host_port}",
+                    "only approved web ports may bind non-loopback interfaces; sensitive host or target ports remain blocked",
+                    f"container={cid},host={host_ip or '*'},port={host_port},target={target_port}",
                 ))
         if not saw_binding:
             findings.append(Finding("docker.runtime.port_binding", PASS,
