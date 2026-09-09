@@ -10,8 +10,19 @@ import sys
 import unittest
 
 BACKEND = Path(__file__).resolve().parents[1]
+COMMERCE_DYNAMIC_MODELS = {
+    "CommercialInvoiceCase",
+    "CommercialOrderItem",
+    "CommercialRefundCase",
+    "CommercialSkuVersion",
+    "TenantCommercialProfile",
+    "TenantModuleState",
+    "TenantModuleSubscriptionSource",
+}
 REQUIRED_MODELS = {
+    "CommercialInvoiceCase": "t_commercial_invoice_case",
     "CommercialOrderItem": "t_commercial_order_item",
+    "CommercialRefundCase": "t_commercial_refund_case",
     "CommercialSkuVersion": "t_commercial_sku_version",
     "TenantCommercialProfile": "t_tenant_commercial_profile",
     "TenantModuleState": "t_tenant_module_state",
@@ -38,10 +49,9 @@ class ModelBootstrapTests(unittest.TestCase):
             for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
             for item in node.names
         }
-        legacy_names = set(REQUIRED_MODELS) - {
-            "CommercialOrderItem", "CommercialSkuVersion", "TenantCommercialProfile",
-            "TenantModuleState", "TenantModuleSubscriptionSource",
-        }
+        # Commerce models are intentionally exposed by app.models.platform while that
+        # module is imported by the aggregator; legacy consumers remain explicit imports.
+        legacy_names = set(REQUIRED_MODELS) - COMMERCE_DYNAMIC_MODELS
         self.assertTrue(legacy_names.issubset(names), legacy_names - names)
 
     def test_fresh_process_registers_commerce_and_existing_consumers(self):
