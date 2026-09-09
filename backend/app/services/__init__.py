@@ -92,6 +92,14 @@ _install_m345_hardening(
     _tenant_offboarding_service,
 )
 
+# M4/M5 object closure is installed strictly after the existing M3-M5 hardening.
+# It does not replace the lifecycle state machine: it inventories only explicitly
+# module-owned approval/todo/message/file objects and formal domain facts, seals that
+# digest when final export evidence is bound, and rejects school acceptance if those
+# consumers drift before acceptance. Physical purge remains unavailable.
+from app.services.module_commerce_m45_consumer_closure import install as _install_m45_consumer_closure
+_install_m45_consumer_closure(_module_commerce_lifecycle_service)
+
 # M4 recurring module-owned writers are intentionally NOT imported/installed from
 # this broad package initializer. Doing so makes ordinary service imports pull the
 # entire internship/student-affairs/academic graph while Python still considers
