@@ -21,3 +21,25 @@ entries:
     risk: P0
     targetPhase: '10'
     notes: M5 只绑定并核验既有 ExportJob、ArchiveManifest、ManifestItem、FileObject 与实际存储对象；本接口不接受手填 SHA，不生成第二套文件真值，不下载文件，也不授权物理销毁。scopeHash、module generation 与 expectedVersion 不一致时必须拒绝。
+  - module: shared-platform
+    client: backend
+    route: /commercial/sales-orders-export
+    page: backend/app/modules/platform/routers/module_commerce_router.py
+    action: export-itemized-commercial-order-ledger-xlsx
+    fileCategory: COMMERCIAL_ITEMIZED_ORDER_LEDGER_XLSX
+    api: POST /api/v1/platform/commercial/sales-orders-export
+    backendService: backend/app/services/module_commerce_sales_service.py
+    storageMode: IN_MEMORY_XLSX_BASE64_JSON_RESPONSE
+    authMode: platform.order.manage+target-tenant-scope
+    dataScope: target-tenant+optional-payment-status+max-1000-order-items
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '3'
+    notes: M3 销售工作区按学校与支付状态导出分项订单台账；服务端生成真实 XLSX，超过 1000 分项整单拒绝且不静默截断，关键审计提交成功后才返回 base64 文件内容；不写 FileObject、不形成归档真值、不改变订单或授权状态。
