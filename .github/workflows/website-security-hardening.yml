@@ -1,0 +1,59 @@
+name: Website security hardening
+on:
+  push:
+    branches: [feat/yueke-official-site-60-gallery-20260909]
+    paths: ['.github/workflows/website-security-hardening.yml']
+permissions:
+  contents: write
+concurrency:
+  group: website-security-pr269
+  cancel-in-progress: false
+jobs:
+  security-baseline:
+    if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/feat/yueke-official-site-60-gallery-20260909'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Check branch and merge audited main without rewriting history
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+          BRANCH: feat/yueke-official-site-60-gallery-20260909
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = '6ea3361072b33c070fe22d3d1d2e3ad6e21e53d2'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-ff --no-edit origin/main
+          git diff --check
+          git push origin "HEAD:$BRANCH"
+          git rev-parse HEAD > "$RUNNER_TEMP/website-security-head.txt"
+      - name: Export tracked source and dependency locks, never environment credentials
+        run: |
+          python - <<'PY'
+          import pathlib,subprocess,zipfile,os
+          roots=('backend/app/','backend/alembic/','backend/tests/','backend/scripts/','frontend/src/','frontend/tests/','frontend/scripts/','scripts/','deploy/','.github/','docs/05-数据接口权限与安全/','docs/website-news/')
+          exact={'CLAUDE.md','AGENTS.md','backend/requirements.txt','backend/requirements.lock','backend/requirements.in','backend/requirements-dev.txt','backend/pytest.ini','backend/alembic.ini','backend/Dockerfile.security','backend/Dockerfile','frontend/package.json','frontend/package-lock.json','frontend/vite.config.js','frontend/index.html','frontend/eslint.config.js'}
+          suffixes={'.py','.js','.mjs','.cjs','.ts','.vue','.css','.html','.json','.yaml','.yml','.md','.sh','.sql','.ini','.txt','.lock','.in','.conf','.example','.service'}
+          target=pathlib.Path(os.environ['RUNNER_TEMP'])/'website-security-source.zip'
+          with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as z:
+              for name in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
+                  if not name: continue
+                  p=pathlib.Path(name)
+                  if (name in exact or name.startswith(roots) and p.suffix in suffixes) and p.is_file() and '/env/' not in name and '.env' not in p.name:
+                      z.write(p,name)
+              z.writestr('SOURCE_SHA',subprocess.check_output(['git','rev-parse','HEAD']))
+          print('Source snapshot only:',target.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: website-security-source
+          path: |
+            ${{ runner.temp }}/website-security-source.zip
+            ${{ runner.temp }}/website-security-head.txt
+          retention-days: 1
