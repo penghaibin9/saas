@@ -14,20 +14,26 @@ test('M8 finance stays in the existing commercial control workspace', () => {
 })
 
 test('frontend wires all isolated M8 finance endpoints without altering M1-M5 paths', () => {
-  for (const marker of [
-    '/finance-orders', '/refunds', '/approve', '/reject', '/settle', '/invoices', '/issue', '/void'
-  ]) assert.match(api, new RegExp(marker.replace('/', '\\/')))
+  for (const marker of ['/finance-orders','/refunds','/approve','/reject','/settle','/invoices','/issue','/void']) {
+    assert.match(api, new RegExp(marker.replace('/', '\\/')))
+  }
   assert.match(api, /Idempotency-Key/)
   assert.match(api, /requestRefund/)
   assert.match(api, /requestInvoice/)
   assert.match(api, /listFinanceOrders/)
 })
 
-test('receivable UI states that PlatformOrder remains the balance authority', () => {
+test('receivable UI keeps PlatformOrder authority and never guesses currency', () => {
   assert.match(workspace, /没有第二张“应收余额表”/)
   assert.match(workspace, /订单实时资金投影/)
   assert.match(workspace, /未收应收/)
   assert.match(workspace, /availableFinanceCapacity/)
+  assert.match(workspace, /币种待核/)
+  assert.match(workspace, /currencyState==='CONFLICT'/)
+  assert.match(workspace, /!row\.financeActionAllowed/)
+  assert.match(workspace, /row\.orderCurrency\|\|''/)
+  assert.doesNotMatch(workspace, /¥/)
+  assert.doesNotMatch(workspace, /currency:'CNY'/)
 })
 
 test('refund and invoice creation preserve one pending idempotent command per school and subject', () => {
