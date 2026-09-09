@@ -16,6 +16,7 @@ function marker(name) {
   return layout.match(new RegExp(`:${name}="([\\s\\S]*?)"`))?.[1] || ''
 }
 
+// Audited across d17ddf5..ffd0ced6: intervening layout changes are presentation-only; this pins the unchanged business script.
 test('business script and original scoped presentation foundation stay byte-identical', () => {
   assert.equal(hash(script), 'd6534752a2849f40095079715ac779d69399527e06775ac74e118ded997e508b')
   assert.equal(hash(scopedStyles[0]), 'b8312f8500649ccabaeed4fe70d3bee87af8245fa413e1fddc99074a0986b3c5')
