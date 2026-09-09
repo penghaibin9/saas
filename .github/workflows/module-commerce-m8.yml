@@ -8,11 +8,13 @@ on:
       - backend/app/models/platform.py
       - backend/app/services/audit_log.py
       - backend/app/services/module_commerce_finance_service.py
+      - backend/app/services/module_commerce_finance_projection_service.py
       - backend/app/modules/platform/routers/__init__.py
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/app/modules/platform/routers/module_commerce_finance_router.py
       - backend/alembic/versions/20260909_module_commerce_m8_finance.py
       - backend/tests/test_module_commerce_m8_finance.py
+      - backend/tests/test_module_commerce_m8_finance_projection.py
       - backend/tests/test_module_commerce_m8_finance_router.py
       - backend/tests/test_module_commercial_model_bootstrap.py
       - frontend/src/modules/platform/api/moduleCommerce.api.js
@@ -80,11 +82,13 @@ jobs:
             backend/app/models/platform.py \
             backend/app/services/audit_log.py \
             backend/app/services/module_commerce_finance_service.py \
+            backend/app/services/module_commerce_finance_projection_service.py \
             backend/app/modules/platform/routers/__init__.py \
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/app/modules/platform/routers/module_commerce_finance_router.py \
             backend/alembic/versions/20260909_module_commerce_m8_finance.py \
             backend/tests/test_module_commerce_m8_finance.py \
+            backend/tests/test_module_commerce_m8_finance_projection.py \
             backend/tests/test_module_commerce_m8_finance_router.py \
             backend/tests/test_module_commercial_model_bootstrap.py
       - name: Migrate fresh MySQL and prove one canonical Alembic head
@@ -95,12 +99,13 @@ jobs:
           alembic heads | tee "$OUT/alembic-heads.txt"
           alembic upgrade head 2>&1 | tee "$OUT/migration.log"
           alembic current | tee "$OUT/alembic-current.txt"
-      - name: Run M8 finance, route and model registry contracts
+      - name: Run M8 finance, currency, route and model registry contracts
         working-directory: backend
         run: |
           set -euo pipefail
           pytest \
             tests/test_module_commerce_m8_finance.py \
+            tests/test_module_commerce_m8_finance_projection.py \
             tests/test_module_commerce_m8_finance_router.py \
             tests/test_module_commercial_model_bootstrap.py \
             tests/test_module_commerce_router_install.py \
@@ -113,6 +118,7 @@ jobs:
           from pathlib import Path
           model = Path('app/models/commercial.py').read_text(encoding='utf-8')
           service = Path('app/services/module_commerce_finance_service.py').read_text(encoding='utf-8')
+          projection = Path('app/services/module_commerce_finance_projection_service.py').read_text(encoding='utf-8')
           finance_router = Path('app/modules/platform/routers/module_commerce_finance_router.py').read_text(encoding='utf-8')
           frozen_router = Path('app/modules/platform/routers/module_commerce_router.py').read_text(encoding='utf-8')
           installer = Path('app/modules/platform/routers/__init__.py').read_text(encoding='utf-8')
@@ -122,6 +128,9 @@ jobs:
           assert 'receivableDerivedNotDuplicated' in service and 'paymentAuthority' in service
           assert 'externalRefundExecutedBySystem' in service and 'externalInvoiceIssuedBySystem' in service
           assert 'entitlementChangeApplied' in service and 'False' in service
+          assert 'COMMERCIAL_ORDER_ITEM' in projection and 'LEGACY_UNSPECIFIED' in projection
+          assert 'currencyConflict' in projection and 'financeActionAllowed' in projection
+          assert 'module_commerce_finance_projection_service' in finance_router
           assert 'module_commerce_finance_router' in installer
           assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
           assert 'M1-M5 module-commerce control-plane API' in frozen_router
@@ -136,7 +145,7 @@ jobs:
               assert token not in finance_router, token
           assert 'order.status = "refunded"' not in service
           assert 'order.paid_amount =' not in service
-          print('M8_FINANCE_CONTROL_FACTS_ONLY_VERIFIED')
+          print('M8_FINANCE_CONTROL_FACTS_AND_CURRENCY_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
