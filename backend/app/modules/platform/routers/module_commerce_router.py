@@ -4,7 +4,7 @@ Runtime authority remains the canonical commercial entitlement facade. M3-M5
 commands expose module portfolio, reversible stop/exit and verified export
 acceptance. No endpoint in this router performs physical purge.
 """
-from fastapi import APIRouter, Body, Depends, Header
+from fastapi import APIRouter, Body, Depends, Header, Query
 
 from app.core.exceptions import AppException
 from app.core.response import success
@@ -121,6 +121,54 @@ def cutover(tenant_id: int, body: dict = Body(...), user=Depends(require_platfor
     from app.services import module_subscription_service as subscriptions
     legacy = commercial.legacy_commercial_state_for_reconciliation(int(tenant_id))
     return success(subscriptions.switch_reader_to_module_v2(int(tenant_id), expected_version=_required_int(body, "expectedVersion"), reason=str(body.get("reason") or ""), legacy_features=legacy["features"]), message="商业读取已切换到MODULE_V2")
+
+
+@router.get("/commercial/skus", summary="分页选择已发布模块商品")
+def sale_skus(moduleKey: str = "", keyword: str = "", page: int = Query(1, ge=1, le=10000), pageSize: int = Query(30, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.list_sale_skus(module_key=moduleKey, keyword=keyword, page=page, page_size=pageSize))
+
+
+@router.get("/commercial/sales-tenants", summary="销售工作区分页检索学校")
+def sales_tenants(keyword: str = "", page: int = Query(1, ge=1, le=10000), pageSize: int = Query(30, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.list_sales_tenants(keyword=keyword, page=page, page_size=pageSize))
+
+
+@router.get("/commercial/sales-tenants/{tenant_id}/context", summary="读取学校当前代次和已付截止作为销售建议")
+def sales_context(tenant_id: int, user=Depends(require_platform_capability("commercial.view"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.get_sales_context(tenant_id))
+
+
+@router.post("/commercial/sales-order-preview", summary="分项新购续费金额与代次预检（不写入）")
+def sales_order_preview(body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.preview_sales_order(body), message="预检未收款、未授权、未预留额度；提交时重新核验")
+
+
+@router.post("/commercial/sales-orders", summary="创建已核对代次的未支付销售订单")
+def create_sales_order(body: dict = Body(...), idempotency_key: str = Header(..., alias="Idempotency-Key"), user=Depends(require_platform_capability("order.manage"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.create_sales_order(body, idempotency_key=idempotency_key, actor_id=user.get("userId") or "0"), message="未支付订单已创建；请在订单中心核对收款，不会自动开通")
+
+
+@router.get("/commercial/sales-orders", summary="学校分项订单台账")
+def sales_orders(tenantId: str = Query(...), status: str = "", page: int = Query(1, ge=1, le=10000), pageSize: int = Query(20, ge=1, le=100), user=Depends(require_platform_capability("commercial.view"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.list_sales_orders(tenantId, status=status, page=page, page_size=pageSize))
+
+
+@router.get("/commercial/sales-orders/{order_id}", summary="读取订单冻结分项，不读取后来商品价格")
+def sales_order_detail(order_id: int, tenantId: str = Query(...), user=Depends(require_platform_capability("commercial.view"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.get_sales_order(tenantId, order_id))
+
+
+@router.post("/commercial/sales-orders-export", summary="按学校和支付状态导出已审计xlsx台账")
+def sales_orders_export(body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
+    from app.services import module_commerce_sales_service as sales
+    return success(sales.export_sales_orders(body))
 
 
 def install_into_platform_router(target: APIRouter) -> int:

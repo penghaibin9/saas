@@ -69,9 +69,9 @@ class CommerceRouterTests(unittest.TestCase):
         self.assertIs(self.facade.platform_context, self.canonical.platform_context)
         self.assertIs(self.facade.require_platform_super_admin, self.bundle.require_platform_super_admin)
 
-    def test_all_sixteen_commerce_routes_reach_real_registration_once(self):
+    def test_all_twenty_four_commerce_routes_reach_real_registration_once(self):
         declared = self.commerce.router.routes
-        self.assertEqual(len(declared), 16)
+        self.assertEqual(len(declared), 24)
         for route in declared:
             for method in route.methods:
                 with self.subTest(method=method, path=route.path):
@@ -142,7 +142,7 @@ class CommerceRouterTests(unittest.TestCase):
     def test_school_wildcard_is_denied_at_every_commercial_endpoint(self):
         self.actor.update(currentRoleCode='SCHOOL_ADMIN', userType='ADMIN', permissions=['*'])
         for route in self.commerce.router.routes:
-            url = '/api/v1' + route.path.format(tenant_id=42, module_key='internship', source_id=7, job_id=9)
+            url = '/api/v1' + route.path.format(tenant_id=42, module_key='internship', source_id=7, job_id=9, order_id=11)
             for method in route.methods:
                 with self.subTest(method=method, path=route.path):
                     response = self.client.request(method, url, json={}, headers={'Idempotency-Key': 'router-test-42'})
@@ -174,6 +174,32 @@ class CommerceRouterTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400, response.text)
         self.assertEqual(response.json()['code'], 422001)
         self.assertTrue(any(item['field'] == 'Idempotency-Key' for item in response.json()['details']))
+        writer.assert_not_called()
+
+    def test_sales_workspace_transports_real_filters_preview_and_idempotency(self):
+        from app.services import module_commerce_sales_service as sales
+        scenarios = [
+            ("GET", "/commercial/skus?moduleKey=internship&keyword=YK&page=2&pageSize=7", "list_sale_skus", (), {"module_key":"internship", "keyword":"YK", "page":2, "page_size":7}),
+            ("GET", "/commercial/sales-tenants?keyword=school&page=2&pageSize=7", "list_sales_tenants", (), {"keyword":"school", "page":2, "page_size":7}),
+            ("GET", "/commercial/sales-tenants/42/context", "get_sales_context", (42,), {}),
+            ("GET", "/commercial/sales-orders?tenantId=42&status=paid&page=2&pageSize=7", "list_sales_orders", ("42",), {"status":"paid", "page":2, "page_size":7}),
+            ("GET", "/commercial/sales-orders/11?tenantId=42", "get_sales_order", ("42", 11), {}),
+            ("POST", "/commercial/sales-order-preview", "preview_sales_order", ({"tenantId":"42"},), {}),
+            ("POST", "/commercial/sales-orders", "create_sales_order", ({"tenantId":"42"},), {"idempotency_key":"sales-route-42", "actor_id":"42"}),
+            ("POST", "/commercial/sales-orders-export", "export_sales_orders", ({"tenantId":"42"},), {}),
+        ]
+        for method, path, name, args, kwargs in scenarios:
+            with self.subTest(path=path), patch.object(sales, name, return_value={"ok":True}) as call:
+                response = self.client.request(method, "/api/v1/platform" + path,
+                    json={"tenantId":"42"}, headers={"Idempotency-Key":"sales-route-42"})
+                self.assertEqual(response.status_code, 200, response.text)
+                call.assert_called_once_with(*args, **kwargs)
+
+    def test_sales_order_requires_stable_key_before_writer(self):
+        from app.services import module_commerce_sales_service as sales
+        with patch.object(sales, "create_sales_order") as writer:
+            response = self.client.post("/api/v1/platform/commercial/sales-orders", json={"tenantId":"42"})
+        self.assertEqual(response.status_code, 400)
         writer.assert_not_called()
 
     def test_source_cancellation_preserves_zero_version_and_reason(self):

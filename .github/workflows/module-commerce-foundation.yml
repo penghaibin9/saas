@@ -7,6 +7,10 @@ on:
       - backend/tests/test_module_commercial_*.py
       - backend/tests/test_module_commerce_*.py
       - backend/tests/test_commercial_catalog_contract.py
+      - frontend/src/modules/platform/**
+      - frontend/tests/module-commerce-sales.test.mjs
+      - frontend/package.json
+      - frontend/package-lock.json
       - backend/app/**
       - backend/alembic/**
       - backend/requirements.txt
@@ -123,6 +127,7 @@ jobs:
           python -B backend/tests/test_module_commercial_authority_failure.py -v 2>&1 | tee "$OUT/authority-fault-tests.log"
           python -B backend/tests/test_module_commercial_catalog_retry.py -v 2>&1 | tee "$OUT/catalog-retry-tests.log"
           python -B backend/tests/test_module_commercial_order_replay.py -v 2>&1 | tee "$OUT/order-replay-tests.log"
+          python -B backend/tests/test_module_commerce_sales_contract.py -v 2>&1 | tee "$OUT/sales-contract-tests.log"
       - name: Collect the clean exact-head AST and reference candidates
         run: |
           set -euo pipefail
@@ -185,7 +190,7 @@ jobs:
           mkdir -p "$OUT"
           git rev-parse HEAD > "$OUT/revision.txt"
           mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
-          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_rbac_module_access_snapshot.py backend/tests/test_system_admin_governance_http.py backend/tests/test_teacher_mobile_position_catalog.py backend/tests/test_internship_position_publish_versions.py backend/conftest.py backend/tests/conftest.py backend/pytest_migrated_schema.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py backend/tests/test_module_commerce_sales_contract.py backend/tests/test_module_commerce_sales_runtime.py frontend/tests/module-commerce-sales.test.mjs .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_rbac_module_access_snapshot.py backend/tests/test_system_admin_governance_http.py backend/tests/test_teacher_mobile_position_catalog.py backend/tests/test_internship_position_publish_versions.py backend/conftest.py backend/tests/conftest.py backend/pytest_migrated_schema.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
           sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -252,6 +257,7 @@ jobs:
           python -m alembic upgrade head 2>&1 | tee "$OUT/fresh-migration.log"
           python -m alembic current | tee "$OUT/fresh-current.log"
           pytest tests/test_module_commerce_m12_runtime.py tests/test_module_commerce_order_replay_runtime.py \
+            tests/test_module_commerce_sales_runtime.py \
             tests/test_rbac_module_access_snapshot.py \
             tests/test_system_admin_governance_http.py::test_overview_board_http \
             tests/test_system_admin_governance_http.py::test_overview_board_authority_outage_remains_503 \
@@ -305,5 +311,41 @@ jobs:
         with:
           name: module-commerce-runtime-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/module-commerce-runtime
+          if-no-files-found: error
+          retention-days: 14
+
+  sales-workspace:
+    name: M3 itemized sales workspace tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install committed frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Exact-head sales contract and Vue production build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/module-sales-workspace"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git rev-parse HEAD > "$RUNNER_TEMP/module-sales-workspace/revision.txt"
+          node --test tests/module-commerce-sales.test.mjs 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/tests.log"
+          npm run build 2>&1 | tee "$RUNNER_TEMP/module-sales-workspace/build.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: module-sales-workspace-${{ env.EXPECTED_HEAD }}
+          path: ${{ runner.temp }}/module-sales-workspace
           if-no-files-found: error
           retention-days: 14

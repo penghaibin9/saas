@@ -50,7 +50,7 @@ def _idempotency_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | str = "0") -> dict:
+def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | str = "0", context_validator=None) -> dict:
     _require_db()
     from app.models import CommercialOrderItem, IdempotencyRecord, PlatformOrder, Tenant
     from app.services import audit_log
@@ -60,6 +60,8 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
         raise AppException("VALIDATION_ERROR", "Idempotency-Key 长度必须为8~200", http_status=422)
     contract, order_type, remark = _clean_body(body)
     db = get_sessionmaker()()
+    new_command = False
+    commit_started = False
     try:
         try:
             tenant_id = int(contract.get("tenantId") or 0)
@@ -88,6 +90,7 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
                 return {**dict(idem.result_json), "replayed": True}
             raise AppException("DATA_CONFLICT", "同一订单命令仍在处理中，请稍后核对结果", http_status=409)
 
+        new_command = True
         # Completed commands are durable receipts, independent of catalogue availability.
         # Only a new command resolves currently published SKU versions.
         try:
@@ -98,6 +101,10 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
         except ContractError as exc:
             raise AppException("VALIDATION_ERROR", str(exc), http_status=422) from exc
         compiled = draft.as_dict()
+        # Optional internal workspace guard runs inside this parent-locked transaction.
+        # Durable receipts replay above even when a later lifecycle/catalogue changed.
+        if context_validator is not None:
+            context_validator(db, tenant, compiled, order_type)
 
         idem = IdempotencyRecord(
             tenant_id=tenant_id,
@@ -179,8 +186,17 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
         )
         idem.state = "COMPLETED"
         idem.result_json = result
+        commit_started = True
         db.commit()
         return {**result, "replayed": False}
+    except AppException as exc:
+        db.rollback()
+        # Only an explicitly new command, rolled back before commit was attempted,
+        # can release the workspace's retry key. A conflicting/in-progress receipt
+        # or a lost commit acknowledgement must retain that key for reconciliation.
+        if context_validator is not None and new_command and not commit_started:
+            exc.details = {"salesCommandNotCommitted": True, "cause": exc.details}
+        raise
     except Exception:
         db.rollback()
         raise
