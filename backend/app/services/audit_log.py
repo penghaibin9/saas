@@ -64,6 +64,8 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "COMMERCIAL_INVOICE_VOID",
     "COMMERCIAL_REFUND_AFTERSALES_LINK",
     "COMMERCIAL_SERVICE_COST_RECORD",
+    "COMMERCIAL_SLA_POLICY_UPDATE",
+    "COMMERCIAL_SLA_POLICY_RESET",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402
