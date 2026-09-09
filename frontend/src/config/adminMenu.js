@@ -6,8 +6,8 @@
  * 本文件只提供轨数据 + 权限过滤，不另维护一套业务叶子。
  */
 import { matchPermission, NAV_PLAN, PLATFORM_PLAN } from '@/config/navPlan'
+import { coreGroupEntitled, entitlementSignature, moduleCodeForNav, moduleEntitled } from '@/security/moduleEntitlement'
 
-/** 角色类型（与后端 role.roleType 对齐；用于跨模块可见性判断，非角色名硬编码） */
 export const ROLE_TYPE = {
   PLATFORM: 'PLATFORM',
   SCHOOL_ADMIN: 'SCHOOL_ADMIN',
@@ -28,25 +28,7 @@ const GROUP_ICON = {
 }
 
 function inferModuleCode(groupKey, path) {
-  const p = String(path || '')
-  if (p.startsWith('/admin/orientation')) return 'ORIENTATION'
-  if (p.startsWith('/admin/campus-service')) return 'CAMPUS_SERVICE'
-  if (p.startsWith('/admin/data-center')) return 'DATA_CENTER'
-  if (p.startsWith('/admin/approval')) return 'APPROVAL'
-  if (p.startsWith('/admin/employment')) return 'EMPLOYMENT'
-  if (p.startsWith('/admin/workflow')) return 'WORKFLOW'
-  if (p.startsWith('/admin/platform')) return 'PLATFORM'
-  if (p === '/workbench' || p.startsWith('/admin/messages') || p.startsWith('/admin/help')) return 'WORKBENCH'
-  const map = {
-    workbench: 'WORKBENCH',
-    'student-affairs': 'STUDENT',
-    'academic-affairs': 'ACADEMIC',
-    graduation: 'GRADUATION',
-    internship: 'INTERNSHIP',
-    system: 'SYSTEM',
-    platform: 'PLATFORM'
-  }
-  return map[groupKey] || 'WORKBENCH'
+  return moduleCodeForNav(groupKey, path)
 }
 
 function moduleCandidates(group, mod) {
@@ -66,7 +48,6 @@ function moduleCandidates(group, mod) {
   }))
 }
 
-/** 从 navPlan 投影一级轨菜单树（含平台组） */
 function buildAdminMenuFromNavPlan() {
   const groups = [...NAV_PLAN, PLATFORM_PLAN]
   return groups.map((group) => {
@@ -98,12 +79,8 @@ function buildAdminMenuFromNavPlan() {
   }).filter((g) => g.children.length > 0)
 }
 
-/**
- * 一级 / 二级菜单树 —— 运行时由 NAV_PLAN 投影，禁止再手写第二份业务目录。
- */
 export const ADMIN_MENU = buildAdminMenuFromNavPlan()
 
-/** 角色类型 → 可见模块 moduleCode 白名单（仅非生产降级；正式环境缺权限上下文时 fail-closed） */
 const ROLE_MODULE_ALLOW = {
   [ROLE_TYPE.PLATFORM]: ['PLATFORM'],
   [ROLE_TYPE.SCHOOL_ADMIN]: ['WORKBENCH', 'WORKFLOW', 'STUDENT', 'ORIENTATION', 'CAMPUS_SERVICE', 'ACADEMIC', 'INTERNSHIP', 'GRADUATION', 'EMPLOYMENT', 'DATA_CENTER', 'APPROVAL', 'SYSTEM'],
@@ -123,14 +100,9 @@ function workbenchOnly(leaf) {
   return !leaf.platformOnly && !leaf.sensitive && leaf.moduleCode === 'WORKBENCH'
 }
 
-/**
- * 某叶子节点是否有权限。
- * - 有权限集：严格按 permissionKey 命中；无 permissionKey 的公共工作台入口保留。
- * - 正式环境缺权限集：fail-closed，只保留工作台，禁止按粗角色放大菜单。
- * - 开发/测试环境：允许角色白名单降级，便于本地排障，但后端仍是最终权限边界。
- */
 function canSeeCandidate(leaf, ctx) {
   const rt = roleType(ctx)
+  if (!moduleEntitled(leaf.moduleCode, ctx && ctx.moduleEntitlements, ctx?.moduleAccessHealthy !== false)) return false
   if (leaf.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
   if (rt === ROLE_TYPE.PLATFORM && leaf.moduleCode !== 'PLATFORM') return false
   if (leaf.sensitive && rt === ROLE_TYPE.COUNSELOR) return false
@@ -167,6 +139,7 @@ function contextSignature(ctx) {
   const patterns = Array.isArray(ctx && ctx.permissionPatterns)
     ? [...ctx.permissionPatterns].sort().join(',')
     : '__missing_permissions__'
+  const moduleSig = entitlementSignature(ctx && ctx.moduleEntitlements, ctx?.moduleAccessHealthy !== false)
   return [
     (ctx && (ctx.tenantId || ctx.tenant_id)) || (ctx && ctx.tenantBrandConfig && ctx.tenantBrandConfig.tenantId) || '',
     (ctx && (ctx.userId || ctx.user_id)) || role.userId || '',
@@ -174,6 +147,7 @@ function contextSignature(ctx) {
     roleType(ctx) || '__missing_role__',
     (ctx && ctx.permissionVersion) || '',
     (ctx && ctx.ctxKey) || '',
+    moduleSig,
     patterns
   ].join('|')
 }
@@ -191,6 +165,7 @@ export function getVisibleAdminMenu(ctx) {
   const result = ADMIN_MENU
     .filter((group) => {
       if (group.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
+      if (!coreGroupEntitled(group.key, ctx && ctx.moduleEntitlements, ctx?.moduleAccessHealthy !== false)) return false
       return true
     })
     .map((group) => ({
@@ -203,7 +178,6 @@ export function getVisibleAdminMenu(ctx) {
   return result
 }
 
-/** 依据当前路径定位激活的一级/二级 key（供壳高亮使用） */
 export function findActiveMenu(path) {
   for (const group of ADMIN_MENU) {
     const leaf = [...group.children]

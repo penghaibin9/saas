@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "M0_SCHEMA_EVIDENCE_REANCHORS_NOT_APPROVAL",
+  "designSource": "M0 T03 source-drift re-review; this relocates previously reviewed source line anchors only and never grants deletion or purge approval.",
+  "deletionAuthorized": false,
+  "purgeAuthorized": false,
+  "entries": [
+    {
+      "path": "backend/app/models/internship.py",
+      "fromSha256": "54b48dd2a19d7c71fd1609a52b19e9bef3f439cc4b7e200ea3b00588eae4c330",
+      "toSha256": "f183c4a30482ba843f20c829508045fcf30aa38f688b81f2dcff80586f7b975e",
+      "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
+      "lineOffset": 0,
+      "changeWindow": {
+        "oldStart": 112,
+        "oldEnd": 133,
+        "newStart": 112,
+        "newEnd": 137
+      },
+      "evidenceIds": [
+        "S154"
+      ],
+      "reason": "S154 is backend/app/models/internship.py old lines 49-83, wholly before the reviewed old source-change window 112-133. The file hash changed later in the file, but this evidence range itself does not move, so its reviewed line offset is 0. This receipt remains review-only and grants neither purge nor deletion approval."
+    },
+    {
+      "path": "backend/app/models/internship.py",
+      "fromSha256": "54b48dd2a19d7c71fd1609a52b19e9bef3f439cc4b7e200ea3b00588eae4c330",
+      "toSha256": "f183c4a30482ba843f20c829508045fcf30aa38f688b81f2dcff80586f7b975e",
+      "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
+      "lineOffset": 4,
+      "changeWindow": {
+        "oldStart": 112,
+        "oldEnd": 133,
+        "newStart": 112,
+        "newEnd": 137
+      },
+      "evidenceIds": [
+        "S100",
+        "S108",
+        "S112",
+        "S116",
+        "S120",
+        "S124",
+        "S126",
+        "S130",
+        "S134",
+        "S142",
+        "S146",
+        "S159",
+        "S161",
+        "S165",
+        "S169"
+      ],
+      "reason": "Commit 605d1ef changed only the reviewed InternshipCheckin documentation/result-device-risk declaration inside old lines 112-133 and added four net lines. These 15 M0 anchors all begin after old line 133, so their unchanged source ranges relocate by +4 lines. The schema dispositions and purgeAuthorized=false/deletionAuthorized=false remain unchanged."
+    },
+    {
+      "path": "backend/app/modules/internship/services/internship_recruitment_campaign_service.py",
+      "fromSha256": "4e25bc0869aab2bffb8deb45d3f30f1024856f4aca996d043b0956e8d71aaaef",
+      "toSha256": "db355c70e3dc4d474d63590e6737e115817c7bb43ea35842dfc5d154b44734e0",
+      "sourceChangeCommit": "605d1ef91c0c06ff73d3f4a48afffca54e6ba77c",
+      "lineOffset": 1,
+      "changeWindows": [
+        {
+          "oldStart": 5,
+          "oldEnd": 14,
+          "newStart": 5,
+          "newEnd": 15
+        },
+        {
+          "oldStart": 192,
+          "oldEnd": 197,
+          "newStart": 193,
+          "newEnd": 200
+        },
+        {
+          "oldStart": 245,
+          "oldEnd": 250,
+          "newStart": 248,
+          "newEnd": 266
+        },
+        {
+          "oldStart": 275,
+          "oldEnd": 282,
+          "newStart": 291,
+          "newEnd": 297
+        },
+        {
+          "oldStart": 309,
+          "oldEnd": 315,
+          "newStart": 324,
+          "newEnd": 330
+        }
+      ],
+      "evidenceIds": [
+        "S158"
+      ],
+      "evidenceRangeSha256": {
+        "S158": "89ae5c05a7ab522e52bc8756cfdc7ec9ca061bc13ad87dea04250b7e4b3a15c0"
+      },
+      "reason": "Re-reviewed all five diff hunks of 605d1ef against parent 6810bd6. S158 old lines 174-190 are byte-identical to current lines 175-191: the import hunk adds one preceding line, while UTC input normalization and duplicate-campaign commit handling are wholly after this evidence. All change windows are retained, rather than pretending this was a single edit. Schema dispositions and all deletion/purge prohibitions are unchanged."
+    }
+  ]
+}

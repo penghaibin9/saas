@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-30.plat-abc.1"
+REGISTRY_VERSION = "2026-09-09.module-commerce-retain.1"
 REVIEWED_ALEMBIC_HEAD = "20260821_ctrl_teacher_merge"
 
 PURGE = "PURGE"
@@ -40,6 +40,19 @@ _RETAIN_EXACT = {
     "t_tenant_fair_use_violation",  # fair-use enforcement evidence
     "t_tenant_offboarding_job",
     "t_tenant_tombstone",
+    # Module-commerce rows are billing/entitlement/lifecycle control evidence.
+    # They are explicitly retained here rather than accepted through a broad
+    # prefix so PR #263 cannot accidentally widen the tenant physical-purge set.
+    # The platform catalogue row uses tenant_id=0 but is still classified because
+    # metadata inventory reasons from schema, not live row values.
+    "t_commercial_sku_version",
+    "t_commercial_order_item",
+    "t_tenant_commercial_profile",
+    "t_tenant_module_state",
+    "t_tenant_module_subscription_source",
+    "t_tenant_module_cancellation_plan",
+    "t_tenant_module_offboarding_job",
+    "t_tenant_module_offboarding_step",
 }
 
 _PURGE_EXACT = {

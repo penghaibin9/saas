@@ -4,6 +4,7 @@ The worker holds the job row lock through publication and its receipt transactio
 A crashed worker releases that lock: RUNNING work is recoverable without a lease
 expiry guessing when a large school should have finished.
 """
+from contextlib import ExitStack, nullcontext
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -39,12 +40,50 @@ def _authorize_batch(db, batch_id, user):
     return batch
 
 
+def _module_generation():
+    """Read the canonical authority; zero is reserved for a verified legacy reader."""
+    from app.services.module_access_service import assert_module_access
+    from app.services.module_subscription_service import reader_version
+
+    state = assert_module_access(_tid(), "studentAffairs", write=True)
+    generation = state.get("generation")
+    if generation is not None and (type(generation) is not int or generation < 0):
+        raise AppException("MODULE_STATE_UNAVAILABLE", "模块代次无效，不能登记或执行住宿发布", http_status=503)
+    if generation is None or generation == 0:
+        if reader_version(_tid()) != "LEGACY":
+            raise AppException("MODULE_STATE_UNAVAILABLE", "模块代次尚未就绪，不能登记或执行住宿发布", http_status=503)
+        return 0
+    return generation
+
+
+def _publication_fence(payload):
+    """Never retarget a queued job to the generation observed by a later worker."""
+    from app.services.module_commerce_access_guard import module_write_fence
+
+    generation = _module_generation()
+    expected = payload.get("moduleGeneration")
+    # Pre-M4 jobs may finish only while the school still uses the legacy reader
+    # and has no module generation. Cutover requires a newly reviewed submission.
+    if expected is None and "moduleGeneration" not in payload and generation == 0:
+        return nullcontext()
+    if type(expected) is not int or expected < 0:
+        raise AppException("DATA_CONFLICT", "发布任务缺少有效模块代次，请重新核对方案后提交", http_status=409)
+    if expected != generation:
+        raise AppException("DATA_CONFLICT", "发布任务的模块代次已变化，请重新核对方案后提交", http_status=409)
+    if generation == 0:
+        return nullcontext()
+    return module_write_fence(_tid(), "studentAffairs", expected)
+
+
 def enqueue(batch_id, version, user):
+    module_generation = _module_generation()
     with session() as db:
         # Serialize submissions for the same plan, including different operators.
         batch = allocation._batch(db, batch_id, for_update=True)
         _authorize_batch(db, batch.id, user)
         key = f"publish:{batch.id}:{version}"
+        if module_generation:
+            key += f":module:{module_generation}"
         existing = db.scalar(select(AffairsBatchJob).where(
             AffairsBatchJob.tenant_id == _tid(), AffairsBatchJob.job_type == JOB_TYPE,
             AffairsBatchJob.idempotency_key == key,
@@ -68,7 +107,8 @@ def enqueue(batch_id, version, user):
             tenant_id=_tid(), batch_no=f"PUB-{uuid4().hex}", job_type=JOB_TYPE,
             idempotency_key=key, requested_by=str(actor_id), status="PENDING",
             total_count=count, success_count=0, failure_count=0, pending_count=count,
-            request_json={"batchId": str(batch.id), "version": version, "actor": actor},
+            request_json={"batchId": str(batch.id), "version": version, "actor": actor,
+                          "moduleGeneration": module_generation},
         )
         db.add(job); db.flush()
         db.add(AffairsBatchJobItem(
@@ -77,7 +117,8 @@ def enqueue(batch_id, version, user):
             expected_version=version, status="PENDING", attempt_count=0,
         ))
         dorm._audit(db, "DORM_ALLOCATION_BATCH", batch.id, "QUEUE_PUBLISH", f"job={job.id}")
-        db.commit()
+        with _publication_fence(job.request_json):
+            db.commit()
         return _row(job)
 
 
@@ -147,24 +188,31 @@ def run_one():
                 raise not_found("发布任务回执不存在")
             item.attempt_count += 1
             item.started_at = utc_now_naive()
-            try:
-                with db.begin_nested():
-                    actor = _live_actor(db, job.request_json["actor"])
-                    set_current_user(actor)
-                    result = allocation.publish_in_transaction(
-                        db, item.biz_id, actor, expected_version=item.expected_version,
-                    )
-                    db.flush()
-                job.status, job.success_count = "SUCCESS", job.total_count
-                job.failure_count, job.last_error = 0, None
-                item.status, item.result_json = "SUCCESS", result
-            except AppException as error:
-                job.status, job.failure_count = "FAILED", job.total_count
-                job.last_error = error.message
-                item.status, item.error_code, item.error_message = "FAILED", str(error.code), error.message
-            job.pending_count = 0
-            job.completed_at = item.completed_at = utc_now_naive()
-            db.commit()  # Housing publication and success receipt commit together.
+            # Keep the generation fence through SAVEPOINT release and the
+            # outer commit; claiming/failed-job bookkeeping is not a business write.
+            with ExitStack() as fences:
+                try:
+                    with db.begin_nested():
+                        fences.enter_context(_publication_fence(job.request_json))
+                        actor = _live_actor(db, job.request_json["actor"])
+                        set_current_user(actor)
+                        result = allocation.publish_in_transaction(
+                            db, item.biz_id, actor, expected_version=item.expected_version,
+                        )
+                        db.flush()
+                    job.status, job.success_count = "SUCCESS", job.total_count
+                    job.failure_count, job.last_error = 0, None
+                    item.status, item.result_json = "SUCCESS", result
+                except AppException as error:
+                    # The savepoint has rolled back every housing fact. Only the
+                    # failure receipt may commit outside the denied business fence.
+                    fences.close()
+                    job.status, job.failure_count = "FAILED", job.total_count
+                    job.last_error = error.message
+                    item.status, item.error_code, item.error_message = "FAILED", str(error.code), error.message
+                job.pending_count = 0
+                job.completed_at = item.completed_at = utc_now_naive()
+                db.commit()  # Housing publication and success receipt commit together.
             return {"processed": True, **_row(job)}
     finally:
         set_current_user(previous_user)
