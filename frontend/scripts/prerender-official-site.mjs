@@ -123,3 +123,6 @@ const sitemap = ['<?xml version="1.0" encoding="UTF-8"?>','<urlset xmlns="http:/
 fs.writeFileSync(path.join(distDir, 'sitemap.xml'), sitemap)
 fs.writeFileSync(path.join(distDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${OFFICIAL_SITE_CONTACT.canonicalOrigin}/sitemap.xml\n`)
 process.stdout.write(`official prerender: generated ${OFFICIAL_SEO_ROUTES.length} routes, visible facts/FAQ, sitemap.xml and robots.txt\n`)
+
+// The verified showcase augments only the homepage; public product/legal routes remain intact.
+await import('./prerender-showcase.mjs')

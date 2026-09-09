@@ -8,7 +8,12 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8')
 
 test('跃科公开门户提供企业注册/登录真实入口', () => {
   const config = read('frontend/src/config/portalConfig.js')
-  const home = read('frontend/src/views/PortalHomeView.vue')
+  const home = read('frontend/src/views/PortalLegacyView.vue')
+  const enhanced = read('frontend/src/views/official-site/ApprovedShowcaseView.vue')
+  const markup = read('frontend/src/components/official-site/showcase/approved-home.html')
+  assert.match(enhanced, /enterprise: ENTERPRISE_LOGIN_URL/)
+  assert.match(markup, /data-entry="enterprise"/)
+  assert.match(markup, /首次注册由学校邀请激活/)
 
   assert.match(config, /VITE_PORTAL_ENTERPRISE_LOGIN_URL/)
   assert.match(config, /'\/enterprise\/login'/)
