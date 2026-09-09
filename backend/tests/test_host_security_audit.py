@@ -45,6 +45,11 @@ class HostAuditFocusedContracts(unittest.TestCase):
         self.assertEqual(result["ssh.permitrootlogin"], host_security.FAIL)
         self.assertEqual(result["ssh.passwordauthentication"], host_security.FAIL)
 
+    def test_final_host_pass_requires_effective_sshd_source(self):
+        source = SCRIPT.read_text()
+        self.assertIn('PASS if source == "sshd -T" else FAIL', source)
+        self.assertIn("raw config is diagnostic only", source)
+
     def test_sensitive_public_listener_is_rejected(self):
         findings = host_security.evaluate_listeners(
             [("0.0.0.0", 443), ("0.0.0.0", 3306), ("127.0.0.1", 6379)], 22, set()
