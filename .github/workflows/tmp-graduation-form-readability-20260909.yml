@@ -28,31 +28,48 @@ jobs:
           path = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue')
           text = path.read_text(encoding='utf-8')
 
-          replacements = {
-            'font-size:10px}.dgf-context b': 'font-size:12px}.dgf-context b',
-            'font-size:9px}.dgf-form': 'font-size:11px}.dgf-form',
-            'font-size:9px;font-weight:700;letter-spacing:.06em': 'font-size:11px;font-weight:700;letter-spacing:.04em',
-            'font-size:12px}.dgf-command p': 'font-size:14px}.dgf-command p',
-            'font-size:9px;line-height:1.45}.dgf-command>b': 'font-size:12px;line-height:1.55}.dgf-command>b',
-            'font-size:9px;white-space:nowrap}.dgf-actor': 'font-size:11px;white-space:nowrap}.dgf-actor',
-            'font-size:9px}.dgf-fields>header strong': 'font-size:11px}.dgf-fields>header strong',
-            'font-size:11px}.dgf-fields__body': 'font-size:13px}.dgf-fields__body',
-            'font-size:10px}.dgf-check small': 'font-size:13px}.dgf-check small',
-            'font-size:9px}.dgf-aside-card': 'font-size:12px}.dgf-aside-card',
-            'font-size:11px;font-weight:700}.dgf-aside-card ul': 'font-size:13px;font-weight:700}.dgf-aside-card ul',
-            'gap:7px;font-size:9px}.dgf-aside-card li>b': 'gap:8px;font-size:12px}.dgf-aside-card li>b',
-            'width:20px;height:20px;flex:none;place-items:center': 'width:24px;height:24px;flex:none;place-items:center',
-            'font-size:8px}.dgf-aside-card li.done>b': 'font-size:11px}.dgf-aside-card li.done>b',
-            'font-size:9px}.dgf-aside-card li small': 'font-size:12px}.dgf-aside-card li small',
-            'font-size:8px}.dgf-next summary': 'font-size:11px}.dgf-next summary',
-            'font-size:10px;font-weight:700}.dgf-next ol': 'font-size:13px;font-weight:700}.dgf-next ol',
-            'font-size:9px}.dgf-next li::before': 'font-size:12px}.dgf-next li::before',
-            'width:17px;height:17px;flex:none;place-items:center': 'width:20px;height:20px;flex:none;place-items:center',
-            'font-size:8px}.mp-btn{padding:7px 15px': 'font-size:10px}.mp-btn{min-height:36px;padding:7px 15px',
-            'cursor:pointer;font-size:12px}.mp-btn--primary': 'cursor:pointer;font-size:13px}.mp-btn--primary',
-          }
+          replacements = [
+            ('.dgf-context span{display:grid;min-width:145px;gap:1px;padding:6px 8px;border:1px solid var(--border-light);border-radius:8px;background:#fff;color:var(--text-secondary);font-size:10px}',
+             '.dgf-context span{display:grid;min-width:145px;gap:2px;padding:7px 9px;border:1px solid var(--border-light);border-radius:8px;background:#fff;color:var(--text-secondary);font-size:12px;line-height:1.45}'),
+            ('.dgf-context b{color:var(--text-tertiary);font-size:9px}',
+             '.dgf-context b{color:var(--text-tertiary);font-size:11px}'),
+            ('.dgf-command span,.dgf-actor span{color:var(--primary-600);font-size:9px;font-weight:700;letter-spacing:.06em}',
+             '.dgf-command span,.dgf-actor span{color:var(--primary-600);font-size:11px;font-weight:700;letter-spacing:.04em}'),
+            ('.dgf-command strong,.dgf-actor strong{color:var(--text-primary);font-size:12px}',
+             '.dgf-command strong,.dgf-actor strong{color:var(--text-primary);font-size:14px}'),
+            ('.dgf-command p,.dgf-actor small{margin:0;color:var(--text-secondary);font-size:9px;line-height:1.45}',
+             '.dgf-command p,.dgf-actor small{margin:0;color:var(--text-secondary);font-size:12px;line-height:1.55}'),
+            ('.dgf-command>b{padding:4px 7px;border-radius:999px;background:var(--warning-50);color:var(--warning-800);font-size:9px;white-space:nowrap}',
+             '.dgf-command>b{padding:5px 8px;border-radius:999px;background:var(--warning-50);color:var(--warning-800);font-size:11px;white-space:nowrap}'),
+            ('.dgf-fields>header span,.dgf-fields>header small{color:var(--text-tertiary);font-size:9px}',
+             '.dgf-fields>header span,.dgf-fields>header small{color:var(--text-tertiary);font-size:11px}'),
+            ('.dgf-fields>header strong{font-size:11px}',
+             '.dgf-fields>header strong{font-size:13px}'),
+            ('.dgf-check strong{font-size:10px}',
+             '.dgf-check strong{font-size:13px}'),
+            ('.dgf-check small{color:var(--text-tertiary);font-size:9px}',
+             '.dgf-check small{color:var(--text-tertiary);font-size:12px;line-height:1.5}'),
+            ('.dgf-aside-card>span{font-size:11px;font-weight:700}',
+             '.dgf-aside-card>span{font-size:13px;font-weight:700}'),
+            ('.dgf-aside-card li{display:flex;gap:7px;font-size:9px}',
+             '.dgf-aside-card li{display:flex;gap:8px;font-size:12px;line-height:1.45}'),
+            ('.dgf-aside-card li>b{display:grid;width:20px;height:20px;flex:none;place-items:center;border-radius:50%;background:var(--gray-100);color:var(--text-tertiary);font-size:8px}',
+             '.dgf-aside-card li>b{display:grid;width:24px;height:24px;flex:none;place-items:center;border-radius:50%;background:var(--gray-100);color:var(--text-tertiary);font-size:11px}'),
+            ('.dgf-aside-card li strong{font-size:9px}',
+             '.dgf-aside-card li strong{font-size:12px}'),
+            ('.dgf-aside-card li small{color:var(--text-tertiary);font-size:8px}',
+             '.dgf-aside-card li small{color:var(--text-tertiary);font-size:11px;line-height:1.45}'),
+            ('.dgf-next summary{cursor:pointer;color:var(--text-primary);font-size:10px;font-weight:700}',
+             '.dgf-next summary{cursor:pointer;color:var(--text-primary);font-size:13px;font-weight:700}'),
+            ('.dgf-next li{display:flex;gap:6px;color:var(--text-secondary);font-size:9px}',
+             '.dgf-next li{display:flex;gap:8px;color:var(--text-secondary);font-size:12px;line-height:1.45}'),
+            ('.dgf-next li::before{counter-increment:next;content:counter(next);display:grid;width:17px;height:17px;flex:none;place-items:center;border-radius:5px;background:var(--primary-50);color:var(--primary-700);font-size:8px}',
+             '.dgf-next li::before{counter-increment:next;content:counter(next);display:grid;width:20px;height:20px;flex:none;place-items:center;border-radius:5px;background:var(--primary-50);color:var(--primary-700);font-size:10px}'),
+            ('.mp-btn{padding:7px 15px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;cursor:pointer;font-size:12px}',
+             '.mp-btn{min-height:36px;padding:8px 15px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-weight:600}'),
+          ]
 
-          for old, new in replacements.items():
+          for old, new in replacements:
               count = text.count(old)
               if count != 1:
                   raise SystemExit(f'guarded style anchor mismatch: {old!r} count={count}')
@@ -73,17 +90,26 @@ jobs:
           from pathlib import Path
           text = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue').read_text(encoding='utf-8')
           required = [
-            '.dgf-context span', 'font-size:12px}.dgf-context b',
-            'font-size:14px}.dgf-command p', 'font-size:12px;line-height:1.55',
-            'font-size:13px}.dgf-fields__body', 'width:24px;height:24px',
-            'font-size:13px;font-weight:700}.dgf-next ol',
-            '.mp-btn{min-height:36px', 'cursor:pointer;font-size:13px}.mp-btn--primary',
-            'await this.$router.push(snapshot.backTo)', 'beforeRouteLeave(_to, _from, next)'
+            'font-size:12px;line-height:1.45}.dgf-context b',
+            '.dgf-context b{color:var(--text-tertiary);font-size:11px}',
+            '.dgf-command strong,.dgf-actor strong{color:var(--text-primary);font-size:14px}',
+            'font-size:12px;line-height:1.55}.dgf-command>b',
+            '.dgf-fields>header strong{font-size:13px}',
+            '.dgf-check strong{font-size:13px}',
+            'width:24px;height:24px',
+            '.dgf-next summary{cursor:pointer;color:var(--text-primary);font-size:13px',
+            '.mp-btn{min-height:36px',
+            'await this.$router.push(snapshot.backTo)',
+            'beforeRouteLeave(_to, _from, next)'
           ]
           for marker in required:
               if marker not in text:
                   raise SystemExit(f'missing scoped marker: {marker}')
-          forbidden = ['font-size:8px}.dgf-aside-card', 'font-size:8px}.dgf-next', 'font-size:9px}.dgf-check small']
+          forbidden = [
+            '.dgf-context b{color:var(--text-tertiary);font-size:9px}',
+            '.dgf-aside-card li small{color:var(--text-tertiary);font-size:8px}',
+            '.dgf-next li{display:flex;gap:6px;color:var(--text-secondary);font-size:9px}'
+          ]
           for marker in forbidden:
               if marker in text:
                   raise SystemExit(f'legacy tiny-copy marker remains: {marker}')
