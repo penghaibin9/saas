@@ -123,7 +123,7 @@ jobs:
           assert 'externalRefundExecutedBySystem' in service and 'externalInvoiceIssuedBySystem' in service
           assert 'entitlementChangeApplied' in service and 'False' in service
           assert 'module_commerce_finance_router' in installer
-          assert 'M8 is intentionally separate' in finance_router or 'M8 is deliberately isolated' in finance_router
+          assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
           assert 'M1-M5 module-commerce control-plane API' in frozen_router
           assert 'Revision ID: 20260909_module_commerce_m8_finance' in migration
 
@@ -165,12 +165,11 @@ jobs:
       - name: Install exact frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Run M8 finance workspace contract when present
+      - name: Run M8 finance workspace contract
         working-directory: frontend
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          test -f tests/module-commerce-finance.test.mjs
           node --test tests/module-commerce-finance.test.mjs
       - name: Production build
         working-directory: frontend
