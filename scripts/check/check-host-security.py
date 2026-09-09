@@ -195,31 +195,47 @@ def evaluate_ufw(text: str, ssh_port: int) -> list[Finding]:
     return findings
 
 
+def _nginx_active_text(text: str) -> str:
+    """Strip comments before evaluating security directives from `nginx -T`."""
+    active: list[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line:
+            active.append(line)
+    return "\n".join(active)
+
+
 def evaluate_nginx(text: str) -> list[Finding]:
-    lower = text.lower()
+    active = _nginx_active_text(text)
     findings: list[Finding] = []
-    findings.append(Finding("nginx.server_tokens", PASS if "server_tokens off;" in lower else FAIL,
+    server_tokens_off = bool(re.search(r"\bserver_tokens\s+off\s*;", active, flags=re.IGNORECASE))
+    findings.append(Finding("nginx.server_tokens", PASS if server_tokens_off else FAIL,
                             "effective Nginx config must disable server_tokens"))
-    protocols = re.findall(r"ssl_protocols\s+([^;]+);", text, flags=re.IGNORECASE)
+    protocols = re.findall(r"\bssl_protocols\s+([^;]+);", active, flags=re.IGNORECASE)
     if not protocols:
         findings.append(Finding("nginx.tls_protocols", FAIL,
                                 "effective Nginx config must declare TLS protocols"))
     else:
         protocol_sets = [{token.strip() for token in item.split()} for item in protocols]
         allowed = {"TLSv1.2", "TLSv1.3"}
-        secure = all(items and items.issubset(allowed) and "TLSv1.2" in items and "TLSv1.3" in items
-                     for items in protocol_sets)
+        secure = all(items == allowed for items in protocol_sets)
         findings.append(Finding("nginx.tls_protocols", PASS if secure else FAIL,
                                 "all effective ssl_protocols directives must be exactly TLSv1.2/TLSv1.3",
                                 ";".join(" ".join(sorted(items)) for items in protocol_sets)))
-    listens_tls = bool(re.search(r"listen\s+[^;\n]*443[^;\n]*\bssl\b", text, flags=re.IGNORECASE))
+    listens_tls = bool(re.search(r"\blisten\s+[^;\n]*443[^;\n]*\bssl\b[^;\n]*;",
+                                 active, flags=re.IGNORECASE))
     findings.append(Finding("nginx.https_listener", PASS if listens_tls else FAIL,
                             "effective Nginx config must expose an SSL listener on 443"))
     for include_name, check_name in (
         ("security-http.conf", "nginx.security_http_contract"),
         ("security-server.conf", "nginx.security_server_contract"),
     ):
-        findings.append(Finding(check_name, PASS if include_name in text else FAIL,
+        included = bool(re.search(
+            rf"\binclude\s+[^;\n]*{re.escape(include_name)}\s*;",
+            active,
+            flags=re.IGNORECASE,
+        ))
+        findings.append(Finding(check_name, PASS if included else FAIL,
                                 f"effective Nginx config must include {include_name}"))
     return findings
 
