@@ -20,9 +20,6 @@ from app.core.exceptions import AppException
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.commercial_catalog_contract import ContractError, money
 
-_REFUND_ACTIVE = ("APPROVED", "SETTLED")
-_INVOICE_ACTIVE = ("REQUESTED", "ISSUED")
-
 
 def _require_db() -> None:
     if not db_enabled():
@@ -115,6 +112,20 @@ def _order(db, tenant_id: int, order_id: int, *, lock: bool = False):
     if row is None:
         raise AppException("DATA_NOT_FOUND", "订单不存在或不属于该学校", http_status=404)
     return row
+
+
+def _require_paid_open_finance_order(order, action: str) -> Decimal:
+    """Legacy refunded/cancelled orders require reconciliation, never a second M8 action."""
+    status = str(order.status or "").strip().lower()
+    paid = _decimal(order.paid_amount)
+    if status != "paid" or paid <= Decimal("0.00"):
+        raise AppException(
+            "DATA_CONFLICT",
+            f"订单当前状态为 {status or 'unknown'}，不能{action}；请先核对原支付/退款事实",
+            details={"orderStatus": status or None, "paidAmount": format(paid, ".2f")},
+            http_status=409,
+        )
+    return paid
 
 
 def _order_currency(db, tenant_id: int, order_id: int) -> str | None:
@@ -380,9 +391,7 @@ def request_refund(body: dict, *, idempotency_key: str, actor_id=None) -> dict[s
                 raise AppException("DATA_CONFLICT", "同一退款命令键已用于不同申请", http_status=409)
             return {**_refund_dict(existing), "replayed": True}
         currency = _validate_order_currency(db, order, requested_currency)
-        paid = _decimal(order.paid_amount)
-        if paid <= 0 or str(order.status).lower() not in {"paid", "refunded"}:
-            raise AppException("DATA_CONFLICT", "订单尚无可核验已收款，不能发起退款", http_status=409)
+        paid = _require_paid_open_finance_order(order, "发起退款")
         totals = _case_totals(db, tid, order_id)
         capacity = max(paid - totals["refundSettled"] - totals["refundApproved"] - totals["invoiceIssued"] - totals["invoiceRequested"], Decimal("0.00"))
         if requested_amount > capacity:
@@ -419,14 +428,17 @@ def approve_refund(tenant_id, case_id, *, expected_version: int, note: str, acto
         if row is None: raise AppException("DATA_NOT_FOUND", "退款申请不存在", http_status=404)
         if int(row.version or 0) != int(expected_version): raise AppException("DATA_CONFLICT", "退款申请已变化，请刷新", http_status=409)
         if row.status != "REQUESTED": raise AppException("DATA_CONFLICT", f"当前退款状态 {row.status} 不能批准", http_status=409)
-        order = _order(db, tid, int(row.order_id), lock=True); paid = _decimal(order.paid_amount)
+        order = _order(db, tid, int(row.order_id), lock=True)
+        paid = _require_paid_open_finance_order(order, "批准退款")
         totals = _case_totals(db, tid, int(row.order_id), exclude_refund_id=cid)
         capacity = max(paid - totals["refundSettled"] - totals["refundApproved"] - totals["invoiceIssued"] - totals["invoiceRequested"], Decimal("0.00"))
         if _decimal(row.amount) > capacity:
             raise AppException("DATA_CONFLICT", "退款批准额度已被其他退款/发票占用，请重新核对", details={"availableAmount": format(capacity, ".2f")}, http_status=409)
+        impact = _entitlement_impact(db, tid, int(row.order_id))
         now = datetime.utcnow(); row.status = "APPROVED"; row.approved_by = _actor_id(actor_id); row.approved_at = now; row.approval_note = approval_note; row.version = int(row.version or 0) + 1
-        audit_log.record_critical_in_session(db, "COMMERCIAL_REFUND_APPROVE", f"commercial-refund:{row.id}", detail={"tenantId": str(tid), "orderId": str(row.order_id), "amount": format(_decimal(row.amount), ".2f"), "externalRefundExecutedBySystem": False}, tenant_id=tid, resource_id=str(row.id))
-        db.commit(); result = _refund_dict(row); result["entitlementImpact"] = _entitlement_impact(db, tid, int(row.order_id)); return result
+        audit_log.record_critical_in_session(db, "COMMERCIAL_REFUND_APPROVE", f"commercial-refund:{row.id}", detail={"tenantId": str(tid), "orderId": str(row.order_id), "amount": format(_decimal(row.amount), ".2f"), "externalRefundExecutedBySystem": False, "activeEntitlementSourceCount": impact["activeEntitlementSourceCount"]}, tenant_id=tid, resource_id=str(row.id))
+        result = _refund_dict(row); result["entitlementImpact"] = impact
+        db.commit(); return result
     except Exception:
         db.rollback(); raise
     finally:
@@ -472,14 +484,16 @@ def settle_refund(tenant_id, case_id, *, expected_version: int, settlement_ref: 
             CommercialRefundCase.id != cid, CommercialRefundCase.is_deleted.is_(False),
         )).first()
         if duplicate is not None: raise AppException("DATA_CONFLICT", "该外部退款凭据已被其他退款记录使用", http_status=409)
-        order = _order(db, tid, int(row.order_id), lock=True); paid = _decimal(order.paid_amount)
+        order = _order(db, tid, int(row.order_id), lock=True)
+        paid = _require_paid_open_finance_order(order, "登记退款结算")
         totals = _case_totals(db, tid, int(row.order_id), exclude_refund_id=cid)
         if totals["refundSettled"] + totals["refundApproved"] + _decimal(row.amount) + totals["invoiceIssued"] + totals["invoiceRequested"] > paid:
             raise AppException("DATA_CONFLICT", "订单财务事实已变化，当前退款结算会超过已收款可用范围", http_status=409)
-        row.status = "SETTLED"; row.settled_by = _actor_id(actor_id); row.settled_at = datetime.utcnow(); row.settlement_ref = ref; row.version = int(row.version or 0) + 1
         impact = _entitlement_impact(db, tid, int(row.order_id))
+        row.status = "SETTLED"; row.settled_by = _actor_id(actor_id); row.settled_at = datetime.utcnow(); row.settlement_ref = ref; row.version = int(row.version or 0) + 1
         audit_log.record_critical_in_session(db, "COMMERCIAL_REFUND_SETTLE", f"commercial-refund:{row.id}", detail={"tenantId": str(tid), "orderId": str(row.order_id), "settlementRef": ref, "amount": format(_decimal(row.amount), ".2f"), "orderStatusChanged": False, "entitlementChangeApplied": False, "activeEntitlementSourceCount": impact["activeEntitlementSourceCount"]}, tenant_id=tid, resource_id=str(row.id))
-        db.commit(); result = _refund_dict(row); result["orderStatusChanged"] = False; result["entitlementImpact"] = impact; return result
+        result = _refund_dict(row); result["orderStatusChanged"] = False; result["entitlementImpact"] = impact
+        db.commit(); return result
     except Exception:
         db.rollback(); raise
     finally:
@@ -506,8 +520,8 @@ def request_invoice(body: dict, *, idempotency_key: str, actor_id=None) -> dict[
         if existing is not None:
             if existing.request_payload_hash != payload_hash: raise AppException("DATA_CONFLICT", "同一发票命令键已用于不同申请", http_status=409)
             return {**_invoice_dict(existing), "replayed": True}
-        currency = _validate_order_currency(db, order, requested_currency); paid = _decimal(order.paid_amount)
-        if paid <= 0 or str(order.status).lower() not in {"paid", "refunded"}: raise AppException("DATA_CONFLICT", "订单尚无可核验已收款，不能申请发票", http_status=409)
+        currency = _validate_order_currency(db, order, requested_currency)
+        paid = _require_paid_open_finance_order(order, "申请发票")
         totals = _case_totals(db, tid, order_id)
         capacity = max(paid - totals["refundSettled"] - totals["refundApproved"] - totals["invoiceIssued"] - totals["invoiceRequested"], Decimal("0.00"))
         if requested_amount > capacity: raise AppException("DATA_CONFLICT", "开票金额超过当前可开票余额；请先处理退款或已有发票", details={"availableAmount": format(capacity, ".2f")}, http_status=409)
@@ -537,7 +551,8 @@ def issue_invoice(tenant_id, invoice_case_id, *, expected_version: int, external
         if row.status != "REQUESTED": raise AppException("DATA_CONFLICT", "只有待开票申请才能登记已开票", http_status=409)
         duplicate = db.scalars(select(CommercialInvoiceCase).where(CommercialInvoiceCase.tenant_id == tid, CommercialInvoiceCase.external_invoice_ref == ref, CommercialInvoiceCase.id != cid, CommercialInvoiceCase.is_deleted.is_(False))).first()
         if duplicate is not None: raise AppException("DATA_CONFLICT", "该外部发票凭据已被其他发票记录使用", http_status=409)
-        order = _order(db, tid, int(row.order_id), lock=True); paid = _decimal(order.paid_amount)
+        order = _order(db, tid, int(row.order_id), lock=True)
+        paid = _require_paid_open_finance_order(order, "登记已开票")
         totals = _case_totals(db, tid, int(row.order_id), exclude_invoice_id=cid)
         capacity = max(paid - totals["refundSettled"] - totals["refundApproved"] - totals["invoiceIssued"] - totals["invoiceRequested"], Decimal("0.00"))
         if _decimal(row.amount) > capacity: raise AppException("DATA_CONFLICT", "开票前财务事实已变化，申请金额超过当前可开票余额", details={"availableAmount": format(capacity, ".2f")}, http_status=409)
