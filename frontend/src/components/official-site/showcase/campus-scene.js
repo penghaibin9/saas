@@ -172,4 +172,3 @@ class CampusScene{
  destroy(){this.dead=true;if(this.frame)cancelAnimationFrame(this.frame);this.resize?.disconnect();this.intersection?.disconnect();this.media?.removeEventListener('change',this.onMedia);document.removeEventListener('visibilitychange',this.onVisibility);for(const [e,f] of [['pointerdown',this.onDown],['pointermove',this.onMove],['pointerup',this.onUp],['pointercancel',this.onUp],['lostpointercapture',this.onUp]])this.canvas.removeEventListener(e,f);}
 }
 export { CampusScene };
-
