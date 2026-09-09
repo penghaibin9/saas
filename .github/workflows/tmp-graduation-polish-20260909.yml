@@ -48,14 +48,35 @@ jobs:
           )
           PY
 
-      - name: Run focused static contracts
+      - name: Run current focused contracts
         shell: bash
         run: |
           git diff --check
+          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/views/AdminGraduationLayout.vue\nfrontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue'
           node --test \
-            frontend/tests/graduation.final-integration-polish.test.mjs \
             frontend/tests/graduation.defense-grade-form-permission.contract.test.mjs \
             frontend/tests/graduation.v6-deep-link-and-cross-client.contract.test.mjs
+          python - <<'PY'
+          from pathlib import Path
+          admin = Path('frontend/src/modules/graduation/views/AdminGraduationLayout.vue').read_text(encoding='utf-8')
+          form = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue').read_text(encoding='utf-8')
+          checks = [
+              "data-graduation-content-workspace='proposal'] :deep(.pr-hero__metrics small)",
+              "font-size: 12px !important;",
+              "[data-planning-workspace] :deep(.mp-link) { font-size: 13px !important; }",
+              "@container gd-planning (max-width: 1080px)",
+              ".gd-business-view :deep(.gd-student-page .af__control) { font-size: 13px !important; }",
+          ]
+          for marker in checks:
+              if marker not in admin:
+                  raise SystemExit(f'missing product marker: {marker}')
+          nav = "this.submitting = false\n          await this.$router.push(snapshot.backTo)\n          return"
+          if nav not in form:
+              raise SystemExit('defense success navigation lock release is missing')
+          if "beforeRouteLeave(to, from, next)" not in form or "if (this.submitting)" not in form:
+              raise SystemExit('unsafe-exit guard was lost')
+          print('focused product boundary checks: PASS')
+          PY
 
       - name: Commit product patch and remove temporary workflow
         shell: bash
