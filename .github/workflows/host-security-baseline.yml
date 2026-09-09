@@ -5,10 +5,12 @@ on:
     paths:
       - "scripts/check/check-host-security.py"
       - "scripts/check/check-docker-port-exposure.py"
+      - "scripts/check/check-dockerd-launch-flags.py"
       - "deploy/host/**"
       - "backend/tests/test_host_security_audit.py"
       - "backend/tests/test_host_security_baseline.py"
       - "backend/tests/test_docker_port_exposure.py"
+      - "backend/tests/test_dockerd_launch_flags.py"
       - ".github/workflows/host-security-baseline.yml"
   workflow_dispatch:
 
@@ -34,6 +36,7 @@ jobs:
         run: |
           python -m py_compile scripts/check/check-host-security.py
           python -m py_compile scripts/check/check-docker-port-exposure.py
+          python -m py_compile scripts/check/check-dockerd-launch-flags.py
       - name: Validate Docker daemon template JSON
         run: python -m json.tool deploy/host/docker-daemon.json.example >/dev/null
       - name: Run host security policy and artifact contracts
@@ -41,3 +44,4 @@ jobs:
           python -m pytest --noconftest backend/tests/test_host_security_audit.py -q
           python -m unittest discover -s backend/tests -p test_host_security_baseline.py -v
           python -m unittest discover -s backend/tests -p test_docker_port_exposure.py -v
+          python -m unittest discover -s backend/tests -p test_dockerd_launch_flags.py -v
