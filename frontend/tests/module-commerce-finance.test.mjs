@@ -50,7 +50,9 @@ test('refund settlement never claims to mutate payment truth or entitlement', ()
   assert.match(workspace, /订单支付真值未自动修改/)
   assert.match(workspace, /仍存在有效模块来源/)
   assert.match(workspace, /不得把退款等同于停权/)
-  assert.doesNotMatch(workspace, /自动停权|自动取消授权/)
+  // Safety copy such as “不会自动停权” is required. Reject only text that falsely
+  // claims an automatic entitlement mutation actually completed.
+  assert.doesNotMatch(workspace, /已自动停权|自动停权完成|已自动取消授权|自动取消授权完成/)
 })
 
 test('invoice workflow records external evidence without asking operators for database file ids', () => {
