@@ -29,7 +29,7 @@
       <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
       <input v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
       <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
-      <view v-if="!isTeacher" class="newcomer-entry" @click="openOrientationActivation">
+      <view class="newcomer-entry" @click="openOrientationActivation">
         <view class="newcomer-entry__content"><text class="newcomer-entry__badge">新生首次使用</text><text class="newcomer-entry__title">录取身份核验并激活账号</text></view>
         <text class="newcomer-entry__arrow">›</text>
       </view>
@@ -68,6 +68,12 @@
         <input v-model="bindForm.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
         <view v-if="bindCaptcha.required" class="captcha-row"><input v-model="bindCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="bindCaptcha.image" mode="aspectFill" @click="loadCaptcha('bind')" /></view>
         <input v-model="bindForm.tenantCode" class="field" placeholder="学校编码（仅多校同账号时填写）" placeholder-class="field__placeholder" />
+        <view v-if="bindingApprovalRequired">
+          <text class="bind-sheet__sub">为防止密码泄露后被他人绑定微信，请由学校通过独立渠道核验身份。不要向任何人提供校园密码。</text>
+          <button class="bind-sheet__cancel" plain @click="copyWxBindingRequest">复制本次微信绑定凭证</button>
+          <input v-model="bindingApprovalToken" class="field" type="password" password maxlength="128" placeholder="粘贴学校核验后提供的一次性批准码" />
+          <text class="bind-sheet__sub">批准码 5 分钟内有效且只能使用一次；只通过学校确认的安全渠道传递，勿发送到群聊。</text>
+        </view>
         <button class="account-button" :class="{ 'account-button--teacher': isTeacher, 'is-disabled': bindLoading }" :disabled="bindLoading" plain @click="submitBind">{{ bindLoading ? '绑定中…' : '绑定并登录' }}</button>
         <text class="bind-sheet__cancel" @click="cancelBind">取消</text>
       </view>
@@ -76,7 +82,6 @@
 </template>
 
 <script>
-import { dormLoginReturn } from '@/utils/dormLoginReturn.mjs'
 import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
@@ -87,7 +92,6 @@ import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
 export default {
   name: 'MiniLoginAuthPanel',
   props: {
-    dormRectificationId: { type: String, default: '' },
     entry: { type: String, required: true, validator: (value) => ['student', 'teacher'].includes(value) }
   },
   data() {
@@ -105,6 +109,8 @@ export default {
       accountCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-account-${Date.now()}-${Math.random()}` },
       bindCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-bind-${Date.now()}-${Math.random()}` },
       bindLoading: false,
+      bindingApprovalRequired: false,
+      bindingApprovalToken: '',
       orientationBatch: { open: false, batchName: '', daysLeft: 0 }
     }
   },
@@ -163,7 +169,7 @@ export default {
       const session = useSessionStore()
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
-      const goHome = () => relaunch(dormLoginReturn(this.entry, this.dormRectificationId) || (this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index'))
+      const goHome = () => relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index')
       if (!this.isTeacher) {
         studentApi.getProfile().then((profile) => session.hydrateStudentProfile(profile)).catch(() => {}).finally(goHome)
       } else {
@@ -200,6 +206,8 @@ export default {
           realRequest('/auth/wx-login', { method: 'POST', auth: false, data: { code: result.code } })
             .then((data) => {
               if (data?.needBind) {
+                this.bindingApprovalRequired = false
+                this.bindingApprovalToken = ''
                 this.wxToken = data.wxToken
                 this.binding = true
               } else if (data?.needSelectTenant) {
@@ -231,9 +239,10 @@ export default {
       })
     },
     submitBind() {
-      if (this.bindLoading) return
+      if (this.bindLoading || !this.wxToken) return
       if (!this.bindForm.loginName.trim() || !this.bindForm.password) { toast(`请输入${this.isTeacher ? '工号' : '学号'} / 手机号和密码`); return }
       this.bindLoading = true
+      const requestToken = this.wxToken
       realRequest('/auth/wx-bind', {
         method: 'POST',
         auth: false,
@@ -242,21 +251,52 @@ export default {
           tenantCode: this.bindForm.tenantCode.trim() || null,
           loginName: this.bindForm.loginName.trim(),
           password: this.bindForm.password,
+          bindingApprovalToken: this.bindingApprovalToken.trim() || undefined,
           clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
           captchaId: this.bindCaptcha.id || undefined, captchaCode: this.bindCaptcha.code || undefined, clientNonce: this.bindCaptcha.nonce
         }
       }).then((data) => {
+        if (!this.binding || this.wxToken !== requestToken) return
         saveLastTenantCode(this.bindForm.tenantCode)
         this.binding = false
+        this.wxToken = ''
+        this.bindForm.password = ''
+        this.bindingApprovalToken = ''
+        this.bindingApprovalRequired = false
         this.completeLogin(data)
       })
-        .catch((error) => { this.handleCaptchaError(error, 'bind'); toast(error?.message || '绑定失败，请检查账号密码') })
+        .catch((error) => {
+          if (!this.binding || this.wxToken !== requestToken) return
+          const code = String(error?.bizCode || '')
+          if (code === 'WX_BIND_APPROVAL_REQUIRED' || code === 'WX_BIND_APPROVAL_INVALID') {
+            this.bindingApprovalRequired = true
+            if (code === 'WX_BIND_APPROVAL_INVALID') this.bindingApprovalToken = ''
+          }
+          this.handleCaptchaError(error, 'bind')
+          toast(error?.message || '绑定失败，请检查账号密码')
+        })
         .finally(() => { this.bindLoading = false })
     },
     cancelBind() {
       this.binding = false
       this.wxToken = ''
+      this.bindingApprovalRequired = false
+      this.bindingApprovalToken = ''
       this.bindForm = { tenantCode: getLastTenantCode(), loginName: '', password: '' }
+    },
+    copyWxBindingRequest() {
+      if (!this.wxToken) { toast('本次微信凭证已失效，请取消后重新发起微信登录'); return }
+      const requestToken = this.wxToken
+      uni.showModal({
+        title: '仅交给学校指定核验人员',
+        content: '将复制短时微信绑定凭证，不包含校园密码。仅通过学校确认的安全渠道发送，请勿群发或交给陌生人。',
+        success: ({ confirm }) => {
+          if (!confirm || this.wxToken !== requestToken) return
+          uni.setClipboardData({ data: requestToken,
+            success: () => toast('已复制，请在凭证有效期内联系学校核验'),
+            fail: () => toast('复制失败，请重试') })
+        }
+      })
     },
     focusAccount() { this.openOrientationActivation() },
     openOrientationActivation() {
@@ -290,7 +330,7 @@ export default {
 .orientation-card,.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }.orientation-card__badge { color: #0f766e; font-size: 10px; font-weight: 600; }.orientation-card__title { margin-top: 5px; font-size: 14px; font-weight: 700; }.orientation-card__desc { margin-top: 4px; color: #536780; font-size: 10px; }
 .feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row__item { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.feature-row__mark--teacher { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }
 .role-note { border-color: #e7ecf2; background: #fff; }.role-note__title { font-size: 12px; font-weight: 600; }.role-note__detail { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.role-switch-link { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }
-.bind-mask { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: flex-end; background: rgba(16,35,63,.46); }.bind-sheet { width: 100%; padding: 13px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; }.bind-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 4px; background: #d9e0e8; }.bind-sheet__title,.bind-sheet__sub,.bind-sheet__cancel { display: block; }.bind-sheet__title { font-size: 18px; font-weight: 700; }.bind-sheet__sub { margin: 7px 0 4px; color: #718096; font-size: 11px; line-height: 1.55; }.bind-sheet__cancel { padding: 15px 0 3px; color: #718096; text-align: center; font-size: 12px; }
+.bind-mask { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: flex-end; background: rgba(16,35,63,.46); }.bind-sheet { box-sizing: border-box; max-height: 90vh; overflow-y: auto; width: 100%; padding: 13px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; }.bind-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 4px; background: #d9e0e8; }.bind-sheet__title,.bind-sheet__sub,.bind-sheet__cancel { display: block; }.bind-sheet__title { font-size: 18px; font-weight: 700; }.bind-sheet__sub { margin: 7px 0 4px; color: #718096; font-size: 11px; line-height: 1.55; }.bind-sheet__cancel { padding: 15px 0 3px; color: #718096; text-align: center; font-size: 12px; }
 /* #ifdef H5 */
 @media (min-width: 520px) { .mini-login { width: 430px; min-height: 100vh; margin: 0 auto; box-shadow: 0 0 35px rgba(16,35,63,.12); } }
 /* #endif */

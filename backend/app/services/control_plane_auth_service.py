@@ -264,6 +264,9 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
 
 
 def build_login_result(db, user, client_type: str = "PC") -> dict:
+    if str(client_type or "").upper() in {"MP", "STUDENT_MINI", "TEACHER_MINI"}:
+        from app.services.wx_binding_approval_service import assert_school_wx_subject
+        assert_school_wx_subject(user)
     auth_service_db._ensure_tenant_login_allowed(db, user)
     contexts = auth_service_db._role_contexts(db, user)
     if not contexts:
@@ -410,12 +413,13 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         db.close()
 
 
-def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | None = None) -> dict:
+def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | None = None,
+            *, binding_approval_token: str | None = None) -> dict:
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
     try:
         claims = decode_token(wx_token)
-    except Exception:  # noqa: BLE001
+    except Exception:
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效或已过期，请重新发起微信登录")
     if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效")
@@ -433,36 +437,56 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
         remain = _remaining_lock(lock_key, tenant_id=tenant_id, plane=TENANT)
         if remain > 0:
             raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定，请 {remain // 60 + 1} 分钟后再试")
+        # Serialize with recovery/password writes. Recheck all state after locking.
+        if user is not None:
+            db.refresh(user, with_for_update=True)
+            if (str(user.status or "").upper() != "ACTIVE" or user.is_deleted
+                    or str(user.user_type or "").upper().startswith("PLATFORM")):
+                user = None
         if user is None or not verify_password(password, user.password_hash):
             count, locked = _record_bad_password(lock_key, tenant_id=tenant_id, plane=TENANT, policy=policy)
             if locked:
                 raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {policy['loginFailLockMinutes']} 分钟")
             if count >= int(policy["captchaAfterFailures"]):
-                raise AppException(
-                    "CAPTCHA_REQUIRED", "账号、学校编码或密码不正确，请输入验证码后继续",
-                    details={"captchaRequired": True, "scene": WX_BIND}, http_status=401,
-                )
+                raise AppException("CAPTCHA_REQUIRED", "账号、学校编码或密码不正确，请输入验证码后继续",
+                                   details={"captchaRequired": True, "scene": WX_BIND}, http_status=401)
             raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
 
         from app.models import WxAccountBinding
-        from app.services import wx_auth_service
-
+        from app.services import audit_log, wx_auth_service
+        from app.services.wx_binding_approval_service import (
+            assert_school_wx_subject, consume_in_session,
+        )
+        assert_school_wx_subject(user)
+        auth_service_db._ensure_tenant_login_allowed(db, user)
+        if not auth_service_db._role_contexts(db, user):
+            raise AppException("NO_PERMISSION", "账号尚未分配有效岗位，请联系学校管理员")
         existing = db.scalars(select(WxAccountBinding).where(
             WxAccountBinding.wx_openid == openid,
             WxAccountBinding.tenant_id == user.tenant_id,
-            WxAccountBinding.is_deleted.is_(False),
-        )).first()
+        ).with_for_update()).first()
+        if existing is not None and existing.is_deleted:
+            raise AppException("DATA_CONFLICT", "该微信关联已归档，请联系学校核验处理", http_status=409)
         if existing is not None and existing.user_id != user.id:
             raise AppException("DATA_CONFLICT", "该微信已绑定本校其他账号")
-        if existing is None:
-            db.add(WxAccountBinding(
-                tenant_id=user.tenant_id, wx_openid=openid, user_id=user.id, status="ACTIVE",
-            ))
-        if wx_auth_service._find_legacy_user_by_openid(db, openid) is None:
-            user.wx_openid = openid
+        already_active = existing is not None and str(existing.status or "").upper() == "ACTIVE"
+        legacy_same_identity = existing is None and user.wx_openid == openid
+        approval_ref = None
+        if not (already_active or legacy_same_identity):
+            approval_ref = consume_in_session(db, user, openid, binding_approval_token)
+        # Reuse the canonical binding writer (including legacy cross-user conflict checks).
+        wx_auth_service.bind_openid_in_session(db, openid, user)
+        audit_log.record_critical_in_session(
+            db, "WX_BINDING_ACTIVATED", f"user:{user.id}", tenant_id=user.tenant_id,
+            detail={"approvalRef": approval_ref, "existingIdentity": bool(already_active or legacy_same_identity),
+                    "channel": "PASSWORD_WX_BIND"},
+        )
         db.commit()
         db.refresh(user)
         _reset_account_risk(lock_key, tenant_id=tenant_id, plane=TENANT)
         return build_login_result(db, user, client_type="MP")
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
