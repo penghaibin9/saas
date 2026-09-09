@@ -208,7 +208,7 @@ export default {
   created() { if (!this.isOpeningPlan) this.load() },
   methods: {
     reviewStatusColor, inReview, canSubmit,
-    statusLabel(value) { return REVIEW_STATUS[value] || value || '' },
+    statusLabel(value) { return REVIEW_STATUS[value] || (value ? '待确认' : '') },
     openConsole(tab) { this.$router.push(`/admin/academic-affairs/programs/console?tab=${tab}&programId=${this.programId}`) },
     courseIssueCount(course) {
       if (!this.validation) return 0

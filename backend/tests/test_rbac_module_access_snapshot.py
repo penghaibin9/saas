@@ -1,6 +1,41 @@
 from collections import defaultdict
 
 
+def test_capability_projection_reads_commercial_authority_once_and_never_reuses_it(monkeypatch):
+    from app.services import platform_service
+    from app.services import tenant_capability_setting_service as caps
+
+    calls = []
+    enabled = {"internship": True, "graduation": True}
+    monkeypatch.setattr(caps, "_load_rows", lambda _tid: {})
+    monkeypatch.setattr(caps, "_legacy_enabled", lambda _tid: {})
+
+    def features(tid):
+        calls.append(tid)
+        return dict(enabled)
+
+    monkeypatch.setattr(platform_service, "effective_features", features)
+    first = caps.capability_states(9001)
+    assert first["internship"]["entitled"] is True
+    assert calls == [9001]
+
+    enabled["internship"] = False
+    assert caps.capability_states(9001)["internship"]["entitled"] is False
+    assert caps.capability_states(9002)["internship"]["entitled"] is False
+    assert calls == [9001, 9001, 9002]
+
+    # A missing commercial decision must not grant a module through defaults.
+    enabled.pop("internship")
+    assert caps.capability_states(9001)["internship"]["entitled"] is False
+
+    def unavailable(_tid):
+        raise RuntimeError("commercial authority unavailable")
+
+    monkeypatch.setattr(platform_service, "effective_features", unavailable)
+    failed = caps.capability_states(9001)
+    assert all(not row["entitled"] for row in failed.values() if row["entitlementRequired"])
+
+
 def _entitled_features() -> dict[str, bool]:
     """Use real manifest feature keys; dict.get() does not trigger defaultdict factories."""
     return {"internship": True, "graduation": True}

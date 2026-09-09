@@ -23,6 +23,8 @@ from app.services.sandbox_school_blueprint import (
     REFERENCE_DATE,
 )
 from app.services.sandbox_school_master_seed import _bulk_insert, validate_school_master
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    initialize_batch_student_steps)
 
 REFERENCE_NOW = datetime(2026, 8, 13, 9, 0)
 EXPECTED_ACADEMIC_STUDENTS = GRADE_STUDENT_COUNTS["2024"] + GRADE_STUDENT_COUNTS["2025"]
@@ -153,6 +155,7 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         OrientationStudent,
     )
 
+    flow_version = ensure_published_flow_version(db, tenant_id)
     _bulk_insert(db, OrientationBatch, [{
         "tenant_id": tenant_id,
         "batch_name": "2026级新生迎新与报到",
@@ -164,8 +167,14 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         "report_end_date": datetime(2026, 9, 7),
         "status": "ACTIVE",
         "planned_count": len(roster_2026),
+        "flow_version_id": flow_version.id,
         "remark": "当前处于线上预报到与到校准备阶段",
     }])
+    orientation_batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == tenant_id,
+        OrientationBatch.batch_no == "ORI-2026-FALL",
+        OrientationBatch.is_deleted.is_(False),
+    )).one()
 
     rows = []
     for stu in roster_2026:
@@ -211,13 +220,17 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         risk = "HIGH" if seq % 250 == 0 else ("MEDIUM" if seq % 50 == 0 else "LOW")
         rows.append({
             "tenant_id": tenant_id,
+            "batch_id": orientation_batch.id,
             "student_id": stu["id"],
+            "identity_status": "LINKED",
             "name": stu["name"],
             "admission_no": f"LQ2026{seq:06d}",
             "gender": stu["gender"],
             "college_name": stu["college_name"],
             "major_name": stu["major_name"],
-            "class_id": str(stu["class_id"]),
+            "college_id": stu["college_id"],
+            "major_id": stu["major_id"],
+            "class_id": stu["class_id"],
             "class_name": stu["class_name"],
             "grade": "2026级",
             "phone_encrypted": stu["phone_encrypted"],
@@ -238,9 +251,14 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
             "blocked_reason": blocked_reason,
             "payable_amount": 8800,
             "paid_amount": 0 if payment_status == "UNPAID" else 8800,
+            "source_type": "DOMAIN_IMPORT",
+            "source_record_id": f"LQ2026{seq:06d}",
         })
     _bulk_insert(db, OrientationStudent, rows, chunk_size=1000)
     db.flush()
+    canonical_step_rows = initialize_batch_student_steps(
+        db, orientation_batch.id, status_source="PROCESS_FACT"
+    )
 
     ori_by_sid = {
         int(sid): int(oid)
@@ -321,6 +339,7 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
     db.commit()
     return {
         "students": len(rows),
+        "studentSteps": canonical_step_rows,
         "greenChannels": len(green_rows),
         "materials": len(material_rows),
         "exceptions": len(exception_rows),
@@ -1090,8 +1109,8 @@ def _seed_messages_and_todos(db, tenant_id: int, all_roster: list[dict]) -> dict
 
 def validate_domain_facts(db, tenant_id: int) -> dict:
     from app.models import (
-        AcademicGrade, AcademicStudent, CsDormRecord, CsServiceStudent, GraduationStudent,
-        InternshipCheckin, InternshipRecord, OrientationStudent, UnifiedMessage, UnifiedTodo, WeeklyReport,
+        AcademicGrade, AcademicStudent, CsDormRecord, CsServiceStudent, GraduationBatch, GraduationStudent,
+        InternshipBatch, InternshipCheckin, InternshipRecord, OrientationStudent, UnifiedMessage, UnifiedTodo, WeeklyReport,
     )
 
     def count(model, *where):
@@ -1100,16 +1119,35 @@ def validate_domain_facts(db, tenant_id: int) -> dict:
             *where,
         )) or 0)
 
+    current_internship_batch_id = db.scalar(select(InternshipBatch.id).where(
+        InternshipBatch.tenant_id == tenant_id,
+        InternshipBatch.batch_no == "INT-2024-2026FALL",
+        InternshipBatch.is_deleted.is_(False),
+    ))
+    if not current_internship_batch_id:
+        raise RuntimeError("当前 2026 秋季实习批次不存在，无法执行 20K 基线验收")
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if not current_graduation_batch_id:
+        raise RuntimeError("当前 GD-2027 毕设批次不存在，无法执行 20K 基线验收")
     report = {
         "orientationStudents": count(OrientationStudent, OrientationStudent.is_deleted.is_(False)),
         "academicStudents": count(AcademicStudent, AcademicStudent.is_deleted.is_(False)),
-        "academicGrades": count(AcademicGrade, AcademicGrade.is_deleted.is_(False)),
+        # 追加式更正会保留 SUPERSEDED 历史，基线合同统计当前 ACTIVE 成绩。
+        "academicGrades": count(
+            AcademicGrade,
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        ),
         "campusStudents": count(CsServiceStudent, CsServiceStudent.is_deleted.is_(False)),
         "dormRecords": count(CsDormRecord, CsDormRecord.is_deleted.is_(False)),
-        "internshipRecords": count(InternshipRecord, InternshipRecord.is_deleted.is_(False)),
+        "internshipRecords": count(InternshipRecord, InternshipRecord.batch_id == current_internship_batch_id, InternshipRecord.is_deleted.is_(False)),
         "internshipCheckins": count(InternshipCheckin, InternshipCheckin.is_deleted.is_(False)),
         "weeklyReports": count(WeeklyReport, WeeklyReport.is_deleted.is_(False)),
-        "graduationStudents": count(GraduationStudent, GraduationStudent.is_deleted.is_(False)),
+        "graduationStudents": count(GraduationStudent, GraduationStudent.batch_id == current_graduation_batch_id, GraduationStudent.is_deleted.is_(False)),
         "messages": count(UnifiedMessage, UnifiedMessage.is_deleted.is_(False)),
         "pendingStudentTodos": count(UnifiedTodo, UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)),
     }

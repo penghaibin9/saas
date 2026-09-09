@@ -31,7 +31,7 @@
         </header>
         <StateBlock v-if="!rows.length" type="empty" :text="data.note || config.emptyText" />
         <div v-else class="record-list">
-          <article v-for="(row, index) in rows" :key="rowKey(row, index)" class="record-item">
+          <article v-for="(row, index) in rows" :key="rowKey(row, index)" class="record-item" :class="{ 'is-target': rowKey(row, index) === focusRecordId }">
             <header>
               <div>
                 <strong>{{ primaryText(row) }}</strong>
@@ -67,6 +67,7 @@ const route = useRoute()
 const loading = ref(true)
 const error = ref('')
 const data = ref({})
+const focusRecordId = computed(() => String(route.query.warningId || route.query.recordId || ''))
 
 const CONFIGS = {
   attendance: {
@@ -274,6 +275,7 @@ watch(model, load)
 .section-head span { margin-top: 4px; color: var(--t3); font-size: 12px; }
 .record-list { display: grid; gap: 10px; }
 .record-item { padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
+.record-item.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
 .record-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .record-item > header strong, .record-item > header span { display: block; }
 .record-item > header strong { color: var(--t1); font-size: 14px; }

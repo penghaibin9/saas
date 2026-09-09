@@ -49,7 +49,7 @@
           <AppInlineAlert
             v-if="current.status === 'MISSING_ITEMS'"
             type="warning"
-            description="当前仍有 BLOCKED / UNKNOWN 数据域，整体强制归档已停用。请处理阻断 / 待治理域后重新执行完整性检查。"
+            description="当前仍有已阻断或待治理的数据域，整体强制归档已停用。请处理阻断 / 待治理域后重新执行完整性检查。"
           />
           <AppInlineAlert
             v-if="current.status === 'ARCHIVED'"
@@ -129,7 +129,7 @@ export default {
     this.load()
   },
   methods: {
-    sLabel(s) { return _SL[s] || s },
+    sLabel(s) { return _SL[s] || '状态待确认' },
     sType(s) { return s === 'ARCHIVED' ? 'success' : s === 'MISSING_ITEMS' ? 'danger' : s === 'READY' ? 'primary' : 'default' },
     itemState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
     itemLabel(row) { const state = this.itemState(row); return _IL[state] || '待确认' },

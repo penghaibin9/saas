@@ -29,6 +29,7 @@ from app.modules.academic_affairs.services import academic_affairs_effective_gra
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as grade_deadline_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_execution_transaction_guard as grade_execution_transaction_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recognition_read_guard as grade_recognition_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
@@ -50,6 +51,7 @@ legacy_grade_write_guard.install()
 warning_effective_guard.install()
 grade_recognition_read_guard.install()
 grade_recheck_read_guard.install()
+grade_execution_transaction_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
@@ -75,11 +77,12 @@ class GradeDeadlineBody(BaseModel):
 @router.get("/grade-tasks", summary="成绩录入任务列表（按状态筛选，供审核/发布工作台队列）")
 def grade_tasks(
     status: Optional[str] = None,
+    taskId: Optional[int] = None,
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
 ):
-    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize)
+    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize, task_id=taskId)
     return success(paginate(items, total, page, pageSize))
 
 

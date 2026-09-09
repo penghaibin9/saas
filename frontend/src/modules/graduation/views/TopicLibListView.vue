@@ -30,11 +30,21 @@
     </div>
 
     <div class="mp-stack">
-      <div class="mp-tabs">
+      <div class="mp-tabs gd-primary-tabs" aria-label="题目主视图">
         <button
-          v-for="p in panelTabs"
-          :key="p.key"
+          v-for="g in primaryGroups"
+          :key="g.key"
           class="mp-tab"
+          :class="{ 'is-active': activeGroupKey === g.key }"
+          @click="switchGroup(g)"
+        >{{ g.label }}</button>
+      </div>
+      <div v-if="activeGroupPanels.length > 1" class="gd-local-views" aria-label="当前主视图的细分任务">
+        <span>当前视图</span>
+        <button
+          v-for="p in activeGroupPanels"
+          :key="p.key"
+          type="button"
           :class="{ 'is-active': activePanel === p.key }"
           @click="switchPanel(p.key)"
         >{{ p.label }}</button>
@@ -262,6 +272,14 @@ const PANEL_TABS = [
   { key: 'archive', label: '已归档' }
 ]
 
+const PRIMARY_GROUPS = [
+  { key: 'library', label: '题目库', defaultPanel: 'list', panels: ['list', 'teacher-apply', 'enterprise', 'student-proposed'] },
+  { key: 'review', label: '审核', defaultPanel: 'pending', panels: ['pending'] },
+  { key: 'quality', label: '质量治理', defaultPanel: 'category', panels: ['category', 'requirements', 'attachments'] },
+  { key: 'capacity', label: '容量', defaultPanel: 'capacity', panels: ['capacity'] },
+  { key: 'history', label: '历史', defaultPanel: 'history', panels: ['history', 'archive'] }
+]
+
 const PANEL_HINTS = {
   list: '全部在库题目',
   'teacher-apply': '教师申报题目',
@@ -341,6 +359,7 @@ export default {
       GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY,
       batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'list',
+      primaryGroups: PRIMARY_GROUPS,
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       categoryStats: [], libStats: null,
@@ -349,6 +368,13 @@ export default {
     }
   },
   computed: {
+    activeGroupKey() {
+      return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'library'
+    },
+    activeGroupPanels() {
+      const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]
+      return group.panels.map((key) => PANEL_TABS.find((panel) => panel.key === key)).filter(Boolean)
+    },
     permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
     canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
     canTopicCreate() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.create') },
@@ -530,6 +556,10 @@ export default {
     }
   },
   methods: {
+    switchGroup(group) {
+      if (!group || group.key === this.activeGroupKey) return
+      this.switchPanel(group.defaultPanel)
+    },
     truncate(s, n) {
       if (!s) return ''
       return s.length <= n ? s : `${s.slice(0, n)}…`
@@ -744,4 +774,9 @@ export default {
 .mp-stat__val { font-size: calc(var(--font-size-xl) + 2px); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); margin-top: var(--space-1); }
 .mp-stat__sub { color: var(--color-text-tertiary); font-size: var(--font-size-xs); margin-top: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gd-primary-tabs { overflow: visible; }
+.gd-local-views { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--gray-50, #f8fafc); }
+.gd-local-views > span { margin-right: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gd-local-views button { padding: 5px 10px; border: 1px solid transparent; border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.gd-local-views button.is-active { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-weight: 600; }
 </style>

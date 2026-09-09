@@ -10,12 +10,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile
 from app.models.employment import InternshipEnterpriseContact
 from app.models.internship_enterprise_portal import InternshipEnterpriseMember
+from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.services.db_service import _iso
 
 _ACTIVE_RECORD_STATUSES = {"PREPARING", "READY", "ONBOARD", "ASSESSING"}
@@ -58,6 +59,15 @@ def _record_conditions(context, mentor_contact_id: int | None = None):
         InternshipRecord.enterprise_id == context.company_id,
         InternshipRecord.batch_id == context.batch_id,
         InternshipRecord.position_id.is_not(None),
+        InternshipRecord.current_placement_snapshot_id.is_not(None),
+        exists(select(1).where(
+            InternshipPlacementSnapshot.id == InternshipRecord.current_placement_snapshot_id,
+            InternshipPlacementSnapshot.tenant_id == context.tenant_id,
+            InternshipPlacementSnapshot.record_id == InternshipRecord.id,
+            InternshipPlacementSnapshot.batch_id == InternshipRecord.batch_id,
+            InternshipPlacementSnapshot.company_id == InternshipRecord.enterprise_id,
+            InternshipPlacementSnapshot.position_id == InternshipRecord.position_id,
+        )),
         InternshipRecord.is_deleted.is_(False),
         StudentProfile.id == InternshipRecord.student_id,
         StudentProfile.tenant_id == context.tenant_id,
@@ -66,6 +76,23 @@ def _record_conditions(context, mentor_contact_id: int | None = None):
     if mentor_contact_id is not None:
         conditions.append(InternshipRecord.mentor_contact_id == mentor_contact_id)
     return conditions
+
+
+def _current_placement(db, record: InternshipRecord, context) -> InternshipPlacementSnapshot:
+    snapshot = db.scalar(select(InternshipPlacementSnapshot).where(
+        InternshipPlacementSnapshot.id == record.current_placement_snapshot_id,
+        InternshipPlacementSnapshot.tenant_id == context.tenant_id,
+        InternshipPlacementSnapshot.record_id == record.id,
+        InternshipPlacementSnapshot.batch_id == record.batch_id,
+        InternshipPlacementSnapshot.company_id == record.enterprise_id,
+        InternshipPlacementSnapshot.position_id == record.position_id,
+    ))
+    if not snapshot:
+        raise AppException(
+            "DATA_CONFLICT",
+            "该学生尚未形成当前岗位的正式安置快照，企业不能提交评价",
+        )
+    return snapshot
 
 
 def _filter_record_status(q, status: str | None):
@@ -97,9 +124,17 @@ def _latest_eval_map(db, *, context, internship_ids: list[int]) -> dict[int, Int
         return {}
     rows = db.scalars(
         select(InternshipEnterpriseEval)
+        .join(InternshipRecord, InternshipRecord.id == InternshipEnterpriseEval.internship_id)
         .where(
             InternshipEnterpriseEval.tenant_id == context.tenant_id,
             InternshipEnterpriseEval.internship_id.in_(internship_ids),
+            InternshipEnterpriseEval.placement_snapshot_id == InternshipRecord.current_placement_snapshot_id,
+            InternshipEnterpriseEval.enterprise_id == InternshipRecord.enterprise_id,
+            InternshipEnterpriseEval.position_id == InternshipRecord.position_id,
+            InternshipRecord.tenant_id == context.tenant_id,
+            InternshipRecord.enterprise_id == context.company_id,
+            InternshipRecord.batch_id == context.batch_id,
+            InternshipRecord.is_deleted.is_(False),
             InternshipEnterpriseEval.is_deleted.is_(False),
         )
         .order_by(InternshipEnterpriseEval.id.desc())
@@ -174,8 +209,16 @@ def _latest_eval_subquery(context):
             InternshipEnterpriseEval.internship_id.label("internship_id"),
             func.max(InternshipEnterpriseEval.id).label("evaluation_id"),
         )
+        .join(InternshipRecord, InternshipRecord.id == InternshipEnterpriseEval.internship_id)
         .where(
             InternshipEnterpriseEval.tenant_id == context.tenant_id,
+            InternshipEnterpriseEval.placement_snapshot_id == InternshipRecord.current_placement_snapshot_id,
+            InternshipEnterpriseEval.enterprise_id == InternshipRecord.enterprise_id,
+            InternshipEnterpriseEval.position_id == InternshipRecord.position_id,
+            InternshipRecord.tenant_id == context.tenant_id,
+            InternshipRecord.enterprise_id == context.company_id,
+            InternshipRecord.batch_id == context.batch_id,
+            InternshipRecord.is_deleted.is_(False),
             InternshipEnterpriseEval.is_deleted.is_(False),
         )
         .group_by(InternshipEnterpriseEval.internship_id)
@@ -293,6 +336,7 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
     )
     if not record:
         raise not_found("实习记录不存在或不属于当前企业协同范围")
+    placement = _current_placement(db, record, context)
 
     evaluation = db.scalar(
         select(InternshipEnterpriseEval)
@@ -304,12 +348,21 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
         .order_by(InternshipEnterpriseEval.id.desc())
         .with_for_update()
     )
-    if evaluation and evaluation.school_review_status != "RETURNED":
+    current_evaluation = bool(
+        evaluation
+        and int(evaluation.placement_snapshot_id or 0) == int(placement.id)
+        and int(evaluation.enterprise_id or 0) == int(record.enterprise_id or 0)
+        and int(evaluation.position_id or 0) == int(record.position_id or 0)
+    )
+    if current_evaluation and evaluation.school_review_status != "RETURNED":
         raise AppException("DATA_CONFLICT", "该学生企业评价已提交，不能重复评价")
-    if evaluation:
+    if current_evaluation:
         expected = payload.get("expectedVersion")
         if expected is None or int(expected) != int(evaluation.version or 0):
             raise AppException("DATA_CONFLICT", "企业评价版本已变化，请刷新后重试")
+    elif evaluation:
+        # 岗位/企业已变化时保留旧评价作为历史证据，当前安置新建独立评价。
+        evaluation = None
 
     comment = str(payload.get("overallComment") or "").strip()
     if not comment:
@@ -328,6 +381,9 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
             position_name=record.position_name,
             source="ENTERPRISE",
             source_type="ENTERPRISE_ONLINE",
+            placement_snapshot_id=placement.id,
+            enterprise_id=record.enterprise_id,
+            position_id=record.position_id,
         )
         db.add(evaluation)
     else:
@@ -361,6 +417,8 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
             "enterpriseUserId": str(context.user_id),
             "companyId": str(context.company_id),
             "internshipId": str(record.id),
+            "placementSnapshotId": str(placement.id),
+            "positionId": str(record.position_id),
             "version": int(evaluation.version or 0),
         },
         occurred_at=datetime.utcnow(),
@@ -369,6 +427,7 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
         "id": str(evaluation.id),
         "internshipId": str(record.id),
         "sourceType": "ENTERPRISE_ONLINE",
+        "placementSnapshotId": str(placement.id),
         "reviewStatus": "PENDING",
         "version": int(evaluation.version or 0),
     }

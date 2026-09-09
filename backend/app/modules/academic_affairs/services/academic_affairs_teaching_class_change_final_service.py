@@ -5,7 +5,7 @@ from app.core.affairs_security import no_data_scope
 from app.services.db_service import _tid
 
 from . import academic_affairs_teaching_class_change_service as _base
-from . import academic_affairs_teaching_class_lock_service as _teaching_class
+from . import academic_affairs_teaching_class_service as _teaching_class
 from .academic_affairs_task_security_facade import _scope
 
 

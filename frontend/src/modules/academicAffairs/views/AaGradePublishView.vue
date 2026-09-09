@@ -6,6 +6,12 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
+      <div v-if="focusTaskId" class="aa-focus-note">已从教务待办精确定位成绩任务 {{ focusTaskId }}</div>
+      <section v-if="receipt" class="aa-review-receipt" role="status">
+        <div><strong>✓ {{ receipt.title }}</strong><span>{{ receipt.courseName }} · 任务 {{ receipt.taskId }}</span></div>
+        <div><small>当前结果</small><b>{{ statusLabel(receipt.status) }}</b></div>
+        <div><small>正式投影</small><b>{{ receipt.projectedText }}</b></div>
+      </section>
       <div class="aa-tabs">
         <button class="aa-tab" :class="{ 'is-active': tab === 'ACADEMIC_REVIEW' }" @click="switchTab('ACADEMIC_REVIEW')">待终审</button>
         <button class="aa-tab" :class="{ 'is-active': tab === 'PUBLISHED' }" @click="switchTab('PUBLISHED')">已发布（可归档）</button>
@@ -55,7 +61,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      tab: 'ACADEMIC_REVIEW', loading: true, error: '', rows: [],
+      tab: 'ACADEMIC_REVIEW', loading: true, error: '', rows: [], focusTaskId: '', receipt: null,
       pagination: { page: 1, pageSize: 20, total: 0 },
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, taskId: '', action: '' },
       columns: [
@@ -66,19 +72,22 @@ export default {
       ]
     }
   },
-  created() { this.load() },
+  created() {
+    this.focusTaskId = String(this.$route?.query?.taskId || '')
+    this.load()
+  },
   methods: {
     statusLabel(s) { return s === 'ACADEMIC_REVIEW' ? '待教务终审' : (s === 'PUBLISHED' ? '已发布' : s) },
     switchTab(t) { this.tab = t; this.pagination.page = 1; this.load() },
     onPageChange(p) { this.pagination.page = p; this.load() },
     openPublish(row) {
-      this.dlg = { visible: true, taskId: row.gradeTaskId, action: 'publish', title: `发布「${row.courseName}」成绩`, type: 'danger', confirmText: '确认发布（不可撤销）', requireReason: false, submitting: false }
+      this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'publish', title: `发布「${row.courseName}」成绩`, type: 'danger', confirmText: '确认发布（不可撤销）', requireReason: false, submitting: false }
     },
     openReturn(row) {
-      this.dlg = { visible: true, taskId: row.gradeTaskId, action: 'return', title: `退回「${row.courseName}」`, type: 'warning', confirmText: '确认退回', requireReason: true, submitting: false }
+      this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'return', title: `退回「${row.courseName}」`, type: 'warning', confirmText: '确认退回', requireReason: true, submitting: false }
     },
     openArchive(row) {
-      this.dlg = { visible: true, taskId: row.gradeTaskId, action: 'archive', title: `归档「${row.courseName}」`, type: 'warning', confirmText: '确认归档', requireReason: false, submitting: false }
+      this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'archive', title: `归档「${row.courseName}」`, type: 'warning', confirmText: '确认归档', requireReason: false, submitting: false }
     },
     async doAction(payload) {
       const reason = (payload && payload.reason) || ''
@@ -89,6 +98,12 @@ export default {
       else res = await academicAffairsApi.archiveGradeTask(this.dlg.taskId)
       this.dlg.submitting = false
       if (res.code === 0) {
+        const action = this.dlg.action
+        this.receipt = {
+          taskId: this.dlg.taskId, courseName: this.dlg.courseName, status: res.data.status,
+          title: action === 'publish' ? '成绩已正式发布' : (action === 'return' ? '成绩已退回任课教师' : '成绩任务已归档'),
+          projectedText: action === 'publish' ? `${res.data.projected || 0} 条成绩 · ${res.data.failCount || 0} 条预警` : '未产生新的正式成绩投影'
+        }
         this.dlg.visible = false
         if (this.dlg.action === 'publish') toast.success(`已发布，回写 ${res.data.projected} 条成绩，${res.data.failCount} 条触发预警`)
         else toast.success('已处理')
@@ -98,7 +113,10 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getGradeTasks({ status: this.tab, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await academicAffairsApi.getGradeTasks({
+        status: this.tab, taskId: this.focusTaskId || undefined,
+        page: this.pagination.page, pageSize: this.pagination.pageSize
+      })
       if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
       else this.error = res.message
       this.loading = false
@@ -112,4 +130,8 @@ export default {
 .aa-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-200, #e5e6eb); }
 .aa-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-500, #646a73); border-bottom: 2px solid transparent; }
 .aa-tab.is-active { color: var(--primary-600, #2563eb); border-bottom-color: var(--primary-500, #3b82f6); font-weight: 500; }
+.aa-focus-note { padding: 9px 12px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-size: 12px; }
+.aa-review-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 18px; padding: 12px 14px; border: 1px solid #a7d7b4; border-radius: 9px; background: #f3fbf5; }
+.aa-review-receipt strong, .aa-review-receipt span, .aa-review-receipt small, .aa-review-receipt b { display: block; }.aa-review-receipt strong { color: #15803d; }.aa-review-receipt span, .aa-review-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.aa-review-receipt b { margin-top: 3px; font-size: 12px; }
+@media (max-width: 760px) { .aa-review-receipt { grid-template-columns: 1fr; gap: 10px; } }
 </style>

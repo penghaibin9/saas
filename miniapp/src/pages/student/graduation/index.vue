@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="g && !g.hasBatch">
         <MobileGlobalState state="empty" title="当前暂无毕业设计任务" description="进入毕业设计阶段后，这里会显示课题、任务书、开题、中期、答辩等节点。" />
@@ -85,6 +86,11 @@
           <text class="gd__arrow">›</text>
         </view>
 
+        <view class="section-head"><text class="section-head__title">冻结证据</text></view>
+        <view class="card gd__linkrow" @click="go('/pages/student/graduation/evidence-package')">
+          <view class="flex-1"><text class="t-md t-bold">我的毕业归档包</text><text class="gd__hint" style="margin:2px 0 0;">查看归档时固定的材料版本与业务快照</text></view><text class="gd__arrow">›</text>
+        </view>
+
         <!-- 中期检查（含 PENDING「待导师检查」） -->
         <view v-if="midterm && midterm.hasData" id="gd-midterm" class="section-head"><text class="section-head__title">中期检查</text></view>
         <view v-if="midterm && midterm.hasData" class="card stack-sm">
@@ -161,8 +167,8 @@
           <view class="gd__choice-row"><text class="gd__choice-title">18 类材料 · 缺 {{ materialCount('MISSING') }} · 退回 {{ materialCount('RETURNED') }}</text></view>
           <view v-for="m in materials.items || []" :key="m.materialId" class="gd__final-item">
             <view class="gd__choice-row">
-              <view class="flex-1"><text class="gd__choice-title">{{ m.materialName }}</text><text class="gd__hint">{{ m.materialCode }} · 当前版本 {{ m.currentVersion?.versionNo || '—' }} · {{ m.currentVersion?.scanStatus || '未上传' }}</text></view>
-              <MobileStatusTag :label="m.reviewStatus || m.businessStatus" :type="m.reviewStatus === 'APPROVED' ? 'success' : m.reviewStatus === 'RETURNED' ? 'danger' : 'warning'" />
+              <view class="flex-1"><text class="gd__choice-title">{{ m.materialName }}</text><text class="gd__hint">{{ materialVersionText(m) }} · {{ materialScanLabel(m.currentVersion?.scanStatus) }}</text></view>
+              <MobileStatusTag :label="materialStatusLabel(m)" :type="materialStatusType(m)" />
             </view>
             <MobileInlineAlert v-if="m.rejectReason" type="danger" title="需要重交" :description="m.rejectReason" />
             <view class="gg__actions">
@@ -249,6 +255,16 @@ import { studentApi } from '@/services/studentApi'
 import { normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
+
+const MATERIAL_STATUS_LABEL = {
+  MISSING: '未上传', NOT_SUBMITTED: '未上传', SUBMITTED: '已提交', PENDING: '待审核',
+  NOT_REVIEWED: '待审核', APPROVED: '已通过', RETURNED: '需重交', REJECTED: '未通过',
+  UNKNOWN: '结果待核对'
+}
+const MATERIAL_SCAN_LABEL = {
+  PENDING: '安全检查中', SCANNING: '安全检查中', CLEAN: '安全检查通过', PASSED: '安全检查通过',
+  INFECTED: '安全检查未通过', FAILED: '安全检查未通过', ERROR: '安全检查待核对', UNKNOWN: '安全检查待核对'
+}
 
 export default {
   data() {
@@ -448,6 +464,23 @@ export default {
       } catch (e) { toast(normalizeError(e).text || '附件暂不可预览') }
     },
     materialCount(status) { return ((this.materials && this.materials.items) || []).filter((m) => m.businessStatus === status || m.reviewStatus === status).length },
+    materialVersionText(material) {
+      const version = material && material.currentVersion && material.currentVersion.versionNo
+      return version ? `当前第 ${version} 版` : '尚未上传版本'
+    },
+    materialScanLabel(status) { return MATERIAL_SCAN_LABEL[status] || (status ? '安全检查待核对' : '尚未进入安全检查') },
+    materialStatusLabel(material) {
+      const review = material && material.reviewStatus
+      const business = material && material.businessStatus
+      const status = review && review !== 'NOT_REVIEWED' ? review : business
+      return MATERIAL_STATUS_LABEL[status] || '状态待核对'
+    },
+    materialStatusType(material) {
+      const status = (material && material.reviewStatus && material.reviewStatus !== 'NOT_REVIEWED') ? material.reviewStatus : (material && material.businessStatus)
+      if (status === 'APPROVED') return 'success'
+      if (['RETURNED', 'REJECTED'].includes(status)) return 'danger'
+      return 'warning'
+    },
     isPcOnly(code) { return ['THESIS_DRAFT', 'THESIS_FINAL', 'DESIGN_WORK', 'SOURCE_CODE', 'WORK_DESCRIPTION'].includes(code) },
     canMiniSubmit(material) { return !this.isPcOnly(material.materialCode) && ['MISSING', 'RETURNED'].includes(material.businessStatus) },
     async openMaterial(material) { return this.downloadAtt(material.currentVersion || {}) },

@@ -70,10 +70,11 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     key: 'sys-access', label: '角色权限与数据范围', icon: '❖',
     description: '学校从平台角色模板启用并裁剪权限；数据范围使用结构化规则。',
     items: [
-      { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/roles?tab=templates', permissionKey: 'system.role.template.view', view: 'roles', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
-      { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/roles?tab=members', permissionKey: 'system.role.view', view: 'roles', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
+      { key: 'sys-iam-overview', label: 'IAM 总览', path: '/admin/system/iam', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [] },
+      { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/iam?surface=templates', permissionKey: 'system.role.template.view', view: 'iam', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
+      { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/iam?surface=roles', permissionKey: 'system.role.view', view: 'iam', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
       { key: 'sys-role-assignments', label: '角色成员与业务身份', path: '/admin/system/role-assignments', permissionKey: 'system.role.view', view: 'role-assignments', actions: [] },
-      { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/roles?tab=permissions', permissionKey: 'system.role.permission.manage', view: 'roles', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
+      { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/iam?surface=permissions', permissionKey: 'system.role.permission.manage', view: 'iam', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
       { key: 'sys-data-scopes', label: '数据范围规则', path: '/admin/system/scopes', permissionKey: 'system.scope.view', view: 'scopes', actions: [action('scope:create', '新增数据范围规则', 'HIGH'), action('scope:update', '修改数据范围规则', 'HIGH'), action('scope:deprecate', '停用数据范围规则', 'HIGH')] },
       { key: 'sys-delegations', label: '临时授权与工作移交', path: '/admin/system/delegations', permissionKey: 'system.delegation.manage', view: 'delegations', actions: [action('delegation:create', '创建临时授权', 'HIGH'), action('delegation:revoke', '提前回收授权', 'HIGH')] },
       { key: 'sys-security-changes', label: '安全变更', path: '/admin/system/security-changes', permissionKey: 'systemAdmin.security.view', view: 'security-changes', actions: [action('systemAdmin.security.manage', '提交与激活安全变更', 'HIGH')] },
@@ -87,6 +88,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
       { key: 'sys-master-data', label: '主数据责任与数据质量', path: '/admin/system/master-data', permissionKey: 'system.config.view', view: 'master-data', actions: [] },
+      { key: 'sys-business-forms', label: '合规与业务表单', path: '/admin/system/business-forms', permissionKey: 'systemAdmin.config.view', view: 'business-forms', actions: [action('systemAdmin.config.manage', '发布或停用表单版本', 'HIGH')] },
       { key: 'sys-academic-calendar', label: '学年学期与业务日历', path: '/admin/system/academic-calendar', permissionKey: 'systemAdmin.academicCalendar.view', view: 'academic-calendar', actions: [action('systemAdmin.academicCalendar.manage', '切换全校学期', 'HIGH'), action('systemAdmin.academicCalendar.manage', '维护业务窗口')] }
     ]
   },
@@ -108,6 +110,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
       { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
       { key: 'sys-audit-evidence', label: '安全审计证据与完整性', path: '/admin/system/audit-evidence', permissionKey: 'systemAdmin.audit.view', view: 'audit-evidence', actions: [action('audit:evidence:export', '导出证据包', 'HIGH')] },
+      { key: 'sys-platform-integrity', label: '完整性异常中心', path: '/admin/system/platform-integrity', permissionKey: 'systemAdmin.fileGovernance.view', view: 'platform-integrity', actions: [action('systemAdmin.fileGovernance.view', '执行有界巡检'), action('systemAdmin.file.manage', '处置异常', 'HIGH')] },
       {
         key: 'sys-file-storage-governance',
         label: '文件存储治理',

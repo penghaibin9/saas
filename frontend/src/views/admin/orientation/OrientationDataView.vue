@@ -47,7 +47,9 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     async onToolbar(k) {
       if (k !== 'export') return
-      const res = await api.createExport('orientationStudents', { scope: 'FILTERED', mask: true, auditConfirmed: true })
+      const res = await api.createExport('orientationStudents', {
+        scope: 'FILTERED', mask: true, auditConfirmed: true, purpose: '迎新新生数据台账导出'
+      })
       if (res.code === 0) toast.success(`已生成导出：${res.data.fileName}`)
       else toast.error(res.message || '导出失败')
     }

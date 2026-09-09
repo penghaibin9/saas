@@ -40,10 +40,12 @@
 <script>
 import { useSessionStore } from '@/stores/session'
 import { getRoleConfig } from '@/config/roles.config'
+import { me } from '@/services/realApi'
+import { shouldTryReal } from '@/services/request'
 import { relaunch, toast } from '@/utils/nav'
 import { toastError } from '@/services/request'
 
-const ICONS = { counselor: '👥', mentor: '📘', intern_mentor: '💼', employment: '🎯', academic: '📋', college_admin: '🏛' }
+const ICONS = { counselor: '👥', psychology_teacher: '🧠', mentor: '📘', intern_mentor: '💼', employment: '🎯', academic: '📋', college_admin: '🏛' }
 
 export default {
   data() {
@@ -62,8 +64,15 @@ export default {
       })
     }
   },
-  onLoad() {
+  async onLoad() {
     const session = useSessionStore()
+    if (shouldTryReal()) {
+      try {
+        session.applyRealUser(await me())
+      } catch (e) {
+        // 会话失效由统一请求层处理；保留本地快照，避免短暂网络故障清空页面。
+      }
+    }
     this.user = session.mockUser || {}
     this.currentRole = session.currentRole
     this.canBack = session.isTeacher && getCurrentPages().length > 1

@@ -557,8 +557,14 @@ export const academicAffairsApi = {
   addScheduleItem(batchId, body) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/items`, { method: 'POST', body }))
   },
+  preflightScheduleItem(batchId, body) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/items/preflight`, { method: 'POST', body }))
+  },
   moveScheduleItem(itemId, weekday, slotNo) {
     return call(() => request(`${BASE}/schedule-items/${itemId}/move`, { method: 'PUT', body: { weekday, slotNo } }))
+  },
+  preflightScheduleMove(itemId, weekday, slotNo) {
+    return call(() => request(`${BASE}/schedule-items/${itemId}/move-preflight`, { method: 'POST', body: { weekday, slotNo } }))
   },
   importSchedule(batchId, items) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/import`, { method: 'POST', body: { items } }))
@@ -568,6 +574,9 @@ export const academicAffairsApi = {
   },
   publishSchedule(batchId) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/publish`, { method: 'POST' }))
+  },
+  startScheduleCorrection(batchId, reason) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/correction-draft`, { method: 'POST', body: { reason } }))
   },
   voidReissueSchedule(batchId, reason) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/void-reissue`, { method: 'POST', body: { reason } }))
@@ -623,6 +632,9 @@ export const academicAffairsApi = {
   },
   getTeacherSchedule(teacherKey, params = {}) {
     return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
+  },
+  getMyTeacherToday() {
+    return call(() => request('/mobile/academic/teacher-schedule/my'))
   },
   getRoomSchedule(classroomId, params = {}) {
     return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))

@@ -19,7 +19,7 @@ import { dirname, resolve } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
-const OUTPUT = resolve(REPO, 'miniapp-v3-handoff.json')
+const OUTPUT = resolve(REPO, 'artifacts/release-seals/miniapp-v3-handoff.json')
 const SEAL_SUBJECT = 'chore(miniapp-v3): seal exact-head handoff'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
@@ -78,8 +78,7 @@ function contractVersion(file, marker) {
 function alembicHead() {
   const dir = resolve(REPO, 'backend/alembic/versions')
   if (!existsSync(dir)) return ''
-  try {
-    return execFileSync('python3', ['-c', `
+  const script = `
 import ast, os
 d = ${JSON.stringify(dir)}
 revs, downs = {}, {}
@@ -102,10 +101,16 @@ for r, p in downs.items():
     elif p: parents.update(p)
 heads = sorted(r for r in revs if r not in parents)
 print(','.join(heads))
-`], { cwd: REPO }).toString().trim()
-  } catch (error) {
-    return ''
+`
+  for (const executable of ['python3', 'python']) {
+    try {
+      const head = execFileSync(executable, ['-c', script], { cwd: REPO }).toString().trim()
+      if (head) return head
+    } catch (error) {
+      // Try the next common executable name (Windows commonly exposes only `python`).
+    }
   }
+  return ''
 }
 
 function packageReportSha() {
@@ -140,7 +145,7 @@ const REQUIRED_FIELDS = [
 
 function verify() {
   if (!existsSync(OUTPUT)) {
-    console.error('[handoff] 缺少 miniapp-v3-handoff.json，先运行生成命令')
+    console.error('[handoff] 缺少 artifacts/release-seals/miniapp-v3-handoff.json，先运行生成命令')
     return 1
   }
   const stored = JSON.parse(read(OUTPUT))

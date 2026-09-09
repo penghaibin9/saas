@@ -36,6 +36,7 @@ CODE_HTTP = {
     "ROLE_NOT_FOUND": 404,
     "DATA_NOT_FOUND": 404,
     "DATA_CONFLICT": 409,
+    "COMMERCIAL_ORDER_REQUIRED": 409,
     "APPROVAL_VERSION_CONFLICT": 409,
     "IDEMPOTENCY_CONFLICT": 409,
     # 学号属于已作废档案：前端据此弹「确认恢复」，与普通重复学号区分开

@@ -33,8 +33,8 @@ function firstDefined(row, keys, fallback = '') {
   return fallback
 }
 
-function option(row, config) {
-  const value = typeof config.value === 'function' ? config.value(row) : firstDefined(row, config.value)
+function option(row, config, query = {}) {
+  const value = typeof config.value === 'function' ? config.value(row, query) : firstDefined(row, config.value)
   const label = config.label(row)
   return { value, label, desc: config.desc ? config.desc(row) : '', raw: row }
 }
@@ -42,7 +42,7 @@ function option(row, config) {
 function searchable(loader, config) {
   const search = async (keyword = '', query = {}) => {
     const rows = listOf(await loader(keyword, query))
-    return rows.map((row) => option(row, config)).filter((item) => item.value !== '')
+    return rows.map((row) => option(row, config, query)).filter((item) => item.value !== '')
   }
   const resolve = async (value, query = {}) => {
     const values = Array.isArray(value) ? value : [value]
@@ -74,7 +74,9 @@ const student = searchable(
 const teacher = searchable(
   (keyword) => academicAffairsApi.searchCourseTeachers(keyword),
   {
-    value: ['value', 'teacherId', 'userId', 'teacherKey', 'id'],
+    value: (t, query) => query?.valueField === 'loginName'
+      ? firstDefined(t, ['loginName', 'teacherKey'])
+      : firstDefined(t, ['value', 'teacherId', 'userId', 'id']),
     label: (t) => firstDefined(t, ['label', 'teacherName', 'realName', 'name'], '教师'),
     desc: (t) => firstDefined(t, ['desc', 'teacherNo', 'teacherKey', 'employeeNo', 'collegeName'])
   }

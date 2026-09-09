@@ -33,6 +33,13 @@ const STATUS_MAP = {
   VOIDED: { label: '已作废', type: 'danger' },
   READONLY: { label: '只读', type: 'info' },
   NOT_STARTED: { label: '未开始', type: 'default' },
+  TODO: { label: '待办理', type: 'warning' },
+  DONE: { label: '已完成', type: 'success' },
+  IN_PROGRESS: { label: '办理中', type: 'processing' },
+  DOING: { label: '办理中', type: 'processing' },
+  BLOCKED: { label: '暂未通过', type: 'danger' },
+  WAIVED: { label: '已免办', type: 'info' },
+  NOT_REQUIRED: { label: '无需办理', type: 'info' },
 
   // 教学任务 / 课表
   PENDING_ASSIGN: { label: '待分配教师', type: 'warning' },
@@ -59,6 +66,9 @@ const STATUS_MAP = {
   ARRANGED: { label: '已编排', type: 'processing' },
   REMOVED: { label: '已移除', type: 'default' },
   ACTIVE: { label: '有效', type: 'success' },
+  ENROLLED: { label: '在读', type: 'success' },
+  NORMAL: { label: '在读', type: 'success' },
+  REGISTERED: { label: '已注册', type: 'success' },
   PRESENT: { label: '到考', type: 'success' },
   ABSENT: { label: '缺考', type: 'danger' },
   LATE: { label: '迟到', type: 'warning' },

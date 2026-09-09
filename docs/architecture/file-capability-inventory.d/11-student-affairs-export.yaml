@@ -21,3 +21,25 @@ entries:
     risk: P0
     targetPhase: '10'
     notes: Web请求只创建导出任务；worker按冻结筛选与数据范围分页读取并流式生成XLSX，记录进度、行数、SHA-256、有效期、取消和失败重试，下载继续执行任务归属与一次性票据校验。
+  - module: student-affairs
+    client: backend
+    route: /api/v1/student-affairs/funding/disbursements/export-jobs
+    page: backend/app/api/v1/affairs_funding_authority_api.py; frontend/src/modules/studentAffairs/views/funding/FundingDisbursementView.vue
+    action: funding-disbursement-export+download
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/student-affairs/funding/disbursements/export; GET /api/v1/student-affairs/funding/disbursements/export-jobs/{jobId}; POST /api/v1/student-affairs/funding/disbursements/export-jobs/{jobId}/download-ticket; GET /api/v1/student-affairs/funding/disbursements/export-jobs/{jobId}/download
+    backendService: backend/app/services/affairs_funding_export_service.py
+    storageMode: generated-xlsx-to-file-object
+    authMode: authenticated+studentAffairs.funding.disburse.manage+explicit-purpose+one-time-ticket
+    dataScope: tenant+operator+frozen-bank-status-and-affairs-data-scope
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: Web请求只冻结当前发放状态筛选、业务数据范围和不少于5字的导出用途；scheduler分页复用发放台账同一service投影生成单Sheet XLSX，金额沿用角色脱敏，银行卡仅后4位，用途写水印和SENSITIVE_EXPORT审计，下载使用一次性票据。

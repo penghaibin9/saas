@@ -14,6 +14,29 @@
       </div>
     </section>
 
+    <section class="today-board" aria-labelledby="today-heading">
+      <header class="today-board__head">
+        <div>
+          <div class="today-board__eyebrow">今天 · {{ todayDateText }}</div>
+          <h2 id="today-heading">{{ todayHeading }}</h2>
+          <p>{{ todayNote }}</p>
+        </div>
+        <span v-if="schedule.todayWeek" class="today-board__week">第{{ schedule.todayWeek }}教学周</span>
+      </header>
+      <StateBlock v-if="loading" type="loading" text="正在读取今天的正式课程…" />
+      <div v-else-if="todayItems.length" class="today-course-list">
+        <article v-for="item in todayItems" :key="`today-${itemKey(item)}`" class="today-course" :class="sourceClass(item)">
+          <div class="today-course__time">{{ slotLabel(item) }}</div>
+          <div class="today-course__body">
+            <strong>{{ item.courseName || '未命名课程' }}</strong>
+            <span>{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }}</span>
+          </div>
+          <span v-if="item.source === 'ENROLLED'" class="today-course__source">选课课程</span>
+        </article>
+      </div>
+      <div v-else-if="!loading" class="today-empty">{{ todayEmptyText }}</div>
+    </section>
+
     <section class="schedule-toolbar sp-card">
       <div>
         <div class="schedule-toolbar__label">查看周次 · {{ currentWeekHint }}</div>
@@ -91,6 +114,7 @@ const days = [
 ]
 
 const items = computed(() => Array.isArray(schedule.value.items) ? schedule.value.items : [])
+const todayItems = computed(() => Array.isArray(schedule.value.todayItems) ? schedule.value.todayItems : [])
 const timeBands = computed(() => Array.isArray(schedule.value.timeBands) ? schedule.value.timeBands : [])
 const maxWeek = computed(() => Math.max(
   1,
@@ -107,6 +131,26 @@ const currentWeekHint = computed(() => {
   if (week == null) return '校历周次尚未确认，当前展示全部周次'
   if (Number(week) === 0) return '学期尚未开始，当前展示全部周次'
   return `当前第${week}周`
+})
+const todayDateText = computed(() => {
+  const value = String(schedule.value.todayDate || '')
+  if (!value) return '日期待确认'
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${days[date.getDay() === 0 ? 6 : date.getDay() - 1]?.label || ''}`
+})
+const todayHeading = computed(() => loading.value ? '正在读取今天的课程' : (todayItems.value.length ? `今天有 ${todayItems.value.length} 节课` : '今天没有课程安排'))
+const todayNote = computed(() => {
+  const source = String(schedule.value.calendarSource || 'NORMAL')
+  if (source === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
+  if (source === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
+  if (source === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
+  if (todayItems.value.length) return '已按学校校历、单双周和最新正式课表筛选。'
+  return '已核对学校校历和最新正式课表。'
+})
+const todayEmptyText = computed(() => {
+  if (!items.value.length) return schedule.value.note || '当前学期暂无已发布课表'
+  return todayNote.value
 })
 
 function occursInWeek(item, week) {
@@ -263,6 +307,20 @@ onMounted(load)
 .schedule-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
 .schedule-hero p { margin: 0; color: var(--t3); font-size: 13px; }
 .schedule-hero__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.today-board { margin-bottom: 16px; padding: 20px 22px; border: 1px solid #cfe8d7; border-radius: 16px; background: linear-gradient(135deg, #f8fffa, #eef9f2); box-shadow: 0 12px 32px -28px rgba(22, 101, 52, .45); }
+.today-board__head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.today-board__eyebrow { color: var(--ok-fg); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.today-board h2 { margin: 6px 0 4px; color: var(--t1); font-size: 20px; }
+.today-board p { margin: 0; color: var(--t3); font-size: 12px; }
+.today-board__week { flex-shrink: 0; padding: 6px 9px; border-radius: 999px; background: #fff; color: var(--ok-fg); font-size: 11px; font-weight: 600; }
+.today-course-list { display: grid; gap: 8px; margin-top: 15px; }
+.today-course { display: grid; grid-template-columns: minmax(145px, auto) minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 14px; border: 1px solid rgba(22, 101, 52, .10); border-left: 4px solid var(--ok-fg); border-radius: 11px; background: rgba(255,255,255,.82); }
+.today-course__time { color: var(--ok-fg); font-size: 12px; font-weight: 700; }
+.today-course__body strong, .today-course__body span { display: block; }
+.today-course__body strong { color: var(--t1); font-size: 14px; }
+.today-course__body span { margin-top: 3px; color: var(--t3); font-size: 11.5px; }
+.today-course__source { padding: 3px 7px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); font-size: 10px; }
+.today-empty { margin-top: 15px; padding: 20px; border: 1px dashed #bcdcc6; border-radius: 11px; background: rgba(255,255,255,.55); color: var(--t3); text-align: center; font-size: 12.5px; }
 .schedule-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 16px; }
 .schedule-toolbar__label { margin-bottom: 9px; color: var(--t2); font-size: 13px; font-weight: 600; }
 .week-filter { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -289,4 +347,9 @@ onMounted(load)
 .schedule-note { display: flex; gap: 12px; margin-top: 16px; color: var(--t3); font-size: 12.5px; }
 .schedule-note strong { color: var(--t1); white-space: nowrap; }
 @media (max-width: 1100px) { .week-board { grid-template-columns: repeat(7, 180px); } }
+@media (max-width: 680px) {
+  .today-board__head { flex-direction: column; gap: 10px; }
+  .today-course { grid-template-columns: 1fr; gap: 5px; }
+  .today-course__source { justify-self: start; }
+}
 </style>

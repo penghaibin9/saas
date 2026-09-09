@@ -1270,6 +1270,11 @@ def schedule_add_item(body: ScheduleItemBody, batchId: int = Path(...), user=Dep
     return success(sched_svc.add_item(batchId, user, body), message="已排课")
 
 
+@router.post("/schedule-batches/{batchId}/items/preflight", summary="手工排课前置校验（纯读）")
+def schedule_add_item_preflight(body: ScheduleItemBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
+    return success(sched_svc.preflight_item(batchId, user, body), message="校验完成")
+
+
 @router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
 def schedule_import(body: ScheduleImportBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.import"))):
     return success(sched_svc.import_items(batchId, user, body.items, atomic=body.atomic), message="导入完成")
@@ -1285,6 +1290,11 @@ def schedule_move_item(body: ScheduleMoveBody, itemId: int = Path(...), user=Dep
     return success(sched_svc.move_item(itemId, user, body), message="已调整")
 
 
+@router.post("/schedule-items/{itemId}/move-preflight", summary="拖拽调格前置校验（纯读）")
+def schedule_move_item_preflight(body: ScheduleMoveBody, itemId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
+    return success(sched_svc.preflight_move(itemId, user, body), message="校验完成")
+
+
 @router.post("/schedule-batches/{batchId}/pre-publish", summary="课表预发布")
 def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.pre_publish(batchId, user), message="已预发布")
@@ -1293,6 +1303,11 @@ def schedule_pre_publish(batchId: int = Path(...), user=Depends(require_permissi
 @router.post("/schedule-batches/{batchId}/publish", summary="课表发布（通知师生）")
 def schedule_publish(batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
     return success(sched_svc.publish(batchId, user), message="已发布")
+
+
+@router.post("/schedule-batches/{batchId}/correction-draft", summary="从当前正式课表创建纠错草稿（四端不停用）")
+def schedule_correction_draft(body: VoidBody, batchId: int = Path(...), user=Depends(require_permission("academicAffairs.schedule.edit"))):
+    return success(sched_svc.start_correction_draft(batchId, user, body.reason), message="纠错草稿已创建")
 
 
 @router.post("/schedule-batches/{batchId}/void-reissue", summary="作废重发（调停课运维通道，留审计）")
@@ -2977,6 +2992,12 @@ def schedule_change_archive(changeType: Optional[str] = None, status: Optional[s
                                                  term_id=termId, date_from=dateFrom, date_to=dateTo,
                                                  page=page, page_size=pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/schedule-change/origin-items/{itemId}", summary="本人正式课位摘要（教师课表直达调停课）")
+def schedule_change_origin_item(itemId: int = Path(...),
+                                user=Depends(require_permission("academicAffairs.scheduleChange.apply"))):
+    return success(sched_change_svc.get_origin_item(itemId, user))
 
 
 @router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")

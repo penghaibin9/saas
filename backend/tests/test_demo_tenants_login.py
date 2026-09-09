@@ -20,6 +20,7 @@ SBX_TID = 1000000000000000007
 def two_tenants(db_mode):
     """在 db_mode 空库上种双租户体系（demo 富数据 + sandbox 最小数据）。"""
     from app.db.session import get_sessionmaker
+    from app.services import platform_service as platform
     from _seed_demo_school import seed_demo_school
     from _seed_two_tenants import seed_two_tenants
     db = get_sessionmaker()()
@@ -28,6 +29,15 @@ def two_tenants(db_mode):
         seed_two_tenants(db)      # 账号/组织/20 学生/三态样例 + 沙箱
     finally:
         db.close()
+    # sandbox-school 是免费体验环境，不伪造客户付款。W1 之后它仍必须拥有一个
+    # 可核验的非付费商业状态，否则 internship 等真实功能会按设计 fail-closed。
+    # 用正式 trial authority，而不是旧 FEATURES/TENANT_META 正式套餐旁路。
+    platform.put_config_json(
+        SBX_TID,
+        "TENANT_META",
+        "-",
+        {"status": "trial", "packageCode": "trial", "environment": "sandbox"},
+    )
     return db_mode
 
 
@@ -90,6 +100,7 @@ def test_student_token_carries_student_no(client, two_tenants):
     c2 = _jwt.decode(r2["data"]["accessToken"], settings.jwt_secret,
                      algorithms=[settings.jwt_algorithm])
     assert c2["tenantId"] == str(SBX_TID) and c2["studentNo"] == "2026S0001"
+    assert c2["userType"] == "STUDENT"
 
 
 def test_password_hashed_not_plaintext(client, two_tenants):
@@ -110,6 +121,19 @@ def test_password_hashed_not_plaintext(client, two_tenants):
 
 def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
     from app.core.config import settings
+    # A positive production login needs an explicit persisted role. Familiar
+    # fixture names are no longer an authorization source (SEC-01).
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import User
+    from _seed_fixture_roles import ensure_fixture_role
+    with get_sessionmaker()() as db:
+        student = db.scalars(select(User).where(
+            User.tenant_id == DEMO_TID, User.login_name == "student",
+            User.is_deleted.is_(False),
+        )).one()
+        ensure_fixture_role(db, student, "STUDENT")
+        db.commit()
     monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "MOCK_LOGIN_ENABLED", "")
     r = client.post("/api/v1/auth/mock-login",
@@ -304,3 +328,29 @@ def test_platform_can_restore_only_the_fixed_sandbox(client, two_tenants):
                            headers=_platform_h()).json()
     assert restored["code"] == 0
     assert restored["data"]["reseeded"]["students"] == 100
+
+
+
+@pytest.mark.parametrize("login_name", ["admin", "student"])
+def test_production_password_without_role_is_denied(client, two_tenants, monkeypatch, login_name):
+    from sqlalchemy import select, update
+    from app.core.config import settings
+    from app.db.session import get_sessionmaker
+    from app.models import User, UserRole
+    with get_sessionmaker()() as db:
+        user = db.scalars(select(User).where(
+            User.tenant_id == DEMO_TID, User.login_name == login_name,
+            User.is_deleted.is_(False),
+        )).one()
+        db.execute(update(UserRole).where(
+            UserRole.tenant_id == DEMO_TID, UserRole.user_id == user.id,
+        ).values(status="DISABLED"))
+        db.commit()
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    monkeypatch.setattr(settings, "MOCK_LOGIN_ENABLED", "false")
+    response = client.post("/api/v1/auth/login", json={
+        "loginName": login_name, "password": "123456", "tenantCode": "demo-school",
+    })
+    assert response.status_code == 403
+    assert response.json()["bizCode"] == "NO_PERMISSION"
+    assert "accessToken" not in (response.json().get("data") or {})

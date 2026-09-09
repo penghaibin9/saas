@@ -95,6 +95,7 @@
 import { getApprovalQueue, actApproval } from '@/services/approvalApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const PAGE_SIZE = 20
 
@@ -108,7 +109,7 @@ export default {
     }
   },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load(true)
   },
   onPullDownRefresh() {

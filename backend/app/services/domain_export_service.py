@@ -22,9 +22,11 @@ DOMAINS = {
                     ("实习单位", "enterpriseName"), ("岗位", "positionName"), ("状态", "statusLabel"),
                     ("风险", "riskLabel")]),
     "orientation": ("迎新新生台账", "orientation_service.list_students",
-                    [("姓名", "name"), ("录取编号", "admissionNo"), ("班级", "className"),
+                    [("迎新批次编号", "batchNo"), ("姓名", "name"), ("录取编号", "admissionNo"),
+                     ("学院", "collegeName"), ("专业", "majorName"), ("班级", "className"),
                      ("报到状态", "reportStatusLabel"), ("缴费状态", "paymentStatusLabel"),
                      ("宿舍状态", "dormStatusLabel"), ("风险", "riskLabel")]),
+    "dorm": ("房源台账", "", []),
     "campus-service": ("在校服务台账", "campus_service_service.list_students",
                        [("姓名", "name"), ("学号", "studentNo"), ("班级", "className"),
                         ("关怀级别", "careLevelLabel"), ("风险", "riskLabel"), ("辅导员", "counselor")]),
@@ -93,6 +95,22 @@ def _call_list(path, *, domain: str, user: dict, batch_id=None):
                 batch_id=batch_id,
                 user=user,
             )
+        elif domain == "orientation":
+            # 迎新导出与教师 PC 列表共用同一学工 dataScope，禁止通用导出绕过
+            # 班级/学生范围直接扫描全租户新生台账；O1 后批次也是必选事实边界。
+            from app.models import OrientationBatch
+            with session() as db:
+                try:
+                    orientation_batch_id = int(batch_id)
+                except (TypeError, ValueError):
+                    raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效 batchId")
+                batch = db.get(OrientationBatch, orientation_batch_id)
+                if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
+                    raise AppException("VALIDATION_ERROR", "迎新导出批次不存在或不属于本校")
+                batch_no = batch.batch_no
+            items, total = fn(1, MAX_EXPORT_ROWS, user=user, batch_id=orientation_batch_id)
+            for item in items:
+                item["batchNo"] = batch_no
         else:
             items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:
@@ -117,7 +135,8 @@ def _require_student_affairs_full_scope(user: dict) -> None:
             )
 
 
-def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_id=None) -> dict:
+def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_id=None,
+                  report_type: str | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导出域：{domain}")
     if not purpose or len(purpose.strip()) < 5:
@@ -132,23 +151,43 @@ def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_
             "VALIDATION_ERROR",
             "岗位实习导出必须指定 batchId，禁止无批次导出全历史",
         )
-    title, list_path, cols = DOMAINS[domain]
+    if domain == "orientation" and (batch_id is None or not str(batch_id).strip()):
+        raise AppException(
+            "VALIDATION_ERROR",
+            "迎新导出必须指定 batchId，禁止跨批次导出全历史",
+        )
+    report = None
+    if domain in {"orientation", "dorm"}:
+        from app.services.school_domain_report_service import build_report
+        report = build_report(
+            domain, report_type, user=user, batch_id=batch_id,
+        )
+        title = report["title"]
+        cols = report["columns"]
+        items = report["items"]
+        total = len(items)
+    else:
+        title, list_path, cols = DOMAINS[domain]
     if domain == "internship":
         items, total = _call_list(list_path, domain=domain, user=user, batch_id=batch_id)
-    else:
+    elif domain not in {"orientation", "dorm"}:
         items, total = _call_list(list_path, domain=domain, user=user)
     from openpyxl import Workbook
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title=title[:28])
     watermark = (
         f"高校学生全生命周期管理平台 · {title} · 导出人：{user.get('realName', '-')} · "
-        f"时间：{datetime.now():%Y-%m-%d %H:%M} · 用途：{purpose.strip()} · 敏感字段已脱敏"
+        f"时间：{datetime.now():%Y-%m-%d %H:%M} · 用途：{purpose.strip()} · "
+        f"范围：{(report or {}).get('scopeLabel') or '当前角色数据范围'} · 敏感字段已脱敏"
     )
     ws.append([_excel_safe(watermark)])
     ws.append([_excel_safe(column[0]) for column in cols])
     for row in items:
         ws.append([_excel_safe(row.get(column[1], "")) for column in cols])
-    key = f"exports/{datetime.now():%Y%m%d}/{domain}_{uuid.uuid4().hex[:8]}.xlsx"
+    if report:
+        key = f"exports/{datetime.now():%Y%m%d}/{uuid.uuid4().hex[:12]}/{report['fileName']}"
+    else:
+        key = f"exports/{datetime.now():%Y%m%d}/{domain}_{uuid.uuid4().hex[:8]}.xlsx"
     target = upload_dir() / key
     target.parent.mkdir(parents=True, exist_ok=True)
     wb.save(target)
@@ -178,8 +217,8 @@ def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_
         db.close()
     try:
         from app.services import audit_log
-        detail = {"rows": total, "purpose": purpose.strip()}
-        if domain == "internship":
+        detail = {"rows": total, "purpose": purpose.strip(), "reportType": report_type}
+        if domain in {"internship", "orientation"}:
             detail["batchId"] = str(batch_id)
         audit_log.record("EXPORT", f"{domain}-export", detail=detail)
     except Exception:  # noqa: BLE001

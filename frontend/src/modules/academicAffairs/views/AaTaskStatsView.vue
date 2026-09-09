@@ -74,13 +74,13 @@ export default {
     batchStatusRows() {
       if (!this.stats) return []
       return Object.entries(this.stats.batchByStatus).map(([status, count]) => ({
-        status, count, label: TASK_BATCH_STATUS[status] || status
+        status, count, label: TASK_BATCH_STATUS[status] || (status ? '状态待确认' : '—')
       }))
     },
     taskStatusRows() {
       if (!this.stats) return []
       return Object.entries(this.stats.taskByStatus).map(([status, count]) => ({
-        status, count, label: TASK_STATUS[status] || status
+        status, count, label: TASK_STATUS[status] || (status ? '状态待确认' : '—')
       }))
     },
     batchStatusChart() {

@@ -87,8 +87,26 @@ def _class_id():
     return class_id
 
 
+def _grade_college_id():
+    """复用 _seed() 已种出的真实学院，课程审核不得再创建无开课单位课程。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College
+
+    db = get_sessionmaker()()
+    try:
+        row = db.query(College).filter(
+            College.tenant_id == TID,
+            College.college_name == "成绩回归学院",
+            College.is_deleted.is_(False),
+        ).order_by(College.id.desc()).first()
+        assert row is not None
+        return int(row.id)
+    finally:
+        db.close()
+
+
 def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4):
-    """通过课程库正式状态机建立稳定 courseId，而不是在成绩任务中继续使用自由文本课程。"""
+    """通过课程库正式状态机建立稳定 courseId，并按学院→教务 Authority 完成两级审核。"""
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code,
         "courseName": name,
@@ -99,12 +117,17 @@ def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4)
         "hoursTheory": 48,
         "hoursPractice": 16,
         "examMode": "EXAM",
+        "ownerCollegeId": str(_grade_college_id()),
     })
     assert created.status_code == 200, created.text
     course_id = created.json()["data"]["courseId"]
     submitted = client.post(f"{BASE}/courses/{course_id}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
-    college = client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json={"action": "APPROVE"})
+    college = client.post(
+        f"{BASE}/courses/{course_id}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert college.status_code == 200, college.text
     academic = client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
@@ -142,10 +165,14 @@ def _task(client, hdr, usual=30, midterm=0, final=70, *,
 
 
 def _submit_and_approve(client, hdr, tid):
-    """走完提交→学院审通过→（回到 ACADEMIC_REVIEW，供调用方自行发布）。"""
+    """走完提交→真实学院受理人审核→（回到 ACADEMIC_REVIEW，供调用方自行发布）。"""
     s = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
     assert s.status_code == 200, s.text
-    r = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    r = client.post(
+        f"{BASE}/grade-tasks/{tid}/college-review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "ACADEMIC_REVIEW"
 

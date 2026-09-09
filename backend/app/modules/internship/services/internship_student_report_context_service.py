@@ -18,6 +18,9 @@ from app.services.db_service import _iso, _tid, session
 
 def _context_row(row, record, student) -> dict:
     item = legacy._row(row, record, student)
+    # This endpoint is restricted to the authenticated student's own record.
+    # Return the body so a returned report can be corrected and resubmitted.
+    item["content"] = row.content or ""
     item["submittedAt"] = _iso(row.submitted_at) or ""
     return item
 

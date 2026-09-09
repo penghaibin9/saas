@@ -1451,7 +1451,8 @@ def get_dashboard(batch_id=None) -> dict:
                 continue
             pend_defense += 1
         # 未提交开题：与开题列表同一批次
-        not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
+        not_submitted_rows = _not_submitted_proposals(db, batch_id=batch_id)
+        not_submitted = len(not_submitted_rows)
         # 真实风险预警（未关闭；限定当前批次）
         risk_alerts = []
         try:
@@ -1461,6 +1462,8 @@ def get_dashboard(batch_id=None) -> dict:
                 if r.get("status") == "CLOSED":
                     continue
                 risk_alerts.append({"id": r["id"], "code": r["riskCode"], "title": r["riskName"],
+                                    "gdStudentId": r.get("gdStudentId"),
+                                    "studentName": r.get("studentName") or "",
                                     "level": r.get("level") or "MEDIUM",
                                     "detail": f"{r.get('studentName') or '—'}"
                                               + (f" · 指导 {r['advisorName']}" if r.get("advisorName") else "")
@@ -1496,6 +1499,109 @@ def get_dashboard(batch_id=None) -> dict:
             ]
         except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
             module_stats = []
+
+        # 角色范围内的「今天具体做什么」。聚合数字留在第二层，第一层必须是可以直接
+        # 落到某个学生/业务对象的工作项，避免用数量大小冒充优先级。
+        today_work_items = []
+
+        def _action(label, path, **query):
+            clean = {key: str(value) for key, value in query.items() if value not in (None, "")}
+            if batch_id:
+                clean["batchId"] = str(batch_id)
+            return {"label": label, "path": path, "query": clean}
+
+        for risk in risk_alerts:
+            level = str(risk.get("level") or "MEDIUM").upper()
+            today_work_items.append({
+                "id": f"risk:{risk['id']}",
+                "priority": "CRITICAL" if level == "CRITICAL" else ("HIGH" if level == "HIGH" else "NORMAL"),
+                "student": {"id": str(risk.get("gdStudentId") or ""), "name": risk.get("studentName") or "待确认学生"},
+                "business": "风险处置",
+                "whyHere": f"{risk.get('code') or '风险'} 仍未关闭，需要先确认责任人与处置方案。",
+                "waitingOn": "当前风险责任人",
+                "nextActor": "风险复核人与该生后续环节负责人",
+                "dueAt": "",
+                "recentChange": risk.get("time") or "最近一次风险扫描仍命中",
+                "primaryAction": _action("去处置", "/admin/graduation/risk-archive", panel="risk", rsel=risk.get("id")),
+            })
+
+        pending_proposals = db.scalars(select(GraduationProposal).where(
+            GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
+            GraduationProposal.is_deleted.is_(False), GraduationProposal.gd_student_id.in_(scope),
+        ).order_by(GraduationProposal.submit_at.asc(), GraduationProposal.id.asc()).limit(8)).all()
+        pending_finals = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+            GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
+        ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
+        pending_student_ids = {
+            int(row.gd_student_id) for row in (*pending_proposals, *pending_finals)
+            if row.gd_student_id is not None
+        }
+        pending_students = {
+            int(row.id): row for row in db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id.in_(pending_student_ids),
+                GraduationStudent.is_deleted.is_(False),
+            )).all()
+        } if pending_student_ids else {}
+        for proposal in pending_proposals:
+            student = pending_students.get(int(proposal.gd_student_id))
+            if not student:
+                continue
+            today_work_items.append({
+                "id": f"proposal:{proposal.id}", "priority": "WAITING_REVIEW",
+                "student": {"id": str(student.id), "name": student.name or "未命名学生"},
+                "business": "开题批阅", "whyHere": "学生已提交开题报告，正在等待当前职责范围内的批阅。",
+                "waitingOn": "你",
+                "nextActor": "学生（退回时）或后续检查负责人（通过时）",
+                "dueAt": "", "recentChange": _iso(proposal.submit_at) or "已提交待审",
+                "primaryAction": _action("批阅开题", "/admin/graduation/proposals", tab="PENDING_REVIEW", studentId=student.id),
+            })
+
+        for final in pending_finals:
+            student = pending_students.get(int(final.gd_student_id))
+            if not student:
+                continue
+            today_work_items.append({
+                "id": f"final:{final.id}", "priority": "WAITING_REVIEW",
+                "student": {"id": str(student.id), "name": student.name or "未命名学生"},
+                "business": "成果批阅", "whyHere": f"学生已提交{final.final_type or '成果'}，需要核对材料与评阅意见。",
+                "waitingOn": "你",
+                "nextActor": "学生（退回时）或答辩安排负责人（通过时）",
+                "dueAt": "", "recentChange": _iso(final.submit_at) or "已提交待审",
+                "primaryAction": _action("批阅成果", "/admin/graduation/finals", tab="PENDING_REVIEW", studentId=student.id),
+            })
+
+        for student_row in not_submitted_rows[:8]:
+            student_id = student_row.get("gdStudentId") or student_row.get("projectId")
+            today_work_items.append({
+                "id": f"proposal-missing:{student_id}", "priority": "OVERDUE",
+                "student": {"id": str(student_id or ""), "name": student_row.get("studentName") or "未命名学生"},
+                "business": "开题催交", "whyHere": "已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。",
+                "waitingOn": "学生",
+                "nextActor": "指导教师",
+                "dueAt": "", "recentChange": "当前仍未提交",
+                "primaryAction": _action("查看并催交", "/admin/graduation/proposals", tab="NOT_SUBMITTED", studentId=student_id),
+            })
+
+        for group in defense_groups[:8]:
+            today_work_items.append({
+                "id": f"defense-group:{group.id}", "priority": "RELEASE_BLOCKER",
+                "student": {"id": "", "name": group.group_name or "未命名答辩组"},
+                "business": "答辩发布", "whyHere": "答辩组已创建但尚未发布，学生还看不到时间与地点。",
+                "waitingOn": "答辩安排负责人",
+                "nextActor": "学生与答辩专家",
+                "dueAt": group.defense_date or "", "recentChange": "等待发布",
+                "primaryAction": _action("检查并发布", "/admin/graduation/defense", groupId=group.id),
+            })
+
+        priority_rank = {
+            "CRITICAL": 0, "HIGH": 1, "OVERDUE": 2, "DUE_24H": 3,
+            "RELEASE_BLOCKER": 4, "RETURNED": 5, "WAITING_REVIEW": 6, "NORMAL": 7,
+        }
+        today_work_items.sort(key=lambda item: (
+            priority_rank.get(item["priority"], 99), item.get("dueAt") or "9999-12-31", item["id"],
+        ))
         # 当前批次信息：优先用请求的 batch_id；否则回落 RUNNING / 最近有效批次
         _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
@@ -1539,7 +1645,8 @@ def get_dashboard(batch_id=None) -> dict:
                 # active 按当前批次阶段时间轴真实推算（此前写死 FINAL_CHECK，无论毕设走到哪
                 # 都恒亮「成果检查」）。未配阶段日期时 _active_student_stage 返回 None，不高亮。
                 "flow": [{"label": L_STAGE[k], "value": flow.get(k, 0), "active": k == _active_stage}
-                         for k in L_STAGE],
+                          for k in L_STAGE],
+                "todayWorkItems": today_work_items[:20],
                 "todos": [
                     {"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",
                      "route": "/admin/graduation/proposals", "hint": "指导教师批阅开题报告"},

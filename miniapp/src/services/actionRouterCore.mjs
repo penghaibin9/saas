@@ -12,8 +12,8 @@
 export const ACTION_SCHEMA_VERSION = '1.0.0'
 
 export const ALLOWED_PREFIXES = {
-  student: ['/pages/student/', '/pages/common/'],
-  teacher: ['/pages/teacher/', '/pages/common/']
+  student: ['/pages/student/', '/pages/student-internship/', '/pages/common/'],
+  teacher: ['/pages/teacher/', '/pages/teacher-internship/', '/pages/common/']
 }
 
 export const DEFAULT_DISABLED_REASON = '当前端暂无安全处理入口'

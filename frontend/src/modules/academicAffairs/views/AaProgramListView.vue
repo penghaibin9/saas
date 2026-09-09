@@ -135,7 +135,7 @@ export default {
   created() { this.load() },
   methods: {
     reviewStatusColor,
-    statusLabel(value) { return REVIEW_STATUS[value] || value || '' },
+    statusLabel(value) { return REVIEW_STATUS[value] || (value ? '待确认' : '') },
     openProgramImport(phase) {
       this.programImportPhase = phase === 'BINDING' ? 'BINDING' : 'DEFINITION'
       this.importChooserVisible = false

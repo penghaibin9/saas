@@ -289,9 +289,9 @@ export default {
     }
   },
   methods: {
-    incidentTypeLabel(value) { return TYPE_LABEL[String(value || '').toUpperCase()] || value || '其他' },
+    incidentTypeLabel(value) { return TYPE_LABEL[String(value || '').toUpperCase()] || (value ? '待确认' : '其他') },
     incidentTypeTag(value) { return String(value || '').toUpperCase() === 'ABSENT' ? 'warning' : 'danger' },
-    closureLabel(value) { return CLOSURE_LABEL[value] || value || '未知' },
+    closureLabel(value) { return CLOSURE_LABEL[value] || (value ? '待确认' : '未知') },
     closureType(value) {
       if (value === 'OPEN') return 'warning'
       if (value === 'VOIDED') return 'default'

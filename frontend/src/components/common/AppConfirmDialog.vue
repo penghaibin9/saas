@@ -1,6 +1,6 @@
 <template>
-  <div v-if="visible" class="app-confirm-dialog__mask" @click.self="onCancel">
-    <div class="app-confirm-dialog" role="dialog" aria-modal="true">
+  <div v-if="visible" class="app-confirm-dialog__mask" :class="{ 'sa-workspace-overlay': affairsWorkspace }" @click.self="onCancel">
+    <div class="app-confirm-dialog" :class="`is-${size}`" role="dialog" aria-modal="true" :aria-label="title">
       <div class="app-confirm-dialog__header" :class="`is-${effType}`">
         <span class="app-confirm-dialog__icon">{{ effType === 'danger' ? '!' : '?' }}</span>
         <span class="app-confirm-dialog__title">{{ title }}</span>
@@ -27,6 +27,7 @@
           />
           <textarea
             ref="reasonEl"
+            :aria-label="reasonLabel"
             v-model="reason"
             class="app-confirm-dialog__textarea"
             :placeholder="reasonPlaceholder"
@@ -47,7 +48,7 @@
           type="button"
           class="acd-btn acd-btn--confirm"
           :class="`is-${effType}`"
-          :disabled="busy"
+          :disabled="busy || confirmDisabled"
           @click="onConfirm"
         >
           {{ busy ? '提交中…' : confirmText }}
@@ -77,6 +78,7 @@ import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 
 export default {
   name: 'AppConfirmDialog',
+  inject: { affairsWorkspace: { default: false } },
   components: { AppQuickPhrases, AppTemplateChips },
   props: {
     visible: { type: Boolean, default: false },
@@ -92,6 +94,12 @@ export default {
     /** danger: 便捷布尔，等价 type='danger'（优先级高于 type） */
     danger: { type: Boolean, default: false },
     confirmText: { type: String, default: '确认' },
+    confirmDisabled: { type: Boolean, default: false },
+    size: {
+      type: String,
+      default: 'default',
+      validator: (value) => ['default', 'wide'].includes(value)
+    },
     cancelText: { type: String, default: '取消' },
     requireReason: { type: Boolean, default: false },
     reasonLabel: { type: String, default: '处理原因' },
@@ -166,19 +174,27 @@ export default {
   background: var(--bg-mask);
   z-index: calc(var(--z-modal) + 10);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: var(--space-6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .app-confirm-dialog {
   width: 460px;
   max-width: 100%;
+  margin-block: auto;
+  flex: 0 0 auto;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  /* 不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
+  /* 长表单由 mask 承担整框纵向滚动，dialog 自身继续保持 overflow 可见。
+     不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
      其结果面板是相对 body 内部元素绝对定位、超出弹窗自身高度展开的，
      hidden 会把选项列表从中间截断，看起来"显示不全/太短"。 */
+}
+.app-confirm-dialog.is-wide {
+  width: 760px;
 }
 .app-confirm-dialog__header {
   display: flex;

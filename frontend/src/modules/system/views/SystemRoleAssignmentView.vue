@@ -46,7 +46,7 @@
           </template>
           <template #cell-source="{ row }">
             <StatusTag :type="row.sourceType === 'UNKNOWN' ? 'warning' : 'default'"
-                       :label="row.sourceType" dot />
+                       :label="sourceTypeLabel(row.sourceType)" dot />
             <div class="mp-cell-sub">{{ row.reason || '—' }}</div>
           </template>
           <template #cell-status="{ row }">
@@ -77,13 +77,13 @@
             <DataTable v-else :columns="identityColumns" :rows="identities" row-key="subjectKey">
               <template #cell-identity="{ row }">
                 <div class="mp-cell-main">{{ row.label }}</div>
-                <div class="mp-cell-sub">{{ row.identityType }}</div>
+                <div class="mp-cell-sub">{{ identityTypeLabel(row.identityType) }}</div>
               </template>
               <template #cell-subject="{ row }">
                 <div class="mp-cell-main">{{ row.name || row.subjectKey }}</div>
                 <div class="mp-cell-sub">
                   <StatusTag v-if="!row.subjectResolved" type="warning" label="未映射到账号" dot />
-                  <span v-else>userId {{ row.userId }}</span>
+                  <span v-else>用户编号 {{ row.userId }}</span>
                 </div>
               </template>
               <template #cell-scope="{ row }">
@@ -91,8 +91,8 @@
                 <div class="mp-cell-sub">{{ (row.objects || []).slice(0, 5).join('、') }}</div>
               </template>
               <template #cell-owner="{ row }">
-                <div class="mp-cell-sub">{{ row.ownerModule }}</div>
-                <div class="mp-cell-sub">{{ row.source }}</div>
+                <div class="mp-cell-sub">{{ moduleLabel(row.ownerModule) }}</div>
+                <div class="mp-cell-sub">{{ sourceText(row.source) }}</div>
               </template>
             </DataTable>
           </div>
@@ -112,8 +112,8 @@
       @confirm="submit"
     >
       <label v-if="pendingAction === 'transfer'" class="ra-field">
-        转交给（账号 userId）
-        <input v-model.trim="transferTo" class="ra-input" placeholder="填写接手人的 userId" />
+        转交给（用户编号）
+        <input v-model.trim="transferTo" class="ra-input" placeholder="填写接手人的用户编号" />
       </label>
       <label v-if="pendingAction === 'review'" class="ra-field">
         复核所属学期
@@ -136,6 +136,9 @@ const BUCKET_LABELS = {
   UNKNOWN_SOURCE: '来源不明',
   HIGH_PRIV_MULTI: '多人持有高权角色'
 }
+const SOURCE_TYPE_LABELS = { MANUAL: '人工分配', IMPORT: '导入分配', TEMPLATE: '角色模板', BUSINESS: '业务关系自动生成', DELEGATION: '临时委托', UNKNOWN: '来源待确认' }
+const IDENTITY_TYPE_LABELS = { TEACHER: '任课教师', COUNSELOR: '辅导员', ADVISOR: '指导教师', DEFENSE_MEMBER: '答辩成员', INTERNSHIP_ADVISOR: '实习指导教师', CLASS_MANAGER: '班级负责人' }
+const MODULE_LABELS = { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '实习管理', GRADUATION: '毕业设计', EMPLOYMENT: '就业管理' }
 
 const permissionMatches = (patterns = [], code = '') => (patterns || []).some((pattern) => {
   if (pattern === '*' || pattern === code) return true
@@ -215,6 +218,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    sourceTypeLabel(value) { return SOURCE_TYPE_LABELS[value] || (value ? '来源待确认' : '—') },
+    identityTypeLabel(value) { return IDENTITY_TYPE_LABELS[value] || (value ? '其他业务身份' : '—') },
+    moduleLabel(value) { return MODULE_LABELS[value] || (value ? '其他业务模块' : '—') },
+    sourceText(value) { return /[\u3400-\u9fff]/.test(String(value || '')) ? value : (value ? '业务关系自动生成' : '—') },
     statusLabel(status) {
       return { ACTIVE: '生效中', EXPIRED: '已过期', REVOKED: '已撤销' }[status] || '状态待确认'
     },

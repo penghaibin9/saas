@@ -25,11 +25,11 @@ const B = '/internship/student-evals'
 export const studentEvalApi = {
   getEvals(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
-  advisorComment(id, { advisorOpinion, mentorOpinion }) {
-    return call(() => request(`${B}/${id}/advisor-comment`, { method: 'POST', body: { advisorOpinion, mentorOpinion } }))
+  advisorComment(id, { advisorOpinion, mentorOpinion, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/advisor-comment`, { method: 'POST', body: { advisorOpinion, mentorOpinion, expectedVersion: expectedVersion ?? version } }))
   },
-  review(id, { action, comment }) {
-    return call(() => request(`${B}/${id}/review`, { method: 'POST', body: { action, comment } }))
+  review(id, { action, comment, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/review`, { method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version } }))
   },
   exportEvals(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
 }

@@ -133,8 +133,8 @@ export default {
   },
   async created() { await this.loadTerms(); await this.load() },
   methods: {
-    classTypeLabel(value) { return ({ ADMIN: '行政班', SELECTION: '选课班', MERGED: '合班', RETAKE: '重修班', LAYERED: '分层班' })[value] || value || '—' },
-    statusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || value || '—' },
+    classTypeLabel(value) { return ({ ADMIN: '行政班', SELECTION: '选课班', MERGED: '合班', RETAKE: '重修班', LAYERED: '分层班' })[value] || (value ? '待确认' : '—') },
+    statusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || (value ? '待确认' : '—') },
     primaryTeacher(row) { return (row.teachers || []).find(item => item.roleType === 'PRIMARY' && item.status === 'ACTIVE') },
     openDetail(row) { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', teachingClassId: row.teachingClassId } }) },
     onPageChange(page) { this.pagination.page = page; this.load() },

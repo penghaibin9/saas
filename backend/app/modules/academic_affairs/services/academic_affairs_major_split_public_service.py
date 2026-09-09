@@ -32,6 +32,23 @@ def _student_profile(db, user=None):
     return profile
 
 
+def _normalize_choice_ids(choices):
+    """兼容结构化志愿与旧数字 ID；非法输入必须返回业务校验错误而不是 500。"""
+    choice_ids = []
+    for value in choices or []:
+        raw = value
+        if isinstance(value, dict):
+            raw = value.get("majorId") or value.get("optionId") or value.get("id")
+        try:
+            choice_id = int(raw)
+        except (TypeError, ValueError):
+            raise _legacy._bad("志愿专业格式无效")
+        if choice_id <= 0:
+            raise _legacy._bad("志愿专业格式无效")
+        choice_ids.append(choice_id)
+    return choice_ids
+
+
 def submit_volunteer(user, batch_id, choices) -> dict:
     """学生提交/修改志愿；本人身份来自账号稳定绑定，不信任 token 学号。"""
     from app.models import AaMajorSplitOption, AaMajorSplitVolunteer
@@ -48,7 +65,7 @@ def submit_volunteer(user, batch_id, choices) -> dict:
         if profile.student_status != "NORMAL":
             raise _legacy.no_data_scope("当前学籍状态不可填报分流志愿")
 
-        choice_ids = [int(value) for value in (choices or [])]
+        choice_ids = _normalize_choice_ids(choices)
         if not choice_ids:
             raise _legacy._bad("至少填报一个志愿")
         if len(choice_ids) > batch.max_choices:

@@ -25,7 +25,7 @@
             <AppButton variant="secondary" @click="downloadTemplate">下载模板</AppButton>
           </div>
           <label class="imd__upload">
-            <input type="file" accept=".xlsx,.xls" class="imd__file" @change="onFile" />
+            <input type="file" accept=".xlsx" class="imd__file" @change="onFile" />
             <span class="imd__upload-icon">⇪</span>
             <span>{{ fileName || '点击选择 Excel 文件（.xlsx）' }}</span>
           </label>
@@ -37,8 +37,14 @@
           <div class="imd__summary">
             共解析 <b>{{ validation.total }}</b> 行 · 校验通过
             <b class="is-good">{{ validation.validCount }}</b> 行 · 失败
-            <b class="is-bad">{{ validation.total - validation.validCount }}</b> 行，仅导入校验通过的数据。
+            <b class="is-bad">{{ validation.errorCount }}</b> 行。
+            <span v-if="validation.errorCount">请修正全部错误后重新上传，系统不会跳过错误行写入。</span>
+            <span v-else>整批预检通过，可以原子确认写入。</span>
           </div>
+          <AppButton v-if="validation.errorCount && validation.errorWorkbookUrl" variant="secondary" @click="downloadErrors">
+            下载迎新导入错误行.xlsx
+          </AppButton>
+          <p v-if="!validation.rows.length" class="imd__ok">全部数据校验通过。</p>
           <table class="imd__table">
             <thead>
               <tr><th>行号</th><th>数据预览</th><th>校验结果</th></tr>
@@ -69,11 +75,11 @@
 
       <footer class="imd__footer">
         <AppButton variant="ghost" @click="close">{{ step === 2 ? '关闭' : '取消' }}</AppButton>
-        <AppButton v-if="step === 0" variant="primary" :disabled="!fileName" :loading="busy" @click="doValidate">
+        <AppButton v-if="step === 0" variant="primary" :disabled="!file" :loading="busy" @click="doValidate">
           解析并校验
         </AppButton>
-        <AppButton v-if="step === 1" variant="primary" :disabled="!validation.validCount" :loading="busy" @click="doImport">
-          导入 {{ validation.validCount }} 条通过数据
+        <AppButton v-if="step === 1" variant="primary" :disabled="!validation.canConfirm" :loading="busy" @click="doImport">
+          确认导入 {{ validation.validCount }} 条数据
         </AppButton>
       </footer>
     </div>
@@ -85,12 +91,13 @@
  * ImportDialog — 通用导入弹窗（模块局部组件）。
  * 流程：下载模板 → 上传 Excel → 字段校验与错误预览 → 仅导入通过数据 → 结果回执（含审计说明）。
  * Props:
- *  - template: mock/api importTemplates 下发的模板对象
- *  - validateFn(fileName) / importFn({ validCount, fileName })：由页面注入的 api 调用
+ *  - template: 展示模板字段说明
+ *  - downloadTemplateFn() / validateFn(File) / importFn({ batchNo })：由页面注入真实 API
  */
 import { AppButton } from '@/components/ui'
 import AccountImportBoundaryNotice from '@/components/common/AccountImportBoundaryNotice.vue'
 import { toast } from '@/utils/toast'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 export default {
   name: 'ImportDialog',
@@ -98,6 +105,7 @@ export default {
   props: {
     visible: { type: Boolean, default: false },
     template: { type: Object, default: null },
+    downloadTemplateFn: { type: Function, default: null },
     validateFn: { type: Function, required: true },
     importFn: { type: Function, required: true }
   },
@@ -106,10 +114,11 @@ export default {
     return {
       steps: ['上传文件', '校验预览', '导入回执'],
       step: 0,
+      file: null,
       fileName: '',
       busy: false,
       error: '',
-      validation: { total: 0, validCount: 0, rows: [] },
+      validation: { total: 0, validCount: 0, errorCount: 0, canConfirm: false, rows: [] },
       result: null
     }
   },
@@ -123,30 +132,55 @@ export default {
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, fileName: '', error: '', validation: { total: 0, validCount: 0, rows: [] }, result: null })
+      if (v) Object.assign(this, {
+        step: 0,
+        file: null,
+        fileName: '',
+        error: '',
+        validation: { total: 0, validCount: 0, errorCount: 0, canConfirm: false, rows: [] },
+        result: null
+      })
     }
   },
   methods: {
     close() {
       this.$emit('update:visible', false)
     },
-    downloadTemplate() {
-      toast.info(`已开始下载模板：${this.template?.fileName || ''}（演示环境为模拟下载）`)
+    async downloadTemplate() {
+      if (!this.downloadTemplateFn) {
+        toast.error('当前业务未配置可下载的正式模板')
+        return
+      }
+      this.busy = true
+      try {
+        const res = await this.downloadTemplateFn()
+        if (res.code === 0) {
+          downloadXlsxFromApi(res.data)
+          toast.success('模板已生成并开始下载')
+        } else {
+          toast.error(res.message)
+        }
+      } finally {
+        this.busy = false
+      }
     },
     onFile(e) {
       const f = e.target.files?.[0]
       this.error = ''
       if (!f) return
-      if (!/\.xlsx?$/i.test(f.name)) {
-        this.error = '仅支持 .xlsx / .xls 格式文件'
+      if (!/\.xlsx$/i.test(f.name)) {
+        this.file = null
+        this.fileName = ''
+        this.error = '仅支持标准 .xlsx 格式文件'
         return
       }
+      this.file = f
       this.fileName = f.name
     },
     async doValidate() {
       this.busy = true
       try {
-        const res = await this.validateFn(this.fileName)
+        const res = await this.validateFn(this.file)
         if (res.code === 0) {
           this.validation = res.data
           this.step = 1
@@ -160,7 +194,7 @@ export default {
     async doImport() {
       this.busy = true
       try {
-        const res = await this.importFn({ validCount: this.validation.validCount, fileName: this.fileName })
+        const res = await this.importFn({ batchNo: this.validation.batchNo })
         if (res.code === 0) {
           this.result = res.data
           this.step = 2
@@ -171,6 +205,12 @@ export default {
       } finally {
         this.busy = false
       }
+    },
+    downloadErrors() {
+      downloadXlsxFromApi({
+        downloadUrl: this.validation.errorWorkbookUrl,
+        filename: '迎新导入错误行.xlsx'
+      })
     }
   }
 }

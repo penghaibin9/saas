@@ -36,7 +36,7 @@
         <div class="aa-filter">
           <label class="aa-filter__item">
             教师
-            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="load" />
+            <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="load" />
           </label>
           <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
           <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
@@ -108,10 +108,10 @@ export default {
     const u = currentUserFromToken() || {}
     return {
       DIMS, dim: 'class',
-      termId: '', batchId: '',
+      termId: '', batchId: '', batchIds: [],
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
-      teacherKey: '', selfKey: String(u.userId || u.loginName || ''),
+      teacherKey: '', teacherKeyQuery: { valueField: 'loginName' }, selfKey: String(u.loginName || u.userId || ''),
       classroomId: '', classroomText: '',
       studentId: '', studentName: '',
       teachingClassCode: '', teachingClassName: ''
@@ -136,7 +136,8 @@ export default {
       return (name ? `${name} · ` : '') + '本学期课表'
     },
     canPrint() {
-      return this.batchId && (this.dim === 'class' || this.dim === 'teacher') && this.hasSelection
+      return this.batchIds.length === 1 && this.batchId &&
+        (this.dim === 'class' || this.dim === 'teacher') && this.hasSelection
     }
   },
   created() {
@@ -146,7 +147,7 @@ export default {
   methods: {
     switchDim(key) {
       this.dim = key
-      this.items = []; this.note = ''; this.error = ''; this.batchId = ''
+      this.items = []; this.note = ''; this.error = ''; this.batchId = ''; this.batchIds = []
     },
     async initializeCurrentTerm() {
       try {
@@ -207,10 +208,12 @@ export default {
         this.items = res.data.items || []
         this.note = res.data.note || ''
         this.batchId = res.data.batchId || ''
+        this.batchIds = res.data.batchIds || (this.batchId ? [this.batchId] : [])
       } else {
         this.error = res.message
         this.items = []
         this.batchId = ''
+        this.batchIds = []
       }
     }
   }

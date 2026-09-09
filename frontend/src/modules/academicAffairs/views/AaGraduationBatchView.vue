@@ -26,7 +26,7 @@
           </div>
           <AppInlineAlert v-if="genInfo" type="success" :message="genInfo" />
           <AppInlineAlert v-if="preInfo" type="success" :message="preInfo" />
-          <p class="mp-note">十一项含学籍/学分/必修/选修/实践/实习/毕设/处分/就业/学工归档/费用。必需项 UNKNOWN 会形成系统异常，须先治理并重新预审；只有最新完整正式 Run 为 SYSTEM_PASSED 才能学院通过并进入教务终审。</p>
+          <p class="mp-note">十一项含学籍/学分/必修/选修/实践/实习/毕设/处分/就业/学工归档/费用。必需项处于“待治理”时会形成系统异常，须先治理并重新预审；只有最新一次完整正式检查达到“系统预审通过”，才能由学院通过并进入教务终审。</p>
         </AppSectionCard>
       </template>
 
@@ -52,6 +52,7 @@
 </template>
 
 <script>
+// 后端门禁：只有最新完整正式 Run 为 SYSTEM_PASSED 才能学院通过并进入教务终审。
 /** 审核批次（/admin/academic-affairs/graduation）：建批次 + 圈定 + 预审 + 历史批次列表（进审核工作台）。 */
 import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'

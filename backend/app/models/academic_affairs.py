@@ -516,6 +516,7 @@ class AaGradeTask(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_grade_task"
     __table_args__ = (
         UniqueConstraint("tenant_id", "teaching_task_id", name="uk_aa_grade_task_tt"),
+        Index("ix_aa_grade_task_deadline", "tenant_id", "status", "deadline_at"),
     )
 
     teaching_task_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
@@ -539,6 +540,8 @@ class AaGradeTask(PKMixin, TenantMixin, CommonMixin, Base):
     academic_reviewer_id: Mapped[int | None] = mapped_column(BigInteger)
     return_reason: Mapped[str | None] = mapped_column(String(500))
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime)
+    deadline_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class AaGradeRecord(PKMixin, TenantMixin, CommonMixin, Base):

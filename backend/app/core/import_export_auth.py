@@ -26,8 +26,14 @@ DOMAIN_AUTH: dict[str, DomainAuth] = {
     ),
     "orientation": DomainAuth(
         "orientation", "orientation",
-        "orientation.import", "orientation.export", "orientation.export",
+        "studentAffairs.orientation.import", "studentAffairs.orientation.export",
+        "studentAffairs.orientation.export",
         "ORIENTATION",
+    ),
+    "dorm": DomainAuth(
+        "dorm", "studentAffairs",
+        "studentAffairs.dorm.resource.manage", "studentAffairs.dorm.export",
+        "studentAffairs.dorm.export", "DORM_RESOURCE",
     ),
     "campus-service": DomainAuth(
         "campus-service", "campusService",

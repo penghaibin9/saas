@@ -219,7 +219,7 @@ def _grant_assignment_in_db(
 
     link = db.scalars(select(UserRole).where(
         UserRole.tenant_id == tenant_id, UserRole.user_id == account.id,
-        UserRole.role_id == role.id, UserRole.is_deleted.is_(False)).with_for_update()).first()
+        UserRole.role_id == role.id).with_for_update()).first()
     if link is None:
         link = UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role.id, status="ACTIVE")
         db.add(link)
@@ -231,8 +231,7 @@ def _grant_assignment_in_db(
 
     validity = db.scalars(select(RoleAssignmentValidity).where(
         RoleAssignmentValidity.tenant_id == tenant_id,
-        RoleAssignmentValidity.user_role_id == link.id,
-        RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
+        RoleAssignmentValidity.user_role_id == link.id).with_for_update()).first()
     if validity is None:
         validity = RoleAssignmentValidity(
             tenant_id=tenant_id, user_role_id=int(link.id), user_id=int(account.id),
@@ -242,6 +241,7 @@ def _grant_assignment_in_db(
             created_by=_actor_id(actor), updated_by=_actor_id(actor))
         db.add(validity)
     else:
+        validity.is_deleted = False
         validity.effective_at = start
         validity.expires_at = end
         validity.source_type = source_type
@@ -306,6 +306,132 @@ def grant_assignment(user_id: int, role_code: str, *, reason: str,
 
     _invalidate({int(user_id)}, tid)
     return get_assignment(assignment_id, tenant_id=tid)
+
+
+def batch_grant_assignments(user_ids: list[Any], role_code: str, *, reason: str,
+                            effective_at: Any = None, expires_at: Any = None,
+                            source_type: str = SOURCE_MANUAL,
+                            tenant_id: int | None = None,
+                            user: dict | None = None) -> dict:
+    """按角色批量授予成员；预检、写入和关键审计必须同一事务。"""
+    normalized_ids: list[int] = []
+    for raw in user_ids or []:
+        value = str(raw or "").strip()
+        if not value.isdigit() or int(value) <= 0:
+            raise AppException("VALIDATION_ERROR", "userIds 必须全部是有效账号主键")
+        uid = int(value)
+        if uid not in normalized_ids:
+            normalized_ids.append(uid)
+    if not normalized_ids:
+        raise AppException("VALIDATION_ERROR", "至少选择一位老师")
+    if len(normalized_ids) > 100:
+        raise AppException("VALIDATION_ERROR", "单次最多添加 100 位老师")
+
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "授予原因不少于 5 个字")
+    tid = _tid(tenant_id)
+    start = _parse_dt(effective_at, "effectiveAt") or _now()
+    end = _parse_dt(expires_at, "expiresAt")
+    if end is not None and end <= start:
+        raise AppException("VALIDATION_ERROR", "到期时间必须晚于生效时间")
+
+    from app.models import User, UserRole
+
+    db = get_sessionmaker()()
+    added_ids: list[int] = []
+    skipped_ids: list[int] = []
+    try:
+        role = _role_row(db, tid, str(role_code or "").strip().upper())
+        if str(role.status or "").upper() not in ("ACTIVE", "ENABLED"):
+            raise AppException("VALIDATION_ERROR", "角色已停用，不能继续添加成员")
+        _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
+
+        accounts = list(db.scalars(select(User).where(
+            User.tenant_id == tid,
+            User.id.in_(normalized_ids),
+            User.is_deleted.is_(False),
+        ).with_for_update()).all())
+        by_id = {int(account.id): account for account in accounts}
+        missing = [uid for uid in normalized_ids if uid not in by_id]
+        if missing:
+            raise AppException("DATA_NOT_FOUND", "包含不存在或不属于当前学校的账号")
+        invalid = [uid for uid, account in by_id.items()
+                   if str(account.user_type or "").upper() == "STUDENT"
+                   or str(account.status or "").upper() != "ACTIVE"]
+        if invalid:
+            raise AppException("VALIDATION_ERROR", "只能添加启用中的教职工账号")
+
+        active_ids = set(db.scalars(select(UserRole.user_id).where(
+            UserRole.tenant_id == tid,
+            UserRole.role_id == int(role.id),
+            UserRole.user_id.in_(normalized_ids),
+            UserRole.status == VALIDITY_ACTIVE,
+            UserRole.is_deleted.is_(False),
+        )).all())
+        skipped_ids = [uid for uid in normalized_ids if uid in active_ids]
+
+        assignment_ids: list[int] = []
+        for uid in normalized_ids:
+            if uid in active_ids:
+                continue
+            validity, _, _ = _grant_assignment_in_db(
+                db,
+                user_id=uid,
+                role_code=role.role_code,
+                reason=reason_text,
+                start=start,
+                end=end,
+                source_type=source_type,
+                source_id=None,
+                tenant_id=tid,
+                actor=user,
+            )
+            added_ids.append(uid)
+            assignment_ids.append(int(validity.id))
+
+        if added_ids:
+            from app.services import audit_log
+
+            audit_log.record_critical_in_session(
+                db,
+                "ROLE_ASSIGNMENT_GRANT",
+                f"role:{int(role.id)}:members",
+                detail={
+                    "batch": True,
+                    "roleId": int(role.id),
+                    "roleCode": role.role_code,
+                    "requestedCount": len(normalized_ids),
+                    "addedCount": len(added_ids),
+                    "skippedCount": len(skipped_ids),
+                    "addedUserIds": added_ids,
+                    "assignmentIds": assignment_ids,
+                    "reason": reason_text,
+                    "effectiveAt": str(start),
+                    "expiresAt": str(end or ""),
+                    "sourceType": source_type,
+                    "moduleCode": "systemAdmin",
+                },
+                tenant_id=tid,
+                resource_id=str(role.id),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    if added_ids:
+        _invalidate(set(added_ids), tid)
+    return {
+        "roleCode": str(role_code or "").strip().upper(),
+        "requestedCount": len(normalized_ids),
+        "addedCount": len(added_ids),
+        "skippedCount": len(skipped_ids),
+        "addedUserIds": [str(uid) for uid in added_ids],
+        "skippedUserIds": [str(uid) for uid in skipped_ids],
+    }
 
 
 def _require_expected_version(expected_version: int | None, *, operation: str) -> int:

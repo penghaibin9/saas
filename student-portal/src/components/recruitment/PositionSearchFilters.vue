@@ -6,6 +6,7 @@
         <input
           :value="draft.keyword"
           type="search"
+          aria-label="搜索岗位、企业、地点"
           placeholder="搜索岗位、企业、地点"
           @input="onKeywordInput"
           @keydown.enter.prevent="flushKeyword"
@@ -21,16 +22,16 @@
     </div>
 
     <div class="quick-filters">
-      <input v-model.trim="draft.city" class="filter-control" placeholder="城市" @change="emitSearch" />
-      <select v-model="draft.majorMatched" class="filter-control" @change="emitSearch">
+      <input v-model.trim="draft.city" class="filter-control" aria-label="城市" placeholder="城市" @change="emitSearch" />
+      <select v-model="draft.majorMatched" class="filter-control" aria-label="专业匹配" @change="emitSearch">
         <option value="">专业匹配</option>
         <option value="true">仅看匹配</option>
       </select>
-      <input v-model.trim="draft.remuneration" class="filter-control" placeholder="最低薪资" inputmode="numeric" @change="emitSearch" />
-      <select v-model="draft.accommodation" class="filter-control" @change="emitSearch">
+      <input v-model.trim="draft.remuneration" class="filter-control" aria-label="最低薪资" placeholder="最低薪资" inputmode="numeric" @change="emitSearch" />
+      <select v-model="draft.accommodation" class="filter-control" aria-label="住宿" @change="emitSearch">
         <option value="">住宿</option><option value="true">提供住宿</option><option value="false">不提供</option>
       </select>
-      <select v-model="draft.meal" class="filter-control" @change="emitSearch">
+      <select v-model="draft.meal" class="filter-control" aria-label="餐食" @change="emitSearch">
         <option value="">餐食</option><option value="true">提供餐食</option><option value="false">不提供</option>
       </select>
       <button type="button" class="more-button" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">
@@ -40,14 +41,14 @@
     </div>
 
     <div v-if="moreOpen" class="more-filters">
-      <input v-model.trim="draft.companyId" class="filter-control" placeholder="企业" @change="emitSearch" />
-      <input v-model.trim="draft.industry" class="filter-control" placeholder="行业" @change="emitSearch" />
-      <input v-model.trim="draft.scale" class="filter-control" placeholder="企业规模" @change="emitSearch" />
-      <select v-model="draft.nightShift" class="filter-control" @change="emitSearch">
+      <input v-model.trim="draft.companyId" class="filter-control" aria-label="企业编号" placeholder="企业编号" @change="emitSearch" />
+      <input v-model.trim="draft.industry" class="filter-control" aria-label="行业" placeholder="行业" @change="emitSearch" />
+      <input v-model.trim="draft.scale" class="filter-control" aria-label="企业规模" placeholder="企业规模" @change="emitSearch" />
+      <select v-model="draft.nightShift" class="filter-control" aria-label="夜班" @change="emitSearch">
         <option value="">夜班</option><option value="false">无夜班</option><option value="true">含夜班</option>
       </select>
-      <input v-model.trim="draft.weeklyHours" class="filter-control" placeholder="周工时上限" inputmode="numeric" @change="emitSearch" />
-      <input v-model.trim="draft.remaining" class="filter-control" placeholder="最低剩余名额" inputmode="numeric" @change="emitSearch" />
+      <input v-model.trim="draft.weeklyHours" class="filter-control" aria-label="周工时上限" placeholder="周工时上限" inputmode="numeric" @change="emitSearch" />
+      <input v-model.trim="draft.remaining" class="filter-control" aria-label="最低剩余名额" placeholder="最低剩余名额" inputmode="numeric" @change="emitSearch" />
       <AppDatePicker v-model="draft.publishedFrom" class="filter-control" aria-label="发布时间起" @change="emitSearch" />
     </div>
   </section>
@@ -60,10 +61,18 @@ import AppDatePicker from '../AppDatePicker.vue'
 const props = defineProps({ modelValue: { type: Object, required: true } })
 const emit = defineEmits(['update:modelValue', 'search'])
 const moreOpen = ref(false)
-const draft = reactive({ ...props.modelValue })
+const emptyFilters = () => ({
+  page: 1, pageSize: 20, keyword: '', city: '', companyId: '', accommodation: '', meal: '',
+  sort: 'RECOMMENDED', industry: '', scale: '', nightShift: '', weeklyHours: '', remaining: '',
+  publishedFrom: '', majorMatched: '', remuneration: ''
+})
+const draft = reactive({ ...emptyFilters(), ...props.modelValue })
 let keywordTimer = null
 
-watch(() => props.modelValue, (value) => Object.assign(draft, value || {}), { deep: true })
+watch(() => props.modelValue, (value) => {
+  clearTimeout(keywordTimer)
+  Object.assign(draft, emptyFilters(), value || {})
+}, { deep: true })
 
 const MORE_KEYS = ['companyId', 'industry', 'scale', 'nightShift', 'weeklyHours', 'remaining', 'publishedFrom']
 const activeMoreCount = computed(() => MORE_KEYS.filter((key) => draft[key] !== '' && draft[key] !== null && draft[key] !== undefined).length)
@@ -91,11 +100,7 @@ function clearKeyword() {
   emitSearch()
 }
 function reset() {
-  Object.assign(draft, {
-    page: 1, pageSize: 20, keyword: '', city: '', companyId: '', accommodation: '', meal: '',
-    sort: 'RECOMMENDED', industry: '', scale: '', nightShift: '', weeklyHours: '', remaining: '',
-    publishedFrom: '', majorMatched: '', remuneration: ''
-  })
+  Object.assign(draft, emptyFilters())
   emitSearch()
 }
 

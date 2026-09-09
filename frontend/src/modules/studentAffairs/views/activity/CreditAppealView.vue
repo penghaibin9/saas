@@ -1,49 +1,15 @@
 <template>
   <AppPageShell
     title="第二课堂积分申诉"
-    subtitle="学生对二课学时缺记/记错提出申诉；通过会写入正式积分台账，必须核对主张类型、数值和理由。"
+    subtitle="待审申诉与积分入账"
     role-name="团委 / 学工处"
     data-scope-name="按数据范围（辅导员限本班）"
     watermark-purpose="第二课堂积分申诉"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载申诉..." @retry="load" @back="$router.push('/admin/student-affairs/activity')">
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">积分申诉复核</span>
-          <h3 class="sa-summary-strip__title">先核对申诉类型、主张数值和事实理由，再决定是否写入正式台账</h3>
-          <p class="sa-summary-strip__text">“缺记”补录缺失值，“记错”用于更正已有记录。待审核记录是本页首要处理事项。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" @click="openForm">代录申诉</AppPermissionButton>
-        </div>
-      </div>
-
-      <div class="sa-workflow-strip" aria-label="积分申诉流程">
-        <div class="sa-workflow-step" data-step="1">核对学生、申诉类型和积分项目</div>
-        <div class="sa-workflow-step" data-step="2">核验主张数值与事实理由</div>
-        <div class="sa-workflow-step" data-step="3">通过后写入正式积分台账</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics"><AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" /></div>
-      </div>
-
-      <AppSectionCard v-if="formVisible" class="sa-inline-workspace" title="提交积分申诉">
-        <p class="ca-form-hint">代录前请确认学生已有线下申请材料。主张数值和理由会直接进入后续复核依据。</p>
-        <div class="ca-grid">
-          <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
-          <label class="ca-field"><span>类型</span><AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
-          <label class="ca-field"><span>积分类型</span><AppSelect v-model="form.claimCreditType" :options="CTYPE_OPTIONS" placeholder="" /></label>
-          <label class="ca-field"><span>主张数值 *（0.01-9999.99）</span><AppNumberInput v-model="form.claimValue" :min="0.01" :max="9999.99" :step="0.01" /></label>
-          <label class="ca-field ca-field--wide"><span>申诉理由 *（5-1000字）</span><AppTextInput v-model="form.reason" :maxlength="1000" /></label>
-        </div>
-        <p class="ca-help">“记错”应关联已有积分记录；“缺记”可不指定活动，但必须填写明确主张数值和事实理由。</p>
-        <p v-if="form.error" class="ca-error">{{ form.error }}</p>
-        <div class="ca-actions"><button type="button" class="ca-btn" :disabled="saving" @click="closeForm">取消</button><AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" :disabled="!formValid" @click="save">提交</AppPermissionButton></div>
-      </AppSectionCard>
 
       <AppSectionCard title="申诉记录">
-        <p class="ca-section-hint">优先处理“待审核”。通过会影响正式积分台账，驳回必须填写可回看的复核意见。</p>
         <div class="ca-filters"><button v-for="f in statusFilters" :key="f.key" type="button" class="ca-chip" :class="{ 'is-on': activeStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button></div>
         <DataTable v-if="items.length || pagination.total > 0" :columns="appealColumns" :rows="items" row-key="appealId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo || '' }}</div></template>
@@ -62,6 +28,22 @@
         <p v-else class="sa-empty">当前筛选下暂无积分申诉记录。</p>
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="代录积分申诉" subtitle="请依据学生已提交的线下材料录入" mode="modal" size="large">
+      <div class="ca-grid">
+        <div class="ca-field"><span>学生 *</span><AppStudentPicker v-model="form.studentId" placeholder="按姓名 / 学号搜索学生" /></div>
+        <label class="ca-field"><span>类型</span><AppSelect v-model="form.appealType" :options="APPEAL_TYPE_OPTIONS" placeholder="" /></label>
+        <label class="ca-field"><span>积分类型</span><AppSelect v-model="form.claimCreditType" :options="CTYPE_OPTIONS" placeholder="" /></label>
+        <label class="ca-field"><span>主张数值 *（0.01-9999.99）</span><AppNumberInput v-model="form.claimValue" :min="0.01" :max="9999.99" :step="0.01" /></label>
+        <label class="ca-field ca-field--wide"><span>申诉理由 *（5-1000字）</span><AppTextInput v-model="form.reason" :maxlength="1000" /></label>
+      </div>
+      <p class="ca-help">“记错”关联已有积分记录；“缺记”可不指定活动。</p>
+      <p v-if="form.error" class="ca-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="closeForm">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.activity.create')" code="studentAffairs.activity.create" :loading="saving" :disabled="!formValid" @click="save">提交申诉</AppPermissionButton>
+      </template>
+    </AppDrawer>
 
     <AppConfirmDialog
       v-model:visible="approveDlg.visible"
@@ -87,10 +69,11 @@
 
 <script>
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
+  AppConfirmDialog, AppGlobalState, AppNumberInput, AppPageShell, AppPermissionButton,
   AppSectionCard, AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -109,8 +92,8 @@ export default {
   name: 'CreditAppealView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppNumberInput, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
+    AppButton, AppConfirmDialog, AppDrawer, AppGlobalState, AppNumberInput, AppPageShell,
+    AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
     return {
@@ -212,7 +195,7 @@ export default {
       } catch (e) { toast.error(e.message || '审核失败') }
       finally { this.acting = '' }
     },
-    ctypeLabel(t) { return CTYPE[t] || t },
+    ctypeLabel(t) { return CTYPE[t] || (t ? '类型待确认' : '—') },
     statusType(s) { return ({ SUBMITTED: 'warning', APPROVED: 'success', REJECTED: 'default' })[s] || 'default' }
   }
 }

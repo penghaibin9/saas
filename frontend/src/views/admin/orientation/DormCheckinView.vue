@@ -1,8 +1,14 @@
 <template>
-  <ModulePageShell title="宿舍入住确认" subtitle="宿舍分配 · 入住确认 · 异常标记" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="宿舍入住管理">
+  <ModulePageShell flat title="新生住宿核对" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="宿舍入住管理">
+    <template #actions>
+      <AppButton variant="secondary" @click="$router.push({ path: '/admin/student-affairs/dorm/allocation', query: { source: 'orientation' } })">分配计划</AppButton>
+      <AppButton @click="openBatchCheckin">按名单批量入住</AppButton>
+      <AppButton variant="secondary" @click="$router.push('/admin/student-affairs/dorm/resource')">选床办理入住</AppButton>
+    </template>
+    <div v-if="batchId" class="ori-inline-note">当前迎新批次 · {{ batchId }}</div>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
-      <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名新生 · 操作全程留痕`" @action="onToolbar">
+      <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名新生 · 预留与实际入住分别核对`" @action="onToolbar">
         <template #right>
           <ColumnSettings v-model:selected-keys="visibleColumnKeys" :columns="allColumns" />
         </template>
@@ -29,7 +35,7 @@
         <template #cell-room="{ row }">{{ row.room || '未分配' }}</template>
         <template #cell-building="{ row }">{{ row.building || '未分配' }}</template>
         <template #cell-dormStatus="{ row }">
-          <StatusTag :type="dormTagType[row.dormStatus] || 'default'" :label="labelOf('dormStatus', row.dormStatus)" dot />
+          <StatusTag :type="dormTagType[row.dormStatus] || 'default'" :label="row.dormStatusLabel" dot />
         </template>
         <template #cell-checkinTime="{ row }">{{ row.checkinTime || '—' }}</template>
         <template #cell-exceptionNote="{ row }">
@@ -40,32 +46,11 @@
         </template>
       </DataTable>
 
-      <!-- 编辑宿舍信息 -->
-      <EditDrawer
-        v-model:visible="editVisible"
-        :title="editing ? `编辑宿舍信息 · ${editing.name}` : '编辑宿舍信息'"
-        :fields="editFields"
-        :model="editing"
-        :submitting="submitting"
-        @submit="onEditSubmit"
-      />
-
-      <!-- 批量确认入住 -->
-      <AppConfirmDialog
-        v-model:visible="confirmVisible"
-        title="批量确认入住"
-        :message="`确认选中的 ${selected.length} 名新生已完成宿舍入住？（入住异常学生将被跳过）`"
-        type="primary"
-        confirm-text="确认入住"
-        :submitting="submitting"
-        @confirm="onBatchConfirm"
-      />
-
       <!-- 异常标记 -->
       <AppConfirmDialog
         v-model:visible="exceptionVisible"
         title="标记入住异常"
-        :message="exceptionTarget ? `将「${exceptionTarget.name}」的宿舍状态标记为入住异常。` : ''"
+        :message="exceptionTarget ? `将「${exceptionTarget.name}」登记住宿异常，不改变实际入住状态。` : ''"
         type="danger"
         confirm-text="确认标记"
         require-reason
@@ -95,8 +80,8 @@
 /** 页面 7：/admin/orientation/dorm 宿舍入住确认（查看 / 编辑宿舍 / 批量确认 / 异常标记 / 导出 / 留痕）。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
-import { AppDrawer } from '@/components/ui'
-import { TableActionColumn, BatchActionBar, EditDrawer, ExportDialog, AuditTrailPanel, ColumnSettings, NoPermissionState } from '@/modules/orientation/components'
+import { AppDrawer, AppButton } from '@/components/ui'
+import { TableActionColumn, BatchActionBar, ExportDialog, AuditTrailPanel, ColumnSettings, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { DORM_TAG_TYPE, toLabelMap } from '@/modules/orientation/constants/orientation.constants'
 import { toast } from '@/utils/toast'
@@ -118,7 +103,7 @@ export default {
     AppDrawer,
     TableActionColumn,
     BatchActionBar,
-    EditDrawer,
+    AppButton,
     ExportDialog,
     AuditTrailPanel,
     ColumnSettings,
@@ -127,7 +112,7 @@ export default {
   data() {
     return {
       ctx: null,
-      loading: true,
+      loading: true, requestSequence: 0,
       error: '',
       submitting: false,
       rows: [],
@@ -154,6 +139,7 @@ export default {
     }
   },
   computed: {
+    batchId() { return String(this.$route.query.batchId || '') },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -173,7 +159,7 @@ export default {
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 房间号' },
-        { key: 'dormStatus', label: '入住状态', type: 'select', options: this.statusOptions.dormStatus || [] },
+        { key: 'dormStatus', label: '入住状态', type: 'select', options: [{ value: 'UNASSIGNED', label: '未分配' }, { value: 'ASSIGNED', label: '已预留 · 待入住' }, { value: 'CHECKED_IN', label: '已入住' }, { value: 'EXCEPTION', label: '住宿待核查' }] },
         { key: 'building', label: '楼栋', type: 'select', options: this.filterOptions.buildings || [] }
       ]
     },
@@ -188,7 +174,7 @@ export default {
       ].filter(Boolean)
     },
     batchBarActions() {
-      return this.batchDefs
+      return this.batchDefs.filter(b => b.key !== 'batchConfirm')
         .map((b) => {
           const p = this.perms[b.permission]
           if (p && !p.visible) return null
@@ -196,31 +182,16 @@ export default {
         })
         .filter(Boolean)
     },
-    editFields() {
-      return [
-        {
-          key: 'building',
-          label: '楼栋',
-          type: 'select',
-          required: true,
-          options: (this.filterOptions.buildings || []).map((b) => ({ value: b.label, label: b.label }))
-        },
-        { key: 'room', label: '房间 / 床位', type: 'text', required: true, placeholder: '如 1-302-2' },
-        {
-          key: 'dormStatus',
-          label: '入住状态',
-          type: 'select',
-          options: this.statusOptions.dormStatus || []
-        }
-      ]
-    }
+
   },
   async created() {
     await this.init()
   },
+  watch: { batchId() { this.page = 1; this.load() } },
   methods: {
+    openBatchCheckin() { return this.$router.push({path:'/admin/student-affairs/dorm/checkin',query:{workspace:'batch',...(this.batchId ? {orientationBatchId:this.batchId} : {})}}) },
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     async init() {
       const [ctx, status, filter, cols, batch, exp] = await Promise.all([
@@ -243,19 +214,21 @@ export default {
       await this.load()
     },
     async load() {
+      const sequence = ++this.requestSequence
       this.loading = true
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getDormitoryCheckinList({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getDormitoryCheckinList({ ...this.filters, ...(this.batchId ? {batchId:this.batchId} : {}), page: this.page, pageSize: this.pageSize })
+        if (sequence !== this.requestSequence) return
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
         } else this.error = res.message
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (sequence === this.requestSequence) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (sequence === this.requestSequence) this.loading = false
       }
     },
     search() {
@@ -272,11 +245,10 @@ export default {
       this.load()
     },
     rowActions(row) {
-      const edit = this.perms['orientation.dorm.edit']
       const mark = this.perms['orientation.dorm.markException']
       return [
         { key: 'view', label: '入住信息' },
-        { key: 'edit', label: '编辑宿舍', disabled: edit ? !edit.allowed : false, disabledReason: edit?.reason },
+        { key: 'housing', label: '选床入住', disabled: row.dormStatus === 'CHECKED_IN', disabledReason: '已入住，如需更换床位请办理调宿' },
         {
           key: 'exception',
           label: '异常标记',
@@ -288,10 +260,7 @@ export default {
     },
     onRowAction(key, row) {
       if (key === 'view') this.$router.push(`/admin/orientation/students/${row.id}`)
-      if (key === 'edit') {
-        this.editing = row
-        this.editVisible = true
-      }
+      if (key === 'housing') this.$router.push({ path: '/admin/student-affairs/dorm/resource', query: row.bedId ? { buildingId: row.buildingId, roomId: row.roomId, bedId: row.bedId } : {} })
       if (key === 'exception') {
         this.exceptionTarget = row
         this.exceptionVisible = true
@@ -308,35 +277,7 @@ export default {
     },
     onBatch(key) {
       if (!this.selected.length) return
-      if (key === 'batchConfirm') this.confirmVisible = true
       if (key === 'batchExport') this.exportVisible = true
-    },
-    async onBatchConfirm() {
-      this.submitting = true
-      try {
-        const res = await api.batchConfirmCheckin(this.selected)
-        if (res.code === 0) {
-          toast.success(`已批量确认 ${res.data.count} 名新生入住，操作已留痕`)
-          this.confirmVisible = false
-          this.load()
-        } else toast.error(res.message)
-      } finally {
-        this.submitting = false
-      }
-    },
-    async onEditSubmit(form) {
-      if (!this.editing) return
-      this.submitting = true
-      try {
-        const res = await api.updateDormInfo(this.editing.id, form)
-        if (res.code === 0) {
-          toast.success('宿舍信息已更新，已写入留痕')
-          this.editVisible = false
-          this.load()
-        } else toast.error(res.message)
-      } finally {
-        this.submitting = false
-      }
     },
     async onExceptionConfirm({ reason }) {
       if (!this.exceptionTarget) return

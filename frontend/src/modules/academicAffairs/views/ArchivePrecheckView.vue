@@ -59,7 +59,7 @@
         <article :class="{ 'is-risk': blockedDomains > 0 }">
           <span>阻断 / 待治理域</span>
           <strong>{{ blockedDomains }}</strong>
-          <small>{{ blockedDomains ? 'BLOCKED 与 UNKNOWN 均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
+          <small>{{ blockedDomains ? '已阻断与待治理的数据均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
         </article>
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
@@ -73,7 +73,7 @@
           <div>
             <span class="aapc-eyebrow">优先处理</span>
             <h3>归档阻断 / 待治理域</h3>
-            <p>BLOCKED 是已知业务阻断，UNKNOWN 是证据不足待治理；两者都不得绿色放行，处理后再重新检查。</p>
+            <p>“已阻断”表示存在明确业务阻断，“待治理”表示证据不足；两者都不能放行，处理后请重新检查。</p>
           </div>
           <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待治理域</span>
         </header>
@@ -118,7 +118,7 @@
           <div>
             <span class="aapc-eyebrow">非阻断证据</span>
             <h3>已满足门禁的业务域</h3>
-            <p>PASS 表示已证明完成；NOT_APPLICABLE 表示本学期明确不适用。两者均非阻断，但不得混成同一个“通过”。</p>
+            <p>“已通过”表示已有完成证据，“不适用”表示本学期明确无需检查。两者均非阻断，但会分别展示。</p>
           </div>
           <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
         </header>
@@ -184,6 +184,8 @@ const FALLBACK_ROUTE = {
   GRADUATION: '/admin/academic-affairs/graduation/audit-console'
 }
 
+// 后端状态语义约束：UNKNOWN 不会被当成 PASS；页面只展示对应中文含义。
+// 后端归档门禁：BLOCKED 与 UNKNOWN 均不得进入正式归档。
 export default {
   name: 'ArchivePrecheckView',
   components: {
@@ -224,7 +226,7 @@ export default {
       if (this.overallResult === 'PASS') {
         return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
       }
-      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；UNKNOWN 不会被当成 PASS，本页不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；待治理状态不会被当作已通过，本页不写入归档事实。`
     },
     nextActionText() {
       if (!this.firstBlockingDomain) return '进入归档批次继续正式归档流程'

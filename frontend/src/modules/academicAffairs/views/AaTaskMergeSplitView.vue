@@ -128,7 +128,7 @@ export default {
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
     taskColor,
-    statusLabel(s) { return TASK_STATUS[s] || s || '' },
+    statusLabel(s) { return TASK_STATUS[s] || (s ? '状态待确认' : '') },
     canSplit(row) { return PRE_CONFIRM.includes(row.status) },
     async load() {
       this.loading = true

@@ -1,0 +1,3376 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "sources": [
+    "frontend/src/modules/internship/routes.js",
+    "student-portal/src/router/index.js",
+    "enterprise-portal/src/router/index.js"
+  ],
+  "staffPcRoutes": [
+    {
+      "path": "/admin/internship",
+      "localPath": "/admin/internship",
+      "name": null,
+      "component": "@/modules/internship/views/AdminInternshipLayout.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP"
+      }
+    },
+    {
+      "path": "/admin/internship",
+      "localPath": "",
+      "name": "internship-dashboard",
+      "component": "@/modules/internship/views/InternshipDashboardView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "WORKBENCH",
+        "title": "DASHBOARD",
+        "requiresAuth": true,
+        "permissionKey": "internship.dashboard.view"
+      }
+    },
+    {
+      "path": "/admin/internship/workbench",
+      "localPath": "workbench",
+      "name": "internship-workbench",
+      "component": null,
+      "redirect": "/admin/internship",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/batch-rules",
+      "localPath": "batch-rules",
+      "name": "internship-batch-rules",
+      "component": null,
+      "redirect": "/admin/internship/batches?panel=list",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/batches",
+      "localPath": "batches",
+      "name": "internship-batches",
+      "component": "@/modules/internship/views/InternshipBatchListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "BATCH_RULES",
+        "title": "BATCH_RULES",
+        "requiresAuth": true,
+        "permissionKey": "internship.batch.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/batches/new",
+      "localPath": "batches/new",
+      "name": "internship-batch-new",
+      "component": "@/modules/internship/views/BatchFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "BATCH_RULES",
+        "title": "新建实习批次",
+        "requiresAuth": true,
+        "permissionKey": "internship.batch.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/batches/:id/edit",
+      "localPath": "batches/:id/edit",
+      "name": "internship-batch-edit",
+      "component": "@/modules/internship/views/BatchFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "BATCH_RULES",
+        "title": "编辑实习批次",
+        "requiresAuth": true,
+        "permissionKey": "internship.batch.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/batches/:id",
+      "localPath": "batches/:id",
+      "name": "internship-batch-detail",
+      "component": "@/modules/internship/views/BatchDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "BATCH_RULES",
+        "title": "批次详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.batch.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/students",
+      "localPath": "students",
+      "name": "internship-students",
+      "component": "@/modules/internship/views/InternshipStudentListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "STUDENTS",
+        "title": "STUDENTS",
+        "requiresAuth": true,
+        "permissionKey": "internship.student.view"
+      }
+    },
+    {
+      "path": "/admin/internship/assignment-logs",
+      "localPath": "assignment-logs",
+      "name": "internship-assignment-logs",
+      "component": "@/modules/internship/views/AssignmentLogView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "MATCH_ASSIGN",
+        "title": "分配日志",
+        "requiresAuth": true,
+        "permissionKey": "internship.match.log.view"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprise-position",
+      "localPath": "enterprise-position",
+      "name": "internship-enterprise-position",
+      "component": null,
+      "redirect": "/admin/internship/enterprises?panel=list",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/match-assign",
+      "localPath": "match-assign",
+      "name": "internship-match-assign",
+      "component": null,
+      "redirect": "/admin/internship/match?panel=intention",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/apply-agreement",
+      "localPath": "apply-agreement",
+      "name": "internship-apply-agreement",
+      "component": null,
+      "redirect": "/admin/internship/agreements",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/students/:id",
+      "localPath": "students/:id",
+      "name": "internship-student-detail",
+      "component": "@/modules/internship/views/InternshipStudentDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "STUDENTS",
+        "title": "实习学生详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.student.view"
+      }
+    },
+    {
+      "path": "/admin/internship/attendance",
+      "localPath": "attendance",
+      "name": "internship-attendance",
+      "component": "@/modules/internship/views/AttendanceView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ATTENDANCE_LEAVE",
+        "title": "ATTENDANCE_LEAVE",
+        "requiresAuth": true,
+        "permissionKey": "internship.attendance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/attendance-leave",
+      "localPath": "attendance-leave",
+      "name": "internship-attendance-leave",
+      "component": null,
+      "redirect": "/admin/internship/attendance",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/exceptions",
+      "localPath": "exceptions",
+      "name": "internship-exceptions",
+      "component": "@/modules/internship/views/AttendanceExceptionListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ATTENDANCE_LEAVE",
+        "title": "ATTENDANCE_EXCEPTION",
+        "requiresAuth": true,
+        "permissionKey": "internship.attendance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/exceptions/:id",
+      "localPath": "exceptions/:id",
+      "name": "internship-exception-detail",
+      "component": "@/modules/internship/views/AttendanceExceptionDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ATTENDANCE_LEAVE",
+        "title": "打卡异常处理",
+        "requiresAuth": true,
+        "permissionKey": "internship.attendance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/guidance",
+      "localPath": "guidance",
+      "name": "internship-guidance",
+      "component": "@/modules/internship/views/GuidanceVisitView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "GUIDANCE_VISIT",
+        "title": "GUIDANCE_VISIT",
+        "requiresAuth": true,
+        "permissionKey": "internship.guidance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/guidance/new",
+      "localPath": "guidance/new",
+      "name": "internship-guidance-new",
+      "component": "@/modules/internship/views/GuidanceRecordFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "GUIDANCE_VISIT",
+        "title": "新增指导/巡访记录",
+        "requiresAuth": true,
+        "permissionKey": "internship.guidance.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/guidance-plan",
+      "localPath": "guidance-plan",
+      "name": "internship-guidance-plan",
+      "component": "@/modules/internship/views/GuidancePlanView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "GUIDANCE_VISIT",
+        "title": "指导计划",
+        "requiresAuth": true,
+        "permissionKey": "internship.guidance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/weekly-task",
+      "localPath": "weekly-task",
+      "name": "internship-weekly-task",
+      "component": null,
+      "redirect": "/admin/internship/reports",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/guidance-visit",
+      "localPath": "guidance-visit",
+      "name": "internship-guidance-visit",
+      "component": null,
+      "redirect": "/admin/internship/guidance",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/reports",
+      "localPath": "reports",
+      "name": "internship-reports",
+      "component": "@/modules/internship/views/WeeklyReportListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "WEEKLY_TASK",
+        "title": "WEEKLY_TASK",
+        "requiresAuth": true,
+        "permissionKey": "internship.report.view"
+      }
+    },
+    {
+      "path": "/admin/internship/reports/:id",
+      "localPath": "reports/:id",
+      "name": "internship-report-detail",
+      "component": "@/modules/internship/views/WeeklyReportDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "WEEKLY_TASK",
+        "title": "周报批阅详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.report.view"
+      }
+    },
+    {
+      "path": "/admin/internship/process-reports/:id",
+      "localPath": "process-reports/:id",
+      "name": "internship-process-report-detail",
+      "component": "@/modules/internship/views/ProcessReportDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "WEEKLY_TASK",
+        "title": "过程报告批阅",
+        "requiresAuth": true,
+        "permissionKey": "internship.report.view"
+      }
+    },
+    {
+      "path": "/admin/internship/changes",
+      "localPath": "changes",
+      "name": "internship-changes",
+      "component": "@/modules/internship/views/ChangeRequestListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "MATCH_ASSIGN",
+        "title": "CHANGE_LEDGER",
+        "requiresAuth": true,
+        "permissionKey": "internship.change.view"
+      }
+    },
+    {
+      "path": "/admin/internship/plans",
+      "localPath": "plans",
+      "name": "internship-plans",
+      "component": "@/modules/internship/views/InternshipPlanView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "WEEKLY_TASK",
+        "title": "实习计划书",
+        "requiresAuth": true,
+        "permissionKey": "internship.plan.view"
+      }
+    },
+    {
+      "path": "/admin/internship/insurance",
+      "localPath": "insurance",
+      "name": "internship-insurance",
+      "component": "@/modules/internship/views/InsuranceVerifyView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "STUDENTS",
+        "title": "实习保险核验",
+        "requiresAuth": true,
+        "permissionKey": "internship.insurance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/risks",
+      "localPath": "risks",
+      "name": "internship-risks",
+      "component": "@/modules/internship/views/InternshipRiskView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "RISK",
+        "title": "RISK_BOARD",
+        "requiresAuth": true,
+        "permissionKey": "internship.risk.view"
+      }
+    },
+    {
+      "path": "/admin/internship/risk-disposal",
+      "localPath": "risk-disposal",
+      "name": "internship-risk-disposal",
+      "component": "@/modules/internship/views/RiskDisposalView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "RISK",
+        "title": "RISK",
+        "requiresAuth": true,
+        "permissionKey": "internship.risk.handle"
+      }
+    },
+    {
+      "path": "/admin/internship/leaves",
+      "localPath": "leaves",
+      "name": "internship-leaves",
+      "component": "@/modules/internship/views/LeaveReviewView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ATTENDANCE_LEAVE",
+        "title": "LEAVE_REVIEW",
+        "requiresAuth": true,
+        "permissionKey": "internship.leave.view"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprises",
+      "localPath": "enterprises",
+      "name": "internship-enterprises",
+      "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "ENTERPRISE_LIST",
+        "requiresAuth": true,
+        "permissionKey": "internship.enterprise.view"
+      }
+    },
+    {
+      "path": "/admin/internship/recruitment-campaigns",
+      "localPath": "recruitment-campaigns",
+      "name": "internship-recruitment-campaigns",
+      "component": "@/modules/internship/views/RecruitmentCampaignListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "RECRUITMENT_CAMPAIGN",
+        "requiresAuth": true,
+        "permissionKey": "internship.recruitment.view"
+      }
+    },
+    {
+      "path": "/admin/internship/recruitment-campaigns/:id",
+      "localPath": "recruitment-campaigns/:id",
+      "name": "internship-recruitment-campaign-detail",
+      "component": "@/modules/internship/views/RecruitmentCampaignDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "招聘季详情与参与企业",
+        "requiresAuth": true,
+        "permissionKey": "internship.recruitment.view"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprises/new",
+      "localPath": "enterprises/new",
+      "name": "internship-enterprise-new",
+      "component": "@/modules/internship/views/EnterpriseFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "新增企业",
+        "requiresAuth": true,
+        "permissionKey": "internship.enterprise.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprises/:id/edit",
+      "localPath": "enterprises/:id/edit",
+      "name": "internship-enterprise-edit",
+      "component": "@/modules/internship/views/EnterpriseFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "编辑企业",
+        "requiresAuth": true,
+        "permissionKey": "internship.enterprise.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprises/:id",
+      "localPath": "enterprises/:id",
+      "name": "internship-enterprise-detail",
+      "component": "@/modules/internship/views/InternshipEnterpriseDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "企业详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.enterprise.view"
+      }
+    },
+    {
+      "path": "/admin/internship/positions",
+      "localPath": "positions",
+      "name": "internship-positions",
+      "component": "@/modules/internship/views/InternshipPositionListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "POSITION_LIST",
+        "requiresAuth": true,
+        "permissionKey": "internship.position.view"
+      }
+    },
+    {
+      "path": "/admin/internship/positions/new",
+      "localPath": "positions/new",
+      "name": "internship-position-new",
+      "component": "@/modules/internship/views/PositionFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "新增岗位",
+        "requiresAuth": true,
+        "permissionKey": "internship.position.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/positions/:id/edit",
+      "localPath": "positions/:id/edit",
+      "name": "internship-position-edit",
+      "component": "@/modules/internship/views/PositionFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "编辑岗位",
+        "requiresAuth": true,
+        "permissionKey": "internship.position.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/positions/:id",
+      "localPath": "positions/:id",
+      "name": "internship-position-detail",
+      "component": "@/modules/internship/views/InternshipPositionDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "ENTERPRISE_POSITION",
+        "title": "岗位详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.position.view"
+      }
+    },
+    {
+      "path": "/admin/internship/agreements",
+      "localPath": "agreements",
+      "name": "internship-agreements",
+      "component": "@/modules/internship/views/AgreementView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "AGREEMENT",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.view"
+      }
+    },
+    {
+      "path": "/admin/internship/applications",
+      "localPath": "applications",
+      "name": "internship-applications",
+      "component": "@/modules/internship/views/InternshipApplicationReviewView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "实习申请审核",
+        "requiresAuth": true,
+        "permissionKey": "internship.application.view"
+      }
+    },
+    {
+      "path": "/admin/internship/agreements/:id",
+      "localPath": "agreements/:id",
+      "name": "internship-agreement-detail",
+      "component": "@/modules/internship/views/AgreementDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "三方协议档案",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.view"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprise-evals/new",
+      "localPath": "enterprise-evals/new",
+      "name": "internship-enterprise-eval-new",
+      "component": "@/modules/internship/views/EnterpriseEvalFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EVAL_SCORE",
+        "title": "录入企业评价",
+        "requiresAuth": true,
+        "permissionKey": "internship.eval.enterprise.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/enterprise-evals",
+      "localPath": "enterprise-evals",
+      "name": "internship-enterprise-evals",
+      "component": "@/modules/internship/views/EnterpriseEvalView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EVAL_SCORE",
+        "title": "ENTERPRISE_EVAL",
+        "requiresAuth": true,
+        "permissionKey": "internship.eval.enterprise.view"
+      }
+    },
+    {
+      "path": "/admin/internship/student-evals",
+      "localPath": "student-evals",
+      "name": "internship-student-evals",
+      "component": "@/modules/internship/views/StudentEvalView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EVAL_SCORE",
+        "title": "STUDENT_EVAL",
+        "requiresAuth": true,
+        "permissionKey": "internship.eval.self.view"
+      }
+    },
+    {
+      "path": "/admin/internship/scores",
+      "localPath": "scores",
+      "name": "internship-scores",
+      "component": "@/modules/internship/views/ScoreView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EVAL_SCORE",
+        "title": "SCORE",
+        "requiresAuth": true,
+        "permissionKey": "internship.score.view"
+      }
+    },
+    {
+      "path": "/admin/internship/eval-score",
+      "localPath": "eval-score",
+      "name": "internship-eval-score",
+      "component": null,
+      "redirect": "/admin/internship/scores",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/stats",
+      "localPath": "stats",
+      "name": "internship-stats",
+      "component": "@/modules/internship/views/StatsView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EMPLOYMENT_ARCHIVE",
+        "title": "实习统计",
+        "requiresAuth": true,
+        "permissionKey": "internship.stats.view"
+      }
+    },
+    {
+      "path": "/admin/internship/material-center",
+      "localPath": "material-center",
+      "name": "internship-material-center",
+      "component": "@/modules/internship/views/InternshipMaterialCenterView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EMPLOYMENT_ARCHIVE",
+        "title": "材料与证据中心",
+        "requiresAuth": true,
+        "permissionKey": "internship.archive.view"
+      }
+    },
+    {
+      "path": "/admin/internship/archive",
+      "localPath": "archive",
+      "name": "internship-archive",
+      "component": "@/modules/internship/views/ArchiveView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EMPLOYMENT_ARCHIVE",
+        "title": "实习归档",
+        "requiresAuth": true,
+        "permissionKey": "internship.archive.view"
+      }
+    },
+    {
+      "path": "/admin/internship/compliance",
+      "localPath": "compliance",
+      "name": "internship-compliance",
+      "component": "@/modules/internship/views/InternshipComplianceView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "EMPLOYMENT_ARCHIVE",
+        "title": "合规与监管证据",
+        "requiresAuth": true,
+        "permissionKey": "internship.compliance.view"
+      }
+    },
+    {
+      "path": "/admin/internship/employment-archive-stats",
+      "localPath": "employment-archive-stats",
+      "name": "internship-employment-archive-stats",
+      "component": null,
+      "redirect": "/admin/employment",
+      "meta": {}
+    },
+    {
+      "path": "/admin/internship/agreement-templates/new",
+      "localPath": "agreement-templates/new",
+      "name": "internship-agreement-template-new",
+      "component": "@/modules/internship/views/AgreementTemplateFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "新建协议模板",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.template.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/agreement-templates/:id/edit",
+      "localPath": "agreement-templates/:id/edit",
+      "name": "internship-agreement-template-edit",
+      "component": "@/modules/internship/views/AgreementTemplateFormView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "编辑协议模板",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.template.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/agreement-templates/:id",
+      "localPath": "agreement-templates/:id",
+      "name": "internship-agreement-template-detail",
+      "component": "@/modules/internship/views/AgreementTemplateDetailView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "协议模板详情",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.template.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/agreement-templates",
+      "localPath": "agreement-templates",
+      "name": "internship-agreement-templates",
+      "component": "@/modules/internship/views/InternshipAgreementTemplateListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "APPLY_AGREEMENT",
+        "title": "AGREEMENT_TEMPLATE",
+        "requiresAuth": true,
+        "permissionKey": "internship.agreement.template.manage"
+      }
+    },
+    {
+      "path": "/admin/internship/match",
+      "localPath": "match",
+      "name": "internship-match",
+      "component": "@/modules/internship/views/InternshipMatchListView.vue",
+      "redirect": null,
+      "meta": {
+        "moduleCode": "INTERNSHIP",
+        "navModule": "MATCH_ASSIGN",
+        "title": "MATCH_ASSIGN",
+        "requiresAuth": true,
+        "permissionKey": "internship.match.intention.view"
+      }
+    }
+  ],
+  "studentPcRoutes": [
+    {
+      "path": "/internship",
+      "localPath": "internship",
+      "name": "internship",
+      "component": "../views/internship/InternshipView.vue",
+      "redirect": null,
+      "meta": {
+        "modulePath": "internship"
+      }
+    },
+    {
+      "path": "/internship/selection",
+      "localPath": "internship/selection",
+      "name": "internship-selection",
+      "component": "../views/internship/InternshipSelectionView.vue",
+      "redirect": null,
+      "meta": {
+        "modulePath": "internship"
+      }
+    },
+    {
+      "path": "/internship/selection/company/:companyId",
+      "localPath": "internship/selection/company/:companyId",
+      "name": "internship-selection-company",
+      "component": "../views/internship/EnterprisePublicView.vue",
+      "redirect": null,
+      "meta": {
+        "modulePath": "internship"
+      }
+    },
+    {
+      "path": "/internship/profile",
+      "localPath": "internship/profile",
+      "name": "internship-profile",
+      "component": "../views/internship/InternshipProfileView.vue",
+      "redirect": null,
+      "meta": {
+        "modulePath": "internship"
+      }
+    },
+    {
+      "path": "/internship/compliance",
+      "localPath": "internship/compliance",
+      "name": "internship-compliance",
+      "component": "../views/internship/InternshipComplianceView.vue",
+      "redirect": null,
+      "meta": {
+        "modulePath": "internship"
+      }
+    }
+  ],
+  "enterprisePortalRoutes": [
+    {
+      "path": "/login",
+      "localPath": "/login",
+      "name": "enterprise-login",
+      "component": "../views/EnterpriseLoginView.vue",
+      "redirect": null,
+      "meta": {
+        "public": true
+      }
+    },
+    {
+      "path": "/invite/accept",
+      "localPath": "/invite/accept",
+      "name": "invite-accept",
+      "component": "../views/InviteAcceptView.vue",
+      "redirect": null,
+      "meta": {
+        "public": true
+      }
+    },
+    {
+      "path": "/invite/:token",
+      "localPath": "/invite/:token",
+      "name": null,
+      "component": null,
+      "redirect": "to => ({ path:'/invite/accept', query:{ token:to.params.token, tenantCode:to.query.tenantCode||to.query.tenant } })",
+      "meta": {}
+    },
+    {
+      "path": "/campaign-select",
+      "localPath": "/campaign-select",
+      "name": "campaign-select",
+      "component": "../views/CampaignSelectView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/",
+      "localPath": "/",
+      "name": null,
+      "component": "../layouts/EnterprisePortalLayout.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/",
+      "localPath": "",
+      "name": null,
+      "component": null,
+      "redirect": "/home",
+      "meta": {}
+    },
+    {
+      "path": "/home",
+      "localPath": "home",
+      "name": "enterprise-home",
+      "component": "../views/EnterpriseHomeView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/company",
+      "localPath": "company",
+      "name": "company-profile",
+      "component": "../views/CompanyProfileView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/positions",
+      "localPath": "positions",
+      "name": "position-list",
+      "component": "../views/PositionListView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/positions/new",
+      "localPath": "positions/new",
+      "name": "position-new",
+      "component": "../views/PositionFormView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/positions/:id/edit",
+      "localPath": "positions/:id/edit",
+      "name": "position-edit",
+      "component": "../views/PositionFormView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/applications",
+      "localPath": "applications",
+      "name": "application-list",
+      "component": "../views/ApplicantListView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/applications/:id",
+      "localPath": "applications/:id",
+      "name": "application-detail",
+      "component": "../views/ApplicantListView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/students",
+      "localPath": "students",
+      "name": "internship-students",
+      "component": "../views/InternshipStudentListView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/evaluations",
+      "localPath": "evaluations",
+      "name": "evaluation-tasks",
+      "component": "../views/EvaluationTaskListView.vue",
+      "redirect": null,
+      "meta": {}
+    },
+    {
+      "path": "/:pathMatch(.*)*",
+      "localPath": "/:pathMatch(.*)*",
+      "name": null,
+      "component": null,
+      "redirect": "/home",
+      "meta": {}
+    }
+  ],
+  "menuLandings": [
+    {
+      "workspaceKey": "in-workbench",
+      "label": "今日工作台",
+      "path": "/admin/internship",
+      "targetPathname": "/admin/internship",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship",
+          "localPath": "/admin/internship",
+          "name": null,
+          "component": "@/modules/internship/views/AdminInternshipLayout.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP"
+          }
+        },
+        {
+          "path": "/admin/internship",
+          "localPath": "",
+          "name": "internship-dashboard",
+          "component": "@/modules/internship/views/InternshipDashboardView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WORKBENCH",
+            "title": "DASHBOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.dashboard.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-workbench",
+      "label": "全局趋势 / 统计",
+      "path": "/admin/internship/stats?dimension=trend",
+      "targetPathname": "/admin/internship/stats",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/stats",
+          "localPath": "stats",
+          "name": "internship-stats",
+          "component": "@/modules/internship/views/StatsView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习统计",
+            "requiresAuth": true,
+            "permissionKey": "internship.stats.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-workbench",
+      "label": "当前批次进度",
+      "path": "/admin/internship?panel=batch-progress",
+      "targetPathname": "/admin/internship",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship",
+          "localPath": "/admin/internship",
+          "name": null,
+          "component": "@/modules/internship/views/AdminInternshipLayout.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP"
+          }
+        },
+        {
+          "path": "/admin/internship",
+          "localPath": "",
+          "name": "internship-dashboard",
+          "component": "@/modules/internship/views/InternshipDashboardView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WORKBENCH",
+            "title": "DASHBOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.dashboard.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-workbench",
+      "label": "我的待办",
+      "path": "/admin/internship?panel=todos",
+      "targetPathname": "/admin/internship",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship",
+          "localPath": "/admin/internship",
+          "name": null,
+          "component": "@/modules/internship/views/AdminInternshipLayout.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP"
+          }
+        },
+        {
+          "path": "/admin/internship",
+          "localPath": "",
+          "name": "internship-dashboard",
+          "component": "@/modules/internship/views/InternshipDashboardView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WORKBENCH",
+            "title": "DASHBOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.dashboard.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "批次管理",
+      "path": "/admin/internship/batches?panel=list",
+      "targetPathname": "/admin/internship/batches",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/batches",
+          "localPath": "batches",
+          "name": "internship-batches",
+          "component": "@/modules/internship/views/InternshipBatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "BATCH_RULES",
+            "title": "BATCH_RULES",
+            "requiresAuth": true,
+            "permissionKey": "internship.batch.manage"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "学生管理",
+      "path": "/admin/internship/students?panel=roster",
+      "targetPathname": "/admin/internship/students",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/students",
+          "localPath": "students",
+          "name": "internship-students",
+          "component": "@/modules/internship/views/InternshipStudentListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "STUDENTS",
+            "requiresAuth": true,
+            "permissionKey": "internship.student.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "资格认定",
+      "path": "/admin/internship/students?panel=eligibility",
+      "targetPathname": "/admin/internship/students",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/students",
+          "localPath": "students",
+          "name": "internship-students",
+          "component": "@/modules/internship/views/InternshipStudentListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "STUDENTS",
+            "requiresAuth": true,
+            "permissionKey": "internship.student.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "保险核验",
+      "path": "/admin/internship/insurance",
+      "targetPathname": "/admin/internship/insurance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/insurance",
+          "localPath": "insurance",
+          "name": "internship-insurance",
+          "component": "@/modules/internship/views/InsuranceVerifyView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "实习保险核验",
+            "requiresAuth": true,
+            "permissionKey": "internship.insurance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "批次详情",
+      "path": "/admin/internship/batches?panel=list",
+      "targetPathname": "/admin/internship/batches",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/batches",
+          "localPath": "batches",
+          "name": "internship-batches",
+          "component": "@/modules/internship/views/InternshipBatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "BATCH_RULES",
+            "title": "BATCH_RULES",
+            "requiresAuth": true,
+            "permissionKey": "internship.batch.manage"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "参与学生配置",
+      "path": "/admin/internship/batches?panel=participants",
+      "targetPathname": "/admin/internship/batches",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/batches",
+          "localPath": "batches",
+          "name": "internship-batches",
+          "component": "@/modules/internship/views/InternshipBatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "BATCH_RULES",
+            "title": "BATCH_RULES",
+            "requiresAuth": true,
+            "permissionKey": "internship.batch.manage"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "阶段与规则配置",
+      "path": "/admin/internship/batches?panel=configuration",
+      "targetPathname": "/admin/internship/batches",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/batches",
+          "localPath": "batches",
+          "name": "internship-batches",
+          "component": "@/modules/internship/views/InternshipBatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "BATCH_RULES",
+            "title": "BATCH_RULES",
+            "requiresAuth": true,
+            "permissionKey": "internship.batch.manage"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "学生实习状态",
+      "path": "/admin/internship/students?panel=status",
+      "targetPathname": "/admin/internship/students",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/students",
+          "localPath": "students",
+          "name": "internship-students",
+          "component": "@/modules/internship/views/InternshipStudentListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "STUDENTS",
+            "requiresAuth": true,
+            "permissionKey": "internship.student.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "学生实习详情",
+      "path": "/admin/internship/students?panel=roster",
+      "targetPathname": "/admin/internship/students",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/students",
+          "localPath": "students",
+          "name": "internship-students",
+          "component": "@/modules/internship/views/InternshipStudentListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "STUDENTS",
+            "requiresAuth": true,
+            "permissionKey": "internship.student.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-batch-rules",
+      "label": "学生材料",
+      "path": "/admin/internship/archive?panel=materials",
+      "targetPathname": "/admin/internship/archive",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/archive",
+          "localPath": "archive",
+          "name": "internship-archive",
+          "component": "@/modules/internship/views/ArchiveView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习归档",
+            "requiresAuth": true,
+            "permissionKey": "internship.archive.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业库",
+      "path": "/admin/internship/enterprises?panel=list",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "岗位库",
+      "path": "/admin/internship/positions?panel=list",
+      "targetPathname": "/admin/internship/positions",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/positions",
+          "localPath": "positions",
+          "name": "internship-positions",
+          "component": "@/modules/internship/views/InternshipPositionListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "POSITION_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.position.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "招聘季与企业邀请",
+      "path": "/admin/internship/recruitment-campaigns",
+      "targetPathname": "/admin/internship/recruitment-campaigns",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/recruitment-campaigns",
+          "localPath": "recruitment-campaigns",
+          "name": "internship-recruitment-campaigns",
+          "component": "@/modules/internship/views/RecruitmentCampaignListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "RECRUITMENT_CAMPAIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.recruitment.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业准入审核",
+      "path": "/admin/internship/enterprises?panel=qualification",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业详情",
+      "path": "/admin/internship/enterprises?panel=detail",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业联系人",
+      "path": "/admin/internship/enterprises?panel=contacts",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业导师",
+      "path": "/admin/internship/enterprises?panel=mentor",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "企业黑名单",
+      "path": "/admin/internship/enterprises?panel=blacklist",
+      "targetPathname": "/admin/internship/enterprises",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprises",
+          "localPath": "enterprises",
+          "name": "internship-enterprises",
+          "component": "@/modules/internship/views/InternshipEnterpriseListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "ENTERPRISE_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "岗位详情",
+      "path": "/admin/internship/positions?panel=detail",
+      "targetPathname": "/admin/internship/positions",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/positions",
+          "localPath": "positions",
+          "name": "internship-positions",
+          "component": "@/modules/internship/views/InternshipPositionListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "POSITION_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.position.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "岗位发布",
+      "path": "/admin/internship/positions?panel=publish",
+      "targetPathname": "/admin/internship/positions",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/positions",
+          "localPath": "positions",
+          "name": "internship-positions",
+          "component": "@/modules/internship/views/InternshipPositionListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "POSITION_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.position.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-enterprise-position",
+      "label": "岗位专业匹配",
+      "path": "/admin/internship/positions?panel=requirement",
+      "targetPathname": "/admin/internship/positions",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/positions",
+          "localPath": "positions",
+          "name": "internship-positions",
+          "component": "@/modules/internship/views/InternshipPositionListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ENTERPRISE_POSITION",
+            "title": "POSITION_LIST",
+            "requiresAuth": true,
+            "permissionKey": "internship.position.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "选岗 / 匹配工作台",
+      "path": "/admin/internship/match?panel=intention",
+      "targetPathname": "/admin/internship/match",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "调岗退岗",
+      "path": "/admin/internship/changes?panel=pending",
+      "targetPathname": "/admin/internship/changes",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/changes",
+          "localPath": "changes",
+          "name": "internship-changes",
+          "component": "@/modules/internship/views/ChangeRequestListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "CHANGE_LEDGER",
+            "requiresAuth": true,
+            "permissionKey": "internship.change.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "分配记录",
+      "path": "/admin/internship/assignment-logs",
+      "targetPathname": "/admin/internship/assignment-logs",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/assignment-logs",
+          "localPath": "assignment-logs",
+          "name": "internship-assignment-logs",
+          "component": "@/modules/internship/views/AssignmentLogView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "分配日志",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.log.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "岗位推荐",
+      "path": "/admin/internship/match?panel=recommend",
+      "targetPathname": "/admin/internship/match",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "手动匹配",
+      "path": "/admin/internship/match?panel=manual",
+      "targetPathname": "/admin/internship/match",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "批量匹配",
+      "path": "/admin/internship/match?panel=batch",
+      "targetPathname": "/admin/internship/match",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "匹配冲突",
+      "path": "/admin/internship/match?panel=conflict",
+      "targetPathname": "/admin/internship/match",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "匹配结果",
+      "path": "/admin/internship/match?panel=results",
+      "targetPathname": "/admin/internship/match",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/match",
+          "localPath": "match",
+          "name": "internship-match",
+          "component": "@/modules/internship/views/InternshipMatchListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "MATCH_ASSIGN",
+            "title": "MATCH_ASSIGN",
+            "requiresAuth": true,
+            "permissionKey": "internship.match.intention.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-match-assign",
+      "label": "指导老师分配",
+      "path": "/admin/internship/students?panel=mentor",
+      "targetPathname": "/admin/internship/students",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/students",
+          "localPath": "students",
+          "name": "internship-students",
+          "component": "@/modules/internship/views/InternshipStudentListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "STUDENTS",
+            "title": "STUDENTS",
+            "requiresAuth": true,
+            "permissionKey": "internship.student.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "实习申请审核",
+      "path": "/admin/internship/applications?status=PENDING_REVIEW",
+      "targetPathname": "/admin/internship/applications",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/applications",
+          "localPath": "applications",
+          "name": "internship-applications",
+          "component": "@/modules/internship/views/InternshipApplicationReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "实习申请审核",
+            "requiresAuth": true,
+            "permissionKey": "internship.application.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "三方协议工作台",
+      "path": "/admin/internship/agreements?panel=confirm",
+      "targetPathname": "/admin/internship/agreements",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/agreements",
+          "localPath": "agreements",
+          "name": "internship-agreements",
+          "component": "@/modules/internship/views/AgreementView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "AGREEMENT",
+            "requiresAuth": true,
+            "permissionKey": "internship.agreement.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "自主实习申请",
+      "path": "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+      "targetPathname": "/admin/internship/applications",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/applications",
+          "localPath": "applications",
+          "name": "internship-applications",
+          "component": "@/modules/internship/views/InternshipApplicationReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "实习申请审核",
+            "requiresAuth": true,
+            "permissionKey": "internship.application.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "岗位申请",
+      "path": "/admin/internship/applications?status=PENDING_REVIEW&type=POSITION",
+      "targetPathname": "/admin/internship/applications",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/applications",
+          "localPath": "applications",
+          "name": "internship-applications",
+          "component": "@/modules/internship/views/InternshipApplicationReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "实习申请审核",
+            "requiresAuth": true,
+            "permissionKey": "internship.application.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "审核台账",
+      "path": "/admin/internship/applications?status=ALL",
+      "targetPathname": "/admin/internship/applications",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/applications",
+          "localPath": "applications",
+          "name": "internship-applications",
+          "component": "@/modules/internship/views/InternshipApplicationReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "实习申请审核",
+            "requiresAuth": true,
+            "permissionKey": "internship.application.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "协议模板",
+      "path": "/admin/internship/agreement-templates",
+      "targetPathname": "/admin/internship/agreement-templates",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/agreement-templates",
+          "localPath": "agreement-templates",
+          "name": "internship-agreement-templates",
+          "component": "@/modules/internship/views/InternshipAgreementTemplateListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "AGREEMENT_TEMPLATE",
+            "requiresAuth": true,
+            "permissionKey": "internship.agreement.template.manage"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "协议发起",
+      "path": "/admin/internship/agreements?panel=issue",
+      "targetPathname": "/admin/internship/agreements",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/agreements",
+          "localPath": "agreements",
+          "name": "internship-agreements",
+          "component": "@/modules/internship/views/AgreementView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "AGREEMENT",
+            "requiresAuth": true,
+            "permissionKey": "internship.agreement.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "协议变更",
+      "path": "/admin/internship/agreements?panel=change",
+      "targetPathname": "/admin/internship/agreements",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/agreements",
+          "localPath": "agreements",
+          "name": "internship-agreements",
+          "component": "@/modules/internship/views/AgreementView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "AGREEMENT",
+            "requiresAuth": true,
+            "permissionKey": "internship.agreement.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-apply-agreement",
+      "label": "协议归档",
+      "path": "/admin/internship/agreements?panel=archive",
+      "targetPathname": "/admin/internship/agreements",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/agreements",
+          "localPath": "agreements",
+          "name": "internship-agreements",
+          "component": "@/modules/internship/views/AgreementView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "APPLY_AGREEMENT",
+            "title": "AGREEMENT",
+            "requiresAuth": true,
+            "permissionKey": "internship.agreement.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "考勤工作台",
+      "path": "/admin/internship/attendance?panel=checkins",
+      "targetPathname": "/admin/internship/attendance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/attendance",
+          "localPath": "attendance",
+          "name": "internship-attendance",
+          "component": "@/modules/internship/views/AttendanceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "ATTENDANCE_LEAVE",
+            "requiresAuth": true,
+            "permissionKey": "internship.attendance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "异常核验",
+      "path": "/admin/internship/attendance?panel=exceptions",
+      "targetPathname": "/admin/internship/attendance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/attendance",
+          "localPath": "attendance",
+          "name": "internship-attendance",
+          "component": "@/modules/internship/views/AttendanceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "ATTENDANCE_LEAVE",
+            "requiresAuth": true,
+            "permissionKey": "internship.attendance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "请假审批 / 台账",
+      "path": "/admin/internship/leaves?panel=pending",
+      "targetPathname": "/admin/internship/leaves",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/leaves",
+          "localPath": "leaves",
+          "name": "internship-leaves",
+          "component": "@/modules/internship/views/LeaveReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "LEAVE_REVIEW",
+            "requiresAuth": true,
+            "permissionKey": "internship.leave.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "补卡申请台账",
+      "path": "/admin/internship/attendance?panel=makeup-apply",
+      "targetPathname": "/admin/internship/attendance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/attendance",
+          "localPath": "attendance",
+          "name": "internship-attendance",
+          "component": "@/modules/internship/views/AttendanceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "ATTENDANCE_LEAVE",
+            "requiresAuth": true,
+            "permissionKey": "internship.attendance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "补卡审批",
+      "path": "/admin/internship/attendance?panel=makeup-review",
+      "targetPathname": "/admin/internship/attendance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/attendance",
+          "localPath": "attendance",
+          "name": "internship-attendance",
+          "component": "@/modules/internship/views/AttendanceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "ATTENDANCE_LEAVE",
+            "requiresAuth": true,
+            "permissionKey": "internship.attendance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "连续未打卡",
+      "path": "/admin/internship/exceptions?status=PENDING_HANDLE",
+      "targetPathname": "/admin/internship/exceptions",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/exceptions",
+          "localPath": "exceptions",
+          "name": "internship-exceptions",
+          "component": "@/modules/internship/views/AttendanceExceptionListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "ATTENDANCE_EXCEPTION",
+            "requiresAuth": true,
+            "permissionKey": "internship.attendance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "请假台账",
+      "path": "/admin/internship/leaves?panel=all",
+      "targetPathname": "/admin/internship/leaves",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/leaves",
+          "localPath": "leaves",
+          "name": "internship-leaves",
+          "component": "@/modules/internship/views/LeaveReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "LEAVE_REVIEW",
+            "requiresAuth": true,
+            "permissionKey": "internship.leave.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "已批准请假",
+      "path": "/admin/internship/leaves?panel=approved",
+      "targetPathname": "/admin/internship/leaves",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/leaves",
+          "localPath": "leaves",
+          "name": "internship-leaves",
+          "component": "@/modules/internship/views/LeaveReviewView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "ATTENDANCE_LEAVE",
+            "title": "LEAVE_REVIEW",
+            "requiresAuth": true,
+            "permissionKey": "internship.leave.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-attendance-leave",
+      "label": "超期未归",
+      "path": "/admin/internship/risks?panel=leave-overdue",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "计划任务",
+      "path": "/admin/internship/plans",
+      "targetPathname": "/admin/internship/plans",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/plans",
+          "localPath": "plans",
+          "name": "internship-plans",
+          "component": "@/modules/internship/views/InternshipPlanView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "实习计划书",
+            "requiresAuth": true,
+            "permissionKey": "internship.plan.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "过程报告批阅",
+      "path": "/admin/internship/reports?panel=review",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "报告问题",
+      "path": "/admin/internship/reports?panel=issues",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "实习任务",
+      "path": "/admin/internship/plans?panel=tasks",
+      "targetPathname": "/admin/internship/plans",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/plans",
+          "localPath": "plans",
+          "name": "internship-plans",
+          "component": "@/modules/internship/views/InternshipPlanView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "实习计划书",
+            "requiresAuth": true,
+            "permissionKey": "internship.plan.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "日报台账",
+      "path": "/admin/internship/reports?type=daily&panel=all",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "周报台账",
+      "path": "/admin/internship/reports?panel=all",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "月报台账",
+      "path": "/admin/internship/reports?type=monthly&panel=all",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-weekly-task",
+      "label": "周报退回",
+      "path": "/admin/internship/reports?panel=returned",
+      "targetPathname": "/admin/internship/reports",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/reports",
+          "localPath": "reports",
+          "name": "internship-reports",
+          "component": "@/modules/internship/views/WeeklyReportListView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "WEEKLY_TASK",
+            "title": "WEEKLY_TASK",
+            "requiresAuth": true,
+            "permissionKey": "internship.report.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "指导巡访工作台",
+      "path": "/admin/internship/guidance?panel=guidance",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "指导计划 / 不足预警",
+      "path": "/admin/internship/guidance-plan",
+      "targetPathname": "/admin/internship/guidance-plan",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance-plan",
+          "localPath": "guidance-plan",
+          "name": "internship-guidance-plan",
+          "component": "@/modules/internship/views/GuidancePlanView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "指导计划",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "企业沟通",
+      "path": "/admin/internship/guidance?panel=communication",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "指导不足预警",
+      "path": "/admin/internship/guidance-plan?insufficient=1",
+      "targetPathname": "/admin/internship/guidance-plan",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance-plan",
+          "localPath": "guidance-plan",
+          "name": "internship-guidance-plan",
+          "component": "@/modules/internship/views/GuidancePlanView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "指导计划",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "巡访计划",
+      "path": "/admin/internship/guidance?panel=visit&view=plan",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "巡访记录",
+      "path": "/admin/internship/guidance?panel=visit&view=record",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "巡访问题",
+      "path": "/admin/internship/guidance?panel=visit&view=issue",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-guidance-visit",
+      "label": "整改跟进",
+      "path": "/admin/internship/guidance?panel=rectify",
+      "targetPathname": "/admin/internship/guidance",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/guidance",
+          "localPath": "guidance",
+          "name": "internship-guidance",
+          "component": "@/modules/internship/views/GuidanceVisitView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "GUIDANCE_VISIT",
+            "title": "GUIDANCE_VISIT",
+            "requiresAuth": true,
+            "permissionKey": "internship.guidance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "风险工作台",
+      "path": "/admin/internship/risks?panel=board",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "风险处置",
+      "path": "/admin/internship/risk-disposal?stage=pending",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "上岗 / 监管合规",
+      "path": "/admin/internship/compliance?tab=overview",
+      "targetPathname": "/admin/internship/compliance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/compliance",
+          "localPath": "compliance",
+          "name": "internship-compliance",
+          "component": "@/modules/internship/views/InternshipComplianceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "合规与监管证据",
+            "requiresAuth": true,
+            "permissionKey": "internship.compliance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "事故与应急",
+      "path": "/admin/internship/compliance?tab=incidents",
+      "targetPathname": "/admin/internship/compliance",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/compliance",
+          "localPath": "compliance",
+          "name": "internship-compliance",
+          "component": "@/modules/internship/views/InternshipComplianceView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "合规与监管证据",
+            "requiresAuth": true,
+            "permissionKey": "internship.compliance.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "风险提醒",
+      "path": "/admin/internship/risks",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "未落实岗位",
+      "path": "/admin/internship/risks?panel=no-position",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "长期未打卡",
+      "path": "/admin/internship/risks?panel=no-checkin",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "周报逾期",
+      "path": "/admin/internship/risks?panel=report-overdue",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "离岗异常",
+      "path": "/admin/internship/risks?panel=off-post",
+      "targetPathname": "/admin/internship/risks",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risks",
+          "localPath": "risks",
+          "name": "internship-risks",
+          "component": "@/modules/internship/views/InternshipRiskView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK_BOARD",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "企业投诉",
+      "path": "/admin/internship/risk-disposal?caseType=complaint",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "安全风险",
+      "path": "/admin/internship/risk-disposal?panel=safety",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "实习中断",
+      "path": "/admin/internship/risk-disposal?panel=interrupt",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "风险跟进",
+      "path": "/admin/internship/risk-disposal?stage=processing",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-risk",
+      "label": "风险关闭",
+      "path": "/admin/internship/risk-disposal?stage=closed",
+      "targetPathname": "/admin/internship/risk-disposal",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/risk-disposal",
+          "localPath": "risk-disposal",
+          "name": "internship-risk-disposal",
+          "component": "@/modules/internship/views/RiskDisposalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "RISK",
+            "title": "RISK",
+            "requiresAuth": true,
+            "permissionKey": "internship.risk.handle"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "评价工作台",
+      "path": "/admin/internship/enterprise-evals",
+      "targetPathname": "/admin/internship/enterprise-evals",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/enterprise-evals",
+          "localPath": "enterprise-evals",
+          "name": "internship-enterprise-evals",
+          "component": "@/modules/internship/views/EnterpriseEvalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "ENTERPRISE_EVAL",
+            "requiresAuth": true,
+            "permissionKey": "internship.eval.enterprise.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "成绩工作台",
+      "path": "/admin/internship/scores?stage=overview",
+      "targetPathname": "/admin/internship/scores",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/scores",
+          "localPath": "scores",
+          "name": "internship-scores",
+          "component": "@/modules/internship/views/ScoreView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "SCORE",
+            "requiresAuth": true,
+            "permissionKey": "internship.score.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "成绩申诉",
+      "path": "/admin/internship/scores?stage=appeal",
+      "targetPathname": "/admin/internship/scores",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/scores",
+          "localPath": "scores",
+          "name": "internship-scores",
+          "component": "@/modules/internship/views/ScoreView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "SCORE",
+            "requiresAuth": true,
+            "permissionKey": "internship.score.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "学生自评台账",
+      "path": "/admin/internship/student-evals?view=self",
+      "targetPathname": "/admin/internship/student-evals",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/student-evals",
+          "localPath": "student-evals",
+          "name": "internship-student-evals",
+          "component": "@/modules/internship/views/StudentEvalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "STUDENT_EVAL",
+            "requiresAuth": true,
+            "permissionKey": "internship.eval.self.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "学生对企业评价",
+      "path": "/admin/internship/student-evals?view=enterprise",
+      "targetPathname": "/admin/internship/student-evals",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/student-evals",
+          "localPath": "student-evals",
+          "name": "internship-student-evals",
+          "component": "@/modules/internship/views/StudentEvalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "STUDENT_EVAL",
+            "requiresAuth": true,
+            "permissionKey": "internship.eval.self.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "学生对岗位评价",
+      "path": "/admin/internship/student-evals?view=position",
+      "targetPathname": "/admin/internship/student-evals",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/student-evals",
+          "localPath": "student-evals",
+          "name": "internship-student-evals",
+          "component": "@/modules/internship/views/StudentEvalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "STUDENT_EVAL",
+            "requiresAuth": true,
+            "permissionKey": "internship.eval.self.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "指导老师评价",
+      "path": "/admin/internship/student-evals?view=advisor",
+      "targetPathname": "/admin/internship/student-evals",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/student-evals",
+          "localPath": "student-evals",
+          "name": "internship-student-evals",
+          "component": "@/modules/internship/views/StudentEvalView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "STUDENT_EVAL",
+            "requiresAuth": true,
+            "permissionKey": "internship.eval.self.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "成绩审核",
+      "path": "/admin/internship/scores?stage=review",
+      "targetPathname": "/admin/internship/scores",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/scores",
+          "localPath": "scores",
+          "name": "internship-scores",
+          "component": "@/modules/internship/views/ScoreView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "SCORE",
+            "requiresAuth": true,
+            "permissionKey": "internship.score.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "成绩发布",
+      "path": "/admin/internship/scores?stage=publish",
+      "targetPathname": "/admin/internship/scores",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/scores",
+          "localPath": "scores",
+          "name": "internship-scores",
+          "component": "@/modules/internship/views/ScoreView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "SCORE",
+            "requiresAuth": true,
+            "permissionKey": "internship.score.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-eval-score",
+      "label": "成绩复核",
+      "path": "/admin/internship/scores?stage=recheck",
+      "targetPathname": "/admin/internship/scores",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/scores",
+          "localPath": "scores",
+          "name": "internship-scores",
+          "component": "@/modules/internship/views/ScoreView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EVAL_SCORE",
+            "title": "SCORE",
+            "requiresAuth": true,
+            "permissionKey": "internship.score.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "材料与归档",
+      "path": "/admin/internship/archive?panel=records",
+      "targetPathname": "/admin/internship/archive",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/archive",
+          "localPath": "archive",
+          "name": "internship-archive",
+          "component": "@/modules/internship/views/ArchiveView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习归档",
+            "requiresAuth": true,
+            "permissionKey": "internship.archive.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "实习统计",
+      "path": "/admin/internship/stats?dimension=overview",
+      "targetPathname": "/admin/internship/stats",
+      "hidden": false,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/stats",
+          "localPath": "stats",
+          "name": "internship-stats",
+          "component": "@/modules/internship/views/StatsView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习统计",
+            "requiresAuth": true,
+            "permissionKey": "internship.stats.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "就业衔接",
+      "path": "/admin/employment?panel=follow-up",
+      "targetPathname": "/admin/employment",
+      "hidden": false,
+      "registeredStaffMatches": [],
+      "status": "CROSS_MODULE"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "未就业帮扶",
+      "path": "/admin/employment?panel=assistance",
+      "targetPathname": "/admin/employment",
+      "hidden": true,
+      "registeredStaffMatches": [],
+      "status": "CROSS_MODULE"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "实习档案包",
+      "path": "/admin/internship/archive?panel=packages",
+      "targetPathname": "/admin/internship/archive",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/archive",
+          "localPath": "archive",
+          "name": "internship-archive",
+          "component": "@/modules/internship/views/ArchiveView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习归档",
+            "requiresAuth": true,
+            "permissionKey": "internship.archive.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "企业统计",
+      "path": "/admin/internship/stats?dimension=enterprise",
+      "targetPathname": "/admin/internship/stats",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/stats",
+          "localPath": "stats",
+          "name": "internship-stats",
+          "component": "@/modules/internship/views/StatsView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习统计",
+            "requiresAuth": true,
+            "permissionKey": "internship.stats.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "岗位统计",
+      "path": "/admin/internship/stats?dimension=position",
+      "targetPathname": "/admin/internship/stats",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/stats",
+          "localPath": "stats",
+          "name": "internship-stats",
+          "component": "@/modules/internship/views/StatsView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习统计",
+            "requiresAuth": true,
+            "permissionKey": "internship.stats.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    },
+    {
+      "workspaceKey": "in-employment-archive-stats",
+      "label": "学生成绩统计",
+      "path": "/admin/internship/stats?dimension=score",
+      "targetPathname": "/admin/internship/stats",
+      "hidden": true,
+      "registeredStaffMatches": [
+        {
+          "path": "/admin/internship/stats",
+          "localPath": "stats",
+          "name": "internship-stats",
+          "component": "@/modules/internship/views/StatsView.vue",
+          "redirect": null,
+          "meta": {
+            "moduleCode": "INTERNSHIP",
+            "navModule": "EMPLOYMENT_ARCHIVE",
+            "title": "实习统计",
+            "requiresAuth": true,
+            "permissionKey": "internship.stats.view"
+          }
+        }
+      ],
+      "status": "REGISTERED"
+    }
+  ],
+  "unresolvedCount": 0
+}

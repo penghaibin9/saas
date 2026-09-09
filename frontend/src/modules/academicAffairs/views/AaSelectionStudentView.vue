@@ -94,7 +94,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    mineLabel(s) { return _ML[s] || s },
+    mineLabel(s) { return _ML[s] || (s ? '状态待确认' : '—') },
     mineType(s) { return s === 'SELECTED' ? 'success' : s === 'LOCKED' ? 'default' : 'warning' },
     async load() {
       this.loading = true; this.error = ''

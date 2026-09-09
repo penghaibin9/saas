@@ -28,9 +28,9 @@ async function acceptInvite(page){
   const token='ei.2026.11.collaboration-only-evidence-01234567890123456789012345'
   await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
   await expect(page.getByText('2026届岗位实习双选季')).toBeVisible()
-  await page.getByLabel('验证受邀手机号').fill('13800125678')
+  await page.getByLabel('受邀手机号').fill('13800125678')
   await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
-  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
+  await page.getByRole('button',{name:'激活账号并接受邀请'}).click()
 }
 
 async function navigateSpa(page,path){

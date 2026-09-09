@@ -384,7 +384,7 @@ export default {
     },
     fmt(s) { return s ? String(s).replace('T', ' ').slice(0, 16) : '' },
     recTypeLabel(rt) { const m = Object.values(_REC_TYPE_META).find((x) => x.type === rt); return m ? m.label : rt },
-    recStatusLabel(s) { return _REC_STATUS_LABEL[s] || s },
+    recStatusLabel(s) { return _REC_STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
     recStatusType(s) { return _REC_STATUS_TYPE[s] || 'default' },
     rectStatusLabel(r) { return r.overdue && r.status !== 'CLOSED' ? '已逾期' : (_RECT_STATUS_LABEL[r.status] || r.status) },
     rectStatusType(r) { return r.overdue && r.status !== 'CLOSED' ? 'danger' : (_RECT_STATUS_TYPE[r.status] || 'default') },

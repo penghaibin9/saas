@@ -397,10 +397,10 @@ export default {
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
     batchStatusCn(s) {
-      return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }[s] || s
+      return { DRAFT: '草稿', OPEN: '开放中', CLOSED: '已关闭', ARCHIVED: '已归档' }[s] || (s ? '状态待确认' : '—')
     },
     regTypeLabel(t) {
-      return REG_TYPE_LABEL[t] || t || '—'
+      return REG_TYPE_LABEL[t] || (t ? '类型待确认' : '—')
     },
     switchTab(key) {
       this.tab = key
@@ -428,7 +428,7 @@ export default {
       }
     },
     /* ── 资格核验 ── */
-    eligStatusLabel(s) { return ELIG_STATUS_LABEL[s] || s },
+    eligStatusLabel(s) { return ELIG_STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
     eligStatusType(s) { return s === 'ELIGIBLE' ? 'success' : s === 'INELIGIBLE' ? 'danger' : 'default' },
     onEligPage(page) { this.elig.pagination.page = page; this.loadEligibility() },
     async loadEligibility() {
@@ -506,7 +506,7 @@ export default {
     },
 
     /* ── 暂缓注册 ── */
-    deferStatusLabel(s) { return DEFER_STATUS_LABEL[s] || s },
+    deferStatusLabel(s) { return DEFER_STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
     deferStatusType(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
     onDeferPage(page) { this.defer.pagination.page = page; this.loadDeferrals() },
     async loadDeferrals() {
@@ -550,7 +550,7 @@ export default {
     },
 
     /* ── 注册异常 ── */
-    excTypeLabel(t) { return EXC_TYPE_LABEL[t] || t },
+    excTypeLabel(t) { return EXC_TYPE_LABEL[t] || (t ? '类型待确认' : '—') },
     onExcPage(page) { this.exc.pagination.page = page; this.loadExceptions() },
     async loadExceptions() {
       this.exc.loading = true

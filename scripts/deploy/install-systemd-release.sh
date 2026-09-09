@@ -87,7 +87,7 @@ if [ "$SOURCE_IS_GIT" = "1" ]; then
   git -C "$SOURCE_ROOT" archive --format=tar "$SOURCE_COMMIT" | tar -xf - -C "$RELEASE_DIR"
 else
   # 可信离线发布包没有 .git；调用方必须显式传 RELEASE_COMMIT，包自身不能靠时间戳冒充版本。
-  # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
+  # 国标同步源文件位于受控的 backend/reference-data/moe/，不再依赖临时目录。
   rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
     --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
 fi

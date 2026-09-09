@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -15,9 +16,12 @@ import urllib.error
 import urllib.request
 from openpyxl import load_workbook
 
-BASE = "http://127.0.0.1:8000/api/v1"
-TENANT = "sandbox-school"
-ADMIN = ("admin2", "123456")
+BASE = os.getenv("E2E_API_BASE_URL", "http://127.0.0.1:8000/api/v1").rstrip("/")
+TENANT = os.getenv("E2E_SANDBOX_ADMIN_TENANT", "sandbox-school")
+ADMIN = (
+    os.getenv("E2E_SANDBOX_ADMIN_USERNAME", "admin2"),
+    os.getenv("E2E_SANDBOX_ADMIN_PASSWORD", "123456"),
+)
 OUT_DIR = Path(__file__).resolve().parents[1] / "tmp"
 OUT_DIR.mkdir(exist_ok=True)
 CRED_PATH = OUT_DIR / "e2e_graduation_credentials.local.json"

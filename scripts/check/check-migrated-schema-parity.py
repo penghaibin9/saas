@@ -41,6 +41,10 @@ MIGRATION_ONLY_ALLOWED: dict[str, str] = {
         "包 10 人工调整表，affairs_funding_authority_service 走裸 SQL + _table_exists 兜底",
     "t_gd_archive_version": "包 9 归档版本链，毕设归档服务走裸 SQL",
     "t_gd_migration_issue": "包 9 迁移欠账登记表，仅由迁移脚本与巡检读写",
+    "t_iam_alias_backfill_row_audit":
+        "IAM 权限别名回填的逐行可逆快照，仅由 Alembic downgrade 裸 SQL 读取且无外键",
+    "t_iam_alias_backfill_template_audit":
+        "IAM 模板别名回填的可逆快照，仅由 Alembic downgrade 裸 SQL 读取且无外键",
 }
 
 ORM_ONLY_ALLOWED: dict[str, str] = {}

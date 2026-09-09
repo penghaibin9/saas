@@ -13,7 +13,10 @@ from __future__ import annotations
 import importlib
 from datetime import datetime
 
-from app.core.affairs_security import build_affairs_context
+from sqlalchemy import select
+
+from app.core.affairs_security import build_affairs_context, no_data_scope
+from app.core.exceptions import AppException, not_found
 
 _legacy = importlib.import_module(
     ".academic_affairs_service",
@@ -23,6 +26,139 @@ _legacy = importlib.import_module(
 
 def __getattr__(name):
     return getattr(_legacy, name)
+
+
+def register_student(batch_id, user, student_id) -> dict:
+    from .academic_affairs_registration_scope import register_student as scoped_register_student
+
+    return scoped_register_student(batch_id, user, student_id)
+
+
+def list_registrations(batch_id, user, page=1, page_size=50):
+    from .academic_affairs_registration_scope import list_registrations as scoped_list_registrations
+
+    return scoped_list_registrations(batch_id, user, page, page_size)
+
+
+def _assert_term_command_scope(user, db) -> None:
+    ctx = build_affairs_context(user, db)
+    if str(getattr(ctx, "scope_type", None) or "NONE").upper() != "TENANT_ALL":
+        raise no_data_scope("仅校级教务可发布或切换学期")
+
+
+def _lock_target_term(db, term_id):
+    from app.models import AaTerm
+
+    term = db.scalars(
+        select(AaTerm).where(
+            AaTerm.tenant_id == int(_legacy._tid()),
+            AaTerm.id == int(term_id),
+            AaTerm.is_deleted.is_(False),
+        ).with_for_update()
+    ).first()
+    if not term:
+        raise not_found("学期不存在")
+    return term
+
+
+def _lock_tenant_terms(db, term_id):
+    from app.models import AaTerm
+
+    rows = db.scalars(
+        select(AaTerm).where(
+            AaTerm.tenant_id == int(_legacy._tid()),
+            AaTerm.is_deleted.is_(False),
+        ).order_by(AaTerm.id).with_for_update()
+    ).all()
+    target = next((row for row in rows if int(row.id) == int(term_id)), None)
+    if not target:
+        raise not_found("学期不存在")
+    return target, rows
+
+
+def _governance_switch_conflict(resolved) -> AppException:
+    return AppException(
+        "DATA_CONFLICT",
+        "当前学期由全校学期治理统一管理，教务侧不可直接切换",
+        details={
+            "currentAuthority": resolved.authority,
+            "switchRoute": resolved.switch_route,
+        },
+        http_status=409,
+    )
+
+
+def publish_term(term_id, user) -> dict:
+    """Publish a term definition without bypassing the current-term Authority."""
+    from .academic_affairs_term_context_service import resolve_current_term
+    from .academic_affairs_archive_service import guard_term_writable
+
+    with _legacy.session() as db:
+        _assert_term_command_scope(user, db)
+        resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
+
+        if resolved.authority == "CALENDAR_GOVERNANCE":
+            term = _lock_target_term(db, term_id)
+            guard_term_writable(db, term.id)
+            if term.status not in ("DRAFT", "PUBLISHED"):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "仅草稿学期可发布",
+                    details={"termId": str(term.id), "status": term.status},
+                    http_status=409,
+                )
+            if term.status == "DRAFT":
+                term.status = "PUBLISHED"
+                _legacy._audit(db, "AA_TERM", term.id, "PUBLISH")
+            db.commit()
+            db.refresh(term)
+            return _legacy._term_row(term)
+
+        if resolved.authority != "AA_TERM_COMPAT" or not resolved.can_direct_switch:
+            raise _governance_switch_conflict(resolved)
+
+        term, rows = _lock_tenant_terms(db, term_id)
+        guard_term_writable(db, term.id)
+        if term.status in ("DRAFT", "PUBLISHED"):
+            for other in rows:
+                if int(other.id) != int(term.id):
+                    other.is_current = False
+            term.status = "PUBLISHED"
+            term.is_current = True
+            _legacy._audit(db, "AA_TERM", term.id, "PUBLISH")
+        db.commit()
+        db.refresh(term)
+        return _legacy._term_row(term)
+
+
+def set_current_term(term_id, user) -> dict:
+    """Switch the legacy compatible current term; SYS-12 Authority always rejects."""
+    from .academic_affairs_term_context_service import resolve_current_term
+
+    with _legacy.session() as db:
+        _assert_term_command_scope(user, db)
+        resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
+        if resolved.authority != "AA_TERM_COMPAT" or not resolved.can_direct_switch:
+            raise _governance_switch_conflict(resolved)
+
+        term, rows = _lock_tenant_terms(db, term_id)
+        if term.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅进行中（PUBLISHED）学期可设为当前学期")
+        if not term.is_current:
+            for other in rows:
+                if int(other.id) != int(term.id):
+                    other.is_current = False
+            term.is_current = True
+            _legacy._audit(
+                db,
+                "AA_TERM",
+                term.id,
+                "SET_CURRENT",
+                f"{term.year_code}-{term.term_no}",
+            )
+        db.commit()
+        db.refresh(term)
+        return _legacy._term_row(term)
 
 
 def current_term(user) -> dict:

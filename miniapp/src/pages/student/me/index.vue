@@ -58,6 +58,7 @@ import { useSessionStore } from '@/stores/session'
 import { ENV } from '@/config/env'
 import { go, relaunch, toast } from '@/utils/nav'
 import { studentApi } from '@/services/studentApi'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
   computed: {
     // 仅演示（mock）模式标注"演示环境"；真实后端/生产构建只显示版本号，避免误导真实用户
@@ -72,7 +73,7 @@ export default {
         { label: '迎新报到', icon: '🎒', route: '/pages/student/orientation/index' },
         { label: '教务中心', icon: '📈', route: '/pages/student/academic-affairs/index' },
         { label: '学工中心', icon: '🏫', route: '/pages/student/affairs/index' },
-        { label: '岗位实习', icon: '💼', route: '/pages/student/internship/index' },
+        { label: '岗位实习', icon: '💼', route: '/pages/student-internship/index' },
         { label: '毕业设计', icon: '📘', route: '/pages/student/graduation/index' },
         { label: '就业去向', icon: '🎯', route: '/pages/student/employment/index' },
         { label: '我的办理', icon: '🗂', route: '/pages/student/my-work/index' },
@@ -91,7 +92,7 @@ export default {
   onShow() {
     const session = useSessionStore()
     this.user = session.mockUser || {}
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
   },
   methods: {
     go, toast,

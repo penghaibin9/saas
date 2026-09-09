@@ -205,6 +205,7 @@ export const graduationMaterialCenterApi = {
       ...item,
       fileVersionId: item.fileVersionId ?? item.versionId ?? null,
       sourceSha256: item.sourceSha256 || item.sha256 || '',
+      canPreview: true,
       allowedActions: ['preview', ...(item.canDownload ? ['download'] : [])]
     })
   },

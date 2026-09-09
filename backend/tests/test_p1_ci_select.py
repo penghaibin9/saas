@@ -184,7 +184,8 @@ def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     # sharded deterministically so repository size cannot turn CI into a
     # single-runner timeout. CI remains the fast change-aware signal.
     assert "backend-full-regression:" in main_workflow
-    assert "shard: [0, 1, 2, 3]" in main_workflow
+    assert "shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]" in main_workflow
+    assert 'SHARD_TOTAL: "12"' in main_workflow
     assert "Run every backend test in this shard" in main_workflow
     assert "canonical-release-gate:" in main_workflow
     assert 'test "${{ needs.backend-full-regression.result }}" = "success"' in main_workflow

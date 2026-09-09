@@ -3,6 +3,24 @@
     <MobileNavBar variant="teacher" title="我的课表" :subtitle="termCode || '当前学期授课安排'" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="items">
+        <view class="ts__today">
+          <view class="ts__today-head">
+            <view>
+              <text class="ts__today-kicker">今天 · {{ todayDate || '日期待确认' }}</text>
+              <text class="ts__today-title">{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</text>
+              <text class="ts__today-note">{{ todayNote }}</text>
+            </view>
+            <text v-if="currentWeek" class="ts__today-week">第{{ currentWeek }}教学周</text>
+          </view>
+          <view v-if="todayItems.length" class="ts__today-list">
+            <view v-for="item in todayItems" :key="`today-${item.scheduleItemId}`" class="ts__today-item" @click="openTodayCourse(item)">
+              <view class="ts__slot"><text>第{{ item.slotNo }}节</text><text v-if="slotTime(item)" class="ts__time">{{ slotTime(item) }}</text></view>
+              <view class="ts__main"><text class="ts__course">{{ item.courseName }}</text><text class="ts__meta">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text></view>
+              <text class="ts__today-action">{{ item.attendanceRoute ? '去点名 ›' : '查看 ›' }}</text>
+            </view>
+          </view>
+          <view v-else class="ts__today-empty"><text>{{ todayNote }}</text></view>
+        </view>
         <view class="ts__week card">
           <view>
             <text class="ts__week-title">{{ currentWeekText }}</text>
@@ -34,6 +52,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { go, toast } from '@/utils/nav'
 
 const WEEK = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
 
@@ -59,10 +78,11 @@ export default {
   data() {
     return {
       items: null, state: 'loading', WEEK,
-      currentWeek: null, teachingWeeks: null, selectedWeek: 0, termCode: '', timeBands: []
+      currentWeek: null, teachingWeeks: null, selectedWeek: 0, termCode: '', timeBands: [],
+      todayItems: [], todayDate: '', calendarSource: ''
     }
   },
-  onLoad() { this.load() },
+  onShow() { this.load() },
   computed: {
     maxWeek() {
       const itemMax = Math.max(1, ...(this.items || []).map((item) => Number(item.endWeek || 1)))
@@ -89,6 +109,12 @@ export default {
     },
     emptyText() {
       return this.selectedWeek ? `第${this.selectedWeek}周暂无授课安排` : '暂无已发布课表'
+    },
+    todayNote() {
+      if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
+      if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
+      if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
+      return this.todayItems.length ? '来自同一份正式课表、正式名单与校历课次投影。' : '已核对学校校历和本人最新正式课表。'
     }
   },
   methods: {
@@ -107,6 +133,10 @@ export default {
       if (ranges.length > 1) return '按校区作息'
       return ''
     },
+    openTodayCourse(item) {
+      if (item && item.attendanceRoute) return go(item.attendanceRoute)
+      toast((item && item.attendanceBlockReason) || '该课程当前仅可查看')
+    },
     onWeekChange(event) {
       this.selectedWeek = Number(event.detail.value) || 0
     },
@@ -114,6 +144,9 @@ export default {
       this.state = 'loading'
       teacherApi.getMySchedule().then((data) => {
         this.items = (data && data.items) || []
+        this.todayItems = (data && data.todayItems) || []
+        this.todayDate = (data && data.todayDate) || ''
+        this.calendarSource = (data && data.calendarSource) || ''
         this.timeBands = (data && data.timeBands) || []
         this.currentWeek = data && data.currentWeek != null ? Number(data.currentWeek) : null
         this.teachingWeeks = data && data.teachingWeeks != null ? Number(data.teachingWeeks) : null
@@ -132,6 +165,16 @@ export default {
 
 <style scoped>
 .ts__week { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.ts__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid rgba(14,116,144,.20); border-radius: 18px; background: linear-gradient(135deg, rgba(248,253,255,.98), rgba(236,254,255,.94)); box-shadow: var(--shadow-card); }
+.ts__today-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+.ts__today-kicker { display: block; color: var(--teacher-700); font-size: 10px; font-weight: 700; }
+.ts__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 800; }
+.ts__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
+.ts__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: #fff; color: var(--teacher-700); font-size: 10px; }
+.ts__today-list { margin-top: var(--space-3); }
+.ts__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid var(--teacher-600); border-radius: 12px; background: rgba(255,255,255,.88); }
+.ts__today-action { flex-shrink: 0; color: var(--teacher-700); font-size: 10px; }
+.ts__today-empty { margin-top: var(--space-3); padding: var(--space-4); border: 1px dashed rgba(14,116,144,.25); border-radius: 12px; color: var(--text-tertiary); text-align: center; font-size: var(--font-size-xs); }
 .ts__week-title { display: block; color: var(--teacher-700); font-size: var(--font-size-lg); font-weight: 700; }
 .ts__week-sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
 .ts__week-picker { min-width: 88px; height: 34px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 34px; text-align: center; }

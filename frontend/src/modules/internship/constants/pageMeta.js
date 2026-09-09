@@ -1,21 +1,19 @@
 /**
- * 岗位实习中心 12 个冻结二级模块 — 页面标题 / 路由 meta 统一口径。
- * 与 navPlan.js、adminMenu.js 二级模块名称保持一致。
- * 2026-07-10 信息架构收口：模块数量与 key 不变，用户可见名称统一为「老师工作语言」。
+ * 岗位实习 8 个流程工作区；旧常量名保留，避免破坏已有详情路由。
  */
 export const INTERNSHIP_MODULE = {
   WORKBENCH: '今日工作',
-  BATCH_RULES: '实习批次设置',
-  STUDENTS: '学生实习管理',
-  ENTERPRISE_POSITION: '企业岗位库',
-  MATCH_ASSIGN: '岗位与导师分配',
-  APPLY_AGREEMENT: '申请与协议办理',
-  ATTENDANCE_LEAVE: '打卡请假处理',
-  WEEKLY_TASK: '周报任务批阅',
-  GUIDANCE_VISIT: '指导巡访管理',
-  RISK: '风险异常处置',
-  EVAL_SCORE: '评价成绩审核',
-  EMPLOYMENT_ARCHIVE: '归档与统计'
+  BATCH_RULES: '批次与学生',
+  STUDENTS: '批次与学生',
+  ENTERPRISE_POSITION: '企业与岗位',
+  MATCH_ASSIGN: '申请与落岗',
+  APPLY_AGREEMENT: '申请与落岗',
+  ATTENDANCE_LEAVE: '实习过程',
+  WEEKLY_TASK: '实习过程',
+  GUIDANCE_VISIT: '实习过程',
+  RISK: '风险与变更',
+  EVAL_SCORE: '评价与成绩',
+  EMPLOYMENT_ARCHIVE: '归档与分析'
 }
 
 /** 三级页面标题（列表/主入口） */
@@ -25,7 +23,7 @@ export const INTERNSHIP_PAGE = {
   RECRUITMENT_CAMPAIGN: '招聘季与企业邀请',
   POSITION_LIST: '岗位管理',
   RISK_BOARD: '风险看板',
-  AGREEMENT: '申请与协议办理',
+  AGREEMENT: '三方协议',
   AGREEMENT_TEMPLATE: '协议模板',
   ATTENDANCE_EXCEPTION: '异常处理',
   LEAVE_REVIEW: '请假审批',

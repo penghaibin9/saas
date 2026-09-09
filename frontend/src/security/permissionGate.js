@@ -28,6 +28,7 @@ export const GUARDED_MODULES = new Set([
   'ORIENTATION',
   'SYSTEM',
   'WORKBENCH',
+  'APPROVAL',
   'PLATFORM',
 ])
 
@@ -184,6 +185,7 @@ const MODULE_CODE_TO_KEYS = {
   ORIENTATION: ['orientation', 'ORIENTATION'],
   SYSTEM: ['systemAdmin', 'system', 'SYSTEM', 'auditLog'],
   WORKBENCH: ['workbench', 'todoMessage', 'WORKBENCH', 'approval'],
+  APPROVAL: ['approval', 'workbench', 'todoMessage', 'APPROVAL'],
   PLATFORM: ['platform', 'PLATFORM', 'apiAccess'],
 }
 

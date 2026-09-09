@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:01:30Z",
+  "head": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "branch": "codex/internship-v8-20260830",
+  "worktree": "C:/Users/10850/Desktop/职校学生全生命周期系统-岗位实习V8",
+  "status": "PARTIAL_RUNTIME_BASELINE_CAPTURED",
+  "browserRule": "All captured product pages were reached from a real login followed by visible role, menu, campaign, or portal navigation. Hidden final object URLs were not typed.",
+  "runtime": {
+    "staffPc": "http://127.0.0.1:5173/",
+    "studentPc": "http://127.0.0.1:5199/portal/",
+    "studentTeacherMiniH5": "http://127.0.0.1:5278/",
+    "enterprisePortal": "http://127.0.0.1:5202/enterprise/",
+    "isolatedBackend": "http://127.0.0.1:8273/",
+    "isolatedMysql": "127.0.0.1:43327/internship_v8_e2e"
+  },
+  "database": {
+    "container": "internship-v8-mysql",
+    "migration": "alembic upgrade head completed through 20260829_pr236_main_merge",
+    "canonicalSeedChain": [
+      "e2e_seed_playwright_tenants.py",
+      "bootstrap_control_plane_school_iam_authority.py",
+      "e2e_seed_control_plane_school_iam.py",
+      "e2e_bootstrap_graduation_accounts_ci.py",
+      "e2e_reset_graduation_passwords.py",
+      "e2e_seed_internship_sandbox.py",
+      "e2e_seed_internship_application_sandbox.py",
+      "e2e_seed_internship_enterprise_position_sandbox.py",
+      "e2e_seed_internship_s1_production_runtime.py"
+    ],
+    "seedStatus": "COMPLETED_BEFORE_STALL",
+    "postSeedStatus": "RUNTIME_BLOCKED",
+    "blocker": "The isolated MySQL server stopped sending connection greetings. Direct PyMySQL connections timed out and a targeted Docker restart returned Docker Engine HTTP 500. Docker Desktop was not restarted because unrelated user containers are outside this task's authority."
+  },
+  "surfaces": [
+    {
+      "surface": "staff-admin",
+      "status": "CAPTURED",
+      "path": "real login -> role selection -> workbench -> visible Internship Center menu",
+      "evidence": [
+        "staff-admin-workbench-first-run.png",
+        "staff-admin-workbench.png",
+        "staff-internship-center-empty-state.png"
+      ],
+      "finding": "The wide-role rail remains fragmented and a missing batch appears as a load failure instead of an actionable setup state."
+    },
+    {
+      "surface": "staff-intern-mentor",
+      "status": "CAPTURED",
+      "path": "real login -> mentor role -> workbench -> visible Internship Center menu",
+      "evidence": [
+        "staff-intern-mentor-workbench-first-run.png",
+        "staff-intern-mentor-workbench.png"
+      ],
+      "finding": "The Today Work presentation is visually clear, but the seeded mentor resolves to an empty data range and therefore exposes no actionable object."
+    },
+    {
+      "surface": "student-pc",
+      "status": "CAPTURED",
+      "path": "real login -> portal home -> visible 岗位实习 navigation",
+      "evidence": [
+        "student-pc-home.png",
+        "student-pc-internship-empty-state.png"
+      ],
+      "finding": "The internship surface exposes fourteen parallel tabs and the empty state offers no next-step recovery."
+    },
+    {
+      "surface": "student-mini",
+      "status": "LOGIN_SURFACE_CAPTURED_RUNTIME_BLOCKED",
+      "path": "role selector -> student login -> submit",
+      "evidence": [
+        "student-mini-login-runtime-blocked.png"
+      ],
+      "finding": "The browser-login request reached the isolated backend and was aborted by the client timeout while the database handshake was stalled."
+    },
+    {
+      "surface": "teacher-mini",
+      "status": "LOGIN_SURFACE_CAPTURED_RUNTIME_BLOCKED",
+      "path": "role selector -> visible teacher entry -> teacher login",
+      "evidence": [
+        "teacher-mini-login.png"
+      ],
+      "finding": "The login surface is reachable at the required 390px viewport; authenticated Today Work validation is deferred until the isolated database recovers."
+    },
+    {
+      "surface": "enterprise",
+      "status": "CAPTURED",
+      "path": "real login -> visible campaign selection -> campaign home",
+      "evidence": [
+        "enterprise-home.png"
+      ],
+      "finding": "The home is visually coherent and has six navigation leaves, but the baseline campaign has no visible actionable applicant or receipt."
+    }
+  ],
+  "finalMatrix": {
+    "required": 44,
+    "capturedBaseline": 4,
+    "loginSurfaceCapturedRuntimeBlocked": 2,
+    "pending": 38,
+    "claimComplete": false
+  }
+}

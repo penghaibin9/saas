@@ -13,7 +13,7 @@
           <text class="section-head__more" @click="toggleForm('retake')">{{ showRetake ? '收起' : '+ 新增报名' }}</text>
         </view>
 
-        <view class="card stack-sm" v-if="showRetake">
+        <view class="card stack-sm" v-if="showRetake" :class="{ 'is-target': !!targetId }">
           <text class="mk__hint">请从当前有效挂科成绩选择，系统按成绩ID和修读次数提交</text>
           <picker mode="selector" :range="retakeLabels" :value="retakeIndex" @change="onRetakePick">
             <view class="mk__input">{{ retakeLabels[retakeIndex] || '请选择挂科成绩' }}</view>
@@ -84,7 +84,8 @@ export default {
       showRetake: false, showExemption: false,
       retakeIndex: 0, exIndex: 0,
       retakeForm: { gradeId: '', termCode: '', reason: '' },
-      exForm: { courseId: '', termCode: '', reason: '', materialFileIds: [] }
+      exForm: { courseId: '', termCode: '', reason: '', materialFileIds: [] },
+      targetId: ''
     }
   },
   computed: {
@@ -101,7 +102,7 @@ export default {
         : ['暂无可申请课程']
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
   methods: {
     load() {
       this.state = 'loading'
@@ -115,13 +116,18 @@ export default {
         .catch(() => { this.state = 'error' })
     },
     syncPickDefaults() {
-      const retake = (this.opts.retakeOptions || [])[0]
+      const rows = this.opts.retakeOptions || []
+      const targetIndex = this.targetId
+        ? rows.findIndex((row) => String(row.gradeId || row.sourceId || row.acadGradeId || row.id || '') === this.targetId)
+        : -1
+      this.retakeIndex = targetIndex >= 0 ? targetIndex : 0
+      const retake = rows[this.retakeIndex]
       this.retakeForm = {
         gradeId: retake?.gradeId || '',
         termCode: retake?.termCode || '',
         reason: ''
       }
-      this.retakeIndex = 0
+      if (targetIndex >= 0) this.showRetake = true
       const exemption = (this.opts.exemptionOptions || [])[0]
       this.exForm = {
         courseId: exemption?.courseId || '',
@@ -204,4 +210,5 @@ export default {
 .mk__hint { display: block; color: var(--t3); font-size: 12px; }
 .mk__debt { border: 1px solid var(--warning, #f59e0b); }
 .mk__debt-title { display: block; color: var(--warning-dark, #b45309); font-size: 14px; font-weight: 600; }
+.is-target { border: 1px solid var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-50); }
 </style>

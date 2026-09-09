@@ -223,7 +223,7 @@ export default {
     },
     statusLabel(v) {
       const o = this.ctx.statusOptions
-      return ((this.tab === 'makeup' ? o.makeupStatus : o.retakeStatus).find((x) => x.value === v) || {}).label || v
+      return ((this.tab === 'makeup' ? o.makeupStatus : o.retakeStatus).find((x) => x.value === v) || {}).label || (v ? '待确认' : '—')
     },
     statusTone(v) {
       if (['PASSED'].includes(v)) return 'success'

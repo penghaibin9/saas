@@ -150,6 +150,34 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "实习风险催办",
         "require_ack": False,
     },
+    "INTERNSHIP.VOLUNTEER.SCHOOL_RESULT": {
+        "source_module": "internship", "category": "BUSINESS", "priority": "IMPORTANT",
+        "message_type": "WORKFLOW_RESULT", "title": "岗位志愿办理结果", "require_ack": False,
+    },
+    "INTERNSHIP.POSITION.RETURNED": {
+        "source_module": "internship",
+        "category": "TODO",
+        "priority": "IMPORTANT",
+        "message_type": "RETURNED_NOTICE",
+        "title": "岗位资料待补正",
+        "require_ack": False,
+    },
+    "INTERNSHIP.POSITION.PUBLISHED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "岗位已通过并上架",
+        "require_ack": False,
+    },
+    "INTERNSHIP.POSITION.STATUS_CHANGED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "STATUS_CHANGED",
+        "title": "岗位状态已调整",
+        "require_ack": False,
+    },
     "WARNING.CREATED": {
         "source_module": "academic-affairs",
         "category": "WARNING",
@@ -465,10 +493,15 @@ def emit_receiver_notice(
     )
 
 
-def try_process_pending_outbox(limit: int = 30, worker_id: str = "biz-inline") -> None:
+def try_process_pending_outbox(
+    limit: int = 30,
+    worker_id: str = "biz-inline",
+    *,
+    outbox_ids: list[int] | None = None,
+) -> None:
     """业务 commit 后尽力同步消费 outbox；失败由调度重试，绝不回滚业务。"""
     try:
-        process_pending_outbox(limit=limit, worker_id=worker_id)
+        process_pending_outbox(limit=limit, worker_id=worker_id, outbox_ids=outbox_ids)
     except Exception:  # noqa: BLE001
         log.exception("inline outbox drain failed worker=%s", worker_id)
 
@@ -484,12 +517,13 @@ def _deliver_outbox_row(db, row) -> None:
 
     # 解析：优先 userId；studentId → login_name 映射；无法映射时用学籍 id 作 receiver_id 兼容
     from app.models import StudentProfile, User
-    targets: list[tuple[int | None, int | None]] = []  # (user_id, legacy_receiver_id)
+    targets: list[tuple[int | None, int | None, str]] = []  # (user_id, legacy_receiver_id, receiver_type)
     for ref in refs:
         if not isinstance(ref, dict):
             continue
         uid = ref.get("userId") or ref.get("user_id")
         sid = ref.get("studentId") or ref.get("student_id")
+        receiver_type = str(ref.get("receiverType") or "").strip().upper()
         try:
             uid_i = int(uid) if uid else None
         except (TypeError, ValueError):
@@ -499,7 +533,7 @@ def _deliver_outbox_row(db, row) -> None:
         except (TypeError, ValueError):
             sid_i = None
         if uid_i:
-            targets.append((uid_i, sid_i or uid_i))
+            targets.append((uid_i, sid_i or uid_i, receiver_type or ("STUDENT" if sid_i else "UNKNOWN")))
             continue
         if sid_i:
             prof = db.scalar(select(StudentProfile).where(
@@ -514,7 +548,7 @@ def _deliver_outbox_row(db, row) -> None:
                 mapped = link_svc.resolve_user_id_for_student(
                     db, tenant_id=_tid(), student_id=prof.id,
                     student_no=prof.student_no, require_active_account=False)
-            targets.append((int(mapped) if mapped else None, sid_i))
+            targets.append((int(mapped) if mapped else None, sid_i, "STUDENT"))
 
     if not targets:
         raise AppException("VALIDATION_ERROR", "无有效接收人")
@@ -558,7 +592,7 @@ def _deliver_outbox_row(db, row) -> None:
 
     now = _utc_now()
     written = 0
-    for user_id, legacy_rid in targets:
+    for user_id, legacy_rid, receiver_type in targets:
         rid = int(legacy_rid or user_id or 0)
         if rid <= 0 and not user_id:
             continue
@@ -579,7 +613,7 @@ def _deliver_outbox_row(db, row) -> None:
             tenant_id=_tid(),
             receiver_id=rid,
             receiver_user_id=int(user_id) if user_id else None,
-            receiver_type="STUDENT" if legacy_rid else "UNKNOWN",
+            receiver_type=receiver_type,
             receiver_context_key="GLOBAL",
             campaign_id=camp.id,
             title=title,
@@ -609,17 +643,36 @@ def _deliver_outbox_row(db, row) -> None:
     row.lease_expires_at = None
 
 
-def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> int:
-    """领取并处理 PENDING/RETRY_WAIT 事件；返回成功条数。"""
+def process_pending_outbox(
+    *,
+    limit: int = 20,
+    worker_id: str = "scheduler",
+    outbox_ids: list[int] | None = None,
+) -> int:
+    """领取并处理 PENDING/RETRY_WAIT 事件；可精确领取本次业务事件，返回成功条数。"""
     from app.models import MessageEventOutbox
 
     done = 0
     now = _utc_now()
+    target_ids: list[int] = []
+    if outbox_ids is not None:
+        for value in outbox_ids:
+            try:
+                normalized = int(value)
+            except (TypeError, ValueError):
+                continue
+            if normalized > 0:
+                target_ids.append(normalized)
+        target_ids = sorted(set(target_ids))
+        if not target_ids:
+            return 0
+    scope = [MessageEventOutbox.tenant_id == _tid(), MessageEventOutbox.is_deleted.is_(False)]
+    if outbox_ids is not None:
+        scope.append(MessageEventOutbox.id.in_(target_ids))
     with session() as db:
         rows = db.scalars(
             select(MessageEventOutbox).where(
-                MessageEventOutbox.tenant_id == _tid(),
-                MessageEventOutbox.is_deleted.is_(False),
+                *scope,
                 or_(
                     and_(
                         MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),

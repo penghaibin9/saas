@@ -18,9 +18,11 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
 from app.core.pagination import normalize_page
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, audit_insert, session
 
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
+EFFECTIVE_STATUSES = ("APPROVED", "ADJUST_REVIEW")
 _LEVEL_RANK = {"GENERAL": 1, "DIFFICULT": 2, "SPECIAL": 3}
 
 
@@ -46,22 +48,46 @@ _L_OBJ = {"SUBMITTED": "待复核", "CLOSED": "已复核"}
 _L_OBJ_RESULT = {"SUSTAINED": "异议成立(驳回)", "OVERRULED": "异议不成立(维持)"}
 
 
+def presentation(status, *, pending_objection=False):
+    """Shared four-client progress copy; never used to authorize an action."""
+    labels = {**L_AID, "DRAFT": "已退回待修改", "APPROVED": "已认定"}
+    hints = {
+        "DRAFT": "请按退回意见修改原申请，重新提交后进入班级评议。",
+        "CLASS_REVIEW": "申请已提交，等待班级评议。评议通过后交辅导员初审。",
+        "COUNSELOR_REVIEW": "当前为辅导员初审，通过后交学院复审。",
+        "COLLEGE_REVIEW": "当前为学院复审，通过后交学校终审。",
+        "SCHOOL_REVIEW": "当前为学校终审，通过后进入公示，公示结束前尚未完成认定。",
+        "PUBLICITY": "当前为公示阶段。公示期满且异议处理完成后，才能确认认定结果。",
+        "APPROVED": "认定已完成，可查看开放的奖助项目；奖助申请仍需单独评审。",
+        "REJECTED": "本次认定未通过，请查看处理意见；有疑问可联系学校资助老师。",
+        "ADJUST_REVIEW": "困难等级调整正在审核，最终等级以审核结果为准。",
+        "ARCHIVED": "本次认定已归档，可查阅历史结果。",
+    }
+    return {"statusLabel": labels.get(status, "状态待确认"),
+            "progressHint": ("异议已提交，等待复核；复核完成前不会确认通过。" if pending_objection
+                             else hints.get(status, "请刷新查看最新办理进度。"))}
+
+
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
 
 
 def _parse_dt(v):
-    if not v:
-        return None
-    if isinstance(v, datetime):
-        return v
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(v, fmt)
-        except ValueError:
-            continue
-    return None
+    from app.core.timeutil import parse_api_datetime
+    return parse_api_datetime(v)
+
+
+def require_application_window(batch, *, now=None):
+    """All new applications use the same persisted UTC window; returned records keep their existing policy."""
+    from app.core.timeutil import utc_now_naive
+    current = now if now is not None else utc_now_naive()
+    if batch.status != "OPEN":
+        raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+    if batch.apply_start and current < batch.apply_start:
+        raise AppException("DATA_CONFLICT", "本批次尚未开始申请，请在开放时间后提交")
+    if batch.apply_end and current > batch.apply_end:
+        raise AppException("DATA_CONFLICT", "本批次申请时间已结束，请联系学校资助老师")
 
 
 def _audit(db, biz_id, action, detail="", before="", after=""):
@@ -156,7 +182,7 @@ def _scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
 
@@ -264,7 +290,7 @@ def _batch_row(b) -> dict:
         "batchId": str(b.id), "batchName": b.batch_name, "schoolYear": b.year_code,
         "applyStart": _iso(b.apply_start), "applyEnd": _iso(b.apply_end),
         "publicityDays": b.publicity_days if b.publicity_days is not None else 5,
-        "status": b.status,
+        "status": b.status, "version": b.version,
     }
 
 
@@ -279,6 +305,9 @@ def _apply_row(x, s=None, fe=None, *, has_pending_objection: bool = False) -> di
         "returnReason": getattr(x, "return_reason", None) or "",
         "hasPendingObjection": bool(has_pending_objection),
         "version": x.version,
+        **presentation(x.status, pending_objection=has_pending_objection),
+        "applyLevelLabel": LEVELS.get(x.apply_level, "等级待确认"),
+        "finalLevelLabel": LEVELS.get(x.final_level, "尚未认定"),
     }
 
 
@@ -325,14 +354,58 @@ def create_batch(body, user) -> dict:
         return _batch_row(b)
 
 
-def list_batches(user, school_year=None, status=None, page=1, page_size=20):
+def get_batch(batch_id, user):
+    from app.models import AidBatch
+    with session() as db:
+        batch = tenant_get(db, AidBatch, int(batch_id))
+        if not batch or batch.is_deleted:
+            raise AppException("DATA_NOT_FOUND", "认定批次不存在")
+        return _batch_row(batch)
+
+
+def publish_batch(batch_id, user, expected_version):
+    from app.core.permissions import has_permission
+    from app.core.timeutil import utc_now_naive
+    from app.models import AidBatch
+    if not has_permission(user, "studentAffairs.aid.batch.manage"):
+        raise no_permission("无认定批次管理权限")
+    with session() as db:
+        batch = tenant_get(db, AidBatch, int(batch_id))
+        if not batch or batch.is_deleted:
+            raise AppException("DATA_NOT_FOUND", "认定批次不存在")
+        if batch.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "仅草稿批次可以发布，请刷新核对状态")
+        if batch.apply_end and batch.apply_end < utc_now_naive():
+            raise AppException("DATA_CONFLICT", "申请截止时间已过，无法发布该批次")
+        atomic_claim_version(db, batch, expected_version)
+        batch.status, batch.version = "OPEN", batch.version + 1
+        _audit(db, batch.id, "BATCH_PUBLISH", "认定批次发布，按申请窗口开放受理")
+        db.commit()
+        db.refresh(batch)
+        return _batch_row(batch)
+
+
+def list_batches(user, school_year=None, status=None, page=1, page_size=20, *, available_only=False, keyword=None):
     with session() as db:
         from app.models import AidBatch
         conds = [AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False)]
+        if keyword and str(keyword).strip():
+            from sqlalchemy import or_
+            value = str(keyword).strip()
+            conds.append(or_(AidBatch.batch_name.contains(value, autoescape=True), AidBatch.year_code.contains(value, autoescape=True)))
         if school_year:
             conds.append(AidBatch.year_code == school_year)
         if status:
             conds.append(AidBatch.status == status)
+        if available_only:
+            from sqlalchemy import or_
+            from app.core.timeutil import utc_now_naive
+            now = utc_now_naive()
+            conds.extend([
+                AidBatch.status == "OPEN",
+                or_(AidBatch.apply_start.is_(None), AidBatch.apply_start <= now),
+                or_(AidBatch.apply_end.is_(None), AidBatch.apply_end >= now),
+            ])
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(AidBatch).where(*conds)) or 0)
         rows = db.scalars(select(AidBatch).where(*conds).order_by(AidBatch.id.desc())
@@ -356,21 +429,20 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         raise AppException("VALIDATION_ERROR", "困难情况说明需 10-500 字")
     with session() as db:
         from app.models import AidApply, AidBatch, AidFamilyEconomy, StudentProfile
-        s = db.get(StudentProfile, student_id)
-        if not s or s.is_deleted or s.tenant_id != _tid():
+        s = tenant_get(db, StudentProfile, student_id)
+        if not s or s.is_deleted:
             raise not_found("学生不存在或不在数据范围内")
         if not skip_scope_check:
             _scope_or_403(db, student_id, user)
-        b = db.get(AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        b = tenant_get(db, AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
+        if not b or b.is_deleted:
             raise not_found("认定批次不存在")
-        if b.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        require_application_window(b)
         dup = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.batch_id == b.id,
-            AidApply.student_id == student_id, AidApply.is_deleted.is_(False))).first()
-        if dup and dup.status not in _TERMINAL:
-            raise AppException("DATA_CONFLICT", "该生在本批次已有在途申请，不可重复提交")
+            AidApply.student_id == student_id)).first()
+        if dup:
+            raise AppException("DATA_CONFLICT", "该生在本批次已有申请记录，请进入原申请继续处理或查看结果，不可重复提交")
         first = AID_NODES[0]
         x = AidApply(tenant_id=_tid(), batch_id=b.id, student_id=student_id,
                      apply_level=body.applyLevel, statement=st, status=first)
@@ -398,10 +470,10 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
 
 def _load(db, apply_id):
     from app.models import AidApply, StudentProfile
-    x = db.get(AidApply, int(apply_id))
-    if not x or x.is_deleted or x.tenant_id != _tid():
+    x = tenant_get(db, AidApply, int(apply_id))
+    if not x or x.is_deleted:
         raise not_found("认定申请不存在")
-    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
     return x, s
 
 
@@ -414,7 +486,7 @@ def _family_of(db, apply_id):
 
 def _act_task(db, x, action, reason=""):
     from app.models import WorkflowInstance
-    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.status) if inst else None
     if task:
         task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
@@ -494,7 +566,7 @@ def resubmit(apply_id, user, expected_version=None) -> dict:
         atomic_claim_version(db, x, expected_version)
         first = AID_NODES[0]
         x.status, x.return_reason, x.version = first, None, x.version + 1
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
         if inst:
             inst.status, inst.current_node = "RUNNING", first
         assignee = _assignee_for(db, first, x.student_id)
@@ -512,7 +584,7 @@ def _confirm_one(db, x):
     from app.models import AidLevelHistory, StudentStageEvent, WorkflowInstance
     x.status, x.result_at, x.version = "APPROVED", datetime.utcnow(), x.version + 1
     if x.workflow_instance_id:
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id))
         if inst:
             inst.status = "APPROVED"
     db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=None,
@@ -528,35 +600,27 @@ def _confirm_one(db, x):
 
 
 def scan_publicity() -> dict:
-    from app.models import AidApply, AidBatch
+    from sqlalchemy import literal_column
+    from app.models import AidApply, AidBatch, AidObjection
     now = datetime.utcnow()
     with session() as db:
-        rows = db.scalars(select(AidApply).where(
-            AidApply.tenant_id == _tid(), AidApply.status == "PUBLICITY",
-            AidApply.publicity_at.is_not(None), AidApply.is_deleted.is_(False),
-        ).order_by(AidApply.id).limit(200).with_for_update(skip_locked=True)).all()
-        pending = _pending_objection_ids(db, [row.id for row in rows])
-        batch_ids = {int(row.batch_id) for row in rows if row.batch_id}
-        batches = {
-            int(batch.id): batch
-            for batch in db.scalars(select(AidBatch).where(
-                AidBatch.tenant_id == _tid(),
-                AidBatch.id.in_(batch_ids) if batch_ids else AidBatch.id == -1,
-                AidBatch.is_deleted.is_(False),
-            )).all()
-        }
-        confirmed = skipped = invalid = 0
+        base = [AidApply.tenant_id == _tid(), AidApply.status == 'PUBLICITY', AidApply.is_deleted.is_(False)]
+        valid_batch = (AidBatch.id == AidApply.batch_id) & (AidBatch.tenant_id == _tid()) & AidBatch.is_deleted.is_(False)
+        open_objection = select(AidObjection.id).where(
+            AidObjection.tenant_id == _tid(), AidObjection.apply_id == AidApply.id,
+            AidObjection.status == 'SUBMITTED', AidObjection.is_deleted.is_(False),
+        ).exists()
+        skipped = int(db.scalar(select(func.count()).select_from(AidApply).where(*base, open_objection)) or 0)
+        invalid = int(db.scalar(select(func.count()).select_from(AidApply).outerjoin(AidBatch, valid_batch)
+            .where(*base, AidBatch.id.is_(None))) or 0)
+        # MySQL deadline predicate runs before LIMIT, so waiting/contested records cannot
+        # repeatedly occupy the entire processing window and starve later due records.
+        due = func.timestampadd(literal_column('DAY'), func.greatest(1, func.coalesce(AidBatch.publicity_days, 5)), AidApply.publicity_at)
+        rows = db.scalars(select(AidApply).join(AidBatch, valid_batch).where(
+            *base, AidApply.publicity_at.is_not(None), due <= now, ~open_objection,
+        ).order_by(due, AidApply.id).limit(200).with_for_update(skip_locked=True)).all()
+        confirmed = 0
         for row in rows:
-            if int(row.id) in pending:
-                skipped += 1
-                continue
-            batch = batches.get(int(row.batch_id)) if row.batch_id else None
-            if not batch:
-                invalid += 1
-                continue
-            due = row.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
-            if due > now:
-                continue
             _confirm_one(db, row)
             confirmed += 1
         db.commit()
@@ -565,6 +629,7 @@ def scan_publicity() -> dict:
 
 
 def confirm_publicity(apply_id, user, expected_version=None) -> dict:
+    from app.services.affairs_aid_workspace import publicity_window
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
@@ -573,10 +638,10 @@ def confirm_publicity(apply_id, user, expected_version=None) -> dict:
         atomic_claim_version(db, x, expected_version)
         _assert_no_open_objection(db, x.id)
         from app.models import AidBatch
-        batch = db.get(AidBatch, int(x.batch_id))
-        days = batch.publicity_days if batch and batch.publicity_days is not None else 5
-        if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
-            raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
+        batch = tenant_get(db, AidBatch, int(x.batch_id))
+        window = publicity_window(x, batch)
+        if not window['publicityReady']:
+            raise AppException("DATA_CONFLICT", window['publicityHint'])
         _confirm_one(db, x)
         db.commit()
         _drain_message_outbox()
@@ -594,9 +659,11 @@ def adjust(apply_id, user, target_level, reason="", expected_version=None) -> di
         _scope_or_403(db, x.student_id, user)
         if x.status != "APPROVED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的认定可发起动态调整")
+        if target_level == x.final_level:
+            raise AppException("VALIDATION_ERROR", "目标等级与当前等级相同，无需发起调整")
         atomic_claim_version(db, x, expected_version)
         x.status, x.suggest_level, x.version = "ADJUST_REVIEW", target_level, x.version + 1
-        assignee = _assignee_for(db, "COUNSELOR_REVIEW", x.student_id)
+        assignee = _assignee_for(db, "SCHOOL_REVIEW", x.student_id)
         _todo_upsert(db, x.id, assignee, x.student_id, f"困难等级调整待审：{s.real_name if s else ''}",
                      todo_type="AID_ADJUST")
         _audit(db, x.id, "ADJUST_SUBMIT", f"{x.final_level}->{target_level}: {reason.strip()}")
@@ -606,10 +673,16 @@ def adjust(apply_id, user, target_level, reason="", expected_version=None) -> di
         return _apply_row(x, s, _family_of(db, x.id))
 
 
-def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> dict:
+def approve_adjust(apply_id, user, action="APPROVE", expected_version=None, reason="") -> dict:
     from app.core.permissions import has_permission
     if not has_permission(user, "studentAffairs.aid.approve"):
         raise no_permission("无权审批困难等级动态调整")
+    action = str(action or "").upper()
+    if action not in {"APPROVE", "REJECT"}:
+        raise AppException("VALIDATION_ERROR", "等级调整仅支持通过或驳回")
+    reason = str(reason or "").strip()
+    if len(reason) > 500:
+        raise AppException("VALIDATION_ERROR", "办理意见不能超过500字")
     with session() as db:
         from app.models import AidLevelHistory
         x, s = _load(db, apply_id)
@@ -618,7 +691,7 @@ def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> d
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请不在调整审批状态")
         atomic_claim_version(db, x, expected_version)
         _check_aid_assignee(db, x, user, todo_type="AID_ADJUST")
-        if (action or "").upper() == "APPROVE":
+        if action == "APPROVE":
             old = x.final_level
             db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=old,
                                    to_level=x.suggest_level, change_type="ADJUST", apply_id=x.id,
@@ -626,7 +699,7 @@ def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> d
             x.final_level = x.suggest_level
             _audit(db, x.id, "ADJUST_APPROVED", f"{old}->{x.final_level}")
         else:
-            _audit(db, x.id, "ADJUST_REJECTED")
+            _audit(db, x.id, "ADJUST_REJECTED", reason)
         x.status, x.version = "APPROVED", x.version + 1
         _todo_done(db, x.id, todo_type="AID_ADJUST")
         _msg(db, x.student_id, "困难等级调整结果", f"当前等级：{LEVELS.get(x.final_level, '')}", "WORKFLOW_RESULT", x.id)
@@ -636,14 +709,69 @@ def approve_adjust(apply_id, user, action="APPROVE", expected_version=None) -> d
         return _apply_row(x, s, _family_of(db, x.id))
 
 
+def _pending_conditions(db, user, kind):
+    """Filter before COUNT/LIMIT, using the current workflow owner ahead of legacy todo pools."""
+    from sqlalchemy import case, or_
+    from app.core.affairs_security import build_affairs_context
+    from app.core.permissions import has_permission
+    from app.models import AidApply, UnifiedTodo, WorkflowTask
+
+    permitted = list(AID_NODES) if has_permission(user, "studentAffairs.aid.approve") else (
+        ["CLASS_REVIEW", "COUNSELOR_REVIEW"] if has_permission(user, "studentAffairs.aid.counselorReview") else [])
+    if kind != "AID_APPROVAL" and has_permission(user, "studentAffairs.aid.approve"):
+        permitted.append("ADJUST_REVIEW")
+    if kind == "AID_ADJUST":
+        permitted = [node for node in permitted if node == "ADJUST_REVIEW"]
+    todo_type = case((AidApply.status == "ADJUST_REVIEW", "AID_ADJUST"), else_="AID_APPROVAL")
+    todo_owner = select(UnifiedTodo.assignee_id).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_id == AidApply.id, UnifiedTodo.todo_type == todo_type,
+        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+    ).order_by(UnifiedTodo.id.desc()).limit(1).correlate(AidApply).scalar_subquery()
+    task_owner = select(WorkflowTask.assignee_id).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == AidApply.workflow_instance_id,
+        WorkflowTask.node_code == AidApply.status, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False),
+    ).order_by(WorkflowTask.id.desc()).limit(1).correlate(AidApply).scalar_subquery()
+    conditions = [AidApply.status.in_(permitted), todo_owner.is_not(None)]
+    scope = build_affairs_context(user, db)
+    if scope.scope_type != "TENANT_ALL":
+        owner = func.coalesce(func.nullif(task_owner, 0), todo_owner, 0)
+        conditions.append(or_(owner == _uid_int(user), owner == 0) if _uid_int(user) else owner == 0)
+    return conditions
+
+
+def _staff_actions(db, row, user):
+    from app.core.permissions import has_permission
+    try:
+        if row.status in AID_NODES:
+            _check_node_authority(user, row)
+            _check_aid_assignee(db, row, user)
+            return ["APPROVE", "RETURN", "REJECT"]
+        if row.status == "ADJUST_REVIEW" and has_permission(user, "studentAffairs.aid.approve"):
+            _check_aid_assignee(db, row, user, todo_type="AID_ADJUST")
+            return ["APPROVE", "REJECT"]
+    except AppException:
+        pass
+    return []
+
+
 def list_applications(user, status=None, batch_id=None, level=None, page=1, page_size=20,
-                      student_id=None):
-    from app.models import AidApply, AidFamilyEconomy, StudentProfile
+                      student_id=None, *, pending_kind=None, keyword=None):
+    from app.models import AidApply, AidBatch, AidFamilyEconomy, StudentProfile
+    from app.services.affairs_aid_workspace import publicity_window
     from app.services.affairs_dashboard_service import _allowed_class_ids
     from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
         base_conds = [AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False)]
+        if pending_kind:
+            base_conds.extend(_pending_conditions(db, user, pending_kind))
+        if keyword and str(keyword).strip():
+            from sqlalchemy import or_
+            value = str(keyword).strip()
+            base_conds.append(or_(StudentProfile.real_name.contains(value, autoescape=True),
+                                  StudentProfile.student_no.contains(value, autoescape=True)))
         if batch_id:
             base_conds.append(AidApply.batch_id == int(batch_id))
         if level:
@@ -675,24 +803,40 @@ def list_applications(user, status=None, batch_id=None, level=None, page=1, page
                           .where(*conds, *student_conds).order_by(AidApply.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         students = _students_by_ids(db, rows)
+        batch_ids = {x.batch_id for x in rows if x.batch_id}
+        batches = {b.id: b for b in db.scalars(select(AidBatch).where(
+            AidBatch.tenant_id == _tid(), AidBatch.id.in_(batch_ids), AidBatch.is_deleted.is_(False)
+        )).all()} if batch_ids else {}
         pending = _pending_objection_ids(db, [x.id for x in rows])
         apply_ids = [x.id for x in rows]
         families = {fe.apply_id: fe for fe in db.scalars(select(AidFamilyEconomy).where(
             AidFamilyEconomy.tenant_id == _tid(), AidFamilyEconomy.apply_id.in_(apply_ids),
             AidFamilyEconomy.is_deleted.is_(False))).all()} if apply_ids else {}
         return [
-            _apply_row(x, students.get(int(x.student_id)) if x.student_id else None,
-                       families.get(x.id), has_pending_objection=int(x.id) in pending)
+            {**_apply_row(x, students.get(int(x.student_id)) if x.student_id else None,
+                       families.get(x.id), has_pending_objection=int(x.id) in pending),
+             **publicity_window(x, batches.get(x.batch_id)),
+             "batchName": batches[x.batch_id].batch_name if x.batch_id in batches else "",
+             "schoolYear": batches[x.batch_id].year_code if x.batch_id in batches else "",
+             "createdAt": _iso(x.created_at),
+             **({"allowedActions": ["APPROVE", "REJECT"] if x.status == "ADJUST_REVIEW"
+                 else ["APPROVE", "RETURN", "REJECT"]} if pending_kind else {})}
             for x in rows
         ], total, status_counts
 
 
 def get_application(apply_id, user) -> dict:
+    from app.services.affairs_aid_workspace import detail_context
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
-        return _apply_row(x, s, _family_of(db, x.id),
-                          has_pending_objection=int(x.id) in _pending_objection_ids(db, [x.id]))
+        row = _apply_row(x, s, _family_of(db, x.id),
+                         has_pending_objection=int(x.id) in _pending_objection_ids(db, [x.id]))
+        # 困难情况说明仅在单笔详情返回，避免列表面不必要扩散学生申报叙述。
+        row["statement"] = x.statement or ""
+        row["allowedActions"] = _staff_actions(db, x, user)
+        row.update(detail_context(db, x))
+        return row
 
 
 def reveal_family_economy(apply_id, user, reason="") -> dict:
@@ -713,7 +857,7 @@ def reveal_family_economy(apply_id, user, reason="") -> dict:
 
 def difficult_students(user, level=None, page=1, page_size=50):
     from app.core.pagination import normalize_page
-    from app.models import AidApply, StudentProfile
+    from app.models import AidApply, AidBatch, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
@@ -725,7 +869,7 @@ def difficult_students(user, level=None, page=1, page_size=50):
             )
             .where(
                 AidApply.tenant_id == _tid(),
-                AidApply.status == "APPROVED",
+                AidApply.status.in_(EFFECTIVE_STATUSES),
                 AidApply.is_deleted.is_(False),
             )
             .group_by(AidApply.student_id)
@@ -754,15 +898,23 @@ def difficult_students(user, level=None, page=1, page_size=50):
         ).all()
         students = _students_by_ids(db, rows)
         out = []
+        batch_ids = {x.batch_id for x in rows if x.batch_id}
+        batches = {b.id: b for b in db.scalars(select(AidBatch).where(
+            AidBatch.tenant_id == _tid(), AidBatch.id.in_(batch_ids), AidBatch.is_deleted.is_(False)
+        )).all()} if batch_ids else {}
         for x in rows:
             s = students.get(int(x.student_id)) if x.student_id else None
             out.append({
                 "studentId": str(x.student_id),
+                "applyId": str(x.id),
+                "studentNo": s.student_no if s else "",
                 "realName": s.real_name if s else "",
                 "level": x.final_level,
                 "levelLabel": LEVELS.get(x.final_level, ""),
                 "identifiedAt": _iso(x.result_at),
                 "batchId": str(x.batch_id),
+                "batchName": batches[x.batch_id].batch_name if x.batch_id in batches else "",
+                "schoolYear": batches[x.batch_id].year_code if x.batch_id in batches else "",
             })
         return out, total
 
@@ -771,7 +923,7 @@ def is_in_difficult_library(db, student_id) -> str | None:
     from app.models import AidApply
     x = db.scalars(select(AidApply).where(
         AidApply.tenant_id == _tid(), AidApply.student_id == int(student_id),
-        AidApply.status == "APPROVED", AidApply.is_deleted.is_(False)).order_by(
+        AidApply.status.in_(EFFECTIVE_STATUSES), AidApply.is_deleted.is_(False)).order_by(
         AidApply.id.desc())).first()
     return x.final_level if x else None
 
@@ -798,13 +950,13 @@ def aid_stats(user):
         level_rows = db.execute(
             select(AidApply.final_level, func.count(AidApply.id))
             .join(StudentProfile, StudentProfile.id == AidApply.student_id)
-            .where(*base, AidApply.status == "APPROVED", AidApply.final_level.is_not(None))
+            .where(*base, AidApply.status.in_(EFFECTIVE_STATUSES), AidApply.final_level.is_not(None))
             .group_by(AidApply.final_level)
         ).all()
         by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
         by_level = {str(key or ""): int(count or 0) for key, count in level_rows}
         total = sum(by_status.values())
-        approved = by_status.get("APPROVED", 0)
+        approved = sum(by_status.get(status, 0) for status in EFFECTIVE_STATUSES)
         batch_count = int(db.scalar(select(func.count()).select_from(AidBatch).where(
             AidBatch.tenant_id == _tid(), AidBatch.is_deleted.is_(False),
         )) or 0)
@@ -870,19 +1022,34 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
         _audit(db, x.id, "AID_OBJECTION_SUBMIT", "")
         db.commit(); db.refresh(o)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
         result = _obj_row(o, s)
         return appeal_todo.sync_after_submit("AID_OBJECTION_REVIEW", result, "objectionId", "id")
 
 
-def list_objections(user, status=None, page=1, page_size=50):
+def _objection_owner():
+    from app.models import AidObjection, UnifiedTodo
+    return select(UnifiedTodo.assignee_id).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_type == "AID_OBJECTION", UnifiedTodo.source_biz_id == AidObjection.id,
+        UnifiedTodo.todo_type == "AID_OBJECTION_REVIEW", UnifiedTodo.status == "PENDING",
+        UnifiedTodo.is_deleted.is_(False),
+    ).order_by(UnifiedTodo.id.desc()).limit(1).correlate(AidObjection).scalar_subquery()
+
+
+def list_objections(user, status=None, page=1, page_size=50, *, objection_id=None, pending_only=False):
     """异议列表使用数据库范围过滤、真计数和真分页，避免全量加载及逐行查学生。"""
     from app.models import AidObjection, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.core.affairs_security import build_affairs_context
+    from app.core.permissions import has_permission
 
     page, page_size = normalize_page(page, page_size)
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
+        tenant_all = build_affairs_context(user, db).scope_type == "TENANT_ALL"
+        can_review = has_permission(user, "studentAffairs.aid.approve")
+        owner = _objection_owner()
         student_join = and_(
             StudentProfile.id == AidObjection.student_id,
             StudentProfile.tenant_id == _tid(),
@@ -891,6 +1058,12 @@ def list_objections(user, status=None, page=1, page_size=50):
         conds = [AidObjection.tenant_id == _tid(), AidObjection.is_deleted.is_(False)]
         if status:
             conds.append(AidObjection.status == status)
+        if objection_id is not None:
+            conds.append(AidObjection.id == int(objection_id))
+        if pending_only:
+            conds.append(AidObjection.status == "SUBMITTED")
+            if not tenant_all:
+                conds.append(owner == (_uid_int(user) or -1))
         if allowed is not None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         total = int(db.scalar(
@@ -898,12 +1071,15 @@ def list_objections(user, status=None, page=1, page_size=50):
             .outerjoin(StudentProfile, student_join).where(*conds)
         ) or 0)
         rows = db.execute(
-            select(AidObjection, StudentProfile)
+            select(AidObjection, StudentProfile, owner)
             .outerjoin(StudentProfile, student_join).where(*conds)
             .order_by(AidObjection.id.desc())
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
-        return [_obj_row(objection, student) for objection, student in rows], total
+        return [{**_obj_row(objection, student),
+                 "allowedActions": ["REVIEW"] if objection.status == "SUBMITTED" and can_review
+                    and (tenant_all or (assignee and int(assignee) == _uid_int(user))) else []}
+                for objection, student, assignee in rows], total
 
 
 def review_objection(objection_id, body, user) -> dict:
@@ -925,6 +1101,14 @@ def review_objection(objection_id, body, user) -> dict:
         if not o or o.is_deleted or o.tenant_id != _tid():
             raise not_found("异议不存在")
         _scope_or_403(db, o.student_id, user)
+        from app.core.affairs_security import build_affairs_context
+        from app.core.permissions import has_permission
+        if not has_permission(user, "studentAffairs.aid.approve"):
+            raise no_permission("无权复核困难认定异议")
+        if build_affairs_context(user, db).scope_type != "TENANT_ALL":
+            owner = db.scalar(select(_objection_owner()).select_from(AidObjection).where(AidObjection.id == o.id))
+            if not owner or int(owner) != _uid_int(user):
+                raise no_permission("当前异议未指派给您，请刷新待办")
         expected_version = body.get("version") if isinstance(body, dict) else getattr(body, "version", None)
         atomic_claim_version(db, o, expected_version)
         if o.status != "SUBMITTED":
@@ -934,7 +1118,7 @@ def review_objection(objection_id, body, user) -> dict:
         o.review_opinion, o.reviewer = opinion, _op()[0]
         o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
         if result == "SUSTAINED":
-            x = db.get(AidApply, int(o.apply_id))
+            x = tenant_get(db, AidApply, int(o.apply_id))
             if x and x.status in ("PUBLICITY", "APPROVED"):
                 was_approved = x.status == "APPROVED"
                 old_level = x.final_level
@@ -957,7 +1141,7 @@ def review_objection(objection_id, body, user) -> dict:
         _audit(db, o.apply_id, "AID_OBJECTION_REVIEW", result)
         db.commit(); db.refresh(o)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+        s = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
         result_row = _obj_row(o, s)
         from app.services import affairs_appeal_todo_service as appeal_todo
         return appeal_todo.sync_after_review("AID_OBJECTION_REVIEW", int(objection_id), result_row)

@@ -121,8 +121,8 @@ export default {
     }
   },
   methods: {
-    eventTypeLabel(type) { return EVENT_TYPES[type] || type },
-    statusLabel(status) { return { READY: '可复制', REVIEW: '需复核', BLOCKED: '阻断' }[status] || status },
+    eventTypeLabel(type) { return EVENT_TYPES[type] || (type ? '类型待确认' : '—') },
+    statusLabel(status) { return { READY: '可复制', REVIEW: '需复核', BLOCKED: '阻断' }[status] || (status ? '状态待确认' : '—') },
     statusTone(status) { return { READY: 'success', REVIEW: 'warning', BLOCKED: 'danger' }[status] || 'default' },
     async loadPreview() {
       if (!this.targetTermId || !this.sourceTermId || this.loading) return

@@ -38,7 +38,7 @@
                   <AppStatusTag :type="resultTone(row.result)" :label="resultLabel(row.result)" />
                   <span v-if="row.similarity">相似度 {{ row.similarity }}</span>
                 </div>
-                <div class="si-item__line3">{{ row.method }} · {{ row.checkedAt }}</div>
+                <div class="si-item__line3">{{ methodLabel(row.method) }} · {{ row.checkedAt }}</div>
               </div>
             </div>
             <div class="si-queue__pager">
@@ -71,7 +71,7 @@
               <div class="mp-card__head"><div class="mp-card__title">核验信息</div></div>
               <div class="mp-card__body">
                 <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selected.studentName }}（{{ selected.className }}）</span></div>
-                <div class="mp-kv"><span class="mp-kv__k">核验方式</span><span class="mp-kv__v">{{ selected.method }}</span></div>
+                <div class="mp-kv"><span class="mp-kv__k">核验方式</span><span class="mp-kv__v">{{ methodLabel(selected.method) }}</span></div>
                 <div class="mp-kv">
                   <span class="mp-kv__k">机器结论</span>
                   <span class="mp-kv__v">
@@ -273,14 +273,17 @@ export default {
     },
     resultLabel(v) {
       const hit = this.ctx.statusOptions.identityResult.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '核验结果待确认'
     },
     resultTone(v) {
       return { PASS: 'success', FAIL: 'danger', PENDING: 'warning' }[v] || 'default'
     },
     statusLabel(v) {
       const hit = this.ctx.statusOptions.identityRecordStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '处理状态待确认'
+    },
+    methodLabel(value) {
+      return ({ MANUAL: '人工核验', OCR: '证件识别', FACE: '人脸核验', FACE_COMPARE: '人脸比对', SYSTEM: '系统核验' })[String(value || '').toUpperCase()] || '其他核验方式'
     },
     statusTone(v) {
       return { PENDING_REVIEW: 'warning', CONFIRMED: 'success', ABNORMAL: 'danger' }[v] || 'default'

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T11:20:10.1847069Z",
+  "wave": "W14",
+  "journey": "GJ-09",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "outcome": "协议、保险、报告、巡访、评价和正式成绩材料现由同一归档事务同步为安全 FileVersion，冻结不可漂移的 Manifest，原子提交业务归档并生成单生或有界批次流式档案包。教师首屏只看缺什么、去哪补、是否可归档；技术哈希默认折叠。每次预检、归档、撤销、打包和恢复校验均保留服务端回执，正式就业衔接只接受归档中冻结的 PUBLISHED 成绩。",
+  "invariants": [
+    "归档预检返回权威缺项、精确补办路径、FileVersion 安全计数和服务端回执；预检阻断时前端不发归档写命令。",
+    "材料同步、Manifest 准备、PUBLISHED 成绩冻结、业务归档和 Manifest 最终冻结共用一个数据库事务，任何一步失败都不留下半归档结果。",
+    "撤销归档、业务状态恢复、单生或包含该生的批次包失效、Manifest 撤销和审计留痕共用一个事务。",
+    "最终归档只冻结当前 PUBLISHED 正式成绩及其哈希；旧独立成绩归档状态机已删除。",
+    "打包前重新计算 Manifest SHA-256，并逐项验证 FileObject、FileVersion、安全扫描状态、物理字节大小和哈希。",
+    "单生档案包按流写入 ZIP64；批次包按数据范围且最多 20 人、199 个文件、90MB 分片生成，不把整包或材料读入进程内存。",
+    "批次档案包只有在当前数据范围内全部学生均已归档时生成；每个学生绑定自己的冻结 Manifest 身份、修订号和哈希。",
+    "归档包下载使用包对象范围端点和专用 File Center resolver；跨学生、跨批次或包内范围不完整时拒绝下载。",
+    "恢复校验不覆盖当前业务数据，只流式复核包 SHA-256、ZIP 安全路径、Manifest 身份、行数、文件数、每个冻结文件大小与哈希，并写 VERIFIED 回执。",
+    "归档包 Manifest 或文件哈希漂移、未扫描文件、临时路径、历史撤销、恢复计数不一致均 fail closed。",
+    "前端未知结果不自动重放高风险命令，而是保留确认上下文、提示不要盲目重复提交并重新读取服务端状态。",
+    "就业衔接要求业务档案仍为 ARCHIVED、当前成绩仍为 PUBLISHED，且重算的成绩冻结哈希与归档快照完全一致。"
+  ],
+  "surfaces": {
+    "staffArchive": "frontend/src/modules/internship/views/ArchiveView.vue",
+    "materialReader": "frontend/src/modules/internship/views/InternshipMaterialCenterView.vue",
+    "receipt": "frontend/src/modules/internship/views/components/ActionReceipt.vue",
+    "archiveApi": "frontend/src/modules/internship/api/archive.api.js",
+    "atomicCoordinator": "backend/app/modules/internship/services/internship_material_center_compat.py",
+    "archiveAuthority": "backend/app/modules/internship/services/internship_archive_service.py",
+    "scoreFreezeAuthority": "backend/app/modules/internship/services/internship_score_archive_guard.py",
+    "manifestAuthority": "backend/app/modules/internship/services/internship_material_center_service.py",
+    "streamingPackages": "backend/app/modules/internship/services/internship_streaming_package_service.py",
+    "fileResolver": "backend/app/services/file_access_resolvers.py",
+    "employmentTarget": "frontend/src/views/admin/employment/EmploymentStudentListView.vue"
+  },
+  "verification": [
+    {
+      "command": "Python 3.12 pytest --noconftest for material center, W14 archive/recovery/employment and W13 score/archive static contracts",
+      "result": "PASS 18/18; tests perform no database access"
+    },
+    {
+      "command": "Python py_compile for W14 routers, services, File Center resolver and content-security modules",
+      "result": "PASS"
+    },
+    {
+      "command": "Import File Center resolver, internship material-center router and streaming package service using the project backend runtime",
+      "result": "PASS; router exposes 18 routes"
+    },
+    {
+      "command": "node --test tests/internship.archive-fileversion-recovery-employment.contract.test.mjs",
+      "cwd": "frontend",
+      "result": "PASS 5/5"
+    },
+    {
+      "command": "npm test",
+      "cwd": "frontend",
+      "result": "PASS 667/667"
+    },
+    {
+      "command": "targeted ESLint for W14 Staff views, API, receipt and employment target",
+      "cwd": "frontend",
+      "result": "PASS 0 errors"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "PASS; 3165 modules transformed, 21 official routes prerendered; only pre-existing project-wide CSS import-order and chunk-size warnings"
+    }
+  ],
+  "runtimePending": {
+    "reason": "The isolated internship-v8-mysql container on 127.0.0.1:43327 still does not complete MySQL handshakes and Docker Engine previously returned HTTP 500 for a targeted container restart. Backend tests correctly refuse SQLite; unrelated Docker Desktop workloads must not be restarted.",
+    "requiredReplay": [
+      "Upload a real agreement or insurance file, hold it in SCANNING/INFECTED and prove preflight/archive/package all refuse it with zero business, Manifest or audit mutation.",
+      "Complete all material and score facts, preflight, archive and confirm exactly one atomic commit freezes FileVersion Manifest plus PUBLISHED score; inject a finalize error and prove no half-archive remains.",
+      "Generate, scoped-download and restore-check a single-student package; mutate package bytes, Manifest hash and embedded row/file counts separately and prove every case fails closed.",
+      "Generate more than one batch package segment, verify each receipt and recovery count, revoke one included student and prove only containing single/batch packages are invalidated.",
+      "Use a second scoped teacher to attempt cross-student and cross-batch package download and confirm the business endpoint plus File Center resolver both deny access.",
+      "Attempt employment handoff with DRAFT, PENDING_PUBLISH, withdrawn and hash-drifted score states, then confirm only the exact archived PUBLISHED freeze reaches the employment record.",
+      "Replay authenticated Staff PC at desktop and 390px with keyboard-only traversal, network/console inspection and unknown-result recovery."
+    ]
+  }
+}

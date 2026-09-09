@@ -52,7 +52,7 @@
 <script>
 import { teacherStudentV3Api, TEACHER_STUDENT_PAGE_SIZE } from '@/services/teacherStudentV3Api'
 import { toastError } from '@/services/request'
-import { go } from '@/utils/nav'
+import { decodeQueryText, go } from '@/utils/nav'
 
 export default {
   data() {
@@ -71,7 +71,8 @@ export default {
   },
   onLoad(q) {
     this.classId = (q && q.classId) || ''
-    this.className = (q && q.className) ? decodeURIComponent(q.className) : ''
+    // H5 路由会对已编码的中文 query 再编码一次；兼容微信宿主的一次编码和 H5 的双重编码。
+    this.className = decodeQueryText(decodeQueryText(q && q.className))
     this.reload()
   },
   onReachBottom() {

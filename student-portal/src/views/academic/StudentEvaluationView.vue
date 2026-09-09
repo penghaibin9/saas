@@ -36,7 +36,7 @@
       </section>
 
       <section class="task-list">
-        <article v-for="task in tasks" :key="task.taskId" class="sp-card task-card">
+        <article v-for="task in tasks" :key="task.taskId" class="sp-card task-card" :class="{ 'is-target': String(task.taskId) === focusTaskId }">
           <header class="task-card__head">
             <div>
               <strong>{{ task.courseName || '课程名称待补充' }}</strong>
@@ -100,12 +100,15 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const route = useRoute()
+const focusTaskId = computed(() => String(route.query.taskId || ''))
 const loading = ref(true)
 const error = ref('')
 const submitting = ref('')
@@ -206,6 +209,7 @@ onMounted(load)
 .summary-card.is-action b { color: var(--pri); }
 .task-list { display: grid; gap: 12px; }
 .task-card { padding: 18px 20px; }
+.task-card.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
 .task-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .task-card__head strong, .task-card__head span { display: block; }
 .task-card__head strong { color: var(--t1); font-size: 15px; }

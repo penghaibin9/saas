@@ -171,7 +171,7 @@ export default {
   },
   methods: {
     statusLabel(s) {
-      return STATUS_LABEL[s] || s || ''
+      return STATUS_LABEL[s] || (s ? '状态待确认' : '')
     },
     isResolvedCurrent(row) {
       return Boolean(this.currentContext?.termId) && String(row.termId) === String(this.currentContext.termId)

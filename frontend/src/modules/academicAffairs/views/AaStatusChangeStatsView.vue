@@ -123,7 +123,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusColor,
     nodeLabel(n) { return NODE_LABEL[n] || n || '未知节点' },
     async load() {

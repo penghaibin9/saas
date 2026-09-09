@@ -6,11 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-link" @click="$router.push('/admin/internship/plans')">任务与计划</button>
+      <button class="mp-link" @click="$router.push({ path: '/admin/internship/plans', query: { batchId: batchStore.selectedBatchId } })">任务与计划</button>
       <AppExportButton :export-fn="exportFn" :has-permission="canExport">{{ exportLabel }}</AppExportButton>
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
       <div class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
@@ -52,7 +54,7 @@
         </template>
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.studentName }}</div>
-          <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
+          <div class="mp-cell-sub">{{ [row.className, row.enterpriseName].filter((item) => item && item !== '-' && item !== 'null').join(' · ') || '未关联班级或企业' }}</div>
         </template>
         <template #cell-version="{ row }">
           <AppStatusTag v-if="row.isResubmit" type="info">{{ row.reportVersion || row.version }} 重交</AppStatusTag>
@@ -84,6 +86,7 @@ import {
 } from '@/components/business'
 import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
@@ -117,15 +120,17 @@ const PROCESS_COLUMNS = [
 
 export default {
   name: 'WeeklyReportListView',
-  components: { ModulePageShell, DataTable, AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
+    AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
+      loading: true, loadSequence: 0,
       error: '',
       rows: [],
       selected: [],
       batchSubmitting: false,
+      lastReceipt: null,
       workContextReady: false,
       filters: { status: 'PENDING_REVIEW' },
       pagination: { page: 1, pageSize: 10, total: 0 },
@@ -165,13 +170,13 @@ export default {
       return TYPE_MAP[this.reportTypeKey] || null
     },
     pageTitle() {
-      return this.isProcessReport ? `${this.typeConfig.label}批阅` : '周报任务批阅'
+      return this.isProcessReport ? `${this.typeConfig.label}批阅` : '周报批阅'
     },
     pageSubtitle() {
       if (this.isProcessReport) {
-        return `查看学生任务和实习报告，连续完成批阅、退回和催交 · 学生端提交${this.typeConfig.label}，教师在此批阅`
+        return `核对${this.typeConfig.label}内容与材料，批阅结果同步学生。`
       }
-      return '查看学生任务和实习报告，连续完成批阅、退回和催交 · 退回原因必填并同步学生端'
+      return '核对周报正文与重交修改，批阅结果同步学生。'
     },
     typeTabs() {
       return [
@@ -188,7 +193,7 @@ export default {
       return [{ label, value: this.pagination.total, tone: this.filters.status === 'PENDING_REVIEW' && this.pagination.total ? 'warn' : undefined }]
     },
     exportLabel() {
-      return this.isProcessReport ? `⬇ 导出${this.typeConfig.label}` : '⬇ 导出周报'
+      return this.isProcessReport ? `导出${this.typeConfig.label}` : '导出周报'
     },
     emptyTitle() {
       return this.isProcessReport ? `当前页签暂无${this.typeConfig.label}` : '当前页签暂无周报'
@@ -228,6 +233,7 @@ export default {
     if (restored) this.load()
   },
   watch: {
+    'batchStore.selectedBatchId'() { this.pagination.page = 1; this.selected = []; this.lastReceipt = null; this.load() },
     '$route.query.type': {
       immediate: true,
       handler(type) {
@@ -246,6 +252,7 @@ export default {
   },
   methods: {
     goDetail(row) {
+      const query = { ...this.$route.query, batchId: this.batchStore.selectedBatchId, page: String(this.pagination.page) }
       // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
       const tab = this.activeTabs.find((t) => t.value === this.filters.status)
       const tabLabel = tab ? tab.label : '全部'
@@ -253,19 +260,19 @@ export default {
         kind: this.isProcessReport ? 'process-report' : 'weekly-report',
         title: this.isProcessReport ? `${tabLabel} · ${this.typeConfig.label}` : tabLabel,
         listPath: this.$route.path,
-        listQuery: { ...this.$route.query },
+        listQuery: query,
         ids: this.rows.map((r) => r.id)
       })
       if (this.isProcessReport) {
-        this.$router.push(`/admin/internship/process-reports/${row.id}`)
+        this.$router.push({ path: `/admin/internship/process-reports/${row.id}`, query })
       } else {
-        this.$router.push(`/admin/internship/reports/${row.id}`)
+        this.$router.push({ path: `/admin/internship/reports/${row.id}`, query })
       }
     },
     applyPanel(panel) {
       const status = Object.prototype.hasOwnProperty.call(PANEL_STATUS, panel) ? PANEL_STATUS[panel] : PANEL_STATUS.review
       this.filters.status = status
-      this.pagination.page = 1
+      this.pagination.page = Math.max(1, Number(this.$route.query.page) || 1)
       this.selected = []
       this.load()
     },
@@ -274,7 +281,7 @@ export default {
       if (typeKey) query.type = typeKey
       else delete query.type
       // 切换报告类型时状态页签回到「待批阅」
-      query.panel = 'review'
+      query.panel = 'review'; query.page = '1'
       this.$router.replace({ path: this.$route.path, query })
       this.reportTypeKey = typeKey
       this.applyPanel('review')
@@ -282,7 +289,7 @@ export default {
     switchTab(v) {
       const panel = Object.keys(PANEL_STATUS).find((k) => PANEL_STATUS[k] === v) || 'all'
       if (this.$route.query.panel !== panel) {
-        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel } })
+        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel, page: '1' } })
       } else {
         this.applyPanel(panel)
       }
@@ -324,6 +331,12 @@ export default {
         const res = await internshipApi.batchReviewWeeklyReports(items, { action: 'APPROVE', comment: '批量通过' })
         if (res.code === 0) {
           const d = res.data || {}
+          this.lastReceipt = {
+            statusLabel: '批量批阅完成', actionLabel: '周报批量通过',
+            objectLabel: `服务端逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0}`,
+            auditText: '每条成功记录分别提交业务更新与审批留痕',
+            nextStep: d.skippedCount ? '查看跳过项原因并逐篇处理' : '可继续当前队列下一页'
+          }
           toast.success(`已通过 ${d.approvedCount || 0} 篇，跳过 ${d.skippedCount || 0} 篇（已写审计）`)
           this.selected = []
           this.load()
@@ -335,6 +348,8 @@ export default {
       }
     },
     async load() {
+      const sequence = ++this.loadSequence, batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.selected = []; this.pagination.total = 0
       if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       this.loading = true
       this.error = ''
@@ -342,6 +357,7 @@ export default {
       const res = this.isProcessReport
         ? await internshipApi.getProcessReports({ ...params, reportType: this.typeConfig.reportType })
         : await internshipApi.getWeeklyReports(params)
+      if (sequence !== this.loadSequence || batchId !== this.batchStore.selectedBatchId) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total

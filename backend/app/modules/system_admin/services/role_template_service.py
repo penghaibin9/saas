@@ -32,6 +32,17 @@ def _digest(codes) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _assert_canonical_new_writes(permissions: list[str]) -> None:
+    legacy = sorted(code for code in permissions if code.startswith("system."))
+    if legacy:
+        raise AppException(
+            "LEGACY_PERMISSION_WRITE_FORBIDDEN",
+            "新角色模板只允许 systemAdmin.* canonical 权限；system.* 仅供历史兼容读取",
+            http_status=422,
+            details={"permissionCodes": legacy[:50]},
+        )
+
+
 def _items(db, template: RoleTemplate | None) -> list[str]:
     if template is None:
         return []
@@ -156,6 +167,7 @@ def create_draft(
         raise AppException("VALIDATION_ERROR", "模板新版本必须填写至少5个字符的变更原因")
     permissions = sorted({str(value or "").strip() for value in (permission_codes or []) if str(value or "").strip()})
     assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+    _assert_canonical_new_writes(permissions)
 
     db = get_sessionmaker()()
     try:
@@ -220,6 +232,7 @@ def update_draft(
         raise AppException("VALIDATION_ERROR", "模板变更必须填写至少5个字符的原因")
     permissions = sorted({str(value or "").strip() for value in (permission_codes or []) if str(value or "").strip()})
     assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+    _assert_canonical_new_writes(permissions)
     db = get_sessionmaker()()
     try:
         item = _load(db, template_id, lock=True)
@@ -281,6 +294,7 @@ def publish_draft(
     *,
     expected_version: int,
     actor_user_id: int | None,
+    change_reason: str | None = None,
     effective_at: datetime | None = None,
 ) -> dict:
     from app.services import audit_log
@@ -293,8 +307,14 @@ def publish_draft(
             raise AppException("IMMUTABLE_TEMPLATE", "只有 DRAFT 模板版本可以发布", http_status=409)
         if int(item.version or 0) != int(expected_version):
             raise AppException("DATA_CONFLICT", "模板草稿已被其他人修改，请刷新后重试", http_status=409)
+        if change_reason is not None:
+            reason = str(change_reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "发布原因至少 5 个字符", http_status=422)
+            item.change_reason = reason
         permissions = _items(db, item)
         assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+        _assert_canonical_new_writes(permissions)
         if not permissions:
             raise AppException("VALIDATION_ERROR", "角色模板至少包含一个具体 TENANT permissionCode")
         now = datetime.utcnow()

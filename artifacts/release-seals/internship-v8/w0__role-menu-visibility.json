@@ -1,0 +1,1199 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "projectionType": "LIVE_CODE_STATIC_PROJECTION",
+  "runtimeDbTemplateRecheckRequired": true,
+  "roles": [
+    {
+      "roleCode": "SCHOOL_ADMIN",
+      "dataScope": "TENANT/SCHOOL; published explicit RoleTemplate at runtime",
+      "permissionSource": "published Permission Catalog",
+      "internshipPermissionPatterns": [
+        "internship.agreement.export",
+        "internship.agreement.manage",
+        "internship.agreement.schoolConfirm",
+        "internship.agreement.sign",
+        "internship.agreement.template.manage",
+        "internship.agreement.view",
+        "internship.application.review",
+        "internship.application.view",
+        "internship.archive.execute",
+        "internship.archive.force",
+        "internship.archive.manage",
+        "internship.archive.package",
+        "internship.archive.revoke",
+        "internship.archive.view",
+        "internship.attendance.export",
+        "internship.attendance.review",
+        "internship.attendance.view",
+        "internship.batch.export",
+        "internship.batch.manage",
+        "internship.batch.view",
+        "internship.change.review",
+        "internship.change.view",
+        "internship.communication.manage",
+        "internship.communication.view",
+        "internship.complaint.intake",
+        "internship.complaint.sensitive",
+        "internship.complaint.view",
+        "internship.compliance.exempt.approve",
+        "internship.compliance.exempt.request",
+        "internship.compliance.manage",
+        "internship.compliance.review",
+        "internship.compliance.view",
+        "internship.consent.manage",
+        "internship.dashboard.view",
+        "internship.enterprise.export",
+        "internship.enterprise.import",
+        "internship.enterprise.inspection.manage",
+        "internship.enterprise.inspection.view",
+        "internship.enterprise.manage",
+        "internship.enterprise.view",
+        "internship.eval.advisor.manage",
+        "internship.eval.enterprise.export",
+        "internship.eval.enterprise.manage",
+        "internship.eval.enterprise.review",
+        "internship.eval.enterprise.view",
+        "internship.eval.self.export",
+        "internship.eval.self.review",
+        "internship.eval.self.view",
+        "internship.evidence.export",
+        "internship.filing.review",
+        "internship.guidance.export",
+        "internship.guidance.manage",
+        "internship.guidance.view",
+        "internship.incident.close",
+        "internship.incident.handle",
+        "internship.incident.report",
+        "internship.insurance.verify",
+        "internship.insurance.view",
+        "internship.leave.export",
+        "internship.leave.review",
+        "internship.leave.view",
+        "internship.makeup.export",
+        "internship.makeup.review",
+        "internship.makeup.view",
+        "internship.match.batch",
+        "internship.match.conflict.view",
+        "internship.match.export",
+        "internship.match.intention.manage",
+        "internship.match.intention.view",
+        "internship.match.log.view",
+        "internship.match.manual",
+        "internship.match.result.view",
+        "internship.plan.manage",
+        "internship.plan.view",
+        "internship.position.export",
+        "internship.position.manage",
+        "internship.position.publish",
+        "internship.position.view",
+        "internship.recruitment.close",
+        "internship.recruitment.invite",
+        "internship.recruitment.manage",
+        "internship.recruitment.view",
+        "internship.report.export",
+        "internship.report.review",
+        "internship.report.view",
+        "internship.risk.export",
+        "internship.risk.handle",
+        "internship.risk.view",
+        "internship.safety.manage",
+        "internship.safety.view",
+        "internship.score.config.manage",
+        "internship.score.export",
+        "internship.score.manage",
+        "internship.score.publish",
+        "internship.score.view",
+        "internship.stats.export",
+        "internship.stats.view",
+        "internship.student.eligibility.review",
+        "internship.student.export",
+        "internship.student.manage",
+        "internship.student.view",
+        "internship.task.review",
+        "internship.task.view",
+        "internship.visit.export",
+        "internship.visit.manage",
+        "internship.visit.plan.manage",
+        "internship.visit.plan.view",
+        "internship.visit.view"
+      ],
+      "visibleLeafCount": 32,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "全局趋势 / 统计",
+          "path": "/admin/internship/stats?dimension=trend",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "批次管理",
+          "path": "/admin/internship/batches?panel=list",
+          "permissionKey": "internship.batch.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "学生管理",
+          "path": "/admin/internship/students?panel=roster",
+          "permissionKey": "internship.student.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "资格认定",
+          "path": "/admin/internship/students?panel=eligibility",
+          "permissionKey": "internship.student.eligibility.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "保险核验",
+          "path": "/admin/internship/insurance",
+          "permissionKey": "internship.insurance.verify",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "企业库",
+          "path": "/admin/internship/enterprises?panel=list",
+          "permissionKey": "internship.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "岗位库",
+          "path": "/admin/internship/positions?panel=list",
+          "permissionKey": "internship.position.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "招聘季与企业邀请",
+          "path": "/admin/internship/recruitment-campaigns",
+          "permissionKey": "internship.recruitment.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "企业准入审核",
+          "path": "/admin/internship/enterprises?panel=qualification",
+          "permissionKey": "internship.enterprise.manage",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "选岗 / 匹配工作台",
+          "path": "/admin/internship/match?panel=intention",
+          "permissionKey": "internship.match.intention.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "调岗退岗",
+          "path": "/admin/internship/changes?panel=pending",
+          "permissionKey": "internship.change.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "分配记录",
+          "path": "/admin/internship/assignment-logs",
+          "permissionKey": "internship.match.log.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "实习申请审核",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "三方协议工作台",
+          "path": "/admin/internship/agreements?panel=confirm",
+          "permissionKey": "internship.agreement.view",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "自主实习申请",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "考勤工作台",
+          "path": "/admin/internship/attendance?panel=checkins",
+          "permissionKey": "internship.attendance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "异常核验",
+          "path": "/admin/internship/attendance?panel=exceptions",
+          "permissionKey": "internship.attendance.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "请假审批 / 台账",
+          "path": "/admin/internship/leaves?panel=pending",
+          "permissionKey": "internship.leave.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "计划任务",
+          "path": "/admin/internship/plans",
+          "permissionKey": "internship.plan.view",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "过程报告批阅",
+          "path": "/admin/internship/reports?panel=review",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "报告问题",
+          "path": "/admin/internship/reports?panel=issues",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-guidance-visit",
+          "workspaceLabel": "指导与巡访",
+          "label": "指导计划 / 不足预警",
+          "path": "/admin/internship/guidance-plan",
+          "permissionKey": "internship.guidance.manage",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险工作台",
+          "path": "/admin/internship/risks?panel=board",
+          "permissionKey": "internship.risk.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险处置",
+          "path": "/admin/internship/risk-disposal?stage=pending",
+          "permissionKey": "internship.risk.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "上岗 / 监管合规",
+          "path": "/admin/internship/compliance?tab=overview",
+          "permissionKey": "internship.compliance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "事故与应急",
+          "path": "/admin/internship/compliance?tab=incidents",
+          "permissionKey": "internship.incident.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "评价工作台",
+          "path": "/admin/internship/enterprise-evals",
+          "permissionKey": "internship.eval.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "成绩工作台",
+          "path": "/admin/internship/scores?stage=overview",
+          "permissionKey": "internship.score.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "成绩申诉",
+          "path": "/admin/internship/scores?stage=appeal",
+          "permissionKey": "internship.score.publish",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "材料与归档",
+          "path": "/admin/internship/archive?panel=records",
+          "permissionKey": "internship.archive.manage",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "实习统计",
+          "path": "/admin/internship/stats?dimension=overview",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        }
+      ]
+    },
+    {
+      "roleCode": "COLLEGE_ADMIN",
+      "dataScope": "COLLEGE; service-layer scope",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [
+        "internship.agreement.export",
+        "internship.agreement.manage",
+        "internship.agreement.template.manage",
+        "internship.agreement.view",
+        "internship.application.review",
+        "internship.application.view",
+        "internship.archive.execute",
+        "internship.archive.manage",
+        "internship.archive.package",
+        "internship.archive.view",
+        "internship.attendance.export",
+        "internship.attendance.review",
+        "internship.attendance.view",
+        "internship.batch.export",
+        "internship.batch.manage",
+        "internship.batch.view",
+        "internship.change.review",
+        "internship.change.view",
+        "internship.communication.manage",
+        "internship.communication.view",
+        "internship.complaint.intake",
+        "internship.complaint.view",
+        "internship.compliance.exempt.request",
+        "internship.compliance.review",
+        "internship.compliance.view",
+        "internship.consent.manage",
+        "internship.dashboard.view",
+        "internship.enterprise.export",
+        "internship.enterprise.manage",
+        "internship.enterprise.view",
+        "internship.eval.advisor.manage",
+        "internship.eval.enterprise.export",
+        "internship.eval.enterprise.manage",
+        "internship.eval.enterprise.review",
+        "internship.eval.enterprise.view",
+        "internship.eval.self.export",
+        "internship.eval.self.review",
+        "internship.eval.self.view",
+        "internship.filing.review",
+        "internship.filing.view",
+        "internship.guidance.export",
+        "internship.guidance.manage",
+        "internship.guidance.view",
+        "internship.incident.handle",
+        "internship.incident.report",
+        "internship.incident.view",
+        "internship.insurance.verify",
+        "internship.insurance.view",
+        "internship.leave.export",
+        "internship.leave.review",
+        "internship.leave.view",
+        "internship.makeup.export",
+        "internship.makeup.review",
+        "internship.makeup.view",
+        "internship.match.batch",
+        "internship.match.conflict.view",
+        "internship.match.export",
+        "internship.match.intention.manage",
+        "internship.match.intention.view",
+        "internship.match.log.view",
+        "internship.match.manual",
+        "internship.match.result.view",
+        "internship.plan.manage",
+        "internship.plan.view",
+        "internship.position.export",
+        "internship.position.manage",
+        "internship.position.view",
+        "internship.recruitment.close",
+        "internship.recruitment.invite",
+        "internship.recruitment.manage",
+        "internship.recruitment.view",
+        "internship.report.export",
+        "internship.report.review",
+        "internship.report.view",
+        "internship.risk.export",
+        "internship.risk.handle",
+        "internship.risk.view",
+        "internship.safety.manage",
+        "internship.safety.view",
+        "internship.score.export",
+        "internship.score.manage",
+        "internship.score.view",
+        "internship.stats.export",
+        "internship.stats.view",
+        "internship.student.eligibility.review",
+        "internship.student.export",
+        "internship.student.manage",
+        "internship.student.view",
+        "internship.task.review",
+        "internship.task.view",
+        "internship.visit.export",
+        "internship.visit.manage",
+        "internship.visit.plan.manage",
+        "internship.visit.plan.view",
+        "internship.visit.view"
+      ],
+      "visibleLeafCount": 31,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "全局趋势 / 统计",
+          "path": "/admin/internship/stats?dimension=trend",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "批次管理",
+          "path": "/admin/internship/batches?panel=list",
+          "permissionKey": "internship.batch.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "学生管理",
+          "path": "/admin/internship/students?panel=roster",
+          "permissionKey": "internship.student.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "资格认定",
+          "path": "/admin/internship/students?panel=eligibility",
+          "permissionKey": "internship.student.eligibility.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "保险核验",
+          "path": "/admin/internship/insurance",
+          "permissionKey": "internship.insurance.verify",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "企业库",
+          "path": "/admin/internship/enterprises?panel=list",
+          "permissionKey": "internship.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "岗位库",
+          "path": "/admin/internship/positions?panel=list",
+          "permissionKey": "internship.position.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "招聘季与企业邀请",
+          "path": "/admin/internship/recruitment-campaigns",
+          "permissionKey": "internship.recruitment.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "企业准入审核",
+          "path": "/admin/internship/enterprises?panel=qualification",
+          "permissionKey": "internship.enterprise.manage",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "选岗 / 匹配工作台",
+          "path": "/admin/internship/match?panel=intention",
+          "permissionKey": "internship.match.intention.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "调岗退岗",
+          "path": "/admin/internship/changes?panel=pending",
+          "permissionKey": "internship.change.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "分配记录",
+          "path": "/admin/internship/assignment-logs",
+          "permissionKey": "internship.match.log.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "实习申请审核",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "三方协议工作台",
+          "path": "/admin/internship/agreements?panel=confirm",
+          "permissionKey": "internship.agreement.view",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "自主实习申请",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "考勤工作台",
+          "path": "/admin/internship/attendance?panel=checkins",
+          "permissionKey": "internship.attendance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "异常核验",
+          "path": "/admin/internship/attendance?panel=exceptions",
+          "permissionKey": "internship.attendance.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "请假审批 / 台账",
+          "path": "/admin/internship/leaves?panel=pending",
+          "permissionKey": "internship.leave.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "计划任务",
+          "path": "/admin/internship/plans",
+          "permissionKey": "internship.plan.view",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "过程报告批阅",
+          "path": "/admin/internship/reports?panel=review",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "报告问题",
+          "path": "/admin/internship/reports?panel=issues",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-guidance-visit",
+          "workspaceLabel": "指导与巡访",
+          "label": "指导计划 / 不足预警",
+          "path": "/admin/internship/guidance-plan",
+          "permissionKey": "internship.guidance.manage",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险工作台",
+          "path": "/admin/internship/risks?panel=board",
+          "permissionKey": "internship.risk.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险处置",
+          "path": "/admin/internship/risk-disposal?stage=pending",
+          "permissionKey": "internship.risk.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "上岗 / 监管合规",
+          "path": "/admin/internship/compliance?tab=overview",
+          "permissionKey": "internship.compliance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "事故与应急",
+          "path": "/admin/internship/compliance?tab=incidents",
+          "permissionKey": "internship.incident.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "评价工作台",
+          "path": "/admin/internship/enterprise-evals",
+          "permissionKey": "internship.eval.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "成绩工作台",
+          "path": "/admin/internship/scores?stage=overview",
+          "permissionKey": "internship.score.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "材料与归档",
+          "path": "/admin/internship/archive?panel=records",
+          "permissionKey": "internship.archive.manage",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "实习统计",
+          "path": "/admin/internship/stats?dimension=overview",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        }
+      ]
+    },
+    {
+      "roleCode": "INTERN_MENTOR",
+      "dataScope": "STABLE_ADVISOR_RELATION; own assigned students",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [
+        "internship.agreement.manage",
+        "internship.agreement.sign",
+        "internship.agreement.view",
+        "internship.application.review",
+        "internship.application.view",
+        "internship.archive.prepare",
+        "internship.archive.view",
+        "internship.attendance.*",
+        "internship.batch.view",
+        "internship.change.review",
+        "internship.change.view",
+        "internship.communication.*",
+        "internship.compliance.view",
+        "internship.consent.manage",
+        "internship.consent.view",
+        "internship.dashboard.view",
+        "internship.enterprise.inspection.view",
+        "internship.enterprise.view",
+        "internship.eval.advisor.manage",
+        "internship.eval.enterprise.manage",
+        "internship.eval.enterprise.review",
+        "internship.eval.enterprise.view",
+        "internship.eval.self.review",
+        "internship.eval.self.view",
+        "internship.filing.view",
+        "internship.guidance.*",
+        "internship.guide.*",
+        "internship.incident.handle",
+        "internship.incident.report",
+        "internship.incident.view",
+        "internship.insurance.*",
+        "internship.leave.review",
+        "internship.leave.view",
+        "internship.makeup.*",
+        "internship.match.intention.view",
+        "internship.match.recommend.view",
+        "internship.match.result.view",
+        "internship.plan.view",
+        "internship.position.view",
+        "internship.report.export",
+        "internship.report.review",
+        "internship.report.view",
+        "internship.risk.handle",
+        "internship.risk.view",
+        "internship.safety.manage",
+        "internship.safety.view",
+        "internship.score.manage",
+        "internship.score.view",
+        "internship.stats.view",
+        "internship.student.material.view",
+        "internship.student.view",
+        "internship.task.review",
+        "internship.task.view",
+        "internship.visit.*"
+      ],
+      "visibleLeafCount": 27,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "全局趋势 / 统计",
+          "path": "/admin/internship/stats?dimension=trend",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "批次管理",
+          "path": "/admin/internship/batches?panel=list",
+          "permissionKey": "internship.batch.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "学生管理",
+          "path": "/admin/internship/students?panel=roster",
+          "permissionKey": "internship.student.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "保险核验",
+          "path": "/admin/internship/insurance",
+          "permissionKey": "internship.insurance.verify",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "企业库",
+          "path": "/admin/internship/enterprises?panel=list",
+          "permissionKey": "internship.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-enterprise-position",
+          "workspaceLabel": "企业岗位与招聘",
+          "label": "岗位库",
+          "path": "/admin/internship/positions?panel=list",
+          "permissionKey": "internship.position.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "选岗 / 匹配工作台",
+          "path": "/admin/internship/match?panel=intention",
+          "permissionKey": "internship.match.intention.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "调岗退岗",
+          "path": "/admin/internship/changes?panel=pending",
+          "permissionKey": "internship.change.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "实习申请审核",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "三方协议工作台",
+          "path": "/admin/internship/agreements?panel=confirm",
+          "permissionKey": "internship.agreement.view",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-apply-agreement",
+          "workspaceLabel": "申请与协议",
+          "label": "自主实习申请",
+          "path": "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+          "permissionKey": "internship.application.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "考勤工作台",
+          "path": "/admin/internship/attendance?panel=checkins",
+          "permissionKey": "internship.attendance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "异常核验",
+          "path": "/admin/internship/attendance?panel=exceptions",
+          "permissionKey": "internship.attendance.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "请假审批 / 台账",
+          "path": "/admin/internship/leaves?panel=pending",
+          "permissionKey": "internship.leave.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "计划任务",
+          "path": "/admin/internship/plans",
+          "permissionKey": "internship.plan.view",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "过程报告批阅",
+          "path": "/admin/internship/reports?panel=review",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-weekly-task",
+          "workspaceLabel": "计划与过程报告",
+          "label": "报告问题",
+          "path": "/admin/internship/reports?panel=issues",
+          "permissionKey": "internship.report.review",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-guidance-visit",
+          "workspaceLabel": "指导与巡访",
+          "label": "指导巡访工作台",
+          "path": "/admin/internship/guidance?panel=guidance",
+          "permissionKey": "internship.guidance.record.create",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-guidance-visit",
+          "workspaceLabel": "指导与巡访",
+          "label": "指导计划 / 不足预警",
+          "path": "/admin/internship/guidance-plan",
+          "permissionKey": "internship.guidance.manage",
+          "entryType": "CONFIG_VIEW"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险工作台",
+          "path": "/admin/internship/risks?panel=board",
+          "permissionKey": "internship.risk.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险处置",
+          "path": "/admin/internship/risk-disposal?stage=pending",
+          "permissionKey": "internship.risk.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "上岗 / 监管合规",
+          "path": "/admin/internship/compliance?tab=overview",
+          "permissionKey": "internship.compliance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "事故与应急",
+          "path": "/admin/internship/compliance?tab=incidents",
+          "permissionKey": "internship.incident.handle",
+          "entryType": "TASK_QUEUE"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "评价工作台",
+          "path": "/admin/internship/enterprise-evals",
+          "permissionKey": "internship.eval.enterprise.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-eval-score",
+          "workspaceLabel": "评价与成绩",
+          "label": "成绩工作台",
+          "path": "/admin/internship/scores?stage=overview",
+          "permissionKey": "internship.score.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "实习统计",
+          "path": "/admin/internship/stats?dimension=overview",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        }
+      ]
+    },
+    {
+      "roleCode": "COUNSELOR",
+      "dataScope": "RESPONSIBLE_CLASS; read-only internship collaboration",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [
+        "internship.attendance.view",
+        "internship.dashboard.view",
+        "internship.leave.view",
+        "internship.report.view",
+        "internship.risk.view",
+        "internship.student.view"
+      ],
+      "visibleLeafCount": 4,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "学生管理",
+          "path": "/admin/internship/students?panel=roster",
+          "permissionKey": "internship.student.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-attendance-leave",
+          "workspaceLabel": "考勤与请假",
+          "label": "考勤工作台",
+          "path": "/admin/internship/attendance?panel=checkins",
+          "permissionKey": "internship.attendance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险工作台",
+          "path": "/admin/internship/risks?panel=board",
+          "permissionKey": "internship.risk.view",
+          "entryType": "WORKBENCH"
+        }
+      ]
+    },
+    {
+      "roleCode": "SECURITY_AUDITOR",
+      "dataScope": "AUDIT_READ_SCOPE; no internship writes",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [
+        "internship.application.view",
+        "internship.archive.view",
+        "internship.complaint.view",
+        "internship.compliance.view",
+        "internship.dashboard.view",
+        "internship.match.log.view",
+        "internship.risk.view",
+        "internship.stats.enterprise.view",
+        "internship.stats.position.view",
+        "internship.stats.score.view",
+        "internship.stats.view",
+        "internship.student.view"
+      ],
+      "visibleLeafCount": 7,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "全局趋势 / 统计",
+          "path": "/admin/internship/stats?dimension=trend",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-batch-rules",
+          "workspaceLabel": "批次与学生",
+          "label": "学生管理",
+          "path": "/admin/internship/students?panel=roster",
+          "permissionKey": "internship.student.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-match-assign",
+          "workspaceLabel": "选岗与匹配",
+          "label": "分配记录",
+          "path": "/admin/internship/assignment-logs",
+          "permissionKey": "internship.match.log.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "风险工作台",
+          "path": "/admin/internship/risks?panel=board",
+          "permissionKey": "internship.risk.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-risk",
+          "workspaceLabel": "风险与合规",
+          "label": "上岗 / 监管合规",
+          "path": "/admin/internship/compliance?tab=overview",
+          "permissionKey": "internship.compliance.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "实习统计",
+          "path": "/admin/internship/stats?dimension=overview",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        }
+      ]
+    },
+    {
+      "roleCode": "EMPLOYMENT_TEACHER",
+      "dataScope": "EMPLOYMENT_HANDOFF/ARCHIVE_READ_SCOPE",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [
+        "internship.archive.package",
+        "internship.archive.view",
+        "internship.dashboard.view",
+        "internship.employment.view",
+        "internship.stats.enterprise.view",
+        "internship.stats.position.view",
+        "internship.stats.score.view",
+        "internship.stats.view"
+      ],
+      "visibleLeafCount": 4,
+      "visibleMenuLeaves": [
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "今日工作台",
+          "path": "/admin/internship",
+          "permissionKey": "internship.dashboard.view",
+          "entryType": "WORKBENCH"
+        },
+        {
+          "workspaceKey": "in-workbench",
+          "workspaceLabel": "今日工作",
+          "label": "全局趋势 / 统计",
+          "path": "/admin/internship/stats?dimension=trend",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "实习统计",
+          "path": "/admin/internship/stats?dimension=overview",
+          "permissionKey": "internship.stats.view",
+          "entryType": "ANALYTICS_VIEW"
+        },
+        {
+          "workspaceKey": "in-employment-archive-stats",
+          "workspaceLabel": "归档与分析",
+          "label": "就业衔接",
+          "path": "/admin/employment?panel=follow-up",
+          "permissionKey": "internship.employment.view",
+          "entryType": "CROSS_MODULE"
+        }
+      ]
+    },
+    {
+      "roleCode": "STUDENT",
+      "dataScope": "SELF; no Staff PC navigation",
+      "permissionSource": "backend/app/core/permissions.py",
+      "internshipPermissionPatterns": [],
+      "visibleLeafCount": 0,
+      "visibleMenuLeaves": []
+    }
+  ]
+}

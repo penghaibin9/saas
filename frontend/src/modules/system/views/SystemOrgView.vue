@@ -358,10 +358,10 @@ export default {
     // ── SYS-04 组织变更版本 ────────────────────────────────────────────
     fmtTime(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
     versionLabel(s) {
-      return ({ DRAFT: '草稿', VALIDATED: '已校验', SCHEDULED: '已排期', ACTIVATED: '已生效', ROLLED_BACK: '已回滚' })[s] || s
+      return ({ DRAFT: '草稿', VALIDATED: '已校验', SCHEDULED: '已排期', ACTIVATED: '已生效', ROLLED_BACK: '已回滚' })[s] || (s ? '状态待确认' : '—')
     },
     versionActionLabel(s) {
-      return ({ DRAFT: '退回草稿', VALIDATED: '校验', SCHEDULED: '排期', ACTIVATED: '立即激活', ROLLED_BACK: '回滚' })[s] || s
+      return ({ DRAFT: '退回草稿', VALIDATED: '校验', SCHEDULED: '排期', ACTIVATED: '立即激活', ROLLED_BACK: '回滚' })[s] || (s ? '状态待确认' : '—')
     },
     versionTagType(s) {
       if (s === 'ACTIVATED') return 'success'
@@ -370,7 +370,7 @@ export default {
       return 'default'
     },
     changeLabel(s) {
-      return ({ CREATE: '新建', RENAME: '改名', MOVE: '调整上级', DISABLE: '停用', ENABLE: '启用' })[s] || s
+      return ({ CREATE: '新建', RENAME: '改名', MOVE: '调整上级', DISABLE: '停用', ENABLE: '启用' })[s] || (s ? '状态待确认' : '—')
     },
     orgLabel(type, id) {
       const hit = this.flatTree.find((n) => n.type === type && String(n.id) === String(id))

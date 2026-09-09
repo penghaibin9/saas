@@ -14,6 +14,9 @@ from app.modules.graduation.services.graduation_mentor_subject_guard import (
 from app.modules.graduation.services.graduation_review_message_event_guard import (
     install as install_graduation_review_message_guard,
 )
+from app.modules.graduation.services.graduation_release_hardening import (
+    install as install_graduation_release_hardening,
+)
 
 register_graduation_permission_extensions()
 install_graduation_package9_guard()
@@ -49,3 +52,6 @@ def _install_review_center_projection() -> None:
 
 _install_w7_formal_review_overlay()
 _install_review_center_projection()
+# Release hardening is intentionally installed last so legacy overlays cannot
+# replace its object-scope, concurrency, evidence and pagination guards.
+install_graduation_release_hardening()

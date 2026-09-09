@@ -11,7 +11,7 @@
         <label class="pcp__field"><span>时长（天）</span><input v-model.number="p.durationDays" type="number" class="pcp__input" /></label>
         <label class="pcp__field"><span>学生上限</span><input v-model.number="p.maxStudents" type="number" class="pcp__input" /></label>
         <label class="pcp__field"><span>账号上限</span><input v-model.number="p.maxUsers" type="number" class="pcp__input" /></label>
-        <label class="pcp__field"><span>存储（MB）</span><input v-model.number="p.storageLimitMb" type="number" class="pcp__input" /></label>
+        <label class="pcp__field"><span>存储（兆字节）</span><input v-model.number="p.storageLimitMb" type="number" class="pcp__input" /></label>
         <AppButton variant="primary" @click="save(p)">保存</AppButton>
       </AppCard>
     </div>

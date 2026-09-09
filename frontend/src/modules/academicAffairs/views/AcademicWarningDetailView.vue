@@ -82,7 +82,7 @@
                 <div class="mp-timeline__title">{{ i.wayLabel }} · {{ i.operator }}</div>
                 <div class="mp-timeline__desc">
                   {{ i.content }}
-                  <div v-if="i.result" class="mp-cell-sub">结果：{{ i.result }}</div>
+                  <div v-if="i.result" class="mp-cell-sub">结果：{{ interventionResultLabel(i.result) }}</div>
                   <div v-if="i.nextPlan" class="mp-cell-sub">下一步：{{ i.nextPlan }}</div>
                 </div>
                 <div class="mp-timeline__time">{{ i.time }}</div>
@@ -101,7 +101,7 @@
                 <tr v-for="a in detail.auditLogs" :key="a.id">
                   <td class="is-who">{{ a.operator }}<div class="mp-cell-sub">{{ a.roleName }}</div></td>
                   <td>{{ a.time }}</td>
-                  <td>{{ a.action }}</td>
+                  <td>{{ auditActionLabel(a) }}</td>
                   <td>{{ a.detail }}</td>
                 </tr>
                 <tr v-if="!detail.auditLogs.length"><td colspan="4" class="mp-note">暂无审计记录</td></tr>
@@ -164,6 +164,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { FormDrawer } from '@/modules/academicAffairs/components'
 import { getWarningDetail, createIntervention, closeWarning, escalateWarning, remindWarnings } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
 
 export default {
   name: 'AcademicWarningDetailView',
@@ -248,6 +249,8 @@ export default {
     this.load()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
+    interventionResultLabel(value) { return safeLocalizedText({ value, dictionary: { EFFECTIVE: '有效', INEFFECTIVE: '效果不明显', COMPLETED: '已完成', FOLLOWING: '持续跟进', CLOSED: '已关闭' }, unknownLabel: '结果待确认' }) },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)
@@ -264,10 +267,10 @@ export default {
       return v ? v.slice(0, -4) + '**' + v.slice(-2) : ''
     },
     typeLabel(v) {
-      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     statusLabel(v) {
-      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     async load() {
       this.loading = true

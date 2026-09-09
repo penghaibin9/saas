@@ -150,11 +150,13 @@ def frontend_usage():
         if not root.exists():
             continue
         for path in root.rglob("*"):
+            if any(part in {"node_modules", "dist", "unpackage", ".git"} for part in path.parts):
+                continue
             if path.suffix.lower() not in {".js", ".ts", ".vue", ".jsx", ".tsx"}:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
+            except (OSError, UnicodeDecodeError):
                 continue
             for match in FRONT_RE.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1

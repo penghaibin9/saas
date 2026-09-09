@@ -6,7 +6,7 @@ load 成 ORM 对象逐行修改；13B 自身只有数千条课程快照，可按
 """
 from __future__ import annotations
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import func, select, text
 
 from app.services.sandbox_school_professional_catalog import professional_profile
 from app.services.sandbox_school_professional_reconcile import (
@@ -41,6 +41,114 @@ def _rename_map() -> dict[str, str]:
         for index, label in enumerate(LEGACY_MAJOR_COURSE_LABELS):
             out[f"{major_name}{label}"] = _target_course_name(major_name, index)
     return out
+
+
+def _reconcile_academic_grade_names(db, tenant_id: int) -> dict:
+    """按学生专业和原始课程顺序幂等收口历史成绩课名。
+
+    不能用“当前课名 -> 目标课名”反复替换：某些专业的目标课名可能恰好
+    也是另一个旧占位课名，二次执行会产生链式误改。基础 seed 对每个学生按
+    固定顺序写入 9/18 条成绩，因此以 (acad_student_id, id) 中的顺序定位
+    9 门专业课，可恢复且可重复验证。
+    """
+    from app.models import AcademicGrade, AcademicStudent
+
+    student_meta = {
+        int(student_id): (str(major_name), str(grade))
+        for student_id, major_name, grade in db.execute(
+            select(AcademicStudent.id, AcademicStudent.major_name, AcademicStudent.grade).where(
+                AcademicStudent.tenant_id == tenant_id,
+                AcademicStudent.is_deleted.is_(False),
+            )
+        ).all()
+    }
+    if not student_meta:
+        raise RuntimeError("20K 学业成绩专业化失败：无学生学业档案")
+
+    update_sql = text(
+        "UPDATE t_acad_grade SET course_name=:course_name "
+        "WHERE id=:grade_id AND tenant_id=:tenant_id AND is_deleted=0"
+    )
+    pending: list[dict] = []
+    checked = 0
+    mismatch_count = 0
+    updated = 0
+    current_student_id: int | None = None
+    current_ordinal = 0
+
+    def _assert_row_count(student_id: int | None, row_count: int) -> None:
+        if student_id is None:
+            return
+        _major_name, grade = student_meta[student_id]
+        expected = 18 if grade == "2024" else 9
+        if row_count != expected:
+            raise RuntimeError(
+                "20K 学业成绩专业化失败："
+                f"acadStudentId={student_id} grade={grade} rows={row_count} expected={expected}"
+            )
+
+    # Do not use ``yield_per`` here.  MySQL implements it with an unbuffered
+    # server-side cursor; issuing the batched UPDATEs below on the same
+    # connection invalidates that cursor and can make the next student appear
+    # to have only a partial grade set.  The Core result buffers lightweight
+    # three-column tuples (not ORM entities), which is bounded and safe for the
+    # 174,600-row standard sandbox profile.
+    rows = db.execute(
+        select(AcademicGrade.id, AcademicGrade.acad_student_id, AcademicGrade.course_name)
+        .where(
+            AcademicGrade.tenant_id == tenant_id,
+            AcademicGrade.is_deleted.is_(False),
+        )
+        .order_by(AcademicGrade.acad_student_id, AcademicGrade.id)
+    )
+    for grade_id, acad_student_id, current_name in rows:
+        sid = int(acad_student_id)
+        if sid not in student_meta:
+            raise RuntimeError(f"20K 学业成绩存在无档案学生：acadStudentId={sid}")
+        if current_student_id != sid:
+            _assert_row_count(current_student_id, current_ordinal)
+            current_student_id = sid
+            current_ordinal = 0
+        current_ordinal += 1
+        checked += 1
+
+        label_index: int | None = None
+        if 6 <= current_ordinal <= 9:
+            label_index = current_ordinal - 6
+        elif 14 <= current_ordinal <= 18:
+            label_index = current_ordinal - 10
+        if label_index is None:
+            continue
+
+        major_name, _grade = student_meta[sid]
+        expected_name = _target_course_name(major_name, label_index)
+        if str(current_name or "") == expected_name:
+            continue
+        mismatch_count += 1
+        pending.append({
+            "course_name": expected_name,
+            "grade_id": int(grade_id),
+            "tenant_id": tenant_id,
+        })
+        if len(pending) >= 2000:
+            result = db.execute(update_sql, pending)
+            updated += int(result.rowcount or 0)
+            pending.clear()
+
+    _assert_row_count(current_student_id, current_ordinal)
+    if pending:
+        result = db.execute(update_sql, pending)
+        updated += int(result.rowcount or 0)
+    if updated != mismatch_count:
+        raise RuntimeError(
+            f"20K 学业成绩课名收口行数异常：mismatch={mismatch_count} updated={updated}"
+        )
+    return {
+        "checked": checked,
+        "mismatches": mismatch_count,
+        "updated": updated,
+        "mode": "STUDENT_MAJOR_AND_GRADE_ORDINAL",
+    }
 
 
 def _sync_aa_course_snapshots(db, tenant_id: int) -> dict:
@@ -200,35 +308,16 @@ def professionalize_academic_fast(db, tenant_id: int) -> dict:
     db.flush()
     snapshots = _sync_aa_course_snapshots(db, tenant_id)
 
-    rename_map = _rename_map()
-    # 旧 academic 域历史成绩约 174,600 行。一次 UPDATE 在数据库侧完成，不查询 AcademicStudent，
-    # 不把大成绩表拉进 Python。
-    grade_updated = 0
-    if rename_map:
-        result = db.execute(
-            update(AcademicGrade)
-            .where(
-                AcademicGrade.tenant_id == tenant_id,
-                AcademicGrade.course_name.in_(tuple(rename_map)),
-                AcademicGrade.is_deleted.is_(False),
-            )
-            .values(
-                course_name=case(
-                    rename_map,
-                    value=AcademicGrade.course_name,
-                    else_=AcademicGrade.course_name,
-                )
-            )
-        )
-        grade_updated = int(result.rowcount or 0)
+    grade_reconciliation = _reconcile_academic_grade_names(db, tenant_id)
 
     db.commit()
     return {
         "aaMajorCourses": aa_updated,
         "aaMajorCourseCategories": aa_category_updated,
-        "academicGradeNames": grade_updated,
+        "academicGradeNames": grade_reconciliation["updated"],
+        "academicGradeReconciliation": grade_reconciliation,
         "courseSnapshots": snapshots,
-        "gradeRewriteMode": "SQL_CASE_UPDATE",
+        "gradeRewriteMode": "STUDENT_MAJOR_AND_GRADE_ORDINAL",
     }
 
 

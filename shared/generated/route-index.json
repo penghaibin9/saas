@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-26T04:24:02.831Z",
-  "exactCount": 439,
-  "patternCount": 74,
-  "redirectCount": 38,
+  "generatedAt": "2026-09-08T01:12:06.663Z",
+  "exactCount": 484,
+  "patternCount": 80,
+  "redirectCount": 60,
   "aliasCount": 0,
   "exact": [
     "/",
@@ -121,6 +121,8 @@
     "/admin/academic-affairs/terms/weeks",
     "/admin/academic-affairs/terms/years",
     "/admin/academic-affairs/textbooks",
+    "/admin/academic-affairs/textbooks/distributions",
+    "/admin/academic-affairs/textbooks/distributions/new",
     "/admin/academic-affairs/time-slots",
     "/admin/academic-affairs/transcript",
     "/admin/academic-affairs/warnings",
@@ -130,9 +132,7 @@
     "/admin/academic/grades",
     "/admin/academic/makeup-retake",
     "/admin/academic/students",
-    "/admin/academic/students/:id",
     "/admin/academic/warnings",
-    "/admin/academic/warnings/:id",
     "/admin/approval",
     "/admin/approval/done",
     "/admin/approval/returned",
@@ -151,6 +151,7 @@
     "/admin/campus-service/leave-ledger",
     "/admin/campus-service/leave-stats",
     "/admin/campus-service/students",
+    "/admin/campus-service/work-orders",
     "/admin/data-center",
     "/admin/data-center/lifecycle",
     "/admin/data-center/rankings",
@@ -163,21 +164,21 @@
     "/admin/employment/students",
     "/admin/employment/unemployed",
     "/admin/graduation",
-    "/admin/graduation/attachments",
     "/admin/graduation/audit-logs",
     "/admin/graduation/batches",
     "/admin/graduation/batches/create",
     "/admin/graduation/batches/edit",
-    "/admin/graduation/capacity",
-    "/admin/graduation/category",
-    "/admin/graduation/create",
     "/admin/graduation/defense",
+    "/admin/graduation/defense-confirmation",
     "/admin/graduation/defense-grade",
     "/admin/graduation/defense-grade/form",
+    "/admin/graduation/defense-scoring",
     "/admin/graduation/defense/groups/create",
     "/admin/graduation/defense/groups/edit",
-    "/admin/graduation/edit",
     "/admin/graduation/finals",
+    "/admin/graduation/grade-ledger",
+    "/admin/graduation/material-center",
+    "/admin/graduation/materials",
     "/admin/graduation/mentors",
     "/admin/graduation/mentors/assign",
     "/admin/graduation/mentors/conflicts",
@@ -187,9 +188,11 @@
     "/admin/graduation/more",
     "/admin/graduation/more/expert/create",
     "/admin/graduation/more/peer-assign",
+    "/admin/graduation/plagiarism-ledger",
     "/admin/graduation/process",
     "/admin/graduation/proposals",
-    "/admin/graduation/requirements",
+    "/admin/graduation/review-assign",
+    "/admin/graduation/review-tasks",
     "/admin/graduation/risk-archive",
     "/admin/graduation/stats-report",
     "/admin/graduation/students",
@@ -203,6 +206,12 @@
     "/admin/graduation/templates/edit",
     "/admin/graduation/topic-changes",
     "/admin/graduation/topic-lib",
+    "/admin/graduation/topic-lib/attachments",
+    "/admin/graduation/topic-lib/capacity",
+    "/admin/graduation/topic-lib/category",
+    "/admin/graduation/topic-lib/create",
+    "/admin/graduation/topic-lib/edit",
+    "/admin/graduation/topic-lib/requirements",
     "/admin/graduation/topic-rounds",
     "/admin/graduation/topic-rounds/create",
     "/admin/graduation/topics",
@@ -213,6 +222,7 @@
     "/admin/internship/agreement-templates/edit",
     "/admin/internship/agreement-templates/new",
     "/admin/internship/agreements",
+    "/admin/internship/agreements/new",
     "/admin/internship/applications",
     "/admin/internship/apply-agreement",
     "/admin/internship/archive",
@@ -224,6 +234,7 @@
     "/admin/internship/batches/edit",
     "/admin/internship/batches/new",
     "/admin/internship/changes",
+    "/admin/internship/command-screen",
     "/admin/internship/compliance",
     "/admin/internship/employment-archive-stats",
     "/admin/internship/enterprise-evals",
@@ -242,11 +253,15 @@
     "/admin/internship/leaves",
     "/admin/internship/match",
     "/admin/internship/match-assign",
+    "/admin/internship/material-center",
     "/admin/internship/plans",
     "/admin/internship/positions",
     "/admin/internship/positions/edit",
     "/admin/internship/positions/new",
     "/admin/internship/process-reports",
+    "/admin/internship/recruitment-campaigns",
+    "/admin/internship/recruitment-campaigns/edit",
+    "/admin/internship/recruitment-campaigns/new",
     "/admin/internship/reports",
     "/admin/internship/risk-disposal",
     "/admin/internship/risks",
@@ -254,6 +269,7 @@
     "/admin/internship/stats",
     "/admin/internship/student-evals",
     "/admin/internship/students",
+    "/admin/internship/volunteer-review",
     "/admin/internship/weekly-task",
     "/admin/internship/workbench",
     "/admin/messages",
@@ -267,6 +283,7 @@
     "/admin/orientation",
     "/admin/orientation/archive",
     "/admin/orientation/batches",
+    "/admin/orientation/checkin",
     "/admin/orientation/checkin-points",
     "/admin/orientation/data",
     "/admin/orientation/dorm",
@@ -285,12 +302,20 @@
     "/admin/orientation/verify",
     "/admin/planned",
     "/admin/platform",
+    "/admin/platform/access",
     "/admin/platform/api-access",
     "/admin/platform/audit",
     "/admin/platform/brands",
+    "/admin/platform/changes",
+    "/admin/platform/commercial-control",
+    "/admin/platform/customer-success",
     "/admin/platform/dictionaries",
+    "/admin/platform/disaster-recovery",
+    "/admin/platform/fair-use",
     "/admin/platform/features",
     "/admin/platform/file-storage",
+    "/admin/platform/foundations",
+    "/admin/platform/governance",
     "/admin/platform/incidents",
     "/admin/platform/init-templates",
     "/admin/platform/integrations",
@@ -300,12 +325,15 @@
     "/admin/platform/orders",
     "/admin/platform/overview",
     "/admin/platform/packages",
+    "/admin/platform/problems",
+    "/admin/platform/product-iam",
     "/admin/platform/products",
     "/admin/platform/provisioning",
     "/admin/platform/releases",
     "/admin/platform/role-templates",
     "/admin/platform/rules",
     "/admin/platform/security",
+    "/admin/platform/services",
     "/admin/platform/settings",
     "/admin/platform/support-sessions",
     "/admin/platform/support-tickets",
@@ -343,17 +371,9 @@
     "/admin/student-affairs/dashboard",
     "/admin/student-affairs/discipline",
     "/admin/student-affairs/discipline/appeals",
-    "/admin/student-affairs/discipline/counselor-assessment",
-    "/admin/student-affairs/discipline/counselor-assignments",
-    "/admin/student-affairs/discipline/discipline",
-    "/admin/student-affairs/discipline/dormitory",
-    "/admin/student-affairs/discipline/dormitory/records/:recordId",
-    "/admin/student-affairs/discipline/grants",
     "/admin/student-affairs/discipline/ledger",
     "/admin/student-affairs/discipline/stats",
-    "/admin/student-affairs/discipline/students",
-    "/admin/student-affairs/discipline/students/:id",
-    "/admin/student-affairs/discipline/work-orders",
+    "/admin/student-affairs/dorm/allocation",
     "/admin/student-affairs/dorm/check",
     "/admin/student-affairs/dorm/checkin",
     "/admin/student-affairs/dorm/exception",
@@ -374,6 +394,11 @@
     "/admin/student-affairs/funding/publicity",
     "/admin/student-affairs/funding/stats",
     "/admin/student-affairs/funding/work-study",
+    "/admin/student-affairs/leave",
+    "/admin/student-affairs/leave/followup",
+    "/admin/student-affairs/leave/ledger",
+    "/admin/student-affairs/leave/stats",
+    "/admin/student-affairs/material-operations",
     "/admin/student-affairs/mental",
     "/admin/student-affairs/mental/crisis",
     "/admin/student-affairs/mental/referrals",
@@ -383,6 +408,8 @@
     "/admin/student-affairs/risk",
     "/admin/student-affairs/stats",
     "/admin/student-affairs/stats/cockpit",
+    "/admin/student-affairs/stats/leader",
+    "/admin/student-affairs/stats/wall",
     "/admin/student-affairs/talk",
     "/admin/student-affairs/talk/key-follow",
     "/admin/student-affairs/talk/ledger",
@@ -398,10 +425,21 @@
     "/admin/student/risk-tags",
     "/admin/student/status",
     "/admin/system",
+    "/admin/system/academic-calendar",
+    "/admin/system/access-governance",
     "/admin/system/account-exceptions",
+    "/admin/system/accounts/staff",
+    "/admin/system/accounts/students",
+    "/admin/system/audit-evidence",
+    "/admin/system/business-forms",
+    "/admin/system/business-relations",
+    "/admin/system/communications",
     "/admin/system/config",
+    "/admin/system/data-exchange",
     "/admin/system/delegations",
     "/admin/system/dictionaries-fields",
+    "/admin/system/file-storage-governance",
+    "/admin/system/iam",
     "/admin/system/identity-import",
     "/admin/system/identity-import/students",
     "/admin/system/identity-import/teachers",
@@ -414,23 +452,29 @@
     "/admin/system/implementation/standards",
     "/admin/system/implementation/wizard",
     "/admin/system/integrations",
+    "/admin/system/jobs",
     "/admin/system/log",
     "/admin/system/login-policy",
     "/admin/system/logs",
+    "/admin/system/master-data",
     "/admin/system/menus",
     "/admin/system/migration",
     "/admin/system/module-entitlements",
     "/admin/system/numbering-rules",
     "/admin/system/org",
     "/admin/system/overview",
+    "/admin/system/platform-integrity",
     "/admin/system/process-monitor",
     "/admin/system/process-rules",
+    "/admin/system/role-assignments",
     "/admin/system/roles",
     "/admin/system/scopes",
+    "/admin/system/security-changes",
     "/admin/system/sensitive-audit",
     "/admin/system/staff-affiliations",
     "/admin/system/sync-jobs",
     "/admin/system/users",
+    "/admin/system/workflow-governance",
     "/admin/workflow",
     "/admin/workflow/permissions",
     "/admin/workflow/processes",
@@ -443,7 +487,8 @@
     "/security/401",
     "/security/403",
     "/security/419",
-    "/security/500"
+    "/security/500",
+    "/workbench"
   ],
   "patterns": [
     "/admin/planned/:groupKey/:modKey/:leafIdx?",
@@ -462,6 +507,7 @@
     "/admin/academic-affairs/schedule/student/:studentId?",
     "/admin/academic-affairs/schedule/teaching-class/:code?",
     "/admin/academic-affairs/graduation/:batchId/results",
+    "/admin/academic-affairs/textbooks/distributions/:batchId",
     "/admin/academic-affairs/print/schedule-change/:id/notice",
     "/admin/academic-affairs/print/schedule/:batchId",
     "/admin/academic-affairs/print/status-change/:id",
@@ -481,12 +527,12 @@
     "/admin/graduation/students/:id/group",
     "/admin/graduation/students/:id/defense-group",
     "/admin/graduation/students/:id",
-    "/admin/graduation/:id/edit",
-    "/admin/graduation/:id/capacity",
-    "/admin/graduation/:id/requirements",
-    "/admin/graduation/:id/attachments",
-    "/admin/graduation/:id/category",
-    "/admin/graduation/:id",
+    "/admin/graduation/topic-lib/:id/edit",
+    "/admin/graduation/topic-lib/:id/capacity",
+    "/admin/graduation/topic-lib/:id/requirements",
+    "/admin/graduation/topic-lib/:id/attachments",
+    "/admin/graduation/topic-lib/:id/category",
+    "/admin/graduation/topic-lib/:id",
     "/admin/graduation/topics/:id/edit",
     "/admin/graduation/topics/:id",
     "/admin/graduation/topic-changes/:id",
@@ -500,16 +546,21 @@
     "/admin/graduation/mentors/:id/eval",
     "/admin/graduation/mentors/:id",
     "/admin/graduation/process/:studentId/:action",
+    "/admin/graduation/defense-grade/:studentId/form",
     "/admin/internship/batches/:id/edit",
     "/admin/internship/batches/:id",
     "/admin/internship/students/:id",
     "/admin/internship/exceptions/:id",
     "/admin/internship/reports/:id",
     "/admin/internship/process-reports/:id",
+    "/admin/internship/insurance/:insuranceId",
+    "/admin/internship/recruitment-campaigns/:id/edit",
+    "/admin/internship/recruitment-campaigns/:id",
     "/admin/internship/enterprises/:id/edit",
     "/admin/internship/enterprises/:id",
     "/admin/internship/positions/:id/edit",
     "/admin/internship/positions/:id",
+    "/admin/internship/volunteer-review/:groupId?",
     "/admin/internship/agreements/:id",
     "/admin/internship/agreement-templates/:id/edit",
     "/admin/internship/agreement-templates/:id",
@@ -524,7 +575,7 @@
   "redirects": [
     {
       "from": "/admin",
-      "to": "/"
+      "to": "/workbench"
     },
     {
       "from": "/admin/system/log",
@@ -567,44 +618,64 @@
       "to": "/admin/academic-affairs/warnings"
     },
     {
-      "from": "/admin/student-affairs/discipline",
+      "from": "/admin/campus-service",
       "to": "/admin/student-affairs/dashboard"
     },
     {
-      "from": "/admin/student-affairs/discipline/students",
+      "from": "/admin/campus-service/students",
       "to": "/admin/student/list"
     },
     {
-      "from": "/admin/student-affairs/discipline/students/:id",
+      "from": "/admin/campus-service/students/:id",
       "to": "/admin/student/list"
     },
     {
-      "from": "/admin/student-affairs/discipline/counselor-assignments",
+      "from": "/admin/campus-service/leave",
+      "to": "/admin/student-affairs/leave"
+    },
+    {
+      "from": "/admin/campus-service/leave-extensions",
+      "to": "/admin/student-affairs/leave/followup"
+    },
+    {
+      "from": "/admin/campus-service/leave-ledger",
+      "to": "/admin/student-affairs/leave/ledger"
+    },
+    {
+      "from": "/admin/campus-service/leave-stats",
+      "to": "/admin/student-affairs/leave/stats"
+    },
+    {
+      "from": "/admin/campus-service/counselor-assignments",
       "to": "/admin/student-affairs/counselor-assignments"
     },
     {
-      "from": "/admin/student-affairs/discipline/counselor-assessment",
+      "from": "/admin/campus-service/counselor-assessment",
       "to": "/admin/student-affairs/counselor-eval"
     },
     {
-      "from": "/admin/student-affairs/discipline/grants",
+      "from": "/admin/campus-service/grants",
       "to": "/admin/student-affairs/funding"
     },
     {
-      "from": "/admin/student-affairs/discipline/dormitory",
+      "from": "/admin/campus-service/dormitory",
       "to": "/admin/student-affairs/dorm/checkin"
     },
     {
-      "from": "/admin/student-affairs/discipline/dormitory/records/:recordId",
+      "from": "/admin/campus-service/dormitory/records/:recordId",
       "to": "/admin/student-affairs/dorm/checkin"
     },
     {
-      "from": "/admin/student-affairs/discipline/discipline",
+      "from": "/admin/campus-service/discipline",
       "to": "/admin/student-affairs/discipline"
     },
     {
-      "from": "/admin/student-affairs/discipline/work-orders",
+      "from": "/admin/campus-service/work-orders",
       "to": "/admin/student-affairs/dashboard"
+    },
+    {
+      "from": "/admin/data-center",
+      "to": "/admin/student-affairs/stats/cockpit"
     },
     {
       "from": "/admin/internship/workbench",
@@ -651,6 +722,54 @@
       "to": "/admin/messages/inbox"
     },
     {
+      "from": "/admin/platform/tenants/create",
+      "to": "/admin/platform/provisioning"
+    },
+    {
+      "from": "/admin/platform/tenant-lifecycle",
+      "to": "/admin/platform/tenants"
+    },
+    {
+      "from": "/admin/platform/tenant-transitions",
+      "to": "/admin/platform/tenants"
+    },
+    {
+      "from": "/admin/platform/tenant-contacts",
+      "to": "/admin/platform/tenants"
+    },
+    {
+      "from": "/admin/platform/products",
+      "to": "/admin/platform/packages"
+    },
+    {
+      "from": "/admin/platform/init-templates",
+      "to": "/admin/platform/provisioning"
+    },
+    {
+      "from": "/admin/platform/role-templates",
+      "to": "/admin/platform/product-iam"
+    },
+    {
+      "from": "/admin/platform/releases",
+      "to": "/admin/platform/changes"
+    },
+    {
+      "from": "/admin/platform/support-tickets",
+      "to": "/admin/platform/customer-success"
+    },
+    {
+      "from": "/admin/platform/support-sessions",
+      "to": "/admin/platform/access"
+    },
+    {
+      "from": "/admin/platform/tenant-health",
+      "to": "/admin/platform/customer-success"
+    },
+    {
+      "from": "/admin/platform/operator-access",
+      "to": "/admin/platform/access"
+    },
+    {
       "from": "/admin/student-affairs",
       "to": "/admin/student-affairs/dashboard"
     },
@@ -667,12 +786,32 @@
       "to": "/admin/system/overview"
     },
     {
+      "from": "/admin/system/users",
+      "to": "/admin/system/accounts/staff"
+    },
+    {
       "from": "/admin/system/identity-import",
       "to": "/admin/system/identity-import/students"
     },
     {
       "from": "/admin/system/menus",
       "to": "/admin/system/roles"
+    },
+    {
+      "from": "/admin/system/numbering-rules",
+      "to": "/admin/system/config"
+    },
+    {
+      "from": "/admin/system/dictionaries-fields",
+      "to": "/admin/system/config"
+    },
+    {
+      "from": "/admin/system/process-rules",
+      "to": "/admin/workflow/processes"
+    },
+    {
+      "from": "/admin/system/process-monitor",
+      "to": "/admin/workflow/processes"
     }
   ],
   "aliases": []

@@ -187,6 +187,13 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
             StudentStageEvent.tenant_id == _tid(),
             StudentStageEvent.student_id == stu.id,
         ).order_by(StudentStageEvent.id.desc()).limit(10)).all()
+        from app.modules.platform.document_lifecycle.student360_shadow_service import (
+            shadow_fact_timeline,
+        )
+
+        timeline_shadow = shadow_fact_timeline(
+            db, tenant_id=_tid(), student_id=int(stu.id), legacy_events=list(events),
+        )
 
     risk_level = _risk_level(
         warning_count=warning_count,
@@ -298,6 +305,7 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
             }
             for event in events
         ],
+        "timelineShadow": timeline_shadow["metrics"],
         "context": {
             "internshipId": str(internship.id) if internship else None,
             "graduationStudentId": str(graduation.id) if graduation else None,

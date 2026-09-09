@@ -47,7 +47,7 @@ def _row(v, rec, stu):
         "safetyIssue": v.safety_issue or "", "rectifyRequire": v.rectify_require or "",
         "rectifyDeadline": v.rectify_deadline or "",
         "rectifyStatus": v.rectify_status, "rectifyStatusLabel": RECTIFY_LABEL.get(v.rectify_status, v.rectify_status),
-        "createdAt": _iso(v.created_at) or "",
+        "version": int(v.version or 0), "createdAt": _iso(v.created_at) or "",
     }
 
 
@@ -101,11 +101,14 @@ def create(user, body) -> dict:
         return {"id": str(v.id), "rectifyStatus": v.rectify_status}
 
 
-def rectify_follow(user, visit_id, status, note="") -> dict:
+def rectify_follow(user, visit_id, status, note="", *, expected_version=None) -> dict:
     if status not in ("PENDING", "DONE"):
         raise AppException("VALIDATION_ERROR", "整改状态必须是 PENDING/DONE")
     if not (note or "").strip() or len(note.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "整改跟进说明必填")
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         v = _get(db, visit_id)
@@ -114,8 +117,16 @@ def rectify_follow(user, visit_id, status, note="") -> dict:
             raise no_permission("只能跟进本人指导学生的巡访整改")
         if v.rectify_status == "NONE":
             raise AppException("DATA_CONFLICT", "该巡访无整改要求，无需跟进")
-        v.rectify_status = status
-        v.version += 1
+        current_version = int(v.version or 0)
+        current_status = v.rectify_status
+        client_version = extract_expected_version(
+            {"expectedVersion": expected_version}, required=False)
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "巡访记录已被其他人更新，请刷新后重试")
+        new_ver = versioned_update(
+            db, InternshipVisit, entity_id=v.id, tenant_id=_tid(),
+            expected_version=current_version, values={"rectify_status": status},
+            extra_where=(InternshipVisit.rectify_status == current_status,))
         _trail(db, v.id, f"RECTIFY_{status}", {"note": note.strip()}, operator=_op_name(user))
         if status == "DONE":
             from app.modules.internship.services import internship_todo_helper as ix_todo
@@ -124,7 +135,8 @@ def rectify_follow(user, visit_id, status, note="") -> dict:
             from app.modules.internship.services import internship_todo_helper as ix_todo
             ix_todo.push_visit_rectify_todo(db, v, rec)
         db.commit()
-        return {"id": str(v.id), "rectifyStatus": v.rectify_status}
+        return {"id": str(v.id), "rectifyStatus": status,
+                "rectifyStatusLabel": RECTIFY_LABEL.get(status, status), "version": new_ver}
 
 
 def list_visits(page, page_size, keyword=None, rectify=None, batch_id=None, user=None) -> tuple[list[dict], int]:

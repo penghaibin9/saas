@@ -11,7 +11,7 @@
 
       <view v-if="resolutionLabels.length" class="adc__next">
         <text class="adc__label">建议下一步</text>
-        <view v-for="(label, index) in resolutionLabels" :key="index" class="adc__step">
+        <view v-for="(label, index) in resolutionLabels" :key="index" class="adc__step" :class="{ 'adc__step--first': index === 0 }">
           <text class="adc__step-no">{{ index + 1 }}</text>
           <text class="adc__next-text">{{ label }}</text>
         </view>
@@ -19,7 +19,7 @@
 
       <view class="adc__trust">
         <view class="adc__trust-dot" />
-        <text>结果来自学校业务规则实时校验</text>
+        <text class="adc__trust-text">结果来自学校业务规则实时校验</text>
       </view>
 
       <view v-if="showRuleMeta" class="adc__meta">
@@ -91,13 +91,13 @@ export default {
 .adc__next { margin-top: var(--space-3); padding: var(--space-3); border-radius: 12px; background: rgba(255,255,255,.72); }
 .adc__label { display: block; margin-bottom: 6px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .adc__step { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: 6px; }
-.adc__step:first-of-type { margin-top: 0; }
+.adc__step--first { margin-top: 0; }
 .adc__step-no { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 7px; background: rgba(59,130,246,.09); color: var(--brand-primary); font-size: 10px; font-weight: 700; }
 .adc.is-warn .adc__step-no { background: rgba(217,119,6,.10); color: #b45309; }
 .adc__next-text { flex: 1; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary); line-height: 1.55; }
 .adc__trust { display: flex; align-items: center; gap: 6px; margin-top: var(--space-3); }
 .adc__trust-dot { width: 6px; height: 6px; border-radius: var(--radius-full); background: #16a34a; }
-.adc__trust text { font-size: 10px; color: var(--text-tertiary); }
+.adc__trust-text { font-size: 10px; color: var(--text-tertiary); }
 .adc__meta { display: flex; flex-direction: column; gap: 3px; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--border-light); font-size: 10px; color: var(--text-tertiary); word-break: break-all; }
 .adc__tech-toggle { align-self: flex-start; margin-top: 4px; padding: 0; border: 0; background: transparent; color: var(--brand-primary); font-size: 10px; line-height: 24px; }
 .adc__tech { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 8px; background: rgba(15,23,42,.04); }

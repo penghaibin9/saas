@@ -143,10 +143,10 @@ export default {
   },
   methods: {
     statusLabel(s) {
-      return STATUS_LABEL[s] || s || ''
+      return STATUS_LABEL[s] || (s ? '状态待确认' : '')
     },
     typeLabelOf(t) {
-      return TYPE_LABEL[t] || t || ''
+      return TYPE_LABEL[t] || (t ? '类型待确认' : '')
     },
     goDetail(row) {
       this.$router.push(`/admin/academic-affairs/registration/${row.batchId}`)

@@ -16,6 +16,12 @@
     <MobileGlobalState :state="state" @retry="load">
       <!-- 我的申请 -->
       <view class="page-pad" v-if="tab === 'list'">
+        <view v-if="receipt" class="card sc__receipt" role="status">
+          <text class="sc__receipt-title">✓ {{ receipt.title }}</text>
+          <text class="sc__receipt-sub">{{ receipt.courseName }} · 单据 {{ receipt.changeId }}</text>
+          <view class="sc__row"><text class="sc__row-k">当前结果</text><text class="flex-1 t-sm">{{ receipt.result }}</text></view>
+          <view class="sc__row" style="border-bottom:none;"><text class="sc__row-k">下一步</text><text class="flex-1 t-sm">{{ receipt.next }}</text></view>
+        </view>
         <MobileGlobalState v-if="!changes.length" state="empty" title="暂无调停课申请"
           description="点击「发起申请」新建调课/停课/补课申请。" />
         <view class="stack" v-else>
@@ -111,7 +117,7 @@ export default {
       items: [], itemIndex: 0, typeIndex: 0, parityIndex: 0,
       targetWeekday: '', targetSlotNo: '', targetStartWeek: '', targetEndWeek: '', targetClassroom: '',
       makeupPlan: '', reason: '', checking: false, submitting: false,
-      conflictChecked: false, conflictResult: null
+      conflictChecked: false, conflictResult: null, receipt: null
     }
   },
   onLoad() { this.load() },
@@ -175,8 +181,14 @@ export default {
       if (this.typeKey === 'STOP' && !this.makeupPlan.trim()) { toast('停课须填写后续安排说明'); return }
       if (this.typeKey !== 'STOP' && (!this.targetWeekday || !this.targetSlotNo)) { toast('请填写目标星期与节次'); return }
       this.submitting = true
+      const item = this.items[this.itemIndex] || {}
       teacherApi.submitAcademicScheduleChange(this._body())
-        .then(() => {
+        .then((d) => {
+          this.receipt = {
+            title: '调停课申请已提交', changeId: d.changeId,
+            courseName: d.courseName || item.courseName || '课程', result: '待学院审核',
+            next: '学院教务审核；终审生效后课表与考勤同步更新'
+          }
           toast('已提交')
           this.reason = ''; this.makeupPlan = ''; this.targetWeekday = ''; this.targetSlotNo = ''
           this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
@@ -198,7 +210,10 @@ export default {
           if (!r.confirm) return
           this.acting = true
           teacherApi.cancelAcademicScheduleChange(x.changeId, r.content || '')
-            .then(() => { toast('已撤销'); this.load() })
+            .then(() => {
+              this.receipt = { title: '调停课申请已撤销', changeId: x.changeId, courseName: x.courseName || '课程', result: '已撤销并保留记录', next: '如仍需调整，请从正式课表重新发起' }
+              toast('已撤销'); this.load()
+            })
             .catch((e) => toast((e && e.message) || '撤销失败，请重试'))
             .finally(() => { this.acting = false })
         }
@@ -229,4 +244,6 @@ export default {
 .sc__conflict { margin-top: var(--space-3); }
 .sc__conflict-bad { font-size: var(--font-size-sm); color: var(--danger-600); }
 .sc__conflict-ok { font-size: var(--font-size-sm); color: var(--success-600); }
+.sc__receipt { margin-bottom: var(--space-3); border-color: #a7d7b4; background: #f3fbf5; }
+.sc__receipt-title, .sc__receipt-sub { display: block; }.sc__receipt-title { color: var(--success-700, #15803d); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }.sc__receipt-sub { margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 </style>

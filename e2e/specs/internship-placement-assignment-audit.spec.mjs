@@ -41,6 +41,49 @@ async function loginStudentMini(page) {
   await expect(page).toHaveURL(/#\/pages\/student\/home\/index/)
 }
 
+async function selectStudentBatch(page, fixture) {
+  const selector = page.getByText('请选择要办理的实习批次', { exact: true })
+  if (await selector.isVisible().catch(() => false)) {
+    const target = page.getByRole('button').filter({ hasText: fixture.batchName }).first()
+    await expect(target).toBeVisible()
+    const selected = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my'
+      && response.request().headers()['x-internship-batch-id'] === String(fixture.batchId)
+    )
+    await target.click()
+    await selected
+    await expect(selector).toBeHidden()
+  }
+}
+
+async function openStudentInternship(page, fixture) {
+  const initial = page.waitForResponse((response) =>
+    apiPath(response) === '/api/v1/portal/internship/my')
+  await page.goto(`${config.studentBaseUrl}/internship`)
+  await initial
+  await selectStudentBatch(page, fixture)
+}
+
+async function openStudentSelection(page, fixture) {
+  await openStudentInternship(page, fixture)
+  const entry = page.getByRole('button', { name: '企业岗位库', exact: true })
+  if (!(await entry.isVisible().catch(() => false))) {
+    const group = page.locator('details.sp-process-group').filter({ hasText: '选岗与申请' }).first()
+    await expect(group).toBeVisible()
+    if (!(await group.evaluate((element) => element.open))) {
+      await group.locator('summary').click()
+    }
+  }
+  await expect(entry).toBeVisible()
+  const context = page.waitForResponse((response) =>
+    apiPath(response) === '/api/v1/portal/internship/catalog/context'
+    && response.request().headers()['x-internship-batch-id'] === String(fixture.batchId)
+  )
+  await entry.click()
+  await context
+  await expect(page).toHaveURL(/\/internship\/selection/)
+}
+
 test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导教师分配', () => {
   test.describe.configure({ mode: 'serial', retries: 0 })
 
@@ -72,7 +115,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
   test('IX-009 前置：学校浏览器创建并准入企业，企业真实加入当前招聘季', async ({ page }) => {
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/enterprises`)
-    await page.getByRole('button', { name: '＋ 新增企业', exact: true }).click()
+    await page.getByRole('button', { name: '新增企业', exact: true }).click()
     await formItem(page, '企业名称').locator('input').fill(companyName())
     await formItem(page, '统一社会信用代码').locator('input').fill(creditCode())
     await formItem(page, '联系人').locator('input').fill('IX009企业联系人')
@@ -88,11 +131,16 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     companyId = String(createdPayload.body?.data?.id || '')
     expect(companyId).not.toBe('')
 
+    await expect(page).toHaveURL(new RegExp(`/admin/internship/enterprises/${companyId}(?:\\?|$)`))
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     let row = companyRow(page, companyName())
     await expect(row).toBeVisible()
-    await row.getByRole('button', { name: '审核通过', exact: true }).click()
+    await row.getByRole('link', { name: '核验准入', exact: true }).click()
+    await page.getByRole('button', { name: '审核通过', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: '通过（资质合格）', exact: true }).click()
+    await expect(page.getByRole('button', { name: '暂停合作', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     row = companyRow(page, companyName())
     await expect(row).toContainText('合作中')
 
@@ -113,9 +161,9 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(inviteToken).not.toBe('')
 
     await page.goto(`${enterpriseBaseUrl}/invite/accept?token=${encodeURIComponent(inviteToken)}&tenantCode=${encodeURIComponent(fixture.tenantCode)}`)
-    await page.getByLabel('验证受邀手机号').fill(enterprisePhone)
+    await page.getByLabel('受邀手机号').fill(enterprisePhone)
     await page.getByLabel(/设置密码/).fill(ENTERPRISE_PASSWORD)
-    await page.getByRole('button', { name: '接受邀请并进入企业协同中心', exact: true }).click()
+    await page.getByRole('button', { name: '激活账号并接受邀请', exact: true }).click()
     await expect(page).toHaveURL(/\/enterprise\/home/)
   })
 
@@ -159,13 +207,26 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/positions/${positionId}`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
-    const published = await confirmPositionStatus(page, positionId, '上架', '确认上架')
+    await page.getByRole('link', { name: '编辑完整资料', exact: true }).click()
+    await formItem(page, '启用岗位围栏').getByText('启用', { exact: true }).click()
+    await expect(formItem(page, '启用岗位围栏').getByRole('radio', { name: '启用', exact: true })).toBeChecked()
+    await formItem(page, '中心纬度').locator('input').fill('28.2282')
+    await formItem(page, '中心经度').locator('input').fill('112.9388')
+    await formItem(page, '围栏半径（米）').locator('input').fill('500')
+    const configurePromise = page.waitForResponse((response) =>
+      apiPath(response) === `/api/v1/internship/positions/${positionId}` && response.request().method() === 'PUT'
+    )
+    await page.getByRole('button', { name: '保存修改', exact: true }).click()
+    const configured = await payloadOf(await configurePromise)
+    expect(configured.body?.code, configured.text).toBe(0)
+    await expect(page).toHaveURL(new RegExp(`/positions/${positionId}\\?`))
+    const published = await confirmPositionStatus(page, positionId, '上架')
     expect(published.body?.code, published.text).toBe(0)
   })
 
   test('IX-009：Student PC 真实加入志愿并整组投递 canonical application', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await page.goto(`${config.studentBaseUrl}/internship/selection`)
+    await openStudentSelection(page, fixture)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
 
     const savePromise = page.waitForResponse((response) =>
@@ -201,7 +262,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
   test('IX-009：Staff 真实手动匹配并确认，必须进入 canonical assign_position_in_tx', async ({ page }) => {
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/match?batchId=${encodeURIComponent(fixture.batchId)}&panel=manual`)
-    await page.getByRole('button', { name: /手动匹配/ }).click()
+    await page.getByRole('button', { name: '＋ 手动匹配', exact: true }).click()
 
     const studentField = page.locator('.ie-fld').filter({ hasText: '实习学生' }).first()
     await pickRemote(studentField, fixture.studentNo, fixture.studentName)
@@ -212,7 +273,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
       apiPath(response) === '/api/v1/internship/match/manual'
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '确认', exact: true }).click()
+    await page.getByRole('button', { name: '创建待确认匹配', exact: true }).click()
     const manualPayload = await payloadOf(await manualPromise)
     expect(manualPayload.body?.code, manualPayload.text).toBe(0)
     matchId = String(manualPayload.body?.data?.id || '')
@@ -244,7 +305,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await page.goto(`${config.staffBaseUrl}/admin/internship/students?batchId=${encodeURIComponent(fixture.batchId)}`)
     const row = page.locator('tbody tr').filter({ hasText: fixture.studentName }).first()
     await expect(row).toContainText(positionTitle())
-    await row.getByRole('button', { name: '分配指导老师', exact: true }).click()
+    await row.getByRole('button', { name: '分配导师', exact: true }).click()
 
     const advisorField = page.locator('.ie-fld').filter({ hasText: '校内指导教师' }).first()
     await pickRemote(advisorField, 'e2e_advisor_a', ADVISOR_NAME)
@@ -260,7 +321,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(advisorPayload.body?.data?.advisorName).toBe(ADVISOR_NAME)
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await page.goto(`${config.studentBaseUrl}/internship`)
+    await openStudentInternship(page, fixture)
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(ADVISOR_NAME, { exact: false }).first()).toBeVisible()
@@ -268,7 +329,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
 
   test('IX-009：Student Mini 读取同一 server truth；落岗后企业拉黑不得抹掉历史 placement', async ({ page }) => {
     await loginStudentMini(page)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(`校内导师 ${ADVISOR_NAME}`, { exact: false }).first()).toBeVisible()
@@ -276,10 +337,13 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await staffLogin(page)
     await page.goto(`${config.staffBaseUrl}/admin/internship/enterprises`)
     let row = companyRow(page, companyName())
-    await row.getByRole('button', { name: '拉黑', exact: true }).click()
+    await row.getByRole('link', { name: '合作与资质', exact: true }).click()
+    await page.getByRole('button', { name: '拉黑', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.locator('textarea').fill('IX009落岗后历史保留验证')
     await dialog.getByRole('button', { name: '确认拉黑', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await page.getByRole('button', { name: /返回上一页|返回企业库/ }).click()
     row = companyRow(page, companyName())
     await expect(row).toContainText('黑名单')
 
@@ -288,18 +352,18 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
       apiPath(response) === '/api/v1/portal/internship/catalog/positions'
         && response.request().method() === 'GET'
     )
-    await page.goto(`${config.studentBaseUrl}/internship/selection`)
+    await openStudentSelection(page, fixture)
     const catalogPayload = await payloadOf(await catalogPromise)
     expect(catalogPayload.body?.code, catalogPayload.text).toBe(0)
     const catalogItems = Array.isArray(catalogPayload.body?.data?.items) ? catalogPayload.body.data.items : []
     expect(catalogItems.some((item) => String(item?.positionId || item?.id || '') === String(positionId))).toBeFalsy()
     await expect(page.locator('.catalog-panel').getByText(positionTitle(), { exact: false })).toHaveCount(0)
-    await page.goto(`${config.studentBaseUrl}/internship`)
+    await openStudentInternship(page, fixture)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(ADVISOR_NAME, { exact: false }).first()).toBeVisible()
 
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/index?batchId=${encodeURIComponent(fixture.batchId)}`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(`校内导师 ${ADVISOR_NAME}`, { exact: false }).first()).toBeVisible()

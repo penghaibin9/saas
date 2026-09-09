@@ -53,6 +53,7 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { go } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const DEST_TEXT = { SIGNED: '签约就业', FLEXIBLE: '灵活就业', FURTHER_STUDY: '升学', ENLISTED: '入伍',
   STARTUP: '自主创业', UNEMPLOYED: '待就业' }
@@ -63,7 +64,7 @@ const MATERIAL_TEXT = { NOT_STARTED: '未提交', PENDING: '待审核', APPROVED
 export default {
   data() { return { e: null, state: 'loading', statusBarHeight: 20 } },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (err) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load()
   },
   methods: {

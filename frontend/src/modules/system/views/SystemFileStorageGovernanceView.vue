@@ -27,20 +27,20 @@
       <div v-if="error" class="state error-state">
         <strong>治理数据加载失败</strong><span>{{ error }}</span><button @click="load">重试</button>
       </div>
-      <div v-else-if="loading" class="state">正在汇总真实 FileObject、配额、保留与异常数据…</div>
+      <div v-else-if="loading" class="state">正在汇总真实文件对象、配额、保留与异常数据…</div>
 
       <template v-else>
         <section class="panel">
-          <header><div><h3>容量与配额</h3><p>硬限额在所有物理写入和 COS 直传签发前统一执行。</p></div></header>
+          <header><div><h3>容量与配额</h3><p>硬限额在所有物理写入和对象存储直传签发前统一执行。</p></div></header>
           <div class="form-grid">
-            <label>总配额（GiB）<input v-model.number="quota.totalQuotaGiB" type="number" min="1" step="1"></label>
+            <label>总配额（吉比字节）<input v-model.number="quota.totalQuotaGiB" type="number" min="1" step="1"></label>
             <label>预警阈值（%）<input v-model.number="quota.warningPercent" type="number" min="1" max="100"></label>
             <label class="check"><input v-model="quota.hardLimitEnabled" type="checkbox">达到配额后拒绝新文件</label>
             <label class="wide">说明<input v-model.trim="quota.description" maxlength="500" placeholder="例如：本学年学校文件总配额"></label>
           </div>
           <div class="module-quota-grid">
             <label v-for="item in moduleQuotaRows" :key="item.moduleCode">
-              {{ item.moduleCode }}（GiB）
+              {{ moduleLabel(item.moduleCode) }}（吉比字节）
               <input v-model.number="item.gib" type="number" min="0" step="1">
             </label>
           </div>
@@ -48,7 +48,7 @@
           <div class="table-wrap">
             <table><thead><tr><th>业务类型</th><th>文件数</th><th>容量</th></tr></thead>
               <tbody><tr v-for="item in usage.byBizType || []" :key="`${item.moduleCode}-${item.bizType}`">
-                <td>{{ item.moduleCode }} · {{ item.bizType }}</td><td>{{ item.files }}</td><td>{{ formatGiB(item.bytes) }}</td>
+                <td>{{ moduleLabel(item.moduleCode) }} · {{ bizTypeLabel(item.bizType) }}</td><td>{{ item.files }}</td><td>{{ formatGiB(item.bytes) }}</td>
               </tr><tr v-if="!(usage.byBizType || []).length"><td colspan="3">暂无文件数据</td></tr></tbody>
             </table>
           </div>
@@ -113,8 +113,11 @@
 import { ModulePageShell } from '@/components/business'
 import { fileStorageGovernanceApi } from '@/modules/system/api/fileStorageGovernance.api'
 import { toast } from '@/utils/toast'
+import { safeLocalizedText } from '@/utils/presentationSafety'
 
 const GIB = 1024 ** 3
+const MODULE_LABELS = { PLATFORM: '平台管理', SYSTEM: '系统管理', STUDENT: '学生管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '实习管理', EMPLOYMENT: '就业管理', ORIENTATION: '迎新管理', GRADUATION: '毕业设计' }
+const BIZ_TYPE_LABELS = { AVATAR: '头像', ATTACHMENT: '业务附件', MATERIAL: '学生材料', EXPORT: '导出文件', ARCHIVE: '归档文件', TEMPLATE: '模板文件', EVIDENCE: '证明材料', PREVIEW: '预览文件' }
 
 export default {
   name: 'SystemFileStorageGovernanceView',
@@ -139,23 +142,25 @@ export default {
     anomalyTotal() { return this.anomalyCards.reduce((sum, item) => sum + Number(item.value || 0), 0) },
     anomalyCards() {
       return [
-        ['quarantineOverOneHour', '隔离超 1 小时', '检查扫描 worker 与 ClamAV'],
+        ['quarantineOverOneHour', '隔离超 1 小时', '检查扫描服务与病毒检测服务'],
         ['scanErrors', '扫描失败', '失败关闭，不允许业务提交'],
         ['expiredPendingCleanup', '到期待清理', '先预演再执行'],
-        ['cosUnverified', 'COS 未核验', '执行对象 HEAD / 哈希巡检'],
+        ['cosUnverified', '对象存储未核验', '执行对象存在性与文件摘要巡检'],
         ['unboundOver24Hours', '未绑定超 24 小时', '可能是中断上传或孤儿对象'],
         ['legalHoldFiles', '法律保留', '自动清理不会触碰']
       ].map(([key, label, help]) => ({ key, label, help, value: Number(this.anomalies[key] || 0) }))
     },
     conclusion() {
       if (this.loading) return '正在计算学校文件容量与异常。'
-      if (this.anomalyTotal) return `当前发现 ${this.anomalyTotal} 项治理信号，优先处理扫描失败、长期隔离和未核验 COS 对象。`
+      if (this.anomalyTotal) return `当前发现 ${this.anomalyTotal} 项治理信号，优先处理扫描失败、长期隔离和未核验对象存储文件。`
       if (this.usage.usagePercent >= Number(this.usage.warningPercent || 80)) return '容量已接近预警线，建议清理过期导出与预览文件或扩容。'
       return '当前容量与安全治理未发现阻断项，系统会继续按策略自动清理。'
     }
   },
   created() { this.load() },
   methods: {
+    moduleLabel(value) { return safeLocalizedText({ value, dictionary: MODULE_LABELS, unknownLabel: '其他业务模块' }) },
+    bizTypeLabel(value) { return safeLocalizedText({ value, dictionary: BIZ_TYPE_LABELS, unknownLabel: '其他业务文件' }) },
     storageZoneLabel(value) {
       return this.zones.find(item => item.value === value)?.label || (value ? '其他存储分区' : '')
     },
@@ -163,9 +168,9 @@ export default {
       return { DELETE_BYTES: '删除到期文件内容', KEEP_METADATA: '仅保留元数据' }[value] || '按安全策略清理'
     },
     policyScopeLabel(item) {
-      return [item.moduleCode, item.bizType, this.storageZoneLabel(item.storageZone)].filter(Boolean).join(' / ') || '全局'
+      return [this.moduleLabel(item.moduleCode), this.bizTypeLabel(item.bizType), this.storageZoneLabel(item.storageZone)].filter(Boolean).join(' / ') || '全局'
     },
-    formatGiB(value) { return `${(Number(value || 0) / GIB).toFixed(2)} GiB` },
+    formatGiB(value) { return `${(Number(value || 0) / GIB).toFixed(2)} 吉比字节` },
     async load() {
       this.loading = true; this.error = ''
       try {
@@ -182,7 +187,7 @@ export default {
       finally { this.loading = false }
     },
     async saveQuota() {
-      if (Number(this.quota.totalQuotaGiB) <= 0) return toast.warning('总配额必须大于 0 GiB')
+      if (Number(this.quota.totalQuotaGiB) <= 0) return toast.warning('总配额必须大于 0 吉比字节')
       this.busy = 'quota'
       try {
         await fileStorageGovernanceApi.saveQuota({

@@ -45,9 +45,7 @@
 
       <section v-if="quickActions.length" class="mp-card sd-quick">
         <div class="sd-quick__copy">
-          <span>围绕当前学生办理</span>
-          <strong>从画像直接进入正式工作台</strong>
-          <small>学生信息会自动带入；资格、范围和状态仍由目标工作台与服务端校验。</small>
+          <strong>办理事项</strong>
         </div>
         <div class="sd-quick__actions">
           <button v-for="action in quickActions" :key="action.key" type="button" class="sd-quick__btn" @click="startStudentAction(action)">
@@ -122,7 +120,7 @@
             <EmptyState v-if="!detail.serviceRecords.length" title="暂无在校服务记录" />
             <div v-else>
               <div v-for="s in detail.serviceRecords" :key="s.id" class="mp-kv">
-                <span class="mp-kv__k">{{ s.type }} · {{ s.time }}</span>
+                <span class="mp-kv__k">{{ serviceTypeLabel(s.type) }} · {{ s.time }}</span>
                 <span class="mp-kv__v">
                   {{ s.title }}
                   <AppStatusTag :status="s.status" />
@@ -137,7 +135,7 @@
       <section v-show="activeTab === 'academic'" class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">学业过程</span>
-          <span v-if="detail.academic.warningLevel" class="mp-form-err">{{ detail.academic.warningLevel }}</span>
+          <span v-if="detail.academic.warningLevel" class="mp-form-err">{{ warningLevelLabel(detail.academic.warningLevel) }}</span>
         </div>
         <div class="mp-card__body">
           <div class="sd-kv-grid">
@@ -196,9 +194,9 @@
             <EmptyState v-if="!detail.employment" title="暂无就业记录" description="学生尚未进入就业跟踪" />
             <template v-else>
               <div class="mp-kv"><span class="mp-kv__k">就业意向</span><span class="mp-kv__v">{{ detail.employment.intent }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">Offer 数</span><span class="mp-kv__v">{{ detail.employment.offerCount }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">协议状态</span><span class="mp-kv__v">{{ detail.employment.agreementStatus }}</span></div>
-              <div class="mp-kv"><span class="mp-kv__k">跟踪状态</span><span class="mp-kv__v">{{ detail.employment.trackStatus }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">录用通知数</span><span class="mp-kv__v">{{ detail.employment.offerCount }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">协议状态</span><span class="mp-kv__v">{{ agreementStatusLabel(detail.employment.agreementStatus) }}</span></div>
+              <div class="mp-kv"><span class="mp-kv__k">跟踪状态</span><span class="mp-kv__v">{{ trackStatusLabel(detail.employment.trackStatus) }}</span></div>
             </template>
           </div>
         </section>
@@ -261,7 +259,7 @@
                 <tr v-for="a in detail.auditTrail" :key="a.id">
                   <td>{{ a.time }}</td>
                   <td class="is-who">{{ a.operator }}</td>
-                  <td>{{ a.action }}</td>
+                  <td>{{ auditActionLabel(a) }}</td>
                   <td>{{ a.detail }}</td>
                 </tr>
               </tbody>
@@ -330,6 +328,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'StudentDetailView',
@@ -384,6 +383,7 @@ export default {
     quickActions() {
       const actions = [
         { key: 'talk', label: '发起谈话', icon: '谈', permission: 'studentAffairs.talk.create', path: '/admin/student-affairs/talk' },
+        { key: 'profile-material', label: '登记档案缺项', icon: '档', permission: 'studentAffairs.archive.view', path: '/admin/student-affairs/material-operations', bizType: 'PROFILE' },
         { key: 'family', label: '登记家校联系', icon: '家', permission: 'studentAffairs.homeSchool.record.create', path: '/admin/student-affairs/family' },
         { key: 'risk', label: '新建风险', icon: '险', permission: 'studentAffairs.risk.create', path: '/admin/student-affairs/risk' },
         { key: 'dorm', label: '发起调宿', icon: '宿', permission: 'studentAffairs.dorm.transfer.create', path: '/admin/student-affairs/dorm/transfer' },
@@ -419,6 +419,7 @@ export default {
     this.load()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     /* 页签切换同步路由 query（replace 不产生历史噪音），刷新后可恢复 */
     setTab(key) {
       this.activeTab = key
@@ -434,22 +435,38 @@ export default {
     },
     statusLabel(v) {
       const hit = this.ctx.statusOptions.studentStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '学籍状态待确认'
     },
     statusTone(v) {
       return { ADMITTED: 'processing', ACTIVE: 'success', SUSPENDED: 'warning', GRADUATED: 'info', DROPPED: 'default', VOIDED: 'default' }[v] || 'default'
     },
     identityLabel(v) {
       const hit = this.ctx.statusOptions.identityVerifyStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '核验状态待确认'
     },
     bindLabel(v) {
       const hit = this.ctx.statusOptions.accountBindStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '账号状态待确认'
     },
     riskStatusLabel(v) {
       const hit = this.ctx.statusOptions.riskTagStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : '风险状态待确认'
+    },
+    serviceTypeLabel(value) {
+      if (/[\u4e00-\u9fff]/.test(String(value || ''))) return value
+      return ({ LEAVE: '请假', AID: '困难认定', FUNDING: '奖助', DORM: '宿舍', DISCIPLINE: '违纪处分', ACTIVITY: '第二课堂', MENTAL: '心理关怀' })[String(value || '').toUpperCase()] || '在校服务'
+    },
+    warningLevelLabel(value) {
+      if (/[\u4e00-\u9fff]/.test(String(value || ''))) return value
+      return ({ NONE: '无预警', LOW: '黄色预警', MEDIUM: '橙色预警', HIGH: '红色预警', CRITICAL: '紧急预警' })[String(value || '').toUpperCase()] || '预警等级待确认'
+    },
+    agreementStatusLabel(value) {
+      if (/[\u4e00-\u9fff]/.test(String(value || ''))) return value
+      return ({ NOT_SIGNED: '未签约', SIGNED: '已签约', VERIFIED: '已核验', TERMINATED: '已解除' })[String(value || '').toUpperCase()] || '协议状态待确认'
+    },
+    trackStatusLabel(value) {
+      if (/[\u4e00-\u9fff]/.test(String(value || ''))) return value
+      return ({ SEEKING: '求职中', EMPLOYED: '已就业', FURTHER_STUDY: '升学', ENTREPRENEURSHIP: '创业', UNEMPLOYED: '待就业' })[String(value || '').toUpperCase()] || '跟踪状态待确认'
     },
     onToolbar(key) {
       if (key === 'back') {
@@ -477,6 +494,8 @@ export default {
           studentNo: this.detail.studentNo || undefined,
           studentName: this.detail.name || undefined,
           intent: 'create',
+          bizType: action.bizType || undefined,
+          bizId: action.bizType === 'PROFILE' ? String(this.detail.studentId) : undefined,
           from: 'student360'
         }
       })

@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="新生报到详情" :subtitle="detail ? `${detail.student.className} · ${detail.student.admissionNo}` : ''" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生详情查阅">
+  <ModulePageShell flat title="新生报到详情" :subtitle="detail ? `${detail.student.className} · ${detail.student.admissionNo}` : ''" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生详情查阅">
     <template #actions>
       <button v-if="wlHasQueue" type="button" class="ori-back" :disabled="!prevId" @click="goSibling(prevId)">← 上一个</button>
       <span v-if="wlHasQueue" class="ori-wl-pos">待办 {{ wlIndex + 1 }} / {{ wlTotal }}</span>
@@ -161,7 +161,7 @@
                 class="ori-act ori-act--primary"
                 :disabled="submitting || isDenied('orientation.dorm.confirm')"
                 @click="confirmDorm"
-              >确认入住</button>
+              >查看预留床位</button>
               <button
                 v-if="['ASSIGNED', 'CHECKED_IN'].includes(detail.student.dormStatus)"
                 type="button"
@@ -293,7 +293,6 @@ export default {
     },
     editFields() {
       return [
-        { key: 'reportStatus', label: '报到状态', type: 'select', options: this.statusOptions.reportStatus || [], required: true },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text' },
         { key: 'origin', label: '生源地', type: 'region' }
@@ -329,10 +328,10 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     stepLabel(key) {
-      return this.detail?.steps?.find((s) => s.key === key)?.label || key
+      return this.detail?.steps?.find((s) => s.key === key)?.label || (key ? '项目待确认' : '—')
     },
     stepStateLabel(state) {
       return STEP_STATE_LABEL[state || 'TODO']
@@ -363,7 +362,7 @@ export default {
     async onEditSubmit(form) {
       this.submitting = true
       try {
-        const res = await api.updateOrientationStudent(this.detail.student.id, form)
+        const res = await api.updateOrientationStudent(this.detail.student.id, Object.fromEntries(this.editFields.map(f => [f.key, form[f.key]])))
         if (res.code === 0) {
           toast.success('报到信息已更新，已写入留痕')
           this.editVisible = false
@@ -479,7 +478,7 @@ export default {
     },
     /* ---------------- 就地动作：宿舍入住 ---------------- */
     confirmDorm() {
-      this.runApi(() => api.batchConfirmCheckin([this.detail.student.id]), '已确认入住')
+      const s = this.detail.student; this.$router.push({ path: '/admin/student-affairs/dorm/resource', query: { buildingId: s.buildingId, roomId: s.roomId, bedId: s.bedId } })
     },
     dormException() {
       const id = this.detail.student.id

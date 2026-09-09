@@ -4,6 +4,8 @@ from __future__ import annotations
 from app.services import audit_log_legacy as _legacy
 
 _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
+    "WX_BIND_APPROVAL_AUTHORIZED",
+    "WX_BINDING_ACTIVATED",
     "SECURITY_CHANGE_ACTIVATE",
     "SECURITY_CHANGE_ROLLBACK",
     "PLATFORM_DUTY_CHANGE",
@@ -11,8 +13,21 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_SUPPORT_SESSION_CHANGE",
     "PLATFORM_ACCESS_REVIEW_CHANGE",
     "ROLE_TEMPLATE_PUBLISH",
+    "ROLE_CREATE",
     "PLATFORM_PRODUCT_IAM_PUBLISH",
     "CUSTOM_ROLE_BINDING_RECONCILE",
+    # School mutations use these exact actions in the caller's transaction.
+    # Register both directions and brand reset, not only the first failing cases.
+    "USER_DISABLE",
+    "USER_ENABLE",
+    "USER_UNLOCK",
+    "ROLE_DISABLE",
+    "ROLE_ENABLE",
+    "BRAND_CONFIG",
+    "BRAND_CONFIG_RESET",
+    # The batch status service commits its summary audit in that same transaction.
+    "USER_BATCH_DISABLE",
+    "USER_BATCH_ENABLE",
     # Seven P1 closure writes that are deliberately committed in the same DB transaction
     # as their audit row. Keeping them in the canonical critical registry prevents a
     # deployment from accepting the business fact when its evidence cannot be persisted.
@@ -22,12 +37,18 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_TENANT_PROFILE_UPDATE",
     "ACCOUNT_BINDING_REPAIR",
     "ACCOUNT_BINDING_REVOKE",
+    "ACCOUNT_COMPROMISE_CONTAINED",
     "PLATFORM_SUPPORT_TICKET_CREATE",
     "PLATFORM_SUPPORT_TICKET_TRANSITION",
     "PLATFORM_TRAINING_CREATE",
     "PLATFORM_TRAINING_COMPLETE",
     "PLATFORM_RENEWAL_TASK_CREATE",
     "PLATFORM_RENEWAL_TASK_TRANSITION",
+    "PLATFORM_DELIVERY_CONSUMER_SMOKE_RECORDED",
+    "PLATFORM_DELIVERY_ACCEPTED",
+    "PLATFORM_ORDER_PAID",
+    "PLATFORM_ORDER_CANCEL",
+    "PLATFORM_ORDER_ACTIVATION_REPAIRED",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402

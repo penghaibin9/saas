@@ -30,7 +30,7 @@ test('student and teacher personal centers both open the shared help page', () =
 
 test('help center URL is deployment-configured and not hardcoded inside runtime source', () => {
   assert.match(env, /VITE_HELP_CENTER_URL/)
-  assert.match(env, /helpCenterUrl:\s*resolveDocUrl\('VITE_HELP_CENTER_URL'\)/)
+  assert.match(env, /helpCenterUrl:\s*resolveDocUrl\(BUILD_HELP_CENTER_URL\)/)
   assert.doesNotMatch(env, /https:\/\/hnyueke\.com\/admin\/help/)
   assert.doesNotMatch(helpPage, /https:\/\/hnyueke\.com/)
 })

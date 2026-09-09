@@ -11,10 +11,26 @@
         <view class="stx__sec-t">异动记录</view>
         <view class="stx__empty" v-if="!(data.changes || []).length"><text>暂无异动记录</text></view>
         <view v-for="c in data.changes" :key="c.changeId" class="stx__ch">
-          <text class="stx__ch-t">{{ ctText(c.changeType) }}</text>
-          <view class="stx__ch-state">
-            <text class="stx__ch-s" :class="c.status === 'EFFECTIVE' ? 'is-ok' : ''">{{ statusLabel(c.status) }}</text>
-            <text v-if="c.status === 'APPROVED_PENDING_EFFECTIVE' && c.effectiveDate" class="stx__ch-plan">计划 {{ dateTime(c.effectiveDate) }} 生效</text>
+          <view class="stx__ch-head">
+            <text class="stx__ch-t">{{ ctText(c.changeType) }}</text>
+            <view class="stx__ch-state">
+              <text class="stx__ch-s" :class="c.status === 'EFFECTIVE' ? 'is-ok' : ''">{{ statusLabel(c.status) }}</text>
+              <text v-if="c.status === 'APPROVED_PENDING_EFFECTIVE' && c.effectiveDate" class="stx__ch-plan">计划 {{ dateTime(c.effectiveDate) }} 生效</text>
+            </view>
+          </view>
+          <view v-if="c.status === 'RETURNED'" class="stx__resubmit">
+            <text class="stx__resubmit-hint">申请已被退回。修改事由后重交，系统会继续使用原申请编号，不会新建第二张异动单。</text>
+            <textarea
+              class="stx__reason stx__reason--resubmit"
+              v-model="resubmitReasons[c.changeId]"
+              placeholder="修改后的申请事由（不少于5字）"
+              maxlength="200"
+            />
+            <button
+              class="stx__btn stx__btn--resubmit"
+              :disabled="submitting || !canResubmit(c)"
+              @click="resubmit(c)"
+            >修改并重交原申请</button>
           </view>
         </view>
 
@@ -54,7 +70,7 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { safeToast, toastError, createSubmitLock } from '@/services/request'
+import { safeToast, toastError, createSubmitLock, realRequest } from '@/services/request'
 
 const ST = {
   REGISTERED: '在籍注册', NORMAL: '在籍', SUSPENDED: '休学中', PRESERVED: '保留学籍',
@@ -74,6 +90,7 @@ export default {
     return {
       data: null, state: 'loading', submitting: false, _lock: createSubmitLock(),
       form: { changeType: '', reason: '', toMajorId: '', toClassId: '' },
+      resubmitReasons: {},
       transferOptions: { majors: [], classes: [], majorClasses: {} },
       majorIndex: 0, targetClassIndex: 0, sameClassIndex: 0,
       TYPES: [
@@ -111,6 +128,9 @@ export default {
     ctText(c) { return CT[c] || c },
     statusLabel(s) { return SL[s] || s },
     dateTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
+    canResubmit(c) {
+      return c && c.status === 'RETURNED' && String(this.resubmitReasons[c.changeId] || '').trim().length >= 5
+    },
     onType(v) {
       this.form.changeType = v
       this.form.toMajorId = ''
@@ -145,8 +165,30 @@ export default {
       ]).then(([d, opt]) => {
         this.data = d
         this.transferOptions = opt || { majors: [], classes: [], majorClasses: {} }
+        for (const c of (d && d.changes) || []) {
+          if (c.status === 'RETURNED' && this.resubmitReasons[c.changeId] === undefined) {
+            this.resubmitReasons[c.changeId] = c.reason || ''
+          }
+        }
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
+    },
+    resubmit(c) {
+      if (!this.canResubmit(c) || this.submitting) return safeToast('请填写不少于5字的修改事由')
+      const reason = String(this.resubmitReasons[c.changeId] || '').trim()
+      this.submitting = true
+      this._lock.run(() => realRequest(
+        `/mobile/academic/status-changes/${encodeURIComponent(c.changeId)}/resubmit`,
+        { method: 'POST', data: { reason, expectedVersion: c.version } }
+      )).then((res) => {
+        if (res && res.changeId && String(res.changeId) !== String(c.changeId)) {
+          throw new Error('重交后申请编号发生变化，请联系教务管理员')
+        }
+        safeToast('已修改并重交原申请', 'success')
+        delete this.resubmitReasons[c.changeId]
+        this.load()
+      }).catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
+        .finally(() => { this.submitting = false })
     },
     submit() {
       if (!this.canSubmit) return safeToast('请完整填写申请信息')
@@ -219,10 +261,15 @@ export default {
 .stx__cur-v { display: block; font-size: 20px; font-weight: 700; margin-top: 4px; }
 .stx__sec-t { font-weight: 700; margin: var(--space-4) 0 var(--space-2); }
 .stx__empty { color: var(--text-tertiary); font-size: var(--font-size-sm); padding: var(--space-2) 0; }
-.stx__ch { display: flex; justify-content: space-between; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
+.stx__ch { display: flex; flex-direction: column; gap: 10px; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2); box-shadow: var(--shadow-card); }
+.stx__ch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .stx__ch-state { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .stx__ch-s.is-ok { color: #16a34a; }
 .stx__ch-plan { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.stx__resubmit { border-top: 1px solid var(--border-base); padding-top: 10px; }
+.stx__resubmit-hint { display: block; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; margin-bottom: 8px; }
+.stx__reason--resubmit { min-height: 72px; }
+.stx__btn--resubmit { margin-top: 8px; }
 .stx__form { background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); }
 .stx__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
 .stx__chip { padding: 8px 16px; border-radius: var(--radius-full); background: var(--bg-page); border: 1px solid var(--border-base); font-size: var(--font-size-sm); }

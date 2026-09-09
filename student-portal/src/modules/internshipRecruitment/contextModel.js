@@ -29,6 +29,7 @@ export function normalizeRecruitmentContext(raw = {}) {
   const canSelect = raw.canSelect ?? raw.selectionOpen ?? status === 'OPEN'
 
   return {
+    catalogState: raw.catalogState || 'AVAILABLE',
     campaignId: campaign.id ?? raw.campaignId ?? null,
     campaignName: campaign.name || raw.campaignName || '当前招聘季',
     status,
@@ -42,7 +43,7 @@ export function normalizeRecruitmentContext(raw = {}) {
     groupStatus,
     groupStatusLabel: GROUP_LABELS[groupStatus] || groupStatus,
     lockedCompanyName: volunteer.lockedCompanyName || raw.lockedCompanyName || '',
-    canSelect: Boolean(canSelect),
+    canSelect: raw.catalogState !== 'NO_OPEN_CAMPAIGN' && Boolean(canSelect),
     blockReason: raw.blockReason || raw.selectionBlockReason || ''
   }
 }

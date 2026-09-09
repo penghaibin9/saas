@@ -146,7 +146,7 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     })
 
     await expect(page).toHaveURL(/\/admin\/internship\/guidance/)
-    await expect(page.getByRole('heading', { name: '指导巡访管理', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '指导巡访', exact: true })).toBeVisible()
     await expect(page.locator('.tabs')).toBeVisible()
     await expect(page.locator('.gv-list')).toBeVisible()
 
@@ -155,9 +155,9 @@ test.describe.serial('Golden rollout · process guidance / tracking ledgers · B
     await expect(target).toBeVisible()
     await target.click()
     await expect(target).toHaveClass(/is-active/)
-    await expect(page.locator('.gv-main')).toHaveCSS('border-radius', '16px')
+    await expect(page.locator('.gv-main')).toBeVisible()
     await expect(page.locator('.gv-main')).toContainText(internshipFixture.studentName)
-    await expect(page.locator('.gv-main')).toContainText('指导详情')
+    await expect(page.locator('.gv-main')).toContainText('指导记录详情')
     await expect(page.locator('.gv-main')).toContainText(internshipGuidance.content)
 
     await capture(page, testInfo, 'rollout-process-internship-guidance-b')

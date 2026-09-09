@@ -24,6 +24,7 @@
  * beforeBack: 可选异步守卫，返回 false 时阻止离页（用于未保存表单提醒）。
  */
 import { back as navBack } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
   name: 'MobileNavBar',
   props: {
@@ -31,15 +32,15 @@ export default {
     subtitle: { type: String, default: '' },
     showBack: { type: Boolean, default: false },
     variant: { type: String, default: 'default' },
-    beforeBack: { type: Function, default: null }
+    beforeBack: { type: Function, default: null },
+    fallbackUrl: { type: String, default: '/pages/login/index' }
   },
   data() {
     return { statusBarHeight: 20, backing: false }
   },
   created() {
     try {
-      const info = uni.getSystemInfoSync()
-      this.statusBarHeight = info.statusBarHeight || 20
+      this.statusBarHeight = getStatusBarHeight()
     } catch (e) {}
   },
   methods: {
@@ -51,7 +52,7 @@ export default {
           const allowed = await this.beforeBack()
           if (allowed === false) return
         }
-        navBack()
+        navBack(this.fallbackUrl)
       } finally {
         this.backing = false
       }

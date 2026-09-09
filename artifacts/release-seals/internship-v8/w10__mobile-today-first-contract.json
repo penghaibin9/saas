@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "implementedAt": "2026-08-30T10:05:00Z",
+  "status": "IMPLEMENTED_STATIC_AND_BUILD_GATES_GREEN_RUNTIME_MYSQL_PENDING",
+  "scope": "Student Mini and Teacher Mini Today First experience",
+  "studentMini": {
+    "currentTaskPreservedBeforeServices": true,
+    "legacyRoutesPreserved": 16,
+    "duplicateRoutes": 0,
+    "dynamicGroups": [
+      "当前必须做",
+      "今天",
+      "当前阶段服务",
+      "更多服务"
+    ],
+    "stageInputs": [
+      "historyMode",
+      "server record status",
+      "confirmed company",
+      "confirmed position",
+      "compliance nextAction route"
+    ],
+    "batchContextPropagationPreserved": true
+  },
+  "teacherMini": {
+    "concreteTodayObjectsBeforeQuickActions": true,
+    "concreteSources": ["dueSoon", "riskStudents"],
+    "permissionFilteredQuickActionsPreserved": true,
+    "quickActionCountCapabilityPreserved": 15,
+    "continuousWeeklyQueuePreserved": true,
+    "continuousExceptionQueuePreserved": true
+  },
+  "exceptionDecisionFactParity": {
+    "sharedServerFields": [
+      "student/class",
+      "enterprise/position",
+      "exception type/time",
+      "distance",
+      "GPS accuracy",
+      "address",
+      "device risk signal",
+      "streak",
+      "student note",
+      "appeal",
+      "expectedVersion"
+    ],
+    "serverCompletenessProjection": true,
+    "missingFactsFailClosed": true,
+    "missingVersionFailClosed": true,
+    "mobileTerminalActionsDisabledWhenIncomplete": true,
+    "pcEvidenceGuidanceWhenIncomplete": true,
+    "canonicalCommandAdapterPreserved": true
+  },
+  "verification": [
+    { "gate": "W10 and existing Teacher sequential targeted contracts", "result": "13 passed, 0 failed" },
+    { "gate": "miniapp full node test suite", "result": "210 passed, 0 failed" },
+    { "gate": "miniapp H5 production build", "result": "GREEN" },
+    { "gate": "miniapp mp-weixin production build", "result": "GREEN" },
+    { "gate": "backend internship service Python compile", "result": "GREEN" },
+    {
+      "gate": "positive and negative browser runtime",
+      "result": "RUNTIME_BLOCKED",
+      "reason": "The isolated exact-head Docker MySQL stopped accepting handshakes after canonical migration and seed completion."
+    }
+  ],
+  "incidentalGateRepairs": [
+    "Made one graduation source-contract test CRLF-safe on Windows.",
+    "Made the handoff Alembic-head generator use the platform Python executable on Windows."
+  ]
+}

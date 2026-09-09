@@ -1,0 +1,143 @@
+name: Platform Workspace Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/src/modules/platform/**'
+      - 'frontend/tests/platform-*.mjs'
+      - 'frontend/tests/visual/platform-workspace*'
+      - 'frontend/tests/visual/platform-audit-safety*'
+      - 'e2e/tools/verify-platform-workspace-visual.mjs'
+      - 'e2e/tools/verify-platform-audit-safety.mjs'
+      - 'frontend/package*.json'
+      - '.github/workflows/platform-workspace-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-workspace-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Record exact source revision
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          mkdir -p artifacts/platform-workspace
+          git rev-parse HEAD > artifacts/platform-workspace/revision.txt
+          # Reproduction evidence contains committed source only, never the runner
+          # environment, credentials, databases, node_modules or generated fixtures.
+          git archive --format=tar.gz HEAD frontend backend shared scripts miniapp student-portal enterprise-portal e2e .github CLAUDE.md > artifacts/platform-workspace/committed-source.tar.gz
+          sha256sum artifacts/platform-workspace/committed-source.tar.gz > artifacts/platform-workspace/source-sha256.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Full frontend lint
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee ../artifacts/platform-workspace/lint.log
+      - name: Full frontend behavior and source-contract tests
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm test -- --test-reporter=tap 2>&1 | tee ../artifacts/platform-workspace/frontend-tests.tap
+      - name: Production SFC build
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ../artifacts/platform-workspace/build.log
+      - name: Install locked browser dependencies
+        if: ${{ !cancelled() }}
+        working-directory: e2e
+        run: npm ci
+      - name: Install Chromium for isolated visual checks
+        if: ${{ !cancelled() }}
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Render actual Vue workspaces and exercise isolated UI interactions
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          node e2e/tools/verify-platform-workspace-visual.mjs 2>&1 | tee artifacts/platform-workspace/visual.log
+      - name: Exercise audited portal and reversible exit UI defects
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          node e2e/tools/verify-platform-audit-safety.mjs 2>&1 | tee artifacts/platform-workspace/audited-ui.log
+      - name: Upload exact-head validation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-workspace-${{ github.event.pull_request.head.sha }}
+          path: artifacts/platform-workspace/
+          if-no-files-found: error
+          retention-days: 3
+
+  rules-transaction-validation:
+    name: Exact-head RULES MySQL concurrency and audit rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_root
+          MYSQL_DATABASE: platform_rules_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest_root --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:test_root@127.0.0.1:3306/platform_rules_test
+      FAST_TEST_SCHEMA: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Exercise RULES transaction and authority contracts on MySQL
+        working-directory: backend
+        run: |
+          set -o pipefail
+          mkdir -p ../artifacts/platform-rules
+          git rev-parse HEAD > ../artifacts/platform-rules/revision.txt
+          pytest tests/test_platform_code_first_w4.py -q --junitxml=../artifacts/platform-rules/junit.xml 2>&1 | tee ../artifacts/platform-rules/pytest.log
+      - name: Freeze writer inventory
+        run: python scripts/check/check-platform-control-authority-writers.py > artifacts/platform-rules/writers.json
+      - name: Upload transaction evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-rules-${{ github.event.pull_request.head.sha }}
+          path: artifacts/platform-rules/
+          if-no-files-found: error
+          retention-days: 7

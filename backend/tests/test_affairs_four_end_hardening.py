@@ -250,6 +250,8 @@ def test_mental_sensitive_detail_fails_closed_when_audit_db_fails(client, db_mod
 
 
 def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
+    from datetime import datetime, timedelta
+
     ids = _seed_students(db_mode, prefix="FE44")
     admin = _hdr(client, "school_admin01")
     student = _stu_token("四端学生甲", ids["oneNo"])
@@ -257,7 +259,24 @@ def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
         "buildingName": "四端1号楼", "genderLimit": "MALE",
         "floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2,
     }).json()["data"]["buildingId"]
-    client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
+    legacy = client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
+    assert legacy.status_code == 400 and "分配批次" in legacy.text
+
+    now = datetime.utcnow()
+    created = client.post(f"{BASE}/dorm/allocation-batches", headers=admin, json={
+        "batchNo": "FE44-STUDENT-SELECT", "name": "四端学生自选防绕过",
+        "academicYear": "2026-2027", "sourceType": "CAMPUS",
+        "mode": "STUDENT_SELECT",
+        "openAt": (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "closeAt": (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "rules": {}, "resourceScope": {"buildingIds": [building_id]},
+        "studentScope": {"studentIds": [ids["one"]]},
+    })
+    assert created.status_code == 200, created.text
+    batch_id = created.json()["data"]["batchId"]
+    published = client.post(f"{BASE}/dorm/allocation-batches/{batch_id}/publish", headers=admin)
+    assert published.status_code == 200, published.text
+
     rooms = client.get(
         f"{MB}/affairs/dorm/buildings/{building_id}/rooms", headers=student,
     ).json()["data"]["items"]
@@ -271,9 +290,7 @@ def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
     bypass = client.post(
         f"{MB}/affairs/dorm/beds/{beds[1]['bedId']}/self-select", headers=student,
     )
-    assert bypass.status_code == 409
-    options = client.get(f"{MB}/affairs/dorm/transfer-options", headers=student)
-    assert options.status_code == 200 and options.json()["data"]["items"]
+    assert bypass.status_code == 409 and "不能重复自选" in bypass.text
 
 
 def test_dynamic_activity_code_replaces_student_manual_checkin(client, db_mode, monkeypatch):

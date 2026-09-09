@@ -1,16 +1,23 @@
 <template>
-  <ModulePageShell title="实习计划书" subtitle="批次计划编制 · 任务清单 · 发布下发 · 学生确认台账"
+  <ModulePageShell :title="reviewId ? '任务批阅' : '计划任务'" :subtitle="reviewId ? '核对任务要求与学生提交，确认结果或说明修改要求。' : '编制实习计划、下发任务并跟踪学生确认。'"
     role-name="实习管理员 / 指导教师" :data-scope-name="scopeHint">
-    <div class="bar">
-      <AppInternshipBatchPicker v-model="batchId" placeholder="选择实习批次" @change="onBatchChange" />
-      <AppButton v-if="batchId && canEdit" variant="primary" :loading="publishing" @click="publish">发布并下发</AppButton>
-    </div>
+    <template #actions>
+      <AppButton v-if="reviewId" variant="ghost" @click="closeTaskReview">返回完成度台账</AppButton>
+      <AppButton v-if="!reviewId && batchId && canEdit" variant="primary" :loading="publishing" :disabled="!plan || dirty || saving || writeConflict" @click="publish">发布并下发</AppButton>
+    </template>
 
+    <AppInlineAlert v-if="writeError" type="warning" :title="writeConflict ? '计划已更新，本次操作已暂停' : '操作未完成'" :description="writeError" />
+    <p v-if="!reviewId && batchId && canEdit && (!plan || dirty)" class="hint">{{ plan ? '有未保存的修改，请先保存再发布。' : '先填写计划和至少一项任务，保存后即可发布。' }}</p>
     <div v-if="!batchId" class="state">请先选择实习批次</div>
     <div v-else-if="loading" class="state">加载中…</div>
+    <ErrorState v-else-if="loadError" :message="loadError" @retry="onBatchChange" />
     <div v-else class="layout">
-      <div class="grid">
-        <section class="card">
+      <nav v-if="!reviewId" class="plan-nav" aria-label="计划任务工作区">
+        <AppButton v-for="item in panels" :key="item.value" :variant="activePanel === item.value ? 'primary' : 'ghost'"
+          :aria-current="activePanel === item.value ? 'page' : undefined" @click="selectPanel(item.value)">{{ item.label }}</AppButton>
+      </nav>
+      <template v-if="activePanel === 'plan' || activePanel === 'acks'">
+        <section v-show="activePanel === 'plan'" class="card card--editor">
           <h3 class="card__title">计划编制</h3>
           <AppFormItem label="计划标题" required>
             <AppTextInput v-model="form.title" :disabled="!canEdit" />
@@ -25,22 +32,23 @@
           <p v-if="plan" class="hint">状态：{{ plan.statusLabel }} · {{ plan.publishedAt || '未发布' }}</p>
           <AppInlineAlert v-else-if="canEdit" type="info" class="hint">尚未保存计划，填写后请先保存草稿</AppInlineAlert>
         </section>
-        <section class="card">
+        <section v-show="activePanel === 'acks'" class="card">
           <h3 class="card__title">学生确认台账</h3>
-          <AppQuickFilterChips v-model="ackStatus" :options="ackOptions" allow-clear @change="loadAcks" />
-          <DataTable :columns="ackCols" :rows="acks" row-key="id" :loading="ackLoading"
+          <AppQuickFilterChips v-model="ackStatus" :options="ackOptions" allow-clear @change="resetAcks" />
+          <ErrorState v-if="ackError" :message="ackError" @retry="loadAcks" />
+          <DataTable v-else :columns="ackCols" :rows="acks" row-key="id" :loading="ackLoading"
             :pagination="ackPagination" @page-change="onAckPage" />
         </section>
-      </div>
+      </template>
 
-      <section ref="taskSection" class="card card--tasks" :class="{ 'is-focus': taskPanelFocus }">
+      <section v-if="activePanel === 'tasks'" class="card card--tasks">
         <div class="card__head">
           <h3 class="card__title">实习任务清单</h3>
           <span class="card__sub">批次下发后学生可在学生端查看任务清单</span>
         </div>
 
         <template v-if="canEdit">
-          <p v-if="!tasks.length" class="state state--inline">暂无任务，点击下方添加（可选，建议 3～10 项）</p>
+          <p v-if="!tasks.length" class="state state--inline">至少添加一项可执行任务，明确完成要求与截止时间。</p>
           <div v-for="(task, idx) in tasks" :key="task._key" class="task-row">
             <div class="task-row__idx">{{ idx + 1 }}</div>
             <div class="task-row__fields">
@@ -77,12 +85,44 @@
         </template>
       </section>
 
-      <section v-if="plan && plan.status === 'PUBLISHED'" ref="progressSection"
-        class="card card--progress" :class="{ 'is-focus': progressPanelFocus }">
+      <section v-if="reviewId" class="card task-review" aria-label="学生任务提交详情">
+        <div v-if="progLoading" class="state">正在读取任务提交…</div>
+        <ErrorState v-else-if="progError" :message="progError" @retry="loadProgress" />
+        <AppInlineAlert v-else-if="!reviewRow" type="warning" title="当前台账中未找到这份任务"
+          description="记录可能已更新或不在当前筛选范围，请返回台账重新查找。" />
+        <template v-else>
+          <div class="card__head">
+            <h3 class="card__title">{{ reviewRow.studentName }} · {{ reviewRow.taskName }}</h3>
+            <AppStatusTag :status="reviewRow.status">{{ reviewRow.statusLabel }}</AppStatusTag>
+          </div>
+          <p class="hint">学号 {{ reviewRow.studentNo }} · 提交时间 {{ reviewRow.submittedAt || '尚未提交' }}</p>
+          <div class="task-review__columns">
+            <section class="review-evidence"><h4>任务要求</h4><p>{{ reviewTask?.requirement || '未填写完成要求' }}</p>
+              <AppDateDisplay :value="reviewTask?.deadline" mode="deadline" />
+            </section>
+            <section class="review-evidence"><h4>学生完成说明</h4><p>{{ reviewRow.studentNote || '未填写完成说明' }}</p>
+              <AppButton v-if="reviewRow.evidenceFileId" variant="secondary" @click="previewTaskEvidence">查看提交凭证</AppButton>
+              <p v-else class="hint">未提交附件凭证</p>
+            </section>
+          </div>
+          <AppInlineAlert v-if="evidenceError" type="warning" :description="evidenceError" />
+          <section v-if="reviewRow.reviewedAt" class="review-evidence"><h4>最近批阅</h4>
+            <p>{{ reviewRow.reviewedByName }} · {{ reviewRow.reviewedAt }}</p><p>{{ reviewRow.reviewComment || '未填写意见' }}</p>
+          </section>
+          <div v-if="canReview && reviewRow.status === 'SUBMITTED'" class="task-review__actions">
+            <AppButton variant="primary" @click="openReview(reviewRow, 'APPROVE')">确认完成</AppButton>
+            <AppButton variant="secondary" @click="openReview(reviewRow, 'REJECT')">退回修改</AppButton>
+          </div>
+        </template>
+      </section>
+      <AppInlineAlert v-if="!reviewId && activePanel === 'progress' && plan?.status !== 'PUBLISHED'" type="info"
+        title="计划发布后可跟踪任务完成情况" description="先保存并发布计划，学生提交任务后在这里确认或退回。" />
+      <section v-if="!reviewId && activePanel === 'progress' && plan?.status === 'PUBLISHED'" class="card card--progress">
         <div class="card__head">
           <h3 class="card__title">任务完成度跟踪</h3>
           <span class="card__sub">学生提交 → 指导教师确认 · 支持任务节点完成度跟踪</span>
         </div>
+        <AppInlineAlert v-if="summaryError" type="warning" :description="summaryError" />
         <div v-if="taskSummary" class="stats">
           <AppMetricCard title="平均完成率" :value="taskSummary.avgRate" unit="%" />
           <AppMetricCard title="待确认" :value="taskSummary.pendingReview" />
@@ -94,7 +134,8 @@
           <AppQuickFilterChips v-model="progStatus" :options="progStatusOptions" allow-clear @change="reloadProgress" />
           <AppSelect v-model="progTaskOrder" :options="progTaskOptions" placeholder="全部任务" allow-clear @change="reloadProgress" />
         </div>
-        <DataTable :columns="progCols" :rows="progRows" row-key="id" :loading="progLoading"
+        <ErrorState v-if="progError" :message="progError" @retry="loadProgress" />
+        <DataTable v-else :columns="progCols" :rows="progRows" row-key="id" :loading="progLoading"
           :pagination="progPagination" @page-change="onProgPage">
           <template #cell-status="{ row }">
             <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
@@ -103,11 +144,7 @@
             <span class="req-text">{{ row.studentNote || '—' }}</span>
           </template>
           <template #cell-actions="{ row }">
-            <template v-if="row.status === 'SUBMITTED'">
-              <AppButton variant="secondary" size="sm" @click="openReview(row, 'APPROVE')">确认完成</AppButton>
-              <AppButton variant="ghost" size="sm" :danger="true" @click="openReview(row, 'REJECT')">退回</AppButton>
-            </template>
-            <span v-else class="muted">—</span>
+            <AppButton variant="secondary" size="sm" @click="openTaskReview(row)">{{ row.status === 'SUBMITTED' && canReview ? '查看并批阅' : '查看提交' }}</AppButton>
           </template>
         </DataTable>
       </section>
@@ -117,20 +154,30 @@
       :content="delCd.content" :danger="true" confirm-text="删除" @confirm="confirmRemoveTask" />
     <AppConfirmDialog v-model:visible="reviewCd.visible" :title="reviewCd.title" :content="reviewCd.content"
       :danger="reviewCd.danger" :require-reason="reviewCd.requireReason" :submitting="reviewCd.submitting"
-      @confirm="onReviewConfirm" />
+      :confirm-text="pendingReview?.action === 'APPROVE' ? '确认完成' : '退回修改'" :confirm-disabled="reviewConflict"
+      @confirm="onReviewConfirm">
+      <div v-if="pendingReview" class="review-evidence">
+        <strong>学生完成说明</strong>
+        <p>{{ pendingReview.studentNote || '未填写完成说明' }}</p>
+      </div>
+      <AppInlineAlert v-if="reviewError" type="warning" :description="reviewError" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
-import { ModulePageShell, DataTable } from '@/components/business'
+import { ModulePageShell, DataTable, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips, AppInternshipBatchPicker,
+  AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips,
   AppDeadlinePicker, AppDateDisplay, AppConfirmDialog, AppInlineAlert,
   AppStatusTag, AppSearchBox, AppMetricCard
 } from '@/components/common'
 import { planApi } from '@/modules/internship/api/plan-insurance.api'
-import { loadInitialInternshipBatch } from '@/modules/internship/pickerAdapters'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { canCode } from '@/modules/internship/composables/permission'
+import { fileSdk } from '@/services/file/fileSdk'
+import { isConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 
 let _taskKey = 0
@@ -147,17 +194,17 @@ function newTask(src = {}) {
 export default {
   name: 'InternshipPlanView',
   components: {
-    ModulePageShell, DataTable, AppButton, AppFormItem, AppTextInput, AppTextarea,
-    AppSelect, AppQuickFilterChips, AppInternshipBatchPicker, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
+    ModulePageShell, DataTable, ErrorState, AppButton, AppFormItem, AppTextInput, AppTextarea,
+    AppSelect, AppQuickFilterChips, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
     AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      batchId: '', plan: null, loading: false, saving: false, publishing: false,
+      plan: null, savedSnapshot: '', writeError: '', writeConflict: false, loadError: '', loadSequence: 0, loading: false, saving: false, publishing: false,
       form: { title: '', objectives: '', content: '' },
       tasks: [],
-      acks: [], ackLoading: false, ackStatus: '', ackPagination: { page: 1, pageSize: 10, total: 0 },
+      acks: [], ackError: '', ackSequence: 0, ackLoading: false, ackStatus: '', ackPagination: { page: 1, pageSize: 10, total: 0 },
       ackCols: [
         { key: 'studentName', title: '姓名' }, { key: 'studentNo', title: '学号' },
         { key: 'statusLabel', title: '确认状态' }, { key: 'acknowledgedAt', title: '确认时间' }
@@ -170,11 +217,10 @@ export default {
       ],
       ackOptions: [{ label: '待确认', value: 'PENDING' }, { label: '已确认', value: 'ACKNOWLEDGED' }],
       scopeHint: '管理员全校；指导教师仅本人指导学生',
-      taskPanelFocus: false,
-      progressPanelFocus: false,
+      panels: [{ value: 'plan', label: '计划编制' }, { value: 'tasks', label: '任务清单' }, { value: 'acks', label: '学生确认' }, { value: 'progress', label: '完成度跟踪' }],
       delCd: { visible: false, content: '', idx: -1 },
-      taskSummary: null,
-      progRows: [], progLoading: false, progKeyword: '', progStatus: 'SUBMITTED',
+      taskSummary: null, summaryError: '', summarySequence: 0,
+      progRows: [], progError: '', progSequence: 0, progLoading: false, progKeyword: '', progStatus: 'SUBMITTED',
       progTaskOrder: '', progPage: 1, progPageSize: 10, progTotal: 0,
       progCols: [
         { key: 'studentName', title: '姓名' }, { key: 'studentNo', title: '学号' },
@@ -187,12 +233,21 @@ export default {
         { label: '已退回', value: 'REJECTED' }, { label: '未开始', value: 'NOT_STARTED' }
       ],
       reviewCd: { visible: false, title: '', content: '', danger: false, requireReason: false, submitting: false },
-      pendingReview: null
+      evidenceError: '', pendingReview: null, reviewError: '', reviewConflict: false
     }
   },
   computed: {
+    reviewId() { return this.$route.query.reviewId == null ? '' : String(this.$route.query.reviewId) },
+    reviewRow() { return this.progRows.find(row => String(row.id) === this.reviewId) || null },
+    reviewTask() { return this.tasks.find(task => Number(task.sortOrder) === Number(this.reviewRow?.taskSortOrder)) || null },
+    canReview() { return canCode(this.ctx, 'internship.task.review') },
+    draftSnapshot() { return JSON.stringify({ ...this.form, tasks: this.buildTasksPayload() }) },
+    dirty() { return this.savedSnapshot !== '' && this.draftSnapshot !== this.savedSnapshot },
+    activePanel() { if (this.reviewId) return 'progress'; return this.panels.some(item => item.value === this.$route.query.panel) ? this.$route.query.panel : 'plan' },
+    batchStore() { return useInternshipBatchStore() },
+    batchId() { return this.batchStore.selectedBatchId },
     canEdit() {
-      return !this.plan || this.plan.status === 'DRAFT'
+      return !this.loading && !this.loadError && canCode(this.ctx, 'internship.plan.manage') && (!this.plan || this.plan.status === 'DRAFT')
     },
     taskRows() {
       return this.tasks.map((t, i) => ({
@@ -211,27 +266,33 @@ export default {
     }
   },
   watch: {
-    '$route.query.panel': {
-      immediate: true,
-      handler(v) {
-        if (v === 'tasks') this.$nextTick(() => this.focusTaskPanel())
-        if (v === 'progress') this.$nextTick(() => this.focusProgressPanel())
-      }
-    }
-  },
-  created() { this.loadInitialBatch() },
-  methods: {
-    focusTaskPanel() {
-      this.taskPanelFocus = true
-      const el = this.$refs.taskSection
-      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      setTimeout(() => { this.taskPanelFocus = false }, 2400)
+    dirty(value) {
+      if (typeof window === 'undefined') return
+      const guard = window.__SAAS_DIRTY_FORM_GUARD__
+      if (value) guard?.markDirty(); else guard?.markSaved()
     },
-    focusProgressPanel() {
-      this.progressPanelFocus = true
-      const el = this.$refs.progressSection
-      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      setTimeout(() => { this.progressPanelFocus = false }, 2400)
+    '$route.query.reviewId'() { this.pendingReview = null; this.reviewCd.visible = false; this.reviewError = ''; this.reviewConflict = false; this.evidenceError = '' },
+    batchId: { immediate: true, handler() { this.onBatchChange() } },
+  },
+  methods: {
+    openTaskReview(row) {
+      this.$router.push({ path: this.$route.path, query: { ...this.$route.query, panel: 'progress', reviewId: String(row.id),
+        progPage: String(this.progPage), progStatus: this.progStatus, progKeyword: this.progKeyword, progTaskOrder: this.progTaskOrder } })
+    },
+    closeTaskReview() {
+      const query = { ...this.$route.query }; delete query.reviewId
+      this.$router.push({ path: this.$route.path, query })
+    },
+    async previewTaskEvidence() {
+      const row = this.reviewRow
+      if (!row?.evidenceFileId) return
+      this.evidenceError = ''
+      try { await fileSdk.preview(String(row.evidenceFileId)) }
+      catch (error) { if (this.reviewRow === row) this.evidenceError = error.message || '凭证暂时无法预览，请重试' }
+    },
+    selectPanel(panel) {
+      if (!this.panels.some(item => item.value === panel)) return
+      this.$router.push({ path: this.$route.path, query: { ...this.$route.query, panel } })
     },
     hydrateTasks(list) {
       const arr = Array.isArray(list) ? list : []
@@ -239,18 +300,24 @@ export default {
         ? arr.map((t, i) => newTask({ ...t, sortOrder: t.sortOrder || i + 1 }))
         : []
     },
-    async loadInitialBatch() {
-      const batch = await loadInitialInternshipBatch()
-      if (!batch) return
-      this.batchId = batch.id
-      this.onBatchChange()
-    },
     async onBatchChange() {
-      if (!this.batchId) return
+      this.ackSequence++; this.progSequence++; this.summarySequence++
+      this.ackError = ''; this.progError = ''; this.summaryError = ''
+      this.ackLoading = false; this.progLoading = false
+      const sequence = ++this.loadSequence
+      const batchId = this.batchId
+      this.plan = null; this.form = { title: '', objectives: '', content: '' }; this.tasks = []
+      this.acks = []; this.ackPagination.page = 1; this.ackPagination.total = 0
+      this.progRows = []; this.progTotal = 0; this.taskSummary = null
+      this.pendingReview = null; this.reviewError = ''; this.reviewConflict = false; this.reviewCd.visible = false; this.delCd.visible = false
+      this.loadError = ''; this.writeError = ''; this.writeConflict = false; this.savedSnapshot = ''; this.loading = false
+      if (!batchId) return
       this.loading = true
-      const res = await planApi.getBatchPlan(this.batchId)
+      const res = await planApi.getBatchPlan(batchId)
+      if (sequence !== this.loadSequence || batchId !== this.batchId) return
       this.loading = false
-      if (res.code === 0 && res.data) {
+      if (res.code !== 0) { this.loadError = res.message || '计划加载失败，请重试'; return }
+      if (res.data?.id != null) {
         this.plan = res.data
         this.form = { title: res.data.title, objectives: res.data.objectives, content: res.data.content }
         this.hydrateTasks(res.data.tasks)
@@ -259,12 +326,13 @@ export default {
         this.form = { title: '', objectives: '', content: '' }
         this.tasks = []
       }
+      const query = this.$route.query
+      this.progPage = Math.max(1, Number(query.progPage) || 1)
+      this.progStatus = query.progStatus ?? 'SUBMITTED'; this.progKeyword = query.progKeyword || ''; this.progTaskOrder = query.progTaskOrder || ''
+      this.savedSnapshot = this.draftSnapshot
       this.loadAcks()
       this.loadProgressSummary()
-      this.reloadProgress()
-      const panel = this.$route.query.panel
-      if (panel === 'tasks') this.$nextTick(() => this.focusTaskPanel())
-      if (panel === 'progress') this.$nextTick(() => this.focusProgressPanel())
+      this.loadProgress()
     },
     buildTasksPayload() {
       return this.tasks
@@ -307,48 +375,78 @@ export default {
       this.tasks = arr
     },
     async save() {
+      if (!this.canEdit || this.saving || this.publishing || this.writeConflict) return
+      this.writeError = ''
+      if (this.form.title.trim().length < 2 || this.form.content.trim().length < 20) {
+        this.writeError = '计划标题至少 2 字、正文至少 20 字，请在计划编制中补全。'; return
+      }
+      if (!this.buildTasksPayload().length) { this.writeError = '请在任务清单中至少添加一项可执行任务。'; return }
       if (!this.validateTasks()) return
+      const batchId = this.batchId
+      const snapshot = this.draftSnapshot
       this.saving = true
-      const res = await planApi.saveBatchPlan(this.batchId, { ...this.form, tasks: this.buildTasksPayload() })
+      const res = await planApi.saveBatchPlan(batchId, { ...JSON.parse(snapshot), expectedVersion: this.plan?.version })
       this.saving = false
-      if (res.code !== 0) return toast.error(res.message)
-      toast.success('计划与任务已保存')
-      this.onBatchChange()
+      if (batchId !== this.batchId) return
+      if (res.code !== 0) {
+        this.writeConflict = isConflict(res)
+        this.writeError = this.writeConflict ? '草稿内容已保留。请复制需要保留的内容，再重新加载计划核对最新版本。' : res.message || '保存失败，请重试'
+        return
+      }
+      this.plan = res.data; this.savedSnapshot = snapshot
+      toast.success('计划与任务已保存，可发布下发')
     },
     async publish() {
-      if (!this.plan) return toast.warning('请先保存计划草稿')
-      this.publishing = true
-      const res = await planApi.publishBatchPlan(this.batchId)
+      if (!this.canEdit || this.saving || this.publishing || this.writeConflict || !this.plan || this.dirty) return
+      const batchId = this.batchId
+      this.writeError = ''; this.publishing = true
+      const res = await planApi.publishBatchPlan(batchId, { expectedVersion: this.plan.version })
       this.publishing = false
-      if (res.code !== 0) return toast.error(res.message)
+      if (batchId !== this.batchId) return
+      if (res.code !== 0) {
+        this.writeConflict = isConflict(res)
+        this.writeError = this.writeConflict ? '计划版本已变化，请重新加载核对后再发布。' : res.message || '发布失败，请重试'
+        return
+      }
       toast.success(`已发布，待确认 ${res.data.ackCount || 0} 人`)
       this.onBatchChange()
     },
+    resetAcks() { this.ackPagination.page = 1; this.loadAcks() },
     onAckPage(p) { this.ackPagination.page = p; this.loadAcks() },
     async loadAcks() {
-      if (!this.batchId) return
+      const sequence = ++this.ackSequence, batchId = this.batchId
+      this.acks = []; this.ackPagination.total = 0; this.ackError = ''; this.ackLoading = false
+      if (!batchId) return
       this.ackLoading = true
       const res = await planApi.getPlanAcks({
         batchId: this.batchId, status: this.ackStatus,
         page: this.ackPagination.page, pageSize: this.ackPagination.pageSize
       })
+      if (sequence !== this.ackSequence || batchId !== this.batchId) return
       this.ackLoading = false
+      if (res.code !== 0) { this.ackError = res.message || '学生确认台账加载失败'; return }
       if (res.code === 0) {
         this.acks = res.data.list
         this.ackPagination.total = res.data.total
       }
     },
     async loadProgressSummary() {
+      const sequence = ++this.summarySequence, batchId = this.batchId
+      this.taskSummary = null; this.summaryError = ''
       if (!this.batchId || !this.plan || this.plan.status !== 'PUBLISHED') {
         this.taskSummary = null
         return
       }
       const res = await planApi.getTaskSummary(this.batchId)
-      if (res.code === 0) this.taskSummary = res.data
+      if (sequence !== this.summarySequence || batchId !== this.batchId) return
+      if (res.code !== 0) { this.summaryError = res.message || '完成度统计加载失败'; return }
+      this.taskSummary = res.data
     },
     reloadProgress() { this.progPage = 1; this.loadProgress() },
     onProgPage(p) { this.progPage = p; this.loadProgress() },
     async loadProgress() {
+      const sequence = ++this.progSequence, batchId = this.batchId
+      this.progRows = []; this.progTotal = 0; this.progError = ''; this.progLoading = false
       if (!this.batchId || !this.plan || this.plan.status !== 'PUBLISHED') {
         this.progRows = []
         return
@@ -360,14 +458,18 @@ export default {
       if (this.progStatus) params.status = this.progStatus
       if (this.progTaskOrder) params.taskSortOrder = Number(this.progTaskOrder)
       const res = await planApi.getTaskProgress(params)
+      if (sequence !== this.progSequence || batchId !== this.batchId) return
       this.progLoading = false
+      if (res.code !== 0) { this.progError = res.message || '任务完成度加载失败'; return }
       if (res.code === 0) {
         this.progRows = res.data.list
         this.progTotal = res.data.total
       }
     },
     openReview(row, action) {
-      this.pendingReview = { id: row.id, action }
+      if (!this.canReview || this.reviewCd.submitting || row.status !== 'SUBMITTED' || !['APPROVE', 'REJECT'].includes(action)) return
+      this.reviewError = ''; this.reviewConflict = false
+      this.pendingReview = { id: row.id, action, expectedVersion: row.version, studentNote: row.studentNote }
       const ap = action === 'APPROVE'
       this.reviewCd = {
         visible: true,
@@ -377,14 +479,23 @@ export default {
       }
     },
     async onReviewConfirm({ reason }) {
-      this.reviewCd.submitting = true
-      const res = await planApi.reviewTaskProgress(this.pendingReview.id, {
-        action: this.pendingReview.action, comment: reason || ''
+      if (!this.canReview || !this.pendingReview || this.reviewCd.submitting || this.reviewConflict) return
+      if (this.pendingReview.action === 'REJECT' && (reason || '').trim().length < 5) { this.reviewError = '请填写至少 5 字的退回原因，说明需要修改的内容。'; return }
+      const pending = this.pendingReview, batchId = this.batchId
+      this.reviewError = ''; this.reviewCd.submitting = true
+      const res = await planApi.reviewTaskProgress(pending.id, {
+        action: pending.action, comment: reason || '', expectedVersion: pending.expectedVersion
       })
       this.reviewCd.submitting = false
-      if (res.code !== 0) return toast.error(res.message)
+      if (this.pendingReview !== pending || batchId !== this.batchId) return
+      if (res.code !== 0) {
+        this.reviewConflict = isConflict(res)
+        this.reviewError = this.reviewConflict ? '任务已更新，本次批阅已暂停。意见已保留，请取消后刷新台账，核对最新提交再办理。' : res.message || '批阅失败，请重试'
+        return
+      }
       this.reviewCd.visible = false
       toast.success('批阅成功')
+      if (this.reviewId) this.closeTaskReview()
       this.loadProgressSummary()
       this.loadProgress()
     }
@@ -393,12 +504,19 @@ export default {
 </script>
 
 <style scoped>
+@import '@/styles/module-page.css';
+.task-review__columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+.task-review h4 { margin: 0; }
+.task-review__actions { display: flex; gap: 12px; border-top: 1px solid var(--border-light); padding-top: 20px; }
+@media (max-width: 1000px) { .task-review__columns { grid-template-columns: 1fr; } }
+.review-evidence { padding: 14px; border-radius: 8px; background: var(--bg-page, #f7f9fc); margin-bottom: 12px; }
+.review-evidence p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+.plan-nav { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 4px; }
+.card--editor { max-width: 960px; }
+.card--editor .card__title { margin-bottom: 20px; }
 .bar { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
 .layout { display: flex; flex-direction: column; gap: var(--space-4); }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
 .card { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: var(--space-4); }
-.card--tasks.is-focus { outline: 2px solid var(--primary-500); outline-offset: 2px; }
-.card--progress.is-focus { outline: 2px solid var(--primary-500); outline-offset: 2px; }
 .stats { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .stats > * { flex: 1 1 160px; }
 .bar--inner { margin-bottom: var(--space-3); }
@@ -415,7 +533,6 @@ export default {
 .task-actions { display: flex; gap: var(--space-3); margin-top: var(--space-3); flex-wrap: wrap; }
 .req-text { white-space: pre-wrap; font-size: var(--font-size-sm); color: var(--text-secondary); }
 @media (max-width: 960px) {
-  .grid { grid-template-columns: 1fr; }
   .task-row { grid-template-columns: 1fr; }
   .task-row__idx { text-align: left; }
   .task-row__ops { flex-direction: row; }

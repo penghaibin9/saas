@@ -41,6 +41,7 @@ FIXED_LOGINS = ("admin2", "teacher2", "student2")
 GENERATED_LOGIN_PREFIXES = (
     "2024S", "2025S", "2026S",
     "sbx_t", "sbx_c", "sbx_aa", "sbx_sa", "sbx_im", "sbx_gm",
+    "sandbox-tourism-company-hr",
 )
 
 ROLE_SPECS = (
@@ -265,6 +266,20 @@ def _seed_staff_accounts(db, tenant_id: int, role_ids: dict[str, int]) -> dict[s
             role_by_login[login] = role_code
             global_seq += 1
     assert len(user_rows) == EXPECTED_STAFF_ACCOUNT_COUNT
+    # 企业协同身份属于 20K 学校身份底座，必须在统一主数据构建阶段预置。
+    # 业务过程 seed 只绑定已有账号，不再开辟额外的 User(...) 建号入口。
+    enterprise_phone = "13900000071"
+    user_rows.append({
+        "tenant_id": tenant_id,
+        "login_name": "sandbox-tourism-company-hr",
+        "real_name": "周雯",
+        "password_hash": shared_hash,
+        "user_type": "ENTERPRISE_MENTOR",
+        "phone_encrypted": encrypt_sensitive(enterprise_phone, "phone"),
+        "phone_hash": hash_sensitive(enterprise_phone, "phone"),
+        "status": "ACTIVE",
+        "must_change_password": True,
+    })
     _bulk_insert(db, User, user_rows, chunk_size=500)
     db.flush()
 

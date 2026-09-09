@@ -189,7 +189,7 @@ export default {
   created() { this.reload() },
   methods: {
     dupPolicyLabel(p) { return DUP_LABELS[p] || p },
-    batchStatusLabel(s) { return BATCH_LABELS[s] || s },
+    batchStatusLabel(s) { return BATCH_LABELS[s] || (s ? '状态待确认' : '—') },
     depLabel(dep) {
       if (dep === 'student-profile') return '学生主档'
       return this.domains.find((d) => d.domain === dep)?.label || dep

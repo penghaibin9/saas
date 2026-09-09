@@ -5,7 +5,7 @@
 所有接口鉴权；查不到本人档案返回空态（hasData=false），不 500。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
@@ -13,6 +13,7 @@ from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services import affairs_activity_service as activity_svc
+from app.services import dorm_inspection_service as dorm_inspection_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_agenda_projection_service as agenda
 from app.services import mobile_case_projection_service as cases
@@ -45,6 +46,14 @@ internship_teacher_mobile = APIRouter(
     prefix="/teacher/internship", tags=["教师移动端-岗位实习"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+
+def _selected_internship_batch_id(
+    header_value: str | None = Header(default=None, alias="X-Internship-Batch-Id"),
+    explicit: int | None = Query(default=None, alias="batchId", ge=1),
+) -> str | None:
+    """Use the page's explicit batch first, otherwise the shared mobile batch context."""
+    return str(explicit) if explicit is not None else header_value
 
 # ── 学生端·我的 ──
 @router.get("/me/overview", summary="学生首页总览（本人）")
@@ -180,13 +189,28 @@ def internship_weekly(body: dict = Body(...), user=Depends(get_current_user)):
 
 
 @internship_mobile.post("/checkin", summary="实习每日打卡（本人，一天一次，真实落库）")
-def internship_checkin(body: dict = Body(default={}), user=Depends(get_current_user)):
-    return success(stu.internship_checkin(user, body))
+def internship_checkin(
+    body: dict = Body(default={}),
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin(user, body, batch_id=batch_id))
+
+
+@internship_mobile.post("/checkin/preflight", summary="实习打卡预检与短时定位凭证（本人）")
+def internship_checkin_preflight(
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin_preflight(user, batch_id=batch_id))
 
 
 @internship_mobile.get("/checkin/week", summary="本周打卡记录（本人）")
-def internship_checkin_week(user=Depends(get_current_user)):
-    return success(stu.internship_checkin_week(user))
+def internship_checkin_week(
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_internship_batch_id),
+):
+    return success(stu.internship_checkin_week(user, batch_id=batch_id))
 
 
 @internship_mobile.get("/enterprises", summary="企业岗位库（本人可浏览，城市筛选）")
@@ -509,9 +533,25 @@ def orientation_collect(body: dict = Body(default={}), user=Depends(get_current_
     return success(stu.orientation_collect_submit(user, body), message="已提交")
 
 
+@router.put("/orientation/arrival", summary="提交到校计划（本人·乐观锁）")
+def orientation_arrival(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_arrival_submit(user, body), message="到校计划已保存")
+
+
+@router.post("/orientation/materials", summary="提交迎新材料（本人·正式文件版本）")
+def orientation_material(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_material_submit(user, body), message="材料已提交")
+
+
 @router.post("/orientation/green-channel", summary="绿色通道申请（本人提交，待审核）")
 def orientation_green_channel(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.orientation_green_channel_submit(user, body), message="已提交")
+
+
+@router.post("/orientation/checkin-token", summary="签发本人一次性现场报到凭证")
+def orientation_checkin_token(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import issue_for_student
+    return success(issue_for_student(user), message="报到凭证已签发")
 
 
 @router.get("/campus-service/my", summary="我的在校服务")
@@ -552,8 +592,15 @@ def graduation_material_download(file_id: str, user=Depends(get_current_user)):
 
 
 @gd.get("/topics", summary="选题·浏览可选题目库（已入池未满员）")
-def graduation_topics(batchId: str = None, user=Depends(get_current_user)):
-    return success(stu.graduation_topics(user, batch_id=batchId))
+def graduation_topics(batchId: str | None = None, keyword: str | None = None,
+                      category: str | None = None, advisor: str | None = None,
+                      cursor: str | None = None,
+                      pageSize: int = Query(default=20, ge=1, le=30),
+                      user=Depends(get_current_user)):
+    return success(stu.graduation_topics(
+        user, batch_id=batchId, keyword=keyword, category=category, advisor=advisor,
+        cursor=cursor, page_size=pageSize,
+    ))
 
 
 @gd.get("/active-round", summary="选题·当前进行中轮次 + 我的志愿")
@@ -725,6 +772,24 @@ def teacher_orientation_checkin(body: dict = Body(...), user=Depends(get_current
                    message="核验通过")
 
 
+@router.get("/teacher/orientation/checkin-points", summary="迎新老师·本人可用现场报到点")
+def teacher_orientation_checkin_points(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import list_teacher_points
+    return success(list_teacher_points(user))
+
+
+@router.post("/teacher/orientation/checkin/preflight", summary="迎新老师·签名凭证预检（只读）")
+def teacher_orientation_checkin_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import preflight
+    return success(preflight(body.get("token") or "", user))
+
+
+@router.post("/teacher/orientation/checkin/confirm", summary="迎新老师·确认现场报到")
+def teacher_orientation_checkin_confirm(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import confirm
+    return success(confirm(body.get("token") or "", body.get("checkinPointId"), user), message="现场报到已确认")
+
+
 @router.get("/teacher/orientation/today-checkins", summary="迎新老师·今日已核验列表")
 def teacher_orientation_today_checkins(user=Depends(get_current_user)):
     return success(tea.orientation_today_checkins(user))
@@ -758,11 +823,17 @@ def teacher_academic(user=Depends(get_current_user)):
 @internship_teacher_mobile.get("", summary="教师·实习待批")
 def teacher_internship(
     batch_id: str | None = Query(default=None, alias="batchId"),
+    weekly_page: int = Query(default=1, ge=1, alias="weeklyPage"),
+    exception_page: int = Query(default=1, ge=1, alias="exceptionPage"),
+    page_size: int = Query(default=20, ge=1, le=50, alias="pageSize"),
     user=Depends(get_current_user),
 ):
     # 教师路径拿不到 x-internship-batch-id 隐式上下文（中间件按设计只绑学生端路径），
     # 批次必须由本接口显式接收；不传时页面照常打开，取不到的来源在 errors 里说明。
-    return success(tea.internship(user, batch_id=batch_id))
+    return success(tea.internship(
+        user, batch_id=batch_id, weekly_page=weekly_page,
+        exception_page=exception_page, page_size=page_size,
+    ))
 
 
 @router.get("/teacher/graduation", summary="教师·毕设待审")
@@ -818,13 +889,16 @@ def teacher_family_contact_receipt(contact_id: str, body: dict = Body(default={}
 
 
 @router.get("/teacher/affairs/leaves/pending", summary="辅导员·请假待审批队列（数据范围+审批节点双重收敛）")
-def teacher_affairs_leave_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_leave_pending(user))
+def teacher_affairs_leave_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                 keyword: str = Query('', max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_leave_pending(user, page, pageSize, keyword))
 
 
 @router.get("/teacher/affairs/leaves/followup", summary="辅导员·请假后续处理台账（已通过/续假中/待销假/逾期）")
-def teacher_affairs_leave_followup(user=Depends(get_current_user)):
-    return success(tea.affairs_leave_followup(user))
+def teacher_affairs_leave_followup(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                  keyword: str = Query('', max_length=100), status: str = Query('', max_length=40),
+                                  user=Depends(get_current_user)):
+    return success(tea.affairs_leave_followup(user, page, pageSize, keyword, status))
 
 
 @router.get("/teacher/affairs/leaves/{leave_id}", summary="辅导员·请假详情（含销假/续假/审计留痕，范围校验）")
@@ -885,8 +959,10 @@ def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(def
 
 
 @router.get("/teacher/affairs/aid/pending", summary="辅导员·困难认定待审")
-def teacher_affairs_aid_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_aid_pending(user))
+def teacher_affairs_aid_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                               kind: str = Query("ALL", pattern="^(ALL|AID_APPROVAL|AID_ADJUST)$"),
+                               keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_aid_pending(user, page, pageSize, kind, keyword))
 
 
 @router.get("/teacher/affairs/aid/{apply_id}", summary="辅导员·困难认定详情")
@@ -900,12 +976,13 @@ def teacher_affairs_aid_review(apply_id: str, body: dict = Body(default={}),
     return success(tea.affairs_aid_review(
         user, apply_id, str((body or {}).get("action") or "APPROVE"),
         reason=str((body or {}).get("reason") or ""),
-        level=(body or {}).get("level")), message="已处理")
+        level=(body or {}).get("level"), version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/funding/pending", summary="辅导员·奖助待审")
-def teacher_affairs_funding_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_funding_pending(user))
+def teacher_affairs_funding_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                   keyword: str | None = Query(None, max_length=100), user=Depends(get_current_user)):
+    return success(tea.affairs_funding_pending(user, page=page, page_size=pageSize, keyword=keyword))
 
 
 @router.get("/teacher/affairs/funding/{app_id}", summary="辅导员·奖助详情")
@@ -921,6 +998,118 @@ def teacher_affairs_funding_review(app_id: str, body: dict = Body(default={}),
         reason=str((body or {}).get("reason") or "")), message="已处理")
 
 
+@router.get("/teacher/affairs/work-study/posts", summary="教师·勤工岗位")
+def teacher_affairs_work_study_posts(
+    status: str | None = None, keyword: str = Query("", max_length=100),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.services import affairs_funding_ext_service as work_study
+    items, total = work_study.list_posts(user, status, page, pageSize, keyword)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/work-study/records", summary="教师·勤工申请与在岗记录")
+def teacher_affairs_work_study_records(
+    recordId: int | None = Query(None, ge=1),
+    postId: int | None = None, status: str | None = None,
+    keyword: str = Query("", max_length=100), page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.services import affairs_funding_ext_service as work_study
+    items, total, status_counts = work_study.list_ws_records(
+        user, postId, status, page, pageSize, keyword, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/work-study/records/{record_id}/action", summary="教师·勤工录用、上岗或离岗")
+def teacher_affairs_work_study_action(
+    record_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as work_study
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(work_study.act_work_study(
+        record_id, (body or {}).get("action"), user, (body or {}).get("reason") or "",
+        expected_version=(body or {}).get("version"),
+        agreement_confirmed=bool((body or {}).get("agreementConfirmed"))), message="已处理")
+
+
+@router.get("/teacher/affairs/work-study/records/{record_id}/monthly", summary="教师·勤工月度考核明细")
+def teacher_affairs_work_study_monthly(record_id: int,
+        user=Depends(require_permission("studentAffairs.funding.workstudy.manage"))):
+    from app.services import affairs_funding_ext_service as work_study
+    return success({"items": work_study.list_monthly(record_id, user)})
+
+
+@router.post("/teacher/affairs/work-study/records/{record_id}/monthly", summary="教师·登记勤工月度考核")
+def teacher_affairs_work_study_monthly_add(
+    record_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.workstudy.manage")),
+):
+    from types import SimpleNamespace
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.add_monthly(
+        record_id, SimpleNamespace(**(body or {})), user), message="月度考核已登记")
+
+
+@router.get("/teacher/affairs/loans", summary="教师·助学贷款回执办理队列")
+def teacher_affairs_loans(
+    status: str | None = None, keyword: str = Query("", max_length=100),
+    yearCode: str = Query("", max_length=20), loanType: str = Query("", max_length=20),
+    recordId: int | None = Query(None, ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("studentAffairs.funding.loan.manage")),
+):
+    from app.services import affairs_funding_ext_service as loans
+    items, total, status_counts = loans.list_loans(
+        user, status, page, pageSize, keyword, yearCode, loanType, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": status_counts,
+                    "policy": loans.loan_policy(), "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/loans/{loan_id}/action", summary="教师·核验、退回或确认贷款回执")
+def teacher_affairs_loan_action(
+    loan_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.loan.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as loans
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(loans.loan_action(loan_id, body or {}, user), message="贷款记录已更新")
+
+
+@router.get("/teacher/affairs/fee-reductions", summary="教师·减免与临时补助办理队列")
+def teacher_affairs_fee_reductions(
+    status: str | None = None, itemType: str | None = None,
+    keyword: str = Query("", max_length=100), yearCode: str = Query("", max_length=20),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    recordId: int | None = Query(None, ge=1),
+    user=Depends(require_permission("studentAffairs.funding.reduction.manage")),
+):
+    from app.services import affairs_funding_ext_service as reductions
+    items, total, counts = reductions.list_reductions(
+        user, itemType, status, page, pageSize, keyword, yearCode, record_id=recordId)
+    return success({"items": items, "total": total, "statusCounts": counts,
+                    "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/fee-reductions/{fee_id}/action", summary="教师·审核或落实减免与临补")
+def teacher_affairs_fee_reduction_action(
+    fee_id: int, body: dict = Body(...),
+    user=Depends(require_permission("studentAffairs.funding.reduction.manage")),
+):
+    from app.core.exceptions import AppException
+    from app.services import affairs_funding_ext_service as reductions
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
+    return success(reductions.fee_action(fee_id, body or {}, user), message="申请已更新")
+
+
 @router.get("/teacher/affairs/discipline/pending", summary="辅导员·处分/解除待审")
 def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
     return success(tea.affairs_discipline_pending(user))
@@ -934,9 +1123,13 @@ def teacher_affairs_discipline_detail(case_id: str, user=Depends(get_current_use
 @router.post("/teacher/affairs/discipline/{case_id}/review", summary="辅导员·处分/解除审批")
 def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}),
                                       user=Depends(get_current_user)):
+    from app.core.exceptions import AppException
+    if (body or {}).get("version") is None:
+        raise AppException("VALIDATION_ERROR", "版本号必填")
     return success(tea.affairs_discipline_review(
         user, case_id, str((body or {}).get("action") or "APPROVE"),
-        reason=str((body or {}).get("reason") or "")), message="已处理")
+        reason=str((body or {}).get("reason") or ""),
+        expected_version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/risk/pending", summary="辅导员·学工风险待处置（本人责任单）")
@@ -953,14 +1146,16 @@ def teacher_affairs_risk_detail(risk_id: str, user=Depends(get_current_user)):
 def teacher_affairs_risk_process(risk_id: str, body: dict = Body(...),
                                  user=Depends(get_current_user)):
     return success(tea.affairs_risk_process(
-        user, risk_id, str((body or {}).get("content") or "")), message="已记录处置")
+        user, risk_id, str((body or {}).get("content") or ""),
+        expected_version=(body or {}).get("version")), message="已记录处置")
 
 
 @router.post("/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
 def teacher_affairs_risk_close(risk_id: str, body: dict = Body(...),
                                user=Depends(get_current_user)):
     return success(tea.affairs_risk_close(
-        user, risk_id, str((body or {}).get("conclusion") or "")), message="已关闭")
+        user, risk_id, str((body or {}).get("conclusion") or ""),
+        expected_version=(body or {}).get("version")), message="已关闭")
 
 
 @router.get("/teacher/affairs/classes", summary="辅导员·我的班级（本人数据范围，供任命班干部先选班级）")
@@ -1713,9 +1908,10 @@ def affairs_aid_my(user=Depends(get_current_user)):
 
 
 @router.get("/affairs/aid/batches", summary="学工·当前开放困难认定批次")
-def affairs_aid_batches(user=Depends(get_current_user)):
+def affairs_aid_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                       keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
     from app.student_portal.services import affairs_service as portal_aff
-    return success(portal_aff.aid_batches_open(user))
+    return success(portal_aff.aid_batches_open(user, page, pageSize, keyword))
 
 
 @router.post("/affairs/aid/apply", summary="学工·困难认定申请（本人·承诺书）")
@@ -1735,13 +1931,92 @@ def affairs_funding_my(user=Depends(get_current_user)):
     return success(aff.funding_my(user))
 
 
-@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
-def affairs_funding_batches(user=Depends(get_current_user)):
+@router.get("/affairs/work-study/posts", summary="学工·本人可申请勤工岗位")
+def affairs_work_study_posts(keyword: str = Query("", max_length=100),
+                             page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                             user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.student_posts(user, keyword, page, pageSize))
+
+
+@router.get("/affairs/work-study/my", summary="学工·本人勤工申请、上岗与补贴")
+def affairs_work_study_my(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.student_records(user))
+
+
+@router.post("/affairs/work-study/posts/{post_id}/apply", summary="学工·本人申请勤工岗位")
+def affairs_work_study_apply(post_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.apply_work_study_self(post_id, body or {}, user), message="勤工申请已提交")
+
+
+@router.post("/affairs/work-study/records/{record_id}/withdraw", summary="学工·本人撤回待审核勤工申请")
+def affairs_work_study_withdraw(record_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as work_study
+    return success(work_study.withdraw_work_study_self(record_id, body or {}, user), message="申请已撤回")
+
+
+@router.get("/affairs/loans", summary="学工·我的助学贷款与回执状态")
+def affairs_loans(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.student_loans(user))
+
+
+@router.post("/affairs/loans", summary="学工·本人提交助学贷款电子回执")
+def affairs_loan_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.submit_loan_self(body or {}, user), message="贷款回执已提交学校核验")
+
+
+@router.post("/affairs/loans/{loan_id}/resubmit", summary="学工·本人修正并重提贷款回执")
+def affairs_loan_resubmit(loan_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.resubmit_loan_self(loan_id, body or {}, user), message="贷款回执已重新提交")
+
+
+@router.post("/affairs/loans/{loan_id}/withdraw", summary="学工·本人在核验前撤回贷款回执")
+def affairs_loan_withdraw(loan_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as loans
+    return success(loans.withdraw_loan_self(loan_id, body or {}, user), message="贷款回执已撤回")
+
+
+@router.get("/affairs/fee-reductions", summary="学工·我的学费减免与临时困难补助")
+def affairs_fee_reductions(user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.student_reductions(user))
+
+
+@router.post("/affairs/fee-reductions", summary="学工·本人提交减免或临补申请")
+def affairs_fee_reduction_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.submit_reduction_self(body or {}, user), message="申请已提交学校审核")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/resubmit", summary="学工·本人补正并重提减免或临补")
+def affairs_fee_reduction_resubmit(fee_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.resubmit_reduction_self(fee_id, body or {}, user), message="申请已重新提交")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/withdraw", summary="学工·本人撤回待审减免或临补")
+def affairs_fee_reduction_withdraw(fee_id: int, body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services import affairs_funding_ext_service as reductions
+    return success(reductions.withdraw_reduction_self(fee_id, body or {}, user), message="申请已撤回")
+
+
+@router.get("/affairs/funding/applications/{application_id}", summary="学工·本人奖助申请详情与发放结果")
+def affairs_funding_detail(application_id: str, user=Depends(get_current_user)):
     from app.student_portal.services import affairs_service as portal_aff
-    data = portal_aff.funding_batches_open(user)
-    items = [x for x in (data.get("items") or [])
-             if (x.get("projectType") or "") in ("SCHOLARSHIP", "GRANT")]
-    return success({"items": items, "total": len(items)})
+    return success(portal_aff.funding_detail(user, application_id))
+
+
+@router.get("/affairs/funding/batches", summary="学工·当前开放奖助批次（奖学金/助学金）")
+def affairs_funding_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           keyword: str = Query("", max_length=100), projectType: str | None = None,
+                           user=Depends(get_current_user)):
+    from app.student_portal.services import affairs_service as portal_aff
+    return success(portal_aff.funding_batches_open(user, page, pageSize, keyword, projectType))
 
 
 @router.post("/affairs/funding/apply", summary="学工·奖学金/助学金申请（本人·承诺书）")
@@ -1767,12 +2042,17 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
     return success(portal_aff.discipline_appeal(user, body or {}), message="申辩已提交")
 
 
-@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含自选开关）")
+@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含批次分配投影）")
 def affairs_dorm_my(user=Depends(get_current_user)):
     return success(aff.dorm_my(user))
 
 
-@router.get("/affairs/dorm/select-options", summary="学工·自选床位可选项（按本人性别，受学校开关控制）")
+@router.get("/affairs/dorm/stays/my", summary="学工·我的住宿历史（DormStay Authority）")
+def affairs_dorm_stays_my(user=Depends(get_current_user)):
+    return success(aff.dorm_stays_my(user))
+
+
+@router.get("/affairs/dorm/select-options", summary="学工·本人批次自选的冻结资源池")
 def affairs_dorm_options(user=Depends(get_current_user)):
     return success(aff.dorm_select_options(user))
 
@@ -1787,9 +2067,47 @@ def affairs_dorm_beds(room_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_beds(user, room_id))
 
 
-@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
+@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·原子确认本人批次床位（不等于正式入住）")
 def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
-    return success(aff.dorm_self_select(user, bed_id), message="已入住")
+    return success(aff.dorm_self_select(user, bed_id), message="床位已确认")
+
+
+@router.get("/affairs/dorm/rectifications/my", summary="学生·我的宿舍整改与历史")
+def affairs_dorm_rectifications_my(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/affairs/dorm/rectifications/{rectification_id}", summary="学生·本人宿舍整改详情")
+def affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/start", summary="学生·开始本人宿舍整改")
+def affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/submit", summary="学生·提交本人整改证据")
+def affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
 
 
 # ── 学生端·学生活动（D 包波次1，本人报名/签到）──
@@ -1816,6 +2134,90 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 @router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
 def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
     return success(tea.affairs_dorm_pending(user))
+
+
+@router.get("/teacher/affairs/dorm/inspection-templates", summary="教师·宿舍检查模板")
+def teacher_affairs_dorm_inspection_templates(user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.list_templates(user))
+
+
+@router.get("/teacher/affairs/dorm/check-tasks", summary="教师·现场检查任务")
+def teacher_affairs_dorm_check_tasks(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_tasks(user, status, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·任务逐房记录")
+def teacher_affairs_dorm_check_records(
+    task_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_records(task_id, user, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·现场逐房检查并上传证据")
+def teacher_affairs_dorm_check_record(
+    task_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_record(task_id, body or {}, user), message="检查结果已提交")
+
+
+@router.get("/teacher/affairs/dorm/rectifications", summary="教师·宿舍整改待办与历史")
+def teacher_affairs_dorm_rectifications(
+    status: str | None = None,
+    mine: bool = False,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize, mine=mine,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/rectifications/{rectification_id}", summary="教师·宿舍整改详情")
+def teacher_affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/start", summary="教师·开始房间级整改")
+def teacher_affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/submit", summary="教师·提交房间级整改证据")
+def teacher_affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/recheck", summary="教师·宿舍整改复检")
+def teacher_affairs_dorm_rectification_recheck(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.recheck_rectification(rectification_id, body or {}, user), message="复检结果已保存")
 
 
 @router.post("/teacher/affairs/dorm/transfers/{transfer_id}/review",

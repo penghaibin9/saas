@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "authority": "CONTROL_PLANE_EXPLICIT_ALIASES",
+  "newWrites": "CANONICAL_ONLY",
+  "aliases": {
+    "system.audit.login.view": "systemAdmin.audit.view",
+    "system.audit.operation.view": "systemAdmin.audit.view",
+    "system.audit.sensitive.view": "systemAdmin.audit.sensitive.view",
+    "system.config.brand.manage": "systemAdmin.config.manage",
+    "system.config.feature.view": "systemAdmin.config.feature.view",
+    "system.config.view": "systemAdmin.config.view",
+    "system.dashboard.view": "systemAdmin.dashboard.view",
+    "system.delegation.manage": "systemAdmin.delegation.manage",
+    "system.integration.manage": "systemAdmin.integration.manage",
+    "system.integration.sync.view": "systemAdmin.integration.sync.view",
+    "system.migration.view": "systemAdmin.migration.view",
+    "system.org.affiliation.manage": "systemAdmin.org.affiliation.manage",
+    "system.org.class.manage": "systemAdmin.org.class.manage",
+    "system.org.major.manage": "systemAdmin.org.major.manage",
+    "system.org.view": "systemAdmin.org.view",
+    "system.role.permission.manage": "systemAdmin.role.config",
+    "system.role.template.view": "systemAdmin.role.view",
+    "system.role.view": "systemAdmin.role.view",
+    "system.scope.view": "systemAdmin.scope.view",
+    "system.security.policy.manage": "systemAdmin.security.policy.manage",
+    "system.user.exception.view": "systemAdmin.user.exception.view",
+    "system.user.import": "systemAdmin.user.import",
+    "system.user.view": "systemAdmin.user.view"
+  }
+}

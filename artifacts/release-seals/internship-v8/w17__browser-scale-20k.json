@@ -1,0 +1,227 @@
+{
+  "schema": "internship-v8-browser-scale-evidence/1",
+  "measuredAt": "2026-08-30T15:14:18.151Z",
+  "targets": [
+    {
+      "name": "staff-dashboard-20k",
+      "url": "http://127.0.0.1:18173/admin/internship?batchId=18",
+      "finalUrl": "http://127.0.0.1:18173/admin/internship?batchId=18",
+      "status": 200,
+      "budgets": {
+        "longTaskMaxMs": 200,
+        "usedJSHeapBytes": 134217728
+      },
+      "metrics": {
+        "title": "高校学生全生命周期管理平台",
+        "longTaskSupported": true,
+        "longTasks": [
+          {
+            "startTime": 1056.6000000238419,
+            "duration": 65,
+            "name": "self"
+          },
+          {
+            "startTime": 1134.6000000238419,
+            "duration": 86,
+            "name": "unknown"
+          }
+        ],
+        "longTaskTotalMs": 151,
+        "longTaskMaxMs": 86,
+        "resourceTransferBytes": 9457787,
+        "resourceDecodedBytes": 9383687,
+        "navigationMs": 238.80000001192093,
+        "domContentLoadedMs": 236.9000000357628,
+        "loadEventMs": 238.80000001192093,
+        "usedJSHeapBytes": 41685652,
+        "totalJSHeapBytes": 50805380
+      },
+      "checks": {
+        "http": true,
+        "authenticatedRoute": true,
+        "longTaskSupported": true,
+        "longTask": true,
+        "memoryAvailable": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    {
+      "name": "weekly-queue-20k",
+      "url": "http://127.0.0.1:18173/admin/internship/reports?batchId=18",
+      "finalUrl": "http://127.0.0.1:18173/admin/internship/reports?batchId=18",
+      "status": 200,
+      "budgets": {
+        "longTaskMaxMs": 200,
+        "usedJSHeapBytes": 134217728
+      },
+      "metrics": {
+        "title": "高校学生全生命周期管理平台",
+        "longTaskSupported": true,
+        "longTasks": [
+          {
+            "startTime": 983.1999999880791,
+            "duration": 64,
+            "name": "self"
+          },
+          {
+            "startTime": 1062.4000000357628,
+            "duration": 57,
+            "name": "unknown"
+          }
+        ],
+        "longTaskTotalMs": 121,
+        "longTaskMaxMs": 64,
+        "resourceTransferBytes": 293818,
+        "resourceDecodedBytes": 9298247,
+        "navigationMs": 121.40000003576279,
+        "domContentLoadedMs": 120,
+        "loadEventMs": 121.40000003576279,
+        "usedJSHeapBytes": 41373303,
+        "totalJSHeapBytes": 52313487
+      },
+      "checks": {
+        "http": true,
+        "authenticatedRoute": true,
+        "longTaskSupported": true,
+        "longTask": true,
+        "memoryAvailable": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    {
+      "name": "exception-queue-20k",
+      "url": "http://127.0.0.1:18173/admin/internship/exceptions?batchId=18",
+      "finalUrl": "http://127.0.0.1:18173/admin/internship/exceptions?batchId=18",
+      "status": 200,
+      "budgets": {
+        "longTaskMaxMs": 200,
+        "usedJSHeapBytes": 134217728
+      },
+      "metrics": {
+        "title": "高校学生全生命周期管理平台",
+        "longTaskSupported": true,
+        "longTasks": [
+          {
+            "startTime": 1040.3999999761581,
+            "duration": 66,
+            "name": "self"
+          },
+          {
+            "startTime": 1122.8999999761581,
+            "duration": 62,
+            "name": "unknown"
+          }
+        ],
+        "longTaskTotalMs": 128,
+        "longTaskMaxMs": 66,
+        "resourceTransferBytes": 157014,
+        "resourceDecodedBytes": 9384467,
+        "navigationMs": 110.19999998807907,
+        "domContentLoadedMs": 108.89999997615814,
+        "loadEventMs": 110.19999998807907,
+        "usedJSHeapBytes": 41384069,
+        "totalJSHeapBytes": 51057137
+      },
+      "checks": {
+        "http": true,
+        "authenticatedRoute": true,
+        "longTaskSupported": true,
+        "longTask": true,
+        "memoryAvailable": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    {
+      "name": "material-center-20k",
+      "url": "http://127.0.0.1:18173/admin/internship/material-center?batchId=18",
+      "finalUrl": "http://127.0.0.1:18173/admin/internship/material-center?batchId=18",
+      "status": 200,
+      "budgets": {
+        "longTaskMaxMs": 200,
+        "usedJSHeapBytes": 134217728
+      },
+      "metrics": {
+        "title": "高校学生全生命周期管理平台",
+        "longTaskSupported": true,
+        "longTasks": [
+          {
+            "startTime": 1421.5,
+            "duration": 108,
+            "name": "self"
+          },
+          {
+            "startTime": 1542.699999988079,
+            "duration": 55,
+            "name": "unknown"
+          }
+        ],
+        "longTaskTotalMs": 163,
+        "longTaskMaxMs": 108,
+        "resourceTransferBytes": 1823303,
+        "resourceDecodedBytes": 10086119,
+        "navigationMs": 121.19999998807907,
+        "domContentLoadedMs": 119.30000001192093,
+        "loadEventMs": 121.19999998807907,
+        "usedJSHeapBytes": 47427035,
+        "totalJSHeapBytes": 57448483
+      },
+      "checks": {
+        "http": true,
+        "authenticatedRoute": true,
+        "longTaskSupported": true,
+        "longTask": true,
+        "memoryAvailable": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    {
+      "name": "archive-ledger-20k",
+      "url": "http://127.0.0.1:18173/admin/internship/archive?panel=records&batchId=18",
+      "finalUrl": "http://127.0.0.1:18173/admin/internship/archive?panel=records&batchId=18",
+      "status": 200,
+      "budgets": {
+        "longTaskMaxMs": 200,
+        "usedJSHeapBytes": 134217728
+      },
+      "metrics": {
+        "title": "高校学生全生命周期管理平台",
+        "longTaskSupported": true,
+        "longTasks": [
+          {
+            "startTime": 951.1999999880791,
+            "duration": 82,
+            "name": "self"
+          },
+          {
+            "startTime": 1050.5999999642372,
+            "duration": 55,
+            "name": "unknown"
+          }
+        ],
+        "longTaskTotalMs": 137,
+        "longTaskMaxMs": 82,
+        "resourceTransferBytes": 298613,
+        "resourceDecodedBytes": 9223982,
+        "navigationMs": 136.30000001192093,
+        "domContentLoadedMs": 134.80000001192093,
+        "loadEventMs": 136.30000001192093,
+        "usedJSHeapBytes": 45292973,
+        "totalJSHeapBytes": 53636689
+      },
+      "checks": {
+        "http": true,
+        "authenticatedRoute": true,
+        "longTaskSupported": true,
+        "longTask": true,
+        "memoryAvailable": true,
+        "memory": true
+      },
+      "passed": true
+    }
+  ],
+  "passed": true
+}

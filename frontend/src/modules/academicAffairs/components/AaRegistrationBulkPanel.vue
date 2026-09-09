@@ -196,7 +196,7 @@ export default {
   },
   methods: {
     eligibilityLabel(value) {
-      return ({ ELIGIBLE: '已通过', INELIGIBLE: '不通过', PENDING: '待核验' })[value] || value || '待核验'
+      return ({ ELIGIBLE: '已通过', INELIGIBLE: '不通过', PENDING: '待核验' })[value] || (value ? '待确认' : '待核验')
     },
     eligibilityClass(value) {
       if (value === 'ELIGIBLE') return 'aa-bulk__pill--ready'

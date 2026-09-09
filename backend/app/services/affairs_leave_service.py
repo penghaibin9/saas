@@ -15,6 +15,7 @@ from sqlalchemy import and_, case, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.pagination import normalize_page
+from app.core.timeutil import parse_api_datetime, local_day_bounds_utc
 from app.services.db_service import _iso, _tid, session
 from app.services.affairs_sla import (
     get_leave_sla,
@@ -78,16 +79,15 @@ def _days(start, end) -> float:
 
 
 def _parse_dt(v):
-    if not v:
-        return None
-    if isinstance(v, datetime):
-        return v
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(v, fmt)
-        except ValueError:
-            continue
-    return None
+    return parse_api_datetime(v)
+
+
+def _date_filters(start_value, end_value):
+    start, end = _parse_dt(start_value), _parse_dt(end_value)
+    end_exclusive = isinstance(end_value, str) and len(end_value.strip()) == 10 and end is not None
+    if end_exclusive:
+        _, end = local_day_bounds_utc(end_value.strip())
+    return start, end, end_exclusive
 
 
 def _overlap(s1, e1, s2, e2) -> bool:
@@ -457,6 +457,12 @@ def approve(leave_id, user, comment="", expected_version=None) -> dict:
             _msg(db, x.student_id, "请假已通过", f"你的请假（{x.days}天）已通过审批",
                  "WORKFLOW_RESULT", x.id, event_code="LEAVE.APPROVED")
             _audit(db, x.id, "APPROVED", comment)
+            from app.modules.platform.document_lifecycle.fact_hooks import affairs_leave_approved
+            from app.services.message_identity import resolve_message_user_id
+
+            affairs_leave_approved(
+                db, leave=x, actor_id=resolve_message_user_id(user or {}) or None,
+            )
         db.commit()
         db.refresh(x)
         out = _resolve_class_names(db, [_row(x, s)])[0]
@@ -681,7 +687,8 @@ def apply_extension(leave_id, user, new_end, reason="", expected_version=None, *
         if x.affairs_status not in ("APPROVED", "OVERDUE"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已通过的请假可续假")
         atomic_claim_version(db, x, expected_version)
-        ne = _parse_dt(new_end)
+        from app.services.affairs_leave_date_contract import _parse as parse_leave_date
+        ne = parse_leave_date(new_end, end_of_day=True)
         if not ne or (x.end_time and ne <= x.end_time):
             raise AppException("VALIDATION_ERROR", "续假结束时间必须晚于原结束时间")
         if not reason or len(str(reason).strip()) < 5:
@@ -857,36 +864,70 @@ def scan_overdue() -> dict:
 
 # ═══════════ 查询 ═══════════
 
+def _leave_progress(db, record, result, *, staff=False):
+    from app.models import AffairsLeaveCancelRecord, AffairsLeaveExtension
+    from app.services.affairs_student_contract_service import _workflow_context
+    context = _workflow_context(db, biz_type='LEAVE', biz_id=record.id, workflow_id=record.workflow_instance_id)
+    active = record.affairs_status in (*_REVIEW_NODES, 'EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE')
+    result['handler'] = context['handler'] if active else ''
+    result['dueAt'] = context['dueAt'] if active else ''
+    result['currentNodeLabel'] = L_AFF.get(record.affairs_status, '状态待确认')
+    result['extensions'] = [{
+        'id': str(e.id), 'oldEndTime': _iso(e.old_end_time), 'newEndTime': _iso(e.new_end_time),
+        'extendDays': float(e.extend_days or 0), 'reason': e.reason or '', 'status': e.status,
+    } for e in db.scalars(select(AffairsLeaveExtension).where(
+        AffairsLeaveExtension.tenant_id == _tid(), AffairsLeaveExtension.leave_id == record.id,
+        AffairsLeaveExtension.is_deleted.is_(False),
+    ).order_by(AffairsLeaveExtension.id.desc()))]
+    result['cancelRecords'] = [{
+        'id': str(c.id), 'actualReturnAt': _iso(c.actual_return_at), 'proofNote': c.proof_note or '',
+        'status': c.status, 'confirmAt': _iso(c.confirm_at), 'confirmNote': c.confirm_note or '',
+        **({'confirmBy': c.confirm_by or ''} if staff else {}),
+    } for c in db.scalars(select(AffairsLeaveCancelRecord).where(
+        AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == record.id,
+        AffairsLeaveCancelRecord.is_deleted.is_(False),
+    ).order_by(AffairsLeaveCancelRecord.id.desc()))]
+
+
+def _staff_detail_actions(db, record, user):
+    from app.core.permissions import has_permission
+    permissions = {
+        'APPROVE': 'studentAffairs.leave.approve', 'RETURN': 'studentAffairs.leave.approve',
+        'REJECT': 'studentAffairs.leave.approve', 'PROXY_CANCEL': 'studentAffairs.leave.cancelLeaveConfirm',
+        'CONFIRM_CANCEL': 'studentAffairs.leave.cancelLeaveConfirm', 'RETURN_CANCEL': 'studentAffairs.leave.cancelLeaveConfirm',
+        'APPROVE_EXTENSION': 'studentAffairs.leave.extension.approve', 'REJECT_EXTENSION': 'studentAffairs.leave.extension.approve',
+        'SUBMIT_EXTENSION': 'studentAffairs.leave.create', 'HANDLE_OVERDUE': 'studentAffairs.leave.overdue.handle',
+    }
+    try:
+        if record.affairs_status in _REVIEW_NODES:
+            _check_review_node(db, record, user)
+        elif record.affairs_status in ('WAIT_CANCEL_LEAVE', 'EXTENSION_REVIEW'):
+            _check_leave_action_assignee(db, record, user, todo_type='LEAVE_CANCEL' if record.affairs_status == 'WAIT_CANCEL_LEAVE' else 'LEAVE_EXTENSION')
+    except AppException:
+        return []
+    candidates = _allowed_actions(record.affairs_status)
+    if record.affairs_status == 'OVERDUE':
+        candidates = [*candidates, 'PROXY_CANCEL']
+    return [action for action in candidates
+            if action in permissions and has_permission(user, permissions[action])]
+
 def get_detail(leave_id, user) -> dict:
     with session() as db:
-        from app.models import (AffairsAuditTrail, AffairsLeaveCancelRecord, AffairsLeaveExtension)
+        from app.models import AffairsAuditTrail
         x, s = _load(db, leave_id)
         _scope_or_403(db, x, user)
         row = _resolve_class_names(db, [_row(x, s)])[0]
-        cancels = db.scalars(select(AffairsLeaveCancelRecord).where(
-            AffairsLeaveCancelRecord.tenant_id == _tid(), AffairsLeaveCancelRecord.leave_id == x.id,
-            AffairsLeaveCancelRecord.is_deleted.is_(False)).order_by(
-            AffairsLeaveCancelRecord.id.desc())).all()
-        exts = db.scalars(select(AffairsLeaveExtension).where(
-            AffairsLeaveExtension.tenant_id == _tid(), AffairsLeaveExtension.leave_id == x.id,
-            AffairsLeaveExtension.is_deleted.is_(False)).order_by(
-            AffairsLeaveExtension.id.desc())).all()
         trail = db.scalars(select(AffairsAuditTrail).where(
             AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "LEAVE",
             AffairsAuditTrail.biz_id == x.id).order_by(AffairsAuditTrail.id.asc())).all()
-        row["cancelRecords"] = [{
-            "id": str(c.id), "actualReturnAt": _iso(c.actual_return_at), "proofNote": c.proof_note or "",
-            "status": c.status, "confirmBy": c.confirm_by or "", "confirmAt": _iso(c.confirm_at),
-            "confirmNote": c.confirm_note or "",
-        } for c in cancels]
-        row["extensions"] = [{
-            "id": str(e.id), "oldEndTime": _iso(e.old_end_time), "newEndTime": _iso(e.new_end_time),
-            "extendDays": float(e.extend_days or 0), "reason": e.reason or "", "status": e.status,
-        } for e in exts]
         row["auditTrail"] = [{
             "action": t.action, "operator": t.operator or "", "roleName": t.role_name or "",
             "detail": t.detail or "", "occurredAt": _iso(t.occurred_at),
         } for t in trail]
+        _leave_progress(db, x, row, staff=True)
+        row['allowedActions'] = _staff_detail_actions(db, x, user)
+        from app.core.permissions import has_permission
+        row['canManageMaterials'] = has_permission(user, 'studentAffairs.leave.approve')
         return row
 
 
@@ -912,7 +953,7 @@ def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
             return [], 0
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        ds, de = _parse_dt(date_start), _parse_dt(date_end)
+        ds, de, end_exclusive = _date_filters(date_start, date_end)
         conds = [CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
                  CsLeave.affairs_status.is_not(None), StudentProfile.tenant_id == _tid(),
                  StudentProfile.is_deleted.is_(False)]
@@ -943,7 +984,7 @@ def list_leaves(user, status=None, leave_type=None, class_id=None, keyword=None,
         if ds:
             conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time >= ds))
         if de:
-            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time <= de))
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time < de if end_exclusive else CsLeave.start_time <= de))
         page, page_size = normalize_page(page, page_size)
         total = int(db.scalar(select(func.count()).select_from(CsLeave)
                               .join(StudentProfile, StudentProfile.id == CsLeave.student_id)
@@ -969,7 +1010,7 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
         gb = "CLASS"
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
-        ds, de = _parse_dt(date_start), _parse_dt(date_end)
+        ds, de, end_exclusive = _date_filters(date_start, date_end)
         now = datetime.utcnow()
         leave_sla = get_leave_sla()
         conds = [
@@ -984,7 +1025,7 @@ def leave_stats(user, group_by="CLASS", date_start=None, date_end=None) -> dict:
         if ds:
             conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time >= ds))
         if de:
-            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time <= de))
+            conds.append(or_(CsLeave.start_time.is_(None), CsLeave.start_time < de if end_exclusive else CsLeave.start_time <= de))
 
         active_day_states = (
             "APPROVED", "CLOSED", "ARCHIVED", "OVERDUE",

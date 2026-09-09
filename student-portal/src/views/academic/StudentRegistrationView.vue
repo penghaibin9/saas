@@ -25,13 +25,25 @@
         <StatusTag :text="summaryText" :tone="pendingCount ? 'warn' : 'success'" />
       </section>
 
+      <section v-if="actionReceipt" class="sp-card action-receipt" role="status" aria-live="polite">
+        <div>
+          <strong>✓ {{ actionReceipt.result }}</strong>
+          <span>{{ actionReceipt.batchName }} · 批次 {{ actionReceipt.batchId }}</span>
+        </div>
+        <div>
+          <small>下一步</small>
+          <span>{{ actionReceipt.next }}</span>
+        </div>
+        <button class="sp-btn sp-btn--ghost" type="button" @click="goToSchedule">查看本学期课表</button>
+      </section>
+
       <StateBlock
         v-if="!batches.length"
         type="empty"
         :text="data.note || '暂无开放中的注册批次'"
       />
       <section v-else class="registration-list">
-        <article v-for="batch in batches" :key="batch.batchId" class="sp-card batch-card">
+        <article v-for="batch in batches" :key="batch.batchId" class="sp-card batch-card" :class="{ 'is-target': String(batch.batchId) === focusBatchId }">
           <header class="batch-card__head">
             <div>
               <strong>{{ batch.batchName || '注册批次' }}</strong>
@@ -79,7 +91,7 @@
               class="sp-btn"
               type="button"
               :disabled="!batch.canRegister || !!actingId"
-              @click="register(batch)"
+              @click="openRegisterConfirm(batch)"
             >
               {{ actingId === `register:${batch.batchId}` ? '注册中…' : '确认完成注册' }}
             </button>
@@ -87,11 +99,31 @@
         </article>
       </section>
     </template>
+
+    <div v-if="pendingRegistration" class="confirm-backdrop" @click.self="closeRegisterConfirm">
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="registration-confirm-title">
+        <div class="confirm-dialog__eyebrow">注册确认</div>
+        <h2 id="registration-confirm-title">确认完成本学期注册？</h2>
+        <p>提交后将以本人身份记录注册结果，并立即刷新当前批次状态。</p>
+        <dl>
+          <div><dt>注册批次</dt><dd>{{ pendingRegistration.batchName || '当前批次' }}</dd></div>
+          <div><dt>批次编号</dt><dd>{{ pendingRegistration.batchId }}</dd></div>
+          <div><dt>注册资格</dt><dd>{{ eligibilityText(pendingRegistration.eligibilityStatus) }}</dd></div>
+        </dl>
+        <footer>
+          <button class="sp-btn sp-btn--ghost" type="button" :disabled="!!actingId" @click="closeRegisterConfirm">暂不注册</button>
+          <button class="sp-btn" type="button" :disabled="!!actingId" @click="register(pendingRegistration)">
+            {{ actingId ? '注册中…' : '确认并提交注册' }}
+          </button>
+        </footer>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
@@ -99,11 +131,16 @@ import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const route = useRoute()
+const router = useRouter()
+const focusBatchId = computed(() => String(route.query.batchId || ''))
 const loading = ref(true)
 const error = ref('')
 const actingId = ref('')
 const data = ref({ batches: [] })
 const deferReasons = reactive({})
+const pendingRegistration = ref(null)
+const actionReceipt = ref(null)
 
 const batches = computed(() => Array.isArray(data.value.batches) ? data.value.batches : [])
 const pendingCount = computed(() => batches.value.filter((batch) => batch.canRegister || batch.canDefer).length)
@@ -160,11 +197,16 @@ async function load() {
 }
 async function register(batch) {
   if (!batch?.canRegister || actingId.value) return
-  const confirmed = window.confirm(`确认完成“${batch.batchName || '当前批次'}”注册？`)
-  if (!confirmed) return
   actingId.value = `register:${batch.batchId}`
   try {
     await portalApi.academicRegistrationRegister(batch.batchId)
+    actionReceipt.value = {
+      batchId: String(batch.batchId),
+      batchName: batch.batchName || '当前批次',
+      result: '本学期注册已完成',
+      next: '核对本学期课表与已选课程是否已经同步'
+    }
+    pendingRegistration.value = null
     ui.notify('注册成功')
     await load()
   } catch (e) {
@@ -172,6 +214,17 @@ async function register(batch) {
   } finally {
     actingId.value = ''
   }
+}
+function openRegisterConfirm(batch) {
+  if (!batch?.canRegister || actingId.value) return
+  pendingRegistration.value = batch
+}
+function closeRegisterConfirm() {
+  if (actingId.value) return
+  pendingRegistration.value = null
+}
+function goToSchedule() {
+  router.push('/academic/schedule')
 }
 async function submitDefer(batch) {
   if (!batch?.canDefer || !canDefer(batch) || actingId.value) return
@@ -204,8 +257,14 @@ onMounted(load)
 .student-card strong, .student-card span { display: block; }
 .student-card strong { color: var(--t1); font-size: 15px; }
 .student-card span { margin-top: 4px; color: var(--t3); font-size: 12px; }
+.action-receipt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; align-items: center; gap: 18px; margin-bottom: 14px; border-color: #86efac; background: #f0fdf4; }
+.action-receipt strong, .action-receipt span, .action-receipt small { display: block; }
+.action-receipt strong { color: #166534; font-size: 14px; }
+.action-receipt span { margin-top: 4px; color: #365447; font-size: 12px; }
+.action-receipt small { color: #15803d; font-weight: 700; }
 .registration-list { display: grid; gap: 12px; }
 .batch-card { padding: 18px 20px; }
+.batch-card.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
 .batch-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .batch-card__head strong, .batch-card__head span { display: block; }
 .batch-card__head strong { color: var(--t1); font-size: 15px; }
@@ -221,10 +280,23 @@ onMounted(load)
 .batch-card__defer-form label { color: var(--t2); font-size: 12px; font-weight: 600; }
 .batch-card__defer-form textarea { min-height: 76px; resize: vertical; }
 .batch-card__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line2); }
+.confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 48%); backdrop-filter: blur(3px); }
+.confirm-dialog { width: min(520px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface, #fff); box-shadow: 0 24px 70px rgb(15 23 42 / 22%); }
+.confirm-dialog__eyebrow { color: var(--pri); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.confirm-dialog h2 { margin: 8px 0; color: var(--t1); font-size: 20px; }
+.confirm-dialog > p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
+.confirm-dialog dl { display: grid; gap: 8px; margin: 18px 0; }
+.confirm-dialog dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); }
+.confirm-dialog dt { color: var(--t4); font-size: 12px; }
+.confirm-dialog dd { margin: 0; color: var(--t1); font-size: 13px; font-weight: 700; text-align: right; }
+.confirm-dialog footer { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 720px) {
   .registration-hero, .student-card, .batch-card__head { align-items: stretch; flex-direction: column; }
+  .action-receipt { grid-template-columns: 1fr; }
   .batch-card__facts { grid-template-columns: 1fr; }
   .batch-card__actions { flex-direction: column-reverse; }
   .batch-card__actions .sp-btn { width: 100%; }
+  .confirm-dialog footer { flex-direction: column-reverse; }
+  .confirm-dialog footer .sp-btn { width: 100%; }
 }
 </style>

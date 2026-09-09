@@ -51,7 +51,8 @@
       </section>
 
       <section v-if="partialError" class="aa-home__warning" role="status">
-        部分教务数据暂未加载，已保留可用入口；点击“刷新”重新汇总。
+        <strong>部分教务数据暂未加载</strong>
+        <span>{{ failedSources.join('、') }}读取失败；已保留其他真实任务与全部固定入口，点击“刷新”重试。</span>
       </section>
     </template>
   </div>
@@ -67,6 +68,7 @@ import { portalApi } from '../../services/portalApi'
 const router = useRouter()
 const loading = ref(true)
 const partialError = ref(false)
+const failedSources = ref([])
 const tasks = ref([])
 
 const services = [
@@ -74,7 +76,8 @@ const services = [
   { title: '我的成绩', description: '正式发布成绩与有效口径', icon: '📊', route: '/academic/grades' },
   { title: '网上选课', description: '选课、退课和已选记录', icon: '✅', route: '/academic/selection' },
   { title: '学期注册', description: '注册或申请暂缓', icon: '🪪', route: '/academic/registration' },
-  { title: '考试与缓考', description: '考试安排、缓考和补重修', icon: '🗓', route: '/academic/exam' },
+  { title: '考试与缓考', description: '正式考试安排与缓考申请', icon: '🗓', route: '/academic/exam' },
+  { title: '补考与重修', description: '资格、报名和处理结果', icon: '📝', route: '/academic/makeup' },
   { title: '学籍与异动', description: '查看学籍、发起异动', icon: '📋', route: '/academic/status' },
   { title: '学分修读', description: '学分、绩点和达成情况', icon: '🎯', route: '/academic/credits' },
   { title: '学业预警', description: '原因、要求和处理进度', icon: '⚠️', route: '/academic/warning' },
@@ -101,11 +104,17 @@ function pendingRows(rows) {
 function actionableEvaluationRows(data) {
   return rowsOf(data).filter((row) => row && row.canSubmit === true && row.submitted !== true)
 }
+function withQuery(path, params) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''))
+  return query.size ? `${path}?${query.toString()}` : path
+}
 function go(path) { router.push(path || '/academic') }
 
 async function load() {
   loading.value = true
   partialError.value = false
+  failedSources.value = []
+  const sourceNames = ['学期注册', '学生评教', '学业预警', '缓考申请', '补考重修资格']
   const results = await Promise.allSettled([
     portalApi.academicRegistration(),
     portalApi.academicEvaluationTasks(),
@@ -114,6 +123,7 @@ async function load() {
     portalApi.academicMakeupOptions()
   ])
   partialError.value = results.some((result) => result.status === 'rejected')
+  failedSources.value = results.map((result, index) => result.status === 'rejected' ? sourceNames[index] : '').filter(Boolean)
   const val = (index, fallback = {}) => results[index].status === 'fulfilled' ? (results[index].value || fallback) : fallback
   const registration = pendingRows(rowsOf(val(0)))
   const evaluation = actionableEvaluationRows(val(1))
@@ -122,12 +132,38 @@ async function load() {
   const makeup = val(4, { retakeOptions: [], exemptionOptions: [] })
 
   const next = []
-  if (registration.length) next.push({ key: 'registration', icon: '🪪', title: '完成学期注册', description: '存在尚未完成的注册批次', badge: `${registration.length}项`, tone: 'warn', route: '/academic/registration' })
-  if (evaluation.length) next.push({ key: 'evaluation', icon: '⭐', title: '完成学生评教', description: '评教窗口已开放，提交后不可重复提交', badge: `${evaluation.length}门`, tone: 'primary', route: '/academic/evaluation' })
-  if (warnings.length) next.push({ key: 'warning', icon: '⚠️', title: '查看学业预警', description: '确认原因、责任老师和后续处理要求', badge: `${warnings.length}条`, tone: 'danger', route: '/academic/warning' })
-  if (deferrals.length) next.push({ key: 'defer', icon: '🗓', title: '补充缓考材料', description: '存在退回待修改的缓考申请', badge: `${deferrals.length}项`, tone: 'warn', route: '/academic/exam' })
+  if (registration.length) {
+    const first = registration[0]
+    next.push({ key: `registration-${first.batchId}`, icon: '🪪', title: first.batchName || '完成学期注册',
+      description: `该批次尚未完成 · ${first.blockReason || '请在办理窗口内完成注册'}`,
+      badge: `${registration.length}项`, tone: 'warn', route: withQuery('/academic/registration', { batchId: first.batchId }) })
+  }
+  if (evaluation.length) {
+    const first = evaluation[0]
+    next.push({ key: `evaluation-${first.taskId}`, icon: '⭐', title: first.courseName || '完成学生评教',
+      description: `${first.teacherName || '授课教师'} · 匿名提交后不可重复提交`,
+      badge: `${evaluation.length}门`, tone: 'primary', route: withQuery('/academic/evaluation', { taskId: first.taskId }) })
+  }
+  if (warnings.length) {
+    const first = warnings[0]
+    next.push({ key: `warning-${first.warningId || first.id}`, icon: '⚠️', title: first.reason || first.warningName || '查看学业预警',
+      description: `${first.levelLabel || first.level || '预警'} · ${first.responsibleTeacherName || first.teacherName || '责任老师待确认'}`,
+      badge: `${warnings.length}条`, tone: 'danger', route: withQuery('/academic/warning', { warningId: first.warningId || first.id }) })
+  }
+  if (deferrals.length) {
+    const first = deferrals[0]
+    next.push({ key: `defer-${first.deferId || first.id}`, icon: '🗓', title: first.courseName || '补充缓考材料',
+      description: first.reviewNote || first.returnReason || '申请已退回，请按处理意见补充',
+      badge: `${deferrals.length}项`, tone: 'warn', route: withQuery('/academic/exam', { tab: 'records', deferId: first.deferId || first.id }) })
+  }
   const retakeCount = (makeup.retakeOptions || []).length
-  if (retakeCount) next.push({ key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', badge: `${retakeCount}门`, tone: 'warn', route: '/academic/makeup' })
+  if (retakeCount) {
+    const first = makeup.retakeOptions[0]
+    const optionId = first.sourceId || first.acadGradeId || first.id
+    next.push({ key: `makeup-${optionId}`, icon: '📝', title: first.courseName || '处理补考重修',
+      description: `${first.termCode || '原修学期待确认'} · 当前有效未通过课程可报名`,
+      badge: `${retakeCount}门`, tone: 'warn', route: withQuery('/academic/makeup', { tab: 'retake', optionId }) })
+  }
   tasks.value = next
   loading.value = false
 }
@@ -162,7 +198,7 @@ onMounted(load)
 .aa-home__service strong, .aa-home__service small { display: block; }
 .aa-home__service strong { color: var(--t1); font-size: 13.5px; }
 .aa-home__service small { margin-top: 5px; color: var(--t4); font-size: 11.5px; line-height: 1.45; }
-.aa-home__warning { padding: 12px 14px; border: 1px solid #fed7aa; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: 12.5px; }
+.aa-home__warning { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid #fed7aa; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: 12.5px; }
 @media (max-width: 900px) { .aa-home__grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 620px) { .aa-home__hero { align-items: flex-start; flex-direction: column; padding: 20px; } .aa-home__primary { width: 100%; } .aa-home__grid { grid-template-columns: 1fr; } .aa-home__task { align-items: flex-start; flex-wrap: wrap; } }
 </style>

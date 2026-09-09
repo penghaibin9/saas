@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.studentName + ' · ' + detail.reportTypeLabel : '过程报告批阅'"
-    :subtitle="detail ? detail.className + ' · ' + detail.enterpriseName : ''"
+    :subtitle="detail ? [detail.className, detail.enterpriseName].filter((item) => item && item !== '-' && item !== 'null').join(' · ') : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,11 +9,12 @@
       ref="queueBar"
       :current-id="$route.params.id"
       kind="process-report"
-      :make-path="(id) => '/admin/internship/process-reports/' + id"
-      list-fallback="/admin/internship/reports?type=daily"
+      :make-path="(id) => ({ path: '/admin/internship/process-reports/' + id, query: $route.query })"
+      :list-fallback="$router.resolve({ path: '/admin/internship/reports', query: $route.query }).fullPath"
       style="margin-bottom: var(--space-3)"
     />
-    <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
+    <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+    <ErrorState v-if="error" :description="error" @retry="load" @back="$refs.queueBar.backToList()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
       <section class="mp-card">
@@ -32,24 +33,25 @@
           <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
           <div class="mp-card__body">
             <!-- 同 WeeklyReportDetailView：提示条不能放进会被状态换掉的那块模板里 -->
-            <ConflictNotice :state="conflict" />
-            <template v-if="detail.status === 'PENDING_REVIEW'">
-              <div class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }" @click="action = 'APPROVE'">
-                <input type="radio" :checked="action === 'APPROVE'" />
+            <AppInlineAlert v-if="conflict.active" type="warning" title="报告已更新，本次批阅已暂停"
+              description="评语已保留，请返回台账重新打开报告，核对最新提交后再批阅。"><p v-if="conflict.kept" class="pr-kept">{{ conflict.kept }}</p></AppInlineAlert>
+            <template v-if="detail.status === 'PENDING_REVIEW' && canReview">
+              <label class="mp-radio" :class="{ 'is-active': action === 'APPROVE' }">
+                <input v-model="action" type="radio" name="process-report-action" value="APPROVE" :disabled="submitting || conflict.active" />
                 <div><div class="mp-radio__title">通过</div></div>
-              </div>
-              <div class="mp-radio" :class="{ 'is-active': action === 'RETURN' }" @click="action = 'RETURN'">
-                <input type="radio" :checked="action === 'RETURN'" />
+              </label>
+              <label class="mp-radio" :class="{ 'is-active': action === 'RETURN' }">
+                <input v-model="action" type="radio" name="process-report-action" value="RETURN" :disabled="submitting || conflict.active" />
                 <div><div class="mp-radio__title">退回修改</div><div class="mp-radio__desc">退回原因必填（≥5 字）</div></div>
-              </div>
+              </label>
               <AppTemplateChips class="pr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
-              <AppTextarea v-model="comment" :rows="4" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'" />
+              <AppTextarea aria-label="批阅意见" :disabled="submitting || conflict.active" v-model="comment" :rows="4" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'" />
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
-                <AppButton variant="primary" :loading="submitting" style="flex: 1" @click="submit('APPROVE')">通过</AppButton>
-                <AppButton variant="warning" :loading="submitting" style="flex: 1" @click="submit('RETURN')">退回</AppButton>
+                <AppButton :variant="action === 'RETURN' ? 'warning' : 'primary'" :loading="submitting" :disabled="conflict.active" style="flex: 1" @click="submit(action)">{{ action === 'RETURN' ? '退回修改' : '确认通过' }}</AppButton>
               </div>
             </template>
+            <AppInlineAlert v-else-if="detail.status === 'PENDING_REVIEW'" type="info" description="当前账号可查看报告，暂无批阅权限。" />
             <EmptyState v-else :title="'该报告' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端" />
           </div>
         </section>
@@ -66,10 +68,11 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea } from '@/components/common'
+import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, AppInlineAlert } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
-import ConflictNotice from './components/ConflictNotice.vue'
+import { canCode } from '@/modules/internship/composables/permission'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
@@ -77,12 +80,15 @@ import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internshi
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea,
+    LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, conflict: emptyConflict() }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '',
+      submitting: false, conflict: emptyConflict(), lastReceipt: null }
   },
   computed: {
+    canReview() { return canCode(this.ctx, 'internship.report.review') },
     activeChips() { return this.action === 'RETURN' ? REJECT_PROCESS_REPORT : APPROVE_REPORT_SHORT },
     trailRecords() {
       return (this.detail?.auditTrail || []).map((t, i) => ({
@@ -99,14 +105,14 @@ export default {
       this.action = 'APPROVE'
       this.comment = ''
       this.formError = ''
-      this.conflict = emptyConflict()
+      this.conflict = emptyConflict(); this.lastReceipt = null
       this.load()
     }
   },
   created() { this.load() },
   methods: {
     onPickChip(text) {
-      if (!text) return
+      if (!text || this.submitting || this.conflict.active) return
       const cur = (this.comment || '').trim()
       this.comment = cur ? cur + '；' + text : text
     },
@@ -121,6 +127,8 @@ export default {
       this.loading = false
     },
     async submit(action) {
+      if (this.submitting || this.loading || this.error || this.conflict.active || !this.canReview || this.detail?.status !== 'PENDING_REVIEW' || !['APPROVE', 'RETURN'].includes(action)) return
+      const current = this.detail, id = this.$route.params.id
       if (action === 'RETURN' && (this.comment || '').trim().length < 5) {
         this.formError = '退回原因必填且不少于 5 字'
         return
@@ -131,17 +139,26 @@ export default {
         action, comment: this.comment, expectedVersion: this.detail?.version
       })
       this.submitting = false
+      if (this.detail !== current || this.$route.params.id !== id) return
       if (res.code === 0) {
+        this.lastReceipt = {
+          id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+          version: res.data?.version, actionLabel: action === 'APPROVE' ? '过程报告通过' : '过程报告退回修改',
+          objectLabel: `${this.detail.studentName} · ${this.detail.reportTypeLabel} ${this.detail.periodKey}`,
+          auditText: '报告状态、评语与审批留痕已同事务提交',
+          nextStep: action === 'RETURN' ? '等待学生修正后重交' : '可继续批阅队列下一篇'
+        }
         toast.success('批阅完成')
         this.load()
         // 连续批阅：有下一条自动跳转，无则提示队列完成
         this.$refs.queueBar && this.$refs.queueBar.advance()
       } else if (isConflict(res)) {
         // 撞车：评语原样留着，只拉最新真值（含 version）让老师自己决定要不要重新提交
-        this.conflict = await captureConflict({
+        this.conflict = { ...emptyConflict(), active: true }
+        const captured = await captureConflict({
           res,
           kept: this.comment,
-          refresh: () => this.load(),
+          refresh: async () => { await this.load(); if (this.error) throw new Error(this.error) },
           latest: () => {
             if (!this.detail) throw new Error('最新详情未拉回')
             return [
@@ -150,6 +167,7 @@ export default {
             ]
           }
         })
+        if (this.$route.params.id === id) this.conflict = captured
       } else {
         toast.error(res.message || '批阅失败')
       }
@@ -160,5 +178,6 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.pr-kept { white-space: pre-wrap; overflow-wrap: anywhere; }
 .pr-chips { margin-bottom: var(--space-2); }
 </style>

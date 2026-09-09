@@ -1,10 +1,10 @@
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve, sep } from 'node:path'
-import { defineConfig } from 'vite'
+import { dirname, resolve } from 'node:path'
+import { defineConfig, loadEnv } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const MOCK_ROOT = resolve(here, 'src', 'mock') + sep
+const MOCK_ROOT = resolve(here, 'src', 'mock').replace(/\\/g, '/') + '/'
 
 /**
  * V3 S1.5：生产构建不得把 mock 数据体打进小程序包。
@@ -30,7 +30,9 @@ function stripMockPayloadInProduction() {
     },
     transform(code, id) {
       if (!active) return null
-      const file = id.split('?')[0]
+      // Vite/Rollup 在 Windows 上可能给出正斜杠模块 id；统一分隔符后再判断，
+      // 否则 MOCK_ROOT 使用反斜杠时 transform 永远不会命中，生产包会完整携带演示数据。
+      const file = id.split('?')[0].replace(/\\/g, '/')
       if (!file.startsWith(MOCK_ROOT)) return null
 
       const named = new Set()
@@ -54,6 +56,30 @@ function stripMockPayloadInProduction() {
 }
 
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
-export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()]
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+  const previewPort = env.VITE_DEV_PORT || process.env.VITE_DEV_PORT
+  return {
+    plugins: [stripMockPayloadInProduction(), uni(), {
+      name: 'local-preview-port',
+      apply: 'serve',
+      enforce: 'post',
+      config() {
+        if (!previewPort) return
+        const port = Number(previewPort)
+        if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('VITE_DEV_PORT must be an integer from 1024 to 65535')
+        // uni-app supplies manifest.h5.devServer.port after CLI options; local workspaces need an explicit override.
+        return { server: { port, strictPort: true } }
+      }
+    }],
+    server: {
+      proxy: {
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true
+        }
+      }
+    }
+  }
 })

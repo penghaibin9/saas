@@ -1,6 +1,8 @@
 """13A-D 学工统计驾驶舱冒烟（各域聚合，仅聚合口径）。"""
 from __future__ import annotations
 
+import pytest
+
 BASE = "/api/v1/student-affairs"
 
 
@@ -52,3 +54,38 @@ def test_cockpit_domain_error_no_fake_zero(client, db_mode, monkeypatch):
     assert r["data"]["totals"]["aidApplications"] is None
     # 其他成功域仍可正常返回数字（含 0），但失败域不得被汇总成 0
     assert any(x["status"] == "OK" for x in r["data"]["domains"] if x["key"] != "aid")
+
+
+@pytest.mark.parametrize("failed_key", ["archive", "workStudy", "family"])
+def test_supplemental_cockpit_domains_fail_independently(client, db_mode, monkeypatch, failed_key):
+    import app.services.affairs_cockpit_service as cockpit_svc
+
+    def _boom(_user):
+        raise RuntimeError(f"simulated {failed_key} failure")
+
+    monkeypatch.setitem(cockpit_svc._supplemental_stats, failed_key, _boom)
+    hdr = _hdr(client, "school_admin01")
+    response = client.get(f"{BASE}/stats/cockpit", headers=hdr).json()
+    assert response["code"] == 0
+    domains = {item["key"]: item for item in response["data"]["domains"]}
+    assert domains[failed_key]["status"] == "ERROR"
+    assert domains[failed_key]["total"] is None
+    for other in {"archive", "workStudy", "family"} - {failed_key}:
+        assert domains[other]["status"] == "OK"
+
+
+def test_missing_discipline_reconcile_is_unknown(client, db_mode, monkeypatch):
+    import app.services.affairs_discipline_service as discipline_svc
+
+    original = discipline_svc.discipline_stats
+
+    def _without_reconcile(user):
+        data = dict(original(user))
+        data.pop("reconcile", None)
+        return data
+
+    monkeypatch.setattr(discipline_svc, "discipline_stats", _without_reconcile)
+    hdr = _hdr(client, "school_admin01")
+    response = client.get(f"{BASE}/stats/cockpit", headers=hdr).json()
+    assert response["code"] == 0
+    assert response["data"]["disciplineReconcileConsistent"] is None

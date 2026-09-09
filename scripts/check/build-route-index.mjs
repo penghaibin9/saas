@@ -78,69 +78,61 @@ function patternToRegex(pattern) {
   return new RegExp('^' + body + '$')
 }
 
-/**
- * 相对 path 挂到「最近出现的绝对 layout path」下（适配 router/index.js 多根）。
- */
-function extractFromFile(file) {
-  const text = fs.readFileSync(file, 'utf8')
-  const exact = new Set()
-  const patterns = new Set()
-  const redirects = []
-  const aliases = []
-
-  let lastAbsLayout = ''
-  const pathRe = /\bpath:\s*['"`]([^'"`]*)['"`]/g
-  let m
-  while ((m = pathRe.exec(text))) {
-    const raw = m[1]
-    if (raw.startsWith('/')) {
-      // Absolute route: becomes new layout parent when it has no dynamic segments
-      registerPath(exact, patterns, raw)
-      if (!/\/:/.test(raw) && !raw.includes('*')) {
-        lastAbsLayout = normalizeExact(raw)
-      } else {
-        // dynamic absolute — parent is path without params
-        lastAbsLayout = stripParams(raw)
+/** Read literal route properties in their enclosing object, without executing router code. */
+export function extractRouteSource(text) {
+  const exact = new Set(), patterns = new Set(), redirects = [], aliases = []
+  // Keep strings as single tokens so braces in lazy imports, comments and path parameters
+  // cannot change the parent route. Absolute siblings must never become layout parents.
+  const tokens = [...text.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[A-Za-z_$][\w$]*|[{}\[\]:,]/g)]
+    .map(match => match[0]).filter(token => !token.startsWith('//') && !token.startsWith('/*'))
+  const stack = [], objects = []
+  const literal = token => token && /^["'`]/.test(token) && !token.includes('${') ? token.slice(1, -1) : null
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (token === '{') {
+      const object = { parent: stack.at(-1), path: null, redirect: null, aliases: [] }
+      objects.push(object); stack.push(object)
+    } else if (token === '}') stack.pop()
+    else if (stack.length && tokens[i + 1] === ':') {
+      const object = stack.at(-1), key = literal(token) ?? token
+      if (key === 'path' || key === 'redirect') object[key] = literal(tokens[i + 2])
+      else if (key === 'alias') {
+        if (tokens[i + 2] === '[') {
+          for (let j = i + 3; j < tokens.length && tokens[j] !== ']'; j++) {
+            const value = literal(tokens[j]); if (value !== null) object.aliases.push(value)
+          }
+        } else { const value = literal(tokens[i + 2]); if (value !== null) object.aliases.push(value) }
       }
-    } else {
-      const abs = joinPath(lastAbsLayout, raw)
-      registerPath(exact, patterns, abs)
     }
   }
-
-  for (const rm of text.matchAll(/\bredirect:\s*['"`]([^'"`]+)['"`]/g)) {
-    const to = normalizeExact(rm[1])
-    exact.add(to)
-    const idx = rm.index
-    const before = text.slice(Math.max(0, idx - 400), idx)
-    const pathsBefore = [...before.matchAll(/\bpath:\s*['"`]([^'"`]*)['"`]/g)]
-    if (pathsBefore.length) {
-      const last = pathsBefore[pathsBefore.length - 1][1]
-      const from = normalizeExact(last.startsWith('/') ? last : joinPath(lastAbsLayout, last))
-      redirects.push({ from, to })
-      exact.add(from)
+  function parentRoute(object) {
+    let parent = object.parent
+    while (parent && parent.path === null) parent = parent.parent
+    return parent
+  }
+  function absolute(object) { return joinPath(parentRoute(object) ? absolute(parentRoute(object)) : '', object.path) }
+  for (const object of objects) {
+    if (object.path === null) continue
+    const from = absolute(object)
+    registerPath(exact, patterns, from)
+    if (object.redirect !== null) {
+      const to = normalizeExact(object.redirect)
+      redirects.push({ from: normalizeExact(from), to })
+    }
+    for (const alias of object.aliases) {
+      const aliasPath = joinPath(parentRoute(object) ? absolute(parentRoute(object)) : '', alias)
+      registerPath(exact, patterns, aliasPath)
+      aliases.push({ from: normalizeExact(aliasPath), to: normalizeExact(from) })
     }
   }
-
-  for (const am of text.matchAll(/\balias:\s*['"`]([^'"`]+)['"`]/g)) {
-    const a = normalizeExact(am[1].startsWith('/') ? am[1] : joinPath(lastAbsLayout, am[1]))
-    aliases.push({ from: a, to: lastAbsLayout || a })
-    exact.add(a)
-  }
-  for (const am of text.matchAll(/\balias:\s*\[([^\]]+)\]/g)) {
-    for (const x of am[1].matchAll(/['"`]([^'"`]+)['"`]/g)) {
-      const a = normalizeExact(x[1].startsWith('/') ? x[1] : joinPath(lastAbsLayout, x[1]))
-      aliases.push({ from: a, to: lastAbsLayout || a })
-      exact.add(a)
-    }
-  }
-
   return { exact, patterns, redirects, aliases }
 }
 
+function extractFromFile(file) { return extractRouteSource(fs.readFileSync(file, 'utf8')) }
+
 export function buildRouteIndex() {
   const files = [
-    path.join(ROOT, 'frontend/src/router/index.js'),
+    ...walkRouteFiles(path.join(ROOT, 'frontend/src/router')),
     ...walkRouteFiles(path.join(ROOT, 'frontend/src/modules')),
   ]
   const exact = new Set()

@@ -64,7 +64,7 @@ def _permission_codes(route: APIRoute) -> set[str]:
 def test_d5_s1_public_shapes_are_owned_by_schedule_core_router():
     expected = "app.modules.academic_affairs.routers.schedule_core_router"
     children = [route for route in schedule_core_router.router.routes if isinstance(route, APIRoute)]
-    assert len(children) == 18
+    assert len(children) == 21
     for child in children:
         for method in _methods(child):
             public = _first_route(child.path, method)

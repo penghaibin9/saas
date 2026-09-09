@@ -144,7 +144,7 @@
     >
       <div class="aa-assign-form">
         <label>任课教师
-          <AppTeacherPicker v-model="assign.teacherKey" placeholder="选择任课教师" @change="onTeacherPicked" />
+          <AppTeacherPicker v-model="assign.teacherKey" :query="teacherKeyQuery" placeholder="选择任课教师" @change="onTeacherPicked" />
         </label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
@@ -188,7 +188,7 @@ export default {
       error: '',
       workbench: {},
       rows: [],
-      keyword: '',
+      keyword: '', teacherKeyQuery: { valueField: 'loginName' },
       statusFilter: '',
       taskStatuses: TASK_STATUS,
       assign: { visible: false, submitting: false, taskId: '', teacherName: '', teacherKey: '', weeklyHours: null, expectedStudents: null },

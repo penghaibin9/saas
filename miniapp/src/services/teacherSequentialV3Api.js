@@ -14,9 +14,12 @@ function rememberExceptionVersion(id, rawVersion) {
   return Number.isInteger(version) && version >= 0 ? version : null
 }
 
-export async function getInternshipReviewQueue() {
-  exceptionVersions.clear()
-  const d = await realRequest('/mobile/teacher/internship')
+export async function getInternshipReviewQueue({
+  weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
+} = {}) {
+  if (!append) exceptionVersions.clear()
+  const query = `weeklyPage=${weeklyPage}&exceptionPage=${exceptionPage}&pageSize=${pageSize}`
+  const d = await realRequest(`/mobile/teacher/internship?${query}`)
   const reports = (d.weeklyReports || []).map((r) => ({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
     className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),
@@ -32,12 +35,20 @@ export async function getInternshipReviewQueue() {
     const expectedVersion = rememberExceptionVersion(id, e.version)
     return {
       id, student: e.studentName || e.name || '',
-      time: e.exceptionDate || e.date || '', type: e.exceptionType || e.type || '异常',
+      className: e.className || '', company: e.enterpriseName || '', post: e.positionName || '',
+      internshipId: String(e.internId || e.internshipId || ''),
+      time: e.exceptionDate || e.date || '', type: e.typeLabel || e.exceptionType || e.type || '异常',
       distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE',
-      statusLabel: e.statusLabel || '', expectedVersion
+      accuracy: e.accuracy || '—', address: e.address || '', deviceRisk: e.deviceRisk || '—',
+      streak: e.streak || '', appealStatus: e.appealStatus || '', appealNote: e.appealNote || '',
+      statusLabel: e.statusLabel || '', expectedVersion,
+      decisionFactsComplete: e.decisionFactsComplete === true,
+      missingDecisionFacts: Array.isArray(e.missingDecisionFacts) ? e.missingDecisionFacts : []
     }
   })
-  return { reports, abnormal, _real: true }
+  return { reports, abnormal, pagination: d.pagination || {
+    weeklyPage, exceptionPage, pageSize, weeklyHasMore: false, exceptionHasMore: false
+  }, _real: true }
 }
 
 export function handleCheckin(id, action, comment, riskLevel = null) {

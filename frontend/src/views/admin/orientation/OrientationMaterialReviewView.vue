@@ -8,6 +8,7 @@
         </template>
       </ModuleToolbar>
 
+      <p v-if="$route.query.batchId" class="ori-batch-context">当前限定工作台所选批次 <button type="button" @click="$router.push({ path: '/admin/orientation', query: { batchId: $route.query.batchId } })">返回工作台</button></p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <LoadingState v-if="loading" />
@@ -26,9 +27,9 @@
         <template #batch-actions>
           <BatchActionBar :actions="batchBarActions" @action="onBatch" />
         </template>
-        <template #cell-materialType="{ row }">{{ labelOf('materialType', row.materialType) }}</template>
+        <template #cell-materialType="{ row }">{{ row.materialTypeLabel || labelOf('materialType', row.materialType) }}</template>
         <template #cell-status="{ row }">
-          <StatusTag :type="materialTagType[row.status] || 'default'" :label="labelOf('materialStatus', row.status)" dot />
+          <StatusTag :type="materialTagType[row.status] || 'default'" :label="row.statusLabel || labelOf('materialStatus', row.status)" dot />
         </template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
@@ -38,12 +39,12 @@
       <!-- 材料查看 -->
       <AppDrawer v-model:visible="viewVisible" :title="viewTarget ? `材料查看 · ${viewTarget.name}` : '材料查看'" mode="modal" size="large">
         <template v-if="viewTarget">
-          <div class="ori-preview">
-            <span class="ori-preview__icon">▤</span>
-            <b>{{ viewTarget.fileName }}</b>
-            <span>{{ labelOf('materialType', viewTarget.materialType) }} · 提交于 {{ viewTarget.submitTime }}</span>
-            <span class="ori-inline-note">演示环境为材料预览占位</span>
+          <div class="ori-material-summary">
+            <div><b>{{ viewTarget.materialTypeLabel || labelOf('materialType', viewTarget.materialType) }}</b><span>第 {{ viewTarget.submissionNo }} 版 · 提交于 {{ viewTarget.submitTime }}</span></div>
+            <StatusTag :type="materialTagType[viewTarget.status] || 'default'" :label="viewTarget.statusLabel || labelOf('materialStatus', viewTarget.status)" dot />
           </div>
+          <FilePreviewer v-if="viewTarget.fileId" :file="viewTarget" @error="onFileError" />
+          <div v-else class="ori-file-unavailable">该历史材料尚未接入安全文件中心，请按学校现有核验方式查看原件。</div>
           <div v-if="viewTarget.returnReason" class="ori-reject-box">最近退回原因：{{ viewTarget.returnReason }}</div>
         </template>
         <template #footer>
@@ -109,6 +110,7 @@
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
 import { AppDrawer, AppButton } from '@/components/ui'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
 import { TableActionColumn, BatchActionBar, ExportDialog, AuditTrailPanel, ColumnSettings, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { MATERIAL_TAG_TYPE, toLabelMap } from '@/modules/orientation/constants/orientation.constants'
@@ -130,6 +132,7 @@ export default {
     AppConfirmDialog,
     AppDrawer,
     AppButton,
+    FilePreviewer,
     TableActionColumn,
     BatchActionBar,
     ExportDialog,
@@ -212,12 +215,16 @@ export default {
         .filter(Boolean)
     }
   },
+  watch: { '$route.query.batchId'() { this.page = 1; this.load() } },
   async created() {
     await this.init()
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
+    },
+    onFileError(error) {
+      toast.error(error?.message || '材料暂时无法打开，请稍后重试')
     },
     canOperate(target) {
       if (!target || target.status !== 'UPLOADED') return false
@@ -246,19 +253,21 @@ export default {
       await this.load()
     },
     async load() {
+      const serial = this.queueSerial = (this.queueSerial || 0) + 1
       this.loading = true
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getMaterialReviewList({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getMaterialReviewList({ ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.$route.query.batchId || undefined })
+        if (serial !== this.queueSerial) return
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
         } else this.error = res.message
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (serial === this.queueSerial) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (serial === this.queueSerial) this.loading = false
       }
     },
     search() {
@@ -367,6 +376,23 @@ export default {
 <style scoped>
 @import './orientation-page.css';
 
+.ori-material-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ori-material-summary b,
+.ori-material-summary span { display: block; }
+.ori-material-summary span { margin-top: 4px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.ori-file-unavailable {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
 .ori-reject-box {
   margin-top: var(--space-3);
   padding: var(--space-3);

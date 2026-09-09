@@ -59,7 +59,7 @@ async function openAddCourse(page) {
   await expect(drawer.getByText('课程', { exact: true })).toHaveCount(0)
   const taskPicker = drawer.getByRole('combobox').first()
   await expect(taskPicker).toBeVisible()
-  await expect(taskPicker).toContainText('选择当前批次学期的 READY 教学任务')
+  await expect(taskPicker).toContainText('选择当前批次学期的已就绪教学任务')
   return drawer
 }
 

@@ -26,12 +26,15 @@ def material_center(
     status: str | None = Query(None),
     sensitivityLevel: str | None = Query(None),
     requirementId: int | None = Query(None, ge=1),
+    bizType: str | None = Query(None, max_length=50),
+    bizId: int | None = Query(None, ge=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     user=Depends(get_current_user),
 ):
     return success(center.material_overview(
         user, status=status, sensitivity_level=sensitivityLevel, requirement_id=requirementId,
+        biz_type=bizType, biz_id=bizId,
         page=page, page_size=pageSize,
     ))
 

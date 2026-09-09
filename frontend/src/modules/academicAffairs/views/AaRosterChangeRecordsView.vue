@@ -104,7 +104,7 @@ export default {
       const map = { NORMAL: '正常', PENDING_REGISTER: '待注册', REGISTERED: '在籍注册', UNREGISTERED: '未注册',
         SUSPENDED: '休学', RETAINED: '留级', WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学',
         GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业' }
-      return map[s] || s || '—'
+      return map[s] || (s ? '状态待确认' : '—')
     },
     goStudent(studentId) {
       if (studentId) this.$router.push(`/admin/academic-affairs/roster/${studentId}`)

@@ -138,15 +138,36 @@
       </AppSectionCard>
 
       <div class="adb-two-columns">
-        <AppSectionCard id="adb-todos" title="我的教务待办" subtitle="点击直达处理页面">
+        <AppSectionCard id="adb-todos" title="我的教务待办" subtitle="点击直达处理页面；具体到业务对象、责任原因与下一步动作">
           <ErrorState v-if="remindersError" :description="remindersError" @retry="loadReminders" />
           <LoadingState v-else-if="remindersLoading" />
-          <EmptyState v-else-if="!activeTodos.length" title="暂无待办" description="当前角色没有需要立即处理的教务事项" />
-          <div v-else class="adb-todo-list">
-            <button v-for="todo in activeTodos" :key="todo.key" class="adb-todo" @click="goTarget(todo.drillRoute)">
-              <span>{{ todo.label }}</span>
-              <b>{{ todo.count }}</b>
-            </button>
+          <EmptyState v-else-if="!todoItems.length" title="暂无待办" description="当前角色没有需要立即处理的教务事项" />
+          <div v-else class="adb-todo-wrap">
+            <div class="adb-todo-summary" aria-label="待办分类汇总">
+              <button v-for="todo in activeTodos" :key="todo.key" @click="goTarget(todo.drillRoute)">
+                <span>{{ todo.label }}</span><b>{{ todo.count }}</b>
+              </button>
+            </div>
+            <div class="adb-todo-list">
+              <article v-for="todo in todoItems" :key="`${todo.entityType}-${todo.businessId}`" class="adb-todo-card">
+                <header>
+                  <div>
+                    <small>{{ todo.ownerRole || '责任角色待明确' }}</small>
+                    <h3>{{ todo.title }}</h3>
+                  </div>
+                  <time>{{ todo.deadline || '未配置明确截止时间' }}</time>
+                </header>
+                <p>{{ todo.reason }}</p>
+                <dl>
+                  <div><dt>最近变化</dt><dd>{{ todo.recentChange || '暂无状态变化时间' }}</dd></div>
+                  <div><dt>处理后</dt><dd>{{ todo.nextStep || '进入下一业务节点' }}</dd></div>
+                </dl>
+                <footer>
+                  <code>{{ todo.entityType }} · {{ todo.businessId }}</code>
+                  <AppButton size="small" variant="primary" @click="goTarget(todo.exactRoute)">{{ todo.primaryAction || '去处理' }}</AppButton>
+                </footer>
+              </article>
+            </div>
           </div>
         </AppSectionCard>
 
@@ -264,6 +285,11 @@ export default {
     topItems() { return (Array.isArray(this.readiness.topItems) ? this.readiness.topItems : []).map(this.presentReadinessItem) },
     allItems() { return (Array.isArray(this.readiness.items) ? this.readiness.items : []).map(this.presentReadinessItem) },
     activeTodos() { return (this.todos || []).filter((row) => Number(row.count || 0) > 0) },
+    todoItems() {
+      return this.activeTodos
+        .flatMap((group) => (Array.isArray(group.items) ? group.items : []).map((item) => ({ ...item, categoryKey: group.key })))
+        .slice(0, 15)
+    },
     todayTeachingSubtitle() {
       const row = this.todayTeaching || {}
       return [row.dateLabel, row.termLabel, row.weekNo ? `第 ${row.weekNo} 教学周` : ''].filter(Boolean).join(' · ')
@@ -464,10 +490,25 @@ export default {
 .adb-all-card dt { color: #94a3b8; }
 .adb-all-card dd { margin: 0; color: #475569; }
 .adb-two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.adb-todo-list { display: grid; gap: 8px; }
-.adb-todo { display: flex; justify-content: space-between; padding: 11px 12px; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; color: #334155; cursor: pointer; text-align: left; }
-.adb-todo:hover { border-color: #8fb5ff; background: #f7faff; }
-.adb-todo b { color: #245bd6; }
+.adb-todo-wrap { display: grid; gap: 12px; }
+.adb-todo-summary { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.adb-todo-summary button { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 6px 9px; border: 1px solid #dbe4f3; border-radius: 999px; background: #f7f9fd; color: #475569; cursor: pointer; font-size: 11px; }
+.adb-todo-summary button:hover { border-color: #8fb5ff; background: #eef4ff; }
+.adb-todo-summary b { color: #245bd6; }
+.adb-todo-list { display: grid; gap: 9px; max-height: 520px; overflow-y: auto; padding-right: 3px; }
+.adb-todo-card { padding: 12px 13px; border: 1px solid #dfe6f0; border-radius: 10px; background: #fff; }
+.adb-todo-card:hover { border-color: #9ab9f4; box-shadow: 0 5px 15px rgba(36,91,214,.07); }
+.adb-todo-card header, .adb-todo-card footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.adb-todo-card h3 { margin: 3px 0 0; color: #172033; font-size: 14px; line-height: 1.4; }
+.adb-todo-card small { color: #245bd6; font-size: 11px; }
+.adb-todo-card time { flex: 0 0 auto; color: #9a6700; font-size: 10px; }
+.adb-todo-card p { margin: 9px 0; color: #475569; font-size: 12px; line-height: 1.55; }
+.adb-todo-card dl { display: grid; gap: 4px; margin: 0 0 10px; }
+.adb-todo-card dl div { display: grid; grid-template-columns: 58px minmax(0,1fr); gap: 6px; font-size: 10px; }
+.adb-todo-card dt { color: #94a3b8; }
+.adb-todo-card dd { margin: 0; color: #64748b; }
+.adb-todo-card footer { align-items: center; }
+.adb-todo-card code { color: #94a3b8; font-size: 9px; }
 .adb-today-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .adb-today-grid article { padding: 11px; border-radius: 9px; background: #f8fafc; text-align: center; }
 .adb-today-grid b, .adb-today-grid span { display: block; }

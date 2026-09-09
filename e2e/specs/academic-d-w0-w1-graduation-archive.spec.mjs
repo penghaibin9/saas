@@ -255,7 +255,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownCard = page.locator('.aapc-card').filter({ hasText: '毕业资格' }).first()
     await expect(unknownCard).toContainText('待治理')
     await expect(unknownCard).toContainText('GRADUATION_TERM_DATES_UNKNOWN')
-    await expect(page.getByText(/UNKNOWN 不会被当成 PASS/)).toBeVisible()
+    await expect(page.getByText(/“待治理”表示证据不足/)).toBeVisible()
 
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1280, 720, unknownCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1440, 900, unknownCard)

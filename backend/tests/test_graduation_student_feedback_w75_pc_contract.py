@@ -79,19 +79,38 @@ def test_w75_student_pc_shows_frozen_feedback_timeline_and_uses_canonical_submit
     assert "target=\"_blank\"" not in view
 
 
-def test_w75_student_pc_consumes_file_capabilities_and_resubmit_target_fail_closed_at_method_layer():
+def test_w75_student_pc_consumes_file_capabilities_and_rechecks_the_exact_resubmit_upload():
     view = text("student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue")
 
+    # Reviewed historical evidence remains permission-bound and fail-closed.
     assert 'v-if="actionable.reviewedFile.canPreview"' in view
     assert 'v-if="item.reviewedFile.canPreview"' in view
     assert 'v-if="item.reviewedFile.canDownload"' in view
     assert "file?.canPreview !== true" in view
     assert "file?.canDownload !== true" in view
+
+    # The server-projected resubmit target decides the business command; client
+    # convenience flags cannot turn a draft into a final or invent a target.
     assert "target?.kind !== 'FINAL' || !target.finalType" in view
     assert "const finalType = target.finalType" in view
     assert "final.value.canSubmitFinal" not in view
     assert "busy.value || !actionable.value" in view
-    assert "proposalUpload.value && !proposalUpload.value.readyForBusiness" in view
+
+    # Upload readiness is now a shared monitored/readback contract. The form may
+    # render immediately after upload, but submission must reread the same file
+    # through File SDK metadata and reject a late/stale or unsafe result.
+    assert "GraduationUploadStatus" in view
+    assert "graduationUploadReady" in view
+    assert "readGraduationUpload" in view
+    assert "fileSdk.metadata(fileId)" in view
+    assert "const expected = { ...upload.value }" in view
+    assert "String(upload.value?.fileId || '') !== String(expected.fileId)" in view
+    assert "待重交文件已变化，请核对后重新提交" in view
+    assert "文件尚未通过安全检查，请等待或重新检查文件状态" in view
+    assert "const fresh = proposalUpload.value ? await checkedUpload(proposalUpload) : null" in view
+    assert "const fresh = await checkedUpload(finalUpload)" in view
+    assert "attachments: fresh ? [fresh.fileId] : []" in view
+    assert "attachments: [fresh.fileId]" in view
 
 
 def test_w75_is_visible_on_primary_student_graduation_workbench_and_has_direct_route():

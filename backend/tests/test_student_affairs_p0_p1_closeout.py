@@ -169,7 +169,7 @@ def test_application_projection_is_batch_loaded_not_per_row_queries():
 
 def test_stats_integrity_guard_uses_sql_aggregates_instead_of_loading_full_rows():
     source = read("backend/app/services/affairs_stats_integrity_guard.py")
-    for marker in ("def activity_stats", "def disbursement_stats", "def cockpit_view"):
+    for marker in ("def activity_stats", "def disbursement_stats", "def _archive_stats", "def _work_study_stats", "def _family_stats"):
         block = source[source.index(marker):]
         next_def = block.find("\n    def ", 1)
         if next_def > 0:
@@ -285,7 +285,8 @@ def test_funding_extension_rules_are_formal_paginated_and_server_authoritative()
     assert "install_funding_ext_guard" not in router
     assert "Compatibility shim" in guard
     for token in (
-        '"allowedActions": {', '"allowedActions": ["ADVANCE"]',
+        '"allowedActions": {', "_LOAN_STAFF_ACTIONS", "_FEE_STAFF_ACTIONS",
+        '"RECEIPT": ["VERIFY", "RETURN"]', '"VERIFIED": ["CONFIRM", "RETURN"]',
         "岗位录用人数已满", "累计补贴超过金额上限",
         ".offset((page - 1) * page_size).limit(page_size)", 'status_counts["ALL"]',
     ):

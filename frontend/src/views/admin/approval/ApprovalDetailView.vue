@@ -50,7 +50,7 @@
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">附件材料 Reader</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">附件材料阅读器</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
           <div class="mp-card__body">
             <p v-if="attachmentsLoading" class="mp-note">正在核验任务附件与文件安全状态…</p>
             <div v-else-if="attachmentsError" class="dv-attachment-error">
@@ -86,7 +86,7 @@
                 :show-file-switcher="false"
                 @download="downloadAttachment(activeAttachment)"
               />
-              <p class="mp-note dv-reader-hint">附件 Reader 以当前审批任务为授权边界；预览票据短时有效，下载票据单次使用，页面不接触公共存储 URL。</p>
+              <p class="mp-note dv-reader-hint">附件阅读器以当前审批任务为授权边界；预览凭证短时有效，下载凭证单次使用，页面不接触公共存储地址。</p>
             </template>
           </div>
         </section>
@@ -99,7 +99,7 @@
             <p v-if="!timeline.length" class="mp-note">暂无流转记录</p>
             <ul v-else class="mp-timeline">
               <li v-for="(t, i) in timeline" :key="i" class="mp-timeline__item" :class="toneClass(t.tone)">
-                <div class="mp-timeline__title">{{ t.who }} · {{ t.action }}</div>
+                <div class="mp-timeline__title">{{ t.who }} · {{ auditActionLabel(t) }}</div>
                 <div v-if="t.comment" class="mp-timeline__desc">{{ t.comment }}</div>
                 <div class="mp-timeline__time">{{ t.time }}</div>
               </li>
@@ -181,6 +181,7 @@ import { approvalApi } from '@/modules/approval/api/approval.api'
 import { approvalAttachmentsApi } from '@/modules/approval/api/approval-attachments.api'
 import { buildReturnQuery, returnPath } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'ApprovalDetailView',
@@ -252,6 +253,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     canAction(key, action) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed && this.task?.allowedActions?.includes(action))

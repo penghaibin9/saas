@@ -1,3 +1,4 @@
+import { WORKBENCH_PAGE_TABS } from '../modules/workbench/config/workbenchNavigation.js'
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
 import { PLATFORM_MANAGEMENT_CATALOG } from '../modules/platform/platformManagementCatalog.js'
 import { buildGraduationNavMods } from '../modules/graduation/config/graduationWorkspaces.js'
@@ -16,7 +17,7 @@ import { buildGraduationNavMods } from '../modules/graduation/config/graduationW
  *      管理员 / 开发者视角可见 planned（includePlanned=true）；
  *   4) 顶部搜索命中 planned 只提示「待施工」，不跳转（searchNavPlan 返回 disabled 标记）。
  *
- * 一级导航固定 6 个：工作台 / 学工中心 / 教务中心 / 毕业设计中心 / 岗位实习中心 / 系统管理。
+ * 一级导航：学工中心 / 教务中心 / 毕业设计中心 / 岗位实习中心 / 系统管理。
  * 数字迎新固定归属：学工中心 > 数字迎新（不作一级）。
  */
 
@@ -32,10 +33,6 @@ function I(label, path, permissionKey, entryType, opts) {
 function PA(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'partial', disabled: false, badge: '部分能力',
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
-}
-/** 待施工叶子（可批量），自动 disabled + 待施工 badge，无 path 不注册路由 */
-function P(...labels) {
-  return labels.map((label) => ({ label, status: 'planned', disabled: true, badge: '待施工' }))
 }
 /** 未开通叶子（模块未授权，管理员可见「未开通」，普通角色隐藏） */
 // eslint-disable-next-line no-unused-vars
@@ -60,14 +57,19 @@ const _SC_VIEW_ANY = ['academicAffairs.statusChange.view',
 const _CORRECTION_ANY = ['academicAffairs.roster.correction.view',
   'academicAffairs.roster.correction.review']
 
-/** 二级模块：有 path=已实现入口，无 path=待施工入口。
+/** 二级模块：有 path=已实现入口；无独立入口但含已实现子页=可展开容器；
+ *  只有既无 path、也无已实现/部分能力子页时才是待施工。
  *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
 function mod(key, label, path, children, permissionKey) {
+  const childList = children || []
+  const hasLiveChild = childList.some((child) => child.status === 'implemented' || child.status === 'partial')
   const s = path
     ? { path, status: 'implemented', disabled: false, badge: '' }
+    : hasLiveChild
+      ? { status: 'implemented', disabled: false, badge: '', entryType: 'CONTAINER' }
     : { status: 'planned', disabled: true, badge: '待施工' }
   return {
-    key, label, ...s, children: children || [],
+    key, label, ...s, children: childList,
     ...(permissionKey ? { permissionKey } : {})
   }
 }
@@ -77,48 +79,19 @@ function grp(key, label, moduleKey, children, extra) {
 }
 
 export const NAV_PLAN = [
-  /* ═══════════ 一级①：工作台 ═══════════ */
-  grp('workbench', '工作台', 'workbench', [
-    // 工作台首页：教职工人人可进（无 permissionKey，与「登录即见工作台」一致）。
-    // 根路径 / 已是公开门户，管理端入口必须固定指向 /workbench。
-    mod('wb-home', '我的工作台', '/workbench', []),
-    mod('wb-todo', '我的待办', '/admin/approval/todos', [], 'approval.todo.view'),
-    mod('wb-approval', '审批中心', '/admin/approval', [
-      I('待办看板', '/admin/approval', 'approval.todo.view'),
-      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
-      I('已办 · 抄送', '/admin/approval/done', 'approval.done.view'),
-      I('退回记录', '/admin/approval/returned', 'approval.returned.view'),
-      I('审批模板', '/admin/approval/templates', 'approval.template.view')
-    ], 'approval.dashboard.view'),
-    mod('wb-messages', '消息中心', '/admin/messages/inbox', [
-      I('我的消息', '/admin/messages/inbox', 'workbench.message.view'),
-      I('通知发布', '/admin/messages/compose', 'workbench.message.publish'),
-      I('发布记录', '/admin/messages/outbox', 'workbench.message.publish'),
-      I('发送统计', '/admin/messages/statistics', 'workbench.message.statistics.view'),
-      I('消息模板', '/admin/messages/templates', 'workbench.message.template.manage'),
-      I('消息设置', '/admin/messages/settings', 'workbench.message.view'),
-      I('投递运维', '/admin/messages/ops', 'workbench.message.statistics.view')
-    ], 'workbench.message.view'),
-    mod('wb-dashboard', '领导驾驶舱', '/admin/data-center', [
-      I('数据驾驶舱', '/admin/data-center', 'dataCenter.dashboard.view'),
-      I('生命周期总览', '/admin/data-center/lifecycle', 'dataCenter.lifecycle.view'),
-      I('排行分析', '/admin/data-center/rankings', 'dataCenter.ranking.view'),
-      I('风险预警', '/admin/data-center/risk', 'dataCenter.risk.view'),
-      I('专题报表', '/admin/data-center/reports', 'dataCenter.report.view')
-    ], 'dataCenter.dashboard.view'),
-    mod('wb-recent', '最近访问', null, P('最近访问')),
-    // 帮助中心：此前只能靠顶栏搜索进入，等于藏起来了。三级目录由帮助中心页自带左侧栏承载，
-    // 这里不重复列举条目（AdminHelpView 仅支持 ?topic=<id> 深链，无分段路由，列了就是假入口）。
-    mod('wb-help', '帮助中心', '/admin/help', [])
-  ]),
-
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
     /* 本组对齐学工中心业务入口；状态以代码真实路由为准。 */
     mod('sa-workbench', '学工工作台', null, [
-      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
-      /* 旧辅导员双首页已统一到 /workbench；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/workbench', 'workbench.home.view')
+      I('我的工作台', '/workbench', 'workbench.home.view'),
+      I('我的待办', '/admin/approval/todos', 'approval.todo.view'),
+      I('审批中心', '/admin/approval', 'approval.todo.view'),
+      I('消息中心', '/admin/messages/inbox', 'workbench.message.view'),
+      I('学工运行大屏', '/admin/student-affairs/stats/wall', 'studentAffairs.stats.view', 'ANALYTICS_VIEW'),
+      I('学工领导大屏', '/admin/student-affairs/stats/leader', 'studentAffairs.stats.view', 'ANALYTICS_VIEW'),
+      I('最近访问', '/workbench?view=recent', 'workbench.home.view'),
+      I('帮助中心', '/admin/help'),
+      ...WORKBENCH_PAGE_TABS.map(page => H(page.label, page.path, page.permissionKey, undefined, { workbenchSection: page.section }))
     ]),
     // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
     // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。
@@ -144,25 +117,26 @@ export const NAV_PLAN = [
     // 数字迎新：19 个已实现功能页直接作为三级菜单展示。
     // 此前收敛成单一入口，但迎新模块并没有对应的内部导航，导致真实页面全部失去菜单入口。
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
-      I('迎新看板', '/admin/orientation', 'orientation.student.view'),
-      I('迎新批次', '/admin/orientation/batches', 'orientation.student.view'),
-      I('新生数据', '/admin/orientation/data', 'orientation.student.view'),
-      I('新生信息核验', '/admin/orientation/verify', 'orientation.student.view'),
-      I('报到资格', '/admin/orientation/qualification', 'orientation.student.view'),
-      I('报到流程配置', '/admin/orientation/flow-config', 'orientation.student.view'),
-      I('新生报到', '/admin/orientation/students', 'orientation.student.view'),
-      I('报到进度', '/admin/orientation/progress', 'orientation.student.view'),
-      I('缴费状态', '/admin/orientation/payment', 'orientation.payment.view'),
-      I('绿色通道', '/admin/orientation/green-channels', 'orientation.student.view'),
-      I('材料审核', '/admin/orientation/materials', 'orientation.material.review'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'orientation.student.view'),
-      I('宿舍入住', '/admin/orientation/dorm', 'orientation.dorm.confirm'),
-      I('现场报到点', '/admin/orientation/checkin-points', 'orientation.student.view'),
-      I('异常学生', '/admin/orientation/exceptions', 'orientation.exception.handle'),
-      I('未报到学生', '/admin/orientation/no-show', 'orientation.student.view'),
-      I('迎新通知', '/admin/orientation/notices', 'orientation.student.view'),
-      I('迎新统计', '/admin/orientation/statistics', 'orientation.student.view'),
-      I('迎新归档', '/admin/orientation/archive', 'orientation.student.view')
+      I('迎新看板', '/admin/orientation', 'studentAffairs.orientation.view'),
+      I('迎新批次', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
+      I('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view'),
+      I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
+      I('资格与入学确认', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
+      I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
+      I('现场报到', '/admin/orientation/checkin', 'studentAffairs.orientation.view'),
+      I('新生台账', '/admin/orientation/students', 'studentAffairs.orientation.view'),
+      I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
+      I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
+      I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
+      I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
+      I('新生宿舍安排', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
+      I('新生住宿核对', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
+      I('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
+      I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
+      I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
+      I('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view'),
+      I('迎新统计', '/admin/orientation/statistics', 'studentAffairs.orientation.view'),
+      I('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view')
     ]),
     // 请假销假
     mod('sa-leave', '请假销假', null, [
@@ -173,7 +147,9 @@ export const NAV_PLAN = [
     ]),
     // 宿舍与公寓
     mod('sa-dorm', '宿舍与公寓', null, [
+      I('宿舍驾驶舱', '/admin/student-affairs/dormitory', 'studentAffairs.dorm.view'),
       I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
+      I('分配计划', '/admin/student-affairs/dorm/allocation', 'studentAffairs.dorm.view'),
       I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
       I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view'),
       I('宿舍检查', '/admin/student-affairs/dorm/check', 'studentAffairs.dorm.view'),
@@ -187,7 +163,7 @@ export const NAV_PLAN = [
     // 困难认定
     mod('sa-difficulty', '困难认定', null, [
       I('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view'),
-      I('认定申请与审核（工作台）', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
+      I('申请与审核', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
       I('公示待办', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view'),
       I('认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view'),
       I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view'),
@@ -210,14 +186,14 @@ export const NAV_PLAN = [
     ]),
     // 违纪处分
     mod('sa-discipline', '违纪处分', null, [
-      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
+      I('处分工作台', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
-      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
+      I('违纪台账', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
       I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view')
     ]),
     // 谈心家校
     mod('sa-talks', '谈心家校', null, [
-      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
+      I('谈心谈话', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
       I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
       I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view'),
       I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view'),
@@ -226,15 +202,13 @@ export const NAV_PLAN = [
     ]),
     // 心理关注
     mod('sa-mental', '心理关注', null, [
-      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
+      I('关注与处置', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
       I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
-      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view'),
-      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
       I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.stats.view')
     ]),
     // 活动二课与社团
     mod('sa-activities', '活动二课与社团', null, [
-      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
+      I('学生活动', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
       I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
       I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
       I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
@@ -246,7 +220,8 @@ export const NAV_PLAN = [
     // 统计与档案
     mod('sa-archive-stats', '统计与档案', null, [
       I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view'),
-      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view'),
+      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
+      I('材料与档案', '/admin/student-affairs/material-operations', 'studentAffairs.dashboard.view', 'TASK_QUEUE'),
       I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view'),
       I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view')
     ])
@@ -655,138 +630,131 @@ export const NAV_PLAN = [
    * 旧路由与 ?panel= 深链继续可用；角色无权工作区由 getVisibleNavPlan + permissionKey 隐藏。 */
   grp('graduation', '毕业设计中心', 'graduationDesign', buildGraduationNavMods(I, mod)),
 
-  /* ═══════════ 一级⑤：岗位实习中心（12个二级）═══════════
-   * 2026-07-12 甲方拍板「菜单全展开」：本组 1:1 对齐 施工图-05-岗位实习中心（12二级×99三级）。
-   * 已实现=I(真实路由)，待补强=PA(灰橙「待补强」，可点进现有页/所属工作区)。
-   * 多个三级指向同一页面（状态/类型/流程变体）由 §9.4 唯一 leafKey 高亮/点击支持；?panel= 为真实路由。
-   * 二级 key 不变（供 rail/adminMenu 兼容），仅 label 改为施工图名。 */
+  /* ═══════════ 一级⑤：岗位实习中心（大屏 + 8 个流程工作区）═══════════
+   * 侧栏只承载业务工作区与 Primary Command Owner。状态、筛选、详情和兼容入口
+   * 继续使用原 route / panel / deep link，但用 H() 留在高亮索引中，不进入日常菜单或搜索。
+   * 历史 workspace key 尽量保持；原 in-students 合并到 in-batch-rules，学生路由仍完整保留。 */
   grp('internship', '岗位实习中心', 'internship', [
-    mod('in-workbench', '实习工作台', '/admin/internship', [
-      I('实习总览', '/admin/internship', 'internship.dashboard.view', 'WORKBENCH'),
-      I('当前批次进度', '/admin/internship?panel=batch-progress', 'internship.dashboard.view', 'WORKBENCH'),
-      I('我的待办', '/admin/internship?panel=todos', 'internship.dashboard.view', 'TASK_QUEUE'),
-      I('风险提醒', '/admin/internship/risks', 'internship.risk.view', 'TASK_QUEUE'),
-      I('数据趋势', '/admin/internship/stats?dimension=trend', 'internship.stats.view', 'ANALYTICS_VIEW')
+    mod('in-command-screen', '实习中心大屏', '/admin/internship/command-screen', [
+      I('实习中心大屏', '/admin/internship/command-screen', 'internship.stats.view', 'ANALYTICS_VIEW')
     ]),
-    mod('in-batch-rules', '批次与规则', '/admin/internship/batches', [
-      I('批次列表', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
+    mod('in-workbench', '今日工作', '/admin/internship', [
+      I('待办与进度', '/admin/internship', 'internship.dashboard.view', 'WORKBENCH'),
+      H('全局趋势 / 统计', '/admin/internship/stats?dimension=trend', 'internship.stats.view', 'ANALYTICS_VIEW'),
+      H('当前批次进度', '/admin/internship?panel=batch-progress', 'internship.dashboard.view', 'WORKBENCH'),
+      H('我的待办', '/admin/internship?panel=todos', 'internship.dashboard.view', 'TASK_QUEUE')
+    ]),
+    mod('in-batch-rules', '批次与学生', '/admin/internship/batches', [
+      I('批次管理', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
+      I('学生名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH'),
+      I('资格认定', '/admin/internship/students?panel=eligibility', 'internship.student.eligibility.review', 'TASK_QUEUE'),
       H('批次详情', '/admin/internship/batches?panel=list', 'internship.batch.view', 'DETAIL'),
-      // 后端真实权限只提供 batch.view/manage/export。阶段与五类规则均是批次编辑能力，
-      // 不得再绑定不存在的细分权限码，否则学校管理员会被误判为无权并隐藏菜单。
-      // 同时把同一编辑页上的六组表单收敛成一个真实入口，避免“六个菜单点到同一页”。
-      I('参与学生配置', '/admin/internship/batches?panel=participants', 'internship.batch.manage', 'CONFIG_VIEW'),
-      I('阶段与规则配置', '/admin/internship/batches?panel=configuration', 'internship.batch.manage', 'CONFIG_VIEW')
-    ]),
-    mod('in-students', '实习学生', '/admin/internship/students', [
-      I('实习名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH'),
-      I('实习资格认定', '/admin/internship/students?panel=eligibility', 'internship.student.eligibility.review', 'TASK_QUEUE'),
-      I('学生实习状态', '/admin/internship/students?panel=status', 'internship.student.view', 'WORKBENCH'),
+      H('参与学生配置', '/admin/internship/batches?panel=participants', 'internship.batch.manage', 'CONFIG_VIEW'),
+      H('阶段与规则配置', '/admin/internship/batches?panel=configuration', 'internship.batch.manage', 'CONFIG_VIEW'),
+      H('学生实习状态', '/admin/internship/students?panel=status', 'internship.student.view', 'WORKBENCH'),
       H('学生实习详情', '/admin/internship/students?panel=roster', 'internship.student.view', 'DETAIL'),
-      I('学生材料', '/admin/internship/archive?panel=materials', 'internship.student.material.view', 'WORKBENCH'),
-      I('实习保险核验', '/admin/internship/insurance', 'internship.insurance.verify', 'TASK_QUEUE')
+      H('学生材料', '/admin/internship/archive?panel=materials', 'internship.student.material.view', 'WORKBENCH')
     ]),
     mod('in-enterprise-position', '企业与岗位', '/admin/internship/enterprises', [
-      I('企业列表', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view', 'WORKBENCH'),
+      I('企业库', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view', 'WORKBENCH'),
+      I('岗位库', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH'),
+      I('招聘与邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view', 'WORKBENCH'),
+      I('企业准入', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.manage', 'TASK_QUEUE'),
       H('企业详情', '/admin/internship/enterprises?panel=detail', 'internship.enterprise.view', 'DETAIL'),
-      I('企业联系人', '/admin/internship/enterprises?panel=contacts', 'internship.enterprise.contact.view', 'WORKBENCH'),
-      I('企业导师', '/admin/internship/enterprises?panel=mentor', 'internship.enterprise.mentor.view', 'WORKBENCH'),
-      I('企业资质审核', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.review', 'TASK_QUEUE'),
-      I('企业黑名单', '/admin/internship/enterprises?panel=blacklist', 'internship.enterprise.blacklist.manage', 'TASK_QUEUE'),
-      // 招聘季详情为独立子路由 /recruitment-campaigns/:id，由 findActiveInPlan 的前缀规则
-      // 回落高亮到本叶子，不再补一条 ?panel=detail 的假 URL。
-      I('招聘季与企业邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view', 'WORKBENCH'),
-      I('岗位列表', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH'),
+      H('企业联系人', '/admin/internship/enterprises?panel=contacts', 'internship.enterprise.contact.view', 'WORKBENCH'),
+      H('企业导师', '/admin/internship/enterprises?panel=mentor', 'internship.enterprise.mentor.view', 'WORKBENCH'),
+      H('企业黑名单', '/admin/internship/enterprises?panel=blacklist', 'internship.enterprise.blacklist.manage', 'TASK_QUEUE'),
       H('岗位详情', '/admin/internship/positions?panel=detail', 'internship.position.view', 'DETAIL'),
-      I('岗位发布', '/admin/internship/positions?panel=publish', 'internship.position.publish', 'TASK_QUEUE'),
-      I('岗位专业匹配', '/admin/internship/positions?panel=requirement', 'internship.position.match.view', 'CONFIG_VIEW')
+      H('岗位发布', '/admin/internship/positions?panel=publish', 'internship.position.publish', 'TASK_QUEUE'),
+      H('岗位专业匹配', '/admin/internship/positions?panel=requirement', 'internship.position.match.view', 'CONFIG_VIEW')
     ]),
-    mod('in-match-assign', '匹配与分配', '/admin/internship/match', [
-      I('学生意向', '/admin/internship/match?panel=intention', 'internship.match.intention.view', 'WORKBENCH'),
-      I('岗位推荐', '/admin/internship/match?panel=recommend', 'internship.match.recommend.view', 'ANALYTICS_VIEW'),
-      I('手动匹配', '/admin/internship/match?panel=manual', 'internship.match.manual', 'TASK_QUEUE'),
-      I('批量匹配', '/admin/internship/match?panel=batch', 'internship.match.batch', 'TASK_QUEUE'),
-      I('匹配冲突', '/admin/internship/match?panel=conflict', 'internship.match.conflict.view', 'TASK_QUEUE'),
-      I('匹配结果', '/admin/internship/match?panel=results', 'internship.match.result.view', 'WORKBENCH'),
-      I('指导老师分配', '/admin/internship/students?panel=mentor', 'internship.match.advisor.assign', 'TASK_QUEUE'),
-      I('调岗退岗', '/admin/internship/changes?panel=pending', 'internship.change.review', 'TASK_QUEUE'),
-      I('分配日志', '/admin/internship/assignment-logs', 'internship.match.log.view', 'ANALYTICS_VIEW')
+    mod('in-match-assign', '申请与落岗', '/admin/internship/applications', [
+      I('岗位确认', '/admin/internship/volunteer-review', 'internship.application.view', 'TASK_QUEUE'),
+      I('申请审核', '/admin/internship/applications?status=PENDING_REVIEW', 'internship.application.view', 'TASK_QUEUE'),
+      I('岗位匹配', '/admin/internship/match?panel=intention', 'internship.match.intention.view', 'WORKBENCH'),
+      I('导师分配', '/admin/internship/students?panel=mentor', 'internship.student.view', 'TASK_QUEUE'),
+      I('三方协议', '/admin/internship/agreements?panel=confirm', 'internship.agreement.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/agreement-templates'] }),
+      I('保险核验', '/admin/internship/insurance', 'internship.insurance.view', 'TASK_QUEUE'),
+      I('上岗核验', '/admin/internship/compliance?tab=overview', 'internship.compliance.view', 'WORKBENCH'),
+      I('分配记录', '/admin/internship/assignment-logs', 'internship.match.log.view', 'ANALYTICS_VIEW'),
+      H('岗位推荐', '/admin/internship/match?panel=recommend', 'internship.match.recommend.view', 'ANALYTICS_VIEW'),
+      H('手动匹配', '/admin/internship/match?panel=manual', 'internship.match.manual', 'TASK_QUEUE'),
+      H('批量匹配', '/admin/internship/match?panel=batch', 'internship.match.batch', 'TASK_QUEUE'),
+      H('匹配冲突', '/admin/internship/match?panel=conflict', 'internship.match.conflict.view', 'TASK_QUEUE'),
+      H('匹配结果', '/admin/internship/match?panel=results', 'internship.match.result.view', 'WORKBENCH'),
+      H('自主实习申请', '/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED', 'internship.application.review', 'TASK_QUEUE'),
+      H('岗位申请', '/admin/internship/applications?status=PENDING_REVIEW&type=POSITION', 'internship.application.review', 'TASK_QUEUE'),
+      H('审核台账', '/admin/internship/applications?status=ALL', 'internship.application.view', 'ANALYTICS_VIEW'),
+      H('协议模板', '/admin/internship/agreement-templates', 'internship.agreement.template.manage', 'CONFIG_VIEW'),
+      H('协议发起', '/admin/internship/agreements?panel=issue', 'internship.agreement.issue', 'TASK_QUEUE'),
+      H('协议变更', '/admin/internship/agreements?panel=change', 'internship.agreement.change', 'TASK_QUEUE'),
+      H('协议归档', '/admin/internship/agreements?panel=archive', 'internship.agreement.archive', 'TASK_QUEUE')
     ]),
-    mod('in-apply-agreement', '申请与协议', '/admin/internship/agreements', [
-      I('学生申请', '/admin/internship/applications?status=PENDING_REVIEW', 'internship.application.review', 'TASK_QUEUE'),
-      I('自主实习申请', '/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED', 'internship.application.review', 'TASK_QUEUE'),
-      I('岗位申请', '/admin/internship/applications?status=PENDING_REVIEW&type=POSITION', 'internship.application.review', 'TASK_QUEUE'),
-      I('审核台账', '/admin/internship/applications?status=ALL', 'internship.application.view', 'ANALYTICS_VIEW'),
-      I('协议模板', '/admin/internship/agreement-templates', 'internship.agreement.template.manage', 'CONFIG_VIEW'),
-      I('协议发起', '/admin/internship/agreements?panel=issue', 'internship.agreement.issue', 'TASK_QUEUE'),
-      I('三方确认', '/admin/internship/agreements?panel=confirm', 'internship.agreement.school_confirm', 'TASK_QUEUE'),
-      I('协议变更', '/admin/internship/agreements?panel=change', 'internship.agreement.change', 'TASK_QUEUE'),
-      I('协议归档', '/admin/internship/agreements?panel=archive', 'internship.agreement.archive', 'TASK_QUEUE')
+    mod('in-attendance-leave', '实习过程', '/admin/internship/attendance', [
+      I('考勤记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view', 'WORKBENCH'),
+      I('异常核验', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/exceptions'] }),
+      I('请假与返岗', '/admin/internship/leaves?panel=pending', 'internship.leave.view', 'TASK_QUEUE'),
+      I('计划任务', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
+      I('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
+      I('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view', 'WORKBENCH'),
+      I('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.view', 'CONFIG_VIEW'),
+      H('补卡申请台账', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
+      H('补卡审批', '/admin/internship/attendance?panel=makeup-review', 'internship.makeup.review', 'TASK_QUEUE'),
+      H('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.review', 'TASK_QUEUE'),
+      H('返岗确认', '/admin/internship/leaves?panel=return', 'internship.leave.review', 'TASK_QUEUE'),
+      H('请假台账', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
+      H('已批准请假', '/admin/internship/leaves?panel=approved', 'internship.leave.view', 'WORKBENCH'),
+      H('超期未归', '/admin/internship/risks?panel=leave-overdue', 'internship.risk.view', 'TASK_QUEUE'),
+      H('报告问题', '/admin/internship/reports?panel=issues', 'internship.report.review', 'TASK_QUEUE'),
+      H('实习任务', '/admin/internship/plans?panel=tasks', 'internship.task.view', 'WORKBENCH'),
+      H('日报台账', '/admin/internship/reports?type=daily&panel=all', 'internship.report.view', 'WORKBENCH'),
+      H('周报台账', '/admin/internship/reports?panel=all', 'internship.report.view', 'WORKBENCH'),
+      H('月报台账', '/admin/internship/reports?type=monthly&panel=all', 'internship.report.view', 'WORKBENCH'),
+      H('周报退回', '/admin/internship/reports?panel=returned', 'internship.report.review', 'TASK_QUEUE'),
+      H('企业沟通', '/admin/internship/guidance?panel=communication', 'internship.communication.view', 'WORKBENCH'),
+      H('指导不足预警', '/admin/internship/guidance-plan?insufficient=1', 'internship.guidance.insufficient.view', 'TASK_QUEUE'),
+      H('巡访计划', '/admin/internship/guidance?panel=visit&view=plan', 'internship.visit.plan.manage', 'CONFIG_VIEW'),
+      H('巡访记录', '/admin/internship/guidance?panel=visit&view=record', 'internship.visit.record.create', 'WORKBENCH'),
+      H('巡访问题', '/admin/internship/guidance?panel=visit&view=issue', 'internship.visit.issue.handle', 'TASK_QUEUE'),
+      H('整改跟进', '/admin/internship/guidance?panel=rectify', 'internship.visit.rectify.handle', 'TASK_QUEUE')
     ]),
-    mod('in-attendance-leave', '打卡与请假', '/admin/internship/attendance', [
-      I('打卡记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view', 'WORKBENCH'),
-      I('补卡申请台账', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
-      I('补卡审批', '/admin/internship/attendance?panel=makeup-review', 'internship.makeup.review', 'TASK_QUEUE'),
-      I('缺卡异常', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
-      I('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.exception.handle', 'TASK_QUEUE'),
-      I('请假台账', '/admin/internship/leaves?panel=all', 'internship.leave.view', 'WORKBENCH'),
-      I('请假审批', '/admin/internship/leaves?panel=pending', 'internship.leave.review', 'TASK_QUEUE'),
-      I('已批准请假', '/admin/internship/leaves?panel=approved', 'internship.leave.view', 'WORKBENCH'),
-      I('超期未归', '/admin/internship/risks?panel=leave-overdue', 'internship.risk.view', 'TASK_QUEUE')
-    ]),
-    mod('in-weekly-task', '周报与任务', '/admin/internship/reports', [
-      I('实习计划', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
-      I('实习任务', '/admin/internship/plans?panel=tasks', 'internship.task.view', 'WORKBENCH'),
-      I('日报台账', '/admin/internship/reports?type=daily&panel=all', 'internship.report.view', 'WORKBENCH'),
-      I('周报台账', '/admin/internship/reports?panel=all', 'internship.report.view', 'WORKBENCH'),
-      I('月报台账', '/admin/internship/reports?type=monthly&panel=all', 'internship.report.view', 'WORKBENCH'),
-      I('周报批阅', '/admin/internship/reports?panel=review', 'internship.report.review', 'TASK_QUEUE'),
-      I('周报退回', '/admin/internship/reports?panel=returned', 'internship.report.review', 'TASK_QUEUE'),
-      H('周报问题', '/admin/internship/reports?panel=issues', 'internship.report.issue.handle', 'TASK_QUEUE')
-    ]),
-    mod('in-guidance-visit', '指导与巡访', '/admin/internship/guidance', [
-      I('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.plan.manage', 'CONFIG_VIEW'),
-      I('指导记录', '/admin/internship/guidance?panel=guidance', 'internship.guidance.record.create', 'WORKBENCH'),
-      I('企业沟通', '/admin/internship/guidance?panel=communication', 'internship.communication.view', 'WORKBENCH'),
-      I('指导不足预警', '/admin/internship/guidance-plan?insufficient=1', 'internship.guidance.insufficient.view', 'TASK_QUEUE'),
-      I('巡访计划', '/admin/internship/guidance?panel=visit&view=plan', 'internship.visit.plan.manage', 'CONFIG_VIEW'),
-      I('巡访记录', '/admin/internship/guidance?panel=visit&view=record', 'internship.visit.record.create', 'WORKBENCH'),
-      I('巡访问题', '/admin/internship/guidance?panel=visit&view=issue', 'internship.visit.issue.handle', 'TASK_QUEUE'),
-      I('整改跟进', '/admin/internship/guidance?panel=rectify', 'internship.visit.rectify.handle', 'TASK_QUEUE')
-    ]),
-    mod('in-risk', '风险处置', '/admin/internship/risks', [
-      I('风险看板', '/admin/internship/risks?panel=board', 'internship.risk.view', 'WORKBENCH'),
-      I('未落实岗位', '/admin/internship/risks?panel=no-position', 'internship.risk.view', 'TASK_QUEUE'),
-      I('长期未打卡', '/admin/internship/risks?panel=no-checkin', 'internship.risk.view', 'TASK_QUEUE'),
-      I('周报逾期', '/admin/internship/risks?panel=report-overdue', 'internship.risk.view', 'TASK_QUEUE'),
-      I('离岗异常', '/admin/internship/risks?panel=off-post', 'internship.risk.view', 'TASK_QUEUE'),
-      I('企业投诉', '/admin/internship/risk-disposal?caseType=complaint', 'internship.complaint.intake', 'TASK_QUEUE'),
-      I('安全风险', '/admin/internship/risk-disposal?panel=safety', 'internship.risk.handle', 'TASK_QUEUE'),
-      I('实习中断', '/admin/internship/risk-disposal?panel=interrupt', 'internship.risk.handle', 'TASK_QUEUE'),
+    mod('in-risk', '风险与变更', '/admin/internship/risks', [
+      I('风险预警', '/admin/internship/risks?panel=board', 'internship.risk.view', 'WORKBENCH'),
       I('风险处置', '/admin/internship/risk-disposal?stage=pending', 'internship.risk.handle', 'TASK_QUEUE'),
-      I('风险跟进', '/admin/internship/risk-disposal?stage=processing', 'internship.risk.handle', 'TASK_QUEUE'),
-      I('风险关闭', '/admin/internship/risk-disposal?stage=closed', 'internship.risk.close', 'TASK_QUEUE')
+      I('调岗退岗', '/admin/internship/changes?panel=pending', 'internship.change.view', 'TASK_QUEUE'),
+      I('事故与应急', '/admin/internship/compliance?tab=incidents', 'internship.incident.handle', 'TASK_QUEUE'),
+      H('风险提醒', '/admin/internship/risks', 'internship.risk.view', 'TASK_QUEUE'),
+      H('未落实岗位', '/admin/internship/risks?panel=no-position', 'internship.risk.view', 'TASK_QUEUE'),
+      H('长期未打卡', '/admin/internship/risks?panel=no-checkin', 'internship.risk.view', 'TASK_QUEUE'),
+      H('周报逾期', '/admin/internship/risks?panel=report-overdue', 'internship.risk.view', 'TASK_QUEUE'),
+      H('离岗异常', '/admin/internship/risks?panel=off-post', 'internship.risk.view', 'TASK_QUEUE'),
+      H('企业投诉', '/admin/internship/risk-disposal?caseType=complaint', 'internship.complaint.intake', 'TASK_QUEUE'),
+      H('安全风险', '/admin/internship/risk-disposal?panel=safety', 'internship.risk.handle', 'TASK_QUEUE'),
+      H('实习中断', '/admin/internship/risk-disposal?panel=interrupt', 'internship.risk.handle', 'TASK_QUEUE'),
+      H('风险跟进', '/admin/internship/risk-disposal?stage=processing', 'internship.risk.handle', 'TASK_QUEUE'),
+      H('风险关闭', '/admin/internship/risk-disposal?stage=closed', 'internship.risk.close', 'TASK_QUEUE')
     ]),
     mod('in-eval-score', '评价与成绩', '/admin/internship/enterprise-evals', [
       I('企业评价', '/admin/internship/enterprise-evals', 'internship.eval.enterprise.view', 'WORKBENCH'),
-      I('学生自评台账', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH'),
-      I('学生对企业评价', '/admin/internship/student-evals?view=enterprise', 'internship.eval.enterprise_by_student.view', 'ANALYTICS_VIEW'),
-      I('学生对岗位评价', '/admin/internship/student-evals?view=position', 'internship.eval.position_by_student.view', 'ANALYTICS_VIEW'),
-      I('指导老师评价', '/admin/internship/student-evals?view=advisor', 'internship.eval.advisor.manage', 'TASK_QUEUE'),
+      I('学生与教师评价', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH'),
       I('综合成绩', '/admin/internship/scores?stage=overview', 'internship.score.view', 'WORKBENCH'),
-      I('成绩审核', '/admin/internship/scores?stage=review', 'internship.score.review', 'TASK_QUEUE'),
-      I('成绩发布', '/admin/internship/scores?stage=publish', 'internship.score.publish', 'TASK_QUEUE'),
-      I('成绩复核', '/admin/internship/scores?stage=recheck', 'internship.score.recheck', 'TASK_QUEUE')
+      I('成绩申诉', '/admin/internship/scores?stage=appeal', 'internship.score.publish', 'TASK_QUEUE'),
+      H('学生对企业评价', '/admin/internship/student-evals?view=enterprise', 'internship.eval.enterprise_by_student.view', 'ANALYTICS_VIEW'),
+      H('学生对岗位评价', '/admin/internship/student-evals?view=position', 'internship.eval.position_by_student.view', 'ANALYTICS_VIEW'),
+      H('指导老师评价', '/admin/internship/student-evals?view=advisor', 'internship.eval.advisor.manage', 'TASK_QUEUE'),
+      H('成绩审核', '/admin/internship/scores?stage=review', 'internship.score.review', 'TASK_QUEUE'),
+      H('成绩发布', '/admin/internship/scores?stage=publish', 'internship.score.publish', 'TASK_QUEUE'),
+      H('成绩复核', '/admin/internship/scores?stage=recheck', 'internship.score.recheck', 'TASK_QUEUE')
     ]),
-    mod('in-employment-archive-stats', '就业转化与归档统计', '/admin/internship/archive', [
-      I('就业跟进', '/admin/employment?panel=follow-up', 'internship.employment.view', 'CROSS_MODULE'),
-      I('未就业帮扶', '/admin/employment?panel=assistance', 'internship.employment.view', 'CROSS_MODULE'),
-      I('实习归档', '/admin/internship/archive?panel=records', 'internship.archive.manage', 'WORKBENCH'),
-      H('实习档案包', '/admin/internship/archive?panel=packages', 'internship.archive.package.generate', 'ACTION'),
-      I('合规与监管证据', '/admin/internship/compliance', 'internship.compliance.view', 'WORKBENCH'),
+    mod('in-employment-archive-stats', '归档与分析', '/admin/internship/archive', [
+      { ...I('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH'), workspacePaths: ['/admin/internship/material-center'] },
       I('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
-      I('企业统计', '/admin/internship/stats?dimension=enterprise', 'internship.stats.enterprise.view', 'ANALYTICS_VIEW'),
-      I('岗位统计', '/admin/internship/stats?dimension=position', 'internship.stats.position.view', 'ANALYTICS_VIEW'),
-      I('学生成绩统计', '/admin/internship/stats?dimension=score', 'internship.stats.score.view', 'ANALYTICS_VIEW')
+      I('就业衔接', '/admin/employment/students?source=internship', 'internship.employment.view', 'CROSS_MODULE'),
+      H('未就业帮扶', '/admin/employment/unemployed?source=internship', 'internship.employment.view', 'CROSS_MODULE'),
+      H('实习档案包', '/admin/internship/archive?panel=packages', 'internship.archive.package.generate', 'ACTION'),
+      H('企业统计', '/admin/internship/stats?dimension=enterprise', 'internship.stats.enterprise.view', 'ANALYTICS_VIEW'),
+      H('岗位统计', '/admin/internship/stats?dimension=position', 'internship.stats.position.view', 'ANALYTICS_VIEW'),
+      H('学生成绩统计', '/admin/internship/stats?dimension=score', 'internship.stats.score.view', 'ANALYTICS_VIEW')
     ])
   ]),
 
@@ -949,6 +917,7 @@ const DEFAULT_PANEL_BY_PATH = {
 export function normalizeNavRef(fullPath) {
   const ref = (fullPath || '').split('#')[0]
   const { path, query } = splitNavRef(ref)
+  if (path === '/admin/internship/material-center') return '/admin/internship/archive?panel=records'
   const fallback = DEFAULT_PANEL_BY_PATH[path]
   if (fallback && !query) return `${path}?panel=${fallback}`
   const normalizedQuery = normalizeNavQuery(query)
@@ -1085,19 +1054,24 @@ export function searchNavPlan(query, permissionPatterns = null) {
   return out
 }
 
-/** 统计：各一级下 implemented / planned 数量（供校验报告与开发进度看板用） */
+/** 统计：各一级下精确状态数量（供校验报告与开发进度看板用）。
+ *  implemented/planned/total 保留为兼容字段；partial/unauthorized/containers 为精确扩展字段。 */
 export function navPlanStats() {
   return NAV_PLAN.map((group) => {
-    let impl = 0
-    let planned = 0
+    const counts = { implemented: 0, partial: 0, planned: 0, unauthorized: 0, containers: 0 }
     for (const mod2 of group.children) {
       const nodes = [mod2, ...mod2.children]
       for (const nd of nodes) {
-        if (nd.status === 'implemented') impl++
-        else planned++
+        if (Object.prototype.hasOwnProperty.call(counts, nd.status)) counts[nd.status]++
+        if (nd.entryType === 'CONTAINER') counts.containers++
       }
     }
-    return { key: group.key, label: group.label, implemented: impl, planned, total: impl + planned }
+    return {
+      key: group.key,
+      label: group.label,
+      ...counts,
+      total: counts.implemented + counts.partial + counts.planned + counts.unauthorized
+    }
   })
 }
 

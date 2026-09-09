@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from app.core.student_lifecycle import ENROLLED, INTERN
 
@@ -46,24 +46,32 @@ _KEEP_TABLES = {
 
 
 def _tenant_tables(db=None):
-    """全部带 tenant_id 列且真实存在于库中的业务表（倒序删除，规避潜在外键顺序）。
-    代码里新增但尚未建表的模型（如迁移未跑）自动跳过，不让重置流程 500。"""
+    """Return every physical table with tenant_id, including reflected tables.
+
+    Several production tables are intentionally accessed through SQL services
+    instead of ORM models. A reset based only on Base.metadata silently misses
+    them, so the database schema is the authority whenever a live bind exists.
+    """
     from app.models import Base
-    existing = None
-    if db is not None:
-        try:
-            from sqlalchemy import inspect
-            existing = set(inspect(db.get_bind()).get_table_names())
-        except Exception:  # noqa: BLE001
-            existing = None
+    from sqlalchemy import MetaData, Table, inspect
+    modeled = {tbl.name: tbl for tbl in Base.metadata.sorted_tables}
+    if db is None:
+        return [tbl for tbl in reversed(Base.metadata.sorted_tables)
+                if tbl.name not in _KEEP_TABLES and "tenant_id" in tbl.c]
+    inspector = inspect(db.get_bind())
+    reflected_meta = MetaData()
     out = []
-    for tbl in reversed(Base.metadata.sorted_tables):
-        if tbl.name in _KEEP_TABLES:
+    # Stable reverse-name order is sufficient because wipe_sandbox disables FK
+    # checks only for this connection and always restores them in finally.
+    for name in sorted(inspector.get_table_names(), reverse=True):
+        if name in _KEEP_TABLES:
             continue
-        if existing is not None and tbl.name not in existing:
+        if "tenant_id" not in {column["name"] for column in inspector.get_columns(name)}:
             continue
-        if "tenant_id" in tbl.c:
-            out.append(tbl)
+        tbl = modeled.get(name)
+        if tbl is None:
+            tbl = Table(name, reflected_meta, autoload_with=db.get_bind())
+        out.append(tbl)
     return out
 
 
@@ -85,8 +93,14 @@ def _revoke_sandbox_logins(db) -> int:
         User.tenant_id == SANDBOX_TID)).all()]
     if not uids:
         return 0
-    res = db.execute(delete(AuthRefreshToken).where(AuthRefreshToken.user_id.in_(uids)))
-    return int(res.rowcount or 0)
+    removed = 0
+    # standard-20k has over twenty thousand identities. A single IN clause is
+    # larger than some MySQL/proxy packet and read-timeout budgets.
+    for offset in range(0, len(uids), 500):
+        res = db.execute(delete(AuthRefreshToken).where(
+            AuthRefreshToken.user_id.in_(uids[offset:offset + 500])))
+        removed += int(res.rowcount or 0)
+    return removed
 
 
 def _assert_target_is_sandbox(db) -> None:
@@ -102,17 +116,73 @@ def _assert_target_is_sandbox(db) -> None:
                            f"不是 {SANDBOX_CODE}，可能是平台真实租户，已阻断清空/重灌。")
 
 
+def _prepare_placement_snapshot_delete_guard(db) -> None:
+    """Verify that an installed snapshot trigger understands the 007 reset.
+
+    Trigger DDL requires elevated MySQL deployment credentials when binary logs
+    are enabled, so an application reset must never drop/recreate it. Fresh
+    deployments install the session-aware definition from the migration. A
+    legacy unconditional trigger fails closed here and must be upgraded first.
+    """
+    bind = db.get_bind()
+    if bind.dialect.name != "mysql":
+        return
+    for trigger_name in (
+        "trg_intern_placement_snapshot_no_delete",
+        "trg_intern_material_snapshot_no_delete",
+        "trg_disc_decision_bd_pkg11",
+    ):
+        trigger_body = db.execute(text(
+            "SELECT ACTION_STATEMENT FROM information_schema.TRIGGERS "
+            "WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME=:name"
+        ), {"name": trigger_name}).scalar()
+        if trigger_body and "@sandbox_reset_tenant_id" not in str(trigger_body):
+            raise RuntimeError(
+                f"{trigger_name} 仍使用旧版无条件防删定义，请先以数据库迁移账号安装"
+                "支持 007 租户重建的触发器定义"
+            )
+
+
 def wipe_sandbox(db) -> dict[str, int]:
     """按租户条件清空沙箱业务数据（不含 t_tenant / 品牌行）。返回各表删除行数。"""
     _assert_target_is_sandbox(db)
+    _prepare_placement_snapshot_delete_guard(db)
     removed: dict[str, int] = {}
-    removed["_auth_refresh_revoked"] = _revoke_sandbox_logins(db)
-    for tbl in _tenant_tables(db):
-        res = db.execute(delete(tbl).where(tbl.c.tenant_id == SANDBOX_TID))
-        if res.rowcount:
-            removed[tbl.name] = int(res.rowcount)
-    db.commit()
-    return removed
+    try:
+        if db.get_bind().dialect.name == "mysql":
+            db.execute(text("SET @sandbox_reset_tenant_id = :tenant_id"), {"tenant_id": SANDBOX_TID})
+            db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        removed["_auth_refresh_revoked"] = _revoke_sandbox_logins(db)
+        for tbl in _tenant_tables(db):
+            table_removed = 0
+            if db.get_bind().dialect.name == "mysql":
+                # Large fact tables (grades/messages/evaluation snapshots) can
+                # exceed the driver's socket read timeout in one DELETE. Keep a
+                # single transaction, but bound every server round-trip.
+                while True:
+                    res = db.execute(text(
+                        f"DELETE FROM `{tbl.name}` WHERE tenant_id=:tenant_id LIMIT 5000"
+                    ), {"tenant_id": SANDBOX_TID})
+                    count = int(res.rowcount or 0)
+                    table_removed += count
+                    if count < 5000:
+                        break
+            else:
+                res = db.execute(delete(tbl).where(tbl.c.tenant_id == SANDBOX_TID))
+                table_removed = int(res.rowcount or 0)
+            if table_removed:
+                removed[tbl.name] = table_removed
+        db.commit()
+        return removed
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        if db.get_bind().dialect.name == "mysql":
+            # Connection-local authorization must never leak back into the pool.
+            db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+            db.execute(text("SET @sandbox_reset_tenant_id = NULL"))
+            db.commit()
 
 
 def seed_sandbox(db) -> dict:
@@ -120,7 +190,7 @@ def seed_sandbox(db) -> dict:
     from app.core.security import hash_password
     from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College, CsLeave,
                             CsServiceStudent, EmpJob, EmpStudent, GraduationProposal,
-                            GraduationStudent, InternshipRecord, Major, OrientationStudent,
+                            GraduationStudent, InternshipRecord, Major, OrientationBatch, OrientationStudent,
                             Role, SchoolClass, StudentContact, StudentProfile, TeacherStudentScope,
                             Tenant, TenantBrandConfig, UnifiedMessage, UnifiedTodo, User,
                             UserRole, WeeklyReport, WorkflowInstance, WorkflowTask)
@@ -251,7 +321,10 @@ def seed_sandbox(db) -> dict:
             StudentProfile.tenant_id == SANDBOX_TID).order_by(StudentProfile.id)).all()
         for index, student in enumerate(students):
             school_class = classes[index % len(classes)]
-            major = db.get(Major, school_class.major_id)
+            major = db.scalars(select(Major).where(
+                Major.id == school_class.major_id,
+                Major.tenant_id == SANDBOX_TID,
+            )).first()
             student.class_id = school_class.id
             student.major_id = school_class.major_id
             student.college_id = major.college_id if major else None
@@ -270,13 +343,29 @@ def seed_sandbox(db) -> dict:
         out["internshipFull"] = seed_internship(db, SANDBOX_TID)
         out["employmentFull"] = seed_employment(db, SANDBOX_TID)
         out["graduationFull"] = seed_graduation(db, SANDBOX_TID)
-        db.add(OrientationStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME,
+        orientation_batch = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.tenant_id == SANDBOX_TID,
+            OrientationBatch.batch_no == "SEED-ORI-2026",
+        )).one()
+        profile_class = db.get(SchoolClass, p.class_id)
+        profile_major = db.get(Major, p.major_id)
+        profile_college = db.get(College, p.college_id)
+        orientation_student = OrientationStudent(tenant_id=SANDBOX_TID, batch_id=orientation_batch.id,
+                                  name=SBX_STUDENT_NAME,
                                   admission_no=f"LQ{SBX_STUDENT_NO}", student_id=p.id,
-                                  class_name=SBX_CLASS, grade="2026级", stage="ENROLLED",
+                                  identity_status="LINKED",
+                                  college_id=p.college_id, college_name=profile_college.college_name,
+                                  major_id=p.major_id, major_name=profile_major.major_name,
+                                  class_id=p.class_id, class_name=profile_class.class_name,
+                                  grade="2026级", stage="ENROLLED",
                                   report_status="CHECKED_IN", payment_status="PAID",
                                   material_status="APPROVED", dorm_status="CHECKED_IN",
                                   building="沙箱1号楼", room="1-101-1", risk_level="LOW",
-                                  steps_json={"ACTIVATE": "DONE", "CHECKIN": "DONE"}))
+                                  steps_json={"ACTIVATE": "DONE", "CHECKIN": "DONE"},
+                                  source_type="MANUAL", source_record_id=f"LQ{SBX_STUDENT_NO}")
+        db.add(orientation_student); db.flush()
+        from app.services.orientation_flow_service import ensure_student_steps
+        ensure_student_steps(db, orientation_student, status_source="PROCESS_FACT")
         cs = CsServiceStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
                               student_id=p.id, class_name=SBX_CLASS, care_level="NORMAL",
                               risk_level="LOW", counselor=SBX_TEACHER_NAME, record_status="ACTIVE")

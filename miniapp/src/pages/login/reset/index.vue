@@ -38,6 +38,7 @@
 <script>
 import { realRequest } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
 
 export default {
   data() {
@@ -45,7 +46,7 @@ export default {
       entry: 'student',
       step: 1, titles: ['验证校园账号', '输入短信验证码', '设置新密码'], loading: false, countdown: 0, timer: null,
       nonce: `mini-reset-${Date.now()}-${Math.random()}`,
-      form: { loginName: '', tenantCode: '', smsCode: '', requestId: '', resetToken: '', newPassword: '', confirmPassword: '' },
+      form: { loginName: '', tenantCode: getLastTenantCode(), smsCode: '', requestId: '', resetToken: '', newPassword: '', confirmPassword: '' },
       captcha: { id: '', code: '', image: '' }
     }
   },
@@ -76,6 +77,7 @@ export default {
         captchaId: this.captcha.id, captchaCode: this.captcha.code,
         clientNonce: this.nonce, clientType: this.clientType
       } }).then((data) => {
+        saveLastTenantCode(this.form.tenantCode)
         this.form.requestId = data.requestId; this.step = 2; this.startCountdown(data.retryAfter)
       }).catch((e) => { toast(e?.message || '发送失败，请稍后重试'); this.loadCaptcha() })
         .finally(() => { this.loading = false })

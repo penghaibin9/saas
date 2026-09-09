@@ -73,7 +73,7 @@ export default {
   created() { this.load() },
   methods: {
     statusLabel(s) {
-      return ({ FORCE_ON: '强制开启', READY: '可用', NOT_CONFIGURED: '未配置' })[s] || s
+      return ({ FORCE_ON: '强制开启', READY: '可用', NOT_CONFIGURED: '未配置' })[s] || '状态待确认'
     },
     async load() {
       this.loading = true

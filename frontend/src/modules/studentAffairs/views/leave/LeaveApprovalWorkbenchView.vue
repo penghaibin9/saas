@@ -1,21 +1,13 @@
 <template>
-  <ModulePageShell title="请假初审" subtitle="请假初审工作台 · 通过 / 驳回 / 退回重提（连续处理双栏）"
+  <ModulePageShell title="请假审批" subtitle="核对申请信息，处理后继续下一条。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <div class="mp-stack">
-      <TaskContextBar
-        :role-name="roleName"
-        :scope-name="scopeHint"
-        :pending="total"
-        :filter-summary="keyword ? `关键词：${keyword}` : ''"
-        next-hint="从待初审队列选择一条请假并处理。"
-        :degraded="!!error"
-        @clear-filter="clearKeyword"
-      />
+      <AppInlineAlert v-if="focusNotice" type="warning" :description="focusNotice" />
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
       </div>
 
-      <DualPaneWorkspace aside-title="待初审队列" :aside-count="total">
+      <DualPaneWorkspace aside-title="待我审批" :aside-count="total">
         <template #aside>
           <AppGlobalState :state="asideState" :description="asideDescription" loading-text="加载中…" @retry="load">
             <ul class="lv-list">
@@ -23,7 +15,7 @@
                 <button type="button" class="lv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
                   <div class="lv-item__row">
                     <span class="lv-item__name">{{ r.studentName }}</span>
-                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
+                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" :type="r.tone" />
                   </div>
                   <div class="lv-item__sub">{{ r.studentNo }} · {{ r.className }}</div>
                   <div class="lv-item__sub">{{ fmt(r.startTime) }} ~ {{ fmt(r.endTime) }} · {{ r.leaveTypeLabel }} · {{ r.days }}天</div>
@@ -44,9 +36,9 @@
 
         <section class="mp-card lv-main">
           <template v-if="!selectedId">
-            <EmptyState v-if="doneHint" title="本页待初审请假已全部处理"
+            <EmptyState v-if="doneHint" title="本页待审批请假已全部处理"
               description="可翻页或切换筛选条件，继续处理其他请假" />
-            <EmptyState v-else title="从左侧选择一条请假开始初审"
+            <EmptyState v-else title="从左侧选择一条请假开始审批"
               description="通过后自动流转到下一审批节点；驳回为终态；退回后学生可修改重提" />
           </template>
           <AppGlobalState v-else :state="detailState" :description="detail.error" loading-text="详情加载中…" @retry="loadDetail(selectedId)">
@@ -54,11 +46,12 @@
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }} · {{ detail.data.className }}</span>
-                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" />
+                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" :type="detail.data.tone" />
               </div>
 
               <div class="sec-t">请假信息</div>
               <AppDescriptionList :items="leaveItems" :columns="2" />
+              <LeaveProgressContext :detail="detail.data" />
 
               <div class="sec-t">审批留痕</div>
               <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无处理记录" />
@@ -90,12 +83,12 @@
  * 走新版工作流(affairs_status 非空)提交的请假，本页补齐初审这一步的真实页面。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList, AppAuditTrail,
-  AppSearchBox, AppGlobalState, AppPagination
+  AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert
 } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
+import LeaveProgressContext from './components/LeaveProgressContext.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -104,15 +97,16 @@ import { canCode } from '@/modules/studentAffairs/composables/permission'
 
 export default {
   name: 'LeaveApprovalWorkbenchView',
-  components: {
-    ModulePageShell, EmptyState, TaskContextBar, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
-    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState, AppPagination
+  components: { LeaveProgressContext,
+    ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
+    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      hasActivated: false,
       rows: [], total: 0, loading: false, error: '',
-      keyword: '',
+      keyword: '', focusNotice: '',
       pagination: { page: 1, pageSize: 20 },
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
@@ -129,7 +123,7 @@ export default {
     },
     asideDescription() {
       if (this.error) return this.error
-      if (!this.loading && !this.rows.length) return '当前暂无待你初审的请假'
+      if (!this.loading && !this.rows.length) return '当前暂无待你审批的请假'
       return ''
     },
     detailState() {
@@ -139,7 +133,7 @@ export default {
     },
     canAct() {
       const s = this.detail.data && this.detail.data.affairsStatus
-      return ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW'].includes(s)
+      return ['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW'].includes(s) && this.detail.data.allowedActions?.includes('APPROVE')
     },
     leaveItems() {
       const d = this.detail.data || {}
@@ -155,12 +149,50 @@ export default {
     },
     auditRecords() {
       return (this.detail.data && this.detail.data.auditTrail || []).map((t, i) => ({
-        id: i, action: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
+        id: i, action: t.actionCode, actionLabel: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
       }))
     }
   },
-  created() { this.load() },
+  created() { this.initRouteFocus() },
+  activated() { if (this.hasActivated) { this.load(); if (this.selectedId) this.loadDetail(this.selectedId) } this.hasActivated = true },
+  deactivated() { this.cd.visible = false },
+  watch: {
+    '$route.query.recordId'(value, previous) {
+      if (this.$route.path !== '/admin/student-affairs/leave') return
+      if (String(value || '') !== String(previous || '')) this.initRouteFocus()
+    }
+  },
   methods: {
+    async initRouteFocus() {
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusNotice = ''
+      if (!recordId) {
+        this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        await this.load()
+        return
+      }
+      await this.focusRecordFromRoute(recordId)
+    },
+    async focusRecordFromRoute(recordId) {
+      this.loading = true
+      this.error = ''
+      const res = await leaveApi.detail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.loading = false
+        this.rows = []; this.total = 0; this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        this.error = res.message || '该请假记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      const detail = res.data
+      this.selectedId = String(recordId)
+      this.detail = { loading: false, error: '', data: detail }
+      if (!['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW'].includes(detail.affairsStatus)) {
+        this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，已按最新事实展示，旧待办动作不可继续执行。`
+      }
+      await this.load()
+    },
     clearKeyword() {
       this.keyword = ''
       this.reload()

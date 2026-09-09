@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 
 from sqlalchemy import select
@@ -225,26 +226,32 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
                 "operation": operation,
             }
         if batch is None and rec.batch_id:
-            batch = db.get(InternshipBatch, rec.batch_id)
+            batch = tenant_get(db, InternshipBatch, rec.batch_id)
         rules = get_batch_compliance_rules(db, batch)
         items = []
 
+        from app.modules.internship.services.internship_eligibility_result import eligibility_result
+        eligibility = eligibility_result(db, rec)
         items.append(_item(
             "eligibility", "实习资格", required=True,
-            status="VALID" if rec.eligibility_status == "QUALIFIED" else "MISSING",
-            reason="" if rec.eligibility_status == "QUALIFIED" else "学校尚未认定实习资格合格",
+            status=("VALID" if rec.eligibility_status == "QUALIFIED" else
+                    "REJECTED" if rec.eligibility_status == "UNQUALIFIED" else "MISSING"),
+            reason=eligibility["reason"] or (
+                "" if rec.eligibility_status == "QUALIFIED" else
+                "本次资格认定未通过，请联系指导教师了解后续安排" if rec.eligibility_status == "UNQUALIFIED" else
+                "学校正在核对实习资格，请关注认定结果"),
         ))
         items.append(_item(
             "enterprise", "实习企业", required=True,
             status="VALID" if rec.enterprise_id else "MISSING",
             reason="" if rec.enterprise_id else "尚未落实实习企业",
-            route="/pages/student/internship/enterprises/index",
+            route="/pages/student-internship/enterprises/index",
         ))
         items.append(_item(
             "position", "实习岗位", required=True,
             status="VALID" if rec.position_id else "MISSING",
             reason="" if rec.position_id else "尚未落实实习岗位",
-            route="/pages/student/internship/application/index",
+            route="/pages/student-internship/application/index",
         ))
         items.append(_item(
             "advisor", "校内指导教师", required=bool(rules.get("advisor", {}).get("required", True)),
@@ -289,7 +296,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "studentConsent", cfg.get("label", "学生知情确认"),
             required=bool(cfg.get("required")), severity=cfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/consent/index",
+            status=status, reason=reason, route="/pages/student-internship/consent/index",
         ))
 
         gcfg = rules.get("guardianConsent") or {"label": "监护人知情确认", "required": False, "severity": "BLOCK"}
@@ -314,7 +321,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "guardianConsent", gcfg.get("label", "监护人知情确认"),
             required=required, severity=gcfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/consent/index",
+            status=status, reason=reason, route="/pages/student-internship/consent/index",
         ))
 
         courses = db.scalars(select(InternshipSafetyCourse).where(
@@ -334,7 +341,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "safetyEducation", scfg.get("label", "岗前安全教育"),
             required=bool(scfg.get("required")), severity=scfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/safety/index",
+            status=status, reason=reason, route="/pages/student-internship/safety/index",
             detail={
                 "requiredCount": safety["requiredCount"],
                 "passedCount": safety["passedCount"],
@@ -361,7 +368,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "insurance", icfg.get("label", "实习保险"),
             required=bool(icfg.get("required")), severity=icfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/insurance/index",
+            status=status, reason=reason, route="/pages/student-internship/insurance/index",
         ))
 
         acfg = rules["agreement"]
@@ -385,11 +392,11 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         items.append(_item(
             "agreement", acfg.get("label", "三方协议"),
             required=bool(acfg.get("required")), severity=acfg.get("severity", "BLOCK"),
-            status=status, reason=reason, route="/pages/student/internship/agreement/index",
+            status=status, reason=reason, route="/pages/student-internship/agreement/index",
         ))
 
         fcfg = rules["specialFiling"]
-        position = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
         from app.modules.internship.services.internship_special_filing_service import evaluate_triggers
         triggers = evaluate_triggers(position, student, None) if fcfg.get("required") else []
         filings = db.scalars(select(InternshipSpecialFiling).where(
@@ -418,7 +425,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         elif not position:
             status, reason = "MISSING", "尚未落实岗位，无法核验岗位权益"
         else:
-            company = db.get(EmpCompany, position.company_id) if position.company_id else None
+            company = tenant_get(db, EmpCompany, position.company_id) if position.company_id else None
             rights = evaluate_position_publishability(
                 position, company, batch, student, operation=operation, db=db)
             status = "VALID" if rights.get("passed") else "REJECTED"

@@ -49,16 +49,21 @@ function inferModuleCode(groupKey, path) {
   return map[groupKey] || 'WORKBENCH'
 }
 
-function firstLeafPermission(mod) {
-  if (mod.permissionKey) return mod.permissionKey
-  const leaf = (mod.children || []).find((c) => c.permissionKey && c.path && !c.disabled && !c.hidden)
-  return leaf ? leaf.permissionKey : undefined
-}
-
-function resolveModPath(mod) {
-  if (mod.path) return mod.path
-  const leaf = (mod.children || []).find((c) => c.path && !c.disabled && !c.hidden)
-  return leaf ? leaf.path : ''
+function moduleCandidates(group, mod) {
+  const rows = []
+  if (mod.path && !mod.disabled && !mod.hidden) rows.push(mod)
+  for (const leaf of (mod.children || [])) {
+    if (leaf.path && !leaf.disabled && !leaf.hidden) rows.push(leaf)
+  }
+  return rows.map((row) => ({
+    path: row.path,
+    moduleCode: inferModuleCode(group.key, row.path),
+    platformOnly: !!(group.platformOnly || group.key === 'platform'),
+    sensitive: row.path.includes('/logs') || row.path.includes('/security'),
+    permissionKey: row.permissionKey || mod.permissionKey,
+    permissionAny: Array.isArray(row.permissionAny) ? row.permissionAny : [],
+    permissionAll: Array.isArray(row.permissionAll) ? row.permissionAll : []
+  }))
 }
 
 /** 从 navPlan 投影一级轨菜单树（含平台组） */
@@ -67,18 +72,19 @@ function buildAdminMenuFromNavPlan() {
   return groups.map((group) => {
     const children = (group.children || [])
       .map((mod) => {
-        const path = resolveModPath(mod)
-        if (!path) return null
-        const permissionKey = firstLeafPermission(mod)
+        const candidates = moduleCandidates(group, mod)
+        if (!candidates.length) return null
+        const first = candidates[0]
         const leaf = {
           key: mod.key,
           label: mod.label,
-          path,
-          moduleCode: inferModuleCode(group.key, path),
-          ...(permissionKey ? { permissionKey } : {})
+          path: first.path,
+          moduleCode: first.moduleCode,
+          candidates,
+          ...(first.permissionKey ? { permissionKey: first.permissionKey } : {})
         }
         if (group.platformOnly || group.key === 'platform') leaf.platformOnly = true
-        if (path.includes('/logs') || path.includes('/security')) leaf.sensitive = true
+        if (first.sensitive) leaf.sensitive = true
         return leaf
       })
       .filter(Boolean)
@@ -123,7 +129,7 @@ function workbenchOnly(leaf) {
  * - 正式环境缺权限集：fail-closed，只保留工作台，禁止按粗角色放大菜单。
  * - 开发/测试环境：允许角色白名单降级，便于本地排障，但后端仍是最终权限边界。
  */
-function canSeeLeaf(leaf, ctx) {
+function canSeeCandidate(leaf, ctx) {
   const rt = roleType(ctx)
   if (leaf.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
   if (rt === ROLE_TYPE.PLATFORM && leaf.moduleCode !== 'PLATFORM') return false
@@ -131,13 +137,29 @@ function canSeeLeaf(leaf, ctx) {
 
   const patterns = ctx && ctx.permissionPatterns
   if (Array.isArray(patterns)) {
+    const anyKeys = leaf.permissionAny || []
+    const allKeys = leaf.permissionAll || []
+    if (anyKeys.length) return anyKeys.some((key) => matchPermission(patterns, key))
     if (leaf.permissionKey) return matchPermission(patterns, leaf.permissionKey)
+    if (allKeys.length) return allKeys.every((key) => matchPermission(patterns, key))
     return workbenchOnly(leaf)
   }
 
   if (import.meta.env && import.meta.env.PROD) return workbenchOnly(leaf)
   if (rt) return (ROLE_MODULE_ALLOW[rt] || ['WORKBENCH']).includes(leaf.moduleCode)
   return workbenchOnly(leaf)
+}
+
+function visibleLeaf(leaf, ctx) {
+  const candidate = (leaf.candidates || [leaf]).find((item) => canSeeCandidate(item, ctx))
+  if (!candidate) return null
+  return {
+    ...leaf,
+    path: candidate.path,
+    moduleCode: candidate.moduleCode,
+    sensitive: candidate.sensitive,
+    ...(candidate.permissionKey ? { permissionKey: candidate.permissionKey } : {})
+  }
 }
 
 function contextSignature(ctx) {
@@ -171,7 +193,10 @@ export function getVisibleAdminMenu(ctx) {
       if (group.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
       return true
     })
-    .map((group) => ({ ...group, children: group.children.filter((leaf) => canSeeLeaf(leaf, ctx)) }))
+    .map((group) => ({
+      ...group,
+      children: group.children.map((leaf) => visibleLeaf(leaf, ctx)).filter(Boolean)
+    }))
     .filter((group) => group.children.length > 0)
   if (_adminMenuVisibleCache.size > 64) _adminMenuVisibleCache.clear()
   _adminMenuVisibleCache.set(cacheKey, result)
@@ -192,12 +217,12 @@ export function findActiveMenu(path) {
 export const LEGACY_GROUP_KEY_MAP = {
   'student-center': 'student-affairs',
   practice: 'graduation',
-  'data-center': 'workbench',
+  'data-center': 'student-affairs',
   'wf-center': 'system'
 }
 
 export const SEARCH_ALIASES = [
-  { keywords: ['工作台', '我的工作台', '首页'], path: '/workbench', label: '工作台 / 我的工作台' },
+  { keywords: ['工作台', '我的工作台', '首页'], path: '/workbench', label: '学工中心 / 学工工作台 / 我的工作台' },
   { keywords: ['学生中心', '学工中心', '学生画像', '学生主档'], path: '/admin/student', label: '学工中心 / 学生画像' },
   { keywords: ['数字迎新', '迎新', '新生报到'], path: '/admin/orientation', label: '学工中心 / 数字迎新' },
   { keywords: ['在校服务', '请假', '奖助', '宿舍', '违纪'], path: '/admin/campus-service', label: '学工中心 / 在校服务' },
@@ -205,9 +230,9 @@ export const SEARCH_ALIASES = [
   { keywords: ['教学实践', '毕业设计', '毕设', '选题', '答辩'], path: '/admin/graduation', label: '毕业设计中心' },
   { keywords: ['岗位实习', '实习', '打卡', '周报', '实习工作台', '今日工作'], path: '/admin/internship', label: '岗位实习中心 / 今日工作' },
   { keywords: ['就业服务', '就业', '未就业帮扶', '就业转化'], path: '/admin/employment', label: '就业服务（就业中心）' },
-  { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '工作台 / 领导驾驶舱' },
-  { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '工作台 / 审批中心' },
-  { keywords: ['消息中心', '我的消息', '站内信'], path: '/admin/messages/inbox', label: '工作台 / 消息中心' },
+  { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '学工中心 / 学工工作台 / 领导驾驶舱' },
+  { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '学工中心 / 学工工作台 / 审批中心' },
+  { keywords: ['消息中心', '我的消息', '站内信'], path: '/admin/messages/inbox', label: '学工中心 / 学工工作台 / 消息中心' },
   { keywords: ['权限与流程', '流程配置', '审批模板', '角色', '权限'], path: '/admin/workflow', label: '系统管理 / 权限与流程' },
   { keywords: ['系统管理', '用户', '菜单', '数据范围', '品牌'], path: '/admin/system', label: '系统管理' },
   { keywords: ['安全审计', '日志', '安全与审计'], path: '/admin/system/logs', label: '系统管理 / 安全与审计' }

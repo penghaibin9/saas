@@ -174,7 +174,7 @@ export default {
       if (!section || !section.actionKey) return
       if (section.actionKey === 'ACADEMIC_WARNING') return uni.navigateTo({ url: '/pages/teacher/academic-warning/index' })
       if (section.actionKey === 'INTERNSHIP_GUIDANCE') {
-        return uni.navigateTo({ url: `/pages/teacher/internship-review/index?${this.studentParams({ internshipId: this.s.context && this.s.context.internshipId })}` })
+        return uni.navigateTo({ url: `/pages/teacher-internship/internship-review/index?${this.studentParams({ internshipId: this.s.context && this.s.context.internshipId })}` })
       }
       if (section.actionKey === 'GRADUATION_GUIDANCE') return uni.navigateTo({ url: '/pages/teacher/graduation-guide/index' })
       if (section.actionKey === 'EMPLOYMENT_FOLLOWUP') {

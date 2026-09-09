@@ -2,12 +2,10 @@
   <ModulePageShell
     :title="isEdit ? '编辑岗位' : '新增岗位'"
     :subtitle="pageSubtitle"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
     watermark-purpose="岗位库维护"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="goBack">← 返回岗位库</AppButton>
+      <AppButton variant="ghost" @click="goBack">{{ isEdit ? '返回岗位详情' : '返回岗位库' }}</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="init" />
@@ -16,15 +14,15 @@
       <AppInlineAlert
         v-if="readonly"
         type="warning"
-        title="已归档岗位不可编辑"
-        :description="`岗位当前状态为「${detail.statusLabel}」，已归档岗位后端拒绝修改；本页为只读预览，提交已禁用。`"
+        title="当前岗位只读"
+        description="已归档岗位或当前身份没有维护权限，可查看已有资料。"
       />
 
       <AppForm
         ref="posForm"
         :model="form"
         :rules="formRules"
-        layout="horizontal"
+        layout="vertical"
         label-width="112px"
         @submit="onSubmit"
       >
@@ -32,7 +30,7 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">基本信息</span>
-            <span class="pf-aside">批次：按当前实习批次自动关联（预留）</span>
+            <span class="pf-aside">所属批次：{{ detail?.batchName || batchStore.selectedBatch?.batchName || '当前所选批次' }}</span>
           </div>
           <div class="mp-card__body">
             <div class="pf-grid">
@@ -47,7 +45,7 @@
                 <AppInternshipEnterprisePicker
                   v-model="form.companyId"
                   :options="companyPresetOpts"
-                  :disabled="isEdit || readonly"
+                  :disabled="isEdit || readonly || submitting"
                   disabled-reason="编辑岗位时不可更换所属企业"
                   placeholder="输入企业名称搜索"
                   search-placeholder="按企业名称搜索"
@@ -55,11 +53,11 @@
                   @update:model-value="onCompanyChange"
                 />
               </AppFormItem>
-              <AppFormItem label="岗位名称" prop="title" required>
-                <AppTextInput v-model="form.title" :disabled="readonly" placeholder="如：Java开发实习生 / 市场营销实习生 / 化工工艺实习生" />
+              <AppFormItem label="岗位名称" prop="title" required v-slot="{ id }">
+                <AppTextInput :id="id" v-model="form.title" :disabled="readonly || submitting" placeholder="如：Java开发实习生 / 市场营销实习生 / 化工工艺实习生" />
               </AppFormItem>
-              <AppFormItem label="容量" prop="headcount" required :hint="isEdit && detail ? `已分配 ${detail.allocatedCount} 人，容量不能低于已分配数` : ''">
-                <AppNumberInput v-model="form.headcount" :min="1" :disabled="readonly" @clamp="onHeadcountClamp" />
+              <AppFormItem label="容量" prop="headcount" required :hint="isEdit && detail ? `已分配 ${detail.allocatedCount} 人，容量不能低于已分配数` : ''" v-slot="{ id }">
+                <AppNumberInput :id="id" v-model="form.headcount" :min="1" :disabled="readonly || submitting" @clamp="onHeadcountClamp" />
               </AppFormItem>
             </div>
           </div>
@@ -70,11 +68,11 @@
           <div class="mp-card__head"><span class="mp-card__title">岗位要求</span></div>
           <div class="mp-card__body">
             <div class="pf-grid">
-              <AppFormItem label="专业要求" prop="majorRequirement">
-                <AppTextInput v-model="form.majorRequirement" :disabled="readonly" placeholder="不填=不限" />
+              <AppFormItem label="专业要求" prop="majorRequirement" v-slot="{ id }">
+                <AppTextInput :id="id" v-model="form.majorRequirement" :disabled="readonly || submitting" placeholder="不填=不限" />
               </AppFormItem>
-              <AppFormItem label="年级要求" prop="gradeRequirement">
-                <AppTextInput v-model="form.gradeRequirement" :disabled="readonly" placeholder="如 2024级" />
+              <AppFormItem label="年级要求" prop="gradeRequirement" v-slot="{ id }">
+                <AppTextInput :id="id" v-model="form.gradeRequirement" :disabled="readonly || submitting" placeholder="如 2024级" />
               </AppFormItem>
             </div>
           </div>
@@ -84,22 +82,58 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">工作内容与地址</span></div>
           <div class="mp-card__body pf-grid">
-            <AppFormItem class="pf-grid__full" label="工作内容" prop="workContent" required>
-              <AppTextarea v-model="form.workContent" :rows="4" :disabled="readonly" />
+            <AppFormItem class="pf-grid__full" label="工作内容" prop="workContent" required v-slot="{ id }">
+              <AppTextarea :id="id" v-model="form.workContent" :rows="4" :disabled="readonly || submitting" />
             </AppFormItem>
-            <AppFormItem class="pf-grid__full" label="工作地址"><AppTextInput v-model="form.workAddress" :disabled="readonly" /></AppFormItem>
+            <AppFormItem class="pf-grid__full" label="工作地址" v-slot="{ id }"><AppTextInput :id="id" v-model="form.workAddress" :disabled="readonly || submitting" /></AppFormItem>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head">
+            <span class="mp-card__title">打卡地点与电子围栏</span>
+            <span class="pf-aside">学生主动打卡时仅采集一次定位 · GCJ-02</span>
+          </div>
+          <div class="mp-card__body">
+            <AppInlineAlert
+              type="info"
+              title="定位只作为核验线索"
+              :description="`本批次建议半径 ${defaultFenceRadius} 米，最大可接受误差 ${maxAccuracyM} 米。低精度和围栏边界记录会转教师人工核验。`"
+            />
+            <div class="pf-grid pf-fence-fields">
+              <AppFormItem label="启用岗位围栏">
+                <AppRadioGroup v-model="form.geofenceEnabled" :options="boolOptions" :disabled="readonly || submitting" />
+              </AppFormItem>
+              <div class="pf-fence-actions">
+                <AppButton v-if="form.geofenceEnabled" variant="ghost" size="small" :disabled="readonly || submitting" @click="applyDefaultFence">采用批次半径</AppButton>
+                <span class="pf-aside">中心坐标从合规地图后台复制粘贴</span>
+              </div>
+              <AppFormItem label="中心纬度" prop="geofenceLat" :required="form.geofenceEnabled" v-slot="{ id }">
+                <AppNumberInput :id="id" v-model="form.geofenceLat" :min="-90" :max="90" :step="0.000001" :disabled="readonly || submitting || !form.geofenceEnabled" />
+              </AppFormItem>
+              <AppFormItem label="中心经度" prop="geofenceLng" :required="form.geofenceEnabled" v-slot="{ id }">
+                <AppNumberInput :id="id" v-model="form.geofenceLng" :min="-180" :max="180" :step="0.000001" :disabled="readonly || submitting || !form.geofenceEnabled" />
+              </AppFormItem>
+              <AppFormItem label="围栏半径（米）" prop="geofenceRadiusM" :required="form.geofenceEnabled" v-slot="{ id }">
+                <AppNumberInput :id="id" v-model="form.geofenceRadiusM" :min="30" :max="5000" :step="10" :disabled="readonly || submitting || !form.geofenceEnabled" />
+              </AppFormItem>
+              <div class="pf-fence-preview" :class="{ 'is-enabled': form.geofenceEnabled }" aria-label="岗位围栏范围示意">
+                <span class="pf-fence-preview__ring"><i /></span>
+                <div><strong>{{ form.geofenceEnabled ? `${form.geofenceRadiusM || '—'} 米范围` : '未启用围栏' }}</strong><small>{{ form.geofenceEnabled ? '保存后，正式落岗会冻结本次围栏规则' : '学生打卡只留时间与定位证据' }}</small></div>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">工时与班次</span></div>
           <div class="mp-card__body pf-grid">
-            <AppFormItem label="每日工时"><AppNumberInput v-model="form.dailyHours" :min="0" :max="24" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="每周工时"><AppNumberInput v-model="form.weeklyHours" :min="0" :max="168" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="班次"><AppTextInput v-model="form.shiftType" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="每周休息"><AppNumberInput v-model="form.restDaysPerWeek" :min="0" :max="7" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="是否夜班"><AppRadioGroup v-model="form.nightShift" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="允许加班"><AppRadioGroup v-model="form.overtimeAllowed" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="每日工时" v-slot="{ id }"><AppNumberInput :id="id" v-model="form.dailyHours" :min="0" :max="24" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="每周工时" v-slot="{ id }"><AppNumberInput :id="id" v-model="form.weeklyHours" :min="0" :max="168" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="班次" v-slot="{ id }"><AppTextInput :id="id" v-model="form.shiftType" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="每周休息" v-slot="{ id }"><AppNumberInput :id="id" v-model="form.restDaysPerWeek" :min="0" :max="7" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="是否夜班"><AppRadioGroup aria-label="是否夜班" v-model="form.nightShift" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="允许加班"><AppRadioGroup aria-label="允许加班" v-model="form.overtimeAllowed" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
           </div>
         </section>
 
@@ -107,19 +141,19 @@
           <div class="mp-card__head"><span class="mp-card__title">报酬与食宿条件</span></div>
           <div class="mp-card__body">
             <div class="pf-grid">
-              <AppFormItem label="报酬类型"><AppSelect v-model="form.remunerationType" :options="remunerationOptions" :disabled="readonly" /></AppFormItem>
-              <AppFormItem label="报酬金额"><AppNumberInput v-model="form.remunerationAmount" :min="0" :disabled="readonly" /></AppFormItem>
-              <AppFormItem label="发放周期"><AppSelect v-model="form.remunerationCycle" :options="cycleOptions" :disabled="readonly" /></AppFormItem>
-              <AppFormItem label="提供住宿"><AppRadioGroup v-model="form.accommodationProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
-              <AppFormItem label="提供餐食"><AppRadioGroup v-model="form.mealProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
+              <AppFormItem label="报酬类型" v-slot="{ id }"><AppSelect :id="id" v-model="form.remunerationType" :options="remunerationOptions" :disabled="readonly || submitting" /></AppFormItem>
+              <AppFormItem label="报酬金额" v-slot="{ id }"><AppNumberInput :id="id" v-model="form.remunerationAmount" :min="0" :disabled="readonly || submitting" /></AppFormItem>
+              <AppFormItem label="发放周期" v-slot="{ id }"><AppSelect :id="id" v-model="form.remunerationCycle" :options="cycleOptions" :disabled="readonly || submitting" /></AppFormItem>
+              <AppFormItem label="提供住宿"><AppRadioGroup aria-label="提供住宿" v-model="form.accommodationProvided" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
+              <AppFormItem label="提供餐食"><AppRadioGroup aria-label="提供餐食" v-model="form.mealProvided" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
               <AppFormItem class="pf-grid__full" label="工作地点" prop="workLocation">
-                <AppChinaRegionPicker v-model="form.workLocation" :disabled="readonly" placeholder="请选择工作省 / 市 / 区县" />
+                <AppChinaRegionPicker v-model="form.workLocation" :disabled="readonly || submitting" placeholder="请选择工作省 / 市 / 区县" />
               </AppFormItem>
-              <AppFormItem label="薪资" prop="salaryRange">
-                <AppTextInput v-model="form.salaryRange" :disabled="readonly" placeholder="如 3k-4k" />
+              <AppFormItem label="薪资" prop="salaryRange" v-slot="{ id }">
+                <AppTextInput :id="id" v-model="form.salaryRange" :disabled="readonly || submitting" placeholder="如 3k-4k" />
               </AppFormItem>
-              <AppFormItem class="pf-grid__full" label="补贴" prop="subsidy" hint="点击下方标签追加，或手动输入">
-                <AppTextInput v-model="form.subsidy" :disabled="readonly" placeholder="如：五险一金、包吃住、交通补贴" />
+              <AppFormItem class="pf-grid__full" label="补贴" prop="subsidy" hint="点击下方标签追加，或手动输入" v-slot="{ id }">
+                <AppTextInput :id="id" v-model="form.subsidy" :disabled="readonly || submitting" placeholder="如：五险一金、包吃住、交通补贴" />
                 <AppTemplateChips
                   v-if="!readonly"
                   class="pf-welfare-chips"
@@ -135,16 +169,16 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">风险与特殊设备</span></div>
           <div class="mp-card__body pf-grid">
-            <AppFormItem label="危险岗位"><AppRadioGroup v-model="form.hazardousFlag" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
-            <AppFormItem label="特殊设备"><AppTextInput v-model="form.specialEquipment" :disabled="readonly" /></AppFormItem>
-            <AppFormItem class="pf-grid__full" label="禁止安排说明"><AppTextarea v-model="form.prohibitedReason" :rows="2" :disabled="readonly" /></AppFormItem>
+            <AppFormItem label="危险岗位"><AppRadioGroup aria-label="危险岗位" v-model="form.hazardousFlag" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem label="特殊设备" v-slot="{ id }"><AppTextInput :id="id" v-model="form.specialEquipment" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem class="pf-grid__full" label="禁止安排说明" v-slot="{ id }"><AppTextarea :id="id" v-model="form.prohibitedReason" :rows="2" :disabled="readonly || submitting" /></AppFormItem>
           </div>
         </section>
 
         <AppInlineAlert
           v-if="detail?.compliance"
           :type="detail.publishable ? 'success' : 'warning'"
-          :title="detail.publishable ? '当前岗位可发布' : '当前岗位不可发布'"
+          :title="detail.publishable ? '已保存资料通过发布检查' : '已保存资料仍需补充'"
           :description="complianceDescription"
         />
 
@@ -158,6 +192,7 @@
             <AppFormItem label="企业导师" prop="mentorContactId">
               <AppEnterpriseMentorPicker
                 v-model="form.mentorContactId"
+                :disabled="readonly || submitting"
                 :query="{ companyId: form.companyId }"
                 placeholder="选择企业导师（可不指定）"
                 search-placeholder="按导师姓名过滤"
@@ -171,15 +206,15 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">备注</span></div>
           <div class="mp-card__body">
-            <AppFormItem label="备注" prop="remark">
-              <AppTextarea v-model="form.remark" :rows="3" :disabled="readonly" placeholder="岗位补充说明（可选）" />
+            <AppFormItem label="备注" prop="remark" v-slot="{ id }">
+              <AppTextarea :id="id" v-model="form.remark" :rows="3" :disabled="readonly || submitting" placeholder="岗位补充说明（可选）" />
             </AppFormItem>
           </div>
         </section>
 
         <AppSubmitBar
           :loading="submitting"
-          :disabled="readonly"
+          :disabled="readonly || submitting"
           :submit-text="isEdit ? '保存修改' : '创建岗位'"
           cancel-text="取消"
           @submit="onSubmit"
@@ -207,7 +242,7 @@ import {
   AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips,
   AppSelect, AppRadioGroup, AppChinaRegionPicker
 } from '@/components/common'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { positionApi } from '@/modules/internship/api/position.api'
 import { REMUNERATION_TYPE, REMUNERATION_CYCLE } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
@@ -220,7 +255,8 @@ const blankForm = () => ({
   nightShift: null, overtimeAllowed: null, restDaysPerWeek: null,
   remunerationType: '', remunerationAmount: null, remunerationCycle: '',
   accommodationProvided: null, mealProvided: null, hazardousFlag: null,
-  specialEquipment: '', prohibitedReason: ''
+  specialEquipment: '', prohibitedReason: '', geofenceEnabled: false,
+  geofenceLat: null, geofenceLng: null, geofenceRadiusM: null
 })
 
 // 岗位福利快捷标签（20-岗位实习预设便捷字段与提示词.md §5），点击追加进「补贴」字段
@@ -231,6 +267,7 @@ const WELFARE_CHIPS = [
 
 export default {
   name: 'PositionFormView',
+  props: { ctx: { type: Object, required: true } },
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
@@ -239,7 +276,7 @@ export default {
   },
   data() {
     return {
-      ctx: null,
+      loadSequence: 0,
       loading: false,
       error: '',
       submitting: false,
@@ -255,18 +292,21 @@ export default {
       const p = this.$route.path
       return p.endsWith('/new') || p.endsWith('/edit')
     },
-    roleName() {
-      return this.ctx?.currentRole?.roleName || ''
-    },
-    dataScopeName() {
-      return this.ctx?.dataScope?.scopeName || ''
-    },
     readonly() {
-      return this.isEdit && !!this.detail && this.detail.status === 'ARCHIVED'
+      return !Array.isArray(this.ctx.permissionPatterns) || !canCode(this.ctx, 'internship.position.manage') || (this.isEdit && this.detail?.status === 'ARCHIVED')
     },
     batchStore() { return useInternshipBatchStore() },
     triStateOptions() {
       return [{ label: '未知', value: null }, { label: '是', value: true }, { label: '否', value: false }]
+    },
+    boolOptions() {
+      return [{ label: '启用', value: true }, { label: '暂不启用', value: false }]
+    },
+    defaultFenceRadius() {
+      return Number(this.detail?.checkinRule?.defaultRadiusM || this.batchStore.selectedBatch?.rules?.checkin?.geofenceRadiusM || 500)
+    },
+    maxAccuracyM() {
+      return Number(this.detail?.checkinRule?.maxAccuracyM || this.batchStore.selectedBatch?.rules?.checkin?.maxAccuracyM || 200)
     },
     remunerationOptions() {
       return REMUNERATION_TYPE
@@ -276,7 +316,7 @@ export default {
     },
     complianceDescription() {
       const c = this.detail?.compliance || {}
-      return `阻断 ${c.blockers?.length || 0} 项，未知 ${c.unknowns?.length || 0} 项，警告 ${c.warnings?.length || 0} 项；规则 ${c.ruleVersion || '-'}。保存成功不代表已合规。`
+      return `需处理 ${c.blockers?.length || 0} 项，待补充 ${c.unknowns?.length || 0} 项，提醒 ${c.warnings?.length || 0} 项。这里显示已保存资料的检查结果，本次修改保存后重新检查。`
     },
     companyPresetOpts() {
       // 编辑态回显：把当前岗位所属企业预置进选择器本地选项缓存（合法本地预置，不是一次性全量加载）
@@ -287,7 +327,7 @@ export default {
       if (this.isEdit) {
         return this.detail ? `${this.detail.title} · ${this.detail.companyName}（${this.detail.statusLabel}）` : ''
       }
-      return '新增岗位为草稿态，须先关联合作企业；提交审核、上架/下架、风险标记在岗位库列表操作'
+      return '先填写岗位资料与实习条件，保存后在岗位详情核对并提交审核。'
     },
     welfareChips() {
       return WELFARE_CHIPS
@@ -302,6 +342,10 @@ export default {
         ]
       }
       if (!this.isEdit) rules.companyId = [{ required: true, message: '请选择所属企业' }]
+      const requiredFence = (value, _model) => !this.form.geofenceEnabled || value !== null && value !== '' || '启用围栏后必须填写完整'
+      rules.geofenceLat = [{ validator: requiredFence }]
+      rules.geofenceLng = [{ validator: requiredFence }]
+      rules.geofenceRadiusM = [{ validator: requiredFence }]
       return rules
     }
   },
@@ -314,29 +358,32 @@ export default {
     }
   },
   created() {
-    internshipApi.getContext().then((res) => {
-      if (res.code === 0) this.ctx = res.data
-    })
     this.init()
   },
+  beforeUnmount() { this.loadSequence++ },
   methods: {
     onHeadcountClamp({ from, to }) {
       // BUG-003：容量填 -5 原来被静默改成 1，用户毫无感知
       toast.warning(`容量最少 ${to} 人，已把输入的 ${from} 修正为 ${to}`)
     },
     onPickWelfare(text) {
-      if (!text) return
+      if (!text || this.submitting) return
       const cur = (this.form.subsidy || '').split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
       if (cur.includes(text)) return
       cur.push(text)
       this.form.subsidy = cur.join('、')
     },
+    applyDefaultFence() {
+      this.form.geofenceRadiusM = this.defaultFenceRadius
+    },
     goBack() {
-      const back = this.$router.options.history.state && this.$router.options.history.state.back
-      if (typeof back === 'string' && back.startsWith('/admin/internship/positions')) this.$router.back()
-      else this.$router.push('/admin/internship/positions')
+      const query = { ...this.$route.query }
+      if (!this.isEdit) delete query.section
+      this.$router.push({ path: this.isEdit ? '/admin/internship/positions/' + this.$route.params.id : '/admin/internship/positions', query })
     },
     async init() {
+      const sequence = ++this.loadSequence
+      this.submitting = false
       this.error = ''
       if (!this.isEdit) {
         this.detail = null
@@ -347,7 +394,7 @@ export default {
       this.loading = true
       const id = this.$route.params.id
       const res = await positionApi.getPositionDetail(id)
-      if (id !== this.$route.params.id) return
+      if (sequence !== this.loadSequence || id !== this.$route.params.id) return
       this.loading = false
       if (res.code !== 0) {
         this.error = res.message || '岗位不存在或无权查看'
@@ -373,7 +420,10 @@ export default {
         remunerationAmount: d.remunerationAmount, remunerationCycle: d.remunerationCycle || '',
         accommodationProvided: d.accommodationProvided, mealProvided: d.mealProvided,
         hazardousFlag: d.hazardousFlag, specialEquipment: d.specialEquipment || '',
-        prohibitedReason: d.prohibitedReason || ''
+        prohibitedReason: d.prohibitedReason || '',
+        geofenceEnabled: !!d.checkinRule?.configured,
+        geofenceLat: d.geofenceLat, geofenceLng: d.geofenceLng,
+        geofenceRadiusM: d.geofenceRadiusM
       }
     },
     async onCompanyChange() {
@@ -383,8 +433,9 @@ export default {
     },
     async onSubmit() {
       if (this.readonly || this.submitting) return
+      const sequence = this.loadSequence, id = this.$route.params.id, query = { ...this.$route.query }, isEdit = this.isEdit
       const { valid } = await this.$refs.posForm.validate()
-      if (!valid) return
+      if (!valid || sequence !== this.loadSequence || id !== this.$route.params.id) return
       const f = this.form
       const body = {
         title: (f.title || '').trim(),
@@ -402,7 +453,10 @@ export default {
         remunerationAmount: f.remunerationAmount, remunerationCycle: f.remunerationCycle || null,
         accommodationProvided: f.accommodationProvided, mealProvided: f.mealProvided,
         hazardousFlag: f.hazardousFlag, specialEquipment: (f.specialEquipment || '').trim() || null,
-        prohibitedReason: (f.prohibitedReason || '').trim() || null
+        prohibitedReason: (f.prohibitedReason || '').trim() || null,
+        geofenceLat: f.geofenceEnabled ? Number(f.geofenceLat) : null,
+        geofenceLng: f.geofenceEnabled ? Number(f.geofenceLng) : null,
+        geofenceRadiusM: f.geofenceEnabled ? Number(f.geofenceRadiusM) : null
       }
       body.batchId = this.detail?.batchId || this.batchStore.selectedBatchId || null
       if (this.isEdit) body.expectedVersion = this.detail.version
@@ -413,16 +467,18 @@ export default {
       this.submitting = true
       try {
         const res = this.isEdit
-          ? await positionApi.updatePosition(this.$route.params.id, body)
+          ? await positionApi.updatePosition(id, body)
           : await positionApi.createPosition(body)
+        if (sequence !== this.loadSequence || id !== this.$route.params.id) return
         if (res.code === 0) {
-          toast.success(this.isEdit ? '已保存；权益字段将重新评估，保存不代表已合规' : '已新增岗位草稿；保存不代表可发布')
-          this.goBack()
+          if (typeof window !== 'undefined') window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
+          toast.success(isEdit ? '已保存，发布前请核对检查结果' : '已创建岗位草稿')
+          this.$router.push({ path: '/admin/internship/positions/' + res.data.id, query: { ...query, section: query.section || 'publish' } })
         } else {
           toast.error(res.message || '保存失败')
         }
       } finally {
-        this.submitting = false
+        if (sequence === this.loadSequence) this.submitting = false
       }
     }
   }
@@ -446,6 +502,14 @@ export default {
 .pf-welfare-chips {
   margin-top: var(--space-2);
 }
+.pf-fence-fields { margin-top: var(--space-4); align-items: end; }
+.pf-fence-actions { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; }
+.pf-fence-preview { min-height: 86px; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); color: var(--text-tertiary); }
+.pf-fence-preview.is-enabled { border-color: var(--primary-300); background: var(--primary-50); color: var(--text-primary); }
+.pf-fence-preview__ring { width: 52px; height: 52px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; flex: 0 0 auto; }
+.pf-fence-preview__ring i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.pf-fence-preview strong, .pf-fence-preview small { display: block; }
+.pf-fence-preview small { margin-top: 4px; color: var(--text-secondary); }
 @media (max-width: 960px) {
   .pf-grid {
     grid-template-columns: 1fr;

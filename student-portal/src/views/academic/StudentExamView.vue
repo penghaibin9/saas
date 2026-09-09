@@ -107,7 +107,7 @@
         </header>
         <StateBlock v-if="!deferrals.length" type="empty" text="暂无缓考申请" />
         <div v-else class="record-list">
-          <article v-for="record in deferrals" :key="record.deferId || record.id" class="record-item">
+          <article v-for="record in deferrals" :key="record.deferId || record.id" class="record-item" :class="{ 'is-target': String(record.deferId || record.id) === focusDeferId }">
             <header>
               <div>
                 <strong>{{ record.courseName || '课程名称待补充' }}</strong>
@@ -143,16 +143,19 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const route = useRoute()
+const focusDeferId = computed(() => String(route.query.deferId || ''))
 const loading = ref(true)
 const error = ref('')
 const actingKey = ref('')
-const tab = ref('schedule')
+const tab = ref(['schedule', 'apply', 'records'].includes(String(route.query.tab)) ? String(route.query.tab) : 'schedule')
 const exams = ref([])
 const deferOptions = ref([])
 const deferrals = ref([])
@@ -303,6 +306,7 @@ onMounted(load)
 .exam-item__main span { margin-top: 3px; color: var(--t3); font-size: 11.5px; }
 .exam-item__main small { margin-top: 5px; color: var(--t4); font-size: 11.5px; }
 .option-item, .record-item { padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
+.record-item.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
 .option-item > header, .record-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .option-item > header strong, .option-item > header span, .record-item > header strong, .record-item > header span { display: block; }
 .option-item > header strong, .record-item > header strong { color: var(--t1); font-size: 14px; }

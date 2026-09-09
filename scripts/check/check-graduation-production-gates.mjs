@@ -109,8 +109,9 @@ const legacyPos = routeRegistration.indexOf('api_router.include_router(graduatio
 if (guardPos < 0 || sensitivePos < 0 || archivePos < 0 || !(guardPos < legacyPos && sensitivePos < legacyPos && archivePos < legacyPos)) {
   failures.push('毕业设计敏感精确路由未优先于旧路由注册')
 }
-if (!routeRegistration.includes('api_router.include_router(mobile_graduation_guard.router)')
-    || routeRegistration.indexOf('api_router.include_router(mobile_graduation_guard.router)') > routeRegistration.indexOf('mobile.router,')) {
+const mobileGuardPos = routeRegistration.indexOf('api_router.include_router(mobile_graduation_guard.router)')
+const mobileRouterPos = routeRegistration.indexOf('api_router.include_router(mobile_router')
+if (mobileGuardPos < 0 || mobileRouterPos < 0 || mobileGuardPos > mobileRouterPos) {
   failures.push('学生小程序任务书证据路由未优先注册')
 }
 if (!routeRegistration.includes('api_router.include_router(student_portal_graduation_guard.router)')

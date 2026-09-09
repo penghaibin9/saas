@@ -167,38 +167,48 @@ def process_report_review_guard(
 def archive_student_guard(
     internship_id: int,
     body: dict = Body(default={}),
-    user=Depends(require_permission("internship.archive.manage")),
+    user=Depends(require_permission("internship.archive.execute")),
 ):
     payload = body or {}
-    prepared = material_svc.prepare_archive_manifest(
-        internship_id, user=user,
-        force_file_ids=payload.get("evidenceFileIds") or [],
+    result = material_svc.archive_with_manifest(
+        user, internship_id,
+        force=bool(payload.get("force")),
+        force_reason=payload.get("forceReason") or "",
+        evidence_file_ids=payload.get("evidenceFileIds") or [],
+        expected_version=payload.get("expectedVersion", payload.get("version")),
+        record_expected_version=payload.get(
+            "recordExpectedVersion", payload.get("recordVersion")
+        ),
     )
-    try:
-        result = archive_svc.archive_student(
-            user, internship_id,
-            force=bool(payload.get("force")),
-            force_reason=payload.get("forceReason") or "",
-            evidence_file_ids=payload.get("evidenceFileIds") or [],
-            expected_version=payload.get("expectedVersion", payload.get("version")),
-            record_expected_version=payload.get(
-                "recordExpectedVersion", payload.get("recordVersion")
-            ),
-        )
-        manifest = material_svc.finalize_manifest(
-            prepared["manifestId"], internship_id, user=user,
-        )
-    except Exception as exc:
-        material_svc.abort_manifest(prepared["manifestId"], str(exc), user=user)
-        raise
-    result["fileVersionManifest"] = manifest
+    receipt = result.get("operationReceipt") or {}
     audit_log.record(
         "归档实习学生", f"internship-archive:{internship_id}",
-        detail={"manifestId": prepared["manifestId"],
-                "manifestSha256": prepared["manifestSha256"],
-                "fileVersionCount": prepared["itemCount"]},
+        detail={"manifestId": receipt.get("manifestId"),
+                "manifestSha256": receipt.get("manifestSha256"),
+                "fileVersionCount": receipt.get("fileVersionCount")},
     )
     return success(result, message="归档完成")
+
+
+@router.post("/archive/{internship_id}/preflight", summary="归档预检（服务端事实与文件安全回执）")
+def archive_preflight_guard(
+    internship_id: int,
+    user=Depends(require_permission("internship.archive.view")),
+):
+    result = archive_svc.preflight_archive(internship_id, user=user)
+    audit_log.record(
+        "预检实习归档", f"internship-archive:{internship_id}",
+        detail=result.get("preflightReceipt") or {},
+    )
+    return success(result, message="归档预检完成")
+
+
+@router.get("/archive/{internship_id}/employment-transition", summary="按已发布冻结结果衔接就业")
+def archive_employment_transition(
+    internship_id: int,
+    user=Depends(require_permission("internship.employment.view")),
+):
+    return success(archive_svc.employment_transition_context(internship_id, user=user))
 
 
 @router.post("/archive/{internship_id}/package", summary="按冻结 file_version 清单生成归档包")
@@ -216,6 +226,52 @@ def archive_package_guard(
     return success(result, message="归档包已生成")
 
 
+@router.post("/archive-packages/{package_id}/restore-check", summary="校验归档包恢复行数与哈希")
+def archive_package_restore_check(
+    package_id: int,
+    user=Depends(require_permission("internship.archive.package")),
+):
+    result = material_svc.verify_package_for_restore(package_id, user=user)
+    audit_log.record(
+        "校验实习归档恢复包", f"internship-archive-package:{package_id}",
+        detail=result.get("operationReceipt") or {},
+    )
+    return success(result, message="恢复校验通过")
+
+
+@router.post("/archive-batches/{batch_id}/packages", summary="按冻结 Manifest 流式生成批次归档分片")
+def archive_batch_package_guard(
+    batch_id: int,
+    body: Optional[dict] = Body(None),
+    user=Depends(require_permission("internship.archive.package")),
+):
+    payload = body or {}
+    result = material_svc.build_batch_versioned_package(
+        batch_id, user=user,
+        after_id=payload.get("afterId", 0),
+        limit=payload.get("limit", 20),
+    )
+    audit_log.record(
+        "生成实习批次归档包", f"internship-archive-batch:{batch_id}",
+        detail=result.get("operationReceipt") or {},
+    )
+    return success(result, message="批次归档分片已生成")
+
+
+@router.get("/archive-batch-packages/{package_id}/download", summary="下载数据范围内的批次归档包")
+def archive_batch_package_download(
+    package_id: int,
+    user=Depends(require_permission("internship.archive.package")),
+):
+    path, filename = material_svc.resolve_batch_package_download(package_id, user=user)
+    return validated_local_file_response(
+        path, filename=filename, media_type="application/zip",
+        audit_action="INTERNSHIP_ARCHIVE_BATCH_PACKAGE_DOWNLOAD",
+        audit_target=f"internship-archive-batch-package:{package_id}",
+        audit_detail={"packageId": str(package_id), "scopeChecked": True},
+    )
+
+
 @router.post("/archive/{internship_id}/revoke", summary="撤销归档并失效版本清单")
 def archive_revoke_guard(
     internship_id: int,
@@ -224,14 +280,13 @@ def archive_revoke_guard(
 ):
     payload = body or {}
     reason = str(payload.get("reason") or "").strip()
-    result = archive_svc.revoke_archive(
+    result = material_svc.revoke_with_manifests(
         user, internship_id, reason,
         expected_version=payload.get("expectedVersion", payload.get("version")),
         record_expected_version=payload.get(
             "recordExpectedVersion", payload.get("recordVersion")
         ),
     )
-    result.update(material_svc.revoke_manifests(internship_id, reason, user=user))
     audit_log.record(
         "撤销实习归档", f"internship-archive:{internship_id}", detail=result,
     )

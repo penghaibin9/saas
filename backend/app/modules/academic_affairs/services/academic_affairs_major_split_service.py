@@ -73,7 +73,8 @@ def _get_batch(db, bid):
 
 
 def _v_dto(v):
-    return {"volunteerId": str(v.id), "studentId": str(v.student_id), "studentNo": v.student_no,
+    return {"volunteerId": str(v.id), "batchId": str(v.batch_id),
+            "studentId": str(v.student_id), "studentNo": v.student_no,
             "studentName": v.student_name,
             "choices": json.loads(v.choices_json) if v.choices_json else [],
             "gpa": float(v.gpa_snapshot) if v.gpa_snapshot is not None else None,

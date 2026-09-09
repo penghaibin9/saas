@@ -79,8 +79,8 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(s) { return _STATUS_LABEL[s] || s },
-    equipStatusLabel(s) { return _EQUIP_STATUS_LABEL[s] || s },
+    statusLabel(s) { return _STATUS_LABEL[s] || '状态待确认' },
+    equipStatusLabel(s) { return _EQUIP_STATUS_LABEL[s] || '设备状态待确认' },
     pct(v) { return v == null ? '—' : `${v}%` },
     async load() {
       this.loading = true

@@ -1,203 +1,33 @@
 <template>
-  <ModulePageShell
-    title="接口、凭证与 Webhook"
-    subtitle="本校已授权连接维护 · 凭证加密存储 · 轮换可审计"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <template #actions>
-      <ModuleToolbar :actions="[{ key: 'create', label: '＋ 新建连接', variant: 'primary' }]" @action="openForm(null)" />
-    </template>
-
-    <div class="mp-stack">
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无接口连接" description="可新增本校已授权的接口或 Webhook 连接" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="id">
-        <template #cell-status="{ row }">
-          <StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.statusLabel || row.status" dot />
-        </template>
-        <template #cell-actions="{ row }">
-          <button class="mp-link" @click="openForm(row)">编辑</button>
-          <button class="mp-link" @click="openRotate(row)">轮换凭证</button>
-          <button class="mp-link" @click="testConnection(row)">测试连接</button>
-        </template>
-      </DataTable>
-    </div>
-
-    <div class="mp-stack ig-sync">
-      <h3 class="ig-sync__title">同步任务</h3>
-      <DataTable v-if="syncJobs.length" :columns="syncColumns" :rows="syncJobs" row-key="id">
-        <template #cell-status="{ row }">
-          <StatusTag :type="syncStatusTone(row.status)" :label="row.statusLabel || row.status" dot />
-        </template>
-        <template #cell-actions="{ row }">
-          <button v-if="row.status === 'FAILED'" class="mp-link" @click="retrySync(row)">重试</button>
-          <button v-if="row.status !== 'CANCELLED' && row.status !== 'SUCCESS'" class="mp-link" @click="cancelSync(row)">取消</button>
-        </template>
-      </DataTable>
-      <EmptyState v-else title="暂无同步任务" description="" />
-    </div>
-
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑接口连接' : '新建接口连接'" mode="modal" size="medium">
-      <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
-      <template #footer>
-        <AppButton variant="ghost" @click="form.open = false">取消</AppButton>
-        <AppButton variant="primary" :loading="form.submitting" @click="submitForm">保存</AppButton>
-      </template>
-    </AppDrawer>
-
-    <AppDrawer v-model:visible="rotate.open" :title="'轮换凭证 · ' + rotate.name" mode="modal" size="small">
-      <label class="ig-label">新凭证（至少 8 位）</label>
-      <AppTextarea v-model="rotate.credential" :rows="2" />
-      <template #footer>
-        <AppButton variant="ghost" @click="rotate.open = false">取消</AppButton>
-        <AppButton variant="primary" :loading="rotate.submitting" @click="submitRotate">确认轮换</AppButton>
-      </template>
-    </AppDrawer>
+  <ModulePageShell title="接口连接与同步" subtitle="连接配置、凭证轮换与同步任务分开核对：连通性测试通过不代表同步任务已经成功" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar"/></template>
+    <div class="mp-stack"><div class="su-notice su-notice--warning"><b>接口能力与权限由服务端双重校验。</b><p>本页不会因为按钮可见就假定学校已开通 apiAccess；实际保存、测试、轮换与同步操作仍以服务端能力授权和 <code>systemAdmin.integration.manage</code> 校验为准。</p></div><ErrorState v-if="error" :description="error" @retry="load"/><LoadingState v-else-if="loading"/>
+      <template v-else><section class="su-metrics"><div class="su-metric"><span>连接总数</span><strong>{{ rows.length }}</strong><small>来自本次真实连接列表</small></div><div class="su-metric"><span>启用连接</span><strong>{{ activeConnectionCount }}</strong><small>只统计服务端状态为 ACTIVE</small></div><div class="su-metric" :class="{'is-warning':syncLoading||syncError}"><span>同步失败</span><strong>{{ syncFailureText }}</strong><small>{{ syncError?'同步任务读取失败':syncLoading?'正在读取同步任务':'来自当前同步任务列表' }}</small></div><div class="su-metric" :class="{'is-warning':syncRunningCount}"><span>同步进行中</span><strong>{{ syncLoading||syncError?'未取得':syncRunningCount }}</strong><small>连接状态与任务状态分开计算</small></div></section>
+        <section class="ig-grid"><div class="ig-main"><section class="mp-card"><header class="mp-card__head"><div><span class="mp-card__title">连接配置</span><p class="mp-note">只展示脱敏凭证；编辑时留空不改原凭证。</p></div><span class="sw-tag">{{ rows.length }} 个连接</span></header><div v-if="!rows.length" class="mp-card__body"><EmptyState title="暂无接口连接" description="如果学校已经获授权，可由具备接口管理权限的管理员新增连接"/></div><div v-else class="ig-connections"><article v-for="row in rows" :key="row.id" class="ig-connection"><header class="ig-connection__head"><div><h3>{{ row.name }}</h3><p>{{ row.endpoint }}</p></div><StatusTag :type="row.status==='ACTIVE'?'success':'default'" :label="row.statusLabel||row.status" dot/></header><dl class="ig-facts"><div><dt>认证方式</dt><dd>{{ row.authType||'未设置' }}</dd></div><div><dt>凭证</dt><dd>{{ row.credentialMasked||'未取得' }}</dd></div><div><dt>最近更新</dt><dd>{{ row.updatedAt||'未取得' }}</dd></div></dl><div v-if="testState[row.id]" class="ig-test" :class="testState[row.id].ok?'ig-test--success':'ig-test--error'"><b>{{ testState[row.id].ok?'连通性测试通过':'连通性测试失败' }}</b><p>{{ testState[row.id].message }}</p><small>这只代表本次连接测试结果，不代表任何同步任务已成功。</small></div><footer class="ig-actions"><button class="mp-link" :disabled="!canManage" :title="manageReason" @click="openForm(row)">编辑</button><button class="mp-link" :disabled="!canManage" :title="manageReason" @click="openRotate(row)">轮换凭证</button><button class="mp-link" :disabled="!canManage||testingId===row.id" :title="manageReason" @click="testConnection(row)">{{ testingId===row.id?'测试中…':'测试连接' }}</button></footer></article></div></section>
+          <section class="mp-card"><header class="mp-card__head"><div><span class="mp-card__title">同步任务</span><p class="mp-note">同步失败、运行中与连接是否启用是不同事实；这里不把“能连接”当作“已同步”。</p></div><button class="mp-link" :disabled="syncLoading" @click="loadSyncJobs">{{ syncLoading?'刷新中…':'刷新同步任务' }}</button></header><div class="mp-card__body"><ErrorState v-if="syncError" :description="syncError" @retry="loadSyncJobs"/><LoadingState v-else-if="syncLoading"/><EmptyState v-else-if="!syncJobs.length" title="服务端未返回同步任务" description="这是本次任务接口的空结果，不表示接口连接已经完成数据同步"/><DataTable v-else :columns="syncColumns" :rows="syncJobs" row-key="id"><template #cell-status="{row}"><StatusTag :type="syncStatusTone(row.status)" :label="row.statusLabel||row.status" dot/></template><template #cell-message="{row}"><span class="ig-message">{{ row.message||'—' }}</span></template><template #cell-actions="{row}"><button v-if="row.status==='FAILED'" class="mp-link" :disabled="!canManage||operatingJobId===row.id" @click="retrySync(row)">重试</button><button v-if="row.status!=='CANCELLED'&&row.status!=='SUCCESS'" class="mp-link" :disabled="!canManage||operatingJobId===row.id" @click="cancelSync(row)">取消</button></template></DataTable></div></section>
+        </div><aside class="ig-side"><section class="mp-card"><header class="mp-card__head"><span class="mp-card__title">一次办成顺序</span></header><div class="mp-card__body ig-guide"><div><span>01</span><div><b>先核对学校授权</b><p>未开通接口能力时，不通过前端按钮绕过服务端门禁。</p></div></div><div><span>02</span><div><b>配置连接并保护凭证</b><p>页面只显示脱敏值；轮换凭证单独留痕。</p></div></div><div><span>03</span><div><b>做连通性测试</b><p>只回答“能否连接”，不回答“数据是否已经同步”。</p></div></div><div><span>04</span><div><b>再看同步任务结果</b><p>失败任务在任务层重试，不通过重复保存连接来碰碰运气。</p></div></div></div></section><section class="mp-card"><header class="mp-card__head"><span class="mp-card__title">权限边界</span></header><div class="mp-card__body"><div class="su-notice" :class="canManage?'su-notice--success':'su-notice--warning'"><b>{{ canManage?'当前身份命中接口管理权限':'当前身份没有接口管理权限' }}</b><p>{{ canManage?'仍需服务端继续校验学校能力、租户范围与操作条件。':'本页写操作保持禁用；路由守卫与服务端仍是最终边界。' }}</p></div></div></section></aside></section>
+      </template></div>
+    <AppDrawer v-model:visible="form.open" :title="form.id?'编辑接口连接':'新建接口连接'" mode="modal" size="medium"><FormFields v-model="form.value" :fields="formFields" :errors="form.errors"/><template #footer><AppButton variant="ghost" @click="form.open=false">取消</AppButton><AppButton variant="primary" :loading="form.submitting" :disabled="!canManage" @click="submitForm">保存</AppButton></template></AppDrawer>
+    <AppDrawer v-model:visible="rotate.open" :title="'轮换凭证 · '+rotate.name" mode="modal" size="small"><label class="ig-label">新凭证（至少 8 位）</label><AppTextarea v-model="rotate.credential" :rows="2"/><p class="mp-note">轮换会影响后续连接认证，请确认新凭证已经在对端准备完成。</p><template #footer><AppButton variant="ghost" @click="rotate.open=false">取消</AppButton><AppButton variant="primary" :loading="rotate.submitting" :disabled="!canManage||rotate.credential.trim().length<8" @click="submitRotate">确认轮换</AppButton></template></AppDrawer>
   </ModulePageShell>
 </template>
-
 <script>
-import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell,ModuleToolbar,DataTable,StatusTag,LoadingState,ErrorState,EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { AppTextarea } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
-
-export default {
-  name: 'SystemIntegrationView',
-  components: {
-    ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextarea, FormFields
-  },
-  props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true,
-      error: '',
-      rows: [],
-      columns: [
-        { key: 'name', title: '连接名称' },
-        { key: 'endpoint', title: '接口地址' },
-        { key: 'authType', title: '认证方式' },
-        { key: 'credentialMasked', title: '凭证（脱敏）' },
-        { key: 'status', title: '状态' },
-        { key: 'updatedAt', title: '更新时间' },
-        { key: 'actions', title: '操作', width: '140px' }
-      ],
-      form: { open: false, id: '', value: {}, errors: {}, submitting: false },
-      rotate: { open: false, id: '', name: '', credential: '', submitting: false },
-      syncJobs: [],
-      syncColumns: [
-        { key: 'name', title: '任务名称' },
-        { key: 'adapterCode', title: '适配器' },
-        { key: 'status', title: '状态' },
-        { key: 'message', title: '说明' },
-        { key: 'actions', title: '操作', width: '120px' }
-      ]
-    }
-  },
-  computed: {
-    formFields() {
-      return [
-        { key: 'name', label: '连接名称', required: true },
-        { key: 'endpoint', label: '接口地址', required: true, full: true },
-        { key: 'authType', label: '认证方式', placeholder: 'TOKEN / BASIC / WEBHOOK' },
-        { key: 'credential', label: '凭证（新建或覆盖）', type: 'textarea', full: true, hint: '编辑时留空表示不改动凭证' }
-      ]
-    }
-  },
-  created() { this.load() },
-  methods: {
-    openForm(row) {
-      this.form = {
-        open: true,
-        id: row ? row.id : '',
-        value: row
-          ? { name: row.name, endpoint: row.endpoint, authType: row.authType || 'TOKEN', credential: '' }
-          : { name: '', endpoint: '', authType: 'TOKEN', credential: '' },
-        errors: {},
-        submitting: false
-      }
-    },
-    async submitForm() {
-      const errors = FormFields.validateRequired(
-        this.formFields.filter((f) => f.key !== 'credential' && f.key !== 'authType'),
-        this.form.value
-      )
-      this.form.errors = errors
-      if (Object.keys(errors).length) return
-      this.form.submitting = true
-      const res = await systemApi.saveIntegration({ id: this.form.id || undefined, ...this.form.value })
-      this.form.submitting = false
-      if (res.code === 0) {
-        toast.success('接口连接已保存')
-        this.form.open = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
-    openRotate(row) {
-      this.rotate = { open: true, id: row.id, name: row.name, credential: '', submitting: false }
-    },
-    async submitRotate() {
-      this.rotate.submitting = true
-      const res = await systemApi.rotateIntegration(this.rotate.id, { credential: this.rotate.credential })
-      this.rotate.submitting = false
-      if (res.code === 0) {
-        toast.success('凭证已轮换')
-        this.rotate.open = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
-    syncStatusTone(s) {
-      return { PENDING: 'default', RUNNING: 'warning', SUCCESS: 'success', FAILED: 'danger', CANCELLED: 'default' }[s] || 'default'
-    },
-    async testConnection(row) {
-      const res = await systemApi.testIntegration(row.id)
-      if (res.code === 0) toast.success(res.data?.message || '测试完成')
-      else toast.error(res.message)
-      this.load()
-    },
-    async retrySync(row) {
-      const res = await systemApi.retrySyncJob(row.id)
-      if (res.code === 0) { toast.success('已重试'); this.loadSyncJobs() }
-      else toast.error(res.message)
-    },
-    async cancelSync(row) {
-      const res = await systemApi.cancelSyncJob(row.id, { reason: '管理员在接口治理页取消' })
-      if (res.code === 0) { toast.success('已取消'); this.loadSyncJobs() }
-      else toast.error(res.message)
-    },
-    async loadSyncJobs() {
-      const res = await systemApi.listSyncJobs()
-      if (res.code === 0) this.syncJobs = res.data.list || res.data.items || []
-    },
-    async load() {
-      this.loading = true
-      this.error = ''
-      const res = await systemApi.listIntegrations()
-      if (res.code === 0) this.rows = res.data.list || []
-      else this.error = res.message
-      this.loading = false
-      await this.loadSyncJobs()
-    }
-  }
+import { matchPermission } from '@/config/navPlan.js'
+export default{
+ name:'SystemIntegrationView',components:{ModulePageShell,ModuleToolbar,DataTable,StatusTag,LoadingState,ErrorState,EmptyState,AppButton,AppDrawer,AppTextarea,FormFields},props:{ctx:{type:Object,required:true}},
+ data(){return{loading:true,error:'',rows:[],form:{open:false,id:'',value:{},errors:{},submitting:false},rotate:{open:false,id:'',name:'',credential:'',submitting:false},testingId:'',testState:{},syncJobs:[],syncLoading:false,syncError:'',operatingJobId:'',syncColumns:[{key:'name',title:'任务名称'},{key:'adapterCode',title:'适配器'},{key:'status',title:'状态'},{key:'message',title:'说明'},{key:'actions',title:'操作',width:'120px'}]}},
+ computed:{canManage(){return matchPermission(this.ctx.permissionPatterns||[],'systemAdmin.integration.manage')},manageReason(){return this.canManage?'':'当前身份没有 systemAdmin.integration.manage 权限'},toolbarActions(){return[{key:'create',label:'＋ 新建连接',variant:'primary',disabled:!this.canManage,disabledReason:this.manageReason}]},activeConnectionCount(){return this.rows.filter(r=>r.status==='ACTIVE').length},syncFailedCount(){return this.syncJobs.filter(r=>r.status==='FAILED').length},syncRunningCount(){return this.syncJobs.filter(r=>r.status==='RUNNING'||r.status==='PENDING').length},syncFailureText(){return this.syncLoading||this.syncError?'未取得':String(this.syncFailedCount)},formFields(){return[{key:'name',label:'连接名称',required:true},{key:'endpoint',label:'接口地址',required:true,full:true},{key:'authType',label:'认证方式',placeholder:'TOKEN / BASIC / WEBHOOK'},{key:'credential',label:'凭证（新建或覆盖）',type:'textarea',full:true,hint:'编辑时留空表示不改动凭证'}]}},
+ created(){this.load()},methods:{onToolbar(k){if(k==='create')this.openForm(null)},openForm(row){if(!this.canManage)return;this.form={open:true,id:row?row.id:'',value:row?{name:row.name,endpoint:row.endpoint,authType:row.authType||'TOKEN',credential:''}:{name:'',endpoint:'',authType:'TOKEN',credential:''},errors:{},submitting:false}},async submitForm(){if(!this.canManage||this.form.submitting)return;const e=FormFields.validateRequired(this.formFields.filter(f=>!['credential','authType'].includes(f.key)),this.form.value);this.form.errors=e;if(Object.keys(e).length)return;this.form.submitting=true;const r=await systemApi.saveIntegration({id:this.form.id||undefined,...this.form.value});this.form.submitting=false;if(r.code===0){toast.success('接口连接已保存并由服务端留痕');this.form.open=false;await this.load()}else toast.error(r.message)},openRotate(row){if(this.canManage)this.rotate={open:true,id:row.id,name:row.name,credential:'',submitting:false}},async submitRotate(){if(!this.canManage||this.rotate.submitting||this.rotate.credential.trim().length<8)return;this.rotate.submitting=true;const r=await systemApi.rotateIntegration(this.rotate.id,{credential:this.rotate.credential});this.rotate.submitting=false;if(r.code===0){toast.success('凭证已轮换并留痕');this.rotate.open=false;await this.load()}else toast.error(r.message)},syncStatusTone(s){return{PENDING:'default',RUNNING:'warning',SUCCESS:'success',FAILED:'danger',CANCELLED:'default'}[s]||'default'},async testConnection(row){if(!this.canManage||this.testingId)return;this.testingId=row.id;const r=await systemApi.testIntegration(row.id);this.testingId='';this.testState={...this.testState,[row.id]:{ok:r.code===0,message:r.code===0?(r.data?.message||'服务端连接测试完成'):(r.message||'连接测试失败')}};r.code===0?toast.success('连接测试完成；这不代表同步任务成功'):toast.error(r.message)},async retrySync(row){if(!this.canManage||this.operatingJobId)return;this.operatingJobId=row.id;const r=await systemApi.retrySyncJob(row.id);this.operatingJobId='';if(r.code===0){toast.success('失败任务已提交重试');await this.loadSyncJobs()}else toast.error(r.message)},async cancelSync(row){if(!this.canManage||this.operatingJobId)return;this.operatingJobId=row.id;const r=await systemApi.cancelSyncJob(row.id,{reason:'管理员在接口治理页取消'});this.operatingJobId='';if(r.code===0){toast.success('同步任务已取消');await this.loadSyncJobs()}else toast.error(r.message)},async loadSyncJobs(){this.syncLoading=true;this.syncError='';const r=await systemApi.listSyncJobs();if(r.code===0)this.syncJobs=r.data?.list||r.data?.items||[];else{this.syncJobs=[];this.syncError=r.message||'同步任务加载失败'}this.syncLoading=false},async load(){this.loading=true;this.error='';const r=await systemApi.listIntegrations();if(r.code===0)this.rows=r.data?.list||[];else{this.rows=[];this.error=r.message||'接口连接加载失败'}this.loading=false;await this.loadSyncJobs()}}
 }
 </script>
-
 <style scoped>
 @import '@/styles/module-page.css';
-.ig-label {
-  display: block;
-  font-size: var(--font-size-sm);
-  margin-bottom: var(--space-1);
-}
-.mp-link + .mp-link { margin-left: var(--space-2); }
+.ig-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}.ig-main,.ig-side{display:grid;gap:16px;min-width:0}.ig-connections{display:grid}.ig-connection{padding:18px 20px;border-top:1px solid var(--border-light)}.ig-connection:first-child{border-top:0}.ig-connection__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.ig-connection__head h3{margin:0;font-size:15px}.ig-connection__head p{margin:3px 0 0;color:var(--text-tertiary);font-size:var(--font-size-xs);overflow-wrap:anywhere}.ig-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 0}.ig-facts>div{padding:10px;border-radius:9px;background:var(--bg-page)}.ig-facts dt{color:var(--text-tertiary);font-size:11px}.ig-facts dd{margin:4px 0 0;font-size:var(--font-size-sm);overflow-wrap:anywhere}.ig-test{margin-top:12px;padding:11px 13px;border-radius:9px;font-size:var(--font-size-xs)}.ig-test p,.ig-test small{display:block;margin:3px 0 0}.ig-test--success{background:var(--success-50,#edf9f4);color:var(--success-700,#136b52)}.ig-test--error{background:var(--danger-50,#fff1f3);color:var(--danger-700,#a52e43)}.ig-actions{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}.ig-message{display:block;max-width:360px;overflow-wrap:anywhere}.ig-guide{display:grid;gap:16px}.ig-guide>div{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px}.ig-guide>div>span{display:grid;width:30px;height:30px;place-items:center;border-radius:8px;background:var(--primary-50);color:var(--primary-700);font-size:11px;font-weight:650}.ig-guide p{margin:3px 0 0;color:var(--text-tertiary);font-size:11px}.ig-label{display:block;margin-bottom:var(--space-1);font-size:var(--font-size-sm)}code{font-family:ui-monospace,Consolas,monospace}@media(max-width:1050px){.ig-grid{grid-template-columns:1fr}.ig-side{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:720px){.ig-side,.ig-facts{grid-template-columns:1fr}}
 </style>

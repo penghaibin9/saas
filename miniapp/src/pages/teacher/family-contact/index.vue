@@ -17,7 +17,7 @@
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无家校联系记录"
           description="登记的家校联系会出现在这里。" />
         <view class="stack" v-else>
-          <view v-for="c in list" :key="c.contactId" class="card fc">
+          <view v-for="c in list" :key="c.contactId" class="card fc" :class="{ 'is-focused': String(c.contactId) === focusContactId }">
             <view class="row-between">
               <view class="flex-1">
                 <text class="t-md t-bold">{{ c.realName || '—' }}</text>
@@ -73,7 +73,7 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { decodeQueryText, toast } from '@/utils/nav'
 
 const submitLock = createSubmitLock(1500)
 const TYPES = [
@@ -86,10 +86,15 @@ export default {
     return {
       tab: 'list', list: null, state: 'loading', acting: false,
       students: [], studentIndex: 0, typeLabels: TYPES.map((t) => t.label), typeIndex: 0,
-      reason: '', result: '', submitting: false, prefillLocked: false
+      reason: '', result: '', submitting: false, prefillLocked: false, focusContactId: ''
     }
   },
-  onLoad(q) { this.applyPrefill(q || {}); this.load() },
+  onLoad(q) {
+    const rawId = String((q && q.contactId) || '').trim()
+    this.focusContactId = /^[1-9]\d*$/.test(rawId) ? rawId : ''
+    this.applyPrefill(q || {})
+    this.load()
+  },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -103,9 +108,9 @@ export default {
       if (q.mode !== 'create' || !studentId) return
       this.students = [{
         studentId,
-        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
-        studentNo: q.studentNo ? decodeURIComponent(q.studentNo) : '',
-        className: q.className ? decodeURIComponent(q.className) : ''
+        name: decodeQueryText(q.studentName, '当前学生'),
+        studentNo: decodeQueryText(q.studentNo),
+        className: decodeQueryText(q.className)
       }]
       const type = String(q.contactType || '').toUpperCase()
       const idx = TYPES.findIndex((item) => item.key === type)
@@ -118,7 +123,15 @@ export default {
     load(done) {
       this.state = 'loading'
       teacherApi.getFamilyContactList()
-        .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
+        .then((d) => {
+          const rows = (d && d.list) || []
+          if (this.focusContactId) {
+            const index = rows.findIndex((item) => String(item.contactId) === this.focusContactId)
+            this.list = index > 0 ? [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)] : rows
+            if (index < 0) toast('未在当前负责范围找到这条家校联系记录')
+          } else this.list = rows
+          this.state = 'ready'
+        })
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
     },
@@ -176,6 +189,7 @@ export default {
 .fc__tab-u { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; background: var(--teacher-600); }
 .fc__tab-badge { margin-left: 4px; font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-full); }
 .fc { display: flex; flex-direction: column; gap: var(--space-2); }
+.fc.is-focused { border-color: var(--teacher-500); box-shadow: 0 0 0 2px rgba(37, 99, 235, .1); }
 .fc__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .fc__row { display: flex; gap: var(--space-3); }
 .fc__row-k { font-size: var(--font-size-sm); color: var(--text-tertiary); width: 56px; flex-shrink: 0; }

@@ -35,6 +35,15 @@
         :message="decisionError.message"
       />
 
+      <section v-if="lastSuccess" class="selection-success" aria-live="polite">
+        <div class="selection-success__mark" aria-hidden="true">✓</div>
+        <div>
+          <strong>“{{ lastSuccess }}”已选课成功</strong>
+          <span>选课记录已经保存。名单锁定且课表正式发布后，课程会进入“我的课表”；今天上什么课始终以正式课表为准。</span>
+        </div>
+        <button class="sp-btn sp-btn--sm" type="button" @click="goSchedule">查看我的课表</button>
+      </section>
+
       <section class="selection-summary" aria-label="选课概览">
         <article class="summary-card">
           <div class="summary-card__icon is-blue" aria-hidden="true">批</div>
@@ -82,7 +91,7 @@
             <StateBlock v-if="!group.courses.length" type="empty" text="本批次暂无可办理课程" />
             <div v-else class="course-table-wrap">
               <table class="sp-table course-table">
-                <thead><tr><th>课程</th><th>教师</th><th>学分</th><th>实时余量</th><th>状态</th><th class="is-action">操作</th></tr></thead>
+                <thead><tr><th>课程</th><th>教师</th><th>上课安排</th><th>学分</th><th>实时余量</th><th>状态</th><th class="is-action">操作</th></tr></thead>
                 <tbody>
                   <tr v-for="course in group.courses" :key="course.selectionCourseId" :class="{ 'is-selected': isSelected(course) }">
                     <td>
@@ -94,6 +103,7 @@
                       </div>
                     </td>
                     <td>{{ course.teacherName || '待定' }}</td>
+                    <td><div class="course-schedule">{{ scheduleText(course) }}</div></td>
                     <td><span class="course-credit">{{ course.credit ?? '—' }}</span></td>
                     <td>
                       <div class="remain-cell">
@@ -174,6 +184,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AcademicDecisionTraceCard from '../../components/academic/AcademicDecisionTraceCard.vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
@@ -181,16 +192,18 @@ import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const actingId = ref('')
 const decisionError = ref(null)
 const tab = ref('courses')
+const lastSuccess = ref('')
 const rawGroups = ref([])
 const records = ref([])
 
 const groups = computed(() => normalizeGroups(rawGroups.value))
-const selectedRecords = computed(() => records.value.filter((record) => String(record.status || '').toUpperCase() === 'SELECTED'))
+const selectedRecords = computed(() => records.value.filter((record) => ['SELECTED', 'LOCKED'].includes(String(record.status || '').toUpperCase())))
 const selectedCredits = computed(() => selectedRecords.value.reduce((sum, record) => sum + Number(record.credit || 0), 0))
 const courseCount = computed(() => groups.value.reduce((sum, group) => sum + (group.courses?.length || 0), 0))
 const courseProjectionById = computed(() => {
@@ -213,6 +226,16 @@ function normalizeGroups(data) {
   return source.length ? [{ batch: { batchId: 'current', batchName: '当前可办理课程', status: 'OPEN' }, courses: source }] : []
 }
 function dateText(value) { return String(value || '').slice(0, 10) || '—' }
+const weekdayLabels = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+function scheduleText(course) {
+  const rows = Array.isArray(course?.scheduleItems) ? course.scheduleItems : []
+  if (!rows.length) return '时间待排，以正式课表为准'
+  return rows.map((row) => {
+    const parity = row.weekParity === 'ODD' ? '单周' : row.weekParity === 'EVEN' ? '双周' : ''
+    const weeks = row.startWeek && row.endWeek ? `第${row.startWeek}—${row.endWeek}周` : ''
+    return [weekdayLabels[Number(row.weekday)] || `周${row.weekday}`, `第${row.slotNo}节`, parity, weeks, row.classroom].filter(Boolean).join(' · ')
+  }).join('；')
+}
 function windowText(batch) {
   const start = dateText(batch.selectStartAt || batch.windowStart || batch.startAt)
   const end = dateText(batch.selectEndAt || batch.windowEnd || batch.endAt)
@@ -269,8 +292,9 @@ function recordStatusText(status) {
   return map[String(status || '').toUpperCase()] || status || '待确认'
 }
 function recordTone(status) {
-  return String(status || '').toUpperCase() === 'SELECTED' ? 'success' : 'default'
+  return ['SELECTED', 'LOCKED'].includes(String(status || '').toUpperCase()) ? 'success' : 'default'
 }
+function goSchedule() { router.push('/academic/schedule') }
 async function load() {
   loading.value = true
   error.value = ''
@@ -304,6 +328,7 @@ async function enroll(course) {
       return
     }
     await portalApi.academicEnroll({ selectionCourseId: id })
+    lastSuccess.value = course?.courseName || '该课程'
     ui.notify(course?.reselect ? '补选成功' : '选课成功')
     await load()
   } catch (e) {
@@ -369,6 +394,12 @@ onMounted(load)
 .selection-error { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 20px; }
 .selection-error__mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--danger-bg); color: var(--danger-fg); font-weight: 800; }
 .selection-decision { margin-bottom: 14px; }
+.selection-success { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-bottom: 14px; padding: 14px 16px; border: 1px solid #b7e4c7; border-radius: 14px; background: #f0fbf4; }
+.selection-success__mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--ok-fg); color: #fff; font-weight: 800; }
+.selection-success strong, .selection-success span { display: block; }
+.selection-success strong { color: var(--t1); font-size: 14px; }
+.selection-success span { margin-top: 3px; color: var(--t3); font-size: 12px; line-height: 1.55; }
+.course-schedule { min-width: 180px; max-width: 260px; color: var(--t2); font-size: 12px; line-height: 1.55; }
 .selection-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .summary-card { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 13px; align-items: center; padding: 17px 18px; border: 1px solid var(--line); border-radius: 15px; background: #fff; box-shadow: 0 10px 26px -24px rgba(15,23,42,.35); }
 .summary-card__icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; font-size: 12px; font-weight: 800; }
@@ -426,6 +457,8 @@ onMounted(load)
 .selection-note strong { color: var(--t1); font-size: 12.5px; }
 .selection-note span { margin-top: 4px; color: var(--t3); font-size: 11.5px; line-height: 1.7; }
 @media (max-width: 820px) {
+  .selection-success { grid-template-columns: 36px minmax(0, 1fr); }
+  .selection-success .sp-btn { grid-column: 2; justify-self: start; }
   .selection-hero { grid-template-columns: 1fr; gap: 18px; padding: 22px; }
   .selection-hero__aside { grid-template-columns: minmax(0,1fr) auto; align-items: end; padding: 14px 0 0; border-top: 1px solid rgba(47,107,255,.10); border-left: 0; }
   .selection-hero__aside .sp-btn { width: auto; }
@@ -435,6 +468,8 @@ onMounted(load)
   .batch-card__meta { justify-content: flex-start; }
 }
 @media (max-width: 520px) {
+  .selection-success { grid-template-columns: 1fr; }
+  .selection-success .sp-btn { grid-column: 1; width: 100%; }
   .selection-hero__aside { grid-template-columns: 1fr; }
   .selection-hero__aside .sp-btn { width: 100%; }
   .selection-tabs button { font-size: 12.5px; }

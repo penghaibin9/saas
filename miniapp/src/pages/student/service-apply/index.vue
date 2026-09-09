@@ -68,7 +68,7 @@
 import { useSubmissionsStore } from '@/stores/submissions'
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { decodeQueryText, toast } from '@/utils/nav'
 
 const submitLock = createSubmitLock(1500)
 
@@ -98,8 +98,8 @@ export default {
     }
   },
   onLoad(q) {
-    if (q && q.name) this.svcName = decodeURIComponent(q.name)
-    if (q && q.dept) this.dept = decodeURIComponent(q.dept)
+    if (q && q.name) this.svcName = decodeQueryText(q.name)
+    if (q && q.dept) this.dept = decodeQueryText(q.dept)
     if (q) this.needApprove = q.approve !== '0'
     this.typeOptions = TYPE_MAP[this.svcName] || TYPE_MAP.default
     const d = new Date()

@@ -25,7 +25,7 @@ export default {
   name: 'MessageCenterLayout',
   components: { BasePortalLayout, LoadingState },
   provide() {
-    return { appPickerAdapters: messageCenterPickerAdapters }
+    return { appPickerAdapters: messageCenterPickerAdapters, affairsWorkspace: true, conciseBusinessHeader: true }
   },
   data() {
     return { ctx: null }

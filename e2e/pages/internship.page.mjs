@@ -30,24 +30,45 @@ export class StudentInternshipPage {
     this.fixture = fixture
   }
 
-  async openLeave() {
-    await this.page.goto(`${this.baseUrl}/internship`)
-    await expect(this.page.getByRole('button', { name: '实习请假' })).toBeVisible()
-    await expect(this.page.getByText('正在加载实习信息…', { exact: true })).toBeHidden()
-
+  async selectExactBatchIfNeeded() {
     const batchSelector = this.page.getByText('请选择要办理的实习批次', { exact: true })
-    if (await batchSelector.count()) {
-      await expect(batchSelector).toBeVisible()
+    if (await batchSelector.isVisible().catch(() => false)) {
       const targetBatch = this.page.getByRole('button').filter({ hasText: this.fixture.batchName }).first()
       await expect(targetBatch).toBeVisible()
+      const selected = this.page.waitForResponse((response) =>
+        apiPath(response) === '/api/v1/portal/internship/my'
+        && response.request().headers()['x-internship-batch-id'] === String(this.fixture.batchId)
+      )
       await targetBatch.click()
+      await selected
+      await expect(batchSelector).toBeHidden()
     }
+  }
+
+  async openGroupedTab(groupName, tabName) {
+    const tab = this.page.getByRole('button', { name: tabName, exact: true })
+    if (!(await tab.isVisible().catch(() => false))) {
+      const group = this.page.locator('details.sp-process-group').filter({ hasText: groupName }).first()
+      await expect(group).toBeVisible()
+      await group.locator('summary').click()
+    }
+    await expect(tab).toBeVisible()
+    await tab.click()
+  }
+
+  async openLeave() {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
+    await this.page.goto(`${this.baseUrl}/internship`)
+    await initial
+
+    await this.selectExactBatchIfNeeded()
 
     await expect(this.page.getByText(this.fixture.companyName).first()).toBeVisible()
     await expect(this.page.getByText(this.fixture.positionName).first()).toBeVisible()
-    await this.page.getByRole('button', { name: '实习请假' }).click()
+    await this.openGroupedTab('在岗办理', '实习请假')
     await expect(this.page.getByText('发起请假', { exact: true })).toBeVisible()
-    await expect(this.page.getByText('我的请假', { exact: true })).toBeVisible()
+    await expect(this.page.getByText('我的请假与返岗', { exact: true })).toBeVisible()
   }
 
   leaveForm() {
@@ -91,16 +112,15 @@ export class StudentInternshipPage {
     const button = row.getByRole('button', { name: '办理销假' })
     await expect(button).toBeEnabled()
 
-    this.page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('prompt')
-      expect(dialog.message()).toContain('销假说明')
-      await dialog.accept(note)
-    })
+    await button.click()
+    const editor = row.locator('.leave-return-editor')
+    await expect(editor.getByText('确认已经返岗', { exact: true })).toBeVisible()
+    await editor.getByRole('textbox').fill(note)
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response).endsWith(`/api/v1/portal/internship/context/leaves/${leaveId}/return`)
       && response.request().method() === 'POST'
     )
-    await button.click()
+    await editor.getByRole('button', { name: '确认销假', exact: true }).click()
     const body = await expectSuccessfulResponse(await responsePromise, '学生办理实习销假')
     expect(body?.data?.status).toBe('RETURNED')
 
@@ -135,7 +155,7 @@ export class StaffInternshipLeavePage {
 
   async openPending() {
     await this.page.goto(this.url({ panel: 'pending' }))
-    await expect(this.page.getByText('请假审批').first()).toBeVisible()
+    await expect(this.page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await this.dismissGuideIfPresent()
   }
 
@@ -195,7 +215,7 @@ export class StaffInternshipLeavePage {
 
   async openFinal(leaveId) {
     await this.page.goto(this.url({ panel: 'all' }))
-    await expect(this.page.getByText('请假审批').first()).toBeVisible()
+    await expect(this.page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await this.dismissGuideIfPresent()
 
     const { data } = await this.clickExactLeave(leaveId, '管理员读取请假最终详情')

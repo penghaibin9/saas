@@ -57,7 +57,7 @@
         <view class="section-head"><text class="section-head__title">我的缓考申请</text></view>
         <MobileGlobalState v-if="!d.deferrals.length" state="empty" title="暂无缓考申请" description="选择上方可申请的考试发起缓考。" />
         <view class="list-group" v-else>
-          <view v-for="r in d.deferrals" :key="r.deferId" class="list-row">
+          <view v-for="r in d.deferrals" :key="r.deferId" class="list-row" :class="{ 'is-target': String(r.deferId) === targetId }">
             <view class="flex-1">
               <text class="t-md">{{ r.courseName }}</text>
               <text class="ed__sub">{{ reasonLabel(r.reasonType) }} · {{ (r.applyAt || '').replace('T', ' ').slice(0, 16) }}</text>
@@ -92,10 +92,10 @@ export default {
     return {
       d: null, state: 'loading', showForm: false, submitting: false,
       selectedCourse: null, form: { reasonType: 'SICK', reason: '' },
-      reasonOptions: REASON_OPTIONS
+      reasonOptions: REASON_OPTIONS, targetId: ''
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
   methods: {
     load() {
       this.state = 'loading'
@@ -169,6 +169,7 @@ export default {
 <style scoped>
 .ed__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .ed__reason { display: block; font-size: var(--font-size-xs); color: var(--danger-600); margin-top: 4px; }
+.is-target { border: 1px solid var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-50); }
 .ed__input { width: 100%; min-height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; display: flex; align-items: center; }
 .ed__picker { color: var(--text-primary); }
 .ed__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }

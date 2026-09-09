@@ -23,7 +23,7 @@ router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
 @router.get("/teacher/orientation/green-channels", summary="教师·迎新绿色通道审核队列（本校）")
 def teacher_gc_list(status: str | None = None, user=Depends(get_current_user)):
     tea._require_teacher(user)
-    items, total = ori.list_green_channels(1, 50, status=status)
+    items, total = ori.list_green_channels(1, 50, status=status, user=user)
     if not status:
         items = [x for x in items if x.get("status") in ("SUBMITTED", "REVIEWING")]
         total = len(items)
@@ -36,14 +36,17 @@ def teacher_gc_review(gid: str, body: dict = Body(...), user=Depends(get_current
     tea._require_teacher(user)
     action = str(body.get("action") or "").upper()
     comment = str(body.get("comment") or body.get("reason") or "").strip()
+    expected_version = body.get("expectedVersion")
+    if expected_version is None:
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必填")
     if action in ("REJECT", "RETURN") and len(comment) < 5:
         raise AppException("VALIDATION_ERROR", "驳回/退回原因不少于 5 个字")
     if action == "APPROVE":
-        result = ori.approve_green_channel(gid, comment)
+        result = ori.approve_green_channel(gid, comment, expected_version, user=user)
     elif action == "REJECT":
-        result = ori.reject_green_channel(gid, comment)
+        result = ori.reject_green_channel(gid, comment, expected_version, user=user)
     elif action == "RETURN":
-        result = ori.return_green_channel(gid, comment)
+        result = ori.return_green_channel(gid, comment, expected_version, user=user)
     else:
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT/RETURN")
     tea._audit_write("MOBILE_GC_REVIEW", "orientation/green-channel:" + str(gid),

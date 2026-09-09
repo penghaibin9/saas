@@ -70,12 +70,26 @@ export default {
       }, { pageSize: 20, maxItems: 100, idKey: 'id' })
       this.pagerState = this._pager.state
     },
+    syncPagerState(state) {
+      const value = state || emptyPagerState()
+      // createNetworkPager owns a plain object outside Vue's proxy.  Assign a fresh
+      // snapshot after each request so H5/mini-program renderers observe item changes.
+      this.pagerState = { ...value, items: [...(value.items || [])] }
+    },
     async loadBadges() {
       try { const data = await getTeacherMessageBadges(); this.badges = { ...this.badges, ...((data && data.badges) || {}) } } catch (_error) {}
     },
     async refresh() {
       this.state = 'loading'
-      try { await Promise.all([this._pager.refresh(), this.loadBadges()]); this.state = 'ready' } catch (_error) { this.state = 'error' }
+      try {
+        const [pagerState] = await Promise.all([this._pager.refresh(), this.loadBadges()])
+        this.syncPagerState(pagerState)
+        this.state = 'ready'
+      } catch (_error) { this.state = 'error' }
+    },
+    async loadMore() {
+      if (!this._pager || this.pagerState.loading || !this.pagerState.hasMore) return
+      try { this.syncPagerState(await this._pager.loadMore()) } catch (_error) { /* 保留当前页供重试 */ }
     },
     async selectTab(next) { if (!next || next === this.tab) return; this.tab = next; this.setupPager(); await this.refresh() },
     openSearch() { go('/pages/common/search/index') },

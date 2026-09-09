@@ -119,7 +119,7 @@ import { teacherEmploymentV3Api } from '@/services/teacherEmploymentV3Api'
 import { fileSdk } from '@/services/fileSdk'
 import { normalizeError } from '@/services/request'
 import { listPaging } from '@/utils/listPaging'
-import { toast } from '@/utils/nav'
+import { decodeQueryText, toast } from '@/utils/nav'
 
 const MATERIAL_LABEL = {
   AGREEMENT: '就业协议', CONTRACT: '劳动合同', OFFER: '录用通知', STUDY_PROOF: '升学证明',
@@ -151,7 +151,7 @@ export default {
     if (TAB_KEYS.has(requestedTab)) this.tab = requestedTab
     const employmentStudentId = q && q.mode === 'follow' ? String(q.employmentStudentId || '').trim() : ''
     if (employmentStudentId) {
-      this.prefillStudent = { id: employmentStudentId, name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生' }
+      this.prefillStudent = { id: employmentStudentId, name: decodeQueryText(q.studentName, '当前学生') }
       this.prefillPending = true
       this.fromStudent360 = true
     }

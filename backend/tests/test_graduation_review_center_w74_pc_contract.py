@@ -217,13 +217,19 @@ def test_w74_pc_locks_task_context_for_entire_canonical_mutation():
     view = text("frontend/src/modules/graduation/views/GraduationReviewCenterView.vue")
     workspace = text("frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue")
 
-    # Shared workspace must finally consume its submitting prop; otherwise a successful
-    # mutation for A can finish while the user has switched the UI to B.
-    assert ':class="{ \'is-active\': index === currentIndex }" :disabled="submitting"' in workspace
+    # Verify the queue control semantically instead of requiring Vue attributes to share one line.
+    queue_button = workspace.split('v-for="(item, index) in queue"', 1)[1].split("</button>", 1)[0]
+    assert ':class="{ \'is-active\': index === currentIndex }"' in queue_button
+    assert ':disabled="submitting"' in queue_button
     assert ':disabled="submitting || currentIndex <= 0"' in workspace
     assert ':disabled="submitting || currentIndex >= queue.length - 1"' in workspace
-    assert ':checked="autoNext" :disabled="submitting"' in workspace
-    assert 'class="gd-review-workspace__dossier" :disabled="submitting"' in workspace
+
+    auto_toggle = workspace.split('class="gd-review-workspace__auto"', 1)[1].split("</label>", 1)[0]
+    assert ':checked="autoNext"' in auto_toggle
+    assert ':disabled="submitting"' in auto_toggle
+
+    dossier_button = workspace.split('class="gd-review-workspace__dossier"', 1)[1].split("</button>", 1)[0]
+    assert ':disabled="submitting"' in dossier_button
 
     # Reader/version reload and page/filter movements are also rejected while the canonical
     # mutation owns the current task context. Conflict refresh uses an internal force path

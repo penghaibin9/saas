@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const clientUrl = new URL('../src/services/http/client.js', import.meta.url)
+const e2eLoginPageUrl = new URL('../../e2e/pages/login.page.mjs', import.meta.url)
 
 // 本仓 core.autocrlf=true 且无 .gitattributes：Windows 检出把源码换成 CRLF，
 // 而下面的结构性正则按 LF 书写。不归一化则这些会话竞态守卫在 Windows 本地
@@ -129,4 +130,19 @@ test('browser refresh is bound to a nonsecret per-tab session id', async () => {
   assert.match(source, /loginWithPassword[\s\S]*?headers: browserSessionHeaders\(\)/)
   assert.match(source, /switchAuthContext[\s\S]*?headers: browserSessionHeaders\(\)/)
   assert.match(source, /logoutRemote[\s\S]*?headers: browserSessionHeaders\(\)/)
+})
+
+test('E2E staff role switch waits for the new document refresh rotation before a deep link', async () => {
+  const source = await readSource(e2eLoginPageUrl)
+  const switchBlock = source.match(/async switchRole\(rolePattern\) \{([\s\S]*?)\n {2}\}\n\}\n\nexport class StudentLoginPage/)
+  assert.ok(switchBlock, 'StaffLoginPage.switchRole() block must exist')
+
+  const capture = switchBlock[1].indexOf('const bootstrapRefreshPromise = this.page.waitForResponse(')
+  const click = switchBlock[1].indexOf('await target.click()')
+  const navigation = switchBlock[1].indexOf('await navigationPromise')
+  const settle = switchBlock[1].indexOf('const bootstrapRefresh = await bootstrapRefreshPromise')
+  assert.ok(capture >= 0 && click >= 0 && navigation >= 0 && settle >= 0)
+  assert.ok(capture < click, 'post-switch refresh must be captured before the hard navigation starts')
+  assert.ok(navigation < settle, 'the helper must first enter the new document, then finish its refresh rotation')
+  assert.match(switchBlock[1], /bootstrapRefresh\.ok\(\)/)
 })

@@ -12,12 +12,14 @@ function creditAppealBody(body = {}) {
 }
 
 export const affairsAppealApi = {
-  getPending: (kind) => realRequest(`/mobile/teacher/affairs/appeals/${kind}`),
+  getPending: (kind, params = {}) => realRequest(`/mobile/teacher/affairs/appeals/${kind}`, { data: params }),
+  getAidObjectionDetail: (id) => realRequest(`/mobile/teacher/affairs/appeals/AID_OBJECTION/${encodeURIComponent(id)}/detail`),
+  getFundingAppealDetail: (id) => realRequest(`/mobile/teacher/affairs/appeals/FUNDING_APPEAL/${encodeURIComponent(id)}/detail`),
   review: (kind, appealId, body) => realRequest(`/mobile/teacher/affairs/appeals/${kind}/${appealId}/review`, {
     method: 'POST', data: body
   }),
   getMyCreditAppeals: (page = 1, pageSize = 100) => realRequest('/mobile/affairs/second-class/appeals/my', {
-    query: { page, pageSize }
+    data: { page, pageSize }
   }),
   submitCreditAppeal: (body) => realRequest('/mobile/affairs/second-class/appeals', {
     method: 'POST', data: creditAppealBody(body)

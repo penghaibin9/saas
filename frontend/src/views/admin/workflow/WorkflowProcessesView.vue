@@ -44,8 +44,8 @@
         <dl class="wf-processes__kv">
           <dt>编码</dt><dd>{{ detail.templateCode }}</dd>
           <dt>模块</dt><dd>{{ moduleLabel(detail.moduleCode) }}</dd>
-          <dt>业务类型</dt><dd>{{ detail.businessType }}</dd>
-          <dt>版本</dt><dd>v{{ detail.version }}</dd>
+          <dt>业务类型</dt><dd>{{ businessTypeLabel(detail.businessType) }}</dd>
+          <dt>版本</dt><dd>第 {{ detail.version }} 版</dd>
           <dt>状态</dt><dd><AppBadge :type="statusType(detail.status)">{{ statusText(detail.status) }}</AppBadge></dd>
           <dt>发布时间</dt><dd>{{ detail.publishedAt || '未发布' }}</dd>
           <dt>维护人</dt><dd>{{ detail.updatedBy }} · {{ detail.updatedAt }}</dd>
@@ -119,7 +119,14 @@ export default {
     statusType: getProcessStatusType,
     nodeTypeLabel: getNodeTypeLabel,
     roleLabel(code) {
-      return ROLE_LABELS[code] || code
+      return ROLE_LABELS[code] || '其他业务角色'
+    },
+    businessTypeLabel(value) {
+      return ({
+        LEAVE: '请假审批', STUDENT_STATUS_CHANGE: '学籍变更',
+        INTERNSHIP: '岗位实习', GRADUATION: '毕业管理',
+        ORIENTATION: '数字迎新', EMPLOYMENT: '就业服务'
+      })[String(value || '').toUpperCase()] || '其他审批业务'
     },
     async load() {
       this.loading = true

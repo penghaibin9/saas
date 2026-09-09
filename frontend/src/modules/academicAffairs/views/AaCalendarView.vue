@@ -323,7 +323,7 @@ export default {
   },
   methods: {
     statusLabel(s) {
-      return { DRAFT: '草稿', PUBLISHED: '已发布', FROZEN: '已锁定', ARCHIVED: '已归档' }[s] || s
+      return { DRAFT: '草稿', PUBLISHED: '已发布', FROZEN: '已锁定', ARCHIVED: '已归档' }[s] || '状态待确认'
     },
     typeColor(t) {
       return TYPE_COLOR[t] || 'default'

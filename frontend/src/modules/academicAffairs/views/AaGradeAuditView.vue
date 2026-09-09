@@ -73,8 +73,8 @@ export default {
     this.load()
   },
   methods: {
-    bizTypeLabel(v) { return BIZ_TYPE_LABEL[v] || v },
-    actionLabel(v) { return ACTION_LABEL[v] || v },
+    bizTypeLabel(v) { return BIZ_TYPE_LABEL[v] || (v ? '待确认' : '—') },
+    actionLabel(v) { return ACTION_LABEL[v] || (v ? '待确认' : '—') },
     formatTime(v) { return v ? String(v).replace('T', ' ').slice(0, 19) : '—' },
     onFilterChange() { this.pagination.page = 1; this.load() },
     onPageChange(p) { this.pagination.page = p; this.load() },

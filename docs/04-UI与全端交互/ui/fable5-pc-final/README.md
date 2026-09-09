@@ -33,9 +33,9 @@
 
 | 类型 | 文件 |
 | --- | --- |
-| PC 管理端原型（最新） | `archive/uploads/平台设计/管理端原型 v6 三主题拔高版.dc.html` |
-| UI 视觉规范（冻结版） | `archive/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md` |
-| 页面骨架蓝图 | `archive/uploads/平台设计/uploads/00-全端UI设计规范与页面骨架蓝图 V1.0.md` |
+| PC 管理端原型（最新） | `../pc-ui-v2/00-基准-管理端v6三主题.dc.html` |
+| UI 视觉规范（冻结版） | `Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md` |
+| 页面骨架蓝图 | `Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI设计规范与页面骨架蓝图 V1.0.md` |
 | 原始导出包 | `Future Campus SaaS 设计升级.zip` |
 
 ## 上级入口

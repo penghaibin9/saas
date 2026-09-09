@@ -718,10 +718,20 @@ export const systemApi = {
     }
   },
 
-  async assignUserRoles(id, roleCodes) {
+  async assignUserRoles(id, roleCodes, roleAssignments) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/roles`, {
-        method: 'PUT', body: { roleCodes }
+        method: 'PUT',
+        body: {
+          roleCodes,
+          ...(Array.isArray(roleAssignments) ? {
+            roleAssignments: roleAssignments.map((item) => ({
+              roleCode: item.roleCode,
+              scopeType: item.scopeType,
+              scopeIds: item.scopeIds || []
+            }))
+          } : {})
+        }
       }))
     } catch (error) {
       return fail(error.message || '角色分配失败')
@@ -1067,20 +1077,23 @@ export const systemApi = {
     }
   },
 
-  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, visiblePermissionCodes } = {}) {
+  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, scopeTarget, expectedVersion, reason, requestId } = {}) {
     try {
       const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
-      const visible = visiblePermissionCodes
-        || (_lastPermissionTreeVisibleCodes.length
-          ? _lastPermissionTreeVisibleCodes
-          : permissionCodes)
+      const body = {
+        permissionCodes,
+        scopeCode,
+        expectedVersion,
+        reason,
+        requestId
+      }
+      // The role editor currently changes the scope code, not CUSTOM target
+      // membership. Omitting an untouched target lets the backend preserve the
+      // existing structured target instead of interpreting `{}` as a clear.
+      if (scopeTarget !== undefined) body.scopeTarget = scopeTarget
       const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
         method: 'PUT',
-        body: {
-          permissionCodes,
-          visiblePermissionCodes: visible,
-          scopeCode
-        }
+        body
       })
       return ok(data)
     } catch (error) {

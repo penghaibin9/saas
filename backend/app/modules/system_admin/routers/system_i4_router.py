@@ -6,7 +6,7 @@ used to claim 20K single-job import Gold before normalized staging exists.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import func, or_, select
 
 from app.core.context import current_tenant_id
@@ -63,6 +63,82 @@ def role_members(
         return success(paginate(items, total, page, pageSize))
     finally:
         db.close()
+
+
+@_extra.get("/system/roles/{role_id}/member-candidates", summary="可添加的角色成员候选老师")
+def role_member_candidates(
+    role_id: int,
+    keyword: str = "",
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("systemAdmin.user.assign-role")),
+):
+    _ = user
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = _load_role(db, tenant_id, role_id)
+        existing_member_ids = select(UserRole.user_id).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.role_id == role.id,
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+        )
+        stmt = select(User).where(
+            User.tenant_id == tenant_id,
+            User.is_deleted.is_(False),
+            User.status == "ACTIVE",
+            User.user_type != "STUDENT",
+            ~User.id.in_(existing_member_ids),
+        )
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(or_(User.login_name.like(like), User.real_name.like(like)))
+        total = int(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        accounts = list(db.scalars(
+            stmt.order_by(User.real_name, User.login_name, User.id)
+            .offset((page - 1) * pageSize).limit(pageSize)
+        ).all())
+        items = [{
+            "id": str(account.id),
+            "loginName": account.login_name,
+            "name": account.real_name or account.login_name,
+            "userType": account.user_type,
+            "status": account.status,
+        } for account in accounts]
+        return success(paginate(items, total, page, pageSize))
+    finally:
+        db.close()
+
+
+@_extra.post("/system/roles/{role_id}/members/batch", summary="按角色批量添加老师")
+def batch_add_role_members(
+    role_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.user.assign-role")),
+):
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = _load_role(db, tenant_id, role_id)
+        role_code = str(role.role_code or "")
+    finally:
+        db.close()
+
+    from app.services import role_assignment_service as ras
+
+    payload = body or {}
+    result = ras.batch_grant_assignments(
+        payload.get("userIds") or [],
+        role_code,
+        reason=payload.get("reason") or "",
+        effective_at=payload.get("effectiveAt"),
+        expires_at=payload.get("expiresAt"),
+        source_type="MANUAL",
+        tenant_id=tenant_id,
+        user=user,
+    )
+    return success(result, message=f"已添加 {result['addedCount']} 位角色成员")
 
 
 @_extra.get("/system/roles/{role_id}/audit", summary="角色操作留痕分页")

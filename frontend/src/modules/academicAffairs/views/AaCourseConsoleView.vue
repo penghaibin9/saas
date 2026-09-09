@@ -332,8 +332,8 @@ export default {
   },
   methods: {
     reviewStatusColor,
-    statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
-    examModeLabel(v) { return EXAM_MODE[v] || v || '' },
+    statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
+    examModeLabel(v) { return EXAM_MODE[v] || (v ? '考核方式待确认' : '') },
     /** 维度 Tab 对应的真实课程字段名（assessment Tab 展示名与后端字段名 examMode 不同名）。 */
     dimFieldName(dim) { return dim === 'assessment' ? 'examMode' : dim },
     dimCount(v) { return this.rows.filter((r) => r[this.dimFieldName(this.tab)] === v).length },

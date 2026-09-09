@@ -2,7 +2,7 @@
  * 学生 PC 门户 · 统一请求层。
  * - SECURITY-P0：accessToken 只驻留内存；refreshToken 仅 HttpOnly+SameSite Cookie。
  * - 学生 PC 固定使用独立 student browser session，不与教师/平台 PC 共用 refresh Cookie。
- * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api），默认开发 localhost:8000 / 生产同源。
+ * - API base 可配置：VITE_API_BASE_URL（源，勿带 /api）；未配置时开发与生产都走同源 /api。
  * - 401 单飞 browser-refresh 并重试一次；刷新失败才清当前会话。
  * - 迟到的旧 refresh/401/业务响应不得覆盖、清空或借用已经切换的新会话。
  * - /auth/me 是唯一允许“无内存 token → HttpOnly refresh → 恢复会话”的 auth 读入口。
@@ -22,8 +22,9 @@ let browserSessionCoordinator = null
 const API_BASE = (() => {
   const configuredBase = import.meta.env.VITE_API_BASE_URL
   if (configuredBase) return String(configuredBase).replace(/\/+$/, '')
-  if (import.meta.env.DEV) return 'http://localhost:8000'
-  return '' // 生产同源：/api/v1 由 Nginx 反代
+  // 开发环境交给 Vite 的 /api 代理，生产环境交给 Nginx 同源反代。
+  // 不再硬编码 localhost:8000，否则使用自定义后端端口时会绕过 VITE_PROXY_TARGET。
+  return ''
 })()
 
 let accessToken = ''
@@ -151,7 +152,7 @@ export function setToken(t) {
 export function getRefreshToken() {
   return ''
 }
-export function setRefreshToken(_t) {}
+export function setRefreshToken() {}
 export function clearSession() {
   _advanceSession('')
   for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY]) {

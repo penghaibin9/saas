@@ -9,6 +9,7 @@ ensure_builtin_roles/create_school_admin，均已被 test_platform.py 验证过�
 本文件只测"任务编排层"本身的续跑、幂等和补偿语义。
 """
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -98,6 +99,147 @@ def test_t02_duplicate_submission_does_not_duplicate_roles_or_admin(db_mode):
         assert user_count == 1
     finally:
         db.close()
+
+
+def test_t02a_idempotency_key_cannot_be_reused_for_another_school(db_mode):
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
+    body = {
+        "idempotencyKey": key,
+        "tenantCode": code,
+        "tenantName": "PLAT04幂等学校A",
+        "adminLoginName": f"admin-{code}",
+        "adminRealName": "首位管理员",
+    }
+    assert prov.start_provisioning_job(admin, body)["status"] == "SUCCEEDED"
+    with pytest.raises(AppException) as exc:
+        prov.start_provisioning_job(admin, {
+            **body,
+            "tenantCode": _code(),
+            "tenantName": "PLAT04幂等学校B",
+        })
+    assert exc.value.code == "IDEMPOTENCY_CONFLICT"
+
+
+def test_t02b_running_job_rejects_input_rewrite_and_concurrent_cancel(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.tenant_provisioning import ProvisioningJob, ProvisioningStepRun
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    original = {
+        "idempotencyKey": key,
+        "tenantCode": code,
+        "tenantName": "正在执行的开户学校",
+        "adminLoginName": f"admin-{code}",
+        "adminRealName": "首位管理员",
+    }
+    db = get_sessionmaker()()
+    try:
+        job = ProvisioningJob(
+            idempotency_key=key,
+            tenant_code=code,
+            input_json=original,
+            status="RUNNING",
+            requested_by=1,
+        )
+        db.add(job)
+        db.flush()
+        for step_code in prov.STEP_ORDER:
+            db.add(ProvisioningStepRun(job_id=job.id, step_code=step_code, status="PENDING"))
+        db.commit()
+        job_id = int(job.id)
+    finally:
+        db.close()
+
+    admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
+    with pytest.raises(AppException) as replay_exc:
+        prov.start_provisioning_job(admin, {**original, "tenantName": "并发篡改后的学校名"})
+    assert replay_exc.value.code == "IDEMPOTENCY_CONFLICT"
+    with pytest.raises(AppException) as cancel_exc:
+        prov.cancel_job(job_id, reason="并发执行期间禁止取消任务", user=admin)
+    assert cancel_exc.value.code == "DATA_CONFLICT"
+
+
+def test_t02c_stale_running_lease_can_recover(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.tenant_provisioning import ProvisioningJob, ProvisioningStepRun
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    body = {
+        "idempotencyKey": key,
+        "tenantCode": code,
+        "tenantName": "租约超时恢复学校",
+        "adminLoginName": f"admin-{code}",
+        "adminRealName": "首位管理员",
+    }
+    db = get_sessionmaker()()
+    try:
+        job = ProvisioningJob(
+            idempotency_key=key,
+            tenant_code=code,
+            input_json=body,
+            status="RUNNING",
+            requested_by=1,
+            updated_at=datetime.utcnow() - timedelta(minutes=prov.RUNNING_LEASE_MINUTES + 1),
+        )
+        db.add(job)
+        db.flush()
+        for step_code in prov.STEP_ORDER:
+            db.add(ProvisioningStepRun(job_id=job.id, step_code=step_code, status="PENDING"))
+        db.commit()
+        job_id = int(job.id)
+    finally:
+        db.close()
+
+    recovered = prov.run_provisioning_job(
+        job_id, user={"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"},
+    )
+    assert recovered["status"] == "SUCCEEDED"
+    assert recovered["provisioningState"] == "BOOTSTRAP_READY"
+
+
+def test_t02d_first_admin_never_reuses_incompatible_login(db_mode):
+    from app.core.security import hash_password
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant, User
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    tenant_id = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000 + 997
+    login_name = f"admin-{code}"
+    db = get_sessionmaker()()
+    try:
+        db.add(Tenant(id=tenant_id, tenant_code=code, school_name="账号冲突学校", status="ACTIVE"))
+        db.add(User(
+            tenant_id=tenant_id,
+            login_name=login_name,
+            real_name="已有教师账号",
+            password_hash=hash_password("TeacherCollision#2026"),
+            user_type="TEACHER",
+            status="ACTIVE",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    result = prov.start_provisioning_job(
+        {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"},
+        {
+            "idempotencyKey": key,
+            "tenantCode": code,
+            "tenantName": "账号冲突学校",
+            "adminLoginName": login_name,
+            "adminRealName": "首位管理员",
+        },
+    )
+    failed = next(step for step in result["steps"] if step["stepCode"] == "FIRST_ADMIN")
+    assert result["status"] == "FAILED"
+    assert failed["status"] == "FAILED"
+    assert "不兼容账号占用" in failed["error"]
 
 
 def test_t02b_first_admin_reveals_password_only_once(db_mode):
@@ -190,11 +332,22 @@ def test_t04b_full_flow_health_check_passes(db_mode):
     admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
     job = prov.start_provisioning_job(admin, {
         "idempotencyKey": key, "tenantCode": code, "tenantName": "PLAT04测试学校T04B",
+        "targetPackageCode": "standard",
         "adminLoginName": f"admin-{code}", "adminRealName": "首位管理员"})
     assert job["status"] == "SUCCEEDED"
+    assert job["provisioningState"] == "BOOTSTRAP_READY"
+    assert job["deliveryState"] == "IMPLEMENTATION_AND_ACCEPTANCE_REQUIRED"
     health_step = next(s for s in job["steps"] if s["stepCode"] == "HEALTH_CHECK")
     assert health_step["status"] == "SUCCEEDED"
     assert health_step["output"]["hasImplementationProject"] is True
+    assert health_step["output"]["readinessBoundary"] == "BOOTSTRAP_READY"
+    assert health_step["output"]["productionReady"] is False
+
+    # Provisioning 只完成基础开户；即使运营选择了意向付费套餐，也不能绕过订单授予权益。
+    from app.services import platform_service
+    meta = platform_service.tenant_meta(int(job["tenantId"]))
+    assert meta["packageCode"] == "trial"
+    assert meta["targetPackageCode"] == "standard"
 
 
 def test_cannot_cancel_succeeded_job(db_mode):

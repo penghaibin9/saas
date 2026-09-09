@@ -1,17 +1,50 @@
 <template>
   <div class="sp-page">
-    <nav class="sp-tabs">
-      <button v-for="t in tabs" :key="t.key" class="sp-tab" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
+    <section v-if="!loading && !error && my.hasData" class="sp-card sp-now" aria-labelledby="sp-now-title">
+      <div class="sp-now__copy">
+        <span class="sp-now__eyebrow">当前实习事项</span>
+        <h2 id="sp-now-title">{{ currentAction.title }}</h2>
+        <p>{{ currentAction.reason }}</p>
+        <div class="sp-now__meta">
+          <span>最近变化：{{ currentAction.recentChange }}</span>
+          <span>完成后：{{ currentAction.nextActor }}</span>
+        </div>
+      </div>
+      <button v-if="currentAction.tab !== tab" type="button" class="sp-btn" @click="selectTab(currentAction.tab)">{{ currentAction.action }} →</button>
+    </section>
+
+    <nav class="sp-process-nav" aria-label="实习办理分组">
+      <details v-for="group in tabGroups" :key="group.key" class="sp-process-group" :open="groupOpen(group)">
+        <summary>
+          <span><b>{{ group.label }}</b><small>{{ group.hint }}</small></span>
+          <span class="sp-process-group__current">{{ activeGroupLabel(group) }}</span>
+        </summary>
+        <div class="sp-process-group__items">
+          <button v-for="item in group.tabs" :key="item.key" type="button" :class="{ 'is-active': tab === item.key }"
+            :aria-current="tab === item.key ? 'page' : undefined" @click="selectTab(item.key)">{{ item.label }}</button>
+        </div>
+      </details>
     </nav>
 
     <StateBlock v-if="loading" type="loading" text="正在加载实习信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
     <template v-else>
+      <section v-if="my.hasData && currentSource.status === 'loading'" class="sp-source-state" aria-live="polite">
+        <StateBlock type="loading" :text="`${currentSource.label}正在加载…`" />
+      </section>
+      <section v-else-if="my.hasData && currentSource.status === 'error'" class="sp-source-state sp-source-state--error" aria-live="assertive">
+        <StateBlock type="error" :text="currentSource.message" />
+        <button class="sp-btn sp-btn--ghost" type="button" @click="retryCurrentSource">重试当前内容</button>
+      </section>
+      <section v-else-if="my.hasData && currentSource.status === 'empty'" class="sp-source-state" aria-live="polite">
+        <StateBlock type="empty" :text="`${currentSource.label}暂无历史记录；如有可办理事项，仍可在下方发起。`" />
+      </section>
+
       <section v-if="my.needSelect && internshipCandidates.length" class="sp-card" style="margin-bottom:16px">
         <div class="sp-panel__head">请选择要办理的实习批次</div>
         <p class="sp-muted" style="margin-bottom:12px">你有多条进行中的实习记录。系统不会替你猜测；选择后，本页后续查询与办理都会固定使用同一批次。</p>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <button v-for="candidate in internshipCandidates" :key="candidate.recordId" class="sp-btn sp-btn--ghost" style="display:flex;justify-content:space-between;align-items:center;text-align:left" @click="selectInternshipBatch(candidate.batchId)">
+          <button v-for="candidate in internshipCandidates" :key="candidate.recordId" type="button" class="sp-btn sp-btn--ghost" style="display:flex;justify-content:space-between;align-items:center;text-align:left" @click="selectInternshipBatch(candidate.batchId)">
             <span><strong>{{ candidate.batchName || `批次 ${candidate.batchId}` }}</strong><small style="display:block;margin-top:4px">状态 {{ statusText(candidate.status) }} · 记录 {{ candidate.recordId }}</small></span>
             <span>选择 ›</span>
           </button>
@@ -32,20 +65,36 @@
             </option>
           </select>
         </section>
-        <section class="sp-card" style="margin-bottom:16px">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
-            <div>
-              <div style="font-size:18px;font-weight:600">{{ my.enterpriseName }} · {{ my.positionName }}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-                <span class="pill"><span style="color:#A9B0BD">指导教师</span>{{ my.advisorName || '待分配' }}</span>
-                <span class="pill"><span style="color:#A9B0BD">风险等级</span>{{ riskText(my.riskLevel) }}</span>
-              </div>
-            </div>
-            <span class="statepill"><span class="dot" />{{ statusText(my.status) }}</span>
+        <div class="sp-preparation">
+          <section class="sp-card sp-preparation__main">
+            <div class="sp-preparation__head"><div><span class="sp-preparation__eyebrow">我的实习安排</span><h2>{{ my.batchName || '当前实习批次' }}</h2></div><StatusTag :text="statusText(my.status)" :tone="my.historyMode ? 'neutral' : 'info'" /></div>
+            <dl class="sp-preparation__facts">
+              <div><dt>实习岗位</dt><dd>{{ my.positionName || '待落实岗位' }}</dd></div><div><dt>实习企业</dt><dd>{{ my.enterpriseName || '待落实企业' }}</dd></div>
+              <div><dt>校内指导教师</dt><dd>{{ my.advisorName || '学校待分配' }}</dd></div><div><dt>企业导师</dt><dd>{{ my.enterpriseMentor || '待落实' }}</dd></div>
+            </dl>
+            <FlowSteps :steps="flowSteps" />
+          </section>
+          <aside class="sp-card sp-qualification" aria-labelledby="sp-qualification-title">
+            <span class="sp-preparation__eyebrow">学校资格认定</span>
+            <div class="sp-qualification__title"><h2 id="sp-qualification-title">实习资格</h2><StatusTag :text="qualification.label" :tone="qualification.status === 'QUALIFIED' ? 'success' : qualification.status === 'UNQUALIFIED' ? 'danger' : 'warn'" /></div>
+            <p>{{ qualification.reason || qualificationHint }}</p>
+            <span v-if="qualification.reviewedAt" class="sp-muted">更新于 {{ fmt(qualification.reviewedAt) }}</span>
+            <div class="sp-qualification__next"><strong>下一步</strong><p>{{ qualification.status === 'QUALIFIED' ? '继续落实实习岗位，按学校要求完成上岗准备。' : '关注学校认定结果；如需补充材料，请联系校内指导教师。' }}</p></div>
+            <button type="button" class="sp-btn sp-btn--ghost" @click="load">刷新认定结果</button>
+          </aside>
+        </div>
+        <section class="sp-card sp-completion">
+          <div>
+            <span class="sp-preparation__eyebrow">结项与就业衔接</span>
+            <h2>{{ my.status === 'ARCHIVED' || my.historyMode ? '实习结果已归档' : ['ASSESSING','ENDED'].includes(my.status) ? '实习进入结项考核' : '结项进度与就业去向' }}</h2>
+            <p class="sp-muted">{{ my.status === 'ARCHIVED' || my.historyMode ? '实习档案已形成历史记录；就业去向、材料核验与后续跟进在就业中心继续办理。' : ['ASSESSING','ENDED'].includes(my.status) ? '请完成实习总结、自评和评价，等待学校核算并发布正式成绩。' : '可提前查看结项要求和就业服务；正式成绩与归档结果将在完成实习考核后显示。' }}</p>
           </div>
-          <FlowSteps :steps="flowSteps" style="margin-top:22px" />
+          <div class="sp-completion__actions">
+            <button type="button" class="sp-btn sp-btn--ghost" @click="selectTab('eval')">查看鉴定与成绩</button>
+            <button type="button" class="sp-btn" @click="router.push('/portal/employment')">进入就业中心</button>
+          </div>
         </section>
-        <div class="m4">
+        <div v-if="!['PREPARING', 'READY'].includes(my.status)" class="m4">
           <div v-for="m in metrics" :key="m.t" class="sp-metric"><div class="sp-metric__label">{{ m.t }}</div><div class="sp-metric__value" :style="{color:m.c}">{{ m.v }}<small>{{ m.u }}</small></div></div>
         </div>
       </template>
@@ -89,9 +138,16 @@
 
       <!-- 实习请假 -->
       <template v-else-if="tab === 'leave'">
+        <div v-if="leaveReceipt" class="makeup-receipt" role="status">
+          <strong>{{ leaveReceipt.actionLabel }}</strong>
+          <span>记录编号 {{ leaveReceipt.id }} · {{ leaveReceipt.statusLabel || leaveReceipt.status }} · 数据版本 v{{ leaveReceipt.version ?? 0 }}</span>
+          <span>{{ leaveReceipt.nextStep }}</span>
+        </div>
+        <p v-if="leaveError" class="makeup-error" role="alert">{{ leaveError }}</p>
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">发起请假</div>
+            <p class="sp-muted leave-lead">填写请假时间和真实事由。病假或连续3天及以上必须上传证明，提交后由指导教师审批。</p>
             <div class="sp-fieldlabel">请假类型</div>
             <select v-model="leaveForm.leaveType" class="sp-inp" style="margin-bottom:12px">
               <option value="SICK">病假</option>
@@ -103,11 +159,14 @@
             <div class="sp-fieldlabel">结束日期</div>
             <AppDatePicker v-model="leaveForm.endDate" class="sp-inp" style="margin-bottom:12px" role="end" :start-value="leaveForm.startDate" label="结束日期" />
             <div class="sp-fieldlabel">事由</div>
-            <textarea v-model.trim="leaveForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="如：发热就医，已上传门诊证明" />
-            <button class="sp-btn" :disabled="busy || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason" @click="submitLeave">提交请假</button>
+            <textarea v-model.trim="leaveForm.reason" class="sp-inp" style="margin-bottom:12px" maxlength="300" placeholder="如：发热就医，已上传门诊证明" />
+            <div class="sp-fieldlabel">证明材料 {{ leaveEvidenceRequired ? '（必需）' : '（选传）' }}</div>
+            <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadLeaveEvidence" />
+            <p class="sp-muted" style="margin-bottom:12px">{{ leaveForm.fileName || leaveEvidenceHint }}</p>
+            <button class="sp-btn" :disabled="busy || !leaveCanSubmit" @click="submitLeave">{{ busy ? '提交中…' : '提交请假' }}</button>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">我的请假</div>
+            <div class="sp-panel__head">我的请假与返岗</div>
             <StateBlock v-if="!(leaves||[]).length" type="empty" text="暂无请假记录" />
             <div v-else style="display:flex;flex-direction:column;gap:10px">
               <div v-for="lv in leaves" :key="lv.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:6px">
@@ -120,8 +179,19 @@
                 </div>
                 <div style="display:flex;gap:8px">
                   <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv)">撤回</button>
-                  <button v-if="lv.status==='APPROVED'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="returnLeave(lv.id)">办理销假</button>
+                  <button v-if="['APPROVED','OVERDUE'].includes(lv.status)" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="openReturnLeave(lv)">办理销假</button>
                 </div>
+                <div v-if="returnDraft.id === String(lv.id)" class="leave-return-editor">
+                  <strong>确认已经返岗</strong>
+                  <p>提交后由指导教师核实返岗情况；超期记录仍会保留完整风险留痕。</p>
+                  <textarea v-model="returnDraft.note" class="sp-inp" maxlength="300" placeholder="填写销假说明，如：已按期返回实习岗位" />
+                  <div class="leave-return-editor__actions">
+                    <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeReturnLeave">取消</button>
+                    <button class="sp-btn" :disabled="busy || returnDraft.note.trim().length < 2" @click="confirmReturnLeave">确认销假</button>
+                  </div>
+                </div>
+                <div v-if="lv.returnNote" class="makeup-review-note">销假说明：{{ lv.returnNote }}</div>
+                <div v-if="lv.reviewComment" class="makeup-review-note">{{ lv.status === 'REJECTED' ? '驳回原因' : '审批意见' }}：{{ lv.reviewComment }}</div>
               </div>
             </div>
           </section>
@@ -131,24 +201,46 @@
       <!-- 补卡申请 -->
       <template v-else-if="tab === 'makeup'">
         <div class="two">
-          <section class="sp-card">
+          <section class="sp-card makeup-apply">
             <div class="sp-panel__head">申请补卡</div>
+            <p class="sp-muted makeup-apply__lead">提交后由指导教师核对。超范围补卡必须上传定位、考勤或现场佐证；通过后系统才会补写打卡留痕。</p>
+            <div v-if="makeupReceipt" class="makeup-receipt" role="status">
+              <strong>{{ makeupReceipt.statusLabel || '已提交待审核' }}</strong>
+              <span>申请编号 {{ makeupReceipt.id }} · 数据版本 v{{ makeupReceipt.version ?? 0 }}</span>
+              <span>下一步：指导教师核对申请；结果会回到“我的补卡”。</span>
+            </div>
+            <p v-if="makeupError" class="makeup-error" role="alert">{{ makeupError }}</p>
+            <div class="sp-fieldlabel">补卡类型</div>
+            <select v-model="makeupForm.makeupType" class="sp-inp" style="margin-bottom:12px" :disabled="busy">
+              <option value="MISSING">缺卡补录</option>
+              <option value="OUT_OF_RANGE">超范围补录</option>
+            </select>
             <div class="sp-fieldlabel">缺卡日期</div>
             <AppDatePicker v-model="makeupForm.checkinDate" class="sp-inp" style="margin-bottom:12px" label="缺卡日期" />
             <div class="sp-fieldlabel">事由</div>
-            <textarea v-model.trim="makeupForm.reason" class="sp-inp" style="margin-bottom:12px" placeholder="说明缺卡原因（不少于2字）" />
-            <button class="sp-btn" :disabled="busy || !makeupForm.checkinDate || !makeupForm.reason" @click="submitMakeup">提交补卡</button>
+            <textarea v-model="makeupForm.reason" class="sp-inp" style="margin-bottom:12px" maxlength="300" placeholder="详细说明缺卡原因（不少于5字）" />
+            <div class="sp-fieldlabel">证据材料 {{ makeupEvidenceRequired ? '（必需）' : '（选传）' }}</div>
+            <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadMakeupEvidence" />
+            <p class="sp-muted" style="margin-bottom:12px">
+              {{ makeupForm.fileName || (makeupEvidenceRequired ? '请上传定位截图、考勤或现场佐证' : '普通缺卡可按学校要求选传佐证') }}
+            </p>
+            <button class="sp-btn" :disabled="busy || !makeupCanSubmit" @click="submitMakeup">{{ busy ? '提交中…' : '提交补卡申请' }}</button>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">我的补卡</div>
+            <div class="sp-panel__head">我的补卡 · 办理进度</div>
             <div v-if="!makeups.length" class="sp-muted">暂无补卡申请</div>
             <div v-else style="display:flex;flex-direction:column;gap:10px">
               <div v-for="m in makeups" :key="m.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:6px">
                 <div style="display:flex;justify-content:space-between;align-items:center">
-                  <span>{{ m.checkinDate }} · {{ m.statusLabel || m.status }}</span>
-                  <button v-if="m.status === 'PENDING'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawMakeup(m)">撤回</button>
+                  <span>{{ m.checkinDate }} · {{ m.makeupTypeLabel || m.makeupType || '补卡' }}</span>
+                  <StatusTag :text="m.statusLabel || m.status" :tone="m.status==='APPROVED'?'success':m.status==='REJECTED'?'danger':'warn'" />
                 </div>
                 <div class="sp-muted" style="font-size:12px">{{ m.reason }}</div>
+                <div v-if="m.reviewComment" class="makeup-review-note">教师意见：{{ m.reviewComment }}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                  <span class="sp-muted" style="font-size:11px">版本 v{{ m.version ?? 0 }} · {{ m.hasEvidence || m.evidenceFileId ? '已附证据' : '无附件' }}</span>
+                  <button v-if="m.status === 'PENDING'" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawMakeup(m)">撤回</button>
+                </div>
               </div>
             </div>
           </section>
@@ -273,13 +365,17 @@
       <template v-else-if="tab === 'insurance'">
         <div class="two">
           <section class="sp-card">
-            <div class="sp-panel__head">提交保险信息</div>
+            <div class="sp-panel__head">{{ insuranceMeta?.canRenew ? '更新保障并重新核验' : insuranceMeta?.status === 'REJECTED' ? '补正保险材料' : '提交保险信息' }}</div>
+            <p v-if="insuranceMeta?.verifyComment" class="sp-muted" role="status">核验意见：{{ insuranceMeta.verifyComment }}</p>
+            <p v-if="insuranceMeta?.coverageReason" class="sp-muted" role="status">{{ insuranceMeta.coverageReason }}</p>
+            <p v-if="insuranceError" role="alert">{{ insuranceError }}</p>
+            <fieldset :disabled="busy || insuranceReadOnly" style="border:0;margin:0;padding:0;min-width:0">
             <div class="sp-fieldlabel">保单号</div>
-            <input v-model.trim="insForm.policyNo" class="sp-inp" style="margin-bottom:12px" />
+            <input v-model.trim="insForm.policyNo" aria-label="保单号" class="sp-inp" style="margin-bottom:12px" />
             <div class="sp-fieldlabel">承保机构</div>
-            <input v-model.trim="insForm.insurerName" class="sp-inp" style="margin-bottom:12px" />
+            <input v-model.trim="insForm.insurerName" aria-label="承保机构" class="sp-inp" style="margin-bottom:12px" />
             <div class="sp-fieldlabel">险种</div>
-            <input v-model.trim="insForm.coverageType" class="sp-inp" style="margin-bottom:12px" />
+            <input v-model.trim="insForm.coverageType" aria-label="险种" class="sp-inp" style="margin-bottom:12px" />
             <div class="sp-fieldlabel">生效日</div>
             <AppDatePicker v-model="insForm.effectiveDate" class="sp-inp" style="margin-bottom:12px" role="start" :end-value="insForm.expiryDate" label="生效日期" />
             <div class="sp-fieldlabel">失效日</div>
@@ -287,12 +383,17 @@
             <div class="sp-fieldlabel">保单扫描件</div>
             <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadInsurancePolicy" />
             <p class="sp-muted" style="margin-bottom:12px">{{ insForm.fileId ? '保单文件已上传' : '请上传保单扫描件' }}</p>
-            <button class="sp-btn" :disabled="busy" @click="saveInsurance">提交保险</button>
+            </fieldset>
+            <button class="sp-btn" :disabled="busy || insuranceConflict || insuranceReadOnly" @click="saveInsurance">{{ busy ? '处理中…' : insuranceMeta?.canRenew ? '更新保单并提交核验' : insuranceMeta?.status === 'REJECTED' ? '补正并重新提交' : '提交保险' }}</button>
+            <button v-if="insuranceConflict" class="sp-btn" :disabled="busy" @click="loadTab('insurance', true)">重新读取最新保单</button>
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">当前保险</div>
             <p class="sp-muted">状态：{{ insuranceMeta?.statusLabel || insuranceMeta?.status || '未提交' }}</p>
             <p v-if="insuranceMeta?.policyNo" class="sp-muted">保单号：{{ insuranceMeta.policyNo }} · {{ insuranceMeta.insurerName }}</p>
+            <p v-if="insuranceMeta?.status === 'PENDING_VERIFY'" class="sp-muted">已交学校核验，核验结果会在这里更新。</p>
+            <p v-if="insuranceMeta?.canRenew" class="sp-muted">更新后交学校重新核验，旧保单的核验记录会保留。新保障确认前，不能凭本次提交办理上岗。</p>
+            <p v-else-if="insuranceMeta?.status === 'VERIFIED'" class="sp-muted">保单已核验，当前无需更新。实习安排变化时请先联系学校核实。</p>
           </section>
         </div>
       </template>
@@ -332,48 +433,66 @@
 
       <!-- 周报/月报/总结 -->
       <template v-else-if="tab === 'report'">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <button v-for="r in reportTabs" :key="r" class="sp-tab" :class="{'is-active':reportTab===r}" @click="reportTab=r">{{ r }}</button>
+        <div class="report-head">
+          <div><strong>过程报告</strong><p>按周期记录工作与收获；退回后从原记录继续修改，重新提交仍保留历史版本。</p></div>
+          <span>提交后交给指导教师批阅</span>
         </div>
+        <div class="report-tabs" aria-label="报告类型">
+          <button v-for="r in reportTabs" :key="r" class="sp-tab" :class="{'is-active':reportTab===r}" @click="switchReportTab(r)">{{ r }}</button>
+        </div>
+        <div v-if="reportReceipt" class="report-receipt" role="status">
+          <strong>✓ {{ reportReceipt.actionLabel }}</strong>
+          <span>#{{ reportReceipt.id }} · v{{ reportReceipt.version }} · {{ reportReceipt.statusLabel }}</span>
+          <span>{{ reportReceipt.nextStep }}</span>
+          <button type="button" @click="reportReceipt = null">关闭</button>
+        </div>
+        <div v-if="reportError" class="report-error" role="alert">{{ reportError }}</div>
         <div class="two">
-          <section class="sp-card">
-            <div class="sp-panel__head">{{ reportTab }}编辑</div>
+          <section class="sp-card report-editor">
+            <div class="sp-panel__head">{{ reportEditorTitle }}</div>
             <template v-if="reportTab==='周报'">
               <div class="sp-fieldlabel">周次</div><input v-model.number="weeklyForm.week" type="number" min="1" class="sp-inp" style="margin-bottom:12px" placeholder="第几周" />
-              <div class="sp-fieldlabel">本周工作内容</div><textarea v-model.trim="weeklyForm.workContent" class="sp-inp" style="margin-bottom:12px" placeholder="本周主要完成的工作" />
-              <div class="sp-fieldlabel">收获与体会</div><textarea v-model.trim="weeklyForm.harvestContent" class="sp-inp" style="margin-bottom:12px" placeholder="本周收获" />
+              <div class="sp-fieldlabel">本周工作内容 <span>至少 10 字</span></div><textarea v-model="weeklyForm.workContent" class="sp-inp" style="margin-bottom:12px" placeholder="具体说明完成了什么任务、产出了什么结果" />
+              <div class="sp-fieldlabel">收获与体会 <span>至少 10 字</span></div><textarea v-model="weeklyForm.harvestContent" class="sp-inp" style="margin-bottom:12px" placeholder="记录技能、经验和需要改进的地方" />
               <div class="sp-fieldlabel">下周计划</div><textarea v-model.trim="weeklyForm.planContent" class="sp-inp" style="margin-bottom:12px" placeholder="下周安排" />
-              <button class="sp-btn" :disabled="busy || !weeklyForm.workContent" @click="submitWeekly">提交周报</button>
+              <button class="sp-btn" :disabled="busy || !weeklyCanSubmit" @click="submitWeekly">{{ weeklyEditing ? '重新提交周报' : '提交周报' }}</button>
             </template>
             <template v-else>
-              <div class="sp-fieldlabel">报告标题</div><input v-model.trim="reportForm.title" class="sp-inp" style="margin-bottom:12px" :placeholder="reportTab + '标题'" />
-              <div class="sp-fieldlabel">正文（长文档）</div><textarea v-model.trim="reportForm.content" class="sp-inp" style="min-height:200px;margin-bottom:12px" :placeholder="reportTab + '正文'" />
-              <button class="sp-btn" :disabled="busy || !reportForm.content" @click="submitReport">提交{{ reportTab }}</button>
+              <template v-if="reportTab === '月报'">
+                <div class="sp-fieldlabel">报告月份</div><input v-model="reportForm.periodKey" type="month" class="sp-inp" style="margin-bottom:12px" />
+              </template>
+              <div class="sp-fieldlabel">正文 <span>至少 {{ reportMinimum }} 字</span></div><textarea v-model="reportForm.content" class="sp-inp" style="min-height:220px;margin-bottom:6px" :placeholder="reportPlaceholder" />
+              <div class="report-count">{{ reportForm.content.trim().length }} / {{ reportMinimum }} 字</div>
+              <button class="sp-btn" :disabled="busy || !reportCanSubmit" @click="submitReport">{{ processEditing ? '重新提交' : '提交' }}{{ reportTab }}</button>
             </template>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">{{ reportTab === '周报' ? '周报记录' : '月报/总结记录' }}</div>
+            <div class="sp-panel__head">{{ reportTab }}记录</div>
             <template v-if="reportTab === '周报'">
               <StateBlock v-if="!(my.weeklyReports||[]).length" type="empty" text="暂无周报" />
-              <div v-else style="display:flex;flex-direction:column;gap:10px">
-                <div v-for="w in my.weeklyReports" :key="w.week" class="repitem" style="flex-direction:column;align-items:stretch;gap:4px">
+              <div v-else class="report-list">
+                <div v-for="w in my.weeklyReports" :key="w.id || w.week" class="repitem report-item">
                   <div style="display:flex;align-items:center;justify-content:space-between">
-                    <div style="flex:1"><div style="font-size:13.5px;color:var(--t1)">第 {{ w.week }} 周周报</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(w.submittedAt) }}</div></div>
-                    <StatusTag :text="reviewText(w.status)" :tone="w.status==='APPROVED'?'success':w.status==='REJECTED'?'danger':'warn'" />
+                    <div style="flex:1"><strong>第 {{ w.week }} 周周报</strong><div class="report-item__meta">{{ fmt(w.submittedAt) }} · 第 {{ w.reportVersion || 1 }} 版</div></div>
+                    <StatusTag :text="reviewText(w.status)" :tone="w.status==='APPROVED'?'success':w.status==='RETURNED'?'danger':'warn'" />
                   </div>
-                  <div v-if="w.reviewComment" class="sp-muted" style="font-size:12px">老师意见：{{ w.reviewComment }}</div>
+                  <p class="report-item__summary">{{ w.workContent || '正文未返回' }}</p>
+                  <div v-if="w.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ w.reviewComment }}</div>
+                  <button v-if="w.status === 'RETURNED'" type="button" class="report-revise" @click="editWeekly(w)">按意见修改</button>
                 </div>
               </div>
             </template>
             <template v-else>
-              <StateBlock v-if="!(my.processReports||[]).length" type="empty" text="暂无月报/总结记录" />
-              <div v-else style="display:flex;flex-direction:column;gap:10px">
-                <div v-for="p in my.processReports" :key="p.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:4px">
+              <StateBlock v-if="!processReportRows.length" type="empty" :text="'暂无' + reportTab + '记录'" />
+              <div v-else class="report-list">
+                <div v-for="p in processReportRows" :key="p.id" class="repitem report-item">
                   <div style="display:flex;align-items:center;justify-content:space-between">
-                    <div style="flex:1"><div style="font-size:13.5px;color:var(--t1)">{{ p.periodKey }}（{{ p.reportType === 'MONTHLY' ? '月报' : '实习总结' }}）</div><div style="font-size:12px;color:var(--t4);margin-top:2px">{{ fmt(p.submittedAt) }}</div></div>
+                    <div style="flex:1"><strong>{{ p.periodKey === 'FINAL' ? '实习总结' : p.periodKey }}</strong><div class="report-item__meta">{{ fmt(p.submittedAt) }} · v{{ p.version }}</div></div>
                     <StatusTag :text="reviewText(p.status)" :tone="p.status==='APPROVED'?'success':p.status==='RETURNED'?'danger':'warn'" />
                   </div>
-                  <div v-if="p.reviewComment" class="sp-muted" style="font-size:12px">老师意见：{{ p.reviewComment }}</div>
+                  <p class="report-item__summary">{{ p.content || '正文未返回' }}</p>
+                  <div v-if="p.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ p.reviewComment }}</div>
+                  <button v-if="p.status === 'RETURNED'" type="button" class="report-revise" @click="editProcessReport(p)">按意见修改</button>
                 </div>
               </div>
             </template>
@@ -383,12 +502,24 @@
 
       <!-- 实习成绩/自评 -->
       <template v-else-if="tab === 'eval'">
+        <div v-if="evalReceipt" class="eval-receipt" role="status">
+          <strong>✓ {{ evalReceipt.actionLabel }}</strong>
+          <span>#{{ evalReceipt.id }} · v{{ evalReceipt.version }} · {{ evalReceipt.statusLabel }}</span>
+          <span>{{ evalReceipt.nextStep }}</span>
+          <button type="button" @click="evalReceipt = null">关闭</button>
+        </div>
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">实习自评 / 鉴定</div>
             <div class="sp-fieldlabel">工作表现自评</div><textarea v-model.trim="evalForm.performance" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习期间的工作表现" />
             <div class="sp-fieldlabel">收获与反思</div><textarea v-model.trim="evalForm.reflection" class="sp-inp" style="margin-bottom:12px" placeholder="请描述实习收获与不足" />
             <div class="sp-fieldlabel">存在问题</div><textarea v-model.trim="evalForm.problems" class="sp-inp" style="margin-bottom:12px" placeholder="实习中遇到的问题与改进方向" />
+            <div class="score-grid" style="margin-bottom:12px">
+              <label><span class="sp-fieldlabel">对企业评分</span><select v-model.number="evalForm.enterpriseRating" class="sp-inp"><option :value="null">请选择</option><option v-for="n in 5" :key="'e'+n" :value="n">{{ n }} 分</option></select></label>
+              <label><span class="sp-fieldlabel">对岗位评分</span><select v-model.number="evalForm.positionRating" class="sp-inp"><option :value="null">请选择</option><option v-for="n in 5" :key="'p'+n" :value="n">{{ n }} 分</option></select></label>
+            </div>
+            <div class="sp-fieldlabel">对企业评价</div><textarea v-model.trim="evalForm.enterpriseFeedback" class="sp-inp" style="margin-bottom:12px" placeholder="可填写企业管理、培养和保障体验" />
+            <div class="sp-fieldlabel">对岗位评价</div><textarea v-model.trim="evalForm.positionFeedback" class="sp-inp" style="margin-bottom:12px" placeholder="可填写岗位内容与专业匹配体验" />
             <button class="sp-btn" :disabled="busy || !evalForm.performance" @click="submitSelfEval">提交自评</button>
           </section>
           <section class="sp-card">
@@ -399,7 +530,7 @@
                 <StatusTag v-if="my.score.gradeLevel" :text="my.score.gradeLevel" tone="warn" />
                 <StatusTag :text="my.score.isPass ? '合格' : '不合格'" :tone="my.score.isPass ? 'success' : 'danger'" />
               </div>
-              <p class="sp-muted" style="margin-bottom:8px">企业评价分来自「学校录入」企业纸质评价（非企业端登录）。等次为百分制派生展示。</p>
+              <p class="sp-muted" style="margin-bottom:8px">企业评价分只读取当前正式安置下已审核的企业在线评价或学校代录纸质证据；等次为百分制派生展示。</p>
               <dl class="score-grid">
                 <div><dt>打卡</dt><dd>{{ my.score.checkinScore ?? '—' }}</dd></div>
                 <div><dt>周报</dt><dd>{{ my.score.weeklyScore ?? '—' }}</dd></div>
@@ -428,7 +559,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -443,6 +575,8 @@ import { useUiStore } from '../../stores/ui'
 const ui = useUiStore()
 const cfg = usePortalConfigStore()
 const session = useSessionStore()
+const route = useRoute()
+const router = useRouter()
 const tabs = [
   { key: 'overview', label: '我的实习' }, { key: 'agreement', label: '三方协议' },
   { key: 'checkin', label: '每日打卡' }, { key: 'leave', label: '实习请假' },
@@ -453,22 +587,59 @@ const tabs = [
   { key: 'report', label: '周报/月报/总结' }, { key: 'eval', label: '实习成绩/自评' }
 ]
 const tab = ref('overview')
+const tabGroups = [
+  { key: 'onboard', label: '安排与入岗', hint: '确认实习安排与上岗前条件', tabs: tabs.filter((item) => ['overview', 'plan', 'insurance', 'agreement'].includes(item.key)) },
+  { key: 'selection', label: '选岗与申请', hint: '查岗位、填意向、提交正式申请', tabs: tabs.filter((item) => ['enterprises', 'intention', 'application'].includes(item.key)) },
+  { key: 'process', label: '在岗办理', hint: '打卡、补卡、请假与过程报告', tabs: tabs.filter((item) => ['checkin', 'makeup', 'leave', 'report'].includes(item.key)) },
+  { key: 'change-result', label: '变更与结果', hint: '调岗退岗、求助、评价与成绩', tabs: tabs.filter((item) => ['change', 'help', 'eval'].includes(item.key)) }
+]
 const reportTab = ref('周报')
 const reportTabs = ['周报', '月报', '实习总结']
+const currentMonth = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const my = ref({})
+const sourceStates = reactive(Object.fromEntries(tabs.map((item) => [item.key, {
+  label: item.label, status: 'idle', message: '',
+}])))
+const currentSource = computed(() => sourceStates[tab.value] || { label: '当前内容', status: 'idle', message: '' })
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const selectedBatchId = ref('')
 const internshipCandidates = ref([])
 const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '' })
-const reportForm = reactive({ title: '', content: '' })
-const evalForm = reactive({ performance: '', reflection: '', problems: '' })
-const leaveForm = reactive({ leaveType: 'SICK', startDate: '', endDate: '', reason: '' })
+const reportForm = reactive({ periodKey: currentMonth(), content: '' })
+const reportReceipt = ref(null)
+const reportError = ref('')
+const weeklyEditing = computed(() => (my.value.weeklyReports || []).some((item) =>
+  Number(item.weekNo || item.week) === Number(weeklyForm.week) && item.status === 'RETURNED'))
+const processType = computed(() => reportTab.value === '实习总结' ? 'SUMMARY' : 'MONTHLY')
+const processReportRows = computed(() => (my.value.processReports || []).filter((item) => item.reportType === processType.value))
+const processEditing = computed(() => processReportRows.value.some((item) =>
+  item.periodKey === (processType.value === 'SUMMARY' ? 'FINAL' : reportForm.periodKey) && item.status === 'RETURNED'))
+const reportMinimum = computed(() => processType.value === 'SUMMARY' ? 300 : 100)
+const weeklyCanSubmit = computed(() => Number(weeklyForm.week) >= 1 && weeklyForm.workContent.trim().length >= 10 && weeklyForm.harvestContent.trim().length >= 10)
+const reportCanSubmit = computed(() => (processType.value === 'SUMMARY' || !!reportForm.periodKey) && reportForm.content.trim().length >= reportMinimum.value)
+const reportEditorTitle = computed(() => reportTab.value === '周报'
+  ? (weeklyEditing.value ? `第 ${weeklyForm.week} 周 · 修改重交` : '填写周报')
+  : (processEditing.value ? `${reportTab.value} · 修改重交` : `填写${reportTab.value}`))
+const reportPlaceholder = computed(() => processType.value === 'SUMMARY'
+  ? '建议按“岗位与职责、主要成果、能力提升、不足与改进”分段填写。'
+  : '建议按“本月工作、主要成果、能力提升、问题与下月计划”分段填写。')
+const evalForm = reactive({ performance: '', reflection: '', problems: '', enterpriseRating: null,
+  enterpriseFeedback: '', positionRating: null, positionFeedback: '' })
+const leaveForm = reactive({ leaveType: 'SICK', startDate: '', endDate: '', reason: '', evidenceFileId: '', fileName: '' })
 const leaves = ref([])
-const makeupForm = reactive({ checkinDate: '', reason: '' })
+const leaveReceipt = ref(null)
+const leaveError = ref('')
+const returnDraft = reactive({ id: '', note: '', version: null })
+const makeupForm = reactive({ checkinDate: '', reason: '', makeupType: 'MISSING', evidenceFileId: '', fileName: '' })
 const makeups = ref([])
+const makeupReceipt = ref(null)
+const makeupError = ref('')
 const intentionForm = reactive({ preferredCity: '', preferredIndustry: '', intentionNote: '' })
 const intentionMeta = ref({})
 const intentionFlags = ref({ canEdit: true, canSubmit: false, canWithdraw: false })
@@ -490,11 +661,15 @@ const insForm = reactive({
   policyNo: '', insurerName: '', coverageType: '', effectiveDate: '', expiryDate: '', fileId: ''
 })
 const insuranceMeta = ref(null)
+const insuranceError = ref(''), insuranceConflict = ref(false)
+const insuranceReadOnly = computed(() => !!my.value.historyMode || (insuranceMeta.value?.status === 'VERIFIED' && insuranceMeta.value.canRenew !== true))
+let insuranceEpoch = 0
 const planMeta = ref(null)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
 const appealMeta = ref(null)
 const selfEvalMeta = ref(null)
+const evalReceipt = ref(null)
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
@@ -508,12 +683,125 @@ const AGREEMENT_MAP = {
 function statusText(s) { return STATUS_MAP[s] || s || '—' }
 function riskText(s) { return RISK_MAP[s] || s || '—' }
 function reviewText(s) { return REVIEW_MAP[s] || s || '—' }
-function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '—' }
+function fmt(t) {
+  if (!t) return '—'
+  const date = new Date(t)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+}
 const agreementStatusText = computed(() => AGREEMENT_MAP[my.value.agreementStatus] || my.value.agreementStatusLabel || my.value.agreementStatus || activeAgreement.value?.statusLabel || '未发起')
 const agreementTone = computed(() => ((my.value.agreementStatus || activeAgreement.value?.status) === 'EFFECTIVE' ? 'success' : 'warn'))
 const intentionCanEdit = computed(() => intentionFlags.value.canEdit !== false && (intentionMeta.value.status || 'DRAFT') !== 'SUBMITTED')
 const intentionCanSubmit = computed(() => intentionFlags.value.canSubmit || ['DRAFT', '', undefined, null].includes(intentionMeta.value.status))
 const intentionCanWithdraw = computed(() => intentionFlags.value.canWithdraw || intentionMeta.value.status === 'SUBMITTED')
+const makeupEvidenceRequired = computed(() => makeupForm.makeupType === 'OUT_OF_RANGE')
+const makeupCanSubmit = computed(() => !!makeupForm.checkinDate
+  && makeupForm.reason.trim().length >= 5
+  && (!makeupEvidenceRequired.value || !!makeupForm.evidenceFileId))
+const leaveDays = computed(() => {
+  if (!leaveForm.startDate || !leaveForm.endDate) return 0
+  const start = Date.parse(`${leaveForm.startDate}T00:00:00Z`)
+  const end = Date.parse(`${leaveForm.endDate}T00:00:00Z`)
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? Math.floor((end - start) / 86400000) + 1 : 0
+})
+const leaveEvidenceRequired = computed(() => leaveForm.leaveType === 'SICK' || leaveDays.value >= 3)
+const leaveEvidenceHint = computed(() => leaveForm.leaveType === 'SICK'
+  ? '病假必须上传医疗或就诊证明'
+  : leaveDays.value >= 3 ? '连续3天及以上请假必须上传证明' : '短期事假可按学校要求选传证明')
+const leaveCanSubmit = computed(() => !!leaveForm.startDate && !!leaveForm.endDate && leaveDays.value > 0
+  && leaveForm.reason.trim().length >= 2 && (!leaveEvidenceRequired.value || !!leaveForm.evidenceFileId))
+
+const qualification = computed(() => my.value.eligibilityReview || { status: 'UNKNOWN', label: '暂未取得认定结果', reason: '' })
+const qualificationHint = computed(() => ({
+  QUALIFIED: '学校已认定本批次实习资格合格。',
+  UNQUALIFIED: '本次资格认定未通过，请联系指导教师了解后续安排。',
+  PENDING: '学校正在核对本批次实习资格，请关注认定进度。'
+})[qualification.value.status] || '请刷新结果；暂时无法取得时，可联系指导教师核对。')
+const currentAction = computed(() => {
+  if (my.value.historyMode) return {
+    tab: 'overview', title: '查看本次实习记录', action: '查看实习概况',
+    reason: '该实习已进入历史记录，可查看本次安排与已保存结果。',
+    recentChange: '当前为历史实习', nextActor: '如需核对资料，请联系指导教师'
+  }
+  if (['PENDING', 'UNQUALIFIED', 'UNKNOWN'].includes(qualification.value.status)) return {
+    tab: 'overview', title: qualification.value.status === 'UNQUALIFIED' ? '查看资格认定说明' : '关注实习资格认定', action: '查看资格结果',
+    reason: qualification.value.reason || qualificationHint.value,
+    recentChange: qualification.value.reviewedAt ? fmt(qualification.value.reviewedAt) : '尚无认定时间',
+    nextActor: '由学校经办人核对资格并更新结果'
+  }
+
+  if (my.value.status === 'PREPARING' && !my.value.positionName && (!my.value.destinationType || my.value.destinationType === 'NONE')) return {
+    tab: 'enterprises', title: '落实本批次实习岗位', action: '查看岗位',
+    reason: '实习资格已合格。可查看学校发布的岗位，按本批次安排填写意向或提交申请。',
+    recentChange: '岗位尚未落实', nextActor: '学校与企业审核申请后确认实习去向'
+  }
+
+  const agreementStatus = my.value.agreementStatus || activeAgreement.value?.status
+  if (agreementStatus === 'PENDING_STUDENT') return {
+    tab: 'agreement', title: '确认三方协议', action: '核对并确认',
+    reason: '协议正在等待你确认。请先核对学校、企业、岗位和纸质签署来源，再决定确认或驳回。',
+    recentChange: activeAgreement.value?.updatedAt ? fmt(activeAgreement.value.updatedAt) : '协议已进入学生确认节点',
+    nextActor: '确认后交由企业或学校继续办理；驳回则返回经办人修正'
+  }
+  if (sourceStates.insurance.status === 'empty' && ['PREPARING', 'READY'].includes(my.value.status)) return {
+    tab: 'insurance', title: '补齐实习保险', action: '提交保险信息',
+    reason: '当前实习记录还没有可核验的保险信息，上岗前需要补齐保单与有效期。',
+    recentChange: '尚未取得有效保险记录', nextActor: '提交后等待学校核验'
+  }
+  if (sourceStates.plan.status === 'data' && planMeta.value?.id && !['ACKNOWLEDGED', 'CONFIRMED'].includes(planMeta.value.ackStatus || planMeta.value.status)) return {
+    tab: 'plan', title: '确认实习计划', action: '查看计划',
+    reason: '学校已下发实习计划，确认前请阅读任务、时间和指导要求。',
+    recentChange: planMeta.value.updatedAt ? fmt(planMeta.value.updatedAt) : '计划已下发',
+    nextActor: '确认后进入在岗执行与过程记录'
+  }
+  if (['PREPARING', 'READY'].includes(my.value.status)) return {
+    tab: 'overview', title: '继续完成上岗准备', action: '查看实习安排',
+    reason: '请按学校安排核对协议、保险和岗前要求，等待学校确认上岗。',
+    recentChange: statusText(my.value.status), nextActor: '学校核验条件并确认上岗后，开始考勤与过程记录'
+  }
+  if (my.value.status === 'ONBOARD' && !my.value.todayCheckin?.done) return {
+    tab: 'checkin', title: '完成今日打卡', action: '去打卡',
+    reason: '今天尚未留下出勤记录。PC 可登记打卡，精确地理围栏核验仍在学生小程序完成。',
+    recentChange: `累计出勤 ${my.value.todayCheckin?.totalDays ?? 0} 天`,
+    nextActor: '打卡后形成服务端时间记录；异常只作为人工核实信号'
+  }
+  if (my.value.status === 'ASSESSING') return {
+    tab: 'eval', title: '完成实习自评', action: '填写自评',
+    reason: '实习已进入考核评价阶段，请核对成绩构成并完成本人自评。',
+    recentChange: '实习状态已进入考核中', nextActor: '提交后等待指导教师与学校审核'
+  }
+  return {
+    tab: 'report', title: '继续记录实习过程', action: '写周报 / 总结',
+    reason: '岗位与上岗条件已建立，下一步是持续提交周报、月报和实习总结。',
+    recentChange: `已提交 ${(my.value.weeklyReports || []).length} 篇周报`,
+    nextActor: '提交后等待指导教师批阅；退回后按原因修订重交'
+  }
+})
+
+function activeGroupLabel(group) {
+  return group.tabs.find((item) => item.key === tab.value)?.label || `${group.tabs.length} 项`
+}
+
+function groupOpen(group) {
+  return group.tabs.some((item) => item.key === tab.value)
+}
+
+function selectTab(key) {
+  if (!tabs.some((item) => item.key === key)) return
+  if (key === 'enterprises') {
+    router.push('/internship/selection')
+    return
+  }
+  tab.value = key
+  router.replace({ query: { ...route.query, view: key } })
+  if (my.value.hasData) loadTab(key)
+}
+
+watch(() => route.query.view, (value) => {
+  if (typeof value === 'string' && tabs.some((item) => item.key === value)) {
+    tab.value = value
+    if (my.value.hasData) loadTab(value)
+  }
+}, { immediate: true })
 
 function persistInternshipBatch(batchId) {
   const value = String(batchId || '').trim()
@@ -544,8 +832,8 @@ function currentInternshipContext() {
 }
 
 const flowSteps = computed(() => {
-  const order = ['协议签署', '岗前培训', '在岗实习', '考核评价', '归档']
-  const cur = my.value.status === 'ENDED' ? 4 : 2
+  const order = ['实习准备', '待上岗', '在岗实习', '考核评价', '归档']
+  const cur = { PREPARING: 0, READY: 1, ONBOARD: 2, ASSESSING: 3, ARCHIVED: 4, ENDED: 4 }[my.value.status] ?? -1
   return order.map((name, i) => ({ name, state: i < cur ? 'done' : i === cur ? 'current' : 'todo' }))
 })
 const metrics = computed(() => [
@@ -555,84 +843,147 @@ const metrics = computed(() => [
   { t: '风险等级', v: riskText(my.value.riskLevel), u: '', c: my.value.riskLevel === 'HIGH' ? 'var(--danger-fg)' : 'var(--ok-fg)' }
 ])
 
-async function loadLeaves() {
-  try {
-    const d = await internshipCoreApi.leaves(currentInternshipContext())
-    leaves.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
-  } catch { leaves.value = [] }
+function resetSourceStates() {
+  Object.values(sourceStates).forEach((state) => Object.assign(state, { status: 'idle', message: '' }))
+  leaves.value = []
+  leaveReceipt.value = null
+  leaveError.value = ''
+  Object.assign(returnDraft, { id: '', note: '', version: null })
+  makeups.value = []
+  makeupReceipt.value = null
+  makeupError.value = ''
+  intentionMeta.value = {}
+  intentionFlags.value = { canEdit: true, canSubmit: false, canWithdraw: false }
+  applications.value = []
+  changes.value = []
+  agreements.value = []
+  activeAgreement.value = null
+  enterprises.value = []
+  insuranceMeta.value = null
+  insuranceEpoch++; insuranceError.value = ''; insuranceConflict.value = false
+  Object.keys(insForm).forEach(key => { insForm[key] = '' })
+  planMeta.value = null
+  selfEvalMeta.value = null
+  appealMeta.value = null
 }
-async function loadExtras() {
-  try {
-    const mk = await internshipCoreApi.makeups(currentInternshipContext())
-    makeups.value = mk?.items || mk?.list || (Array.isArray(mk) ? mk : [])
-  } catch { makeups.value = [] }
-  try {
-    const it = await portalApi.internshipIntentionMy()
+
+function rowsFrom(data) {
+  return data?.items || data?.list || (Array.isArray(data) ? data : [])
+}
+
+async function fetchTabSource(key) {
+  const context = () => currentInternshipContext()
+  if (['overview', 'checkin', 'help'].includes(key)) return true
+  if (key === 'leave') {
+    leaves.value = rowsFrom(await internshipCoreApi.leaves(context()))
+    return leaves.value.length > 0
+  }
+  if (key === 'makeup') {
+    makeups.value = rowsFrom(await internshipCoreApi.makeups(context()))
+    return makeups.value.length > 0
+  }
+  if (key === 'intention') {
+    const data = await portalApi.internshipIntentionMy()
     intentionFlags.value = {
-      canEdit: it?.canEdit !== false,
-      canSubmit: !!it?.canSubmit,
-      canWithdraw: !!it?.canWithdraw
+      canEdit: data?.canEdit !== false,
+      canSubmit: !!data?.canSubmit,
+      canWithdraw: !!data?.canWithdraw,
     }
-    intentionMeta.value = it?.intention || it || {}
+    intentionMeta.value = data?.intention || data || {}
     intentionForm.preferredCity = intentionMeta.value.preferredCity || ''
     intentionForm.preferredIndustry = intentionMeta.value.preferredIndustry || ''
     intentionForm.intentionNote = intentionMeta.value.intentionNote || ''
-  } catch { intentionMeta.value = {}; intentionFlags.value = { canEdit: true, canSubmit: true, canWithdraw: false } }
-  try {
-    const apps = await internshipCoreApi.applications(currentInternshipContext())
-    applications.value = apps?.items || (Array.isArray(apps) ? apps : [])
-  } catch { applications.value = [] }
-  try {
-    const ch = await internshipCoreApi.changes(currentInternshipContext())
-    changes.value = ch?.items || []
-  } catch { changes.value = [] }
-  try {
-    const [weekly, reports] = await Promise.all([
-      internshipCoreApi.weeklyReports(currentInternshipContext()),
-      internshipCoreApi.reports(currentInternshipContext())
-    ])
-    my.value.weeklyReports = weekly?.items || []
-    my.value.processReports = reports?.items || []
-  } catch {
-    my.value.weeklyReports = []
-    my.value.processReports = []
+    return Object.keys(intentionMeta.value).length > 0
   }
-  try {
-    const ag = await internshipCoreApi.agreements()
-    agreements.value = ag?.items || (Array.isArray(ag) ? ag : [])
-    activeAgreement.value = agreements.value.find((x) => x.status === 'PENDING_STUDENT') || agreements.value[0] || null
-  } catch { agreements.value = []; activeAgreement.value = null }
-  try {
-    insuranceMeta.value = await internshipCoreApi.insurance()
-    if (insuranceMeta.value) {
-      insForm.policyNo = insuranceMeta.value.policyNo || ''
-      insForm.insurerName = insuranceMeta.value.insurerName || ''
-      insForm.coverageType = insuranceMeta.value.coverageType || ''
-      insForm.effectiveDate = insuranceMeta.value.effectiveDate || ''
-      insForm.expiryDate = insuranceMeta.value.expiryDate || ''
-      insForm.fileId = insuranceMeta.value.fileId || ''
-    }
-  } catch { insuranceMeta.value = null }
-  try {
+  if (key === 'application') {
+    applications.value = rowsFrom(await internshipCoreApi.applications(context()))
+    return applications.value.length > 0
+  }
+  if (key === 'change') {
+    const [changeRows, positionRows] = await Promise.all([
+      internshipCoreApi.changes(context()),
+      portalApi.internshipEnterprises(enterpriseCity.value),
+    ])
+    changes.value = rowsFrom(changeRows)
+    enterprises.value = rowsFrom(positionRows)
+    return changes.value.length > 0 || enterprises.value.length > 0
+  }
+  if (key === 'report') {
+    const [weekly, reports] = await Promise.all([
+      internshipCoreApi.weeklyReports(context()),
+      internshipCoreApi.reports(context()),
+    ])
+    my.value.weeklyReports = rowsFrom(weekly)
+    my.value.processReports = rowsFrom(reports)
+    return my.value.weeklyReports.length > 0 || my.value.processReports.length > 0
+  }
+  if (key === 'agreement') {
+    agreements.value = rowsFrom(await internshipCoreApi.agreements())
+    activeAgreement.value = agreements.value.find((item) => item.status === 'PENDING_STUDENT') || agreements.value[0] || null
+    return agreements.value.length > 0
+  }
+  if (key === 'insurance') {
+    const epoch = ++insuranceEpoch
+    const result = await internshipCoreApi.insurance()
+    if (epoch !== insuranceEpoch) return false
+    insuranceMeta.value = result
+    insuranceError.value = ''; insuranceConflict.value = false
+    if (!insuranceMeta.value?.id && !insuranceMeta.value?.policyNo) return false
+    Object.assign(insForm, {
+      policyNo: insuranceMeta.value.policyNo || '',
+      insurerName: insuranceMeta.value.insurerName || '',
+      coverageType: insuranceMeta.value.coverageType || '',
+      effectiveDate: insuranceMeta.value.effectiveDate || '',
+      expiryDate: insuranceMeta.value.expiryDate || '',
+      fileId: insuranceMeta.value.fileId || '',
+    })
+    return true
+  }
+  if (key === 'plan') {
     planMeta.value = await internshipCoreApi.plan()
-  } catch { planMeta.value = null }
-  try {
-    selfEvalMeta.value = await internshipCoreApi.selfEval()
-  } catch { selfEvalMeta.value = null }
-  try {
-    appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
-  } catch { appealMeta.value = null }
-  await loadEnterprises()
+    return !!planMeta.value?.id
+  }
+  if (key === 'eval') {
+    const [selfEval, appeal] = await Promise.all([
+      internshipCoreApi.selfEval(context()),
+      portalApi.internshipScoreAppealStatus(context()),
+    ])
+    selfEvalMeta.value = selfEval || null
+    appealMeta.value = appeal || null
+    return !!selfEvalMeta.value || !!appealMeta.value || !!my.value.score
+  }
+  if (key === 'enterprises') {
+    enterprises.value = rowsFrom(await portalApi.internshipEnterprises(enterpriseCity.value))
+    return enterprises.value.length > 0
+  }
+  return true
 }
-async function loadEnterprises() {
+
+async function loadTab(key, force = false) {
+  const state = sourceStates[key]
+  if (!state || !my.value.hasData) return
+  if (!force && ['loading', 'data', 'empty'].includes(state.status)) return
+  state.status = 'loading'
+  state.message = ''
   try {
-    const d = await portalApi.internshipEnterprises(enterpriseCity.value)
-    enterprises.value = d?.items || d?.list || (Array.isArray(d) ? d : [])
-  } catch { enterprises.value = [] }
+    state.status = await fetchTabSource(key) ? 'data' : 'empty'
+  } catch (e) {
+    state.status = 'error'
+    state.message = e?.message || `${state.label}加载失败，请重试`
+  }
+}
+
+async function retryCurrentSource() {
+  await loadTab(tab.value, true)
+}
+
+async function loadEnterprises() {
+  await loadTab('enterprises', true)
 }
 
 async function load() {
   loading.value = true; error.value = ''
+  resetSourceStates()
   try {
     try { selectedBatchId.value = String(sessionStorage.getItem(INTERNSHIP_BATCH_KEY) || '') } catch { selectedBatchId.value = '' }
     const data = await portalApi.internshipMy() || {}
@@ -644,8 +995,8 @@ async function load() {
     }
     if (data.batchId) persistInternshipBatch(data.batchId)
     if (!data.hasData) return
-    await loadLeaves()
-    await loadExtras()
+    const initialSources = [...new Set(['agreement', 'insurance', 'plan', tab.value])]
+    await Promise.all(initialSources.map((key) => loadTab(key, true)))
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }
 }
 async function doCheckin() {
@@ -661,16 +1012,60 @@ async function doCheckin() {
   } catch (e) { ui.notify(e?.message || '打卡失败') } finally { busy.value = false }
 }
 async function submitMakeup() {
+  if (busy.value) return
+  makeupError.value = ''
+  if (!makeupCanSubmit.value) {
+    makeupError.value = makeupEvidenceRequired.value && !makeupForm.evidenceFileId
+      ? '超范围补卡必须先上传定位、考勤或现场佐证。'
+      : '请填写缺卡日期和不少于5个字的详细事由。'
+    return
+  }
   busy.value = true
   try {
-    await internshipCoreApi.applyMakeup({
-      ...makeupForm,
+    const result = await internshipCoreApi.applyMakeup({
+      checkinDate: makeupForm.checkinDate,
+      reason: makeupForm.reason.trim(),
+      makeupType: makeupForm.makeupType,
+      evidenceFileId: makeupForm.evidenceFileId || '',
       ...currentInternshipContext()
     })
+    makeupReceipt.value = result
     ui.notify('补卡申请已提交')
+    makeupForm.checkinDate = ''
     makeupForm.reason = ''
-    await loadExtras()
-  } catch (e) { ui.notify(e?.message || '补卡失败') } finally { busy.value = false }
+    makeupForm.makeupType = 'MISSING'
+    makeupForm.evidenceFileId = ''
+    makeupForm.fileName = ''
+    await loadTab('makeup', true)
+  } catch (e) {
+    makeupError.value = e?.message || '补卡提交失败，已保留填写内容，请稍后重试。'
+    ui.notify(makeupError.value)
+  } finally { busy.value = false }
+}
+async function uploadMakeupEvidence(event) {
+  if (busy.value) return
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  if (Number(file.size || 0) > 20 * 1024 * 1024) {
+    makeupError.value = '单个证据文件不能超过20MB。'
+    if (event?.target) event.target.value = ''
+    return
+  }
+  busy.value = true
+  makeupError.value = ''
+  try {
+    const uploaded = await internshipCoreApi.uploadMakeupEvidence(file)
+    const fileId = uploaded?.fileId || uploaded?.id
+    if (!fileId) throw new Error('上传响应缺少文件标识')
+    makeupForm.evidenceFileId = String(fileId)
+    makeupForm.fileName = uploaded?.fileName || file.name || '补卡证据'
+    ui.notify('证据材料已上传')
+  } catch (e) {
+    makeupError.value = e?.message || '证据材料上传失败，表单内容已保留。'
+  } finally {
+    busy.value = false
+    if (event?.target) event.target.value = ''
+  }
 }
 async function withdrawMakeup(item) {
   busy.value = true
@@ -679,14 +1074,14 @@ async function withdrawMakeup(item) {
       ...currentInternshipContext(),
       expectedVersion: item.version
     })
-    ui.notify('已撤回'); await loadExtras()
+    ui.notify('已撤回'); await loadTab('makeup', true)
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function saveIntention() {
   busy.value = true
   try {
     await portalApi.internshipIntentionSave({ ...intentionForm })
-    ui.notify('意向草稿已保存'); await loadExtras()
+    ui.notify('意向草稿已保存'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '意向保存失败') } finally { busy.value = false }
 }
 async function submitIntention() {
@@ -694,14 +1089,14 @@ async function submitIntention() {
   try {
     await portalApi.internshipIntentionSave({ ...intentionForm })
     await portalApi.internshipIntentionSubmit()
-    ui.notify('意向已提交'); await loadExtras()
+    ui.notify('意向已提交'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '意向提交失败') } finally { busy.value = false }
 }
 async function withdrawIntention() {
   busy.value = true
   try {
     await portalApi.internshipIntentionWithdraw()
-    ui.notify('意向已撤回'); await loadExtras()
+    ui.notify('意向已撤回'); await loadTab('intention', true)
   } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
 }
 async function uploadApplicationEvidence(event) {
@@ -755,7 +1150,7 @@ async function submitApplication() {
       ...currentInternshipContext(),
       expectedVersion: saved.version
     })
-    ui.notify('申请已提交'); appForm.applicationNote = ''; await loadExtras()
+    ui.notify('申请已提交'); appForm.applicationNote = ''; await loadTab('application', true)
   } catch (e) { ui.notify(e?.message || '申请失败') } finally { busy.value = false }
 }
 async function submitChange() {
@@ -779,44 +1174,115 @@ async function submitChange() {
       targetEnterpriseName: selected?.companyName || changeForm.targetEnterpriseName,
       targetPositionName: selected?.title || changeForm.targetPositionName
     })
-    ui.notify('变更申请已提交'); changeForm.reason = ''; await loadExtras()
+    ui.notify('变更申请已提交'); changeForm.reason = ''; await loadTab('change', true)
   } catch (e) { ui.notify(e?.message || '变更申请失败') } finally { busy.value = false }
 }
 async function submitLeave() {
+  if (busy.value) return
+  leaveError.value = ''
+  if (!leaveCanSubmit.value) {
+    leaveError.value = !leaveDays.value
+      ? '请填写有效的起止日期，结束日期不能早于开始日期。'
+      : leaveEvidenceRequired.value && !leaveForm.evidenceFileId
+        ? leaveEvidenceHint.value
+        : '请填写不少于2个字的请假事由。'
+    return
+  }
   busy.value = true
   try {
-    await internshipCoreApi.applyLeave({
-      ...leaveForm,
+    const result = await internshipCoreApi.applyLeave({
+      leaveType: leaveForm.leaveType,
+      startDate: leaveForm.startDate,
+      endDate: leaveForm.endDate,
+      reason: leaveForm.reason.trim(),
+      fileId: leaveForm.evidenceFileId || '',
       ...currentInternshipContext()
     })
+    leaveReceipt.value = {
+      ...result, actionLabel: '请假申请已提交',
+      nextStep: '等待指导教师审批；通过后请在返岗时及时办理销假。'
+    }
     ui.notify('请假申请已提交')
-    Object.assign(leaveForm, { reason: '' })
-    await loadLeaves()
-  } catch (e) { ui.notify(e?.message || '请假提交失败') } finally { busy.value = false }
+    Object.assign(leaveForm, { startDate: '', endDate: '', reason: '', evidenceFileId: '', fileName: '' })
+    await loadTab('leave', true)
+  } catch (e) {
+    leaveError.value = e?.message || '请假提交失败，已保留填写内容。'
+    ui.notify(leaveError.value)
+  } finally { busy.value = false }
+}
+async function uploadLeaveEvidence(event) {
+  if (busy.value) return
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  if (Number(file.size || 0) > 20 * 1024 * 1024) {
+    leaveError.value = '单个证明文件不能超过20MB。'
+    if (event?.target) event.target.value = ''
+    return
+  }
+  busy.value = true
+  leaveError.value = ''
+  try {
+    const uploaded = await internshipCoreApi.uploadLeaveEvidence(file)
+    const fileId = uploaded?.fileId || uploaded?.id
+    if (!fileId) throw new Error('上传响应缺少文件标识')
+    leaveForm.evidenceFileId = String(fileId)
+    leaveForm.fileName = uploaded?.fileName || file.name || '请假证明'
+    ui.notify('证明材料已上传')
+  } catch (e) {
+    leaveError.value = e?.message || '证明材料上传失败，表单内容已保留。'
+  } finally {
+    busy.value = false
+    if (event?.target) event.target.value = ''
+  }
 }
 async function withdrawLeave(item) {
+  if (busy.value) return
   busy.value = true
   try {
-    await internshipCoreApi.withdrawLeave(item.id, {
+    const result = await internshipCoreApi.withdrawLeave(item.id, {
       ...currentInternshipContext(),
       expectedVersion: item.version
     })
-    ui.notify('已撤回'); await loadLeaves()
-  } catch (e) { ui.notify(e?.message || '撤回失败') } finally { busy.value = false }
+    leaveReceipt.value = {
+      ...result, id: result?.id || item.id, version: result?.version ?? (Number(item.version || 0) + 1),
+      statusLabel: result?.statusLabel || '已撤回', actionLabel: '请假申请已撤回', nextStep: '本次申请已结束；如仍需请假，可重新提交。'
+    }
+    ui.notify('已撤回'); await loadTab('leave', true)
+  } catch (e) {
+    leaveError.value = e?.message || '撤回失败，请刷新后重试。'
+    ui.notify(leaveError.value)
+  } finally { busy.value = false }
 }
-async function returnLeave(id) {
-  const note = (window.prompt('请填写销假说明（至少 2 字，如：已返岗）') || '').trim()
-  if (note.length < 2) return ui.notify('销假说明至少 2 字')
+function openReturnLeave(item) {
+  if (busy.value) return
+  Object.assign(returnDraft, { id: String(item.id), note: '', version: item.version })
+  leaveError.value = ''
+}
+function closeReturnLeave() {
+  if (busy.value) return
+  Object.assign(returnDraft, { id: '', note: '', version: null })
+}
+async function confirmReturnLeave() {
+  if (busy.value || !returnDraft.id || returnDraft.note.trim().length < 2) return
+  const id = returnDraft.id
+  const note = returnDraft.note.trim()
   busy.value = true
   try {
-    const item = leaves.value.find((row) => String(row.id) === String(id))
-    await internshipCoreApi.returnLeave(id, {
+    const result = await internshipCoreApi.returnLeave(id, {
       ...currentInternshipContext(),
       note,
-      expectedVersion: item?.version
+      expectedVersion: returnDraft.version
     })
-    ui.notify('销假已登记'); await loadLeaves()
-  } catch (e) { ui.notify(e?.message || '销假失败') } finally { busy.value = false }
+    leaveReceipt.value = {
+      ...result, id: result?.id || id, statusLabel: result?.statusLabel || '已销假',
+      actionLabel: '销假已登记', nextStep: '等待指导教师核实返岗并完成风险同步。'
+    }
+    Object.assign(returnDraft, { id: '', note: '', version: null })
+    ui.notify('销假已登记'); await loadTab('leave', true)
+  } catch (e) {
+    leaveError.value = e?.message || '销假失败，填写内容已保留。'
+    ui.notify(leaveError.value)
+  } finally { busy.value = false }
 }
 async function confirmAgreement(action) {
   if (!activeAgreement.value?.id) return ui.notify('暂无可操作协议')
@@ -835,32 +1301,44 @@ async function confirmAgreement(action) {
       expectedVersion: detail.version
     })
     ui.notify(action === 'CONFIRM' ? '协议已确认' : '协议已驳回')
-    await loadExtras(); await load()
+    await load()
   } catch (e) { ui.notify(e?.message || '协议操作失败') } finally { busy.value = false }
 }
 async function uploadInsurancePolicy(event) {
+  if (busy.value || insuranceReadOnly.value) return
   const file = event?.target?.files?.[0]
   if (!file) return
+  const epoch = insuranceEpoch
   busy.value = true
   try {
     const uploaded = await internshipCoreApi.uploadInsurancePolicy(file)
-    insForm.fileId = uploaded?.fileId || uploaded?.id || ''
-    if (!insForm.fileId) throw new Error('上传响应缺少文件标识')
+    if (epoch !== insuranceEpoch) return
+    const fileId = uploaded?.fileId || uploaded?.id
+    if (!fileId) throw new Error('上传响应缺少文件标识')
+    insForm.fileId = String(fileId)
     ui.notify('保单文件已上传')
   } catch (e) {
-    insForm.fileId = ''
-    ui.notify(e?.message || '保单上传失败')
+    if (epoch === insuranceEpoch) insuranceError.value = e?.message || '保单上传失败，原材料已保留'
   } finally {
     busy.value = false
     if (event?.target) event.target.value = ''
   }
 }
 async function saveInsurance() {
+  if (busy.value || insuranceConflict.value || insuranceReadOnly.value) return
+  insuranceError.value = ''
+  if (insuranceMeta.value?.id && !Number.isInteger(insuranceMeta.value.version)) { insuranceError.value = '当前保单版本缺失，请重新读取后再提交。'; return }
+  const epoch = insuranceEpoch
   busy.value = true
   try {
-    await internshipCoreApi.saveInsurance({ ...insForm })
-    ui.notify('保险信息已提交'); await loadExtras()
-  } catch (e) { ui.notify(e?.message || '保险提交失败') } finally { busy.value = false }
+    await internshipCoreApi.saveInsurance({ ...insForm, ...currentInternshipContext(), expectedVersion: insuranceMeta.value?.version })
+    if (epoch !== insuranceEpoch) return
+    ui.notify('保险信息已提交'); await loadTab('insurance', true)
+  } catch (e) {
+    if (epoch !== insuranceEpoch) return
+    insuranceConflict.value = Number(e?.code) === 409 || Math.floor(Number(e?.code) / 1000) === 409
+    insuranceError.value = insuranceConflict.value ? '保单已被更新。填写内容已保留；重新读取会载入最新保单，请核对后再提交。' : (e?.message || '保险提交失败，填写内容已保留')
+  } finally { busy.value = false }
 }
 async function ackPlan() {
   busy.value = true
@@ -870,7 +1348,7 @@ async function ackPlan() {
       planVersion: planMeta.value?.version,
       expectedVersion: planMeta.value?.ackVersion
     })
-    ui.notify('已确认实习计划'); await loadExtras()
+    ui.notify('已确认实习计划'); await loadTab('plan', true)
   } catch (e) { ui.notify(e?.message || '确认失败') } finally { busy.value = false }
 }
 async function submitHelp() {
@@ -882,15 +1360,42 @@ async function submitHelp() {
     helpForm.content = ''; helpForm.title = ''
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
+function switchReportTab(value) {
+  if (!reportTabs.includes(value) || busy.value) return
+  reportTab.value = value
+  reportError.value = ''
+  if (value === '月报' && !reportForm.periodKey) reportForm.periodKey = currentMonth()
+  if (value === '实习总结') reportForm.periodKey = 'FINAL'
+}
+function editWeekly(item) {
+  if (busy.value || item?.status !== 'RETURNED') return
+  Object.assign(weeklyForm, {
+    week: Number(item.weekNo || item.week),
+    workContent: item.workContent || '',
+    harvestContent: item.harvestContent || '',
+    planContent: item.planContent || ''
+  })
+  reportError.value = ''
+}
+function editProcessReport(item) {
+  if (busy.value || item?.status !== 'RETURNED') return
+  reportTab.value = item.reportType === 'SUMMARY' ? '实习总结' : '月报'
+  Object.assign(reportForm, { periodKey: item.periodKey || (item.reportType === 'SUMMARY' ? 'FINAL' : currentMonth()), content: item.content || '' })
+  reportError.value = ''
+}
 async function submitWeekly() {
-  if (!weeklyForm.week) return ui.notify('请填写周次')
+  if (busy.value || !weeklyCanSubmit.value) {
+    reportError.value = !weeklyForm.week ? '请填写周次。' : '本周工作内容与收获均至少填写 10 个字。'
+    return
+  }
+  reportError.value = ''
   busy.value = true
   try {
     const context = currentInternshipContext()
     const existing = (my.value.weeklyReports || []).find(
       (item) => Number(item.weekNo || item.week) === Number(weeklyForm.week)
     )
-    await internshipCoreApi.submitWeeklyReport({
+    const result = await internshipCoreApi.submitWeeklyReport({
       ...context,
       expectedVersion: existing?.version ?? 0,
       weekNo: weeklyForm.week,
@@ -898,51 +1403,82 @@ async function submitWeekly() {
       harvestContent: weeklyForm.harvestContent,
       planContent: weeklyForm.planContent
     })
-    ui.notify('周报已提交')
+    reportReceipt.value = {
+      ...result, id: result?.id || existing?.id || '', version: result?.reportVersion ?? (Number(existing?.reportVersion || existing?.version || 0) + 1),
+      statusLabel: '待批阅', actionLabel: weeklyEditing.value ? '周报已重新提交' : '周报已提交',
+      nextStep: '等待指导教师批阅；若被退回，可从右侧记录继续修改。'
+    }
+    ui.notify(reportReceipt.value.actionLabel)
     Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' })
-    await load()
+    await loadTab('report', true)
   }
-  catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+  catch (e) {
+    reportError.value = e?.message || '周报提交失败，填写内容已保留。'
+    ui.notify(reportError.value)
+  } finally { busy.value = false }
 }
 async function submitReport() {
+  if (busy.value || !reportCanSubmit.value) {
+    reportError.value = processType.value === 'MONTHLY' && !reportForm.periodKey
+      ? '请选择报告月份。' : `${reportTab.value}正文至少填写 ${reportMinimum.value} 字。`
+    return
+  }
+  reportError.value = ''
   busy.value = true
   try {
-    const RT = { 月报: 'MONTHLY', 实习总结: 'SUMMARY' }
-    const reportType = RT[reportTab.value] || 'MONTHLY'
-    const periodKey = reportType === 'SUMMARY' ? 'FINAL' : (reportForm.title || reportTab.value)
+    const reportType = processType.value
+    const periodKey = reportType === 'SUMMARY' ? 'FINAL' : reportForm.periodKey
     const existing = (my.value.processReports || []).find(
       (item) => item.reportType === reportType && item.periodKey === periodKey
     )
-    await internshipCoreApi.submitReport({
+    const result = await internshipCoreApi.submitReport({
       ...currentInternshipContext(),
       reportType,
       periodKey,
       content: reportForm.content,
       expectedVersion: existing?.version ?? 0
     })
-    ui.notify(reportTab.value + '已提交')
-    Object.assign(reportForm, { title: '', content: '' })
-    await load()
+    reportReceipt.value = {
+      ...result, id: result?.id || existing?.id || '', version: result?.version ?? (Number(existing?.version || 0) + 1),
+      statusLabel: '待批阅', actionLabel: processEditing.value ? `${reportTab.value}已重新提交` : `${reportTab.value}已提交`,
+      nextStep: '等待指导教师批阅；退回意见会保留在当前记录中。'
+    }
+    ui.notify(reportReceipt.value.actionLabel)
+    Object.assign(reportForm, { periodKey: reportType === 'SUMMARY' ? 'FINAL' : currentMonth(), content: '' })
+    await loadTab('report', true)
   }
-  catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+  catch (e) {
+    reportError.value = e?.message || `${reportTab.value}提交失败，填写内容已保留。`
+    ui.notify(reportError.value)
+  } finally { busy.value = false }
 }
 async function submitSelfEval() {
   busy.value = true
   try {
-    await internshipCoreApi.submitSelfEval({
+    const result = await internshipCoreApi.submitSelfEval({
       ...currentInternshipContext(),
       expectedVersion: selfEvalMeta.value?.version ?? 0,
       selfSummary: evalForm.performance,
       selfHarvest: evalForm.reflection,
-      selfProblem: evalForm.problems
+      selfProblem: evalForm.problems,
+      enterpriseRating: evalForm.enterpriseRating,
+      enterpriseFeedback: evalForm.enterpriseFeedback,
+      positionRating: evalForm.positionRating,
+      positionFeedback: evalForm.positionFeedback
     })
-    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '' }); load()
+    evalReceipt.value = { actionLabel: '学生自评已提交', id: result?.id || '', version: result?.version,
+      statusLabel: result?.reviewStatusLabel || result?.reviewStatus || '待审核', nextStep: '等待导师填写评价并由学校审核' }
+    ui.notify('自评已提交'); Object.assign(evalForm, { performance: '', reflection: '', problems: '', enterpriseRating: null,
+      enterpriseFeedback: '', positionRating: null, positionFeedback: '' }); await loadTab('eval', true)
   } catch (e) { ui.notify(e?.message || '自评提交失败') } finally { busy.value = false }
 }
 async function submitAppeal() {
   busy.value = true
   try {
-    await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
+    const result = await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
+    evalReceipt.value = { actionLabel: '成绩申诉已提交', id: result?.id || '', version: result?.version,
+      statusLabel: result?.statusLabel || result?.status || '待处理',
+      nextStep: `学校处理时将校验成绩 #${result?.scoreId || '—'} 的 v${result?.scoreVersion ?? '—'} 快照` }
     ui.notify('成绩申诉已提交')
     appealReason.value = ''
     appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
@@ -958,6 +1494,28 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sp-now { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 14px; padding: 20px 22px; border-color: color-mix(in srgb, var(--pri) 28%, var(--line)); background: linear-gradient(120deg, color-mix(in srgb, var(--pri) 8%, white), white 68%); box-shadow: 0 12px 32px rgba(30, 64, 175, .08); }
+.sp-now__copy { min-width: 0; }
+.sp-now__eyebrow { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.sp-now h2 { margin: 4px 0 5px; color: var(--t1); font-size: 19px; }
+.sp-now p { margin: 0; color: var(--t2); font-size: 13px; line-height: 1.6; }
+.sp-now__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 9px; color: var(--t4); font-size: 12px; }
+.sp-source-state { margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card, #fff); overflow: hidden; }
+.sp-source-state--error { padding-bottom: 14px; border-color: color-mix(in srgb, var(--danger-fg) 28%, var(--line)); }
+.sp-source-state--error .sp-btn { margin-left: 16px; }
+.sp-process-nav { display:flex; gap:8px; margin-bottom:18px; align-items:flex-start; }
+.sp-process-group { flex:1; min-width:0; border:1px solid var(--line); border-radius:10px; background:var(--card,#fff); }
+.sp-process-group[open] { flex:2.2; min-width:320px; border-color:color-mix(in srgb,var(--pri) 28%,var(--line)); }
+.sp-process-group summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.sp-process-group summary::-webkit-details-marker { display: none; }
+.sp-process-group summary span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.sp-process-group summary b { color: var(--t1); font-size: 13px; }
+.sp-process-group summary small { display:none; overflow: hidden; margin-top: 2px; color: var(--t4); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.sp-process-group__current { flex: none; color: var(--pri); font-size: 11px; font-weight: 600; }
+.sp-process-group__items { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
+.sp-process-group__items button { min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--t2); cursor: pointer; }
+.sp-process-group__items button:hover { border-color: var(--pri); color: var(--pri); }
+.sp-process-group__items button.is-active { border-color: color-mix(in srgb, var(--pri) 35%, white); background: var(--pri-50); color: var(--pri); font-weight: 600; }
 .pill { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: #F5F7FA; border: 1px solid #EDEFF3; border-radius: 7px; font-size: 12.5px; color: var(--t2); }
 .statepill { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; background: var(--pri-50); border-radius: 9px; color: var(--pri); font-weight: 600; font-size: 13.5px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pri); }
@@ -966,10 +1524,19 @@ onMounted(load)
 .two2 { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; align-items: start; }
 .agreement { border: 1px solid var(--line); border-radius: 11px; padding: 18px; font-size: 13.5px; color: var(--t2); line-height: 2; }
 .notebox { margin-top: 14px; padding: 12px 14px; background: #F2F7FF; border-radius: 10px; font-size: 12.5px; color: var(--t2); line-height: 1.6; }
+.eval-receipt { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #86efac; border-radius: 10px; background: #f0fdf4; color: #166534; font-size: 12px; }.eval-receipt button { border: 0; background: transparent; color: inherit; }
 .repitem { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 11px; }
 .score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 .score-grid dt { font-size: 12px; color: var(--t3); margin-bottom: 4px; }
 .score-grid dd { margin: 0; font-size: 15px; font-weight: 600; color: var(--t1); }
+.makeup-apply__lead{margin:-4px 0 16px;line-height:1.65}.makeup-receipt{display:flex;flex-direction:column;gap:4px;margin:0 0 16px;padding:12px 14px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;font-size:12px}.makeup-receipt strong{font-size:14px}.makeup-error{margin:0 0 14px;padding:10px 12px;border-radius:9px;background:#fef2f2;color:#b91c1c;font-size:12px;line-height:1.55}.makeup-review-note{padding:8px 10px;border-left:3px solid #f59e0b;border-radius:6px;background:#fffbeb;color:#92400e;font-size:12px;line-height:1.55}
+.leave-lead{margin:-2px 0 14px;line-height:1.65}.leave-return-editor{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding:12px;border:1px solid color-mix(in srgb,var(--pri) 28%,var(--line));border-radius:10px;background:var(--pri-50)}.leave-return-editor strong{color:var(--t1);font-size:13px}.leave-return-editor p{margin:0;color:var(--t3);font-size:12px;line-height:1.55}.leave-return-editor__actions{display:flex;justify-content:flex-end;gap:8px}.leave-return-editor__actions .sp-btn{width:auto}
+.report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:12px;padding:16px 18px;border:1px solid color-mix(in srgb,var(--pri) 24%,var(--line));border-radius:12px;background:linear-gradient(120deg,var(--pri-50),#fff)}.report-head strong{display:block;color:var(--t1);font-size:18px}.report-head p{margin:5px 0 0;color:var(--t3);font-size:12.5px;line-height:1.6}.report-head>span{flex:none;padding:6px 10px;border-radius:999px;background:#fff;color:var(--pri);font-size:12px}.report-tabs{display:flex;gap:8px;margin-bottom:14px}.report-receipt{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;border:1px solid #86efac;border-radius:10px;background:#f0fdf4;color:#166534;font-size:12px}.report-receipt button{border:0;background:transparent;color:inherit;cursor:pointer}.report-error{margin-bottom:14px;padding:10px 12px;border-radius:9px;background:#fef2f2;color:#b91c1c;font-size:12px;line-height:1.55}.report-editor .sp-fieldlabel{display:flex;justify-content:space-between}.report-editor .sp-fieldlabel span,.report-count,.report-item__meta{color:var(--t4);font-size:11.5px}.report-count{margin:0 0 12px;text-align:right}.report-list{display:flex;flex-direction:column;gap:10px}.report-item{align-items:stretch;flex-direction:column;gap:7px}.report-item strong{color:var(--t1);font-size:13.5px}.report-item__summary{display:-webkit-box;overflow:hidden;margin:0;color:var(--t3);font-size:12px;line-height:1.6;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:pre-wrap}.report-feedback{padding:9px 10px;border-left:3px solid #f59e0b;border-radius:6px;background:#fffbeb;color:#92400e;font-size:12px;line-height:1.55}.report-feedback strong{display:block;margin-bottom:2px;color:inherit;font-size:11px}.report-revise{align-self:flex-end;border:0;background:transparent;color:var(--pri);font-weight:600;cursor:pointer}
 @media (max-width: 900px) { .score-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .m4 { grid-template-columns: repeat(2,1fr); } .two, .two2 { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .sp-process-nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); } .sp-process-group[open] { grid-column:span 2; min-width:0; } .m4 { grid-template-columns: repeat(2,1fr); } .two, .two2 { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .sp-now { align-items: stretch; flex-direction: column; gap: 14px; } .sp-process-nav { grid-template-columns:1fr; } .sp-process-group[open] { grid-column: span 1; } .report-head{flex-direction:column;gap:10px}.report-receipt{grid-template-columns:1fr}.report-tabs{overflow-x:auto} }
+
+.sp-preparation{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:20px;margin-bottom:20px}.sp-preparation__head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sp-preparation h2{font-size:20px;line-height:1.5;margin:7px 0 0}.sp-preparation__eyebrow{font-size:12px;color:var(--sp-text-muted,#6b7688)}.sp-preparation__facts{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:26px 0}.sp-preparation__facts dt{font-size:12px;color:#6b7688;margin-bottom:6px}.sp-preparation__facts dd{font-size:14px;margin:0;line-height:1.7;overflow-wrap:anywhere}.sp-qualification__title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0 18px}.sp-qualification__title h2{font-size:18px;margin:0}.sp-qualification p{font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;color:#475569}.sp-qualification__next{border-top:1px solid #e9edf3;margin:22px 0 16px;padding-top:18px}.sp-qualification__next strong{font-size:12px;color:#6b7688}.sp-qualification__next p{font-size:13px;margin:6px 0 0}
+.sp-completion{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px;border-left:4px solid var(--pri)}.sp-completion h2{margin:6px 0 4px;font-size:18px}.sp-completion p{margin:0;line-height:1.6}.sp-completion__actions{display:flex;flex-shrink:0;gap:10px}@media(max-width:720px){.sp-completion{align-items:flex-start;flex-direction:column}.sp-completion__actions{width:100%;flex-wrap:wrap}}
+@media(max-width:1000px){.sp-preparation{grid-template-columns:1fr}.sp-preparation__facts{gap:20px}}
 </style>

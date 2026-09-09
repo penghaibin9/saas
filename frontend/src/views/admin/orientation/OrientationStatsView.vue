@@ -6,6 +6,9 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="迎新统计"
   >
+    <template #actions>
+      <AppButton v-if="canExport" variant="secondary" :loading="exporting" @click="exportVisible = true">导出迎新台账</AppButton>
+    </template>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
       <LoadingState v-if="loading" />
@@ -51,24 +54,53 @@
         </section>
       </template>
     </template>
+
+    <AppDrawer :visible="exportVisible" title="导出迎新生产台账" mode="modal" size="medium" @close="exportVisible = false">
+      <div class="ost-export-form">
+        <p>只导出当前迎新批次与当前角色学生范围，文件带操作人、用途、时间水印并写入审计。</p>
+        <AppSelect v-model="reportListKey" :options="REPORT_TYPES" />
+        <AppTextInput v-model="exportPurpose" placeholder="导出用途（不少于5字）" />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="exporting" @click="exportVisible = false">取消</AppButton>
+        <AppButton variant="primary" :disabled="exportPurpose.trim().length < 5" :loading="exporting" @click="exportReport">生成并下载</AppButton>
+      </template>
+    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
 /** /admin/orientation/statistics 迎新统计（KPI + 环节漏斗 + 待办；真实走 /orientation/dashboard）。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+import { AppSelect, AppTextInput } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+
+const REPORT_TYPES = [
+  { value: 'studentList', label: '迎新新生台账.xlsx' },
+  { value: 'progressList', label: '报到进度.xlsx' },
+  { value: 'materialList', label: '材料审核.xlsx' },
+  { value: 'paymentList', label: '缴费状态.xlsx' },
+  { value: 'greenChannelList', label: '绿色通道.xlsx' },
+  { value: 'dormList', label: '住宿安排.xlsx' },
+  { value: 'checkinList', label: '现场报到.xlsx' },
+  { value: 'noShowList', label: '未报到.xlsx' },
+  { value: 'exceptionList', label: '迎新异常.xlsx' }
+]
 
 export default {
   name: 'OrientationStatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, NoPermissionState },
+  components: { AppButton, AppDrawer, AppSelect, AppTextInput, ModulePageShell, LoadingState, ErrorState, NoPermissionState },
   data() {
     return {
       ctx: null,
       loading: true,
       error: '',
-      data: { batchName: '', batchPeriod: '', updateTime: '', kpis: [], stepFunnel: [], todos: [] }
+      data: { batchId: '', batchName: '', batchPeriod: '', updateTime: '', kpis: [], stepFunnel: [], todos: [] },
+      REPORT_TYPES, exportVisible: false, exporting: false,
+      reportListKey: 'studentList', exportPurpose: ''
     }
   },
   computed: {
@@ -76,6 +108,7 @@ export default {
     dataScopeName() { return this.ctx?.dataScope?.name || '' },
     perms() { return this.ctx?.permissionActions || {} },
     noPermission() { const p = this.perms['orientation.student.view']; return p ? !p.allowed : false },
+    canExport() { return !!this.perms['orientation.student.export']?.allowed },
     maxDone() { return Math.max(1, ...this.data.stepFunnel.map((s) => s.done || 0)) }
   },
   async created() {
@@ -90,6 +123,7 @@ export default {
         const res = await api.getOrientationDashboard()
         if (res.code === 0) {
           this.data = {
+            batchId: res.data.batchId || '',
             batchName: res.data.batchName || '',
             batchPeriod: res.data.batchPeriod || '',
             updateTime: res.data.updateTime || '',
@@ -99,6 +133,18 @@ export default {
           }
         } else this.error = res.message
       } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
+    },
+    async exportReport() {
+      this.exporting = true
+      try {
+        const res = await api.createExport(this.reportListKey, {
+          auditConfirmed: true, purpose: this.exportPurpose.trim(), batchId: this.data.batchId
+        })
+        if (res.code === 0) {
+          downloadXlsxFromApi(res.data)
+          this.exportVisible = false; this.exportPurpose = ''
+        } else this.error = res.message
+      } finally { this.exporting = false }
     },
     barWidth(done) { return Math.round(((done || 0) / this.maxDone) * 100) },
     go(link) { if (link) this.$router.push(link) }
@@ -238,4 +284,6 @@ export default {
   font-size: 12.5px;
   color: var(--t3);
 }
+.ost-export-form { display: grid; gap: 12px; }
+.ost-export-form p { margin: 0; color: var(--t2); font-size: 13px; line-height: 1.6; }
 </style>

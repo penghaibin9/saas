@@ -266,6 +266,7 @@ def _professionalize_internship(db, tenant_id: int) -> dict:
 
 def _professionalize_graduation(db, tenant_id: int) -> dict:
     from app.models import (
+        GraduationBatch,
         GraduationMentor,
         GraduationStudent,
         GraduationTopic,
@@ -283,6 +284,13 @@ def _professionalize_graduation(db, tenant_id: int) -> dict:
     major_id_by_name = {row.major_name: int(row.id) for row in majors}
     major_name_by_id = {int(row.id): row.major_name for row in majors}
     college_id_by_name = {row.major_name: int(row.college_id) for row in majors}
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if current_graduation_batch_id is None:
+        raise RuntimeError("007 当前毕设批次 GD-2027 不存在")
 
     student_major_by_profile_id = {
         int(sid): major_name_by_id[int(major_id)]
@@ -297,6 +305,7 @@ def _professionalize_graduation(db, tenant_id: int) -> dict:
 
     students = list(db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == int(current_graduation_batch_id),
         GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.student_no)).all())
     students_by_major: dict[str, list] = defaultdict(list)
@@ -333,6 +342,7 @@ def _professionalize_graduation(db, tenant_id: int) -> dict:
 
     topics = list(db.scalars(select(GraduationTopic).where(
         GraduationTopic.tenant_id == tenant_id,
+        GraduationTopic.batch_id == int(current_graduation_batch_id),
         GraduationTopic.is_deleted.is_(False),
     ).order_by(GraduationTopic.id)).all())
     expected_topics = sum(guiding_targets.values()) // 2
@@ -449,6 +459,7 @@ def _professionalize_graduation(db, tenant_id: int) -> dict:
 def validate_professional_school_20k(db, tenant_id: int) -> dict:
     from app.models import (
         AaCourse,
+        GraduationBatch,
         GraduationMentor,
         GraduationStudent,
         GraduationTopic,
@@ -457,6 +468,13 @@ def validate_professional_school_20k(db, tenant_id: int) -> dict:
         Major,
         StudentProfile,
     )
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if current_graduation_batch_id is None:
+        raise RuntimeError("007 当前毕设批次 GD-2027 不存在")
 
     major_name_by_id = {
         int(mid): name
@@ -517,6 +535,7 @@ def validate_professional_school_20k(db, tenant_id: int) -> dict:
             GraduationTopic.id, GraduationTopic.major_id,
         ).where(
             GraduationTopic.tenant_id == tenant_id,
+            GraduationTopic.batch_id == int(current_graduation_batch_id),
             GraduationTopic.is_deleted.is_(False),
         )).all()
     }
@@ -539,6 +558,7 @@ def validate_professional_school_20k(db, tenant_id: int) -> dict:
         GraduationStudent.major_id,
     ).where(
         GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == int(current_graduation_batch_id),
         GraduationStudent.is_deleted.is_(False),
     )).all():
         major_name = major_name_by_id[int(major_id)]
