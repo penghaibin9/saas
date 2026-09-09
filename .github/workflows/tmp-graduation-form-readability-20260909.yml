@@ -1,0 +1,103 @@
+name: Temporary graduation deep-form readability polish
+
+on:
+  push:
+    branches:
+      - ui/graduation-shared-workspace-polish-20260908
+    paths:
+      - .github/workflows/tmp-graduation-form-readability-20260909.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/graduation-shared-workspace-polish-20260908
+          fetch-depth: 0
+
+      - name: Apply guarded graduation form-only patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = {
+            'font-size:10px}.dgf-context b': 'font-size:12px}.dgf-context b',
+            'font-size:9px}.dgf-form': 'font-size:11px}.dgf-form',
+            'font-size:9px;font-weight:700;letter-spacing:.06em': 'font-size:11px;font-weight:700;letter-spacing:.04em',
+            'font-size:12px}.dgf-command p': 'font-size:14px}.dgf-command p',
+            'font-size:9px;line-height:1.45}.dgf-command>b': 'font-size:12px;line-height:1.55}.dgf-command>b',
+            'font-size:9px;white-space:nowrap}.dgf-actor': 'font-size:11px;white-space:nowrap}.dgf-actor',
+            'font-size:9px}.dgf-fields>header strong': 'font-size:11px}.dgf-fields>header strong',
+            'font-size:11px}.dgf-fields__body': 'font-size:13px}.dgf-fields__body',
+            'font-size:10px}.dgf-check small': 'font-size:13px}.dgf-check small',
+            'font-size:9px}.dgf-aside-card': 'font-size:12px}.dgf-aside-card',
+            'font-size:11px;font-weight:700}.dgf-aside-card ul': 'font-size:13px;font-weight:700}.dgf-aside-card ul',
+            'gap:7px;font-size:9px}.dgf-aside-card li>b': 'gap:8px;font-size:12px}.dgf-aside-card li>b',
+            'width:20px;height:20px;flex:none;place-items:center': 'width:24px;height:24px;flex:none;place-items:center',
+            'font-size:8px}.dgf-aside-card li.done>b': 'font-size:11px}.dgf-aside-card li.done>b',
+            'font-size:9px}.dgf-aside-card li small': 'font-size:12px}.dgf-aside-card li small',
+            'font-size:8px}.dgf-next summary': 'font-size:11px}.dgf-next summary',
+            'font-size:10px;font-weight:700}.dgf-next ol': 'font-size:13px;font-weight:700}.dgf-next ol',
+            'font-size:9px}.dgf-next li::before': 'font-size:12px}.dgf-next li::before',
+            'width:17px;height:17px;flex:none;place-items:center': 'width:20px;height:20px;flex:none;place-items:center',
+            'font-size:8px}.mp-btn{padding:7px 15px': 'font-size:10px}.mp-btn{min-height:36px;padding:7px 15px',
+            'cursor:pointer;font-size:12px}.mp-btn--primary': 'cursor:pointer;font-size:13px}.mp-btn--primary',
+          }
+
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'guarded style anchor mismatch: {old!r} count={count}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate scoped product boundary
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = 'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue'
+          node --test \
+            frontend/tests/graduation.defense-grade-form-permission.contract.test.mjs \
+            frontend/tests/graduation.v6-deep-link-and-cross-client.contract.test.mjs
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue').read_text(encoding='utf-8')
+          required = [
+            '.dgf-context span', 'font-size:12px}.dgf-context b',
+            'font-size:14px}.dgf-command p', 'font-size:12px;line-height:1.55',
+            'font-size:13px}.dgf-fields__body', 'width:24px;height:24px',
+            'font-size:13px;font-weight:700}.dgf-next ol',
+            '.mp-btn{min-height:36px', 'cursor:pointer;font-size:13px}.mp-btn--primary',
+            'await this.$router.push(snapshot.backTo)', 'beforeRouteLeave(_to, _from, next)'
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f'missing scoped marker: {marker}')
+          forbidden = ['font-size:8px}.dgf-aside-card', 'font-size:8px}.dgf-next', 'font-size:9px}.dgf-check small']
+          for marker in forbidden:
+              if marker in text:
+                  raise SystemExit(f'legacy tiny-copy marker remains: {marker}')
+          print('graduation deep-form readability boundary: PASS')
+          PY
+
+      - name: Commit product polish and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-graduation-form-readability-20260909.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue \
+                  .github/workflows/tmp-graduation-form-readability-20260909.yml
+          git diff --cached --check
+          git commit -m "style(graduation): improve deep form readability"
+          git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
