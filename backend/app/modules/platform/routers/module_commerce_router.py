@@ -131,14 +131,21 @@ def install_into_platform_router(target: APIRouter) -> int:
     same guarded endpoints without changing the frozen bundle or replacing PAM.
     """
     from fastapi.routing import APIRoute
+    from app.core.commercial_surface_module_gate import iter_effective_route_contexts
 
-    def keys(route):
-        return {(str(method).upper(), getattr(route, "path", ""))
-                for method in (getattr(route, "methods", None) or ())}
+    def keys(context):
+        # API contexts expose the effective path directly. Included Starlette
+        # routes expose their effective route through the same context facade.
+        leaf = getattr(context, "route", context)
+        fallback = getattr(context, "starlette_route", None) or leaf
+        path = getattr(context, "path", None) or getattr(fallback, "path", "")
+        methods = getattr(context, "methods", None) or getattr(fallback, "methods", None) or ()
+        return {(str(method).upper(), path) for method in methods}
 
     existing = {}
-    for route in target.routes:
-        for key in keys(route):
+    for context in iter_effective_route_contexts(target):
+        route = getattr(context, "route", context)
+        for key in keys(context):
             existing.setdefault(key, []).append(route)
     declared = set()
     pending = []

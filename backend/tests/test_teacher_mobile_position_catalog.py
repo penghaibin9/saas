@@ -1,7 +1,7 @@
 """Mobile teacher position reads preserve batch, record scope and field boundaries."""
 import uuid
 from app.core.security import create_access_token
-from app.models import InternshipBatch, InternshipRecord, InternshipPosition, StudentProfile
+from app.models import InternshipBatch, InternshipRecord, InternshipPosition, StudentProfile, Tenant, TenantCommercialProfile, PlatformConfig
 from tests.test_internship_position_publish_versions import position, session, TENANT
 
 ROOT='/api/v1/mobile/teacher/internship/context/positions'
@@ -15,6 +15,15 @@ def headers(uid, role='INTERN_MENTOR', tenant=TENANT):
 def test_teacher_mobile_position_scope_readonly_and_private_fields(client, position):
     _, row=position
     with session() as db:
+        # A missing tenant is not an unpurchased tenant. Materialize a real
+        # MODULE_V2 school with zero subscription sources, without granting rights.
+        db.add(Tenant(id=TENANT+1, tenant_code='position-unpaid-school',
+                      school_name='岗位未购买测试学校', status='ACTIVE',
+                      deploy_mode='SAAS', db_mode='SHARED'))
+        db.add(TenantCommercialProfile(tenant_id=TENANT+1, reader_version='MODULE_V2'))
+        db.add(PlatformConfig(tenant_id=TENANT+1, config_type='TENANT_META', config_key='-',
+                              config_json={'status':'active', 'packageCode':'module-v2', 'environment':'test'},
+                              enabled=True, status='ACTIVE'))
         student=StudentProfile(tenant_id=TENANT,student_no='MOB-POS-'+uuid.uuid4().hex[:10],real_name='不应投影的学生姓名',current_stage='INTERN',status='ACTIVE')
         db.add(student);db.flush()
         db.add(InternshipRecord(tenant_id=TENANT,student_id=student.id,batch_id=int(row['batchId']),advisor_user_id=9001,status='PREPARING'))
@@ -22,6 +31,10 @@ def test_teacher_mobile_position_scope_readonly_and_private_fields(client, posit
         db.add(other);db.flush();other_id=other.id
         db.get(InternshipPosition,int(row['id'])).risk_note='内部风险调查说明'
         db.commit()
+    from app.services import commercial_entitlement_authority_service as commercial
+    unpaid = commercial.commercial_state(TENANT+1)
+    assert unpaid['verified'] is True and unpaid['authoritySource'] == 'MODULE_V2'
+    assert unpaid['features']['internship'] is False and unpaid['sourceCount'] == 0
     params={'batchId':row['batchId']}
     own=headers(9001)
     listed=client.get(ROOT,headers=own,params=params)
@@ -41,6 +54,9 @@ def test_teacher_mobile_position_scope_readonly_and_private_fields(client, posit
         foreign = client.get(endpoint,headers=headers(9001,tenant=TENANT+1),params=params)
         assert foreign.status_code == 403
         assert foreign.json().get('data') is None
+        # Also retain the separate missing-tenant boundary; no cross-school data.
+        missing = client.get(endpoint,headers=headers(9001,tenant=TENANT+2),params=params)
+        assert missing.status_code == 404 and missing.json().get('data') is None
         assert client.get(endpoint,headers=headers(9001,role='STUDENT'),params=params).status_code==403
         assert client.get(endpoint,params=params).status_code==401
     assert client.get(ROOT+'/'+str(int(row['id'])+1000),headers=own,params=params).status_code==404

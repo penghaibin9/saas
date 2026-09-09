@@ -185,7 +185,7 @@ jobs:
           mkdir -p "$OUT"
           git rev-parse HEAD > "$OUT/revision.txt"
           mapfile -d '' -t schema_inputs < <(git ls-files -z -- backend/alembic.ini backend/requirements.txt backend/requirements.lock backend/requirements.in backend/pyproject.toml)
-          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
+          git archive --format=tar.gz --output="$OUT/committed-source.tar.gz" HEAD backend/app backend/alembic shared/contracts frontend/src scripts/check docs/07-部署运维交付与商业化/module-commerce backend/tests/test_module_commercial_inventory.py backend/tests/test_module_commercial_reconcile.py backend/tests/test_module_commercial_key_contracts.py backend/tests/test_module_commercial_review.py backend/tests/test_module_commercial_boundaries.py backend/tests/test_module_commercial_stage_gate.py backend/tests/test_module_commerce_m12_runtime.py backend/tests/test_module_commercial_authority_failure.py backend/tests/test_module_commercial_model_bootstrap.py backend/tests/test_module_commerce_router_install.py .github/workflows/playwright-production-e2e.yml backend/tests/test_module_commercial_catalog_retry.py backend/tests/test_module_commercial_order_replay.py backend/tests/test_module_commerce_order_replay_runtime.py backend/tests/test_rbac_module_access_snapshot.py backend/tests/test_system_admin_governance_http.py backend/tests/test_teacher_mobile_position_catalog.py backend/tests/test_internship_position_publish_versions.py backend/conftest.py backend/tests/conftest.py backend/pytest_migrated_schema.py backend/tests/test_commercial_catalog_contract.py .github/workflows/module-commerce-foundation.yml "${schema_inputs[@]}"
           sha256sum "$OUT/committed-source.tar.gz" > "$OUT/source-sha256.txt"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -251,7 +251,12 @@ jobs:
           set -euo pipefail
           python -m alembic upgrade head 2>&1 | tee "$OUT/fresh-migration.log"
           python -m alembic current | tee "$OUT/fresh-current.log"
-          pytest tests/test_module_commerce_m12_runtime.py tests/test_module_commerce_order_replay_runtime.py -q -p no:warnings \
+          pytest tests/test_module_commerce_m12_runtime.py tests/test_module_commerce_order_replay_runtime.py \
+            tests/test_rbac_module_access_snapshot.py \
+            tests/test_system_admin_governance_http.py::test_overview_board_http \
+            tests/test_system_admin_governance_http.py::test_overview_board_authority_outage_remains_503 \
+            tests/test_teacher_mobile_position_catalog.py \
+            -q -p no:warnings \
             --junitxml="$OUT/runtime-junit.xml" 2>&1 | tee "$OUT/runtime-pytest.log"
       - name: Prove legacy orders upgrade without manufactured module rights
         working-directory: backend

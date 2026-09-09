@@ -105,6 +105,22 @@ def enforce_commercial_surface_access(request: Request) -> None:
     return None
 
 
+def iter_effective_route_contexts(router):
+    """Walk the effective HTTP tree using FastAPI's supported inclusion iterator.
+
+    FastAPI >=0.137 keeps included routers instead of cloning a flat route list.
+    Its public iterator preserves include prefixes and per-inclusion dependencies.
+    The fallback is solely for pre-tree FastAPI versions used by older dev tools.
+    """
+    from fastapi import routing
+
+    iterate = getattr(routing, "iter_route_contexts", None)
+    if iterate is not None:
+        yield from iterate(router.routes)
+    else:
+        yield from router.routes
+
+
 def _route_signature(route) -> tuple[str, frozenset[str]]:
     return (
         str(getattr(route, "path", "")),
@@ -113,19 +129,14 @@ def _route_signature(route) -> tuple[str, frozenset[str]]:
 
 
 def _mount_reviewed_commercial_supplements(router) -> None:
-    """Mount reviewed late business routes before the final graph-wide gate is attached.
-
-    The student graduation guard intentionally lives outside the staff graduation bundle.
-    It must therefore be present on the final API graph before commercial gating; otherwise
-    the route exists as code but is unreachable from the application router.
-    """
+    """Mount reviewed late routes without duplicating an already included handler."""
     from fastapi.routing import APIRoute
     from app.api.v1.student_portal_graduation_guard import router as graduation_portal_router
 
     existing = {
-        _route_signature(route)
-        for route in router.routes
-        if isinstance(route, APIRoute)
+        _route_signature(context)
+        for context in iter_effective_route_contexts(router)
+        if isinstance(getattr(context, "route", context), APIRoute)
     }
     for route in graduation_portal_router.routes:
         if not isinstance(route, APIRoute):
@@ -138,25 +149,41 @@ def _mount_reviewed_commercial_supplements(router) -> None:
 
 
 def install_on_router(router) -> int:
-    """Attach the dependency to final APIRoutes, including late-appended supplements."""
+    """Fence all leaf routes and their current include contexts before serving HTTP.
+
+    Update declarations for future inclusions AND effective dependants already
+    materialized by route inventory/OpenAPI. Updating only the leaf declaration
+    would leave warmed include contexts unfenced on the pinned FastAPI version.
+    No include prefix, identity dependency or business handler is replaced.
+    """
     from fastapi import Depends
     from fastapi.dependencies.utils import get_parameterless_sub_dependant
     from fastapi.routing import APIRoute
 
     _mount_reviewed_commercial_supplements(router)
 
+    def ensure_gate(target, path):
+        if not any(getattr(dep, "dependency", None) is enforce_commercial_surface_access
+                   for dep in target.dependencies):
+            target.dependencies.append(Depends(enforce_commercial_surface_access))
+        if any(dep.call is enforce_commercial_surface_access
+               for dep in target.dependant.dependencies):
+            return False
+        target.dependant.dependencies.insert(
+            0,
+            get_parameterless_sub_dependant(
+                depends=Depends(enforce_commercial_surface_access), path=path,
+            ),
+        )
+        return True
+
     added = 0
-    for route in router.routes:
+    for context in list(iter_effective_route_contexts(router)):
+        route = getattr(context, "route", context)
         if not isinstance(route, APIRoute):
             continue
-        if any(getattr(dep.call, "__name__", "") == "enforce_commercial_surface_access"
-               for dep in route.dependant.dependencies):
-            continue
-        marker = Depends(enforce_commercial_surface_access)
-        route.dependencies.append(marker)
-        route.dependant.dependencies.insert(
-            0,
-            get_parameterless_sub_dependant(depends=marker, path=route.path_format),
-        )
-        added += 1
+        if ensure_gate(route, route.path_format):
+            added += 1
+        if context.dependant is not route.dependant:
+            ensure_gate(context, context.path_format)
     return added
