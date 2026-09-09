@@ -79,6 +79,7 @@ from app.models.commercial import (  # noqa: E402,F401
 )
 from app.models.commercial_operations import (  # noqa: E402,F401
     CommercialAfterSalesLink,
+    CommercialRenewalFollowupLink,
     CommercialServiceCostRecord,
 )
 
@@ -89,6 +90,7 @@ if _models_package is not None:
         "CommercialInvoiceCase",
         "CommercialOrderItem",
         "CommercialRefundCase",
+        "CommercialRenewalFollowupLink",
         "CommercialServiceCostRecord",
         "CommercialSkuVersion",
         "TenantCommercialProfile",
