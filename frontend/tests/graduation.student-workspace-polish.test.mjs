@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import vm from 'node:vm'
 import test from 'node:test'
 
+// Keep Node globals explicit: the production frontend lint gate also validates this regression harness.
 const source = fs.readFileSync(process.env.STUDENT_SOURCE || new URL('../src/modules/graduation/views/GraduationStudentListView.vue', import.meta.url), 'utf8')
 const moduleCss = foundationStyles(fs.readFileSync(process.env.GRADUATION_CSS || new URL('../src/modules/graduation/styles/graduation-workspaces.css', import.meta.url), 'utf8'))
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
