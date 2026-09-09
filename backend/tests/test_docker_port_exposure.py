@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/check/check-docker-port-exposure.py"
@@ -139,6 +140,45 @@ class DockerFirewallPolicyTests(unittest.TestCase):
         }]
         findings = AUDIT.evaluate_networks(networks)
         self.assertIn(AUDIT.WARN, statuses(findings, "docker.network.trusted_host_interfaces"))
+
+
+class DockerCollectionFailureTests(unittest.TestCase):
+    @mock.patch.object(AUDIT.shutil, "which", return_value="/usr/bin/docker")
+    @mock.patch.object(AUDIT, "_run")
+    def test_invalid_container_inspect_json_becomes_failure(self, run, _which):
+        run.side_effect = [
+            (0, "container-one"),
+            (0, "not-json"),
+            (0, ""),
+        ]
+        containers, networks, findings = AUDIT.collect_runtime()
+        self.assertEqual(containers, [])
+        self.assertEqual(networks, [])
+        self.assertIn(AUDIT.FAIL, statuses(findings, "docker.runtime.inspect"))
+
+    @mock.patch.object(AUDIT.shutil, "which", return_value="/usr/bin/docker")
+    @mock.patch.object(AUDIT, "_run")
+    def test_invalid_network_inspect_json_becomes_failure(self, run, _which):
+        run.side_effect = [
+            (0, ""),
+            (0, "network-one"),
+            (0, "not-json"),
+        ]
+        containers, networks, findings = AUDIT.collect_runtime()
+        self.assertEqual(containers, [])
+        self.assertEqual(networks, [])
+        self.assertIn(AUDIT.FAIL, statuses(findings, "docker.network.inspect"))
+
+    @mock.patch.object(AUDIT.shutil, "which", return_value="/usr/bin/docker")
+    @mock.patch.object(AUDIT, "_run")
+    def test_partial_container_inspect_is_blocking(self, run, _which):
+        run.side_effect = [
+            (0, "container-one\ncontainer-two"),
+            (0, '[{"Id":"container-one"}]'),
+            (0, ""),
+        ]
+        _containers, _networks, findings = AUDIT.collect_runtime()
+        self.assertIn(AUDIT.FAIL, statuses(findings, "docker.runtime.inspect"))
 
 
 class DockerExposureArtifactTests(unittest.TestCase):
