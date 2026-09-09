@@ -35,7 +35,7 @@ test('V8 student and topic pages expose five primary groups while preserving eve
     read('../src/modules/graduation/views/GraduationStudentListView.vue'),
     read('../src/modules/graduation/views/TopicLibListView.vue')
   ])
-  for (const label of ['名单', '进度与风险', '关系与资格', '材料与答辩', '收口与归档']) {
+  for (const label of ['名单', '进度与风险', '选题 / 导师 / 资格', '材料 / 答辩', '毕业资格 / 归档']) {
     assert.match(students, new RegExp(`label: '${label}'`))
   }
   for (const panel of ['roster', 'progress', 'risk', 'mentor', 'topic', 'eligibility', 'grouping', 'materials', 'defense', 'grad-qual', 'archive']) {
