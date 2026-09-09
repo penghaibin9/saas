@@ -147,6 +147,23 @@ def _collect_with_new_session(tenant_id: int, module_key: str) -> dict[str, Any]
         db.close()
 
 
+def _is_fresh_rebind(job, kwargs: dict[str, Any]) -> bool:
+    """A drifted package can recover only through a different verified export/manifest."""
+    try:
+        requested_export = int(kwargs.get("export_job_id") or 0)
+        requested_manifest = int(kwargs.get("manifest_id") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return bool(
+        requested_export
+        and requested_manifest
+        and (
+            requested_export != int(job.export_job_id or 0)
+            or requested_manifest != int(job.manifest_id or 0)
+        )
+    )
+
+
 def install(lifecycle_module):
     if getattr(lifecycle_module, "_m45_consumer_closure_installed", False):
         return lifecycle_module
@@ -170,22 +187,27 @@ def install(lifecycle_module):
         # the school-facing package was bound.
         state_before = str(job.state or "")
         stored_before = dict((job.result_json or {}).get("consumerDependencySnapshot") or {}) or None
+        fresh_rebind = state_before == "WAIT_EXPORT_ACCEPT" and _is_fresh_rebind(job, kwargs)
         export, manifest, file_row, result = original_validate_export(db, job, **kwargs)
 
         base_current = dict((job.result_json or {}).get("consumerDependencySnapshot") or {})
         evidence = collect_consumer_object_evidence(db, int(job.tenant_id), str(job.module_key))
         current = enrich_dependency_snapshot(base_current, evidence)
 
-        if state_before == "WAIT_EXPORT_ACCEPT":
+        if state_before == "WAIT_EXPORT_ACCEPT" and not fresh_rebind:
+            # Acceptance (and re-submitting the same old package) must match exactly.
             assert_bound_snapshot_current(stored_before, current)
             sealed = dict(stored_before or {})
         else:
+            # First bind, or explicit rebind to a different verified export/manifest,
+            # seals the current object graph so drift has a safe recovery path.
             sealed = current
 
         job.result_json = {
             **dict(job.result_json or {}),
             "consumerDependencySnapshot": sealed,
             "consumerDependencyLastVerifiedDigest": current.get("dependencyDigest"),
+            "consumerSnapshotRebound": bool(fresh_rebind),
             "physicalPurgeAuthorized": False,
         }
         return export, manifest, file_row, result
