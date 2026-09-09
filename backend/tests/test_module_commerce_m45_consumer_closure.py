@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.core.exceptions import AppException
@@ -253,6 +255,17 @@ def test_m45_bound_consumer_snapshot_rejects_object_drift_before_school_acceptan
     assert caught.value.details["changedEvidence"]["sharedObjectCounts"]["todos"] == {
         "bound": 1, "current": 2,
     }
+
+
+def test_m45_same_old_package_cannot_rebind_but_new_verified_identity_is_recovery_path():
+    from app.services.module_commerce_m45_consumer_closure import _is_fresh_rebind
+
+    job = SimpleNamespace(export_job_id=101, manifest_id=201)
+    assert _is_fresh_rebind(job, {"export_job_id": 101, "manifest_id": 201}) is False
+    assert _is_fresh_rebind(job, {"export_job_id": 102, "manifest_id": 201}) is True
+    assert _is_fresh_rebind(job, {"export_job_id": 101, "manifest_id": 202}) is True
+    assert _is_fresh_rebind(job, {"export_job_id": "bad", "manifest_id": 202}) is False
+    assert _is_fresh_rebind(job, {}) is False
 
 
 def test_m45_lifecycle_installer_is_active_and_never_exposes_purge_execution():
