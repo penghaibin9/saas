@@ -471,7 +471,7 @@ export default {
 /* Real shared-shell geometry scales proposal tabs below the audit floor at 100%.
    Keep a 40px logical hit area so the rendered control remains >=33px. */
 .gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
-  min-height: 40px;
+  min-height: 40px !important;
 }
 
 /* At constrained content width, reclaim vertical space from chrome rather than shrinking type. */
