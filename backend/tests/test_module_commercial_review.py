@@ -230,6 +230,80 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'OFFSET_MISMATCH'):
             D.validate_review_evidence(self.root, {'model.py': current_sha}, review, bad)
 
+    def multi_window_fixture(self):
+        old = b'old-head\nanchor\nold-tail\n'
+        self.path.write_text('new-head-a\nnew-head-b\nanchor\nnew-tail-a\nnew-tail-b\n')
+        current_sha = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        review = {'evidence': {'E1': {
+            'path': 'model.py', 'sha256': hashlib.sha256(old).hexdigest(),
+            'startLine': 2, 'endLine': 2,
+        }}}
+        receipt = {
+            'schemaVersion': 1, 'artifactType': 'M0_SCHEMA_EVIDENCE_REANCHORS_NOT_APPROVAL',
+            'deletionAuthorized': False, 'purgeAuthorized': False,
+            'entries': [{
+                'path': 'model.py', 'fromSha256': hashlib.sha256(old).hexdigest(),
+                'toSha256': current_sha, 'sourceChangeCommit': 'b' * 40,
+                'lineOffset': 1, 'evidenceIds': ['E1'],
+                'evidenceRangeSha256': {'E1': hashlib.sha256(b'anchor\n').hexdigest()},
+                'changeWindows': [
+                    {'oldStart': 1, 'oldEnd': 1, 'newStart': 1, 'newEnd': 2},
+                    {'oldStart': 3, 'oldEnd': 3, 'newStart': 4, 'newEnd': 5},
+                ],
+                'reason': 'reviewed edits before and after byte-identical evidence',
+            }],
+        }
+        return current_sha, review, receipt
+
+    def test_reanchor_between_disjoint_edits_preserves_bytes_and_approval_boundary(self):
+        sha, review, receipt = self.multi_window_fixture()
+        resolved = D.validate_review_evidence(self.root, {'model.py': sha}, review, receipt)
+        self.assertEqual(resolved['E1']['startLine'], 3)
+        self.assertEqual(resolved['E1']['endLine'], 3)
+        for flag in ('deletionAuthorized', 'purgeAuthorized'):
+            bad = copy.deepcopy(receipt)
+            bad[flag] = True
+            with self.assertRaisesRegex(ValueError, 'NOT_REVIEW_ONLY'):
+                D.validate_review_evidence(self.root, {'model.py': sha}, review, bad)
+
+    def test_multi_window_reanchor_cannot_hide_changed_evidence(self):
+        sha, review, receipt = self.multi_window_fixture()
+        self.path.write_text(self.path.read_text().replace('anchor', 'edited'))
+        sha = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        receipt['entries'][0]['toSha256'] = sha
+        with self.assertRaisesRegex(ValueError, 'EVIDENCE_CONTENT_CHANGED'):
+            D.validate_review_evidence(self.root, {'model.py': sha}, review, receipt)
+
+    def test_multi_window_reanchor_rejects_missing_hash_overlap_and_inconsistent_windows(self):
+        sha, review, receipt = self.multi_window_fixture()
+        mutations = [
+            lambda r: r.pop('evidenceRangeSha256'),
+            lambda r: r.update(changeWindow=r['changeWindows'][0]),
+            lambda r: r.update(changeWindows=[]),
+            lambda r: r.update(changeWindows=list(reversed(r['changeWindows']))),
+            lambda r: r['changeWindows'][1].update(newStart=3),
+            lambda r: r['changeWindows'][1].update(oldStart=2, newStart=3),
+            lambda r: r['changeWindows'][1].update(oldStart=True),
+            lambda r: r.update(lineOffset=3),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                bad = copy.deepcopy(receipt)
+                mutation(bad['entries'][0])
+                with self.assertRaises(ValueError):
+                    D.validate_review_evidence(self.root, {'model.py': sha}, review, bad)
+
+    def test_committed_recruitment_reanchor_requires_complete_stale_coverage(self):
+        review = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json').read_text())
+        receipts = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-evidence-reanchors.json').read_text())
+        files = {v['path']: hashlib.sha256((ROOT / v['path']).read_bytes()).hexdigest()
+                 for v in review['evidence'].values()}
+        resolved = D.validate_review_evidence(ROOT, files, review, receipts)
+        self.assertEqual((resolved['S158']['startLine'], resolved['S158']['endLine']), (175, 191))
+        receipts['entries'] = [r for r in receipts['entries'] if 'S158' not in r['evidenceIds']]
+        with self.assertRaisesRegex(ValueError, 'STALE_EVIDENCE_COVERAGE_MISMATCH'):
+            D.validate_review_evidence(ROOT, files, review, receipts)
+
     def test_committed_review_has_unique_cases_and_valid_anchored_source(self):
         review = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-dispositions.json').read_text(encoding='utf-8'))
         reanchors = D.unique_json((ROOT / 'docs/07-部署运维交付与商业化/module-commerce/M0-schema-evidence-reanchors.json').read_text(encoding='utf-8'))
@@ -245,7 +319,7 @@ class ReviewTests(unittest.TestCase):
             source_files[anchor['path']] = hashlib.sha256(path.read_bytes()).hexdigest()
         resolved = D.validate_review_evidence(ROOT, source_files, review, reanchors)
         self.assertEqual(set(resolved), set(review['evidence']))
-        self.assertEqual(sum(1 for item in resolved.values() if item['reanchored']), 16)
+        self.assertEqual(sum(1 for item in resolved.values() if item['reanchored']), 17)
         self.assertFalse(reanchors['deletionAuthorized'])
         self.assertFalse(reanchors['purgeAuthorized'])
         for anchor in resolved.values():

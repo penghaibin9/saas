@@ -55,6 +55,33 @@ def _safe_review_path(repo: Path, name: str) -> Path:
     return path
 
 
+def _reanchor_windows(row: dict) -> list[dict]:
+    """Validate every disjoint edit window; never span across unchanged evidence."""
+    if 'changeWindows' in row:
+        if 'changeWindow' in row:
+            raise ValueError('AMBIGUOUS_REANCHOR_CHANGE_WINDOWS')
+        windows = row['changeWindows']
+    else:
+        windows = [row.get('changeWindow')]
+    if not isinstance(windows, list) or not windows:
+        raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
+    old_end = new_end = delta = 0
+    for window in windows:
+        if not isinstance(window, dict) or any(
+            type(window.get(k)) is not int
+            for k in ('oldStart', 'oldEnd', 'newStart', 'newEnd')
+        ):
+            raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
+        a, b, c, d = (window[k] for k in ('oldStart', 'oldEnd', 'newStart', 'newEnd'))
+        if not (old_end < a <= b and new_end < c <= d):
+            raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
+        if c != a + delta:
+            raise ValueError('REANCHOR_WINDOW_OFFSET_MISMATCH')
+        delta += (d - c + 1) - (b - a + 1)
+        old_end, new_end = b, d
+    return windows
+
+
 def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, reanchors: dict | None) -> dict:
     if reanchors is None:
         return {}
@@ -78,7 +105,7 @@ def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, re
         current_sha = str(row.get('toSha256', ''))
         source_change_commit = str(row.get('sourceChangeCommit', ''))
         offset = row.get('lineOffset')
-        window = row.get('changeWindow') or {}
+        windows = _reanchor_windows(row)
         evidence_ids = row.get('evidenceIds')
         reason = row.get('reason')
         if not re.fullmatch(r'[0-9a-f]{64}', previous_sha) or not re.fullmatch(r'[0-9a-f]{64}', current_sha) or previous_sha == current_sha:
@@ -91,20 +118,21 @@ def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, re
             raise ValueError('REANCHOR_REASON_MISSING')
         if not isinstance(evidence_ids, list) or not evidence_ids or len(evidence_ids) != len(set(evidence_ids)):
             raise ValueError('INVALID_REANCHOR_EVIDENCE_IDS')
-        if any(type(window.get(k)) is not int for k in ('oldStart', 'oldEnd', 'newStart', 'newEnd')):
-            raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
-        old_start, old_end = window['oldStart'], window['oldEnd']
-        new_start, new_end = window['newStart'], window['newEnd']
-        if not (1 <= old_start <= old_end and 1 <= new_start <= new_end):
-            raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
-        if old_start != new_start:
-            raise ValueError('REANCHOR_WINDOW_OFFSET_MISMATCH')
-        net_offset = (new_end - new_start + 1) - (old_end - old_start + 1)
+        range_hashes = row.get('evidenceRangeSha256')
+        if 'changeWindows' in row or range_hashes is not None:
+            if not isinstance(range_hashes, dict) or set(range_hashes) != set(evidence_ids):
+                raise ValueError('REANCHOR_RANGE_HASHES_REQUIRED')
+            if any(not isinstance(v, str) or not re.fullmatch(r'[0-9a-f]{64}', v)
+                   for v in range_hashes.values()):
+                raise ValueError('INVALID_REANCHOR_RANGE_HASH')
 
         content = current_path.read_bytes()
         if source_files.get(name) != current_sha or _sha256(content) != current_sha:
             raise ValueError('REANCHOR_CURRENT_SOURCE_CHANGED')
-        line_count = len(content.decode('utf-8-sig').splitlines())
+        lines = content.decode('utf-8-sig').splitlines(keepends=True)
+        line_count = len(lines)
+        if any(window['newEnd'] > line_count for window in windows):
+            raise ValueError('INVALID_REANCHOR_CHANGE_WINDOW')
 
         for evidence_id in evidence_ids:
             if evidence_id in resolved:
@@ -118,23 +146,27 @@ def _validate_reanchor_contract(repo: Path, source_files: dict, review: dict, re
             if type(start) is not int or type(end) is not int or not 1 <= start <= end:
                 raise ValueError('INVALID_REVIEW_LINE_RANGE')
 
-            # One source edit can leave reviewed evidence on both sides of the
-            # changed window. Evidence wholly before the window keeps offset 0;
-            # evidence wholly after it moves by the net line delta. Any anchor
-            # touching the changed window requires a fresh M0 disposition instead
-            # of a line-only reanchor receipt.
-            if end < old_start:
-                expected_offset = 0
-            elif start > old_end:
-                expected_offset = net_offset
-            else:
-                raise ValueError('REANCHOR_OVERLAPS_CHANGED_EVIDENCE')
+            # An anchor may sit between several edits. Accumulate only preceding
+            # deltas, but reject overlap with ANY reviewed window. Multi-window
+            # receipts also pin the unchanged evidence bytes, not just line counts.
+            expected_offset = 0
+            for window in windows:
+                if end < window['oldStart']:
+                    continue
+                if start <= window['oldEnd']:
+                    raise ValueError('REANCHOR_OVERLAPS_CHANGED_EVIDENCE')
+                expected_offset += ((window['newEnd'] - window['newStart'] + 1)
+                                    - (window['oldEnd'] - window['oldStart'] + 1))
             if offset != expected_offset:
                 raise ValueError('REANCHOR_WINDOW_OFFSET_MISMATCH')
 
             current_start, current_end = start + offset, end + offset
             if not 1 <= current_start <= current_end <= line_count:
                 raise ValueError('INVALID_REANCHOR_RESOLVED_LINE_RANGE')
+            if range_hashes is not None:
+                span = ''.join(lines[current_start - 1:current_end]).encode('utf-8')
+                if _sha256(span) != range_hashes[evidence_id]:
+                    raise ValueError('REANCHOR_EVIDENCE_CONTENT_CHANGED')
             resolved[evidence_id] = {
                 'path': name,
                 'sha256': current_sha,

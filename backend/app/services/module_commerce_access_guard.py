@@ -163,7 +163,11 @@ def _assert_final_fences(session) -> None:
         TenantModuleSubscriptionSource,
     )
 
-    now = datetime.utcnow()
+    # Acquire module/source locks first, then shared profile locks. Fulfillment
+    # also reaches the profile after module/source rows; reversing that order here
+    # would introduce a profile/source lock inversion. Shared profile locks allow
+    # independent module business writes without serializing the whole school.
+    locked_modules = []
     for fence in fences:
         tid = int(fence["tenantId"])
         module = str(fence["moduleKey"])
@@ -172,7 +176,7 @@ def _assert_final_fences(session) -> None:
             TenantModuleState.tenant_id == tid,
             TenantModuleState.module_key == module,
             TenantModuleState.is_deleted.is_(False),
-        ).with_for_update()).first()
+        ).with_for_update().execution_options(populate_existing=True)).first()
         if state is None:
             raise AppException(
                 "DATA_CONFLICT", "模块实例状态不存在，旧请求/任务不能提交新事实",
@@ -199,28 +203,46 @@ def _assert_final_fences(session) -> None:
                 http_status=403,
             )
 
-        # MODULE_V2 contracts must still have an effective source at the commit
-        # linearization point. Locking the rows also serializes an immediate
-        # cancellation against an in-flight business commit.
-        profile = session.scalars(select(TenantCommercialProfile).where(
+        # A locking SELECT alone does not overwrite a resident ORM instance.
+        # Refresh locked source rows too; an old identity-map value is not evidence
+        # of the current contract. Keep future sources so a scheduled renewal that
+        # starts during lock contention can be assessed at the final timestamp.
+        query_time = datetime.utcnow()
+        sources = list(session.scalars(select(TenantModuleSubscriptionSource).where(
+            TenantModuleSubscriptionSource.tenant_id == tid,
+            TenantModuleSubscriptionSource.module_key == module,
+            TenantModuleSubscriptionSource.module_generation == generation,
+            TenantModuleSubscriptionSource.status.in_(('ACTIVE', 'SCHEDULED')),
+            TenantModuleSubscriptionSource.ends_at > query_time,
+            TenantModuleSubscriptionSource.is_deleted.is_(False),
+        ).order_by(TenantModuleSubscriptionSource.id).with_for_update()
+          .execution_options(populate_existing=True)).all())
+        locked_modules.append((tid, module, generation, sources))
+
+    profiles = {}
+    for tid in sorted({item[0] for item in locked_modules}):
+        profiles[tid] = session.scalars(select(TenantCommercialProfile).where(
             TenantCommercialProfile.tenant_id == tid,
             TenantCommercialProfile.is_deleted.is_(False),
-        )).first()
-        if profile is not None and str(profile.reader_version) == "MODULE_V2":
-            sources = list(session.scalars(select(TenantModuleSubscriptionSource).where(
-                TenantModuleSubscriptionSource.tenant_id == tid,
-                TenantModuleSubscriptionSource.module_key == module,
-                TenantModuleSubscriptionSource.module_generation == generation,
-                TenantModuleSubscriptionSource.status.in_(("ACTIVE", "SCHEDULED")),
-                TenantModuleSubscriptionSource.starts_at <= now,
-                TenantModuleSubscriptionSource.ends_at > now,
-                TenantModuleSubscriptionSource.is_deleted.is_(False),
-            ).order_by(TenantModuleSubscriptionSource.id).with_for_update()).all())
-            if not sources:
+        ).with_for_update(read=True).execution_options(populate_existing=True)).first()
+
+    # Sample once AFTER every potentially blocking lock, not before its SQL was
+    # submitted. An earlier module's contract can expire while a later module or
+    # the reader-cutover profile is contended. Validate all sources at this same
+    # final fence point; no persisted source status/time is modified here.
+    now = datetime.utcnow()
+    for tid, module, generation, sources in locked_modules:
+        profile = profiles[tid]
+        if profile is not None and str(profile.reader_version) == 'MODULE_V2':
+            if not any(
+                row.starts_at is not None and row.ends_at is not None
+                and row.starts_at <= now < row.ends_at
+                for row in sources
+            ):
                 raise AppException(
-                    "NO_PERMISSION",
-                    "模块商业授权已结束，本次业务事务已回滚",
-                    details={"moduleKey": module, "generation": generation},
+                    'NO_PERMISSION',
+                    '模块商业授权已结束，本次业务事务已回滚',
+                    details={'moduleKey': module, 'generation': generation},
                     http_status=403,
                 )
 

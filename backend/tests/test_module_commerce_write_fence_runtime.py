@@ -284,3 +284,117 @@ def test_m4_worker_context_rejects_stale_generation_and_resets_after_exit(db_mod
             db.close()
     assert _active_fences() == []
     _assert_batch_absent(tid, batch_no)
+
+
+@pytest.mark.parametrize('field,value,status', [('data_state', 'FROZEN', 403), ('generation', 2, 409)])
+def test_m4_locked_read_refreshes_resident_module_state(db_mode, field, value, status):
+    """Two real MySQL transactions; keep the old ORM instance strongly referenced."""
+    from app.models import TenantModuleState
+    from app.services.module_commerce_access_guard import module_write_fence
+    tid = BASE + (11 if field == 'data_state' else 12)
+    _seed(tid); _pay(tid, f'M4-RESIDENT-{field}')
+    db, batch = _business_session(tid, f'resident-{field}')
+    batch_no = batch.batch_no
+    try:
+        assert db.get_bind().dialect.name == 'mysql'
+        with db.no_autoflush:
+            resident = db.scalars(select(TenantModuleState).where(
+                TenantModuleState.tenant_id == tid, TenantModuleState.module_key == 'internship',
+            )).one()
+        assert resident.data_state == 'AVAILABLE' and resident.generation == 1
+        # Disposable test data only: isolate final-fence freshness from the
+        # independently covered cancellation/offboarding state machine.
+        with db.get_bind().begin() as other:
+            other.execute(TenantModuleState.__table__.update().where(
+                TenantModuleState.tenant_id == tid, TenantModuleState.module_key == 'internship',
+            ).values(**{field: value}))
+        assert getattr(resident, field) != value  # the identity map really is stale
+        with module_write_fence(tid, 'internship', 1), pytest.raises(AppException) as caught:
+            db.commit()
+        assert caught.value.http_status == status
+        db.rollback()
+    finally:
+        db.close()
+    _assert_batch_absent(tid, batch_no)
+
+
+def test_m4_current_profile_cannot_be_hidden_by_resident_legacy_reader(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import TenantCommercialProfile, TenantModuleSubscriptionSource
+    from app.services.module_commerce_access_guard import module_write_fence
+    tid = BASE + 13
+    _seed(tid); _pay(tid, 'M4-RESIDENT-PROFILE')
+    with get_sessionmaker()() as setup_session:
+        engine = setup_session.get_bind()
+    with engine.begin() as setup:
+        setup.execute(TenantCommercialProfile.__table__.update().where(
+            TenantCommercialProfile.tenant_id == tid).values(reader_version='LEGACY'))
+    db, batch = _business_session(tid, 'resident-profile')
+    batch_no = batch.batch_no
+    try:
+        assert engine.dialect.name == 'mysql'
+        with db.no_autoflush:
+            resident = db.scalars(select(TenantCommercialProfile).where(
+                TenantCommercialProfile.tenant_id == tid)).one()
+        assert resident.reader_version == 'LEGACY'
+        with engine.begin() as other:
+            other.execute(TenantCommercialProfile.__table__.update().where(
+                TenantCommercialProfile.tenant_id == tid).values(reader_version='MODULE_V2'))
+            other.execute(TenantModuleSubscriptionSource.__table__.update().where(
+                TenantModuleSubscriptionSource.tenant_id == tid,
+                TenantModuleSubscriptionSource.module_key == 'internship',
+            ).values(status='CANCELLED'))
+        assert resident.reader_version == 'LEGACY'
+        with module_write_fence(tid, 'internship', 1), pytest.raises(AppException) as caught:
+            db.commit()
+        assert caught.value.http_status == 403
+        db.rollback()
+    finally:
+        db.close()
+    _assert_batch_absent(tid, batch_no)
+
+
+@pytest.mark.parametrize('contended_table', [
+    't_tenant_module_subscription_source', 't_tenant_commercial_profile',
+])
+def test_m4_expiry_after_lock_response_rolls_back_real_mysql_business_write(db_mode, monkeypatch, contended_table):
+    """Real SQL/rollback, deterministic clock advance instead of timing-sensitive sleep.
+
+    This proves the time check is after the database response; it does not pretend
+    the event hook measures InnoDB's real lock-wait duration.
+    """
+    from types import SimpleNamespace
+    from sqlalchemy import event
+    from app.models import TenantModuleSubscriptionSource
+    from app.services import module_commerce_access_guard as guard
+    tid = BASE + (14 if contended_table.endswith('source') else 15)
+    _seed(tid); _pay(tid, f'M4-LOCK-TIME-{tid}')
+    db, batch = _business_session(tid, 'post-lock-expiry')
+    batch_no = batch.batch_no
+    connection = None
+    hook = None
+    try:
+        assert db.get_bind().dialect.name == 'mysql'
+        with db.no_autoflush:
+            source = db.scalars(select(TenantModuleSubscriptionSource).where(
+                TenantModuleSubscriptionSource.tenant_id == tid,
+                TenantModuleSubscriptionSource.module_key == 'internship',
+            )).one()
+        clock = SimpleNamespace(now=source.ends_at - timedelta(seconds=1), advanced=False)
+        end = source.ends_at
+        monkeypatch.setattr(guard, 'datetime', SimpleNamespace(utcnow=lambda: clock.now))
+        connection = db.connection()
+        def hook(conn, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().upper().startswith('SELECT') and contended_table in statement:
+                clock.now = end + timedelta(seconds=1)
+                clock.advanced = True
+        event.listen(connection, 'after_cursor_execute', hook)
+        with guard.module_write_fence(tid, 'internship', 1), pytest.raises(AppException) as caught:
+            db.commit()
+        assert clock.advanced is True and caught.value.http_status == 403
+        db.rollback()
+    finally:
+        if connection is not None and hook is not None:
+            event.remove(connection, 'after_cursor_execute', hook)
+        db.close()
+    _assert_batch_absent(tid, batch_no)

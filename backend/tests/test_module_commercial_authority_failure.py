@@ -358,6 +358,168 @@ class AuthorityFailureTests(unittest.TestCase):
         self.assertNotIn("private-credentials", response.text)
         self.assertIsNone(body["data"])
 
+class FinalCommitFenceFaultTests(unittest.TestCase):
+    """Real guard/SQL expressions with deterministic IO faults, not a MySQL proof.
+
+    The disposable-MySQL write-fence suite separately covers real ORM identity
+    maps. This sandbox does not open a database or install global ORM listeners.
+    """
+    def setUp(self):
+        from datetime import datetime, timedelta
+        self.time = datetime(2030, 1, 1, 12)
+        self.delta = timedelta
+        saved = {n: v for n, v in sys.modules.items() if n == 'app' or n.startswith('app.')}
+        def restore():
+            for name in list(sys.modules):
+                if name == 'app' or name.startswith('app.'):
+                    del sys.modules[name]
+            sys.modules.update(saved)
+        self.addCleanup(restore)
+        for name in saved:
+            del sys.modules[name]
+        sys.modules.update({
+            'app': module('app', __path__=[str(APP)]),
+            'app.core': module('app.core', __path__=[str(APP / 'core')]),
+            'app.models': module('app.models', __path__=[str(APP / 'models')]),
+            'app.services': module('app.services', __path__=[str(APP / 'services')]),
+            'app.core.context': module('app.core.context', get_trace_id=lambda: '-'),
+        })
+        self.models = importlib.import_module('app.models.commercial')
+        for name in ('TenantModuleState', 'TenantModuleSubscriptionSource', 'TenantCommercialProfile'):
+            setattr(sys.modules['app.models'], name, getattr(self.models, name))
+        self.guard = importlib.import_module('app.services.module_commerce_access_guard')
+        self.guard.datetime = SimpleNamespace(utcnow=lambda: self.time)
+        self.errors = importlib.import_module('app.core.exceptions')
+        self.guard._write_fence_ctx.set({'kind': 'WORKER', 'modules': {
+            '42:internship': {'tenantId': 42, 'moduleKey': 'internship', 'generation': 1},
+        }})
+        self.states = {'internship': SimpleNamespace(generation=1, data_state='AVAILABLE')}
+        self.profile = SimpleNamespace(reader_version='MODULE_V2')
+        self.sources = [SimpleNamespace(tenant_id=42, module_key='internship', module_generation=1,
+            status='ACTIVE', is_deleted=False, starts_at=self.time - self.delta(days=1),
+            ends_at=self.time + self.delta(seconds=2))]
+        self.cached = {}
+        self.after_read = lambda _model: None
+        self.queries = []
+        self.db = SimpleNamespace(scalars=self.scalars)
+
+    def scalars(self, statement):
+        entity = statement.column_descriptions[0]['entity']
+        params = statement.compile().params
+        self.queries.append(statement)
+        self.assertEqual(params['tenant_id_1'], 42)
+        if entity is self.models.TenantModuleState:
+            row = self.states.get(params['module_key_1'])
+            values = [] if row is None else [row]
+        elif entity is self.models.TenantCommercialProfile:
+            values = [] if self.profile is None else [self.profile]
+        else:
+            self.assertIs(entity, self.models.TenantModuleSubscriptionSource)
+            values = [r for r in self.sources if r.tenant_id == params['tenant_id_1']
+                and r.module_key == params['module_key_1']
+                and r.module_generation == params['module_generation_1']
+                and r.status in params['status_1'] and not r.is_deleted
+                and r.ends_at > params['ends_at_1']
+                and ('starts_at_1' not in params or r.starts_at <= params['starts_at_1'])]
+        self.after_read(entity)
+        # Simulate a resident ORM value: a new SQL result alone does not replace
+        # it unless the real query explicitly requests populate_existing.
+        if values and not statement.get_execution_options().get('populate_existing'):
+            values = self.cached.get(entity, values)
+        return SimpleNamespace(first=lambda: values[0] if values else None, all=lambda: values)
+
+    def deny(self, status=403):
+        with self.assertRaises(self.errors.AppException) as caught:
+            self.guard._assert_final_fences(self.db)
+        self.assertEqual(caught.exception.http_status, status)
+
+    def test_live_contract_passes_with_refresh_and_current_profile_lock(self):
+        from sqlalchemy.dialects import mysql
+        self.guard._assert_final_fences(self.db)
+        for query in self.queries:
+            self.assertTrue(query.get_execution_options().get('populate_existing'))
+            self.assertIsNotNone(query._for_update_arg)
+        self.assertEqual([q.column_descriptions[0]['entity'] for q in self.queries], [
+            self.models.TenantModuleState, self.models.TenantModuleSubscriptionSource,
+            self.models.TenantCommercialProfile])
+        self.assertIn('LOCK IN SHARE MODE', str(self.queries[-1].compile(dialect=mysql.dialect())))
+
+    def test_cached_available_state_cannot_hide_frozen_locked_row(self):
+        self.cached[self.models.TenantModuleState] = [SimpleNamespace(generation=1, data_state='AVAILABLE')]
+        self.states['internship'].data_state = 'FROZEN'
+        self.deny()
+
+    def test_cached_generation_cannot_hide_recreated_module(self):
+        self.cached[self.models.TenantModuleState] = [SimpleNamespace(generation=1, data_state='AVAILABLE')]
+        self.states['internship'].generation = 2
+        self.deny(409)
+
+    def test_cached_legacy_profile_cannot_skip_v2_source_check(self):
+        self.cached[self.models.TenantCommercialProfile] = [SimpleNamespace(reader_version='LEGACY')]
+        self.sources = []
+        self.deny()
+
+    def test_expiry_while_waiting_on_source_lock_is_denied(self):
+        def wait(entity):
+            if entity is self.models.TenantModuleSubscriptionSource:
+                self.time += self.delta(seconds=3)
+        self.after_read = wait
+        self.deny()
+
+    def test_expiry_while_waiting_on_profile_lock_is_denied(self):
+        self.after_read = lambda entity: setattr(self, 'time', self.time + self.delta(seconds=3)) \
+            if entity is self.models.TenantCommercialProfile else None
+        self.deny()
+
+    def test_old_cached_source_end_cannot_extend_locked_contract(self):
+        self.cached[self.models.TenantModuleSubscriptionSource] = [SimpleNamespace(
+            starts_at=self.time - self.delta(days=1), ends_at=self.time + self.delta(days=30))]
+        self.test_expiry_while_waiting_on_source_lock_is_denied()
+
+    def test_future_source_is_not_authorized_before_start(self):
+        self.sources[0].starts_at = self.time + self.delta(seconds=1)
+        self.deny()
+
+    def test_scheduled_source_starting_during_wait_is_usable(self):
+        self.sources[0].starts_at = self.time + self.delta(seconds=1)
+        self.sources[0].status = 'SCHEDULED'
+        self.after_read = lambda entity: setattr(self, 'time', self.time + self.delta(seconds=1)) \
+            if entity is self.models.TenantCommercialProfile else None
+        self.guard._assert_final_fences(self.db)
+
+    def test_foreign_tenant_module_generation_and_cancelled_sources_do_not_grant(self):
+        for key, value in [('tenant_id', 43), ('module_key', 'graduationDesign'),
+                           ('module_generation', 2), ('status', 'CANCELLED'), ('is_deleted', True)]:
+            original = getattr(self.sources[0], key)
+            with self.subTest(field=key):
+                setattr(self.sources[0], key, value)
+                self.deny()
+                setattr(self.sources[0], key, original)
+
+    def test_legacy_compatibility_and_missing_module_are_not_reinterpreted(self):
+        self.profile.reader_version = 'LEGACY'
+        self.sources = []
+        self.guard._assert_final_fences(self.db)
+        self.states = {}
+        self.deny(409)
+
+    def test_no_active_fence_performs_no_queries(self):
+        self.guard._write_fence_ctx.set(None)
+        self.guard._assert_final_fences(self.db)
+        self.assertEqual(self.queries, [])
+
+    def test_all_modules_are_rechecked_after_last_contended_lock(self):
+        self.guard._write_fence_ctx.get()['modules']['42:studentAffairs'] = {
+            'tenantId': 42, 'moduleKey': 'studentAffairs', 'generation': 1}
+        self.states['studentAffairs'] = SimpleNamespace(generation=1, data_state='AVAILABLE')
+        self.sources.append(SimpleNamespace(**{**vars(self.sources[0]), 'module_key': 'studentAffairs',
+            'ends_at': self.time + self.delta(days=1)}))
+        def wait(entity):
+            if entity is self.models.TenantModuleSubscriptionSource and len(self.queries) >= 4:
+                self.time += self.delta(seconds=3)
+        self.after_read = wait
+        self.deny()
+
 
 if __name__ == "__main__":
     unittest.main()
