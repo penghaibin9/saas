@@ -1,0 +1,100 @@
+name: Temporary graduation final-review URL state polish
+
+on:
+  push:
+    branches:
+      - ui/graduation-shared-workspace-polish-20260908
+    paths:
+      - .github/workflows/tmp-graduation-final-url-state-20260909.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/graduation-shared-workspace-polish-20260908
+          fetch-depth: 0
+
+      - name: Apply guarded final-review URL patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          view = Path('frontend/src/modules/graduation/views/FinalSubmissionListView.vue')
+          text = view.read_text(encoding='utf-8')
+
+          old = """        page: String(this.page),
+        keyword: keyword || undefined,
+        sel: this.selKey || undefined,
+        ...overrides
+      }
+      Object.keys(query).forEach((key) => {
+        if (query[key] == null || query[key] === '') delete query[key]
+      })
+"""
+          new = """        page: this.page > 1 ? String(this.page) : undefined,
+        keyword: keyword || undefined,
+        sel: this.selKey || undefined,
+        ...overrides
+      }
+      Object.keys(query).forEach((key) => {
+        if (key === 'page' && this.normalizePage(query[key]) === 1) { delete query[key]; return }
+        if (query[key] == null || query[key] === '') delete query[key]
+      })
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'FinalSubmissionListView URL anchor mismatch: {text.count(old)}')
+          view.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test_file = Path('frontend/tests/graduation.v9-final-review.contract.test.mjs')
+          test_text = test_file.read_text(encoding='utf-8')
+          old_assert = "  assert.match(source, /page: String\\(this\\.page\\)/)\n  assert.match(source, /sel: this\\.selKey \\|\\| undefined/)"
+          new_assert = "  assert.match(source, /page: this\\.page > 1 \\? String\\(this\\.page\\) : undefined/)\n  assert.match(source, /key === 'page' && this\\.normalizePage\\(query\\[key\\]\\) === 1/)\n  assert.match(source, /sel: this\\.selKey \\|\\| undefined/)"
+          if test_text.count(old_assert) != 1:
+              raise SystemExit(f'final-review contract anchor mismatch: {test_text.count(old_assert)}')
+          test_file.write_text(test_text.replace(old_assert, new_assert, 1), encoding='utf-8')
+          PY
+
+      - name: Validate scoped URL behavior
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/views/FinalSubmissionListView.vue\nfrontend/tests/graduation.v9-final-review.contract.test.mjs'
+          node --test \
+            frontend/tests/graduation.v9-final-review.contract.test.mjs \
+            frontend/tests/graduation-document-review-workspace-contract.test.mjs
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('frontend/src/modules/graduation/views/FinalSubmissionListView.vue').read_text(encoding='utf-8')
+          required = [
+              "page: this.page > 1 ? String(this.page) : undefined",
+              "if (key === 'page' && this.normalizePage(query[key]) === 1) { delete query[key]; return }",
+              "page: this.page,\n          pageSize: this.pageSize,\n          batchId",
+              "turnPage(page)",
+              "this.replaceListQuery({ page: String(page), sel: undefined })",
+          ]
+          for marker in required:
+              if marker not in source:
+                  raise SystemExit(f'missing final-review URL marker: {marker}')
+          if "page: String(this.page),\n        keyword:" in source:
+              raise SystemExit('implicit first-page URL serialization still present')
+          print('final-review URL state boundary: PASS')
+          PY
+
+      - name: Commit product patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-graduation-final-url-state-20260909.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/modules/graduation/views/FinalSubmissionListView.vue \
+                  frontend/tests/graduation.v9-final-review.contract.test.mjs \
+                  .github/workflows/tmp-graduation-final-url-state-20260909.yml
+          git diff --cached --check
+          git commit -m "fix(graduation): keep first-page review URL stable"
+          git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
