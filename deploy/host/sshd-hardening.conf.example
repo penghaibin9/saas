@@ -1,0 +1,23 @@
+# /etc/ssh/sshd_config.d/99-school-lifecycle-hardening.conf
+# Production baseline. Apply only after a second SSH session using the intended
+# key-authenticated admin account has been proven to work.
+
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+X11Forwarding no
+AllowAgentForwarding no
+
+MaxAuthTries 4
+LoginGraceTime 60
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# Recommended for an internet-facing production CVM. If your approved operations
+# require SSH tunnels, document the exception before changing this to yes.
+AllowTcpForwarding no
+
+# Keep the actual production SSH Port in the primary sshd_config or uncomment and
+# set the approved port here. The host auditor must be invoked with the same port.
+# Port 22
