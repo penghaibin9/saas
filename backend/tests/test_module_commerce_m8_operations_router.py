@@ -50,7 +50,7 @@ class M8OperationsRouterContractTests(unittest.TestCase):
     def test_frozen_finance_and_operations_surfaces_are_disjoint(self):
         self.assertEqual(len(self.frozen.router.routes), 24)
         self.assertEqual(len(self.finance.router.routes), 10)
-        self.assertEqual(len(self.operations.router.routes), 5)
+        self.assertEqual(len(self.operations.router.routes), 8)
         frozen = self._signatures(self.frozen.router); finance = self._signatures(self.finance.router); operations = self._signatures(self.operations.router)
         self.assertFalse(frozen & finance); self.assertFalse(frozen & operations); self.assertFalse(finance & operations)
         canonical = self._signatures(self.canonical.router)
@@ -79,16 +79,18 @@ class M8OperationsRouterContractTests(unittest.TestCase):
                     self.assertEqual(response.json()["bizCode"], "NO_PERMISSION")
         self.records.assert_not_called()
 
-    def test_read_routes_transport_to_operations_projection(self):
+    def test_read_routes_transport_to_operations_projection_and_sla_policy(self):
         from app.services import module_commerce_operations_service as operations
+        from app.services import module_commerce_sla_policy_service as policy
 
         scenarios = [
-            ("/api/v1/platform/commercial/tenants/42/operations", "operations_overview", (42,), {}),
-            ("/api/v1/platform/commercial/tenants/42/after-sales?page=2&pageSize=7", "list_after_sales", (42,), {"page": 2, "page_size": 7}),
-            ("/api/v1/platform/commercial/tenants/42/service-costs?page=2&pageSize=7", "list_service_costs", (42,), {"page": 2, "page_size": 7}),
+            (operations, "/api/v1/platform/commercial/tenants/42/operations", "operations_overview", (42,), {}),
+            (operations, "/api/v1/platform/commercial/tenants/42/after-sales?page=2&pageSize=7", "list_after_sales", (42,), {"page": 2, "page_size": 7}),
+            (operations, "/api/v1/platform/commercial/tenants/42/service-costs?page=2&pageSize=7", "list_service_costs", (42,), {"page": 2, "page_size": 7}),
+            (policy, "/api/v1/platform/commercial/tenants/42/sla-policy", "policy_editor", (42,), {}),
         ]
-        for url, name, args, kwargs in scenarios:
-            with self.subTest(url=url), patch.object(operations, name, return_value={"items": []}) as call:
+        for service, url, name, args, kwargs in scenarios:
+            with self.subTest(url=url), patch.object(service, name, return_value={"items": []}) as call:
                 response = self.client.get(url); self.assertEqual(response.status_code, 200, response.text)
                 call.assert_called_once_with(*args, **kwargs)
 
@@ -117,11 +119,30 @@ class M8OperationsRouterContractTests(unittest.TestCase):
             call.assert_called_once_with(self.actor, 42, body, idempotency_key="m8-cost-route-0001")
             self.assertIn("未进行币种换算或估算", response.json()["message"])
 
+    def test_sla_write_and_reset_preserve_expected_version_and_commercial_manage(self):
+        from app.services import module_commerce_sla_policy_service as policy
+
+        body = {"expectedVersion": 3, "policyVersion": "SLA-2026-09", "targetsHours": {"P0": 1, "P1": 4, "P2": 12, "P3": 36}, "reason": "合同明确SLA"}
+        with patch.object(policy, "update_tenant_policy", return_value={"effective": {"configured": True}}) as update:
+            response = self.client.put("/api/v1/platform/commercial/tenants/42/sla-policy", json=body)
+            self.assertEqual(response.status_code, 200, response.text)
+            update.assert_called_once_with(self.actor, 42, body)
+            self.assertIn("没有系统默认承诺", response.json()["message"])
+
+        with patch.object(policy, "reset_tenant_policy", return_value={"effective": {"configured": False}}) as reset:
+            response = self.client.post(
+                "/api/v1/platform/commercial/tenants/42/sla-policy/reset",
+                json={"expectedVersion": 4, "reason": "恢复平台合同默认政策"},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            reset.assert_called_once_with(self.actor, 42, expected_version=4, reason="恢复平台合同默认政策")
+            self.assertIn("无默认则保持未评估", response.json()["message"])
+
     def test_operations_source_contains_no_entitlement_or_external_execution_primitive(self):
         from pathlib import Path
 
         source = Path("app/modules/platform/routers/module_commerce_operations_router.py").read_text(encoding="utf-8")
-        for marker in ("退款后授权复核", "现有客户成功工单", "不做币种换算"):
+        for marker in ("退款后授权复核", "现有客户成功工单", "不做币种换算", "sla-policy", "没有系统默认承诺"):
             self.assertIn(marker, source)
         for forbidden in ("cancel_subscription_source_now(", "execute_refund(", "payment_gateway", "execute_tenant_purge"):
             self.assertNotIn(forbidden, source)
