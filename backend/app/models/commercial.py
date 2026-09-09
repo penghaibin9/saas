@@ -1,13 +1,15 @@
-"""Module-commerce persistence for M1-M5.
+"""Module-commerce persistence for M1-M8.
 
 M1/M2 store catalogue, itemized order and entitlement-source truth. M3-M5 add
-reversible cancellation/offboarding control facts only. These records do not
-replace IAM, tenant-wide offboarding, or the commercial entitlement facade.
-Physical purge is intentionally outside this file's M3-M5 scope.
+reversible cancellation/offboarding control facts. M8 adds finance control facts for
+manual refund and invoice workflows; the original PlatformOrder remains the sale and
+payment authority, and no record in this file invokes a payment or invoice provider.
+Physical purge remains outside this module's scope.
 """
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -178,3 +180,62 @@ class TenantModuleOffboardingStep(PKMixin, CommonMixin, TenantMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class CommercialRefundCase(PKMixin, CommonMixin, TenantMixin, Base):
+    """Manual-refund control fact. Settlement is evidence of an external refund, not an executor."""
+    __tablename__ = "t_commercial_refund_case"
+    __table_args__ = (
+        UniqueConstraint("case_no", name="uk_commercial_refund_case_no"),
+        UniqueConstraint("request_key_hash", name="uk_commercial_refund_request_key"),
+        Index("ix_commercial_refund_tenant_order_status", "tenant_id", "order_id", "status", "id"),
+    )
+
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("t_order.id"), nullable=False, index=True)
+    case_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="CNY")
+    order_paid_amount_snapshot: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="REQUESTED", index=True)
+    requested_by: Mapped[int | None] = mapped_column(BigInteger)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    approved_by: Mapped[int | None] = mapped_column(BigInteger)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approval_note: Mapped[str | None] = mapped_column(String(500))
+    rejected_by: Mapped[int | None] = mapped_column(BigInteger)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500))
+    settled_by: Mapped[int | None] = mapped_column(BigInteger)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    settlement_ref: Mapped[str | None] = mapped_column(String(160))
+
+
+class CommercialInvoiceCase(PKMixin, CommonMixin, TenantMixin, Base):
+    """Manual invoice-control fact. ISSUED records an external invoice reference only."""
+    __tablename__ = "t_commercial_invoice_case"
+    __table_args__ = (
+        UniqueConstraint("request_no", name="uk_commercial_invoice_request_no"),
+        UniqueConstraint("request_key_hash", name="uk_commercial_invoice_request_key"),
+        Index("ix_commercial_invoice_tenant_order_status", "tenant_id", "order_id", "status", "id"),
+    )
+
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("t_order.id"), nullable=False, index=True)
+    request_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="CNY")
+    invoice_title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="REQUESTED", index=True)
+    requested_by: Mapped[int | None] = mapped_column(BigInteger)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    issued_by: Mapped[int | None] = mapped_column(BigInteger)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime)
+    external_invoice_ref: Mapped[str | None] = mapped_column(String(160))
+    invoice_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    voided_by: Mapped[int | None] = mapped_column(BigInteger)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime)
+    void_reason: Mapped[str | None] = mapped_column(String(500))
