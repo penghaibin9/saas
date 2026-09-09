@@ -16,7 +16,7 @@ test('settled refund continues into explicit existing customer-success ticket fl
 })
 
 test('M8 operations APIs are additive and wired to the same selected school', () => {
-  for (const marker of ['getOperationsOverview','listAfterSales','createAfterSalesTicket','listServiceCosts','recordServiceCost']) {
+  for (const marker of ['getOperationsOverview','listAfterSales','createAfterSalesTicket','listServiceCosts','recordServiceCost','getSlaPolicy','updateSlaPolicy','resetSlaPolicy']) {
     assert.match(api, new RegExp(marker))
   }
   assert.match(finance, /ModuleOperationsWorkspace/)
@@ -26,9 +26,20 @@ test('M8 operations APIs are additive and wired to the same selected school', ()
 test('SLA UI never manufactures a target when policy is absent', () => {
   assert.match(operations, /没有有效的商业 SLA 明确政策/)
   assert.match(operations, /不判“达标\/超时”/)
-  assert.match(operations, /slaPolicy/)
-  assert.match(operations, /policyConfigured/)
+  assert.match(operations, /slaEditor/)
+  assert.match(operations, /effective\?\.configured/)
+  assert.match(operations, /系统不会补默认小时数/)
   assert.doesNotMatch(operations, /P0.{0,20}2小时|P1.{0,20}8小时|P2.{0,20}24小时/)
+})
+
+test('SLA editor requires all four explicit targets and optimistic version', () => {
+  for (const severity of ['P0','P1','P2','P3']) assert.match(operations, new RegExp(severity))
+  assert.match(operations, /severities\.every/)
+  assert.match(operations, /expectedVersion:slaEditor\.value\?\.tenantOverride\?\.rowVersion\?\?0/)
+  assert.match(operations, /commercial\.manage/)
+  assert.match(operations, /recheckDuty\('commercial\.manage'/)
+  assert.match(operations, /恢复平台默认 \/ 未评估/)
+  assert.match(operations, /resetSlaPolicy/)
 })
 
 test('customer-success ticket remains the processing authority', () => {
