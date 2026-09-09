@@ -65,6 +65,10 @@ def invalidate_tenant_subject_caches(tenant_id: str | int) -> int:
 
 
 def _subject_cache_matches(user_ctx: dict) -> bool:
+    from app.core.auth_hardening_policy import legacy_school_context, strict_security_environment
+    # An older legacy token must recheck DB roles, even if another worker cached it.
+    if strict_security_environment(settings) and legacy_school_context(user_ctx):
+        return False
     if cache_get(_force_revalidate_key(
             user_ctx.get("userId") or "-", user_ctx.get("tenantId") or "0")) == "1":
         return False
@@ -177,7 +181,10 @@ def _role_contexts(db, user) -> list[dict]:
     if contexts:
         return contexts
 
-    # 迁移期只兼容仓库登记的演示账号。新账号无角色必须 fail-closed。
+    # Only explicitly enabled non-production fixtures may use name-based roles.
+    from app.core.auth_hardening_policy import allow_legacy_role_fallback
+    if not allow_legacy_role_fallback(settings):
+        return []
     legacy = LEGACY_DEMO_ROLE_BY_LOGIN.get(user.login_name)
     if legacy:
         return [_public_context(None, legacy[0], legacy[1], legacy[2], legacy[3], legacy=True)]
