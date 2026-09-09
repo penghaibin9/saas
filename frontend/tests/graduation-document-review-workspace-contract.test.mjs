@@ -132,7 +132,8 @@ test('W2 workspace shows teacher decisions while keeping exact version identity 
   const review = workspaceSource.indexOf('<slot name="review" />')
   const summary = workspaceSource.indexOf('<div class="gd-review-workspace__summary">')
   assert.ok(evidence >= 0 && review > evidence && summary > review)
-  assert.match(workspaceSource, /gd-business-view:has\(\.gd-review-workspace\)\s*>\s*\.gd-scope-alert\.app-inline-alert/)
+  assert.doesNotMatch(workspaceSource, /gd-scope-alert[^{}]*\{[^}]*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0)/,
+    'review workspace must not suppress the parent permission, scope or real-message notice')
   const copy = graduationTemplateCopy(workspaceSource)
   assert.doesNotMatch(copy.text, /canonical|FileVersion|业务版本与文件版本已锁定/)
   assert.doesNotMatch(copy.directOutputs.join(' '), /canonicalFileVersionId|fileVersionId/,

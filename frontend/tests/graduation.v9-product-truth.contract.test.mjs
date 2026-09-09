@@ -52,6 +52,7 @@ function optionsFrom(source, bindings = {}) {
   const body = script.replace(/^\s*import[^\n]*$/gm, '')
     .replace(/export\s+default\s+/, 'globalThis.componentOptions = ')
   const sandbox = {
+    URLSearchParams,
     BasePortalLayout: {}, LoadingState: {}, EmptyState: {}, AppInlineAlert: {},
     GraduationBatchStrip: {}, GraduationExtensionAdminPanel: {}, StatusTag: {},
     graduationPickerAdapters: {},
