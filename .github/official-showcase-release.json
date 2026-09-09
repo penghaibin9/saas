@@ -1,0 +1,8 @@
+{
+  "version": "20260909-pc40-wechat20",
+  "base": "b9ef56ff4e29fc76679c590964b7b3273c32d7f2",
+  "artifact_url": null,
+  "sha256": "7d28688802e96621f969320c908947f6b869c20cb5fef7d4beba07c76c1d4f51",
+  "bytes": 15142223,
+  "status": "awaiting-file-transfer-tool"
+}
