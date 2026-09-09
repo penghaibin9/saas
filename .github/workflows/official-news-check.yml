@@ -1,0 +1,38 @@
+name: Official news integration checks
+on:
+  push:
+    branches: [feat/yueke-official-site-60-gallery-20260909]
+    paths: ['.github/workflows/official-news-check.yml']
+permissions:
+  contents: read
+jobs:
+  source-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 8b09ff359fdffd71fc1e0b099ddb4a138d0ce173
+          persist-credentials: false
+      - name: Package tracked source only, without credentials or business records
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, zipfile, os
+          roots=('backend/app/','backend/alembic/','backend/tests/','frontend/src/','frontend/tests/','frontend/scripts/','scripts/','deploy/','e2e/','.github/workflows/','docs/06-开发施工与质量验收/')
+          exact={'CLAUDE.md','AGENTS.md','backend/requirements.txt','backend/requirements-dev.txt','backend/pytest.ini','backend/alembic.ini','frontend/package.json','frontend/package-lock.json','frontend/vite.config.js','frontend/index.html','frontend/eslint.config.js'}
+          suffixes={'.py','.js','.mjs','.cjs','.ts','.vue','.css','.html','.json','.yaml','.yml','.md','.sh','.sql','.ini','.txt'}
+          target=pathlib.Path(os.environ['RUNNER_TEMP'])/'official-news-source.zip'
+          with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as z:
+              for name in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
+                  if not name: continue
+                  p=pathlib.Path(name)
+                  if (name in exact or name.startswith(roots)) and p.suffix in suffixes and p.is_file() and '.env' not in p.name:
+                      z.write(p,name)
+              z.writestr('SOURCE_SHA','8b09ff359fdffd71fc1e0b099ddb4a138d0ce173\n')
+          print('Scoped source archive bytes:',target.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: official-news-source-8b09ff3
+          path: ${{ runner.temp }}/official-news-source.zip
+          retention-days: 1
