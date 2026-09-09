@@ -10,6 +10,7 @@ on:
       - "backend/tests/test_host_security_audit.py"
       - "backend/tests/test_host_security_baseline.py"
       - "backend/tests/test_docker_port_exposure.py"
+      - "backend/tests/test_docker_preflight_contract.py"
       - "backend/tests/test_dockerd_launch_flags.py"
       - ".github/workflows/host-security-baseline.yml"
   workflow_dispatch:
@@ -44,4 +45,5 @@ jobs:
           python -m unittest discover -s backend/tests -p test_host_security_audit.py -v
           python -m unittest discover -s backend/tests -p test_host_security_baseline.py -v
           python -m unittest discover -s backend/tests -p test_docker_port_exposure.py -v
+          python -m unittest discover -s backend/tests -p test_docker_preflight_contract.py -v
           python -m unittest discover -s backend/tests -p test_dockerd_launch_flags.py -v
