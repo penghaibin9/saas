@@ -52,34 +52,58 @@ jobs:
               '.w74-center{display:grid;gap:10px;min-width:0}.w74-page-title{margin:0;color:var(--text-primary,#0f172a);font-size:20px;line-height:1.3;font-weight:700}.w74-summary{'
           )
 
-          css = 'frontend/src/modules/graduation/styles/graduation-workspaces.css'
-          marker = '/* Only the plagiarism route receives these rules; the same view\'s grade and defense routes do not. */'
-          compact = '''/* 1366 / 125%: compact vertical structure, never compact typography. */
+          # Keep business script byte-identical. Only raise the deep form presentation floor.
+          grade_form = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue')
+          grade_text = grade_form.read_text(encoding='utf-8')
+          if grade_text.count('<style scoped>') != 1 or grade_text.count('</style>') != 1:
+              raise SystemExit('grade form style boundary changed')
+          before, rest = grade_text.split('<style scoped>', 1)
+          style, after = rest.split('</style>', 1)
+          if 'font-size:11px' not in style or 'font-size:10px' not in style:
+              raise SystemExit('grade form tiny type anchors missing')
+          style = style.replace('font-size:11px', 'font-size:12px').replace('font-size:10px', 'font-size:12px')
+          if 'font-size:11px' in style or 'font-size:10px' in style:
+              raise SystemExit('grade form still contains sub-12px type')
+          grade_form.write_text(before + '<style scoped>' + style + '</style>' + after, encoding='utf-8')
+
+          # Add 1366/125% compaction only to the mutable final presentation layer.
+          # Do not alter the byte-frozen canonical material/process stylesheet sections.
+          layout = 'frontend/src/modules/graduation/views/AdminGraduationLayout.vue'
+          compact = '''/* 1366 / 125%: compact material chrome, never compact typography. */
           @media (min-width: 981px) and (max-width: 1400px) {
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page { gap: 8px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-hero { padding: 10px 12px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-hero h2 { margin: 2px 0; font-size: 20px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-summary { gap: 6px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page .mc-summary article { padding: 7px 9px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-tabs { gap: 4px; padding: 3px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-page button { min-height: 34px; padding: 5px 10px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters {
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page) { gap: 8px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero) { padding: 10px 12px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero h2) { margin: 2px 0; font-size: 20px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary) { gap: 6px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary article) { padding: 7px 9px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-tabs) { gap: 4px; padding: 3px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page button) { min-height: 34px; padding: 5px 10px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters) {
               grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;
               gap: 6px;
               padding: 8px 10px;
             }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters label { gap: 3px; }
-            .gd-business-view[data-graduation-material-workspace='materials'] .mc-filters :is(input, select) { min-height: 34px; padding: 5px 8px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters label) { gap: 3px; }
+            .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters :is(input, select)) { min-height: 34px; padding: 5px 8px; }
           }
 
           '''
-          replace_once(css, marker, compact + marker)
-
-          defense_form = 'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue'
           replace_once(
-              defense_form,
-              "          this.submitting = false\n          await this.$router.push(snapshot.backTo)\n          return",
-              "          this.submitting = false\n          this.commandSnapshot = null\n          await this.$nextTick()\n          await this.$router.replace(snapshot.backTo)\n          return"
+              layout,
+              '/* Risk / archive: restore readable evidence and put the real queue before the rule catalogue. */',
+              compact + '/* Risk / archive: restore readable evidence and put the real queue before the rule catalogue. */'
+          )
+
+          test_file = 'frontend/tests/graduation.final-integration-polish.test.mjs'
+          replace_once(
+              test_file,
+              "  assert.match(integration, /data-graduation-content-workspace='final'[\\s\\S]*\\.fr-command__copy strong\\)[^{]*font-size: 15px/)\n",
+              "  assert.match(integration, /data-graduation-content-workspace='final'[\\s\\S]*\\.fr-command__copy strong\\)[^{]*\\{[^}]*font-size: 15px/)\n  assert.match(integration, /1366 \\/ 125%: compact material chrome[\\s\\S]*data-graduation-material-workspace='materials'[\\s\\S]*grid-template-columns: minmax\\(220px, 1\\.5fr\\) repeat\\(3, minmax\\(130px, 1fr\\)\\) auto/)\n"
+          )
+          replace_once(
+              test_file,
+              "test('single menu truth remains eight workspaces and twenty-four leaves', () => {",
+              "test('deep grade form keeps a readable type floor without touching its business script', () => {\n  const source = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')\n  const style = source.match(/<style scoped>([\\s\\S]*?)<\\/style>/)?.[1] || ''\n  const sizes = [...style.matchAll(/font-size:\\s*([\\d.]+)px/g)].map(match => Number(match[1]))\n  assert.ok(sizes.length > 10)\n  assert.ok(Math.min(...sizes) >= 12)\n  assert.match(source, /await this\\.\\$router\\.push\\(snapshot\\.backTo\\)/)\n})\n\ntest('single menu truth remains eight workspaces and twenty-four leaves', () => {"
           )
           PY
 
@@ -87,7 +111,7 @@ jobs:
         shell: bash
         run: |
           git diff --check
-          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue\nfrontend/src/modules/graduation/styles/graduation-workspaces.css\nfrontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue\nfrontend/src/modules/graduation/views/GraduationReviewCenterView.vue'
+          test "$(git diff --name-only | sort)" = $'frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue\nfrontend/src/modules/graduation/views/AdminGraduationLayout.vue\nfrontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue\nfrontend/src/modules/graduation/views/GraduationReviewCenterView.vue\nfrontend/tests/graduation.final-integration-polish.test.mjs'
           node --test \
             frontend/tests/graduation.content-workspace-polish.test.mjs \
             frontend/tests/graduation.material-workspace-polish.test.mjs \
@@ -97,17 +121,20 @@ jobs:
           from pathlib import Path
           review = Path('frontend/src/modules/graduation/views/GraduationReviewCenterView.vue').read_text(encoding='utf-8')
           workspace = Path('frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue').read_text(encoding='utf-8')
-          css = Path('frontend/src/modules/graduation/styles/graduation-workspaces.css').read_text(encoding='utf-8')
+          layout = Path('frontend/src/modules/graduation/views/AdminGraduationLayout.vue').read_text(encoding='utf-8')
           form = Path('frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue').read_text(encoding='utf-8')
           required = [
               (review, '<h1 class="w74-page-title">统一评阅中心</h1>'),
               (workspace, 'min-height: 36px; padding-top: 7px; padding-bottom: 7px; font-size: 13px;'),
-              (css, "grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;"),
-              (form, 'this.commandSnapshot = null\n          await this.$nextTick()\n          await this.$router.replace(snapshot.backTo)')
+              (layout, "grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;"),
+              (form, 'await this.$router.push(snapshot.backTo)')
           ]
           for source, marker in required:
               if marker not in source:
                   raise SystemExit(f'missing guarded polish marker: {marker}')
+          style = form.split('<style scoped>', 1)[1].split('</style>', 1)[0]
+          if 'font-size:10px' in style or 'font-size:11px' in style:
+              raise SystemExit('deep grade form type floor regression')
           print('remaining graduation frontend polish: PASS')
           PY
 
@@ -119,9 +146,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             frontend/src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue \
-            frontend/src/modules/graduation/styles/graduation-workspaces.css \
+            frontend/src/modules/graduation/views/AdminGraduationLayout.vue \
             frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue \
             frontend/src/modules/graduation/views/GraduationReviewCenterView.vue \
+            frontend/tests/graduation.final-integration-polish.test.mjs \
             .github/workflows/tmp-graduation-final-url-state-20260909.yml
           git diff --cached --check
           git commit -m "fix(graduation): close remaining workspace readability gaps"
