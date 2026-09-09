@@ -6,33 +6,33 @@ on:
 permissions:
   contents: read
 jobs:
-  source-context:
+  media-context:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: 8b09ff359fdffd71fc1e0b099ddb4a138d0ce173
           persist-credentials: false
-      - name: Package tracked source only, without credentials or business records
+      - name: Prepare a 32-second synchronized campus cue with attribution
+        run: |
+          mkdir -p "$RUNNER_TEMP/website-news-media"
+          curl --fail --location --proto '=https' --tlsv1.2 --max-time 90 'https://www.scottbuckley.com.au/library/wp-content/uploads/2020/01/sb_discovery.mp3' -o "$RUNNER_TEMP/discovery-source.mp3"
+          ffmpeg -hide_banner -loglevel error -i "$RUNNER_TEMP/discovery-source.mp3" -t 32 -vn -ar 44100 -ac 2 -af 'loudnorm=I=-22:TP=-2:LRA=7,afade=t=in:st=0:d=1.2,afade=t=out:st=29.3:d=2.7' -c:a libmp3lame -b:a 128k "$RUNNER_TEMP/website-news-media/discovery-campus-32.mp3"
+          sha256sum "$RUNNER_TEMP/discovery-source.mp3" "$RUNNER_TEMP/website-news-media/discovery-campus-32.mp3" > "$RUNNER_TEMP/website-news-media/audio-sha256.txt"
+          printf '%s\n' "Discovery by Scott Buckley – released under CC-BY 4.0. www.scottbuckley.com.au" 'Source: https://www.scottbuckley.com.au/library/discovery/' 'License: https://creativecommons.org/licenses/by/4.0/' 'Modification: opening 32 seconds, normalized loudness, fade in/out, 128kbps MP3. Use synchronized with campus media; retain attribution.' > "$RUNNER_TEMP/website-news-media/ATTRIBUTION.txt"
+      - name: Include only missing deployment configuration context
         run: |
           python - <<'PY'
-          import pathlib, subprocess, zipfile, os
-          roots=('backend/app/','backend/alembic/','backend/tests/','frontend/src/','frontend/tests/','frontend/scripts/','scripts/','deploy/','e2e/','.github/workflows/','docs/06-开发施工与质量验收/')
-          exact={'CLAUDE.md','AGENTS.md','backend/requirements.txt','backend/requirements-dev.txt','backend/pytest.ini','backend/alembic.ini','frontend/package.json','frontend/package-lock.json','frontend/vite.config.js','frontend/index.html','frontend/eslint.config.js'}
-          suffixes={'.py','.js','.mjs','.cjs','.ts','.vue','.css','.html','.json','.yaml','.yml','.md','.sh','.sql','.ini','.txt'}
-          target=pathlib.Path(os.environ['RUNNER_TEMP'])/'official-news-source.zip'
-          with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as z:
-              for name in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
-                  if not name: continue
-                  p=pathlib.Path(name)
-                  if (name in exact or name.startswith(roots)) and p.suffix in suffixes and p.is_file() and '.env' not in p.name:
-                      z.write(p,name)
-              z.writestr('SOURCE_SHA','8b09ff359fdffd71fc1e0b099ddb4a138d0ce173\n')
-          print('Scoped source archive bytes:',target.stat().st_size)
+          import pathlib,subprocess,zipfile,os
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'website-news-media'
+          with zipfile.ZipFile(root/'deployment-context.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for n in subprocess.check_output(['git','ls-files','-z']).decode().split('\0'):
+                  if n.startswith('deploy/') and pathlib.Path(n).suffix in {'.conf','.example','.service','.timer'}:
+                      z.write(n,n)
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: official-news-source-8b09ff3
-          path: ${{ runner.temp }}/official-news-source.zip
+          name: official-news-music-and-deployment
+          path: ${{ runner.temp }}/website-news-media/*
           retention-days: 1
