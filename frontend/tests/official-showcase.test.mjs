@@ -77,13 +77,14 @@ test('network timeout fails closed to legacy homepage', async () => {
   const result = await hasShowcaseAssets({timeoutMs:10,fetcher:(_,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted'))))})
   assert.equal(result,false)
 })
-test('the original synthesized score matches five 6.4-second tour chapters', () => {
+test('licensed replacement cue retains the 32-second tour duration and attribution', () => {
   assert.equal(SCORE.duration,32)
-  assert.equal(SCORE.bpm,75)
-  assert.equal(SCORE.chords.length,5)
-  assert.equal(SCORE.melody.length,5)
-  assert.ok(SCORE.melody.every(phrase=>phrase.length===8))
+  assert.equal(SCORE.author,'Scott Buckley')
+  assert.equal(SCORE.license,'CC BY 4.0')
   assert.equal(CAMPUS_MODULES.length,4)
+  const html=fs.readFileSync(path.join(base,'approved-home.html'),'utf8')
+  assert.ok(html.includes('Scott Buckley'))
+  assert.ok(html.includes('CC BY 4.0'))
 })
 class FakeContext {
   constructor(){ this.state='running';this.currentTime=0;this.destination={};this.starts=0;this.stops=0 }

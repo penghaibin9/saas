@@ -1,4 +1,5 @@
 import { SHOWCASE } from './content.js'
+import { mountNewsPreview } from './news-preview.js'
 import { TourSoundtrack } from './tour-audio.js'
 
 export const ASSET_BASE = '/official-site/showcase-20260909/'
@@ -24,6 +25,7 @@ export function mountShowcase(root, { contact, links = {}, navigate, consultBase
   const data = SHOWCASE
   const state = { product: 'academic', hr: 0, mobile: 'teacher', board: 'academic', gallery: null, index: 0, scene: 'overview', model: false, playing: false, elapsed: 0 }
   const cleanup = [], frames = new Set(), openers = new WeakMap()
+  cleanup.push(mountNewsPreview(root))
   let disposed = false, model = null, modelPending = null, audio = null, tickId = 0, lastTick = 0, toastTimer = 0, scrollLock = null, switching = false
   const reduced = win.matchMedia('(prefers-reduced-motion: reduce)')
   const asset = resolveAsset || (value => value.startsWith('assets/') ? ASSET_BASE + value.slice(7) : value)
@@ -258,7 +260,7 @@ export function mountShowcase(root, { contact, links = {}, navigate, consultBase
       if (disposed) return
       $('#tour-sound').setAttribute('aria-pressed', String(Boolean(audio?.enabled)))
       text('tour-sound', audio?.enabled ? '♫ 配乐已开启' : '♫ 开启配乐')
-      text('tour-audio-status', status === 'loading' ? '正在准备配乐…' : status === 'playing' ? '一路相连 · 正在播放' : status === 'unavailable' ? '配乐暂不可用，仍可静音导览。' : '配乐仅在导览中播放')
+      text('tour-audio-status', status === 'loading' ? '正在准备配乐…' : status === 'playing' ? 'Discovery · 正在播放' : status === 'unavailable' ? '配乐暂不可用，仍可静音导览。' : '配乐仅在导览中播放')
     } })
     return audio
   }

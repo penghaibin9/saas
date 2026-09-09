@@ -121,7 +121,7 @@ function writeRoute(route) {
 for (const route of OFFICIAL_SEO_ROUTES) writeRoute(route)
 const sitemap = ['<?xml version="1.0" encoding="UTF-8"?>','<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',...OFFICIAL_SEO_ROUTES.map((route) => `  <url><loc>${escapeHtml(officialCanonicalUrl(route.path))}</loc><lastmod>${escapeHtml(route.contentUpdatedAt)}</lastmod><changefreq>${route.path === '/' ? 'weekly' : 'monthly'}</changefreq><priority>${route.path === '/' ? '1.0' : '0.8'}</priority></url>`),'</urlset>'].join('\n')
 fs.writeFileSync(path.join(distDir, 'sitemap.xml'), sitemap)
-fs.writeFileSync(path.join(distDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${OFFICIAL_SITE_CONTACT.canonicalOrigin}/sitemap.xml\n`)
+fs.writeFileSync(path.join(distDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${OFFICIAL_SITE_CONTACT.canonicalOrigin}/sitemap.xml\nSitemap: ${OFFICIAL_SITE_CONTACT.canonicalOrigin}/news/sitemap.xml\n`)
 process.stdout.write(`official prerender: generated ${OFFICIAL_SEO_ROUTES.length} routes, visible facts/FAQ, sitemap.xml and robots.txt\n`)
 
 // The verified showcase augments only the homepage; public product/legal routes remain intact.
