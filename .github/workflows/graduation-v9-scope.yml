@@ -12,7 +12,7 @@ on:
       - '.github/workflows/graduation-v9-scope.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: graduation-v9-scope-${{ github.event.pull_request.number || github.ref }}
@@ -48,3 +48,45 @@ jobs:
           fi
           CURRENT_CARD=V9_PR BASE_SHA="$BASE_SHA" HEAD_SHA=HEAD \
             node scripts/check/check-graduation-v9-scope.mjs
+
+  pr267-regenerate-navigation-contract:
+    if: github.event.pull_request.number == 267 && github.event.pull_request.head.ref == 'ui/graduation-shared-workspace-polish-20260908'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Regenerate navigation authority
+        run: node scripts/generate-navigation-surface-contract.mjs
+
+      - name: Verify exact generated scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          if [ "${#changed[@]}" -ne 1 ] || [ "${changed[0]}" != "shared/contracts/navigation-surface-contract.json" ]; then
+            echo "Unexpected generator diff" >&2
+            exit 1
+          fi
+          grep -F 'f5243e564b2f5a72a78332e99e39dfc05d80f68dd6d84cc3c86770f56e28a6e8' shared/contracts/navigation-surface-contract.json
+          grep -F '/admin/graduation/proposals?workspace=proposal-final' shared/contracts/navigation-surface-contract.json
+          grep -F '/admin/graduation/finals?workspace=proposal-final' shared/contracts/navigation-surface-contract.json
+          grep -F '/admin/graduation/defense-scoring?workspace=defense-grade' shared/contracts/navigation-surface-contract.json
+
+      - name: Commit generated contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add shared/contracts/navigation-surface-contract.json
+          git commit -m "chore(nav): regenerate navigation surface contract"
+          git push origin HEAD:ui/graduation-shared-workspace-polish-20260908
