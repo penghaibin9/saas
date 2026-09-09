@@ -14,6 +14,10 @@ on:
       - backend/tests/test_module_commerce_m8_renewal.py
       - backend/tests/test_module_commerce_m8_renewal_router.py
       - backend/tests/test_module_commercial_model_bootstrap.py
+      - frontend/src/modules/platform/api/moduleCommerce.api.js
+      - frontend/src/modules/platform/views/control/ModuleRenewalWorkspace.vue
+      - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+      - frontend/tests/module-commerce-renewal.test.mjs
       - .github/workflows/module-commerce-m8-renewal.yml
   workflow_dispatch:
 permissions:
@@ -101,3 +105,27 @@ jobs:
           path: /tmp/module-commerce-m8-renewal
           if-no-files-found: error
           retention-days: 14
+
+  renewal-frontend:
+    name: M8 renewal workspace contract and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ env.EXPECTED_HEAD }}', persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - name: Install exact frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run renewal workspace contract
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          node --test tests/module-commerce-renewal.test.mjs
+      - name: Production build
+        working-directory: frontend
+        run: npm run build

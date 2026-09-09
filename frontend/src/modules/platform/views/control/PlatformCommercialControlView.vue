@@ -22,6 +22,12 @@
         @order-created="loadPortfolio"
       />
 
+      <ModuleRenewalWorkspace
+        :tenant-id="selectedTenantId"
+        :locked="busy"
+        @focus-sales="focusSalesRenewal"
+      />
+
       <ModuleFinanceWorkspace
         :tenant-id="selectedTenantId"
         :locked="busy"
@@ -261,6 +267,7 @@ import { ModulePageShell } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { moduleCommerceApi } from '@/modules/platform/api/moduleCommerce.api'
 import ModuleSalesWorkspace from './ModuleSalesWorkspace.vue'
+import ModuleRenewalWorkspace from './ModuleRenewalWorkspace.vue'
 import ModuleFinanceWorkspace from './ModuleFinanceWorkspace.vue'
 
 const MODULE_LABEL = {
@@ -295,7 +302,7 @@ const EVIDENCE_LABEL = {
 
 export default {
   name: 'PlatformCommercialControlView',
-  components: { ModulePageShell, ModuleSalesWorkspace, ModuleFinanceWorkspace },
+  components: { ModulePageShell, ModuleSalesWorkspace, ModuleRenewalWorkspace, ModuleFinanceWorkspace },
   data: () => ({
     items: [], selectedTenantId: '', portfolio: null, selectedModuleKey: '', preview: null, job: null,
     loading: false, busy: false, portfolioSeq: 0, moduleSeq: 0, message: '', messageType: 'success', cancelReason: '',
@@ -326,6 +333,13 @@ export default {
     changeSalesSchool (id) {
       this.selectedTenantId = id; this.portfolio = null; this.preview = null; this.job = null; this.selectedModuleKey = ''; this.cancelReason = ''
       this.deliveryForm = { acceptanceRef: '', reason: '' }; this.exportForm = { acceptanceRef: '' }; this.loadPortfolio()
+    },
+    focusSalesRenewal (candidate) {
+      if (candidate?.moduleKey) this.selectedModuleKey = candidate.moduleKey
+      this.notify(`已定位原分项续费：${this.moduleName(candidate?.moduleKey)}，已付截止 ${this.dateTime(candidate?.sourceEndsAt)}。请在上方选择“续费”，重新核对当前商品版本、成交价与新的服务截止。`, 'warning')
+      this.$nextTick(() => {
+        this.$el?.querySelector?.('[aria-label="模块商品销售工作区"]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+      })
     },
     moduleName (key) { return MODULE_LABEL[key] || key },
     bytes (value) {

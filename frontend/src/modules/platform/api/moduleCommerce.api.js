@@ -47,5 +47,8 @@ export const moduleCommerceApi = {
   }),
   getSlaPolicy: (tenantId) => request(`${financeBase(tenantId)}/sla-policy`),
   updateSlaPolicy: (tenantId, body) => request(`${financeBase(tenantId)}/sla-policy`, { method: 'PUT', body }),
-  resetSlaPolicy: (tenantId, body) => request(`${financeBase(tenantId)}/sla-policy/reset`, { method: 'POST', body })
+  resetSlaPolicy: (tenantId, body) => request(`${financeBase(tenantId)}/sla-policy/reset`, { method: 'POST', body }),
+
+  listRenewalCandidates: (tenantId, params = {}) => request(`${financeBase(tenantId)}/renewal-candidates`, { params }),
+  createRenewalFollowup: (tenantId, sourceId, body) => request(`${financeBase(tenantId)}/sources/${encodeURIComponent(sourceId)}/renewal-followup`, { method: 'POST', body })
 }
