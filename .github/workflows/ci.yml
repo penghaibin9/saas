@@ -110,10 +110,45 @@ jobs:
           node-version: 20
       - run: node scripts/check/check-graduation-production-gates.mjs
 
-  backend:
-    name: 后端 pytest（PR/push 变更感知；定时全量）
+  backend-plan:
+    name: 后端测试集合冻结
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 冻结原选择器测试全集与确定性分片
+        id: plan
+        working-directory: backend
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          flags=()
+          count=4
+          if [ "$EVENT_NAME" = "schedule" ]; then flags+=(--full); count=12; fi
+          MATRIX=$(python ../scripts/check/selected_pytest_shards.py plan --plan /tmp/backend-plan.json --count "$count" "${flags[@]}")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-selected-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/backend-plan.json
+          if-no-files-found: error
+
+  backend-shards:
+    name: 后端选择集分片 ${{ matrix.shard }}
+    needs: backend-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.backend-plan.outputs.matrix) }}
     defaults:
       run:
         working-directory: backend
@@ -148,25 +183,46 @@ jobs:
           pip install cryptography
       - name: 租户隔离棘轮门禁（禁止新增未带租户校验的裸 Session.get）
         run: python scripts/audit_tenant_queries.py --gate
-      - name: 选择最小必要测试集合
-        id: select
-        run: |
-          TARGETS=$(python ../scripts/check/select_pytest_targets.py)
-          echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
-          echo "选中: $TARGETS"
-      - name: 运行 pytest（PR/push 变更感知；定时全量）
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "定时任务：执行 backend 全量 pytest"
-            timeout 80m pytest -q -p no:warnings --durations=30
-          else
-            # PR 的全量回归唯一由 Main canonical release gate 的 4 个
-            # deterministic shards 承担；CI 保持 change-aware，避免同一
-            # HEAD 在单 runner 上重复全量并被 90m job ceiling 取消。
-            TARGETS="${{ steps.select.outputs.targets }}"
-            echo "PR/push 变更感知：$TARGETS"
-            timeout 60m pytest $TARGETS -q -p no:warnings --durations=20
-          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-selected-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/selected-plan
+      - name: 运行完整分片并保存真实退出码
+        run: python ../scripts/check/selected_pytest_shards.py run --plan /tmp/selected-plan/backend-plan.json --shard ${{ matrix.shard }} --out test-results/selected-shard-${{ matrix.shard }} --budget 3300
+      - name: 上传分片回执（含失败及超时）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-selected-result-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: backend/test-results/selected-shard-${{ matrix.shard }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  backend:
+    name: 后端 pytest（PR/push 变更感知；定时全量）
+    if: always()
+    needs: [backend-plan, backend-shards]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 拒绝未完成或失败的上游任务
+        env:
+          PLAN_RESULT: ${{ needs.backend-plan.result }}
+          SHARDS_RESULT: ${{ needs.backend-shards.result }}
+        run: test "$PLAN_RESULT" = success && test "$SHARDS_RESULT" = success
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-selected-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/selected-plan
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: backend-selected-result-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: /tmp/selected-results
+      - name: 核对同 SHA、集合并集、JUnit、退出码
+        run: python scripts/check/selected_pytest_shards.py verify --plan /tmp/selected-plan/backend-plan.json --out /tmp/selected-results
 
   frontend:
     name: PC 管理端 lint + test + build

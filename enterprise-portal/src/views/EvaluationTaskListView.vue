@@ -1,5 +1,6 @@
 <script setup>
-import { computed,onMounted,reactive,ref,watch } from 'vue'
+import { computed,onBeforeUnmount,reactive,ref,watch } from 'vue'
+import { assertEvaluationContext,createRequestFence,evaluationContextKey,freezeEvaluationTarget } from '../services/evaluationContext.js'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 
@@ -11,7 +12,9 @@ const page=ref(1),pageSize=50,total=ref(null),hasNext=ref(false)
 const form=reactive({attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})
 const pageInfo=computed(()=>total.value===null?`第 ${page.value} 页`:`第 ${page.value} 页 · 共 ${total.value} 项`)
 const collabReady=computed(()=>context.internshipCollabReady===true)
-const batchId=computed(()=>Number(context.campaign?.batchId||0))
+const batchId=computed(()=>String(context.campaign?.batchId||''))
+const contextKey=computed(()=>evaluationContextKey(context))
+const listFence=createRequestFence(),submitFence=createRequestFence()
 const taskCount=computed(()=>total.value===null?items.value.length:total.value)
 
 function resetForm(){Object.assign(form,{attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})}
@@ -25,17 +28,20 @@ function validate(){
   return ''
 }
 async function load(){
+  const current=listFence.start()
   loading.value=true;error.value=''
   if(!collabReady.value){items.value=[];total.value=null;hasNext.value=false;error.value='学校尚未开放当前批次的实习评价协同';loading.value=false;return}
   try{
     const data=await enterpriseInternshipApi.evaluationTasks({batchId:batchId.value,status:tab.value==='ALL'?'':tab.value,page:page.value,pageSize})
+    if(!current())return
     items.value=Array.isArray(data)?data:(data?.items||[])
     total.value=Array.isArray(data)||data?.total===undefined||data?.total===null?null:Number(data.total)
     hasNext.value=Array.isArray(data)?false:(data?.hasNext===true||(Number.isFinite(total.value)&&page.value*pageSize<total.value))
-  }catch(e){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}finally{loading.value=false}
+  }catch(e){if(current()){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}}finally{if(current())loading.value=false}
 }
 function start(item){
-  selected.value=item;error.value='';resetForm()
+  try{selected.value={...item,submissionTarget:freezeEvaluationTarget(item,context)}}catch(e){error.value=e.message;return}
+  error.value='';resetForm()
   if(item?.schoolReviewStatus==='RETURNED'){
     for(const field of SCORE_FIELDS)if(item[field]!==undefined&&item[field]!==null)form[field]=Number(item[field])
     form.overallComment=item.overallComment||''
@@ -43,21 +49,35 @@ function start(item){
   }
 }
 async function submit(){
+  if(submitting.value)return
   const problem=validate();if(problem){error.value=problem;return}
+  let target
+  try{target=assertEvaluationContext(selected.value?.submissionTarget,context)}catch(e){error.value=e.message;return}
+  const current=submitFence.start()
   const id=selected.value?.internshipId||selected.value?.id||selected.value?.task_id||selected.value?.taskId
   if(!id){error.value='评价任务信息不完整，暂时无法提交';return}
   submitting.value=true;error.value=''
   try{
     const payload={attendanceScore:Number(form.attendanceScore),skillScore:Number(form.skillScore),attitudeScore:Number(form.attitudeScore),collaborationScore:Number(form.collaborationScore),safetyScore:Number(form.safetyScore),overallComment:String(form.overallComment).trim(),recommendHire:Boolean(form.recommendHire)}
-    if(selected.value?.evaluationVersion!==null&&selected.value?.evaluationVersion!==undefined)payload.expectedVersion=selected.value.evaluationVersion
-    const result=await enterpriseInternshipApi.submitEvaluation(id,payload,batchId.value)
+    payload.expectedPlacementSnapshotId=target.expectedPlacementSnapshotId
+    if(target.expectedVersion!==undefined)payload.expectedVersion=target.expectedVersion
+    const result=await enterpriseInternshipApi.submitEvaluation(target.internshipId,payload,target.batchId)
+    if(!current()||target.contextKey!==contextKey.value)return
     receipt.value={id:result?.id||'',version:result?.version,status:result?.reviewStatus||'PENDING',placementSnapshotId:result?.placementSnapshotId||''}
     selected.value=null;resetForm();await load()
-  }catch(e){error.value=e.message||'企业评价提交失败'}finally{submitting.value=false}
+  }catch(e){if(current())error.value=e.message||'企业评价提交失败'}finally{if(current())submitting.value=false}
 }
 function previousPage(){if(page.value<=1)return;page.value-=1;load()}
 function nextPage(){if(!hasNext.value)return;page.value+=1;load()}
-watch(tab,()=>{page.value=1;load()});onMounted(load)
+watch([tab,contextKey],([,newContext],[,oldContext]=[])=>{
+  page.value=1
+  if(newContext!==oldContext){
+    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;resetForm()
+    items.value=[];total.value=null;hasNext.value=false
+  }
+  load()
+},{immediate:true})
+onBeforeUnmount(()=>{listFence.dispose();submitFence.dispose()})
 </script>
 <template>
   <section class="ep-page">

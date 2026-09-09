@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib
 import json
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -19,7 +20,9 @@ HASHES={
 }
 chunks=[]
 for name,expected in HASHES.items():
- data=(Path('scripts/repair-payload')/name).read_bytes()
+ # Git may materialize text patches as CRLF on Windows.  Verify and apply the
+ # canonical Git/LF bytes so an end-of-line conversion cannot mask a change.
+ data=(Path('scripts/repair-payload')/name).read_bytes().replace(b'\r\n',b'\n')
  if name=='06-capacity-tests.patch':
   data=data.replace(b"'uniqueTeacherSubjects':300,'uniqueTeacherSubjects':300,",b"'uniqueTeacherSubjects':300,")
  if name=='07-runtime-config.patch':
@@ -38,7 +41,8 @@ for payload in (b''.join(chunks[:6]),*chunks[6:]):
   f.write(payload);f.flush()
   subprocess.run(['git','apply','--check','--unidiff-zero','--whitespace=error',f.name],check=True)
   subprocess.run(['git','apply','--unidiff-zero','--whitespace=error',f.name],check=True)
-out=Path('/tmp/repair-proof');out.mkdir(exist_ok=True)
+out=(Path('/tmp/repair-proof') if os.name != 'nt' else Path(tempfile.gettempdir())/'repair-proof')
+out.mkdir(exist_ok=True)
 head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
 manifest={'base':BASE,'transportCommit':head,'testedSource':'base-plus-verified-patches',
  'patchSequence':list(HASHES),'patchSha256':hashlib.sha256(patch).hexdigest(),

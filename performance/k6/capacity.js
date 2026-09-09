@@ -1,5 +1,7 @@
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
+import { Counter } from 'k6/metrics';
+import { BUSINESS_BUCKETS, STATUS_BUCKETS, classifyResponse, routeEvidence, missingMeasuredRoutes } from './lib/evidence.js';
 
 import { authHeaders, identityDistribution } from './lib/auth.js';
 import {
@@ -7,7 +9,23 @@ import {
   options as configuredOptions,
 } from './lib/config.js';
 
-export const options = configuredOptions;
+const ALL_ROUTES = Object.keys(configuredOptions.thresholds)
+  .map(key => /^http_req_duration\{route:([^}]+)\}$/.exec(key)?.[1]).filter(Boolean);
+const attempts = new Counter('capacity_route_attempts');
+const successes = new Counter('capacity_route_successes');
+const httpCounters = Object.fromEntries(STATUS_BUCKETS.map(bucket => [bucket, new Counter(`capacity_http_${bucket}`)]));
+const businessCounters = Object.fromEntries(BUSINESS_BUCKETS.map(bucket => [bucket, new Counter(`capacity_business_${bucket}`)]));
+const sampleThresholds = {};
+for (const route of ALL_ROUTES) {
+  for (const metric of ['capacity_route_attempts', 'capacity_route_successes',
+    ...STATUS_BUCKETS.map(b => `capacity_http_${b}`), ...BUSINESS_BUCKETS.map(b => `capacity_business_${b}`)]) {
+    sampleThresholds[`${metric}{route:${route}}`] = ['count>=0'];
+  }
+}
+export const options = {...configuredOptions, thresholds: {...configuredOptions.thresholds, ...sampleThresholds}};
+let preflight = false;
+let preflightFailures = [];
+let preflightSeen = new Set();
 
 function getJson(role, route, path) {
   const response = http.get(`${BASE_URL}${path}`, {
@@ -15,6 +33,16 @@ function getJson(role, route, path) {
     tags: { route, role },
     timeout: '15s',
   });
+  const outcome = classifyResponse(response);
+  if (preflight) {
+    if (outcome.success) preflightSeen.add(route);
+    else preflightFailures.push({route, status: outcome.statusBucket, business: outcome.businessBucket});
+  } else {
+    attempts.add(1, {route});
+    successes.add(outcome.success ? 1 : 0, {route});
+    httpCounters[outcome.statusBucket].add(1, {route});
+    businessCounters[outcome.businessBucket].add(1, {route});
+  }
   const transportOk = check(response, {
     [`${route} HTTP 200`]: (res) => res.status === 200,
   });
@@ -23,8 +51,8 @@ function getJson(role, route, path) {
   check(response, {
     [`${route} business code 0`]: (res) => {
       try {
-        const body = res.json();
-        return body && Number(body.code) === 0;
+        res.json();
+        return outcome.success;
       } catch (_error) {
         return false;
       }
@@ -193,7 +221,8 @@ function compactSummary(data) {
   const identity = identityDistribution();
   const routes = routeLatencies(metrics);
   const required = requiredRoutes();
-  const missing = required.filter((route) => !routes[route]);
+  const evidence = routeEvidence(metrics, ALL_ROUTES);
+  const missing = missingMeasuredRoutes(evidence, required);
   return [
     'Yueke capacity gate',
     `profile=${PROFILE} scenario=${SCENARIO} dataset=${DATASET}`,
@@ -211,14 +240,32 @@ function compactSummary(data) {
   ].join('\n');
 }
 
+/** Fail before high load on wrong permissions, missing fixture objects or broken routes.
+ * These requests do not enter measurement counters and cannot fake load route coverage.
+ */
+export function setup() {
+  preflight = true;
+  preflightFailures = [];
+  preflightSeen = new Set();
+  if (SCENARIO !== 'teacher') studentRead();
+  if (SCENARIO !== 'student') teacherRead();
+  const missing = requiredRoutes().filter(route => !preflightSeen.has(route));
+  if (preflightFailures.length || missing.length) {
+    throw new Error(`capacity preflight rejected: ${JSON.stringify({failures:preflightFailures, missingRoutes:missing})}`);
+  }
+  preflight = false;
+  return {preflightPassed:true};
+}
+
 export function handleSummary(data) {
   const path = String(__ENV.SUMMARY_PATH || 'performance/results/k6-summary.json');
   const metrics = data.metrics || {};
   const routes = routeLatencies(metrics);
   const identity = identityDistribution();
   const required = requiredRoutes();
-  const missingStudentV3Routes = REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]);
-  const missingTeacherV3Routes = REQUIRED_TEACHER_V3_ROUTES.filter((route) => !routes[route]);
+  const measuredRoutes = routeEvidence(metrics, ALL_ROUTES);
+  const missingStudentV3Routes = missingMeasuredRoutes(measuredRoutes, REQUIRED_STUDENT_V3_ROUTES);
+  const missingTeacherV3Routes = missingMeasuredRoutes(measuredRoutes, REQUIRED_TEACHER_V3_ROUTES);
   const artifact = {
     // Keep schema /1 for downstream compatibility; T9 is additive fields, not a breaking artifact change.
     schema: 'yueke-capacity-artifact/1',
@@ -233,7 +280,9 @@ export function handleSummary(data) {
     requiredRoutes: required,
     missingStudentV3Routes,
     missingTeacherV3Routes,
-    missingRoutes: required.filter((route) => !routes[route]),
+    measuredRoutes,
+    measurementSchema: 2,
+    missingRoutes: missingMeasuredRoutes(measuredRoutes, required),
     totals: {
       requests: (metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0,
       failedRate: metrics.http_req_failed && metrics.http_req_failed.values.rate,
@@ -242,7 +291,7 @@ export function handleSummary(data) {
   };
   const artifactPath = path.replace(/\.json$/, '') + '-v3.json';
   return {
-    stdout: compactSummary(data),
+    stdout: compactSummary(data) + `redacted_route_results=${JSON.stringify(measuredRoutes)}\n`,
     [path]: JSON.stringify(data, null, 2),
     [artifactPath]: JSON.stringify(artifact, null, 2),
   };

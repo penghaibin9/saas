@@ -15,17 +15,17 @@
   },
   "root": {
     "handlers": ["stderr"],
-    "level": "ERROR"
+    "level": "INFO"
   },
   "loggers": {
     "uvicorn": {
       "handlers": ["stderr"],
-      "level": "ERROR",
+      "level": "INFO",
       "propagate": false
     },
     "uvicorn.error": {
       "handlers": ["stderr"],
-      "level": "ERROR",
+      "level": "INFO",
       "propagate": false
     },
     "uvicorn.access": {

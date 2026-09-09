@@ -13,7 +13,10 @@ from typing import Any
 from sqlalchemy import exists, func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile
+from app.models import (
+    InternshipArchive, InternshipAuditTrail, InternshipEnterpriseEval,
+    InternshipFinalScore, InternshipRecord, StudentProfile,
+)
 from app.models.employment import InternshipEnterpriseContact
 from app.models.internship_enterprise_portal import InternshipEnterpriseMember
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
@@ -35,6 +38,8 @@ def _member(db, context) -> InternshipEnterpriseMember:
             InternshipEnterpriseMember.id == context.member_id,
             InternshipEnterpriseMember.tenant_id == context.tenant_id,
             InternshipEnterpriseMember.company_id == context.company_id,
+            InternshipEnterpriseMember.user_id == context.user_id,
+            InternshipEnterpriseMember.member_role == context.member_role,
             InternshipEnterpriseMember.status == "ACTIVE",
             InternshipEnterpriseMember.is_deleted.is_(False),
         )
@@ -240,6 +245,7 @@ def _task_row(record: InternshipRecord, student: StudentProfile, evaluation: Int
         "deadline": _iso(record.intern_end_date),
         "evaluationId": str(evaluation.id) if evaluation else None,
         "evaluationVersion": int(evaluation.version or 0) if evaluation else None,
+        "placementSnapshotId": str(record.current_placement_snapshot_id),
         "schoolReviewStatus": evaluation.school_review_status if evaluation else None,
     }
     if evaluation and evaluation.school_review_status == "RETURNED":
@@ -326,6 +332,48 @@ def _mentor_identity(db, context) -> tuple[int | None, str]:
     )
 
 
+def _assert_evaluation_writable(db, *, record, tenant_id: int) -> None:
+    """Record is already locked; preserve Record -> Score -> Archive lock order.
+
+    This command must not change facts underlying a published score/frozen archive.
+    Read current rows with locking reads (not a stale repeatable-read snapshot).
+    No monkey-patch or second lifecycle authority is introduced.
+    """
+    from app.modules.internship.services.internship_audit_service import (
+        assert_high_risk_write_available,
+    )
+
+    assert_high_risk_write_available(db)
+    if record.status not in _ACTIVE_RECORD_STATUSES:
+        raise AppException("DATA_CONFLICT", "实习记录已结束或归档，不能直接提交企业评价")
+    score = db.scalar(select(InternshipFinalScore).where(
+        InternshipFinalScore.tenant_id == tenant_id,
+        InternshipFinalScore.internship_id == record.id,
+        InternshipFinalScore.is_deleted.is_(False),
+    ).order_by(InternshipFinalScore.id.desc()).with_for_update())
+    archive = db.scalar(select(InternshipArchive).where(
+        InternshipArchive.tenant_id == tenant_id,
+        InternshipArchive.internship_id == record.id,
+        InternshipArchive.is_deleted.is_(False),
+    ).order_by(InternshipArchive.id.desc()).with_for_update())
+    if (score and score.status in {"PUBLISHED", "ARCHIVED"}) or (
+        archive and archive.status == "ARCHIVED"
+    ):
+        raise AppException(
+            "DATA_CONFLICT", "成绩已发布或总档案已归档，请先通过学校正式更正流程处理",
+        )
+
+
+def _assert_expected_placement(payload: dict[str, Any], placement_id: int) -> None:
+    expected = payload.get("expectedPlacementSnapshotId")
+    # IDs are decimal strings end-to-end: never round a Snowflake ID through JS Number.
+    if not isinstance(expected, str) or not expected.isascii() or not expected.isdecimal() \
+            or expected.startswith("0") or not 1 <= len(expected) <= 19:
+        raise AppException("VALIDATION_ERROR", "请刷新评价任务后提交有效的预期安置快照")
+    if int(expected) != int(placement_id):
+        raise AppException("DATA_CONFLICT", "实习安置已变化，请刷新后针对当前岗位重新评价")
+
+
 def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[str, Any]) -> dict:
     mentor_contact_id = _mentor_scope(db, context)
     record = db.scalar(
@@ -337,6 +385,8 @@ def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[st
     if not record:
         raise not_found("实习记录不存在或不属于当前企业协同范围")
     placement = _current_placement(db, record, context)
+    _assert_expected_placement(payload, placement.id)
+    _assert_evaluation_writable(db, record=record, tenant_id=context.tenant_id)
 
     evaluation = db.scalar(
         select(InternshipEnterpriseEval)

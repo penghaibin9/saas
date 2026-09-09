@@ -1,5 +1,6 @@
 import { getSelectedCampaignId, request, requestBinary } from './request.js'
 import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract.js'
+import { requireDecimalId } from './evaluationContext.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
@@ -52,6 +53,7 @@ function normalizeApplicantSummary(row={}){
 function normalizeApplicantPage(data={}){return {items:(Array.isArray(data.items)?data.items:[]).map(normalizeApplicantSummary),total:Number.isFinite(Number(data.total))?Number(data.total):0,page:Number.isFinite(Number(data.page))?Number(data.page):1,pageSize:Number.isFinite(Number(data.pageSize))?Number(data.pageSize):20}}
 function evaluationPayload(payload={}){
   const result={attendanceScore:Number(payload.attendanceScore),skillScore:Number(payload.skillScore),attitudeScore:Number(payload.attitudeScore),collaborationScore:Number(payload.collaborationScore),safetyScore:Number(payload.safetyScore),overallComment:String(payload.overallComment||'').trim(),recommendHire:Boolean(payload.recommendHire)}
+  result.expectedPlacementSnapshotId=requireDecimalId(payload.expectedPlacementSnapshotId,'安置快照')
   if(payload.expectedVersion!==null&&payload.expectedVersion!==undefined&&payload.expectedVersion!=='')result.expectedVersion=requireVersion(payload.expectedVersion,'企业评价')
   return result
 }
