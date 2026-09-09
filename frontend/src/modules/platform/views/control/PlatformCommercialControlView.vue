@@ -22,6 +22,11 @@
         @order-created="loadPortfolio"
       />
 
+      <ModuleFinanceWorkspace
+        :tenant-id="selectedTenantId"
+        :locked="busy"
+      />
+
       <section v-if="portfolio" class="module-grid">
         <article
           v-for="mod in portfolio.modules"
@@ -256,6 +261,7 @@ import { ModulePageShell } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { moduleCommerceApi } from '@/modules/platform/api/moduleCommerce.api'
 import ModuleSalesWorkspace from './ModuleSalesWorkspace.vue'
+import ModuleFinanceWorkspace from './ModuleFinanceWorkspace.vue'
 
 const MODULE_LABEL = {
   internship: '岗位实习中心',
@@ -289,7 +295,7 @@ const EVIDENCE_LABEL = {
 
 export default {
   name: 'PlatformCommercialControlView',
-  components: { ModulePageShell, ModuleSalesWorkspace },
+  components: { ModulePageShell, ModuleSalesWorkspace, ModuleFinanceWorkspace },
   data: () => ({
     items: [], selectedTenantId: '', portfolio: null, selectedModuleKey: '', preview: null, job: null,
     loading: false, busy: false, portfolioSeq: 0, moduleSeq: 0, message: '', messageType: 'success', cancelReason: '',
