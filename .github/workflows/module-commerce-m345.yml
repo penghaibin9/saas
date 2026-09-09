@@ -13,6 +13,8 @@ on:
       - backend/tests/test_dorm_allocation_publish_job.py
       - backend/app/services/module_commerce_lifecycle_service.py
       - backend/app/services/module_commerce_m345_hardening.py
+      - backend/app/services/module_commerce_consumer_evidence.py
+      - backend/app/services/module_commerce_m45_consumer_closure.py
       - backend/app/services/module_commerce_quota_guard.py
       - backend/app/services/file_storage_quota_reservation_service.py
       - backend/app/core/commercial_surface_module_gate.py
@@ -22,6 +24,7 @@ on:
       - backend/app/modules/platform/routers/module_commerce_router.py
       - backend/alembic/versions/20260908_module_commerce_m345.py
       - backend/tests/test_module_commerce_m345_runtime.py
+      - backend/tests/test_module_commerce_m45_consumer_closure.py
       - backend/tests/test_module_commerce_quota_guard_runtime.py
       - backend/tests/test_module_commerce_write_fence_runtime.py
       - backend/tests/test_module_commerce_consumer_dependency_runtime.py
@@ -79,6 +82,8 @@ jobs:
             backend/tests/test_module_commerce_dorm_worker_runtime.py \
             backend/app/services/module_commerce_lifecycle_service.py \
             backend/app/services/module_commerce_m345_hardening.py \
+            backend/app/services/module_commerce_consumer_evidence.py \
+            backend/app/services/module_commerce_m45_consumer_closure.py \
             backend/app/services/module_commerce_quota_guard.py \
             backend/app/core/commercial_surface_module_gate.py \
             backend/app/api/v1/router.py \
@@ -87,6 +92,7 @@ jobs:
             backend/app/modules/platform/routers/module_commerce_router.py \
             backend/alembic/versions/20260908_module_commerce_m345.py \
             backend/tests/test_module_commerce_m345_runtime.py \
+            backend/tests/test_module_commerce_m45_consumer_closure.py \
             backend/tests/test_module_commerce_quota_guard_runtime.py \
             backend/tests/test_module_commerce_write_fence_runtime.py \
             backend/tests/test_module_commerce_consumer_dependency_runtime.py \
@@ -106,6 +112,7 @@ jobs:
           alembic current | tee "$OUT/current.log"
           pytest \
             tests/test_module_commerce_m345_runtime.py \
+            tests/test_module_commerce_m45_consumer_closure.py \
             tests/test_module_commerce_quota_guard_runtime.py \
             tests/test_module_commerce_write_fence_runtime.py \
             tests/test_module_commerce_dorm_worker_runtime.py \
@@ -123,23 +130,28 @@ jobs:
           from pathlib import Path
           service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
           hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
+          evidence=Path('app/services/module_commerce_consumer_evidence.py').read_text(encoding='utf-8')
+          closure=Path('app/services/module_commerce_m45_consumer_closure.py').read_text(encoding='utf-8')
           quota=Path('app/services/module_commerce_quota_guard.py').read_text(encoding='utf-8')
           fence=Path('app/services/module_commerce_access_guard.py').read_text(encoding='utf-8')
           enterprise=Path('app/modules/internship/dependencies/enterprise_context.py').read_text(encoding='utf-8')
           student_portal=Path('app/api/v1/student_portal_graduation_guard.py').read_text(encoding='utf-8')
           surface_gate=Path('app/core/commercial_surface_module_gate.py').read_text(encoding='utf-8')
           assert 'physicalPurgeAuthorized": False' in service
-          for source in (service, hardening, quota, fence, enterprise, student_portal, surface_gate):
+          for source in (service, hardening, evidence, closure, quota, fence, enterprise, student_portal, surface_gate):
               assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
           assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
           assert 'consumerDependencySnapshot' in hardening and 'SOURCE_BOUND_EVIDENCE_RETAIN_REQUIRED' in hardening
+          assert 'EXPLICIT_SOURCE_MODULE_OR_DOMAIN_TABLE' in evidence and 'ownershipGuessingUsed' in evidence
+          assert 'CONSUMER_DEPENDENCY_CHANGED' in closure and 'deliveryAcceptanceReady' in closure
+          assert 'physicalPurgeAuthorized' in closure
           assert 'M6_M7_BEFORE_PURGE' in hardening and 'physicalPurgeAuthorized' in hardening
           assert 'COMMERCIAL_MODULE_STORAGE_QUOTA_EXCEEDED' in quota and 'MODULE_NOT_AUTHORIZED' in quota
           assert 'before_commit' in fence and 'with_for_update' in fence and 'module_write_fence' in fence
           assert 'assert_module_access' in enterprise and '"internship"' in enterprise
           assert 'require_module("graduation")' in student_portal
           assert 'install_on_router' in surface_gate and 'studentAffairs' in surface_gate and 'academicAffairs' in surface_gate
-          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_CONSUMER_ALL_SURFACE_GATES_VERIFIED')
+          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_CONSUMER_OBJECT_EVIDENCE_GATES_VERIFIED')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
