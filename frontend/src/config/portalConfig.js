@@ -52,6 +52,22 @@ export const ENTERPRISE_LOGIN_URL = sanitizeEntryUrl(
   readEnv('VITE_PORTAL_ENTERPRISE_LOGIN_URL') || '/enterprise/login'
 )
 
+/**
+ * 高校人事系统登录页：系统尚未部署，默认留空并在门户保留“待部署”入口位。
+ * 后续部署完成后通过构建环境变量填写真实地址，无需再次修改页面代码。
+ */
+export const HR_LOGIN_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_HR_LOGIN_URL'))
+
+/** 教师 H5：与微信小程序共用 miniapp 工程，直接进入教师身份登录页。 */
+export const TEACHER_H5_LOGIN_URL = sanitizeEntryUrl(
+  readEnv('VITE_PORTAL_TEACHER_H5_LOGIN_URL') || '/miniapp/#/pages/login/teacher/index'
+)
+
+/** 学生 H5：与微信小程序共用 miniapp 工程，直接进入学生身份登录页。 */
+export const STUDENT_H5_LOGIN_URL = sanitizeEntryUrl(
+  readEnv('VITE_PORTAL_STUDENT_H5_LOGIN_URL') || '/miniapp/#/pages/login/student/index'
+)
+
 /** 教师端微信小程序码地址；未配置时门户显示「即将接入」占位，绝不展示伪造二维码 */
 export const TEACHER_MINIPROGRAM_QR = sanitizeEntryUrl(readEnv('VITE_PORTAL_TEACHER_MP_QR'))
 

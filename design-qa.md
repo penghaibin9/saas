@@ -1,48 +1,49 @@
-# 新闻与资讯页面 Design QA
+# 学校用户入口弹窗 Design QA
 
-- Source visual truth path: `C:\Users\10850\AppData\Local\Temp\codex-clipboard-4f425a2a-c1ac-4710-8e35-8d6f47f7d244.png`
-- Implementation screenshot reference: Codex Computer Use inline capture，Edge 用户页签 `479169339`，`http://127.0.0.1:5173/news`，2026-09-10 09:40（Asia/Shanghai）
-- Viewport: source 1440 × 1024；implementation 1340 × 550 CSS px
-- Pixel dimensions / density: source 1440 × 1024 PNG；implementation 1340 × 550 PNG；二者均按 1× CSS 像素目测对照，未做拉伸或密度换算
-- State: 桌面端、全部资讯、8 篇内容均由后台发布完成；无登录态依赖
+- Source visual truth path: `C:\Users\10850\AppData\Local\Temp\codex-clipboard-a96f1c2a-cc83-4f3d-bfe3-0833bb0e15f4.png`
+- Implementation screenshot reference: Codex in-app Browser inline capture，tab 12，`http://127.0.0.1:5173/#login`，2026-09-10（Asia/Shanghai）
+- Viewport: source image 1090 × 965 px；implementation browser 1280 × 720 CSS px，devicePixelRatio 1.425
+- Dialog measurements: source approximately 1018 × 660 px；implementation exactly 900 × 676.8 CSS px
+- State: 学校用户入口打开；小程序码配置为空，按真实未配置状态显示
 
 ## Full-view comparison evidence
 
-同一次浏览器验收结果中先显示源设计、再显示实现截图。实现保留了源设计的核心信息架构和视觉层级：深海军蓝官网导航、浅色标题与搜索区、横向分类、左侧大图头条、右侧今日关注、最新资讯、专题与订阅区。实现使用真实已发布新闻和项目原创位图，不用占位图、CSS 绘图或外链图片。最终截图控制台 warning/error 为 0。
+源图与应用内浏览器实现均已实际打开检查。实现保留源图的白色弹窗、深蓝正文、浅蓝卡片、细边框、圆角和深色遮罩，同时把原先三条纵向入口改为三段清晰结构：电脑端三列、手机 H5 两列、微信小程序两列。新增内容没有改变官网主导航和底层登录权限。
+
+1280 × 720 视口下，弹窗位于页面中央，宽 900px；内容区高度 521px、内容高度 593px，可正常纵向滚动，底部说明固定可见。较高视口会一次展示完整内容；窄屏按单列布局并在弹窗内部滚动。
 
 ## Focused region comparison evidence
 
-重点放大检查了页头、标题/搜索、分类、头条和今日关注首屏区域；这些区域包含本轮最关键的字体层级、水平留白、栅格比例、颜色、图片裁切和交互入口。详情正文另在真实文章页检查了标题、正文段落、AI 辅助说明、来源日期与教育部外链。由于源设计的下半屏延续同一列表和侧栏规范，没有额外做重复裁切。
+重点检查了标题区、电脑端三卡、H5 双卡、小程序未配置状态和底部边界说明。实现中的两条 H5 地址分别为教师与学生登录深链；应用内浏览器实际打开后页面标题分别为“教师登录”和“学生登录”。小程序未配置真实码时没有伪造二维码或虚假跳转。
 
 ## Findings
 
 - 未发现仍需修复的 P0/P1/P2 问题。
-- 字体与排版：沿用官网现有 `PingFang SC / Microsoft YaHei / Noto Sans CJK SC / system-ui` 字体栈；标题、栏目标题、正文和小字层级与源设计一致，中文长标题可换行。
-- 间距与布局：最终内容区采用最大 1300px、桌面端 56px 安全边距；主次栏比例、区块间距和分隔线接近源设计，未见重叠和裁切。
-- 颜色与视觉 token：沿用官网深海军蓝、品牌蓝、浅灰蓝和细分隔线；对比度、焦点环和状态色可辨。
-- 图片质量：4 组原创 JPEG 均由内容发布系统托管并按卡片比例裁切；主题、清晰度和暖色校园氛围符合源设计。
-- 文案与内容：栏目文案独立可读；文章为基于权威来源的原创摘要，详情页明确 AI 辅助整理并保留原文链接和来源日期。
-- 响应式与可访问性：在 Edge 390 × 844 临时视口验证了手机端语义树、导航收敛、搜索、横向分类、单栏头条/关注/列表/专题顺序；移动截图抓取超时，但页面结构与全部交互节点正常，随后已恢复用户默认视口。
+- Fonts and typography：沿用官网 `PingFang SC / Microsoft YaHei` 字体体系；标题、分组标题、卡片标题、说明和动作文本层级清楚，未出现异常换行。
+- Spacing and layout rhythm：900px 弹窗在桌面端保持三列/两列节奏；720px 高度下仅需 72px 内部滚动，关闭按钮和底部边界说明始终可见。
+- Colors and visual tokens：继续使用官网深海军蓝、品牌蓝、教师浅蓝、学生浅绿和浅灰边框；焦点环可见。
+- Image quality and asset fidelity：本轮不需要新增装饰图片；微信小程序二维码仅接受运营配置的真实图片，缺失时显示文本状态，不使用占位图或代码伪造。
+- Copy and content：电脑端、H5、微信小程序及教师/学生身份均明确区分；“无需安装”“按学校实际开通范围使用”等文案避免误导。
+- Interaction and accessibility：两个 H5 深链已实际打开；弹窗语义包含分组标题、链接名称、关闭按钮与可滚动内容；应用内浏览器控制台仅有 Vite 连接调试信息，无 warning/error。
 
 ## Comparison history
 
-1. 第一轮发现 P2：桌面端左右边距仅 24px，比源设计拥挤；标题区缺少右侧校园影像，首屏品牌感偏弱。
-2. 修复：统一页头、标题区、分类和正文为 1300px 最大宽度及 56px 桌面安全边距；从已发布内容中选取真实校园配图作为低透明度标题区背景，手机端隐藏该装饰图。
-3. 第二轮对照：水平节奏、首屏密度和右侧校园氛围已与源设计收敛；控制台无 warning/error，未留下 P0/P1/P2。
+1. 第一轮实现发现 P1：dotenv 中未加引号的 `#` 被当作注释，两个 H5 地址只到首页，未进入指定身份。
+2. 修复：本地开发配置与部署示例中的 H5 地址使用引号包裹，保留完整 hash 路由。
+3. 第二轮实测：教师地址进入 `#/pages/login/teacher/index`，学生地址进入 `#/pages/login/student/index`；两页角色标题和登录字段均正确。
 
 ## Implementation checklist
 
-- [x] 首屏专业新闻结构
-- [x] 分类与关键词搜索
-- [x] 头条、今日关注、最新资讯和专题中心
-- [x] 新闻详情、来源日期、外部原文链接
-- [x] RSS 与 sitemap
-- [x] 390px 响应式结构
-- [x] 后台发布状态作为唯一公开条件
-- [x] 浏览器控制台检查
+- [x] 保留教师/管理人员、学生门户、企业端三个电脑入口
+- [x] 新增教师 H5 与学生 H5 独立深链
+- [x] 新增教师端与学生端微信小程序展示位
+- [x] 未配置小程序码时明确降级，不展示伪造二维码
+- [x] 桌面端紧凑分区、窄屏单列、弹窗内部滚动
+- [x] 入口配置统一经过 URL 安全校验
+- [x] 浏览器实测与控制台检查
 
 ## Follow-up polish
 
-- P3：正式品牌图形标识尚无仓库内可复用的原始资产，因此本轮保留文字字标，未擅自伪造企业 Logo；获得正式矢量/透明 PNG 后可无风险替换。
+- P3：正式教师端、学生端小程序码尚未提供；拿到微信后台生成的两张真实码后，只需配置两个环境变量即可显示，无需再改页面结构。
 
 final result: passed

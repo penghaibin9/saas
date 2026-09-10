@@ -357,7 +357,42 @@ export function mountShowcase(root, { contact, links = {}, navigate, consultBase
   listen(doc, 'visibilitychange', () => { if (doc.hidden) { pauseTour(); model?.setEnabled(false) } else model?.setEnabled(state.model && $('#tour-dialog').open) })
   listen(win, 'pagehide', pauseTour)
   $$('img[data-asset]').forEach(node => picture(node, node.dataset.asset, node.alt))
-  $$('a[data-entry]').forEach(node => { const value = links[node.dataset.entry]; if (value) node.href = value; else node.hidden = true })
+  $$('a[data-entry]').forEach(node => {
+    const value = links[node.dataset.entry]
+    const action = node.querySelector('[data-entry-action]')
+    if (value) {
+      node.href = value
+      node.hidden = false
+      node.classList.remove('is-pending')
+      node.removeAttribute('aria-disabled')
+      node.target = '_blank'
+      if (action && node.dataset.entryReadyLabel) action.textContent = node.dataset.entryReadyLabel
+    } else if (node.hasAttribute('data-entry-placeholder')) {
+      node.removeAttribute('href')
+      node.removeAttribute('target')
+      node.hidden = false
+      node.classList.add('is-pending')
+      node.setAttribute('aria-disabled', 'true')
+    } else {
+      node.hidden = true
+    }
+  })
+  $$('[data-entry-qr]').forEach(node => {
+    const value = links[node.dataset.entryQr]
+    const card = node.closest('.mini-program-card')
+    const pending = card?.querySelector('[data-entry-pending]')
+    if (value) {
+      node.src = value
+      node.hidden = false
+      card?.classList.add('is-ready')
+      if (pending) pending.hidden = true
+    } else {
+      node.removeAttribute('src')
+      node.hidden = true
+      card?.classList.remove('is-ready')
+      if (pending) pending.hidden = false
+    }
+  })
   if (contact) {
     $$('[data-phone-text]').forEach(node => { node.textContent = contact.phone })
     $$('a[data-phone-link]').forEach(node => { node.href = contact.phoneHref })

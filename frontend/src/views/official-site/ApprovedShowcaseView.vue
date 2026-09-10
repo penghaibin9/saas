@@ -9,7 +9,18 @@ import { useRouter, useRoute } from 'vue-router'
 import markup from '../../components/official-site/showcase/approved-home.html?raw'
 import { mountShowcase } from '../../components/official-site/showcase/runtime.js'
 import { OFFICIAL_SITE_CONTACT } from '../../config/officialSalesPages.js'
-import { TEACHER_LOGIN_URL, STUDENT_LOGIN_URL, ENTERPRISE_LOGIN_URL, PRIVACY_URL, TERMS_URL } from '../../config/portalConfig.js'
+import {
+  TEACHER_LOGIN_URL,
+  STUDENT_LOGIN_URL,
+  ENTERPRISE_LOGIN_URL,
+  HR_LOGIN_URL,
+  TEACHER_H5_LOGIN_URL,
+  STUDENT_H5_LOGIN_URL,
+  TEACHER_MINIPROGRAM_QR,
+  STUDENT_MINIPROGRAM_QR,
+  PRIVACY_URL,
+  TERMS_URL
+} from '../../config/portalConfig.js'
 import '../../components/official-site/showcase/showcase.css'
 import { refreshOfficialHomeShare } from '../../services/officialWechatRuntime.js'
 
@@ -42,7 +53,18 @@ onMounted(() => {
   void refreshOfficialHomeShare()
   instance = mountShowcase(host.value.querySelector('#ykw-site'), {
     contact: { ...OFFICIAL_SITE_CONTACT, tel: OFFICIAL_SITE_CONTACT.phoneHref.replace(/^tel:/, '') },
-    links: { teacher: TEACHER_LOGIN_URL, student: STUDENT_LOGIN_URL, enterprise: ENTERPRISE_LOGIN_URL, privacy: PRIVACY_URL, terms: TERMS_URL },
+    links: {
+      teacher: TEACHER_LOGIN_URL,
+      student: STUDENT_LOGIN_URL,
+      enterprise: ENTERPRISE_LOGIN_URL,
+      humanResources: HR_LOGIN_URL,
+      teacherH5: TEACHER_H5_LOGIN_URL,
+      studentH5: STUDENT_H5_LOGIN_URL,
+      teacherMiniQr: TEACHER_MINIPROGRAM_QR,
+      studentMiniQr: STUDENT_MINIPROGRAM_QR,
+      privacy: PRIVACY_URL,
+      terms: TERMS_URL
+    },
     navigate: to => router.push(to)
   })
 })
