@@ -1,155 +1,263 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="网上选课" back />
-
-    <MobileGlobalState :state="state" @retry="load">
-      <view class="page-pad" v-if="loaded">
+    <AcademicPageNav variant="default" title="网上选课" show-back />
+    <AcademicPageState :state="pageState" @retry="load">
+      <view v-if="loaded" class="page-pad sl">
         <view class="sl__hero">
-          <view class="sl__hero-main">
-            <text class="sl__eyebrow">教务学业 · 网上选课</text>
-            <text class="sl__hero-title">{{ groups.length ? '当前有可办理选课批次' : '当前暂无可办理选课批次' }}</text>
-            <text class="sl__hero-desc">实时余量只用于展示，正式选课/退课动作由服务器统一下发，提交时仍会重新校验。</text>
-            <view class="sl__trust">
-              <text>服务器动作</text><text>规则校验</text><text>办理后回读</text>
+          <text class="sl__eyebrow">注册与安排 · 仅限本人</text>
+        </view>
+
+        <picker v-if="batchCatalog.length" :range="batchCatalog" range-key="batchName" :value="activeBatchIndex" @change="onBatchPick">
+          <view class="sl__batch-picker">{{ activeBatchName }}</view>
+        </picker>
+        <text class="sl__hero-desc">余量仅供参考，不是名额预留。</text>
+
+        <MobileAcademicDecisionCard v-if="decisionError" class="sl__decision"
+          :trace="decisionError.decisionTrace" :message="decisionError.message" audience="student" />
+
+        <view v-if="receipt" class="sl__receipt" :class="'is-' + receipt.tone" role="status">
+          <view class="sl__receipt-head">
+            <view class="sl__receipt-mark"><text>{{ receipt.tone === 'success' ? '✓' : receipt.tone === 'danger' ? '!' : '…' }}</text></view>
+            <view class="flex-1">
+              <text class="sl__receipt-course">{{ receipt.courseName }}</text>
+              <text class="sl__receipt-title">{{ receipt.label }}</text>
             </view>
           </view>
-          <view class="sl__hero-count">
-            <text>可查看课程</text><text class="sl__hero-number">{{ courseCount }}</text><text>门</text>
-          </view>
-        </view>
-
-        <view class="sl__metrics">
-          <view class="sl__metric"><text>可办理批次</text><text class="sl__metric-value">{{ groups.length }}</text></view>
-          <view class="sl__metric"><text>本人已选</text><text class="sl__metric-value">{{ mySelected.length }}</text></view>
-          <view class="sl__metric"><text>已选学分</text><text class="sl__metric-value">{{ selectedCredits }}</text></view>
-        </view>
-
-        <MobileAcademicDecisionCard
-          v-if="decisionError"
-          class="sl__decision"
-          :trace="decisionError.decisionTrace"
-          :message="decisionError.message"
-          audience="student"
-        />
-
-        <view v-if="lastSuccess" class="sl__success">
-          <text class="sl__success-mark">✓</text>
-          <view class="flex-1">
-            <text class="sl__success-title">“{{ lastSuccess }}”已选课成功</text>
-            <text class="sl__success-text">名单锁定且课表正式发布后会进入我的课表；今天课程以正式课表为准。</text>
-          </view>
-          <button class="btn btn-primary sl__success-btn" @click="goSchedule">看课表</button>
+          <text class="sl__receipt-desc">{{ receipt.description }}</text>
+          <button v-if="receipt.status === 'RESULT_UNKNOWN'" class="btn btn-ghost sl__receipt-action" :disabled="recordsState === 'loading'" @click="refreshRecords">重新核对本人记录</button>
+          <button v-else-if="['SELECTED', 'LOCKED'].includes(receipt.status)" class="btn btn-ghost sl__receipt-action" @click="goSchedule">查看正式课表</button>
         </view>
 
         <view class="sl__tabs">
-          <view class="sl__tab" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">
-            <text>可办理课程</text><text class="sl__tab-count">{{ courseCount }}</text>
-          </view>
-          <view class="sl__tab" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">
-            <text>我的选课</text><text class="sl__tab-count">{{ mySelected.length }}</text>
-          </view>
+          <button class="sl__tab" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">可办理课程 <text>{{ courseCount }}</text></button>
+          <button class="sl__tab" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">我的选课与报名 <text>{{ visibleRecords.length }}</text></button>
         </view>
 
         <template v-if="tab === 'courses'">
-          <MobileGlobalState v-if="!groups.length" state="empty" title="暂无可办理的选课批次" description="教务处开放选课或你进入补选资格后会显示在这里。" />
-          <view v-for="g in groups" :key="g.batch.batchId" class="sl__group">
-            <view class="sl__group-head">
-              <view>
-                <text class="sl__group-kicker">{{ batchKicker(g.batch) }}</text>
-                <text class="sl__group-title">{{ g.batch.batchName || '选课批次' }}</text>
-              </view>
-              <view class="sl__group-stats"><text>{{ g.courses.length }}门</text><text>{{ batchOpenCount(g) }}门可选</text></view>
-            </view>
-
-            <view v-if="g.courses.length" class="sl__course-list">
-              <view v-for="c in g.courses" :key="c.selectionCourseId" class="sl__course" :class="{ 'is-selected': isSelected(c) }">
-                <view class="sl__course-main">
-                  <view class="sl__course-title-line">
-                    <text class="sl__course-title">{{ c.courseName || '课程名称待补充' }}</text>
-                    <text v-if="c.statusLabel" class="sl__status-chip">{{ c.statusLabel }}</text>
-                  </view>
-                  <text class="sl__course-meta">{{ c.teacherName || '教师待定' }} · {{ c.credit ?? '—' }}学分</text>
-                  <text class="sl__course-schedule">{{ scheduleText(c) }}</text>
-                  <view class="sl__remain">
-                    <text>余量 {{ remainText(c) }}</text>
-                    <view class="sl__remain-bar"><view :style="{ width: availabilityPct(c) + '%' }" /></view>
-                  </view>
-                  <view v-if="!hasAction(c, 'ENROLL') && !hasAction(c, 'DROP') && (c.reason || c.howToResolve)" class="sl__decision-hint">
-                    <text v-if="c.reason">{{ c.reason }}</text>
-                    <text v-if="c.howToResolve">下一步：{{ c.howToResolve }}</text>
-                  </view>
-                </view>
-                <button
-                  class="btn sl__btn"
-                  :class="hasAction(c, 'DROP') ? 'btn-ghost' : 'btn-primary'"
-                  :disabled="acting === c.selectionCourseId || (!hasAction(c, 'ENROLL') && !hasAction(c, 'DROP'))"
-                  @click="hasAction(c, 'DROP') ? drop(c) : enroll(c)"
-                >
-                  {{ acting === c.selectionCourseId ? '处理中…' : hasAction(c, 'DROP') ? '退课' : hasAction(c, 'ENROLL') ? (c.reselect ? '补选' : '选课') : (c.statusLabel || '不可办理') }}
-                </button>
-              </view>
-            </view>
-            <view v-else class="sl__group-empty"><text>本批次暂无可办理课程</text></view>
+          <view class="sl__search"><input v-model="searchDraft" placeholder="搜索课程、代码或老师" @confirm="searchCourses" /><button class="btn btn-ghost" @click="searchCourses">搜索</button></view>
+          <view v-if="courseState === 'error'" class="sl__local-state is-error">
+            <view class="flex-1"><text class="sl__local-title">课程暂时无法加载</text><text class="sl__local-desc">{{ courseError || '请检查网络后重试。本人记录不会因此显示为空。' }}</text></view>
+            <button class="btn btn-ghost" @click="loadBatch(activeBatchId)">重试</button>
           </view>
+          <view v-else-if="courseState === 'loading' && !activeGroups.length" class="sl__local-state"><text>正在读取当前批次课程…</text></view>
+          <view v-if="courseStale" class="sl__stale"><text>当前显示上次已确认的课程快照，正在等待最新结果。</text></view>
+          <AcademicPageState v-if="courseState === 'ready' && !activeGroups.length" state="empty"
+            title="本批次暂无可办理课程" description="批次开放、补选资格或课程供给变化后，请重新加载。" />
+
+          <view v-for="group in displayedGroups" :key="group.batch.batchId" class="sl__group">
+            <view v-for="course in group.courses" :key="course.selectionCourseId" class="sl__course">
+              <view class="sl__course-title-row" @click="toggleDetail(course)">
+                <view class="sl__course-icon"><image :src="bookIcon" mode="aspectFit" /></view>
+                <view class="flex-1">
+                  <text class="sl__course-title">{{ course.courseName || '课程名称待补充' }}</text>
+                  <text class="sl__course-meta">{{ course.courseCode || '课程代码待确认' }}</text>
+                </view>
+                <text v-if="courseRecord(course)" class="sl__status" :class="'is-' + statusMeta(courseRecord(course).status).tone">{{ statusMeta(courseRecord(course).status).label }}</text>
+                <text v-else class="sl__detail-link">{{ detailId === String(course.selectionCourseId) ? '收起' : '详情' }}</text>
+              </view>
+              <text class="sl__course-meta sl__teacher">{{ course.teacherName || '教师待定' }} · {{ course.credit ?? '—' }} 学分</text>
+              <text class="sl__course-schedule">{{ scheduleText(course) }}</text>
+              <view class="sl__fact sl__course-summary"><text class="sl__mode" :class="{ 'is-lottery': isLottery(course) }">{{ selectionModeText(course) }}</text><text>{{ isLottery(course) ? '报名不占座' : '余量 ' + remainText(course) }}</text></view>
+              <view class="sl__course-footer"><text>{{ courseDeadline(course) }}</text><button class="btn btn-ghost sl__details-button" @click="toggleDetail(course)">{{ detailId === String(course.selectionCourseId) ? '收起详情' : detailLabel(course) }}</button></view>
+              <view v-if="detailId === String(course.selectionCourseId)" class="sl__course-detail">
+                <view class="sl__fact"><text>课程代码</text><text>{{ course.courseCode || '待确认' }}</text></view>
+                <view class="sl__fact"><text>选课方式</text><text>{{ selectionModeText(course) }}</text></view>
+                <view class="sl__fact"><text>实时余量</text><text>{{ remainText(course) }}（仅供参考）</text></view>
+                <view class="sl__fact"><text>当前动作</text><text>{{ actionText(course) }}</text></view>
+                <view v-if="course.reason || course.howToResolve" class="sl__decision-hint">
+                  <text v-if="course.reason">{{ course.reason }}</text><text v-if="course.howToResolve">下一步：{{ course.howToResolve }}</text>
+                </view>
+                <button v-if="unresolvedFor(course)" class="btn btn-ghost sl__primary-action" :disabled="recordsState === 'loading'" @click="refreshRecords">结果待核实 · 核对本人记录</button>
+                <button v-else-if="hasAction(course, 'ENROLL')" class="btn btn-primary sl__primary-action" :disabled="!!acting || courseStale || courseState !== 'ready'" @click="enroll(course)">{{ acting === course.selectionCourseId ? '正在核对…' : enrollLabel(course) }}</button>
+                <button v-else-if="hasAction(course, 'DROP')" class="btn btn-ghost sl__primary-action" :disabled="!!acting || courseStale || courseState !== 'ready'" @click="drop(course)">{{ acting === course.selectionCourseId ? '正在核对…' : '申请退课' }}</button>
+              </view>
+            </view>
+          </view>
+          <button v-if="matchingCourseCount > courseLimit" class="btn btn-ghost" @click="courseLimit += 20">再显示 20 门课程</button>
+          <text v-if="searchTerm && !matchingCourseCount && courseState === 'ready'" class="sl__stale">当前批次没有匹配的课程</text>
         </template>
 
         <template v-else>
-          <MobileGlobalState v-if="!mySelected.length" state="empty" title="暂无有效选课记录" description="在「可办理课程」中选课后会显示在这里。" />
-          <view v-else class="sl__mine-list">
-            <view v-for="r in mySelected" :key="r.recordId || r.selectionCourseId" class="sl__mine-card">
-              <view class="sl__mine-icon"><text>课</text></view>
-              <view class="flex-1">
-                <text class="sl__course-title">{{ r.courseName || '课程名称待补充' }}</text>
-                <text class="sl__course-meta">{{ r.credit ?? '—' }}学分 · {{ (r.enrolledAt || '').slice(0, 10) || '时间待确认' }}</text>
-              </view>
-              <MobileStatusTag :status="r.status" />
-            </view>
+          <view v-if="recordsState === 'error'" class="sl__local-state is-error">
+            <view class="flex-1"><text class="sl__local-title">本人选课记录暂时无法核对</text><text class="sl__local-desc">{{ recordsError || '请勿据此重复报名。网络恢复后重新核对。' }}</text></view>
+            <button class="btn btn-ghost" @click="refreshRecords">重试</button>
           </view>
+          <view v-else-if="recordsState === 'loading' && !visibleRecords.length" class="sl__local-state"><text>正在读取本人正式记录…</text></view>
+          <view v-if="recordsStale" class="sl__stale"><text>以下为上次已确认记录，最新状态尚未取回。</text></view>
+          <AcademicPageState v-if="recordsState !== 'loading' && recordsState !== 'error' && !visibleRecords.length" state="empty"
+            :title="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次回读暂未查到记录' : '本批次暂无选课记录'" :description="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次操作仍待核实，请勿重复提交。稍后再核对本人记录。' : '这里会保留待抽签、已获名额、未中签、已退课与课程取消等正式状态。'" />
+          <view v-for="record in visibleRecords.slice(0, recordLimit)" :key="record.recordId || record.selectionCourseId" class="sl__record">
+            <view class="sl__record-head">
+              <view class="flex-1">
+                <text class="sl__course-title">{{ record.courseName || '课程名称待补充' }}</text>
+                <text class="sl__course-meta">{{ record.credit ?? '—' }} 学分 · {{ recordTime(record) }}</text>
+              </view>
+              <text class="sl__status" :class="'is-' + statusMeta(record.status).tone">{{ statusMeta(record.status).label }}</text>
+            </view>
+            <text class="sl__record-desc">{{ statusMeta(record.status).description }}</text>
+            <button v-if="unresolvedFor(record)" class="btn btn-ghost sl__record-action" :disabled="recordsState === 'loading'" @click="refreshRecords">结果待核实 · 核对本人记录</button>
+            <button v-else-if="recordHasAction(record, 'DROP')" class="btn btn-ghost sl__record-action" :disabled="!!acting || courseStale || recordsStale" @click="drop(record)">{{ normalizeStatus(record.status) === 'PENDING_LOTTERY' ? '撤回抽签报名' : '申请退课' }}</button>
+          </view>
+          <button v-if="visibleRecords.length > recordLimit" class="btn btn-ghost" @click="recordLimit += 20">再显示 20 条记录</button>
         </template>
 
         <view class="sl__rule-note">
-          <view class="sl__rule-icon"><text>i</text></view>
-          <view class="flex-1">
-            <text class="sl__rule-title">正式动作由服务器下发，提交时再次校验</text>
-            <text class="sl__rule-text">余量只帮助理解容量，不在小程序本地推导资格。页面只展示服务器 allowedActions 允许的动作；提交仍会重新校验容量、冲突、窗口与培养方案。</text>
-          </view>
+          <text class="sl__rule-title">规则校验 · 办理后回读</text>
+          <text>预检只核对当时条件，不占名额；按钮和余量也不承诺成功。写操作完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重放报名或退课。</text>
         </view>
       </view>
-    </MobileGlobalState>
+    </AcademicPageState>
+    <MobileTabBar side="student" active="" />
   </view>
 </template>
 
 <script>
+import AcademicPageNav from './AcademicPageNav.vue'
+import AcademicPageState from './AcademicPageState.vue'
 import MobileAcademicDecisionCard from '@/components/MobileAcademicDecisionCard.vue'
 import { studentApi } from '@/services/studentApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { findSelectionRecord, isPendingLottery, isUncertainSelectionError, isVisibleSelectionRecord, normalizeSelectionStatus, receiptFromRecord, selectionStatusMeta, recordConfirmsOperation } from './selection-state'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { canUpdatePendingCommand, createPendingCommand, readPending, savePending } from './pending-ledger'
+import bookIcon from './book-open.svg'
+
+const CONFIRMED_SEAT_STATUSES = ['SELECTED', 'LOCKED']
 
 export default {
-  components: { MobileAcademicDecisionCard },
+  components: { AcademicPageNav, AcademicPageState, MobileAcademicDecisionCard },
   data() {
     return {
-      groups: [], selections: [], state: 'loading', loaded: false,
-      tab: 'courses', acting: null, decisionError: null, lastSuccess: ''
+      bookIcon, batchCatalog: [], courseCache: {}, recordCache: {}, activeBatchId: '', tab: 'courses', detailId: '',
+      courseState: 'loading', recordsState: 'loading', courseError: '', recordsError: '', courseStale: false,
+      recordsStale: false, loaded: false, acting: null, decisionError: null, receipt: null,
+      requestEpoch: 0, recordsEpoch: 0, contextEpoch: 0, writeToken: 0, hidden: false,
+      identity: currentSessionGeneration(), unresolved: {},
+      searchDraft: '', searchTerm: '', courseLimit: 20, recordLimit: 20
     }
   },
   computed: {
-    mySelected() { return this.selections.filter((r) => ['SELECTED', 'LOCKED'].includes(String(r.status || '').toUpperCase())) },
-    courseCount() { return this.groups.reduce((sum, group) => sum + ((group && group.courses && group.courses.length) || 0), 0) },
-    selectedCredits() { return this.mySelected.reduce((sum, item) => sum + Number(item.credit || 0), 0) }
+    activeBatchIndex() { return Math.max(0, this.batchCatalog.findIndex(b => String(b.batchId) === this.activeBatchId)) },
+    activeBatchName() { return this.batchCatalog.find(b => String(b.batchId) === this.activeBatchId)?.batchName || '请选择选课批次' },
+    cacheKey() { return this.activeBatchId || '__all__' },
+    activeGroups() { return this.courseCache[this.cacheKey] || [] },
+    activeRecords() { return this.recordCache[this.cacheKey] || this.filterRecordsForBatch(this.recordCache.__all__ || [], this.activeBatchId) },
+    visibleRecords() { return this.activeRecords.filter(isVisibleSelectionRecord) },
+    confirmedRecords() { return this.visibleRecords.filter((record) => CONFIRMED_SEAT_STATUSES.includes(normalizeSelectionStatus(record && record.status))) },
+    pendingRecords() { return this.visibleRecords.filter(isPendingLottery) },
+    courseCount() { return this.activeGroups.reduce((sum, group) => sum + ((group && group.courses && group.courses.length) || 0), 0) },
+    matchingGroups() {
+      const query = this.searchTerm.toLowerCase()
+      return this.activeGroups.map((group) => ({ ...group, courses: (group.courses || []).filter((course) =>
+        !query || [course.courseName, course.courseCode, course.teacherName].join(' ').toLowerCase().includes(query)) }))
+    },
+    matchingCourseCount() { return this.matchingGroups.reduce((sum, group) => sum + group.courses.length, 0) },
+    displayedGroups() {
+      let remaining = this.courseLimit
+      return this.matchingGroups.map((group) => {
+        const courses = group.courses.slice(0, remaining)
+        remaining -= courses.length
+        return { ...group, courses }
+      })
+    },
+    pageState() {
+      if (!this.loaded) return 'loading'
+      if (this.courseState === 'error' && this.recordsState === 'error' && !this.activeGroups.length && !this.activeRecords.length) return this.decisionError?.restricted ? 'forbidden' : 'error'
+      return 'ready'
+    }
   },
   onLoad() { this.load() },
+  onShow() {
+    const changed = this.identity !== currentSessionGeneration()
+    if (changed) this.resetIdentity()
+    if (this.hidden || changed) { this.hidden = false; this.loaded ? this.loadBatch(this.activeBatchId) : this.load() }
+  },
+  onHide() { this.hidden = true; this.invalidateContext() },
+  onUnload() { this.hidden = true; this.invalidateContext() },
   methods: {
-    hasAction(c, action) {
+    normalizeStatus: normalizeSelectionStatus,
+    statusMeta: selectionStatusMeta,
+    normalizeGroups(value) { const rows = Array.isArray(value) ? value : value && value.groups; if (!Array.isArray(rows)) throw new Error('课程信息无法核对'); return rows },
+    normalizeRecords(value) { const rows = Array.isArray(value) ? value : value && value.items; if (!Array.isArray(rows)) throw new Error('本人记录无法核对'); return rows },
+    setCourseCache(key, value) { this.courseCache = { ...this.courseCache, [key]: value } },
+    setRecordCache(key, value) { this.recordCache = { ...this.recordCache, [key]: value } },
+    invalidateContext() { this.requestEpoch += 1; this.recordsEpoch += 1; this.contextEpoch += 1; this.writeToken += 1; this.acting = null },
+    resetIdentity() {
+      this.invalidateContext()
+      this.identity = currentSessionGeneration()
+      this.batchCatalog = []; this.courseCache = {}; this.recordCache = {}; this.unresolved = {}
+      this.activeBatchId = ''; this.receipt = null; this.decisionError = null; this.detailId = ''; this.loaded = false
+      this.searchDraft = ''; this.searchTerm = ''; this.tab = 'courses'
+    },
+    isForbiddenSelectionError(reason) {
+      const code = String(reason && reason.code || '').toUpperCase()
+      return Number(reason && (reason.httpStatus || reason.statusCode || reason.code)) === 403 || /^403/.test(code) || code === 'FORBIDDEN' || code === 'NO_PERMISSION'
+    },
+    clearForbiddenSelectionContext(reason) {
+      // A permission denial must not leave a previous student's batches, records
+      // or allowed actions actionable while the next read is unavailable.
+      const message = reason && reason.biz ? normalizeError(reason).text : '当前无权核对选课信息'
+      // A denied read cannot establish the outcome of earlier writes.
+      // Retain only original object references in the identity-scoped ledger.
+      const pending = Object.fromEntries(Object.entries(this.unresolved).map(([key, item]) => [key, {
+        operation: item.operation, selectionCourseId: item.selectionCourseId,
+        selectionRecordId: item.selectionRecordId, batchId: item.batchId,
+        commandId: item.commandId, returnedId: item.returnedId, _pendingOwner: item._pendingOwner
+      }]))
+      this.resetIdentity()
+      savePending('selection', pending)
+      this.courseState = 'error'; this.recordsState = 'error'; this.courseError = message; this.recordsError = message
+      this.courseStale = false; this.recordsStale = false; this.loaded = true
+      this.decisionError = { message, decisionTrace: (reason && reason.decisionTrace) || null, restricted: true, readSource: 'drop-preflight' }
+    },
+    identityMatches() { return !this.hidden && this.identity === currentSessionGeneration() },
+    contextMatches(captured) { return this.identityMatches() && captured.contextEpoch === this.contextEpoch && captured.batchId === this.activeBatchId && captured.writeToken === this.writeToken },
+    searchCourses() { this.searchTerm = this.searchDraft.trim(); this.courseLimit = 20 },
+    onBatchPick(event) { const batch = this.batchCatalog[Number(event.detail.value)]; if (batch) this.switchBatch(batch.batchId) },
+    courseDeadline(course) { const end = String(course?.window?.endAt || '').replace('T', ' ').slice(5, 16); return end ? end + ' 截止' : '截止时间待学校发布' },
+    unresolvedKey(courseId, batchId = this.activeBatchId) { return `${batchId}:${courseId}` },
+    unresolvedFor(course) { return this.unresolved[this.unresolvedKey(course && course.selectionCourseId)] },
+    recordAllowed(target, action) {
+      if (this.courseState !== 'ready' || this.courseStale || this.unresolvedFor(target)) return false
+      if (action === 'DROP' && (this.recordsState !== 'ready' || this.recordsStale)) return false
+      return action === 'DROP' ? this.recordHasAction(target, action) : this.hasAction(target, action)
+    },
+    hasAction(target, action) {
       const wanted = String(action || '').toUpperCase()
-      return Array.isArray(c && c.allowedActions)
-        && c.allowedActions.some((value) => String(value || '').toUpperCase() === wanted)
+      return Array.isArray(target && target.allowedActions) && target.allowedActions.some((value) => String(value || '').toUpperCase() === wanted)
     },
-    isSelected(c) {
-      return String((c && c.status) || '').toUpperCase() === 'SELECTED'
+    recordHasAction(record, action) {
+      if (Array.isArray(record && record.allowedActions)) return this.hasAction(record, action)
+      const course = this.activeGroups.flatMap((group) => group.courses || []).find((item) => String(item.selectionCourseId) === String(record && record.selectionCourseId))
+      return this.hasAction(course, action)
     },
+    courseRecord(course) { return findSelectionRecord(this.activeRecords, course && course.selectionCourseId) },
     batchKicker(batch) {
-      return String((batch && batch.status) || '').toUpperCase() === 'CLOSED' ? '补选批次' : '开放批次'
+      const status = normalizeSelectionStatus(batch && batch.status)
+      return status === 'CLOSED' ? '已关闭或补选' : status === 'OPEN' ? '办理中' : (batch && batch.statusLabel) || '按学校时间办理'
+    },
+    batchWindow(batch) {
+      const start = String(batch && (batch.windowStart || batch.startAt) || '').replace('T', ' ').slice(0, 16)
+      const end = String(batch && (batch.windowEnd || batch.endAt) || '').replace('T', ' ').slice(0, 16)
+      return start || end ? `${start || '已开始'} 至 ${end || '结束时间待确认'}` : '办理时间以学校发布为准'
+    },
+    selectionModeText(course) {
+      const value = normalizeSelectionStatus(course && (course.lottery && course.lottery.mode || course.selectionMode || course.mode || course.method))
+      return value.includes('LOTTERY') || String(course && course.method || '').includes('抽签') ? '抽签报名' : value === 'FCFS' ? '先到先得' : '按提交时规则确认'
+    },
+    isLottery(course) { return this.selectionModeText(course) === '抽签报名' },
+    enrollLabel(course) { return this.isLottery(course) ? '报名参加抽签' : (course && course.reselect ? '提交补选' : '提交选课') },
+    // 列表入口只陈述服务端下发的正式可执行动作，不能把“查看详情”伪装为“可选择”。
+    detailLabel(course) {
+      if (this.hasAction(course, 'ENROLL')) return this.isLottery(course) ? '查看并报名' : '查看并选择'
+      if (this.hasAction(course, 'DROP')) return '查看退课条件'
+      return '查看办理条件'
+    },
+    actionText(course) {
+      if (this.hasAction(course, 'ENROLL')) return this.enrollLabel(course)
+      if (this.hasAction(course, 'DROP')) return '可以申请退课'
+      return (course && (course.statusLabel || course.reason)) || '当前不可办理'
     },
     scheduleText(course) {
       const week = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
@@ -160,144 +268,411 @@ export default {
         return [week[Number(row.weekday)] || `周${row.weekday}`, `第${row.slotNo}节`, parity, row.classroom].filter(Boolean).join(' · ')
       }).join('；')
     },
-    goSchedule() {
-      uni.navigateTo({ url: '/pages/student/academic-affairs/schedule' })
+    remain(course) {
+      if (course && Object.prototype.hasOwnProperty.call(course, 'remain') && (course.remain == null || course.remain === '')) return null
+      if (course && course.remain !== null && course.remain !== undefined && Number.isFinite(Number(course.remain))) return Number(course.remain)
+      const capacity = course && course.capacity != null ? Number(course.capacity) : NaN
+      const count = course && (course.selectedCount ?? course.enrolledCount)
+      const selected = count != null ? Number(count) : NaN
+      return Number.isFinite(capacity) && Number.isFinite(selected) ? Math.max(0, capacity - selected) : null
     },
-    remain(c) {
-      const explicit = Number(c && c.remain)
-      if (Number.isFinite(explicit)) return explicit
-      const capacity = Number(c && c.capacity)
-      const selected = Number((c && (c.selectedCount || c.enrolledCount)) || 0)
-      return Number.isFinite(capacity) ? Math.max(0, capacity - selected) : null
+    remainText(course) {
+      const remain = this.remain(course)
+      const capacity = Number(course && course.capacity)
+      if (remain === null) return '未知'
+      return Number.isFinite(capacity) ? `${remain}/${capacity}` : String(remain)
     },
-    remainText(c) {
-      const value = this.remain(c)
-      const capacity = Number(c && c.capacity)
-      if (value == null) return '待确认'
-      return Number.isFinite(capacity) ? `${value}/${capacity}` : String(value)
+    recordTime(record) { return String(record && (record.updatedAt || record.enrolledAt || record.createdAt) || '').replace('T', ' ').slice(0, 16) || '时间待确认' },
+    toggleDetail(course) { const id = String(course && course.selectionCourseId || ''); this.detailId = this.detailId === id ? '' : id },
+    goSchedule() { uni.navigateTo({ url: '/pages/student/academic-affairs/schedule' }) },
+    filterRecordsForBatch(records, batchId) {
+      if (!batchId) return records
+      return records.filter((record) => record && String(record.batchId) === String(batchId))
     },
-    availabilityPct(c) {
-      const value = this.remain(c)
-      const capacity = Number(c && c.capacity)
-      if (value == null || !Number.isFinite(capacity) || capacity <= 0) return 0
-      return Math.max(0, Math.min(100, Math.round(value / capacity * 100)))
+    consumeReadError(kind, reason) {
+      const message = reason && reason.biz ? normalizeError(reason).text : '网络异常，请稍后重试'
+      if (reason && reason.biz) this.decisionError = { message, decisionTrace: reason.decisionTrace || null, readSource: kind, restricted: Number(reason.httpStatus) === 403 || /^403/.test(String(reason.code || '')) }
+      if (kind === 'courses') { this.courseError = message; this.courseState = 'error'; this.courseStale = !!this.activeGroups.length }
+      else { this.recordsError = message; this.recordsState = 'error'; this.recordsStale = !!this.activeRecords.length }
     },
-    batchOpenCount(group) {
-      return ((group && group.courses) || []).filter((course) => this.hasAction(course, 'ENROLL')).length
+    mergeBatches(rows) {
+      const catalog = new Map(this.batchCatalog.map((batch) => [String(batch.batchId), batch]))
+      rows.forEach((row) => {
+        if (row && row.batchId && !catalog.has(String(row.batchId))) catalog.set(String(row.batchId), { batchId: String(row.batchId), batchName: row.batchName || '历史选课批次' })
+      })
+      this.batchCatalog = [...catalog.values()]
     },
     load() {
-      this.state = 'loading'
-      this.decisionError = null
-      Promise.allSettled([studentApi.getSelectionCourses(), studentApi.getMySelections()]).then(([coursesResult, selectionsResult]) => {
-        this.groups = coursesResult.status === 'fulfilled' ? (coursesResult.value || []) : []
-        this.selections = selectionsResult.status === 'fulfilled' ? (selectionsResult.value || []) : []
-        const businessError = [coursesResult, selectionsResult]
-          .find((result) => result.status === 'rejected' && result.reason && result.reason.biz)
-        if (businessError) {
-          const reason = businessError.reason
-          this.decisionError = {
-            message: normalizeError(reason).text,
-            decisionTrace: reason.decisionTrace || null
-          }
+      if (this.identity !== currentSessionGeneration()) this.resetIdentity()
+      this.unresolved = readPending('selection') || {}
+      return Promise.allSettled([this.readCourses('', true), this.readRecords('')])
+    },
+    switchBatch(batchId) {
+      const next = String(batchId || '')
+      if (!next || next === this.activeBatchId) return
+      this.invalidateContext()
+      this.activeBatchId = next; this.detailId = ''; this.receipt = null; this.decisionError = null
+      this.courseLimit = 20; this.recordLimit = 20; this.searchDraft = ''; this.searchTerm = ''
+      const pending = Object.values(this.unresolved).find((item) => item.batchId === next)
+      if (pending) this.showUnknown(pending)
+      return this.loadBatch(next)
+    },
+    loadBatch(batchId) {
+      return Promise.allSettled([this.readCourses(String(batchId || ''), false), this.readRecords(String(batchId || ''))])
+    },
+    readCourses(capturedBatch, discover = false) {
+      const epoch = ++this.requestEpoch
+      const context = this.contextEpoch
+      const key = capturedBatch || '__all__'
+      const current = () => this.identityMatches() && context === this.contextEpoch && this.requestEpoch === epoch && (discover || this.activeBatchId === capturedBatch)
+      this.courseState = 'loading'; this.courseStale = !!this.activeGroups.length; this.courseError = ''
+      return studentApi.getSelectionCourses(capturedBatch || undefined).then((value) => {
+        if (!current()) return null
+        const groups = this.normalizeGroups(value)
+        if (discover) {
+          const history = this.batchCatalog
+          this.batchCatalog = groups.map((group) => group.batch).filter(Boolean)
+          this.mergeBatches(history)
+          if (!this.activeBatchId && this.batchCatalog.length) this.activeBatchId = String(this.batchCatalog[0].batchId)
+          groups.forEach((group) => this.setCourseCache(String(group.batch.batchId), [group]))
+          if (this.activeBatchId && !groups.some((group) => String(group.batch.batchId) === this.activeBatchId)) this.setCourseCache(this.activeBatchId, [])
+        } else {
+          const selectedGroups = capturedBatch ? groups.filter((group) => String(group && group.batch && group.batch.batchId) === capturedBatch) : groups
+          this.setCourseCache(key, selectedGroups)
         }
+        this.courseState = 'ready'; this.courseStale = false; this.loaded = true
+        if (this.recordsState === 'ready' && this.decisionError?.readSource) this.decisionError = null
+        const pending = Object.values(this.unresolved).find(item => item.batchId === this.activeBatchId)
+        if (pending) this.showUnknown(pending)
+        return groups
+      }).catch((reason) => {
+        if (!current()) return null
+        this.consumeReadError('courses', reason); this.loaded = true
+        return null
+      }).finally(() => {
+        if (!current()) return
         this.loaded = true
-        this.state = coursesResult.status === 'fulfilled' || selectionsResult.status === 'fulfilled' || businessError
-          ? 'ready'
-          : 'error'
       })
     },
-    enroll(c) {
-      if (this.acting || !this.hasAction(c, 'ENROLL')) return
-      this.acting = c.selectionCourseId
-      this.decisionError = null
-      studentApi.preflightSelection(c.selectionCourseId).then((preflight) => {
-        if (!preflight || !preflight.allowed) {
-          this.decisionError = {
-            message: (preflight && preflight.message) || '当前课程未通过选课预检',
-            decisionTrace: (preflight && preflight.decisionTrace) || null
-          }
-          toast(this.decisionError.message)
-          return null
-        }
-        return studentApi.enrollSelection(c.selectionCourseId)
-      }).then((result) => {
-        if (result == null) return
-        this.lastSuccess = c.courseName || '该课程'
-        uni.showToast({ title: c.reselect ? '补选成功' : '选课成功', icon: 'success' })
-        this.load()
-      }).catch((e) => {
-        if (e && e.decisionTrace) this.decisionError = e
-        toast(e && e.biz ? normalizeError(e).text : '选课失败，请稍后重试')
-      }).finally(() => { this.acting = null })
+    readRecords(batchId) {
+      const epoch = ++this.recordsEpoch
+      const context = this.contextEpoch
+      const key = batchId || '__all__'
+      const current = () => this.identityMatches() && this.recordsEpoch === epoch && context === this.contextEpoch
+      this.recordsState = 'loading'; this.recordsStale = !!this.activeRecords.length; this.recordsError = ''
+      return studentApi.getMySelections(batchId || undefined).then((value) => {
+        if (!current()) return null
+        const records = this.filterRecordsForBatch(this.normalizeRecords(value), batchId)
+        this.setRecordCache(key, records)
+        this.mergeBatches(records)
+        this.recordsState = 'ready'; this.recordsStale = false; this.loaded = true
+        if (this.courseState === 'ready' && this.decisionError?.readSource) this.decisionError = null
+        this.reconcilePending(records, batchId)
+        return records
+      }).catch((reason) => {
+        if (!current()) return null
+        this.consumeReadError('records', reason); this.loaded = true
+        return null
+      }).finally(() => {
+        if (!current()) return
+        this.loaded = true
+      })
     },
-    drop(c) {
-      if (this.acting || !this.hasAction(c, 'DROP')) return
-      this.acting = c.selectionCourseId
-      this.decisionError = null
-      studentApi.dropSelection(c.selectionCourseId).then(() => {
-        uni.showToast({ title: '已退课', icon: 'success' })
-        this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '退课失败，请稍后重试'))
-        .finally(() => { this.acting = null })
+    async refreshRecords() {
+      const batchId = this.activeBatchId; const context = this.contextEpoch
+      const unresolvedCount = Object.keys(this.unresolved).length
+      const records = await this.readRecords(batchId)
+      if (this.identityMatches() && context === this.contextEpoch && batchId === this.activeBatchId && Object.keys(this.unresolved).length < unresolvedCount) await this.readCourses(batchId)
+      return records
+    },
+    showUnknown(captured) {
+      this.receipt = { ...selectionStatusMeta('RESULT_UNKNOWN'), status: 'RESULT_UNKNOWN', courseName: captured.courseName, selectionCourseId: captured.selectionCourseId, operation: captured.operation }
+    },
+    reconcilePending(records, batchId) {
+      const next = { ...this.unresolved }
+      let receipt = null
+      Object.entries(next).forEach(([key, captured]) => {
+        if (batchId && captured.batchId !== batchId) return
+        const record = records.find((item) => String(item.batchId) === captured.batchId && String(item.selectionCourseId) === captured.selectionCourseId)
+        // Both an active page and a cold start need the original command receipt.
+        // Another device or an older operation may already have changed this course record.
+        if (!captured.returnedId || String(record?.recordId || '') !== String(captured.returnedId)) return
+        if (!recordConfirmsOperation(record, captured.operation)) return
+        delete next[key]
+        if (captured.batchId === this.activeBatchId) receipt = { ...receiptFromRecord(record, captured.courseName), selectionCourseId: captured.selectionCourseId }
+      })
+      if (!savePending('selection', next)) {
+        if (receipt) this.decisionError = { message: '学校记录已读取，但本机无法安全清除待核对引用；请稍后再次核对，切勿重复提交。', decisionTrace: null }
+        return
+      }
+      this.unresolved = next
+      if (receipt) this.receipt = receipt
+    },
+    captureAction(course, operation) {
+      const selectionCourseId = String(course && course.selectionCourseId || '')
+      const record = operation === 'DROP' ? findSelectionRecord(this.activeRecords, selectionCourseId) || course : null
+      return { operation, selectionCourseId, selectionRecordId: String(record && record.recordId || ''), courseName: (course && course.courseName) || '当前课程', batchId: this.activeBatchId, contextEpoch: this.contextEpoch, writeToken: ++this.writeToken, lottery: this.isLottery(course), courseEpoch: this.requestEpoch }
+    },
+    confirmedTarget(captured) {
+      if (!this.contextMatches(captured) || captured.courseEpoch !== this.requestEpoch) return null
+      const course = this.activeGroups.flatMap((group) => group.courses || []).find((item) => String(item.selectionCourseId) === captured.selectionCourseId)
+      return course && this.recordAllowed(course, captured.operation) ? course : null
+    },
+    matchesDropPreflight(captured, preflight) {
+      return !!preflight && preflight.allowed === true && String(preflight.action || '').toUpperCase() === 'DROP' &&
+        String(preflight.selectionCourseId || '') === captured.selectionCourseId &&
+        String(preflight.batchId || '') === captured.batchId &&
+        String(preflight.selectionRecordId || '') === captured.selectionRecordId
+    },
+    enroll(course) {
+      if (this.acting || !this.hasAction(course, 'ENROLL') || !this.recordAllowed(course, 'ENROLL')) return
+      const captured = this.captureAction(course, 'ENROLL')
+      this.acting = captured.selectionCourseId
+      const content = captured.lottery ? '本次只登记抽签报名，不承诺名额。提交后以“已报名待抽签”记录为准。' : '余量不是名额承诺。服务器会再次校验容量、冲突、窗口和培养方案。'
+      uni.showModal({
+        title: captured.lottery ? '确认参加抽签' : '确认提交选课',
+        content: captured.courseName + '\n' + content, confirmText: captured.lottery ? '确认报名' : '确认提交',
+        success: (result) => {
+          if (!this.contextMatches(captured)) return
+          if (!result.confirm || !this.confirmedTarget(captured)) { this.acting = null; return }
+          return this.runEnroll(captured)
+        },
+        fail: () => { if (this.contextMatches(captured)) this.acting = null }
+      })
+    },
+    async runEnroll(captured) {
+      if (!this.confirmedTarget(captured)) return
+      this.decisionError = null; this.receipt = null
+      let sent = false
+      try {
+        const preflight = await studentApi.preflightSelection(captured.selectionCourseId)
+        if (!this.contextMatches(captured)) return
+        if (!preflight || preflight.allowed !== true) {
+          this.decisionError = { message: (preflight && preflight.message) || '当前课程未通过选课预检', decisionTrace: (preflight && preflight.decisionTrace) || null }
+          return
+        }
+        if (!this.confirmedTarget(captured)) return
+        if (!this.startWrite(captured)) {
+          this.decisionError = { message: '本机无法安全保存本次选课的核对引用，尚未发送选课申请。请恢复存储后重试。', decisionTrace: null }
+          return
+        }
+        sent = true
+        const result = await studentApi.enrollSelection(captured.selectionCourseId)
+        if (this.contextMatches(captured)) this.captureWriteReceipt(captured, result)
+        // Even an empty transport payload must be reconciled with formal records.
+        if (this.contextMatches(captured)) await this.reconcileWrite(captured)
+      } catch (error) {
+        if (!this.contextMatches(captured)) return
+        if (!sent) {
+          this.decisionError = { message: error && error.biz ? normalizeError(error).text : '预检暂时无法完成，尚未发送选课申请', decisionTrace: (error && error.decisionTrace) || null }
+          return
+        }
+        await this.handleWriteError(error, captured)
+      } finally {
+        if (this.contextMatches(captured)) this.acting = null
+      }
+    },
+    drop(courseOrRecord) {
+      if (this.acting || (!this.recordHasAction(courseOrRecord, 'DROP') && !this.hasAction(courseOrRecord, 'DROP')) || !this.recordAllowed(courseOrRecord, 'DROP')) return
+      const captured = this.captureAction(courseOrRecord, 'DROP')
+      if (!captured.selectionRecordId) {
+        this.decisionError = { message: '本人正式选课记录尚未完整返回，暂不能发起退课。请刷新后重试。', decisionTrace: null }
+        return
+      }
+      this.acting = captured.selectionCourseId
+      const current = findSelectionRecord(this.activeRecords, captured.selectionCourseId) || courseOrRecord
+      const pending = normalizeSelectionStatus(current && current.status) === 'PENDING_LOTTERY'
+      uni.showModal({
+        title: pending ? '撤回抽签报名' : '确认申请退课',
+        content: captured.courseName + '\n是否允许办理，以服务器当前状态和允许动作为准。',
+        confirmText: pending ? '确认撤回' : '确认退课',
+        success: (result) => {
+          if (!this.contextMatches(captured)) return
+          if (!result.confirm || !this.confirmedTarget(captured)) { this.acting = null; return }
+          return this.runDrop(captured)
+        },
+        fail: () => { if (this.contextMatches(captured)) this.acting = null }
+      })
+    },
+    async runDrop(captured) {
+      if (!this.confirmedTarget(captured)) return
+      this.decisionError = null; this.receipt = null
+      let sent = false
+      try {
+        const preflight = await studentApi.preflightDropSelection(captured.selectionCourseId)
+        if (!this.contextMatches(captured)) return
+        if (!this.matchesDropPreflight(captured, preflight)) {
+          this.decisionError = { message: (preflight && (preflight.message || preflight.reason)) || '当前记录未通过退课预检', decisionTrace: (preflight && preflight.decisionTrace) || null }
+          return
+        }
+        if (!this.confirmedTarget(captured)) return
+        if (!this.startWrite(captured)) {
+          this.decisionError = { message: '本机无法安全保存本次退课的核对引用，尚未发送退课申请。请恢复存储后重试。', decisionTrace: null }
+          return
+        }
+        sent = true
+        const result = await studentApi.dropSelection(captured.selectionCourseId)
+        if (this.contextMatches(captured)) this.captureWriteReceipt(captured, result)
+        if (this.contextMatches(captured)) await this.reconcileWrite(captured)
+      } catch (error) {
+        if (!this.contextMatches(captured)) return
+        if (!sent) {
+          if (this.isForbiddenSelectionError(error)) {
+            this.clearForbiddenSelectionContext(error)
+            return
+          }
+          this.decisionError = { message: error && error.biz ? normalizeError(error).text : '退课预检暂时无法完成，尚未发送退课申请', decisionTrace: (error && error.decisionTrace) || null }
+          return
+        }
+        await this.handleWriteError(error, captured)
+      } finally {
+        if (this.contextMatches(captured)) this.acting = null
+      }
+    },
+    startWrite(captured) {
+      // Invalidate reads started before this command; keep the unresolved object
+      // across batch navigation until a later read proves this operation.
+      const command = createPendingCommand('selection', { ...captured, returnedId: '' })
+      if (!command) return false
+      this.requestEpoch += 1; this.recordsEpoch += 1
+      const unresolved = { ...this.unresolved, [this.unresolvedKey(captured.selectionCourseId, captured.batchId)]: command }
+      if (!savePending('selection', unresolved)) return false
+      Object.assign(captured, command)
+      this.courseStale = true
+      this.unresolved = unresolved
+      this.decisionError = null; this.showUnknown(captured)
+      return true
+    },
+    captureWriteReceipt(captured, result) {
+      const returnedId = String(result?.recordId || '')
+      if (!returnedId) return false
+      const key = this.unresolvedKey(captured.selectionCourseId, captured.batchId)
+      const original = this.unresolved[key]
+      if (!original || original.commandId !== captured.commandId || !canUpdatePendingCommand('selection', original)) return false
+      const next = { ...this.unresolved, [key]: { ...original, returnedId } }
+      if (!savePending('selection', next)) {
+        this.decisionError = { message: '已收到学校回执，但本机无法安全保存回执编号；请保持页面并重新核对，切勿重复提交。', decisionTrace: null }
+        return false
+      }
+      this.unresolved = next
+      captured.returnedId = returnedId
+      return true
+    },
+    async handleWriteError(error, captured) {
+      if (!isUncertainSelectionError(error)) {
+        const next = { ...this.unresolved }; delete next[this.unresolvedKey(captured.selectionCourseId, captured.batchId)]
+        if (!savePending('selection', next)) {
+          this.showUnknown(captured)
+          this.decisionError = { message: '本机无法安全清除待核对引用；请恢复存储后核对，切勿重复提交。', decisionTrace: null }
+          return
+        }
+        this.unresolved = next
+        this.receipt = null
+        this.decisionError = { message: error && error.biz ? normalizeError(error).text : '当前请求未通过', decisionTrace: (error && error.decisionTrace) || null }
+        await this.refreshRecords()
+        if (this.contextMatches(captured)) await this.readCourses(captured.batchId)
+        return
+      }
+      this.showUnknown(captured); this.tab = 'mine'
+      await this.reconcileWrite(captured)
+    },
+    async reconcileWrite(captured) {
+      if (!this.contextMatches(captured)) return null
+      const records = await this.readRecords(captured.batchId)
+      if (!this.contextMatches(captured)) return null
+      this.tab = 'mine'
+      if (this.unresolved[this.unresolvedKey(captured.selectionCourseId, captured.batchId)]) {
+        this.showUnknown(captured)
+      } else if (this.receipt) {
+        uni.showToast({ title: this.receipt.label, icon: this.receipt.tone === 'success' ? 'success' : 'none' })
+        await this.readCourses(captured.batchId)
+      }
+      return records
     }
   }
 }
 </script>
 
 <style scoped>
-.sl__hero { display: flex; align-items: stretch; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border: 1px solid rgba(59,130,246,.13); border-radius: 18px; background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(239,246,255,.92)); box-shadow: var(--shadow-card); }
-.sl__hero-main { flex: 1; min-width: 0; }
-.sl__eyebrow { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--brand-primary); }
-.sl__hero-title { display: block; margin-top: 5px; font-size: 18px; font-weight: 700; line-height: 1.4; color: var(--text-primary); }
-.sl__hero-desc { display: block; margin-top: 5px; font-size: var(--font-size-xs); line-height: 1.65; color: var(--text-secondary); }
-.sl__trust { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-3); }
-.sl__trust text { font-size: 10px; line-height: 22px; padding: 0 8px; border-radius: var(--radius-full); background: rgba(255,255,255,.84); color: var(--text-secondary); }
-.sl__hero-count { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 78px; border-left: 1px solid rgba(59,130,246,.10); color: var(--text-tertiary); font-size: 10px; }
-.sl__hero-number { margin: 4px 0 2px; font-size: 28px; line-height: 1; font-weight: 800; color: var(--brand-primary); }
-.sl__metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin-top: var(--space-3); }
-.sl__metric { padding: var(--space-3); border: 1px solid var(--border-light); border-radius: 14px; background: var(--bg-card); box-shadow: var(--shadow-card); }
-.sl__metric > text:first-child { display: block; font-size: 10px; color: var(--text-tertiary); }
-.sl__metric-value { display: block; margin-top: 4px; font-size: 20px; font-weight: 800; color: var(--text-primary); }
-.sl__decision { margin-top: var(--space-3); }
-.sl__success { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid rgba(22,163,74,.22); border-radius: 14px; background: rgba(240,253,244,.96); }
-.sl__success-mark { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #16a34a; color: #fff; font-weight: 800; }
-.sl__success-title { display: block; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 700; }
-.sl__success-text { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
-.sl__success-btn { flex-shrink: 0; min-height: 32px; padding: 0 var(--space-3); font-size: 11px; }
-.sl__tabs { display: flex; gap: 5px; margin-top: var(--space-4); padding: 5px; border: 1px solid var(--border-light); border-radius: 13px; background: var(--bg-card); }
-.sl__tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border-radius: 9px; font-size: var(--font-size-sm); color: var(--text-secondary); }
-.sl__tab.is-active { color: var(--brand-primary); font-weight: var(--font-weight-semibold); background: rgba(59,130,246,.08); }
-.sl__tab-count { min-width: 20px; line-height: 18px; padding: 0 5px; border-radius: var(--radius-full); text-align: center; background: rgba(15,23,42,.05); color: var(--text-tertiary); font-size: 10px; }
-.sl__tab.is-active .sl__tab-count { background: rgba(255,255,255,.9); color: var(--brand-primary); }
-.sl__group { margin-top: var(--space-3); overflow: hidden; border: 1px solid var(--border-light); border-radius: 16px; background: var(--bg-card); box-shadow: var(--shadow-card); }
-.sl__group + .sl__group { margin-top: var(--space-3); }
-.sl__group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-light); }
-.sl__group-kicker { display: block; font-size: 9px; font-weight: 700; letter-spacing: 1px; color: var(--brand-primary); }
-.sl__group-title { display: block; margin-top: 3px; font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary); }
-.sl__group-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 10px; color: var(--text-tertiary); }
-.sl__course-list { padding: 0 var(--space-4); }
-.sl__course { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) 0; border-bottom: 1px solid var(--border-light); }
-.sl__course:last-child { border-bottom: 0; }
-.sl__course.is-selected { background: linear-gradient(90deg, rgba(22,163,74,.035), transparent); }
-.sl__course-main { flex: 1; min-width: 0; }
-.sl__course-title-line { display: flex; align-items: center; gap: 6px; }
-.sl__course-title { font-size: var(--font-size-base); font-weight: 600; line-height: 1.45; color: var(--text-primary); }
-.sl__status-chip { flex-shrink: 0; font-size: 9px; line-height: 18px; padding: 0 6px; border-radius: var(--radius-full); color: var(--brand-primary); background: rgba(59,130,246,.08); }
-.sl__course-meta { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.sl__course-schedule { display: block; margin-top: 5px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
-.sl__remain { display: flex; align-items: center; gap: var(--space-2); margin-top: 7px; }
-.sl__remain > text { flex-shrink: 0; font-size: 10px; color: var(--text-secondary); }
-.sl__remain-bar { width: 62px; height: 5px; overflow: hidden; border-radius: var(--radius-full); background: rgba(15,23,42,.06); }
-.sl__remain-bar view { height: 100%; border-radius: inherit; background: var(--brand-primary); }
-.sl__decision-hint { display: flex; flex-direction: column; gap: 2px; margin-top: 7px; padding: 6px 8px; border-radius: 9px; background: rgba(245,158,11,.08); }
-.sl__decision-hint text { font-size: 10px; line-height: 1.5; color: #92400e; }
-.sl__btn { flex-shrink: 0; min-height: 34px; padding: 0 var(--space-3); font-size: var(--font-size-sm); margin-left: var(--space-1); }
-.sl__group-empty { padding: var(--space-5); text-align: center; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.sl__mine-list { margin-top: var(--space-3); }
-.sl__mine-card { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-light); border-radius: 14px; background: var(--bg-card); box-shadow: var(--shadow-card); }
-.sl__mine-icon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 11px; background: rgba(59,130,246,.08); color: var(--brand-primary); font-size: 11px; font-weight: 700; }
-.sl__rule-note { display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid rgba(59,130,246,.10); border-radius: 14px; background: rgba(255,255,255,.75); }
-.sl__rule-icon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: rgba(59,130,246,.08); color: var(--brand-primary); font-family: serif; font-weight: 700; }
-.sl__rule-title { display: block; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary); }
-.sl__rule-text { display: block; margin-top: 3px; font-size: 10px; line-height: 1.65; color: var(--text-tertiary); }
+.page-wrap { font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+button, input, textarea { font-family: inherit; }
+.sl { padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom)); }
+.sl__hero { padding: 4px 0 12px; }
+.sl__search { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.sl__search input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 10px; font-size: 14px; }
+.sl__search button { margin: 0; font-size: 13px; }
+.sl__course-summary { margin-top: 12px; }
+.sl__details-button { margin: 14px 0 0; font-size: 13px; }
+.sl__eyebrow { display:block; color:var(--text-secondary); font-size:12px; }
+.sl__batch-picker { display: inline-block; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 8px; font-size: 14px; }
+.sl__course-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--brand-50, #edf3fc); border-radius: 12px; }
+.sl__course-icon image { width: 22px; height: 22px; }
+.sl__teacher { padding-top: 10px; }
+.sl__course-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border-light); padding-top: 12px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+.sl__course-footer button { margin: 0; font-size: 12px; }
+.sl__hero-title { display:block; margin-top:5px; color:var(--text-primary); font-size:20px; font-weight:700; }
+.sl__hero-desc { display:block; margin-top:6px; color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.7; }
+.sl__trust { display:flex; flex-wrap:wrap; gap:6px; margin-top:var(--space-3); }
+.sl__trust text { padding:3px 8px; border-radius:var(--radius-full); background:rgba(255,255,255,.88); color:var(--text-secondary); font-size:10px; }
+.sl__batch-scroll { width:100%; margin-top:var(--space-3); white-space:nowrap; }
+.sl__batch-row { display:inline-flex; gap:8px; padding:1px; }
+.sl__batch { display:inline-flex; flex-direction:column; min-width:138px; padding:9px 12px; border:1px solid var(--border-light); border-radius:12px; background:var(--bg-card); color:var(--text-primary); text-align:left; font-size:var(--font-size-sm); }
+.sl__batch.is-active { border-color:var(--brand-primary); background:rgba(59,130,246,.08); color:var(--brand-primary); }
+.sl__batch-status { display:block; margin-top:2px; color:var(--text-tertiary); font-size:10px; }
+.sl__metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-2); margin-top:var(--space-3); }
+.sl__metric { padding:11px 8px; border:1px solid var(--border-light); border-radius:13px; background:var(--bg-card); text-align:center; box-shadow:var(--shadow-card); color:var(--text-tertiary); font-size:10px; }
+.sl__metric-value { display:block; margin-bottom:2px; color:var(--text-primary); font-size:21px; font-weight:700; }
+.sl__decision,.sl__receipt,.sl__tabs,.sl__group,.sl__local-state,.sl__record,.sl__rule-note { margin-top:var(--space-3); }
+.sl__receipt { padding:var(--space-4); border:1px solid rgba(217,119,6,.28); border-radius:16px; background:#fffbeb; }
+.sl__receipt.is-success { border-color:rgba(22,163,74,.24); background:#f0fdf4; }
+.sl__receipt.is-danger { border-color:rgba(220,38,38,.22); background:#fef2f2; }
+.sl__receipt.is-muted { border-color:var(--border-light); background:var(--bg-card); }
+.sl__receipt-head { display:flex; align-items:center; gap:var(--space-3); }
+.sl__receipt-mark { display:flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:50%; background:rgba(217,119,6,.12); color:#b45309; font-weight:800; }
+.sl__receipt.is-success .sl__receipt-mark { background:rgba(22,163,74,.13); color:#15803d; }
+.sl__receipt.is-danger .sl__receipt-mark { background:rgba(220,38,38,.11); color:#b91c1c; }
+.sl__receipt-course { display:block; color:var(--text-secondary); font-size:10px; }
+.sl__receipt-title { display:block; margin-top:2px; color:var(--text-primary); font-size:var(--font-size-base); font-weight:700; }
+.sl__receipt-desc { display:block; margin-top:var(--space-3); color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.65; }
+.sl__receipt-action { width:100%; margin-top:var(--space-3); }
+.sl__tabs { display:flex; border-bottom:1px solid var(--border-light); margin-bottom:14px; }
+.sl__tab { flex:1; min-height:44px; border-radius:0; color:var(--text-secondary); font-size:14px; background:transparent; }
+.sl__tab::after { border:0; }
+.sl__tab text { margin-left:4px; color:var(--text-tertiary); font-size:10px; }
+.sl__tab.is-active { border-bottom:3px solid var(--brand-primary); color:var(--brand-primary); font-weight:600; }
+.sl__local-state { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--border-light); border-radius:13px; background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-xs); }
+.sl__local-state.is-error { border-color:rgba(220,38,38,.18); background:#fff7f7; }
+.sl__local-title { display:block; color:var(--text-primary); font-weight:600; }
+.sl__local-desc { display:block; margin-top:2px; line-height:1.55; }
+.sl__stale { margin-top:var(--space-2); padding:8px 10px; border-radius:10px; background:#fffbeb; color:#92400e; font-size:10px; }
+.sl__group { display:flex; flex-direction:column; gap:14px; }
+.sl__group-head { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border-light); }
+.sl__group-kicker { display:block; color:var(--brand-primary); font-size:9px; font-weight:700; letter-spacing:1px; }
+.sl__group-title { display:block; margin-top:2px; color:var(--text-primary); font-size:var(--font-size-base); font-weight:700; }
+.sl__group-time { display:block; margin-top:3px; color:var(--text-tertiary); font-size:10px; }
+.sl__group-count { color:var(--text-tertiary); font-size:11px; }
+.sl__course { padding:14px; border:1px solid var(--border-base); border-radius:12px; background:var(--bg-card); }
+.sl__course-title-row,.sl__record-head { display:flex; align-items:flex-start; gap:var(--space-2); }
+.sl__course-title { display:block; color:var(--text-primary); font-size:16px; font-weight:600; line-height:1.45; }
+.sl__course-meta,.sl__course-schedule { display:block; margin-top:4px; color:var(--text-secondary); font-size:13px; line-height:1.6; }
+.sl__course-schedule { margin-top:10px; color:var(--text-primary); }
+.sl__detail-link { flex-shrink:0; color:var(--brand-primary); font-size:var(--font-size-xs); }
+.sl__status { flex-shrink:0; padding:3px 7px; border-radius:var(--radius-full); background:rgba(217,119,6,.10); color:#92400e; font-size:10px; }
+.sl__status.is-success { background:rgba(22,163,74,.10); color:#15803d; }
+.sl__status.is-danger { background:rgba(220,38,38,.09); color:#b91c1c; }
+.sl__status.is-muted { background:rgba(100,116,139,.09); color:var(--text-secondary); }
+.sl__course-detail { margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--border-light); }
+.sl__fact { display:flex; justify-content:space-between; gap:var(--space-3); padding:5px 0; font-size:var(--font-size-xs); }
+.sl__fact text:first-child { color:var(--text-tertiary); }
+.sl__fact text:last-child { color:var(--text-primary); text-align:right; }
+.sl__course-summary text.sl__mode { padding:2px 6px; border-radius:4px; color:var(--brand-primary); background:var(--brand-50, #edf3fc); }
+.sl__course-summary .sl__mode.is-lottery { color:#92400e; background:#fff6e6; }
+.sl__decision-hint { margin-top:var(--space-2); padding:9px 10px; border-radius:10px; background:#fffbeb; }
+.sl__decision-hint text { display:block; color:#92400e; font-size:10px; line-height:1.55; }
+.sl__primary-action { width:100%; margin-top:var(--space-3); }
+.sl__record { padding:var(--space-4); border:1px solid var(--border-light); border-radius:15px; background:var(--bg-card); box-shadow:var(--shadow-card); }
+.sl__record-desc { display:block; margin-top:var(--space-3); color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.6; }
+.sl__record-action { width:100%; margin-top:var(--space-3); }
+.sl__rule-note { padding:var(--space-3) var(--space-4); border:1px solid rgba(59,130,246,.12); border-radius:14px; background:rgba(229,237,252,.55); color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.7; }
+.sl__rule-title { display:block; margin-bottom:3px; color:var(--text-primary); font-weight:600; }
 </style>

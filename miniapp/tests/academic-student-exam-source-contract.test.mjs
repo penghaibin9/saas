@@ -6,6 +6,7 @@ const page = readFileSync(
   new URL('../src/pages/student/academic-affairs/exam.vue', import.meta.url),
   'utf8'
 )
+const teacherPage = readFileSync(new URL('../src/pages/teacher/exam-defer/index.vue', import.meta.url), 'utf8')
 
 test('student exam page renders one canonical published schedule section', () => {
   const headingMatches = page.match(/<text class="section-head__title">我的考试安排<\/text>/g) || []
@@ -20,11 +21,12 @@ test('student exam page renders one canonical published schedule section', () =>
 test('student ticket action is only exposed for a non-empty published schedule', () => {
   assert.match(
     page,
-    /v-if="d\.schedule && d\.schedule\.length"[\s\S]*?@click="printTicket"[\s\S]*?>打印准考证<\/text>/
+    /v-if="d\.schedule && d\.schedule\.length"[\s\S]*?@click="printTicket"[\s\S]*?>复制准考证摘要<\/text>/
   )
   assert.match(page, /if \(!\(this\.d && this\.d\.schedule && this\.d\.schedule\.length\)\) return/)
   assert.match(page, /studentApi\.printExamTicket\('个人准考证'\)/)
-  assert.match(page, /已留痕并复制准考证摘要/)
+  assert.match(page, /已复制准考证摘要/)
+  assert.match(page, /if \(!res\?\.loggedAt\) throw/)
 })
 
 test('student defer action is fail-closed on server canApply truth', () => {
@@ -34,4 +36,13 @@ test('student defer action is fail-closed on server canApply truth', () => {
   assert.match(page, /if \(!c \|\| c\.hasActiveDefer \|\| c\.canApply !== true\) return/)
   assert.match(page, /if \(!this\.selectedCourse \|\| this\.selectedCourse\.canApply !== true \|\| this\.submitting\) return/)
   assert.doesNotMatch(page, /<button v-else class="btn-tag" @click="openForm\(c\)">申请缓考<\/button>/)
+})
+
+test('student and teacher defer pages localize the canonical reason types', () => {
+  for (const code of ['ILLNESS', 'OFFICIAL', 'FAMILY', 'OTHER']) {
+    assert.match(page, new RegExp(`${code}:\\s*'`))
+    assert.match(teacherPage, new RegExp(`${code}:\\s*'`))
+  }
+  assert.match(page, /reasonType: 'ILLNESS'/)
+  assert.doesNotMatch(teacherPage, /\{\{ x\.reasonType \}\}/)
 })

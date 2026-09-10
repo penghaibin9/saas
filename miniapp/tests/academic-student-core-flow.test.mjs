@@ -12,19 +12,24 @@ const academicHome = fs.readFileSync(path.join(root, 'src/pages/student/academic
 const studentHome = fs.readFileSync(path.join(root, 'src/pages/student/home/index.vue'), 'utf8')
 const teacherSchedule = fs.readFileSync(path.join(root, 'src/pages/teacher/my-schedule/index.vue'), 'utf8')
 
-test('student miniapp selection shows published meeting context and a clear success handoff', () => {
-  assert.match(selection, /course\.scheduleItems/)
+test('student miniapp selection distinguishes published meeting context and authoritative outcomes', () => {
+  assert.match(selection, /course && course\.scheduleItems/)
   assert.match(selection, /时间待排 · 以正式课表为准/)
-  assert.match(selection, /名单锁定且课表正式发布后会进入我的课表/)
+  assert.match(selection, /查看正式课表/)
   assert.match(selection, /pages\/student\/academic-affairs\/schedule/)
   assert.match(selection, /\['SELECTED', 'LOCKED'\]/)
+  assert.match(selection, /已报名待抽签/)
+  assert.match(selection, /结果待核实/)
 })
 
-test('student miniapp keeps business blockers readable instead of collapsing them into generic load failure', () => {
+test('student miniapp keeps course and personal-record failures independent and readable', () => {
   assert.match(selection, /Promise\.allSettled/)
-  assert.match(selection, /normalizeError\(reason\)\.text/)
-  assert.match(selection, /reason\.decisionTrace \|\| null/)
-  assert.match(selection, /businessError[\s\S]*\? 'ready'/)
+  assert.match(selection, /consumeReadError\('courses'/)
+  assert.match(selection, /consumeReadError\('records'/)
+  assert.match(selection, /normalizeError\(reason\)/)
+  assert.match(selection, /reason\.decisionTrace/)
+  assert.match(selection, /courseState/)
+  assert.match(selection, /recordsState/)
 })
 
 test('student miniapp consumes backend todayItems and refreshes whenever shown', () => {
@@ -45,7 +50,7 @@ test('student miniapp keeps schedule and selection reachable before orientation 
 })
 
 test('student academic home consumes the same server-projected Today truth', () => {
-  assert.match(academicHome, /this\.todayItems = schedule\.todayItems \|\| \[\]/)
+  assert.match(academicHome, /this\.todayItems = \(schedule\.todayItems \|\| \[\]\)\.map/)
   assert.match(academicHome, /return this\.todayItems/)
   assert.match(academicHome, /calendarSource === 'OUT_OF_TERM'/)
   assert.doesNotMatch(academicHome, /new Date\(\)\.getDay\(\)/)

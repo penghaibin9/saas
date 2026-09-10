@@ -1,0 +1,37 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>沙箱审批恢复验证</title>
+<body><h1>沙箱审批恢复验证</h1><p>只读取本人已办任务，写入一条本机待确认引用，再打开正式页面验证恢复。不发送审批命令。</p>
+<button id="read">读取本人已办学籍任务</button><div id="rows"></div><pre id="result"></pre>
+<script type="module">
+import '/src/services/h5BrowserAuthInstaller.js'
+import { uni } from '@dcloudio/uni-h5'
+import { createApp } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { useSessionStore } from '/src/stores/session.js'
+import { academicSessionPlugin } from '/src/stores/sessionAcademicPlugin.js'
+import { getDoneApprovals } from '/src/services/approvalApi.js'
+import { approvalContextKey } from '/src/pages/teacher/academic-affairs/approval-recovery.js'
+globalThis.uni = uni
+const pinia = createPinia(); pinia.use(academicSessionPlugin); createApp({}).use(pinia); setActivePinia(pinia)
+const session = useSessionStore(); session.restore()
+const result = document.querySelector('#result'), rows = document.querySelector('#rows')
+document.querySelector('#read').onclick = async () => {
+  try {
+    if (location.hostname !== 'counselor-core.localhost' || !session.logged) throw new Error('仅用于已登录的本地辅导员沙箱')
+    const done = await getDoneApprovals('1', 100, '', 'AA_STATUS_CHANGE')
+    rows.replaceChildren()
+    for (const task of done.items.filter(row => row.sourceModule === 'academic-affairs' && row.status === 'APPROVED')) {
+      const button = document.createElement('button')
+      button.textContent = `模拟任务 ${task.taskId} 的本机待确认引用（单据 ${task.sourceBizId}）`
+      button.onclick = () => {
+        const context = approvalContextKey(session)
+        const scope = 'status-change-review'
+        const attempt = approvalContextKey.createAttempt(scope, context, task.sourceBizId, 'APPROVE', {currentTaskId:task.taskId,currentNode:task.nodeCode})
+        if (!approvalContextKey.persistAttempt(scope, attempt)) { result.textContent = '已有待确认引用或存储失败，未覆盖'; return }
+        location.href = '/#/pages/teacher/academic-affairs/status-change-review'
+      }
+      rows.append(button)
+    }
+    result.textContent = `已读取 ${done.total} 个正式任务；尚未写入本机引用。`
+  } catch(error) { result.textContent = error.message }
+}
+</script></body></html>

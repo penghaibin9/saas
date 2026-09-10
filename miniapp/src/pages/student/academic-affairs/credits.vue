@@ -1,7 +1,7 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="学分修读" back />
-    <MobileGlobalState :state="state" @retry="load">
+    <AcademicPageNav variant="default" title="学分修读" show-back />
+    <AcademicPageState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
         <view class="card">
           <view class="cr__metrics">
@@ -27,8 +27,9 @@
         </view>
 
         <view class="section-head"><text class="section-head__title">已通过课程（{{ d.passedCourses.length }}）</text></view>
+        <text class="cr__sub">{{ passedCoursesCoverageText }}</text>
         <view class="list-group" v-if="d.passedCourses.length">
-          <view v-for="(c, i) in d.passedCourses" :key="i" class="list-row">
+          <view v-for="(c, i) in d.passedCourses.slice(0, listLimit)" :key="i" class="list-row">
             <view class="flex-1">
               <text class="t-md">{{ c.courseName }}</text>
               <text class="cr__sub">{{ c.term || '—' }} · {{ c.credit }} 学分</text>
@@ -36,38 +37,58 @@
             <text class="cr__score">{{ c.score != null ? c.score : '—' }}</text>
           </view>
         </view>
-        <MobileGlobalState v-else state="empty" title="暂无已通过课程" description="成绩发布后会显示在这里。" />
+        <button v-if="d.passedCourses.length > listLimit" class="btn" @click="listLimit += 20">查看更多课程</button>
+        <AcademicPageState v-if="!d.passedCourses.length" state="empty" title="暂无已通过课程" description="成绩发布后会显示在这里。" />
 
-        <view class="cr__note"><text class="t-xs t-tertiary">说明：本页仅展示真实学分汇总与已通过课程，不提供公共课/专业课等类别拆分（当前数据模型未采集分类信息）。</text></view>
+        <button class="btn btn-primary" @click="go('/pages/student/academic-affairs/transcript')">查看正式成绩</button>
+        <view class="cr__note"><text class="t-xs t-tertiary">学分分类以学校公布的培养方案为准。</text></view>
       </view>
-    </MobileGlobalState>
+    </AcademicPageState>
+    <MobileTabBar side="student" active="" />
   </view>
 </template>
 
 <script>
+import AcademicPageNav from './AcademicPageNav.vue'
+import AcademicPageState from './AcademicPageState.vue'
 import { studentApi } from '@/services/studentApi'
 import { clampPercent } from '@/utils/format'
+import { go } from '@/utils/nav'
+import { academicReadPage } from './read-page'
 
 export default {
-  data() { return { d: null, state: 'loading' } },
+  components: { AcademicPageNav, AcademicPageState },
+  mixins: [academicReadPage],
+  data() { return { d: null, state: 'loading', clearReadDataOnForbidden: true } },
   onLoad() { this.load() },
   computed: {
     pct() {
       if (!this.d || !this.d.requiredCredits) return 0
       return clampPercent((this.d.obtainedCredits / this.d.requiredCredits) * 100)
+    },
+    passedCoursesCoverageText() {
+      const returned = (this.d && this.d.passedCourses || []).length
+      const total = Number(this.d && this.d.passedCoursesTotal)
+      return Number.isFinite(total) && total > returned
+        ? `当前返回 ${returned}/${total} 门已通过课程；当前接口未提供翻页。`
+        : `当前返回 ${returned} 门已通过课程；学校暂未提供总条数。`
     }
   },
   methods: {
+    go,
     load() {
-      this.state = 'loading'
-      studentApi.getMyCredits().then((d) => { this.d = d; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+      return this.readAcademic(() => studentApi.getMyCredits(), (d) => {
+        if (!Array.isArray(d.passedCourses)) throw new Error('学分信息无法核对')
+        this.d = d
+      })
     }
   }
 }
 </script>
 
 <style scoped>
+.page-wrap { font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+button, input, textarea { font-family: inherit; }
 .cr__metrics { display: flex; }
 .cr__metric { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .cr__metric-val { font-size: var(--font-size-metric-sm); font-weight: var(--font-weight-semibold); color: var(--brand-primary); }

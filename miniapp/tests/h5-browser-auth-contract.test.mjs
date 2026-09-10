@@ -66,6 +66,12 @@ test('H5 refresh sentinel is non-secret and only preserves the existing single-f
   assert.match(request,/return _refreshOnce\(expectedGeneration\)\.then/)
 })
 
+test('an H5 tab with no recoverable browser session returns to in-app login instead of staying on a load error',()=>{
+  assert.match(request,/if \(!snapshot\.refreshToken\)/)
+  assert.match(request,/const error = \{ code: 401001, biz: true, message: '登录已失效，请重新登录' \}/)
+  assert.match(request,/requireAuthOrRedirect\(error\.message\)/)
+})
+
 test('shared request layer accepts valid JSON text from H5 but keeps malformed responses fail-closed',()=>{
   assert.match(request,/function normalizeJsonResponseBody\(value\)/)
   assert.match(request,/return JSON\.parse\(text\)/)

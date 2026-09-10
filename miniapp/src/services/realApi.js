@@ -755,7 +755,12 @@ export const teacherMentalStats = () => realRequest('/mobile/teacher/mental-stat
 
 /** 教师·在校服务待处理 & 学业预警待处理列表（真实接口，_domain 结构：{hasData,list,total,module}，范围过滤，无 mock 兜底） */
 export const teacherCampusServicePending = () => realRequest('/mobile/teacher/campus-service')
-export const teacherAcademicWarnings = () => realRequest('/mobile/teacher/academic')
+export const teacherAcademicWarnings = ({ page = 1, pageSize = 50, status, level } = {}) =>
+  realRequest('/mobile/teacher/academic/warnings', { data: { page, pageSize, status, level } })
+export const teacherAcademicWarningDetail = (warningId) =>
+  realRequest(`/mobile/teacher/academic/warning/${encodeURIComponent(warningId)}/detail`)
+export const teacherAcademicWarningIntervention = (warningId, body) =>
+  realRequest(`/mobile/teacher/academic/warning/${encodeURIComponent(warningId)}/interventions`, { method: 'POST', data: body })
 
 export const employmentMy = () => realRequest('/mobile/employment/my')
 
@@ -1340,7 +1345,7 @@ export const acadTeacherScheduleMy = () => realRequest('/mobile/academic/teacher
 
 /** 学分修读 / 学业预警 / 补考重修 / 网上选课（真实接口，无 mock 兜底，业务错误透出） */
 export const acadCreditsMy = () => realRequest('/mobile/academic/credits/my')
-export const acadWarningMy = () => realRequest('/mobile/academic/warning/my')
+export const acadWarningMy = (params = {}) => realRequest('/mobile/academic/warning/my', { data: params })
 export const acadMakeupMy = () => realRequest('/mobile/academic/makeup/my')
 export const acadMakeupOptions = () => realRequest('/mobile/academic/makeup/options')
 export const acadRetakeApply = (payload, termCode, reason) => {
@@ -1374,14 +1379,16 @@ export const teacherAcademicScheduleChangeReview = (changeId, action, comment) =
     { method: 'POST', data: { action, comment } })
 export const teacherAcademicStatusChangePending = () =>
   realRequest('/mobile/teacher/academic/status-changes/pending')
-export const teacherAcademicStatusChangeReview = (changeId, action, reason) =>
+export const teacherAcademicStatusChangeReview = (changeId, action, reason, expectedDecisionVersion) =>
   realRequest(`/mobile/teacher/academic/status-changes/${changeId}/review`,
-    { method: 'POST', data: { action, reason } })
+    { method: 'POST', data: { action, reason, ...(expectedDecisionVersion != null ? { expectedDecisionVersion } : {}) } })
 
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
 export const acadSelectionPreflight = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/preflight', { method: 'POST', data: { selectionCourseId } })
+export const acadSelectionDropPreflight = (selectionCourseId) =>
+  realRequest('/mobile/academic/selection/drop-preflight', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionEnroll = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/enroll', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionDrop = (selectionCourseId) =>
@@ -1389,6 +1396,8 @@ export const acadSelectionDrop = (selectionCourseId) =>
 export const acadSelectionMy = (batchId) =>
   realRequest('/mobile/academic/selection/my' + (batchId ? `?batch_id=${batchId}` : ''))
 /** 成绩认定/课程替代（学生自助，对标正方 3.16/3.27） */
+export const acadRecognitionCourses = (params = {}) =>
+  realRequest('/academic-affairs/grade-recognitions/student/course-options', { data: params })
 export const acadRecognitionMy = () => realRequest('/mobile/academic/recognition/my')
 export const acadRecognitionSubmit = (body) =>
   realRequest('/mobile/academic/recognition/submit', { method: 'POST', data: body })

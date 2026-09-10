@@ -1,8 +1,9 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="学籍与异动" back />
-    <MobileGlobalState :state="state" @retry="load">
+    <AcademicPageNav variant="default" title="学籍与异动" show-back />
+    <AcademicPageState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
+        <view v-if="applicationNotice" class="card"><text>{{ applicationNotice }}</text><button v-if="pendingApplication" class="btn" @click="load">核对本人记录</button></view>
         <view class="stx__cur" :class="data.enrolled ? 'is-ok' : 'is-warn'">
           <text class="stx__cur-t">当前学籍</text>
           <text class="stx__cur-v">{{ statusText(data.studentStatus) }}</text>
@@ -10,7 +11,7 @@
 
         <view class="stx__sec-t">异动记录</view>
         <view class="stx__empty" v-if="!(data.changes || []).length"><text>暂无异动记录</text></view>
-        <view v-for="c in data.changes" :key="c.changeId" class="stx__ch">
+        <view v-for="c in data.changes.slice(0, listLimit)" :key="c.changeId" class="stx__ch">
           <view class="stx__ch-head">
             <text class="stx__ch-t">{{ ctText(c.changeType) }}</text>
             <view class="stx__ch-state">
@@ -19,8 +20,9 @@
             </view>
           </view>
           <view v-if="c.status === 'RETURNED'" class="stx__resubmit">
+            <text v-if="c.reviewNote" class="stx__review-note">退回意见：{{ c.reviewNote }}</text>
             <text class="stx__resubmit-hint">申请已被退回。修改事由后重交，系统会继续使用原申请编号，不会新建第二张异动单。</text>
-            <textarea
+            <textarea :disabled="submitting || !!pendingApplication"
               class="stx__reason stx__reason--resubmit"
               v-model="resubmitReasons[c.changeId]"
               placeholder="修改后的申请事由（不少于5字）"
@@ -28,18 +30,22 @@
             />
             <button
               class="stx__btn stx__btn--resubmit"
-              :disabled="submitting || !canResubmit(c)"
+              :disabled="submitting || !!pendingApplication || !canResubmit(c)"
               @click="resubmit(c)"
             >修改并重交原申请</button>
           </view>
         </view>
 
-        <view class="stx__sec-t">发起异动申请</view>
-        <view class="stx__form">
+        <button v-if="data.changes.length > listLimit" class="btn" @click="listLimit += 20">查看更多异动记录</button>
+        <button class="stx__btn" @click="showForm = !showForm">{{ showForm ? '收起申请表' : '发起学籍异动' }}</button>
+        <text class="stx__resubmit-hint">申请须经学校审批并到生效时间后，才会改变当前学籍。</text>
+        <view v-if="showForm" class="stx__form">
           <view class="stx__chips">
             <view v-for="t in TYPES" :key="t.v" class="stx__chip" :class="{ 'is-on': form.changeType === t.v }"
               @click="onType(t.v)">{{ t.l }}</view>
           </view>
+          <button v-if="optionsFailed" class="btn" @click="loadTransferOptions">目标专业与班级读取失败，点击重试</button>
+          <text v-if="optionsLoading" class="stx__pick-l">正在读取可选专业与班级…</text>
 
           <view v-if="form.changeType === 'TRANSFER_MAJOR'" class="stx__pick">
             <text class="stx__pick-l">目标专业（必选）</text>
@@ -59,18 +65,23 @@
             </picker>
           </view>
 
-          <textarea class="stx__reason" v-model="form.reason" placeholder="申请原因（不少于5字）" maxlength="200" />
-          <button class="stx__btn" :disabled="submitting || !canSubmit" @click="submit">提交申请</button>
-          <button class="stx__btn stx__btn--ghost" :disabled="submitting || !canSubmit" @click="submitAndPrint" style="margin-top:8px">提交并打印申请表</button>
+          <textarea :disabled="submitting || !!pendingApplication" class="stx__reason" v-model="form.reason" placeholder="申请原因（不少于5字）" maxlength="200" />
+          <button class="stx__btn" :disabled="submitting || !!pendingApplication || !canSubmit" @click="submit">提交申请</button>
         </view>
       </view>
-    </MobileGlobalState>
+    </AcademicPageState>
+    <MobileTabBar side="student" active="" />
   </view>
 </template>
 
 <script>
+import AcademicPageNav from './AcademicPageNav.vue'
+import AcademicPageState from './AcademicPageState.vue'
 import { studentApi } from '@/services/studentApi'
-import { safeToast, toastError, createSubmitLock, realRequest } from '@/services/request'
+import { realRequest } from '@/services/request'
+import { academicApplicationPage } from './application-page'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { savePending } from './pending-ledger'
 
 const ST = {
   REGISTERED: '在籍注册', NORMAL: '在籍', SUSPENDED: '休学中', PRESERVED: '保留学籍',
@@ -84,13 +95,17 @@ const SL = {
   SUBMITTED: '已提交', IN_REVIEW: '审批中', APPROVED_PENDING_EFFECTIVE: '已通过·待生效',
   EFFECTIVE: '已生效', REJECTED: '已驳回', RETURNED: '已退回'
 }
+const isForbidden = error => Number(error?.httpStatus || error?.statusCode) === 403 || /^403/.test(String(error?.code || '')) || error?.code === 'NO_PERMISSION'
 
 export default {
+  components: { AcademicPageNav, AcademicPageState },
+mixins: [academicApplicationPage],
+  created() { this.applicationScope = 'status' },
   data() {
     return {
-      data: null, state: 'loading', submitting: false, _lock: createSubmitLock(),
+      data: null, state: 'loading', submitting: false, showForm: false, academicDraftFields: ['form', 'resubmitReasons', 'showForm'],
       form: { changeType: '', reason: '', toMajorId: '', toClassId: '' },
-      resubmitReasons: {},
+      resubmitReasons: {}, optionsLoaded: false, optionsLoading: false, optionsFailed: false,
       transferOptions: { majors: [], classes: [], majorClasses: {} },
       majorIndex: 0, targetClassIndex: 0, sameClassIndex: 0,
       TYPES: [
@@ -124,20 +139,31 @@ export default {
   },
   onLoad() { this.load() },
   methods: {
-    statusText(s) { return ST[s] || s },
-    ctText(c) { return CT[c] || c },
-    statusLabel(s) { return SL[s] || s },
+    restorePendingDraft(pending) { if (pending.kind === 'resubmit') this.resubmitReasons[pending.existingId] = pending.body.reason; else { this.form = { ...this.form, ...pending.body }; this.showForm = true } },
+    clearForbiddenStatus() {
+      const hadPending = this.protectPendingReference()
+      this.data = null; this.showForm = false; this.resubmitReasons = {}; this.optionsLoaded = false; this.optionsLoading = false; this.optionsFailed = false
+      this.transferOptions = { majors: [], classes: [], majorClasses: {} }; this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }
+      this.majorIndex = 0; this.targetClassIndex = 0; this.sameClassIndex = 0; this.submitting = false
+      this.applicationNotice = hadPending ? '当前无权核对学籍异动记录；本次办理仍待核实。' : ''
+      savePending('draft:' + this.applicationScope, null)
+    },
+    statusText(s) { return ST[s] || '待学校核对' },
+    ctText(c) { return CT[c] || '学籍异动' },
+    statusLabel(s) { return SL[s] || '请查看办理进度' },
     dateTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
     canResubmit(c) {
       return c && c.status === 'RETURNED' && String(this.resubmitReasons[c.changeId] || '').trim().length >= 5
     },
     onType(v) {
+      if (this.submitting || this.pendingApplication) return
       this.form.changeType = v
       this.form.toMajorId = ''
       this.form.toClassId = ''
       this.majorIndex = 0
       this.targetClassIndex = 0
       this.sameClassIndex = 0
+      if (['TRANSFER_MAJOR', 'TRANSFER_CLASS'].includes(v) && !this.optionsLoaded) this.loadTransferOptions()
     },
     onMajorPick(e) {
       this.majorIndex = Number(e.detail.value)
@@ -158,102 +184,69 @@ export default {
       this.form.toClassId = c ? c.classId : ''
     },
     load() {
-      this.state = 'loading'
-      Promise.all([
-        studentApi.getMyAcadStatus(),
-        studentApi.getTransferOptions().catch(() => ({ majors: [], classes: [], majorClasses: {} }))
-      ]).then(([d, opt]) => {
+      return this.readAcademic(async () => {
+        const identity = currentSessionGeneration(); const epoch = this.readEpoch
+        try { return await studentApi.getMyAcadStatus() }
+        catch (error) { if (isForbidden(error) && epoch === this.readEpoch && identity === currentSessionGeneration() && !this.readHidden) this.clearForbiddenStatus(); throw error }
+      }, (d) => {
+        if (!Array.isArray(d.changes)) throw new Error('学籍信息无法核对')
         this.data = d
-        this.transferOptions = opt || { majors: [], classes: [], majorClasses: {} }
+        if (['TRANSFER_MAJOR', 'TRANSFER_CLASS'].includes(this.form.changeType) && !this.optionsLoaded) this.loadTransferOptions()
         for (const c of (d && d.changes) || []) {
           if (c.status === 'RETURNED' && this.resubmitReasons[c.changeId] === undefined) {
             this.resubmitReasons[c.changeId] = c.reason || ''
           }
         }
-        this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+        this.acceptApplication(d.changes, 'changeId', (row, body, kind) => kind === 'resubmit'
+          ? row.status !== 'RETURNED' && row.reason === body.reason && Number(row.version) > Number(body.expectedVersion)
+          : row.changeType === body.changeType && row.reason === body.reason)
+      })
+    },
+    resetAcademicContext() {
+      this.clearApplicationContext(); this.resubmitReasons = {}; this.finishApplication('new')
+      this.optionsLoaded = false; this.optionsLoading = false; this.optionsFailed = false
+      this.transferOptions = { majors: [], classes: [], majorClasses: {} }
+    },
+    finishApplication(kind) {
+      if (kind === 'resubmit') return
+      this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }; this.showForm = false
+    },
+    async loadTransferOptions() {
+      if (this.optionsLoading) return
+      const identity = currentSessionGeneration(); const epoch = this.readEpoch
+      const current = () => identity === currentSessionGeneration() && epoch === this.readEpoch && !this.readHidden
+      this.optionsLoading = true; this.optionsFailed = false
+      try {
+        const options = await studentApi.getTransferOptions()
+        if (!current()) return
+        if (!options || !Array.isArray(options.majors) || !Array.isArray(options.classes)) throw new Error('无法核对目标信息')
+        this.transferOptions = options; this.optionsLoaded = true
+        this.majorIndex = Math.max(0, this.majors.findIndex(row => String(row.majorId) === String(this.form.toMajorId)))
+        this.targetClassIndex = this.targetClasses.findIndex(row => String(row.classId) === String(this.form.toClassId)) + 1
+        this.sameClassIndex = Math.max(0, this.sameMajorClasses.findIndex(row => String(row.classId) === String(this.form.toClassId)))
+      } catch (_) { if (current()) this.optionsFailed = true }
+      finally { if (identity === currentSessionGeneration()) this.optionsLoading = false }
     },
     resubmit(c) {
-      if (!this.canResubmit(c) || this.submitting) return safeToast('请填写不少于5字的修改事由')
-      const reason = String(this.resubmitReasons[c.changeId] || '').trim()
-      this.submitting = true
-      this._lock.run(() => realRequest(
-        `/mobile/academic/status-changes/${encodeURIComponent(c.changeId)}/resubmit`,
-        { method: 'POST', data: { reason, expectedVersion: c.version } }
-      )).then((res) => {
-        if (res && res.changeId && String(res.changeId) !== String(c.changeId)) {
-          throw new Error('重交后申请编号发生变化，请联系教务管理员')
-        }
-        safeToast('已修改并重交原申请', 'success')
-        delete this.resubmitReasons[c.changeId]
-        this.load()
-      }).catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
-        .finally(() => { this.submitting = false })
+      if (!this.canResubmit(c) || this.submitting || this.pendingApplication) return
+      const body = { reason: String(this.resubmitReasons[c.changeId] || '').trim(), expectedVersion: c.version }
+      return this.sendApplication({ title: '修改并重交原申请', kind: 'resubmit', existingId: c.changeId, body,
+        recovery: { field: 'status', excludes: ['RETURNED', 'REJECTED', 'CANCELLED'] }, send: frozen => realRequest(`/mobile/academic/status-changes/${encodeURIComponent(c.changeId)}/resubmit`, { method: 'POST', data: frozen }), rows: this.data.changes, idKey: 'changeId' })
     },
     submit() {
-      if (!this.canSubmit) return safeToast('请完整填写申请信息')
-      const body = {
-        changeType: this.form.changeType,
-        reason: this.form.reason.trim(),
+      if (!this.canSubmit || this.submitting || this.pendingApplication) return
+      const body = { changeType: this.form.changeType, reason: this.form.reason.trim(),
         toMajorId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toMajorId || undefined) : undefined,
-        toClassId: (this.form.changeType === 'TRANSFER_MAJOR' || this.form.changeType === 'TRANSFER_CLASS')
-          ? (this.form.toClassId || undefined) : undefined
-      }
-      this.submitting = true
-      this._lock.run(() => studentApi.submitStatusChange(body))
-        .then(() => {
-          safeToast('已提交', 'success')
-          this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }
-          this.load()
-        })
-        .catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
-        .finally(() => { this.submitting = false })
-    },
-    submitAndPrint() {
-      if (!this.canSubmit) return safeToast('请完整填写申请信息')
-      const body = {
-        changeType: this.form.changeType,
-        reason: this.form.reason.trim(),
-        toMajorId: this.form.changeType === 'TRANSFER_MAJOR' ? (this.form.toMajorId || undefined) : undefined,
-        toClassId: (this.form.changeType === 'TRANSFER_MAJOR' || this.form.changeType === 'TRANSFER_CLASS')
-          ? (this.form.toClassId || undefined) : undefined
-      }
-      this.submitting = true
-      this._lock.run(() => studentApi.submitStatusChange(body)
-        .then(() => studentApi.printStatusChange(body)))
-        .then((res) => {
-          const doc = (res && res.document) || {}
-          const hist = (doc.history || []).map((h) =>
-            `${this.ctText(h.changeType)} ${this.statusLabel(h.status)}`
-          ).join('\n')
-          const text = [
-            '学籍异动申请表摘要',
-            `姓名：${doc.realName || '—'}`,
-            `学号：${doc.studentNo || '—'}`,
-            `当前学籍：${this.statusText(doc.studentStatus || (this.data && this.data.studentStatus))}`,
-            `申请类型：${this.ctText(doc.changeType || body.changeType)}`,
-            `申请原因：${doc.reason || body.reason || ''}`,
-            `留痕：${(res && res.loggedAt) || ''}`,
-            '',
-            '近期异动：',
-            hist || '无'
-          ].join('\n')
-          uni.setClipboardData({
-            data: text,
-            success: () => safeToast('已提交并复制申请摘要', 'success'),
-            fail: () => safeToast('已提交并留痕打印', 'success')
-          })
-          this.form = { changeType: '', reason: '', toMajorId: '', toClassId: '' }
-          this.load()
-        })
-        .catch((e) => { if (e && e.code === 'LOCKED') return; toastError(e) })
-        .finally(() => { this.submitting = false })
+        toClassId: ['TRANSFER_MAJOR', 'TRANSFER_CLASS'].includes(this.form.changeType) ? (this.form.toClassId || undefined) : undefined }
+      return this.sendApplication({ title: '提交学籍异动申请', kind: 'new', body, send: frozen => studentApi.submitStatusChange(frozen), rows: this.data.changes, idKey: 'changeId' })
     }
   }
 }
 </script>
 
 <style scoped>
+.page-wrap { font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+button, input, textarea { font-family: inherit; }
 .stx__cur { border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); color: #fff; }
 .stx__cur.is-ok { background: var(--brand-primary); }
 .stx__cur.is-warn { background: #d97706; }
@@ -267,6 +260,7 @@ export default {
 .stx__ch-s.is-ok { color: #16a34a; }
 .stx__ch-plan { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .stx__resubmit { border-top: 1px solid var(--border-base); padding-top: 10px; }
+.stx__review-note { display: block; margin-bottom: 8px; padding: 8px 10px; border-radius: var(--radius-md); background: #fff7ed; color: #9a3412; font-size: var(--font-size-sm); line-height: 1.6; }
 .stx__resubmit-hint { display: block; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; margin-bottom: 8px; }
 .stx__reason--resubmit { min-height: 72px; }
 .stx__btn--resubmit { margin-top: 8px; }

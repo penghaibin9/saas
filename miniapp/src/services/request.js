@@ -190,7 +190,13 @@ function _refreshOnce(expectedGeneration = currentSessionGeneration()) {
   if (currentSessionGeneration() !== expectedGeneration) return Promise.reject(sessionChangedError())
   const snapshot = captureSessionSnapshot(getToken(), getRefreshToken())
   if (!snapshot.refreshToken) {
-    return Promise.reject({ code: 401001, biz: true, message: '未登录' })
+    // A restored H5 tab can retain its page route while its per-tab browser
+    // session (or refresh cookie) no longer exists. Do not leave that tab on a
+    // generic “加载失败” view: clear the stale identity and return to the app
+    // login surface just as a failed refresh would.
+    const error = { code: 401001, biz: true, message: '登录已失效，请重新登录' }
+    requireAuthOrRedirect(error.message)
+    return Promise.reject(error)
   }
   const pending = guardSessionPromise(
     realRequest('/auth/refresh', {

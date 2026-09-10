@@ -82,6 +82,8 @@ const STATUS_MAP = {
   COLLEGE_REVIEW: { label: '学院审核中', type: 'warning' },
   ACADEMIC_REVIEW: { label: '教务终审中', type: 'processing' },
   CHANGE_REVIEW: { label: '更正审核中', type: 'warning' },
+  UPHELD: { label: '维持原成绩', type: 'success' },
+  ADJUSTED: { label: '成绩已调整', type: 'success' },
 
   // 教材征订 / 发放 / 费用
   ORDERED: { label: '已征订', type: 'processing' },

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -55,30 +55,34 @@ function stripMockPayloadInProduction() {
   }
 }
 
-// uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
-  const previewPort = env.VITE_DEV_PORT || process.env.VITE_DEV_PORT
+/**
+ * 小程序 H5 的 uni.showModal/showActionSheet 默认由运行时控件渲染，
+ * 在部分浏览器与嵌入式预览器中会退化为浏览器级弹层。统一转到当前
+ * 应用文档内的对话服务；非 H5 运行时因全局钩子不存在，仍调用原 uni API。
+ */
+function keepDialogsInsideH5App() {
   return {
-    plugins: [stripMockPayloadInProduction(), uni(), {
-      name: 'local-preview-port',
-      apply: 'serve',
-      enforce: 'post',
-      config() {
-        if (!previewPort) return
-        const port = Number(previewPort)
-        if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('VITE_DEV_PORT must be an integer from 1024 to 65535')
-        // uni-app supplies manifest.h5.devServer.port after CLI options; local workspaces need an explicit override.
-        return { server: { port, strictPort: true } }
-      }
-    }],
-    server: {
-      proxy: {
-        '/api': {
-          target: apiTarget,
-          changeOrigin: true
-        }
+    name: 'miniapp-h5-in-app-dialog-surface',
+    enforce: 'pre',
+    transform(code, id) {
+      const file = id.split('?')[0].replace(/\\/g, '/')
+      if (!file.includes('/src/') || !/\.(?:[cm]?js|vue)$/.test(file)) return null
+      const transformed = code
+        .replace(/\buni\.showModal\s*\(/g, '(globalThis.__schoolInAppModal || uni.showModal)(')
+        .replace(/\buni\.showActionSheet\s*\(/g, '(globalThis.__schoolInAppActionSheet || uni.showActionSheet)(')
+      return transformed === code ? null : { code: transformed, map: null }
+    }
+  }
+}
+
+// uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
+export default defineConfig({
+  plugins: [keepDialogsInsideH5App(), stripMockPayloadInProduction(), uni()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true
       }
     }
   }
