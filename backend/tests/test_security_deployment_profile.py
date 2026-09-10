@@ -111,8 +111,11 @@ def test_generator_separates_all_secrets_and_refuses_rotation(tmp_path):
     with pytest.raises(FileExistsError):
         generator.prepare(folder, 'school.example.test', new_empty_install=True)
     assert (folder / 'runtime.env').read_bytes() == before
-    assert folder.stat().st_mode & 0o777 == 0o700
-    assert all((folder / name).stat().st_mode & 0o777 == 0o600 for name in ('compose.env', 'runtime.env', 'nginx.conf'))
+    # Windows ACLs do not expose Unix mode bits; the generator still enforces
+    # 0700/0600 on the Linux host where this deployment profile is supported.
+    if os.name != "nt":
+        assert folder.stat().st_mode & 0o777 == 0o700
+        assert all((folder / name).stat().st_mode & 0o777 == 0o600 for name in ('compose.env', 'runtime.env', 'nginx.conf'))
 
 
 def test_new_install_must_be_explicit(tmp_path):
@@ -237,13 +240,17 @@ def test_shadowing_environment_refuses_approval(tmp_path, monkeypatch):
 def test_static_artifacts_and_permissions_are_not_optional(tmp_path):
     folder = ready_files(tmp_path)
     (tmp_path / 'student-portal/dist/index.html').unlink()
-    (folder / 'runtime.env').chmod(0o644)
+    if os.name != "nt":
+        (folder / 'runtime.env').chmod(0o644)
     errors = check.local_errors(tmp_path)
     assert 'STATIC_ARTIFACT_MISSING:portal' in errors
-    assert 'PRIVATE_FILE_MODE_REQUIRED:runtime.env' in errors
+    if os.name != "nt":
+        assert 'PRIVATE_FILE_MODE_REQUIRED:runtime.env' in errors
 
 
 def test_symlink_config_is_not_followed(tmp_path):
+    if os.name == "nt":
+        pytest.skip("Windows symlink creation requires an optional developer privilege")
     folder = ready_files(tmp_path)
     (folder / 'runtime.env').rename(folder / 'old.env')
     (folder / 'runtime.env').symlink_to(folder / 'old.env')
@@ -252,8 +259,8 @@ def test_symlink_config_is_not_followed(tmp_path):
 
 def test_sql_init_is_syntax_valid_and_schema_scoped():
     path = ROOT / 'deploy/docker/mysql-security-init/01-accounts.sh'
-    subprocess.run(['bash', '-n', str(path)], check=True, capture_output=True)
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
+    subprocess.run(['bash', '-n'], input=source.encode("utf-8"), check=True, capture_output=True)
     assert 'GRANT SELECT, INSERT, UPDATE, DELETE' in source
     assert 'GRANT ALL PRIVILEGES ON *.*' not in source
     assert 'set -x' not in source
@@ -282,18 +289,18 @@ def test_container_acceptance_uses_same_reviewed_ubi_bases_as_image_gate():
 
 
 def test_image_probe_refuses_root(monkeypatch, tmp_path):
-    monkeypatch.setattr(probe.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(probe.os, 'geteuid', lambda: 0, raising=False)
     with pytest.raises(RuntimeError, match='NONROOT_UID_REQUIRED'):
         probe.image_contract(tmp_path)
 
 
 def test_storage_preparation_never_recursively_changes_existing_data(tmp_path, monkeypatch):
-    monkeypatch.setattr(probe.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(probe.os, 'geteuid', lambda: 0, raising=False)
     for relative in probe.WRITABLE:
         (tmp_path / relative).mkdir(parents=True)
     data = tmp_path / probe.WRITABLE[0] / 'existing.txt'
     data.write_text('business-data')
-    monkeypatch.setattr(probe.os, 'chown', lambda *a, **k: pytest.fail('must not alter existing data'))
+    monkeypatch.setattr(probe.os, 'chown', lambda *a, **k: pytest.fail('must not alter existing data'), raising=False)
     with pytest.raises(RuntimeError, match='NONEMPTY_VOLUME'):
         probe.prepare_storage(tmp_path)
     assert data.read_text() == 'business-data'
