@@ -314,3 +314,126 @@ def test_import_receipt_and_business_commit_once_in_mysql(phone_identity, monkey
         assert 'teacherCredentials' not in str(result)
     finally:
         set_tenant(previous)
+
+
+@pytest.mark.parametrize(('kind', 'route_kind', 'account'), [
+    ('TEACHER', 'teachers', 'T0000001'),
+    ('STUDENT', 'students', '000012345678901234'),
+])
+def test_real_clamav_fileobject_worker_staging_and_identity_writer_chain(
+        phone_identity, monkeypatch, tmp_path, kind, route_kind, account):
+    """Opt-in local acceptance: real ClamAV plus isolated MySQL, no direct status edits."""
+    import asyncio
+    import io as stdlib_io
+    import os
+    from datetime import datetime, timedelta
+
+    if os.getenv('PHONE_REAL_CLAMAV') != '1':
+        pytest.skip('set PHONE_REAL_CLAMAV=1 only when the reviewed local ClamAV is healthy')
+
+    from app.core.config import settings
+    from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import (PhoneLoginBinding, PhoneLoginCandidate, PlatformConfig,
+                            StudentAccountLink, StudentProfile, User)
+    from app.models.file import FileJob, FileObject
+    from app.models.data_exchange import ImportJob
+    from app.modules.system_admin.routers.data_exchange_router import run_identity_import_upload
+    from app.modules.system_admin.services import identity_import_control_plane_service as control
+    from app.services import data_exchange_confirm_service as confirm, storage
+    from app.services.clamav_client import ClamAVClient
+    from app.services.file_scan_config import get_file_scan_config
+    from app.services.file_scan_service import process_next_scan_job
+    from app.services.storage.finalize import finalize_scan_storage
+    from app.workers.identity_import_worker import process_next_identity_import
+
+    class Upload:
+        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+        def __init__(self, body):
+            self.filename = f'真实扫描{kind}手机号导入.xlsx'
+            self.stream = stdlib_io.BytesIO(body)
+
+        async def read(self, size=-1):
+            return self.stream.read(size)
+
+    tid, uid = phone_identity['tenant_id'], phone_identity['user_id']
+    actor = {'userId': f'db-{uid}', 'tenantId': str(tid), 'realName': '手机号导入经办人',
+        'userType': 'ADMIN', 'currentRoleCode': 'SCHOOL_ADMIN', 'permissions': ['*']}
+    previous = get_tenant(), get_current_user_ctx()
+    monkeypatch.setattr(settings, 'UPLOAD_DIR', str(tmp_path))
+    monkeypatch.setattr(settings, 'FILE_STORAGE_BACKEND', 'local')
+    storage.reset_backend()
+    set_tenant({'tenantId': str(tid), 'tenantCode': phone_identity['tenant']})
+    set_current_user(actor)
+    with get_sessionmaker()() as db:
+        db.add(PlatformConfig(tenant_id=tid, config_type='TENANT_META', config_key='-',
+            config_json={'status': 'trial', 'packageCode': 'trial', 'environment': 'test',
+                'trialEndAt': (datetime.now() + timedelta(days=1)).isoformat(timespec='seconds')},
+            enabled=True, status='ACTIVE'))
+        db.commit()
+
+    try:
+        if kind == 'STUDENT':
+            from app.services.school_onboarding_service import run_onboarding
+            run_onboarding(actor, {'tenantId': str(tid), 'colleges': [{'name': '测试学院'}],
+                'majors': [{'name': '测试专业', 'collegeName': '测试学院'}],
+                'classes': [{'name': '测试班', 'majorName': '测试专业', 'grade': '2026'}]}, dry_run=False)
+        response = asyncio.run(run_identity_import_upload(kind=route_kind,
+            file=Upload(workbook_bytes(kind, '13700137000')), user=actor,
+            idempotency_key=f'phone-real-clamav-{route_kind}-0001'))
+        created = response['data']
+        assert created['status'] == 'SCANNING'
+        job_id, file_id = created['id'], created['sourceFileId']
+        # The dedicated database can retain prior synthetic jobs. Make only this
+        # fixture oldest so the real SKIP LOCKED workers deterministically claim it;
+        # do not edit its status or scan conclusion.
+        with get_sessionmaker()() as db:
+            scan_job = db.scalar(select(FileJob).where(FileJob.file_id == int(file_id)))
+            scan_job.available_at = datetime(2000, 1, 1)
+            import_job = db.get(ImportJob, int(job_id))
+            import_job.created_at = datetime(2000, 1, 1)
+            db.commit()
+
+        scan = None
+        for _ in range(20):
+            candidate = finalize_scan_storage(process_next_scan_job(
+                'phone-real-clamav', client=ClamAVClient(get_file_scan_config())))
+            if candidate.get('fileId') == file_id:
+                scan = candidate
+                break
+        assert scan and scan['scanStatus'] == 'CLEAN' and scan['readyForBusiness'] is True
+
+        staged = None
+        for _ in range(20):
+            candidate = process_next_identity_import('phone-real-identity-import')
+            if candidate.get('jobId') == job_id:
+                staged = candidate
+                break
+        assert staged and staged['status'] == 'VALIDATED' and staged['validRows'] == 1
+        detail = control.read_identity_import_job(job_id, user=actor)
+        result = confirm.confirm_identity_import_job(job_id, expected_version=detail['version'],
+            user=actor, idempotency_key=f'phone-real-confirm-{route_kind}-0001')
+        assert result['status'] == 'SUCCEEDED' and result['credentialReceiptFileId']
+
+        with get_sessionmaker()() as db:
+            source = db.get(FileObject, int(file_id))
+            job = db.get(ImportJob, int(job_id))
+            user = db.scalar(select(User).where(User.tenant_id == tid, User.login_name == account))
+            candidate = db.scalar(select(PhoneLoginCandidate).where(
+                PhoneLoginCandidate.tenant_id == tid, PhoneLoginCandidate.user_id == user.id))
+            assert source.scan_status == 'CLEAN' and source.status == 'AVAILABLE'
+            assert job.status == 'SUCCEEDED' and candidate.state == 'PENDING'
+            assert db.scalar(select(PhoneLoginBinding.id).where(
+                PhoneLoginBinding.tenant_id == tid, PhoneLoginBinding.user_id == user.id)) is None
+            receipt = db.get(FileObject, int(result['credentialReceiptFileId']))
+            assert receipt.visibility == 'PRIVATE' and receipt.security_level == 'HIGHLY_SENSITIVE'
+            if kind == 'STUDENT':
+                link = db.scalar(select(StudentAccountLink).where(
+                    StudentAccountLink.tenant_id == tid, StudentAccountLink.user_id == user.id))
+                profile = db.get(StudentProfile, link.student_id)
+                assert profile.student_no == account and str(profile.id) == str(link.student_id)
+    finally:
+        storage.reset_backend()
+        set_current_user(previous[1])
+        set_tenant(previous[0])
