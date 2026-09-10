@@ -27,6 +27,7 @@ from app.api.v1.affairs_operations_api import router as affairs_operations_route
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.api.v1.auth_browser import router as auth_browser_router
+from app.api.v1.phone_login import router as phone_login_router
 from app.api.v1.control_plane_auth import router as control_plane_auth_router
 from app.api.v1.control_plane_offboarding import router as control_plane_offboarding_router
 from app.api.v1.customer_success_p1_closure import router as customer_success_p1_closure_router
@@ -156,6 +157,7 @@ for supplemental_router in (
     control_plane_auth_router,
     control_plane_offboarding_router,
     auth_browser_router,
+    phone_login_router,
     system_p1_closure_router,
     identity_p1_closure_router,
     # Mount the locked write router before the broader Platform P1 router. The

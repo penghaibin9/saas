@@ -66,8 +66,8 @@ def _install_validation_and_permission_hardening() -> None:
 
     old_effective = perms.get_effective_permission_patterns
     if not getattr(old_effective, "_gd_topic_submit_alias", False):
-        def effective_patterns(user):
-            patterns = set(old_effective(user))
+        def effective_patterns(user, *, strict=False):
+            patterns = set(old_effective(user, strict=True) if strict else old_effective(user))
             if perms._match("graduationDesign.topic.create", patterns):
                 patterns.add(submit_code)
             return sorted(patterns)

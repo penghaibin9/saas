@@ -26,7 +26,7 @@ from app.core.redis_client import _prefix, get_redis
 from app.core.security import hash_password, verify_password
 from app.db.session import db_enabled, get_sessionmaker
 
-_PHONE = re.compile(r"^1[3-9]\d{9}$")
+_PHONE = re.compile(r"^1[3-9][0-9]{9}$")
 _MEMORY: dict[str, tuple[float, str]] = {}
 _LIMITS: dict[str, tuple[float, int]] = {}
 _LOCK = threading.Lock()
@@ -66,7 +66,7 @@ def _key(kind: str, identifier: str) -> str:
     return f"auth:password-reset:{kind}:{identifier}"
 
 
-def _set(kind: str, identifier: str, payload: dict[str, Any], ttl: int) -> None:
+def _set(kind: str, identifier: str, payload: dict[str, Any], ttl: int, *, require_shared: bool = False) -> None:
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     client = get_redis()
     if client is not None:
@@ -74,12 +74,29 @@ def _set(kind: str, identifier: str, payload: dict[str, Any], ttl: int) -> None:
             client.set(_prefix(_key(kind, identifier)), raw, ex=max(1, ttl))
             return
         except Exception as exc:  # noqa: BLE001
-            if _strict():
+            if _strict() or require_shared:
                 raise _unavailable(exc)
-    if _strict():
+    if _strict() or require_shared:
         raise _unavailable()
     with _LOCK:
         _MEMORY[_key(kind, identifier)] = (time.time() + ttl, raw)
+
+
+def _read(kind: str, identifier: str, *, require_shared: bool = False) -> dict | None:
+    """Read a proof without consuming it; durable business receipts arbitrate final use."""
+    client = get_redis()
+    if client is not None:
+        try:
+            raw = client.get(_prefix(_key(kind, identifier)))
+            return json.loads(raw) if raw else None
+        except Exception as exc:
+            if _strict() or require_shared:
+                raise _unavailable(exc)
+    if _strict() or require_shared:
+        raise _unavailable()
+    with _LOCK:
+        item = _MEMORY.get(_key(kind, identifier))
+        return json.loads(item[1]) if item and item[0] > time.time() else None
 
 
 def _delete(kind: str, identifier: str) -> None:
@@ -147,19 +164,74 @@ def _allow(label: str, limit: int, window: int) -> bool:
         return count <= limit
 
 
-def _reset_user_type(client_type: str) -> str:
+def _reset_user_types(client_type: str) -> tuple[str, ...]:
     """按入口收紧可重置账号类型，避免教师端与学生端身份串用。"""
-    return "TEACHER" if client_type in {"TEACHER_PC", "TEACHER_MINI"} else "STUDENT"
+    if client_type in {"TEACHER_PC", "TEACHER_MINI"}:
+        return ('TEACHER', 'STAFF', 'ADMIN', 'SCHOOL_ADMIN')
+    return ('STUDENT',) if client_type in {'PC', 'STUDENT_PC', 'STUDENT_MINI'} else ()
+
+
+def _recovery_allowed(db, user, binding):
+    from app.models import SysConfig
+    from app.services import auth_service_db, control_plane_auth_service as auth
+    from app.core.permissions import get_effective_permission_patterns
+    if not binding or binding.is_deleted or binding.state != 'VERIFIED' or binding.recovery_frozen:
+        return False
+    policy = db.scalar(select(SysConfig.value_text).where(SysConfig.tenant_id == user.tenant_id,
+        SysConfig.config_key == 'SEC_PHONE_RECOVERY_ENABLED', SysConfig.is_deleted.is_(False)))
+    if policy != '1' or user.must_change_password:
+        return False
+    auth_service_db._ensure_tenant_login_allowed(db, user)
+    contexts = auth_service_db._role_contexts(db, user)
+    if not contexts or user.user_type in {'ADMIN', 'SCHOOL_ADMIN'}:
+        return False
+    for context in contexts:
+        code = context['roleCode']
+        if any(word in code for word in ('ADMIN', 'SECURITY', 'OPERATOR', 'PLATFORM')):
+            return False
+        from app.core.context import get_tenant, set_tenant
+        previous_tenant = get_tenant()
+        try:
+            set_tenant(user.tenant_id)
+            patterns = get_effective_permission_patterns({'userId': f'db-{user.id}', 'tenantId': user.tenant_id,
+                'loginName': user.login_name, 'userType': user.user_type, 'currentRoleCode': code,
+                'activeContextId': context['contextId']}, strict=True)
+        finally:
+            set_tenant(previous_tenant)
+        if any(p == '*' or p.startswith(('system.', 'systemAdmin.', 'platform.', 'security.'))
+               and not p.endswith(('.view', '.list')) for p in patterns):
+            return False
+    return not auth._remaining_lock(auth._subject_risk_key(None, user.login_name, user), tenant_id=user.tenant_id, plane=auth.TENANT)
+
+
+def _reset_invalid():
+    return AppException('RESET_TOKEN_INVALID', '重置凭证无效或已过期，请重新验证', http_status=400)
+
+
+def _snapshot_user(db, payload):
+    from app.models import User, PhoneLoginBinding
+    if payload.get('purpose') != 'RESET_PASSWORD' or payload.get('expiresAt', 0) <= time.time():
+        raise _reset_invalid()
+    user = db.scalar(select(User).where(User.id == payload['userId'], User.tenant_id == payload['tenantId'],
+        User.is_deleted.is_(False), User.status == 'ACTIVE').with_for_update())
+    binding = db.scalar(select(PhoneLoginBinding).where(PhoneLoginBinding.user_id == payload['userId'],
+        PhoneLoginBinding.tenant_id == payload['tenantId']).with_for_update())
+    if not user or user.user_type != payload['userType'] or not _recovery_allowed(db, user, binding):
+        raise _reset_invalid()
+    if (int(user.credential_version) != payload['credentialVersion'] or int(binding.version) != payload['bindingVersion']
+            or binding.active_phone_lookup != payload['phoneLookup']):
+        raise _reset_invalid()
+    return user
 
 
 def _find_reset_account(login_name: str, tenant_code: str | None, client_type: str):
-    from app.models import Tenant, User
+    from app.models import PhoneLoginBinding, Tenant, User
 
     db = get_sessionmaker()()
     try:
         query = select(User).where(
             User.login_name == login_name,
-            User.user_type == _reset_user_type(client_type),
+            User.user_type.in_(_reset_user_types(client_type)),
             User.status == "ACTIVE",
             User.is_deleted.is_(False),
         )
@@ -175,12 +247,20 @@ def _find_reset_account(login_name: str, tenant_code: str | None, client_type: s
         if len(users) != 1:
             return None
         user = users[0]
-        phone = decrypt_field(user.phone_encrypted)
-        if not phone or not _PHONE.fullmatch(str(phone)):
+        binding = db.scalars(select(PhoneLoginBinding).where(
+            PhoneLoginBinding.tenant_id == user.tenant_id, PhoneLoginBinding.user_id == user.id,
+            PhoneLoginBinding.state == "VERIFIED", PhoneLoginBinding.is_deleted.is_(False),
+        )).first()
+        if not _recovery_allowed(db, user, binding):
+            return None
+        phone = decrypt_field(binding.phone_ciphertext, allow_legacy_plaintext=False)
+        if not phone or not _PHONE.fullmatch(str(phone).removeprefix("+86")):
             return None
         return {
             "userId": int(user.id), "tenantId": int(user.tenant_id),
-            "userType": str(user.user_type), "phone": str(phone),
+            "userType": str(user.user_type), "phone": str(phone).removeprefix("+86"),
+            "credentialVersion": int(user.credential_version), "bindingVersion": int(binding.version),
+            "phoneLookup": binding.active_phone_lookup,
         }
     finally:
         db.close()
@@ -247,7 +327,10 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
         return public, None
 
     code = f"{secrets.randbelow(1_000_000):06d}"
-    _set("code", request_id, {
+    snapshot = {
+        'purpose': 'RESET_PASSWORD', 'operationId': request_id, 'expiresAt': int(time.time()) + code_ttl,
+        'credentialVersion': candidate['credentialVersion'], 'bindingVersion': candidate['bindingVersion'],
+        'phoneLookup': candidate['phoneLookup'],
         "codeHash": _digest("code", f"{request_id}\n{code}"),
         "userId": candidate["userId"],
         "tenantId": candidate["tenantId"],
@@ -255,13 +338,16 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
         "nonceHash": _digest("nonce", nonce),
         "clientType": client,
         "attempts": max(1, int(settings.PASSWORD_RESET_MAX_VERIFY_ATTEMPTS or 5)),
-    }, code_ttl)
+    }
+    _set("code", request_id, snapshot, code_ttl)
+    _set("reset-operation", request_id, snapshot, code_ttl)
     try:
         from app.models import PasswordResetSmsJob
         db = get_sessionmaker()()
         try:
             job = PasswordResetSmsJob(
                 tenant_id=candidate["tenantId"], request_id=request_id, user_id=candidate["userId"],
+                purpose='RESET_PASSWORD', challenge_ref=request_id,
                 phone_encrypted=encrypt_field(candidate["phone"]), code_encrypted=encrypt_field(code),
                 expires_at=_utc_now() + timedelta(seconds=code_ttl), status="PENDING", created_by=0,
             )
@@ -275,8 +361,6 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
         _delete("code", request_id)
         raise AppException("SMS_QUEUE_UNAVAILABLE", "短信发送队列暂时不可用，请稍后重试", http_status=503) from exc
     delivery = {"jobId": job_id}
-    if str(settings.APP_ENV or "").lower() == "test" and not _strict():
-        public["devCode"] = code
     _uniform_issue_delay(started_at, jitter_ms)
     return public, delivery
 
@@ -287,17 +371,21 @@ def dispatch_code(delivery: dict[str, Any]) -> None:
 
 
 def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-scheduler",
-                          job_id: int | None = None, tenant_id: int | None = None) -> int:
+                          job_id: int | None = None, tenant_id: int | None = None,
+                          purposes: tuple[str, ...] = ("RESET_PASSWORD",)) -> int:
     """租约领取并投递验证码，at-least-once；同一验证码重复送达仍可安全消费一次。"""
     from sqlalchemy import or_
     from app.models import PasswordResetSmsJob
     from app.services.notification.sms_service import notify_password_reset
+    if not purposes or set(purposes) - {"RESET_PASSWORD", "BIND_PHONE", "CHANGE_PHONE"}:
+        raise ValueError("Unsupported SMS purpose")
 
     now = _utc_now()
     claimed: list[int] = []
     db = get_sessionmaker()()
     try:
         expired_conditions = [
+            PasswordResetSmsJob.purpose.in_(purposes),
             PasswordResetSmsJob.is_deleted.is_(False),
             PasswordResetSmsJob.status.in_(("PENDING", "RETRY_WAIT", "PROCESSING")),
             PasswordResetSmsJob.expires_at <= now,
@@ -312,6 +400,7 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
             expired.locked_by = None; expired.lease_expires_at = None
             expired.version = int(expired.version or 0) + 1
         conditions = [
+            PasswordResetSmsJob.purpose.in_(purposes),
             PasswordResetSmsJob.is_deleted.is_(False),
             PasswordResetSmsJob.status.in_(("PENDING", "RETRY_WAIT", "PROCESSING")),
             PasswordResetSmsJob.expires_at > now,
@@ -354,7 +443,31 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
                 continue
             phone = decrypt_field(row.phone_encrypted, allow_legacy_plaintext=False)
             code = decrypt_field(row.code_encrypted, allow_legacy_plaintext=False)
-            result = notify_password_reset(row.tenant_id, phone, code)
+            if row.purpose == "RESET_PASSWORD":
+                snapshot = _read('reset-operation', row.request_id)
+                try:
+                    if not snapshot:
+                        raise _reset_invalid()
+                    _snapshot_user(db, snapshot)
+                except AppException as exc:
+                    if exc.http_status >= 500:
+                        raise
+                    row.status = 'EXPIRED'
+                    row.phone_encrypted = row.code_encrypted = None
+                    row.locked_by = row.lease_expires_at = None
+                    db.commit()
+                    continue
+                result = notify_password_reset(row.tenant_id, phone, code)
+            else:
+                from app.services.phone_binding_service import delivery_is_current
+                from app.services.notification.sms_service import notify_phone_verification
+                if not delivery_is_current(db, row):
+                    row.status = "EXPIRED"
+                    row.phone_encrypted = row.code_encrypted = None
+                    row.locked_by = row.lease_expires_at = None
+                    db.commit()
+                    continue
+                result = notify_phone_verification(row.tenant_id, phone, code, row.purpose)
             if result.get("status") == "SENT":
                 row.status = "SENT"
                 row.provider_request_id = str(result.get("requestId") or "")[:100] or None
@@ -387,7 +500,8 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
     return sent
 
 
-def _verify_code(request_id: str, code: str, nonce: str, client_type: str) -> dict[str, Any] | None:
+def _verify_code(request_id: str, code: str, nonce: str, client_type: str,
+                 *, purpose: str = "RESET_PASSWORD", require_shared: bool = False) -> dict[str, Any] | None:
     expected_code = _digest("code", f"{request_id}\n{code}")
     expected_nonce = _digest("nonce", nonce)
     client = get_redis()
@@ -396,6 +510,7 @@ def _verify_code(request_id: str, code: str, nonce: str, client_type: str) -> di
         script = """
 local raw=redis.call('GET',KEYS[1]); if not raw then return nil end
 local p=cjson.decode(raw)
+if (p.purpose or 'RESET_PASSWORD')~=ARGV[4] then return nil end
 if p.nonceHash~=ARGV[2] or p.clientType~=ARGV[3] then redis.call('DEL',KEYS[1]); return '-1' end
 if p.codeHash~=ARGV[1] then
   p.attempts=tonumber(p.attempts or 1)-1
@@ -405,14 +520,14 @@ end
 redis.call('DEL',KEYS[1]); return cjson.encode(p)
 """
         try:
-            raw = client.eval(script, 1, key, expected_code, expected_nonce, client_type)
+            raw = client.eval(script, 1, key, expected_code, expected_nonce, client_type, purpose)
             if not raw or raw in ("0", "-1", b"0", b"-1"):
                 return None
             return json.loads(raw)
         except Exception as exc:  # noqa: BLE001
-            if _strict():
+            if _strict() or require_shared:
                 raise _unavailable(exc)
-    if _strict():
+    if _strict() or require_shared:
         raise _unavailable()
     memory_key = _key("code", request_id)
     now = time.time()
@@ -422,6 +537,8 @@ redis.call('DEL',KEYS[1]); return cjson.encode(p)
             _MEMORY.pop(memory_key, None)
             return None
         payload = json.loads(item[1])
+        if payload.get("purpose", "RESET_PASSWORD") != purpose:
+            return None
         if (not hmac.compare_digest(str(payload.get("nonceHash") or ""), expected_nonce)
                 or not hmac.compare_digest(str(payload.get("clientType") or ""), client_type)):
             _MEMORY.pop(memory_key, None)
@@ -445,12 +562,13 @@ def verify_reset_code(request_id: str, code: str, client_nonce: str,
                            str(client_nonce or "").strip(), str(client_type or "PC").strip().upper())
     if payload is None:
         raise AppException("RESET_CODE_INVALID", "验证码无效或已过期，请重新获取", http_status=400)
+    with get_sessionmaker()() as db:
+        _snapshot_user(db, payload)
     token = secrets.token_urlsafe(32)
-    ttl = max(60, min(int(settings.PASSWORD_RESET_TOKEN_TTL_SECONDS or 300), 600))
-    _set("token", _digest("token", token), {
-        "userId": int(payload["userId"]), "tenantId": int(payload["tenantId"]),
-        "userType": str(payload["userType"]),
-    }, ttl)
+    ttl = min(int(payload['expiresAt']) - int(time.time()), int(settings.PASSWORD_RESET_TOKEN_TTL_SECONDS or 300))
+    if ttl <= 0:
+        raise _reset_invalid()
+    _set("token", _digest("token", token), payload, ttl)
     return {"verified": True, "resetToken": token, "expiresIn": ttl}
 
 
@@ -462,47 +580,52 @@ def confirm_reset(reset_token: str, new_password: str) -> dict[str, Any]:
     if len(new_password or "") < min_len:
         raise AppException("VALIDATION_ERROR", f"新密码长度至少 {min_len} 位")
     token_id = _digest("token", str(reset_token or ""))
-    payload = _consume("token", token_id)
+    payload = _read("token", token_id)
     if payload is None:
         raise AppException("RESET_TOKEN_INVALID", "重置凭证无效或已过期，请重新验证", http_status=400)
-    from sqlalchemy import delete
-    from app.models import AuthRefreshToken, User
-    from app.services.auth_service_db import force_subject_revalidation, invalidate_subject_cache
+    from app.models import IdempotencyRecord, User
+    from app.services.auth_service_db import credential_change_receipt
     from app.services.db_service import audit_insert_in_session
     db = get_sessionmaker()()
-    committed = False
     try:
-        user = db.scalars(select(User).where(
-            User.id == int(payload["userId"]), User.tenant_id == int(payload["tenantId"]),
-            User.user_type == str(payload["userType"]),
-            User.user_type.in_(("STUDENT", "TEACHER")),
-            User.status == "ACTIVE", User.is_deleted.is_(False),
-        ).with_for_update()).first()
-        if user is None:
-            raise AppException("RESET_TOKEN_INVALID", "重置凭证无效或已过期，请重新验证", http_status=400)
+        # Lock original subject first; the same unique durable record arbitrates all retries.
+        user = db.scalar(select(User).where(User.id == payload['userId'], User.tenant_id == payload['tenantId']).with_for_update())
+        if not user or payload.get('expiresAt', 0) <= time.time():
+            raise _reset_invalid()
+        fingerprint = _digest('reset-password-request', new_password)
+        receipt = db.scalar(select(IdempotencyRecord).where(IdempotencyRecord.tenant_id == user.tenant_id,
+            IdempotencyRecord.user_id == str(user.id), IdempotencyRecord.operation == 'PASSWORD_RESET',
+            IdempotencyRecord.key_hash == token_id).with_for_update())
+        if receipt:
+            if not hmac.compare_digest(receipt.fingerprint, fingerprint):
+                raise _reset_invalid()
+            return dict(receipt.result_json)
+        user = _snapshot_user(db, payload)
         if verify_password(new_password, user.password_hash):
             raise AppException("VALIDATION_ERROR", "新密码不能与当前密码相同")
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
-        db.execute(delete(AuthRefreshToken).where(AuthRefreshToken.user_id == f"db-{user.id}"))
-        # 标记先于数据库提交；即使缓存删除恰逢故障，旧 access 也必须转为查库校验版本。
-        force_subject_revalidation(f"db-{user.id}", user.tenant_id)
+        user.credential_version = int(getattr(user, "credential_version", 0) or 0) + 1
         audit_insert_in_session(
             db, "PASSWORD_RESET_SELF_SERVICE", "auth",
             {"channel": "SMS", "userType": str(user.user_type)},
             "SUCCESS", tenant_id=user.tenant_id, resource_id=str(user.id),
         )
+        result = {'success': True, 'reloginRequired': True, 'runtimeMaterialized': True,
+            'operationId': payload['operationId'], 'credentialVersion': user.credential_version,
+            'cacheInvalidated': False, 'cacheRecoveryRequired': True, 'notificationQueued': True}
+        db.add(IdempotencyRecord(tenant_id=user.tenant_id, user_id=str(user.id), operation='PASSWORD_RESET',
+            key_hash=token_id, fingerprint=fingerprint, state='SUCCEEDED', result_json=result,
+            expires_at=_utc_now() + timedelta(days=1)))
+        from app.services.message_event_outbox_service import emit_message_event
+        emit_message_event(db, event_code='AUTH.PASSWORD_RESET', source_module='systemAdmin', source_biz_type='USER',
+            source_biz_id=user.id, recipient_refs=[{'userId': user.id}], tenant_id=user.tenant_id,
+            content='您的登录密码已重置。如非本人操作，请立即联系学校核对。', dedup_key=payload['operationId'])
         db.commit()
-        committed = True
-        # Access token 每请求复核 permissionVersion；删除缓存后会立即读到已提升的 user.version。
-        invalidate_subject_cache(f"db-{user.id}", user.tenant_id)
-        return {"success": True, "reloginRequired": True}
+        return {**result, **credential_change_receipt(user, {'userId': f'db-{user.id}', 'tenantId': user.tenant_id})}
     except Exception:
         db.rollback()
-        if not committed:
-            # 数据库瞬时失败或新密码与旧密码相同，不让用户重新走一遍短信验证。
-            _set("token", token_id, payload, 60)
         raise
     finally:
         db.close()

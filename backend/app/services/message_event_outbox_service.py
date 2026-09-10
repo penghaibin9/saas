@@ -21,6 +21,14 @@ log = logging.getLogger("app.message_outbox")
 
 # 首批登记的事件模板（请假样板）
 _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
+    "AUTH.PASSWORD_RESET": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "IMPORTANT",
+        "message_type": "SYSTEM", "title": "账号登录密码已重置", "require_ack": False,
+    },
+    "AUTH.PHONE_CHANGED": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "IMPORTANT",
+        "message_type": "SYSTEM", "title": "账号登录号码已变更", "require_ack": False,
+    },
     "LEAVE.APPROVED": {
         "source_module": "student-affairs",
         "category": "BUSINESS",
@@ -401,9 +409,13 @@ def emit_message_event(    db,
     dedup_key: Optional[str] = None,
     content: Optional[str] = None,
     title: Optional[str] = None,
+    tenant_id: int | None = None,
 ) -> Any:
     """同事务写入 outbox。调用方负责 commit。重复 dedup_key 返回已有行。"""
     from app.models import MessageEventOutbox
+    effective_tenant = int(tenant_id) if tenant_id is not None else _tid()
+    if effective_tenant <= 0:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少学校上下文", http_status=403)
 
     code = str(event_code or "").strip().upper()
     if code not in _EVENT_TEMPLATES:
@@ -413,7 +425,7 @@ def emit_message_event(    db,
 
     key = dedup_key or f"{code}:{source_biz_type}:{int(source_biz_id)}"
     existed = db.scalar(select(MessageEventOutbox).where(
-        MessageEventOutbox.tenant_id == _tid(),
+        MessageEventOutbox.tenant_id == effective_tenant,
         MessageEventOutbox.dedup_key == key,
         MessageEventOutbox.is_deleted.is_(False),
     ))
@@ -430,7 +442,7 @@ def emit_message_event(    db,
         "template": code,
     }
     row = MessageEventOutbox(
-        tenant_id=_tid(),
+        tenant_id=effective_tenant,
         event_code=code,
         source_module=source_module or tpl["source_module"],
         source_biz_type=source_biz_type,
@@ -448,7 +460,7 @@ def emit_message_event(    db,
             db.flush()
     except IntegrityError:
         existed = db.scalar(select(MessageEventOutbox).where(
-            MessageEventOutbox.tenant_id == _tid(),
+            MessageEventOutbox.tenant_id == effective_tenant,
             MessageEventOutbox.dedup_key == key,
             MessageEventOutbox.is_deleted.is_(False),
         ))

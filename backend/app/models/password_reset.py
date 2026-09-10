@@ -17,6 +17,8 @@ class PasswordResetSmsJob(PKMixin, TenantMixin, CommonMixin, Base):
     )
 
     request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(30), nullable=False, default="RESET_PASSWORD", server_default="RESET_PASSWORD", index=True)
+    challenge_ref: Mapped[str | None] = mapped_column(String(100))
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     phone_encrypted: Mapped[str | None] = mapped_column(String(500))
     code_encrypted: Mapped[str | None] = mapped_column(String(500))

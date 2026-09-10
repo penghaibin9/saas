@@ -220,6 +220,13 @@ def job_delivery_and_outbox() -> None:
         lambda tenant_id: password_reset_svc.process_delivery_jobs(
             limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id),
     )
+    if settings.PHONE_SMS_CONSUMERS_READY:
+        _run_for_tenants(
+            "phone_binding_sms", tenant_state.BACKGROUND_AUTH_SECURITY,
+            lambda tenant_id: password_reset_svc.process_delivery_jobs(
+                limit=30, worker_id="scheduler-phone-binding", tenant_id=tenant_id,
+                purposes=("BIND_PHONE", "CHANGE_PHONE")),
+        )
     _run_isolated(
         "internship_audit_outbox",
         lambda: internship_audit.process_pending(

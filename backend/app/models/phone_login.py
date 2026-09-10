@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -34,6 +34,7 @@ class PhoneLoginBinding(PKMixin, TenantMixin, CommonMixin, Base):
     source_candidate_id: Mapped[int | None] = mapped_column(BigInteger)
     source_job_id: Mapped[int | None] = mapped_column(BigInteger)
     verification_method: Mapped[str | None] = mapped_column(String(64))
+    recovery_frozen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
 
 class PhoneLoginCandidate(PKMixin, TenantMixin, CommonMixin, Base):

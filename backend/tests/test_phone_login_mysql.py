@@ -19,7 +19,9 @@ def phone_db():
     assert engine.url.get_backend_name() == 'mysql'
     assert engine.url.database.startswith('codex_phone_test_'), 'Use the dedicated phone test database'
     with engine.connect() as connection:
-        assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '20260910_phone_login_foundation'
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        assert connection.scalar(text('SELECT version_num FROM alembic_version')) == ScriptDirectory.from_config(Config('alembic.ini')).get_current_head()
     with Session(engine) as db:
         yield db
         db.rollback()
