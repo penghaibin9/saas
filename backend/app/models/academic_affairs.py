@@ -652,6 +652,18 @@ class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):
 # ═══════════ 教学资源组（13B-R4；教室字典最小闭环，方案A：字典独立，课表 classroom_text 保持自由文本快照）═══════════
 
 
+class AaTeachingBuilding(PKMixin, TenantMixin, CommonMixin, Base):
+    """Registered counterpart of the existing teaching-building migration."""
+    __tablename__ = "t_aa_teaching_building"
+
+    building_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    building_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    campus_code: Mapped[str | None] = mapped_column(String(50))
+    floor_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (UniqueConstraint("tenant_id", "building_code", name="uk_aa_teaching_building"),)
+
+
 class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     """教室字典（楼栋/教室/容量/类型/可用状态）。租户级基础数据；排课 UI 从本字典选择。
     唯一(tenant,building_code,room_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE。
@@ -661,6 +673,9 @@ class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     is_exclusive=专用教室，自动排课不自动占用（仅可人工指定），如录播室/校企共建实训室。
     """
     __tablename__ = "t_aa_classroom"
+
+    building_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    floor_no: Mapped[int | None] = mapped_column(Integer)
 
     building_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="楼栋编码")
     building_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="楼栋名称")

@@ -152,7 +152,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaArchiveItem, AaAttendanceSession,
                                          AaCalendarEvent,
                                          AaClassAdjustmentRequest, AaClassTimeBand,
-                                         AaClassroom, AaClassroomBooking,
+                                         AaClassroom, AaClassroomBooking, AaTeachingBuilding,
                                          AaCourse, AaCourseMaterial, AaDeferredExam,
                                          AaLabResource, AaEquipment,
                                          AaLabBooking, AaResourceRepair,
@@ -243,6 +243,7 @@ from app.models.national_standard import (NationalMajorCatalog, NationalStandard
 
 from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)
 from app.models.password_reset import PasswordResetSmsJob  # noqa: F401
+from app.models.phone_login import PhoneLoginBinding, PhoneLoginCandidate  # noqa: F401
 from app.modules.platform.business_forms.models import (  # noqa: F401
     BusinessFormDefinition,
     BusinessFormVersion,

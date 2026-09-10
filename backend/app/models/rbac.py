@@ -24,6 +24,8 @@ class User(PKMixin, TenantMixin, CommonMixin, Base):
     phone_hash: Mapped[str | None] = mapped_column(String(128), index=True, comment="手机号不可逆 hash（查重/匹配）")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE", comment="ACTIVE/DISABLED/LOCKED")
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    credential_version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0",
+                                                     comment="认证凭据安全版本；改密/绑定/撤销时递增")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     wx_openid: Mapped[str | None] = mapped_column(String(64), unique=True, index=True,
                                                   comment="微信 openid（legacy 单账号绑定；新绑定以 t_wx_account_binding 为准）")
