@@ -24,7 +24,7 @@ test('W3 semantic client owns create list detail verify without browser hash aut
 
 test('stats host mounts snapshot as a tab and does not create a second route/menu', () => {
   assert.match(host, /{ key: 'snapshot', label: '统计快照' }/)
-  assert.match(host, /<AaStatsSnapshotWorkspace :context-filters="filters" \/>/)
+  assert.match(host, /<AaStatsSnapshotWorkspace :ctx="ctx" :context-filters="appliedFilters" \/>/)
   assert.match(host, /tab !== 'snapshot'/)
 })
 

@@ -101,6 +101,7 @@ import { dataExchangeApi } from '../../api/dataExchange.api'
 import { matchPermission } from '@/config/navPlan'
 import { actionAllowed, contextFingerprint } from '../../utils/workspaceContract'
 import { isIdentityImportProcessing } from '../../utils/identityImportState'
+import { systemConfirm } from '@/services/systemDialog'
 import { createImportState, createImportController, importCounts, importStatusLabel,
   importReceiptCounts, confirmableJob, countText } from '../../utils/identityImportWorkspace'
 
@@ -134,8 +135,7 @@ export default {
     canRead() { this.recreate() }
   },
   created() { this.recreate() },
-  mounted() { window.addEventListener('beforeunload', this.beforeUnload) },
-  beforeUnmount() { this.controller?.dispose(); this.templateEpoch += 1; window.removeEventListener('beforeunload', this.beforeUnload) },
+  beforeUnmount() { this.controller?.dispose(); this.templateEpoch += 1 },
   methods: {
     countText,
     has(code) { return Array.isArray(this.ctx.permissionPatterns) && matchPermission(this.ctx.permissionPatterns, code) },
@@ -159,20 +159,19 @@ export default {
       finally { if (stamp === this.templateEpoch) this.templateLoading = false }
     },
     refreshJob() { if (this.canRead) this.controller.resume(String(this.state.job?.id || this.routeJobId)) },
-    startAnother() {
+    async startAnother() {
       if (this.writing || !this.canUpload) return
-      if (this.state.job && !window.confirm(`当前任务 #${this.state.job.id} 仍会保留。确认离开本任务，准备另一批名单？`)) return
+      if (this.state.job && !await systemConfirm({ title:'确认准备另一批名单', message:`当前任务 #${this.state.job.id} 仍会保留。`, confirmText:'准备另一批' })) return
       const query = { ...this.$route.query }; delete query.jobId
       if (this.routeJobId) this.$router.push({ path: this.$route.path, query })
       else this.recreate()
     },
     openTasks() { if (!this.writing) this.$router.push('/admin/system/data-exchange') },
-    canLeave(to) {
+    async canLeave(to) {
       if (to?.path === this.$route.path && String(to.query?.jobId || '') === String(this.state.job?.id || '')) return true
       if (this.writing) { this.state.note = '文件登记或确认请求正在执行，请等待结果后再切换。'; return false }
-      return !this.state.file || !!this.state.job || window.confirm('当前文件尚未登记，离开后需重新选择。确认离开？')
+      return !this.state.file || !!this.state.job || await systemConfirm({ title:'确认离开导入任务', message:'当前文件尚未登记，离开后需重新选择。', confirmText:'放弃文件并离开', type:'danger' })
     },
-    beforeUnload(event) { if (this.writing || (this.state.file && !this.state.job)) { event.preventDefault(); event.returnValue = '' } }
   }
 }
 </script>

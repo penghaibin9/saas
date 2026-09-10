@@ -4,6 +4,7 @@
     subtitle="学籍管理 · 只读展示，办理请前往「学籍异动」发起与审批"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />

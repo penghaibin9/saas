@@ -1,16 +1,29 @@
 <template>
   <ModulePageShell
-    title="我的教学任务"
-    subtitle="仅处理分配给本人工号的授课任务；确认后由学院和教务继续审核"
+    title="教师任务确认"
+    subtitle="本人确认不授予修改全校任务权限"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <template #actions>
       <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="load">刷新</button>
     </template>
 
     <div class="teacher-task mp-stack">
-      <section class="teacher-task__summary">
+      <AaOperationReceipt :receipt="receipt" />
+      <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重提）</button>
+      <AaTeachingTaskObjectBar
+        v-if="primaryRow"
+        :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
+        :identity="`本人教学任务 #${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
+        source="来源：学院已分配至当前登录教师的稳定工号；本入口不能代办他人任务。"
+        :status="statusLabel(primaryRow.status)"
+        owner="当前正式任课教师"
+        next-owner="学院任务核对岗"
+      />
+      <AaTeachingTaskStageRail :current="3" current-note="当前教师本人确认" />
+      <section v-if="!loading && !error" class="teacher-task__summary">
         <article>
           <span>等待本人确认</span>
           <strong>{{ counts.assigned }}</strong>
@@ -75,8 +88,8 @@
         </template>
         <template #cell-actions="{ row }">
           <template v-if="row.status === 'ASSIGNED'">
-            <button class="mp-link" :disabled="acting === row.taskId" @click="openConfirm(row)">确认接受</button>
-            <button class="mp-link is-danger" :disabled="acting === row.taskId" @click="openReject(row)">提出异议</button>
+            <button class="mp-link" :disabled="Boolean(acting || pendingCommand)" @click="openConfirm(row)">确认接受</button>
+            <button class="mp-link is-danger" :disabled="Boolean(acting || pendingCommand)" @click="openReject(row)">提出异议</button>
           </template>
           <span v-else class="mp-cell-sub">已处理</span>
         </template>
@@ -89,6 +102,7 @@
       type="primary"
       confirm-text="确认接受"
       :submitting="acting === confirmDialog.taskId"
+      :confirm-disabled="Boolean(confirmDialog.invalid || pendingCommand)"
       @confirm="doConfirm"
     >
       <div class="teacher-task__confirm-card">
@@ -98,6 +112,7 @@
         <span>预计 {{ confirmDialog.row?.expectedStudents ?? '—' }} 人</span>
       </div>
       <p class="teacher-task__confirm-note">确认后不能在本页直接修改；如后续确需调整，须由学院发起教学任务调整并保留原因。</p>
+      <p v-if="confirmDialog.invalid" class="mp-cell-sub is-danger">原确认已失效。请关闭后从最新任务重新打开核对；结果待确认时只能查询。</p>
     </AppConfirmDialog>
 
     <AppConfirmDialog
@@ -106,8 +121,10 @@
       type="danger"
       confirm-text="确认退回"
       :submitting="acting === rejectDialog.taskId"
+      :confirm-disabled="Boolean(rejectDialog.invalid || pendingCommand)"
       @confirm="doReject"
     >
+      <p v-if="rejectDialog.invalid" class="mp-cell-sub is-danger">已保留异议原因，原确认已失效。请读取最新任务并重新打开；未知结果不会再次发送。</p>
       <label class="aa-note-label">退回原因（必填，≥5 字）
         <textarea ref="rejectReasonInput" v-model.trim="rejectDialog.reason" class="aa-textarea" rows="3" placeholder="如：与本人其他课表时间冲突" />
       </label>
@@ -121,18 +138,24 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppStatusTag, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { taskColor } from '@/modules/academicAffairs/constants/teaching'
+import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
+import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import { readTaskPages, taskConfirmationEvidence } from '../components/parallel-a/taskFacts'
+import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 import { toast } from '@/utils/toast'
+import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
+import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 
 export default {
   name: 'AaTeacherTaskConfirmView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
       rows: [],
+      revision: 0, receipt: null, pendingCommand: null,
       acting: '',
       statusFilter: 'ASSIGNED',
       keyword: '',
@@ -148,6 +171,7 @@ export default {
     }
   },
   computed: {
+    primaryRow() { return this.filteredRows[0] || this.rows[0] || null },
     counts() {
       const count = (status) => this.rows.filter((row) => row.status === status).length
       return {
@@ -177,32 +201,39 @@ export default {
     }
   },
   created() { this.load() },
+  watch: { ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.load() } },
+  beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,
     async load() {
+      const revision = ++this.revision, context = this.ctx
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.listAllTasks({ mine: true, page: 1, pageSize: 500 })
-      if (res.code === 0) this.rows = res.data?.list || []
-      else this.error = res.message || '我的教学任务加载失败'
-      this.loading = false
+      this.rows = []
+      try {
+        const res = await readTaskPages(page => academicAffairsApi.listAllTasks({ mine: true, ...page }), () => revision === this.revision && context === this.ctx && !this.disposed)
+        if (revision !== this.revision || context !== this.ctx || this.disposed) return false
+        if (res?.code === 0) { this.rows = res.data.list; return true }
+        this.handleFailure(res, '我的教学任务加载失败')
+        if (!this.error) this.error = res?.message || '任务未完整读取，请重试。'
+        return false
+      } catch (error) {
+        if (revision === this.revision && context === this.ctx && !this.disposed) this.handleFailure(error, '网络连接失败，请重新读取本人任务。')
+        return false
+      } finally { if (revision === this.revision && context === this.ctx && !this.disposed) this.loading = false }
     },
     openConfirm(row) {
-      this.confirmDialog = { visible: true, taskId: row.taskId, row }
+      if (this.acting || this.loading || this.pendingCommand || row.status !== 'ASSIGNED' || !this.rows.some(item => item.taskId === row.taskId && taskConfirmationEvidence(item) === taskConfirmationEvidence(row))) return
+      this.confirmDialog = { visible: true, taskId: row.taskId, row: Object.freeze({ ...row }), evidence: taskConfirmationEvidence(row), invalid: false }
     },
     async doConfirm() {
-      const taskId = this.confirmDialog.taskId
-      if (!taskId) return
-      this.acting = taskId
-      const res = await academicAffairsApi.teacherActTask(taskId, 'CONFIRM', '')
-      this.acting = ''
-      if (res.code === 0) {
-        this.confirmDialog.visible = false
-        toast.success('已确认接受本次授课安排')
-        this.load()
-      } else toast.error(res.message || '确认失败')
+      await this.submitAction(this.confirmDialog, 'CONFIRM', '')
     },
-    openReject(row) { this.rejectDialog = { visible: true, taskId: row.taskId, reason: '' } },
+    openReject(row) {
+      if (this.acting || this.loading || this.pendingCommand || row.status !== 'ASSIGNED' || !this.rows.some(item => item.taskId === row.taskId && taskConfirmationEvidence(item) === taskConfirmationEvidence(row))) return
+      const reason = this.rejectDialog.taskId === row.taskId ? this.rejectDialog.reason : ''
+      this.rejectDialog = { visible: true, taskId: row.taskId, row: Object.freeze({ ...row }), evidence: taskConfirmationEvidence(row), invalid: false, reason }
+    },
     onPickRejectReason(text) {
       const el = this.$refs.rejectReasonInput
       const { value, selStart, selEnd } = insertAtCursor(el, this.rejectDialog.reason, text)
@@ -214,14 +245,68 @@ export default {
         toast.error('退回原因必填且不少于 5 字')
         return
       }
-      this.acting = this.rejectDialog.taskId
-      const res = await academicAffairsApi.teacherActTask(this.rejectDialog.taskId, 'REJECT', this.rejectDialog.reason)
-      this.acting = ''
-      if (res.code === 0) {
-        this.rejectDialog.visible = false
-        toast.success('已退回学院重新分配')
-        this.load()
-      } else toast.error(res.message || '退回失败')
+      await this.submitAction(this.rejectDialog, 'REJECT', this.rejectDialog.reason.trim())
+    },
+    handleFailure(result, fallback) {
+      const message = result?.message || fallback
+      if (isDeniedResult(result)) {
+        this.revision++; this.loading = false; this.rows = []; this.receipt = null; this.pendingCommand = null
+        this.confirmDialog = { visible: false, taskId: '', row: null }
+        this.rejectDialog = { visible: false, taskId: '', reason: '' }
+        this.error = `${message}；已清除先前任务内容。`
+      } else if (isConflictResult(result)) {
+        this.confirmDialog.invalid = true; this.rejectDialog.invalid = true
+        this.receipt = { title: '请重新核对任务', status: '事实已变化，保留输入', pending: true, next: `${message} 刷新后重新核对；不会自动重提。` }
+      } else { this.error = message }
+    },
+    async submitAction(dialog, action, reason) {
+      if (this.pendingCommand) return this.queryPending()
+      if (this.acting || this.loading || dialog.invalid || !dialog.taskId || !dialog.evidence) return
+      const taskId = dialog.taskId, context = this.ctx, sameContext = () => !this.disposed && context === this.ctx
+      this.acting = taskId
+      try {
+        const loaded = await this.load()
+        if (!sameContext() || !loaded) { dialog.invalid = true; return }
+        const task = this.rows.find(row => String(row.taskId) === String(taskId))
+        const unchanged = task?.status === 'ASSIGNED' && taskConfirmationEvidence(task) === dialog.evidence && String(task?.version ?? '') === String(dialog.row?.version ?? '')
+        if (!unchanged) { dialog.invalid = true; this.handleFailure({ code: 409001, message: '所见课程、教师、教学班或授课安排已变化，请重新打开最新任务核对。' }); return }
+        const object = `${task.courseName || '教学任务'} · ${task.teachingClassName || ''} · #${taskId}`
+        this.pendingCommand = { taskId, action, reason, evidence: dialog.evidence, object }
+        dialog.invalid = true
+        this.receipt = { object, title: '办理回执', status: '结果待确认', pending: true, next: '正在查询原命令结果，请勿重复提交。' }
+        const result = await academicAffairsApi.teacherActTask(taskId, action, reason)
+        if (!sameContext()) return
+        if (result.code !== 0) {
+          if (isDeniedResult(result)) { this.handleFailure(result, '无权办理'); return }
+          if (isConflictResult(result) || String(result.code || '').startsWith('400') || result.bizCode === 'VALIDATION_ERROR') {
+            this.pendingCommand = null; this.handleFailure(result, '办理未完成，原确认已失效。'); await this.load(); return
+          }
+          this.handleFailure(result, '连接中断，原办理结果待确认。')
+        } else dialog.visible = false
+        await this.readPendingResult(sameContext)
+      } catch (error) {
+        if (sameContext()) {
+          dialog.invalid = true; this.handleFailure(error, '连接中断，办理结果待确认。')
+          if (this.pendingCommand && !isDeniedResult(error)) await this.readPendingResult(sameContext)
+        }
+      } finally { if (sameContext()) this.acting = '' }
+    },
+    async readPendingResult(current) {
+      const pending = this.pendingCommand
+      if (!pending) return
+      const loaded = await this.load()
+      if (!current() || !loaded || this.pendingCommand !== pending) return
+      const row = this.rows.find(item => String(item.taskId) === String(pending.taskId))
+      const evidenceMatches = row && taskConfirmationEvidence(row) === pending.evidence
+      const confirmed = evidenceMatches && (pending.action === 'CONFIRM' ? ['TEACHER_CONFIRMED', 'READY'].includes(row.status) : row.status === 'REJECTED_BY_TEACHER' && String(row.rejectReason || '') === pending.reason)
+      this.receipt = { object: pending.object, title: '办理回执', status: confirmed ? TASK_STATUS[row.status] : '结果待确认', pending: !confirmed, next: confirmed ? pending.action === 'CONFIRM' ? '由学院和教务继续核对；正式就绪后进入排课。' : '学院将查看异议并重新分配。' : '尚未读到与原办理一致的正式状态。只查询原命令，不会再次发送；请联系学院核对。' }
+      if (confirmed) this.pendingCommand = null
+    },
+    async queryPending() {
+      if (!this.pendingCommand || this.acting || this.loading) return
+      const context = this.ctx, current = () => !this.disposed && context === this.ctx
+      this.acting = this.pendingCommand.taskId
+      try { await this.readPendingResult(current) } finally { if (current()) this.acting = '' }
     }
   }
 }

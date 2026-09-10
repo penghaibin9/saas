@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="教务归档 · 语义预检"
-    subtitle="按业务完成状态判断能否归档；阻断域优先处理，通过域作为完成证据保留"
+    title="归档缺失提醒"
+    subtitle="十三域逐项核对；UNKNOWN 与 BLOCKED 都会阻断封存，不适用项必须有正式依据"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -18,7 +18,7 @@
 
         <div class="aapc-toolbar">
           <AppFormItem label="学期">
-            <AppTermEntityPicker v-model="termId" placeholder="默认当前学期" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="默认当前学期" />
           </AppFormItem>
         </div>
 
@@ -165,8 +165,13 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppTermEntityPicker, AppFormItem } from '@/components/common'
-import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
+
+const ARCHIVE_DOMAINS = ['STUDENT_STATUS','REGISTRATION','STATUS_CHANGE','PROGRAM','TEACHING_TASK','SCHEDULE','SELECTION','EXAM','GRADE','MAKEUP','EVALUATION','TEXTBOOK','GRADUATION']
+const DOMAIN_RESULTS = new Set(['PASS','BLOCKED','UNKNOWN','NOT_APPLICABLE'])
 
 const FALLBACK_ROUTE = {
   STUDENT_STATUS: '/admin/academic-affairs/roster',
@@ -192,11 +197,13 @@ export default {
     ModulePageShell, LoadingState, ErrorState, EmptyState,
     StatusTag, AppButton, AppTermEntityPicker, AppFormItem
   },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
+      alive: true, scope: 0, seq: 0,
       loading: true,
       error: '',
+      syncingResolvedTerm: false,
       domains: [],
       scopeNote: '',
       termId: '',
@@ -207,6 +214,10 @@ export default {
     }
   },
   computed: {
+    identity() {
+      const user = currentUserFromToken() || {}
+      return JSON.stringify([user.tenantId, user.userId, user.activeContextId, user.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope])
+    },
     passedDomains() {
       return this.domains.filter((domain) => domain.result === 'PASS').length
     },
@@ -233,37 +244,68 @@ export default {
       return `先处理「${this.firstBlockingDomain.domainLabel}」的 ${Number(this.firstBlockingDomain.blockingCount || 0)} 个阻断项`
     }
   },
-  async created() {
-    try {
-      const context = await academicAffairsApi.getContext()
-      if (context.code === 0 && context.data) this.ctx = context.data
-    } catch {
-      // 页面数据请求仍会走后端权限；上下文失败由父布局统一拦截。
-    }
-    this.load()
+  watch: {
+    identity() { this.clearPrivate(); this.load() },
+    termId() { if (!this.syncingResolvedTerm) this.load() }
   },
+  created() { this.load() },
+  beforeUnmount() { this.alive = false; this.clearPrivate() },
   methods: {
+    capture(termId) { return { scope: this.scope, identity: this.identity, termId: String(termId || '') } },
+    isCurrent(c) { return this.alive && c.scope === this.scope && c.identity === this.identity && c.termId === String(this.termId || '') },
+    denied(err) { return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code, err?.bizCode].join(' ')) },
+    clearPrivate() {
+      this.scope += 1; this.seq += 1; this.loading = false; this.error = ''; this.domains = []
+      this.scopeNote = ''; this.termCode = ''; this.overallResult = 'BLOCKED'; this.blockingCount = 0; this.blockedDomains = 0
+    },
+    fail(err, fallback) { if (this.denied(err)) this.clearPrivate(); return gradeError(err, fallback) },
+    validDomains(domains) {
+      if (!Array.isArray(domains) || domains.length !== ARCHIVE_DOMAINS.length) return false
+      const seen = new Set()
+      for (const row of domains) {
+        if (!row || !ARCHIVE_DOMAINS.includes(row.domain) || seen.has(row.domain) || !DOMAIN_RESULTS.has(row.result)) return false
+        seen.add(row.domain)
+      }
+      return ARCHIVE_DOMAINS.every((domain) => seen.has(domain))
+    },
     async load() {
+      const requestedTerm = String(this.termId || '')
+      const c = this.capture(requestedTerm)
+      const seq = ++this.seq
       this.loading = true
       this.error = ''
       try {
         const res = await api.precheck(this.termId || undefined)
-        if (res.code !== 0) throw new Error(res.message || '归档预检失败')
+        if (!this.isCurrent(c) || seq !== this.seq) return
+        if (res.code !== 0) throw res
         const data = res.data || {}
-        this.domains = Array.isArray(data.domains) ? data.domains : []
+        if (!this.validDomains(data.domains)) throw { code: 503, message: '十三域预检结果不完整' }
+        const blockedRows = data.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result))
+        const derivedResult = blockedRows.some((row) => row.result === 'BLOCKED') ? 'BLOCKED' : blockedRows.length ? 'UNKNOWN' : 'PASS'
+        if (!['PASS','BLOCKED','UNKNOWN'].includes(data.result) || data.result !== derivedResult) throw { code: 503, message: '归档预检结论与明细不一致' }
+        this.domains = data.domains
         this.scopeNote = data.scopeNote || ''
         this.termCode = data.termCode || ''
-        const states = new Set(this.domains.map((d) => d.result))
-        this.overallResult = data.result || (states.has('BLOCKED') ? 'BLOCKED' : states.has('UNKNOWN') ? 'UNKNOWN' : 'PASS')
-        this.blockingCount = Number(data.blockingCount ?? 0)
-        const fallbackBlockedDomains = this.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result)).length
-        this.blockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
-        if (!this.termId && data.termId) this.termId = data.termId
+        this.overallResult = derivedResult
+        this.blockingCount = Number.isFinite(Number(data.blockingCount)) ? Number(data.blockingCount) : blockedRows.reduce((sum, row) => sum + Number(row.blockingCount || 0), 0)
+        const fallbackBlockedDomains = blockedRows.length
+        const reportedBlockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
+        if (!Number.isFinite(reportedBlockedDomains) || reportedBlockedDomains !== fallbackBlockedDomains) throw { code: 503, message: '归档阻断域数量与明细不一致' }
+        this.blockedDomains = reportedBlockedDomains
+        if (!this.termId && data.termId) {
+          // The default-term response resolves the picker value. Do not turn that
+          // server-derived assignment into a second full 13-domain precheck.
+          this.loading = false
+          this.syncingResolvedTerm = true
+          this.termId = String(data.termId)
+          this.$nextTick(() => { this.syncingResolvedTerm = false })
+        }
       } catch (err) {
+        if (!this.isCurrent(c) || seq !== this.seq) return
         this.domains = []
-        this.error = err?.message || '归档预检失败，请稍后重试'
+        this.error = this.fail(err, '归档预检失败，请稍后重试')
       } finally {
-        this.loading = false
+        if (this.isCurrent(c) && seq === this.seq) this.loading = false
       }
     },
     tagType(domain) {

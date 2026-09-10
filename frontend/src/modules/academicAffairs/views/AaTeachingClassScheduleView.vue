@@ -1,7 +1,8 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="教学班课表"
-    subtitle="按教学班（派生自教学任务，含合班后的教学单元）查看当前已发布课表"
+    subtitle="选择教学班，查看已发布的课程安排。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,11 +11,20 @@
     </template>
 
     <div class="mp-stack">
+      <AaScheduleObjectBar
+        :name="teachingClassName || '教学班课表'"
+        :identity="teachingClassCode ? `教学班 ${teachingClassCode} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教学班后读取正式课程安排'"
+        source="来源：教学班稳定标识与当前正式课表；不按行政班近似匹配"
+        :status="teachingClassCode ? '只读正式课表' : '对象待选择'"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="任课教师与教学班学生读取"
+      />
       <div class="aa-reg-search">
         <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
       </div>
 
-      <template v-if="teachingClassCode">
+      <EmptyState v-if="!teachingClassCode" title="请先选择教学班" description="搜索教学班名称或课程名称，选择后查看已发布课表。" />
+      <template v-else>
         <div class="aa-filter">
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
@@ -32,8 +42,8 @@
         <LoadingState v-else-if="loading" />
         <template v-else>
           <p v-if="note" class="mp-note">{{ note }}</p>
-          <AppSectionCard :title="teachingClassName ? `${teachingClassName} · 课表` : '教学班课表'">
-            <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
+          <AppSectionCard compact :title="teachingClassName ? `${teachingClassName} · 课表` : '教学班课表'">
+            <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
           </AppSectionCard>
         </template>
       </template>
@@ -49,16 +59,17 @@
  * GET /academic-affairs/schedule/teaching-class/{code}?termId=&week=；数据范围校验同班级课表口径，
  * 越范围 → 403002；未知教学班代码 → 404。
  */
-import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 export default {
   name: 'AaTeachingClassScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid, AaScheduleObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -91,18 +102,22 @@ export default {
       if (!this.teachingClassCode) return
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, {
-        termId: this.termId || undefined, week: this.week || undefined
-      })
-      this.loading = false
-      if (res.code === 0) {
-        this.items = res.data.items || []
-        this.note = res.data.note || ''
-        if (res.data.teachingClassName) this.teachingClassName = res.data.teachingClassName
-      } else {
-        this.error = res.message
+      try {
+        const res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, {
+          termId: this.termId || undefined, week: this.week || undefined
+        })
+        if (res.code === 0) {
+          this.items = res.data?.items || []
+          this.note = res.data?.note || ''
+          if (res.data?.teachingClassName) this.teachingClassName = res.data.teachingClassName
+        } else {
+          this.error = res.message || '教学班课表读取失败'
+          this.items = []
+        }
+      } catch (error) {
+        this.error = error?.message || '网络连接中断，未能读取教学班课表'
         this.items = []
-      }
+      } finally { this.loading = false }
     }
   }
 }
@@ -110,6 +125,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-reg-search { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
 .aa-input--grow { flex: 1; }

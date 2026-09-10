@@ -125,6 +125,7 @@ import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, Modul
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 const toUtcIso = (value) => value ? new Date(value).toISOString() : ''
 const utcEpoch = (value) => {
@@ -197,7 +198,7 @@ export default {
       await this.load()
     },
     async transitionTicket(row, status) {
-      const resolutionNote = ['RESOLVED', 'CLOSED'].includes(status) ? (window.prompt('处理结论（可留空）') || '') : ''
+      const resolutionNote = ['RESOLVED', 'CLOSED'].includes(status) ? (await systemPrompt({ title:'填写工单处理结论', message:'可填写本次处理结论。', confirmText:'保存结论' }) || '') : ''
       const res = await platformControlApi.transitionSupportTicket(row.id, { status, resolutionNote, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('工单状态已更新')
@@ -212,11 +213,11 @@ export default {
       await this.load()
     },
     async completeTraining(row) {
-      const countText = window.prompt('实际参训人数', String(row.attendeeCount || 0))
+      const countText = await systemPrompt({ title:'填写实际参训人数', message:'请输入非负整数。', defaultValue:String(row.attendeeCount || 0), minLength:1, confirmText:'继续' })
       if (countText == null) return
       const attendeeCount = Number(countText)
       if (!Number.isInteger(attendeeCount) || attendeeCount < 0) return toast.error('参训人数必须是非负整数')
-      const note = window.prompt('培训完成备注（可留空）') || ''
+      const note = await systemPrompt({ title:'填写培训完成备注', message:'可填写本次培训完成情况。', confirmText:'确认完成' }) || ''
       const res = await platformControlApi.completeTraining(row.id, { attendeeCount, note, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('培训已标记完成')
@@ -231,7 +232,7 @@ export default {
       await this.load()
     },
     async transitionRenewal(row, status) {
-      const note = window.prompt('本次续费跟进备注（可留空）', row.note || '')
+      const note = await systemPrompt({ title:'填写续费跟进备注', message:'可填写本次续费跟进情况。', defaultValue:row.note || '', confirmText:'保存跟进' })
       if (note == null) return
       const res = await platformControlApi.transitionRenewalTask(row.id, { status, note, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)

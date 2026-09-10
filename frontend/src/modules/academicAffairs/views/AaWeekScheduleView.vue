@@ -10,6 +10,14 @@
     </template>
 
     <div class="mp-stack">
+      <AaScheduleObjectBar
+        :name="scheduleObjectName"
+        :identity="`${termId ? `学期 #${termId}` : '学期待选择'} · 第${week || '—'}教学周 · ${currentDim.label}`"
+        source="来源：指定教学周内已经生效的正式课表与批准调整"
+        :status="hasSelection ? '只读正式周课表' : '对象待选择'"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="师生按调整后的正式课次读取"
+      />
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
@@ -100,6 +108,7 @@ import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 const DIMS = [
   { key: 'class', label: '班级' }, { key: 'teacher', label: '教师' }, { key: 'room', label: '教室' },
@@ -108,7 +117,7 @@ const DIMS = [
 
 export default {
   name: 'AaWeekScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid, AaScheduleObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -124,6 +133,10 @@ export default {
     }
   },
   computed: {
+    currentDim() { return this.DIMS.find((item) => item.key === this.dim) || this.DIMS[0] },
+    scheduleObjectName() {
+      return ({ class: this.className, teacher: this.teacherName || (this.teacherKey ? `教师 ${this.teacherKey}` : ''), room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '周课表'
+    },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
       if (this.dim === 'teacher') return !!this.teacherKey
@@ -221,21 +234,25 @@ export default {
       this.loading = true
       this.error = ''
       const params = { termId: this.termId || undefined, week: this.week || undefined }
-      let res
-      if (this.dim === 'class') res = await academicAffairsApi.getClassSchedule(this.classId, params)
-      else if (this.dim === 'teacher') res = await academicAffairsApi.getTeacherSchedule(this.teacherKey, params)
-      else if (this.dim === 'room') res = await academicAffairsApi.getRoomSchedule(this.classroomId, params)
-      else if (this.dim === 'student') res = await academicAffairsApi.getStudentSchedule(this.studentId, params)
-      else res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, params)
-      this.loading = false
-      if (res.code === 0) {
-        this.items = res.data.items || []
-        if (res.data.teacherName) this.teacherName = res.data.teacherName
-        this.note = res.data.note || ''
-      } else {
-        this.error = res.message
+      try {
+        let res
+        if (this.dim === 'class') res = await academicAffairsApi.getClassSchedule(this.classId, params)
+        else if (this.dim === 'teacher') res = await academicAffairsApi.getTeacherSchedule(this.teacherKey, params)
+        else if (this.dim === 'room') res = await academicAffairsApi.getRoomSchedule(this.classroomId, params)
+        else if (this.dim === 'student') res = await academicAffairsApi.getStudentSchedule(this.studentId, params)
+        else res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, params)
+        if (res.code === 0) {
+          this.items = res.data?.items || []
+          if (res.data?.teacherName) this.teacherName = res.data.teacherName
+          this.note = res.data?.note || ''
+        } else {
+          this.error = res.message || '周课表读取失败'
+          this.items = []
+        }
+      } catch (error) {
+        this.error = error?.message || '网络连接中断，未能读取周课表'
         this.items = []
-      }
+      } finally { this.loading = false }
     }
   }
 }

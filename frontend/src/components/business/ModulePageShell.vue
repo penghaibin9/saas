@@ -1,14 +1,14 @@
 <template>
-  <div class="mps" :class="{ 'mps--flat': flat || affairsWorkspace, 'sa-workspace': affairsWorkspace }">
+  <div class="mps">
     <SecurityWatermark :visible="watermark" :purpose="watermarkPurpose" />
     <div class="mps__head">
       <div class="mps__title-wrap">
         <h1 class="mps__title">{{ title }}</h1>
-        <p v-if="subtitle && !conciseBusinessHeader && !flat" class="mps__subtitle">{{ subtitle }}</p>
+        <p v-if="subtitle && (!conciseBusinessHeader || showSubtitleInConcise)" class="mps__subtitle">{{ subtitle }}</p>
       </div>
       <div v-if="!conciseBusinessHeader || $slots.actions" class="mps__meta">
-        <span v-if="roleName && !conciseBusinessHeader && !flat" class="mps__chip mps__chip--role">{{ roleName }}</span>
-        <span v-if="dataScopeName && !conciseBusinessHeader && !flat" class="mps__chip mps__chip--scope">
+        <span v-if="roleName && !conciseBusinessHeader" class="mps__chip mps__chip--role">{{ roleName }}</span>
+        <span v-if="dataScopeName && !conciseBusinessHeader" class="mps__chip mps__chip--scope">
           <span class="mps__chip-dot" />数据范围：{{ dataScopeName }}
         </span>
         <div v-if="$slots.actions" class="mps__actions"><slot name="actions" /></div>
@@ -30,19 +30,17 @@
  * Slots：actions（标题右侧操作区）/ default（页面内容）
  */
 import SecurityWatermark from '@/security/components/SecurityWatermark.vue'
-import '@/styles/flat-business-workspace.css'
-import '@/modules/studentAffairs/styles/workspace.css'
 
 export default {
   name: 'ModulePageShell',
   components: { SecurityWatermark },
-  inject: { conciseBusinessHeader: { default: false }, affairsWorkspace: { default: false } },
+  inject: { conciseBusinessHeader: { default: false } },
   props: {
-    flat: { type: Boolean, default: false },
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
     roleName: { type: String, default: '' },
     dataScopeName: { type: String, default: '' },
+    showSubtitleInConcise: { type: Boolean, default: false },
     watermark: { type: Boolean, default: true },
     watermarkPurpose: { type: String, default: '' }
   }
@@ -104,7 +102,7 @@ export default {
 }
 .mps__chip--scope {
   color: var(--t2);
-  background: var(--bg-card);
+  background: rgba(255, 255, 255, 0.8);
   border: 1px solid var(--card-b);
 }
 .mps__chip-dot {

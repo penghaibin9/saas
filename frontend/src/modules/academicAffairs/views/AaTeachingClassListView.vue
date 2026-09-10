@@ -7,11 +7,12 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">教学任务</AppButton>
-      <AppButton :disabled="!filters.termId" :loading="checking" @click="runBackfill">存量对账</AppButton>
-      <AppButton variant="primary" :disabled="!canExecuteBackfill" @click="confirmVisible = true">执行回填</AppButton>
+      <AppButton v-if="canManage" :disabled="!filters.termId" :loading="checking" @click="runBackfill">存量对账</AppButton>
+      <AppButton v-if="canManage" variant="primary" :disabled="!canExecuteBackfill" @click="confirmVisible = true">执行回填</AppButton>
     </template>
 
     <div class="mp-stack">
+      <AaOperationReceipt :receipt="receipt" />
       <AppInlineAlert
         type="info"
         title="名单版本是正式成员事实"
@@ -22,7 +23,7 @@
         <div class="aa-filter-row">
           <label>学期
             <select v-model="filters.termId" class="aa-select" @change="onTermChange">
-              <option value="">全部学期</option>
+              <option value="" disabled>请选择学期</option>
               <option v-for="term in terms" :key="term.termId" :value="term.termId">{{ term.termName || `${term.yearCode}-${term.termNo}` }}</option>
             </select>
           </label>
@@ -39,7 +40,7 @@
           <label class="is-grow">搜索
             <input v-model.trim="filters.keyword" class="aa-input" placeholder="教学班编号、名称或课程" @keyup.enter="load" />
           </label>
-          <AppButton variant="primary" :loading="loading" @click="load">查询</AppButton>
+          <AppButton variant="primary" :disabled="!initialized || !filters.termId" :loading="loading" @click="load">查询</AppButton>
         </div>
       </AppSectionCard>
 
@@ -57,7 +58,7 @@
         :description="backfillDescription"
       />
 
-      <ErrorState v-if="error" :description="error" @retry="load" />
+      <ErrorState v-if="error" :description="error" @retry="retryLoad" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无教学班投影" description="先生成教学任务，再运行存量对账；系统不会在数据库迁移中自动猜测名单" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="teachingClassId" :pagination="pagination" @page-change="onPageChange">
@@ -69,7 +70,7 @@
         <template #cell-teacher="{ row }"><div class="mp-cell-main">{{ primaryTeacher(row)?.teacherName || '待分配' }}</div><div class="mp-cell-sub">{{ primaryTeacher(row)?.teacherKey || '—' }}</div></template>
         <template #cell-roster="{ row }">
           <AppStatusTag :type="row.rosterStatus === 'LOCKED' ? 'success' : 'warning'" :label="row.rosterStatus === 'LOCKED' ? `第${row.rosterVersionNo}版` : '待形成名单'" dot />
-          <div class="mp-cell-sub">{{ row.expectedStudents ?? 0 }}人</div>
+          <div class="mp-cell-sub">预计人数 {{ row.expectedStudents ?? '未提供' }}</div>
         </template>
         <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ACTIVE' ? 'success' : 'info'" :label="statusLabel(row.status)" dot /></template>
         <template #cell-actions="{ row }"><button class="mp-link" @click="openDetail(row)">查看名单与版本</button></template>
@@ -96,17 +97,21 @@ import { AppConfirmDialog, AppInlineAlert, AppSectionCard, AppStatusTag } from '
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { teachingClassApi } from '@/modules/academicAffairs/api/teaching-class.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
+import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import { isDeniedResult, isConflictResult, isMissingResult } from '../components/parallel-a/resultState'
 
 export default {
   name: 'AaTeachingClassListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog, AppInlineAlert, AppSectionCard, AppStatusTag },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog, AppInlineAlert, AppSectionCard, AppStatusTag, AaOperationReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, checking: false, backfilling: false, error: '', rows: [], terms: [],
+      loading: true, initialized: false, initRevision: 0, checking: false, backfilling: false, error: '', rows: [], terms: [],
       filters: { termId: '', classType: '', status: 'ACTIVE', keyword: '' },
       pagination: { page: 1, pageSize: 30, total: 0 },
       backfillReport: null, confirmVisible: false,
+      revision: 0, checkRevision: 0, checkedTermId: '', receipt: null,
       columns: [
         { key: 'class', title: '教学班' }, { key: 'course', title: '课程' },
         { key: 'teacher', title: '主讲教师', width: '160px' }, { key: 'roster', title: '当前名单', width: '145px' },
@@ -115,12 +120,13 @@ export default {
     }
   },
   computed: {
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
     activeCount() { return this.rows.filter(row => row.status === 'ACTIVE').length },
     lockedCount() { return this.rows.filter(row => row.rosterStatus === 'LOCKED').length },
     debtCount() { return this.rows.filter(row => row.rosterStatus !== 'LOCKED').length },
     canExecuteBackfill() {
       const total = Number(this.backfillReport?.taskCount || 0)
-      return Boolean(this.filters.termId && total > 0 && Number(this.backfillReport?.readyCount || 0) === total)
+      return Boolean(this.canManage && this.checkedTermId === this.filters.termId && this.filters.termId && total > 0 && Number(this.backfillReport?.readyCount || 0) === total)
     },
     backfillDescription() {
       const total = Number(this.backfillReport?.taskCount || 0)
@@ -131,54 +137,102 @@ export default {
       return `共 ${total} 条教学任务，名单全部就绪；正式回填将一次性生成教学班和名单版本并写入审计。`
     }
   },
-  async created() { await this.loadTerms(); await this.load() },
+  created() { this.initialize() },
+  watch: { ctx() { this.revision++; this.checkRevision++; this.terms = []; this.rows = []; this.pagination.total = 0; this.receipt = null; this.backfillReport = null; this.checkedTermId = ''; this.confirmVisible = false; this.checking = false; this.backfilling = false; this.filters = { termId: '', classType: '', status: 'ACTIVE', keyword: '' }; this.initialize() } },
+  beforeUnmount() { this.revision++; this.checkRevision++; this.initRevision++; this.disposed = true },
   methods: {
+    async initialize() {
+      const revision = ++this.initRevision, context = this.ctx
+      const current = () => !this.disposed && revision === this.initRevision && context === this.ctx
+      this.loading = true; this.initialized = false; this.error = ''
+      try {
+        await this.loadTerms(current)
+        if (!current()) return
+        this.initialized = true
+        await this.load()
+      } catch (error) { if (current()) this.handleFailure(error, '学期读取失败，请重试；尚未查询教学班。') }
+      finally { if (current()) this.loading = false }
+    },
+    retryLoad() { return this.initialized ? this.load() : this.initialize() },
     classTypeLabel(value) { return ({ ADMIN: '行政班', SELECTION: '选课班', MERGED: '合班', RETAKE: '重修班', LAYERED: '分层班' })[value] || (value ? '待确认' : '—') },
     statusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || (value ? '待确认' : '—') },
     primaryTeacher(row) { return (row.teachers || []).find(item => item.roleType === 'PRIMARY' && item.status === 'ACTIVE') },
-    openDetail(row) { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', teachingClassId: row.teachingClassId } }) },
+    openDetail(row) { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', teachingClassId: row.teachingClassId, termId: this.filters.termId || undefined, returnTo: this.$route.fullPath } }) },
     onPageChange(page) { this.pagination.page = page; this.load() },
-    onTermChange() { this.backfillReport = null; this.confirmVisible = false; this.pagination.page = 1; this.load() },
-    async loadTerms() {
+    onTermChange() { this.checkRevision++; this.checking = false; this.checkedTermId = ''; this.backfillReport = null; this.confirmVisible = false; this.pagination.page = 1; this.load() },
+    async loadTerms(current = () => !this.disposed) {
       const [termsRes, currentRes] = await Promise.all([academicAffairsApi.getTerms({ page: 1, pageSize: 50 }), academicAffairsApi.getCurrentTerm()])
-      if (termsRes.code === 0) this.terms = termsRes.data.list || []
-      if (currentRes.code === 0 && currentRes.data?.termId) this.filters.termId = String(currentRes.data.termId)
+      if (!current()) return
+      if (termsRes.code !== 0) throw termsRes
+      if (currentRes.code !== 0 && !isMissingResult(currentRes)) throw currentRes
+      if (!Array.isArray(termsRes.data?.list)) throw new Error('学期列表未完整返回，请重试。')
+      this.terms = termsRes.data.list
+      if (this.$route.query.termId) this.filters.termId = String(this.$route.query.termId)
+      else if (currentRes.code === 0 && currentRes.data?.termId) this.filters.termId = String(currentRes.data.termId)
     },
     async load() {
-      if (this.loading) return
+      if (this.disposed) return
+      if (!this.initialized || !this.filters.termId || !this.terms.some(term => String(term.termId) === String(this.filters.termId))) {
+        this.revision++; this.rows = []; this.pagination.total = 0; this.loading = false
+        this.error ||= '请先完成学期读取并选择有效学期，尚未查询教学班。'
+        return
+      }
+      const revision = ++this.revision, context = this.ctx
       this.loading = true; this.error = ''
+      this.rows = []; this.pagination.total = 0
+      try {
       const res = await teachingClassApi.list({
         termId: this.filters.termId || undefined, classType: this.filters.classType || undefined,
         status: this.filters.status || undefined, keyword: this.filters.keyword || undefined,
         page: this.pagination.page, pageSize: this.pagination.pageSize
       })
+      if (revision !== this.revision || context !== this.ctx) return
       if (res.code === 0) { this.rows = res.data.list || []; this.pagination.total = res.data.total || 0 }
-      else { this.rows = []; this.pagination.total = 0; this.error = res.message || '加载教学班失败' }
-      this.loading = false
+      else this.handleFailure(res, '加载教学班失败')
+      } catch (error) { if (revision === this.revision && context === this.ctx) this.handleFailure(error, '网络连接失败，请重试。') }
+      finally { if (revision === this.revision && context === this.ctx) this.loading = false }
     },
     async runBackfill() {
-      if (!this.filters.termId || this.checking) return
+      if (!this.canManage || !this.filters.termId || this.checking || this.backfilling) return
+      const termId = this.filters.termId, revision = ++this.checkRevision
+      this.backfillReport = null; this.checkedTermId = ''
       this.checking = true
-      const res = await teachingClassApi.backfill(this.filters.termId, true)
-      this.checking = false
-      if (res.code === 0) { this.backfillReport = res.data; toast.success('存量对账完成') }
-      else { this.backfillReport = res.data || null; toast.error(res.message || '存量对账失败') }
+      try {
+        const res = await teachingClassApi.backfill(termId, true)
+        if (revision !== this.checkRevision || termId !== this.filters.termId) return
+        if (res.code === 0) { this.backfillReport = res.data; this.checkedTermId = termId }
+        else this.handleFailure(res, '存量对账失败')
+      } catch (error) { if (revision === this.checkRevision) this.handleFailure(error, '存量对账连接失败') }
+      finally { if (revision === this.checkRevision) this.checking = false }
     },
     async executeBackfill({ reason }) {
       if (this.backfilling || !this.canExecuteBackfill) return
       if (!reason || reason.trim().length < 5) { toast.error('请填写不少于5字的回填原因'); return }
       this.backfilling = true
-      const res = await teachingClassApi.backfill(this.filters.termId, false, reason.trim())
-      this.backfilling = false
+      const termId = this.filters.termId
+      try {
+      const check = await teachingClassApi.backfill(termId, true)
+      if (this.disposed || termId !== this.filters.termId) return
+      if (check.code !== 0) { this.handleFailure(check, '回填前核对失败，尚未提交。'); return }
+      this.backfillReport = check.data; this.checkedTermId = termId
+      if (!this.canExecuteBackfill) { this.error = '当前对账事实已变化，请核对后重新提交。'; return }
+      const res = await teachingClassApi.backfill(termId, false, reason.trim())
+      if (this.disposed || termId !== this.filters.termId) return
       if (res.code === 0) {
         this.confirmVisible = false
         this.backfillReport = res.data
-        toast.success('教学班与名单版本回填完成')
         await this.load()
+        if (!this.disposed && termId === this.filters.termId && !this.error) this.receipt = { object: `学期 #${termId}`, status: '回填请求已处理，列表已重新读取', next: '逐班打开正式名单及版本核对；当前页不代表全学期验收通过。' }
       } else {
-        this.backfillReport = res.data || this.backfillReport
-        toast.error(res.message || '回填失败')
+        this.handleFailure(res, '回填失败')
       }
+      } catch (error) { if (!this.disposed) this.handleFailure(error, '连接中断，请读取正式名单确认，勿重复回填。') }
+      finally { this.backfilling = false }
+    },
+    handleFailure(result, fallback) {
+      this.error = result?.message || fallback; this.backfillReport = null; this.checkedTermId = ''
+      if (isDeniedResult(result)) { this.revision++; this.loading = false; this.rows = []; this.confirmVisible = false; this.receipt = null }
+      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.filters.termId}`, status: '事实已变化，保留输入', pending: true, next: '重新执行存量对账，再核对回填范围。' }
     }
   }
 }

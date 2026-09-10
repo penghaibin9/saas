@@ -6,11 +6,13 @@ import { parse } from '@vue/compiler-sfc'
 import { baseParse } from '@vue/compiler-dom'
 import postcss from 'postcss'
 
+const readSource = url => fs.readFileSync(url, 'utf8').replace(/\r\n/g, '\n')
 // This pass intentionally changes presentation only. Update these anchors only after
 // separately reviewing any subsequent business change, never to hide a failing check.
+// 2026-09-10: reviewed system-dialog migration removes browser-native confirms and unload prompts.
 const anchors = {
   "views/SystemRoleListView.vue": {
-    "script": "9df552f7a2bfb49340bb4e5d53f3ea317d063a903ffcaad231ad930cf885a01e",
+    "script": "02328932e02bfd022447e03a062451c51d0593f1e61a231c657a80fa38ebe4e8",
     "directives": "7f928e376dd575762c46e9ac5cdde32d48c3cb9c46ea52759c207475050daaa2"
   },
   "views/SystemModuleFeatureView.vue": {
@@ -22,7 +24,7 @@ const anchors = {
     "directives": "7b7dc58d4587eb0c443271eaa5fe3dd08745934f5de6db2a7b9a60a59455158e"
   },
   "components/workspace/RoleMembersPanel.vue": {
-    "script": "9a23544075a4f09b314856ef2e264ef759fd573f47f6ae89e544bbad2073a6db",
+    "script": "68c29686ed63b9a2526e1c0fb7f3e5bfc8f608d3d7f1a3b84d2c1c8c02b6dcee",
     "directives": "6cd2d740ab637ff7072cadf9d57e3e26e027445fa177a5ec4085271bd0402118"
   }
 }
@@ -53,7 +55,7 @@ function behaviorDirectives(source) {
   return JSON.stringify(result.sort())
 }
 for (const [path, expected] of Object.entries(anchors)) {
-  const source = fs.readFileSync(new URL(path, root), 'utf8')
+  const source = readSource(new URL(path, root))
   test(`visual refinement preserves business script: ${path}`, () => {
     assert.equal(digest(businessScript(source)), expected.script)
   })
@@ -61,7 +63,7 @@ for (const [path, expected] of Object.entries(anchors)) {
     assert.equal(digest(behaviorDirectives(source)), expected.directives)
   })
 }
-const css = fs.readFileSync(new URL('components/workspace/workspace.css', root), 'utf8')
+const css = readSource(new URL('components/workspace/workspace.css', root))
 test('all visual rules stay inside the system workspace, never the shared portal', () => {
   postcss.parse(css).walkRules(rule => {
     for (const selector of rule.selectors) assert.ok(selector.startsWith('.system-workspace'), selector)
@@ -76,7 +78,7 @@ test('responsive matrix uses available content width and keeps the menu preview 
   assert.match(css, /forced-colors/)
 })
 test('role creation has explicit native labels, including the previously ambiguous template select', () => {
-  const source = fs.readFileSync(new URL('views/SystemRoleListView.vue', root), 'utf8')
+  const source = readSource(new URL('views/SystemRoleListView.vue', root))
   for (const [id, label, tag] of [
     ['system-role-name', '角色名称', 'input'],
     ['system-role-code', '角色编码', 'input'],

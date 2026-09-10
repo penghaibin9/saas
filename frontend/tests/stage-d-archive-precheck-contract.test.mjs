@@ -116,7 +116,7 @@ test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏
     '@keydown.space.prevent="select(b)"',
     '.aaar-item:focus-visible',
     '@media (max-width: 900px)',
-    '.aaar-layout { grid-template-columns: 1fr; }',
+    '.aaar-layout { display: grid; grid-template-columns: minmax(0, 1fr);',
     '@media (max-width: 600px)'
   ]) assert.ok(source.includes(token), `missing archive console production UI guard: ${token}`)
 })

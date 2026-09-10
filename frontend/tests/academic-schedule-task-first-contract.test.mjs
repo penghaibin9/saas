@@ -17,7 +17,10 @@ const scheduleApi = fs.readFileSync(scheduleApiPath, 'utf8')
 const dialog = fs.readFileSync(dialogPath, 'utf8')
 
 test('schedule maintenance is READY TeachingTask-first', () => {
-  assert.match(source, /listAllTasks\(\{\s*status:\s*'READY'/)
+  assert.match(source, /academicAffairsApi\.getTaskBatches\(\{ termId: scheduleBatch\.termId, status: 'APPROVED', page, pageSize \}\)/)
+  assert.match(source, /academicAffairsApi\.getBatchTasks\(taskBatchId, \{ status: 'READY', page, pageSize \}\)/)
+  assert.match(source, /for \(const taskBatchId of allowedBatches\)/)
+  assert.match(source, /readyTasks\.push\(\.\.\.\(tasks\.data\?\.list \|\| \[\]\)\)/)
   assert.match(source, /taskId:\s*String\(task\.taskId\)/)
   assert.match(source, /selectedTask\?\.courseName/)
   assert.match(source, /selectedTask\?\.teacherName/)

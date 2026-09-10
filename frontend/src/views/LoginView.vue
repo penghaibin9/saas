@@ -53,7 +53,7 @@
 
       <footer>
         <span>技术支持：湖南跃科信息工程有限公司</span>
-        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a>
+        <a href="https://beian.miit.gov.cn/" rel="noopener noreferrer">湘ICP备2026031107号</a>
       </footer>
     </section>
     <PasswordResetDialog v-if="resetVisible" :login-name="form.loginName" :tenant-code="form.tenantCode" @close="resetVisible = false" @done="resetDone" />

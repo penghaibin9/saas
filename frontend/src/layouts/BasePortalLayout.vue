@@ -744,15 +744,9 @@ export default {
     isHelpRoute(to) {
       return String(to || '').split('?')[0] === '/admin/help'
     },
-    /**
-     * 帮助中心始终独立打开，避免老师丢失当前业务页面。
-     * 当前认证令牌保存在 sessionStorage：新标签必须在有 opener 的创建瞬间继承会话，
-     * 随后立即断开 opener，兼顾免重复登录与反向标签页劫持防护。
-     */
+    /** 帮助在现有应用页签中打开，避免浏览器新窗口或远程弹窗。 */
     openHelpWindow(to = '/admin/help') {
-      const href = this.$router.resolve(to).href
-      const helpWindow = window.open(href, '_blank')
-      if (helpWindow) helpWindow.opener = null
+      this.$router.push(to)
     },
     /** 本页帮助：能匹配到任务卡就直达该卡，匹配不到退回帮助中心首页（不乱跳）。 */
     goPageHelp() {

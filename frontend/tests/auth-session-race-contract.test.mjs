@@ -12,6 +12,26 @@ async function readSource(url) {
   return (await readFile(url, 'utf8')).split('\r\n').join('\n')
 }
 
+test('真实HTTP错误状态与业务码独立保留，500正文409不得冒充明确拒绝', async () => {
+  const source = await readSource(clientUrl)
+  const code = source.slice(source.indexOf('async function rawRequest('), source.indexOf('function newBrowserSessionId('))
+  let status = 500, payload = { code: 409001, bizCode: 'DATA_CONFLICT', message: 'conflict' }
+  const env = {
+    fetch: async () => ({ status, json: async () => payload }),
+    state: { token: '' }, REQUEST_TIMEOUT_MS: 500,
+    isBackendOffline: () => false, canUseMockFallback: () => false,
+    isWriteMethod: method => method !== 'GET', API_BASE_URL: '', API_PREFIX: '',
+    normalizeUiError: value => ({ userMessage: value.message }),
+    clearOfflineState() {}, markOffline() {}, transportFailure: value => value,
+  }
+  const raw = new Function(...Object.keys(env), code + '; return rawRequest')(...Object.values(env))
+  await assert.rejects(raw('/grade', { method: 'POST' }), e => e.httpStatus === 500 && e.code === 409001)
+  status = 409
+  await assert.rejects(raw('/grade', { method: 'POST' }), e => e.httpStatus === 409 && e.bizCode === 'DATA_CONFLICT')
+  status = 200; payload = { code: 0, data: { taskId: '123' } }
+  assert.deepEqual(await raw('/grade'), { taskId: '123' })
+})
+
 test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', async () => {
   const source = await readSource(clientUrl)
 

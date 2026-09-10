@@ -162,7 +162,7 @@ const teachingClass = searchable(
 )
 
 const classroom = searchable(
-  (keyword) => academicAffairsApi.getClassroomOptions(keyword),
+  (keyword, query) => academicAffairsApi.getClassroomOptions(keyword, query?.purpose),
   {
     value: ['classroomId', 'id', 'value'],
     label: (x) => firstDefined(x, ['label', 'roomName'], `${x.buildingName || ''}${x.roomCode || ''}`),

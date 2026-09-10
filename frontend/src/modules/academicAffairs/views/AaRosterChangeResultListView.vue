@@ -4,6 +4,7 @@
     :subtitle="pageMeta.subtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <p class="mp-note">

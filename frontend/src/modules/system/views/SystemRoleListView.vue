@@ -110,6 +110,7 @@ import AppConfirmDialog from '@/modules/system/components/workspace/WorkspaceCon
 import { systemApi } from '@/modules/system/api/system.api'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import * as wc from '@/modules/system/utils/workspaceContract'
+import { systemConfirm } from '@/services/systemDialog'
 const WORK_TABS = ['permissions', 'scope', 'members', 'audit', 'details']
 export default {
   name: 'SystemRoleListView',
@@ -142,20 +143,18 @@ export default {
     }
   },
   created() { this.fence = wc.createRequestFence(); this.membersVisited = ['members', 'audit'].includes(this.activeTab); this.loadRoles() },
-  mounted() { window.addEventListener('beforeunload', this.beforeUnload) },
-  beforeUnmount() { this.fence.invalidate(); window.removeEventListener('beforeunload', this.beforeUnload) },
+  beforeUnmount() { this.fence.invalidate() },
   beforeRouteLeave(to) { return this.canLeave(to) },
   beforeRouteUpdate(to) { return this.canLeave(to) },
   methods: {
     can(key) { return wc.actionAllowed(this.ctx, key) },
     countLabel: wc.countLabel,
     scopeLabel(code) { return this.scopeOptions.find(item => item.value === code)?.label || '范围待核对' },
-    beforeUnload(event) { if (this.dirty || this.busy) { event.preventDefault(); event.returnValue = '' } },
-    canLeave(to) {
+    async canLeave(to) {
       if (this.busy) { this.flash = '当前操作尚未返回结果，请等待后再切换。'; return false }
       const sameObject = to.path === this.$route.path && String(to.query.roleId || '') === this.selectedId && !!this.selectedId
       if (sameObject && wc.isRoleWorkspaceRoute(to) && !this.form) return true
-      return !this.dirty || window.confirm('存在尚未保存的修改。确认放弃并离开当前角色？')
+      return !this.dirty || await systemConfirm({ title:'确认离开角色', message:'存在尚未保存的修改，离开后内容会丢失。', confirmText:'放弃并离开', type:'danger' })
     },
     async loadRoles() {
       const current = this.fence.start('roles'); this.listing.loading = true; this.listing.error = ''
@@ -185,7 +184,7 @@ export default {
     setMemberCount(total) { if (this.detail) this.detail = { ...this.detail, memberCount: total }; const row = this.listing.rows.find(item => String(item.id) === this.selectedId); if (row) row.memberCount = total },
     onPermissionSaved() { this.permissionDirty = false; this.loadRoles() },
     async openCreate(templateCode = '') {
-      if (!this.can('createRole') || this.busy || (this.dirty && !window.confirm('放弃当前尚未保存的修改，开始创建角色？'))) return
+      if (!this.can('createRole') || this.busy || (this.dirty && !await systemConfirm({ title:'确认创建新角色', message:'当前角色有尚未保存的修改。', confirmText:'放弃并创建', type:'danger' }))) return
       this.permissionDirty = false; this.memberDirty = false
       this.form = { id: '', name: '', code: '', sourceTemplateCode: typeof templateCode === 'string' ? templateCode : '', scopeCode: 'ASSIGNED' }
       this.formOriginal = JSON.stringify(this.form); this.formError = ''; this.sourceLoading = true; this.sourceTemplates = []
@@ -198,15 +197,15 @@ export default {
       } catch (error) { if (current()) this.formError = error.message || '来源模板读取失败' }
       finally { if (current()) this.sourceLoading = false }
     },
-    openRename() {
+    async openRename() {
       if (!this.detail || this.detail.type !== 'CUSTOM' || !this.can('editRole') || this.busy) return
-      if (this.dirty && !window.confirm('放弃尚未保存的权限或成员选择，修改名称？')) return
+      if (this.dirty && !await systemConfirm({ title:'确认修改角色名称', message:'尚未保存的权限或成员选择将被放弃。', confirmText:'放弃并修改', type:'danger' })) return
       this.permissionDirty = false; this.memberDirty = false
       this.form = { id: this.selectedId, name: this.detail.name, code: this.detail.code }
       this.formOriginal = JSON.stringify(this.form); this.formError = ''
     },
-    closeForm() {
-      if (this.busy || (JSON.stringify(this.form) !== this.formOriginal && !window.confirm('放弃尚未保存的角色表单？'))) return
+    async closeForm() {
+      if (this.busy || (JSON.stringify(this.form) !== this.formOriginal && !await systemConfirm({ title:'确认关闭角色表单', message:'角色表单尚未保存。', confirmText:'放弃修改', type:'danger' }))) return
       this.form = null; this.formError = ''; this.permissionDirty = false; this.memberDirty = false
     },
     async saveForm() {

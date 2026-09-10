@@ -1,248 +1,88 @@
 <template>
-  <ModulePageShell
-    title="学籍异动详情"
-    :subtitle="change ? (change.changeTypeLabel + ' · ' + change.realName) : ''"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/status-changes')">返回列表</AppButton>
-      <AppPrintButton v-if="change" :handler="print" label="打印审批表" />
-    </template>
-
+  <ModulePageShell title="学籍异动详情" subtitle="查看正式申请、材料与审批结果" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <template #actions><AppButton :disabled="busy" @click="$router.push('/admin/academic-affairs/status-changes')">返回列表</AppButton><AppButton v-if="change" :disabled="busy || printBusy" @click="print">打印审批表</AppButton></template>
     <ErrorState v-if="error" :description="error" @retry="load" />
-    <LoadingState v-else-if="loading" />
-    <div v-else-if="change" class="mp-stack">
-      <AppSectionCard title="基本信息">
-        <AppDescriptionList :items="descItems" :columns="2">
-          <template #status>
-            <AppStatusTag :type="statusColor(change.status)" dot>{{ statusLabel(change.status) }}</AppStatusTag>
-          </template>
-        </AppDescriptionList>
-      </AppSectionCard>
-
-      <AppSectionCard title="申请材料">
-        <div v-if="materialsLoading" class="mp-note">正在读取正式申请材料…</div>
-        <AppInlineAlert v-else-if="materialsError" type="warning" :message="materialsError" />
-        <div v-else-if="materials.length" class="aa-materials">
-          <FilePreviewer
-            v-for="file in materials"
-            :key="file.bindingId || file.fileId"
-            :file="file"
-            @error="onFileError"
-          />
-        </div>
-        <p v-else class="mp-note">本异动未提交申请材料。</p>
-      </AppSectionCard>
-
-      <AppSectionCard title="审批流程">
-        <ol class="aa-flow">
-          <li v-for="(n, i) in flowNodes" :key="n" class="aa-flow__node" :class="nodeState(i)">
-            <span class="aa-flow__dot">{{ i + 1 }}</span>
-            <span class="aa-flow__label">{{ nodeLabel(n) }}</span>
-            <span class="aa-flow__state">{{ nodeStateText(i) }}</span>
-          </li>
-        </ol>
-      </AppSectionCard>
-
-      <AppSectionCard v-if="canReview" title="审批操作">
-        <div class="aa-review-btns">
-          <AppButton variant="primary" @click="openApprove">通过</AppButton>
-          <AppButton @click="openReturn">退回</AppButton>
-          <AppButton variant="danger" @click="openReject">驳回</AppButton>
-        </div>
-        <p class="mp-note">{{ reviewHint }}</p>
-      </AppSectionCard>
-      <AppInlineAlert v-else-if="isPendingEffective" type="info" :message="pendingEffectiveMessage" />
-      <AppInlineAlert v-else-if="!isActive(change.status)" type="info" :message="`本异动已${statusLabel(change.status)}，无需再审批。`" />
+    <LoadingState v-if="loading" />
+    <div v-else-if="change" class="sc-detail">
+      <StatusChangeReview :key="change.changeId" :change="change" :ctx="ctx" @updated="updateFormal" @denied="denied" @busy="busy=$event"><template #materials><button :disabled="materialsLoading || busy" @click="loadMaterials">{{ materialsLoading ? '正在读取…' : '读取正式绑定材料' }}</button></template></StatusChangeReview>
+      <AppInlineAlert v-if="isPendingEffective" type="info" :message="pendingEffectiveMessage" />
+      <section v-if="materialsOpened" class="sc-materials"><h3>正式申请材料</h3><p v-if="materialsError" role="alert">{{ materialsError }}</p><p v-if="materialsLoading">正在读取材料…</p><p v-else-if="!materials.length && !materialsError">当前正式申请没有绑定材料。</p><div v-else class="sc-material-list"><FilePreviewer v-for="file in materials" :key="file.bindingId || file.fileId" :file="file" @error="onFileError" /></div><p>每次打开都由公共文件中心重新核对权限与安全状态。</p></section>
+      <section class="sc-materials"><h3>审批路径参考</h3><ol class="sc-flow"><li v-for="(node,index) in flowNodes" :key="node" :class="nodeState(index)"><b>{{ nodeLabel(node) }}</b><span>{{ nodeStateText(index) }}</span></li></ol><p>{{ reviewHint }}</p><p>路径顺序不代表历史节点已全部审核通过，办理事实以正式审批任务和最终状态为准。</p></section>
     </div>
-
-    <AppConfirmDialog
-      v-model:visible="dlg.visible"
-      :title="dlg.title"
-      :message="dlg.message"
-      :type="dlg.type"
-      :confirm-text="dlg.confirmText"
-      :require-reason="dlg.requireReason"
-      reason-label="审批意见"
-      :submitting="dlg.submitting"
-      @confirm="doReview"
-    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 学籍异动详情 + 审批。材料只从正式 AA_STATUS_CHANGE FileBinding 枚举；
- *  每次预览/下载仍交公共文件中心 resolver 重新做异动 dataScope 与审批权限裁决。
- *  future-effective 只做展示语义：终审待生效仍由既有 temporal guard/worker 掌握写事实。 */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton } from '@/components/common'
+import { AppInlineAlert } from '@/components/common'
+import StatusChangeReview from './parallel-c/StatusChangeReview.vue'
 import FilePreviewer from '@/components/file/FilePreviewer.vue'
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { statusChangeConvenienceApi } from '@/modules/academicAffairs/api/status-change-convenience.api'
+import { academicAffairsApi as api } from '../api/academic-affairs.api'
+import { statusChangeConvenienceApi } from '../api/status-change-convenience.api'
 import { fileSdk } from '@/services/file/fileSdk'
-import { STATUS_LABEL, NODE_LABEL, CHANGE_FLOW_NODES, statusColor, isActive } from '@/modules/academicAffairs/constants/status-change'
+import { currentUserFromToken } from '@/services/http/client'
+import { CHANGE_FLOW_NODES, NODE_LABEL } from '../constants/status-change'
+import { gradeError } from './parallel-c/grade-review'
 import { toast } from '@/utils/toast'
-
 const PENDING_EFFECTIVE = 'APPROVED_PENDING_EFFECTIVE'
-
 export default {
-  name: 'AaStatusChangeDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppInlineAlert, AppDescriptionList, AppPrintButton, FilePreviewer },
-  props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true,
-      error: '',
-      change: null,
-      materialsLoading: false,
-      materialsError: '',
-      materials: [],
-      dlg: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
-    }
+  name:'AaStatusChangeDetailView',
+  components:{ModulePageShell,LoadingState,ErrorState,AppButton,AppInlineAlert,StatusChangeReview,FilePreviewer},
+  props:{ctx:{type:Object,required:true}},
+  data(){return {alive:true,seq:0,materialSeq:0,fileSeq:0,loading:true,error:'',change:null,busy:false,printBusy:false,materialsOpened:false,materialsLoading:false,materialsError:'',materials:[],fileBusy:false}},
+  computed:{
+    changeId(){return String(this.$route.params.id||'')},
+    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},
+    flowNodes(){return CHANGE_FLOW_NODES[this.change?.changeType]||[]},
+    currentIndex(){return this.flowNodes.indexOf(this.change?.currentNode)},
+    isPendingEffective(){return this.change?.status===PENDING_EFFECTIVE},
+    isInReview(){return ['SUBMITTED','IN_REVIEW'].includes(this.change?.status)},
+    workflowFinished(){return this.change?.status === 'EFFECTIVE' || this.isPendingEffective},
+    reviewHint(){if(this.isPendingEffective&&!this.change?.effectiveDate)return '申请已进入「已通过·待生效」，但正式计划生效时间缺失，请联系教务核对执行计划；当前学籍尚未变更。';if(this.change?.effectiveDate)return `该申请设置指定生效时间 ${this.change.effectiveDate}。终审通过时若仍未到期，将先进入「已通过·待生效」，当前学籍不会提前改写。`;return '通过后异动将立即生效并写入学籍主档。'},
+    pendingEffectiveMessage(){return `终审已经通过，当前学籍尚未变更；系统将在 ${this.change?.effectiveDate||'指定时间'} 到期后按正式异动链生效。`}
   },
-  computed: {
-    changeId() { return this.$route.params.id },
-    flowNodes() { return this.change ? (CHANGE_FLOW_NODES[this.change.changeType] || []) : [] },
-    currentIndex() {
-      if (!this.change || !this.change.currentNode) return -1
-      return this.flowNodes.indexOf(this.change.currentNode)
+  watch:{changeId(){this.clear();this.load()},identity(){this.clear();this.load()}},
+  created(){this.load()},beforeUnmount(){this.alive=false;this.clear()},
+  methods:{
+    capture(){return {seq:this.seq,id:this.changeId,identity:this.identity}},current(c){return this.alive&&c.seq===this.seq&&c.id===this.changeId&&c.identity===this.identity},
+    clear(){this.seq++;this.materialSeq++;this.fileSeq++;this.change=null;this.materials=[];this.materialsOpened=false;this.materialsLoading=false;this.materialsError='';this.fileBusy=false;this.printBusy=false;this.loading=false;this.error='';this.busy=false},
+    denied(){this.clear();this.error='当前身份无权读取此申请，请返回责任队列。'},
+    fail(err,fallback){if(/403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))){this.denied();return}this.error=gradeError(err,fallback)},
+    updateFormal(row){if(String(row.changeId)===this.changeId)this.change={...row}},
+    nodeLabel(node){return NODE_LABEL[node]||'节点待核对'},
+    nodeState(index){return this.isInReview&&index===this.currentIndex?'is-current':'is-reference'},
+    nodeStateText(index){if(this.workflowFinished)return '流程已结束·节点供参考';if(this.change?.status==='RETURNED')return '已退回·路径供参考';if(this.change?.status==='REJECTED')return '已驳回·路径供参考';if(!this.isInReview)return '当前状态待核对·路径供参考';if(this.currentIndex<0)return '节点状态待核对';if(index===this.currentIndex)return '当前审批';return index>this.currentIndex?'后续路径参考':'历史状态待核对'},
+    onFileError(err){toast.error(gradeError(err,'材料预览或下载失败'))},
+    async openFile(file,action){
+      if(this.fileBusy||this.busy||!['preview','download'].includes(action)||!this.materials.some(f=>String(f.fileId)===String(file.fileId)))return
+      const c=this.capture(),seq=++this.fileSeq;const valid=()=>this.current(c)&&seq===this.fileSeq
+      this.fileBusy=true;this.materialsError=''
+      try{const meta=await fileSdk.metadata(file.fileId);if(!valid())return;if(!meta.allowedActions?.includes(action))throw {code:403}
+        if(action==='preview'){
+          const preview=await fileSdk.preview(file.fileId);if(!valid())preview?.close?.()
+          return
+        }
+        const auth=await fileSdk.authorizedUrl(file.fileId);if(!valid())return
+        let href,objectUrl=false;if(auth?.delivery==='COS_PRESIGNED'&&/^https:\/\//i.test(auth.url||''))href=auth.url;else{const blob=await fileSdk.blob(file.fileId);if(!valid())return;href=URL.createObjectURL(blob);objectUrl=true}
+        const a=document.createElement('a');a.href=href;a.rel='noopener noreferrer';a.download=file.fileName||'申请材料';document.body.appendChild(a);a.click();a.remove()
+        if(objectUrl)setTimeout(()=>URL.revokeObjectURL(href),60000)
+      }catch(err){if(valid()){this.materialsError=gradeError(err,'文件暂不可用，请重新核对。');if(/403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' ')))this.denied()}}finally{if(valid())this.fileBusy=false}
     },
-    isPendingEffective() {
-      return this.change?.status === PENDING_EFFECTIVE
+    async read(c){const res=await api.getStatusChange(c.id);if(res?.code!==0)throw res;if(String(res.data?.changeId||'')!==c.id)throw {code:409};return res.data},
+    async load(){if(this.busy)return;this.clear();const c=this.capture();this.loading=true;try{const row=await this.read(c);if(this.current(c))this.change=row}catch(err){if(this.current(c))this.fail(err,'申请读取失败，请重试。')}finally{if(this.current(c))this.loading=false}},
+    async loadMaterials(){
+      if(!this.change||this.materialsLoading||this.busy)return
+      const c=this.capture(),seq=++this.materialSeq;this.fileSeq++;this.fileBusy=false;this.materialsOpened=true;this.materialsLoading=true;this.materials=[];this.materialsError=''
+      const valid=()=>this.current(c)&&seq===this.materialSeq
+      try{const res=await statusChangeConvenienceApi.listMaterials(this.changeId);if(!valid())return;if(res?.code!==0)throw res;const items=Array.isArray(res.data?.items)?res.data.items:[];this.materials=items.map((file) => fileSdk.normalize(file))}
+      catch(err){if(valid()){this.materialsError=gradeError(err,'材料读取失败，请重试。');if(/403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' ')))this.denied()}}finally{if(valid())this.materialsLoading=false}
     },
-    workflowFinished() {
-      return this.change?.status === 'EFFECTIVE' || this.isPendingEffective
-    },
-    canReview() {
-      return this.change && isActive(this.change.status) && this.currentIndex >= 0
-    },
-    reviewHint() {
-      if (this.change?.effectiveDate) {
-        return `本申请设置指定生效时间 ${this.change.effectiveDate}。终审通过时若该时间仍在未来，将先进入「已通过·待生效」，当前学籍不会提前改写；若已到期则按正式异动链生效。驳回 / 退回原因必填且不少于 5 字。`
-      }
-      return '驳回 / 退回原因必填且不少于 5 字。终审「通过」后立即生效并写入学籍主档。'
-    },
-    pendingEffectiveMessage() {
-      const at = this.change?.effectiveDate || '指定时间'
-      return `终审已经通过，当前学籍尚未变更；系统将在 ${at} 到期后由既有 future-effective 任务正式生效。`
-    },
-    descItems() {
-      const c = this.change
-      if (!c) return []
-      const items = [
-        { label: '学生', value: `${c.realName}（ID ${c.studentId}）` },
-        { label: '异动类型', value: c.changeTypeLabel },
-        { label: '状态变化', value: `${c.fromStatus} → ${c.toStatus}` },
-        { key: 'status', label: '当前状态', value: c.status },
-        { label: '当前节点', value: this.nodeLabel(c.currentNode) },
-        { label: '生效方式', value: c.effectiveDate ? `指定日期 · ${c.effectiveDate}` : '终审通过立即生效' }
-      ]
-      if (c.expireDate) items.push({ label: '休学到期', value: c.expireDate })
-      items.push({ label: '申请原因', value: c.reason || '（无）', span: 2 })
-      return items
-    }
-  },
-  created() {
-    this.load()
-  },
-  methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
-    statusColor,
-    isActive,
-    nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
-    nodeState(i) {
-      if (this.workflowFinished) return 'is-done'
-      if (i < this.currentIndex) return 'is-done'
-      if (i === this.currentIndex) return 'is-current'
-      return 'is-todo'
-    },
-    nodeStateText(i) {
-      if (this.workflowFinished) return '已通过'
-      if (i < this.currentIndex) return '已通过'
-      if (i === this.currentIndex) return '审批中'
-      return '待处理'
-    },
-    print() {
-      window.open(`/admin/academic-affairs/print/status-change/${this.changeId}`, '_blank')
-    },
-    onFileError(error) {
-      toast.error(error?.message || '材料预览或下载失败')
-    },
-    async loadMaterials() {
-      this.materialsLoading = true
-      this.materialsError = ''
-      const res = await statusChangeConvenienceApi.listMaterials(this.changeId)
-      this.materialsLoading = false
-      if (res.code === 0) {
-        const items = Array.isArray(res.data?.items) ? res.data.items : []
-        this.materials = items.map((file) => fileSdk.normalize(file))
-      } else {
-        this.materials = []
-        this.materialsError = res.message || '申请材料读取失败'
-      }
-    },
-    openApprove() {
-      const isFinal = this.currentIndex + 1 >= this.flowNodes.length
-      let message = '通过后流转到下一审批节点。'
-      if (isFinal && this.change.effectiveDate) {
-        message = `这是终审节点。该申请设置指定生效时间 ${this.change.effectiveDate}；终审通过时若该时间仍在未来，将先进入「已通过·待生效」，当前学籍不会提前改写；若已到期则按正式异动链生效。`
-      } else if (isFinal) {
-        message = '这是终审节点，通过后异动将立即生效并写入学籍主档。'
-      }
-      this.dlg = { visible: true, title: `通过「${this.change.changeTypeLabel}」`, message, type: 'primary', confirmText: '确认通过', requireReason: false, submitting: false, action: 'APPROVE' }
-    },
-    openReturn() {
-      this.dlg = { visible: true, title: '退回异动', message: '退回给申请方修改，请填写退回原因。', type: 'warning', confirmText: '确认退回', requireReason: true, submitting: false, action: 'RETURN' }
-    },
-    openReject() {
-      this.dlg = { visible: true, title: '驳回异动', message: '驳回后本异动终止，请填写驳回原因。', type: 'danger', confirmText: '确认驳回', requireReason: true, submitting: false, action: 'REJECT' }
-    },
-    async doReview(payload) {
-      const reason = (payload && payload.reason) || ''
-      this.dlg.submitting = true
-      const res = await academicAffairsApi.reviewStatusChange(this.changeId, this.dlg.action, reason)
-      this.dlg.submitting = false
-      if (res.code === 0) {
-        this.dlg.visible = false
-        toast.success('已处理')
-        this.load()
-      } else {
-        toast.error(res.message || '处理失败')
-      }
-    },
-    async load() {
-      this.loading = true
-      this.error = ''
-      const res = await academicAffairsApi.getStatusChange(this.changeId)
-      if (res.code === 0) {
-        this.change = res.data
-        await this.loadMaterials()
-      } else {
-        this.error = res.message
-      }
-      this.loading = false
-    }
+    async print(){if(this.busy||this.printBusy||!this.change)return;const c=this.capture();this.printBusy=true;try{const row=await this.read(c);if(!this.current(c))return;this.updateFormal(row);this.$router.push(`/admin/academic-affairs/print/status-change/${encodeURIComponent(c.id)}`)}catch(err){if(this.current(c))this.fail(err,'打印前核对失败，请重试。')}finally{if(this.current(c))this.printBusy=false}}
   }
 }
 </script>
 
 <style scoped>
-@import '@/styles/module-page.css';
-.aa-kv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 24px; }
-.aa-kv { display: flex; gap: 12px; font-size: 14px; }
-.aa-kv--full { grid-column: 1 / -1; }
-.aa-kv span { color: var(--text-500, #646a73); min-width: 72px; }
-.aa-kv b { color: var(--text-900, #1f2329); font-weight: 500; }
-.aa-materials { display: grid; gap: 10px; }
-.aa-flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.aa-flow__node { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
-.aa-flow__dot { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; background: var(--fill-200, #e5e6eb); color: var(--text-500, #646a73); }
-.aa-flow__node.is-done .aa-flow__dot { background: var(--success-500, #22c55e); color: #fff; }
-.aa-flow__node.is-current .aa-flow__dot { background: var(--primary-500, #3b82f6); color: #fff; }
-.aa-flow__label { font-size: 14px; color: var(--text-900, #1f2329); }
-.aa-flow__state { font-size: 12px; color: var(--text-400, #8a9099); }
-.aa-flow__node.is-current .aa-flow__state { color: var(--primary-600, #2563eb); }
-.aa-review-btns { display: flex; gap: 12px; }
+.sc-detail{display:grid;gap:18px}.sc-materials{background:var(--bg-white,#fff);padding:18px;border:1px solid var(--border-200,#e1e7ef);border-radius:9px}.sc-materials h3{font-size:14px;margin:0 0 12px}.sc-materials p{font-size:13px;line-height:1.7;color:var(--text-500,#607087)}.sc-materials article{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--border-200,#e1e7ef);font-size:13px}button{padding:7px 12px;border:1px solid var(--border-200,#d6e0ed);border-radius:7px;background:var(--bg-white,#fff);color:var(--primary-600,#285aab);cursor:pointer}button:disabled{opacity:.5;cursor:default}
 </style>

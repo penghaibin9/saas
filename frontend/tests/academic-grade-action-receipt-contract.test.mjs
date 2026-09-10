@@ -25,10 +25,11 @@ test('学院复核与教务发布均保留可核验动作回执', () => {
   }
   assert.ok(review.includes('教务处终审发布'))
   assert.ok(review.includes('任课教师修改后重新提交'))
-  assert.ok(publish.includes('成绩已正式发布'))
+  assert.ok(publish.includes('buildGradePublishReceipt'))
   assert.ok(publish.includes('未产生新的正式成绩投影'))
-  assert.ok(publish.includes('res.data.projected'))
-  assert.ok(publish.includes('res.data.failCount'))
+  assert.ok(publish.includes('result.projectedCount'))
+  assert.ok(publish.includes('不及格人数'))
+  assert.ok(publish.includes('预警条数：未提供'))
 })
 
 test('动作回执在窄屏降为单列', () => {

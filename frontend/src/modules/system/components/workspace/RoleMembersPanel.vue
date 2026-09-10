@@ -75,6 +75,7 @@
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import { presentAuditRecord } from '@/utils/presentationSafety'
 import * as wc from '@/modules/system/utils/workspaceContract'
+import { systemConfirm } from '@/services/systemDialog'
 const emptyPage = size => ({ rows: [], total: 0, page: 1, pageSize: size, loading: false, error: '' })
 export default {
   name: 'RoleMembersPanel',
@@ -123,9 +124,9 @@ export default {
     loadAudit(page) { if (this.canAudit) return this.readPage('audit', page, () => schoolIamApi.roleAudit(this.roleId, page, 50)) },
     loadCandidates(page) { if (this.canAdd) return this.readPage('candidates', page, () => schoolIamApi.roleMemberCandidates(this.roleId, { keyword: this.appliedKeyword, page, pageSize: 20 })) },
     openAdd() { if (!this.canAdd || this.busy || this.locked) return; this.adding = true; this.loadCandidates(1) },
-    searchCandidates() {
+    async searchCandidates() {
       if (this.busy) return
-      if (this.selected.length && !window.confirm('更换查询条件会清空已选老师，是否继续？')) return
+      if (this.selected.length && !await systemConfirm({ title:'确认更换查询条件', message:'更换查询条件会清空已选老师。', confirmText:'清空并查询', type:'danger' })) return
       this.selected = []; this.appliedKeyword = this.candidateKeyword.trim(); this.loadCandidates(1)
     },
     choose(row, checked) {
@@ -133,8 +134,8 @@ export default {
       this.selected = this.selected.filter(item => item.id !== row.id)
       if (checked && this.selected.length < 100) this.selected.push({ id: row.id, name: row.name, loginName: row.loginName })
     },
-    cancelAdd() {
-      if (this.busy || (this.dirty && !window.confirm('放弃尚未提交的成员选择与原因？'))) return
+    async cancelAdd() {
+      if (this.busy || (this.dirty && !await systemConfirm({ title:'确认放弃成员选择', message:'尚未提交的成员选择与原因将被清空。', confirmText:'放弃选择', type:'danger' }))) return
       this.adding = false; this.selected = []; this.reason = ''; this.expiresAt = ''; this.validationError = ''; this.uncertain = false
     },
     inspect(row) { this.$router.push({ path: '/admin/system/iam', query: { surface: 'access', userId: String(row.id) }, hash: '#access-explain' }) },

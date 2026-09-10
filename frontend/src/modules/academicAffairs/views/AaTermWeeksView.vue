@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="aa-foundation-workspace"
     title="学期周次"
     subtitle="按开学日期与教学周数展开逐周日期，叠加校历假期/考试/实习安排，标注当前所在周"
     :role-name="ctx.currentRole.roleName"
@@ -15,23 +16,27 @@
 
       <p v-if="currentError" class="mp-note">当前学期解析失败，未自动猜测“当前”；已保留显式学期选择供历史周次查询。{{ currentError }}</p>
 
+      <ErrorState v-if="catalogError" :description="catalogError" @retry="refreshTermCatalog" />
+      <LoadingState v-else-if="termsLoading" />
       <EmptyState
-        v-if="!termsLoading && !terms.length"
+        v-else-if="!terms.length"
         title="还没有学年学期"
         description="学期周次依附于学期，请先到「学年学期」创建并发布一个学期"
       >
         <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms')">前往学年学期</AppButton>
       </EmptyState>
 
+      <EmptyState v-else-if="!selectedTerm" title="请选择学期" description="未解析到当前学期时，请显式选择需要查看的学期。" />
       <template v-else>
+        <AaCalendarMonth :term="selectedTerm" :weeks="weeks" week-mode title="学期周次" :loading="loading" :error="error" @retry="loadWeeks" />
         <ErrorState v-if="error" :description="error" @retry="loadWeeks" />
         <LoadingState v-else-if="loading" />
         <EmptyState
           v-else-if="!weeks.length"
           title="该学期尚未配置教学周"
-          description="请先到「教学周配置」设置教学周总数与开学日期"
+          description="在学期详情中补齐开学日期与教学周数后，可查看逐周安排。"
         >
-          <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/terms/teaching-weeks')">前往教学周配置</AppButton>
+          <AppButton variant="primary" @click="$router.push({ name: 'aa-term-detail', params: { termId } })">查看学期详情</AppButton>
         </EmptyState>
         <DataTable v-else :columns="columns" :rows="weeks" row-key="weekNo">
           <template #cell-weekNo="{ row }">
@@ -39,8 +44,10 @@
           </template>
           <template #cell-range="{ row }">{{ row.startDate }} ~ {{ row.endDate }}</template>
           <template #cell-weekType="{ row }">
-            <AppStatusTag :type="typeColor(row.weekType)" dot>{{ TYPE_LABEL[row.weekType] || row.weekType }}</AppStatusTag>
+            <AppStatusTag :type="typeColor(row.weekType)" dot>{{ TYPE_LABEL[row.weekType] || '类型待确认' }}</AppStatusTag>
           </template>
+          <template #cell-teachingDayCount="{ row }">{{ row.teachingDayCount }} 天</template>
+          <template #cell-exceptionSummary="{ row }">{{ row.exceptionSummary || '无例外安排' }}</template>
           <template #cell-remark="{ row }">{{ row.remark || '—' }}</template>
         </DataTable>
       </template>
@@ -55,18 +62,21 @@ import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapters'
+import AaCalendarMonth from '@/modules/academicAffairs/components/AaCalendarMonth.vue'
 
 const TYPE_LABEL = { TEACHING: '教学周', EXAM: '考试周', HOLIDAY: '假期', INTERNSHIP: '实习周' }
 const TYPE_COLOR = { TEACHING: 'default', EXAM: 'danger', HOLIDAY: 'success', INTERNSHIP: 'warning' }
 
 export default {
   name: 'AaTermWeeksView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppTermEntityPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppTermEntityPicker, AaCalendarMonth },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       TYPE_LABEL,
       termsLoading: true,
+      catalogError: '',
+      requestVersion: 0, catalogVersion: 0, currentVersion: 0, disposed: false,
       terms: [],
       termId: '',
       currentContext: null,
@@ -77,12 +87,14 @@ export default {
       columns: [
         { key: 'weekNo', title: '周次' },
         { key: 'range', title: '起止日期' },
+        { key: 'teachingDayCount', title: '教学日数' },
         { key: 'weekType', title: '类型' },
-        { key: 'remark', title: '备注' }
+        { key: 'exceptionSummary', title: '例外安排' }
       ]
     }
   },
   computed: {
+    selectedTerm() { return this.terms.find(term => String(term.termId) === String(this.termId)) },
     termOptions() {
       return this.terms.map((t) => ({
         value: t.termId,
@@ -93,14 +105,29 @@ export default {
   created() {
     this.refreshTermCatalog()
   },
+  watch: {
+    '$route.query.termId'(id) {
+      if (String(id || '') === String(this.termId || '')) return
+      this.requestVersion++; this.weeks = []
+      if (typeof id !== 'string' || !this.terms.some(term => String(term.termId) === id)) {
+        this.termId = ''; this.catalogError = '入口指定的学期不可用，请重新选择学期。'; return
+      }
+      this.termId = id; this.loadWeeks()
+    },
+    ctx: { deep: true, handler() { this.requestVersion++; this.weeks = []; this.refreshTermCatalog() } }
+  },
+  beforeUnmount() { this.disposed = true; this.requestVersion++; this.catalogVersion++; this.currentVersion++ },
   methods: {
     typeColor(t) { return TYPE_COLOR[t] || 'default' },
     isResolvedCurrent(term) {
       return Boolean(term && this.currentContext?.termId) && String(term.termId) === String(this.currentContext.termId)
     },
     async loadCurrentContext() {
+      const version = ++this.currentVersion, scope = JSON.stringify(this.ctx)
       this.currentError = ''
+      this.currentContext = null
       const res = await academicAffairsApi.getCurrentTerm()
+      if (version !== this.currentVersion || this.disposed || scope !== JSON.stringify(this.ctx)) return
       if (res.code === 0) {
         this.currentContext = res.data || null
       } else {
@@ -109,26 +136,43 @@ export default {
       }
     },
     async refreshTermCatalog() {
+      const version = ++this.catalogVersion, scope = JSON.stringify(this.ctx)
       this.termsLoading = true
+      this.catalogError = ''
       try {
-        this.terms = await loadAcademicTermCatalog()
+        const terms = await loadAcademicTermCatalog()
+        if (version !== this.catalogVersion || this.disposed || scope !== JSON.stringify(this.ctx)) return
+        this.terms = terms
         await this.loadCurrentContext()
+        if (version !== this.catalogVersion || this.disposed || scope !== JSON.stringify(this.ctx)) return
         const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
-        const selected = resolved || this.terms[0]
+        const requested = this.termId || this.$route.query.termId
+        const explicit = typeof requested === 'string' && this.terms.find(t => String(t.termId) === requested)
+        if (requested && !explicit) {
+          this.termId = ''; this.weeks = []; this.catalogError = '入口指定的学期不可用，请重新选择学期。'; this.termsLoading = false; return
+        }
+        const selected = explicit || resolved
         if (selected) {
           this.termId = selected.termId
           this.loadWeeks()
         }
       } catch (error) {
-        this.error = error.message || '学期数据加载失败'
+        if (version !== this.catalogVersion || this.disposed || scope !== JSON.stringify(this.ctx)) return
+        this.catalogError = error.message || '学期数据加载失败'
       }
       this.termsLoading = false
     },
     async loadWeeks() {
-      if (!this.termId) return
+      const version = ++this.requestVersion
+      const scope = JSON.stringify(this.ctx)
+      this.weeks = []
+      if (!this.termId) { this.loading = false; return }
+      this.catalogError = ''
+      if (String(this.$route.query.termId || '') !== String(this.termId)) this.$router.replace?.({ query: { ...this.$route.query, termId: String(this.termId) } })
       this.loading = true
       this.error = ''
       const res = await academicAffairsApi.getTermWeeks(this.termId)
+      if (version !== this.requestVersion || this.disposed || scope !== JSON.stringify(this.ctx)) return
       if (res.code === 0) {
         this.weeks = res.data || []
       } else {
@@ -142,6 +186,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/foundation-workspace.css';
 .aa-filter { display: flex; gap: 16px; align-items: center; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-select {

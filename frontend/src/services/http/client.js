@@ -165,6 +165,7 @@ async function rawRequest(path, {
       })
       const err = new Error(normalized.userMessage)
       err.biz = true
+      err.httpStatus = res.status
       err.code = payload.code
       err.bizCode = payload.bizCode
       err.details = payload.details

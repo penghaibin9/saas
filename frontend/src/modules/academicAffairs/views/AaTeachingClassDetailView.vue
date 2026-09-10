@@ -7,9 +7,10 @@
   >
     <template #actions>
       <AppButton @click="backToClasses">返回教学班</AppButton>
-      <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">来源教学任务</AppButton>
+      <AppButton :disabled="loading || sourceLoading || !sourceTask" @click="openSourceTask">来源教学任务（形成时快照）</AppButton>
     </template>
 
+    <AaOperationReceipt :receipt="receipt" />
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="teachingClass" class="mp-stack">
@@ -31,15 +32,16 @@
           <div><span>教学班编号</span><b>{{ teachingClass.classCode }}</b></div>
           <div><span>状态</span><b><AppStatusTag :type="teachingClass.status === 'ACTIVE' ? 'success' : 'info'" :label="classStatusLabel(teachingClass.status)" /></b></div>
           <div><span>来源任务</span><b>#{{ teachingClass.teachingTaskId }} · {{ taskStatusLabel(teachingClass.taskStatus) }}</b></div>
+          <div><span>形成时来源批次</span><b>{{ sourceTask ? `#${sourceTask.batchId} · 跳转前重新核对` : '未提供完整快照，不能定位来源' }}</b></div>
           <div><span>行政班来源</span><b>{{ teachingClass.administrativeClassName || teachingClass.administrativeClassId || '非行政班来源' }}</b></div>
           <div><span>容量</span><b>{{ teachingClass.capacity ?? '未设置' }}</b></div>
-          <div><span>预计人数兼容字段</span><b>{{ teachingClass.expectedStudents ?? '未设置' }}</b></div>
+          <div><span>预计人数</span><b>{{ teachingClass.expectedStudents ?? '未设置' }}</b></div>
         </div>
       </AppSectionCard>
 
       <AppSectionCard title="教师关系">
         <div class="aa-section-toolbar">
-          <div class="mp-cell-sub">PRIMARY 与共同授课教师均按有效周次参与课表、考勤、成绩与工作量权限裁决。</div>
+          <div class="mp-cell-sub">主讲与共同授课教师均按有效周次参与课表、考勤、成绩与工作量办理。</div>
           <AppButton v-if="canManageTeacherRelations" variant="primary" @click="openCreateTeacher">新增共同授课</AppButton>
         </div>
         <AppInlineAlert
@@ -86,7 +88,7 @@
           title="该教学班由选课名单管理"
           :description="teachingClass.rosterManagement.reason || '请在选课管理中补退选并重新锁定名单，禁止在此覆盖。'"
         />
-        <template v-else>
+        <template v-else-if="canManageTeacherRelations">
           <AppInlineAlert
             type="info"
             title="先预览影响，再创建新版本"
@@ -126,6 +128,7 @@
             />
           </div>
         </template>
+        <AppInlineAlert v-else type="info" title="当前名单只读" description="需要教学班管理权限且教学班使用中，才能预览和创建名单版本。" />
       </AppSectionCard>
 
       <AppSectionCard title="名单版本历史">
@@ -134,7 +137,7 @@
           <template #cell-version="{ row }"><div class="mp-cell-main">第 {{ row.versionNo }} 版</div><div class="mp-cell-sub">{{ row.rosterVersionId }}</div></template>
           <template #cell-source="{ row }"><AppStatusTag :type="row.sourceType === 'SELECTION_LOCK' ? 'success' : 'info'" :label="sourceLabel(row.sourceType)" /><div class="mp-cell-sub">{{ row.sourceId || '—' }}</div></template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'LOCKED' ? 'success' : 'info'" :label="versionStatusLabel(row.status)" /></template>
-          <template #cell-locked="{ row }"><div>{{ row.lockedAt || '—' }}</div><div class="mp-cell-sub">{{ row.lockedBy || '系统' }}</div></template>
+          <template #cell-locked="{ row }"><div>{{ row.lockedAt || '—' }}</div><div class="mp-cell-sub">{{ row.lockedBy || '未提供办理人' }}</div></template>
         </DataTable>
       </AppSectionCard>
     </div>
@@ -193,9 +196,14 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog } from '@/components/common'
 import { teachingClassApi } from '@/modules/academicAffairs/api/teaching-class.api'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
+import { readTaskPages } from '../components/parallel-a/taskFacts'
 import { getPermissionPatterns } from '@/security/permissionGate'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 function emptyTeacherEditor() {
   return { visible: false, submitting: false, mode: 'create', relationId: '', roleType: 'CO_TEACHER', teacherKey: '', startWeek: null, endWeek: null, reason: '' }
@@ -203,12 +211,13 @@ function emptyTeacherEditor() {
 
 export default {
   name: 'AaTeachingClassDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog, AaOperationReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', teachingClass: null,
+      loading: true, error: '', teachingClass: null, sourceLoading: false,
       previewing: false, saving: false, rosterImpact: null,
+      revision: 0, previewRevision: 0, previewKey: '', receipt: null,
       rosterForm: { studentIds: [], reason: '' },
       teacherEditor: emptyTeacherEditor(), teacherKeyQuery: { valueField: 'loginName' },
       teacherDeactivate: { visible: false, submitting: false, relationId: '', teacherName: '', reason: '' },
@@ -218,6 +227,11 @@ export default {
     }
   },
   computed: {
+    sourceTask() {
+      const source = this.teachingClass?.sourceSnapshot
+      if (!source || !/^[1-9]\d*$/.test(String(source.batchId || '')) || !/^[1-9]\d*$/.test(String(source.teachingTaskId || '')) || String(source.teachingTaskId) !== String(this.teachingClass.teachingTaskId)) return null
+      return { batchId: String(source.batchId), taskId: String(source.teachingTaskId) }
+    },
     teachingClassId() { return String(this.$route.query.teachingClassId || this.$route.params.teachingClassId || '') },
     activeTeacher() { return (this.teachingClass?.teachers || []).find(row => row.roleType === 'PRIMARY' && row.status === 'ACTIVE') },
     canManageTeachingClass() {
@@ -225,11 +239,15 @@ export default {
       return Array.isArray(patterns) && matchPermission(patterns, 'academicAffairs.teachingTask.manage')
     },
     canManageTeacherRelations() { return this.canManageTeachingClass && this.teachingClass?.status === 'ACTIVE' },
+    rosterKey() {
+      return JSON.stringify([this.teachingClassId, this.teachingClass?.currentRosterVersionId, this.teachingClass?.rosterVersionNo, [...new Set(this.rosterForm.studentIds.map(String))].sort()])
+    },
     canCreateRosterVersion() {
       return Boolean(
-        this.rosterImpact?.canCreate
+        this.canManageTeacherRelations && !this.teachingClass?.rosterManagement?.managedBySelection
+        && this.rosterImpact?.canCreate && this.previewKey === this.rosterKey
         && this.rosterForm.reason.trim().length >= 5
-        && !this.saving
+        && !this.saving && !this.previewing && !this.loading
       )
     },
     impactDescription() {
@@ -239,8 +257,41 @@ export default {
     }
   },
   created() { this.load() },
+  watch: {
+    teachingClassId() {
+      this.teacherEditor = emptyTeacherEditor(); this.teacherDeactivate = { visible: false, submitting: false, reason: '' }
+      this.rosterForm = { studentIds: [], reason: '' }; this.receipt = null; this.load()
+    },
+    rosterKey() { this.previewRevision++; this.previewing = false; this.previewKey = ''; this.rosterImpact = null }
+  },
+  beforeUnmount() { this.revision++; this.previewRevision++; this.disposed = true },
   methods: {
-    backToClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
+    backToClasses() {
+      const target = this.$route.query.returnTo
+      if (typeof target === 'string' && /^\/admin\/academic-affairs\/teaching-tasks\?/.test(target)) {
+        const query = new URLSearchParams(target.split('?')[1])
+        if (query.get('view') === 'classes' && !query.has('teachingClassId')) { this.$router.push(target); return }
+      }
+      this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', termId: this.$route.query.termId || this.teachingClass?.termId || undefined } })
+    },
+    async openSourceTask() {
+      if (!this.sourceTask || this.sourceLoading || this.loading) return
+      const source = { ...this.sourceTask }, context = this.ctx, revision = this.revision, classId = this.teachingClassId
+      const current = () => !this.disposed && revision === this.revision && context === this.ctx && classId === this.teachingClassId
+      this.sourceLoading = true
+      try {
+        const batch = await teachingTaskWorkbenchApi.getBatch(source.batchId)
+        if (!current()) return
+        if (batch.code !== 0) { this.handleFailure(batch, '来源批次当前不可读。'); return }
+        if (String(batch.data?.batchId) !== source.batchId) { this.handleFailure({ code: 409001, message: '来源批次返回了不同对象，不能跳转。' }); return }
+        const tasks = await readTaskPages(page => academicAffairsApi.getBatchTasks(source.batchId, page), current)
+        if (!current()) return
+        if (tasks?.code !== 0) { this.handleFailure(tasks, '来源任务读取失败。'); return }
+        if (!tasks.data.list.some(row => String(row.taskId) === source.taskId)) { this.handleFailure({ code: 409001, message: '形成时来源任务已不在该批次，请由教务核对历史来源。' }); return }
+        this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${source.batchId}`, query: { teachingTaskId: source.taskId, returnTo: this.$route.fullPath } })
+      } catch (error) { if (current()) this.handleFailure(error, '来源读取失败，请重试；未跳转。') }
+      finally { this.sourceLoading = false }
+    },
     classTypeLabel(value) { return ({ ADMIN: '行政班开课', SELECTION: '选课教学班', MERGED: '合班教学班', RETAKE: '重修教学班', LAYERED: '分层教学班' })[value] || (value ? '待确认' : '—') },
     classStatusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || (value ? '待确认' : '—') },
     taskStatusLabel(value) { return ({ PENDING_ASSIGN: '待分配', ASSIGNED: '已分配', TEACHER_CONFIRMED: '教师已确认', READY: '已就绪', MERGED: '已并入合班', REJECTED_BY_TEACHER: '教师已退回' })[value] || (value ? '待确认' : '—') },
@@ -249,16 +300,34 @@ export default {
     memberStatusLabel(value) { return ({ ACTIVE: '当前成员', REMOVED: '已移出' })[value] || (value ? '待确认' : '—') },
     versionStatusLabel(value) { return ({ LOCKED: '当前生效', SUPERSEDED: '历史版本' })[value] || (value ? '待确认' : '—') },
     sourceLabel(value) { return ({ ADMIN_CLASS: '行政班初始化', SELECTION_LOCK: '选课锁定', MANUAL: '人工版本', RETAKE: '重修名单' })[value] || (value ? '待确认' : '—') },
-    async load() {
+    async load(options = {}) {
+      const revision = ++this.revision, id = this.teachingClassId
+      this.previewRevision++; this.previewing = false; this.rosterImpact = null; this.previewKey = ''
+      this.teachingClass = null
       if (!this.teachingClassId) { this.error = '缺少教学班ID'; this.loading = false; return }
       this.loading = true; this.error = ''
-      const res = await teachingClassApi.detail(this.teachingClassId)
-      if (res.code === 0) {
+      try {
+        const res = await teachingClassApi.detail(id)
+        if (revision !== this.revision || id !== this.teachingClassId) return false
+        if (res.code !== 0) { this.handleFailure(res, '加载教学班失败'); return false }
         this.teachingClass = res.data
-        this.rosterForm.studentIds = (res.data.currentMembers || []).map(row => row.studentId)
-        this.rosterImpact = null
-      } else { this.teachingClass = null; this.error = res.message || '加载教学班失败' }
-      this.loading = false
+        if (!options.preserveDraft) this.rosterForm.studentIds = (res.data.currentMembers || []).map(row => row.studentId)
+        return true
+      } catch (error) { if (revision === this.revision) this.handleFailure(error, '网络连接失败，请重试。'); return false }
+      finally { if (revision === this.revision) this.loading = false }
+    },
+    handleFailure(result, fallback) {
+      const message = result?.message || fallback
+      this.previewRevision++; this.previewing = false; this.previewKey = ''; this.rosterImpact = null
+      if (isDeniedResult(result)) {
+        this.revision++; this.loading = false; this.teachingClass = null; this.receipt = null
+        this.rosterForm = { studentIds: [], reason: '' }; this.teacherEditor = emptyTeacherEditor()
+        this.teacherDeactivate = { visible: false, submitting: false, reason: '' }
+        this.error = `${message}；已清除先前教学班内容。`
+      } else {
+        this.error = message
+        if (isConflictResult(result)) this.receipt = { object: `教学班 #${this.teachingClassId}`, status: '事实已变化，保留输入', pending: true, next: '重新读取正式名单并预览影响后再提交。' }
+      }
     },
     openCreateTeacher() {
       if (!this.canManageTeacherRelations) return
@@ -281,25 +350,18 @@ export default {
     },
     async submitTeacherRelation() {
       const form = this.teacherEditor
+      if (!this.canManageTeacherRelations || form.submitting) return
       if (!form.teacherKey) { toast.error('请选择授课教师'); return }
       if (form.reason.trim().length < 5) { toast.error('变更原因不少于5字'); return }
       if (form.startWeek && form.endWeek && Number(form.startWeek) > Number(form.endWeek)) { toast.error('开始周不能晚于结束周'); return }
-      form.submitting = true
       const body = {
         teacherKey: form.teacherKey,
         startWeek: form.startWeek || undefined,
         endWeek: form.endWeek || undefined,
         reason: form.reason.trim()
       }
-      const res = form.mode === 'create'
-        ? await teachingClassApi.createTeacher(this.teachingClassId, body)
-        : await teachingClassApi.updateTeacher(this.teachingClassId, form.relationId, body)
-      form.submitting = false
-      if (res.code === 0) {
-        form.visible = false
-        toast.success(form.mode === 'create' ? '共同授课教师已生效' : '正式教师关系已更新')
-        await this.load()
-      } else { toast.error(res.message || '教师关系保存失败') }
+      const id = this.teachingClassId
+      await this.runTeacherChange(form, () => form.mode === 'create' ? teachingClassApi.createTeacher(id, body) : teachingClassApi.updateTeacher(id, form.relationId, body), relation => relation.status === 'ACTIVE' && relation.teacherKey === body.teacherKey && (body.startWeek === undefined || relation.startWeek === body.startWeek) && (body.endWeek === undefined || relation.endWeek === body.endWeek), '正式教师关系已更新')
     },
     openDeactivateTeacher(row) {
       if (!this.canManageTeacherRelations || row.status !== 'ACTIVE' || row.roleType !== 'CO_TEACHER') return
@@ -307,38 +369,69 @@ export default {
     },
     async deactivateTeacherRelation() {
       const form = this.teacherDeactivate
+      if (!this.canManageTeacherRelations || form.submitting) return
       if (form.reason.trim().length < 5) { toast.error('停用原因不少于5字'); return }
+      const id = this.teachingClassId
+      await this.runTeacherChange(form, () => teachingClassApi.deactivateTeacher(id, form.relationId, form.reason.trim()), relation => relation.status === 'INACTIVE', '共同授课关系已停用')
+    },
+    async runTeacherChange(form, command, matches, status) {
+      const id = this.teachingClassId
+      const current = () => !this.disposed && id === this.teachingClassId
       form.submitting = true
-      const res = await teachingClassApi.deactivateTeacher(this.teachingClassId, form.relationId, form.reason.trim())
-      form.submitting = false
-      if (res.code === 0) {
+      this.receipt = { object: `教学班 #${id}`, status: '结果待确认', pending: true, next: '读取正式教师关系后确认本次办理结果。' }
+      try {
+        const result = await command()
+        if (!current()) return
+        if (result.code !== 0) { this.handleFailure(result, '教师关系办理失败'); return }
+        const relationId = result.data?.teacherRelationId
+        const loaded = await this.load({ preserveDraft: true })
+        if (!current() || !loaded) return
+        const relation = relationId && this.teachingClass.teachers.find(row => String(row.teacherRelationId) === String(relationId))
+        const confirmed = relation && matches(relation)
         form.visible = false
-        toast.success('共同授课教师关系已停用')
-        await this.load()
-      } else { toast.error(res.message || '停用教师关系失败') }
+        this.receipt = { object: `教学班 #${id} · 教师关系 #${relationId || '未返回'}`, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? '后续授课权限由服务端按正式关系和有效周次裁决；历史关系保留。' : '请重新查询正式教师关系，不要重复提交。' }
+      } catch (error) { if (current()) this.handleFailure(error, '连接中断，请重新查询正式教师关系。') }
+      finally { form.submitting = false }
     },
     async previewRoster() {
-      if (!this.rosterForm.studentIds.length || this.previewing) return
+      if (!this.canManageTeacherRelations || this.teachingClass?.rosterManagement?.managedBySelection || !this.rosterForm.studentIds.length || this.previewing || this.saving) return false
+      const id = this.teachingClassId, key = this.rosterKey, revision = ++this.previewRevision
+      this.rosterImpact = null; this.previewKey = ''
       this.previewing = true
-      const res = await teachingClassApi.previewRosterChange(this.teachingClassId, this.rosterForm.studentIds)
-      this.previewing = false
-      if (res.code === 0) this.rosterImpact = res.data
-      else { this.rosterImpact = res.data || null; toast.error(res.message || '影响预览失败') }
+      try {
+        const res = await teachingClassApi.previewRosterChange(id, [...this.rosterForm.studentIds])
+        if (revision !== this.previewRevision || key !== this.rosterKey) return false
+        if (res.code !== 0) { this.handleFailure(res, '影响预览失败'); return false }
+        this.rosterImpact = res.data; this.previewKey = key
+        return Boolean(res.data?.canCreate)
+      } catch (error) { if (revision === this.previewRevision) this.handleFailure(error, '影响预览失败，尚未提交。'); return false }
+      finally { if (revision === this.previewRevision) this.previewing = false }
     },
     async createRosterVersion() {
       if (!this.canCreateRosterVersion) return
+      const id = this.teachingClassId, key = this.rosterKey
+      const studentIds = [...this.rosterForm.studentIds], reason = this.rosterForm.reason.trim()
       this.saving = true
-      const res = await teachingClassApi.createRosterVersion(
-        this.teachingClassId,
-        this.rosterForm.studentIds,
-        this.rosterForm.reason.trim()
-      )
-      this.saving = false
-      if (res.code === 0) {
-        toast.success(`第${res.data.versionNo}版名单已生效`)
-        this.rosterForm.reason = ''
-        await this.load()
-      } else { this.rosterImpact = res.data || this.rosterImpact; toast.error(res.message || '创建名单版本失败') }
+      const current = () => !this.disposed && id === this.teachingClassId
+      try {
+        const check = await teachingClassApi.previewRosterChange(id, studentIds)
+        if (!current() || key !== this.rosterKey) return
+        if (check.code !== 0) { this.handleFailure(check, '提交前预览失败，尚未提交。'); return }
+        if (!check.data?.canCreate) { this.handleFailure({ code: 409001, message: '名单影响已变化，当前不能创建版本。' }); return }
+        const result = await teachingClassApi.createRosterVersion(id, studentIds, reason)
+        if (!current()) return
+        if (result.code !== 0) { this.handleFailure(result, '名单创建失败'); return }
+        const loaded = await this.load({ preserveDraft: true })
+        if (!current() || !loaded) return
+        const returnedVersion = result.data?.rosterVersionId
+        const currentVersion = this.teachingClass.currentRosterVersionId
+        const members = this.teachingClass.currentMembers.map(row => String(row.studentId)).sort()
+        const confirmed = returnedVersion && String(returnedVersion) === String(currentVersion) && JSON.stringify(members) === JSON.stringify([...new Set(studentIds.map(String))].sort()) && this.teachingClass.rosterStatus === 'LOCKED'
+        const version = confirmed ? this.teachingClass.rosterVersions?.find(row => String(row.rosterVersionId) === String(currentVersion)) : null
+        this.receipt = { object: `教学班 #${id}`, status: confirmed ? `第${this.teachingClass.rosterVersionNo}版名单已生效` : '结果待确认', pending: !confirmed, time: version?.lockedAt, next: confirmed ? '历史版本保留；下游读取正式生效名单。' : '尚未读到一致的正式名单版本，请刷新核对，不要重复创建。' }
+        if (confirmed) this.rosterForm.reason = ''
+      } catch (error) { if (current()) this.handleFailure(error, '连接中断，请核对正式名单，勿重复创建。') }
+      finally { this.saving = false }
     }
   }
 }
