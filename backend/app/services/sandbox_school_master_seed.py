@@ -453,7 +453,14 @@ def _synthetic_phone(global_seq: int) -> str:
 
 
 def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int], org: dict) -> dict:
-    from app.models import StudentAccountLink, StudentContact, StudentProfile, User, UserRole
+    from app.models import (
+        StudentAcademicFact,
+        StudentAccountLink,
+        StudentContact,
+        StudentProfile,
+        User,
+        UserRole,
+    )
 
     specs = _student_specs(org)
     profile_rows = []
@@ -478,12 +485,38 @@ def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int
 
     profiles = list(db.execute(select(
         StudentProfile.id, StudentProfile.student_no, StudentProfile.real_name,
+        StudentProfile.enroll_date, StudentProfile.created_at, StudentProfile.student_status,
+        StudentProfile.college_id, StudentProfile.major_id, StudentProfile.class_id, StudentProfile.grade,
     ).where(
         StudentProfile.tenant_id == tenant_id,
         StudentProfile.is_deleted.is_(False),
     )).all())
     profile_by_no = {row.student_no: (int(row.id), row.real_name) for row in profiles}
     assert len(profile_by_no) == EXPECTED_STUDENT_COUNT
+
+    # StudentProfile is intentionally inserted in bulk for the 20K sandbox.  SQLAlchemy
+    # mapper hooks do not run for Core bulk inserts, so materialize the version-1 academic
+    # ledger explicitly in the same transaction.  Without this, historical consumers such
+    # as selection, transcript and graduation fail closed for every seeded student.
+    fact_rows = [{
+        "tenant_id": tenant_id,
+        "student_id": int(row.id),
+        "version_no": 1,
+        "valid_from": row.enroll_date or row.created_at or datetime.utcnow(),
+        "valid_to": None,
+        "student_status": row.student_status or "NORMAL",
+        "college_id": row.college_id,
+        "major_id": row.major_id,
+        "class_id": row.class_id,
+        "grade": row.grade,
+        "source_type": "BASELINE_BACKFILL",
+        "source_ref_id": None,
+        "source_quality": "INFERRED",
+        "created_at": row.created_at or datetime.utcnow(),
+        "created_by": None,
+    } for row in profiles]
+    written_facts = _bulk_insert(db, StudentAcademicFact, fact_rows, chunk_size=1000)
+    assert written_facts == EXPECTED_STUDENT_COUNT
 
     contact_rows: list[dict] = []
     for item in specs:
@@ -601,7 +634,15 @@ def _seed_teacher_scopes(db, tenant_id: int, staff: dict[str, list[tuple[int, st
 
 def validate_school_master(db, tenant_id: int) -> dict:
     from sqlalchemy import func
-    from app.models import College, Major, SchoolClass, StudentAccountLink, StudentProfile, User
+    from app.models import (
+        College,
+        Major,
+        SchoolClass,
+        StudentAcademicFact,
+        StudentAccountLink,
+        StudentProfile,
+        User,
+    )
 
     def count(model, *extra):
         return int(db.scalar(select(func.count()).select_from(model).where(
@@ -610,6 +651,7 @@ def validate_school_master(db, tenant_id: int) -> dict:
         )) or 0)
 
     students = count(StudentProfile, StudentProfile.is_deleted.is_(False))
+    academic_facts = count(StudentAcademicFact)
     colleges = count(College, College.is_deleted.is_(False))
     majors = count(Major, Major.is_deleted.is_(False))
     classes = count(SchoolClass, SchoolClass.is_deleted.is_(False))
@@ -623,6 +665,7 @@ def validate_school_master(db, tenant_id: int) -> dict:
 
     report = {
         "students": students,
+        "studentAcademicFacts": academic_facts,
         "colleges": colleges,
         "majors": majors,
         "classes": classes,
@@ -632,6 +675,7 @@ def validate_school_master(db, tenant_id: int) -> dict:
     }
     expected = {
         "students": EXPECTED_STUDENT_COUNT,
+        "studentAcademicFacts": EXPECTED_STUDENT_COUNT,
         "colleges": EXPECTED_COLLEGE_COUNT,
         "majors": EXPECTED_MAJOR_COUNT,
         "classes": EXPECTED_CLASS_COUNT,

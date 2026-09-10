@@ -211,7 +211,9 @@ def _load_rooms(db, params) -> list:
     from app.models import AaClassroom
     rows = db.scalars(select(AaClassroom).where(
         AaClassroom.tenant_id == _tid(), AaClassroom.status == "AVAILABLE",
-        AaClassroom.is_exclusive.is_(False), AaClassroom.is_deleted.is_(False))).all()
+        AaClassroom.allow_schedule.is_(True),
+        AaClassroom.is_exclusive.is_(False), AaClassroom.is_deleted.is_(False))
+        .order_by(AaClassroom.id).with_for_update()).all()
     # 小容量优先 → 大教室留给大班，避免 30 人课占掉 200 人阶梯教室
     return sorted(rows, key=lambda r: ((r.capacity or 0), r.id))
 

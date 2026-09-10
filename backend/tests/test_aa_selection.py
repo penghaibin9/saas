@@ -252,6 +252,37 @@ def test_s3_enroll_when_not_open_409(client, db_mode):
                        json={"selectionCourseId": str(scid)}).status_code == 409
 
 
+def test_s3b_expired_open_batch_rejects_student_command_without_waiting_for_tick(client, db_mode):
+    from datetime import datetime, timedelta
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, scid = _make_open_batch(client, admin, ids["course1"], teaching_task_id=ids["task1"])
+    db = get_sessionmaker()()
+    try:
+        batch = db.get(AaSelectionBatch, int(bid))
+        batch.select_end_at = datetime.utcnow() - timedelta(seconds=1)
+        db.commit()
+    finally:
+        db.close()
+
+    stu = _stu_token("选甲", "SEL2401")
+    visible = client.get(f"{BASE}/selection/student/courses", headers=stu).json()
+    course = next(
+        item for group in visible["data"]["items"] for item in group["courses"]
+        if str(item["selectionCourseId"]) == str(scid)
+    )
+    assert "ENROLL" not in course["allowedActions"]
+    rejected = client.post(
+        f"{BASE}/selection/student/enroll", headers=stu,
+        json={"selectionCourseId": str(scid)},
+    )
+    assert rejected.status_code == 409
+    assert "选课窗口已截止" in rejected.text
+
+
 def test_s4_capacity_full_409(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

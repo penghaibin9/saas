@@ -260,8 +260,8 @@ def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, ses
     return read_guard.list_sessions(user, page, page_size, class_id, term_code, session_type)
 
 
-def attendance_stats(user, class_id=None, term_code=None, session_type=None):
+def attendance_stats(user, class_id=None, term_code=None, session_type=None, page=None, page_size=None):
     """稳定公开入口：统计只走 relation-aware read Authority。"""
     from . import academic_affairs_attendance_teacher_relation_read_guard as read_guard
 
-    return read_guard.attendance_stats(user, class_id, term_code, session_type)
+    return read_guard.attendance_stats(user, class_id, term_code, session_type, page, page_size)

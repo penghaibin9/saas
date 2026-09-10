@@ -119,6 +119,11 @@ def academic_course_preflight(user=Depends(get_current_user), body: dict = Body(
     return success(academic.selection_preflight(user, body))
 
 
+@router.post("/academic/course-selection/drop-preflight", summary="退课纯读预检（本人）")
+def academic_course_drop_preflight(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.selection_drop_preflight(user, body))
+
+
 @router.post("/academic/course-selection/enroll", summary="选课（本人）")
 def academic_course_enroll(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.selection_enroll(user, body))
@@ -298,8 +303,9 @@ def academic_credits(user=Depends(get_current_user)):
 
 
 @router.get("/academic/warning", summary="我的学业预警（本人·只读）")
-def academic_warning(user=Depends(get_current_user)):
-    return success(academic.warning(user))
+def academic_warning(user=Depends(get_current_user), page: int = Query(1, ge=1),
+                     page_size: int = Query(50, alias="pageSize", ge=1, le=100)):
+    return success(academic.warning(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/recognition", summary="我的成绩认定/课程替代（本人）")

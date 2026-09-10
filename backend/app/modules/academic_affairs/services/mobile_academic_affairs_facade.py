@@ -183,6 +183,7 @@ def _schedule_meta(db, term, batch):
         "batchId": str(batch.id) if batch else "",
         "termId": str(term.id) if term else "",
         "termCode": f"{term.year_code}-{term.term_no}" if term else "",
+        "termStartDate": _as_date(term.start_date).isoformat() if term and term.start_date else None,
         "currentWeek": current_week,
         "teachingWeeks": getattr(term, "teaching_weeks", None) if term else None,
         "timezone": timezone_name,

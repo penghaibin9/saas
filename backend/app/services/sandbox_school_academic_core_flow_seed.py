@@ -260,14 +260,21 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         "review_reason": "认证课程学时不足，退回后可补充企业项目实践证明。", "reviewed_by": admin.real_name,
         "reviewed_at": NOW - timedelta(days=1), "status": "REJECTED",
     })
-    _put(db, c["t_aa_gpa_point_policy"], tenant_id, {"policy_code": "YK-GPA-4.0"}, {
-        "policy_version": 1, "active_scope_key": "ACTIVE", "scale_type": "BANDS",
-        "linear_fail_score": 60, "linear_anchor_score": 60, "linear_divisor": 10,
-        "bands_json": json.dumps([{"min": 90, "point": 4.0}, {"min": 80, "point": 3.0},
-                                  {"min": 70, "point": 2.0}, {"min": 60, "point": 1.0}], ensure_ascii=False),
-        "status": "ACTIVE", "activated_at": datetime(2026, 7, 1, 0),
-        "remark": "007 正式演示 GPA 绩点换算政策，适用于 2026-2027 学年。",
-    })
+    gpa_policy = c["t_aa_gpa_point_policy"]
+    # 已有正式策略后不再重写版本链；旧种子格式通过正式激活命令修复。
+    if not db.query(gpa_policy).filter(gpa_policy.tenant_id == tenant_id, gpa_policy.is_deleted.is_(False)).first():
+        _put(db, gpa_policy, tenant_id, {"policy_code": "YK-GPA-4.0"}, {
+            "policy_version": 1, "active_scope_key": "BASE", "scale_type": "BANDS",
+            "bands_json": json.dumps([
+                {"minScore": 90, "maxScore": 100, "point": 4.0},
+                {"minScore": 80, "maxScore": 89, "point": 3.0},
+                {"minScore": 70, "maxScore": 79, "point": 2.0},
+                {"minScore": 60, "maxScore": 69, "point": 1.0},
+                {"minScore": 0, "maxScore": 59, "point": 0.0},
+            ], ensure_ascii=False),
+            "status": "ACTIVE", "activated_at": datetime(2026, 7, 1, 0),
+            "remark": "007 正式演示 GPA 绩点换算政策，适用于 2026-2027 学年。",
+        })
     _put(db, c["t_aa_grade_identity_head"], tenant_id, {"acad_student_id": acad_student.id, "course_code": course.course_code}, {
         "current_attempt_no": 1, "last_source_biz_type": "GRADE_PUBLISH", "last_allocated_at": grade_task.publish_at,
     })

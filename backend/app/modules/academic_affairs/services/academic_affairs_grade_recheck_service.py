@@ -137,12 +137,19 @@ def list_all(user, status=None, page=1, page_size=50):
         return [_dto(row) for row in rows[(page - 1) * page_size: page * page_size]], len(rows)
 
 
-def review(user, recheck_id, action, note="", new_score=None) -> dict:
+def review(user, recheck_id, action, note="", new_score=None, *, command_key=None) -> dict:
     """教务复审：维持/调整/拒绝；调整与正式成绩、规则快照同事务。"""
     from app.models import AaGradeRecheck, AcademicGrade, AcademicStudent
     from app.modules.academic_affairs.services.academic_affairs_grade_service import _refresh_aggregates
+    from . import academic_affairs_grade_command_receipt as receipt_service
     with session() as db:
         _require_school(user, db)
+        receipt, cached = receipt_service.begin(db, user, "RECHECK_REVIEW", command_key, {
+            "recheckId": str(recheck_id), "action": str(action or "").upper(),
+            "note": str(note or "").strip(), "newScore": new_score,
+        })
+        if cached is not None:
+            return cached
         # 申请行必须先上排他锁再判状态。原来这里是无锁 db.get()，两个教务员并发时可以双双读到
         # SUBMITTED：一个 REJECT、一个 ADJUST，两边各自 commit，结果是「驳回成功」的回执和被
         # 改掉的正式成绩同时成立。ADJUST 分支后面虽然锁了成绩行，但那时决策早已分叉。
@@ -167,16 +174,22 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             row.status, row.review_note = "REJECTED", note.strip()
             row.reviewed_by, row.reviewed_at = _op(), datetime.utcnow()
             _audit(db, row.id, "RECHECK_REJECT", note.strip()[:100])
+            db.flush()
+            receipt_service.finish(db, receipt, _dto(row))
             db.commit()
             return _dto(row)
         if act == "UPHOLD":
             row.status, row.review_note = "UPHELD", (note or "").strip() or None
             row.reviewed_by, row.reviewed_at = _op(), datetime.utcnow()
             _audit(db, row.id, "RECHECK_UPHOLD", "维持原成绩")
+            db.flush()
+            receipt_service.finish(db, receipt, _dto(row))
             db.commit()
             return _dto(row)
         if act != "ADJUST":
             raise _bad("无效操作（UPHOLD/ADJUST/REJECT）")
+        if len((note or "").strip()) < 5:
+            raise _bad("调整成绩的核验依据必填且不少于 5 字")
         if new_score is None or not (0 <= int(new_score) <= 100):
             raise _bad("调整后成绩必须为 0-100")
         grade = db.query(AcademicGrade).filter(
@@ -216,6 +229,7 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             "id", "created_at", "created_by", "updated_at", "updated_by",
             "is_deleted", "version", "score", "pass_status", "record_status",
             "void_reason", "source", "source_biz_type", "source_biz_id",
+            "gpa_point", "gpa_policy_code", "gpa_policy_version",
         }
         payload = {
             attr.key: getattr(grade, attr.key)
@@ -248,11 +262,18 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             AaGradeRecord.is_deleted.is_(False),
         ).with_for_update()).first()
         if grade_record:
+            grade_record.prev_usual_score = grade_record.usual_score
+            grade_record.prev_midterm_score = grade_record.midterm_score
+            grade_record.prev_final_score = grade_record.final_score
+            grade_record.prev_total_score = grade_record.total_score
             grade_record.total_score = score
             grade_record.pass_status = pass_status
             grade_record.acad_grade_id = corrected.id
+            grade_record.source = "RECHECK"
             grade_record.version_no = int(grade_record.version_no or 1) + 1
-            grade_record.change_reason = (note or "成绩复查更正").strip()
+            grade_record.change_reason = note.strip()
+            from .academic_affairs_grade_correction_command import _current_user_id
+            grade_record.change_by = _current_user_id(db)
             grade_record.change_at = datetime.utcnow()
 
         correction = AaGradeCorrection(
@@ -309,6 +330,7 @@ def review(user, recheck_id, action, note="", new_score=None) -> dict:
             db, corrected, event_type="RECHECK", source_biz_type="RECHECK", source_biz_id=row.id,
         )
         db.flush()
+        receipt_service.finish(db, receipt, _dto(row))
         db.commit()
         from app.services.message_event_outbox_service import try_process_pending_outbox
         try_process_pending_outbox(worker_id="aa-grade-recheck-inline")

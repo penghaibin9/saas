@@ -514,14 +514,20 @@ def sign_receipt_my(user, student_id, record_id):
 
 def my_distributions(user, student_id):
     """学生本人教材领用记录（正方学生端6.13教材明细对标，只读本人）。"""
-    from app.models import AaTextbookDistributionRecord
+    from sqlalchemy import and_
+    from app.models import AaTextbook, AaTextbookDistributionRecord
     with session() as db:
-        rows = db.query(AaTextbookDistributionRecord).filter(
+        rows = db.query(AaTextbookDistributionRecord, AaTextbook.isbn).outerjoin(
+            AaTextbook,
+            and_(AaTextbook.id == AaTextbookDistributionRecord.textbook_id,
+                 AaTextbook.tenant_id == _tid(), AaTextbook.is_deleted.is_(False)),
+        ).filter(
             AaTextbookDistributionRecord.tenant_id == _tid(),
-            AaTextbookDistributionRecord.student_id == int(student_id)).order_by(
+            AaTextbookDistributionRecord.student_id == int(student_id),
+            AaTextbookDistributionRecord.is_deleted.is_(False)).order_by(
             AaTextbookDistributionRecord.id.desc()).all()
         return [{"recordId": str(r.id), "textbookName": r.textbook_name, "qty": r.qty,
-                 "status": r.status, "receivedAt": _iso(r.received_at)} for r in rows]
+                 "isbn": isbn, "status": r.status, "receivedAt": _iso(r.received_at)} for r, isbn in rows]
 
 
 def my_fees(user, student_id):
@@ -531,11 +537,12 @@ def my_fees(user, student_id):
         rows = db.query(AaTextbookFeeLedger).filter(
             AaTextbookFeeLedger.tenant_id == _tid(), AaTextbookFeeLedger.student_id == int(student_id),
             AaTextbookFeeLedger.is_deleted.is_(False)).order_by(AaTextbookFeeLedger.id.desc()).all()
-        total_due = sum(float(f.amount or 0) for f in rows)
+        waived = sum(float(f.amount or 0) for f in rows if f.status == "WAIVED")
+        total_due = sum(float(f.amount or 0) for f in rows if f.status != "WAIVED")
         total_paid = sum(float(f.paid_amount or 0) for f in rows)
         return {"items": [{"feeId": str(f.id), "textbookName": f.textbook_name, "amount": _fnum(f.amount),
                            "paidAmount": _fnum(f.paid_amount), "status": f.status} for f in rows],
-                "totalDue": round(total_due, 2), "totalPaid": round(total_paid, 2),
+                "totalDue": round(total_due, 2), "totalPaid": round(total_paid, 2), "waivedAmount": round(waived, 2),
                 "unpaid": round(total_due - total_paid, 2)}
 
 

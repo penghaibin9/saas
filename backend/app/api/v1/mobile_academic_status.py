@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends
 
 from app.core.response import success
+from app.core.exceptions import AppException
 from app.core.security import get_current_user
 from app.services import mobile_teacher_service as tea
 from app.modules.academic_affairs.services import academic_affairs_change_resubmit_meta_service as resubmit_meta
@@ -45,12 +46,16 @@ def teacher_academic_status_change_review(
     body: dict = Body(...),
     user=Depends(get_current_user),
 ):
+    expected_version = (body or {}).get("expectedDecisionVersion")
+    if expected_version is not None and (type(expected_version) is not int or expected_version < 0):
+        raise AppException("VALIDATION_ERROR", "expectedDecisionVersion 必须为非负整数", http_status=400)
     return success(
         tea.affairs_academic_status_change_review(
             user,
             change_id,
             str((body or {}).get("action") or "").upper(),
             (body or {}).get("reason"),
+            expected_decision_version=expected_version,
         ),
         message="已处理",
     )

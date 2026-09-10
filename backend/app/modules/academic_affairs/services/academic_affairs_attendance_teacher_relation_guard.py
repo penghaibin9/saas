@@ -261,7 +261,7 @@ def create_session(user, body) -> dict:
                 "studentId": item["studentId"],
                 "studentNo": item["studentNo"],
                 "realName": item["realName"],
-                "status": "PRESENT",
+                "status": "UNMARKED",
             } for item in official["items"]]
         elif role not in public._ADMIN_ROLES:
             raise AppException("VALIDATION_ERROR", "请选择当前学期本人教学任务后再点名")
@@ -288,7 +288,7 @@ def create_session(user, body) -> dict:
                 "studentId": str(student.id),
                 "studentNo": student.student_no,
                 "realName": student.real_name,
-                "status": "PRESENT",
+                "status": "UNMARKED",
             } for student in students]
 
         if not roster:
@@ -345,7 +345,7 @@ def create_session(user, body) -> dict:
             ),
             roster_json=json.dumps(roster, ensure_ascii=False),
             total_count=len(roster),
-            present_count=len(roster),
+            present_count=0,
             absent_count=0,
             status="DRAFT",
             **_integrated_provenance_kwargs(
@@ -402,7 +402,7 @@ def create_session(user, body) -> dict:
 
 
 def get_session(session_id, user) -> dict:
-    from app.models import AaAttendanceSession
+    from app.models import AaAttendanceSession, SchoolClass
 
     with public.session() as db:
         item = db.get(AaAttendanceSession, int(session_id))
@@ -411,6 +411,12 @@ def get_session(session_id, user) -> dict:
         teacher_scope = _relation_scope_in_session(db, item, user, lock=False)
         items = json.loads(item.roster_json) if item.roster_json else []
         result = public._with_source_type(public._row(item))
+        school_class = db.get(SchoolClass, int(item.class_id)) if item.class_id else None
+        result["className"] = (
+            school_class.class_name
+            if school_class and not school_class.is_deleted and school_class.tenant_id == public._tid()
+            else ""
+        )
         result["items"] = items
         result["rosterIdentity"] = get_consumer_snapshot(db, "ATTENDANCE_SESSION", int(item.id))
         result["teacherAuthority"] = teacher_scope
@@ -471,18 +477,44 @@ def submit_session(session_id, user) -> dict:
         _relation_scope_in_session(db, item, user, lock=True)
         if item.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "该场次已提交")
+        try:
+            roster = json.loads(item.roster_json) if item.roster_json else []
+        except (TypeError, ValueError) as exc:
+            raise AppException("DATA_CONFLICT", "考勤名单无法读取，请核对后再提交") from exc
+        if not isinstance(roster, list) or not roster or len(roster) != item.total_count:
+            raise AppException("DATA_CONFLICT", "考勤名单不完整，请重新核对正式名单")
+        student_ids = [str(row.get("studentId") or "") if isinstance(row, dict) else "" for row in roster]
+        if not all(student_ids) or len(set(student_ids)) != len(student_ids):
+            raise AppException("DATA_CONFLICT", "考勤名单存在缺失或重复学生，不能提交")
+        unmarked = sum(
+            1 for row in roster
+            if not isinstance(row, dict) or row.get("status") not in public._STATUS_OK
+        )
+        if unmarked:
+            raise AppException("DATA_CONFLICT", f"还有 {unmarked} 人未完成点名，不能提交考勤",
+                               details={"unmarkedCount": unmarked, "sessionId": str(item.id)})
+        item.present_count = sum(1 for row in roster if row["status"] == "PRESENT")
+        item.absent_count = sum(1 for row in roster if row["status"] == "ABSENT")
         item.status = "SUBMITTED"
         public._audit(db, item.id, "SUBMIT", f"present={item.present_count}/{item.total_count}")
         db.commit()
         db.refresh(item)
         row = public._with_source_type(public._row(item))
 
+    warning_scan_result = None
+    warning_scan_error = None
     try:
         from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_attendance_warnings
-        scan_attendance_warnings(user)
-    except Exception:
+        warning_scan_result = scan_attendance_warnings(user)
+    except Exception as exc:
         logging.getLogger(__name__).exception("attendance submit → scan_attendance_warnings failed")
-    return row
+        warning_scan_error = str(getattr(exc, "message", None) or exc or "预警扫描未完成")
+    return {
+        **row,
+        "warningScanOk": warning_scan_error is None,
+        "warningScanError": None if warning_scan_error is None else "考勤已提交，旷课预警扫描未完成，请由教务处在预警模块重新扫描并核对。",
+        "warningScanResult": warning_scan_result,
+    }
 
 
 def teacher_attendance_class_options(user) -> dict:

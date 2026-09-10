@@ -26,10 +26,10 @@ from . import academic_affairs_grade_service as _public
 _canonical_resolve_change_assignee = _correction.resolve_change_assignee
 
 
-def change_request(task_id: int, record_id: int, user, body) -> dict:
+def change_request(task_id: int, record_id: int, user, body, *, command_key=None) -> dict:
     """Run the canonical append-only correction request under live teacher authority."""
     with _execution._canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
-        return _correction.change_request(task_id, record_id, delegated_user, body)
+        return _correction.change_request(task_id, record_id, delegated_user, body, command_key=command_key)
 
 
 change_request._grade_live_teacher_authority = True

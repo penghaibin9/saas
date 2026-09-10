@@ -35,6 +35,7 @@ _MANIFEST_MAX_CHARS = 3900
 
 # 每种正式学分业务的绑定身份。新增业务在这里登记，不要复制整套校验逻辑。
 _KINDS = {
+    "GRADE_CHANGE": {"bizType": "AA_GRADE_CHANGE_REQUEST", "relation": "GRADE_CHANGE_EVIDENCE", "label": "成绩更正材料"},
     "EXEMPTION": {"bizType": "AA_EXEMPTION", "relation": "EXEMPTION_EVIDENCE", "label": "免修材料"},
     "RECOGNITION": {"bizType": "AA_RECOGNITION", "relation": "RECOGNITION_EVIDENCE",
                     "label": "成绩认定佐证"},
@@ -134,16 +135,28 @@ def verify_manifest(db, record, *, kind: str = "EXEMPTION") -> dict:
     from app.models.file import FileBinding, FileObject
 
     spec = _kind(kind)
-    frozen = load_manifest(record)
     problems = []
-    if not frozen:
-        return {"entries": [], "manifestHash": record.evidence_manifest_hash, "problems": []}
-
     stored_hash = str(record.evidence_manifest_hash or "")
-    if stored_hash and stored_hash != manifest_hash(frozen):
+    raw = getattr(record, "evidence_manifest_json", None)
+    try:
+        frozen = json.loads(raw) if raw else []
+        if not isinstance(frozen, list):
+            raise ValueError("manifest must be a list")
+    except (TypeError, ValueError):
+        return {"entries": [], "manifestHash": stored_hash,
+                "problems": ["冻结材料清单无法解析，不能作为无材料申请放行"]}
+    if frozen and not stored_hash:
+        problems.append("申请未保存冻结清单哈希，不能证明清单完整性")
+    elif stored_hash and stored_hash != manifest_hash(frozen):
         problems.append("证据清单与其哈希不一致，清单可能已被篡改")
 
     for item in frozen:
+        if (not isinstance(item, dict)
+                or not str(item.get("bindingId", "")).isdigit()
+                or not str(item.get("fileId", "")).isdigit()
+                or int(item["bindingId"]) <= 0 or int(item["fileId"]) <= 0):
+            problems.append("冻结材料清单缺少有效文件或绑定身份")
+            continue
         label = item.get("fileName") or f"文件{item.get('fileId')}"
         binding = db.query(FileBinding).filter(
             FileBinding.id == int(item["bindingId"]),

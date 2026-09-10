@@ -318,6 +318,8 @@ def enter_score(task_id, user, body) -> dict:
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
+        from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
+        require_fixed_score_entry(db, task)
         if str(task.status or "").upper() not in _EDITABLE:
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         data = _require_ready_roster(db, task)
@@ -511,13 +513,19 @@ def grade_import_confirm(task_id, user, rows) -> dict:
         }
 
 
-def submit_task(task_id, user) -> dict:
+def submit_task(task_id, user, *, expected=None, command_key=None) -> dict:
     """普通教学任务提交学院审核，并在同一事务冻结 R9 正式名单快照。"""
     from app.models import AaGradeRecord, AaGradeTask, WorkflowInstance, WorkflowTask
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
 
+    from . import academic_affairs_dynamic_grade_service as dynamic
+    from . import academic_affairs_grade_command_receipt as receipts
     with _core.session() as db:
+        receipt, previous = receipts.begin(db, user, "GRADE_TASK_SUBMIT", command_key,
+            {"gradeTaskId": str(task_id), "expected": expected})
+        if previous is not None:
+            return previous
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
@@ -531,7 +539,16 @@ def submit_task(task_id, user) -> dict:
                 http_status=409,
             )
 
-        data = resolve_versioned_roster(db, int(task.teaching_task_id))
+        dynamic_mode = expected is not None or dynamic.uses_components(db, task)
+        if dynamic_mode:
+            scheme = dynamic._scheme_row(db, task, lock=True)
+            data = dynamic.formal_roster(db, task, lock=True)
+            dynamic.require_expected_identity(task, scheme, data, expected)
+            report = dynamic.quality_in_session(db, task, data)
+            if not report["canSubmit"]:
+                raise AppException("DATA_CONFLICT", report["summary"], details=report, http_status=409)
+        else:
+            data = resolve_versioned_roster(db, int(task.teaching_task_id))
         roster_ids = {int(value) for value in data.get("studentIds") or []}
         if not roster_ids:
             raise AppException("DATA_CONFLICT", "正式教学名单为空，不可提交成绩任务", http_status=409)
@@ -580,6 +597,7 @@ def submit_task(task_id, user) -> dict:
             db.rollback()
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩任务已提交或状态已变化", http_status=409)
         task.status = "SUBMITTED"
+        task.version = int(task.version or 0) + 1
 
         _name, _role, user_id = _core._op()
         ensure_workflow_enabled(db, _core._tid(), _core._WF_SUBMIT)
@@ -619,13 +637,14 @@ def submit_task(task_id, user) -> dict:
                 f"rosterVersionId={snapshot['rosterVersionId']};snapshotVersion={snapshot['snapshotVersion']}"
             ),
         )
-        db.commit()
-        return {
-            "gradeTaskId": str(task.id),
-            "status": "SUBMITTED",
-            "studentCount": len(roster_ids),
-            "rosterIdentity": snapshot,
+        result = {
+            "gradeTaskId": str(task.id), "taskVersion": task.version,
+            "status": "SUBMITTED", "studentCount": len(roster_ids), "rosterIdentity": snapshot,
+            "workflowInstanceId": str(instance.id), "nextNode": "COLLEGE_REVIEW",
         }
+        receipts.finish(db, receipt, result)
+        db.commit()
+        return result
 
 
 def _refresh_aggregates(db, academic_student) -> None:
@@ -829,20 +848,10 @@ def publish_grades(task_id, user) -> dict:
                 f"rosterVersionId={frozen['rosterVersionId']};snapshotVersion={frozen['snapshotVersion']}"
             ),
         )
+        from .academic_grade_effect_service import enqueue_grade_warning_scan, try_run_effect
+        effect_job_id = enqueue_grade_warning_scan(db, task.id)
         db.commit()
 
-    warning_scan_ok = True
-    warning_scan_error = None
-    try:
-        from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
-
-        scan_warnings(user)
-    except Exception as exc:
-        import logging
-
-        warning_scan_ok = False
-        warning_scan_error = str(exc)[:200]
-        logging.getLogger(__name__).exception("grade publish -> scan_warnings failed")
     return {
         "gradeTaskId": str(task_id),
         "status": "PUBLISHED",
@@ -854,8 +863,7 @@ def publish_grades(task_id, user) -> dict:
         "teachingClassId": frozen["teachingClassId"],
         "rosterVersionId": frozen["rosterVersionId"],
         "snapshotVersion": frozen["snapshotVersion"],
-        "warningScanOk": warning_scan_ok,
-        "warningScanError": warning_scan_error,
+        **try_run_effect(effect_job_id, user),
     }
 
 
@@ -1073,10 +1081,79 @@ def _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, d
     return result
 
 
-def transcript(student_id, user) -> dict:
+def _transcript_page(db, student_id, page, page_size):
+    """Page the ordinary unique-course projection; preserve canonical arbitration
+    for historical or competing attempts instead of inventing a SQL policy.
+    """
+    from app.models import AcademicGrade, AcademicStudent
+    from .academic_affairs_effective_grade_policy_service import VALID_ATTEMPT_STRATEGIES
+
+    student = db.scalar(select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _core._tid(), AcademicStudent.student_id == int(student_id),
+        AcademicStudent.is_deleted.is_(False),
+    ))
+    meta = {"studentId": str(student_id), "page": page, "pageSize": page_size}
+    if student is None:
+        return {**meta, "items": [], "total": 0, "earnedCredits": 0, "gpa": None,
+                "failCount": 0, "note": "无学业记录"}
+    conditions = [AcademicGrade.tenant_id == _core._tid(), AcademicGrade.acad_student_id == student.id,
+                  AcademicGrade.record_status == "ACTIVE", func.length(AcademicGrade.record_status) == 6,
+                  AcademicGrade.is_deleted.is_(False)]
+    missing_identity = db.scalar(select(AcademicGrade.id).where(
+        *conditions, AcademicGrade.course_id.is_(None),
+    ).limit(1))
+    competing = db.execute(select(AcademicGrade.course_id).where(*conditions)
+                           .group_by(AcademicGrade.course_id)
+                           .having(func.count(AcademicGrade.id) > 1).limit(1)).first()
+    # Include bytes in DISTINCT so a case/accent/pad-insensitive DB collation
+    # cannot hide malformed legacy values from canonical Python validation.
+    strategies = [row[0] for row in db.execute(select(
+        AcademicGrade.effective_attempt_strategy, func.hex(AcademicGrade.effective_attempt_strategy),
+    ).where(*conditions).distinct())]
+    statuses = [row[0] for row in db.execute(select(
+        AcademicGrade.pass_status, func.hex(AcademicGrade.pass_status),
+    ).where(*conditions).distinct())]
+    ordinary = missing_identity is None and competing is None and all(
+        not value or str(value).upper() in VALID_ATTEMPT_STRATEGIES for value in strategies
+    ) and all(str(value or "").upper() in {"PASSED", "FAIL", "FAILED", "PENDING"} for value in statuses)
+    if ordinary:
+        aggregate = db.execute(select(
+            func.count(AcademicGrade.id),
+            func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status) == "PASSED", AcademicGrade.credit_value), else_=0)), 0),
+            func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status).in_(["FAIL", "FAILED"]), 1), else_=0)), 0),
+        ).where(*conditions)).one()
+        total, earned, failures = int(aggregate[0]), float(aggregate[1]), int(aggregate[2])
+        rows = db.scalars(select(AcademicGrade).where(*conditions).order_by(
+            func.coalesce(AcademicGrade.term, ""),
+            func.coalesce(func.nullif(AcademicGrade.course_code, ""), AcademicGrade.course_name, ""),
+            AcademicGrade.id,
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+    else:
+        # One student's exceptional attempts use the existing frozen policy,
+        # including its 409 on unresolved historical identity/strategy debt.
+        effective = sorted(resolve_effective_grade(db.scalars(select(AcademicGrade).where(*conditions)).all()),
+                           key=lambda row: (str(row.term or ""), str(row.course_code or row.course_name or ""), int(row.id)))
+        total = len(effective)
+        earned = sum(float(row.credit_value or 0) for row in effective if str(row.pass_status or "").upper() == "PASSED")
+        failures = sum(1 for row in effective if str(row.pass_status or "").upper() in {"FAIL", "FAILED"})
+        rows = effective[(page - 1) * page_size:page * page_size]
+    return {**meta, "total": total, "earnedCredits": earned, "gpa": float(student.gpa or 0),
+            "failCount": failures, "policyCode": "LATEST_FORMAL_SOURCE_V1", "items": [{
+                "gradeId": str(row.id), "courseId": str(row.course_id or ""), "courseCode": row.course_code or "",
+                "courseVersion": row.course_version, "attemptNo": row.attempt_no, "courseName": row.course_name,
+                "term": row.term or "", "credit": float(row.credit_value or 0), "score": row.score,
+                "passStatus": row.pass_status, "source": row.source or "LEGACY",
+            } for row in rows]}
+
+
+def transcript(student_id, user, page=None, page_size=50) -> dict:
     from app.models import AcademicGrade, AcademicStudent
 
     with _core.session() as db:
+        if page is not None:
+            if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 200:
+                raise AppException("VALIDATION_ERROR", "成绩单页码须在1至100000、每页条数须在1至200之间")
+            return _transcript_page(db, student_id, int(page), int(page_size))
         academic_student = db.scalars(select(AcademicStudent).where(
             AcademicStudent.tenant_id == _core._tid(),
             AcademicStudent.student_id == int(student_id),
@@ -1187,6 +1264,8 @@ def fail_list(user, term=None, page=1, page_size=50):
             items.append({
                 "gradeId": str(row.id),
                 "studentName": student.name if student else "",
+                "attemptNo": row.attempt_no,
+                "courseVersion": row.course_version,
                 "studentId": str(student.student_id or "") if student else "",
                 "courseId": str(row.course_id or ""),
                 "courseCode": row.course_code or "",

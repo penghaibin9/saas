@@ -69,7 +69,7 @@ def transcript_my(user) -> dict:
 
 def status_my(user) -> dict:
     """我的学籍状态 + 我的异动记录。"""
-    from app.models import AaStatusChange
+    from app.models import AaStatusChange, WorkflowTask
     from app.modules.academic_affairs.services.academic_affairs_service import REGISTRATION_CHANGE_TYPES
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     with session() as db:
@@ -78,10 +78,34 @@ def status_my(user) -> dict:
             AaStatusChange.tenant_id == _tid(), AaStatusChange.student_id == stu.id,
             AaStatusChange.change_type.notin_(REGISTRATION_CHANGE_TYPES),
             AaStatusChange.is_deleted.is_(False)).order_by(AaStatusChange.id.desc())).all()
+        instance_ids = {int(x.workflow_instance_id) for x in rows if x.workflow_instance_id}
+        latest_reviews = {}
+        if instance_ids:
+            tasks = db.scalars(select(WorkflowTask).where(
+                WorkflowTask.tenant_id == _tid(),
+                WorkflowTask.instance_id.in_(instance_ids),
+                WorkflowTask.acted_at.is_not(None),
+                WorkflowTask.is_deleted.is_(False),
+            ).order_by(WorkflowTask.id.desc())).all()
+            for task in tasks:
+                latest_reviews.setdefault(int(task.instance_id), task)
+
+        def _change_row(x):
+            review = latest_reviews.get(int(x.workflow_instance_id)) if x.workflow_instance_id else None
+            expose_review = x.status in {"RETURNED", "REJECTED"} and review is not None
+            return {"changeId": str(x.id), "changeType": x.change_type,
+                    "fromStatus": x.from_status, "toStatus": x.to_status,
+                    "reason": x.reason or "", "status": x.status,
+                    "currentNode": x.current_node or "",
+                    "version": int(x.version or 0),
+                    "decisionVersion": int(x.decision_version or 0),
+                    "reviewNote": (review.action_reason or "") if expose_review else "",
+                    "reviewedAt": _iso(review.acted_at) if expose_review else None,
+                    "createdAt": _iso(x.created_at),
+                    "effectiveDate": _iso(x.effective_date)}
         return {
             "studentStatus": stu.student_status, "enrolled": is_enrolled(stu.student_status),
-            "changes": [{"changeId": str(x.id), "changeType": x.change_type, "toStatus": x.to_status,
-                         "status": x.status, "effectiveDate": _iso(x.effective_date)} for x in rows],
+            "changes": [_change_row(x) for x in rows],
         }
 
 
@@ -323,17 +347,20 @@ def credits_my(user) -> dict:
     }
 
 
-def warning_my(user) -> dict:
+def warning_my(user, page=1, page_size=50) -> dict:
     """我的学业预警（本人，只读）。"""
     from app.modules.academic_affairs.services import academic_affairs_warning_service as warn
+    page = max(1, int(page))
+    page_size = min(100, max(1, int(page_size)))
     with session() as db:
         stu = _me(db, user)
         acad = _acad_student(db, stu)
         acad_id = acad.id if acad else None
     if not acad_id:
-        return {"items": [], "total": 0}
-    items, total = warn.list_warnings(user, acad_student_id=acad_id, page=1, page_size=50)
-    return {"items": items, "total": total}
+        return {"items": [], "total": 0, "page": page, "pageSize": page_size, "hasMore": False}
+    items, total = warn.list_warnings(user, acad_student_id=acad_id, page=page, page_size=page_size)
+    return {"items": items, "total": total, "page": page, "pageSize": page_size,
+            "hasMore": page * page_size < total}
 
 
 def makeup_my(user) -> dict:
@@ -385,6 +412,20 @@ def selection_preflight_my(user, body) -> dict:
     if not (body or {}).get("selectionCourseId"):
         raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
     return sel.student_preflight(user, _ns(body))
+
+
+def selection_drop_preflight_my(user, body) -> dict:
+    """本人退课纯读核验，复用正式 DROP 门禁，不调用 ENROLL evaluator。"""
+    from app.modules.academic_affairs.services import academic_affairs_selection_final_service as selection
+
+    _require_student(user)
+    course_id = (body or {}).get("selectionCourseId")
+    if isinstance(course_id, bool) or not isinstance(course_id, (int, str)):
+        raise AppException("VALIDATION_ERROR", "selectionCourseId 必须是正整数")
+    value = str(course_id)
+    if not value.isascii() or not value.isdecimal() or int(value) <= 0:
+        raise AppException("VALIDATION_ERROR", "selectionCourseId 必须是正整数")
+    return selection.student_drop_preflight(user, _ns({"selectionCourseId": value}))
 
 
 def selection_enroll_my(user, body) -> dict:

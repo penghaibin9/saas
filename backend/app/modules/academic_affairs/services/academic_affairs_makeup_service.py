@@ -142,15 +142,20 @@ def _effective_failed_rows(rows):
     ]
 
 
-def _effective_failed_grade(db, academic_student_id: int, grade_id: int):
+def _effective_failed_grade(db, academic_student_id: int, grade_id: int, *, current_read=False, course_code=None):
     from app.models import AcademicGrade
 
-    rows = db.query(AcademicGrade).filter(
+    query = db.query(AcademicGrade).filter(
         AcademicGrade.tenant_id == _core._tid(),
         AcademicGrade.acad_student_id == int(academic_student_id),
         AcademicGrade.record_status == "ACTIVE",
         AcademicGrade.is_deleted.is_(False),
-    ).all()
+    )
+    if course_code is not None:
+        query = query.filter(AcademicGrade.course_code == course_code)
+    if current_read:
+        query = query.order_by(AcademicGrade.id).with_for_update(read=True).populate_existing()
+    rows = query.all()
     effective = _effective_failed_rows(rows)
     selected = next((row for row in effective if int(row.id) == int(grade_id)), None)
     if not selected:
@@ -169,6 +174,87 @@ def _effective_failed_grade(db, academic_student_id: int, grade_id: int):
         )
     source_attempt_no(selected)
     return selected
+
+
+def _require_retake_origin(db, row):
+    """Use the saved source and exact correction edges under the grade owner lock."""
+    from app.models import AcademicGrade, AcademicStudent
+    from .academic_affairs_grade_identity_service import lock_grade_identity
+    from .academic_affairs_makeup_evidence_projection import grade_chains
+
+    if not row.origin_grade_id:
+        raise AppException("DATA_CONFLICT", "SOURCE_GRADE_UNRESOLVED：重修申请未保存原成绩ID，请退回后从正式成绩重新申请", http_status=409)
+    original = db.query(AcademicGrade).filter(
+        AcademicGrade.id == row.origin_grade_id, AcademicGrade.tenant_id == _core._tid(),
+        AcademicGrade.is_deleted.is_(False),
+    ).first()
+    student = db.query(AcademicStudent).filter(
+        AcademicStudent.id == row.acad_student_id, AcademicStudent.student_id == row.student_id,
+        AcademicStudent.tenant_id == _core._tid(), AcademicStudent.is_deleted.is_(False),
+    ).first()
+    if (not original or not student or original.acad_student_id != student.id
+            or not row.course_id or original.course_id != row.course_id or not original.course_code):
+        raise AppException("DATA_CONFLICT", "重修原成绩与学生、课程身份不一致", http_status=409)
+    locked_course_code = original.course_code
+    lock_grade_identity(db, student.id, locked_course_code)
+    original, current, state = grade_chains(db, [row.origin_grade_id], lock=True)[row.origin_grade_id]
+    if (state != "RESOLVED" or not current or current.acad_student_id != student.id
+            or current.course_id != row.course_id or current.course_code != locked_course_code):
+        raise AppException("DATA_CONFLICT", "重修来源成绩的正式更正链无法证明，禁止批准或编班", http_status=409)
+    return _effective_failed_grade(db, student.id, current.id, current_read=True, course_code=current.course_code)
+
+
+def _retake_source_key(row):
+    return row.origin_grade_id, row.acad_student_id, row.student_id, row.course_id
+
+
+def _require_application_version(row, identity):
+    if not identity or identity.get("expectedVersion") != int(row.version or 0):
+        raise AppException("APPROVAL_VERSION_CONFLICT", "申请版本已变化或缺失，请重新读取并确认", http_status=409)
+
+
+def _require_source_hash(grade, identity):
+    from .academic_affairs_makeup_evidence_projection import grade_evidence_hash
+
+    if not identity or identity.get("expectedSourceEvidenceHash") != grade_evidence_hash(grade):
+        raise AppException("APPROVAL_VERSION_CONFLICT", "原正式成绩证据已变化或缺失，请重新确认", http_status=409)
+
+
+def _exemption_scope(ctx, user):
+    from app.models import AaExemption
+    from .academic_affairs_teacher_relation_authority import user_keys
+
+    if ctx.scope_type == "TENANT_ALL":
+        return True
+    if ctx.scope_type == "COLLEGE":
+        return AaExemption.college_id.in_(sorted(ctx.college_ids))
+    # A reviewer permission is not a school-wide data scope. Missing assignment
+    # never falls back to any teacher of a similarly named course.
+    return AaExemption.teacher_key.in_(sorted(user_keys(user)))
+
+
+def _exemption_actions(row, ctx, user):
+    from app.core.permissions import has_permission
+    from .academic_affairs_teacher_relation_authority import user_keys
+
+    if row.status not in _core._EX_CHAIN or not has_permission(user, "academicAffairs.exemption.review"):
+        return []
+    if row.current_node not in (None, row.status) and not (
+        row.status == _core._EX_SUBMITTED and row.current_node == _core._EX_TEACHER
+    ):
+        return []
+    # Existing school-wide academic authority may act across nodes. Ordinary
+    # reviewers must satisfy the concrete teacher/college node assignment.
+    if ctx.scope_type == "TENANT_ALL":
+        return ["APPROVE", "RETURN", "REJECT"]
+    college = ctx.scope_type == "COLLEGE" and row.college_id in ctx.college_ids
+    teacher = bool(row.teacher_key and row.teacher_key in user_keys(user))
+    if ctx.scope_type == "COLLEGE" and not college:
+        return []
+    if ((row.status in {_core._EX_SUBMITTED, _core._EX_TEACHER} and teacher)
+            or (row.status == _core._EX_COLLEGE and college)):
+        return ["APPROVE", "RETURN", "REJECT"]
+    return []
 
 
 def makeup_pending(user, term=None, page=1, page_size=50):
@@ -805,6 +891,7 @@ def finish_makeup_batch(user, batch_id):
 
 def retake_apply(user, body):
     from app.models import AaRetakeApply
+    from types import SimpleNamespace
 
     with _core.session() as db:
         student = _student(db, user)
@@ -820,13 +907,17 @@ def retake_apply(user, body):
         if not grade_id:
             raise AppException("VALIDATION_ERROR", "请从本人当前有效挂科成绩选择gradeId")
         grade = _effective_failed_grade(db, academic_student.id, int(grade_id))
+        _require_retake_origin(db, SimpleNamespace(
+            origin_grade_id=grade.id, acad_student_id=academic_student.id,
+            student_id=student.id, course_id=grade.course_id,
+        ))
         history = db.query(AaRetakeApply).filter(
             AaRetakeApply.tenant_id == _core._tid(),
             AaRetakeApply.student_id == student.id,
             AaRetakeApply.course_id == grade.course_id,
             AaRetakeApply.status.notin_([_core._RT_REJECTED]),
             AaRetakeApply.is_deleted.is_(False),
-        ).all()
+        ).with_for_update().populate_existing().all()
         if any(row.status in {_core._RT_SUBMITTED, _core._RT_REVIEW, _core._RT_APPROVED} for row in history):
             raise _core._conflict("该课程已有在途重修申请")
         maximum = int(_core._rule("retake_max_count", 2))
@@ -838,6 +929,7 @@ def retake_apply(user, body):
             student_no=student.student_no,
             student_name=student.real_name,
             acad_student_id=academic_student.id,
+            origin_grade_id=grade.id,
             course_id=grade.course_id,
             course_name=grade.course_name,
             term_code=code,
@@ -869,23 +961,40 @@ def retake_apply(user, body):
         return result
 
 
-def retake_review(user, apply_id, action, reason=""):
+def retake_review(user, apply_id, action, reason="", *, identity=None, command_key=None):
     from app.models import AaRetakeApply
 
+    from . import academic_affairs_grade_command_receipt as receipts
     with _core.session() as db:
+        receipt, cached = receipts.begin(db, user, "MAKEUP_RETAKE_REVIEW", command_key, {"applyId": str(apply_id), "action": action, "reason": reason, "identity": identity})
+        if cached is not None:
+            return cached
         _core._require_school(_core._ctx(user, db))
-        row = db.query(AaRetakeApply).filter(
+        query = db.query(AaRetakeApply).filter(
             AaRetakeApply.id == int(apply_id),
             AaRetakeApply.tenant_id == _core._tid(),
             AaRetakeApply.is_deleted.is_(False),
-        ).with_for_update().first()
+        )
+        preview = query.first()
+        if not preview:
+            raise not_found("重修申请不存在")
+        action_code = str(action or "").upper()
+        source_key = _retake_source_key(preview)
+        if action_code == "APPROVE":
+            # Creation holds grade identity before inspecting application rows.
+            # Keep the same order when approving, avoiding row -> identity inversion.
+            current_grade = _require_retake_origin(db, preview)
+            _require_source_hash(current_grade, identity)
+        row = query.with_for_update().populate_existing().first()
         if not row:
             raise not_found("重修申请不存在")
+        _require_application_version(row, identity)
         _guard_code(db, row.term_code)
         if row.status not in {_core._RT_SUBMITTED, _core._RT_REVIEW}:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理", http_status=409)
-        action_code = str(action or "").upper()
         if action_code == "APPROVE":
+            if _retake_source_key(row) != source_key:
+                raise AppException("APPROVAL_VERSION_CONFLICT", "重修来源已变化，请刷新后重试", http_status=409)
             row.status = _core._RT_APPROVED
         elif action_code == "REJECT":
             reason_text = str(reason or "").strip()
@@ -895,32 +1004,54 @@ def retake_review(user, apply_id, action, reason=""):
             row.review_reason = reason_text
         else:
             raise _core._bad("非法审批动作")
+        row.version = int(row.version or 0) + 1
         _core._audit(db, "AA_RETAKE", row.id, "RETAKE_REVIEW", action_code)
+        result = _core._rt_dto(row)
+        receipts.finish(db, receipt, result)
         db.commit()
-        return _core._rt_dto(row)
+        return result
 
 
-def retake_enroll(user, apply_id, teaching_task_ref=None):
+def retake_enroll(user, apply_id, teaching_task_ref=None, *, identity=None, command_key=None):
     """重修编班同时生成新名单版本；已有下游消费者时禁止静默换版。"""
     from app.models import AaRetakeApply, AaTeachingTask, AaTeachingTaskBatch
 
     if not teaching_task_ref:
         raise AppException("VALIDATION_ERROR", "重修必须编入真实教学任务")
+    from . import academic_affairs_grade_command_receipt as receipts
     with _core.session() as db:
+        receipt, cached = receipts.begin(db, user, "MAKEUP_RETAKE_ENROLL", command_key, {"applyId": str(apply_id), "teachingTaskRef": str(teaching_task_ref), "identity": identity})
+        if cached is not None:
+            return cached
         _core._require_school(_core._ctx(user, db))
-        row = db.query(AaRetakeApply).filter(
+        query = db.query(AaRetakeApply).filter(
             AaRetakeApply.id == int(apply_id),
             AaRetakeApply.tenant_id == _core._tid(),
             AaRetakeApply.is_deleted.is_(False),
-        ).with_for_update().first()
+        )
+        preview = query.first()
+        if not preview:
+            raise not_found("重修申请不存在")
+        source_key = None
+        if preview.status == _core._RT_APPROVED:
+            source_key = _retake_source_key(preview)
+            current_grade = _require_retake_origin(db, preview)
+            _require_source_hash(current_grade, identity)
+        row = query.with_for_update().populate_existing().first()
         if not row:
             raise not_found("重修申请不存在")
+        _require_application_version(row, identity)
         term = _guard_code(db, row.term_code)
         if row.status == _core._RT_ENROLLED and int(row.teaching_task_ref or 0) == int(teaching_task_ref):
             roster = teaching_class_service.resolve_teaching_task_roster(db, int(teaching_task_ref))
-            return {**_core._rt_dto(row), "rosterIdentity": roster, "idempotent": True}
+            result = {**_core._rt_dto(row), "rosterIdentity": roster, "idempotent": True}
+            receipts.finish(db, receipt, result)
+            db.commit()
+            return result
         if row.status != _core._RT_APPROVED:
             raise _core._invalid("仅APPROVED申请可编入跟班")
+        if source_key is None or _retake_source_key(row) != source_key:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "重修来源或状态已变化，请刷新后重试", http_status=409)
         if not row.course_id:
             raise AppException("DATA_CONFLICT", "重修申请缺少courseId，请退回后重新申请", http_status=409)
         task = db.query(AaTeachingTask).filter(
@@ -967,6 +1098,8 @@ def retake_enroll(user, apply_id, teaching_task_ref=None):
             version = db.get(AaTeachingClassRosterVersion, int(current["rosterVersionId"]))
         row.status = _core._RT_ENROLLED
         row.teaching_task_ref = task.id
+        row.enrollment_roster_version_id = version.id
+        row.version = int(row.version or 0) + 1
         _core._audit(
             db,
             "AA_RETAKE",
@@ -977,20 +1110,23 @@ def retake_enroll(user, apply_id, teaching_task_ref=None):
                 f"rosterVersionId={version.id}"
             ),
         )
-        db.commit()
         result = _core._rt_dto(row)
         result.update({
             "teachingClassId": str(teaching_class.id),
+            "teachingTaskRef": str(task.id),
             "rosterVersionId": str(version.id),
             "rosterVersionNo": version.version_no,
             "memberCount": version.member_count,
             "idempotent": False,
         })
+        receipts.finish(db, receipt, result)
+        db.commit()
         return result
 
 
-def retake_list(user, status=None, student_only=False, page=1, page_size=50):
+def retake_list(user, status=None, student_only=False, page=1, page_size=50, *, apply_id=None):
     from app.models import AaRetakeApply
+    from .academic_affairs_makeup_evidence_projection import retake_sources
 
     with _core.session() as db:
         _core._ctx(user, db)
@@ -1001,12 +1137,15 @@ def retake_list(user, status=None, student_only=False, page=1, page_size=50):
         if student_only:
             student = _student(db, user)
             query = query.filter(AaRetakeApply.student_id == int(student.id))
+        if apply_id is not None:
+            query = query.filter(AaRetakeApply.id == int(apply_id))
         if status:
             query = query.filter(AaRetakeApply.status == status)
-        rows = query.order_by(AaRetakeApply.id.desc()).all()
-        total = len(rows)
+        total = query.count()
         start = (max(1, int(page)) - 1) * int(page_size)
-        return [_core._rt_dto(row) for row in rows[start:start + int(page_size)]], total
+        rows = query.order_by(AaRetakeApply.id.desc()).offset(start).limit(max(0, int(page_size))).all()
+        projected = retake_sources(db, rows, user)
+        return [{**_core._rt_dto(row), **projected[row.id]} for row in rows], total
 
 
 def exemption_apply(user, body):
@@ -1111,22 +1250,34 @@ def exemption_apply(user, body):
         return result
 
 
-def exemption_review(user, exemption_id, action, reason=""):
+def exemption_review(user, exemption_id, action, reason="", *, identity=None, command_key=None):
     from app.models import AaCourse, AaExemption, AcademicGrade
 
+    from . import academic_affairs_grade_command_receipt as receipts
     with _core.session() as db:
-        _core._ctx(user, db)
+        receipt, cached = receipts.begin(db, user, "MAKEUP_EXEMPTION_REVIEW", command_key, {"exemptionId": str(exemption_id), "action": action, "reason": reason, "identity": identity})
+        if cached is not None:
+            return cached
+        ctx = _core._ctx(user, db)
         row = db.query(AaExemption).filter(
             AaExemption.id == int(exemption_id),
             AaExemption.tenant_id == _core._tid(),
             AaExemption.is_deleted.is_(False),
-        ).with_for_update().first()
+            _exemption_scope(ctx, user),
+        ).with_for_update().populate_existing().first()
         if not row:
             raise not_found("免修申请不存在")
+        _require_application_version(row, identity)
+        if (identity.get("expectedStatus") != row.status
+                or "expectedEvidenceManifestHash" not in identity
+                or identity["expectedEvidenceManifestHash"] != row.evidence_manifest_hash):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "免修节点或冻结材料清单已变化，请重新确认", http_status=409)
         _guard_code(db, row.term_code)
         if row.status not in _core._EX_CHAIN:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理", http_status=409)
         action_code = str(action or "").upper()
+        if action_code not in _exemption_actions(row, ctx, user):
+            raise no_data_scope("当前身份不是该免修节点的授权办理人")
         if action_code in {"RETURN", "REJECT"}:
             reason_text = str(reason or "").strip()
             if len(reason_text) < 5:
@@ -1134,12 +1285,16 @@ def exemption_review(user, exemption_id, action, reason=""):
             row.status = _core._EX_SUBMITTED if action_code == "RETURN" else _core._EX_REJECTED
             row.current_node = _core._EX_SUBMITTED if action_code == "RETURN" else None
             row.return_reason = reason_text
+            row.version = int(row.version or 0) + 1
             _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_REVIEW", f"{action_code}->{row.status}")
+            result = _core._ex_dto(row)
+            receipts.finish(db, receipt, result)
             db.commit()
-            return _core._ex_dto(row)
+            return result
         if action_code != "APPROVE":
             raise _core._bad("非法审批动作")
 
+        evidence = evidence_service.require_valid_manifest(db, row)
         next_status = _core._EX_CHAIN[row.status]
         if next_status == _core._EX_APPROVED:
             if not row.course_id:
@@ -1171,7 +1326,6 @@ def exemption_review(user, exemption_id, action, reason=""):
                 raise AppException("APPROVAL_VERSION_CONFLICT", "审批期间该课程已取得及格成绩，申请不再有效", http_status=409)
             # 终审要凭这些材料生成一条正式的、计学分的及格成绩，所以在写成绩之前重新验一遍证据链：
             # 绑定是否仍然有效、文件是否仍可用且扫描通过、内容 sha256 与归属人是否还是申请时那份。
-            evidence = evidence_service.require_valid_manifest(db, row)
             grade = db.query(AcademicGrade).filter(
                 AcademicGrade.tenant_id == _core._tid(),
                 AcademicGrade.source_biz_type == "EXEMPTION",
@@ -1211,6 +1365,7 @@ def exemption_review(user, exemption_id, action, reason=""):
             )
             grade_service._refresh_aggregates(db, academic_student)
         row.status = next_status
+        row.version = int(row.version or 0) + 1
         row.current_node = None if next_status == _core._EX_APPROVED else next_status
         detail = f"APPROVE->{row.status};courseId={row.course_id}"
         if next_status == _core._EX_APPROVED:
@@ -1219,18 +1374,20 @@ def exemption_review(user, exemption_id, action, reason=""):
                 f";manifestHash={str(evidence['manifestHash'] or '')[:16]}"
             )
         _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_REVIEW", detail)
-        db.commit()
         result = _core._ex_dto(row)
         if next_status == _core._EX_APPROVED:
             result["evidenceManifestHash"] = evidence["manifestHash"]
+        receipts.finish(db, receipt, result)
+        db.commit()
         return result
 
 
-def exemption_list(user, status=None, student_only=False, page=1, page_size=50):
+def exemption_list(user, status=None, student_only=False, page=1, page_size=50, *, exemption_id=None):
     from app.models import AaExemption
+    from .academic_affairs_makeup_evidence_projection import exemption_sources
 
     with _core.session() as db:
-        _core._ctx(user, db)
+        ctx = _core._ctx(user, db)
         query = db.query(AaExemption).filter(
             AaExemption.tenant_id == _core._tid(),
             AaExemption.is_deleted.is_(False),
@@ -1238,12 +1395,23 @@ def exemption_list(user, status=None, student_only=False, page=1, page_size=50):
         if student_only:
             student = _student(db, user)
             query = query.filter(AaExemption.student_id == int(student.id))
+        else:
+            query = query.filter(_exemption_scope(ctx, user))
+        if exemption_id is not None:
+            query = query.filter(AaExemption.id == int(exemption_id))
         if status:
             query = query.filter(AaExemption.status == status)
-        rows = query.order_by(AaExemption.id.desc()).all()
-        total = len(rows)
+        total = query.count()
         start = (max(1, int(page)) - 1) * int(page_size)
-        return [_core._ex_dto(row) for row in rows[start:start + int(page_size)]], total
+        rows = query.order_by(AaExemption.id.desc()).offset(start).limit(max(0, int(page_size))).all()
+        projected = exemption_sources(db, rows)
+        items = []
+        for row in rows:
+            actions = [] if student_only else _exemption_actions(row, ctx, user)
+            if projected[row.id]["evidenceState"] == "INVALID":
+                actions = [action for action in actions if action != "APPROVE"]
+            items.append({**_core._ex_dto(row), **projected[row.id], "allowedActions": actions})
+        return items, total
 
 
 def merge_deferred(user, defer_id, batch_id):

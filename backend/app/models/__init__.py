@@ -198,6 +198,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
 from app.models.academic_affairs_registry import *  # noqa: F401,F403
+from app.models.academic_grade_effect_job import AcademicGradeEffectJob  # noqa: F401
 from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 学期治理投影)
                                           CalendarTransitionEvent, CalendarWindow)
 from app.models.organization_version import (OrgVersion, OrgVersionItem,  # noqa: F401  (SYS-04 组织版本与任职)

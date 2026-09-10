@@ -150,8 +150,12 @@ def review(user, decl_id, action, note="") -> dict:
     from app.models import AaWorkloadDeclaration
     with session() as db:
         _require_school(user, db)
-        r = db.get(AaWorkloadDeclaration, int(decl_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
+        r = db.scalar(select(AaWorkloadDeclaration).where(
+            AaWorkloadDeclaration.id == int(decl_id),
+            AaWorkloadDeclaration.tenant_id == _tid(),
+            AaWorkloadDeclaration.is_deleted.is_(False),
+        ).with_for_update())
+        if not r:
             raise not_found("工作量申报不存在")
         if r.status != "SUBMITTED":
             raise _invalid("仅待审核记录可审核")
@@ -167,6 +171,7 @@ def review(user, decl_id, action, note="") -> dict:
         r.reviewed_by, r.reviewed_at = _op(), datetime.utcnow()
         _audit(db, r.id, f"WORKLOAD_{act}", (note or "")[:100])
         db.commit()
+        db.refresh(r)
         return _dto(r)
 
 

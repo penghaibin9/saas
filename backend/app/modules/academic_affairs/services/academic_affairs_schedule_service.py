@@ -495,7 +495,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
 def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
     """source: CLASS_DERIVED(行政班课表推导，既有) / ENROLLED(选课LOCKED并入，10号卡新增值)。
     切换位沿用 `13A-13B-V1不可做与后置能力清单.md:45` 预留设计，前端按 source 区分展示。"""
-    return {"itemId": str(x.id), "courseName": x.course_name or "", "className": x.class_name or "",
+    return {"itemId": str(x.id), "batchId": str(x.batch_id),
+            "taskId": str(x.task_id) if x.task_id else None,
+            "classroomId": str(x.classroom_id) if x.classroom_id else None,
+            "courseName": x.course_name or "", "className": x.class_name or "",
             "classId": str(x.class_id or ""), "teacherName": x.teacher_name or "",
             "teacherKey": x.teacher_key or "", "weekday": x.weekday, "slotNo": x.slot_no,
             "startWeek": x.start_week, "endWeek": x.end_week, "weekParity": x.week_parity,

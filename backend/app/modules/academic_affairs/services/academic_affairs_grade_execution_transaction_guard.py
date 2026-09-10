@@ -81,11 +81,11 @@ def _enter_score_single_session(task_id: int, user, body) -> dict:
 _enter_score_single_session.__grade_single_session_guard__ = True
 
 
-def _submit_task_single_session(task_id: int, user) -> dict:
+def _submit_task_single_session(task_id: int, user, *, expected=None, command_key=None) -> dict:
     """Run the one canonical submit_task implementation with same-session live authority."""
     token = _ACTIVE_WRITE_USER.set(dict(user or {}))
     try:
-        return _grade.submit_task(task_id, user)
+        return _grade.submit_task(task_id, user, expected=expected, command_key=command_key)
     finally:
         _ACTIVE_WRITE_USER.reset(token)
 

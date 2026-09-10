@@ -66,11 +66,15 @@ def _fail_counts(db) -> dict[int, int]:
     return counts
 
 
-def scan_warnings(user) -> dict:
+def _scan_warnings(user, effect_job=None) -> dict:
     """Mature EXAM_FAIL rule over canonical EffectiveGrade, without tenant-wide materialization."""
     threshold = warning._fail_threshold()
     now = datetime.utcnow()
     with warning.session() as db:
+        job = None
+        if effect_job is not None:
+            from .academic_grade_effect_service import lock_effect_for_scan
+            job = lock_effect_for_scan(db, *effect_job)
         counts = _fail_counts(db)
         created = updated = 0
         rule_code = f"EXAM_FAIL_GE_{threshold}"
@@ -96,14 +100,25 @@ def scan_warnings(user) -> dict:
             "SCAN_FAIL_COURSE",
             f"created={created} updated={updated} source=EFFECTIVE_GRADE_STREAM",
         )
-        db.commit()
-        return {
+        result = {
             "threshold": threshold,
             "created": created,
             "updated": updated,
-            "notified": created,
+            "notified": None,
+            "notificationState": "NOT_VERIFIED",
             "sourcePolicy": "LATEST_FORMAL_SOURCE_V1",
         }
+        if job is not None:
+            from .academic_grade_effect_service import finish_effect_in_scan
+            finish_effect_in_scan(job, result)
+        db.commit()
+        return result
+
+
+def scan_warnings(user, *, effect_job=None) -> dict:
+    from .academic_grade_effect_service import warning_scan_lock
+    with warning_scan_lock():
+        return _scan_warnings(user, effect_job)
 
 
 scan_warnings._effective_grade_stream_guard = True

@@ -36,6 +36,11 @@ def selection_preflight(user: dict, body: dict) -> dict:
     return aa.selection_preflight_my(user, body or {})
 
 
+def selection_drop_preflight(user: dict, body: dict) -> dict:
+    """本人退课纯读预检，与移动端共用正式 DROP 规则。"""
+    return aa.selection_drop_preflight_my(user, body or {})
+
+
 def selection_enroll(user: dict, body: dict) -> dict:
     """选课·选课（selectionCourseId 必填，容量/冲突由教务选课服务校验）。"""
     _require_student(user)
@@ -284,9 +289,9 @@ def credits(user: dict) -> dict:
     return aa.credits_my(user)
 
 
-def warning(user: dict) -> dict:
+def warning(user: dict, page=1, page_size=50) -> dict:
     _require_student(user)
-    return aa.warning_my(user)
+    return aa.warning_my(user, page=page, page_size=page_size)
 
 
 def recognition(user: dict) -> dict:

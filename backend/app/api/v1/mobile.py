@@ -9,6 +9,8 @@ from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
+from app.modules.academic_affairs.routers.warning_core_router import WarningInterventionBody
+from app.modules.academic_affairs.services import mobile_academic_warning_service as teacher_warning_svc
 from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
@@ -817,7 +819,7 @@ def teacher_campus(user=Depends(get_current_user)):
 
 @router.get("/teacher/academic", summary="教师·学业预警待处理")
 def teacher_academic(user=Depends(get_current_user)):
-    return success(tea.academic(user))
+    return success(teacher_warning_svc.list_warnings(user, status="PENDING_HANDLE"))
 
 
 @internship_teacher_mobile.get("", summary="教师·实习待批")
@@ -1805,6 +1807,33 @@ def teacher_graduation_defense_score_entry(gd_student_id: str, body: dict = Body
     return success(tea.graduation_defense_score_entry(_with_gd_batch(user, batchId), gd_student_id, body), message="已保存")
 
 
+@router.get("/teacher/academic/warnings", summary="教师·范围内学业预警分页")
+def teacher_warning_list(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=50, ge=1, le=100),
+    status: str | None = Query(default=None),
+    level: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(teacher_warning_svc.list_warnings(
+        user, page=page, page_size=pageSize, status=status, level=level,
+    ))
+
+
+@router.get("/teacher/academic/warning/{warning_id}/detail", summary="教师·本人负责预警及跟进记录")
+def teacher_warning_detail(warning_id: int = Path(..., gt=0), user=Depends(get_current_user)):
+    return success(teacher_warning_svc.detail(user, warning_id))
+
+
+@router.post("/teacher/academic/warning/{warning_id}/interventions", summary="教师·本人负责预警追加跟进")
+def teacher_warning_intervention(
+    body: WarningInterventionBody,
+    warning_id: int = Path(..., gt=0),
+    user=Depends(get_current_user),
+):
+    return success(teacher_warning_svc.add_intervention(user, warning_id, body), message="已记录")
+
+
 @router.post("/teacher/academic/warning/{warning_id}/handle",
              summary="教师·学业预警处理（CLOSE/ESCALATE，范围校验+审计）")
 def teacher_warning_handle(warning_id: str, body: dict = Body(...),
@@ -2323,8 +2352,9 @@ def academic_credits_my(user=Depends(get_current_user)):
 
 
 @router.get("/academic/warning/my", summary="教务·我的学业预警")
-def academic_warning_my(user=Depends(get_current_user)):
-    return success(aa.warning_my(user))
+def academic_warning_my(user=Depends(get_current_user), page: int = Query(1, ge=1),
+                        page_size: int = Query(50, alias="pageSize", ge=1, le=100)):
+    return success(aa.warning_my(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/makeup/my", summary="教务·我的补考重修（重修+免修申请）")
@@ -2406,6 +2436,11 @@ def academic_selection_courses(batch_id: str = None, user=Depends(get_current_us
 @router.post("/academic/selection/preflight", summary="教务·网上选课·本人纯读预检")
 def academic_selection_preflight(body: dict = Body(...), user=Depends(get_current_user)):
     return success(aa.selection_preflight_my(user, body))
+
+
+@router.post("/academic/selection/drop-preflight", summary="教务·网上选课·本人退课纯读预检")
+def academic_selection_drop_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.selection_drop_preflight_my(user, body))
 
 
 @router.post("/academic/selection/enroll", summary="教务·网上选课·本人选课")

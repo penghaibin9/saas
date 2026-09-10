@@ -168,6 +168,7 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
         result[int(teaching_class.teaching_task_id)] = {
             "source": "TEACHING_CLASS_TEACHER",
             "teachingClassId": str(teaching_class.id),
+            "teachingClassName": teaching_class.class_name,
             "teachingClassStatus": teaching_class.status,
             "authorityWeek": week,
             "teacherKeys": [str(row.teacher_key) for row in candidates if row.teacher_key],
@@ -264,6 +265,7 @@ def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None):
                 item["teacherNames"] = authority["teacherNames"]
                 item["teacherAuthoritySource"] = authority["source"]
                 item["teachingClassId"] = authority["teachingClassId"]
+                item["teachingClassName"] = authority["teachingClassName"]
                 item["authorityWeek"] = authority["authorityWeek"]
                 item["teacherAuthorityError"] = authority["authorityError"]
                 authority_ready = bool(authority["authorityReady"])
@@ -273,6 +275,7 @@ def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None):
                 item["teacherNames"] = []
                 item["teacherAuthoritySource"] = "TEACHING_TASK_MIGRATION_FALLBACK"
                 item["teachingClassId"] = None
+                item["teachingClassName"] = None
                 item["authorityWeek"] = None
                 item["teacherAuthorityError"] = ""
                 authority_ready = bool(task_teacher_key)
@@ -281,6 +284,7 @@ def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None):
                 item["teacherNames"] = []
                 item["teacherAuthoritySource"] = "GRADE_TASK_COMPAT_SCOPE"
                 item["teachingClassId"] = None
+                item["teachingClassName"] = None
                 item["authorityWeek"] = None
                 item["teacherAuthorityError"] = ""
                 authority_ready = bool(task.teacher_key)

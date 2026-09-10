@@ -23,6 +23,12 @@ from app.services.file_access_service import (
 from app.services.message_identity import resolve_message_user_id
 
 
+@register_file_resolver("AA_GRADE_CHANGE_REQUEST")
+def grade_change_material_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    from app.modules.academic_affairs.services.academic_affairs_grade_change_material_service import file_access
+    return file_access(db, file_obj, bindings, user, action)
+
+
 def _owner_allows(file_obj, user: dict) -> bool:
     """兼容正式数字账号与 mock/历史字符串账号的统一 owner 判断。"""
     owner = str(file_obj.owner_user_id or file_obj.created_by or "").strip()

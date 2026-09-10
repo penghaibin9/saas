@@ -169,20 +169,32 @@ def test_attendance_full_flow(client, db_mode):
                           "slotNo": 1}).json()
     assert r["code"] == 0, r
     sess = r["data"]
-    assert sess["totalCount"] == 3 and sess["presentCount"] == 3 and sess["status"] == "DRAFT"
+    assert sess["totalCount"] == 3 and sess["presentCount"] == 0 and sess["status"] == "DRAFT"
     sid = sess["sessionId"]
 
     detail = client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]
     assert len(detail["items"]) == 3
     stu0 = detail["items"][0]
-    assert stu0["status"] == "PRESENT"
+    assert all(row["status"] == "UNMARKED" for row in detail["items"])
+    premature = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert premature.status_code == 409
+    assert premature.json()["details"]["unmarkedCount"] == 3
 
     marked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
                          json={"studentId": stu0["studentId"], "status": "ABSENT"}).json()["data"]
-    assert marked["absentCount"] == 1 and marked["presentCount"] == 2
+    assert marked["absentCount"] == 1 and marked["presentCount"] == 0
+    partial = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert partial.status_code == 409
+    assert client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]["status"] == "DRAFT"
+    for student in detail["items"][1:]:
+        response = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
+                               json={"studentId": student["studentId"], "status": "PRESENT"})
+        assert response.status_code == 200
 
     submitted = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr).json()["data"]
     assert submitted["status"] == "SUBMITTED"
+    assert submitted["presentCount"] == 2 and submitted["absentCount"] == 1
+    assert submitted["warningScanOk"] is True
 
     # 提交后不可再改
     blocked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
@@ -193,6 +205,29 @@ def test_attendance_full_flow(client, db_mode):
     lst = client.get(f"{BASE}/sessions", headers=hdr).json()["data"]
     assert lst["total"] >= 1
     assert any(s["sessionId"] == sid for s in lst["items"])
+
+
+def test_attendance_submit_keeps_committed_result_honest_when_warning_scan_fails(client, db_mode, monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_warning_service as warning
+
+    cid = _seed_class(n_students=1)
+    task_id = _seed_teaching_task(cid, "预警回执老师")
+    hdr = _teacher_token("预警回执老师")
+    created = client.post(f"{BASE}/sessions", headers=hdr, json={
+        "teachingTaskId": task_id, "classId": cid, "sessionDate": "2026-07-15", "slotNo": 1,
+    }).json()["data"]
+    sid = created["sessionId"]
+    detail = client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]
+    assert client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr, json={
+        "studentId": detail["items"][0]["studentId"], "status": "PRESENT",
+    }).status_code == 200
+    monkeypatch.setattr(warning, "scan_attendance_warnings", lambda _user: (_ for _ in ()).throw(RuntimeError("scan offline")))
+    response = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["status"] == "SUBMITTED"
+    assert result["warningScanOk"] is False
+    assert "扫描未完成" in result["warningScanError"]
 
 
 def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
@@ -249,7 +284,11 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     absent_sid = client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"][0]["studentId"]
     client.post(f"{BASE}/sessions/{s1['sessionId']}/mark", headers=hdr,
                 json={"studentId": absent_sid, "status": "ABSENT"})
-    client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr)
+    for student in client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"]:
+        if student["studentId"] != absent_sid:
+            client.post(f"{BASE}/sessions/{s1['sessionId']}/mark", headers=hdr,
+                        json={"studentId": student["studentId"], "status": "PRESENT"})
+    assert client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr).status_code == 200
     # 场次2：实训类别，同一人再旷课
     s2_payload = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
@@ -260,13 +299,25 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     assert s2["sessionType"] == "实训"
     client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
                 json={"studentId": absent_sid, "status": "ABSENT"})
-    client.post(f"{BASE}/sessions/{s2['sessionId']}/submit", headers=hdr)
+    for student in client.get(f"{BASE}/sessions/{s2['sessionId']}", headers=hdr).json()["data"]["items"]:
+        if student["studentId"] != absent_sid:
+            client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
+                        json={"studentId": student["studentId"], "status": "PRESENT"})
+    assert client.post(f"{BASE}/sessions/{s2['sessionId']}/submit", headers=hdr).status_code == 200
 
     admin = _hdr_admin(client)
     stats = client.get(f"{PC}/stats", headers=admin, params={"classId": cid}).json()["data"]
     assert stats["sessionCount"] == 2
     top = stats["students"][0]  # 按旷课次数降序
     assert top["studentId"] == absent_sid and top["absent"] == 2 and top["sessions"] == 2
+    paged = client.get(
+        f"{PC}/stats", headers=admin,
+        params={"classId": cid, "page": 1, "pageSize": 1},
+    ).json()["data"]
+    assert paged["studentTotal"] == len(stats["students"])
+    assert paged["absentStudentCount"] == 1
+    assert paged["page"] == 1 and paged["pageSize"] == 1
+    assert len(paged["students"]) == 1 and paged["students"][0]["studentId"] == absent_sid
     # 点名类别过滤：只看实训 → 该生旷课 1、场次 1
     only = client.get(f"{PC}/stats", headers=admin, params={"classId": cid, "sessionType": "实训"}).json()["data"]
     assert only["sessionCount"] == 1 and only["students"][0]["absent"] == 1

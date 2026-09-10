@@ -81,6 +81,8 @@ def _merged_roster(task_id: int, user) -> dict:
                     "midtermScore": record.get("midtermScore"),
                     "finalScore": record.get("finalScore"),
                     "totalScore": record.get("totalScore"),
+                    "source": record.get("source"),
+                    "prevTotalScore": record.get("prevTotalScore"),
                     "passStatus": record.get("passStatus"),
                     "exceptionFlag": record.get("exceptionFlag") or "NORMAL",
                 }

@@ -12,6 +12,28 @@ def _mobile():
     return services.mobile_academic_affairs_service
 
 
+def test_teacher_roster_preserves_recheck_total_without_rewriting_original_parts(monkeypatch):
+    from app.modules.academic_affairs.routers import mobile_grade_entry_router as router
+
+    user = {"userId": "teacher-test"}
+    def roster(task_id, actor):
+        assert task_id == 42 and actor is user
+        return {"items": [{"studentId": "9"}], "status": "PUBLISHED"}
+    def records(task_id, actor):
+        assert task_id == 42 and actor is user
+        return {"items": [{"studentId": "9", "usualScore": 86, "finalScore": 86,
+                           "totalScore": 96, "prevTotalScore": 86, "source": "RECHECK"},
+                          {"studentId": "other", "totalScore": 100}], "status": "PUBLISHED"}
+    monkeypatch.setattr(router.service, "teacher_roster", roster)
+    monkeypatch.setattr(router.service, "teacher_list_records", records)
+    result = router._merged_roster(42, user)
+    assert len(result["items"]) == 1
+    row = result["items"][0]
+    assert (row["totalScore"], row["prevTotalScore"], row["source"]) == (96, 86, "RECHECK")
+    assert row["usualScore"] == row["finalScore"] == 86
+    assert result["status"] == "PUBLISHED"
+
+
 def test_mobile_grade_normalization_accepts_zero_and_rejects_bad_values():
     normalize_mobile_grade_row = _mobile().normalize_mobile_grade_row
 

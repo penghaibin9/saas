@@ -12,6 +12,7 @@ SUPERSEDED + active_scope_key 唯一索引兜底并发发布），职责不同�
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
@@ -55,6 +56,8 @@ def _validate_bands(bands) -> str:
             lo, hi, point = float(item["minScore"]), float(item["maxScore"]), float(item["point"])
         except (KeyError, TypeError, ValueError) as exc:
             raise AppException("VALIDATION_ERROR", "BANDS 每项须包含 minScore/maxScore/point") from exc
+        if not all(math.isfinite(value) for value in (lo, hi, point)) or not (0 <= lo <= 100 and 0 <= hi <= 100 and 0 <= point <= 5):
+            raise AppException("VALIDATION_ERROR", "绩点区间须为有限数值：分数 0-100、绩点 0-5")
         if lo > hi:
             raise AppException("VALIDATION_ERROR", f"区间下限不能大于上限：{lo}-{hi}")
         normalized.append({"minScore": lo, "maxScore": hi, "point": round(point, 2)})
@@ -138,9 +141,9 @@ def evaluate_policy(policy, score) -> float:
     scale = str(policy.scale_type or "LINEAR").upper()
     if scale == "BANDS":
         try:
-            bands = json.loads(policy.bands_json or "[]")
-        except (TypeError, ValueError):
-            bands = []
+            bands = json.loads(_validate_bands(json.loads(policy.bands_json or "[]")))
+        except (TypeError, ValueError, AppException) as exc:
+            raise AppException("GPA_POLICY_INVALID", "当前绩点区间策略格式无效，请核对并发布有效策略后重试", http_status=409) from exc
         for band in bands:
             if float(band["minScore"]) <= s <= float(band["maxScore"]):
                 return round(float(band["point"]), 2)

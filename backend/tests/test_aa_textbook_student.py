@@ -45,7 +45,7 @@ def _seed_dist(student_no, real_name, book="高等数学教材", price=45, qty=1
     p = StudentProfile(tenant_id=MAIN, student_no=student_no, real_name=real_name,
                        current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE")
     db.add(p); db.flush()
-    tb = AaTextbook(tenant_id=MAIN, name=book, unit_price=price, status="ENABLED")
+    tb = AaTextbook(tenant_id=MAIN, name=book, isbn="9787300000000", unit_price=price, status="ENABLED")
     db.add(tb); db.flush()
     order = AaTextbookOrderBatch(tenant_id=MAIN, batch_name=f"{student_no}-教材征订",
                                  term_id=term.id, status="ARRIVED")
@@ -71,6 +71,7 @@ def test_textbook_my_sign_and_fee(client, db_mode):
     # 签收前：待签收，无费用
     d = client.get(f"{BASE}/textbook/my", headers=hdr).json()["data"]
     assert len(d["distributions"]) == 1 and d["distributions"][0]["status"] == "PENDING"
+    assert d["distributions"][0]["isbn"] == "9787300000000"
     assert d["fees"]["items"] == [] and d["fees"]["totalDue"] == 0
     # 学生签收本人教材
     ok = client.post(f"{BASE}/textbook/{rid}/sign", headers=hdr).json()
@@ -80,6 +81,37 @@ def test_textbook_my_sign_and_fee(client, db_mode):
     assert d2["distributions"][0]["status"] == "RECEIVED"
     assert len(d2["fees"]["items"]) == 1 and d2["fees"]["items"][0]["amount"] == 45.0
     assert d2["fees"]["totalDue"] == 45.0 and d2["fees"]["unpaid"] == 45.0
+    # Replaying a receipt never creates a second charge.
+    again = client.post(f"{BASE}/textbook/{rid}/sign", headers=hdr).json()
+    assert again["code"] == 0
+    assert client.get(f"{BASE}/textbook/my", headers=hdr).json()["data"]["fees"]["totalDue"] == 45.0
+    # 正式退领保留原费用历史，但已减免金额不能继续计入学生应缴/欠费。
+    from test_aa_textbook import _hdr
+    admin = _hdr(client, "school_admin01")
+    returned = client.post(f"/api/v1/academic-affairs/textbooks/distribution-records/{rid}/return",
+        headers=admin, json={"reason": "核对实际领用范围后办理教材退领"})
+    assert returned.status_code == 200, returned.text
+    after_return = client.get(f"{BASE}/textbook/my", headers=hdr).json()["data"]
+    assert after_return["distributions"][0]["status"] == "RETURNED"
+    assert after_return["fees"]["items"][0]["amount"] == 45.0
+    assert after_return["fees"]["items"][0]["status"] == "WAIVED"
+    assert after_return["fees"]["totalDue"] == after_return["fees"]["unpaid"] == 0
+    assert after_return["fees"]["waivedAmount"] == 45.0
+    assert client.post(f"{BASE}/textbook/{rid}/sign", headers=hdr).status_code == 409
+    # A retired catalog entry must not hide the historical distribution.
+    from app.db.session import get_sessionmaker
+    from app.models import AaTextbook, AaTextbookDistributionRecord
+    with get_sessionmaker()() as db:
+        record = db.get(AaTextbookDistributionRecord, rid)
+        db.get(AaTextbook, record.textbook_id).is_deleted = True
+        db.commit()
+    retained = client.get(f"{BASE}/textbook/my", headers=hdr).json()["data"]["distributions"]
+    assert len(retained) == 1 and retained[0]["isbn"] is None
+    # Deleted distribution records must disappear from both student surfaces.
+    with get_sessionmaker()() as db:
+        db.get(AaTextbookDistributionRecord, rid).is_deleted = True
+        db.commit()
+    assert client.get(f"{BASE}/textbook/my", headers=hdr).json()["data"]["distributions"] == []
 
 
 def test_textbook_cross_student_sign_forbidden(client, db_mode):

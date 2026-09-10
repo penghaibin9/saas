@@ -127,6 +127,7 @@ def list_fees(user, status=None, page=1, page_size=50):
 
 def textbook_stock(user):
     from app.models import AaTextbookDistributionRecord, AaTextbookOrderItem
+    from .academic_affairs_textbook_final_facade import _ACTIVE_ALLOCATION_STATUSES
 
     with legacy.session() as db:
         legacy._ctx(user, db)
@@ -140,20 +141,25 @@ def textbook_stock(user):
         ).group_by(AaTextbookOrderItem.textbook_id).all()
         distributed_rows = db.query(
             AaTextbookDistributionRecord.textbook_id,
+            AaTextbookDistributionRecord.status,
+            func.max(AaTextbookDistributionRecord.textbook_name),
             func.coalesce(func.sum(AaTextbookDistributionRecord.qty), 0),
         ).filter(
             AaTextbookDistributionRecord.tenant_id == legacy._tid(),
-            AaTextbookDistributionRecord.status == "RECEIVED",
+            AaTextbookDistributionRecord.status.in_(_ACTIVE_ALLOCATION_STATUSES),
             AaTextbookDistributionRecord.is_deleted.is_(False),
-        ).group_by(AaTextbookDistributionRecord.textbook_id).all()
-        distributed = {int(textbook_id): int(qty or 0) for textbook_id, qty in distributed_rows}
-        return [{
-            "textbookId": str(textbook_id),
-            "textbookName": name,
-            "arrivedQty": int(arrived or 0),
-            "distributedQty": distributed.get(int(textbook_id), 0),
-            "stockQty": max(0, int(arrived or 0) - distributed.get(int(textbook_id), 0)),
-        } for textbook_id, name, arrived in arrived_rows]
+        ).group_by(AaTextbookDistributionRecord.textbook_id, AaTextbookDistributionRecord.status).all()
+        stock = {int(book_id): {"textbookId": str(book_id), "textbookName": name,
+            "arrivedQty": int(arrived or 0), "reservedQty": 0, "distributedQty": 0}
+            for book_id, name, arrived in arrived_rows}
+        for book_id, status, name, qty in distributed_rows:
+            row = stock.setdefault(int(book_id), {"textbookId": str(book_id), "textbookName": name,
+                "arrivedQty": 0, "reservedQty": 0, "distributedQty": 0})
+            row["reservedQty" if status == "PENDING" else "distributedQty"] += int(qty or 0)
+        for row in stock.values():
+            row["stockQty"] = row["arrivedQty"] - row["reservedQty"] - row["distributedQty"]
+            row["dataConflict"] = row["stockQty"] < 0
+        return sorted(stock.values(), key=lambda row: (row['textbookName'] or '', row['textbookId']))
 
 
 def stats(user):
@@ -181,7 +187,7 @@ def stats(user):
             AaTextbookOrderItem.tenant_id == legacy._tid(),
             AaTextbookOrderItem.is_deleted.is_(False),
         ).one()
-        unpaid = db.query(func.coalesce(func.sum(AaTextbookFeeLedger.amount), 0)).filter(
+        unpaid = db.query(func.coalesce(func.sum(func.greatest(AaTextbookFeeLedger.amount - func.coalesce(AaTextbookFeeLedger.paid_amount, 0), 0)), 0)).filter(
             AaTextbookFeeLedger.tenant_id == legacy._tid(),
             AaTextbookFeeLedger.status.in_(["UNPAID", "PARTIAL"]),
             AaTextbookFeeLedger.is_deleted.is_(False),

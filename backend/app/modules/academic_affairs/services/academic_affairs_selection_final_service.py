@@ -138,6 +138,18 @@ def _status_label(status: str) -> str:
     }.get(str(status or "").upper(), str(status or "待确认"))
 
 
+def _require_open_selection_window(batch, evaluated_at: datetime) -> None:
+    """Make the time window a command gate, not merely a scheduler hint."""
+    if str(getattr(batch, "status", "") or "").upper() != _base._BATCH_OPEN:
+        return
+    starts_at = getattr(batch, "select_start_at", None)
+    ends_at = getattr(batch, "select_end_at", None)
+    if starts_at is not None and evaluated_at < starts_at:
+        raise _base._core._invalid("选课窗口尚未开始")
+    if ends_at is not None and evaluated_at >= ends_at:
+        raise _base._core._invalid("选课窗口已截止")
+
+
 def _first_resolution(trace) -> str:
     if not isinstance(trace, dict):
         return ""
@@ -206,6 +218,7 @@ def _evaluate_student_course(
 
     try:
         _base._guard_batch_writable(db, batch)
+        _require_open_selection_window(batch, evaluated_at)
         if course.status != _base._COURSE_OPEN:
             raise _base._core._invalid("课程已取消或不可选")
 
@@ -755,6 +768,7 @@ def _student_enroll_guarded(user, body):
                 evaluated_at=selection_effective_at,
                 rule_code="SELECTION_LOCKED",
             )
+        _require_open_selection_window(batch, selection_effective_at)
 
         has_reselect_qualification = any(
             record.status == _base._REC_COURSE_CANCELLED
@@ -874,6 +888,67 @@ def _student_enroll_guarded(user, body):
         return _base._core._record_dto(record)
 
 
+def _require_drop_window(db, batch, active_round, evaluated_at=None):
+    _base._guard_batch_writable(db, batch)
+    if batch.status != _base._BATCH_OPEN:
+        raise _base._core._invalid("当前不在退课窗口")
+    _require_open_selection_window(batch, evaluated_at or datetime.utcnow())
+    if active_round and not active_round.allow_drop:
+        raise _base._core._invalid("当前轮次不允许退课")
+
+
+def _require_drop_record(batch, course, record):
+    if int(course.batch_id) != int(batch.id) or int(record.batch_id) != int(batch.id):
+        raise AppException("DATA_CONFLICT", "课程和选课记录的批次不一致，请联系教务处", http_status=409)
+    if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:
+        raise _base._core._invalid("当前记录不可退课")
+    if record.status == _base._REC_SELECTED and int(course.selected_count or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "课程人数计数异常，退课已取消，请联系教务处", http_status=409)
+
+
+def student_drop_preflight(user, body):
+    """Pure read of the same DROP gates as the locked command; no enrollment eligibility gate."""
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        student = _base._load_student(db)
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.selection_course_id == int(body.selectionCourseId),
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).first()
+        if not record:
+            raise not_found("选课记录不存在")
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == int(body.selectionCourseId),
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).first()
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == record.batch_id,
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).first()
+        if not course or not batch:
+            raise AppException("DATA_CONFLICT", "正式课程或批次已不存在，请联系教务处", http_status=409)
+        active_round = _base._active_round(db, batch.id)
+        allowed, code, reason = True, "", "当前允许退课；正式提交仍将持锁复核"
+        try:
+            _require_drop_window(db, batch, active_round)
+            _require_drop_record(batch, course, record)
+        except AppException as exc:
+            allowed, code, reason = False, str(exc.code), str(exc.message)
+        return {
+            "action": "DROP", "allowed": allowed,
+            "allowedActions": ["VIEW", "DROP"] if allowed else ["VIEW"],
+            "selectionCourseId": str(course.id), "batchId": str(batch.id),
+            "selectionRecordId": str(record.id), "status": _normalized_record_status(record),
+            "courseName": course.course_name, "code": code, "reason": reason, "message": reason,
+            "evaluatedAt": datetime.utcnow().isoformat(),
+        }
+
+
 def student_drop(user, body):
     """兼容既有 EnrollBody：按 selectionCourseId 定位本人记录；锁序统一 course→batch→record。"""
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
@@ -917,12 +992,8 @@ def student_drop(user, body):
         ).with_for_update().first()
         if not batch:
             raise not_found("选课批次不存在")
-        _base._guard_batch_writable(db, batch)
-        if batch.status != _base._BATCH_OPEN:
-            raise _base._core._invalid("当前不在退课窗口")
         active_round = _base._active_round(db, batch.id)
-        if active_round and not active_round.allow_drop:
-            raise _base._core._invalid("当前轮次不允许退课")
+        _require_drop_window(db, batch, active_round)
 
         record = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.id == int(record_hint.id),
@@ -934,21 +1005,13 @@ def student_drop(user, body):
         ).with_for_update().first()
         if not record:
             raise not_found("选课记录不存在")
-        if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:
-            raise _base._core._invalid("当前记录不可退课")
+        _require_drop_record(batch, course, record)
 
         previous = record.status
         record.status = _base._REC_DROPPED
         record.dropped_at = datetime.utcnow()
         if previous == _base._REC_SELECTED:
-            selected_count = int(course.selected_count or 0)
-            if selected_count <= 0:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "课程人数计数异常，退课已取消，请联系教务处",
-                    http_status=409,
-                )
-            course.selected_count = selected_count - 1
+            course.selected_count = int(course.selected_count) - 1
 
         _base._core._audit(
             db,

@@ -398,16 +398,25 @@ def clearance_scan(user, batch_id, dry_run=False):
                 "items": cands}
 
 
-def clearance_records(user, batch_id, page=1, page_size=100):
+def clearance_records(user, batch_id, page=1, page_size=100, *, makeup_id=None, origin_grade_id=None, acad_student_id=None):
     """清考批次名单（含成绩录入状态）。收敛 TENANT_ALL,防越范围读全校清考不及格明细(修数据范围红线)。"""
     from app.models import AcademicMakeup, AcademicStudent
     with session() as db:
         _require_school(_ctx(user, db))
         b = _get_mb(db, batch_id)
-        rows = db.query(AcademicMakeup, AcademicStudent).join(
-            AcademicStudent, AcademicMakeup.acad_student_id == AcademicStudent.id).filter(
+        query = db.query(AcademicMakeup, AcademicStudent).join(
+            AcademicStudent, (AcademicMakeup.acad_student_id == AcademicStudent.id)
+            & (AcademicMakeup.tenant_id == AcademicStudent.tenant_id)).filter(
             AcademicMakeup.tenant_id == _tid(), AcademicMakeup.batch_id == b.id,
-            AcademicMakeup.is_deleted.is_(False)).order_by(AcademicMakeup.id).all()
+            AcademicMakeup.is_deleted.is_(False))
+        for column, value in ((AcademicMakeup.id, makeup_id), (AcademicMakeup.origin_grade_id, origin_grade_id),
+                              (AcademicMakeup.acad_student_id, acad_student_id)):
+            if value is not None:
+                query = query.filter(column == int(value))
+        total = query.count()
+        rows = (query.order_by(AcademicMakeup.id)
+                .offset((max(1, int(page)) - 1) * int(page_size))
+                .limit(max(0, int(page_size))).all())
         # originGradeId 必须回给前端：候选名单要据此标出"这条不及格成绩已经纳入过了"，
         # 没有它，教务只能靠课程名肉眼比对，重复点纳入也看不出来。
         items = [{"makeupId": str(m.id), "acadStudentId": str(m.acad_student_id),
@@ -417,7 +426,7 @@ def clearance_records(user, batch_id, page=1, page_size=100):
                   "attemptNo": m.attempt_no, "kind": getattr(m, "kind", "MAKEUP"),
                   "originScore": m.origin_score,
                   "finalScore": m.final_score, "status": m.status} for m, s in rows]
-        return items[(page - 1) * page_size: page * page_size], len(items)
+        return items, total
 
 
 # ══════════ 重修 ══════════
@@ -425,7 +434,10 @@ def clearance_records(user, batch_id, page=1, page_size=100):
 def _rt_dto(r):
     return {"applyId": str(r.id), "studentId": str(r.student_id), "studentName": r.student_name,
             "courseName": r.course_name, "termCode": r.term_code, "reason": r.reason,
-            "retakeCount": r.retake_count, "reviewReason": r.review_reason, "status": r.status}
+            "retakeCount": r.retake_count, "reviewReason": r.review_reason, "status": r.status,
+            "applicationVersion": int(r.version or 0),
+            "originGradeId": str(r.origin_grade_id) if r.origin_grade_id else None,
+            "enrollmentRosterVersionId": str(r.enrollment_roster_version_id) if r.enrollment_roster_version_id else None}
 
 
 def retake_apply(user, body):
@@ -532,7 +544,8 @@ def retake_list(user, status=None, student_only=False, page=1, page_size=50):
 def _ex_dto(e):
     return {"exemptionId": str(e.id), "studentId": str(e.student_id), "studentName": e.student_name,
             "courseName": e.course_name, "termCode": e.term_code, "reason": e.reason,
-            "currentNode": e.current_node, "returnReason": e.return_reason, "status": e.status}
+            "currentNode": e.current_node, "returnReason": e.return_reason, "status": e.status,
+            "exemptionVersion": int(e.version or 0), "evidenceManifestHash": e.evidence_manifest_hash}
 
 
 def exemption_apply(user, body):
@@ -921,40 +934,71 @@ def print_data(user, batch_id):
                 "status": b.status, "publishedAt": _iso(b.published_at), "students": students}
 
 
-def mark_archived(user, exemption_id):
+def mark_archived(user, exemption_id, identity, *, command_key=None):
     """标记免修材料已归档。仅审批已终态（APPROVED/REJECTED/CANCELLED）的申请可标记；已归档幂等。"""
     from app.models import AaExemption
+    from . import academic_affairs_grade_command_receipt as receipts
     with session() as db:
+        receipt, cached = receipts.begin(db, user, "MAKEUP_EXEMPTION_ARCHIVE", command_key,
+                                         {"exemptionId": str(exemption_id), **identity.model_dump()})
+        if cached is not None:
+            return cached
         ctx = _ctx(user, db)
-        e = db.query(AaExemption).filter(AaExemption.id == exemption_id, AaExemption.tenant_id == _tid()).first()
+        if ctx.scope_type not in {"TENANT_ALL", "COLLEGE"}:
+            raise no_data_scope("仅教务处或授权学院可归档免修材料")
+        q = db.query(AaExemption).filter(AaExemption.id == exemption_id, AaExemption.tenant_id == _tid(),
+                                       AaExemption.is_deleted.is_(False))
+        if ctx.scope_type == "COLLEGE":
+            q = q.filter(AaExemption.college_id.in_(sorted(ctx.college_ids)))
+        e = q.with_for_update().populate_existing().first()
         if not e:
             raise not_found("免修申请不存在")
+        if (int(e.version or 0) != identity.expectedVersion
+                or e.status != identity.expectedStatus
+                or e.evidence_manifest_hash != identity.expectedEvidenceManifestHash):
+            from app.core.exceptions import AppException
+            raise AppException("DATA_CONFLICT", "免修申请或材料已变化，请重新核对后归档", http_status=409)
         if ctx.scope_type == "COLLEGE" and e.college_id and int(e.college_id) not in ctx.college_ids:
             raise no_data_scope("该学生不在您的数据范围内")
         if e.status not in (_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED):
             raise _invalid("仅审批已终态的免修申请可标记归档")
         if e.archive_status == "ARCHIVED":
-            return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
+            result = {"exemptionId": str(e.id), "archiveStatus": e.archive_status, "exemptionVersion": int(e.version or 0)}
+            receipts.finish(db, receipt, result)
+            db.commit()
+            return result
         e.archive_status = "ARCHIVED"
+        e.version = int(e.version or 0) + 1
         _audit(db, "AA_EXEMPTION", e.id, "EXEMPTION_ARCHIVE", "标记材料已归档")
+        result = {"exemptionId": str(e.id), "archiveStatus": e.archive_status, "exemptionVersion": int(e.version or 0)}
+        receipts.finish(db, receipt, result)
         db.commit()
-        return {"exemptionId": str(e.id), "archiveStatus": e.archive_status}
+        return result
 
 
-def archive_list(user, term=None, status=None, page=1, page_size=50):
+def archive_list(user, term=None, status=None, page=1, page_size=50, *, exemption_id=None):
     """免修材料归档列表（教务处/学院教务员）：附材料文件名（查 t_file_object，仅限已终态申请可见原件）。"""
     from app.models import AaExemption
+    from .academic_affairs_makeup_evidence_projection import exemption_sources
     with session() as db:
         ctx = _ctx(user, db)
+        if ctx.scope_type not in {"TENANT_ALL", "COLLEGE"}:
+            raise no_data_scope("仅教务处或授权学院可读取免修材料归档")
         college_ids = _scope_college_ids(ctx, None)
-        q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False))
+        q = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False),
+                                       AaExemption.status.in_((_EX_APPROVED, _EX_REJECTED, _EX_CANCELLED)))
         if college_ids is not None:
             q = q.filter(AaExemption.college_id.in_(college_ids or [-1]))
+        if exemption_id is not None:
+            q = q.filter(AaExemption.id == int(exemption_id))
         if term:
             q = q.filter(AaExemption.term_code == term)
         if status:
             q = q.filter(AaExemption.archive_status == status)
-        rows = q.order_by(AaExemption.id.desc()).all()
+        total = q.count()
+        rows = (q.order_by(AaExemption.id.desc())
+                .offset((max(1, int(page)) - 1) * int(page_size))
+                .limit(max(0, int(page_size))).all())
         all_file_ids: set[int] = set()
         for e in rows:
             if e.material_file_ids:
@@ -967,8 +1011,9 @@ def archive_list(user, term=None, status=None, page=1, page_size=50):
             from app.models import FileObject
             file_map = {f.id: {"fileId": str(f.id), "fileName": f.file_name, "sizeBytes": f.size_bytes}
                        for f in db.query(FileObject).filter(FileObject.tenant_id == _tid(),
-                                                             FileObject.id.in_(all_file_ids)).all()}
+                                                             FileObject.id.in_(all_file_ids), FileObject.is_deleted.is_(False)).all()}
         items = []
+        projected = exemption_sources(db, rows, archive=True)
         for e in rows:
             file_ids = []
             if e.material_file_ids:
@@ -977,6 +1022,5 @@ def archive_list(user, term=None, status=None, page=1, page_size=50):
                 except (ValueError, TypeError):
                     file_ids = []
             items.append({**_ex_dto(e), "archiveStatus": e.archive_status or "NOT_ARCHIVED",
-                         "materialFiles": [file_map[fid] for fid in file_ids if fid in file_map]})
-        total = len(items)
-        return items[(page - 1) * page_size: page * page_size], total
+                         "materialFiles": [file_map[fid] for fid in file_ids if fid in file_map], **projected[e.id]})
+        return items, total

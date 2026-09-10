@@ -525,11 +525,37 @@ def archive_batch(batch_id, user) -> dict:
 
 # ═══════════ 查询 / 名单 ═══════════
 
+def _item_results(payload) -> list[dict]:
+    """Read current list-shaped evidence and legacy item-keyed evidence maps.
+
+    Older sandbox/provisioning snapshots stored ``{itemCode: evidence}`` while the
+    current contract stores a list.  The read model must normalize both shapes so
+    an item filter never turns historical data into a 500 response.
+    """
+    try:
+        raw = json.loads(payload) if isinstance(payload, str) and payload else (payload or [])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if isinstance(raw, dict) and isinstance(raw.get("items"), list):
+        raw = raw["items"]
+    if isinstance(raw, dict):
+        normalized = []
+        for code, value in raw.items():
+            if isinstance(value, dict):
+                normalized.append({**value, "item": code})
+            elif isinstance(value, str):
+                normalized.append({"item": code, "result": value})
+        return normalized
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
 def _row(r) -> dict:
     return {"resultId": str(r.id), "batchId": str(r.batch_id), "studentId": str(r.student_id),
             "overall": r.overall, "conclusion": r.conclusion, "status": r.status,
             "rerunCount": r.rerun_count, "reviewNote": r.review_note or "",
-            "items": json.loads(r.item_results_json) if r.item_results_json else []}
+            "items": _item_results(r.item_results_json)}
 
 
 def get_result(result_id, user) -> dict:
@@ -650,7 +676,7 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
             if not r:
                 skipped += 1
                 continue
-            items = json.loads(r.item_results_json or "[]")
+            items = _item_results(r.item_results_json)
             fee_result = "PASS" if st == "CLEARED" else "FAIL"
             found = False
             for it in items:

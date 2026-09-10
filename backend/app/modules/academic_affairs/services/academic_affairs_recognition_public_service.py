@@ -63,12 +63,24 @@ def _resolve_student(db, *, student_no=None):
     return rows[0]
 
 
-def submit(user, body, *, student_no=None) -> dict:
+def submit(user, body, *, student_no=None, command_key=None) -> dict:
     from app.models import AaGradeRecognition
 
+    from . import academic_affairs_grade_command_receipt as receipt_service
     with _base.session() as db:
         if student_no is not None:
             _base._require_school(user, db)
+        if command_key is not None and student_no is None:
+            raise AppException("VALIDATION_ERROR", "学生自助提交暂不使用教务命令回执")
+        receipt, cached = receipt_service.begin(db, user, "RECOGNITION_SUBMIT", command_key, {
+            "studentNo": student_no,
+            "body": {key: getattr(body, key, None) for key in (
+                "sourceCourseName", "sourceScore", "sourceCredit", "sourceOrigin",
+                "targetCourseId", "attachmentFileIds", "reason",
+            )},
+        })
+        if cached is not None:
+            return cached
         profile = _resolve_student(db, student_no=student_no)
         source_name = (getattr(body, "sourceCourseName", None) or "").strip()
         target_course = _base._resolve_target(db, body)
@@ -156,16 +168,25 @@ def submit(user, body, *, student_no=None) -> dict:
                 f"evidence={evidence['count']};manifestHash={evidence['manifestHash'][:16]}"
             ),
         )
+        db.flush()
+        receipt_service.finish(db, receipt, _base._dto(row))
         db.commit()
         return _base._dto(row)
 
 
-def review(user, recognition_id, action, reason="") -> dict:
+def review(user, recognition_id, action, reason="", *, command_key=None) -> dict:
     from app.models import AaCourse, AaGradeRecognition, AcademicGrade
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_service
 
+    from . import academic_affairs_grade_command_receipt as receipt_service
     with _base.session() as db:
         _base._require_school(user, db)
+        receipt, cached = receipt_service.begin(db, user, "RECOGNITION_REVIEW", command_key, {
+            "recognitionId": str(recognition_id), "action": str(action or "").upper(),
+            "reason": str(reason or "").strip(),
+        })
+        if cached is not None:
+            return cached
         row = db.query(AaGradeRecognition).filter(
             AaGradeRecognition.id == int(recognition_id),
             AaGradeRecognition.tenant_id == _base._tid(),
@@ -186,6 +207,8 @@ def review(user, recognition_id, action, reason="") -> dict:
             row.reviewed_by = _base._op()
             row.reviewed_at = datetime.utcnow()
             _base._audit(db, row.id, "RECOG_REJECT", reason_text[:100])
+            db.flush()
+            receipt_service.finish(db, receipt, _base._dto(row))
             db.commit()
             return _base._dto(row)
         if action_code != "APPROVE":
@@ -286,6 +309,8 @@ def review(user, recognition_id, action, reason="") -> dict:
                 f"manifestHash={str(evidence['manifestHash'] or '')[:16]}"
             ),
         )
+        db.flush()
+        receipt_service.finish(db, receipt, _base._dto(row))
         db.commit()
         return _base._dto(row)
 

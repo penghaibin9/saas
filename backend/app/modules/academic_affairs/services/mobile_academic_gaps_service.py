@@ -52,6 +52,8 @@ def registration_my(user) -> dict:
                 "registerTypeLabel": _REG_TYPE_LABEL.get(b.register_type, b.register_type),
                 "windowStart": _iso(b.window_start), "windowEnd": _iso(b.window_end),
                 "registrationStatus": reg_status,
+                "registrationId": str(reg.id) if reg else None,
+                "registeredAt": _iso(reg.register_at) if reg else None,
                 "eligibilityStatus": elig,
                 "eligibilityNote": (reg.eligibility_note if reg else "") or "",
                 "hasOpenException": bool(open_exc),
@@ -200,6 +202,37 @@ def makeup_options_my(user) -> dict:
 
 # ═══════════ 学生考勤自查 ═══════════
 
+def _attendance_schedule_context(attendance_session) -> dict:
+    """Expose only a verified, immutable formal-occurrence backlink to the student."""
+    if str(getattr(attendance_session, "source_type", "") or "").upper() != "FORMAL_TEACHING":
+        return {}
+    try:
+        evidence = json.loads(getattr(attendance_session, "source_evidence", "") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if not isinstance(evidence, dict):
+        return {}
+    schedule_item_id = str(evidence.get("scheduleItemId") or "").strip()
+    session_date = str(getattr(attendance_session, "session_date", "") or "").strip()
+    evidence_date = str(evidence.get("sessionDate") or "").strip()
+    try:
+        week_no = int(evidence.get("weekNo"))
+        slot_no = int(evidence.get("slotNo"))
+    except (TypeError, ValueError):
+        return {}
+    if not schedule_item_id.isdigit() or int(schedule_item_id) <= 0:
+        return {}
+    if not session_date or evidence_date != session_date or week_no <= 0:
+        return {}
+    if slot_no != int(getattr(attendance_session, "slot_no", 0) or 0):
+        return {}
+    return {
+        "scheduleItemId": schedule_item_id,
+        "weekNo": week_no,
+        "occurrenceDate": evidence_date,
+    }
+
+
 def attendance_my(user) -> dict:
     """本人已提交场次中的考勤明细汇总。点名入口在教师小程序，PC 仅统计。"""
     from app.models import AaAttendanceSession
@@ -234,6 +267,7 @@ def attendance_my(user) -> dict:
                 "sessionId": str(t.id), "courseName": t.course_name or "",
                 "sessionDate": t.session_date, "slotNo": t.slot_no,
                 "sessionType": t.session_type or "常规", "status": st,
+                **_attendance_schedule_context(t),
             })
         return {
             "items": items, "summary": summary, "total": len(items),
@@ -280,7 +314,7 @@ def calendar_my(user) -> dict:
 
 def clearance_my(user) -> dict:
     """本人被圈定的毕业清考记录（只读）。"""
-    from app.models import AaMakeupBatch, AcademicMakeup, AcademicStudent
+    from app.models import AaMakeupBatch, AcademicGrade, AcademicMakeup, AcademicStudent
     with session() as db:
         stu = _me(db, user)
         acad = db.scalars(select(AcademicStudent).where(
@@ -299,9 +333,33 @@ def clearance_my(user) -> dict:
                 AaMakeupBatch.tenant_id == _tid(),
                 AaMakeupBatch.id.in_(list(batch_ids)),
                 AaMakeupBatch.is_deleted.is_(False))).all()}
+        published_ids = {
+            r.id for r in rows
+            if r.status == "FINISHED" and r.record_status == "ACTIVE"
+            and (b := batches.get(r.batch_id)) is not None
+            and b.kind == "CLEARANCE" and b.status == "FINISHED"
+        }
+        grades, ambiguous_sources = {}, set()
+        if published_ids:
+            for grade in db.scalars(select(AcademicGrade).where(
+                AcademicGrade.tenant_id == _tid(),
+                AcademicGrade.acad_student_id == acad.id,
+                AcademicGrade.source_biz_type == "CLEARANCE",
+                AcademicGrade.source_biz_id.in_(list(published_ids)),
+                AcademicGrade.record_status == "ACTIVE",
+                AcademicGrade.is_deleted.is_(False),
+            )).all():
+                if grade.source_biz_id in grades:
+                    ambiguous_sources.add(grade.source_biz_id)
+                grades[grade.source_biz_id] = grade
         items = []
         for r in rows:
             b = batches.get(r.batch_id)
+            grade = grades.get(r.id)
+            # PUBLISHED only releases the arrangement. Raw final_score is not the
+            # published CAP60 result; missing or ambiguous formal facts stay hidden.
+            score = (grade.score if grade is not None and r.id not in ambiguous_sources
+                     and r.course_id is not None and grade.course_id == r.course_id else None)
             items.append({
                 "recordId": str(r.id), "batchId": str(r.batch_id or ""),
                 "batchName": b.batch_name if b else "",
@@ -311,7 +369,7 @@ def clearance_my(user) -> dict:
                 "courseVersion": r.course_version,
                 "attemptNo": r.attempt_no,
                 "courseName": r.course_name, "termCode": r.term or "",
-                "originScore": r.origin_score, "score": r.final_score,
+                "originScore": r.origin_score, "score": score,
                 "status": r.status, "kind": "CLEARANCE",
             })
         return {

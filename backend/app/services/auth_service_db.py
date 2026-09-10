@@ -622,6 +622,7 @@ def get_me(user_ctx: dict) -> dict:
             "loginName": user.login_name,
             "realName": user.real_name,
             "userType": user.user_type,
+            "tenantId": str(user.tenant_id),
             "avatarFileId": None,
             "phoneMasked": None,
             "activeContextId": active["contextId"],

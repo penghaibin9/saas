@@ -252,7 +252,12 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
             db.refresh(change)
             return _legacy._row(change)
 
-        # lock 3: Origin, only after Change + current Task.
+        # Formal writers take the same authority before Origin/ScopeHead/room.
+        # Publishers never acquire Change or WorkflowTask, so those two locks
+        # may precede this authority without introducing the reverse order.
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
+        # lock 3: Origin, only after Change + current Task + formal authority.
         origin = db.query(AaScheduleItem).filter(
             AaScheduleItem.id == int(change.origin_item_id),
             AaScheduleItem.tenant_id == _legacy._tid(),

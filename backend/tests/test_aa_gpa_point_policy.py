@@ -8,6 +8,31 @@ MySQL-only（db_mode 夹具）。
 """
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+import pytest
+
+
+@pytest.mark.parametrize('bands', [None, [], [{'min': 90, 'point': 4}], [{'minScore': 0, 'maxScore': 100, 'point': float('nan')}], [{'minScore': 0, 'maxScore': 100, 'point': 6}]])
+def test_invalid_stored_bands_block_instead_of_zero_or_server_error(bands):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services.academic_affairs_gpa_policy_service import evaluate_policy
+    policy = SimpleNamespace(scale_type='BANDS', bands_json=json.dumps(bands))
+    with pytest.raises(AppException) as error:
+        evaluate_policy(policy, 86)
+    assert error.value.http_status == 409
+    assert error.value.code == 'GPA_POLICY_INVALID'
+
+
+def test_valid_bands_preserve_boundary_conversion():
+    from app.modules.academic_affairs.services.academic_affairs_gpa_policy_service import evaluate_policy
+    policy = SimpleNamespace(scale_type='BANDS', bands_json=json.dumps([
+        {'minScore': 90, 'maxScore': 100, 'point': 4},
+        {'minScore': 80, 'maxScore': 89, 'point': 3},
+        {'minScore': 0, 'maxScore': 79, 'point': 0},
+    ]))
+    assert [evaluate_policy(policy, score) for score in [79, 80, 86, 89, 90, 96, 100]] == [0, 3, 3, 3, 4, 4, 4]
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 

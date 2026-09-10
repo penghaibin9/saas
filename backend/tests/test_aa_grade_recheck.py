@@ -100,7 +100,9 @@ def _seed_grade(student_no, real_name, course, score):
 def test_grade_recheck_full_flow(client, db_mode):
     gid = _seed_grade("RC0001", "复查甲", "高等数学", 58)
     hdr = _stu_token("复查甲", "RC0001")
-    tr = client.get(f"{BASE}/transcript/my", headers=hdr).json()["data"]
+    transcript_response = client.get(f"{BASE}/transcript/my", headers=hdr)
+    assert transcript_response.status_code == 200, transcript_response.text
+    tr = transcript_response.json()["data"]
     assert any(str(i["gradeId"]) == str(gid) for i in tr["items"])
 
     bad = client.post(f"{BASE}/grade-recheck/submit", headers=hdr,
@@ -118,6 +120,40 @@ def test_grade_recheck_full_flow(client, db_mode):
     assert dup.status_code == 409
 
     admin = _admin(client)
+    from app.db.session import get_sessionmaker
+    from app.models import AaGradeRecord, AaGradeRecheck, AaGradeTask, AaTerm, AcademicGrade, User
+    with get_sessionmaker()() as db:
+        if not db.query(User).filter(User.tenant_id == MAIN, User.login_name == 'school_admin01').first():
+            db.add(User(tenant_id=MAIN, login_name='school_admin01', real_name='教务复审测试员',
+                        password_hash='unused-test-login', user_type='SCHOOL_ADMIN', status='ACTIVE'))
+        original = db.get(AcademicGrade, gid)
+        original.gpa_point, original.gpa_policy_code, original.gpa_policy_version = 0, 'DEFAULT', 1
+        student_id = int(my[0]['studentId'])
+        record = AaGradeRecord(tenant_id=MAIN, task_id=original.grade_task_id,
+                               student_id=student_id, usual_score=60, final_score=57,
+                               total_score=58, pass_status='FAILED', acad_grade_id=gid,
+                               source='PUBLISH', version_no=1)
+        db.add(record)
+        db.commit()
+        record_id = record.id
+        term_id = db.get(AaGradeTask, original.grade_task_id).term_id
+    for note in ('', '    ', '核对'):
+        invalid = client.post(f"{ADMIN_BASE}/grade-rechecks/{rid}/review", headers=admin,
+                              json={"action": "ADJUST", "newScore": 72, "note": note})
+        assert invalid.status_code == 400, invalid.text
+    with get_sessionmaker()() as db:
+        db.get(AaTerm, term_id).status = 'ARCHIVED'
+        db.commit()
+    archived = client.post(f"{ADMIN_BASE}/grade-rechecks/{rid}/review", headers=admin,
+                           json={"action": "ADJUST", "newScore": 72, "note": "复核试卷后调整总评"})
+    assert archived.status_code == 409 and archived.json()['bizCode'] == 'TERM_ARCHIVED'
+    with get_sessionmaker()() as db:
+        db.get(AaTerm, term_id).status = 'PUBLISHED'
+        db.commit()
+    with get_sessionmaker()() as db:
+        assert db.get(AaGradeRecheck, int(rid)).status == 'SUBMITTED'
+        assert db.get(AcademicGrade, gid).record_status == 'ACTIVE'
+        assert db.get(AaGradeRecord, record_id).total_score == 58
     lst = client.get(f"{ADMIN_BASE}/grade-rechecks", headers=admin).json()["data"]
     assert any(x["recheckId"] == rid for x in lst["items"])
     rv = client.post(f"{ADMIN_BASE}/grade-rechecks/{rid}/review", headers=admin,
@@ -125,11 +161,23 @@ def test_grade_recheck_full_flow(client, db_mode):
     assert rv.status_code == 200 and rv.json()["data"]["status"] == "ADJUSTED", rv.text
 
     # ADJUST 是 append-only：旧成绩退位，成绩单应展示新的 RECHECK 版本而不是沿用旧 gradeId。
-    tr2 = client.get(f"{BASE}/transcript/my", headers=hdr).json()["data"]
+    transcript_response = client.get(f"{BASE}/transcript/my", headers=hdr)
+    assert transcript_response.status_code == 200, transcript_response.text
+    tr2 = transcript_response.json()["data"]
     current = [i for i in tr2["items"] if i["courseName"] == "高等数学"]
     assert len(current) == 1
     assert current[0]["score"] == 72 and current[0]["passStatus"] == "PASSED"
     assert current[0]["source"] == "RECHECK" and str(current[0]["gradeId"]) != str(gid)
+    with get_sessionmaker()() as db:
+        record = db.get(AaGradeRecord, record_id)
+        assert record.acad_grade_id == int(current[0]['gradeId'])
+        assert (record.source, record.prev_total_score, record.total_score) == ('RECHECK', 58, 72)
+        assert (record.usual_score, record.final_score) == (60, 57), '复查总评不得伪造分项分数'
+        assert (record.prev_usual_score, record.prev_final_score) == (60, 57)
+        assert record.version_no == 2 and record.change_by and record.change_at
+        assert record.change_reason == '重新核分后加平时分'
+        assert float(db.get(AcademicGrade, gid).gpa_point) == 0, '旧版本冻结绩点必须保留'
+        assert float(db.get(AcademicGrade, record.acad_grade_id).gpa_point) == 2.2, '新分数必须重新换算绩点'
 
 
 def test_grade_recheck_uphold_no_change(client, db_mode):
@@ -141,7 +189,9 @@ def test_grade_recheck_uphold_no_change(client, db_mode):
     rv = client.post(f"{ADMIN_BASE}/grade-rechecks/{rid}/review", headers=admin,
                      json={"action": "UPHOLD", "note": "复核无误，维持原判"})
     assert rv.status_code == 200 and rv.json()["data"]["status"] == "UPHELD"
-    tr = client.get(f"{BASE}/transcript/my", headers=hdr).json()["data"]
+    transcript_response = client.get(f"{BASE}/transcript/my", headers=hdr)
+    assert transcript_response.status_code == 200, transcript_response.text
+    tr = transcript_response.json()["data"]
     assert [i for i in tr["items"] if str(i["gradeId"]) == str(gid)][0]["score"] == 66
 
 
