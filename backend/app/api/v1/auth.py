@@ -6,7 +6,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from app.core.config import settings
 from app.core.response import success
 from app.core.security import get_current_user
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
 
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
 from app.services import auth_service_db
@@ -44,27 +45,82 @@ def mock_login(body: MockLoginRequest):
 
 
 class PasswordLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
-    loginName: str = Field(..., description="工号/学号/登录名")
+    loginName: str | None = Field(None, max_length=100, description="兼容字段：工号/学号/登录名")
+    identifierType: Literal["ACCOUNT", "PHONE"] | None = None
+    identifier: str | None = Field(None, max_length=100, description="新格式登录标识；PHONE 只查已验证绑定")
     password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
     clientType: str = Field("PC", description="PC / PLATFORM_PC / STUDENT_MINI / TEACHER_MINI / MP")
     captchaId: str | None = Field(None, max_length=100)
     captchaCode: str | None = Field(None, min_length=4, max_length=12)
     clientNonce: str | None = Field(None, max_length=128)
 
+    @model_validator(mode="after")
+    def validate_identifier_fields(self):
+        modern_fields = self.model_fields_set & {"identifierType", "identifier"}
+        if modern_fields:
+            if modern_fields != {"identifierType", "identifier"} or "loginName" in self.model_fields_set:
+                raise ValueError("登录标识格式不能混用")
+            if not self.identifierType or not (self.identifier or "").strip():
+                raise ValueError("请输入完整登录标识")
+            if self.identifierType == "PHONE":
+                if not (self.tenantCode or "").strip():
+                    raise ValueError("手机号登录前请选择学校")
+                from app.services.phone_login_service import normalize_login_phone
+                self.identifier = normalize_login_phone(self.identifier)
+        elif not (self.loginName or "").strip():
+            raise ValueError("请输入原账号")
+        return self
+
+    def login_identifier(self) -> tuple[str, str]:
+        typed = str(self.identifierType or "").strip().upper()
+        legacy = str(self.loginName or "").strip()
+        modern = str(self.identifier or "").strip()
+        if typed or modern:
+            if not typed or not modern or legacy:
+                raise AppException("VALIDATION_ERROR", "identifierType 与 identifier 必须同时提供，且不能与 loginName 混用", http_status=422)
+            if typed == "PHONE":
+                from app.services.phone_login_service import require_phone_identifier
+                return typed, require_phone_identifier(self.tenantCode, modern)
+            if typed == "ACCOUNT":
+                return typed, modern
+            raise AppException("VALIDATION_ERROR", "identifierType 仅支持 ACCOUNT 或 PHONE", http_status=422)
+        if not legacy:
+            raise AppException("VALIDATION_ERROR", "请输入账号或手机号", http_status=422)
+        return "ACCOUNT", legacy
+
 
 class CaptchaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
     scene: str = Field(..., min_length=1, max_length=40)
     tenantCode: str | None = Field(None, max_length=100)
     loginName: str | None = Field(None, max_length=100)
+    identifierType: Literal["ACCOUNT", "PHONE"] | None = None
+    identifier: str | None = Field(None, max_length=100)
     clientNonce: str | None = Field(None, max_length=128)
     clientType: str | None = Field(None, max_length=40)
+
+    @model_validator(mode="after")
+    def validate_identifier(self):
+        modern = self.model_fields_set & {"identifierType", "identifier"}
+        if modern:
+            if modern != {"identifierType", "identifier"} or "loginName" in self.model_fields_set:
+                raise ValueError("登录标识格式不能混用")
+            if not self.identifierType or not (self.identifier or "").strip():
+                raise ValueError("请输入完整登录标识")
+            if self.identifierType == "PHONE":
+                if self.scene != "PASSWORD_LOGIN" or not (self.tenantCode or "").strip():
+                    raise ValueError("请先选择学校及手机号登录方式")
+                from app.services.phone_login_service import normalize_login_phone
+                self.identifier = normalize_login_phone(self.identifier)
+        return self
 
 
 @router.post('/captcha', summary='获取登录图形验证码（短时、单次、生产 Redis 原子消费）')
 def captcha(body: CaptchaRequest):
-    return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.loginName,
-                                             body.clientNonce, body.clientType))
+    return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.identifier or body.loginName,
+                                             body.clientNonce, body.clientType, identifier_type=body.identifierType or "ACCOUNT"))
 
 
 class PasswordResetRequest(BaseModel):
@@ -124,11 +180,12 @@ def confirm_password_reset(body: PasswordResetConfirmRequest):
 @router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")
 def login(body: PasswordLoginRequest):
     _login_rate_guard()
+    identifier_type, identifier = body.login_identifier()
     scene = captcha_svc.PLATFORM_LOGIN if body.clientType.strip().upper() == 'PLATFORM_PC' else captcha_svc.PASSWORD_LOGIN
-    captcha_svc.enforce_login_captcha(scene, body.tenantCode, body.loginName, body.captchaId,
-                                      body.captchaCode, body.clientNonce, body.clientType)
+    captcha_svc.enforce_login_captcha(scene, body.tenantCode, identifier, body.captchaId,
+                                      body.captchaCode, body.clientNonce, body.clientType, identifier_type=identifier_type)
     result = auth_service_db.login_with_password(
-        body.loginName.strip(), body.password, body.tenantCode, body.clientType)
+        identifier, body.password, body.tenantCode, body.clientType, identifier_type=identifier_type)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
                  status_code=200, target_type="auth", target_id=result["userId"])
     return success(result, message="登录成功")

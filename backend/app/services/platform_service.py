@@ -608,9 +608,11 @@ def set_user_status(user_id: int, status: str) -> dict:
     _require_db()
     from app.models import User
     with session() as db:
-        u = db.get(User, user_id)
+        u = db.get(User, user_id, with_for_update=True)
         if not u or u.is_deleted:
             raise not_found("账号不存在")
+        if u.status != status:
+            u.credential_version = int(u.credential_version or 0) + 1
         u.status = status
         u.version += 1
         db.commit()
@@ -626,11 +628,12 @@ def reset_user_password(user_id: int) -> dict:
     _require_db()
     from app.models import User
     with session() as db:
-        u = db.get(User, user_id)
+        u = db.get(User, user_id, with_for_update=True)
         if not u or u.is_deleted:
             raise not_found("账号不存在")
         pwd = "Rst@" + secrets.token_urlsafe(8)
         u.password_hash = hash_password(pwd)
+        u.credential_version = int(u.credential_version or 0) + 1
         u.must_change_password = True
         u.version += 1
         db.commit()

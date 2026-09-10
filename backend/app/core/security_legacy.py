@@ -143,6 +143,7 @@ def get_current_user(request: Request, authorization: Optional[str] = Header(def
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
+        "credentialVersion": claims.get("credentialVersion"),
         "studentId": _optional_positive_int_claim(claims, "studentId"),
         "studentNo": claims.get("studentNo"),
         "collegeId": claims.get("collegeId"),
