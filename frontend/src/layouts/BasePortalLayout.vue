@@ -59,8 +59,8 @@
             v-model="fnQuery"
             class="bpl-cmdk__input"
             type="text"
-            :placeholder="useWorkspace ? '搜索学生、功能或帮助' : '搜功能、帮助文档、流程图'"
-            :aria-label="useWorkspace ? '搜索学生、功能或帮助' : '搜索功能与帮助'"
+            :placeholder="workspaceSearchPlaceholder"
+            :aria-label="workspaceSearchAriaLabel"
             @focus="fnOpen = true"
             @keydown.enter.prevent="pickFirstFn"
             @keydown.down.prevent="moveFn(1)"
@@ -432,7 +432,17 @@ export default {
   },
   computed: {
     useWorkspace() {
-      return !this.isPlatformMode && (this.workspace || usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path))
+      // 平台控制面不会自动套用学校工作区；只有所属布局显式传入 workspace 才启用，
+      // 既允许统一公共壳，也避免登录页或其他平台入口被意外改版。
+      return this.workspace || (!this.isPlatformMode && (usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path)))
+    },
+    workspaceSearchPlaceholder() {
+      if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
+      return this.isPlatformMode ? '搜索平台功能或帮助' : '搜索学生、功能或帮助'
+    },
+    workspaceSearchAriaLabel() {
+      if (!this.useWorkspace) return '搜索功能与帮助'
+      return this.isPlatformMode ? '搜索平台功能与帮助' : '搜索学生、功能或帮助'
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)

@@ -6,6 +6,7 @@
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"
+    workspace
     @menu-select="onMenuSelect"
   >
     <ErrorState v-if="error" :description="error" @retry="loadContext" />

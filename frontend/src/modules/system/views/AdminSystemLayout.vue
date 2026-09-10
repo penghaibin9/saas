@@ -5,6 +5,7 @@
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"
+    workspace
     @menu-select="onMenuSelect"
   >
     <template v-if="ctx">
