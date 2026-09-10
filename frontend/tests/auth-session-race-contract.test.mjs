@@ -76,7 +76,7 @@ test('旧 access token 的 401 不得借重新登录或切换角色后的新身�
 
 test('上传使用启动时 token，身份切换后的迟到结果必须作废', async () => {
   const source = await readSource(clientUrl)
-  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file'\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
+  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file', \{ timeoutMs = 15000 \} = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
   assert.ok(uploadBlock, 'requestUpload() block must exist')
   assert.match(uploadBlock[1], /const generationAtStart = state\.sessionGeneration/)
   assert.match(uploadBlock[1], /const accessTokenAtStart = state\.token/)
@@ -107,7 +107,7 @@ test('身份切换在途时禁止旧页面新发业务请求或 refresh', async 
   assert.match(switchBlock[1], /try \{[\s\S]*?rawRequest\('\/auth\/browser-switch-role'[\s\S]*?\} finally \{\s*state\.roleSwitchInFlight = false/)
 
   const requestBlock = source.match(/export async function request\(path, options = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function logoutRemote/)
-  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file'\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
+  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file', \{ timeoutMs = 15000 \} = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
   const blobBlock = source.match(/export async function requestBlob\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport function withFallback/)
   for (const [name, block] of [['request', requestBlock], ['upload', uploadBlock], ['blob', blobBlock]]) {
     assert.ok(block, `${name} block must exist`)

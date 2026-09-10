@@ -23,6 +23,7 @@
 
     {"permissionCode":"platform.commercial.view","label":"查看商业运营","plane":"PLATFORM","moduleKey":"platform","featureKey":"commercial","riskLevel":"LOW","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":false,"lifecycle":"ACTIVE"},
     {"permissionCode":"platform.commercial.manage","label":"管理商业运营","plane":"PLATFORM","moduleKey":"platform","featureKey":"commercial","riskLevel":"HIGH","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":true,"lifecycle":"ACTIVE"},
+    {"permissionCode":"platform.websiteNews.manage","label":"管理官网新闻资源包","plane":"PLATFORM","moduleKey":"platform","featureKey":"websiteNews","riskLevel":"HIGH","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":true,"lifecycle":"ACTIVE"},
     {"permissionCode":"platform.tenant.view","label":"查看租户","plane":"PLATFORM","moduleKey":"platform","featureKey":"tenant","riskLevel":"MEDIUM","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":false,"lifecycle":"ACTIVE"},
     {"permissionCode":"platform.order.manage","label":"管理平台订单","plane":"PLATFORM","moduleKey":"platform","featureKey":"commercial","riskLevel":"HIGH","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":true,"lifecycle":"ACTIVE"},
     {"permissionCode":"platform.provisioning.manage","label":"管理租户交付","plane":"PLATFORM","moduleKey":"platform","featureKey":"provisioning","riskLevel":"HIGH","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":true,"lifecycle":"ACTIVE"},

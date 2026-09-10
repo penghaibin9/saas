@@ -4,7 +4,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { setImmediate as flushTasks } from 'node:timers/promises'
 
-const source = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8')
+const source = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const script = source.match(/<script>([\s\S]*?)<\/script>/)?.[1]
 assert.ok(script)
 

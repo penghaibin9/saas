@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 
-const source = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/GraduationBatchStrip.vue', import.meta.url), 'utf8')
+const source = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/GraduationBatchStrip.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const business = source.split('<style scoped>')[0]
 const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
 const block = selector => style.slice(style.indexOf(`${selector} {`)).split('}')[0]

@@ -5,15 +5,15 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "59f7940b6af6dec782b36a471eee2d1676aeccd3d1400f400e7b36da44898702",
+  "digest": "9d0a7c276cb93f70ab6ffc444804bcae0d1d9b297c0a01ee1f1d22dcf58538d2",
   "counts": {
-    "total": 577,
-    "production": 577,
-    "productionVisible": 491,
+    "total": 578,
+    "production": 578,
+    "productionVisible": 492,
     "hidden": 86,
     "planned": 0,
     "school": 550,
-    "platform": 27
+    "platform": 28
   },
   "surfaces": [
     {
@@ -8149,7 +8149,7 @@
       "workspaceLabel": "开题与成果",
       "surfaceKey": "gd-proposal-final-01",
       "label": "开题报告批阅",
-      "path": "/admin/graduation/proposals",
+      "path": "/admin/graduation/proposals?workspace=proposal-final",
       "permissionKey": "graduationDesign.proposal.view",
       "permissionAny": [],
       "permissionAll": [],
@@ -8170,7 +8170,7 @@
       "workspaceLabel": "开题与成果",
       "surfaceKey": "gd-proposal-final-02",
       "label": "成果提交与批阅",
-      "path": "/admin/graduation/finals",
+      "path": "/admin/graduation/finals?workspace=proposal-final",
       "permissionKey": "graduationDesign.final.view",
       "permissionAny": [],
       "permissionAll": [],
@@ -8275,7 +8275,7 @@
       "workspaceLabel": "答辩与成绩",
       "surfaceKey": "gd-defense-02",
       "label": "答辩评分",
-      "path": "/admin/graduation/defense-scoring",
+      "path": "/admin/graduation/defense-scoring?workspace=defense-grade",
       "permissionKey": "graduationDesign.defense.score",
       "permissionAny": [],
       "permissionAll": [],
@@ -11563,6 +11563,27 @@
       "hidden": false,
       "disabled": false,
       "platformOnly": false
+    },
+    {
+      "groupKey": "platform",
+      "groupLabel": "平台运营",
+      "moduleKey": "platform",
+      "workspaceKey": "plt-website-content",
+      "workspaceLabel": "官网内容运营",
+      "surfaceKey": "plt-website-news",
+      "label": "新闻资源包发布",
+      "path": "/admin/platform/website-news",
+      "permissionKey": "platform.websiteNews.manage",
+      "permissionAny": [],
+      "permissionAll": [],
+      "permissionCodes": [
+        "platform.websiteNews.manage"
+      ],
+      "entryType": "CONFIG_VIEW",
+      "status": "implemented",
+      "hidden": false,
+      "disabled": false,
+      "platformOnly": true
     },
     {
       "groupKey": "platform",

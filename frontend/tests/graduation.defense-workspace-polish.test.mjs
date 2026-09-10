@@ -6,7 +6,7 @@ import vm from 'node:vm'
 import { workspaceCss, workspaceCssUrl, workspaceSection, foundationStyles, legacyStyleImportLayout, stripFinalIntegrationPresentation } from './graduation-workspace-style-sections.mjs'
 
 const root = new URL('../src/modules/graduation/', import.meta.url)
-const layout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', root), 'utf8')
+const layout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', root), 'utf8').replace(/\r\n/g, '\n')
 const historicalLayout = stripFinalIntegrationPresentation(layout)
 const marker = layout.match(/:data-graduation-defense-workspace="([\s\S]*?)"/)?.[1]
 const css = workspaceSection('defense')

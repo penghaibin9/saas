@@ -6,7 +6,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 
 const root = new URL('../src/modules/graduation/', import.meta.url)
-const read = path => fs.readFileSync(new URL(path, root), 'utf8')
+const read = path => fs.readFileSync(new URL(path, root), 'utf8').replace(/\r\n/g, '\n')
 const rawLayout = read('views/AdminGraduationLayout.vue')
 const layout = stripFinalIntegrationPresentation(rawLayout).replace(/ {6}:data-graduation-defense-workspace="[\s\S]*?"\n/, '')
 const css = workspaceSection('material')

@@ -6,7 +6,7 @@ import vm from 'node:vm'
 
 import { GRADUATION_WORKSPACES } from '../src/modules/graduation/config/graduationWorkspaces.js'
 
-const layout = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8')
+const layout = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const script = layout.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ''
 const scopedStyles = [...layout.matchAll(/<style scoped>([\s\S]*?)<\/style>/g)].map(match => match[1])
 const integration = scopedStyles.find(style => style.includes('Final graduation-only integration polish.')) || ''
@@ -52,7 +52,7 @@ test('final integration styles remain graduation-local and preserve business blo
 })
 
 test('deep grade form keeps a readable type floor and a guarded completion return', () => {
-  const source = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')
+  const source = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1] || ''
   const sizes = [...style.matchAll(/font-size:\s*([\d.]+)px/g)].map(match => Number(match[1]))
   assert.ok(sizes.length > 10)

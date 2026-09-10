@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { setImmediate } from 'node:timers'
 import { mountNewsPreview } from '../src/components/official-site/showcase/news-preview.js'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const read=p=>fs.readFileSync(path.join(root,p),'utf8')

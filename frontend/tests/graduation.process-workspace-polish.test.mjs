@@ -6,7 +6,7 @@ import test from 'node:test'
 import vm from 'node:vm'
 
 const base = new URL('../src/modules/graduation/', import.meta.url)
-const rawLayout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', base), 'utf8')
+const rawLayout = fs.readFileSync(new URL('views/AdminGraduationLayout.vue', base), 'utf8').replace(/\r\n/g, '\n')
 const layout = stripFinalIntegrationPresentation(rawLayout).replace(/ {6}:data-graduation-defense-workspace="[\s\S]*?"\n/, '')
 const css = workspaceSection('process')
 const marker = layout.match(/:data-graduation-process-workspace="([\s\S]*?)"/)?.[1]

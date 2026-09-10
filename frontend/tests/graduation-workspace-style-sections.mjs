@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 export const workspaceCssUrl = new URL('../src/modules/graduation/styles/graduation-workspaces.css', import.meta.url)
-export const workspaceCss = fs.readFileSync(workspaceCssUrl, 'utf8')
+export const workspaceCss = fs.readFileSync(workspaceCssUrl, 'utf8').replace(/\r\n/g, '\n')
 const sectionPrefix = '\n/* BEGIN graduation workspace: '
 const integrationStyleStart = '\n<style scoped>\n/* Final graduation-only integration polish.'
 
