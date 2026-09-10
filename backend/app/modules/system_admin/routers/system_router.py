@@ -16,9 +16,12 @@ from app.core.permissions import require_any_permission, require_module, require
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.modules.system_admin.routers import school_iam_router as _school_iam
+from app.modules.system_admin.routers import phone_governance_router as _phone_governance
 from app.modules.system_admin.routers import system_bundle as _bundle
 
 _replacements = APIRouter()
+
+
 _EFFECTIVE_ACCESS_KEYS = (
     "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
     "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
@@ -1185,12 +1188,13 @@ def _compose_router() -> APIRouter:
     if replacement_by_key:
         missing = sorted(replacement_by_key)
         raise RuntimeError(f"Control Plane replacement route has no legacy target: {missing}")
-    school_keys = {_route_key(route) for route in _school_iam.router.routes}
+    school_routes = [*_school_iam.router.routes, *_phone_governance.router.routes]
+    school_keys = {_route_key(route) for route in school_routes}
     existing_keys = {_route_key(route) for route in routes}
     collisions = sorted(school_keys & existing_keys)
     if collisions:
         raise RuntimeError(f"School IAM route collision: {collisions}")
-    routes.extend(_school_iam.router.routes)
+    routes.extend(school_routes)
     composed.routes = routes
     return composed
 

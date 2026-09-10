@@ -32,9 +32,19 @@ def phone_lookup(tenant_id: int, normalized_phone: str) -> str:
 
 def phone_login_enabled(db, tenant_id: int) -> bool:
     """Read the existing tenant configuration authority explicitly; disabled by default."""
+    return phone_policy_enabled(db, tenant_id, 'SEC_PHONE_LOGIN_ENABLED')
+
+
+def phone_policy_enabled(db, tenant_id: int, key: str) -> bool:
+    from app.services.effective_config_service import PHONE_POLICY_KEYS, _active_overrides, _now
+    if key not in PHONE_POLICY_KEYS:
+        raise ValueError('Unknown phone policy')
+    overrides = _active_overrides(db, int(tenant_id), key, at=_now(), org_unit_id=None, term_id=None)
+    if overrides:
+        return type((overrides[-1].value_json or {}).get('value')) is int and overrides[-1].value_json['value'] == 1
     from app.models import SysConfig
     row = db.scalar(select(SysConfig).where(SysConfig.tenant_id == int(tenant_id),
-        SysConfig.config_key == "SEC_PHONE_LOGIN_ENABLED", SysConfig.is_deleted.is_(False)))
+        SysConfig.config_key == key, SysConfig.is_deleted.is_(False)))
     return bool(row and str(row.value_text or "").strip() == "1")
 
 

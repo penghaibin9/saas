@@ -21,6 +21,10 @@ log = logging.getLogger("app.message_outbox")
 
 # 首批登记的事件模板（请假样板）
 _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
+    "AUTH.PHONE_VERIFY_REMINDER": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "NORMAL",
+        "message_type": "SYSTEM", "title": "请完成本人登录号码验证", "require_ack": False,
+    },
     "AUTH.PASSWORD_RESET": {
         "source_module": "systemAdmin", "category": "SYSTEM", "priority": "IMPORTANT",
         "message_type": "SYSTEM", "title": "账号登录密码已重置", "require_ack": False,

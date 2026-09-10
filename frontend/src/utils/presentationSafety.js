@@ -102,6 +102,9 @@ export function safeLocalizedText({ value, dictionary = {}, unknownLabel = '待�
 }
 
 const AUDIT_ACTION_LABELS = Object.freeze({
+  PHONE_BINDING_CHANGE: '手机号登录凭据变更', PHONE_CANDIDATE_CHANGE: '待验证手机号登记变更',
+  PHONE_POLICY_CHANGE: '手机号登录与恢复策略变更', PHONE_BINDING_LOOKUP: '完整手机号授权核对',
+  PHONE_LEDGER_EXPORT: '手机号脱敏台账导出', PHONE_VERIFY_REMINDER: '本人手机号验证站内提醒',
   CREATE: '创建', UPDATE: '修改', DELETE: '删除', SUBMIT: '提交',
   APPLY: '提交申请', RESUBMIT: '重新提交',
   APPROVE: '审核通过', REVIEW_APPROVE: '审批通过',

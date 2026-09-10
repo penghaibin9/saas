@@ -8,6 +8,7 @@
     <template #actions>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar">
         <template #right>
+          <button class="mp-link" @click="phoneOpen = !phoneOpen">{{ phoneOpen ? '返回账号列表' : '手机号治理' }}</button>
           <span class="mp-note">操作均写入审计日志</span>
           <div class="su-cols">
             <button class="mp-link" @click="colsOpen = !colsOpen">▥ 列设置</button>
@@ -22,7 +23,8 @@
       </ModuleToolbar>
     </template>
 
-    <div class="mp-stack">
+    <PhoneGovernancePanel v-if="phoneOpen" :ctx="ctx" :account-type="accountType" />
+    <div v-else class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -131,6 +133,7 @@
         </template>
         <div v-else class="mp-kv"><span class="mp-kv__k">业务归属</span><span class="mp-kv__v">{{ detail.data.orgName }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">手机号</span><span class="mp-kv__v">{{ maskPhone(detail.data.phone) }} <span class="mp-note" :title="reason('viewSensitiveFull')">（完整号码需审计授权）</span></span></div>
+        <PhoneGovernancePanel :ctx="ctx" :user-id="String(detail.data.id)" :account-type="accountType" />
         <div class="mp-kv"><span class="mp-kv__k">邮箱</span><span class="mp-kv__v">{{ maskEmail(detail.data.email) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="statusTone(detail.data.status)" :label="detail.data.statusLabel" dot /></span></div>
         <div class="mp-kv"><span class="mp-kv__k">账号来源</span><span class="mp-kv__v">{{ sourceLabel(detail.data.source) }}</span></div>
@@ -289,6 +292,7 @@ import { AppCheckboxGroup, AppSelect } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import RoleScopeEditor from '@/modules/system/components/RoleScopeEditor.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
+import PhoneGovernancePanel from '@/modules/system/components/PhoneGovernancePanel.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord } from '@/utils/presentationSafety'
@@ -306,13 +310,14 @@ export default {
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppCheckboxGroup, AppSelect,
-    FormFields, RoleScopeEditor, ExportDialog
+    FormFields, RoleScopeEditor, ExportDialog, PhoneGovernancePanel
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     const accountType = this.$route.meta.accountType === 'STUDENT' ? 'STUDENT' : 'STAFF'
     const accountEntityKey = accountType === 'STUDENT' ? 'studentAccounts' : 'staffAccounts'
     return {
+      phoneOpen: false,
       loading: true,
       error: '',
       rows: [],

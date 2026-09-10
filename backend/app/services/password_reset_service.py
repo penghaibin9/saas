@@ -172,14 +172,12 @@ def _reset_user_types(client_type: str) -> tuple[str, ...]:
 
 
 def _recovery_allowed(db, user, binding):
-    from app.models import SysConfig
+    from app.services.phone_login_service import phone_policy_enabled
     from app.services import auth_service_db, control_plane_auth_service as auth
     from app.core.permissions import get_effective_permission_patterns
     if not binding or binding.is_deleted or binding.state != 'VERIFIED' or binding.recovery_frozen:
         return False
-    policy = db.scalar(select(SysConfig.value_text).where(SysConfig.tenant_id == user.tenant_id,
-        SysConfig.config_key == 'SEC_PHONE_RECOVERY_ENABLED', SysConfig.is_deleted.is_(False)))
-    if policy != '1' or user.must_change_password:
+    if not phone_policy_enabled(db, user.tenant_id, 'SEC_PHONE_RECOVERY_ENABLED') or user.must_change_password:
         return False
     auth_service_db._ensure_tenant_login_allowed(db, user)
     contexts = auth_service_db._role_contexts(db, user)

@@ -144,6 +144,15 @@ def set_config_override(
     config_key = str((body or {}).get("configKey") or "").strip()
     if not config_key:
         raise AppException("VALIDATION_ERROR", "缺少 configKey")
+    if config_key.startswith('SEC_PHONE_'):
+        from app.modules.system_admin.routers.phone_governance_router import PhonePolicy
+        from app.modules.system_admin.services.phone_governance_service import set_policy
+        from pydantic import ValidationError
+        try:
+            command = PhonePolicy(**body)
+        except ValidationError:
+            raise AppException('VALIDATION_ERROR', '手机号策略须使用即时学校级策略与版本') from None
+        return success(set_policy(user, command))
     svc.ensure_definitions()
     db = get_sessionmaker()()
     try:
@@ -260,6 +269,8 @@ def restore_effective_config_inheritance(
 ):
     tenant_id = _tenant_id()
     config_key = str((body or {}).get("configKey") or "").strip()
+    if config_key.startswith('SEC_PHONE_'):
+        raise AppException('VALIDATION_ERROR', '手机号策略请明确设置开关，不支持恢复继承')
     reason = str((body or {}).get("reason") or "").strip()
     requested = (body or {}).get("overrides") or []
     if not config_key:

@@ -194,6 +194,12 @@ def _receipt_query(db, snapshot):
         IdempotencyRecord.key_hash == proofs._digest('phone-operation', snapshot['operationId'])).with_for_update())
 
 
+def revoke_binding_in_session(binding):
+    """Common self/admin mutation. Caller owns User lock, version, epoch and audit."""
+    binding.state, binding.phone_ciphertext, binding.active_phone_lookup = 'REVOKED', None, None
+    binding.revoked_at = proofs._utc_now()
+
+
 def confirm(ctx, *, operation_id, grant, nonce, expected_version, idempotency_key, revoke=False, reason=''):
     if not idempotency_key or len(idempotency_key) > 128 or type(expected_version) is not int:
         raise _invalid('请重新确认本次操作', 'VALIDATION_ERROR', 422)
@@ -227,8 +233,7 @@ def confirm(ctx, *, operation_id, grant, nonce, expected_version, idempotency_ke
             db.add(binding)
         binding.version = expected_version + 1
         if revoke:
-            binding.state, binding.phone_ciphertext, binding.active_phone_lookup = 'REVOKED', None, None
-            binding.revoked_at = proofs._utc_now()
+            revoke_binding_in_session(binding)
         else:
             binding.state = 'VERIFIED'
             binding.phone_ciphertext, binding.active_phone_lookup = snapshot['phoneEncrypted'], snapshot['phoneLookup']

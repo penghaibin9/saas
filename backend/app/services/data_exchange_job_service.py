@@ -372,6 +372,9 @@ def _owned_export(
     row = db.scalars(stmt).first()
     if not row:
         raise not_found("导出任务不存在")
+    if row.export_type == 'PHONE_MASKED_LEDGER':
+        from app.modules.system_admin.services.phone_governance_service import assert_export_scope
+        assert_export_scope(db, user, row)
     _assert_row_visible(row, user, visibility=visibility, module_code=module_code)
     return row
 
