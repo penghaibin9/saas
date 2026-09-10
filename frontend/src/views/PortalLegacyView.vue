@@ -236,8 +236,8 @@
         <div><strong>{{ companyName }}</strong><span>职业院校学生全生命周期数字化平台</span></div>
         <div class="yk-footer-links">
           <a :href="contact.phoneHref">{{ contact.phone }}</a>
-          <a v-for="item in footerLinks" :key="item.label" :href="item.url" target="_blank" rel="noopener noreferrer">{{ item.label }}</a>
-          <a v-if="icpNumber" :href="icpQueryUrl" target="_blank" rel="noopener noreferrer">{{ icpNumber }}</a>
+          <a v-for="item in footerLinks" :key="item.label" :href="item.url" rel="noopener noreferrer">{{ item.label }}</a>
+          <a v-if="icpNumber" :href="icpQueryUrl" rel="noopener noreferrer">{{ icpNumber }}</a>
           <span>© {{ year }}</span>
         </div>
       </div>

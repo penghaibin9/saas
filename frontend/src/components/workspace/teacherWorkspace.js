@@ -60,6 +60,7 @@ export function workspaceTokens(key) {
 }
 export function workspacePages(modules) {
   const items = modules.flatMap(mod => (mod.children?.length ? mod.children : [mod])
+    .filter(item => item.path && !item.disabled)
     .map(item => ({ ...item, id: item.path || `${mod.key}:${item.label}`, title: item.label, moduleKey: mod.key, trail: mod.label })))
   const counts = new Map()
   for (const item of items) if (item.path) counts.set(item.path, (counts.get(item.path) || 0) + 1)
@@ -76,6 +77,24 @@ export function workspacePages(modules) {
     url.searchParams.set('_workspace', id)
     return { ...item, id, destination: url.pathname + url.search }
   })
+}
+// 菜单参数是页面身份，批次/分页等额外参数不应破坏高亮。
+export function workspaceCurrentPage(pages, fullPath, activeModule = '') {
+  const current = new URL(fullPath, 'https://workspace.invalid')
+  let best, bestScore = -1
+  for (const page of pages) {
+    for (const path of [page.destination || page.path, ...(page.workspacePaths || [])]) {
+      if (!path) continue
+      const candidate = new URL(path, 'https://workspace.invalid')
+      const exact = current.pathname === candidate.pathname
+      if (!exact && !current.pathname.startsWith(candidate.pathname + '/')) continue
+      const query = [...candidate.searchParams].filter(([key]) => key !== '_workspace')
+      const matches = query.every(([key, value]) => current.searchParams.get(key) === value)
+      const score = candidate.pathname.length * 10 + (exact ? 1 : 0) + (matches ? query.length * 10000 : 0)
+      if (score > bestScore) { best = page; bestScore = score }
+    }
+  }
+  return best || pages.find(page => page.moduleKey === activeModule && !page.workspaceHidden)
 }
 // Only explicitly registered academic aliases migrate; ambiguous legacy IDs are not guessed.
 export function resolveWorkspacePageId(id, pages) {

@@ -29,6 +29,7 @@ const layoutRoute = {
     // ── 续工 R3：学年管理（按学年汇总） / 学期切换记录（当前学期切换审计，只读，不新增写端点） ──
     { path: 'terms/years', name: 'aa-term-years', component: () => import('@/modules/academicAffairs/views/AaAcademicYearView.vue'), meta: meta('academicAffairs.term.view', '学年管理') },
     { path: 'terms/switch-log', name: 'aa-term-switch-log', component: () => import('@/modules/academicAffairs/views/AaTermSwitchLogView.vue'), meta: meta('academicAffairs.term.view', '学期切换记录') },
+    { path: 'terms/:termId', name: 'aa-term-detail', component: () => import('@/modules/academicAffairs/views/AaTermDetailView.vue'), meta: meta('academicAffairs.term.view', '学期详情') },
     { path: 'calendar', name: 'aa-calendar', component: () => import('@/modules/academicAffairs/views/AaCalendarView.vue'), meta: meta('academicAffairs.calendar.view', '校历管理') },
     { path: 'time-slots', name: 'aa-time-slots', component: () => import('@/modules/academicAffairs/views/AaTimeSlotView.vue'), meta: meta('academicAffairs.timeslot.view', '作息节次') },
     // ── W2 学籍写侧闭环 ──

@@ -114,7 +114,7 @@ export default {
       selfKey: String(u.loginName || u.userId || ''),
       termId: '', week: null,
       slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: '',
-      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', selectedItem: null
+      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '', selectedItem: null
     }
   },
   created() {
@@ -173,12 +173,16 @@ export default {
       if (!this.teacherKey) return
       this.loading = true
       this.error = ''
+      this.todayError = ''
       const [res, todayRes] = await Promise.all([
         academicAffairsApi.getTeacherSchedule(this.teacherKey, {
           termId: this.termId || undefined, week: this.week || undefined
         }),
         this.isSameTeacherKey(this.teacherKey)
-          ? academicAffairsApi.getMyTeacherToday()
+          ? academicAffairsApi.getMyTeacherToday().catch((error) => {
+              this.todayError = error?.message || '今日课表暂不可用'
+              return null
+            })
           : Promise.resolve(null)
       ])
       this.loading = false

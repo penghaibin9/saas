@@ -4,7 +4,7 @@ import vm from 'node:vm'
 import test from 'node:test'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { DASHBOARD_PANELS, dashboardPanel, dashboardTodoRows } from '../src/modules/academicAffairs/config/dashboardPanels.js'
-import academicRoutes from '../src/modules/academicAffairs/routes/academic.routes.js'
+import academicAffairsRoutes from '../src/modules/academicAffairs/academic-affairs.routes.js'
 import { NAV_PLAN } from '../src/config/navPlan.js'
 import { academicIdentity } from '../src/modules/academicAffairs/academicFlowContext.js'
 import { routeTarget } from '../src/modules/academicAffairs/components/leadershipWall/aa-wall-data.mjs'
@@ -34,9 +34,9 @@ test('every dashboard menu panel resolves to a named workspace, and the root leg
   assert.ok(!paths.includes('/admin/academic'))
   assert.equal(dashboardPanel('unknown'), '')
   assert.equal(dashboardPanel(['todos']), '')
-  const router = createRouter({ history: createMemoryHistory(), routes: academicRoutes })
+  const router = createRouter({ history: createMemoryHistory(), routes: academicAffairsRoutes })
   assert.ok(!router.getRoutes().some(row => row.path === '/admin/academic'))
-  assert.ok(router.getRoutes().some(row => row.path === '/admin/academic/warnings'))
+  assert.ok(router.getRoutes().some(row => row.path === '/admin/academic-affairs/warnings'))
 })
 
 test('todo categories retain every returned task, exact IDs and destination, beyond the old 15 item cap', () => {

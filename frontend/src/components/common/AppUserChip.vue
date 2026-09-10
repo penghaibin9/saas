@@ -289,7 +289,7 @@ export default {
     async passwordChanged() {
       this.securityVisible = false
       clearAuthSession()
-      toast.success('账号安全设置已更新，请重新登录')
+      toast.success('密码已修改，请使用新密码重新登录')
       await this.$router.replace('/login')
     },
     async pickContext(c) {

@@ -54,6 +54,7 @@ import ActionReceipt from './ActionReceipt.vue'
 import { scoreApi } from '@/modules/internship/api/score.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict } from '@/modules/internship/composables/conflictGuard'
+import { systemConfirm } from '@/services/systemDialog'
 
 const SCORE_STATUS = { PENDING_CALC: '待核算', PENDING_REVIEW: '待复核', PENDING_PUBLISH: '待发布', PUBLISHED: '已发布', WITHDRAWN: '已撤回', ARCHIVED: '已归档' }
 export default {
@@ -77,11 +78,11 @@ export default {
     ctx: { deep: true, handler() { this.load(true) } }
   },
   mounted() {
-    this.removeGuard = this.$router.beforeEach((to, from) => {
+    this.removeGuard = this.$router.beforeEach(async (to, from) => {
       if (to.fullPath === from.fullPath) return true
       if (to.path === from.path && to.query.stage === 'appeal' && String(to.query.appealId || '') === this.appealId && String(to.query.batchId || '') === this.batchId) return true
       if (this.submitting) return false
-      return !this.dirty || window.confirm('处理意见尚未提交，离开会丢失这些内容。仍要离开吗？')
+      return !this.dirty || await systemConfirm({ title: '确认离开申诉办理', message: '处理意见尚未提交，离开会丢失这些内容。仍要离开吗？', confirmText: '放弃意见并离开', type: 'danger' })
     })
     window.addEventListener('beforeunload', this.beforeUnload)
   },

@@ -365,7 +365,7 @@ export function mountShowcase(root, { contact, links = {}, navigate, consultBase
       node.hidden = false
       node.classList.remove('is-pending')
       node.removeAttribute('aria-disabled')
-      node.target = '_blank'
+      node.removeAttribute('target')
       if (action && node.dataset.entryReadyLabel) action.textContent = node.dataset.entryReadyLabel
     } else if (node.hasAttribute('data-entry-placeholder')) {
       node.removeAttribute('href')

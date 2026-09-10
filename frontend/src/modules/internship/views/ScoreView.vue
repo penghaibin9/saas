@@ -224,6 +224,7 @@ import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { isConflict } from '@/modules/internship/composables/conflictGuard'
 import { fileSdk } from '@/services/file/fileSdk'
+import { systemConfirm } from '@/services/systemDialog'
 
 const WEIGHTS = [
   { key: 'checkinWeight', label: '打卡' }, { key: 'weeklyWeight', label: '周报' },
@@ -326,12 +327,12 @@ export default {
     ctx: { deep: true, handler() { this.resetPanel(); this.lastReceipt = null; this.loadConfig(); this.load(); this.loadAppeals(); this.syncPanelFromRoute() } }
   },
   mounted() {
-    this.removeGuard = this.$router.beforeEach((to, from) => {
+    this.removeGuard = this.$router.beforeEach(async (to, from) => {
       if (to.fullPath === from.fullPath) return true
       if (this.panel.submitting || this.cForm.uploading || this.cd.submitting) return false
       if (!this.computeDirty) return true
       if (to.path === from.path && ['id', 'mode', 'batchId'].every(key => String(to.query[key] || '') === String(from.query[key] || '')) && !['appeal', 'config'].includes(to.query.stage)) return true
-      return window.confirm('当前核算调整尚未提交，离开会丢失填写内容。仍要离开吗？')
+      return await systemConfirm({ title: '确认离开成绩核算', message: '当前核算调整尚未提交，离开会丢失填写内容。仍要离开吗？', confirmText: '放弃调整并离开', type: 'danger' })
     })
     window.addEventListener('beforeunload', this.beforeUnload)
   },
