@@ -21,10 +21,65 @@ def flow(phone_identity, monkeypatch):
     return {**phone_identity, 'ctx': decode_token(login['accessToken']), 'nonce': 'local-browser-operation-nonce'}
 
 
+def test_other_privileged_role_requires_independent_change_verification(flow):
+    from app.models import Role, UserRole
+    from app.db.session import get_sessionmaker
+    from app.core.exceptions import AppException
+    from app.services import phone_binding_service as svc
+    from app.api.v1.phone_login import get_phone_binding
+    with get_sessionmaker()() as db:
+        role = Role(tenant_id=flow['tenant_id'], role_code='SCHOOL_ADMIN', role_name='学校安全核验管理员')
+        db.add(role); db.flush()
+        db.add(UserRole(tenant_id=flow['tenant_id'], user_id=flow['user_id'], role_id=role.id, status='ACTIVE'))
+        db.commit()
+    with pytest.raises(AppException):
+        svc.reauthenticate(flow['ctx'], purpose='CHANGE_PHONE', new_phone='13700137000',
+            current_password='Local-test-Password1!', nonce=flow['nonce'], expected_version=1)
+    assert get_phone_binding(user=flow['ctx'])['data']['allowedActions']['change'] is False
+
+
 def operation(flow):
     from app.services import phone_binding_service as svc
     return svc.reauthenticate(flow['ctx'], purpose='CHANGE_PHONE', new_phone='13900139000',
         current_password='Local-test-Password1!', nonce=flow['nonce'], expected_version=1)
+
+
+def test_privilege_added_after_proof_blocks_confirmation_and_delivery(flow):
+    from app.services import phone_binding_service as svc
+    from app.models import Role, UserRole, PasswordResetSmsJob
+    from app.db.session import get_sessionmaker
+    op = operation(flow)
+    grant = verified(flow, op)
+    with get_sessionmaker()() as db:
+        role = Role(tenant_id=flow['tenant_id'], role_code='SECURITY_ADMIN', role_name='安全管理员')
+        db.add(role); db.flush()
+        db.add(UserRole(tenant_id=flow['tenant_id'], user_id=flow['user_id'], role_id=role.id, status='ACTIVE'))
+        db.commit()
+        job = db.scalar(select(PasswordResetSmsJob).where(PasswordResetSmsJob.request_id == op['operationId']))
+        assert svc.delivery_is_current(db, job) is False
+    with pytest.raises(AppException):
+        svc.confirm(flow['ctx'], operation_id=op['operationId'], grant=grant,
+            nonce=flow['nonce'], expected_version=1, idempotency_key=op['operationId'])
+
+
+def test_privileged_revoked_binding_cannot_bypass_review_by_rebinding(flow):
+    from app.services import phone_binding_service as svc, control_plane_auth_service as auth
+    from app.core.security import decode_token
+    from app.models import Role, UserRole
+    from app.db.session import get_sessionmaker
+    op = svc.reauthenticate(flow['ctx'], purpose='REVOKE_PHONE', new_phone=None,
+        current_password='Local-test-Password1!', nonce=flow['nonce'], expected_version=1)
+    svc.confirm(flow['ctx'], operation_id=op['operationId'], grant=op['reauthTicket'],
+        nonce=flow['nonce'], expected_version=1, idempotency_key=op['operationId'], revoke=True, reason='本人撤销号码')
+    with get_sessionmaker()() as db:
+        role = Role(tenant_id=flow['tenant_id'], role_code='SCHOOL_ADMIN', role_name='学校管理员')
+        db.add(role); db.flush()
+        db.add(UserRole(tenant_id=flow['tenant_id'], user_id=flow['user_id'], role_id=role.id, status='ACTIVE'))
+        db.commit()
+    ctx = decode_token(auth.login_with_password(flow['login'], 'Local-test-Password1!', flow['tenant'])['accessToken'])
+    with pytest.raises(AppException):
+        svc.reauthenticate(ctx, purpose='BIND_PHONE', new_phone='13700137000',
+            current_password='Local-test-Password1!', nonce=flow['nonce'], expected_version=2)
 
 
 def verified(flow, op):
@@ -168,6 +223,7 @@ def test_formal_phone_http_routes_require_subject_and_expose_scoped_receipt_only
     assert client.get('/api/v1/auth/phone-binding').status_code == 401
     response = client.get('/api/v1/auth/phone-binding', headers=headers)
     assert response.status_code == 200 and response.json()['data']['state'] == 'VERIFIED'
+    assert response.json()['data']['phoneMasked'] == '138****8000'
     assert '13800138000' not in response.text
     invalid = client.post('/api/v1/auth/phone-binding/confirm', headers=headers, json={
         'operationId': 'po_' + 'a' * 32, 'verificationGrant': 'b' * 32, 'clientNonce': flow['nonce'],

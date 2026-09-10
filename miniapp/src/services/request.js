@@ -338,14 +338,14 @@ function normalizeJsonResponseBody(value) {
 }
 
 function executeRealRequest(path, effectivePath, {
-  method, data, auth, _retried, _rawPage, _expectedGeneration
+  method, data, auth, _retried, _rawPage, _expectedGeneration, headers = {}
 }) {
   if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
     return Promise.reject(sessionChangedError())
   }
   const requestSnapshot = auth ? captureSessionSnapshot(getToken(), getRefreshToken()) : null
   return new Promise((resolve, reject) => {
-    const header = { 'Content-Type': 'application/json' }
+    const header = { 'Content-Type': 'application/json', ...headers }
     const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
     const internshipBatchId = selectedInternshipBatchId(path)
@@ -364,7 +364,7 @@ function executeRealRequest(path, effectivePath, {
         if (body && body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {
-              method, data, auth, _retried: true, _rawPage,
+              method, data, auth, _retried: true, _rawPage, headers,
               _expectedGeneration: requestSnapshot.generation
             }))
             .then(resolve)
@@ -413,7 +413,7 @@ function executeRealRequest(path, effectivePath, {
 
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, {
-  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null, headers = {}
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
   // H5 access tokens intentionally live in memory only. After F5 the per-tab HttpOnly
@@ -423,7 +423,7 @@ export function realRequest(path, {
   if (auth && !_retried && !String(path || '').startsWith('/auth/') && !getToken() && getRefreshToken()) {
     const expectedGeneration = currentSessionGeneration()
     return _refreshOnce(expectedGeneration).then(() => realRequest(path, {
-      method: normalizedMethod, data, auth, _retried: true, _rawPage,
+      method: normalizedMethod, data, auth, _retried: true, _rawPage, headers,
       _expectedGeneration: expectedGeneration
     }))
   }
@@ -433,7 +433,7 @@ export function realRequest(path, {
   // 401 刷新后的重试和内部显式分页必须绕过原单飞槽位，避免等待自身 Promise。
   if (_retried || _rawPage) {
     return executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration, headers
     })
   }
 
@@ -441,7 +441,7 @@ export function realRequest(path, {
   if (normalizedMethod === 'GET') {
     if (_getInflight.has(key)) return _getInflight.get(key)
     const pending = executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration, headers
     }).finally(() => _getInflight.delete(key))
     _getInflight.set(key, pending)
     return pending
@@ -452,7 +452,7 @@ export function realRequest(path, {
   }
   _mutationInflight.add(key)
   return executeRealRequest(path, effectivePath, {
-    method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+    method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration, headers
   }).finally(() => _mutationInflight.delete(key))
 }
 

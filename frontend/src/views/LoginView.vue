@@ -25,26 +25,28 @@
         <div class="entry-note"><span />当前入口仅面向教师和管理人员</div>
 
         <form @submit.prevent="doLogin">
-          <label for="staff-account">工号 / 手机号</label>
-          <input id="staff-account" v-model.trim="form.loginName" autocomplete="username" placeholder="请输入工号或手机号">
+          <label for="staff-identifier-type">登录方式</label>
+          <select :disabled="loading" id="staff-identifier-type" v-model="form.identifierType"><option value="ACCOUNT">工号 / 统一账号</option><option value="PHONE">已验证手机号</option></select>
+          <label for="staff-account">{{ form.identifierType === 'PHONE' ? '已验证手机号' : '工号 / 统一账号' }}</label>
+          <input :disabled="loading" id="staff-account" v-model.trim="form.loginName" autocomplete="username" placeholder="请输入工号或手机号">
 
           <div class="label-row"><label for="staff-password">密码</label><button type="button" class="text-button" @click="onForgot">忘记密码</button></div>
           <div class="password-field">
-            <input id="staff-password" v-model="form.password" :type="pwdVisible ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
+            <input :disabled="loading" id="staff-password" v-model="form.password" :type="pwdVisible ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
             <button type="button" class="eye-button" :aria-label="pwdVisible ? '隐藏密码' : '显示密码'" @click="pwdVisible = !pwdVisible">{{ pwdVisible ? '隐藏' : '显示' }}</button>
           </div>
 
           <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" @refresh="refreshCaptcha" />
 
-          <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
+          <label class="remember"><input :disabled="loading" v-model="remember" type="checkbox">记住账号</label>
 
           <details class="tenant-details">
             <summary>切换学校或填写学校编码</summary>
             <label for="staff-tenant">学校编码 <small>仅多校同账号时填写</small></label>
-            <input id="staff-tenant" v-model.trim="form.tenantCode" autocomplete="organization" placeholder="请输入学校编码">
+            <input :disabled="loading" id="staff-tenant" v-model.trim="form.tenantCode" autocomplete="organization" placeholder="请输入学校编码">
           </details>
 
-          <label class="agreement"><input v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
+          <label class="agreement"><input :disabled="loading" v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
           <p v-if="error" class="error" role="alert">{{ error }}</p>
           <button class="submit-button" type="submit" :disabled="loading">{{ loading ? '登录中…' : '进入教师工作台' }}</button>
         </form>
@@ -56,7 +58,7 @@
         <a href="https://beian.miit.gov.cn/" rel="noopener noreferrer">湘ICP备2026031107号</a>
       </footer>
     </section>
-    <PasswordResetDialog v-if="resetVisible" :login-name="form.loginName" :tenant-code="form.tenantCode" @close="resetVisible = false" @done="resetDone" />
+    <PasswordResetDialog v-if="resetVisible" :login-name="form.loginName" :tenant-code="form.tenantCode" :identifier-type="form.identifierType" @close="resetVisible = false" @done="resetDone" />
   </main>
 </template>
 
@@ -67,6 +69,7 @@ import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 import PasswordResetDialog from '@/components/auth/PasswordResetDialog.vue'
 import ForcePasswordChangeView from '@/views/ForcePasswordChangeView.vue'
 import { toast } from '@/utils/toast'
+import { createIdentityCaptcha } from '../../../shared/identityCaptcha.mjs'
 
 const REMEMBER_KEY = 'staff_login_name'
 const TENANT_KEY = 'staff_tenant_code'
@@ -83,10 +86,19 @@ export default {
       loading: false,
       error: '',
       resetVisible: false,
-      captcha: { required: false, id: '', code: '', image: '', loading: false, nonce: `web-${Date.now()}-${Math.random()}` },
-      form: { tenantCode: '', loginName: '', password: '' }
+      captcha: { required: false, id: '', code: '', image: '', loading: false, nonce: '' },
+      form: { tenantCode: '', loginName: '', password: '', identifierType: 'ACCOUNT' }
     }
   },
+  created() {
+    this.captchaFlow = createIdentityCaptcha(this.captcha, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: this.form.tenantCode || undefined, identifierType: this.form.identifierType, identifier: this.form.loginName, clientType: 'PC' }), issue: issueLoginCaptcha, error: message => { this.error = message } })
+  },
+  watch: {
+    'form.loginName': { handler() { this.captchaFlow.invalidate() }, flush: 'sync' },
+    'form.tenantCode': { handler() { this.captchaFlow.invalidate() }, flush: 'sync' },
+    'form.identifierType': { handler() { this.captchaFlow.invalidate(); this.form.loginName = ''; this.form.password = '' }, flush: 'sync' }
+  },
+  beforeUnmount() { this.captchaFlow.dispose(); this.form.password = '' },
   mounted() {
     this.form.tenantCode = String(this.$route.query.tenant || '').trim()
     try {
@@ -102,11 +114,7 @@ export default {
   },
   methods: {
     async refreshCaptcha() {
-      this.captcha.loading = true
-      try {
-        const d = await issueLoginCaptcha({ scene: 'PASSWORD_LOGIN', tenantCode: this.form.tenantCode || undefined, loginName: this.form.loginName, clientNonce: this.captcha.nonce, clientType: 'PC' })
-        this.captcha.id = d.captchaId; this.captcha.image = d.imageDataUrl; this.captcha.code = ''
-      } catch (e) { this.error = e?.message || '验证码加载失败，请稍后重试' } finally { this.captcha.loading = false }
+      return this.captchaFlow.load()
     },
     async requireCaptcha(error) {
       const code = error?.bizCode || ''
@@ -114,6 +122,7 @@ export default {
       this.captcha.required = true; await this.refreshCaptcha(); return true
     },
     async doLogin() {
+      if (this.loading) return
       this.error = ''
       if (!this.agree) {
         this.error = '请先勾选同意用户协议与隐私政策'
@@ -125,10 +134,11 @@ export default {
       }
       this.loading = true
       try {
+        await this.captchaFlow.ensureNonce()
         if (this.captcha.required && (!this.captcha.id || this.captcha.code.length !== 6)) { this.error = '请输入图中 6 位验证码'; return }
-        const data = await loginWithPassword(this.form.loginName, this.form.password, this.form.tenantCode, { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PC' })
+        const data = await loginWithPassword(this.form.loginName, this.form.password, this.form.tenantCode, { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PC', identifierType: this.form.identifierType })
         try {
-          if (this.remember) localStorage.setItem(REMEMBER_KEY, this.form.loginName)
+          if (this.remember && this.form.identifierType === 'ACCOUNT') localStorage.setItem(REMEMBER_KEY, this.form.loginName)
           else localStorage.removeItem(REMEMBER_KEY)
           if (this.form.tenantCode) localStorage.setItem(TENANT_KEY, this.form.tenantCode)
           else localStorage.removeItem(TENANT_KEY)
@@ -152,9 +162,11 @@ export default {
       }
     },
     onForgot() {
+      if (this.loading) return
       this.resetVisible = true
     },
-    resetDone(loginName) {
+    resetDone(loginName, identifierType) {
+      if (identifierType) this.form.identifierType = identifierType
       this.form.loginName = loginName || this.form.loginName
       this.form.password = ''
       this.resetVisible = false

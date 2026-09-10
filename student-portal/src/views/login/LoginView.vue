@@ -27,23 +27,25 @@
         <div class="entry-note"><span />登录后仅展示本人数据和本人事项</div>
 
         <form @submit.prevent="doLogin">
-          <label for="student-account">学号 / 手机号</label>
-          <input id="student-account" v-model.trim="loginName" autocomplete="username" placeholder="请输入学号或手机号">
+          <label for="student-identifier-type">登录方式</label>
+          <select :disabled="loading" id="student-identifier-type" v-model="identifierType"><option value="ACCOUNT">学号 / 统一账号</option><option value="PHONE">已验证手机号</option></select>
+          <label for="student-account">{{ identifierType === 'PHONE' ? '已验证手机号' : '学号 / 统一账号' }}</label>
+          <input :disabled="loading" id="student-account" v-model.trim="loginName" autocomplete="username" placeholder="请输入学号或手机号">
           <div class="label-row"><label for="student-password">密码</label><button class="text-button" type="button" @click="forgotPassword">忘记密码</button></div>
           <div class="password-field">
-            <input id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
+            <input :disabled="loading" id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
             <button type="button" class="eye-button" :aria-label="showPwd ? '隐藏密码' : '显示密码'" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
           </div>
           <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" input-id="student-login-captcha" @refresh="refreshCaptcha" />
-          <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
+          <label class="remember"><input :disabled="loading" v-model="remember" type="checkbox">记住账号</label>
 
           <details class="tenant-details">
             <summary>切换学校或填写学校编码</summary>
             <label for="student-tenant">学校编码 <small>仅多校同账号时填写</small></label>
-            <input id="student-tenant" v-model.trim="tenantCode" autocomplete="organization" placeholder="请输入学校编码">
+            <input :disabled="loading" id="student-tenant" v-model.trim="tenantCode" autocomplete="organization" placeholder="请输入学校编码">
           </details>
 
-          <label class="agreement"><input v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
+          <label class="agreement"><input :disabled="loading" v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
           <p v-if="error" class="error" role="alert">{{ error }}</p>
           <button class="submit-button" :disabled="loading" type="submit">{{ loading ? '登录中…' : '进入学生服务门户' }}</button>
         </form>
@@ -51,12 +53,12 @@
       </div>
       <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
     </section>
-    <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" @close="resetVisible = false" @done="resetDone" />
+    <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" :identifier-type="identifierType" @close="resetVisible = false" @done="resetDone" />
   </main>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { usePortalConfigStore } from '../../stores/portalConfig'
@@ -64,6 +66,7 @@ import { useUiStore } from '../../stores/ui'
 import LoginCaptcha from '../../components/auth/LoginCaptcha.vue'
 import PasswordResetDialog from '../../components/auth/PasswordResetDialog.vue'
 import { portalApi } from '../../services/portalApi'
+import { createIdentityCaptcha } from '../../../../shared/identityCaptcha.mjs'
 
 const REMEMBER_KEY = 'student_portal_login_name'
 const TENANT_KEY = 'student_portal_tenant_code'
@@ -74,6 +77,7 @@ const cfg = usePortalConfigStore()
 const ui = useUiStore()
 
 const loginName = ref('')
+const identifierType = ref('ACCOUNT')
 const password = ref('')
 const tenantCode = ref(typeof route.query.tenant === 'string' ? route.query.tenant : '')
 const error = ref('')
@@ -82,7 +86,11 @@ const showPwd = ref(false)
 const remember = ref(false)
 const agree = ref(false)
 const resetVisible = ref(false)
-const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: `student-${Date.now()}-${Math.random()}` })
+const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: '' })
+const captchaFlow = createIdentityCaptcha(captcha.value, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: tenantCode.value || undefined, identifierType: identifierType.value, identifier: loginName.value, clientType: 'PC' }), issue: portalApi.captcha, error: message => { error.value = message } })
+watch([loginName, tenantCode, identifierType], () => captchaFlow.invalidate(), { flush: 'sync' })
+watch(identifierType, () => { loginName.value = ''; password.value = '' }, { flush: 'sync' })
+onBeforeUnmount(() => { captchaFlow.dispose(); password.value = '' })
 const platformName = computed(() => cfg.brand?.platformName || cfg.portalName || '学生服务门户')
 const brandLogo = computed(() => cfg.brand?.logo || '')
 
@@ -100,10 +108,12 @@ onMounted(() => {
 })
 
 function forgotPassword() {
+  if (loading.value) return
   resetVisible.value = true
 }
 
-function resetDone(account) {
+function resetDone(account, kind) {
+  if (kind) identifierType.value = kind
   loginName.value = account || loginName.value
   password.value = ''
   resetVisible.value = false
@@ -111,12 +121,11 @@ function resetDone(account) {
 }
 
 async function refreshCaptcha() {
-  captcha.value.loading = true
-  try { const d = await portalApi.captcha({ scene: 'PASSWORD_LOGIN', tenantCode: tenantCode.value || undefined, loginName: loginName.value, clientNonce: captcha.value.nonce, clientType: 'PC' }); captcha.value.id = d.captchaId; captcha.value.image = d.imageDataUrl; captcha.value.code = '' }
-  catch (e) { error.value = e?.message || '验证码加载失败，请稍后重试' } finally { captcha.value.loading = false }
+  return captchaFlow.load()
 }
 
 async function doLogin() {
+  if (loading.value) return
   error.value = ''
   if (!agree.value) {
     error.value = '请先勾选同意用户协议与隐私政策'
@@ -128,10 +137,11 @@ async function doLogin() {
   }
   loading.value = true
   try {
+    await captchaFlow.ensureNonce()
     if (captcha.value.required && (!captcha.value.id || captcha.value.code.length !== 6)) { error.value = '请输入图中 6 位验证码'; return }
-    await session.login(loginName.value, password.value, tenantCode.value || undefined, { captchaId: captcha.value.id, captchaCode: captcha.value.code, clientNonce: captcha.value.nonce })
+    await session.login(loginName.value, password.value, tenantCode.value || undefined, { captchaId: captcha.value.id, captchaCode: captcha.value.code, clientNonce: captcha.value.nonce, identifierType: identifierType.value })
     try {
-      if (remember.value) localStorage.setItem(REMEMBER_KEY, loginName.value)
+      if (remember.value && identifierType.value === 'ACCOUNT') localStorage.setItem(REMEMBER_KEY, loginName.value)
       else localStorage.removeItem(REMEMBER_KEY)
       if (tenantCode.value) localStorage.setItem(TENANT_KEY, tenantCode.value)
       else localStorage.removeItem(TENANT_KEY)

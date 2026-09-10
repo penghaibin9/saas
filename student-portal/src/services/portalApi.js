@@ -19,7 +19,7 @@ export const portalApi = {
   passwordResetVerify: (body) => request('/auth/password-reset/verify', { method: 'POST', auth: false, body }),
   passwordResetConfirm: (body) => request('/auth/password-reset/confirm', { method: 'POST', auth: false, body }),
   login: (loginName, password, tenantCode, challenge = {}) =>
-    request('/auth/login', { method: 'POST', auth: false, body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
+    request('/auth/login', { method: 'POST', auth: false, body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
   profile: () => request('/mobile/me/profile'),

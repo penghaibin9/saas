@@ -25,9 +25,10 @@
       <!-- #endif -->
       <view class="divider"><view class="divider__line" /><text>其他登录方式</text><view class="divider__line" /></view>
 
-      <text class="section-title">使用{{ isTeacher ? '工号' : '学号' }}和密码登录</text>
-      <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
-      <input v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
+      <text class="section-title">使用账号或已验证手机号和密码登录</text>
+      <picker :disabled="accLoading || wxLoading" :range="identifierOptions" range-key="label" @change="onIdentifierTypeChange"><view class="tenant-box"><view class="tenant-box__copy"><text class="tenant-box__title">{{ account.identifierType === 'PHONE' ? '已验证手机号' : (isTeacher ? '工号 / 统一账号' : '学号 / 统一账号') }}</text><text class="tenant-box__hint">手机号必须先在本人账号安全中验证</text></view><text>切换</text></view></picker>
+      <input :disabled="accLoading || wxLoading" v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
+      <input :disabled="accLoading || wxLoading" v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
       <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
       <view class="newcomer-entry" @click="openOrientationActivation">
         <view class="newcomer-entry__content"><text class="newcomer-entry__badge">新生首次使用</text><text class="newcomer-entry__title">录取身份核验并激活账号</text></view>
@@ -37,7 +38,7 @@
       <view class="tenant-box" @click="tenantOpen = !tenantOpen">
         <view class="tenant-box__copy"><text class="tenant-box__title">学校编码</text><text class="tenant-box__hint">仅多校同账号时填写</text></view><text>{{ tenantOpen ? '收起' : '填写' }}</text>
       </view>
-      <input v-if="tenantOpen" v-model="account.tenantCode" class="field field--tenant" placeholder="请输入学校编码" placeholder-class="field__placeholder" />
+      <input :disabled="accLoading || wxLoading" v-if="tenantOpen" v-model="account.tenantCode" class="field field--tenant" placeholder="请输入学校编码" placeholder-class="field__placeholder" />
 
       <button class="account-button" :class="{ 'account-button--teacher': isTeacher, 'is-disabled': accLoading }" :disabled="accLoading" plain @click="onAccountLogin">{{ accLoading ? '登录中…' : (isTeacher ? '进入教师工作台' : '进入学生首页') }}</button>
       <view class="agreement">
@@ -88,6 +89,7 @@ import { studentApi } from '@/services/studentApi'
 import { clearTokens, commitNewSessionTokens, realRequest } from '@/services/request'
 import { go, relaunch, toast } from '@/utils/nav'
 import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
+import { createIdentityCaptcha } from '../../../../shared/identityCaptcha.mjs'
 
 export default {
   name: 'MiniLoginAuthPanel',
@@ -100,13 +102,13 @@ export default {
       brand: tenantBrandConfig,
       agree: false,
       tenantOpen: !!rememberedTenantCode,
-      account: { tenantCode: rememberedTenantCode, loginName: '', password: '' },
+      account: { tenantCode: rememberedTenantCode, loginName: '', password: '', identifierType: 'ACCOUNT' },
       accLoading: false,
       wxLoading: false,
       binding: false,
       wxToken: '',
       bindForm: { tenantCode: rememberedTenantCode, loginName: '', password: '' },
-      accountCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-account-${Date.now()}-${Math.random()}` },
+      accountCaptcha: { required: false, id: '', code: '', image: '', nonce: '' },
       bindCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-bind-${Date.now()}-${Math.random()}` },
       bindLoading: false,
       bindingApprovalRequired: false,
@@ -122,21 +124,32 @@ export default {
       return this.isTeacher
         ? [{ mark: '审', title: '移动审批', sub: '待办直达' }, { mark: '核', title: '扫码核验', sub: '迎新与现场' }, { mark: '险', title: '风险处置', sub: '提醒与跟进' }]
         : [{ mark: '办', title: '办事务', sub: '申请与补交' }, { mark: '进', title: '看进度', sub: '节点与结果' }, { mark: '信', title: '收消息', sub: '通知直达' }]
-    }
+    },
+    identifierOptions() { return [{ label: this.isTeacher ? '工号 / 统一账号' : '学号 / 统一账号', value: 'ACCOUNT' }, { label: '已验证手机号', value: 'PHONE' }] }
   },
   created() {
+    this.accountCaptchaFlow = createIdentityCaptcha(this.accountCaptcha, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: this.account.tenantCode.trim() || undefined, identifierType: this.account.identifierType, identifier: this.account.loginName.trim(), clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' }), issue: data => realRequest('/auth/captcha', { method: 'POST', auth: false, data }), error: toast })
+    this.loginAlive = true
     if (!this.isTeacher) {
       studentApi.getOrientationBatchStatus().then((data) => {
         if (data?.open) this.orientationBatch = { open: true, batchName: data.batchName || '', daysLeft: data.daysLeft }
       }).catch(() => {})
     }
   },
+  beforeUnmount() { this.loginAlive = false; this.accountCaptchaFlow.dispose(); this.account.password = ''; this.cancelBind() },
+  watch: {
+    'account.loginName': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
+    'account.tenantCode': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
+    'account.identifierType': { handler() { this.accountCaptchaFlow?.invalidate(); this.account.loginName = ''; this.account.password = '' }, flush: 'sync' }
+  },
   methods: {
     loadCaptcha(target) {
+      if (target === 'account') return this.accountCaptchaFlow.load()
       const box = target === 'bind' ? this.bindCaptcha : this.accountCaptcha
       const form = target === 'bind' ? this.bindForm : this.account
       const scene = target === 'bind' ? 'WX_BIND' : 'PASSWORD_LOGIN'
-      return realRequest('/auth/captcha', { method: 'POST', auth: false, data: { scene, tenantCode: form.tenantCode.trim() || undefined, loginName: form.loginName.trim(), clientNonce: box.nonce, clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' } })
+      const identity = target === 'account' ? { identifierType: form.identifierType, identifier: form.loginName.trim() } : { loginName: form.loginName.trim() }
+      return realRequest('/auth/captcha', { method: 'POST', auth: false, data: { scene, tenantCode: form.tenantCode.trim() || undefined, ...identity, clientNonce: box.nonce, clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' } })
         .then((d) => { box.id = d.captchaId; box.image = d.imageDataUrl; box.code = '' })
         .catch((e) => toast(e?.message || '验证码加载失败'))
     },
@@ -176,27 +189,35 @@ export default {
         goHome()
       }
     },
-    onAccountLogin() {
+    async onAccountLogin() {
+      if (this.accLoading || this.wxLoading || this.bindLoading) return
       if (!this.agree) { toast('请先勾选同意用户协议与隐私政策'); return }
       if (!this.account.loginName.trim() || !this.account.password) { toast(`请输入${this.isTeacher ? '工号' : '学号'} / 手机号和密码`); return }
       this.accLoading = true
-      realRequest('/auth/login', {
+      try {
+      await this.accountCaptchaFlow.ensureNonce()
+      if (!this.loginAlive) return
+      if (this.accountCaptcha.required && (!this.accountCaptcha.id || !/^[0-9]{6}$/.test(this.accountCaptcha.code))) { toast('请输入图中 6 位验证码'); return }
+      await realRequest('/auth/login', {
         method: 'POST',
         auth: false,
         data: {
-          loginName: this.account.loginName.trim(),
+          ...(this.account.identifierType === 'PHONE' ? { identifierType: 'PHONE', identifier: this.account.loginName.trim() } : { loginName: this.account.loginName.trim() }),
           password: this.account.password,
           tenantCode: this.account.tenantCode.trim() || undefined,
           clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
           captchaId: this.accountCaptcha.id || undefined, captchaCode: this.accountCaptcha.code || undefined, clientNonce: this.accountCaptcha.nonce
         }
       }).then((data) => {
+        if (!this.loginAlive) return
         saveLastTenantCode(this.account.tenantCode)
         this.completeLogin(data)
       }).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
+      } catch (error) { toast(error?.message || '登录失败，请重新提交') } finally { this.accLoading = false }
     },
+    onIdentifierTypeChange(event) { this.account.identifierType = this.identifierOptions[Number(event.detail.value)]?.value || 'ACCOUNT' },
     wechatLogin() {
-      if (this.wxLoading) return
+      if (this.wxLoading || this.accLoading) return
       if (!this.agree) { toast('请先勾选同意用户协议与隐私政策'); return }
       this.wxLoading = true
       uni.login({
@@ -304,7 +325,7 @@ export default {
       go(`/pages/student/orientation/activate/index${tenantCode ? `?tenantCode=${tenantCode}` : ''}`)
     },
     switchEntry() { relaunch('/pages/login/index') },
-    openPasswordReset() { go(`/pages/login/reset/index?entry=${this.isTeacher ? 'teacher' : 'student'}`) },
+    openPasswordReset() { if (!this.accLoading && !this.wxLoading) go(`/pages/login/reset/index?entry=${this.isTeacher ? 'teacher' : 'student'}&identifierType=${this.account.identifierType}`) },
     // 正文已内置在小程序包内（见 config/legalDocs.js），无需依赖外链和业务域名配置，
     // 因此任何环境下都能打开，不会再出现"未配置链接"的死路。
     openDoc(kind) {

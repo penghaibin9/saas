@@ -68,8 +68,16 @@ def _locked_subject(db, ctx):
     return user, binding
 
 
-def _validate_snapshot(user, binding, ctx, snapshot, nonce):
+def _assert_change_allowed(db, user, binding, purpose):
+    changes_existing = purpose == 'CHANGE_PHONE' or (purpose == 'BIND_PHONE' and binding and
+        (binding.state == 'REVOKED' or binding.verified_at or binding.recovery_frozen))
+    if changes_existing and proofs.requires_independent_phone_verification(db, user, binding):
+        raise _invalid('高权限或风险账号换号需要学校独立身份核验，原账号仍可使用', 'INDEPENDENT_VERIFICATION_REQUIRED', 403)
+
+
+def _validate_snapshot(db, user, binding, ctx, snapshot, nonce):
     _remaining(snapshot)
+    _assert_change_allowed(db, user, binding, snapshot['purpose'])
     if (snapshot['userId'] != user.id or snapshot['tenantId'] != user.tenant_id or
         snapshot['sessionHash'] != _session(ctx) or snapshot['nonceHash'] != proofs._digest('nonce', nonce) or
         snapshot['credentialVersion'] != int(user.credential_version) or
@@ -107,6 +115,7 @@ def reauthenticate(ctx, *, purpose, new_phone, current_password, nonce, expected
             raise _invalid('号码状态已变化，请刷新后确认', 'DATA_CONFLICT', 409)
         if not verify_password(current_password, user.password_hash):
             raise _invalid('当前密码不正确', 'REAUTH_REQUIRED', 401)
+        _assert_change_allowed(db, user, binding, purpose)
         verified = bool(binding and binding.state == 'VERIFIED')
         if (purpose == 'BIND_PHONE' and verified) or (purpose != 'BIND_PHONE' and not verified):
             raise _invalid('号码状态已变化，请刷新后确认', 'DATA_CONFLICT', 409)
@@ -142,7 +151,7 @@ def challenge(ctx, *, operation_id, ticket, nonce):
         raise _invalid()
     with get_sessionmaker()() as db:
         user, binding = _locked_subject(db, ctx)
-        _validate_snapshot(user, binding, ctx, snapshot, nonce)
+        _validate_snapshot(db, user, binding, ctx, snapshot, nonce)
         existing = db.scalar(select(PasswordResetSmsJob).where(PasswordResetSmsJob.request_id == operation_id))
         if existing:
             return {'accepted': True, 'challengeId': operation_id, 'expiresAt': snapshot['expiresAt'], 'retryAfter': 60}
@@ -174,7 +183,7 @@ def verify_challenge(ctx, *, operation_id, challenge_id, code, nonce):
     snapshot = _operation(operation_id)
     with get_sessionmaker()() as db:
         user, binding = _locked_subject(db, ctx)
-        _validate_snapshot(user, binding, ctx, snapshot, nonce)
+        _validate_snapshot(db, user, binding, ctx, snapshot, nonce)
         from app.services.control_plane_auth_service import rate_limit
         if not rate_limit(f"phone-verify:{user.tenant_id}:{user.id}", 10, 900):
             raise _invalid('验证尝试过于频繁，请稍后重试', 'RATE_LIMITED', 429)
@@ -221,7 +230,7 @@ def confirm(ctx, *, operation_id, grant, nonce, expected_version, idempotency_ke
             if receipt.fingerprint != fingerprint:
                 raise _invalid('操作内容已变化，请查询原办理结果', 'DATA_CONFLICT', 409)
             return dict(receipt.result_json)
-        _validate_snapshot(user, binding, ctx, snapshot, nonce)
+        _validate_snapshot(db, user, binding, ctx, snapshot, nonce)
         if expected_version != snapshot['bindingVersion']:
             raise _invalid('号码状态已变化，请刷新后确认', 'DATA_CONFLICT', 409)
         proof_digest = proofs._digest('phone-consumed-proof', grant)
@@ -295,6 +304,13 @@ def delivery_is_current(db, job):
         User.is_deleted.is_(False), User.status == 'ACTIVE'))
     binding = db.scalar(select(PhoneLoginBinding).where(PhoneLoginBinding.user_id == job.user_id,
         PhoneLoginBinding.tenant_id == job.tenant_id))
+    if not user:
+        return False
+    try:
+        _assert_change_allowed(db, user, binding, snapshot['purpose'])
+        auth_service_db._ensure_tenant_login_allowed(db, user)
+    except AppException:
+        return False
     return bool(user and int(user.credential_version) == snapshot['credentialVersion'] and
         (int(binding.version) if binding else 0) == snapshot['bindingVersion'] and
         phone_lookup(job.tenant_id, decrypt_field(job.phone_encrypted, allow_legacy_plaintext=False)) == snapshot['phoneLookup'])

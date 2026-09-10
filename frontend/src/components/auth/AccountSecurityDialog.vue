@@ -14,8 +14,8 @@
         <span class="security-shield" aria-hidden="true">盾</span>
         <div>
           <p class="security-eyebrow">ACCOUNT SECURITY</p>
-          <h2 id="account-security-title">修改登录密码</h2>
-          <p>验证当前密码后设置新密码。完成后需使用新密码重新登录。</p>
+          <h2 id="account-security-title">账号与安全</h2>
+          <p>办理本人手机号或修改登录密码。安全变更完成后需要重新登录。</p>
         </div>
       </div>
 
@@ -27,7 +27,9 @@
         </span>
       </div>
 
+      <PhoneBindingPanel :context-key="[user.userId, user.tenantId, user.activeContextId, user.roleCode].join('|')" @changed="emit('changed')" />
       <form novalidate @submit.prevent="submit">
+        <h3>修改登录密码</h3>
         <label for="account-current-password">当前密码</label>
         <div class="security-password-field">
           <input
@@ -97,6 +99,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { request } from '@/services/http/client'
+import PhoneBindingPanel from './PhoneBindingPanel.vue'
 
 defineProps({
   user: { type: Object, default: () => ({}) },

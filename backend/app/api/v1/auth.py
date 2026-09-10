@@ -148,6 +148,18 @@ class PasswordResetConfirmRequest(BaseModel):
     confirmPassword: str = Field(..., min_length=8, max_length=128)
 
 
+class PasswordResetStatusRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    resetToken: str = Field(..., min_length=20, max_length=200)
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post('/password-reset/operation-status', summary='只读查询本次重置结果，不重放密码变更')
+def password_reset_operation_status(body: PasswordResetStatusRequest):
+    from app.services import password_reset_service
+    return success(password_reset_service.reset_operation_status(body.resetToken, body.clientNonce))
+
+
 @router.post("/password-reset/request", summary="学生/教师短信找回密码：发送验证码（统一响应，避免账号枚举）")
 def request_password_reset(body: PasswordResetRequest, background_tasks: BackgroundTasks):
     identifier_type, identifier = body.login_identifier()

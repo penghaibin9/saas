@@ -89,3 +89,16 @@ def test_contact_and_high_privilege_do_not_gain_sms_recovery(reset_flow):
         db.add(UserRole(tenant_id=reset_flow['tenant_id'], user_id=reset_flow['user_id'], role_id=role.id))
         db.commit()
     assert svc._find_reset_account(reset_flow['login'], reset_flow['tenant'], 'TEACHER_PC') is None
+
+
+def test_reset_receipt_is_readonly_and_bound_to_original_nonce(reset_flow):
+    from app.services import password_reset_service as svc
+    from app.core.exceptions import AppException
+    token = reset_token(reset_flow)
+    with pytest.raises(AppException):
+        svc.reset_operation_status(token, 'wrong-browser-nonce')
+    assert svc.reset_operation_status(token, reset_flow['nonce'])['runtimeMaterialized'] is False
+    result = svc.confirm_reset(token, 'Another-Password2!')
+    receipt = svc.reset_operation_status(token, reset_flow['nonce'])
+    assert receipt['runtimeMaterialized'] and receipt['credentialVersion'] == result['credentialVersion']
+    assert 'userId' not in receipt and 'phone' not in receipt

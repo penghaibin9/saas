@@ -171,22 +171,20 @@ def _reset_user_types(client_type: str) -> tuple[str, ...]:
     return ('STUDENT',) if client_type in {'PC', 'STUDENT_PC', 'STUDENT_MINI'} else ()
 
 
-def _recovery_allowed(db, user, binding):
-    from app.services.phone_login_service import phone_policy_enabled
+def requires_independent_phone_verification(db, user, binding):
+    """All current roles and known recovery risk; never just the selected low role."""
     from app.services import auth_service_db, control_plane_auth_service as auth
     from app.core.permissions import get_effective_permission_patterns
-    if not binding or binding.is_deleted or binding.state != 'VERIFIED' or binding.recovery_frozen:
-        return False
-    if not phone_policy_enabled(db, user.tenant_id, 'SEC_PHONE_RECOVERY_ENABLED') or user.must_change_password:
-        return False
+    if binding and binding.recovery_frozen:
+        return True
     auth_service_db._ensure_tenant_login_allowed(db, user)
     contexts = auth_service_db._role_contexts(db, user)
     if not contexts or user.user_type in {'ADMIN', 'SCHOOL_ADMIN'}:
-        return False
+        return True
     for context in contexts:
         code = context['roleCode']
         if any(word in code for word in ('ADMIN', 'SECURITY', 'OPERATOR', 'PLATFORM')):
-            return False
+            return True
         from app.core.context import get_tenant, set_tenant
         previous_tenant = get_tenant()
         try:
@@ -198,8 +196,17 @@ def _recovery_allowed(db, user, binding):
             set_tenant(previous_tenant)
         if any(p == '*' or p.startswith(('system.', 'systemAdmin.', 'platform.', 'security.'))
                and not p.endswith(('.view', '.list')) for p in patterns):
-            return False
-    return not auth._remaining_lock(auth._subject_risk_key(None, user.login_name, user), tenant_id=user.tenant_id, plane=auth.TENANT)
+            return True
+    return bool(auth._remaining_lock(auth._subject_risk_key(None, user.login_name, user), tenant_id=user.tenant_id, plane=auth.TENANT))
+
+
+def _recovery_allowed(db, user, binding):
+    from app.services.phone_login_service import phone_policy_enabled
+    if not binding or binding.is_deleted or binding.state != 'VERIFIED' or binding.recovery_frozen:
+        return False
+    if not phone_policy_enabled(db, user.tenant_id, 'SEC_PHONE_RECOVERY_ENABLED') or user.must_change_password:
+        return False
+    return not requires_independent_phone_verification(db, user, binding)
 
 
 def _reset_invalid():
@@ -641,6 +648,24 @@ def confirm_reset(reset_token: str, new_password: str) -> dict[str, Any]:
         raise
     finally:
         db.close()
+
+
+def reset_operation_status(reset_token: str, client_nonce: str) -> dict[str, Any]:
+    """Read only the original proof's receipt; never consumes or reapplies a reset."""
+    if not _allow(f'reset-status-ip:{_ip_hash()}', 60, 5 * 60):
+        raise AppException('RATE_LIMITED', '查询过于频繁，请稍后重试', http_status=429)
+    token_id = _digest('token', reset_token)
+    payload = _read('token', token_id)
+    if not payload or not hmac.compare_digest(payload['nonceHash'], _digest('nonce', client_nonce)):
+        raise _reset_invalid()
+    from app.models import IdempotencyRecord
+    with get_sessionmaker()() as db:
+        receipt = db.scalar(select(IdempotencyRecord).where(
+            IdempotencyRecord.tenant_id == payload['tenantId'], IdempotencyRecord.user_id == str(payload['userId']),
+            IdempotencyRecord.operation == 'PASSWORD_RESET', IdempotencyRecord.key_hash == token_id))
+        if receipt:
+            return dict(receipt.result_json)
+    return {'runtimeMaterialized': False, 'state': 'PENDING'}
 
 
 def reset_for_tests() -> None:

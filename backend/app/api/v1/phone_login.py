@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, m
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.core.field_crypto import mask_phone_encrypted
 from app.core.response import success
 from app.core.security import get_current_user, verify_password
 from app.db.session import get_sessionmaker
@@ -136,9 +135,9 @@ def get_phone_binding(user=Depends(get_current_user)):
     user_id, tenant_id = _subject(user)
     db = get_sessionmaker()()
     try:
-        from app.services.phone_binding_service import _locked_subject
+        from app.services.phone_binding_service import _locked_subject, _masked
         from app.services.notification.sms_service import phone_verification_ready
-        _locked_subject(db, user)
+        subject, _ = _locked_subject(db, user)
         ready = phone_verification_ready()
         binding = db.scalars(select(PhoneLoginBinding).where(
             PhoneLoginBinding.tenant_id == tenant_id, PhoneLoginBinding.user_id == user_id,
@@ -148,18 +147,21 @@ def get_phone_binding(user=Depends(get_current_user)):
             PhoneLoginCandidate.tenant_id == tenant_id, PhoneLoginCandidate.user_id == user_id,
             PhoneLoginCandidate.is_deleted.is_(False),
         )).first()
+        from app.services.password_reset_service import requires_independent_phone_verification
+        independent = bool(binding and (binding.state in {'VERIFIED', 'REVOKED'} or binding.recovery_frozen)
+            and requires_independent_phone_verification(db, subject, binding))
         return success({
             "state": binding.state if binding else "UNBOUND",
             "bindingVersion": int(binding.version or 0) if binding else 0,
-            "phoneMasked": mask_phone_encrypted(binding.phone_ciphertext) if binding and binding.state == "VERIFIED" else "",
+            "phoneMasked": _masked(binding.phone_ciphertext) if binding and binding.state == "VERIFIED" else "",
             "candidateState": candidate.state if candidate else "NONE",
             "candidateVersion": int(candidate.version or 0) if candidate else 0,
-            "candidatePhoneMasked": mask_phone_encrypted(candidate.candidate_phone_ciphertext) if candidate else "",
+            "candidatePhoneMasked": _masked(candidate.candidate_phone_ciphertext) if candidate else "",
             "allowedActions": {"registerCandidate": True,
-                "verify": ready and not (binding and binding.state == 'VERIFIED'),
-                "change": ready and bool(binding and binding.state == 'VERIFIED'),
+                "verify": ready and not independent and not (binding and binding.state == 'VERIFIED'),
+                "change": ready and not independent and bool(binding and binding.state == 'VERIFIED'),
                 "revoke": bool(binding and binding.state == 'VERIFIED')},
-            "verificationBlocked": "" if ready else "手机验证暂不可用，您仍可使用原账号登录",
+            "verificationBlocked": "高权限或风险账号换号需要学校独立身份核验，原账号仍可使用" if independent else "" if ready else "手机验证暂不可用，您仍可使用原账号登录",
         })
     finally:
         db.close()

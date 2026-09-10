@@ -370,6 +370,8 @@ export function getToken() {
   return state.token
 }
 
+export function currentSessionGeneration() { return state.sessionGeneration }
+
 export function currentUserFromToken() {
   const t = state.token
   if (!t || t.split('.').length !== 3) return null
@@ -475,7 +477,7 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
     // larger budget scoped to interactive login so normal API failures stay fast.
     timeoutMs: 15000,
     headers: browserSessionHeaders(),
-    body: { loginName, password, tenantCode: tenantCode || undefined,
+    body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
       captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
   })
@@ -485,13 +487,14 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 
 export async function request(path, options = {}) {
   assertNoRoleSwitchTransition()
-  await ensureToken()
+  if (options.auth !== false) await ensureToken()
   assertNoRoleSwitchTransition()
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   try {
     return await rawRequest(path, options)
   } catch (e) {
+    if (options.noAuthRetry) throw e
     if (e.biz && e.code === 401001) {
       if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       // 同一逻辑会话内，别的请求可能已经完成 refresh；允许使用同身份的新 accessToken 重试。
