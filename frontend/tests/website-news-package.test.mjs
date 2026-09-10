@@ -11,6 +11,11 @@ test('news page is a genuine platform route using a root-plane capability',()=>{
  const routes=read('src/modules/platform/platform.routes.js'),catalog=read('src/modules/platform/platformManagementCatalog.js')
  assert.match(routes,/PlatformWebsiteNewsView/);assert.match(routes,/platform\.websiteNews\.manage/);assert.match(catalog,/官网内容运营/);assert.match(catalog,/新闻资源包发布/)
 })
+
+test('local development forwards public news pages instead of treating them as protected app routes',()=>{
+ const vite=read('vite.config.js')
+ assert.match(vite,/['"]\/news['"]:\s*\{[\s\S]*?target:\s*process\.env\.VITE_PROXY_TARGET/)
+})
 test('upload and confirmation replace individual composition and daily quotas',()=>{
  const s=read('src/modules/platform/views/control/PlatformWebsiteNewsView.vue')
  for(const m of ['上传新闻资源包','确认并自动发布','reviewDigest','expectedVersion','excludedIds','confirmed:true','暂停未发布队列','导出台账 XLSX'])assert.ok(s.includes(m),m)
