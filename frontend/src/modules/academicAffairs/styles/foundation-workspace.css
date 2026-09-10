@@ -1,0 +1,25 @@
+/* Academic foundation page bodies reuse the public workspace's semantic tokens. */
+.aa-foundation-workspace {
+  --text-900: var(--text-primary);
+  --text-700: var(--text-secondary);
+  --text-600: var(--text-secondary);
+  --text-500: var(--text-secondary);
+  --text-400: var(--text-tertiary);
+  --bg-white: var(--bg-card);
+  --bg-subtle: var(--bg-page);
+  --fill-50: var(--bg-page);
+  --border-100: var(--border-base);
+  --border-200: var(--border-base);
+  --border-300: var(--border-base);
+  min-width: 0;
+}
+.aa-foundation-workspace :deep(.mps__head) { padding-bottom: 10px; border-bottom: 1px solid var(--border-base); }
+.aa-foundation-workspace :deep(.mps__title) { font-size: 20px; line-height: 1.35; }
+.aa-foundation-workspace :deep(.mps__subtitle) { line-height: 1.6; color: var(--text-secondary); }
+.aa-foundation-workspace :is(button, input, select, [tabindex]):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.aa-foundation-workspace .mp-note { font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+.aa-foundation-workspace .aa-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); }
+.aa-foundation-workspace .aa-filter__item { white-space: nowrap; min-width: 0; gap: 12px; }
+.aa-foundation-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.aa-foundation-section-heading h2 { margin: 0; font-size: 16px; color: var(--text-primary); }
+.aa-foundation-section-heading > span { font-size: 12px; color: var(--text-tertiary); }
