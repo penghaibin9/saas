@@ -317,7 +317,7 @@ export async function request(path, {
 } = {}) {
   if (auth && !_retried && path === '/auth/me' && !getToken()) {
     await refreshOnce()
-    return request(path, { method, body, auth, params, query, _retried: true })
+    return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
   }
 
   cleanupStaleGraduationTemps()
@@ -346,11 +346,11 @@ export async function request(path, {
     if (noAuthRetry) throw authError((payload && payload.message) || undefined, payload, res.status)
     if (auth && !_retried && !path.startsWith('/auth/')) {
       if (accessToken && accessToken !== token) {
-        return request(path, { method, body, auth, params, query, _retried: true })
+        return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
       }
       await refreshOnce()
       if (sessionGeneration !== generationAtStart) throw staleSessionError()
-      return request(path, { method, body, auth, params, query, _retried: true })
+      return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
     }
     if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined, payload, res.status)

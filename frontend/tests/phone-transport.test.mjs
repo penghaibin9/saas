@@ -33,6 +33,30 @@ test('student sensitive request retains original idempotency key and does not cl
   assert.equal(sent.headers['Idempotency-Key'], 'frozen-key'); assert.equal(invalidated, 0)
 })
 
+test('student retry after a concurrent refresh preserves caller headers and retry policy', async () => {
+  const source = readFileSync(new URL('../../student-portal/src/services/request.js', import.meta.url), 'utf8')
+  const code = source.slice(source.indexOf('export async function request('), source.indexOf('export async function uploadFile(')).replace('export ', '')
+  const sent = []
+  let token = 'old'
+  const env = { sessionGeneration: 1, get accessToken() { return token }, getToken: () => token,
+    cleanupStaleGraduationTemps() {}, addInternshipBatchHeader() {}, addBrowserSessionHeader() {},
+    withQuery: path => path, browserAuthPath: path => path, browserAuthBody: (path, body) => body,
+    API_BASE: '', API_PREFIX: '', responseJson: async res => res.json(),
+    isUnauthorized: (res) => res.status === 401, staleSessionError: () => Error('changed'),
+    _invalidateIfCurrent() {}, authError: text => Error(text), refreshOnce: async () => {},
+    fetch: async (url, options) => {
+      sent.push(options)
+      if (sent.length === 1) { token = 'new'; return { status: 401, json: async () => ({ code: 401001 }) } }
+      return { status: 200, json: async () => ({ code: 0, data: { ok: true } }) }
+    } }
+  const request = new Function(...Object.keys(env), code + '; return request')(...Object.values(env))
+  const result = await request('/business/write', { method: 'POST', body: { value: 1 },
+    headers: { 'Idempotency-Key': 'business-key' }, noAuthRetry: false })
+  assert.equal(result.ok, true)
+  assert.equal(sent.length, 2)
+  assert.equal(sent[1].headers['Idempotency-Key'], 'business-key')
+})
+
 test('mini original uni transport sends the same idempotency header without a second request', async () => {
   const source = readFileSync(new URL('../../miniapp/src/services/request.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '').replace(/export default[\s\S]*$/, '').replace(/^export /gm, '')
