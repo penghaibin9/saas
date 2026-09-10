@@ -6,7 +6,7 @@ from pathlib import PurePath
 from typing import Literal
 from fastapi import APIRouter, Depends, File, UploadFile, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
-from sqlalchemy import select, func, exists, and_
+from sqlalchemy import select, func, exists, and_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.responses import Response, HTMLResponse
 from app.core.exceptions import AppException
@@ -205,11 +205,23 @@ def feed(db=Depends(news_db)):
 
 @public_pages.get("",response_class=HTMLResponse)
 @public_pages.get("/",response_class=HTMLResponse,include_in_schema=False)
-def news_index(page: int=Query(1,ge=1,le=10000), category: str|None=None, db=Depends(news_db)):
+def news_index(
+    page: int=Query(1,ge=1,le=10000),
+    category: str|None=None,
+    q: str|None=Query(None,max_length=80),
+    db=Depends(news_db),
+):
     query=published(db,category)
+    search=(q or "").strip()
+    if search:
+        query=query.where(or_(
+            NewsArticle.title.contains(search,autoescape=True),
+            NewsArticle.summary.contains(search,autoescape=True),
+            NewsArticle.body.contains(search,autoescape=True),
+        ))
     rows=list(db.scalars(query.order_by(NewsArticle.published_at.desc(),NewsArticle.id.desc()).offset((page-1)*12).limit(12)))
     total=db.scalar(select(func.count()).select_from(query.subquery()))
-    return HTMLResponse(render.list_html(rows,page,total,category),headers={"Cache-Control":"no-cache","X-Content-Type-Options":"nosniff"})
+    return HTMLResponse(render.list_html(rows,page,total,category,search),headers={"Cache-Control":"no-cache","X-Content-Type-Options":"nosniff"})
 
 @public_pages.get("/{slug}",response_class=HTMLResponse)
 def news_detail(slug: str, db=Depends(news_db)):

@@ -1,4 +1,6 @@
 import io, json, stat, unittest, zipfile
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image
 from app.services.website_news import package as p, render
@@ -62,6 +64,15 @@ class PackageRules(unittest.TestCase):
         html=render.page('x','x','ok',structured={'x':'</script><script>bad()</script>'});self.assertEqual(html.count('</script>'),1);self.assertIn('\\u003c',html)
     def test_public_origin_not_request_host(self):
         with patch.dict('os.environ',{'WEBSITE_NEWS_ORIGIN':'https://hnyueke.com'}):self.assertIn('https://hnyueke.com/news',render.page('test','desc','test'))
+    def test_newsroom_layout_uses_published_article_content(self):
+        article=SimpleNamespace(
+            cover_id='a'*64,slug='teacher-growth',title='<教师发展>',summary='来自正式内容发布系统的摘要',
+            category='hr',published_at=datetime(2026,9,10,2,0,0),
+        )
+        page=render.list_html([article],1,1,query='<教师>')
+        self.assertIn('今日关注',page);self.assertIn('专题中心',page);self.assertIn('name="q"',page)
+        self.assertIn('来自正式内容发布系统的摘要',page);self.assertNotIn('<教师发展>',page);self.assertIn('&lt;教师发展&gt;',page)
+        self.assertIn('%3C%E6%95%99%E5%B8%88%3E',page)
     def test_status_source_and_ai_flags_strict(self):
         for field,value in [('ai_assisted','false'),('content_kind','scraped-fulltext'),('sources',[{'title':'x','url':None}])]:
             with self.subTest(field=field):self.assertEqual(p.parse_package(make_bundle(override=lambda a,e,i:a.update({field:value})))['articles'][0]['state'],'INVALID')
