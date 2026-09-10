@@ -78,7 +78,7 @@ def _assert_change_allowed(db, user, binding, purpose):
 def _validate_snapshot(db, user, binding, ctx, snapshot, nonce):
     _remaining(snapshot)
     _assert_change_allowed(db, user, binding, snapshot['purpose'])
-    if (snapshot['userId'] != user.id or snapshot['tenantId'] != user.tenant_id or
+    if (int(snapshot['userId']) != user.id or int(snapshot['tenantId']) != user.tenant_id or
         snapshot['sessionHash'] != _session(ctx) or snapshot['nonceHash'] != proofs._digest('nonce', nonce) or
         snapshot['credentialVersion'] != int(user.credential_version) or
         snapshot['bindingVersion'] != (int(binding.version) if binding else 0)):
@@ -129,8 +129,8 @@ def reauthenticate(ctx, *, purpose, new_phone, current_password, nonce, expected
                 raise _invalid('此号码当前不能用于本次绑定，请核对号码', 'PHONE_NOT_AVAILABLE', 409)
         operation_id = 'po_' + secrets.token_urlsafe(32)
         ticket, receipt = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        snapshot = {'operationId': operation_id, 'purpose': purpose, 'userId': int(user.id),
-            'tenantId': int(user.tenant_id), 'credentialVersion': int(user.credential_version),
+        snapshot = {'operationId': operation_id, 'purpose': purpose, 'userId': str(user.id),
+            'tenantId': str(user.tenant_id), 'credentialVersion': int(user.credential_version),
             'bindingVersion': version, 'sessionHash': _session(ctx), 'nonceHash': proofs._digest('nonce', nonce),
             'phoneEncrypted': encrypt_field(normalized) if normalized else None, 'phoneLookup': lookup,
             'ticketHash': proofs._digest('phone-ticket', ticket), 'expiresAt': int(time.time()) + 300}
@@ -198,7 +198,7 @@ def verify_challenge(ctx, *, operation_id, challenge_id, code, nonce):
 
 
 def _receipt_query(db, snapshot):
-    return db.scalar(select(IdempotencyRecord).where(IdempotencyRecord.tenant_id == snapshot['tenantId'],
+    return db.scalar(select(IdempotencyRecord).where(IdempotencyRecord.tenant_id == int(snapshot['tenantId']),
         IdempotencyRecord.user_id == str(snapshot['userId']), IdempotencyRecord.operation == 'PHONE_OPERATION',
         IdempotencyRecord.key_hash == proofs._digest('phone-operation', snapshot['operationId'])).with_for_update())
 
@@ -298,7 +298,8 @@ def delivery_is_current(db, job):
     snapshot = proofs._read('phone-operation', job.challenge_ref or '', require_shared=True)
     if not snapshot or snapshot.get('expiresAt', 0) <= time.time() or snapshot['purpose'] != job.purpose:
         return False
-    if snapshot['tenantId'] != job.tenant_id or snapshot['userId'] != job.user_id or job.request_id != job.challenge_ref:
+    if (int(snapshot['tenantId']) != job.tenant_id or int(snapshot['userId']) != job.user_id
+            or job.request_id != job.challenge_ref):
         return False
     user = db.scalar(select(User).where(User.id == job.user_id, User.tenant_id == job.tenant_id,
         User.is_deleted.is_(False), User.status == 'ACTIVE'))

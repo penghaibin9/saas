@@ -217,10 +217,11 @@ def _snapshot_user(db, payload):
     from app.models import User, PhoneLoginBinding
     if payload.get('purpose') != 'RESET_PASSWORD' or payload.get('expiresAt', 0) <= time.time():
         raise _reset_invalid()
-    user = db.scalar(select(User).where(User.id == payload['userId'], User.tenant_id == payload['tenantId'],
+    user_id, tenant_id = int(payload['userId']), int(payload['tenantId'])
+    user = db.scalar(select(User).where(User.id == user_id, User.tenant_id == tenant_id,
         User.is_deleted.is_(False), User.status == 'ACTIVE').with_for_update())
-    binding = db.scalar(select(PhoneLoginBinding).where(PhoneLoginBinding.user_id == payload['userId'],
-        PhoneLoginBinding.tenant_id == payload['tenantId']).with_for_update())
+    binding = db.scalar(select(PhoneLoginBinding).where(PhoneLoginBinding.user_id == user_id,
+        PhoneLoginBinding.tenant_id == tenant_id).with_for_update())
     if not user or user.user_type != payload['userType'] or not _recovery_allowed(db, user, binding):
         raise _reset_invalid()
     if (int(user.credential_version) != payload['credentialVersion'] or int(binding.version) != payload['bindingVersion']
@@ -351,8 +352,10 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
         'credentialVersion': candidate['credentialVersion'], 'bindingVersion': candidate['bindingVersion'],
         'phoneLookup': candidate['phoneLookup'],
         "codeHash": _digest("code", f"{request_id}\n{code}"),
-        "userId": candidate["userId"],
-        "tenantId": candidate["tenantId"],
+        # Redis verifies challenges in Lua. Keep BIGINT identities as decimal
+        # strings so cjson cannot round values above JavaScript's safe integer.
+        "userId": str(candidate["userId"]),
+        "tenantId": str(candidate["tenantId"]),
         "userType": candidate["userType"],
         "nonceHash": _digest("nonce", nonce),
         "clientType": client,
@@ -610,7 +613,8 @@ def confirm_reset(reset_token: str, new_password: str) -> dict[str, Any]:
     db = get_sessionmaker()()
     try:
         # Lock original subject first; the same unique durable record arbitrates all retries.
-        user = db.scalar(select(User).where(User.id == payload['userId'], User.tenant_id == payload['tenantId']).with_for_update())
+        user = db.scalar(select(User).where(User.id == int(payload['userId']),
+            User.tenant_id == int(payload['tenantId'])).with_for_update())
         if not user or payload.get('expiresAt', 0) <= time.time():
             raise _reset_invalid()
         fingerprint = _digest('reset-password-request', new_password)
@@ -663,7 +667,7 @@ def reset_operation_status(reset_token: str, client_nonce: str) -> dict[str, Any
     from app.models import IdempotencyRecord
     with get_sessionmaker()() as db:
         receipt = db.scalar(select(IdempotencyRecord).where(
-            IdempotencyRecord.tenant_id == payload['tenantId'], IdempotencyRecord.user_id == str(payload['userId']),
+            IdempotencyRecord.tenant_id == int(payload['tenantId']), IdempotencyRecord.user_id == str(payload['userId']),
             IdempotencyRecord.operation == 'PASSWORD_RESET', IdempotencyRecord.key_hash == token_id))
         if receipt:
             return dict(receipt.result_json)

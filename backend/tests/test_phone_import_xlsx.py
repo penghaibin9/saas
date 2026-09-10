@@ -390,9 +390,9 @@ def test_real_clamav_fileobject_worker_staging_and_identity_writer_chain(
         # do not edit its status or scan conclusion.
         with get_sessionmaker()() as db:
             scan_job = db.scalar(select(FileJob).where(FileJob.file_id == int(file_id)))
-            scan_job.available_at = datetime(2000, 1, 1)
+            scan_job.available_at = datetime(1900, 1, 1)
             import_job = db.get(ImportJob, int(job_id))
-            import_job.created_at = datetime(2000, 1, 1)
+            import_job.created_at = datetime(1900, 1, 1)
             db.commit()
 
         scan = None

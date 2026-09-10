@@ -25,13 +25,22 @@ def reset_flow(flow):
 def reset_token(flow):
     from app.services import password_reset_service as svc
     from app.db.session import get_sessionmaker
-    from app.models import PasswordResetSmsJob
+    from app.models import PasswordResetSmsJob, PhoneLoginBinding, User
     from app.core.field_crypto import decrypt_field
     result, delivery = svc.begin_reset(flow['login'], flow['tenant'], flow['nonce'], 'TEACHER_PC')
     assert delivery
     with get_sessionmaker()() as db:
         job = db.scalar(select(PasswordResetSmsJob).where(PasswordResetSmsJob.request_id == result['requestId']))
         code = decrypt_field(job.code_encrypted, allow_legacy_plaintext=False)
+        payload = svc._read('code', result['requestId'])
+        user = db.get(User, flow['user_id'])
+        binding = db.scalar(select(PhoneLoginBinding).where(PhoneLoginBinding.user_id == flow['user_id']))
+        assert svc._recovery_allowed(db, user, binding)
+        assert payload['userId'] == str(user.id)
+        assert payload['tenantId'] == str(user.tenant_id)
+        assert payload['credentialVersion'] == user.credential_version
+        assert payload['bindingVersion'] == binding.version
+        assert payload['phoneLookup'] == binding.active_phone_lookup
     verified = svc.verify_reset_code(result['requestId'], code, flow['nonce'], 'TEACHER_PC')
     return verified['resetToken']
 
