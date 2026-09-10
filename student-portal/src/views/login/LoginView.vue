@@ -49,7 +49,7 @@
         </form>
         <p class="help-text">首次登录、学号更正或账号无法关联本人档案，请联系辅导员或学校管理员。</p>
       </div>
-      <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
+      <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
     </section>
     <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" @close="resetVisible = false" @done="resetDone" />
   </main>
