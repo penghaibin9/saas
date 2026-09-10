@@ -8,6 +8,8 @@ export const resetFlowState = (identity = {}) => ({ step: 1, error: '', note: ''
 
 export function createResetFlow(state, { request, clientType, random = phoneFlowNonce }) {
   let generation = 0, alive = true, nonce = '', requestId = '', token = '', expiry = 0, retryAt = 0
+  const rejectionStatus = error => Number(error?.status || error?.httpStatus || 0)
+  const isDefinitiveRejection = error => [400, 401, 403, 404, 409, 422, 429].includes(rejectionStatus(error))
   const clearProof = () => { nonce = ''; requestId = ''; token = ''; expiry = 0
     state.form.smsCode = ''; state.form.newPassword = ''; state.form.confirmPassword = ''
     Object.assign(state.captcha, { id: '', code: '', image: '', loading: false }) }
@@ -80,8 +82,19 @@ export function createResetFlow(state, { request, clientType, random = phoneFlow
         const body = { resetToken: token, newPassword: state.form.newPassword, confirmPassword: state.form.confirmPassword }
         state.form.newPassword = ''; state.form.confirmPassword = ''; state.step = 4
         state.note = '结果待确认，请只查询原操作，不要重复重置密码。'
-        const data = await call('password-reset/confirm', body)
-        if (current()) complete(data)
+        try {
+          const data = await call('password-reset/confirm', body)
+          if (current()) complete(data)
+        } catch (error) {
+          if (current() && isDefinitiveRejection(error)) {
+            if ([401, 403, 404].includes(rejectionStatus(error))) {
+              clearProof(); state.step = 1; state.note = '本次重置证明已失效，请重新发起找回。'
+            } else {
+              state.step = 3; state.note = '服务端已明确拒绝本次密码，请修改后再提交。'
+            }
+          }
+          throw error
+        }
       })
     },
     checkResult() {

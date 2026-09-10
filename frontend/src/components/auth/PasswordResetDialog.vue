@@ -22,7 +22,7 @@
       <form v-else-if="step === 2" @submit.prevent="verifyCode">
         <label for="teacher-sms-code">短信验证码</label>
         <input id="teacher-sms-code" v-model.trim="form.smsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位数字验证码">
-        <p class="note">若账号存在且已绑定手机号，短信会在几分钟内送达，系统不会展示完整手机号。</p>
+        <p class="note">请求只会投递到本人已验证的登录手机号；是否符合条件不会在此页面公开，也不承诺即时送达。</p>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
         <button class="primary" :disabled="loading" type="submit">{{ loading ? '验证中…' : '验证并继续' }}</button>
         <button class="secondary" :disabled="countdown > 0 || loading" type="button" @click="restart">{{ countdown > 0 ? `${countdown} 秒后可重新发送` : '重新获取验证码' }}</button>

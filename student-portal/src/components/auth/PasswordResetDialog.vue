@@ -24,11 +24,11 @@
       <form v-else-if="step === 2" @submit.prevent="verifyCode">
         <label for="sms-code">短信验证码</label>
         <input id="sms-code" v-model.trim="form.smsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位数字验证码">
-        <p class="safe-note">若账号存在且已绑定手机号，短信会在几分钟内送达。我们不会展示完整手机号。</p>
+        <p class="safe-note">请求只会投递到本人已验证的登录手机号；是否符合条件不会在此页面公开，也不承诺即时送达。</p>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
         <button class="primary" :disabled="loading" type="submit">{{ loading ? '验证中…' : '验证并继续' }}</button>
         <button class="secondary" :disabled="countdown > 0 || loading" type="button" @click="restart">{{ countdown > 0 ? `${countdown} 秒后可重新发送` : '重新获取验证码' }}</button>
-        <details class="fallback"><summary>一直收不到短信？</summary><p>先确认是否使用本人学号、学校档案手机号是否仍在使用。多次尝试仍失败，再联系学校管理员核验并人工重置。</p></details>
+        <details class="fallback"><summary>一直收不到短信？</summary><p>先确认原账号与本人已验证的登录手机号仍可使用。多次尝试仍失败，请联系学校走受控身份核验流程。</p></details>
       </form>
 
       <form v-else-if="step === 3" @submit.prevent="confirmReset">

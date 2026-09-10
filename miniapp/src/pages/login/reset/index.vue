@@ -20,10 +20,10 @@
 
       <view v-else-if="step === 2">
         <input v-model="form.smsCode" class="field code" type="number" maxlength="6" placeholder="6 位短信验证码" />
-        <text class="note">若账号存在且已绑定手机号，短信会在几分钟内送达。</text>
+        <text class="note">请求只会投递到本人已验证的登录手机号；是否符合条件不会在此页面公开，也不承诺即时送达。</text>
         <button class="primary" :disabled="loading" @click="verifyCode">{{ loading ? '验证中…' : '验证并继续' }}</button>
         <button class="secondary" :disabled="countdown > 0 || loading" @click="restart">{{ countdown > 0 ? `${countdown} 秒后可重新发送` : '重新获取验证码' }}</button>
-        <view class="fallback"><text>一直收不到？</text><text>先确认本人{{ isTeacher ? '工号' : '学号' }}和档案手机号；多次尝试仍失败，再联系学校管理员人工核验。</text></view>
+        <view class="fallback"><text>一直收不到？</text><text>先确认本人{{ isTeacher ? '工号' : '学号' }}和已验证登录手机号；多次尝试仍失败，请联系学校走受控身份核验流程。</text></view>
       </view>
 
       <view v-else-if="step === 3">

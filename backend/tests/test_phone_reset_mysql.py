@@ -102,3 +102,26 @@ def test_reset_receipt_is_readonly_and_bound_to_original_nonce(reset_flow):
     receipt = svc.reset_operation_status(token, reset_flow['nonce'])
     assert receipt['runtimeMaterialized'] and receipt['credentialVersion'] == result['credentialVersion']
     assert 'userId' not in receipt and 'phone' not in receipt
+
+
+def test_reset_receipt_http_is_strict_readonly_and_reports_committed_truth(reset_flow):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.services import password_reset_service as svc
+
+    token = reset_token(reset_flow)
+    with TestClient(app) as client:
+        rejected = client.post('/api/v1/auth/password-reset/operation-status', json={
+            'resetToken': token, 'clientNonce': reset_flow['nonce'], 'clientPhoneVerified': True})
+        assert rejected.status_code == 400
+        assert rejected.json()['code'] != 0
+        pending = client.post('/api/v1/auth/password-reset/operation-status', json={
+            'resetToken': token, 'clientNonce': reset_flow['nonce']})
+        assert pending.status_code == 200
+        assert pending.json()['data']['runtimeMaterialized'] is False
+        result = svc.confirm_reset(token, 'Another-Password2!')
+        committed = client.post('/api/v1/auth/password-reset/operation-status', json={
+            'resetToken': token, 'clientNonce': reset_flow['nonce']})
+        assert committed.status_code == 200
+        assert committed.json()['data']['credentialVersion'] == result['credentialVersion']
+        assert committed.json()['data']['runtimeMaterialized'] is True
