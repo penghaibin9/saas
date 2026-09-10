@@ -27,7 +27,7 @@
           <button class="workspace-menu-toggle" :aria-expanded="mobileNav" aria-label="打开业务导航" @click="mobileNav = !mobileNav">目录</button>
           <div ref="tabStrip" class="workspace-tabs" role="tablist" aria-label="已打开页面" @keydown="onTabKeydown">
             <div v-for="item in openPages" :key="item.id" class="workspace-tab" :class="{ selected: item.to === route.fullPath || item.id === currentPage?.id }">
-              <button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)">{{ item.title }}<span v-if="edited && item.id === currentPage?.id" class="workspace-edited" aria-label="本页有编辑操作">●</span></button>
+              <button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.to)">{{ item.title }}<span v-if="hasEdits && item.id === currentPage?.id" class="workspace-edited" aria-label="本页有编辑操作">●</span></button>
               <button v-if="item.id !== 'home'" class="workspace-close" :aria-label="`关闭${item.title}`" @click="closePage(item)">×</button>
             </div>
           </div>
@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import WorkspaceIcon from '../components/workspace/WorkspaceIcon.vue'
 import WorkspaceRail from '../components/workspace/WorkspaceRail.vue'
@@ -101,6 +101,14 @@ const pageById = id => pages.value.find(item => item.id === id)
 const prefs = ref(normalizePreferences(null, pages.value)), search = ref(''), unread = ref(0), focusMode = ref(false), mobileNav = ref(false)
 const themeKey = ref('blue'), themeName = computed(() => WORKSPACE_THEMES.find(item => item.key === themeKey.value)?.label)
 const recentlyClosed = ref(''), transientPage = ref(null), mainElement = ref(null), tabStrip = ref(null), edited = ref(false), loggingOut = ref(false)
+const activeFormCheck = shallowRef(null)
+const hasEdits = computed(() => activeFormCheck.value ? !!activeFormCheck.value.check() : edited.value)
+function registerWorkspaceForm(check, busy = () => false) {
+  const owner = { check, busy }
+  activeFormCheck.value = owner
+  return () => { if (activeFormCheck.value === owner) activeFormCheck.value = null }
+}
+provide('registerWorkspaceForm', registerWorkspaceForm)
 const leaveDialog = ref(null)
 const searchDialog = ref(null), accountDialog = ref(null), appearanceDialog = ref(null), shortcutsDialog = ref(null)
 const shortcutDraft = ref(normalizePreferences(null, pages.value))
@@ -195,15 +203,16 @@ function markEdited(event) {
   if (!field.matches('input,textarea,select') || field.type === 'search' || field.readOnly || field.disabled || field.closest('.search,.filters,.filter-bar,[data-workspace-filter]')) return
   edited.value = true
 }
-function markFormClean() { edited.value = false }
 let leavePromise = null, leaveResolver = null
 function mayLeave() {
-  if (!edited.value) return true
+  if (activeFormCheck.value?.busy()) { ui.notify('正在提交，请稍候再离开。'); return false }
+  if (!hasEdits.value) return true
   if (!leavePromise) { leavePromise = new Promise(resolve => { leaveResolver = resolve }); openDialog(leaveDialog.value) }
   return leavePromise
 }
 function resolveLeave(allowed) { const resolve = leaveResolver; leaveResolver = null; leavePromise = null; leaveDialog.value?.close(); resolve?.(allowed) }
 const removeGuard = router.beforeEach((to, from) => to.fullPath === from.fullPath || !session.isLoggedIn || mayLeave())
+function beforeUnload(event) { if (hasEdits.value) { event.preventDefault(); event.returnValue = '' } }
 function onKeydown(event) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); if (!document.querySelector('dialog[open]')) openDialog(searchDialog.value) } if (event.key === 'Escape') { mobileNav.value = false; if (!document.querySelector('dialog[open]')) focusMode.value = false } }
 async function logout() {
   if (!await mayLeave()) return
@@ -212,12 +221,12 @@ async function logout() {
 }
 let timer, previousTick = Date.now()
 onMounted(async () => {
-  window.addEventListener('keydown', onKeydown); window.addEventListener('student-portal-form-clean', markFormClean)
+  window.addEventListener('keydown', onKeydown); window.addEventListener('beforeunload', beforeUnload)
   timer = window.setInterval(() => { const tick = Date.now(); if (!timerPaused.value) elapsed.value += Math.max(0, Math.floor((tick - previousTick) / 1000)); previousTick = tick; now.value = new Date(tick) }, 1000)
   if (cfg.isModuleEnabled('messages')) {
     const identity = preferenceKey.value
     try { const data = await portalApi.messagesInbox('notice', 1, 1); if (identity === preferenceKey.value) unread.value = Math.max(0, Number(data?.tabs?.find(item => item.key === 'notice')?.badge) || 0) } catch { /* 不用假数据替代未读数 */ }
   }
 })
-onBeforeUnmount(() => { resolveLeave(false); clearInterval(timer); removeGuard(); window.removeEventListener('keydown', onKeydown); window.removeEventListener('student-portal-form-clean', markFormClean) })
+onBeforeUnmount(() => { resolveLeave(false); clearInterval(timer); removeGuard(); window.removeEventListener('keydown', onKeydown); window.removeEventListener('beforeunload', beforeUnload) })
 </script>
