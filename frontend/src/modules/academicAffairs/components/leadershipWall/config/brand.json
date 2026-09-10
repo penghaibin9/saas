@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "title": "教务处教学运行监控中心",
+  "schoolName": "跃科 · 教务中心",
+  "subtitle": "数据联通 · 教学运行 · 质量保障 · 服务师生",
+  "mottoLeft": "立德树人　教学为本",
+  "mottoRight": "厚学笃行　求是创新",
+  "mapMotto": [
+    "以学生发展为中心",
+    "以高质量教学支撑人才培养"
+  ],
+  "footerLeft": "汇聚数据 · 洞察教学 · 服务决策",
+  "footerRight": "规范教学运行　服务师生成长",
+  "logoVisible": false,
+  "primary": "#24d9f3",
+  "blue": "#338fff",
+  "gold": "#efc17a",
+  "danger": "#ff7f75",
+  "panelTitles": {
+    "teaching": "今日课时运行",
+    "grade": "成绩任务状态",
+    "resource": "教室资源使用",
+    "exams": "近期考试安排",
+    "map": "教学楼宇 · 教室使用概览",
+    "progress": "成绩提交进度",
+    "quality": "教学质量与运行",
+    "warning": "学业预警",
+    "trends": "近14天教务业务趋势",
+    "issues": "当前重点事项",
+    "spatial": "楼宇使用参考",
+    "courses": "今日课程预览"
+  },
+  "metricLabels": {},
+  "showStaffNames": false,
+  "timezone": "Asia/Shanghai",
+  "refreshSeconds": 60,
+  "imageFit": "cover"
+}
