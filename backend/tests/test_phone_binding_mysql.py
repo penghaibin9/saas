@@ -159,3 +159,20 @@ def test_phone_worker_dispatches_only_through_original_mock_adapter(flow):
         assert job.status == 'SENT' and job.code_encrypted is None and job.phone_encrypted is None
         task = db.scalar(select(NotificationTask).where(NotificationTask.tenant_id == flow['tenant_id']))
         assert task.payload_json == {'redacted': True, 'keys': ['code']}
+
+
+def test_formal_phone_http_routes_require_subject_and_expose_scoped_receipt_only(flow, client):
+    from app.services import control_plane_auth_service as auth
+    login = auth.login_with_password(flow['login'], 'Local-test-Password1!', flow['tenant'])
+    headers = {'Authorization': 'Bearer ' + login['accessToken']}
+    assert client.get('/api/v1/auth/phone-binding').status_code == 401
+    response = client.get('/api/v1/auth/phone-binding', headers=headers)
+    assert response.status_code == 200 and response.json()['data']['state'] == 'VERIFIED'
+    assert '13800138000' not in response.text
+    invalid = client.post('/api/v1/auth/phone-binding/confirm', headers=headers, json={
+        'operationId': 'po_' + 'a' * 32, 'verificationGrant': 'b' * 32, 'clientNonce': flow['nonce'],
+        'expectedBindingVersion': True, 'phoneVerified': True})
+    assert invalid.status_code >= 400
+    status = client.post('/api/v1/auth/phone-binding/operation-status', json={
+        'receiptToken': 'unknown-' + 'a' * 32, 'clientNonce': flow['nonce']})
+    assert status.status_code >= 400

@@ -29,6 +29,9 @@ from app.services.identity_import_file_service import (
     TEACHER_REQUIRED_HEADERS,
     _row_cells,
     _user_key,
+    phone_payload,
+    protect_identity_payload,
+    open_identity_payload,
 )
 
 MAX_STAGING_ROWS = 20_000
@@ -73,6 +76,7 @@ def _payload_from_cells(kind: str, row_no: int, cells: dict, errors: list[dict])
             "grade": cells["年级"],
             "gender": cells["性别"],
             "idCard": cells["身份证号"],
+            **phone_payload(cells),
         }
     account_no, name = cells["工号"], cells["姓名"]
     if not account_no:
@@ -93,6 +97,7 @@ def _payload_from_cells(kind: str, row_no: int, cells: dict, errors: list[dict])
         "roleCodes": cells["预设角色编码"],
         "scopeType": cells["数据范围类型"],
         "scopeRef": cells["数据范围引用"],
+        **phone_payload(cells),
     }
 
 
@@ -132,7 +137,7 @@ class StagingRowSequence:
                 if not rows:
                     break
                 for row in rows:
-                    yield dict(row.payload_json or {})
+                    yield open_identity_payload(row.payload_json or {})
                 last_row = int(rows[-1].row_no)
                 db.expunge_all()
         finally:
@@ -195,6 +200,7 @@ def stage_identity_xlsx(
                     f"单个身份导入任务最多 {MAX_STAGING_ROWS} 行；请拆分后重试",
                 )
             natural_key, payload = _payload_from_cells(kind_up, row_no, cells, row_errors)
+            payload = protect_identity_payload(payload)
             parser_errors.extend(row_errors)
             pending.append(IdentityImportStagingRow(
                 tenant_id=int(tenant_id),
@@ -417,6 +423,8 @@ def create_staging_batch(
         "errors": errors,
         "roleTemplateVersion": report.get("roleTemplateVersion"),
         "entities": report.get("entities") or {},
+        "phoneSummary": report.get('phoneSummary') or {},
+        "warnings": (report.get('warnings') or [])[:200],
         "stagingDigest": str(staging_digest),
     }
 
@@ -425,7 +433,9 @@ def build_staging_error_workbook(*, tenant_id: int, job_id: int) -> bytes:
     """Stream authoritative ImportRowError rows to xlsx without a 20K raw-row map."""
     wb = Workbook(write_only=True)
     ws = wb.create_sheet("师生账号导入错误")
-    ws.append(["Excel行号", "账号类型", "工号/学号", "姓名", "对象", "错误字段", "错误原因"])
+    from app.core.field_crypto import mask_phone_encrypted
+    from app.services.xlsx_util import safe_excel_value
+    ws.append(["Excel行号", "账号类型", "工号/学号", "姓名", "对象", "错误字段", "错误原因", "本人手机号（脱敏）"])
     db = get_sessionmaker()()
     try:
         last_id = 0
@@ -451,7 +461,7 @@ def build_staging_error_workbook(*, tenant_id: int, job_id: int) -> bytes:
                 payload = dict(row.payload_json or {}) if row else {}
                 entity = str(row.entity_type if row else (item.raw_snapshot_json or {}).get("entity") or "").upper()
                 account_no = payload.get("studentNo") or payload.get("loginName") or ""
-                ws.append([
+                ws.append([safe_excel_value(value) for value in [
                     int(item.row_no or 0) or "全局",
                     entity,
                     account_no,
@@ -459,7 +469,8 @@ def build_staging_error_workbook(*, tenant_id: int, job_id: int) -> bytes:
                     (item.raw_snapshot_json or {}).get("entity") or "",
                     item.field_code or "",
                     item.error_message,
-                ])
+                    mask_phone_encrypted(payload.get('selfPhoneEncrypted')),
+                ]])
             last_id = int(errors[-1].id)
             db.expunge_all()
     finally:

@@ -224,23 +224,32 @@ def _snapshot_user(db, payload):
     return user
 
 
-def _find_reset_account(login_name: str, tenant_code: str | None, client_type: str):
+def _find_reset_account(login_name: str, tenant_code: str | None, client_type: str, identifier_type: str = 'ACCOUNT'):
     from app.models import PhoneLoginBinding, Tenant, User
 
     db = get_sessionmaker()()
     try:
         query = select(User).where(
-            User.login_name == login_name,
             User.user_type.in_(_reset_user_types(client_type)),
             User.status == "ACTIVE",
             User.is_deleted.is_(False),
         )
+        if identifier_type == 'ACCOUNT':
+            query = query.where(User.login_name == login_name)
+        elif identifier_type != 'PHONE' or not tenant_code:
+            return None
         if tenant_code:
             tenant = db.scalars(select(Tenant).where(
                 Tenant.tenant_code == tenant_code,
                 Tenant.status.in_(("ACTIVE", "TRIAL", "active", "trial")),
                 Tenant.is_deleted.is_(False),
             )).first()
+            if tenant and identifier_type == 'PHONE':
+                from app.services.phone_login_service import phone_lookup
+                query = query.join(PhoneLoginBinding, (PhoneLoginBinding.user_id == User.id) &
+                    (PhoneLoginBinding.tenant_id == User.tenant_id)).where(
+                    PhoneLoginBinding.state == 'VERIFIED', PhoneLoginBinding.is_deleted.is_(False),
+                    PhoneLoginBinding.active_phone_lookup == phone_lookup(tenant.id, login_name))
             users = db.scalars(query.where(User.tenant_id == tenant.id).limit(1)).all() if tenant else []
         else:
             users = db.scalars(query.order_by(User.id).limit(2)).all()
@@ -285,7 +294,7 @@ def _uniform_issue_delay(started_at: float, jitter_ms: int) -> None:
 
 
 def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
-                client_type: str = "PC") -> tuple[dict[str, Any], dict[str, Any] | None]:
+                client_type: str = "PC", *, identifier_type: str = 'ACCOUNT') -> tuple[dict[str, Any], dict[str, Any] | None]:
     """创建挑战，返回统一公开响应和仅供后台发送使用的临时投递参数。"""
     if not db_enabled():
         raise AppException("AUTH_STORE_UNAVAILABLE", "密码重置服务暂时不可用", http_status=503)
@@ -300,7 +309,12 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
     tenant_code = str(tenant_code or "").strip() or None
     nonce = str(client_nonce or "").strip()
     client = str(client_type or "PC").strip().upper()
-    subject = _digest("subject", f"{tenant_code or '*'}\n{login_name.lower()}")[:32]
+    if identifier_type == 'PHONE':
+        from app.services.phone_login_service import require_phone_identifier
+        login_name = require_phone_identifier(tenant_code, login_name)
+    elif identifier_type != 'ACCOUNT':
+        raise _reset_invalid()
+    subject = _digest("subject", f"{tenant_code or '*'}\n{identifier_type}\n{login_name.lower()}")[:32]
     resend_window = max(30, int(settings.PASSWORD_RESET_RESEND_SECONDS or 60))
     if (not _allow(f"cooldown:{subject}", 1, resend_window)
             or not _allow(f"issue-account:{subject}", 3, 15 * 60)
@@ -315,7 +329,7 @@ def begin_reset(login_name: str, tenant_code: str | None, client_nonce: str,
         "expiresIn": code_ttl,
         "retryAfter": resend_window,
     }
-    candidate = _find_reset_account(login_name, tenant_code, client)
+    candidate = _find_reset_account(login_name, tenant_code, client, identifier_type)
     if candidate is None:
         _uniform_issue_delay(started_at, jitter_ms)
         return public, None
@@ -575,14 +589,14 @@ def verify_reset_code(request_id: str, code: str, client_nonce: str,
 def confirm_reset(reset_token: str, new_password: str) -> dict[str, Any]:
     if not _allow(f"confirm-ip:{_ip_hash()}", 30, 5 * 60):
         raise AppException("RATE_LIMITED", "重置尝试过于频繁，请稍后重试", http_status=429)
-    from app.services.system_config_service import get_int
-    min_len = get_int("SEC_PASSWORD_MIN_LEN", 8)
-    if len(new_password or "") < min_len:
-        raise AppException("VALIDATION_ERROR", f"新密码长度至少 {min_len} 位")
     token_id = _digest("token", str(reset_token or ""))
     payload = _read("token", token_id)
     if payload is None:
         raise AppException("RESET_TOKEN_INVALID", "重置凭证无效或已过期，请重新验证", http_status=400)
+    from app.services.control_plane_auth_service import resolve_login_policy, TENANT
+    min_len = int(resolve_login_policy(tenant_id=int(payload['tenantId']), principal_plane=TENANT)['passwordMinLength'])
+    if len(new_password or '') < min_len:
+        raise AppException('VALIDATION_ERROR', f'新密码长度至少 {min_len} 位')
     from app.models import IdempotencyRecord, User
     from app.services.auth_service_db import credential_change_receipt
     from app.services.db_service import audit_insert_in_session

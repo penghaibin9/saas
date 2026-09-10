@@ -44,17 +44,12 @@ def mock_login(body: MockLoginRequest):
     return success(result, message="登录成功")
 
 
-class PasswordLoginRequest(BaseModel):
+class IdentityIdentifierRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
     loginName: str | None = Field(None, max_length=100, description="兼容字段：工号/学号/登录名")
     identifierType: Literal["ACCOUNT", "PHONE"] | None = None
     identifier: str | None = Field(None, max_length=100, description="新格式登录标识；PHONE 只查已验证绑定")
-    password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
-    clientType: str = Field("PC", description="PC / PLATFORM_PC / STUDENT_MINI / TEACHER_MINI / MP")
-    captchaId: str | None = Field(None, max_length=100)
-    captchaCode: str | None = Field(None, min_length=4, max_length=12)
-    clientNonce: str | None = Field(None, max_length=128)
 
     @model_validator(mode="after")
     def validate_identifier_fields(self):
@@ -91,6 +86,14 @@ class PasswordLoginRequest(BaseModel):
         return "ACCOUNT", legacy
 
 
+class PasswordLoginRequest(IdentityIdentifierRequest):
+    password: str = Field(..., min_length=1, max_length=128, description="密码（仅 hash 入库，接口不回显）")
+    clientType: str = Field("PC", description="PC / PLATFORM_PC / STUDENT_MINI / TEACHER_MINI / MP")
+    captchaId: str | None = Field(None, max_length=100)
+    captchaCode: str | None = Field(None, min_length=4, max_length=12)
+    clientNonce: str | None = Field(None, max_length=128)
+
+
 class CaptchaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     scene: str = Field(..., min_length=1, max_length=40)
@@ -110,7 +113,7 @@ class CaptchaRequest(BaseModel):
             if not self.identifierType or not (self.identifier or "").strip():
                 raise ValueError("请输入完整登录标识")
             if self.identifierType == "PHONE":
-                if self.scene != "PASSWORD_LOGIN" or not (self.tenantCode or "").strip():
+                if self.scene not in {"PASSWORD_LOGIN", "PASSWORD_RESET"} or not (self.tenantCode or "").strip():
                     raise ValueError("请先选择学校及手机号登录方式")
                 from app.services.phone_login_service import normalize_login_phone
                 self.identifier = normalize_login_phone(self.identifier)
@@ -123,9 +126,7 @@ def captcha(body: CaptchaRequest):
                                              body.clientNonce, body.clientType, identifier_type=body.identifierType or "ACCOUNT"))
 
 
-class PasswordResetRequest(BaseModel):
-    tenantCode: str | None = Field(None, max_length=100)
-    loginName: str = Field(..., min_length=1, max_length=100)
+class PasswordResetRequest(IdentityIdentifierRequest):
     captchaId: str = Field(..., min_length=1, max_length=100)
     captchaCode: str = Field(..., min_length=4, max_length=12)
     clientNonce: str = Field(..., min_length=8, max_length=128)
@@ -133,13 +134,15 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
     requestId: str = Field(..., min_length=10, max_length=100)
-    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
     clientNonce: str = Field(..., min_length=8, max_length=128)
     clientType: str = Field("PC", max_length=40)
 
 
 class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
     resetToken: str = Field(..., min_length=20, max_length=200)
     newPassword: str = Field(..., min_length=8, max_length=128)
     confirmPassword: str = Field(..., min_length=8, max_length=128)
@@ -147,13 +150,14 @@ class PasswordResetConfirmRequest(BaseModel):
 
 @router.post("/password-reset/request", summary="学生/教师短信找回密码：发送验证码（统一响应，避免账号枚举）")
 def request_password_reset(body: PasswordResetRequest, background_tasks: BackgroundTasks):
+    identifier_type, identifier = body.login_identifier()
     captcha_svc.verify_captcha(
         body.captchaId, body.captchaCode, captcha_svc.PASSWORD_RESET,
-        body.tenantCode, body.loginName, body.clientNonce, body.clientType,
+        body.tenantCode, identifier, body.clientNonce, body.clientType, identifier_type=identifier_type,
     )
     from app.services import password_reset_service
     result, delivery = password_reset_service.begin_reset(
-        body.loginName, body.tenantCode, body.clientNonce, body.clientType,
+        identifier, body.tenantCode, body.clientNonce, body.clientType, identifier_type=identifier_type,
     )
     if delivery is not None:
         background_tasks.add_task(password_reset_service.dispatch_code, delivery)

@@ -67,7 +67,7 @@ def require_phone_identifier(tenant_code: str | None, identifier: str | None) ->
 
 def create_pending_candidate_in_session(db, *, tenant_id: int, user_id: int, phone: str,
                                         source_kind: str, source_row_no: int | None = None,
-                                        expected_version: int | None = None) -> str:
+                                        expected_version: int | None = None, source_job_id: int | None = None) -> str:
     """Record a SELF candidate without activating it or overwriting a different one."""
     from app.core.field_crypto import encrypt_sensitive
     from app.models import PhoneLoginBinding, PhoneLoginCandidate, User
@@ -103,7 +103,7 @@ def create_pending_candidate_in_session(db, *, tenant_id: int, user_id: int, pho
             raise AppException("DATA_CONFLICT", "候选记录状态异常，请联系管理员核对", http_status=409)
         if row.candidate_lookup == lookup and row.state in {"PENDING", "CONFLICT"}:
             return "UNCHANGED"
-        if expected_version is None:
+        if expected_version is None and row.state != 'CLEARED':
             raise AppException("DATA_CONFLICT", "该账号已有不同的待核验手机号，请先在账号安全中明确处理", http_status=409)
     else:
         row = PhoneLoginCandidate(tenant_id=int(tenant_id), user_id=int(user_id), version=0)
@@ -112,8 +112,90 @@ def create_pending_candidate_in_session(db, *, tenant_id: int, user_id: int, pho
     row.candidate_lookup = lookup
     row.owner_type, row.state, row.source_kind = "SELF", "PENDING", source_kind
     row.source_row_no = source_row_no
+    row.source_job_id = source_job_id
     row.version = actual_version + 1
     audit_log.record_critical_in_session(db, "PHONE_CANDIDATE_CHANGE", f"user:{user_id}",
         detail={"source": source_kind, "version": row.version, "sourceRowNo": source_row_no},
         tenant_id=tenant_id, resource_id=str(user_id))
     return "CREATED" if actual_version == 0 else "UPDATED"
+
+
+def preview_import_phones(db, tenant_id: int, body: dict, report: dict) -> None:
+    """Bounded phone preflight alongside the original identity preview, never phone-to-user matching."""
+    from itertools import chain, islice
+    from sqlalchemy import or_
+    from app.models import User, PhoneLoginBinding, PhoneLoginCandidate
+    rows = chain(((r, 'student', 'studentNo') for r in body.get('students') or []),
+                 ((r, 'teacher', 'loginName') for r in body.get('teachers') or []))
+    counts = report.setdefault('phoneSummary', {'phoneEmpty': 0, 'phonePending': 0, 'phoneVerifiedUnchanged': 0,
+        'phoneCandidateUnchanged': 0, 'phoneConflict': 0, 'contactPhoneOnly': 0})
+    while chunk := list(islice(rows, 500)):
+        selected = []
+        for row, entity, key in chunk:
+            report.setdefault('warnings', []).extend(row.get('_phoneWarnings') or [])
+            if not row.get('selfPhone'):
+                counts['contactPhoneOnly' if row.get('contactPhone') else 'phoneEmpty'] += 1
+                continue
+            if row.get('phoneOwnerType', '').upper() != 'SELF':
+                continue
+            try:
+                selected.append((row, entity, str(row.get(key) or ''), phone_lookup(tenant_id, row['selfPhone'])))
+            except ValueError:
+                continue  # Original row validator reports the malformed field.
+        if not selected:
+            continue
+        users = {u.login_name: u for u in db.scalars(select(User).where(User.tenant_id == tenant_id,
+            User.login_name.in_([r[2] for r in selected])))}
+        ids = [u.id for u in users.values()]
+        bindings = list(db.scalars(select(PhoneLoginBinding).where(PhoneLoginBinding.tenant_id == tenant_id,
+            or_(PhoneLoginBinding.user_id.in_(ids), PhoneLoginBinding.active_phone_lookup.in_([r[3] for r in selected])))))
+        by_user = {b.user_id: b for b in bindings}
+        occupied = {b.active_phone_lookup: b for b in bindings if b.state == 'VERIFIED'}
+        candidates = {c.user_id: c for c in db.scalars(select(PhoneLoginCandidate).where(
+            PhoneLoginCandidate.tenant_id == tenant_id, PhoneLoginCandidate.user_id.in_(ids)))}
+        for row, entity, account_no, lookup in selected:
+            user = users.get(account_no)
+            current = by_user.get(user.id) if user else None
+            candidate = candidates.get(user.id) if user else None
+            hit = occupied.get(lookup)
+            reason = None
+            if hit and (not user or hit.user_id != user.id):
+                reason = ('PHONE_OCCUPIED', '号码已被其他账号验证占用，请核对；不会合并账号')
+            elif current and current.state == 'VERIFIED':
+                if current.active_phone_lookup != lookup:
+                    reason = ('PHONE_VERIFIED_CONFLICT', '账号已有不同的已验证号码，导入不能覆盖，请本人办理换号')
+                else:
+                    counts['phoneVerifiedUnchanged'] += 1
+            elif candidate and candidate.state != 'CLEARED':
+                if candidate.candidate_lookup == lookup and candidate.state in {'PENDING', 'CONFLICT'}:
+                    counts['phoneCandidateUnchanged'] += 1
+                else:
+                    reason = ('PHONE_CANDIDATE_CONFLICT', '账号已有不同的待核验号码，请先明确处理原候选')
+            else:
+                counts['phonePending'] += 1
+            if reason:
+                counts['phoneConflict'] += 1
+                report['errors'].append({'row': int(row.get('_rowNo') or 0), 'entity': entity,
+                    'field': 'selfPhone', 'reasonCode': reason[0], 'error': reason[1]})
+
+
+def apply_import_phone_fields(db, *, user, row: dict, source_job_id: int | None, report: dict):
+    """Part of the existing writer's transaction; contact fill never activates credentials."""
+    from app.core.field_crypto import encrypt_field
+    db.refresh(user, with_for_update=True)
+    if row.get('contactPhone'):
+        if not user.phone_encrypted:
+            contact = normalize_login_phone(row['contactPhone']).removeprefix('+86')
+            user.phone_encrypted = encrypt_field(contact)
+            user.phone_hash = hash_sensitive(contact, 'phone')
+            report.setdefault('phoneWriteSummary', {}).setdefault('contactFilled', 0)
+            report['phoneWriteSummary']['contactFilled'] += 1
+        else:
+            report.setdefault('phoneWriteSummary', {}).setdefault('contactPreserved', 0)
+            report['phoneWriteSummary']['contactPreserved'] += 1
+    if str(row.get('phoneOwnerType') or '').upper() == 'SELF' and row.get('selfPhone'):
+        result = create_pending_candidate_in_session(db, tenant_id=user.tenant_id, user_id=user.id,
+            phone=row['selfPhone'], source_kind='IDENTITY_IMPORT',
+            source_row_no=int(row.get('_rowNo') or 0) or None, source_job_id=source_job_id)
+        counts = report.setdefault('phoneWriteSummary', {})
+        counts[result] = counts.get(result, 0) + 1

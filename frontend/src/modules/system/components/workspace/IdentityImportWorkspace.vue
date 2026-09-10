@@ -52,6 +52,12 @@
               <div><dt>有效行</dt><dd>{{ countText(counts.validRows) }}</dd></div>
               <div><dt>需修正行</dt><dd>{{ countText(counts.invalidRows) }}</dd></div>
             </dl>
+            <section v-if="phoneCounts.length" class="iw-review sw-stack" aria-label="手机号预检">
+              <h3>手机号只登记为待本人验证，不改变登录账号</h3>
+              <div class="iw-receipt-counts"><div v-for="item in phoneCounts" :key="item.key"><small class="sw-muted">{{ item.label }}</small><h3>{{ countText(item.value) }}</h3></div></div>
+              <p>家长、共用或未确认归属的号码只能作联系方式。本人验证之前请继续使用原学号 / 工号登录；本次导入不发送验证码。</p>
+              <p v-for="(warning, index) in state.job.phoneWarnings || []" :key="index" class="sw-alert sw-alert--warning">第 {{ warning.row }} 行 · {{ warning.field }}：{{ warning.warning }}</p>
+            </section>
             <div v-if="processing" class="sw-alert" role="status"><b>文件已登记，尚未形成最终预检结果</b><p>此阶段不会把缺失计数当作 0。离开页面仅停止本地轮询，不取消后台任务。</p></div>
             <p v-if="state.job.errorMessage" class="sw-alert sw-alert--error" role="alert">{{ state.job.errorMessage }}</p>
             <template v-if="state.job.status === 'VALIDATION_FAILED' || state.job.invalidRows > 0">
@@ -103,7 +109,7 @@ import { actionAllowed, contextFingerprint } from '../../utils/workspaceContract
 import { isIdentityImportProcessing } from '../../utils/identityImportState'
 import { systemConfirm } from '@/services/systemDialog'
 import { createImportState, createImportController, importCounts, importStatusLabel,
-  importReceiptCounts, confirmableJob, countText } from '../../utils/identityImportWorkspace'
+  importReceiptCounts, importPhoneCounts, confirmableJob, countText } from '../../utils/identityImportWorkspace'
 
 const FIELD_LABELS = { studentNo: '学号', name: '姓名', realName: '姓名', gender: '性别', phone: '手机号', idCard: '证件号', college: '学院', collegeName: '学院', major: '专业', majorName: '专业', className: '班级', grade: '年级', userNo: '工号', loginName: '登录名', email: '邮箱', roleCode: '角色', scopeType: '数据范围' }
 export default {
@@ -125,6 +131,7 @@ export default {
     processing() { return isIdentityImportProcessing(this.state.job) },
     confirmable() { return confirmableJob(this.state.job) },
     receiptCounts() { return importReceiptCounts(this.state.job, this.kind) },
+    phoneCounts() { return importPhoneCounts(this.state.job) },
     steps() { return ['准备文件', '安全扫描', '服务端预检', '确认导入', '结果回执'] },
     stage() { const status = this.state.job?.status; return status === 'SUCCEEDED' ? 4 : this.state.review || status === 'CONFIRMING' ? 3 : ['SCANNING', 'WORKER_CLAIMED'].includes(status) ? 1 : status ? 2 : 0 }
   },

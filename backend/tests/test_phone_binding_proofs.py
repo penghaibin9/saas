@@ -33,3 +33,15 @@ def test_phone_confirmation_rejects_retarget_and_boolean_version():
     for change in ({'phone': '13800138000'}, {'expectedBindingVersion': True}, {'userId': 'db-1'}):
         with pytest.raises(ValidationError):
             ConfirmRequest(**{**values, **change})
+
+
+def test_reset_typed_phone_contract_requires_school_and_excludes_legacy_field():
+    from app.api.v1.auth import PasswordResetRequest, CaptchaRequest
+    from pydantic import ValidationError
+    values = dict(identifierType='PHONE', identifier='13800138000', tenantCode='school',
+        clientNonce='nonce-123', clientType='TEACHER_PC', captchaId='captcha-id', captchaCode='1234')
+    assert PasswordResetRequest(**values).identifier == '+8613800138000'
+    assert CaptchaRequest(scene='PASSWORD_RESET', **{k: v for k, v in values.items() if k not in {'captchaId', 'captchaCode'}})
+    for change in ({'loginName': 'legacy'}, {'tenantCode': None}, {'phoneVerified': True}):
+        with pytest.raises(ValidationError):
+            PasswordResetRequest(**{**values, **change})
