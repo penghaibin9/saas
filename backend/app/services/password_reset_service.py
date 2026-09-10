@@ -498,11 +498,13 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
                 sent += 1
                 continue
             attempt = int(row.attempt_count or 1)
-            terminal = attempt >= 3 or row.expires_at <= _utc_now() + timedelta(seconds=20)
+            terminal = (result.get("retryable") is False or attempt >= 3
+                        or row.expires_at <= _utc_now() + timedelta(seconds=20))
             row.last_error = str(result.get("reason") or result.get("status") or "SEND_FAILED")[:500]
             row.locked_by = None; row.lease_expires_at = None
             if terminal:
                 row.status = "FAILED"
+                row.next_retry_at = None
                 row.phone_encrypted = None; row.code_encrypted = None
             else:
                 row.status = "RETRY_WAIT"

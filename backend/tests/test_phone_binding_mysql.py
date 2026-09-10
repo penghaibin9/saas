@@ -216,6 +216,125 @@ def test_phone_worker_dispatches_only_through_original_mock_adapter(flow):
         assert task.payload_json == {'redacted': True, 'keys': ['code']}
 
 
+def test_phone_worker_does_not_retry_a_definitive_provider_rejection(flow, monkeypatch):
+    from app.services import phone_binding_service as svc, password_reset_service as reset
+    from app.services.notification import sms_service
+    from app.db.session import get_sessionmaker
+    from app.models import PasswordResetSmsJob
+
+    op = operation(flow)
+    svc.challenge(flow['ctx'], operation_id=op['operationId'], ticket=op['reauthTicket'], nonce=flow['nonce'])
+    monkeypatch.setattr(sms_service, 'notify_phone_verification', lambda *_args, **_kwargs: {
+        'status': 'FAILED', 'reason': 'provider rejected template',
+        'reasonCode': 'PERMANENT_PROVIDER', 'retryable': False,
+    })
+
+    assert reset.process_delivery_jobs(
+        tenant_id=flow['tenant_id'], purposes=('CHANGE_PHONE', 'BIND_PHONE')) == 0
+    with get_sessionmaker()() as db:
+        job = db.scalar(select(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId']))
+        assert job.status == 'FAILED'
+        assert job.next_retry_at is None
+        assert job.phone_encrypted is None and job.code_encrypted is None
+
+
+def test_phone_worker_retries_transient_failure_with_the_same_challenge(flow, monkeypatch):
+    from datetime import timedelta
+    from app.services import phone_binding_service as svc, password_reset_service as reset
+    from app.services.notification import sms_service
+    from app.db.session import get_sessionmaker
+    from app.models import PasswordResetSmsJob
+
+    op = operation(flow)
+    svc.challenge(flow['ctx'], operation_id=op['operationId'], ticket=op['reauthTicket'], nonce=flow['nonce'])
+    monkeypatch.setattr(sms_service, 'notify_phone_verification', lambda *_args, **_kwargs: {
+        'status': 'FAILED', 'reason': 'provider response lost',
+        'reasonCode': 'TRANSIENT_PROVIDER', 'retryable': True,
+    })
+
+    assert reset.process_delivery_jobs(
+        tenant_id=flow['tenant_id'], purposes=('CHANGE_PHONE', 'BIND_PHONE')) == 0
+    with get_sessionmaker()() as db:
+        job = db.scalar(select(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId']))
+        original_code = job.code_encrypted
+        assert job.status == 'RETRY_WAIT' and job.attempt_count == 1 and job.next_retry_at
+        assert job.phone_encrypted and original_code
+        job.next_retry_at = reset._utc_now() - timedelta(seconds=1)
+        db.commit()
+
+    assert reset.process_delivery_jobs(
+        tenant_id=flow['tenant_id'], purposes=('CHANGE_PHONE', 'BIND_PHONE')) == 0
+    with get_sessionmaker()() as db:
+        job = db.scalar(select(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId']))
+        assert job.status == 'RETRY_WAIT' and job.attempt_count == 2
+        assert job.code_encrypted == original_code
+
+
+def test_phone_worker_never_sends_an_expired_challenge(flow, monkeypatch):
+    from datetime import timedelta
+    from app.services import phone_binding_service as svc, password_reset_service as reset
+    from app.services.notification import sms_service
+    from app.db.session import get_sessionmaker
+    from app.models import PasswordResetSmsJob
+
+    op = operation(flow)
+    svc.challenge(flow['ctx'], operation_id=op['operationId'], ticket=op['reauthTicket'], nonce=flow['nonce'])
+    with get_sessionmaker()() as db:
+        job = db.scalar(select(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId']))
+        job.expires_at = reset._utc_now() - timedelta(seconds=1)
+        db.commit()
+    monkeypatch.setattr(sms_service, 'notify_phone_verification',
+                        lambda *_args, **_kwargs: pytest.fail('expired challenge must not be sent'))
+
+    assert reset.process_delivery_jobs(
+        tenant_id=flow['tenant_id'], purposes=('CHANGE_PHONE', 'BIND_PHONE')) == 0
+    with get_sessionmaker()() as db:
+        job = db.scalar(select(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId']))
+        assert job.status == 'EXPIRED'
+        assert job.phone_encrypted is None and job.code_encrypted is None
+
+
+@pytest.mark.parametrize('setting,value', [
+    ('PHONE_SMS_CONSUMERS_READY', False),
+    ('SMS_PHONE_DAILY_TENANT_BUDGET', 0),
+    ('SMS_PHONE_DAILY_PLATFORM_BUDGET', 0),
+])
+def test_phone_challenge_fails_closed_when_delivery_readiness_is_missing(flow, monkeypatch, setting, value):
+    from app.core.config import settings
+    from app.services import phone_binding_service as svc
+    from app.db.session import get_sessionmaker
+    from app.models import PasswordResetSmsJob
+
+    op = operation(flow)
+    monkeypatch.setattr(settings, setting, value)
+    with pytest.raises(AppException) as caught:
+        svc.challenge(flow['ctx'], operation_id=op['operationId'], ticket=op['reauthTicket'], nonce=flow['nonce'])
+    assert caught.value.code == 'SMS_UNAVAILABLE' and caught.value.http_status == 503
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId'])) == 0
+
+
+def test_phone_challenge_fails_closed_without_shared_proof_store(flow, monkeypatch):
+    from app.services import phone_binding_service as svc, password_reset_service as proofs
+    from app.db.session import get_sessionmaker
+    from app.models import PasswordResetSmsJob
+
+    op = operation(flow)
+    monkeypatch.setattr(proofs, 'get_redis', lambda: None)
+    with pytest.raises(AppException) as caught:
+        svc.challenge(flow['ctx'], operation_id=op['operationId'], ticket=op['reauthTicket'], nonce=flow['nonce'])
+    assert caught.value.code == 'AUTH_STORE_UNAVAILABLE' and caught.value.http_status == 503
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(PasswordResetSmsJob).where(
+            PasswordResetSmsJob.request_id == op['operationId'])) == 0
+
+
 def test_formal_phone_http_routes_require_subject_and_expose_scoped_receipt_only(flow, client):
     from app.services import control_plane_auth_service as auth
     login = auth.login_with_password(flow['login'], 'Local-test-Password1!', flow['tenant'])
