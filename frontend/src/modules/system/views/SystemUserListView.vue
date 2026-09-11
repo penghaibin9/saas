@@ -612,33 +612,33 @@ export default {
       }
       this.form.submitting = true
       try {
-      if (detailsChanged) {
-      const res = await systemApi.updateUser(this.form.id, this.form.value)
-      if (res.code !== 0) {
-        this.form.submitting = false
-        toast.error(res.message)
-        return
-      }
-      // A partial retry must never replay already committed profile changes.
-      this.form.originalValue = { ...this.form.value }
-      }
-      if (rolesChanged) {
-        const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
-        const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
-        if (roleRes.code !== 0) {
-          this.form.submitting = false
-          toast.error(`${detailsChanged ? '基础信息已保存，但' : ''}角色身份保存失败：${roleRes.message}`)
-          await this.load()
-          return
+        if (detailsChanged) {
+          const res = await systemApi.updateUser(this.form.id, this.form.value)
+          if (res.code !== 0) {
+            this.form.submitting = false
+            toast.error(res.message)
+            return
+          }
+          // A partial retry must never replay already committed profile changes.
+          this.form.originalValue = { ...this.form.value }
         }
-        this.form.originalRoleAssignments = JSON.parse(JSON.stringify(this.form.roleAssignments))
-      }
-      this.form.submitting = false
-      toast.success(rolesChanged
-        ? '账号与角色身份已更新，重新登录后生效'
-        : '账号基础信息已更新，已写入审计日志')
-      this.form.open = false
-      this.load()
+        if (rolesChanged) {
+          const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
+          const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
+          if (roleRes.code !== 0) {
+            this.form.submitting = false
+            toast.error(`${detailsChanged ? '基础信息已保存，但' : ''}角色身份保存失败：${roleRes.message}`)
+            await this.load()
+            return
+          }
+          this.form.originalRoleAssignments = JSON.parse(JSON.stringify(this.form.roleAssignments))
+        }
+        this.form.submitting = false
+        toast.success(rolesChanged
+          ? '账号与角色身份已更新，重新登录后生效'
+          : '账号基础信息已更新，已写入审计日志')
+        this.form.open = false
+        this.load()
       } catch (error) {
         toast.error(error.message || '保存失败，已保留输入，请重试')
       } finally { this.form.submitting = false }
