@@ -34,13 +34,16 @@
       >
         <template #cell-who="{ row }">
           <div class="mp-cell-main">{{ row.who }}</div>
-          <div class="mp-cell-sub">{{ row.roleName }}</div>
+          <div class="mp-cell-sub">{{ roleLabel(row.roleName) }}</div>
         </template>
         <template #cell-action="{ row }">
           <StatusTag :type="actionTone(row.action)" :label="row.actionLabel" />
         </template>
         <template #cell-result="{ row }">
           <StatusTag :type="row.result === 'SUCCESS' ? 'success' : row.result === 'DENIED' ? 'danger' : 'warning'" :label="row.resultLabel" dot />
+        </template>
+        <template #cell-target="{ row }">
+          <span>{{ targetLabel(row.target) }}</span>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">详情</button>
@@ -77,9 +80,9 @@
     <AppDrawer v-model:visible="detail.open" title="操作日志详情" mode="modal" size="xlarge">
       <template v-if="detail.row">
         <div class="mp-kv"><span class="mp-kv__k">时间</span><span class="mp-kv__v">{{ detail.row.time }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">操作人</span><span class="mp-kv__v">{{ detail.row.who }} · {{ detail.row.roleName }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">操作人</span><span class="mp-kv__v">{{ detail.row.who }} · {{ roleLabel(detail.row.roleName) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">模块 / 动作</span><span class="mp-kv__v">{{ detail.row.moduleLabel }} · {{ detail.row.actionLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">对象</span><span class="mp-kv__v">{{ detail.row.target }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">业务对象</span><span class="mp-kv__v">{{ targetLabel(detail.row.target) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">结果</span><span class="mp-kv__v">{{ detail.row.resultLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">IP（脱敏）</span><span class="mp-kv__v">{{ detail.row.ip }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">摘要</span><span class="mp-kv__v">{{ detail.row.detail.summary }}</span></div>
@@ -119,6 +122,11 @@ import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 
 const EMPTY_FILTERS = () => ({ keyword: '', module: '', action: '', result: '', dateFrom: '', dateTo: '' })
+const ROLE_LABELS = {
+  SCHOOL_ADMIN: '学校管理员', TEACHER: '教师', COUNSELOR: '辅导员',
+  ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  PLATFORM_OPERATOR: '平台运营人员', PLATFORM_SECURITY_AUDITOR: '平台安全审计员'
+}
 
 export default {
   name: 'SystemLogView',
@@ -198,6 +206,19 @@ export default {
     }
   },
   methods: {
+    roleLabel(value) {
+      return ROLE_LABELS[value] || (/[㐀-鿿]/.test(String(value || '')) ? value : '业务经办人')
+    },
+    targetLabel(value) {
+      const raw = String(value || '').trim()
+      if (!raw) return '相关业务对象'
+      if (/[㐀-鿿]/.test(raw)) return raw
+      if (raw === 'module:apiAccess') return '接口访问权限'
+      if (raw.includes('/system/sync-jobs')) return '同步任务与失败中心'
+      if (raw.includes('/system/integrations')) return '接口连接配置'
+      if (raw.startsWith('/api/')) return '系统接口访问'
+      return '相关业务对象'
+    },
     maskNo(v) {
       return v && v.length > 4 ? v.slice(0, 4) + '****' + v.slice(-2) : v
     },
