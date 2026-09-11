@@ -22,7 +22,7 @@
         <view v-if="lastReceipt" class="card ir__receipt">
           <view class="row-between"><text class="t-bold">✓ 操作回执 · {{ lastReceipt.action }}</text><text>v{{ lastReceipt.version ?? '—' }}</text></view>
           <text>{{ lastReceipt.object }}</text>
-          <text class="ir__sub">{{ lastReceipt.status }} · 业务事实与审计 outbox 已提交</text>
+          <text class="ir__sub">{{ lastReceipt.status }} · 业务事实与审计消息已提交</text>
           <text class="ir__sub">下一步：{{ lastReceipt.nextStep }}</text>
         </view>
 
@@ -35,11 +35,11 @@
                 <text class="t-md t-bold">{{ r.studentName || '—' }}</text>
                 <text class="ir__sub">{{ r.studentNo || '' }}</text>
               </view>
-              <MobileStatusTag :label="r.statusLabel || r.status" :type="r.status === 'PENDING_HANDLE' ? 'warning' : 'default'" />
+              <MobileStatusTag :label="riskStatusLabel(r.status, r.statusLabel)" :type="r.status === 'PENDING_HANDLE' ? 'warning' : 'default'" />
             </view>
 
             <view class="ir__risk-title">
-              <view class="ir__level" :class="riskClass(r)">{{ r.riskLevelLabel || r.riskLevel || '风险' }}</view>
+              <view class="ir__level" :class="riskClass(r)">{{ riskLevelLabel(r.riskLevel, r.riskLevelLabel) }}</view>
               <view class="flex-1 ir__title-copy">
                 <text class="ir__title-label">风险事项</text>
                 <text class="ir__title-text">{{ r.riskTitle || r.riskCode || '未命名风险' }}</text>
@@ -96,6 +96,12 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    riskStatusLabel(value, label) {
+      return label || ({ PENDING_HANDLE: '待受理', PROCESSING: '处理中', CLOSED: '已关闭' })[value] || (value ? `状态待确认（${value}）` : '状态待确认')
+    },
+    riskLevelLabel(value, label) {
+      return label || ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[value] || (value ? `风险等级待确认（${value}）` : '风险')
+    },
     riskClass(r) {
       const level = String(r.riskLevel || '').toUpperCase()
       return level === 'CRITICAL' ? 'is-critical' : level === 'HIGH' ? 'is-high' : level === 'MEDIUM' ? 'is-medium' : 'is-low'
@@ -106,14 +112,15 @@ export default {
       return '查看风险状态和历史跟进，确认是否仍有未闭环事项。'
     },
     sourceText(r) {
-      if (r.sourceType && r.sourceId) return `${r.sourceType} #${r.sourceId}`
-      return r.sourceModule || '历史来源'
+      const value = r.sourceType || r.sourceModule
+      const label = ({ CHECKIN: '打卡异常', REPORT: '周报异常', INSURANCE: '保险异常', AGREEMENT: '协议异常', PLACEMENT: '岗位安排', INCIDENT: '实习事件', MANUAL: '人工登记', INTERNSHIP: '实习管理' })[value] || (value && /[一-鿿]/.test(value) ? value : value ? `来源待确认（${value}）` : '历史来源')
+      return r.sourceId ? `${label} #${r.sourceId}` : label
     },
     setReceipt(result, r, action) {
       const data = result || {}
       this.lastReceipt = {
         action, object: `${r.studentName || '学生'} · ${r.riskTitle || r.riskCode || r.id}`,
-        version: data.version, status: data.statusLabel || data.status || '已提交',
+        version: data.version, status: this.riskStatusLabel(data.status, data.statusLabel) || '已提交',
         nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包或处理下一条' : '继续当前责任链')
       }
       this.conflictText = ''

@@ -89,7 +89,7 @@
         </view>
 
         <view class="sc__conflict card" v-if="conflictChecked">
-          <text v-if="conflictResult" class="sc__conflict-bad">⚠ 目标课位存在冲突（{{ conflictResult.type }}）：{{ conflictResult.detail }}</text>
+          <text v-if="conflictResult" class="sc__conflict-bad">⚠ 目标课位存在冲突（{{ conflictTypeLabel(conflictResult.type) }}）：{{ conflictResult.detail }}</text>
           <text v-else class="sc__conflict-ok">✓ 目标课位无冲突</text>
         </view>
 
@@ -205,7 +205,10 @@ export default {
     contextKey() {
       return teacherWriteContext(useSessionStore())
     },
-    statusLabel(s) { return STATUS_LABELS[s] || s },
+    statusLabel(s) { return STATUS_LABELS[s] || (s ? `状态待确认（${s}）` : '状态待确认') },
+    conflictTypeLabel(value) {
+      return ({ TEACHER: '教师时间冲突', CLASS: '班级时间冲突', CLASSROOM: '教室占用冲突' })[value] || (value ? `其他冲突（${value}）` : '冲突类型待确认')
+    },
     writeKey(action, objectId) { return `${action}|${String(objectId || '')}` },
     hasUnknownWrite(action, objectId) { return this.writeStorageBlocked || !!this.unknownWrites[this.writeKey(action, objectId)] },
     syncUnknownWrites(context = this.contextKey()) {

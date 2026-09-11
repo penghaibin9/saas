@@ -48,7 +48,8 @@ test('重点页面不再展示后端状态码和英文技术说明', () => {
     ['modules/system/views/SystemStaffAffiliationView.vue', /:label="row\.status \|\| 'ACTIVE'"/],
     ['modules/graduation/components/FileEvidencePanel.vue', /\{\{ item\.versionStatus \|\| item\.status/],
     ['modules/internship/views/InternshipMaterialCenterView.vue', />\{\{ item\.(?:scanStatus|reviewStatus)/],
-    ['modules/graduation/views/GraduationDashboardView.vue', /\{\{ hero\.batchStatus \|\| batchStore\.batchStatus/]
+    ['modules/graduation/views/GraduationDashboardView.vue', /\{\{ hero\.batchStatus \|\| batchStore\.batchStatus/],
+    ['modules/graduation/views/GraduationRiskArchiveView.vue', /\{\{ (?:riskFilters|archiveFilters)\.status \|\| '全部状态' \}\}/]
   ]
   for (const [relative, pattern] of checks) {
     assert.doesNotMatch(readFileSync(new URL(relative, srcRoot), 'utf8'), pattern, relative)

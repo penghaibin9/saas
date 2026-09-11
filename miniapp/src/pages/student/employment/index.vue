@@ -26,9 +26,9 @@
           <view class="section-head"><text class="section-head__title">材料状态（{{ materialStatusText(e.materialStatus) }}）</text></view>
           <view class="list-group" v-if="e.materials.length">
             <view v-for="(m, i) in e.materials" :key="i" class="list-row">
-              <text class="flex-1 t-md">{{ m.type || '—' }}</text>
+              <text class="flex-1 t-md">{{ materialTypeText(m.type, m.typeLabel) }}</text>
               <text class="em__file" v-if="m.fileName">{{ m.fileName }}</text>
-              <MobileStatusTag :status="m.status" />
+              <MobileStatusTag :status="m.status" :label="materialStatusText(m.status)" />
             </view>
           </view>
           <MobileGlobalState v-else state="empty" title="暂无材料记录" description="三方协议/劳动合同等材料由就业老师登记后会显示在这里。" />
@@ -38,7 +38,7 @@
             <view v-for="(f, i) in e.followUps" :key="i" class="list-row">
               <view class="flex-1">
                 <text class="t-md">{{ f.content || '—' }}</text>
-                <text class="em__sub">{{ f.way || '—' }} · {{ (f.time || '').slice(0, 10) }}</text>
+                <text class="em__sub">{{ followWayText(f.way) }} · {{ (f.time || '').slice(0, 10) }}</text>
               </view>
             </view>
           </view>
@@ -60,6 +60,8 @@ const DEST_TEXT = { SIGNED: '签约就业', FLEXIBLE: '灵活就业', FURTHER_ST
 const VERIFY_TEXT = { NOT_STARTED: '未核验', PENDING: '核验中', VERIFIED: '已核验', REJECTED: '核验未通过' }
 const VERIFY_TAG = { NOT_STARTED: 'default', PENDING: 'warning', VERIFIED: 'success', REJECTED: 'danger' }
 const MATERIAL_TEXT = { NOT_STARTED: '未提交', PENDING: '待审核', APPROVED: '已通过', RETURNED: '已退回' }
+const MATERIAL_TYPE_TEXT = { AGREEMENT: '就业协议', CONTRACT: '劳动合同', OFFER: '录用通知', STUDY_PROOF: '升学证明', ENLISTMENT_PROOF: '入伍证明', STARTUP_PROOF: '创业证明', OTHER: '其他材料' }
+const FOLLOW_WAY_TEXT = { PHONE: '电话', WECHAT: '微信', SMS: '短信', VISIT: '走访', INTERVIEW: '面谈', ONLINE: '线上沟通', OTHER: '其他方式' }
 
 export default {
   data() { return { e: null, state: 'loading', statusBarHeight: 20 } },
@@ -69,10 +71,12 @@ export default {
   },
   methods: {
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/student/home/index') }) },
-    destinationText(t) { return DEST_TEXT[t] || t || '待就业' },
-    verifyText(s) { return VERIFY_TEXT[s] || s || '未核验' },
+    destinationText(t) { return DEST_TEXT[t] || (t ? `去向待确认（${t}）` : '待就业') },
+    verifyText(s) { return VERIFY_TEXT[s] || (s ? `状态待确认（${s}）` : '未核验') },
     verifyTag(s) { return VERIFY_TAG[s] || 'default' },
-    materialStatusText(s) { return MATERIAL_TEXT[s] || s || '未提交' },
+    materialStatusText(s) { return MATERIAL_TEXT[s] || (s ? `状态待确认（${s}）` : '未提交') },
+    materialTypeText(value, label) { return label || MATERIAL_TYPE_TEXT[value] || (value ? `材料类型待确认（${value}）` : '其他材料') },
+    followWayText(value) { return FOLLOW_WAY_TEXT[value] || (value && /[一-鿿]/.test(value) ? value : value ? `跟进方式待确认（${value}）` : '方式未记录') },
     load() {
       this.state = 'loading'
       studentApi.getEmployment().then((d) => { this.e = d; this.state = 'ready' }).catch(() => { this.state = 'error' })

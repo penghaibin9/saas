@@ -36,7 +36,7 @@
         <template v-else>
           <view class="ap__chips">
             <view class="ap__chip" :class="{ 'is-on': typeFilter === 'all' }" @click="setType('all')">全部</view>
-            <view v-for="t in typeOptions" :key="t" class="ap__chip" :class="{ 'is-on': typeFilter === t }" @click="setType(t)">{{ t }}</view>
+            <view v-for="t in typeOptions" :key="t" class="ap__chip" :class="{ 'is-on': typeFilter === t }" @click="setType(t)">{{ approvalTypeLabel(t) }}</view>
           </view>
 
           <view class="ap__queue-meta">
@@ -49,7 +49,7 @@
               <view class="row-between">
                 <view class="flex-1">
                   <view class="row ap__title-row"><text class="t-md t-bold">{{ a.title }}</text><text v-if="a.level === 'high'" class="ap__urgent">临期</text></view>
-                  <text class="ap__type">{{ a.type }} · #{{ a.taskId }}</text>
+                  <text class="ap__type">{{ a.typeLabel || approvalTypeLabel(a.type) }} · #{{ a.taskId }}</text>
                 </view>
                 <MobileStatusTag :status="a.status" />
               </view>
@@ -137,6 +137,11 @@ export default {
     if (this.searchTimer) clearTimeout(this.searchTimer)
   },
   methods: {
+    approvalTypeLabel(value) {
+      if (!value) return '业务审批'
+      if (/[一-鿿]/.test(value)) return value
+      return ({ LEAVE: '请假审批', SCHOLARSHIP: '奖助审批', AID: '资助审批', ORIENTATION: '迎新审批', GREEN_CHANNEL: '绿色通道审批', INTERNSHIP: '实习审批', GRADUATION: '毕业审批', EMPLOYMENT: '就业审批', SCHEDULE_CHANGE: '调停课审批' })[value] || `业务类型待确认（${value}）`
+    },
     canAct(task, action) { return Array.isArray(task.allowedActions) && task.allowedActions.includes(action) },
     timeText(a) {
       if (this.sub === 'done' && a.actedTime) return '办理 ' + a.actedTime.slice(5, 16)

@@ -30,3 +30,32 @@ test('教师工作台和学生详情不直接裸露英文状态', () => {
   assert.match(detail, /studentStatusText\(s\.base\.status\)/)
   assert.doesNotMatch(detail, /\{\{ s\.base\.status \|\|/)
 })
+
+test('迎新、教务、实习和就业页面用中文标签并保留业务编号', () => {
+  const greenChannel = page('teacher/orientation/green-channel/index.vue')
+  assert.match(greenChannel, /applyTypeLabel\(a\.applyType\)/)
+  assert.match(greenChannel, /statusLabel\(a\.status, a\.statusLabel\)/)
+
+  const schedule = page('teacher/schedule-change/index.vue')
+  assert.match(schedule, /conflictTypeLabel\(conflictResult\.type\)/)
+  assert.doesNotMatch(schedule, /（\{\{ conflictResult\.type \}\}）/)
+
+  const approval = page('teacher/approval/index.vue')
+  assert.match(approval, /approvalTypeLabel\(a\.type\)/)
+  assert.match(approval, /#\{\{ a\.taskId \}\}/)
+
+  const risk = page('teacher-internship/internship-risk/index.vue')
+  assert.match(risk, /riskStatusLabel\(r\.status, r\.statusLabel\)/)
+  assert.match(risk, /`\$\{label\} #\$\{r\.sourceId\}`/)
+  assert.doesNotMatch(risk, /审计 outbox/)
+
+  const employment = page('student/employment/index.vue')
+  assert.match(employment, /materialTypeText\(m\.type, m\.typeLabel\)/)
+  assert.match(employment, /followWayText\(f\.way\)/)
+
+  const profile = page('student/profile/index.vue')
+  assert.match(profile, /enrollStatusLabel\(p\.status\.enrollStatus\)/)
+
+  const evaluation = page('teacher/evaluation/index.vue')
+  assert.match(evaluation, /batchStatusLabel\(t\.batchStatus\)/)
+})

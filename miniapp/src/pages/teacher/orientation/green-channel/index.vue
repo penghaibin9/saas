@@ -21,7 +21,7 @@
             </view>
 
             <view class="gc__fields">
-              <view class="gc__field"><text class="gc__field-k">申请类型</text><text class="gc__field-v flex-1">{{ a.applyType || '—' }}</text></view>
+              <view class="gc__field"><text class="gc__field-k">申请类型</text><text class="gc__field-v flex-1">{{ applyTypeLabel(a.applyType) }}</text></view>
               <view class="gc__field"><text class="gc__field-k">申请金额</text><text class="gc__field-v flex-1">{{ a.applyAmount || '—' }}</text></view>
               <view v-if="a.remark" class="gc__field"><text class="gc__field-k">申请说明</text><text class="gc__field-v flex-1">{{ a.remark }}</text></view>
               <view class="gc__field"><text class="gc__field-k">提交时间</text><text class="gc__field-v flex-1">{{ (a.submitTime || '').slice(0, 16) }}</text></view>
@@ -33,7 +33,7 @@
               <button class="gc__approve flex-1" @click="openReview(a, 'APPROVE')">通过</button>
             </view>
             <view v-else class="gc__done">
-              <text class="gc__done-text">已{{ a.statusLabel || a.status }}</text>
+              <text class="gc__done-text">{{ statusLabel(a.status, a.statusLabel) }}</text>
             </view>
           </view>
         </view>
@@ -42,7 +42,7 @@
     <view v-if="reviewDialog.visible" class="gc__dialog-mask" @click.self="closeReview">
       <view class="gc__dialog">
         <text class="gc__dialog-title">{{ reviewDialog.label }}绿色通道</text>
-        <text class="gc__dialog-copy">{{ reviewDialog.studentName }} · {{ reviewDialog.applyType }}</text>
+        <text class="gc__dialog-copy">{{ reviewDialog.studentName }} · {{ applyTypeLabel(reviewDialog.applyType) }}</text>
         <textarea
           v-if="reviewDialog.needsComment"
           v-model="reviewDialog.comment"
@@ -77,6 +77,15 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    applyTypeLabel(value) {
+      if (!value) return '绿色通道'
+      if (/[一-鿿]/.test(value)) return value
+      return ({ STUDENT_LOAN: '助学贷款', TUITION_DEFERMENT: '学费缓缴', TUITION_REDUCTION: '学费减免', INSTALLMENT: '分期缴费', OTHER: '其他困难申请' })[value] || `申请类型待确认（${value}）`
+    },
+    statusLabel(value, label) {
+      if (label) return label
+      return ({ PENDING: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回' })[value] || (value ? `状态待确认（${value}）` : '状态待确认')
+    },
     load(done) {
       this.state = 'loading'
       realRequest('/mobile/teacher/orientation/green-channels')

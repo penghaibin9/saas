@@ -38,7 +38,7 @@
             </view>
             <view class="ev__evidence">
               <text class="t-xs">评价身份：{{ typeLabels[typeIndex] }}</text>
-              <text class="t-xs">批次状态：{{ t.batchStatus || '—' }}</text>
+              <text class="t-xs">批次状态：{{ batchStatusLabel(t.batchStatus) }}</text>
             </view>
             <view class="ev__actions" v-if="t.status !== 'SUBMITTED'">
               <button class="btn btn-primary flex-1" :disabled="acting || submitting" @click="openSubmit(t)">去评价</button>
@@ -196,6 +196,9 @@ export default {
   },
   onBackPress() { if (!this.submitTarget && !this.appealTarget) return false; this.backToEvaluation(); return true },
   methods: {
+    batchStatusLabel(value) {
+      return ({ DRAFT: '草稿', PUBLISHED: '已发布', OPEN: '进行中', ACTIVE: '进行中', CLOSED: '已结束', ARCHIVED: '已归档' })[value] || (value ? `状态待确认（${value}）` : '—')
+    },
     async backToEvaluation() {
       if (!this.submitTarget && !this.appealTarget) return true
       if (this.submitting || this.acting) return false
