@@ -43,6 +43,7 @@
         <div v-else class="sw-role-grid">
           <article v-for="row in listing.rows" :key="row.id" class="sw-card sw-role-card" :data-role-id="row.id" data-testid="role-card">
             <div class="sw-role-card-head"><span class="sw-symbol"><AppIcon :name="row.type === 'CUSTOM' ? 'workbench' : 'students'" :size="21" /></span><div class="sw-role-identity"><h3>{{ row.name }}</h3><p class="sw-muted">{{ row.statusLabel }}</p></div><span class="sw-tag" :class="row.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ row.typeLabel }}</span></div>
+            <div class="sw-code">{{ row.code }}</div>
             <div class="sw-role-stats"><div><strong>{{ countLabel(row.memberCount) }}</strong><small>角色成员</small></div><div><strong class="sw-scope-value">{{ scopeLabel(row.scopeCode) }}</strong><small>默认范围</small></div><div><strong>{{ countLabel(row.version) }}</strong><small>当前版本</small></div></div>
             <div class="sw-row sw-role-actions"><button type="button" class="sw-btn" :class="row.type === 'CUSTOM' ? 'sw-btn--primary' : ''" @click="openRole(row.id, 'permissions')">{{ row.type === 'CUSTOM' ? '配置权限' : '查看权限' }}</button><button type="button" class="sw-btn" @click="openRole(row.id, 'members')">管理成员</button><button type="button" class="sw-link" @click="openRole(row.id, 'details')">详情与维护</button></div>
           </article>
@@ -66,7 +67,7 @@
         </aside>
         <div class="sw-workcontent">
           <template v-if="selectedId">
-            <div class="sw-worktitle"><div class="sw-current-role"><span class="sw-symbol"><AppIcon name="workbench" :size="21" /></span><div><h2>{{ selectedRole?.name || '正在读取当前角色' }}</h2><p><span v-if="selectedRole?.version != null"> · 当前版本 {{ selectedRole.version }}</span></p></div></div><span v-if="selectedRole" class="sw-tag" :class="selectedRole.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ selectedRole.typeLabel }}</span></div>
+            <div class="sw-worktitle"><div class="sw-current-role"><span class="sw-symbol"><AppIcon name="workbench" :size="21" /></span><div><h2>{{ selectedRole?.name || '正在读取当前角色' }}</h2><p>{{ selectedRole?.code || selectedId }}<span v-if="selectedRole?.version != null"> · 当前版本 {{ selectedRole.version }}</span></p></div></div><span v-if="selectedRole" class="sw-tag" :class="selectedRole.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ selectedRole.typeLabel }}</span></div>
             <div class="sw-tabs" role="tablist" aria-label="角色办理步骤" style="margin-bottom:20px">
               <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :aria-selected="activeTab === tab.key" :disabled="busy" @click="openRole(selectedId, tab.key)">{{ tab.label }}<span v-if="tab.key === 'members' && selectedRole?.memberCount != null" class="sw-tag">{{ selectedRole.memberCount }}</span></button>
             </div>

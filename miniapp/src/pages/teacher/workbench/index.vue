@@ -32,7 +32,7 @@
               <text class="wb__batch-name">{{ selectedInternshipBatch.name }}</text>
               <text class="wb__batch-meta">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ selectedInternshipBatch.studentCount }}人</text>
             </view>
-            <text class="wb__batch-status">{{ selectedInternshipBatch.status }}</text>
+            <text class="wb__batch-status">{{ internshipBatchStatus(selectedInternshipBatch.status) }}</text>
           </view>
 
           <view class="card wb__brief">
@@ -97,7 +97,7 @@
                   <text class="t-md t-bold">{{ r.name }}</text>
                   <MobileRiskTag :level="r.level" />
                 </view>
-                <text class="wb__risk-type">{{ r.className }} · {{ r.type }}</text>
+                <text class="wb__risk-type">{{ r.className }} · {{ r.typeLabel || riskTypeLabel(r.type) }}</text>
               </view>
               <text class="wb__risk-btn" @click.stop="handleRisk(r)">处理</text>
             </view>
@@ -244,6 +244,8 @@ export default {
     this.load({ force: true, done: () => uni.stopPullDownRefresh() })
   },
   methods: {
+    internshipBatchStatus(value) { return ({ DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || (value ? `状态待确认（${value}）` : '状态未知')) },
+    riskTypeLabel(value) { return ({ ACADEMIC: '学业风险', ATTENDANCE: '考勤风险', DISCIPLINE: '纪律风险', MENTAL: '心理关注', FINANCIAL: '资助风险', INTERNSHIP: '实习风险', EMPLOYMENT: '就业风险', SAFETY: '安全风险' }[value] || (value ? `风险类型待确认（${value}）` : '风险类型待确认')) },
     go, deadlineText, isOverdue, fromNow,
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     contextKey(session) {

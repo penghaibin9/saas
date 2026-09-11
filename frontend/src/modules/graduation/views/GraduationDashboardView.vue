@@ -114,7 +114,7 @@
       <section class="mp-card gdb-progress-card">
         <div class="mp-card__head">
           <span class="mp-card__title">批次进度</span>
-          <span class="gdb-progress-card__meta">{{ hero.batchName || batchStore.selectedBatchName }} · {{ hero.batchStatus || batchStore.batchStatus || '—' }}</span>
+          <span class="gdb-progress-card__meta">{{ hero.batchName || batchStore.selectedBatchName }} · {{ batchStatusLabel(hero.batchStatus || batchStore.batchStatus) }}</span>
         </div>
         <div class="mp-card__body gdb-flow">
           <div v-for="f in hero.flow" :key="f.label" class="gdb-flow__item" :class="{ 'is-active': f.active }">
@@ -165,7 +165,7 @@ export default {
       if (!this.hasBatch) return '请先选择或创建毕设批次'
       const name = this.hero.batchName || this.batchStore.selectedBatchName || '当前批次'
       const status = this.hero.batchStatus || this.batchStore.batchStatus || ''
-      return status ? `${name} · ${status}` : name
+      return status ? `${name} · ${this.batchStatusLabel(status)}` : name
     },
     toolbarActions() {
       const pa = this.ctx.permissionActions || {}
@@ -211,6 +211,7 @@ export default {
   created() { this.load() },
   watch: { 'batchStore.selectedBatchId'() { this.load() } },
   methods: {
+    batchStatusLabel(value) { return ({ DRAFT: '草稿', PREPARING: '准备中', RUNNING: '进行中', OPEN: '办理中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || (value ? `状态待确认（${value}）` : '—')) },
     async load() {
       if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); return }
       this.loading = true

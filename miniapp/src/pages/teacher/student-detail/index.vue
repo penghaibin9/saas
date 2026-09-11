@@ -11,7 +11,7 @@
               <MobileRiskTag v-if="s.risk && s.risk.level !== 'LOW'" :level="s.risk.level" />
             </view>
             <text class="sd__sub">{{ s.base.studentNo }} · {{ s.base.className || '未分班' }}</text>
-            <text class="sd__sub">{{ stageText(s.base.stage) }} · {{ s.base.status || '—' }}</text>
+            <text class="sd__sub">{{ stageText(s.base.stage) }} · {{ studentStatusText(s.base.status) }}</text>
           </view>
         </view>
 
@@ -122,6 +122,7 @@ export default {
     }
   },
   methods: {
+    studentStatusText(value) { return ({ ACTIVE: '在读', ENROLLED: '在籍', SUSPENDED: '休学', INACTIVE: '非在籍', GRADUATED: '已毕业', DROPPED: '已退学', TRANSFERRED: '已转出' }[value] || (value ? `状态待确认（${value}）` : '—')) },
     riskText(value) { return RISK[value] || value || '—' },
     stageText(value) { return STAGE[value] || value || '当前阶段' },
     statusText(value) { return value === 'EFFECTIVE' ? '存在生效处分' : (value || '存在记录') },

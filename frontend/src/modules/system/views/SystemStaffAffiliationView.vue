@@ -74,7 +74,7 @@
           <div class="mp-card__body" style="padding-top: 0">
             <DataTable v-if="legacyRows.length" :columns="legacyColumns" :rows="legacyRows" row-key="id">
               <template #cell-status="{ row }">
-                <StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.status || 'ACTIVE'" dot />
+                <StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="statusLabel(row.status || 'ACTIVE')" dot />
               </template>
             </DataTable>
             <EmptyState v-else title="暂无旧归属数据" description="" />
@@ -153,7 +153,7 @@ const ASSIGNMENT_TYPES = [
 ]
 
 const SOURCE_LABEL = { MANUAL: '手工任命', PROJECTED: '旧字段回填', IMPORT: '批量导入' }
-const STATUS_LABEL = { ACTIVE: '未到生效期', EXPIRED: '已过期', REVOKED: '已撤销' }
+const STATUS_LABEL = { ACTIVE: '生效中', PENDING: '未到生效期', EXPIRED: '已过期', REVOKED: '已撤销' }
 
 export default {
   name: 'SystemStaffAffiliationView',

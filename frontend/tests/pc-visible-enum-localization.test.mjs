@@ -44,7 +44,11 @@ test('重点页面不再展示后端状态码和英文技术说明', () => {
     ['modules/academicAffairs/views/AaScheduleMaintainView.vue', />\s*READY 教学任务|['"]READY 教学任务/],
     ['modules/academicAffairs/views/AaSelectionConsoleView.vue', /['"]READY 教学任务/],
     ['modules/system/views/SystemPlatformIntegrityView.vue', />\s*(?:Critical|High|Medium|Today New|7d Unresolved)\s*</],
-    ['modules/studentAffairs/views/MaterialOperationsView.vue', /Manifest ID|>versionId<|站内材料 Reader/]
+    ['modules/studentAffairs/views/MaterialOperationsView.vue', /Manifest ID|>versionId<|站内材料 Reader/],
+    ['modules/system/views/SystemStaffAffiliationView.vue', /:label="row\.status \|\| 'ACTIVE'"/],
+    ['modules/graduation/components/FileEvidencePanel.vue', /\{\{ item\.versionStatus \|\| item\.status/],
+    ['modules/internship/views/InternshipMaterialCenterView.vue', />\{\{ item\.(?:scanStatus|reviewStatus)/],
+    ['modules/graduation/views/GraduationDashboardView.vue', /\{\{ hero\.batchStatus \|\| batchStore\.batchStatus/]
   ]
   for (const [relative, pattern] of checks) {
     assert.doesNotMatch(readFileSync(new URL(relative, srcRoot), 'utf8'), pattern, relative)

@@ -74,7 +74,8 @@
               <view v-else class="ir ir__queue-item is-risk">
                 <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ item.student }}</text><text class="ir__company">{{ [item.className, item.company, item.post].filter(Boolean).join(' · ') || '实习信息待核对' }}</text></view><MobileStatusTag :status="item.status" :label="item.statusLabel" /></view>
                 <view class="ir__ck">
-                  <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ item.type }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ item.typeLabel || '打卡异常' }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">异常编号</text><text class="ir__text">{{ item.type || '—' }}</text></view>
                   <view class="ir__ck-row"><text class="ir__label">异常时间</text><text class="ir__text">{{ item.time || '—' }}</text></view>
                   <view class="ir__ck-row"><text class="ir__label">距离信息</text><text class="ir__text">{{ item.distance || '—' }}</text></view>
                   <view class="ir__ck-row"><text class="ir__label">定位精度</text><text class="ir__text">{{ item.accuracy || '—' }}</text></view>
@@ -160,7 +161,8 @@
             <view v-for="c in pagedSlice(data.abnormal)" :key="c.id" class="ir card is-risk">
               <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ c.student }}</text><text class="ir__company">{{ [c.className, c.company, c.post].filter(Boolean).join(' · ') || '实习信息待核对' }}</text></view><MobileStatusTag :status="c.status" :label="c.statusLabel" /></view>
               <view class="ir__ck">
-                <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ c.type }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ c.typeLabel || '打卡异常' }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">异常编号</text><text class="ir__text">{{ c.type || '—' }}</text></view>
                 <view class="ir__ck-row"><text class="ir__label">异常时间</text><text class="ir__text">{{ c.time || '—' }}</text></view>
                 <view class="ir__ck-row"><text class="ir__label">距离信息</text><text class="ir__text">{{ c.distance || '—' }}</text></view>
                 <view class="ir__ck-row"><text class="ir__label">定位精度</text><text class="ir__text">{{ c.accuracy || '—' }}</text></view>
@@ -294,7 +296,7 @@ export default {
     },
     stopSequential() { this.sequentialMode = false; this.sequentialIndex = 0; this.sequentialConflict = false },
     restartSequential() { this.sequentialConflict = false; this.sequentialIndex = Math.max(0, Math.min(this.sequentialIndex, this.sequentialItems.length - 1)) },
-    openSequentialItem(item) { if (item) toast(`${item.student || '当前学生'} · ${this.tab === 'weekly' ? item.week || '周报' : item.type || '异常'}`) },
+    openSequentialItem(item) { if (item) toast(`${item.student || '当前学生'} · ${this.tab === 'weekly' ? item.week || '周报' : item.typeLabel || '异常'}`) },
     canDecideException(item) { return !!item?.decisionFactsComplete && Number.isInteger(item?.expectedVersion) && item.expectedVersion >= 0 },
     decisionFactMessage(item) {
       const missing = Array.isArray(item?.missingDecisionFacts) ? item.missingDecisionFacts.filter(Boolean) : []

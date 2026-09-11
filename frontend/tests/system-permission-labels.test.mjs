@@ -33,3 +33,12 @@ test('readonly translation preserves exact granted codes and version', () => {
   assert.deepEqual(draft.menuKeys, [code])
   assert.equal(draft.version, 0)
 })
+
+test('IAM pages keep identifiers beside Chinese display names', () => {
+  const rolePanel = fs.readFileSync(new URL('../src/modules/system/views/SystemRoleListView.vue', import.meta.url), 'utf8')
+  const permissions = fs.readFileSync(new URL('../src/modules/system/components/workspace/RolePermissionPanel.vue', import.meta.url), 'utf8')
+  const templates = fs.readFileSync(new URL('../src/modules/system/components/workspace/RoleTemplatesPanel.vue', import.meta.url), 'utf8')
+  assert.match(rolePanel, /\{\{ row\.code \}\}/)
+  assert.match(permissions, /\{\{ node\.key \}\}/)
+  assert.match(templates, /\{\{ item\.templateCode \}\}/)
+})

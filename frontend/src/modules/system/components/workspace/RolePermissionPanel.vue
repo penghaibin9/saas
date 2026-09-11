@@ -27,7 +27,7 @@
           <button v-for="option in scopeOptions" :key="option.value" type="button" class="sw-scope-choice"
             :aria-pressed="draft.scopeCode === option.value" :disabled="!editable || saving || outcomeUnknown"
             @click="draft.scopeCode = option.value">
-            <b>{{ option.label }}</b>
+            <b>{{ option.label }}</b><small class="sw-code" style="display:block;margin-top:5px">{{ option.value }}</small>
           </button>
         </div>
         <div class="sw-alert">具体范围目标未编辑，本次保存保留原有目标。需要调整任职范围时，请到角色成员与业务身份核对。</div>
@@ -48,7 +48,7 @@
                   <input class="sw-check" type="checkbox" :checked="selection.includes(node.key)"
                     :aria-label="node.label" :disabled="!editable || saving || outcomeUnknown || (node.parentKey && !draft.menuKeys.includes(node.parentKey))"
                     @change="toggle(node, $event.target.checked)" />
-                  <span><b>{{ node.label }}</b>
+                  <span><b>{{ node.label }}</b><code>{{ node.key }}</code>
                     <small v-if="node.parentKey && !draft.menuKeys.includes(node.parentKey)" class="sw-muted">先选择所属入口：{{ permissionLabel(node.parentKey) }}</small>
                   </span>
                   <small class="sw-tag" :class="highRisk(node) ? 'sw-tag--orange' : ''">{{ highRisk(node) ? '高风险操作' : node.advanced ? '后台能力' : node.selectionType === 'menu' ? '入口' : '操作' }}</small>
@@ -71,7 +71,7 @@
       <details v-if="preserved.length" class="sw-card sw-pad sw-preserved" data-testid="readonly-preserved-permissions">
         <summary>只读保留 {{ preserved.length }} 项权限</summary>
         <div v-for="item in preserved" :key="item.permissionCode" class="sw-space">
-          <b>{{ displayLabel(item.permissionCode, item.label) }}</b><p class="sw-muted">{{ item.reason }}</p>
+          <b>{{ displayLabel(item.permissionCode, item.label) }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
         </div>
       </details>
       <div class="sw-savebar">
