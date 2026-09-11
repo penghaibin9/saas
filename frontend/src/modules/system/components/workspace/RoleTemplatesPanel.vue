@@ -7,7 +7,6 @@
     <div v-else class="sw-role-grid">
       <article v-for="item in templates" :key="item.id" class="sw-card sw-role-card">
         <div class="sw-between"><h3>{{ roleLabel(item.templateCode, item.templateName) }}</h3><span class="sw-tag sw-tag--blue">第 {{ item.templateVersion }} 版</span></div>
-        <p class="sw-code">{{ item.templateCode }}</p>
         <div class="sw-role-stats"><div><strong>{{ Array.isArray(item.permissions) ? item.permissions.length : '未取得' }}</strong><small>模板权限</small></div><div><strong>{{ countLabel(item.schoolPinnedCustomRoleCount) }}</strong><small>本校绑定角色</small></div></div>
         <div class="sw-row"><button type="button" class="sw-btn" :disabled="impactLoading || busy" @click="readImpact(item)">核对本校影响</button><button v-if="canCreate" type="button" class="sw-btn sw-btn--primary" :disabled="busy" @click="$emit('create', item.templateCode)">以此为来源创建</button></div>
       </article>
@@ -30,7 +29,7 @@
       <p v-if="governanceLoading" role="status">正在读取治理目录…</p>
       <p v-else-if="governanceError" class="sw-alert sw-alert--error" role="alert">{{ governanceError }}</p>
       <div v-else-if="governanceLoaded" class="sw-table-wrap sw-space"><table class="sw-table"><thead><tr><th>角色 / 通配</th><th>展开数量</th><th>状态 / 说明</th></tr></thead><tbody>
-        <tr v-for="item in wildcards" :key="`${item.roleCode}:${item.wildcardCode}`"><td>{{ roleLabel(item.roleCode) }}<small class="sw-code">{{ item.wildcardCode }}</small></td><td>{{ countLabel(item.expandedCount) }}</td><td>{{ wildcardLabel(item.status) }}<small>{{ item.note }}</small></td></tr>
+        <tr v-for="item in wildcards" :key="`${item.roleCode}:${item.wildcardCode}`"><td>{{ roleLabel(item.roleCode) }}</td><td>{{ countLabel(item.expandedCount) }}</td><td>{{ wildcardLabel(item.status) }}<small>{{ item.note }}</small></td></tr>
         <tr v-if="!wildcards.length"><td colspan="3">当前没有返回治理记录；这不等于已证明所有历史权限均已退役。</td></tr>
       </tbody></table></div>
       <p v-if="disclaimer" class="sw-muted sw-space">{{ disclaimer }}</p>
