@@ -44,9 +44,9 @@
 
         <section class="card permission-catalog" data-testid="permission-catalog-workspace">
           <header class="permission-catalog__header">
-            <div><h3>学校可分配权限目录</h3><p class="muted">按业务域和功能分组查找；中文名称用于办理，权限编码用于核对。</p></div>
+            <div><h3>学校可分配权限目录</h3><p class="muted">按业务域和功能分组查找学校可分配的权限。</p></div>
             <div class="permission-catalog__tools">
-              <label class="permission-search"><span class="sr-only">搜索权限</span><input v-model.trim="permissionKeyword" placeholder="搜索权限名称或权限编码" /></label>
+              <label class="permission-search"><span class="sr-only">搜索权限</span><input v-model.trim="permissionKeyword" placeholder="搜索权限名称或功能" /></label>
               <div class="permission-filters" aria-label="权限风险筛选">
                 <button v-for="filter in permissionRiskFilters" :key="filter.value" type="button" :class="{ active: permissionRiskFilter === filter.value }" @click="permissionRiskFilter = filter.value">
                   {{ filter.label }} <b>{{ permissionFilterCount(filter.value) }}</b>
@@ -75,45 +75,50 @@
                 <div><button type="button" @click="setAllFeatureGroups(true)">展开全部</button><i aria-hidden="true" /> <button type="button" @click="setAllFeatureGroups(false)">收起全部</button></div>
               </header>
 
+              <div class="permission-feature-grid">
               <section v-for="group in permissionFeatureGroups" :key="group.key" class="permission-feature">
                 <button type="button" class="permission-feature__head" :aria-expanded="isFeatureGroupOpen(group.key)" @click="toggleFeatureGroup(group.key)">
                   <strong>{{ group.label }}</strong><b>{{ group.rows.length }}</b><small>{{ group.description }}</small>
                   <span class="permission-feature__toggle">{{ isFeatureGroupOpen(group.key) ? '收起' : '展开' }}</span>
                 </button>
                 <div v-if="isFeatureGroupOpen(group.key)" class="permission-rows">
-                  <div class="permission-row permission-row--head"><span>权限名称</span><span>权限编码</span><span>风险等级</span><span>自定义角色</span></div>
+                  <div class="permission-row permission-row--head"><span>权限名称</span><span>风险等级</span><span>自定义角色</span></div>
                   <div v-for="item in group.rows" :key="item.permissionCode" class="permission-row">
                     <span class="permission-row__name"><strong>{{ permissionDisplayLabel(item) }}</strong><small>{{ permissionDescription(item) }}</small></span>
-                    <code>{{ item.permissionCode }}</code>
                     <span><b class="risk-pill" :class="`risk-pill--${riskTone(item.riskLevel)}`">{{ riskLevelLabel(item.riskLevel) }}</b></span>
                     <span>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</span>
                   </div>
                 </div>
               </section>
+              </div>
               <div v-if="!permissionFeatureGroups.length" class="permission-empty"><b>没有匹配的权限</b><p>可更换业务域、风险条件或搜索关键词。</p></div>
             </div>
           </div>
         </section>
 
-        <section class="card">
+        <section class="card template-catalog">
           <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>模板</th><th>当前版本</th><th>权限数</th><th>本校已绑定角色</th><th>来源版本分布</th><th>权限摘要</th><th>操作</th></tr></thead>
-              <tbody>
-                <tr v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`">
-                  <td><strong>{{ roleLabel(item.templateCode, item.templateName) }}</strong></td>
-                  <td>第 {{ item.templateVersion }} 版</td>
-                  <td>{{ item.permissions?.length || 0 }}</td>
-                  <td>{{ item.schoolPinnedCustomRoleCount || 0 }}</td>
-                  <td>{{ (item.schoolPinnedSourceVersions || []).map((v) => `第 ${v} 版`).join('、') || '—' }}</td>
-                  <td>{{ item.permissionDigest ? '已生成' : '—' }}</td>
-                  <td><button class="link" :disabled="impactLoading === item.id" @click="loadTemplateImpact(item)">影响</button></td>
-                </tr>
-                <tr v-if="!templates.length"><td colspan="7" class="muted">暂无已发布学校角色模板</td></tr>
-              </tbody>
-            </table>
+          <div class="template-grid">
+            <article v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`" class="template-item">
+              <header><strong>{{ roleLabel(item.templateCode, item.templateName) }}</strong><span class="muted">第 {{ item.templateVersion }} 版</span></header>
+              <div class="template-item__stats"><button class="link" :aria-label="`查看${roleLabel(item.templateCode, item.templateName)}的模板权限`" @click="viewTemplatePermissions(item)">权限 <b>{{ item.permissions?.length || 0 }}</b> 项 · 查看</button><span>绑定角色 <b>{{ item.schoolPinnedCustomRoleCount || 0 }}</b> 个</span><button class="link" :disabled="impactLoading === item.id" @click="loadTemplateImpact(item)">{{ impactLoading === item.id ? '查询中…' : '查看影响' }}</button></div>
+              <details><summary>版本与摘要</summary><p>来源版本：{{ (item.schoolPinnedSourceVersions || []).map((v) => `第 ${v} 版`).join('、') || '暂无绑定' }}；权限摘要：{{ item.permissionDigest ? '已生成' : '未生成' }}</p></details>
+            </article>
+            <p v-if="!templates.length" class="muted">暂无已发布学校角色模板</p>
           </div>
+        </section>
+
+        <section v-if="selectedTemplate" ref="templatePermissions" class="card template-permissions" tabindex="-1" aria-label="模板权限明细">
+          <header class="section-head"><div><h3>{{ roleLabel(selectedTemplate.templateCode, selectedTemplate.templateName) }} · 第 {{ selectedTemplate.templateVersion }} 版权限</h3><p class="muted">这是模板包含的权限；学校角色实际权限请在“学校角色与成员”中查看。</p></div><button class="link" @click="selectedTemplate = null">关闭明细</button></header>
+          <label class="permission-search">搜索模板权限<input v-model.trim="templatePermissionKeyword" placeholder="输入中文权限名称或功能" /></label>
+          <p class="muted">共 {{ selectedTemplate.permissions?.length || 0 }} 项，当前显示 {{ templatePermissionGroups.reduce((count, group) => count + group.rows.length, 0) }} 项</p>
+          <div class="template-grid">
+            <details v-for="group in templatePermissionGroups" :key="group.key" class="template-item" open>
+              <summary><strong>{{ group.label }}</strong> · {{ group.rows.length }} 项</summary>
+              <ul><li v-for="item in group.rows" :key="item.permissionCode">{{ permissionDisplayLabel(item) }}</li></ul>
+            </details>
+          </div>
+          <p v-if="!templatePermissionGroups.length" class="muted">{{ selectedTemplate.permissions?.length ? '没有匹配的权限，请更换关键词。' : '此模板暂无权限。' }}</p>
         </section>
 
         <section v-if="templateImpact" class="card impact-card">
@@ -262,7 +267,7 @@ export default {
     summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
     activePermissionDomain: 'system', permissionRiskFilter: 'all', openPermissionGroups: [],
     explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
-    roleEvidence: null, evidenceLoading: false,
+    roleEvidence: null, evidenceLoading: false, selectedTemplate: null, templatePermissionKeyword: '',
     explain: {
       userId: '', moduleKey: 'internship', permissionCode: 'internship.recruitment.manage',
       scopeTargetType: 'COLLEGE', scopeTargetId: '', resourceType: 'STUDENT', resourceId: ''
@@ -279,6 +284,22 @@ export default {
     ]
   }),
   computed: {
+    templatePermissionGroups() {
+      const catalog = new Map([...(this.catalog.assignablePermissions || []), ...this.allCatalogPermissions].map(item => [item.permissionCode, item]))
+      const groups = new Map()
+      const keyword = this.templatePermissionKeyword.toLowerCase()
+      for (const permission of this.selectedTemplate?.permissions || []) {
+        const code = typeof permission === 'string' ? permission : permission.permissionCode
+        const item = { ...(catalog.get(code) || {}), ...(typeof permission === 'object' ? permission : {}), permissionCode: code }
+        const feature = this.permissionFeatureMeta(item)
+        const domain = PERMISSION_DOMAINS.find(entry => entry.key === this.permissionDomainKey(item))
+        const label = `${domain?.label || '其他权限'} · ${feature.label}`
+        if (keyword && !`${this.permissionDisplayLabel(item)} ${label}`.toLowerCase().includes(keyword)) continue
+        if (!groups.has(feature.key)) groups.set(feature.key, { key: feature.key, label, rows: [] })
+        groups.get(feature.key).rows.push(item)
+      }
+      return [...groups.values()]
+    },
     activeSurface() {
       const key = String(this.$route.query.surface || '')
       return this.surfaces.find((item) => item.key === key) || null
@@ -340,6 +361,11 @@ export default {
   methods: {
     roleLabel: roleDisplayLabel,
     auditRecord(row) { return presentAuditRecord(row) },
+    viewTemplatePermissions(item) {
+      this.selectedTemplate = item
+      this.templatePermissionKeyword = ''
+      this.$nextTick(() => { this.$refs.templatePermissions?.focus(); this.$refs.templatePermissions?.scrollIntoView({ block: 'start', behavior: 'smooth' }) })
+    },
     permissionDisplayLabel(item) { return permissionDisplayLabel(item?.permissionCode, item?.label) },
     moduleFeatureLabel(item) {
       const moduleLabel = MODULE_LABELS[String(item?.moduleKey || '').toLowerCase()] || '业务模块'
@@ -512,4 +538,45 @@ export default {
 .permission-catalog{order:-1}.permission-catalog__tools{display:flex;align-items:center;justify-content:flex-end;min-width:0}.permission-search{width:min(100%,300px)}.permission-filters{flex-wrap:nowrap}.permission-catalog .permission-chip{font-family:inherit}
 @media(max-width:1100px){.permission-catalog__tools{justify-content:flex-start;width:100%}.permission-search{width:min(100%,360px)}}
 @media(max-width:760px){.permission-catalog__tools{align-items:stretch;flex-direction:column}.permission-search{width:100%}.permission-filters{flex-wrap:wrap}}
+.permission-catalog{padding-inline:12px}
+.permission-browser{grid-template-columns:160px minmax(0,1fr);gap:12px}
+.permission-groups{container-type:inline-size}
+.permission-feature-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px;align-items:start}
+@container(max-width:959px){.permission-feature-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container(max-width:639px){.permission-feature-grid{grid-template-columns:1fr}}
+.permission-feature-grid .permission-feature{margin-top:0;min-width:0}
+.permission-feature__head{grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding-inline:12px}
+.permission-feature__head small{grid-column:1/-1;grid-row:2;line-height:1.5}
+.permission-feature__toggle{grid-column:3;grid-row:1}
+.permission-row{grid-template-columns:minmax(0,1fr) 76px 78px;gap:8px;padding-inline:12px}
+.permission-row__name{min-width:0;overflow-wrap:anywhere}
+@media(max-width:1100px){.permission-browser{grid-template-columns:1fr}}
+@media(max-width:760px){.permission-feature-grid{grid-template-columns:1fr}.permission-row{grid-template-columns:minmax(0,1fr) 76px 78px}.permission-row--head{display:grid}}
+@media(max-width:420px){.permission-row{grid-template-columns:minmax(0,1fr) 72px}.permission-row>span:last-child{grid-column:1/-1}.permission-row--head{display:none}}
+.iam-page{gap:12px}
+.hero.card{padding:12px 16px;align-items:center}
+.hero .eyebrow{display:none}
+.hero h3{font-size:16px;margin-bottom:4px}
+.hero .muted{margin:0;font-size:13px;line-height:1.6}
+.metrics{gap:0;border:1px solid var(--card-b,#e5e6eb);border-radius:10px;background:var(--surface,#fff);overflow:hidden}
+.metrics article.card{display:flex;align-items:center;gap:10px;padding:12px 16px;border:0;border-radius:0;border-right:1px solid var(--card-b,#e5e6eb)}
+.metrics strong{font-size:24px}.metrics span{font-size:13px}
+.surface-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.surface.card{grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;padding:10px 12px}
+.surface strong{font-size:14px}.surface span{grid-column:1/-1;grid-row:2;min-height:0;font-size:12px;line-height:1.5}.surface small{grid-column:2;grid-row:1;font-size:12px}
+.template-catalog{padding:12px 16px;container-type:inline-size}
+.template-catalog .section-head h3{font-size:16px}.template-catalog .section-head p{margin:4px 0 10px;font-size:13px}
+.template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}
+.template-item{min-width:0;padding:10px 12px;border:1px solid #dae4f3;border-radius:8px}
+.template-item header{display:flex;justify-content:space-between;gap:8px;font-size:14px}.template-item header .muted{font-size:12px;white-space:nowrap}
+.template-item__stats{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin-top:6px;font-size:13px}.template-item__stats .link{margin-left:auto;padding:4px 0}
+.template-item details{font-size:12px;color:#667b96;margin-top:4px}.template-item summary{cursor:pointer}.template-item details p{margin:6px 0 0;line-height:1.6}
+@container(max-width:850px){.template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container(max-width:520px){.template-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.surface-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.surface-grid{grid-template-columns:1fr}.metrics{grid-template-columns:1fr}.hero.card{align-items:flex-start}}
+.template-item__stats>.link:first-child{margin-left:0}
+.template-permissions{scroll-margin-top:16px;container-type:inline-size}
+.template-permissions ul{padding-left:18px;margin:8px 0 0}.template-permissions li{padding:5px 0;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.template-permissions summary{cursor:pointer;font-size:14px}
 </style>

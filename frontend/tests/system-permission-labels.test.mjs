@@ -50,6 +50,6 @@ test('permission catalog uses business domains and collapsible feature groups in
   assert.match(source, /permissionFeatureGroups/)
   assert.match(source, /toggleFeatureGroup/)
   assert.match(source, /permissionRiskFilters/)
-  assert.match(source, /\{\{ item\.permissionCode \}\}/)
+  assert.doesNotMatch(source, /<code>\{\{ item\.permissionCode \}\}<\/code>/)
   assert.doesNotMatch(source, /v-for="item in filteredPermissions"[^]*?<\/table>/)
 })
