@@ -162,6 +162,7 @@ def _preflight_user(authorization: Optional[str]) -> dict:
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
+        "credentialVersion": claims.get("credentialVersion"),
         "studentNo": claims.get("studentNo"), "collegeId": claims.get("collegeId"),
         "collegeIds": claims.get("collegeIds"), "majorId": claims.get("majorId"),
         "majorIds": claims.get("majorIds"), "tokenJti": claims.get("jti"),
