@@ -140,7 +140,7 @@ export default {
           this.s = null
           this.state = 'empty'
         } else {
-          this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       })
     },

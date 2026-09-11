@@ -103,6 +103,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
@@ -250,7 +251,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._listEpoch === epoch && this.contextKey() === context) {
           if (isForbiddenResponse(error)) { this.changes = []; this.items = []; this.receipt = null; this.tab = 'list' }
-          this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
     },

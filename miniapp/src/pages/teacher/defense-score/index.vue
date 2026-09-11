@@ -54,6 +54,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
@@ -98,7 +99,7 @@ export default {
           if (token !== this.loadToken) return
           this.list = null
           this.loadError = errorText(e)
-          this.state = 'error'
+          this.state = normalizeError(e).pageState || 'error'
         })
         .finally(() => { if (done) done() })
     },

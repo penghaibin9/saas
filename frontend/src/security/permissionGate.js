@@ -189,6 +189,23 @@ export function canEnterRoute(meta) {
   return allKeys.every((k) => matchPermission(_patterns, k))
 }
 
+/** Explain a denied route without confusing school licensing with personal permissions. */
+export function routeAccessNotice(meta) {
+  if (canEnterRoute(meta)) return null
+  if (_rbacLoadFailed) return {
+    title: '暂时无法确认访问权限',
+    message: '权限服务暂不可用，请重试。当前页面尚未加载业务数据。'
+  }
+  if (!currentModuleEntitled(meta?.moduleCode)) return {
+    title: '学校尚未开通此模块',
+    message: '当前学校的模块授权尚未包含此功能。学校管理员需联系平台运营人员核对学校模块授权；给个人增加角色不能开通学校模块。'
+  }
+  return {
+    title: '当前身份暂不能办理此业务',
+    message: '当前身份缺少此页面所需权限。请在右上角切换已有的业务身份，或由有授权职责的管理员核对角色与数据范围。'
+  }
+}
+
 export default {
   GUARDED_MODULES,
   setPermissionPatterns,

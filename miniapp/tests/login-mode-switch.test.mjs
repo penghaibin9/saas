@@ -6,6 +6,22 @@ const source = readFileSync(new URL('../src/components/login/MiniLoginAuthPanel.
   .match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 const component = new Function(source)()
 
+test('login initialization does not query school business data before authentication', () => {
+  for (const isTeacher of [false, true]) {
+    const calls = []
+    const panel = new Function('createIdentityCaptcha', 'studentApi', 'toast', source)(
+      () => ({ dispose() {} }),
+      { getOrientationBatchStatus() { calls.push('batch-status'); return Promise.resolve({ open: false }) } },
+      () => {}
+    )
+    const state = { isTeacher, accountCaptcha: {}, account: {} }
+    panel.created.call(state)
+    assert.deepEqual(calls, [])
+    assert.equal(state.loginAlive, true)
+    assert.ok(state.accountCaptchaFlow)
+  }
+})
+
 test('login mode rejects invalid values and switching while either login is pending', () => {
   for (const flags of [{ accLoading: true }, { wxLoading: true }, {}]) {
     const state = { account: { identifierType: 'ACCOUNT' }, identifierOptions: component.computed.identifierOptions(), ...flags }

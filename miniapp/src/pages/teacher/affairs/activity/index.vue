@@ -136,7 +136,7 @@ export default {
           else { this.loadError = '该活动不存在、已变更，或不在当前权限范围内'; this.state = 'error' }
         }
       } catch (e) {
-        if (!more) { this.loadError = normalizeError(e).text || e.message || '活动列表加载失败'; this.state = 'error' }
+        if (!more) { this.loadError = normalizeError(e).text || e.message || '活动列表加载失败'; this.state = normalizeError(e).pageState || 'error' }
         else toast(normalizeError(e).text || '加载更多失败')
       } finally { this.loadingMore = false }
     },

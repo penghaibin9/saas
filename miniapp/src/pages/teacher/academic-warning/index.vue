@@ -1,18 +1,22 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" :title="detailId ? '预警跟进' : '学业预警待处理'" subtitle="学业预警" :before-back="backToWarnings" show-back />
+    <MobileNavBar variant="teacher" :title="detailId ? '预警跟进' : '学业预警待处理'" subtitle="学业预警" :before-back="backToWarnings" fallback-url="/pages/teacher/workbench/index" show-back />
 
     <view class="aw__filter" v-if="!detailId && list">
       <view class="aw__chip" :class="{ 'is-on': levelFilter === 'all' }" @click="setLevel('all')">全部</view>
       <view v-for="lv in levelOptions" :key="lv.key" class="aw__chip" :class="{ 'is-on': levelFilter === lv.key }" @click="setLevel(lv.key)">{{ lv.label }}</view>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :title="state === 'noLicense' ? '本校未开通教务管理' : ''" @retry="load" @back="goBack">
+      <template #actions>
+        <button v-if="state === 'error'" class="btn btn-primary" @click="load()">重试</button>
+        <button class="btn btn-ghost" @click="goBack">返回</button>
+      </template>
       <view class="page-pad" v-if="list">
         <button v-if="detailId" class="btn btn-ghost aw__back" :disabled="!!actingId" @click="backToWarnings">‹ 返回预警列表</button>
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待处理预警"
-          description="学生触发学业预警后会出现在这里，可关闭或升级为风险。" />
-        <MobileGlobalState v-else-if="!filteredList.length" state="empty" title="当前筛选无预警" description="可切换上方预警等级查看其他记录。" />
+          description="学生触发学业预警后会出现在这里，可关闭或升级为风险。" @back="goBack" />
+        <MobileGlobalState v-else-if="!filteredList.length" state="empty" title="当前筛选无预警" description="可切换上方预警等级查看其他记录。" @back="goBack" />
         <view class="stack" v-else>
           <view v-for="w in displayedWarnings" :key="w.id || w.warningId" class="card aw" :class="{ 'is-target': isTarget(w) }">
             <text v-if="isTarget(w)" class="aw__target">从工作台直达的预警</text>
@@ -83,7 +87,8 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { useSessionStore } from '@/stores/session'
-import { toast } from '@/utils/nav'
+import { toast, back } from '@/utils/nav'
+import { normalizeError } from '@/services/request'
 import { beginPersistentWrite, clearPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from '../academic-affairs/write-result'
 
 const LEVELS = [{ key: 'HIGH', label: '高' }, { key: 'MEDIUM', label: '中' }, { key: 'LOW', label: '低' }]
@@ -132,6 +137,7 @@ export default {
     changeQueuePage(page) { if (page < 0 || this.state === 'loading') return; this.queuePage = page; this.load() },
     openWarning(row) { if (this.actingId || this.followSubmitting) return; this.detailId = this.warningId(row); this.loadDetail(this.detailId) },
     backToWarnings() { if (!this.detailId) return true; if (this.actingId || this.followSubmitting) return false; this.detailId = ''; this.targetWarningId = ''; this.detail = null; this.detailState = 'idle'; this.load(); return false },
+    goBack() { if (this.backToWarnings() !== false) back('/pages/teacher/workbench/index') },
     contextKey() {
       return teacherWriteContext(useSessionStore())
     },
@@ -234,7 +240,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
           if (isForbiddenResponse(error)) this.clearPrivateState()
-          this.state = 'error'
+        this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
     },

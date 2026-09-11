@@ -7,12 +7,12 @@
       <view class="ta__navbar"><text class="ta__navbar-back" @click="back">‹</text><text class="ta__navbar-title">我的教学</text></view>
       <view class="ta__summary">
         <text class="ta__summary-label">今日教学</text>
-        <text class="ta__summary-value">{{ todaySummary }}</text>
-        <text class="ta__summary-sub">{{ headline }}</text>
+        <text class="ta__summary-value">{{ state === 'ready' ? todaySummary : '教学信息' }}</text>
+        <text class="ta__summary-sub">{{ state === 'ready' ? headline : (state === 'loading' ? '正在读取教学信息…' : '暂不可查看教学信息') }}</text>
       </view>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" @retry="load" @back="back">
       <view class="page-pad ta__body">
         <view v-if="selectedInvig" class="card ta__invig-detail">
           <button class="btn btn-ghost" @click="backToTeaching">‹ 返回我的教学</button>
@@ -151,7 +151,7 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
-import { decodeQueryText, go, toast } from '@/utils/nav'
+import { decodeQueryText, go, toast, back as navigateBack } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 import { useSessionStore } from '@/stores/session'
 import { isForbiddenResponse } from './write-result'
@@ -353,7 +353,7 @@ export default {
       const endMinute = minutes(band.endTime)
       return { start: band.startTime || '', startMinute, endMinute: startMinute !== null && endMinute > startMinute ? endMinute : null }
     },
-    back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/teacher/workbench/index') }) },
+    back() { navigateBack('/pages/teacher/workbench/index') },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     countOf(key) { return this.counts[key] || '' },
     invigilationRoleLabel(role) { return String(role || '').toUpperCase() === 'CHIEF' ? '主监考' : '副监考' },
@@ -490,7 +490,7 @@ export default {
       } catch (error) {
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         if (isForbiddenResponse(error)) this.clearPrivateHome()
-        this.state = 'error'
+        this.state = normalizeError(error).pageState || 'error'
         return
       }
       if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return

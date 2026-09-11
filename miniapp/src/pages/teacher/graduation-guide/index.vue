@@ -330,7 +330,7 @@ export default {
         this.state = 'ready'
         this.loadMidterm(); this.loadReviews(); this.loadGrade(); this.loadDefenseScorePending()
         this._maybeBootReview()
-      }).catch(() => { if (!this.data) this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((error) => { if (!this.data) this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
     _maybeBootReview() {
       const kind = this._bootKind

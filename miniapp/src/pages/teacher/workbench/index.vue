@@ -134,6 +134,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -319,7 +320,7 @@ export default {
         this.state = 'ready'
         return workbench
       })().catch((error) => {
-        if (this._pageActive && this._loadEpoch === epoch) this.state = 'error'
+        if (this._pageActive && this._loadEpoch === epoch) this.state = normalizeError(error).pageState || 'error'
         throw error
       }).finally(() => {
         if (this._workbenchPromise === pending) this._workbenchPromise = null

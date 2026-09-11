@@ -34,7 +34,7 @@ test('teacher MyStudents V3 retains rows when load-more network fails', () => {
   const catchBlock = page.slice(page.indexOf('} catch (error) {'), page.indexOf('} finally {'))
   assert.match(catchBlock, /if \(append\)/)
   assert.match(catchBlock, /toastError\(error\)/)
-  assert.match(catchBlock, /this\.state = 'error'/)
+  assert.match(catchBlock, /this\.state = normalizeError\(error\)\.pageState \|\| 'error'/)
   assert.doesNotMatch(catchBlock, /this\.items = \[\]/)
 })
 

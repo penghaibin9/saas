@@ -186,7 +186,7 @@ export default {
         this.detailMap = { [this.focusId]: detail }; this.expandedId = this.focusId; this.state = 'ready'
       }).catch(error => {
         if (requestId !== this.requestSeq) return
-        this.list = []; this.total = 0; this.state = 'error'; this._err(error, '申请加载')
+        this.list = []; this.total = 0; this.state = normalizeError(error).pageState || 'error'; this._err(error, '申请加载')
       })
     },
     loadMore() {
@@ -212,7 +212,7 @@ export default {
       }).catch((e) => {
         if (requestId !== this.requestSeq) return
         if (append) this.moreError = '后续待办暂未加载，已显示的记录仍保留。'
-        else this.state = 'error'
+        else this.state = normalizeError(e).pageState || 'error'
         this._err(e, '加载')
       }).finally(() => { if (requestId === this.requestSeq) this.loadingMore = false })
     },

@@ -17,14 +17,19 @@
 
     <view v-else class="mgs-panel">
       <view class="mgs-icon" :class="`mgs-icon--${state}`"><text>{{ meta.icon }}</text></view>
-      <text class="mgs-title">{{ title || meta.title }}</text>
-      <text class="mgs-desc">{{ description || meta.description }}</text>
+      <text class="mgs-title">{{ accessBlocked ? meta.title : (title || meta.title) }}</text>
+      <text class="mgs-desc">{{ accessBlocked ? meta.description : (description || meta.description) }}</text>
       <text v-if="errorCode && state === 'error'" class="mgs-code">错误码：{{ errorCode }}</text>
       <view class="mgs-actions">
-        <slot name="actions">
+        <template v-if="accessBlocked">
+          <button v-if="state === 'unauthorized'" class="mgs-btn mgs-btn--primary" @click="login">重新登录</button>
+          <button v-else class="mgs-btn" @click="goBack">返回</button>
+          <button v-if="meta.contact && hasContactHandler" class="mgs-btn" @click="$emit('contact')">{{ meta.contact }}</button>
+        </template>
+        <slot v-else name="actions">
           <button v-if="meta.retry" class="mgs-btn mgs-btn--primary" @click="$emit('retry')">{{ meta.retry }}</button>
-          <button v-if="meta.back" class="mgs-btn" @click="$emit('back')">{{ meta.back }}</button>
-          <button v-if="meta.contact" class="mgs-btn" @click="$emit('contact')">{{ meta.contact }}</button>
+          <button v-if="meta.back" class="mgs-btn" @click="goBack">{{ meta.back }}</button>
+          <button v-if="meta.contact && hasContactHandler" class="mgs-btn" @click="$emit('contact')">{{ meta.contact }}</button>
         </slot>
       </view>
     </view>
@@ -35,13 +40,15 @@
 </template>
 
 <script>
+import { back, relaunch } from '@/utils/nav'
 const STATE_META = {
   empty: { icon: '▢', title: '暂无数据', description: '当前没有可展示的内容', retry: '', back: '返回', contact: '' },
   error: { icon: '!', title: '加载失败', description: '数据加载出现问题，请重试', retry: '重试', back: '', contact: '' },
-  forbidden: { icon: '⊘', title: '当前身份无权查看', description: '不在授权范围内，可切换身份或联系管理员', retry: '', back: '返回', contact: '联系管理员' },
+  forbidden: { icon: '⊘', title: '暂无访问权限', description: '当前账号没有访问此功能的权限，请联系学校管理员', retry: '', back: '返回', contact: '联系管理员' },
   offline: { icon: '⇅', title: '网络异常', description: '当前网络不可用，请检查网络后重试', retry: '重试', back: '', contact: '' },
   readonly: { icon: '🔒', title: '当前模块只读', description: '模块授权已到期，历史可查看，不可新增修改', retry: '', back: '查看历史', contact: '联系管理员' },
-  noLicense: { icon: '◇', title: '模块未开通', description: '学校尚未开通该模块，如需使用请联系学校管理员', retry: '', back: '返回', contact: '联系学校管理员' }
+  noLicense: { icon: '◇', title: '本校未开通该模块', description: '学校尚未开通该模块，如需使用请联系学校管理员', retry: '', back: '返回', contact: '联系学校管理员' },
+  unauthorized: { icon: '⊘', title: '登录已失效', description: '请重新登录后继续操作', retry: '', back: '', contact: '' }
 }
 
 export default {
@@ -50,7 +57,7 @@ export default {
     state: {
       type: String,
       default: 'ready',
-      validator: (v) => ['ready', 'loading', 'empty', 'error', 'forbidden', 'offline', 'readonly', 'noLicense'].includes(v)
+      validator: (v) => ['ready', 'loading', 'empty', 'error', 'forbidden', 'offline', 'readonly', 'noLicense', 'unauthorized'].includes(v)
     },
     title: { type: String, default: '' },
     description: { type: String, default: '' },
@@ -58,7 +65,19 @@ export default {
     loadingText: { type: String, default: '正在加载…' }
   },
   emits: ['retry', 'back', 'contact'],
-  computed: { meta() { return STATE_META[this.state] || STATE_META.error } }
+  computed: {
+    meta() { return STATE_META[this.state] || STATE_META.error },
+    accessBlocked() { return ['forbidden', 'noLicense', 'unauthorized'].includes(this.state) },
+    hasContactHandler() { return !!this.$?.vnode?.props?.onContact }
+  },
+  methods: {
+    goBack() {
+      if (this.$?.vnode?.props?.onBack) { this.$emit('back'); return }
+      const route = typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0]?.route || '' : ''
+      back(route.startsWith('pages/teacher') ? '/pages/teacher/workbench/index' : route.startsWith('pages/student') ? '/pages/student/home/index' : '/pages/login/index')
+    },
+    login() { relaunch('/pages/login/index') }
+  }
 }
 </script>
 

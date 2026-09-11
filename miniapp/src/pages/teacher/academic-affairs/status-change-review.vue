@@ -54,6 +54,7 @@
   </view>
 </template>
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { getDoneApprovals } from '@/services/approvalApi'
 import { matchCompletedStatusTask } from './status-review-recovery'
@@ -211,7 +212,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
           if (this.isForbidden(error)) this.clearPrivateReview()
-          else this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
     },

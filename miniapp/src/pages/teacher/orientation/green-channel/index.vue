@@ -62,7 +62,7 @@
 </template>
 
 <script>
-import { realRequest } from '@/services/request'
+import { normalizeError, realRequest } from '@/services/request'
 import { toast } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
@@ -90,7 +90,7 @@ export default {
       this.state = 'loading'
       realRequest('/mobile/teacher/orientation/green-channels')
         .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { if (done) done() })
     },
     openReview(a, type) {

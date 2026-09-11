@@ -1,7 +1,11 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" :title="lesson ? '我的正式课次' : '我的课表'" :subtitle="termCode || '当前学期授课安排'" :before-back="backToSchedule" show-back />
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileNavBar variant="teacher" :title="lesson ? '我的正式课次' : '我的课表'" :subtitle="termCode || '当前学期授课安排'" :before-back="backToSchedule" fallback-url="/pages/teacher/workbench/index" show-back />
+    <MobileGlobalState :state="state" :title="state === 'noLicense' ? '本校未开通教务管理' : ''" @retry="load" @back="goBack">
+      <template #actions>
+        <button v-if="state === 'error'" class="btn btn-primary" @click="load">重试</button>
+        <button class="btn btn-ghost" @click="goBack">返回</button>
+      </template>
       <view v-if="lesson" class="page-pad">
         <button class="btn btn-ghost ts__back" @click="backToSchedule">‹ 返回课表</button>
         <view class="card ts__lesson">
@@ -55,7 +59,8 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
-import { go, toast } from '@/utils/nav'
+import { go, toast, back } from '@/utils/nav'
+import { normalizeError } from '@/services/request'
 import { useSessionStore } from '@/stores/session'
 
 const WEEK = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
@@ -173,6 +178,7 @@ export default {
       this.lessonIsToday = today
     },
     backToSchedule() { if (!this.lessonId) return true; this.lessonId = ''; return false },
+    goBack() { if (this.backToSchedule() !== false) back('/pages/teacher/workbench/index') },
     requestChange(item) {
       const id = String(item.scheduleItemId || item.itemId || '')
       if (!id) { toast('该课位缺少正式编号，请刷新课表'); return }
@@ -279,7 +285,7 @@ export default {
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         this.items = null; this.todayItems = []; this.lessonId = ''; this.timeBands = []
         if (this.isForbidden(error)) { this.currentWeek = null; this.teachingWeeks = null; this.termCode = ''; this.termStartDate = ''; this.todayDate = ''; this.calendarSource = '' }
-        this.state = 'error'
+        this.state = normalizeError(error).pageState || 'error'
       }
     }
   }

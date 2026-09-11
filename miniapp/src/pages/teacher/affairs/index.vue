@@ -240,7 +240,7 @@ export default {
         this.todoHasMore = Boolean(d && d.hasMore)
         this.state = 'ready'
         this.scrollToMaterial()
-      }).catch((e) => { this.state = 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
+      }).catch((e) => { this.state = normalizeError(e).pageState || 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
       return task
     },
     loadMaterials(showToast = true, reset = true) {

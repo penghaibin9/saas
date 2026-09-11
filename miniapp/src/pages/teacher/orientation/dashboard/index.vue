@@ -47,6 +47,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 export default {
   data() { return { d: null, state: 'loading' } },
@@ -61,7 +62,7 @@ export default {
         if (!data || !data.hasData) { this.state = 'empty'; return }
         this.d = data
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' })
     }
   }
 }

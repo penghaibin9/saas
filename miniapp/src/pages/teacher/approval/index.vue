@@ -2,7 +2,7 @@
   <view class="page-wrap">
     <view class="ap__hero hero-band is-teacher">
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
-      <view class="ap__navbar"><text class="ap__navbar-title">审批中心</text></view>
+      <view class="ap__navbar"><button class="ap__back" aria-label="返回上一页" @click="goBack">‹ 返回</button><text class="ap__navbar-title">审批中心</text></view>
       <view class="ap__search">
         <text class="ap__search-icon">🔍</text>
         <input
@@ -25,11 +25,12 @@
       <view class="ap__subtab" :class="{ 'is-on': sub === 'mine' }" @click="switchTab('mine')">我发起的<text v-if="sub === 'mine'" class="ap__subtab-u" /></view>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load(true)">
+    <MobileGlobalState :state="state" @retry="load(true)" @back="goBack">
       <view class="page-pad">
         <MobileGlobalState
           v-if="!list.length"
           state="empty"
+          @back="goBack"
           :title="emptyTitle"
           :description="keyword ? '当前关键词没有匹配到真实服务端记录，可换姓名、学号或单号重试。' : emptyDescription"
         />
@@ -94,7 +95,7 @@
 <script>
 import { getApprovalQueue, actApproval } from '@/services/approvalApi'
 import { normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { toast, back } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const PAGE_SIZE = 20
@@ -137,6 +138,7 @@ export default {
     if (this.searchTimer) clearTimeout(this.searchTimer)
   },
   methods: {
+    goBack() { back('/pages/teacher/workbench/index') },
     approvalTypeLabel(value) {
       if (!value) return '业务审批'
       if (/[一-鿿]/.test(value)) return value
@@ -181,7 +183,7 @@ export default {
         this.state = 'ready'
         if (this.typeFilter !== 'all' && !this.typeOptions.includes(this.typeFilter)) this.typeFilter = 'all'
       } catch (e) {
-        this.state = 'error'
+        this.state = normalizeError(e).pageState || 'error'
         const err = normalizeError(e)
         toast(err.text || '审批队列加载失败')
       } finally {
@@ -250,7 +252,9 @@ export default {
 
 <style scoped>
 .ap__hero { padding: 0 var(--page-padding-mobile) var(--space-4); }
-.ap__navbar { height: 40px; display: flex; align-items: center; justify-content: center; }
+.ap__navbar { position: relative; height: 44px; display: flex; align-items: center; justify-content: center; }
+.ap__back { position: absolute; left: 0; min-width: 60px; height: 44px; margin: 0; padding: 0 8px; line-height: 44px; border: none; background: transparent; color: #fff; font-size: var(--font-size-base); }
+.ap__back::after { border: none; }
 .ap__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
 .ap__search { display: flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,.94); border-radius: var(--radius-md); padding: 8px var(--space-4); margin-top: var(--space-1); color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .ap__search-input { flex: 1; height: 30px; font-size: var(--font-size-sm); color: var(--text-primary); }

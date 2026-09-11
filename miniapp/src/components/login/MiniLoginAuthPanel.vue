@@ -50,12 +50,6 @@
       </view>
     </view>
 
-    <view v-if="orientationBatch.open" class="orientation-card" @click="focusAccount">
-      <text class="orientation-card__badge">迎新入口开放</text>
-      <text class="orientation-card__title">{{ orientationBatch.batchName }}</text>
-      <text class="orientation-card__desc">距截止 {{ orientationBatch.daysLeft }} 天 · 首次使用可自助核验录取身份</text>
-    </view>
-
     <view class="feature-row">
       <view v-for="item in features" :key="item.title" class="feature-row__item"><text class="feature-row__mark" :class="{ 'feature-row__mark--teacher': isTeacher }">{{ item.mark }}</text><text class="feature-row__title">{{ item.title }}</text><text class="feature-row__sub">{{ item.sub }}</text></view>
     </view>
@@ -115,8 +109,7 @@ export default {
       bindCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-bind-${Date.now()}-${Math.random()}` },
       bindLoading: false,
       bindingApprovalRequired: false,
-      bindingApprovalToken: '',
-      orientationBatch: { open: false, batchName: '', daysLeft: 0 }
+      bindingApprovalToken: ''
     }
   },
   computed: {
@@ -133,11 +126,7 @@ export default {
   created() {
     this.accountCaptchaFlow = createIdentityCaptcha(this.accountCaptcha, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: this.account.tenantCode.trim() || undefined, identifierType: this.account.identifierType, identifier: this.account.loginName.trim(), clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' }), issue: data => realRequest('/auth/captcha', { method: 'POST', auth: false, data }), error: toast })
     this.loginAlive = true
-    if (!this.isTeacher) {
-      studentApi.getOrientationBatchStatus().then((data) => {
-        if (data?.open) this.orientationBatch = { open: true, batchName: data.batchName || '', daysLeft: data.daysLeft }
-      }).catch(() => {})
-    }
+    // 登录前没有可信学校上下文；批次信息留给认证后的学生服务查询。
   },
   beforeUnmount() { this.loginAlive = false; this.accountCaptchaFlow.dispose(); this.account.password = ''; this.cancelBind() },
   watch: {
@@ -322,7 +311,6 @@ export default {
         }
       })
     },
-    focusAccount() { this.openOrientationActivation() },
     openOrientationActivation() {
       const tenantCode = encodeURIComponent(this.account.tenantCode.trim() || getLastTenantCode())
       go(`/pages/student/orientation/activate/index${tenantCode ? `?tenantCode=${tenantCode}` : ''}`)
@@ -357,7 +345,7 @@ export default {
 .newcomer-entry { display: flex; align-items: center; justify-content: space-between; margin-top: 13px; padding: 12px 13px; border: 1px solid #bfe7df; border-radius: 11px; background: #effaf7; }
 .newcomer-entry__content { display: flex; flex-direction: column; gap: 3px; }.newcomer-entry__badge { color: #0f766e; font-size: 9px; font-weight: 700; }.newcomer-entry__title { color: #24445a; font-size: 12px; font-weight: 600; }.newcomer-entry__arrow { color: #0f766e; font-size: 24px; line-height: 1; }
 .agreement { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 0; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box--checked { border-color: #15948b; background: #15948b; }.agreement__box--teacher-checked { border-color: #2563eb; background: #2563eb; }.agreement__link { color: #15948b; }.agreement__link--teacher { color: #2563eb; }
-.orientation-card,.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }.orientation-card__badge { color: #0f766e; font-size: 10px; font-weight: 600; }.orientation-card__title { margin-top: 5px; font-size: 14px; font-weight: 700; }.orientation-card__desc { margin-top: 4px; color: #536780; font-size: 10px; }
+.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }
 .feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row__item { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.feature-row__mark--teacher { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }
 .role-note { border-color: #e7ecf2; background: #fff; }.role-note__title { font-size: 12px; font-weight: 600; }.role-note__detail { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.role-switch-link { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }
 .bind-mask { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: flex-end; background: rgba(16,35,63,.46); }.bind-sheet { box-sizing: border-box; max-height: 90vh; overflow-y: auto; width: 100%; padding: 13px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; }.bind-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 4px; background: #d9e0e8; }.bind-sheet__title,.bind-sheet__sub,.bind-sheet__cancel { display: block; }.bind-sheet__title { font-size: 18px; font-weight: 700; }.bind-sheet__sub { margin: 7px 0 4px; color: #718096; font-size: 11px; line-height: 1.55; }.bind-sheet__cancel { padding: 15px 0 3px; color: #718096; text-align: center; font-size: 12px; }

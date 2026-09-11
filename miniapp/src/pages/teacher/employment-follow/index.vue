@@ -188,7 +188,7 @@ export default {
           this.prefillPending = false
           setTimeout(() => this.contact(target), 80)
         }
-      }).catch(() => { this.state = 'error' })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { if (done) done() })
     },
     handleError(e, refreshVerification = false) {

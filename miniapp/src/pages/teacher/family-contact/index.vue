@@ -132,7 +132,7 @@ export default {
           } else this.list = rows
           this.state = 'ready'
         })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { if (done) done() })
     },
     onCreateTab() {

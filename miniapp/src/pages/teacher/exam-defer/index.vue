@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="缓考审批" subtitle="待我审批" :before-back="backToQueue" show-back />
+    <MobileNavBar variant="teacher" title="缓考审批" subtitle="待我审批" :before-back="backToQueue" fallback-url="/pages/teacher/workbench/index" show-back />
 
     <view v-if="unresolvedCount" class="card ed__pending" role="status">
       <text class="t-md t-bold">有 {{ unresolvedCount }} 笔审批结果待确认</text>
@@ -8,14 +8,18 @@
       <button class="btn btn-ghost" :disabled="state === 'loading' || acting" @click="load()">只读核对队列</button>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :title="state === 'noLicense' ? '本校未开通教务管理' : ''" @retry="load" @back="goBack">
+      <template #actions>
+        <button v-if="state === 'error'" class="btn btn-primary" @click="load()">重试</button>
+        <button class="btn btn-ghost" @click="goBack">返回</button>
+      </template>
       <view class="page-pad">
         <view v-if="detailId" class="ed__detail-head">
           <button class="btn btn-ghost" :disabled="acting" @click="backToQueue">‹ 返回列表</button>
           <text class="t-md t-bold">缓考申请核对</text>
         </view>
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待审批缓考申请"
-          description="轮到你审批的缓考申请会出现在这里。" />
+          description="轮到你审批的缓考申请会出现在这里。" @back="goBack" />
         <view class="stack" v-else>
           <view v-for="x in displayedRows" :key="x.deferId" class="card ed" :class="{ 'is-target': isTarget(x) }">
             <text v-if="isTarget(x)" class="ed__target">从工作台直达的申请</text>
@@ -58,8 +62,9 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { useSessionStore } from '@/stores/session'
-import { toast } from '@/utils/nav'
+import { toast, back } from '@/utils/nav'
 import { approvalContextKey, approvalReceiptChanged, hasExplicitApprovalReceipt, isApprovalConflict, isApprovalForbidden } from '../academic-affairs/approval-recovery'
+import { normalizeError } from '@/services/request'
 
 const RECOVERY_SCOPE = 'exam-defer-review'
 
@@ -124,6 +129,7 @@ export default {
       this.targetDeferId = ''
       return false
     },
+    goBack() { if (this.backToQueue() !== false) back('/pages/teacher/workbench/index') },
     contextKey() {
       return approvalContextKey(useSessionStore())
     },
@@ -178,7 +184,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
           if (isApprovalForbidden(error)) this.clearPrivateReview()
-          else this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
     },

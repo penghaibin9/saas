@@ -35,6 +35,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { useSessionStore } from '@/stores/session'
 import { teacherTodoT8Api, TEACHER_TODO_PAGE_SIZE } from '@/services/teacherTodoT8Api'
 import { runAction } from '@/services/actionRouter'
@@ -97,7 +98,7 @@ export default {
         await this._pager.refresh()
         this.state = 'ready'
       } catch (error) {
-        this.state = 'error'
+        this.state = normalizeError(error).pageState || 'error'
       }
     },
     async loadMore() {

@@ -51,7 +51,7 @@
 
 <script>
 import { teacherStudentV3Api, TEACHER_STUDENT_PAGE_SIZE } from '@/services/teacherStudentV3Api'
-import { toastError } from '@/services/request'
+import { normalizeError, toastError } from '@/services/request'
 import { decodeQueryText, go } from '@/utils/nav'
 
 export default {
@@ -112,7 +112,7 @@ export default {
         if (append) {
           toastError(error)
         } else {
-          this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally {
         this.loadingMore = false

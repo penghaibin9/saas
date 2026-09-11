@@ -74,7 +74,8 @@ export function clearTokens() {
 }
 
 export function shouldTryReal() {
-  return !ENV.useMock && Date.now() >= state.offlineUntil
+  // 仅演示回退使用冷却期；真实环境的重试必须重新访问服务端。
+  return !ENV.useMock && (!ENV.allowMockFallback || Date.now() >= state.offlineUntil)
 }
 
 function markOffline() {
@@ -97,15 +98,21 @@ export function isNetworkError(e) {
 }
 
 export function normalizeError(e) {
-  const code = e && e.code
-  if (isNetworkError(e)) return { kind: 'network', text: '网络异常，请检查网络后重试' }
-  if (code === 401001) return { kind: 'auth', text: '登录已失效，请重新登录' }
-  if (code === 403001 || code === 403002) return { kind: 'forbidden', text: (e && e.message) || '没有权限执行该操作' }
+  const code = Number(e && e.code)
+  const statuses = [e?.httpStatus, e?.status, e?.statusCode, e?.response?.status, code]
+    .map(Number).filter(Number.isFinite).map(value => value >= 100000 ? Math.trunc(value / 1000) : value)
+  if (statuses.some(value => value >= 500 && value < 600)) return { kind: 'unknown', pageState: 'error', text: '服务暂时不可用，请稍后重试' }
+  if (isNetworkError(e)) return { kind: 'network', pageState: 'offline', text: '网络异常，请检查网络后重试' }
+  if (statuses.includes(401) || statuses.includes(419)) return { kind: 'auth', pageState: 'unauthorized', text: '登录已失效，请重新登录' }
+  if (statuses.includes(403) || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(e?.bizCode || e?.code)) {
+    const noLicense = /^模块未购买或未授权[：:]/.test(String(e?.message || ''))
+    return { kind: 'forbidden', pageState: noLicense ? 'noLicense' : 'forbidden', text: noLicense ? '本校未开通该模块，请联系学校管理员' : '暂无访问权限，请联系学校管理员' }
+  }
   if (code === 404001) return { kind: 'notfound', text: (e && e.message) || '数据不存在或已变更' }
   if (code === 409001) return { kind: 'conflict', text: (e && e.message) || '重复提交或状态已变化，请刷新后再试' }
   if (code === 422001 || code === 400001) return { kind: 'invalid', text: (e && e.message) || '填写内容有误，请检查后重试' }
   if (code === 429001) return { kind: 'ratelimit', text: (e && e.message) || '操作过于频繁，请稍后再试' }
-  return { kind: 'unknown', text: (e && e.message) || '操作失败，请稍后重试' }
+  return { kind: 'unknown', pageState: 'error', text: (e && e.message) || '操作失败，请稍后重试' }
 }
 
 /* ── 防刷屏 toast ── */

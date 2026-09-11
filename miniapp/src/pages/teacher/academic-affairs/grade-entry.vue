@@ -453,7 +453,7 @@ export default {
       } catch (e) {
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         this.loaded = true
-        this.state = 'error'
+        this.state = normalizeError(e).pageState || 'error'
       }
     },
     async confirmModal(title, content, confirmText = '确定') {

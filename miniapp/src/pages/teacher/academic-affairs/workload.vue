@@ -140,7 +140,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
           if (isForbiddenResponse(error)) this.clearPrivateWorkload()
-          else this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
     },

@@ -267,7 +267,7 @@ export default {
         const [pending, taskData, rectData] = await Promise.all([teacherApi.getAffairsDormPending(), affairsContractApi.getDormInspectionTasks('RUNNING'), affairsContractApi.getDormRectifications('WAITING_RECHECK')])
         if (serial !== this.loadSerial) return
         this.transfers = pending?.transfers || []; this.exceptions = pending?.exceptions || []; this.allocationSummary = pending?.allocationSummary || {}; this.presenceSummary = pending?.presenceSummary || {}; this.tasks = taskData?.items || []; this.rectifications = rectData?.items || []; this.state = 'ready'
-      } catch (e) { if (serial !== this.loadSerial) return; this.needsLogin = normalizeError(e).kind === 'auth'; this.state = 'error'; this.loadError = e.message || '宿舍现场工作台加载失败'; this.showError(e, this.loadError) }
+      } catch (e) { if (serial !== this.loadSerial) return; this.needsLogin = normalizeError(e).kind === 'auth'; this.state = normalizeError(e).pageState || 'error'; this.loadError = e.message || '宿舍现场工作台加载失败'; this.showError(e, this.loadError) }
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
     versionOf(x) { if (x.version === undefined || x.version === null || x.version === '') { toast('记录缺少版本号，请刷新后重试'); this.load(); return null }; return x.version },

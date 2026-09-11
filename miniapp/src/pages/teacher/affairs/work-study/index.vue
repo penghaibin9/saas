@@ -67,7 +67,7 @@ export default {
       } catch (e) {
         if (request !== this.requestSeq) return
         if (more) this.moreError = '加载失败，已加载记录仍保留，请重试'
-        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = 'error' }
+        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = normalizeError(e).pageState || 'error' }
       } finally { if (request === this.requestSeq) this.refreshing = false }
     }, search() { this.appliedKeyword = this.keyword.trim(); return this.loadRecords() }, changeStatus(value) { if (this.status === value) return; this.status = value; return this.loadRecords() },
     confirmSimple(record) { uni.showModal({ title: '确认录用？', content: `录用 ${record.realName} 到“${record.post?.postName || '勤工岗位'}”？系统会校验剩余名额。`, success: (res) => { if (res.confirm) this.runAction(record, 'APPROVE', '', false) } }) }, openAction(record, action) { this.actionTarget = record; this.actionType = action; this.reason = ''; this.agreementConfirmed = false; this.actionError = '' }, closeAction() { if (!this.busy) this.actionTarget = null }, async runAction(record, action, reason, agreementConfirmed) { if (this.busy) return; this.busy = `${action}-${record.recordId}`; try { await teacherApi.actWorkStudy(record.recordId, { action, reason, version: record.version, agreementConfirmed }); toast('状态已更新'); this.actionTarget = null; await this.loadRecords() } catch (e) { const text = normalizeError(e).text || '处理失败，请刷新后重试'; this.actionError = text; toast(text) } finally { this.busy = '' } }, submitAction() { if (!this.actionTarget || !this.actionValid) return; return this.runAction(this.actionTarget, this.actionType, this.reason, this.agreementConfirmed) },

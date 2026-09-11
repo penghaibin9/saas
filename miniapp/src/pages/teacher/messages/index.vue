@@ -36,6 +36,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { createNetworkPager } from '@/utils/networkPager'
 import { fromNow } from '@/utils/format'
 import { go } from '@/utils/nav'
@@ -59,7 +60,7 @@ export default {
   },
   onLoad() { this.setupPager(); this.refresh() },
   onUnload() { if (this._pager) this._pager.reset(); this._pager = null },
-  onReachBottom() { if (this._pager) this._pager.loadMore().catch(() => { this.state = 'error' }) },
+  onReachBottom() { if (this._pager) this._pager.loadMore().catch((error) => { this.state = normalizeError(error).pageState || 'error' }) },
   onPullDownRefresh() { this.refresh().finally(() => uni.stopPullDownRefresh()) },
   methods: {
     setupPager() {
@@ -85,7 +86,7 @@ export default {
         const [pagerState] = await Promise.all([this._pager.refresh(), this.loadBadges()])
         this.syncPagerState(pagerState)
         this.state = 'ready'
-      } catch (_error) { this.state = 'error' }
+      } catch (_error) { this.state = normalizeError(_error).pageState || 'error' }
     },
     async loadMore() {
       if (!this._pager || this.pagerState.loading || !this.pagerState.hasMore) return

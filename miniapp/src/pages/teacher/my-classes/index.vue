@@ -19,6 +19,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { go } from '@/utils/nav'
 
@@ -29,7 +30,7 @@ export default {
     load() {
       this.state = 'loading'
       teacherApi.getMyClasses().then((d) => { this.d = d; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
     },
     openClass(c) { go(`/pages/teacher/my-students/index?classId=${c.classId}&className=${encodeURIComponent(c.className)}`) }
   }

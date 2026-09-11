@@ -37,6 +37,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { go } from '@/utils/nav'
 
@@ -52,7 +53,7 @@ export default {
       this.state = 'loading'
       teacherApi.getCampusServicePending()
         .then((d) => { this.list = (d && d.list) || []; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { if (done) done() })
     },
     goApproval() { go('/pages/teacher/approval/index') }

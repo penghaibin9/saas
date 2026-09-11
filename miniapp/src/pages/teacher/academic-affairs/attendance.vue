@@ -523,7 +523,7 @@ export default {
       } catch (error) {
         if (this._pageActive && this._listEpoch === epoch && this.contextKey() === context) {
           if (isForbiddenResponse(error)) this.clearPrivateAttendance()
-          else this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       }
     },

@@ -21,10 +21,24 @@ const SAFE_BACKEND_BUSINESS_MESSAGE_CODES = new Set([
 ])
 
 function numericStatus(error) {
-  const raw = error && typeof error === 'object' ? (error.status || error.code) : 0
-  const value = Number(raw)
-  if (value >= 100000) return Math.trunc(value / 1000)
-  return value
+  if (!error || typeof error !== 'object') return 0
+  const values = [error.httpStatus, error.status, error.statusCode, error.response?.status, error.code]
+    .map(Number).filter(Number.isFinite).map(value => value >= 100000 ? Math.trunc(value / 1000) : value)
+  // 显式服务故障不得被过期业务码或文案伪装成权限拒绝。
+  return values.find(value => value >= 500 && value < 600) || values.find(value => value >= 100 && value < 600) || 0
+}
+
+function errorPageState(error, status, bizCode, message) {
+  if (status >= 500) return 'error'
+  if (['NETWORK', 'ERR_NETWORK', 'ECONNABORTED'].includes(error?.code)) return 'offline'
+  if (status === 401 || status === 419) return 'unauthorized'
+  const legacy = !status && !error?.code && !bizCode
+  const denied = status === 403 || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(bizCode)
+  if ((denied || legacy) && /^(模块未购买或未授权[：:]|本校未开通该模块|当前学校尚未开通该模块)/.test(message)) return 'noLicense'
+  if (denied || (legacy && /^(当前账号(?:没有执行此操作的权限|无权访问)|当前身份无权查看|暂无访问权限|没有权限|权限不足|不在授权范围|当前账号尚未配置可管理范围)/.test(message))) return 'forbidden'
+  if (legacy && /^(登录(?:状态)?已失效|登录已过期|会话已超时)/.test(message)) return 'unauthorized'
+  if (legacy && /^(网络异常|网络请求失败|网络连接失败)/.test(message)) return 'offline'
+  return 'error'
 }
 
 function supportCode(error) {
@@ -47,8 +61,13 @@ export function normalizeUiError(error, context = {}) {
   ).trim()
   const status = numericStatus(error) || Number(context.status || 0)
   const code = supportCode(error)
+  const pageState = errorPageState(error, status, bizCode, rawMessage)
 
   let userMessage = BUSINESS_CODE_MESSAGES[bizCode] || ''
+  if (status >= 500) userMessage = '系统暂时无法完成该操作，请稍后重试'
+  if (pageState === 'noLicense') userMessage = '本校未开通该模块，如需使用请联系学校管理员'
+  if (pageState === 'unauthorized') userMessage = '登录已失效，请重新登录'
+  if (pageState === 'offline') userMessage = '网络异常，请检查网络连接后重试'
   if (
     !userMessage &&
     SAFE_BACKEND_BUSINESS_MESSAGE_CODES.has(bizCode) &&
@@ -75,7 +94,8 @@ export function normalizeUiError(error, context = {}) {
     supportCode: code,
     rawDeveloperDetail: rawMessage,
     bizCode,
-    status
+    status,
+    pageState
   }
 }
 

@@ -6,6 +6,7 @@ import {
   GUARDED_MODULES,
   getPermissionPatterns,
   getRbacLoadFailed,
+  routeAccessNotice,
 } from '@/security/permissionGate'
 import {
   ensurePlatformAccessContext,
@@ -224,6 +225,12 @@ router.beforeEach(async (to, from, next) => {
     await ensurePermissionPatterns(request)
   }
   if (!canEnterRoute(to.meta)) {
+    if (!isPlatform) {
+      // App renders only the denial workspace, never the denied route component.
+      to.meta.accessNotice = routeAccessNotice(to.meta)
+      next()
+      return
+    }
     const svcErr = getRbacLoadFailed()
     next({
       path: '/security/403',
@@ -234,6 +241,7 @@ router.beforeEach(async (to, from, next) => {
     })
     return
   }
+  delete to.meta.accessNotice
   next()
 })
 

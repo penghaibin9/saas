@@ -141,7 +141,7 @@ export default {
           this.hasMore = !!(d && d.hasMore)
           this.state = 'ready'
         })
-        .catch(() => { if (!append) this.state = 'error' })
+        .catch((error) => { if (!append) this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { this.loadingMore = false; if (done) done() })
     },
     loadMore() {
