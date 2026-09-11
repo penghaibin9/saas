@@ -100,7 +100,7 @@ const systemRoutes = {
       path: 'iam',
       name: 'system-iam-workspace',
       component: () => import('@/modules/system/views/SystemIamWorkspaceView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '学校 IAM 工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
+      meta: { moduleCode: 'SYSTEM', title: '学校身份权限工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
     },
     {
       path: 'menus',

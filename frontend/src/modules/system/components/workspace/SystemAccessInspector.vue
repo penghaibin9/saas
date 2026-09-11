@@ -10,7 +10,7 @@
         <p v-else-if="actors.error" class="sw-alert sw-alert--error" role="alert">{{ actors.error }}</p>
         <div v-else-if="actors.searched && !actor" class="sw-stack"><div class="sw-picker-list"><button v-for="row in actors.rows" :key="row.id" type="button" class="sw-choice" @click="actor = row"><b>{{ row.name }}</b><small>{{ row.loginName || row.userNo }} · {{ row.statusLabel }}</small></button><p v-if="!actors.rows.length" class="sw-muted">没有符合条件的教职工。</p></div>
           <div class="sw-pager"><span>共 {{ actors.total }} 位 · 第 {{ actors.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="actors.page <= 1" @click="searchActors(actors.page - 1)">上一页</button><button type="button" class="sw-btn" :disabled="actors.page * actors.pageSize >= actors.total" @click="searchActors(actors.page + 1)">下一页</button></div></div></div>
-        <label class="sw-field">排查功能<select v-model="permissionCode" class="sw-input" aria-label="排查功能" :disabled="catalogLoading"><option value="">{{ catalogLoading ? '正在读取权限目录…' : '请选择学校权限' }}</option><option v-for="item in permissions" :key="item.permissionCode" :value="item.permissionCode">{{ item.label || item.permissionCode }}</option></select><small class="sw-code">{{ permissionCode }}</small></label>
+        <label class="sw-field">排查功能<select v-model="permissionCode" class="sw-input" aria-label="排查功能" :disabled="catalogLoading"><option value="">{{ catalogLoading ? '正在读取权限目录…' : '请选择学校权限' }}</option><option v-for="item in permissions" :key="item.permissionCode" :value="item.permissionCode">{{ permissionLabel(item.permissionCode, item.label) }}</option></select><small class="sw-code">{{ permissionCode }}</small></label>
         <p v-if="catalogError" class="sw-alert sw-alert--error" role="alert">{{ catalogError }}<button type="button" class="sw-btn" @click="loadCatalog">重新读取权限</button></p>
         <label class="sw-field">具体业务对象类型<select v-model="resourceType" class="sw-input" aria-label="业务对象类型"><option value="STUDENT">学生主档</option><option value="INTERN_STUDENT">实习学生</option><option value="GRADUATION_STUDENT">毕设学生</option><option value="USER">教职工账号</option><option value="CLASS">班级</option><option value="MAJOR">专业</option><option value="COLLEGE">学院</option></select></label>
         <template v-if="isAccountResource">
@@ -48,6 +48,7 @@
   </SystemWorkspaceFrame>
 </template>
 <script>
+import { permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import SystemWorkspaceFrame from './SystemWorkspaceFrame.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
@@ -81,6 +82,7 @@ export default {
   },
   created() { this.fence = wc.createRequestFence(); this.loadCatalog(); this.loadOrganizations(); this.loadInitialActor() }, beforeUnmount() { this.fence.invalidate() },
   methods: {
+    permissionLabel: permissionDisplayLabel,
     typeLabel(type) { return { CLASS: '班级', MAJOR: '专业', COLLEGE: '学院' }[type] || '类型待核对' },
     evidence(value) { return JSON.stringify(value || {}, null, 2) },
     invalidateResult() { if (this.result || this.querying) this.stale = true; this.fence.start('explain'); this.result = null; this.querying = false; this.queryError = ''; this.validationError = '' },

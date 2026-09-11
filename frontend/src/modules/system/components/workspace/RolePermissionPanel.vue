@@ -71,7 +71,7 @@
       <details v-if="preserved.length" class="sw-card sw-pad sw-preserved" data-testid="readonly-preserved-permissions">
         <summary>只读保留 {{ preserved.length }} 项权限</summary>
         <div v-for="item in preserved" :key="item.permissionCode" class="sw-space">
-          <b>{{ item.label || item.permissionCode }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
+          <b>{{ displayLabel(item.permissionCode, item.label) }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
         </div>
       </details>
       <div class="sw-savebar">
@@ -105,6 +105,7 @@ import AppIcon from '@/components/ui/AppIcon.vue'
 import AppConfirmDialog from './WorkspaceConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import * as wc from '@/modules/system/utils/workspaceContract'
+import { permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 
 export default {
   name: 'RolePermissionPanel',
@@ -139,6 +140,7 @@ export default {
   created() { this.fence = wc.createRequestFence(); this.load() },
   beforeUnmount() { this.fence.invalidate() },
   methods: {
+    displayLabel: permissionDisplayLabel,
     countLabel: wc.countLabel,
     scopeLabel(code) { return this.scopeOptions.find(option => option.value === code)?.label || '范围待核对' },
     highRisk(node) { return ['HIGH', 'CRITICAL'].includes(String(node.riskLevel || '').toUpperCase()) },

@@ -6,7 +6,7 @@
     <div v-else-if="!templates.length" class="sw-card sw-state"><h3>暂无已发布的学校模板</h3><p class="sw-muted">请联系平台管理员核对发布状态；这里不会自动初始化或伪造模板。</p></div>
     <div v-else class="sw-role-grid">
       <article v-for="item in templates" :key="item.id" class="sw-card sw-role-card">
-        <div class="sw-between"><h3>{{ item.templateName || item.templateCode }}</h3><span class="sw-tag sw-tag--blue">第 {{ item.templateVersion }} 版</span></div>
+        <div class="sw-between"><h3>{{ roleLabel(item.templateCode, item.templateName) }}</h3><span class="sw-tag sw-tag--blue">第 {{ item.templateVersion }} 版</span></div>
         <p class="sw-code">{{ item.templateCode }}</p>
         <div class="sw-role-stats"><div><strong>{{ Array.isArray(item.permissions) ? item.permissions.length : '未取得' }}</strong><small>模板权限</small></div><div><strong>{{ countLabel(item.schoolPinnedCustomRoleCount) }}</strong><small>本校绑定角色</small></div></div>
         <div class="sw-row"><button type="button" class="sw-btn" :disabled="impactLoading || busy" @click="readImpact(item)">核对本校影响</button><button v-if="canCreate" type="button" class="sw-btn sw-btn--primary" :disabled="busy" @click="$emit('create', item.templateCode)">以此为来源创建</button></div>
@@ -19,7 +19,7 @@
       <template v-else-if="impact">
         <p class="sw-alert">本校影响角色 {{ countLabel(impact.affectedPinnedCustomRoleCount) }} 个。{{ impact.automaticUpgrade === false ? '自动升级关闭；查看影响不会修改任何权限。' : '自动升级状态需核对；本页没有执行升级。' }}</p>
         <div class="sw-table-wrap"><table class="sw-table"><thead><tr><th>本校角色</th><th>来源版本 / 当前角色版本</th><th>升级将新增</th><th>升级将移除</th></tr></thead><tbody>
-          <tr v-for="row in impact.roles || []" :key="row.roleCode"><td><b>{{ row.roleName || row.roleCode }}</b><small v-if="row.runtimeRoleMissing">运行角色缺失</small></td><td>{{ row.sourceTemplateVersion ?? '未取得' }} / {{ row.roleVersion ?? '未取得' }}</td><td class="sw-code">{{ codeList(row.wouldAdd) }}</td><td class="sw-code">{{ codeList(row.wouldRemove) }}</td></tr>
+          <tr v-for="row in impact.roles || []" :key="row.roleCode"><td><b>{{ roleLabel(row.roleCode, row.roleName) }}</b><small v-if="row.runtimeRoleMissing">运行角色缺失</small></td><td>{{ row.sourceTemplateVersion ?? '未取得' }} / {{ row.roleVersion ?? '未取得' }}</td><td class="sw-code">{{ codeList(row.wouldAdd) }}</td><td class="sw-code">{{ codeList(row.wouldRemove) }}</td></tr>
           <tr v-if="!(impact.roles || []).length"><td colspan="4">本校没有返回受影响的绑定角色。</td></tr>
         </tbody></table></div>
       </template>
@@ -30,7 +30,7 @@
       <p v-if="governanceLoading" role="status">正在读取治理目录…</p>
       <p v-else-if="governanceError" class="sw-alert sw-alert--error" role="alert">{{ governanceError }}</p>
       <div v-else-if="governanceLoaded" class="sw-table-wrap sw-space"><table class="sw-table"><thead><tr><th>角色 / 通配</th><th>展开数量</th><th>状态 / 说明</th></tr></thead><tbody>
-        <tr v-for="item in wildcards" :key="`${item.roleCode}:${item.wildcardCode}`"><td>{{ item.roleCode }}<small class="sw-code">{{ item.wildcardCode }}</small></td><td>{{ countLabel(item.expandedCount) }}</td><td>{{ wildcardLabel(item.status) }}<small>{{ item.note }}</small></td></tr>
+        <tr v-for="item in wildcards" :key="`${item.roleCode}:${item.wildcardCode}`"><td>{{ roleLabel(item.roleCode) }}<small class="sw-code">{{ item.wildcardCode }}</small></td><td>{{ countLabel(item.expandedCount) }}</td><td>{{ wildcardLabel(item.status) }}<small>{{ item.note }}</small></td></tr>
         <tr v-if="!wildcards.length"><td colspan="3">当前没有返回治理记录；这不等于已证明所有历史权限均已退役。</td></tr>
       </tbody></table></div>
       <p v-if="disclaimer" class="sw-muted sw-space">{{ disclaimer }}</p>
@@ -41,6 +41,7 @@
   </div>
 </template>
 <script>
+import { roleDisplayLabel, permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import AppConfirmDialog from '@/modules/system/components/workspace/WorkspaceConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
@@ -52,8 +53,9 @@ export default {
   watch: { contextKey() { this.fence.invalidate(); this.templates = []; this.closeImpact(); this.wildcards = []; this.disclaimer = ''; this.governanceLoaded = false; this.governanceLoading = false; this.governanceError = ''; this.busy = false; this.confirmOpen = false; this.bootstrapBlocked = false; this.bootstrapMessage = ''; this.$emit('busy', false); this.load() } },
   created() { this.fence = wc.createRequestFence(); this.load() }, beforeUnmount() { this.fence.invalidate() },
   methods: {
+    roleLabel: roleDisplayLabel,
     countLabel: wc.countLabel,
-    codeList(value) { return Array.isArray(value) ? value.join('、') || '无' : '未取得' },
+    codeList(value) { return Array.isArray(value) ? value.map(code => permissionDisplayLabel(code)).join('、') || '无' : '未取得' },
     wildcardLabel(value) { return { PENDING: '待处理', PLANNED: '已排期', RETIRED: '已退役' }[value] || '状态待核对' },
     async load() {
       const current = this.fence.start('templates'); this.loading = true; this.error = ''
@@ -63,7 +65,7 @@ export default {
     },
     async readImpact(item) {
       if (!item?.id || this.busy) return
-      const current = this.fence.start('impact'); this.impactTarget = item; this.impactLabel = `${item.templateName || item.templateCode} · 第 ${item.templateVersion} 版`; this.impact = null; this.impactError = ''; this.impactLoading = true
+      const current = this.fence.start('impact'); this.impactTarget = item; this.impactLabel = `${this.roleLabel(item.templateCode, item.templateName)} · 第 ${item.templateVersion} 版`; this.impact = null; this.impactError = ''; this.impactLoading = true
       try { const data = wc.unwrap(await schoolIamApi.templateImpact(item.id)); if (!current()) return; if (!data || data.templateCode !== item.templateCode || Number(data.templateVersion) !== Number(item.templateVersion) || !Array.isArray(data.roles)) throw new Error('影响结果与当前模板不一致'); this.impact = data }
       catch (error) { if (current()) this.impactError = error.message || '影响读取失败' }
       finally { if (current()) this.impactLoading = false }

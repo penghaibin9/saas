@@ -8,7 +8,7 @@
     <div class="iam-page">
       <section class="hero card">
         <div>
-          <p class="eyebrow">B7 · 学校权限管理工作区</p>
+          <p class="eyebrow">学校权限管理工作区</p>
           <h3>学校管理员管理学校身份，不接管企业成员权限</h3>
           <p class="muted">企业管理员、人力资源人员、企业导师及企业实习权限由企业成员和访问授权功能管理，不能在这里随意分配给学校用户。</p>
         </div>
@@ -54,7 +54,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>权限编码</th><th>模块 / 功能</th><th>风险</th><th>自定义角色</th></tr></thead>
+              <thead><tr><th>权限名称</th><th>模块 / 功能</th><th>风险</th><th>自定义角色</th></tr></thead>
               <tbody>
                 <tr v-for="item in filteredPermissions" :key="item.permissionCode">
                   <td>{{ permissionDisplayLabel(item) }}</td><td>{{ moduleFeatureLabel(item) }}</td><td>{{ riskLevelLabel(item.riskLevel) }}</td><td>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</td>
@@ -71,7 +71,7 @@
               <thead><tr><th>模板</th><th>当前版本</th><th>权限数</th><th>本校已绑定角色</th><th>来源版本分布</th><th>权限摘要</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`">
-                  <td><strong>{{ item.templateName || '角色模板' }}</strong></td>
+                  <td><strong>{{ roleLabel(item.templateCode, item.templateName) }}</strong></td>
                   <td>第 {{ item.templateVersion }} 版</td>
                   <td>{{ item.permissions?.length || 0 }}</td>
                   <td>{{ item.schoolPinnedCustomRoleCount || 0 }}</td>
@@ -87,7 +87,7 @@
 
         <section v-if="templateImpact" class="card impact-card">
           <header class="section-head">
-            <div><h3>模板影响 · {{ templateImpact.templateCode }} 第 {{ templateImpact.templateVersion }} 版</h3><p class="muted">只计算当前学校租户；不会展示其他学校已绑定角色。自动升级固定为关闭。</p></div>
+            <div><h3>模板影响 · {{ roleLabel(templateImpact.templateCode) }} 第 {{ templateImpact.templateVersion }} 版</h3><p class="muted">只计算当前学校租户；不会展示其他学校已绑定角色。自动升级固定为关闭。</p></div>
             <button class="link" @click="templateImpact = null">关闭</button>
           </header>
           <div class="impact-summary">
@@ -100,7 +100,7 @@
               <thead><tr><th>角色</th><th>来源模板版本</th><th>角色版本</th><th>运行时漂移</th><th>若切到此版本将新增</th><th>将移除</th></tr></thead>
               <tbody>
                 <tr v-for="role in templateImpact.roles || []" :key="role.roleCode">
-                  <td><strong>{{ role.roleName || '自定义角色' }}</strong><small v-if="role.runtimeRoleMissing" class="danger-text">运行时角色缺失</small></td>
+                  <td><strong>{{ roleLabel(role.roleCode, role.roleName) }}</strong><small v-if="role.runtimeRoleMissing" class="danger-text">运行时角色缺失</small></td>
                   <td>第 {{ role.sourceTemplateVersion }} 版</td><td>第 {{ role.roleVersion ?? '—' }} 版</td>
                   <td>{{ deltaText(role.runtimeVsRecorded) }}</td><td>{{ listText(role.wouldAdd) }}</td><td>{{ listText(role.wouldRemove) }}</td>
                 </tr>
@@ -150,7 +150,7 @@
                 <thead><tr><th>角色</th><th>身份权限</th><th>模板来源</th><th>配置偏移</th><th>升级影响</th><th>原因 / 数据范围</th><th>真实证据</th></tr></thead>
                 <tbody>
                   <tr v-for="role in explainResult.roles" :key="role.roleId">
-                    <td><strong>{{ role.roleName }}</strong><small>{{ roleTypeLabel(role.roleType) }} · 第 {{ role.roleVersion }} 版</small></td>
+                    <td><strong>{{ roleLabel(role.roleCode, role.roleName) }}</strong><small>{{ roleTypeLabel(role.roleType) }} · 第 {{ role.roleVersion }} 版</small></td>
                     <td>{{ role.decision?.iamAllowed ? '通过' : '未通过' }}</td>
                     <td>{{ provenanceText(role.templateProvenance) }}</td>
                     <td :class="{ 'danger-text': role.drift?.detected }">{{ driftText(role.drift) }}</td>
@@ -191,6 +191,7 @@
 </template>
 
 <script>
+import { roleDisplayLabel, permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import { AppButton } from '@/components/ui'
 import { ModulePageShell } from '@/components/business'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
@@ -263,8 +264,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    roleLabel: roleDisplayLabel,
     auditRecord(row) { return presentAuditRecord(row) },
-    permissionDisplayLabel(item) { return item?.label || '权限项' },
+    permissionDisplayLabel(item) { return permissionDisplayLabel(item?.permissionCode, item?.label) },
     moduleFeatureLabel(item) {
       const moduleLabel = MODULE_LABELS[String(item?.moduleKey || '').toLowerCase()] || '业务模块'
       return item?.featureLabel ? `${moduleLabel} / ${item.featureLabel}` : moduleLabel
@@ -284,7 +286,7 @@ export default {
     memberStatusLabel(status) {
       return { ACTIVE: '正常', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[status] || '状态待确认'
     },
-    listText(items) { return (items || []).length ? items.join('、') : '无' },
+    listText(items) { return (items || []).length ? items.map(code => permissionDisplayLabel(code)).join('、') : '无' },
     compactJson(value) {
       try { return JSON.stringify(value || {}) } catch { return '{}' }
     },

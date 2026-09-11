@@ -70,7 +70,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     key: 'sys-access', label: '角色权限与数据范围', icon: '❖',
     description: '学校从平台角色模板启用并裁剪权限；数据范围使用结构化规则。',
     items: [
-      { key: 'sys-iam-overview', label: 'IAM 总览', path: '/admin/system/iam', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [] },
+      { key: 'sys-iam-overview', label: '身份权限总览', path: '/admin/system/iam', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [] },
       { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/iam?surface=templates', permissionKey: 'system.role.template.view', view: 'iam', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
       { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/iam?surface=roles', permissionKey: 'system.role.view', view: 'iam', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
       { key: 'sys-role-assignments', label: '角色成员与业务身份', path: '/admin/system/role-assignments', permissionKey: 'system.role.view', view: 'role-assignments', actions: [] },

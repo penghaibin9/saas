@@ -17,7 +17,7 @@ async function call(path, options, fallback) {
 }
 
 export const schoolIamApi = {
-  summary: () => call('/system/iam/summary', {}, '学校 IAM 总览加载失败'),
+  summary: () => call('/system/iam/summary', {}, '学校 身份权限总览加载失败'),
   permissionCatalog: () => call('/system/iam/permission-catalog', {}, '学校可分配权限目录加载失败'),
   roleTemplates: () => call('/system/iam/role-templates', {}, '学校角色模板加载失败'),
   templateImpact: (templateId) =>

@@ -35,7 +35,7 @@
         <DataTable v-else :columns="memberColumns" :rows="rows" row-key="userRoleId">
           <template #cell-user="{ row }">
             <div class="mp-cell-main">{{ row.realName || row.loginName }}</div>
-            <div class="mp-cell-sub">{{ row.loginName }} · {{ row.roleCode }}</div>
+            <div class="mp-cell-sub">{{ row.loginName }} · {{ roleLabel(row.roleCode) }}</div>
           </template>
           <template #cell-validity="{ row }">
             <div class="mp-cell-sub">生效 {{ row.effectiveAt || '—' }}</div>
@@ -124,6 +124,7 @@
 </template>
 
 <script>
+import { roleDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
@@ -218,6 +219,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    roleLabel: roleDisplayLabel,
     sourceTypeLabel(value) { return SOURCE_TYPE_LABELS[value] || (value ? '来源待确认' : '—') },
     identityTypeLabel(value) { return IDENTITY_TYPE_LABELS[value] || (value ? '其他业务身份' : '—') },
     moduleLabel(value) { return MODULE_LABELS[value] || (value ? '其他业务模块' : '—') },

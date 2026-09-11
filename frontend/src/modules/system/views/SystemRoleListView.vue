@@ -16,7 +16,7 @@
         <div class="sw-field"><label for="system-role-code">角色编码</label><input id="system-role-code" v-model="form.code" class="sw-input" maxlength="50" :readonly="!!form.id" :disabled="busy" placeholder="留空由系统生成" /></div>
         <template v-if="!form.id">
           <div class="sw-field"><label for="system-role-source-template">已发布来源模板</label><select id="system-role-source-template" v-model="form.sourceTemplateCode" aria-label="已发布来源模板" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
-            <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ item.templateName || item.templateCode }} · 第 {{ item.templateVersion }} 版</option></select></div>
+            <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ roleLabel(item.templateCode, item.templateName) }} · 第 {{ item.templateVersion }} 版</option></select></div>
           <div class="sw-field"><label for="system-role-default-scope">默认数据范围</label><select id="system-role-default-scope" v-model="form.scopeCode" aria-label="默认数据范围" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></div>
         </template>
       </div>
@@ -101,6 +101,7 @@
 </template>
 
 <script>
+import { roleDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import SystemWorkspaceFrame from '@/modules/system/components/workspace/SystemWorkspaceFrame.vue'
 import RolePermissionPanel from '@/modules/system/components/workspace/RolePermissionPanel.vue'
@@ -147,6 +148,7 @@ export default {
   beforeRouteLeave(to) { return this.canLeave(to) },
   beforeRouteUpdate(to) { return this.canLeave(to) },
   methods: {
+    roleLabel: roleDisplayLabel,
     can(key) { return wc.actionAllowed(this.ctx, key) },
     countLabel: wc.countLabel,
     scopeLabel(code) { return this.scopeOptions.find(item => item.value === code)?.label || '范围待核对' },
