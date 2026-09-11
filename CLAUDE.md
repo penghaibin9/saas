@@ -1,5 +1,7 @@
 # CLAUDE.md — Claude Code 轻量总控
 
+> **当前最高规则入口是 [`AGENTS.md`](AGENTS.md)。** 本文件作为 Claude Code 兼容层和施工模式细则继续保留；如与根目录或更近目录的 `AGENTS.md`、当前源码/迁移/测试事实冲突，以 `AGENTS.md` 的优先级与冲突处理规则为准。
+>
 > 本文件只负责：判断任务类型、选择必读资料、守住生产红线。
 > 详细施工标准放在专题文档中，不得再复制回本文件把它写成长篇总册。
 
@@ -24,10 +26,10 @@
 发生冲突时按以下顺序处理：
 
 1. 用户本次明确指令；
-2. 本文件的安全与执行红线；
-3. 权限、数据、接口、部署等当前有效的专题总控文档；
-4. 当前二级模块已通过门禁的专属生产级施工包；
-5. 当前代码、数据库迁移、路由、配置和自动化测试事实；
+2. 根目录及当前路径上更近的 `AGENTS.md` 安全与执行红线；
+3. 当前代码、数据库迁移、路由、配置、CI 和自动化测试事实；
+4. 本文件及权限、数据、接口、部署等当前有效的专题总控文档；
+5. 当前二级模块已通过门禁的专属生产级施工包；
 6. 其他设计文档；
 7. 历史归档。
 
@@ -379,35 +381,13 @@ A 模式必须取得至少三家不同成熟系统的有效来源。每家产品
 
 后端按当前真实目录走，不准 AI 自己新建一套。
 
-已进入 modules 的后端模块只有：
+当前 `backend/app/modules/` 已包含：
 
-- 教务中心：backend/app/modules/academic_affairs/
-- 就业中心：backend/app/modules/employment/
-- 毕业设计：backend/app/modules/graduation/
-- 岗位实习：backend/app/modules/internship/
+- `academic_affairs/`、`employment/`、`graduation/`、`internship/`
+- `platform/`、`platform_integrity/`、`student_affairs/`、`system_admin/`
 
-学工中心暂按现有结构走：
+其中 `platform/` 与 `system_admin/` 已是规范所有者，原有 `backend/app/api/v1/platform.py`、`system.py` 等路径仍可能承担兼容 facade；`student_affairs/` 处于分步迁移状态，平铺的 API 和 service 仍有生产代码。修改前必须追踪实际 import、路由注册和调用者，不得按目录名批量搬迁或删除兼容层。
 
-- backend/app/api/v1/student_affairs.py
-- backend/app/services/affairs_*.py
+持久化模型主要位于 `backend/app/models/`，少量模型由领域模块持有；新增或修改时沿用该领域现有 owner 与元数据注册方式，不再维护第二份模型。测试继续放在 `backend/tests/`，迁移继续放在 `backend/alembic/versions/`。具体约束以 [`backend/AGENTS.md`](backend/AGENTS.md) 为准。
 
-系统管理、平台运营、学工后端暂按现有结构走。
-禁止 AI 擅自新建以下目录：
-
-- backend/app/modules/system/
-- backend/app/modules/platform/
-- backend/app/modules/student_affairs/
-
-models 继续放：
-
-- backend/app/models/
-
-tests 继续放：
-
-- backend/tests/
-
-alembic 继续放：
-
-- backend/alembic/versions/
-
-__pycache__ 不管，不提交。
+`__pycache__` 等运行产物不处理、不提交。

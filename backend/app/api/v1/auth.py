@@ -200,7 +200,11 @@ def login(body: PasswordLoginRequest):
     scene = captcha_svc.PLATFORM_LOGIN if body.clientType.strip().upper() == 'PLATFORM_PC' else captcha_svc.PASSWORD_LOGIN
     captcha_svc.enforce_login_captcha(scene, body.tenantCode, identifier, body.captchaId,
                                       body.captchaCode, body.clientNonce, body.clientType, identifier_type=identifier_type)
-    result = auth_service_db.login_with_password(
+    # Browser authentication delegates here.  Keep it on the same authority as
+    # the replacement /auth/login route: the legacy DB service predates typed
+    # identifiers and would reject the PHONE contract with a runtime TypeError.
+    from app.services import control_plane_auth_service as control_plane_auth
+    result = control_plane_auth.login_with_password(
         identifier, body.password, body.tenantCode, body.clientType, identifier_type=identifier_type)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
                  status_code=200, target_type="auth", target_id=result["userId"])

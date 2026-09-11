@@ -7,7 +7,7 @@
 | 目录 | 职责 | 主要技术 |
 |---|---|---|
 | `backend/` | 统一后端、权限、审计、迁移 | FastAPI / SQLAlchemy / Alembic / MySQL |
-| `frontend/` | 学校管理端 PC | Vue 3 / Vite |
+| `frontend/` | 官网、学校管理 PC、平台运营控制面 | Vue 3 / Vite |
 | `student-portal/` | 学生 PC 门户 | Vue 3 / Vite |
 | `miniapp/` | 学生与教师移动端 | uni-app / Vue 3 |
 | `enterprise-portal/` | 岗位实习企业门户 | Vue 3 / Vite |
@@ -19,10 +19,11 @@
 
 - 项目状态：[`docs/00-项目入口与总控/project-status.json`](docs/00-项目入口与总控/project-status.json)
 - 文档总导航：[`docs/README.md`](docs/README.md)
-- 开发与安全约束：[`CLAUDE.md`](CLAUDE.md)
+- 最高开发与安全规则：[`AGENTS.md`](AGENTS.md)
+- 兼容施工模式细则：[`CLAUDE.md`](CLAUDE.md)
 - 部署与上线入口：[`docs/07-部署运维交付与商业化/deploy/README.md`](docs/07-部署运维交付与商业化/deploy/README.md)
 
-`implemented` 只表示代码能力存在，不等于已通过统一交付门禁。是否可交付以 `project-status.json` 中的 `releaseGates` 为准。
+`implemented` 只表示代码能力存在，不等于已通过统一交付门禁。只有当 `project-status.json` 的基线与候选提交一致且 `releaseGates` 全部通过时，该状态文件才可作为交付证据。
 
 ## 常用验证
 

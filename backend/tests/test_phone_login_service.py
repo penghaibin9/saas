@@ -96,3 +96,35 @@ def test_pending_or_contact_phone_cannot_be_normalized_as_login_identifier():
         normalize_login_phone("138****8000")
     with pytest.raises(ValueError):
         normalize_login_phone("13800138000/13900139000")
+
+
+def test_browser_login_uses_typed_control_plane_authority_not_legacy_service(monkeypatch):
+    """The browser wrapper calls auth.login, so this guards both ACCOUNT and PHONE wiring."""
+    from app.api.v1 import auth
+    from app.services import control_plane_auth_service
+
+    seen = {}
+    monkeypatch.setattr(auth.captcha_svc, "enforce_login_captcha", lambda *args, **kwargs: None)
+    monkeypatch.setattr(auth.audit, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        auth.auth_service_db, "login_with_password",
+        lambda *args, **kwargs: pytest.fail("browser login must not call the untyped legacy authority"),
+    )
+    monkeypatch.setattr(
+        control_plane_auth_service, "login_with_password",
+        lambda identifier, password, tenant, client, *, identifier_type: seen.update({
+            "identifier": identifier, "password": password, "tenant": tenant,
+            "client": client, "identifier_type": identifier_type,
+        }) or {"userId": "db-1"},
+    )
+
+    payload = auth.login(auth.PasswordLoginRequest(
+        identifierType="PHONE", identifier="13800138000", password="safe-test-password",
+        tenantCode="school-a", clientType="PC",
+    ))
+
+    assert payload["data"]["userId"] == "db-1"
+    assert seen == {
+        "identifier": "+8613800138000", "password": "safe-test-password",
+        "tenant": "school-a", "client": "PC", "identifier_type": "PHONE",
+    }
