@@ -48,5 +48,5 @@ export default {
 </script>
 
 <style scoped>
-.phone-self { margin:12px 0; font-size:14px; line-height:1.7; }.phone-self text { overflow-wrap:anywhere; }.phone-input { height:44px; border:1px solid var(--border-base); border-radius:6px; padding:0 12px; font-size:15px; }.phone-error { color:var(--danger-600, #b42318); }
+.phone-self { margin:12px 0; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }.phone-input { height:44px; border:1px solid var(--border-base); border-radius:6px; padding:0 12px; font-size:15px; }.phone-error { color:var(--danger-600, #b42318); }
 </style>

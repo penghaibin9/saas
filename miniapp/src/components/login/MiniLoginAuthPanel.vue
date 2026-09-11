@@ -342,10 +342,8 @@ export default {
 .login-modes { display: flex; gap: 8rpx; padding: 8rpx; margin: 20rpx 0; border-radius: 24rpx; background: #eaf8f5; }
 .login-modes--teacher { background: #edf3ff; }
 .login-mode { flex: 1; min-width: 0; min-height: 44px; margin: 0; padding: 0 8rpx; display: flex; align-items: center; justify-content: center; border-radius: 18rpx; background: transparent; color: #64748b; font-size: 28rpx; font-weight: 600; line-height: 1.4; }
-.login-mode::after { border: 0; }
 .login-mode--active { background: #fff; color: #0f766e; box-shadow: 0 4rpx 14rpx #0f766e12; }
 .login-modes--teacher .login-mode--active { color: #2563eb; }
-.login-mode:focus-visible { outline: 2px solid #64748b; outline-offset: 2px; }
 .mode-hint { display: block; color: #64748b; font-size: 24rpx; line-height: 1.6; margin-bottom: 16rpx; }
 .mini-login { min-height: 100vh; padding-bottom: calc(26px + env(safe-area-inset-bottom)); color: #10233f; background: #f4f7fb; }
 .hero { position: relative; overflow: hidden; min-height: 284px; padding: calc(28px + env(safe-area-inset-top)) 22px 48px; color: #fff; background: linear-gradient(155deg, #174a78, #1b708f 60%, #1a9a9a); border-radius: 0 0 34px 34px; }.hero--teacher { background: linear-gradient(155deg, #163d88, #205bc5 60%, #2877df); }.hero__glow { position: absolute; width: 260px; height: 260px; right: -100px; top: -100px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035); }
