@@ -42,3 +42,14 @@ test('IAM pages keep identifiers beside Chinese display names', () => {
   assert.match(permissions, /\{\{ node\.key \}\}/)
   assert.match(templates, /\{\{ item\.templateCode \}\}/)
 })
+
+test('permission catalog uses business domains and collapsible feature groups instead of a flat table', () => {
+  const source = fs.readFileSync(new URL('../src/modules/system/components/workspace/SystemIamGovernancePanel.vue', import.meta.url), 'utf8')
+  assert.match(source, /data-testid="permission-catalog-workspace"/)
+  assert.match(source, /class="permission-domains"/)
+  assert.match(source, /permissionFeatureGroups/)
+  assert.match(source, /toggleFeatureGroup/)
+  assert.match(source, /permissionRiskFilters/)
+  assert.match(source, /\{\{ item\.permissionCode \}\}/)
+  assert.doesNotMatch(source, /v-for="item in filteredPermissions"[^]*?<\/table>/)
+})

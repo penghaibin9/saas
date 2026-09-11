@@ -42,25 +42,56 @@
           </button>
         </section>
 
-        <section class="card">
-          <header class="section-head">
-            <div><h3>学校可分配权限目录</h3><p class="muted">此处来自平台控制面的权威目录；企业实习权限不会出现在学校可分配清单中。</p></div>
-            <label class="search">搜索<input v-model.trim="permissionKeyword" placeholder="权限编码 / 模块 / 功能" /></label>
+        <section class="card permission-catalog" data-testid="permission-catalog-workspace">
+          <header class="permission-catalog__header">
+            <div><h3>学校可分配权限目录</h3><p class="muted">按业务域和功能分组查找；中文名称用于办理，权限编码用于核对。</p></div>
+            <div class="permission-catalog__tools">
+              <label class="permission-search"><span class="sr-only">搜索权限</span><input v-model.trim="permissionKeyword" placeholder="搜索权限名称或权限编码" /></label>
+              <div class="permission-filters" aria-label="权限风险筛选">
+                <button v-for="filter in permissionRiskFilters" :key="filter.value" type="button" :class="{ active: permissionRiskFilter === filter.value }" @click="permissionRiskFilter = filter.value">
+                  {{ filter.label }} <b>{{ permissionFilterCount(filter.value) }}</b>
+                </button>
+              </div>
+            </div>
           </header>
+
           <div class="recruitment-box">
-            <strong>岗位实习 · 招聘季学校侧权限</strong>
+            <strong>常用专题 · 招聘季学校侧权限</strong>
             <span v-for="item in catalog.internshipRecruitmentPermissions || []" :key="item.permissionCode" class="permission-chip">{{ permissionDisplayLabel(item) }}</span>
             <span v-if="!(catalog.internshipRecruitmentPermissions || []).length" class="danger-text">招聘季权限未进入权限目录，禁止继续配置</span>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>权限名称</th><th>模块 / 功能</th><th>风险</th><th>自定义角色</th></tr></thead>
-              <tbody>
-                <tr v-for="item in filteredPermissions" :key="item.permissionCode">
-                  <td>{{ permissionDisplayLabel(item) }}</td><td>{{ moduleFeatureLabel(item) }}</td><td>{{ riskLevelLabel(item.riskLevel) }}</td><td>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div class="permission-browser">
+            <nav class="permission-domains" aria-label="权限业务域">
+              <h4>业务域导航</h4>
+              <button v-for="domain in permissionDomains" :key="domain.key" type="button" :class="{ active: activePermissionDomain === domain.key }" @click="selectPermissionDomain(domain.key)">
+                <span>{{ domain.label }}</span><b>{{ domain.count }}</b>
+              </button>
+            </nav>
+
+            <div class="permission-groups">
+              <header class="permission-groups__summary">
+                <div><h4>{{ activePermissionDomainLabel }} <span>（{{ visiblePermissionCount }} 项）</span></h4><p>{{ activePermissionDomainDescription }}</p></div>
+                <div><button type="button" @click="setAllFeatureGroups(true)">展开全部</button><i aria-hidden="true" /> <button type="button" @click="setAllFeatureGroups(false)">收起全部</button></div>
+              </header>
+
+              <section v-for="group in permissionFeatureGroups" :key="group.key" class="permission-feature">
+                <button type="button" class="permission-feature__head" :aria-expanded="isFeatureGroupOpen(group.key)" @click="toggleFeatureGroup(group.key)">
+                  <strong>{{ group.label }}</strong><b>{{ group.rows.length }}</b><small>{{ group.description }}</small>
+                  <span class="permission-feature__toggle">{{ isFeatureGroupOpen(group.key) ? '收起' : '展开' }}</span>
+                </button>
+                <div v-if="isFeatureGroupOpen(group.key)" class="permission-rows">
+                  <div class="permission-row permission-row--head"><span>权限名称</span><span>权限编码</span><span>风险等级</span><span>自定义角色</span></div>
+                  <div v-for="item in group.rows" :key="item.permissionCode" class="permission-row">
+                    <span class="permission-row__name"><strong>{{ permissionDisplayLabel(item) }}</strong><small>{{ permissionDescription(item) }}</small></span>
+                    <code>{{ item.permissionCode }}</code>
+                    <span><b class="risk-pill" :class="`risk-pill--${riskTone(item.riskLevel)}`">{{ riskLevelLabel(item.riskLevel) }}</b></span>
+                    <span>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</span>
+                  </div>
+                </div>
+              </section>
+              <div v-if="!permissionFeatureGroups.length" class="permission-empty"><b>没有匹配的权限</b><p>可更换业务域、风险条件或搜索关键词。</p></div>
+            </div>
           </div>
         </section>
 
@@ -205,12 +236,31 @@ const RESOURCE_TYPE_LABELS = { STUDENT: '学生', INTERN_STUDENT: '实习学生'
 const ROLE_TYPE_LABELS = { SYSTEM: '系统角色', CUSTOM: '自定义角色', TEMPLATE: '模板角色', BUSINESS: '业务角色' }
 const RISK_LEVEL_LABELS = { LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' }
 const MODULE_LABELS = { internship: '实习管理', student: '学生管理', academic: '教务管理', graduation: '毕业管理', system: '系统管理', platform: '平台管理' }
+const PERMISSION_DOMAINS = [
+  { key: 'all', label: '全部权限', description: '查看学校可分配的全部权限。' },
+  { key: 'system', label: '系统与身份', description: '账号安全、身份核验、登录控制、角色权限与审计。' },
+  { key: 'student', label: '学工管理', description: '学生事务、迎新、资助、宿舍与日常管理。' },
+  { key: 'academic', label: '教务管理', description: '教学运行、课程、考试、成绩与学籍办理。' },
+  { key: 'internship', label: '岗位实习', description: '实习安排、招聘季、过程管理与风险处置。' },
+  { key: 'graduation', label: '毕业设计', description: '课题、指导、评阅、答辩与归档。' },
+  { key: 'employment', label: '就业管理', description: '就业去向、材料核验、跟进与统计。' }
+]
+const FEATURE_LABELS = {
+  phone: ['手机号治理与认证', '管理手机号登录凭据、本人验证和安全策略。'],
+  identity: ['身份核验', '身份、账号与本人关系核验相关权限。'],
+  role: ['权限与角色管理', '角色、成员、权限分配与回收相关权限。'],
+  audit: ['审计与合规', '登录日志、敏感操作和安全审计相关权限。'],
+  import: ['导入与数据交换', '模板、导入任务、校验与结果查看相关权限。'],
+  recruitment: ['招聘季管理', '招聘季、企业邀请与岗位投递相关权限。'],
+  default: ['业务办理权限', '本业务域下的查看、办理与管理权限。']
+}
 
 export default {
   name: 'SystemIamWorkspaceView',
   components: { AppButton, ModulePageShell },
   data: () => ({
     summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
+    activePermissionDomain: 'system', permissionRiskFilter: 'all', openPermissionGroups: [],
     explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
     roleEvidence: null, evidenceLoading: false,
     explain: {
@@ -233,9 +283,33 @@ export default {
       const key = String(this.$route.query.surface || '')
       return this.surfaces.find((item) => item.key === key) || null
     },
+    allCatalogPermissions() { return this.catalog.customRoleAssignablePermissions || [] },
     filteredPermissions() {
       const q = this.permissionKeyword.toLowerCase()
-      return (this.catalog.customRoleAssignablePermissions || []).filter((item) => !q || [item.permissionCode, item.moduleKey, item.featureKey, item.label].some((value) => String(value || '').toLowerCase().includes(q)))
+      return this.allCatalogPermissions.filter((item) => {
+        const matchesDomain = this.activePermissionDomain === 'all' || this.permissionDomainKey(item) === this.activePermissionDomain
+        const risk = String(item.riskLevel || '').toUpperCase()
+        const matchesRisk = this.permissionRiskFilter === 'all' || (this.permissionRiskFilter === 'high' ? ['HIGH', 'CRITICAL'].includes(risk) : !['HIGH', 'CRITICAL'].includes(risk))
+        const matchesKeyword = !q || [item.permissionCode, item.moduleKey, item.featureKey, item.label, item.featureLabel].some((value) => String(value || '').toLowerCase().includes(q))
+        return matchesDomain && matchesRisk && matchesKeyword
+      })
+    },
+    permissionRiskFilters() { return [{ value: 'all', label: '全部' }, { value: 'high', label: '高风险' }, { value: 'normal', label: '中低风险' }] },
+    permissionDomains() {
+      return PERMISSION_DOMAINS.map(domain => ({ ...domain, count: domain.key === 'all' ? this.allCatalogPermissions.length : this.allCatalogPermissions.filter(item => this.permissionDomainKey(item) === domain.key).length })).filter(domain => domain.key === 'all' || domain.count)
+    },
+    activePermissionDomainMeta() { return PERMISSION_DOMAINS.find(domain => domain.key === this.activePermissionDomain) || PERMISSION_DOMAINS[0] },
+    activePermissionDomainLabel() { return this.activePermissionDomainMeta.label },
+    activePermissionDomainDescription() { return this.activePermissionDomainMeta.description },
+    visiblePermissionCount() { return this.filteredPermissions.length },
+    permissionFeatureGroups() {
+      const groups = new Map()
+      this.filteredPermissions.forEach(item => {
+        const feature = this.permissionFeatureMeta(item)
+        if (!groups.has(feature.key)) groups.set(feature.key, { ...feature, rows: [] })
+        groups.get(feature.key).rows.push(item)
+      })
+      return [...groups.values()]
     },
     explainPermissionOptions() {
       const items = this.catalog.assignablePermissions || []
@@ -271,6 +345,50 @@ export default {
       const moduleLabel = MODULE_LABELS[String(item?.moduleKey || '').toLowerCase()] || '业务模块'
       return item?.featureLabel ? `${moduleLabel} / ${item.featureLabel}` : moduleLabel
     },
+    permissionDomainKey(item) {
+      const raw = `${item?.moduleKey || ''} ${item?.permissionCode || ''}`.toLowerCase()
+      if (/internship|recruitment/.test(raw)) return 'internship'
+      if (/graduation|thesis|defense/.test(raw)) return 'graduation'
+      if (/employment/.test(raw)) return 'employment'
+      if (/academic|course|grade|exam|schedule|teaching/.test(raw)) return 'academic'
+      if (/studentaffairs|student_affairs|orientation|campus|dorm|aid|funding|discipline/.test(raw)) return 'student'
+      return 'system'
+    },
+    permissionFeatureMeta(item) {
+      const raw = `${item?.featureKey || ''} ${item?.permissionCode || ''}`.toLowerCase()
+      let type = 'default'
+      if (/phone|mobile|credential|recover/.test(raw)) type = 'phone'
+      else if (/identity|account|user/.test(raw)) type = 'identity'
+      else if (/role|permission|scope|delegat/.test(raw)) type = 'role'
+      else if (/audit|log|security/.test(raw)) type = 'audit'
+      else if (/import|export|exchange|sync/.test(raw)) type = 'import'
+      else if (/recruit/.test(raw)) type = 'recruitment'
+      const [fallbackLabel, fallbackDescription] = FEATURE_LABELS[type]
+      const serverLabel = String(item?.featureLabel || '').trim()
+      const displayParts = this.permissionDisplayLabel(item).split('·').map(value => value.trim()).filter(Boolean)
+      const displayFeature = displayParts.length > 2 ? displayParts.slice(1, -1).join(' · ') : ''
+      const label = /[㐀-鿿]/.test(serverLabel) ? serverLabel : (type === 'default' && displayFeature ? displayFeature : fallbackLabel)
+      const description = type === 'default' && displayFeature ? `${displayFeature}相关的查看、办理与管理权限。` : fallbackDescription
+      return { key: `${this.permissionDomainKey(item)}:${type}:${label}`, label, description }
+    },
+    permissionDescription(item) {
+      const value = String(item?.description || item?.featureDescription || '').trim()
+      return /[㐀-鿿]/.test(value) ? value : this.moduleFeatureLabel(item)
+    },
+    permissionFilterCount(filter) {
+      const source = this.activePermissionDomain === 'all' ? this.allCatalogPermissions : this.allCatalogPermissions.filter(item => this.permissionDomainKey(item) === this.activePermissionDomain)
+      if (filter === 'high') return source.filter(item => ['HIGH', 'CRITICAL'].includes(String(item.riskLevel || '').toUpperCase())).length
+      if (filter === 'normal') return source.filter(item => !['HIGH', 'CRITICAL'].includes(String(item.riskLevel || '').toUpperCase())).length
+      return source.length
+    },
+    selectPermissionDomain(key) {
+      this.activePermissionDomain = key; this.openPermissionGroups = []
+      this.$nextTick(() => { if (this.permissionFeatureGroups[0]) this.openPermissionGroups = [this.permissionFeatureGroups[0].key] })
+    },
+    isFeatureGroupOpen(key) { return this.openPermissionGroups.includes(key) },
+    toggleFeatureGroup(key) { this.openPermissionGroups = this.isFeatureGroupOpen(key) ? this.openPermissionGroups.filter(item => item !== key) : [...this.openPermissionGroups, key] },
+    setAllFeatureGroups(open) { this.openPermissionGroups = open ? this.permissionFeatureGroups.map(group => group.key) : [] },
+    riskTone(value) { const risk = String(value || '').toUpperCase(); return risk === 'CRITICAL' ? 'critical' : risk === 'HIGH' ? 'high' : risk === 'MEDIUM' ? 'medium' : 'low' },
     riskLevelLabel(value) { return RISK_LEVEL_LABELS[String(value || '').toUpperCase()] || '风险待确认' },
     reasonCodeLabel(value) { return REASON_LABELS[value] || (value ? '其他判定原因' : '—') },
     decisionLabel(value) { return DECISION_LABELS[value] || (value ? '裁决待确认' : '—') },
@@ -335,6 +453,8 @@ export default {
       this.summary = summary.data || {}
       this.catalog = catalog.data || {}
       this.templates = templates.data?.items || []
+      if (!this.permissionDomains.some(domain => domain.key === this.activePermissionDomain)) this.activePermissionDomain = this.permissionDomains.find(domain => domain.key !== 'all')?.key || 'all'
+      this.$nextTick(() => { if (!this.openPermissionGroups.length && this.permissionFeatureGroups[0]) this.openPermissionGroups = [this.permissionFeatureGroups[0].key] })
     },
     async loadTemplateImpact(item) {
       this.impactLoading = item.id
@@ -386,4 +506,10 @@ export default {
 
 <style scoped>
 .iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1260px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.detail{max-width:420px;overflow-wrap:anywhere}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.actions{white-space:nowrap}.actions .link{margin-right:6px}.impact-summary,.pager,.context-evidence{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:10px 0}.context-evidence{margin:8px 0;border-top:1px solid var(--card-b,#e5e6eb);border-bottom:1px solid var(--card-b,#e5e6eb)}.pager{justify-content:flex-end}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
+.permission-catalog{padding:20px}.permission-catalog__header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}.permission-catalog__header h3{font-size:20px}.permission-catalog__tools{display:grid;justify-items:end;gap:10px;min-width:min(100%,610px)}.permission-search{width:min(100%,390px)}.permission-search input{box-sizing:border-box;width:100%;height:40px;padding:0 13px;border:1px solid #c9d8f4;border-radius:8px;background:#fff;color:var(--text-primary,#1f2937);font:inherit}.permission-search input:focus{outline:2px solid #2563eb;outline-offset:1px}.permission-filters{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.permission-filters button,.permission-groups__summary button{border:1px solid #d7e2f6;border-radius:7px;background:#fff;color:#45617f;padding:7px 11px;cursor:pointer}.permission-filters button.active{border-color:#2f68d9;background:#edf4ff;color:#1f5bc1}.permission-filters b{margin-left:4px}.permission-browser{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;margin-top:16px}.permission-domains{padding:12px 8px;border-radius:10px;background:#f6f9fe}.permission-domains h4{margin:4px 10px 10px;font-size:14px}.permission-domains button{display:flex;width:100%;justify-content:space-between;gap:12px;padding:11px 10px;border:0;border-radius:8px;background:transparent;color:#526b88;font:inherit;text-align:left;cursor:pointer}.permission-domains button:hover{background:#eef4ff}.permission-domains button.active{background:#e7f0ff;color:#1f5bc1;font-weight:650}.permission-domains b{font-size:12px}.permission-groups{min-width:0}.permission-groups__summary{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:13px 15px;border-radius:9px;background:#f2f6fc}.permission-groups__summary h4{margin:0 0 4px;font-size:16px}.permission-groups__summary h4 span{font-size:13px;color:#526b88}.permission-groups__summary p{margin:0;color:#667b96;font-size:13px}.permission-groups__summary>div:last-child{display:flex;align-items:center;white-space:nowrap}.permission-groups__summary i{width:1px;height:18px;background:#d8e1ef}.permission-groups__summary button{border:0;background:transparent;color:#2563eb;padding:6px 9px}.permission-feature{margin-top:10px;border:1px solid #dae4f3;border-radius:9px;overflow:hidden}.permission-feature__head{display:grid;grid-template-columns:auto auto minmax(160px,1fr) auto;align-items:center;gap:10px;width:100%;padding:12px 15px;border:0;background:#f7f9fd;color:#18304f;text-align:left;cursor:pointer}.permission-feature__head:hover{background:#eff5ff}.permission-feature__head>b{display:grid;place-items:center;min-width:24px;height:22px;padding:0 6px;border-radius:11px;background:#e5eefc;color:#335b91;font-size:12px}.permission-feature__head small{color:#70829a}.permission-feature__toggle{color:#2563eb;font-size:12px}.permission-rows{background:#fff}.permission-row{display:grid;grid-template-columns:minmax(250px,1.5fr) minmax(220px,1fr) 120px 110px;gap:16px;align-items:center;min-height:52px;padding:8px 16px;border-top:1px solid #e5ebf4}.permission-row--head{min-height:34px;background:#f9fbfe;color:#657991;font-size:12px;font-weight:650}.permission-row__name{display:grid;gap:3px}.permission-row__name strong{font-size:14px;color:#172b4d}.permission-row__name small{color:#72839a;font-size:12px}.permission-row code{overflow-wrap:anywhere;color:#587090;font-size:12px}.risk-pill{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:600}.risk-pill--low{background:#eaf8f0;color:#197a49}.risk-pill--medium{background:#fff4d8;color:#a15c00}.risk-pill--high{background:#ffebe8;color:#c33b2d}.risk-pill--critical{background:#ffe1e1;color:#b42318}.permission-empty{padding:48px 20px;text-align:center;color:#667b96}.permission-empty p{margin:6px 0}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:1100px){.permission-catalog__header{display:grid}.permission-catalog__tools{justify-items:stretch;min-width:0}.permission-search{width:100%}.permission-filters{justify-content:flex-start}.permission-browser{grid-template-columns:1fr}.permission-domains{display:flex;gap:6px;overflow:auto}.permission-domains h4{display:none}.permission-domains button{flex:0 0 auto;width:auto}.permission-row{grid-template-columns:minmax(220px,1.5fr) minmax(180px,1fr) 100px 90px}}
+@media(max-width:760px){.permission-groups__summary{align-items:flex-start;flex-direction:column}.permission-feature__head{grid-template-columns:auto minmax(0,1fr) auto}.permission-feature__head small{grid-column:1/-1}.permission-row,.permission-row--head{grid-template-columns:1fr}.permission-row--head{display:none}.permission-row{gap:6px;padding:12px}.permission-row code{order:2}.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
+.permission-catalog{order:-1}.permission-catalog__tools{display:flex;align-items:center;justify-content:flex-end;min-width:0}.permission-search{width:min(100%,300px)}.permission-filters{flex-wrap:nowrap}.permission-catalog .permission-chip{font-family:inherit}
+@media(max-width:1100px){.permission-catalog__tools{justify-content:flex-start;width:100%}.permission-search{width:min(100%,360px)}}
+@media(max-width:760px){.permission-catalog__tools{align-items:stretch;flex-direction:column}.permission-search{width:100%}.permission-filters{flex-wrap:wrap}}
 </style>
