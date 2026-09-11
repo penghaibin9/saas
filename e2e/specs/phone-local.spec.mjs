@@ -21,7 +21,7 @@ test('PHONE login, real self revoke, ACCOUNT fallback and refreshed readback', a
   const password = 'Local-test-Password1!'
   const login = async (type, identifier) => {
     await page.goto('/login?tenant=' + tenant)
-    await page.getByLabel('登录方式', { exact: true }).selectOption(type)
+    await page.getByRole('button', { name: type === 'PHONE' ? '手机号登录' : '账号登录', exact: true }).click()
     await page.locator('#staff-account').fill(identifier)
     await page.locator('#staff-password').fill(password)
     await page.getByLabel('我已阅读并同意学校提供的用户协议与隐私政策').check()
@@ -135,7 +135,7 @@ test('real xlsx import creates accounts through Staff PC', async ({ page }) => {
   test.skip(process.env.PHONE_REAL_IMPORT_BROWSER !== '1', 'requires the real XLSX/MySQL import fixture')
   const tenant = process.env.PHONE_TEST_TENANT
   await page.goto(`/login?tenant=${tenant}`)
-  await page.getByLabel('登录方式', { exact: true }).selectOption('ACCOUNT')
+  await page.getByRole('button', { name: '账号登录', exact: true }).click()
   await page.locator('#staff-account').fill(process.env.PHONE_IMPORTER_ACCOUNT)
   await page.locator('#staff-password').fill(process.env.PHONE_IMPORTER_PASSWORD)
   await page.getByLabel('我已阅读并同意学校提供的用户协议与隐私政策').check()
@@ -185,7 +185,7 @@ test('imported accounts complete verified bind, change and four authenticated su
 
   const staffLogin = async (type, identifier, password) => {
     await page.goto(`/login?tenant=${tenant}`)
-    await page.getByLabel('登录方式', { exact: true }).selectOption(type)
+    await page.getByRole('button', { name: type === 'PHONE' ? '手机号登录' : '账号登录', exact: true }).click()
     await page.locator('#staff-account').fill(identifier)
     await page.locator('#staff-password').fill(password)
     await page.getByLabel('我已阅读并同意学校提供的用户协议与隐私政策').check()

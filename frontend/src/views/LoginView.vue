@@ -21,19 +21,23 @@
       <div class="login-card">
         <p class="card-eyebrow">STAFF SIGN IN</p>
         <h2>教师 / 管理人员登录</h2>
-        <p class="card-intro">使用学校开通的工号、手机号或统一身份账号进入管理工作台。</p>
-        <div class="entry-note"><span />当前入口仅面向教师和管理人员</div>
+        <p class="card-intro">{{ form.identifierType === 'PHONE' ? '使用本人已验证的手机号与原密码登录。' : '使用学校开通的工号或统一账号。' }}</p>
 
         <form @submit.prevent="doLogin">
-          <label for="staff-identifier-type">登录方式</label>
-          <select :disabled="loading" id="staff-identifier-type" v-model="form.identifierType"><option value="ACCOUNT">工号 / 统一账号</option><option value="PHONE">已验证手机号</option></select>
-          <label for="staff-account">{{ form.identifierType === 'PHONE' ? '已验证手机号' : '工号 / 统一账号' }}</label>
-          <input :disabled="loading" id="staff-account" v-model.trim="form.loginName" autocomplete="username" placeholder="请输入工号或手机号">
+          <div class="login-modes" role="group" aria-label="登录方式">
+            <button v-for="mode in [{ value: 'ACCOUNT', label: '账号登录' }, { value: 'PHONE', label: '手机号登录' }]" :key="mode.value" type="button" :disabled="loading" :aria-pressed="form.identifierType === mode.value" @click="form.identifierType = mode.value">{{ mode.label }}</button>
+          </div>
+          <label for="staff-account">{{ form.identifierType === 'PHONE' ? '已验证手机号' : '账号' }}</label>
+          <div class="identity-field">
+            <User class="field-icon" aria-hidden="true" />
+            <input :disabled="loading" id="staff-account" v-model.trim="form.loginName" autocomplete="username" :inputmode="form.identifierType === 'PHONE' ? 'tel' : 'text'" :placeholder="form.identifierType === 'PHONE' ? '请输入本人已验证的手机号' : '请输入工号或统一账号'">
+          </div>
 
           <div class="label-row"><label for="staff-password">密码</label><button type="button" class="text-button" @click="onForgot">忘记密码</button></div>
           <div class="password-field">
-            <input :disabled="loading" id="staff-password" v-model="form.password" :type="pwdVisible ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
-            <button type="button" class="eye-button" :aria-label="pwdVisible ? '隐藏密码' : '显示密码'" @click="pwdVisible = !pwdVisible">{{ pwdVisible ? '隐藏' : '显示' }}</button>
+            <Lock class="field-icon" aria-hidden="true" />
+            <input :disabled="loading" id="staff-password" v-model="form.password" :type="pwdVisible ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入登录密码">
+            <button type="button" class="eye-button" :aria-label="pwdVisible ? '隐藏密码' : '显示密码'" @click="pwdVisible = !pwdVisible"><ViewIcon aria-hidden="true" />{{ pwdVisible ? '隐藏' : '显示' }}</button>
           </div>
 
           <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" @refresh="refreshCaptcha" />
@@ -64,6 +68,7 @@
 
 <script>
 import { DEFAULT_PLATFORM_NAME } from '@/config/portalConfig'
+import { User, Lock, View as ViewIcon } from '@element-plus/icons-vue'
 import { isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
 import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 import PasswordResetDialog from '@/components/auth/PasswordResetDialog.vue'
@@ -76,7 +81,7 @@ const TENANT_KEY = 'staff_tenant_code'
 
 export default {
   name: 'LoginView',
-  components: { LoginCaptcha, PasswordResetDialog, ForcePasswordChangeView },
+  components: { LoginCaptcha, PasswordResetDialog, ForcePasswordChangeView, User, Lock, ViewIcon },
   data() {
     return {
       platformName: DEFAULT_PLATFORM_NAME,
@@ -192,7 +197,14 @@ export default {
 .form-panel { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 30px; background: radial-gradient(circle at 50% 0, #eef5ff, transparent 42%), #f4f7fb; }
 .login-card { width: min(430px, 100%); padding: 34px 38px 30px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px -38px rgba(16,35,63,.35); }
 .card-eyebrow { margin-bottom: 8px; color: #2f70ea; }.login-card h2 { margin: 0; font-size: 26px; }.card-intro { margin: 10px 0 18px; color: #718096; font-size: 13px; line-height: 1.65; }
-.entry-note { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; padding: 9px 11px; border-radius: 9px; color: #40536d; background: #eef5ff; font-size: 12px; }.entry-note span { width: 7px; height: 7px; border-radius: 50%; background: #2563eb; }
+.login-modes { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; margin: 22px 0 24px; border-radius: 14px; background: #eaf1fc; }
+.login-modes button { min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #61718a; font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; }
+.login-modes button[aria-pressed="true"] { color: #2563eb; background: #fff; box-shadow: 0 2px 8px #234a8310; }
+.login-modes button:hover { color: #1f56c9; }
+.login-modes button:focus-visible,.eye-button:focus-visible,.text-button:focus-visible,.submit-button:focus-visible { outline: 3px solid #93b9ff; outline-offset: 3px; }
+.login-modes button:disabled { cursor: wait; opacity: .65; }
+.identity-field,.password-field { position: relative; }
+.field-icon { position: absolute; z-index: 1; left: 14px; top: 15px; width: 20px; height: 20px; color: #7a8ba3; pointer-events: none; }
 form > label,.tenant-details label,.label-row label { display: block; margin: 14px 0 7px; color: #34465f; font-size: 12px; font-weight: 650; }
 input:not([type=checkbox]) { width: 100%; height: 44px; padding: 0 13px; border: 1px solid #dbe3ed; border-radius: 9px; outline: none; color: #10233f; font: inherit; }.password-field { position: relative; }.password-field input { padding-right: 58px; }.eye-button { position: absolute; right: 10px; top: 0; height: 44px; border: 0; color: #536780; background: none; cursor: pointer; }
 input:focus { border-color: #2f70ea; box-shadow: 0 0 0 3px rgba(47,112,234,.12); }.label-row { display: flex; align-items: flex-end; justify-content: space-between; }.text-button { border: 0; color: #2563eb; background: none; cursor: pointer; font-size: 12px; }
@@ -204,4 +216,19 @@ input:focus { border-color: #2f70ea; box-shadow: 0 0 0 3px rgba(47,112,234,.12);
 @media (max-width: 520px) { .form-panel { width: 100%; min-width: 0; justify-content: flex-start; padding: 28px 16px 18px; }.login-card { width: 100%; padding: 27px 22px 24px; border-radius: 16px; }.login-card h2 { font-size: 23px; }footer { margin-top: auto; flex-direction: column; align-items: center; gap: 3px; } }
 @media (max-height: 780px) and (min-width: 981px) { .brand-copy { margin-top: 60px; }.workspace-art { transform: scale(.8); transform-origin: right bottom; }.form-panel { padding: 18px 30px; }.login-card { padding-top: 25px; padding-bottom: 22px; }.card-intro { margin-bottom: 12px; }.entry-note { margin-bottom: 12px; }form > label,.tenant-details label,.label-row label { margin-top: 10px; }.tenant-details { margin-top: 10px; }.submit-button { margin-top: 12px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.login-card { width: min(480px, 100%); padding: 32px 38px 28px; }
+.card-intro { font-size: 14px; margin: 12px 0 20px; }
+form > label,.label-row label { font-size: 14px; margin-top: 20px; }
+.identity-field input,.password-field input { height: 50px; padding-left: 44px; font-size: 15px; background: #fafbfd; }
+.password-field input { padding-right: 82px; }
+.eye-button { display: flex; align-items: center; gap: 5px; height: 50px; font: inherit; font-size: 13px; }
+.eye-button svg { width: 18px; height: 18px; }
+form > .remember,form > .agreement { display: flex; font-weight: 400; }
+.remember input,.agreement input { width: 16px; height: 16px; flex-shrink: 0; }
+form > .agreement { font-size: 12px; line-height: 1.7; }
+.tenant-details { margin-top: 20px; padding: 14px; }
+.tenant-details summary,.text-button { font-size: 13px; }
+.submit-button { height: 50px; font-size: 16px; margin-top: 20px; }
+.help-text { font-size: 12px; line-height: 1.6; }
+@media (max-width: 520px) { .login-card { padding: 26px 22px; }.login-modes button { font-size: 14px; }.login-card h2 { font-size: 23px; } }
 </style>
