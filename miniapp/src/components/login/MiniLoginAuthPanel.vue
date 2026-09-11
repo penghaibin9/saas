@@ -26,8 +26,11 @@
       <view class="divider"><view class="divider__line" /><text>其他登录方式</text><view class="divider__line" /></view>
 
       <text class="section-title">使用账号或已验证手机号和密码登录</text>
-      <picker :disabled="accLoading || wxLoading" :range="identifierOptions" range-key="label" @change="onIdentifierTypeChange"><view class="tenant-box"><view class="tenant-box__copy"><text class="tenant-box__title">{{ account.identifierType === 'PHONE' ? '已验证手机号' : (isTeacher ? '工号 / 统一账号' : '学号 / 统一账号') }}</text><text class="tenant-box__hint">手机号必须先在本人账号安全中验证</text></view><text>切换</text></view></picker>
-      <input :disabled="accLoading || wxLoading" v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
+      <view class="login-modes" :class="{ 'login-modes--teacher': isTeacher }" role="group" aria-label="登录方式">
+        <button v-for="mode in identifierOptions" :key="mode.value" role="button" class="login-mode" :class="{ 'login-mode--active': account.identifierType === mode.value }" :aria-pressed="account.identifierType === mode.value" :disabled="accLoading || wxLoading" @click="onIdentifierTypeChange(mode.value)">{{ mode.label }}</button>
+      </view>
+      <text class="mode-hint">{{ account.identifierType === 'PHONE' ? '使用本人已验证的手机号与原密码登录' : (isTeacher ? '使用学校开通的工号或统一账号' : '使用学校分配的学号或统一账号') }}</text>
+      <input :disabled="accLoading || wxLoading" v-model="account.loginName" class="field" :type="account.identifierType === 'PHONE' ? 'tel' : 'text'" :placeholder="account.identifierType === 'PHONE' ? '请输入本人已验证的手机号' : (isTeacher ? '请输入工号或统一账号' : '请输入学号或统一账号')" placeholder-class="field__placeholder" />
       <input :disabled="accLoading || wxLoading" v-model="account.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
       <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
       <view class="newcomer-entry" @click="openOrientationActivation">
@@ -125,7 +128,7 @@ export default {
         ? [{ mark: '审', title: '移动审批', sub: '待办直达' }, { mark: '核', title: '扫码核验', sub: '迎新与现场' }, { mark: '险', title: '风险处置', sub: '提醒与跟进' }]
         : [{ mark: '办', title: '办事务', sub: '申请与补交' }, { mark: '进', title: '看进度', sub: '节点与结果' }, { mark: '信', title: '收消息', sub: '通知直达' }]
     },
-    identifierOptions() { return [{ label: this.isTeacher ? '工号 / 统一账号' : '学号 / 统一账号', value: 'ACCOUNT' }, { label: '已验证手机号', value: 'PHONE' }] }
+    identifierOptions() { return [{ label: '账号登录', value: 'ACCOUNT' }, { label: '手机号登录', value: 'PHONE' }] }
   },
   created() {
     this.accountCaptchaFlow = createIdentityCaptcha(this.accountCaptcha, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: this.account.tenantCode.trim() || undefined, identifierType: this.account.identifierType, identifier: this.account.loginName.trim(), clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' }), issue: data => realRequest('/auth/captcha', { method: 'POST', auth: false, data }), error: toast })
@@ -215,7 +218,7 @@ export default {
       }).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
       } catch (error) { toast(error?.message || '登录失败，请重新提交') } finally { this.accLoading = false }
     },
-    onIdentifierTypeChange(event) { this.account.identifierType = this.identifierOptions[Number(event.detail.value)]?.value || 'ACCOUNT' },
+    onIdentifierTypeChange(value) { if (!this.accLoading && !this.wxLoading && this.identifierOptions.some(mode => mode.value === value)) this.account.identifierType = value },
     wechatLogin() {
       if (this.wxLoading || this.accLoading) return
       if (!this.agree) { toast('请先勾选同意用户协议与隐私政策'); return }
@@ -336,6 +339,14 @@ export default {
 </script>
 
 <style scoped>
+.login-modes { display: flex; gap: 8rpx; padding: 8rpx; margin: 20rpx 0; border-radius: 24rpx; background: #eaf8f5; }
+.login-modes--teacher { background: #edf3ff; }
+.login-mode { flex: 1; min-width: 0; min-height: 44px; margin: 0; padding: 0 8rpx; display: flex; align-items: center; justify-content: center; border-radius: 18rpx; background: transparent; color: #64748b; font-size: 28rpx; font-weight: 600; line-height: 1.4; }
+.login-mode::after { border: 0; }
+.login-mode--active { background: #fff; color: #0f766e; box-shadow: 0 4rpx 14rpx #0f766e12; }
+.login-modes--teacher .login-mode--active { color: #2563eb; }
+.login-mode:focus-visible { outline: 2px solid #64748b; outline-offset: 2px; }
+.mode-hint { display: block; color: #64748b; font-size: 24rpx; line-height: 1.6; margin-bottom: 16rpx; }
 .mini-login { min-height: 100vh; padding-bottom: calc(26px + env(safe-area-inset-bottom)); color: #10233f; background: #f4f7fb; }
 .hero { position: relative; overflow: hidden; min-height: 284px; padding: calc(28px + env(safe-area-inset-top)) 22px 48px; color: #fff; background: linear-gradient(155deg, #174a78, #1b708f 60%, #1a9a9a); border-radius: 0 0 34px 34px; }.hero--teacher { background: linear-gradient(155deg, #163d88, #205bc5 60%, #2877df); }.hero__glow { position: absolute; width: 260px; height: 260px; right: -100px; top: -100px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035); }
 .brand { position: relative; display: flex; align-items: center; gap: 11px; }.brand__logo,.brand__logo-img { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.32); border-radius: 11px; background: rgba(255,255,255,.14); }.brand__copy { display: flex; flex-direction: column; }.brand__name { font-size: 14px; font-weight: 600; }.brand__sub { margin-top: 2px; color: rgba(255,255,255,.67); font-size: 10px; }

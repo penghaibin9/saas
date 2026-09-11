@@ -23,14 +23,14 @@
       <div class="login-card">
         <p class="card-eyebrow">STUDENT PORTAL</p>
         <h2>学生登录</h2>
-        <p class="card-intro">使用学校分配的学号、手机号或统一身份账号进入个人服务门户。</p>
-        <div class="entry-note"><span />登录后仅展示本人数据和本人事项</div>
+        <p class="card-intro">{{ identifierType === 'PHONE' ? '使用本人已验证的手机号与原密码登录。' : '使用学校分配的学号或统一账号。' }}</p>
 
         <form @submit.prevent="doLogin">
-          <label for="student-identifier-type">登录方式</label>
-          <select :disabled="loading" id="student-identifier-type" v-model="identifierType"><option value="ACCOUNT">学号 / 统一账号</option><option value="PHONE">已验证手机号</option></select>
-          <label for="student-account">{{ identifierType === 'PHONE' ? '已验证手机号' : '学号 / 统一账号' }}</label>
-          <input :disabled="loading" id="student-account" v-model.trim="loginName" autocomplete="username" placeholder="请输入学号或手机号">
+          <div class="login-modes" role="group" aria-label="登录方式">
+            <button v-for="mode in [{ value: 'ACCOUNT', label: '账号登录' }, { value: 'PHONE', label: '手机号登录' }]" :key="mode.value" type="button" :disabled="loading" :aria-pressed="identifierType === mode.value" @click="identifierType = mode.value">{{ mode.label }}</button>
+          </div>
+          <label for="student-account">{{ identifierType === 'PHONE' ? '已验证手机号' : '账号' }}</label>
+          <input :disabled="loading" id="student-account" v-model.trim="loginName" autocomplete="username" :inputmode="identifierType === 'PHONE' ? 'tel' : 'text'" :placeholder="identifierType === 'PHONE' ? '请输入本人已验证的手机号' : '请输入学号或统一账号'">
           <div class="label-row"><label for="student-password">密码</label><button class="text-button" type="button" @click="forgotPassword">忘记密码</button></div>
           <div class="password-field">
             <input :disabled="loading" id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
@@ -179,4 +179,14 @@ form > label,.tenant-details label,.label-row label { display: block; margin: 14
 @media (max-width: 980px) { .login-page { grid-template-columns: 1fr; }.brand-panel { display: none; }.form-panel { min-height: 100vh; }.login-card { width: 440px; } }
 @media (max-width: 520px) { .form-panel { width: 100%; min-width: 0; justify-content: flex-start; padding: 28px 16px 18px; }.login-card { width: 100%; padding: 27px 22px 24px; border-radius: 16px; }.login-card h2 { font-size: 23px; }footer { margin-top: auto; flex-direction: column; align-items: center; gap: 3px; } }
 @media (max-height: 780px) and (min-width: 981px) { .brand-copy { margin-top: 55px; }.service-map { bottom: 25px; }.form-panel { padding: 18px 30px; }.login-card { padding-top: 25px; padding-bottom: 22px; }.card-intro,.entry-note { margin-bottom: 12px; }form > label,.tenant-details label,.label-row label { margin-top: 10px; }.tenant-details { margin-top: 10px; }.submit-button { margin-top: 12px; } }
+.login-card { width: min(480px, 100%); }
+.card-intro { margin-bottom: 24px; min-height: 22px; font-size: 14px; }
+.login-modes { display: flex; gap: 4px; padding: 5px; margin-bottom: 22px; border-radius: 14px; background: #eaf8f5; }
+.login-modes button { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #607b78; font: inherit; font-weight: 650; cursor: pointer; }
+.login-modes button[aria-pressed="true"] { background: #fff; color: #0f766e; box-shadow: 0 3px 12px #0f766e12; }
+.login-modes button:focus-visible { outline: 2px solid #15948b; outline-offset: 2px; }
+.login-modes button:disabled { opacity: .6; cursor: wait; }
+form > label,.label-row label { font-size: 14px; }
+input:not([type=checkbox]),.eye-button { height: 50px; }
+.submit-button { height: 50px; font-size: 16px; }
 </style>

@@ -61,7 +61,7 @@ test('student first-login password change keeps ACCOUNT and PHONE entries on the
   const newPassword = 'Student-local-Password2!'
   const login = async (type, identifier, password) => {
     await page.goto(`http://127.0.0.1:15311/portal/login?tenant=${tenant}`)
-    await page.getByLabel('登录方式', { exact: true }).selectOption(type)
+    await page.getByRole('button', { name: type === 'PHONE' ? '手机号登录' : '账号登录', exact: true }).click()
     await page.locator('#student-account').fill(identifier)
     await page.locator('#student-password').fill(password)
     await page.getByText('我已阅读并同意学校提供的用户协议与隐私政策').locator('input').check()
@@ -109,14 +109,7 @@ test('teacher and student H5 entries authenticate with ACCOUNT and PHONE at mobi
     const page = await context.newPage()
     await page.goto(`${miniBase}/#/pages/login/${item.side}/index`)
     if (item.type === 'PHONE') {
-      await page.locator('uni-picker .tenant-box').tap()
-      const column = page.locator('uni-picker-view-column')
-      await column.waitFor({ state: 'visible' })
-      await column.hover()
-      await page.mouse.wheel(0, 100)
-      await expect(page.locator('.uni-picker-view-content')).toHaveAttribute('style', /translateY\(-34px\)/)
-      await page.locator('.uni-picker-action-confirm:visible').tap()
-      await expect(page.locator('uni-picker')).toContainText('已验证手机号')
+      await page.getByRole('button', { name: '手机号登录', exact: true }).tap()
     }
     await page.getByRole('textbox').nth(0).fill(item.identifier)
     await page.getByRole('textbox').nth(1).fill(item.password)
@@ -195,7 +188,7 @@ test('imported accounts complete verified bind, change and four authenticated su
   }
   const studentLogin = async (type, identifier, password) => {
     await page.goto(`http://127.0.0.1:15311/portal/login?tenant=${tenant}`)
-    await page.getByLabel('登录方式', { exact: true }).selectOption(type)
+    await page.getByRole('button', { name: type === 'PHONE' ? '手机号登录' : '账号登录', exact: true }).click()
     await page.locator('#student-account').fill(identifier)
     await page.locator('#student-password').fill(password)
     await page.getByText('我已阅读并同意学校提供的用户协议与隐私政策').locator('input').check()
@@ -288,14 +281,7 @@ test('imported accounts complete verified bind, change and four authenticated su
     const mobile = await context.newPage()
     await mobile.goto(`${process.env.PHONE_TEST_MINI_BASE_URL}/#/pages/login/${item.side}/index`)
     if (item.type === 'PHONE') {
-      await mobile.locator('uni-picker .tenant-box').tap()
-      const column = mobile.locator('uni-picker-view-column')
-      await column.waitFor({ state: 'visible' })
-      await column.hover()
-      await mobile.mouse.wheel(0, 100)
-      await expect(mobile.locator('.uni-picker-view-content')).toHaveAttribute('style', /translateY\(-34px\)/)
-      await mobile.locator('.uni-picker-action-confirm:visible').tap()
-      await expect(mobile.locator('uni-picker')).toContainText('已验证手机号')
+      await mobile.getByRole('button', { name: '手机号登录', exact: true }).tap()
     }
     await mobile.getByRole('textbox').nth(0).fill(item.identifier)
     await mobile.getByRole('textbox').nth(1).fill(item.password)
