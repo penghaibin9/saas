@@ -197,6 +197,13 @@
       <div v-if="$slots.menu" class="bpl-workspace-custom"><aside><slot name="menu" /></aside><div><slot /></div></div>
       <slot v-else />
     </TeacherWorkspaceFrame>
+    <!-- A workspace awaiting identity stays in workspace chrome, never the legacy navigation. -->
+    <div v-if="useWorkspace && !ctx" class="bpl-workspace-pending">
+      <div class="bpl-workspace-pending__bar" aria-hidden="true"></div>
+      <main class="bpl-workspace-pending__content" aria-label="工作区加载状态">
+        <slot />
+      </main>
+    </div>
     <div v-if="!useWorkspace && railItems.length" class="bpl-mobilehint" role="note">
       <svg class="bpl-mobilehint__ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -205,7 +212,7 @@
       <span class="bpl-mobilehint__tx"><strong>建议在电脑上使用管理控制台。</strong>当前屏幕较窄，左侧导航已隐藏；请使用电脑或将浏览器窗口调宽，以获得完整菜单与导航。</span>
     </div>
 
-    <div v-if="!useWorkspace || !ctx" class="bpl-body">
+    <div v-if="!useWorkspace" class="bpl-body">
       <!-- 左一级 82px 深蓝渐变图标轨（菜单数据消费 config/adminMenu.js，本组件不写死业务菜单） -->
       <aside v-if="railItems.length" class="bpl-rail">
         <div
@@ -931,6 +938,9 @@ export default {
 .bpl-workspace .bpl-cmdk{background:var(--surface);border-color:var(--line);box-shadow:none}
 .bpl-workspace .bpl-scope{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t3);border-color:var(--line);background:var(--surface)}
 .bpl-workspace-custom{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.bpl-workspace-custom>aside{max-height:70vh;overflow:auto}@media(max-width:1000px){.bpl-workspace-custom{grid-template-columns:1fr}}
+.bpl-workspace-pending{flex:1;min-height:0;background:var(--bg-page)}
+.bpl-workspace-pending__bar{height:44px;border-bottom:1px solid var(--line, #e2e8f0);background:var(--surface, #fff)}
+.bpl-workspace-pending__content{padding:24px;min-width:0;overflow:auto}
 .bpl-workspace .bpl-search{margin:0 10px;max-width:600px}
 .bpl-workspace .bpl-cmdk--fn{width:100%;max-width:none;flex:1}
 .bpl-workspace .bpl-logo svg{width:25px;height:25px}
