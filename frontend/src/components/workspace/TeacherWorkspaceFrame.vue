@@ -3,7 +3,7 @@
     <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="navigate(center.path)">{{ center.label }}</button></nav><WorkspaceDeskUtilities scope-mode :scope-name="scopeName" :identity-key="identityKey" /></div>
     <div class="tw-body">
       <div class="tw-rails">
-        <aside v-for="level in levels" :key="level.key" class="tw-rail" :class="[prefs[level.key], { tertiary: level.key === 'third' }]" :aria-label="level.title">
+        <aside v-for="level in railLevels" :key="level.key" class="tw-rail" :class="[prefs[level.key], { tertiary: level.key === 'third' }]" :aria-label="level.title">
           <div class="tw-rail-body">
             <button class="tw-expand" :aria-label="`${prefs[level.key] === 'full' ? '收窄' : '展开'}${level.title}`" @click="prefs[level.key] = prefs[level.key] === 'full' ? 'compact' : 'full'"><span aria-hidden="true">{{ prefs[level.key] === 'full' ? '«' : '»' }}</span><strong class="full-label">{{ level.heading }}</strong></button>
             <div v-if="level.key === 'third' && hasSecondaryMenu" class="tw-directory-controls">
@@ -17,6 +17,9 @@
       </div>
       <div class="tw-working">
         <div class="tw-tabbar"><button class="tw-menu-toggle" @click="mobileOpen = !mobileOpen">目录</button><div class="tw-tabs" role="tablist" aria-label="已打开页面" @keydown="tabKeydown"><div v-for="item in openPages" :key="item.id" class="tw-tab" :class="{ selected: item.id === currentPage?.id }"><button role="tab" :aria-selected="item.id === currentPage?.id" :tabindex="item.id === currentPage?.id ? 0 : -1" :title="`${item.trail} / ${item.title}`" @click="navigate(item.id)"><component :is="menuIcon(item)" class="tw-tab-icon" /><span>{{ item.title }}</span></button><button :aria-label="`关闭${item.title}`" @click="closePage(item)"><Close class="tw-tab-icon" /></button></div></div><div class="tw-tab-actions"><button :disabled="!closedId" title="恢复最近关闭的页签" aria-label="恢复最近关闭的页签" @click="reopen"><RefreshLeft /></button><button :disabled="!currentPage" :aria-pressed="prefs.shortcuts.includes(currentPage?.id)" :aria-label="prefs.shortcuts.includes(currentPage?.id) ? '取消收藏' : '收藏当前页面'" title="收藏当前页面" @click="toggleShortcut"><Star /></button><button :aria-pressed="focused" :aria-label="focused ? '退出专注' : '专注模式'" title="专注模式" @click="focused = !focused"><FullScreen /></button></div></div>
+        <nav v-if="horizontalLevel" class="tw-module-tabs" :aria-label="horizontalLevel.heading">
+          <button v-for="item in horizontalLevel.items" :key="item.id" :disabled="item.disabled || !item.path" :aria-current="horizontalLevel.active === item.id ? 'page' : undefined" :title="item.disabled ? item.badge : undefined" @click="selectItem('third', item)">{{ item.label }}</button>
+        </nav>
         <main ref="mainElement" class="tw-main" tabindex="-1" @scroll="rememberScroll">
           <section v-if="route.path === '/workbench' && route.query.view === 'recent'" class="tw-recent"><header><h1>最近访问</h1><button @click="prefs.recent = []">清空记录</button></header><p v-if="!prefs.recent.length">暂无访问记录</p><button v-for="id in prefs.recent" :key="id" class="tw-recent-row" @click="navigate(id)"><span>{{ pages.find(page => page.id === id)?.title }}</span><small>{{ pages.find(page => page.id === id)?.trail }}</small></button></section>
           <slot v-else />
@@ -38,7 +41,7 @@ import WorkspaceDeskUtilities from './WorkspaceDeskUtilities.vue'
 import { RefreshLeft, Star, FullScreen, Close, Monitor, User, Calendar, House, Bell, ChatDotRound, Sunny, Help, Coin, DocumentChecked, Collection, DataAnalysis, School, Flag, DataBoard, SetUp, Reading, List, Select, Clock, Tickets, TrendCharts, Medal, Notebook, OfficeBuilding, CircleCheck, FolderChecked } from '@element-plus/icons-vue'
 import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
 import { systemConfirm } from '@/services/systemDialog'
-const props = defineProps({ modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
+const props = defineProps({ horizontalModule: { type: String, default: '' }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
 const emit = defineEmits(['tokens', 'theme-label'])
 const route = useRoute(), router = useRouter()
 const pages = computed(() => workspacePages(props.modules))
@@ -77,6 +80,8 @@ watch(() => selectedModule.value || props.activeModule, () => { expandedMenu.val
 const hasSecondaryMenu = computed(() => pages.value.some(item => item.moduleKey === selected.value?.key && item.menuSecondary && !item.workspaceHidden))
 const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || props.activeModule)) || props.modules[0])
 const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: props.centers.find(center => center.key === props.activeCenter)?.label || '业务中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: workspaceMenuItems(pages.value, selected.value?.key, currentMenuId.value, expandedMenu.value, menuQuery.value), active: expandedMenu.value ? currentPage.value?.id : currentMenuId.value }])
+const horizontalLevel = computed(() => props.horizontalModule && selected.value?.key === props.horizontalModule ? levels.value[1] : null)
+const railLevels = computed(() => horizontalLevel.value ? levels.value.slice(0, 1) : levels.value)
 const openPages = computed(() => prefs.value.tabs.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.find(item => item.id === id)).filter(Boolean))
 async function confirmUnsubmitted(to, from) {
@@ -152,6 +157,11 @@ function tabKeydown(event) { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].inc
 .tw-dialog{width:min(590px,calc(100vw - 40px));max-height:80vh;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--t1);box-shadow:0 25px 80px #10182730}.tw-dialog::backdrop{background:#1a273d55;backdrop-filter:blur(3px)}.tw-dialog-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.tw-dialog h2{margin:0;font-size:20px}.tw-dialog-head button{border:0;background:transparent;font-size:24px}.tw-dialog p{font-size:13px;color:var(--t3);line-height:1.6}.tw-themes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tw-themes button{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:15px;text-align:left}.tw-themes button[aria-pressed=true]{outline:2px solid var(--pri);background:var(--pri-50)}.tw-themes button>span{display:flex;height:40px;margin-bottom:12px;border-radius:5px;overflow:hidden}.tw-themes i{flex:1}.tw-text-button{border:0;background:transparent;color:var(--pri)!important;padding:8px 0}.tw-shortcut-options{display:flex;flex-direction:column;gap:12px;max-height:34vh;overflow:auto}.tw-shortcut-options label{display:flex;align-items:center;gap:9px}.tw-shortcut-options input{accent-color:var(--pri)}.tw-sort{padding:10px 0 0;list-style:none}.tw-sort li{display:flex;gap:8px;align-items:center;padding:6px 0}.tw-sort input{flex:1;min-width:0;padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:var(--t1)}.tw-sort select{padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:var(--t1)}.tw-sort button{border:1px solid var(--line);border-radius:5px;background:var(--surface-2);font-size:12px}
 @media(hover:hover){.tw-rail.auto .tw-rail-body:hover,.tw-rail.auto .tw-rail-body:focus-within{position:absolute;inset:0 auto 44px 0;width:204px;border-right:1px solid var(--line);box-shadow:12px 0 24px #172b4614}.tw-rail.auto .tw-rail-body:hover .full-label,.tw-rail.auto .tw-rail-body:focus-within .full-label{display:inline}.tw-rail.auto .tw-rail-body:hover .short-label,.tw-rail.auto .tw-rail-body:focus-within .short-label{display:none}.tw-rail.auto.tertiary .tw-rail-body:hover button{justify-content:flex-start}}
 @media(max-width:900px){.tw-centers{padding:0 10px}.tw-centers button{padding:9px}.tw-rails{display:none}.tw-menu-toggle{display:block}.mobile-open .tw-rails{display:flex;position:absolute;inset:100px auto 0 0;z-index:25}.tw-tab-actions button{padding:5px}.tw-main{padding:12px 10px 78px}}
+.tw-module-tabs{display:flex;gap:20px;flex-shrink:0;overflow-x:auto;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.tw-module-tabs button{flex-shrink:0;border:0;border-bottom:3px solid transparent;background:none;color:var(--t3);font:inherit;padding:16px 2px;cursor:pointer}
+.tw-module-tabs button[aria-current=page]{color:var(--pri);border-bottom-color:var(--pri);font-weight:650}
+.tw-module-tabs button:focus-visible{outline:2px solid var(--pri);outline-offset:-3px}
+.tw-module-tabs button:disabled{opacity:.5;cursor:not-allowed}
 </style>
 
 <style scoped>

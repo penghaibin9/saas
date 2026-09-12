@@ -189,6 +189,7 @@
       :identity-key="workspaceIdentityKey"
       :legacy-identity-key="ctx.ctxKey || ''"
       :scope-name="scopeName"
+      :horizontal-module="horizontalModule"
       :resolve-destination="workspaceNavigate"
       @tokens="workspaceColors = $event"
       @theme-label="workspaceThemeLabel = $event"
@@ -395,6 +396,7 @@ export default {
     activeKey: { type: String, default: '' },
     hideAside: { type: Boolean, default: false },
     workspace: { type: Boolean, default: false },
+    horizontalModule: { type: String, default: '' },
     hideGlobalWorkbench: { type: Boolean, default: false },
     workspaceNavigate: { type: Function, default: (path) => path },
     /* v2 新增（可选）：角色上下文，注入后启用统一壳的一级图标轨与身份区 */

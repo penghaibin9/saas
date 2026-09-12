@@ -1221,17 +1221,6 @@ export const systemApi = {
     }
   },
 
-  /** 停用组织节点（真实库：班级有在籍学生先转出，后端最终校验） */
-  async deprecateOrgNode(id, { type, reason }) {
-    try {
-      return ok(await request(`/system/org-nodes/${encodeURIComponent(id)}/status`, {
-        method: 'PUT', body: { type, action: 'DISABLE', reason }
-      }))
-    } catch (error) {
-      return fail(error.message || '组织节点停用失败')
-    }
-  },
-
   importOrg() {
     return fail('组织导入请前往实施中心「数据导入与智能匹配」：/admin/system/implementation/data-mapping')
   },

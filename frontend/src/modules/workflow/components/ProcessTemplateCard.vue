@@ -3,7 +3,7 @@
     <div class="wf-tpl-card__head">
       <div class="wf-tpl-card__titles">
         <span class="wf-tpl-card__name">{{ template.templateName }}</span>
-        <code class="wf-tpl-card__code">{{ template.templateCode }} · v{{ template.version }}</code>
+        <span class="wf-tpl-card__code">第 {{ template.version }} 版</span>
       </div>
       <AppBadge :type="statusType">{{ statusText }}</AppBadge>
     </div>

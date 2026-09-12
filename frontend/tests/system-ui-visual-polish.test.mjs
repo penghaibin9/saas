@@ -10,9 +10,12 @@ const readSource = url => fs.readFileSync(url, 'utf8').replace(/\r\n/g, '\n')
 // This pass intentionally changes presentation only. Update these anchors only after
 // separately reviewing any subsequent business change, never to hide a failing check.
 // 2026-09-10: reviewed system-dialog migration removes browser-native confirms and unload prompts.
+// 2026-09-12: reviewed e475bea2f localization adds only roleDisplayLabel/permissionDisplayLabel
+// imports and method bindings in these two scripts; guards and action bindings stay unchanged.
+// Their display behavior is covered by system-permission-labels.test.mjs.
 const anchors = {
   "views/SystemRoleListView.vue": {
-    "script": "02328932e02bfd022447e03a062451c51d0593f1e61a231c657a80fa38ebe4e8",
+    "script": "40a769e9fee1fcfb01e76f6210f41aefd87c8c8afd771f5726692bc3d7512b97",
     "directives": "7f928e376dd575762c46e9ac5cdde32d48c3cb9c46ea52759c207475050daaa2"
   },
   "views/SystemModuleFeatureView.vue": {
@@ -20,7 +23,7 @@ const anchors = {
     "directives": "3f141158e08d2f08c3353830dc4f7da1eb5236b893f180fce62baba613bd29b8"
   },
   "components/workspace/RolePermissionPanel.vue": {
-    "script": "9ac36c4e4c6a5ab80a1b6f6c2ec73ac920b48700a3e0812002f32cf3db429d28",
+    "script": "0a5469f45e6e00805e6e171c9a9ab12fc7c0d114dfdaf94631a5127c4906345e",
     "directives": "7b7dc58d4587eb0c443271eaa5fe3dd08745934f5de6db2a7b9a60a59455158e"
   },
   "components/workspace/RoleMembersPanel.vue": {

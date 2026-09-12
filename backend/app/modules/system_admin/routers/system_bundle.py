@@ -1788,7 +1788,8 @@ def set_system_role_status(role_id: int, body: dict = Body(...),
         db.close()
 
 
-@router.put("/system/org-nodes/{node_id}/status", summary="停用 / 启用组织节点（学院/专业/班级）")
+# Public status writes are registered only by system_p1_closure: signed preview required.
+# Keep this internal adapter for existing service consumers, never mount it as a route.
 def set_system_org_node_status(node_id: int, body: dict = Body(...),
                                user=Depends(require_permission("systemAdmin.org.manage"))):
     from app.core.exceptions import AppException
@@ -3182,7 +3183,7 @@ def transition_org_version(
     )
 
 
-@router.get("/system/org-nodes/{org_type}/{node_id}/impact", summary="移动或停用该节点会影响谁")
+# The public impact URL is owned by system_p1_closure and returns its signed receipt.
 def org_node_impact(org_type: str, node_id: int, user=Depends(require_permission("systemAdmin.org.view"))):
     from app.services import organization_version_service as svc
 

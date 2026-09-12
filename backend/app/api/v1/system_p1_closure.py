@@ -571,7 +571,7 @@ def set_org_node_status(
         if action == "DISABLE":
             token_impact = preview_payload.get("impact") or {}
             current_impact = {k: impact[k] for k in token_impact}
-            if int(preview_payload.get("nodeVersion") or -1) != current_version or token_impact != current_impact:
+            if preview_payload.get("nodeVersion") != current_version or token_impact != current_impact:
                 raise AppException("DATA_CONFLICT", "组织影响面在预演后发生变化，请重新预演", http_status=409)
             blockers = {k: v for k, v in current_impact.items() if int(v or 0) > 0}
             if blockers:

@@ -1,5 +1,6 @@
 <template>
   <BasePortalLayout
+    workspace
     class="aa-workspace-ui"
     :title="brandTitle"
     subtitle="教务中心"

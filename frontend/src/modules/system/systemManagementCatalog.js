@@ -59,11 +59,14 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     key: 'sys-org', label: '组织与任职', icon: '♜',
     description: '学院、专业、班级与教职工任职关系是四大业务中心共用的唯一主数据。',
     items: [
+      { key: 'sys-org-tree', label: '树形定位工作台', path: '/admin/system/org', permissionKey: 'system.org.view', view: 'org', actions: [] },
       { key: 'sys-org-colleges', label: '学院与部门', path: '/admin/system/org?tab=college', permissionKey: 'system.org.view', view: 'org', actions: [action('org:create', '新增组织'), action('org:update', '编辑组织'), action('org:disable', '停用组织', 'HIGH')] },
       { key: 'sys-org-majors', label: '专业管理', path: '/admin/system/org?tab=major', permissionKey: 'system.org.major.manage', view: 'org', actions: [action('org:major:manage', '维护专业')] },
       { key: 'sys-org-classes', label: '年级与班级', path: '/admin/system/org?tab=class', permissionKey: 'system.org.class.manage', view: 'org', actions: [action('org:class:manage', '维护班级')] },
+      { key: 'sys-org-positions', label: '岗位管理', path: '/admin/system/org?tab=positions', permissionKey: 'system.org.view', view: 'org', actions: [] },
       { key: 'sys-staff-affiliations', label: '教职工任职归属查询', path: '/admin/system/staff-affiliations', permissionKey: 'system.org.affiliation.manage', view: 'staff-affiliations', actions: [] },
-      { key: 'sys-business-relations', label: '业务关系中心', path: '/admin/system/business-relations', permissionKey: 'system.org.view', view: 'business-relations', actions: [] }
+      { key: 'sys-business-relations', label: '业务关系中心', path: '/admin/system/business-relations', permissionKey: 'system.org.view', view: 'business-relations', actions: [] },
+      { key: 'sys-org-versions', label: '变更版本', path: '/admin/system/org?tab=versions', permissionKey: 'system.org.view', view: 'org', actions: [] }
     ]
   },
   {

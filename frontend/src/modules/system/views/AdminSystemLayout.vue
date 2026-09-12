@@ -6,6 +6,7 @@
     :active-key="activeKey"
     :ctx="ctx"
     workspace
+    horizontal-module="sys-org"
     @menu-select="onMenuSelect"
   >
     <template v-if="ctx">
@@ -51,8 +52,7 @@ const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
 const P1_CLOSURE_PATHS = new Set([
   '/admin/system/role-assignments',
   '/admin/system/login-policy',
-  '/admin/system/account-exceptions',
-  '/admin/system/org'
+  '/admin/system/account-exceptions'
 ])
 
 export default {
