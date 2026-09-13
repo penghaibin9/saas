@@ -50,6 +50,11 @@ export default {
     handleLabel() { return (this.action && this.action.label) || '去处理' }
   },
   onLoad(query) {
+    this.active = true
+    this.summary = null
+    this.summaryGeneration = -1
+    this.errorState = 'empty'
+    this.errorText = '消息不存在或已过期'
     this.side = useSessionStore().side === 'teacher' ? 'teacher' : 'student'
     const requested = query && (query.id || query.messageId)
     const stashed = popDetail(requested)

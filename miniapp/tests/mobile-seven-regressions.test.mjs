@@ -120,3 +120,19 @@ test('same-session business summaries remain readable without inventing read/rec
   c.onHide.call(p); generation++; c.onShow.call(p)
   assert.equal(p.m, null)
 })
+
+test('reloading a detail instance never carries summary A into another object B', async () => {
+  let stash = { id: 'todo-55', kind: 'TODO_AGG', title: '摘要 A' }
+  const { c, state: p } = component('pages/common/message-detail/index.vue', {
+    popDetail: () => { const item = stash; stash = null; return item },
+    currentSessionGeneration: () => 0, useSessionStore: () => ({ side: 'student' }),
+    getMessageDetail: async () => ({ id: '202', read: true, receipt: true })
+  })
+  c.onLoad.call(p, { id: 'todo-55' }); await flush()
+  assert.equal(p.m.title, '摘要 A')
+  c.onLoad.call(p, { id: 'todo-99' }); await flush()
+  assert.equal(p.m, null)
+  c.onLoad.call(p, { id: '202' }); await flush()
+  assert.equal(p.m.id, '202')
+  assert.equal(c.computed.showAck.call(p), true)
+})
