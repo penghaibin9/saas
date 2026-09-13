@@ -34,6 +34,22 @@
           <span v-for="row in selected" :key="row.id" class="sw-tag sw-tag--blue">{{ row.name }} / {{ row.loginName }}</span>
           <button v-if="selected.length" type="button" class="sw-link" :disabled="busy" @click="selected = []">清空选择</button>
         </div>
+        <div class="sw-member-submit">
+          <div class="sw-form">
+            <label class="sw-field">授权原因（必填，至少 5 个字）
+              <textarea ref="reasonInput" v-model="reason" class="sw-input" rows="2" maxlength="500" :disabled="busy" required :aria-invalid="validationField === 'reasonInput'" aria-label="成员授权原因" placeholder="例如：负责本学期教务管理工作" @input="clearValidation('reasonInput')" />
+            </label>
+            <label class="sw-field">到期日期（可选）
+              <input ref="expiryInput" v-model="expiresAt" type="date" class="sw-input" :disabled="busy" :aria-invalid="validationField === 'expiryInput'" aria-label="成员到期日期" @input="clearValidation('expiryInput')" />
+              <small class="sw-muted">留空为长期授权。</small>
+            </label>
+          </div>
+          <p v-if="validationError" class="sw-alert sw-alert--error" role="alert">{{ validationError }}</p>
+          <div class="sw-between">
+            <button type="button" class="sw-btn" :disabled="busy" @click="cancelAdd">返回成员清单</button>
+            <button type="button" class="sw-btn sw-btn--primary" data-testid="A022-submit" :disabled="!canSubmit" @click="submit">{{ busy ? '正在添加…' : `确认添加 ${selected.length} 位老师` }}</button>
+          </div>
+        </div>
         <div v-if="candidates.loading" class="sw-state" role="status">正在查询可添加成员…</div>
         <div v-else-if="candidates.error" class="sw-alert sw-alert--error" role="alert">{{ candidates.error }}<button type="button" class="sw-btn" @click="loadCandidates(candidates.page)">重试查询</button></div>
         <div v-else class="sw-table-wrap"><table class="sw-table"><thead><tr><th>选择</th><th>老师 / 工号</th><th>账号状态</th></tr></thead><tbody>
@@ -46,11 +62,6 @@
           <button type="button" class="sw-btn" :disabled="busy || candidates.page <= 1" @click="loadCandidates(candidates.page - 1)">上一页</button>
           <button type="button" class="sw-btn" :disabled="busy || candidates.page * candidates.pageSize >= candidates.total" @click="loadCandidates(candidates.page + 1)">下一页</button>
         </div></div>
-        <div class="sw-form"><label class="sw-field">授权原因<textarea v-model="reason" class="sw-input" maxlength="500" :disabled="busy" placeholder="填写职责安排原因，至少 5 个字" aria-label="成员授权原因" /></label>
-          <label class="sw-field">到期日期（可选）<input v-model="expiresAt" type="date" class="sw-input" :disabled="busy" aria-label="成员到期日期" /><small class="sw-muted">沿用学校现有日期口径，留空为长期授权。</small></label></div>
-        <p v-if="validationError" class="sw-alert sw-alert--error" role="alert">{{ validationError }}</p>
-        <div class="sw-savebar"><button type="button" class="sw-btn" :disabled="busy" @click="cancelAdd">返回成员清单</button>
-          <button type="button" class="sw-btn sw-btn--primary" data-testid="A022-submit" :disabled="!canSubmit" @click="submit">{{ busy ? '正在添加…' : `确认添加 ${selected.length} 位老师` }}</button></div>
         <div v-if="uncertain" class="sw-alert sw-alert--warning"><p>没有自动重复添加。先重新查询成员与候选清单，再核对尚未处理的人。</p><button type="button" class="sw-btn" @click="reconcile">重新读取并核对</button></div>
       </template>
       <template v-else>
@@ -81,7 +92,7 @@ export default {
   name: 'RoleMembersPanel',
   props: { ctx: { type: Object, required: true }, roleId: { type: String, required: true }, tab: { type: String, default: 'members' }, locked: { type: Boolean, default: false } },
   emits: ['dirty', 'busy', 'count'],
-  data() { return { fence: null, members: emptyPage(50), candidates: emptyPage(20), audit: emptyPage(50), adding: false, selected: [], candidateKeyword: '', appliedKeyword: '', reason: '', expiresAt: '', busy: false, receipt: '', uncertain: false, validationError: '' } },
+  data() { return { fence: null, members: emptyPage(50), candidates: emptyPage(20), audit: emptyPage(50), adding: false, selected: [], candidateKeyword: '', appliedKeyword: '', reason: '', expiresAt: '', busy: false, receipt: '', uncertain: false, validationError: '', validationField: '' } },
   computed: {
     canAdd() { return wc.actionAllowed(this.ctx, 'assignRole') },
     canAudit() { return wc.actionAllowed(this.ctx, 'viewOperationLogs') },
@@ -102,7 +113,7 @@ export default {
     statusLabel(value) { return { ACTIVE: '启用中', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[value] || '状态待核对' },
     resetContext() {
       this.fence.invalidate(); this.members = emptyPage(50); this.candidates = emptyPage(20); this.audit = emptyPage(50)
-      this.selected = []; this.adding = false; this.reason = ''; this.expiresAt = ''; this.receipt = ''; this.busy = false; this.uncertain = false
+      this.selected = []; this.adding = false; this.reason = ''; this.expiresAt = ''; this.receipt = ''; this.busy = false; this.uncertain = false; this.validationError = ''; this.validationField = ''
       this.$emit('busy', false); this.$emit('dirty', false); this.loadMembers(1)
       if (this.tab === 'audit') this.loadAudit(1)
     },
@@ -136,7 +147,7 @@ export default {
     },
     async cancelAdd() {
       if (this.busy || (this.dirty && !await systemConfirm({ title:'确认放弃成员选择', message:'尚未提交的成员选择与原因将被清空。', confirmText:'放弃选择', type:'danger' }))) return
-      this.adding = false; this.selected = []; this.reason = ''; this.expiresAt = ''; this.validationError = ''; this.uncertain = false
+      this.adding = false; this.selected = []; this.reason = ''; this.expiresAt = ''; this.validationError = ''; this.validationField = ''; this.uncertain = false
     },
     inspect(row) { this.$router.push({ path: '/admin/system/iam', query: { surface: 'access', userId: String(row.id) }, hash: '#access-explain' }) },
     async reconcile() {
@@ -147,14 +158,24 @@ export default {
         this.selected = []; this.uncertain = false; this.receipt = '已重新读取。请从最新候选清单重新选择仍需要添加的老师。'
       }
     },
+    clearValidation(field) {
+      if (this.validationField === field) { this.validationError = ''; this.validationField = '' }
+    },
+    async showValidation(field, message) {
+      this.validationField = field; this.validationError = message
+      await this.$nextTick()
+      const input = this.$refs[field]
+      input?.focus({ preventScroll: true })
+      input?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    },
     async submit() {
       if (!this.canSubmit) return
-      this.validationError = ''
-      if (this.reason.trim().length < 5) { this.validationError = '授权原因不少于 5 个字'; return }
+      this.validationError = ''; this.validationField = ''
+      if (this.reason.trim().length < 5) return this.showValidation('reasonInput', '请填写至少 5 个字的授权原因，再确认添加。')
       if (this.expiresAt) {
         const date = new Date(`${this.expiresAt}T23:59:59`)
         if (!/^\d{4}-\d{2}-\d{2}$/.test(this.expiresAt) || Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {
-          this.validationError = '请填写有效且尚未到期的日期'; return
+          return this.showValidation('expiryInput', '请填写有效且尚未到期的日期，长期授权可留空。')
         }
       }
       const current = this.fence.start('write')
@@ -174,3 +195,9 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.sw-member-submit { display: grid; gap: 12px; border: 1px solid var(--sw-line); border-radius: 12px; padding: 16px; background: var(--sw-surface); }
+.sw-member-submit textarea { min-height: 64px; resize: vertical; }
+.sw-member-submit [aria-invalid="true"] { border-color: #c53030; }
+</style>

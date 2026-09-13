@@ -1,35 +1,22 @@
 <template>
   <ModulePageShell
-    title="学校权限工作区"
-    subtitle="角色、模板、成员、权限、数据范围、委托、安全变更与访问解释使用同一套学校权限真值"
-    role-name="学校系统管理员 / 安全管理员"
-    data-scope-name="当前学校租户"
+    title="权限总览"
+    compact
   >
+    <template #actions><AppButton :loading="loading" @click="load">刷新</AppButton></template>
     <div class="iam-page">
-      <section class="hero card">
-        <div>
-          <p class="eyebrow">学校权限管理工作区</p>
-          <h3>学校管理员管理学校身份，不接管企业成员权限</h3>
-          <p class="muted">企业管理员、人力资源人员、企业导师及企业实习权限由企业成员和访问授权功能管理，不能在这里随意分配给学校用户。</p>
-        </div>
-        <AppButton :loading="loading" @click="load">刷新</AppButton>
-      </section>
 
       <section v-if="activeSurface" class="focus card" aria-live="polite">
         <div><span>当前子工作区</span><strong>{{ activeSurface.label }}</strong><small>{{ activeSurface.description }}</small></div>
         <AppButton variant="primary" @click="go(activeSurface.targetPath)">进入{{ activeSurface.label }}</AppButton>
       </section>
 
-      <div v-if="error" class="error card">{{ error }}</div>
-
-      <template v-else>
         <section class="metrics">
-          <article class="card"><strong>{{ summary.roleCount || 0 }}</strong><span>学校角色</span></article>
-          <article class="card"><strong>{{ summary.memberCount || 0 }}</strong><span>学校成员</span></article>
-          <article class="card"><strong>{{ catalog.customRoleAssignablePermissions?.length || 0 }}</strong><span>自定义角色可分配权限</span></article>
-          <article class="card"><strong>{{ summary.customRoleMissingProvenanceCount || 0 }}</strong><span>缺少模板来源的自定义角色</span></article>
-          <article class="card"><strong>{{ catalog.enterprisePermissionCount || 0 }}</strong><span>企业权限（仅可见，不可学校分配）</span></article>
+          <article><span>学校角色</span><strong>{{ metric('summary', summary.roleCount) }}</strong></article>
+          <article><span>学校成员</span><strong>{{ metric('summary', summary.memberCount) }}</strong></article>
+          <article><span>可分配权限</span><strong>{{ metric('catalog', catalog.customRoleAssignablePermissions?.length) }}</strong></article>
         </section>
+        <div v-if="sections.summary.error" class="error card" role="alert">角色统计读取失败：{{ sections.summary.error }} <AppButton @click="loadSection('summary')">重试统计</AppButton></div>
 
         <section v-if="summary.customRoleMissingProvenanceCount" class="warning card">
           <strong>存在自定义角色来源缺口</strong>
@@ -38,11 +25,15 @@
 
         <section class="surface-grid">
           <button v-for="item in surfaces" :key="item.key" class="surface card" @click="go(item.path)">
-            <strong>{{ item.label }}</strong><span>{{ item.description }}</span><small>进入工作区 →</small>
+            <strong>{{ item.label }}</strong>
           </button>
         </section>
 
-        <section class="card permission-catalog" data-testid="permission-catalog-workspace">
+        <div v-if="sections.catalog.state !== 'ready'" class="card" :role="sections.catalog.error ? 'alert' : 'status'">
+          {{ sections.catalog.error ? `权限目录读取失败：${sections.catalog.error}` : '正在读取权限目录…' }}
+          <AppButton v-if="sections.catalog.error" @click="loadSection('catalog')">重试权限目录</AppButton>
+        </div>
+        <section v-else class="card permission-catalog" data-testid="permission-catalog-workspace">
           <header class="permission-catalog__header">
             <div><h3>学校可分配权限目录</h3><p class="muted">按业务域和功能分组查找学校可分配的权限。</p></div>
             <div class="permission-catalog__tools">
@@ -55,7 +46,7 @@
             </div>
           </header>
 
-          <div class="recruitment-box">
+          <div v-if="catalog.internshipRecruitmentPermissions?.length" class="recruitment-box">
             <strong>常用专题 · 招聘季学校侧权限</strong>
             <span v-for="item in catalog.internshipRecruitmentPermissions || []" :key="item.permissionCode" class="permission-chip">{{ permissionDisplayLabel(item) }}</span>
             <span v-if="!(catalog.internshipRecruitmentPermissions || []).length" class="danger-text">招聘季权限未进入权限目录，禁止继续配置</span>
@@ -96,7 +87,11 @@
           </div>
         </section>
 
-        <section class="card template-catalog">
+        <div v-if="sections.templates.state !== 'ready'" class="card" :role="sections.templates.error ? 'alert' : 'status'">
+          {{ sections.templates.error ? `角色模板读取失败：${sections.templates.error}` : '正在读取角色模板…' }}
+          <AppButton v-if="sections.templates.error" @click="loadSection('templates')">重试角色模板</AppButton>
+        </div>
+        <section v-else class="card template-catalog">
           <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
           <div class="template-grid">
             <article v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`" class="template-item">
@@ -221,7 +216,6 @@
             <AppButton variant="secondary" :disabled="roleEvidence.page >= evidencePages || evidenceLoading" @click="changeEvidencePage(1)">下一页</AppButton>
           </div>
         </section>
-      </template>
     </div>
   </ModulePageShell>
 </template>
@@ -233,6 +227,7 @@ import { ModulePageShell } from '@/components/business'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord } from '@/utils/presentationSafety'
+import { createRequestFence, contextFingerprint, unwrap, countLabel } from '@/modules/system/utils/workspaceContract'
 
 const REASON_LABELS = { MODULE_NOT_ENTITLED: '模块未授权', PERMISSION_DENIED: '权限不足', PERMISSION_NOT_SCHOOL_ASSIGNABLE: '学校不可分配', SCOPE_DENIED: '超出数据范围', RESOURCE_NOT_FOUND: '业务对象不存在', ALLOWED: '允许访问', ROLE_INACTIVE: '角色未生效' }
 const DECISION_LABELS = { ALLOW: '允许', DENY: '拒绝', NOT_EVALUATED: '待业务裁决', PENDING: '待确认' }
@@ -263,8 +258,10 @@ const FEATURE_LABELS = {
 export default {
   name: 'SystemIamWorkspaceView',
   components: { AppButton, ModulePageShell },
+  props: { ctx: { type: Object, required: true } },
   data: () => ({
-    summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
+    summary: {}, catalog: {}, templates: [], fence: null, permissionKeyword: '',
+    sections: { summary: { state: 'loading', error: '' }, catalog: { state: 'loading', error: '' }, templates: { state: 'loading', error: '' } },
     activePermissionDomain: 'system', permissionRiskFilter: 'all', openPermissionGroups: [],
     explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
     roleEvidence: null, evidenceLoading: false, selectedTemplate: null, templatePermissionKeyword: '',
@@ -284,6 +281,8 @@ export default {
     ]
   }),
   computed: {
+    contextKey() { return contextFingerprint(this.ctx) },
+    loading() { return Object.values(this.sections).some(section => section.state === 'loading') },
     templatePermissionGroups() {
       const catalog = new Map([...(this.catalog.assignablePermissions || []), ...this.allCatalogPermissions].map(item => [item.permissionCode, item]))
       const groups = new Map()
@@ -357,8 +356,11 @@ export default {
       return '请根据判定原因与角色判定链处理。'
     }
   },
-  created() { this.load() },
+  watch: { contextKey() { this.fence.invalidate(); this.explainResult = null; this.templateImpact = null; this.roleEvidence = null; this.selectedTemplate = null; this.explaining = false; this.impactLoading = ''; this.evidenceLoading = false; this.explain.userId = ''; this.explain.scopeTargetId = ''; this.explain.resourceId = ''; this.load() } },
+  created() { this.fence = createRequestFence(); this.load() },
+  beforeUnmount() { this.fence.invalidate() },
   methods: {
+    metric(section, value) { return this.sections[section].state === 'ready' ? countLabel(value) : this.sections[section].state === 'loading' ? '…' : '未取得' },
     roleLabel: roleDisplayLabel,
     auditRecord(row) { return presentAuditRecord(row) },
     viewTemplatePermissions(item) {
@@ -471,30 +473,43 @@ export default {
       this.$router.push(path)
     },
     async load() {
-      this.loading = true; this.error = ''
-      const [summary, catalog, templates] = await Promise.all([schoolIamApi.summary(), schoolIamApi.permissionCatalog(), schoolIamApi.roleTemplates()])
-      this.loading = false
-      const failed = [summary, catalog, templates].find((item) => item.code !== 0)
-      if (failed) { this.error = failed.message; return }
-      this.summary = summary.data || {}
-      this.catalog = catalog.data || {}
-      this.templates = templates.data?.items || []
-      if (!this.permissionDomains.some(domain => domain.key === this.activePermissionDomain)) this.activePermissionDomain = this.permissionDomains.find(domain => domain.key !== 'all')?.key || 'all'
-      this.$nextTick(() => { if (!this.openPermissionGroups.length && this.permissionFeatureGroups[0]) this.openPermissionGroups = [this.permissionFeatureGroups[0].key] })
+      await Promise.all(['summary', 'catalog', 'templates'].map(section => this.loadSection(section)))
+    },
+    async loadSection(section) {
+      const current = this.fence.start(section)
+      this.sections[section] = { state: 'loading', error: '' }
+      this[section] = section === 'templates' ? [] : {}
+      if (section === 'templates') { this.selectedTemplate = null; this.templateImpact = null; this.fence.start('impact'); this.impactLoading = '' }
+      try {
+        const method = { summary: 'summary', catalog: 'permissionCatalog', templates: 'roleTemplates' }[section]
+        const data = unwrap(await schoolIamApi[method]())
+        if (!current()) return
+        if (!data || (section === 'templates' && !Array.isArray(data.items)) || (section === 'catalog' && !Array.isArray(data.customRoleAssignablePermissions))) throw new Error('返回内容不完整，请重新读取')
+        this[section] = section === 'templates' ? data.items : data
+        this.sections[section] = { state: 'ready', error: '' }
+        if (section === 'catalog') {
+          if (!this.permissionDomains.some(domain => domain.key === this.activePermissionDomain)) this.activePermissionDomain = this.permissionDomains.find(domain => domain.key !== 'all')?.key || 'all'
+          this.$nextTick(() => { if (current() && !this.openPermissionGroups.length && this.permissionFeatureGroups[0]) this.openPermissionGroups = [this.permissionFeatureGroups[0].key] })
+        }
+      } catch (error) { if (current()) this.sections[section] = { state: 'error', error: error.message || '请稍后重试' } }
     },
     async loadTemplateImpact(item) {
+      const current = this.fence.start('impact')
       this.impactLoading = item.id
       const res = await schoolIamApi.templateImpact(item.id)
+      if (!current()) return
       this.impactLoading = ''
       if (res.code !== 0) return toast.error(res.message)
       this.templateImpact = res.data
     },
     async loadRoleEvidence(role, type, page = 1) {
+      const current = this.fence.start('evidence')
       this.evidenceLoading = true
       const pageSize = 50
       const res = type === 'audit'
         ? await schoolIamApi.roleAudit(role.roleId, page, pageSize)
         : await schoolIamApi.roleMembers(role.roleId, page, pageSize)
+      if (!current()) return
       this.evidenceLoading = false
       if (res.code !== 0) return toast.error(res.message)
       const data = res.data || {}
@@ -514,13 +529,15 @@ export default {
       if (next !== this.roleEvidence.page) this.loadRoleEvidence(this.roleEvidence.role, this.roleEvidence.type, next)
     },
     async explainAccess() {
-      const id = Number(this.explain.userId)
-      if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员编号')
+      const id = String(this.explain.userId).trim()
+      if (!/^[1-9]\d*$/.test(id)) return toast.error('请输入有效的学校成员编号')
       if (!this.explain.scopeTargetType || !this.explain.scopeTargetId || !this.explain.resourceType || !this.explain.resourceId) {
         return toast.error('访问解释必须提供完整的数据范围目标与业务对象信息')
       }
       this.explaining = true
-      const res = await schoolIamApi.accessExplain(id, this.explain)
+      const current = this.fence.start('explain')
+      const res = await schoolIamApi.accessExplain(id, { ...this.explain })
+      if (!current()) return
       this.explaining = false
       if (res.code !== 0) return toast.error(res.message)
       this.explainResult = res.data
@@ -531,6 +548,11 @@ export default {
 </script>
 
 <style scoped>
+.iam-page .metrics{display:flex;flex-wrap:wrap;gap:8px 24px;padding:8px 12px;border-bottom:1px solid var(--card-b,#e5e6eb)}
+.iam-page .metrics article{display:flex;align-items:center;gap:8px}
+.iam-page .metrics article strong{font-size:18px}
+.iam-page .surface-grid{display:flex;flex-wrap:wrap;gap:8px}
+.iam-page .surface-grid .surface{padding:8px 12px;border-radius:6px}
 .iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1260px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.detail{max-width:420px;overflow-wrap:anywhere}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.actions{white-space:nowrap}.actions .link{margin-right:6px}.impact-summary,.pager,.context-evidence{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:10px 0}.context-evidence{margin:8px 0;border-top:1px solid var(--card-b,#e5e6eb);border-bottom:1px solid var(--card-b,#e5e6eb)}.pager{justify-content:flex-end}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
 .permission-catalog{padding:20px}.permission-catalog__header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}.permission-catalog__header h3{font-size:20px}.permission-catalog__tools{display:grid;justify-items:end;gap:10px;min-width:min(100%,610px)}.permission-search{width:min(100%,390px)}.permission-search input{box-sizing:border-box;width:100%;height:40px;padding:0 13px;border:1px solid #c9d8f4;border-radius:8px;background:#fff;color:var(--text-primary,#1f2937);font:inherit}.permission-search input:focus{outline:2px solid #2563eb;outline-offset:1px}.permission-filters{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.permission-filters button,.permission-groups__summary button{border:1px solid #d7e2f6;border-radius:7px;background:#fff;color:#45617f;padding:7px 11px;cursor:pointer}.permission-filters button.active{border-color:#2f68d9;background:#edf4ff;color:#1f5bc1}.permission-filters b{margin-left:4px}.permission-browser{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;margin-top:16px}.permission-domains{padding:12px 8px;border-radius:10px;background:#f6f9fe}.permission-domains h4{margin:4px 10px 10px;font-size:14px}.permission-domains button{display:flex;width:100%;justify-content:space-between;gap:12px;padding:11px 10px;border:0;border-radius:8px;background:transparent;color:#526b88;font:inherit;text-align:left;cursor:pointer}.permission-domains button:hover{background:#eef4ff}.permission-domains button.active{background:#e7f0ff;color:#1f5bc1;font-weight:650}.permission-domains b{font-size:12px}.permission-groups{min-width:0}.permission-groups__summary{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:13px 15px;border-radius:9px;background:#f2f6fc}.permission-groups__summary h4{margin:0 0 4px;font-size:16px}.permission-groups__summary h4 span{font-size:13px;color:#526b88}.permission-groups__summary p{margin:0;color:#667b96;font-size:13px}.permission-groups__summary>div:last-child{display:flex;align-items:center;white-space:nowrap}.permission-groups__summary i{width:1px;height:18px;background:#d8e1ef}.permission-groups__summary button{border:0;background:transparent;color:#2563eb;padding:6px 9px}.permission-feature{margin-top:10px;border:1px solid #dae4f3;border-radius:9px;overflow:hidden}.permission-feature__head{display:grid;grid-template-columns:auto auto minmax(160px,1fr) auto;align-items:center;gap:10px;width:100%;padding:12px 15px;border:0;background:#f7f9fd;color:#18304f;text-align:left;cursor:pointer}.permission-feature__head:hover{background:#eff5ff}.permission-feature__head>b{display:grid;place-items:center;min-width:24px;height:22px;padding:0 6px;border-radius:11px;background:#e5eefc;color:#335b91;font-size:12px}.permission-feature__head small{color:#70829a}.permission-feature__toggle{color:#2563eb;font-size:12px}.permission-rows{background:#fff}.permission-row{display:grid;grid-template-columns:minmax(250px,1.5fr) minmax(220px,1fr) 120px 110px;gap:16px;align-items:center;min-height:52px;padding:8px 16px;border-top:1px solid #e5ebf4}.permission-row--head{min-height:34px;background:#f9fbfe;color:#657991;font-size:12px;font-weight:650}.permission-row__name{display:grid;gap:3px}.permission-row__name strong{font-size:14px;color:#172b4d}.permission-row__name small{color:#72839a;font-size:12px}.permission-row code{overflow-wrap:anywhere;color:#587090;font-size:12px}.risk-pill{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:600}.risk-pill--low{background:#eaf8f0;color:#197a49}.risk-pill--medium{background:#fff4d8;color:#a15c00}.risk-pill--high{background:#ffebe8;color:#c33b2d}.risk-pill--critical{background:#ffe1e1;color:#b42318}.permission-empty{padding:48px 20px;text-align:center;color:#667b96}.permission-empty p{margin:6px 0}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:1100px){.permission-catalog__header{display:grid}.permission-catalog__tools{justify-items:stretch;min-width:0}.permission-search{width:100%}.permission-filters{justify-content:flex-start}.permission-browser{grid-template-columns:1fr}.permission-domains{display:flex;gap:6px;overflow:auto}.permission-domains h4{display:none}.permission-domains button{flex:0 0 auto;width:auto}.permission-row{grid-template-columns:minmax(220px,1.5fr) minmax(180px,1fr) 100px 90px}}

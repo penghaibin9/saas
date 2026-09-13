@@ -168,7 +168,9 @@
 .system-workspace .sw-permission-layout { display: grid; grid-template-columns: minmax(0, 1fr) 184px; gap: 18px; align-items: start; }
 .system-workspace .sw-permission-group { border: 1px solid var(--sw-line); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
 .system-workspace .sw-permission-group:last-child { margin-bottom: 0; }
-.system-workspace .sw-permission-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 14px; background: var(--sw-bg); font-size: 12px; }
+.system-workspace .sw-permission-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 14px; background: var(--sw-bg); color:inherit; font-size: 12px; cursor:pointer; list-style:none; }
+.system-workspace .sw-permission-head::-webkit-details-marker { display:none; }
+.system-workspace details.sw-permission-group[open] .sw-permission-head { border-bottom:1px solid var(--sw-line); }
 .system-workspace .sw-permission-head b { font-weight: 650; }
 .system-workspace .sw-permission-head .sw-muted { font-size: 11px; white-space: nowrap; }
 .system-workspace .sw-permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -194,6 +196,7 @@
 .system-workspace .sw-preserved[open] { padding-bottom: 16px; }
 .system-workspace details > summary { cursor: pointer; font-size: 12px; padding: 10px 0; }
 .system-workspace .sw-savebar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--sw-line); padding: 16px 0 10px; margin-top: 12px; position: sticky; bottom: 0; background: var(--sw-surface); box-shadow: 0 -8px 16px -12px rgba(24, 41, 73, .2); z-index: 3; }
+.system-workspace .sw-stack:has(> [data-testid="permission-readonly"]) > .sw-savebar { display:none; }
 .system-workspace .sw-savebar > div:first-child { min-width: 0; }
 .system-workspace .sw-savebar b { font-size: 13px; font-weight: 600; }
 .system-workspace .sw-savebar p,

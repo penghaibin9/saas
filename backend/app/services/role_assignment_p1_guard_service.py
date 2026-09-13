@@ -161,6 +161,57 @@ def grant_assignment(
     return ras.get_assignment(assignment_id, tenant_id=tid)
 
 
+def register_legacy_assignment(user_role_id: int, *, reason: str, expected_version: int | None,
+                               tenant_id: int | None = None, user: dict | None = None) -> dict:
+    """Document an existing active link without granting/reactivating any access."""
+    from app.models.role_assignment import SOURCE_UNKNOWN
+    from app.services import audit_log
+    reason = str(reason or '').strip()
+    if len(reason) < 5:
+        raise AppException('VALIDATION_ERROR', '补登记原因不少于5个字')
+    expected = ras._require_expected_version(expected_version, operation='历史授权补登记')
+    tid = _tid(tenant_id)
+    db = get_sessionmaker()()
+    try:
+        found = db.execute(select(UserRole.user_id, Role.role_code).join(
+            Role, Role.id == UserRole.role_id).where(
+            UserRole.id == user_role_id, UserRole.tenant_id == tid, Role.tenant_id == tid,
+            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).first()
+        if found is None:
+            raise AppException('DATA_NOT_FOUND', '历史授权不存在', http_status=404)
+        role = _lock_role(db, tid, found.role_code)
+        account = _lock_account(db, tid, int(found.user_id))
+        _assert_account_role_compatibility(db, tid, account, role.role_code)
+        ras._assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
+        link = _active_role_link_for(db, tid, account.id, role.id)
+        if link is None or int(link.id) != user_role_id or int(link.version or 0) != expected:
+            raise AppException('DATA_CONFLICT', '授权已变化，请刷新后核对', http_status=409)
+        existing = db.scalar(select(RoleAssignmentValidity.id).where(
+            RoleAssignmentValidity.tenant_id == tid, RoleAssignmentValidity.user_role_id == link.id))
+        if existing is not None:
+            raise AppException('DATA_CONFLICT', '此授权已有登记，请在原记录上维护', http_status=409)
+        row = RoleAssignmentValidity(
+            tenant_id=tid, user_role_id=link.id, user_id=account.id, role_code=role.role_code,
+            effective_at=link.created_at or ras._now(), expires_at=None,
+            source_type=SOURCE_UNKNOWN, reason=reason, status=VALIDITY_ACTIVE,
+            created_by=ras._actor_id(user), updated_by=ras._actor_id(user))
+        db.add(row); db.flush()
+        assignment_id = int(row.id)
+        audit_log.record_critical_in_session(
+            db, 'ROLE_ASSIGNMENT_REGISTER', f'role:{role.id}:members',
+            tenant_id=tid, resource_id=str(role.id), detail={
+                'assignmentId': str(assignment_id), 'userRoleId': str(link.id),
+                'userId': str(account.id), 'reason': reason, 'sourceType': SOURCE_UNKNOWN,
+                'expectedVersion': expected, 'moduleCode': 'systemAdmin', 'accessChanged': False})
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return ras.get_assignment(assignment_id, tenant_id=tid)
+
+
 def revoke_assignment(
     assignment_id: int, *, reason: str, expected_version: int | None,
     tenant_id: int | None = None, user: dict | None = None,

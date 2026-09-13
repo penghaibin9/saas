@@ -9,7 +9,7 @@
       <button v-if="mutationBlocked" type="button" class="sw-btn sw-space" @click="recheckMutation">重新读取角色目录</button>
     </div>
     <section v-if="form" class="sw-card sw-pad sw-stack" data-testid="role-form">
-      <div class="sw-between"><div><h2>{{ form.id ? '修改角色名称' : '创建学校自定义角色' }}</h2><p class="sw-muted">{{ form.id ? '角色编码、权限与数据范围分别管理，此处只保存名称。' : '选择已发布的学校模板作为来源；创建后继续配置权限，不自动授予模板全部权限。' }}</p></div>
+      <div class="sw-between"><div><h2>{{ form.id ? '修改角色名称' : '创建本校角色' }}</h2><p class="sw-muted">{{ form.id ? '此处只保存名称。' : '从岗位模板带入权限，之后由学校自行调整；模板升级不会自动覆盖。' }}</p></div>
         <button type="button" class="sw-btn" :disabled="busy" @click="closeForm">返回</button></div>
       <div class="sw-form">
         <div class="sw-field"><label for="system-role-name">角色名称</label><input id="system-role-name" v-model="form.name" class="sw-input" maxlength="100" aria-label="角色名称" :disabled="busy" /></div>
@@ -17,11 +17,13 @@
         <template v-if="!form.id">
           <div class="sw-field"><label for="system-role-source-template">已发布来源模板</label><select id="system-role-source-template" v-model="form.sourceTemplateCode" aria-label="已发布来源模板" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
             <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ roleLabel(item.templateCode, item.templateName) }} · 第 {{ item.templateVersion }} 版</option></select></div>
+          <div class="sw-field"><label for="system-role-initial-permissions">初始权限</label><select id="system-role-initial-permissions" v-model="form.initialPermissions" class="sw-input" :disabled="busy"><option value="TEMPLATE">带入模板权限</option><option value="EMPTY">空角色，稍后配置</option></select></div>
           <div class="sw-field"><label for="system-role-default-scope">默认数据范围</label><select id="system-role-default-scope" v-model="form.scopeCode" aria-label="默认数据范围" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></div>
         </template>
       </div>
       <p v-if="formError" class="sw-alert sw-alert--error" role="alert">{{ formError }}</p>
-      <div class="sw-savebar"><p class="sw-muted">{{ form.id ? '名称修改沿用现有接口；不声称此接口已具备版本比较。' : '新角色初始无权限，成员不会自动加入。' }}</p>
+      <p v-if="!form.id && selectedSourceTemplate && form.initialPermissions === 'TEMPLATE'" class="sw-muted">将带入 {{ selectedSourceTemplate.permissions.length }} 项权限。创建后可调整；请再分配成员及负责对象。</p>
+      <div class="sw-savebar"><p class="sw-muted">{{ form.id ? '修改名称不改变权限。' : '不会自动加入成员，也不会替换老师现有的业务身份。' }}</p>
         <button type="button" class="sw-btn sw-btn--primary" :disabled="busy || mutationBlocked || (!form.id && (sourceLoading || !sourceTemplates.length))" data-testid="A012-save" @click="saveForm">{{ form.id ? '保存名称' : '创建并继续配置' }}</button></div>
     </section>
     <template v-else>
@@ -119,6 +121,7 @@ export default {
   props: { ctx: { type: Object, required: true }, surface: { type: String, default: 'roles' } },
   data() { return { fence: null, listing: { rows: [], total: 0, page: 1, pageSize: 9, loading: true, error: '' }, filters: { keyword: '', type: '', status: '' }, appliedFilters: { keyword: '', type: '', status: '' }, detail: null, form: null, formOriginal: '', formError: '', sourceTemplates: [], sourceLoading: false, permissionDirty: false, memberDirty: false, permissionBusy: false, memberBusy: false, mutationBusy: false, auxBusy: false, mutationBlocked: false, pendingMutation: '', flash: '', membersVisited: false } },
   computed: {
+    selectedSourceTemplate() { return this.sourceTemplates.find(item => item.templateCode === this.form?.sourceTemplateCode) },
     contextKey() { return wc.contextFingerprint(this.ctx) },
     selectedId() { return String(this.$route.query.roleId || '') },
     activeTab() { const value = String(this.$route.query.tab || ''); return WORK_TABS.includes(value) ? value : this.surface === 'members' ? 'members' : 'permissions' },
@@ -188,13 +191,14 @@ export default {
     async openCreate(templateCode = '') {
       if (!this.can('createRole') || this.busy || (this.dirty && !await systemConfirm({ title:'确认创建新角色', message:'当前角色有尚未保存的修改。', confirmText:'放弃并创建', type:'danger' }))) return
       this.permissionDirty = false; this.memberDirty = false
-      this.form = { id: '', name: '', code: '', sourceTemplateCode: typeof templateCode === 'string' ? templateCode : '', scopeCode: 'ASSIGNED' }
+      this.form = { id: '', name: '', code: '', sourceTemplateCode: typeof templateCode === 'string' ? templateCode : '', scopeCode: 'ASSIGNED', initialPermissions: 'TEMPLATE' }
       this.formOriginal = JSON.stringify(this.form); this.formError = ''; this.sourceLoading = true; this.sourceTemplates = []
       const current = this.fence.start('sources')
       try {
         const data = wc.unwrap(await schoolIamApi.roleTemplates())
         if (!current()) return
         if (!Array.isArray(data?.items)) throw new Error('来源模板目录结构异常')
+        if (data.items.some(item => !Array.isArray(item.permissions) || !item.permissionDigest || !Number.isInteger(item.templateVersion))) throw new Error('来源模板权限不完整，请重新读取')
         this.sourceTemplates = data.items
       } catch (error) { if (current()) this.formError = error.message || '来源模板读取失败' }
       finally { if (current()) this.sourceLoading = false }
@@ -218,10 +222,10 @@ export default {
       if (!value.id && !this.sourceTemplates.some(item => item.templateCode === value.sourceTemplateCode)) { this.formError = '请选择当前已发布的学校来源模板'; return }
       this.mutationBusy = true; const current = this.fence.start('mutation')
       try {
-        const data = wc.unwrap(await (value.id ? systemApi.updateRole(value.id, { name: value.name }) : systemApi.createRole({ name: value.name, ...(value.code ? { code: value.code } : {}), sourceTemplateCode: value.sourceTemplateCode, scopeCode: value.scopeCode })))
+        const data = wc.unwrap(await (value.id ? systemApi.updateRole(value.id, { name: value.name }) : systemApi.createRole({ name: value.name, ...(value.code ? { code: value.code } : {}), sourceTemplateCode: value.sourceTemplateCode, scopeCode: value.scopeCode, initialPermissions: value.initialPermissions, expectedTemplateVersion: this.selectedSourceTemplate.templateVersion, expectedTemplateDigest: this.selectedSourceTemplate.permissionDigest })))
         if (!current()) return
         if (!data?.id) throw new Error('未取得角色编号，请查询目录核对本次结果')
-        this.form = null; this.permissionDirty = false; this.memberDirty = false; this.flash = value.id ? '角色名称已保存。' : '角色已创建，请继续配置权限与成员。'
+        this.form = null; this.permissionDirty = false; this.memberDirty = false; this.flash = value.id ? '角色名称已保存。' : `本校角色已创建，带入 ${data.initialPermissionCount ?? 0} 项权限；请核对权限并分配成员。`
         this.mutationBusy = false; await this.loadRoles(); if (current()) this.openRole(data.id, 'permissions')
       } catch (error) { if (current()) { this.mutationBlocked = true; this.formError = error.message; this.flash = '本次写入结果需要核对，已阻止连续重复提交。' } }
       finally { if (current()) this.mutationBusy = false }

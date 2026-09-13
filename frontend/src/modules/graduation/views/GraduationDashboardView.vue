@@ -6,6 +6,13 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <template #summary>
+      <div class="gdb-kpis" aria-label="当前批次关键指标">
+        <div v-for="s in keyStats" :key="s.label" class="gdb-kpi" :title="s.trend || s.label">
+          <span>{{ s.label }}</span><strong>{{ s.value }}</strong>
+        </div>
+      </div>
+    </template>
     <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar" /></template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -54,11 +61,7 @@
         </div>
       </section>
 
-      <div class="gdb-kpis" aria-label="当前批次关键指标">
-        <div v-for="s in keyStats" :key="s.label" class="gdb-kpi">
-          <span>{{ s.label }}</span><strong>{{ s.value }}</strong><small v-if="s.trend">{{ s.trend }}</small>
-        </div>
-      </div>
+
 
       <section v-if="remainingWorkItems.length" class="mp-card gdb-queue">
         <div class="mp-card__head">

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import fs from 'node:fs'
+import { SYSTEM_MANAGEMENT_CATALOG } from '../src/modules/system/systemManagementCatalog.js'
 
 const catalog = fs.readFileSync(new URL('../src/modules/system/systemManagementCatalog.js', import.meta.url), 'utf8')
 const routes = fs.readFileSync(new URL('../src/modules/system/system.routes.js', import.meta.url), 'utf8')
@@ -8,14 +9,18 @@ const workspace = fs.readFileSync(new URL('../src/modules/system/views/SystemImp
 const legacyView = fs.readFileSync(new URL('../src/modules/system/views/SystemImplementationView.vue', import.meta.url), 'utf8')
 
 test('implementation center exposes eight real menu leaves and routes', () => {
-  assert.equal((catalog.match(/key: 'sys-implementation',/g) || []).length, 1)
+  const overview = SYSTEM_MANAGEMENT_CATALOG.find(group => group.key === 'sys-overview')
+  assert.ok(overview)
   const leaves = [
     'sys-implementation-overview', 'sys-implementation-wizard', 'sys-implementation-presets',
     'sys-implementation-standards',
     'sys-implementation-mapping', 'sys-implementation-installed', 'sys-implementation-changes',
     'sys-implementation-acceptance'
   ]
-  for (const key of leaves) assert.match(catalog, new RegExp(key))
+  for (const key of leaves) {
+    assert.match(catalog, new RegExp(key))
+    assert.ok(overview.items.some(item => item.key === key), `${key} remains reachable from system overview`)
+  }
 
   const pageKeys = ['overview', 'wizard', 'presets', 'standards', 'data-mapping', 'installed', 'changes', 'acceptance']
   for (const key of pageKeys) assert.match(routes, new RegExp(`implementation/${key}`))

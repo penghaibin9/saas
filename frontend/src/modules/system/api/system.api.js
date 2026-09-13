@@ -1077,6 +1077,24 @@ export const systemApi = {
     }
   },
 
+  async adoptRole(id, body) {
+    try {
+      return ok(await request(`/system/roles/${encodeURIComponent(id)}/adopt`, { method: 'POST', body }))
+    } catch (error) {
+      return fail(error.message || '转为本校维护失败')
+    }
+  },
+
+  async registerLegacyRoleAssignment(id, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/legacy/${encodeURIComponent(id)}/register`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
   async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, scopeTarget, expectedVersion, reason, requestId } = {}) {
     try {
       const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
@@ -1261,6 +1279,24 @@ export const systemApi = {
       return ok(await request('/system/brand/reset', { method: 'POST', body: { reason } }))
     } catch (error) {
       return fail(error.message || '品牌恢复默认失败')
+    }
+  },
+
+  async getDictionaries() {
+    try {
+      return ok(await request('/system/dictionaries'))
+    } catch (error) {
+      return fail(error.message || '数据字典加载失败')
+    }
+  },
+
+  async saveDictionary(dictCode, payload) {
+    try {
+      return ok(await request(`/system/dictionaries/${encodeURIComponent(dictCode)}`, {
+        method: 'PUT', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '数据字典保存失败')
     }
   },
 

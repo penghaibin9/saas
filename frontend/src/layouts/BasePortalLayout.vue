@@ -310,11 +310,14 @@
 </template>
 
 <script>
+import { computed } from 'vue'
+import '@/styles/compact-business-workspace.css'
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
 import { usesStudentAffairsWorkspace, workspaceIdentity, workspaceRouteOwner } from '@/components/workspace/workspaceRouting'
 import { currentUserFromToken } from '@/services/http/client'
 import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
+import { workspaceTokens } from '@/components/workspace/teacherWorkspace'
 import WorkbenchPageTabs from '@/components/workspace/WorkbenchPageTabs.vue'
 import { WORKBENCH_PAGE_TABS } from '@/modules/workbench/config/workbenchNavigation'
 import WorkspaceDeskUtilities from '@/components/workspace/WorkspaceDeskUtilities.vue'
@@ -387,6 +390,7 @@ function readThemePreference() {
 }
 
 export default {
+  provide() { return { compactWorkspace: computed(() => this.useWorkspace && ['graduation', 'internship', 'academic-affairs', 'student-affairs', 'system'].includes(this.railActiveKey)) } },
   name: 'BasePortalLayout',
   components: { AppIcon, AppUserChip, TeacherWorkspaceFrame, WorkspaceDeskUtilities, OfficeBuilding, WorkbenchPageTabs },
   props: {
@@ -407,7 +411,9 @@ export default {
   emits: ['menu-select', 'menu-disabled'],
   data() {
     return {
-      workspaceColors: {},
+      // Keep the first paint in the same workspace shell while role/context loads.
+      // TeacherWorkspaceFrame replaces this with the user's saved theme after mount.
+      workspaceColors: workspaceTokens('blue'),
       workspaceThemeLabel: '',
       theme: readThemePreference(),
       themeOptions: THEME_OPTIONS,
@@ -581,7 +587,9 @@ export default {
       return getVisibleAdminMenu(this.ctx)
         .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
         .map((group) => {
-          const first = group.children[0]
+          // 顶部中心入口保留日常办理导航；独立大屏仍由原菜单进入。
+          // 只从已通过权限过滤的菜单选择，受限身份继续使用其首个可用入口。
+          const first = group.children.find((item) => item.path === '/admin/academic-affairs') || group.children[0]
           return {
             key: group.key,
             label: group.label,

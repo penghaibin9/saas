@@ -21,6 +21,16 @@ export function workspacePageMatches(current, candidate) {
   if (!candidate) return false
   const route = new URL(current, 'http://workspace.local')
   const page = new URL(candidate, 'http://workspace.local')
+  if (page.pathname === '/admin/graduation' && route.pathname !== page.pathname) return false
+  // Graduation forms/details inherit their closest business list. List panel
+  // parameters need not be present on a create/edit URL.
+  if (route.pathname.startsWith('/admin/graduation/') && page.pathname.startsWith('/admin/graduation/')
+    && route.pathname.startsWith(`${page.pathname}/`)) {
+    const exactMenu = NAV_PLAN.find(group => group.key === 'graduation')?.children
+      .some(mod => mod.children?.some(leaf => new URL(leaf.path, 'http://workspace.local').pathname === route.pathname))
+    if (exactMenu) return false
+    return true
+  }
   const objectParent = academicObjectParentPath(route.pathname, route.searchParams)
   if (objectParent) return page.pathname + page.search === objectParent
   if (page.search) return route.pathname === page.pathname && [...page.searchParams].every(([key, value]) => route.searchParams.get(key) === value)
@@ -53,10 +63,11 @@ export function workspaceRouteOwner(path, fullPath = path) {
       if (leaf) return { groupKey: group.key, modKey: mod.key, leafKey: leaf.label }
     }
   }
-  // Academic object/filter parameters extend a menu URL; they do not change its owner.
+  // Object/filter and Graduation batch parameters extend a menu URL; they do not change its owner.
   // Reuse the same subset matching as activeWorkspacePage without changing other centers.
-  if (/^\/admin\/academic-affairs(?:\/|$)/.test(path)) {
-    const group = NAV_PLAN.find(item => item.key === 'academic-affairs')
+  if (/^\/admin\/(academic-affairs|graduation)(?:\/|$)/.test(path)) {
+    const groupKey = path.startsWith('/admin/graduation') ? 'graduation' : 'academic-affairs'
+    const group = NAV_PLAN.find(item => item.key === groupKey)
     const matches = (group?.children || []).flatMap(mod => (mod.children || [])
       .filter(leaf => !leaf.hidden && workspacePageMatches(fullPath, leaf.path))
       .map(leaf => ({ mod, leaf })))
@@ -67,8 +78,10 @@ export function workspaceRouteOwner(path, fullPath = path) {
   const owner = findActiveInPlan(path, fullPath)
   if (owner.modKey) return owner
   const fallback = [
+    [/^\/admin\/employment\/unemployed(?:\/|$)/, 'in-employment-archive-stats', '未就业帮扶', 'internship'],
+    [/^\/admin\/employment(?:\/|$)/, 'in-employment-archive-stats', '就业衔接', 'internship'],
     [/^\/admin\/student(?:\/|$)/, 'sa-profile', '学生列表'],
     [/^\/admin\/student-affairs\/dorm(?:\/|$)/, 'sa-dorm', '宿舍驾驶舱']
   ].find(([pattern]) => pattern.test(path))
-  return fallback ? { groupKey: 'student-affairs', modKey: fallback[1], leafKey: fallback[2] } : owner
+  return fallback ? { groupKey: fallback[3] || 'student-affairs', modKey: fallback[1], leafKey: fallback[2] } : owner
 }

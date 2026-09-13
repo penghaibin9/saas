@@ -213,6 +213,9 @@ test('batch selector meets the supplied HTML readability floor without touching 
   assert.match(selector, /font-size:\s*13px/)
   assert.doesNotMatch(style, /\.tw-|\.bpl-|:root|\bbody\s*\{/)
   assert.match(source, /gd-student-readonly/)
-  assert.match(source, /催交会发送真实站内消息/)
+  // The message side effect is explained beside its command, not in every page header.
+  for (const view of ['ProposalListView.vue', 'FinalSubmissionListView.vue']) {
+    assert.match(read(`modules/graduation/views/${view}`), /本操作会创建真实站内消息并写入催办留痕/)
+  }
   assert.match(source, /<GraduationExtensionAdminPanel v-if="isExtensionWorkspace" :ctx="businessCtx"/)
 })

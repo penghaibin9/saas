@@ -31,7 +31,7 @@
       class="gd-scope-alert"
     />
 
-    <div v-if="ctx" class="gd-batch-context" aria-label="当前毕业设计批次">
+    <div v-if="ctx && !hasBusinessHeader" class="gd-batch-context" aria-label="当前毕业设计批次">
       <GraduationBatchStrip class="gd-batch-bar" />
     </div>
 
@@ -74,13 +74,6 @@
         description="你可以查看本数据范围内的毕设学生、进度和材料状态；建档、导师分配、选题、资格认定、分组、答辩组分配与归档仅对具有学生管理权限的角色开放。"
         class="gd-scope-alert"
       />
-      <AppInlineAlert
-        v-if="isReminderWorkspace"
-        type="info"
-        title="催交会发送真实站内消息"
-        description="点击催交后，系统会向该学生创建真实站内消息并写入催办留痕；请勿因旧页面缓存而重复电话或微信催办。"
-        class="gd-scope-alert"
-      />
       <GraduationExtensionAdminPanel v-if="isExtensionWorkspace" :ctx="businessCtx" />
       <router-view v-else :key="businessViewKey" :ctx="businessCtx" />
     </div>
@@ -99,6 +92,7 @@
 </template>
 
 <script>
+import { provideBusinessHeader } from '@/components/business/businessHeader'
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, EmptyState } from '@/components/business'
 import { AppInlineAlert } from '@/components/common'
@@ -111,6 +105,7 @@ import GraduationExtensionAdminPanel from './GraduationExtensionAdminPanel.vue'
 import router from '@/router'
 
 export default {
+  setup() { return { hasBusinessHeader: provideBusinessHeader(GraduationBatchStrip) } },
   name: 'AdminGraduationLayout',
   components: {
     BasePortalLayout, LoadingState, EmptyState, AppInlineAlert,

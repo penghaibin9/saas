@@ -130,7 +130,8 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   APPROVE: '审核通过', REVIEW_APPROVE: '审批通过',
   REJECT: '审核驳回', REVIEW_REJECT: '审批驳回',
   RETURN: '退回修改', REVIEW_RETURN: '退回修改', RETURN_VERSIONED: '办理销假',
-  PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色'
+  PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色',
+  ROLE_CREATE: '创建本校角色', ROLE_COPY: '复制本校角色', ROLE_PERMISSION_SAVE: '修改角色权限', ROLE_ADOPT: '转为本校维护', ROLE_ASSIGNMENT_REGISTER: '补登记历史授权'
 })
 const AUDIT_RESULT_LABELS = Object.freeze({
   SUCCESS: '成功', PASSED: '已通过', COMPLETED: '已完成',

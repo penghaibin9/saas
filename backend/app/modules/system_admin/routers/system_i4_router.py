@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import not_found
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, require_any_permission
 from app.core.response import paginate, success
 from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
@@ -155,7 +155,9 @@ def role_audit(
         role = _load_role(db, tenant_id, role_id)
         predicate = or_(
             SecurityAuditLog.resource == f"role:{role.id}",
-            SecurityAuditLog.resource_id == str(role.id),
+            # Numeric IDs are shared across resource types. Match the role
+            # namespace, including role:<id>:members, never an ID alone.
+            SecurityAuditLog.resource.startswith(f"role:{role.id}:"),
         )
         total = int(db.scalar(select(func.count(SecurityAuditLog.id)).where(
             SecurityAuditLog.tenant_id == tenant_id,
@@ -199,6 +201,15 @@ def role_detail(role_id: int, user=Depends(require_permission("systemAdmin.role.
         data["auditTrailComplete"] = False
         data["auditEndpoint"] = f"/api/v1/system/roles/{role_id}/audit"
     return payload
+
+
+@_extra.post('/system/role-assignments/legacy/{user_role_id}/register', summary='补登记现有历史授权，不改变角色权限')
+def register_legacy_role_assignment(user_role_id: int, body: dict = Body(...),
+                                    user=Depends(require_any_permission('systemAdmin.user.assign', 'systemAdmin.role.config'))):
+    from app.services.role_assignment_p1_guard_service import register_legacy_assignment
+    return success(register_legacy_assignment(
+        user_role_id, reason=body.get('reason') or '', expected_version=body.get('expectedVersion'), user=user),
+        message='已补登记，原有权限保持不变；现在可复核、转交或回收')
 
 
 def _key(route) -> tuple[str, str]:

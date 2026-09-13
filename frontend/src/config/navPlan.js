@@ -641,14 +641,14 @@ export const NAV_PLAN = [
    * 继续使用原 route / panel / deep link，但用 H() 留在高亮索引中，不进入日常菜单或搜索。
    * 历史 workspace key 尽量保持；原 in-students 合并到 in-batch-rules，学生路由仍完整保留。 */
   grp('internship', '岗位实习中心', 'internship', [
-    mod('in-command-screen', '实习中心大屏', '/admin/internship/command-screen', [
-      I('实习中心大屏', '/admin/internship/command-screen', 'internship.stats.view', 'ANALYTICS_VIEW')
-    ]),
     mod('in-workbench', '今日工作', '/admin/internship', [
       I('待办与进度', '/admin/internship', 'internship.dashboard.view', 'WORKBENCH'),
       H('全局趋势 / 统计', '/admin/internship/stats?dimension=trend', 'internship.stats.view', 'ANALYTICS_VIEW'),
       H('当前批次进度', '/admin/internship?panel=batch-progress', 'internship.dashboard.view', 'WORKBENCH'),
       H('我的待办', '/admin/internship?panel=todos', 'internship.dashboard.view', 'TASK_QUEUE')
+    ]),
+    mod('in-command-screen', '实习中心大屏', '/admin/internship/command-screen', [
+      I('实习中心大屏', '/admin/internship/command-screen', 'internship.stats.view', 'ANALYTICS_VIEW')
     ]),
     mod('in-batch-rules', '批次与学生', '/admin/internship/batches', [
       I('批次管理', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
@@ -765,7 +765,7 @@ export const NAV_PLAN = [
   ]),
 
   /* ═══════════ 一级⑥：系统管理 ═══════════
-     学校级收口为 9 个二级工作区。平台租户、套餐、全局菜单及权限点目录
+     学校级收口为 8 个二级工作区。平台租户、套餐、全局菜单及权限点目录
      一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
   grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
     mod(group.key, group.label, group.items[0].path, group.items.map((item) => {

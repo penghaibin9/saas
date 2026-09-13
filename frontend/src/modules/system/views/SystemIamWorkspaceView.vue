@@ -1,7 +1,7 @@
 <template>
   <SystemRoleListView v-if="roleSurface" ref="roleWorkspace" :ctx="ctx" :surface="roleSurface" />
   <SystemAccessInspector v-else-if="accessSurface" :ctx="ctx" />
-  <SystemIamGovernancePanel v-else />
+  <SystemIamGovernancePanel v-else :ctx="ctx" />
 </template>
 <script>
 import SystemRoleListView from './SystemRoleListView.vue'

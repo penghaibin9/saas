@@ -282,9 +282,10 @@ function normalizeClassOptions(payload) {
 }
 
 async function buildContext() {
-  const [brand, ctx, todoSummary, classesResult] = await Promise.all([
+  const [brand, ctx, todoSummary, classesResult, dictionaryResult] = await Promise.all([
     request('/tenant/brand'), request('/rbac/current-context'), request('/todos/summary').catch(() => null),
-    request('/student-affairs/classes', { params: { page: 1, pageSize: 200 } }).catch(() => null)
+    request('/student-affairs/classes', { params: { page: 1, pageSize: 200 } }).catch(() => null),
+    request('/school/dictionaries/effective', { params: { consumer: 'studentCenter' } }).catch(() => null)
   ])
   const patterns = Array.isArray(ctx?.permissionPatterns) ? ctx.permissionPatterns : []
   const classes = normalizeClassOptions(classesResult)
@@ -303,7 +304,8 @@ async function buildContext() {
     permissionPatterns: patterns, moduleEntitlements: Array.isArray(ctx?.moduleEntitlements) ? ctx.moduleEntitlements : [],
     moduleStates: ctx?.moduleStates || {}, moduleAccessHealthy: ctx?.moduleAccessHealthy !== false,
     moduleAccessError: ctx?.moduleAccessError || '', readonlyTenant: !!ctx?.readonlyTenant, readonlyReason: ctx?.readonlyReason || '',
-    permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns), statusOptions: STATUS_OPTIONS,
+    permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns),
+    statusOptions: { ...STATUS_OPTIONS, ...(dictionaryResult?.statusOptions || {}) },
     filterOptions: { colleges, majors, classes, grades, counselors: [] }, pendingCount: Number(todoSummary?.pending || 0),
     identityVerificationCapability: {
       status: 'NOT_CONFIGURED', message: '第三方实名/人脸核验服务当前未配置；新生人工信息核验请使用数字迎新。'

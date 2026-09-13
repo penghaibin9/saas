@@ -1,23 +1,17 @@
 /**
  * 学校级系统管理能力目录（唯一业务口径）。
  *
- * 收口为 9 个二级工作区；既有真实能力归入对应工作区，不删除。
+ * 收口为 8 个二级工作区；既有真实能力归入对应工作区，不删除。
  * 平台运营的租户、套餐、全局权限点维护不在这里。
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
 
 const RAW_SYSTEM_MANAGEMENT_CATALOG = [
   {
-    key: 'sys-overview', label: '系统总览', icon: '◫',
+    key: 'sys-overview', label: '系统概览', icon: '◫',
     description: '模块健康、配置缺口、同步失败、安全风险与待处理事项。',
     items: [
-      { key: 'sys-overview-readiness', label: '系统总览', path: '/admin/system/overview', permissionKey: 'system.dashboard.view', view: 'dashboard', actions: [action('system:overview:view', '查看概览')] }
-    ]
-  },
-  {
-    key: 'sys-implementation', label: '实施与验收', icon: '⌘',
-    description: '学校初始化、基础数据与权限检查、模块准备度和上线检查。',
-    items: [
+      { key: 'sys-overview-readiness', label: '系统总览', path: '/admin/system/overview', permissionKey: 'system.dashboard.view', view: 'dashboard', actions: [action('system:overview:view', '查看概览')] },
       { key: 'sys-implementation-overview', label: '实施总览', path: '/admin/system/implementation/overview', permissionKey: 'systemAdmin.implementation.view', view: 'implementation', actions: [action('systemAdmin.implementation.create', '创建实施项目'), action('systemAdmin.implementation.view', '查看实施进度')] },
       { key: 'sys-implementation-wizard', label: '首次开局向导', path: '/admin/system/implementation/wizard', permissionKey: 'systemAdmin.implementation.configure', view: 'implementation', actions: [action('systemAdmin.implementation.configure', '保存问答配置'), action('systemAdmin.implementation.preview', '生成安装预览', 'HIGH')] },
       { key: 'sys-implementation-presets', label: '预设方案', path: '/admin/system/implementation/presets', permissionKey: 'systemAdmin.implementation.preset.view', view: 'implementation', actions: [action('systemAdmin.implementation.preset.view', '选择预设方案', 'HIGH')] },
@@ -56,7 +50,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-org', label: '组织与任职', icon: '♜',
+    key: 'sys-org', label: '组织主数据', icon: '♜',
     description: '学院、专业、班级与教职工任职关系是四大业务中心共用的唯一主数据。',
     items: [
       { key: 'sys-org-tree', label: '树形定位工作台', path: '/admin/system/org', permissionKey: 'system.org.view', view: 'org', actions: [] },
@@ -70,14 +64,14 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-access', label: '角色权限与数据范围', icon: '❖',
-    description: '学校从平台角色模板启用并裁剪权限；数据范围使用结构化规则。',
+    key: 'sys-access', label: '角色与权限', icon: '❖',
+    description: '本校角色、成员、菜单操作与数据范围。',
     items: [
       { key: 'sys-iam-overview', label: '身份权限总览', path: '/admin/system/iam', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [] },
-      { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/iam?surface=templates', permissionKey: 'system.role.template.view', view: 'iam', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
+      { key: 'sys-role-templates', label: '预设角色模板', path: '/admin/system/iam?surface=templates', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [action('role:template:enable', '启用角色模板', 'HIGH')] },
       { key: 'sys-role-members', label: '学校角色与成员', path: '/admin/system/iam?surface=roles', permissionKey: 'system.role.view', view: 'iam', actions: [action('role:create', '新增角色', 'HIGH'), action('role:member:assign', '分配角色成员', 'HIGH'), action('role:deprecate', '停用角色', 'HIGH')] },
       { key: 'sys-role-assignments', label: '角色成员与业务身份', path: '/admin/system/role-assignments', permissionKey: 'system.role.view', view: 'role-assignments', actions: [] },
-      { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/iam?surface=permissions', permissionKey: 'system.role.permission.manage', view: 'iam', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
+      { key: 'sys-role-permissions', label: '菜单与操作权限', path: '/admin/system/iam?surface=permissions', permissionKey: 'systemAdmin.role.view', view: 'iam', actions: [action('role:config', '配置菜单与操作权限', 'HIGH')] },
       { key: 'sys-data-scopes', label: '数据范围规则', path: '/admin/system/scopes', permissionKey: 'system.scope.view', view: 'scopes', actions: [action('scope:create', '新增数据范围规则', 'HIGH'), action('scope:update', '修改数据范围规则', 'HIGH'), action('scope:deprecate', '停用数据范围规则', 'HIGH')] },
       { key: 'sys-delegations', label: '临时授权与工作移交', path: '/admin/system/delegations', permissionKey: 'system.delegation.manage', view: 'delegations', actions: [action('delegation:create', '创建临时授权', 'HIGH'), action('delegation:revoke', '提前回收授权', 'HIGH')] },
       { key: 'sys-security-changes', label: '安全变更', path: '/admin/system/security-changes', permissionKey: 'systemAdmin.security.view', view: 'security-changes', actions: [action('systemAdmin.security.manage', '提交与激活安全变更', 'HIGH')] },
@@ -85,10 +79,11 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-modules', label: '模块与学校配置', icon: '✦',
+    key: 'sys-modules', label: '学校配置', icon: '✦',
     description: '学校可在已购范围内启停模块，并维护本校可配置项。',
     items: [
-      { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
+      { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'systemAdmin.config.view', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
+      { key: 'sys-dictionaries-fields', label: '数据字典', path: '/admin/system/dictionaries-fields', permissionKey: 'system.config.view', view: 'dictionaries', actions: [action('config:dictionary:manage', '维护本校字典', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
       { key: 'sys-master-data', label: '主数据责任与数据质量', path: '/admin/system/master-data', permissionKey: 'system.config.view', view: 'master-data', actions: [] },
       { key: 'sys-business-forms', label: '合规与业务表单', path: '/admin/system/business-forms', permissionKey: 'systemAdmin.config.view', view: 'business-forms', actions: [action('systemAdmin.config.manage', '发布或停用表单版本', 'HIGH')] },
@@ -96,7 +91,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-workflow', label: '流程配置与运行', icon: '⧉',
+    key: 'sys-workflow', label: '流程配置', icon: '⧉',
     description: '流程只引用系统统一角色；审批任务归工作台。',
     items: [
       { key: 'sys-process-templates', label: '流程模板与运行', path: '/admin/workflow/processes', permissionKey: 'workflow.process.view', view: 'workflow', actions: [action('workflow:template:manage', '维护流程模板', 'HIGH')] },
@@ -109,8 +104,8 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     key: 'sys-security-audit', label: '安全与审计', icon: '≡',
     description: '审计日志只增不删；敏感查看、导入导出、文件容量与权限变更必须可追溯。',
     items: [
-      { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'system.audit.operation.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
-      { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
+      { key: 'sys-operation-audit', label: '操作与权限审计', path: '/admin/system/logs?tab=operation', permissionKey: 'systemAdmin.audit.view', view: 'logs', actions: [action('audit:operation:view', '查看操作审计'), action('audit:operation:export', '导出操作审计', 'HIGH')] },
+      { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'systemAdmin.audit.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
       { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
       { key: 'sys-audit-evidence', label: '安全审计证据与完整性', path: '/admin/system/audit-evidence', permissionKey: 'systemAdmin.audit.view', view: 'audit-evidence', actions: [action('audit:evidence:export', '导出证据包', 'HIGH')] },
       { key: 'sys-platform-integrity', label: '完整性异常中心', path: '/admin/system/platform-integrity', permissionKey: 'systemAdmin.fileGovernance.view', view: 'platform-integrity', actions: [action('systemAdmin.fileGovernance.view', '执行有界巡检'), action('systemAdmin.file.manage', '处置异常', 'HIGH')] },
@@ -132,7 +127,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
     ]
   },
   {
-    key: 'sys-integration-migration', label: '接口同步与数据迁移', icon: '↔',
+    key: 'sys-integration-migration', label: '接口与同步', icon: '↔',
     description: '接口凭证加密可测；同步失败进入失败中心；老系统迁移全程留痕。',
     items: [
       { key: 'sys-integration-connections', label: '接口、凭证与 Webhook', path: '/admin/system/integrations', permissionKey: 'system.integration.manage', view: 'integrations', actions: [action('integration:connection:manage', '维护接口连接', 'HIGH'), action('integration:credential:rotate', '轮换接口凭证', 'HIGH')] },
@@ -180,7 +175,8 @@ const ACTION_CODE_OVERRIDES = {
   'role:config': 'systemAdmin.role.config',
   'audit:operation:view': 'systemAdmin.audit.view',
   'audit:login:view': 'systemAdmin.audit.view',
-  'config:brand:update': 'systemAdmin.config.manage'
+  'config:brand:update': 'systemAdmin.config.manage',
+  'config:dictionary:manage': 'systemAdmin.config.manage'
 }
 
 export const SYSTEM_ACTION_PERMISSION_BY_KEY = Object.fromEntries(

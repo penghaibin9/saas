@@ -87,7 +87,8 @@ def resolve_scope_by_role_code(tenant_id: int, role_code: str) -> str | None:
 
 def save_role_scope_in_session(db, role, scope_code: str | None, *,
                                target_json: dict | None = None,
-                               expected_version: int | None = None) -> dict:
+                               expected_version: int | None = None,
+                               preserve_unchanged: bool = False) -> dict:
     """Persist a role scope in the caller's transaction.
 
     Control-plane role mutations lock ``t_role`` and must update permissions,
@@ -122,6 +123,17 @@ def save_role_scope_in_session(db, role, scope_code: str | None, *,
         else dict(row.target_json or {}) if row is not None
         else {}
     )
+    if preserve_unchanged and target_json is None:
+        marker = str(getattr(role, "remark", "") or "")
+        legacy = marker.split(";scope=", 1)[1].split(";", 1)[0] if ";scope=" in marker else "ASSIGNED"
+        current_scope = normalize_scope(row.scope_type if row is not None else legacy)
+        if scope == current_scope and (row is None or row.status == "ACTIVE"):
+            # Permission-only edits must not activate/rewrite a legacy scope.
+            # In particular an empty CUSTOM scope remains empty and its runtime
+            # provider continues to deny access; this does not validate new targets.
+            snapshot = {"scopeCode": scope, "scopeTarget": targets,
+                        "version": int(row.version or 0) if row is not None else None}
+            return {**snapshot, "before": dict(snapshot)}
     _validate_scope_targets(scope, targets)
 
     before = (

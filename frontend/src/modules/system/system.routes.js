@@ -62,14 +62,14 @@ const systemRoutes = {
       name: 'system-data-exchange',
       component: () => import('@/modules/system/views/SystemDataExchangeView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '数据交换任务中心', requiresAuth: true,
-        permissionKey: 'systemAdmin.user.import' }
+        permissionKey: 'systemAdmin.dataExchange.viewOwn' }
     },
     {
       path: 'file-storage-governance',
       name: 'system-file-storage-governance',
       component: () => import('@/modules/system/views/SystemFileStorageGovernanceView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '文件存储治理', requiresAuth: true,
-        permissionKey: 'systemAdmin.file.manage' }
+        permissionKey: 'systemAdmin.fileGovernance.view' }
     },
     {
       path: 'platform-integrity',
@@ -269,7 +269,8 @@ const systemRoutes = {
     },
     {
       path: 'dictionaries-fields', name: 'system-dictionaries-fields',
-      redirect: '/admin/system/config?tab=system'
+      component: () => import('@/modules/system/views/SystemDictionariesView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '数据字典', requiresAuth: true, permissionKey: 'systemAdmin.config.view' }
     },
     {
       path: 'process-rules', name: 'system-process-rules',
