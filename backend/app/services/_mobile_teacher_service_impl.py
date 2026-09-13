@@ -708,23 +708,26 @@ def affairs_family_contact_receipt(user: dict, contact_id: str, note: str | None
 # 数据范围+审批节点身份校验均在服务层 _scope_or_403/_check_review_node 完成，直接复用 PC 侧
 # affairs_leave_service（节点越权缺口已在服务层修复，见 _check_review_node/_node_visible）。══════════
 
-def affairs_leave_pending(user: dict) -> dict:
+def affairs_leave_pending(user: dict, page: int = 1, page_size: int = 20,
+                          keyword: str = "") -> dict:
     """请假待审批队列（本人数据范围+审批节点双重收敛，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_leave_service as leave_svc
-    items, total = leave_svc.list_pending(u, 1, 50)
+    items, total = leave_svc.list_pending(u, page, page_size, keyword=keyword)
     return {"list": items, "total": total}
 
 
-def affairs_leave_followup(user: dict) -> dict:
+def affairs_leave_followup(user: dict, page: int = 1, page_size: int = 20,
+                           keyword: str = "", status: str = "") -> dict:
     """请假后续处理台账（已通过/续假审批中/待销假确认/逾期，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_leave_service as leave_svc
-    items, total = leave_svc.list_leaves(u, followup_only=True, page=1, page_size=50)
+    items, total = leave_svc.list_leaves(u, followup_only=True, page=page,
+                                       page_size=page_size, keyword=keyword, status=status)
     return {"list": items, "total": total}
 
 

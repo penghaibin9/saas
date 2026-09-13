@@ -27,6 +27,20 @@
 
 ## 常用验证
 
+### 本机日常沙箱
+
+双击根目录 `start-system.cmd`，或运行 `scripts/dev/launch-local.ps1`。日常验收固定使用 Docker
+`student-lifecycle-v8-mysql`（3307）的 `student_lifecycle_runtime_20260902`，学校为
+`sandbox-school`（`1000000000000000007`）。启动器校验学校和迁移版本，禁止自动清库或换端口。
+
+学校/教师 PC 为 `http://localhost:5173/login?tenant=sandbox-school`，学生 PC 为
+`http://localhost:5199/portal/login?tenant=sandbox-school`，教师与学生 H5 共用 5188，实习企业入口为 5202；
+全部连接本机 8000 后端。数据库凭据仅放在未入库的 `backend/.env`；启动器不会采用其他任务继承的数据库连接。
+桌面的“一键启动职校学生全生命周期系统”快捷方式也使用这个入口。代码或本地配置更新后再次启动，
+会更新已由该启动器登记的服务；需要强制重启可加 `-Restart`。停止服务使用 `scripts/dev/stop-dev.ps1`，数据库记录保留。
+教师与学生 H5 的演示数据回退已在日常配置中关闭；网络失败会明确报错。
+清理型自动测试仍使用独立测试库，不能清理这份持久沙箱；任务完成后须在日常沙箱复核对应四端业务。
+
 ```powershell
 # 后端（必须使用独立 MySQL 测试库）
 cd backend

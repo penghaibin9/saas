@@ -368,7 +368,7 @@ function executeRealRequest(path, effectivePath, {
         // native miniapp runtimes expose the parsed object. Normalize only
         // syntactically valid JSON; malformed/non-JSON bodies still fail closed.
         const body = normalizeJsonResponseBody(res.data)
-        if (body && body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
+        if (body && body.code === 401001 && auth && !_retried && path.split('?')[0] !== '/auth/refresh') {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {
               method, data, auth, _retried: true, _rawPage, headers,
@@ -427,7 +427,8 @@ export function realRequest(path, {
   // refresh cookie is still valid, but there is no bearer token to attach to the first
   // business request. Restore the access token before that request instead of relying on
   // every runtime to surface a non-2xx response through uni.request's success callback.
-  if (auth && !_retried && !String(path || '').startsWith('/auth/') && !getToken() && getRefreshToken()) {
+  // /auth/me and role switching also need the restored identity after a direct F5.
+  if (auth && !_retried && String(path || '').split('?')[0] !== '/auth/refresh' && !getToken() && getRefreshToken()) {
     const expectedGeneration = currentSessionGeneration()
     return _refreshOnce(expectedGeneration).then(() => realRequest(path, {
       method: normalizedMethod, data, auth, _retried: true, _rawPage, headers,

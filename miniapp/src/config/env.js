@@ -11,6 +11,7 @@ const BUILD_PROD = import.meta.env.PROD
 const BUILD_DEV = import.meta.env.DEV
 const BUILD_API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const BUILD_USE_MOCK = import.meta.env.VITE_USE_MOCK
+const BUILD_ALLOW_MOCK_FALLBACK = import.meta.env.VITE_ALLOW_MOCK_FALLBACK
 const BUILD_PRIVACY_URL = import.meta.env.VITE_PRIVACY_URL
 const BUILD_TERMS_URL = import.meta.env.VITE_TERMS_URL
 const BUILD_HELP_CENTER_URL = import.meta.env.VITE_HELP_CENTER_URL
@@ -85,7 +86,7 @@ export const ENV = {
   // 小程序“帮助与反馈”唯一正文入口。正式环境配置 HTTPS /help 地址，并在微信公众平台登记对应业务域名。
   helpCenterUrl: resolveDocUrl(BUILD_HELP_CENTER_URL),
   // Mock 回退仅是本地开发便利能力，不是离线产品能力。生产构建硬禁用。
-  allowMockFallback: !BUILD_PROD && BUILD_DEV,
+  allowMockFallback: !BUILD_PROD && BUILD_DEV && BUILD_ALLOW_MOCK_FALLBACK !== 'false',
   apiBaseUrl: resolveApiBaseUrl(),
   apiPrefix: '/api/v1',
   requestTimeout: 8000, // 校园弱网下 4s 偏紧；8s 内无响应按网络失败处理（读兜底/写明确报错）

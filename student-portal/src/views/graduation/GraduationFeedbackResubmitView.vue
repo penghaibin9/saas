@@ -11,6 +11,7 @@
 
     <StateBlock v-if="loading" type="loading" text="正在加载评阅反馈…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
+    <StateBlock v-else-if="notEnrolled" type="empty" text="学校尚未为你建立毕设档案，建档后将在这里显示评阅反馈。" />
     <template v-else>
       <div v-if="actionable" class="w75__action">
         <div class="w75__action-title">
@@ -116,12 +117,14 @@ import GraduationUploadStatus from '../../components/graduation/GraduationUpload
 import fileSdk from '../../services/fileSdk'
 import { graduationUploadReady, readGraduationUpload } from '../../services/graduationUploadReadiness'
 import graduationW75Api from '../../services/graduationW75Api'
+import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
+const notEnrolled = ref(false)
 const timeline = ref({ items: [], latestActionable: null })
 const proposal = ref({})
 const final = ref({})
@@ -151,6 +154,9 @@ async function load() {
   error.value = ''
   const previousAction = String(actionable.value?.id || '')
   try {
+    const current = await portalApi.domainMy('graduation')
+    notEnrolled.value = current?.hasData === false
+    if (notEnrolled.value) return
     const [feedback, p, f, library] = await Promise.all([
       graduationW75Api.feedback(),
       graduationW75Api.proposal(),

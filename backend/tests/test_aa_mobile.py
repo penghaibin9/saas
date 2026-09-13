@@ -144,6 +144,13 @@ def _seed_ready_task(term_id, class_id, teacher_key):
 def _published_schedule(client, admin, class_id, teacher_key="counselor01"):
     term_id = _ensure_term()
     task_id = _seed_ready_task(term_id, class_id, teacher_key)
+    # 发布课表必须落到正式教室字典；不能只传展示文本 A101。
+    classroom = client.post(f"{AA}/classrooms", headers=admin, json={
+        "buildingCode": "MB", "buildingName": "移动端教学楼",
+        "roomCode": str(class_id), "capacity": 60, "roomType": "MULTIMEDIA",
+    })
+    assert classroom.status_code == 200, classroom.text
+    classroom_name = classroom.json()["data"]["roomName"]
     created = client.post(f"{AA}/schedule-batches", headers=admin, json={"termId": str(term_id)})
     assert created.status_code == 200, created.text
     bid = created.json()["data"]["batchId"]
@@ -151,7 +158,7 @@ def _published_schedule(client, admin, class_id, teacher_key="counselor01"):
         "taskId": str(task_id),
         "weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
         "teacherKey": teacher_key, "teacherName": "王老师",
-        "classId": str(class_id), "className": "软件2301", "classroom": "A101", "courseName": "高数"})
+        "classId": str(class_id), "className": "软件2301", "classroom": classroom_name, "courseName": "高数"})
     assert item.status_code == 200, item.text
     prepublished = client.post(f"{AA}/schedule-batches/{bid}/pre-publish", headers=admin)
     assert prepublished.status_code == 200, prepublished.text
@@ -182,7 +189,10 @@ def test_mb2_transcript_my(client, db_mode):
     assert score.status_code == 200, score.text
     submitted = client.post(f"{AA}/grade-tasks/{tid}/submit", headers=admin)
     assert submitted.status_code == 200, submitted.text
-    reviewed = client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin, json={"action": "APPROVE"})
+    evidence = client.get(f"{AA}/grade-tasks/{tid}/review-evidence", headers=admin)
+    assert evidence.status_code == 200, evidence.text
+    reviewed = client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin,
+                           json={"action": "APPROVE", "expectedEvidenceHash": evidence.json()["data"]["evidenceHash"]})
     assert reviewed.status_code == 200, reviewed.text
     published = client.post(f"{AA}/grade-tasks/{tid}/publish", headers=admin)
     assert published.status_code == 200, published.text

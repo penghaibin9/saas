@@ -166,6 +166,7 @@ def test_catalog_choice_is_revalidated_after_deletion_or_foreign_id(course_db):
 
 
 def test_student_course_route_reuses_guard_and_bounds():
+    from app.core.commercial_surface_module_gate import enforce_commercial_surface_access
     from app.modules.academic_affairs.routers import academic_affairs as legacy
     from app.modules.academic_affairs.routers import grade_recognition_router
 
@@ -174,7 +175,10 @@ def test_student_course_route_reuses_guard_and_bounds():
     assert len(matches) == 1
     route = matches[0]
     assert route.methods == {"GET"}
-    assert [d.call for d in route.dependant.dependencies] == [legacy._require_student]
+    assert [d.call for d in route.dependant.dependencies] == [
+        enforce_commercial_surface_access,
+        legacy._require_student,
+    ]
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 

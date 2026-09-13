@@ -328,7 +328,7 @@ export default {
       graduationTeacherCountTruth().then((d) => {
         this.applyReviewTruth(d)
         this.state = 'ready'
-        this.loadMidterm(); this.loadReviews(); this.loadGrade(); this.loadDefenseScorePending()
+        this.loadMidterm(); this.loadGrade(); this.loadDefenseScorePending()
         this._maybeBootReview()
       }).catch((error) => { if (!this.data) this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
@@ -373,7 +373,7 @@ export default {
     loadReviews(done) {
       teacherApi.getGraduationMyReviews().then((r) => {
         this.reviews = r || []; this.loaded.peer = true; this.reviewsError = ''
-      }).catch(() => { this.reviewsError = '评阅队列加载失败' }).finally(() => done && done())
+      }).catch((error) => { this.reviewsError = error?.message || '评阅队列加载失败' }).finally(() => done && done())
     },
     loadDefense(done) {
       teacherApi.getGraduationDefenseArrangements().then((r) => {

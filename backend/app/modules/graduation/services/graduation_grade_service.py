@@ -65,7 +65,9 @@ def _stu_for_update(db, sid) -> GraduationStudent:
 def _weights(db, stu: GraduationStudent) -> dict:
     if stu.batch_id:
         b = db.get(GraduationBatch, stu.batch_id)
-        if b and b.rules_config and b.rules_config.get("score"):
+        if b and b.rules_config and "score" in b.rules_config:
+            if not isinstance(b.rules_config["score"], dict):
+                raise AppException("DATA_CONFLICT", "毕设批次成绩权重配置不完整，请管理员在批次规则中补齐")
             return {**DEFAULT_WEIGHTS, **b.rules_config["score"]}
     return DEFAULT_WEIGHTS
 
