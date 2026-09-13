@@ -219,8 +219,8 @@ def _student_account_meta(db, account) -> dict:
             StudentAccountLink.link_status == "ACTIVE",
             StudentAccountLink.is_deleted.is_(False),
         )).first()
-        sp = db.get(StudentProfile, link.student_id) if link is not None else None
-        if sp is None:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == link.student_id, StudentProfile.tenant_id == int(account.tenant_id)).first() if link is not None else None
+        if sp is None and link is None:
             sp = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == account.tenant_id,
                 StudentProfile.is_deleted.is_(False),
@@ -234,9 +234,9 @@ def _student_account_meta(db, account) -> dict:
                 "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
                 "currentStage": "", "profileBound": False,
             }
-        college = db.get(College, sp.college_id) if sp.college_id else None
-        major = db.get(Major, sp.major_id) if sp.major_id else None
-        cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
+        college = db.query(College).filter(College.id == sp.college_id, College.tenant_id == int(account.tenant_id)).first() if sp.college_id else None
+        major = db.query(Major).filter(Major.id == sp.major_id, Major.tenant_id == int(account.tenant_id)).first() if sp.major_id else None
+        cls = db.query(SchoolClass).filter(SchoolClass.id == sp.class_id, SchoolClass.tenant_id == int(account.tenant_id)).first() if sp.class_id else None
         student_status = str(sp.student_status or sp.status or "").upper()
         return {
             "studentId": str(sp.id), "studentNo": sp.student_no,

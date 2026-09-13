@@ -1968,10 +1968,10 @@ def _require_school_scope(ctx):
 
 def _counselor_of(db, student_id):
     from app.models import SchoolClass, StudentProfile
-    s = db.get(StudentProfile, int(student_id))
+    s = db.query(StudentProfile).filter(StudentProfile.id == int(student_id), StudentProfile.tenant_id == _tid()).first()
     if not s or not s.class_id:
         return 0
-    c = db.get(SchoolClass, int(s.class_id))
+    c = db.query(SchoolClass).filter(SchoolClass.id == int(s.class_id), SchoolClass.tenant_id == _tid()).first()
     return int(c.counselor_id) if c and c.counselor_id else 0
 
 

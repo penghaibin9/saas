@@ -27,6 +27,14 @@ def _stu_token(real_name, student_no):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
+def _retake_identity(client, headers, apply_id):
+    response = client.get(f"{BASE}/retake/applies", headers=headers, params={"applyId": apply_id})
+    assert response.status_code == 200, response.text
+    row = next(item for item in response.json()["data"]["items"] if item["applyId"] == str(apply_id))
+    return {"expectedVersion": row["applicationVersion"],
+            "expectedSourceEvidenceHash": row["sourceEvidenceHash"]}
+
+
 def _seed(db_mode):
     """种子必须给全稳定课程身份：当前办理学期 + 课程库版本行 + 带 courseId/版本/修读次数的正式成绩。
 
@@ -154,20 +162,23 @@ def test_m2_retake_apply_and_maxcount(client, db_mode):
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 409
     # 教务处审批通过：APPROVED 仍算在途（还没编入跟班），因此依然不能再报
     assert client.post(f"{BASE}/retake/applies/{aid}/review", headers=admin,
-                       json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+                       json={"action": "APPROVE", **_retake_identity(client, admin, aid)}).json()["data"]["status"] == "APPROVED"
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 409
     # 编入真实教学任务后才脱离在途，并生成正式教学班名单版本
     enrolled = client.post(f"{BASE}/retake/applies/{aid}/enroll", headers=admin,
-                           json={"teachingTaskRef": str(ids["taskMath"])}).json()
+                           json={"teachingTaskRef": str(ids["taskMath"]), **_retake_identity(client, admin, aid)}).json()
     assert enrolled["code"] == 0 and enrolled["data"]["status"] == "ENROLLED"
     assert enrolled["data"]["rosterVersionId"]
     # 第2次报名（不在途，len(history)=1<2 可报）
     r2 = client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).json()
     assert r2["code"] == 0
     aid2 = r2["data"]["applyId"]
-    client.post(f"{BASE}/retake/applies/{aid2}/review", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/retake/applies/{aid2}/enroll", headers=admin,
-                json={"teachingTaskRef": str(ids["taskMath"])})
+    reviewed2 = client.post(f"{BASE}/retake/applies/{aid2}/review", headers=admin,
+                           json={"action": "APPROVE", **_retake_identity(client, admin, aid2)})
+    assert reviewed2.status_code == 200, reviewed2.text
+    enrolled2 = client.post(f"{BASE}/retake/applies/{aid2}/enroll", headers=admin,
+                           json={"teachingTaskRef": str(ids["taskMath"]), **_retake_identity(client, admin, aid2)})
+    assert enrolled2.status_code == 200, enrolled2.text
     # 第3次：无在途，但已达上限2 → 400（本项目校验错误统一 400）
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 400
 
@@ -221,9 +232,15 @@ def test_m4_exemption_three_level_approval(client, db_mode):
     assert e["data"]["courseId"] == str(ids["courseLin"]) and e["data"]["courseName"] == "线性代数"
     eid = e["data"]["exemptionId"]
     # 三级：教师→学院→教务处
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "COLLEGE_REVIEW"
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "ACADEMIC_REVIEW"
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+    current = e["data"]
+    for expected_status in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW", "APPROVED"):
+        response = client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={
+            "action": "APPROVE", "expectedVersion": current["exemptionVersion"],
+            "expectedStatus": current["status"], "expectedEvidenceManifestHash": current["evidenceManifestHash"],
+        })
+        assert response.status_code == 200, response.text
+        current = response.json()["data"]
+        assert current["status"] == expected_status
 
 
 def test_m5_deferred_merge_requires_frozen_roster(client, db_mode):

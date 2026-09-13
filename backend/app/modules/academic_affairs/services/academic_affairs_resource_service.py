@@ -631,10 +631,10 @@ def _resolve_owner_label(db, owner_kind, owner_id):
         return None
     from app.models import AaClassroom, AaLabResource
     if owner_kind == "CLASSROOM":
-        c = db.get(AaClassroom, int(owner_id))
+        c = db.query(AaClassroom).filter(AaClassroom.id == int(owner_id), AaClassroom.tenant_id == _tid()).first()
         return f"{c.building_name}{c.room_code}" if c else None
     if owner_kind == "LAB":
-        lab = db.get(AaLabResource, int(owner_id))
+        lab = db.query(AaLabResource).filter(AaLabResource.id == int(owner_id), AaLabResource.tenant_id == _tid()).first()
         return lab.lab_name if lab else None
     return None
 

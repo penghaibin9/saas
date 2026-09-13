@@ -185,7 +185,7 @@ def list_grades(page: int, page_size: int, keyword=None, status=None, batch_id=N
         rows = db.scalars(q.order_by(GraduationGrade.id.desc())).all()
         items = []
         for g in rows:
-            stu = db.get(GraduationStudent, g.gd_student_id)
+            stu = db.query(GraduationStudent).filter(GraduationStudent.id == g.gd_student_id, GraduationStudent.tenant_id == _tid()).first()
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_row(g, stu))

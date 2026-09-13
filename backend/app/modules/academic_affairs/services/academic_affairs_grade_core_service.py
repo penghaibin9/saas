@@ -1210,7 +1210,7 @@ def change_college_review(record_id, user, action, reason="") -> dict:
         from app.models import AaGradeRecord, AaGradeTask
         rec = db.get(AaGradeRecord, int(record_id))
         if rec and not rec.is_deleted and rec.tenant_id == _tid():
-            t = db.get(AaGradeTask, int(rec.task_id))
+            t = db.query(AaGradeTask).filter(AaGradeTask.id == int(rec.task_id), AaGradeTask.tenant_id == _tid()).first()
             if t:
                 _check_college_scope(db, t, user)
     return _change_review(record_id, user, action, reason, "COLLEGE_REVIEW", "ACADEMIC_REVIEW")
@@ -1228,7 +1228,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             rec = db.get(AaGradeRecord, int(record_id))
             if not rec or rec.is_deleted or rec.tenant_id != _tid():
                 raise not_found("成绩明细不存在")
-            t = db.get(AaGradeTask, int(rec.task_id)) if rec.task_id else None
+            t = db.query(AaGradeTask).filter(AaGradeTask.id == int(rec.task_id), AaGradeTask.tenant_id == _tid()).first() if rec.task_id else None
             new_total = None
             if t and _scores_complete(t, rec.usual_score, rec.midterm_score, rec.final_score):
                 new_total = _compose_total(t, rec.usual_score, rec.midterm_score, rec.final_score)
@@ -1240,10 +1240,10 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             rec.change_at = datetime.utcnow()
             rec.version_no = (rec.version_no or 1) + 1
             if rec.acad_grade_id:
-                g = db.get(AcademicGrade, int(rec.acad_grade_id))
+                g = db.query(AcademicGrade).filter(AcademicGrade.id == int(rec.acad_grade_id), AcademicGrade.tenant_id == _tid()).first()
                 if g:
                     g.score, g.pass_status, g.source = new_total, rec.pass_status, "CHANGE"
-                    a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+                    a = db.query(AcademicStudent).filter(AcademicStudent.id == int(g.acad_student_id), AcademicStudent.tenant_id == _tid()).first() if g.acad_student_id else None
                     if a:
                         _refresh_aggregates(db, a)  # 更正终审后即时重算 GPA/学分/挂科聚合（与 publish/复查一致）
             emit_receiver_notice(
@@ -1346,7 +1346,7 @@ def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
     data = transcript(student_id, user)
     with session() as db:
         from app.models import StudentProfile
-        stu = db.get(StudentProfile, int(student_id))
+        stu = db.query(StudentProfile).filter(StudentProfile.id == int(student_id), StudentProfile.tenant_id == _tid()).first()
         stu_label = f"{stu.real_name}（学号 {stu.student_no}）" if stu else f"学生ID {student_id}"
     n, r, uid = _op()
     watermark = (f"{stu_label} 成绩单  导出人：{n or '-'}  "

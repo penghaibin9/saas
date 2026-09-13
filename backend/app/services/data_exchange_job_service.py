@@ -605,7 +605,7 @@ def create_identity_import_job(
         )
         db = get_sessionmaker()()
         try:
-            current = db.get(ImportJob, row.id)
+            current = db.query(ImportJob).filter(ImportJob.id == row.id, ImportJob.tenant_id == _tenant_id()).first()
             current.error_receipt_file_id = file_id
             current.version = int(current.version or 0) + 1
             db.commit()
@@ -1470,7 +1470,7 @@ def cleanup_expired_jobs(*, limit: int = 200) -> dict:
             row.status = "EXPIRED"
             row.version = int(row.version or 0) + 1
             if row.file_object_id:
-                file_row = db.get(FileObject, row.file_object_id)
+                file_row = db.query(FileObject).filter(FileObject.id == row.file_object_id, FileObject.tenant_id == int(row.tenant_id)).first()
                 if file_row and not file_row.is_deleted:
                     try:
                         get_backend().delete(file_row.file_key)

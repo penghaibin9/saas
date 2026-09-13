@@ -96,13 +96,13 @@ def _counselor_of(db, acad_student_id):
     """学业台账生 → 全局学生 → 行政班 → 辅导员 user_id。
     返回 (counselor_user_id, global_student_id)；无绑定则 (0, sid|None)，对齐异动服务同款解析。"""
     from app.models import AcademicStudent, SchoolClass, StudentProfile
-    a = db.get(AcademicStudent, int(acad_student_id))
+    a = db.query(AcademicStudent).filter(AcademicStudent.id == int(acad_student_id), AcademicStudent.tenant_id == _tid()).first()
     if not a or not a.student_id:
         return 0, None
-    s = db.get(StudentProfile, int(a.student_id))
+    s = db.query(StudentProfile).filter(StudentProfile.id == int(a.student_id), StudentProfile.tenant_id == _tid()).first()
     if not s or not s.class_id:
-        return 0, a.student_id
-    c = db.get(SchoolClass, int(s.class_id))
+        return 0, (s.id if s else None)
+    c = db.query(SchoolClass).filter(SchoolClass.id == int(s.class_id), SchoolClass.tenant_id == _tid()).first()
     return (int(c.counselor_id) if c and c.counselor_id else 0), a.student_id
 
 

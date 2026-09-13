@@ -870,7 +870,7 @@ def finish_makeup_batch(user, batch_id):
             )
 
         for academic_student_id in affected:
-            student = db.get(AcademicStudent, academic_student_id)
+            student = db.query(AcademicStudent).filter(AcademicStudent.id == academic_student_id, AcademicStudent.tenant_id == _core._tid()).first()
             if student and not student.is_deleted:
                 grade_service._refresh_aggregates(db, student)
         batch.status = _core._MB_FINISHED
@@ -1095,7 +1095,7 @@ def retake_enroll(user, apply_id, teaching_task_ref=None, *, identity=None, comm
         else:
             from app.models import AaTeachingClassRosterVersion
 
-            version = db.get(AaTeachingClassRosterVersion, int(current["rosterVersionId"]))
+            version = db.query(AaTeachingClassRosterVersion).filter(AaTeachingClassRosterVersion.id == int(current["rosterVersionId"]), AaTeachingClassRosterVersion.tenant_id == _core._tid()).first()
         row.status = _core._RT_ENROLLED
         row.teaching_task_ref = task.id
         row.enrollment_roster_version_id = version.id

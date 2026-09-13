@@ -523,10 +523,10 @@ def _class_dto(c, major_name=None) -> dict:
 def _class_college_id(db, class_id) -> int | None:
     """班级 → 学院（经专业）用于写范围校验。"""
     from app.models import Major, SchoolClass
-    c = db.get(SchoolClass, int(class_id))
+    c = db.query(SchoolClass).filter(SchoolClass.id == int(class_id), SchoolClass.tenant_id == _tid()).first()
     if not c:
         return None
-    m = db.get(Major, int(c.major_id)) if c.major_id else None
+    m = db.query(Major).filter(Major.id == int(c.major_id), Major.tenant_id == _tid()).first() if c.major_id else None
     return m.college_id if m else None
 
 
@@ -608,7 +608,7 @@ def create_class(user, body) -> dict:
         extras=extras,
     )
     with session() as db:
-        c = db.get(SchoolClass, int(result["id"]))
+        c = db.query(SchoolClass).filter(SchoolClass.id == int(result["id"]), SchoolClass.tenant_id == _tid()).first()
         scope_note = _sync_counselor_scope(db, c, None) if c.counselor_id else ""
         _audit(db, "AA_ORG_CLASS", c.id, "CREATE", f"{name}({scope_note})" if scope_note else name)
         db.commit()
@@ -952,7 +952,7 @@ def list_class_students(user, class_id, keyword=None, page=1, page_size=50):
         pmap: dict[int, str] = {}
         for ctc in contacts:
             pmap.setdefault(ctc.student_id, ctc.contact_value_encrypted or "")
-        major = db.get(Major, c.major_id) if c.major_id else None
+        major = db.query(Major).filter(Major.id == c.major_id, Major.tenant_id == _tid()).first() if c.major_id else None
         items = [{"id": str(s.id), "studentId": str(s.id), "studentNo": s.student_no, "realName": s.real_name,
                   "gender": s.gender or "", "studentStatus": s.student_status or "",
                   "phoneMasked": mask_phone_encrypted(pmap.get(s.id, "")),

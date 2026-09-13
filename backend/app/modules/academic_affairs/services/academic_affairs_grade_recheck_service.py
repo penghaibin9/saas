@@ -306,7 +306,7 @@ def review(user, recheck_id, action, note="", new_score=None, *, command_key=Non
         row.review_note = (note or "").strip() or None
         row.reviewed_by, row.reviewed_at = _op(), datetime.utcnow()
 
-        academic_student = db.get(AcademicStudent, int(grade.acad_student_id)) if grade.acad_student_id else None
+        academic_student = db.query(AcademicStudent).filter(AcademicStudent.id == int(grade.acad_student_id), AcademicStudent.tenant_id == _tid()).first() if grade.acad_student_id else None
         if academic_student:
             _refresh_aggregates(db, academic_student)
 

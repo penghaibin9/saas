@@ -403,7 +403,7 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
         raise ValueError("Unsupported SMS purpose")
 
     now = _utc_now()
-    claimed: list[int] = []
+    claimed: list[tuple[int, int]] = []
     db = get_sessionmaker()()
     try:
         expired_conditions = [
@@ -444,16 +444,16 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
             row.lease_expires_at = now + timedelta(seconds=30)
             row.attempt_count = int(row.attempt_count or 0) + 1
             row.version = int(row.version or 0) + 1
-            claimed.append(int(row.id))
+            claimed.append((int(row.id), int(row.tenant_id)))
         db.commit()
     finally:
         db.close()
 
     sent = 0
-    for claimed_id in claimed:
+    for claimed_id, claimed_tenant_id in claimed:
         db = get_sessionmaker()()
         try:
-            row = db.get(PasswordResetSmsJob, claimed_id)
+            row = db.query(PasswordResetSmsJob).filter(PasswordResetSmsJob.id == claimed_id, PasswordResetSmsJob.tenant_id == claimed_tenant_id).first()
             if row is None or row.status != "PROCESSING" or row.locked_by != worker_id:
                 continue
             if row.expires_at <= _utc_now() or not row.phone_encrypted or not row.code_encrypted:

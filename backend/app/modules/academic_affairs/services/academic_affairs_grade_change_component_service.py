@@ -151,7 +151,7 @@ def projection(db, task, record, request=None):
 def apply(db, task, record, request):
     frozen = validate(db, task, record, request, lock=True)
     for item in frozen["proposed"]["components"]:
-        row = db.get(AaGradeComponentScore, int(item["rowId"]))
+        row = db.query(AaGradeComponentScore).filter(AaGradeComponentScore.id == int(item["rowId"]), AaGradeComponentScore.tenant_id == _tid()).first()
         row.score, row.weighted_score = item["score"], item["weightedScore"]
         row.version = int(row.version or 0) + 1
     # The caller updates GradeRecord, appends AcademicGrade and commits exactly once.

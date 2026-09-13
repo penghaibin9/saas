@@ -750,7 +750,7 @@ def rosters(batch_id, user) -> dict:
             AaGraduationAuditResult.is_deleted.is_(False))).all()
         buckets = {"GRADUATED": [], "COMPLETED": [], "DELAYED": []}
         for r in rows:
-            s = db.get(StudentProfile, int(r.student_id))
+            s = db.query(StudentProfile).filter(StudentProfile.id == int(r.student_id), StudentProfile.tenant_id == _tid()).first()
             if scope is not None:
                 if not scope or not s or int(s.college_id or 0) not in scope:
                     continue

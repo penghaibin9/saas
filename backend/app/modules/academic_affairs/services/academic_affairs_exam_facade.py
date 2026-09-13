@@ -1083,7 +1083,7 @@ def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
-            inv_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            inv_room = db.query(AaExamRoom).filter(AaExamRoom.id == int(inv.exam_room_id), AaExamRoom.tenant_id == _legacy._tid()).first()
             if not inv_room:
                 continue
             inv_course = _legacy._get_course(db, inv_room.exam_course_id)

@@ -96,7 +96,7 @@ def freeze_manifest(db, record, file_ids, *, actor: dict, student, kind: str = "
             scope=dict(scope or {}),
         )
         db.flush()
-        file_obj = db.get(FileObject, int(file_id))
+        file_obj = db.query(FileObject).filter(FileObject.id == int(file_id), FileObject.tenant_id == int(binding.tenant_id)).first()
         entries.append(_entry(binding, file_obj))
 
     entries.sort(key=lambda item: (item["fileId"], item["bindingId"]))
