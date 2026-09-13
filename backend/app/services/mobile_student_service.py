@@ -1829,31 +1829,25 @@ def wechat_subscribe_status(user: dict) -> dict:
     站内消息分类与微信订阅是两条独立渠道，不能用一个开关表示两种东西。
     provider 未配置或用户未授权时，这里如实返回 false —— 绝不在学生端宣称"已开启"。
     """
-    u = _require_student(user)
+    _require_student(user)
     from app.services.notification import wechat_subscribe_service as wechat
 
     status = wechat.provider_status()
-    authorized = False
-    if db_enabled():
-        with _session() as db:
-            from app.models import User
-            uid = _resolve_uid(u)
-            row = tenant_get(db, User, uid) if uid else None
-            authorized = bool(row and getattr(row, "wx_openid", None))
+    # openid 只能证明绑定微信，不能证明用户接受过某个模板的一次性提醒。
+    configured = bool(status["configured"] and status.get("providerReady")
+                      and status.get("authorizationReady") and any(status["templates"].values()))
     return {
         "channel": "WECHAT",
-        # 学校/运维是否配好了微信订阅能力
-        "configured": bool(status["configured"]),
-        # 本人是否授权过（有 openid）
-        "authorized": authorized,
-        # 只有两者都成立，才算这条渠道真的能收到提醒
-        "effective": bool(status["configured"]) and authorized,
+        "configured": configured,
+        "authorized": False,
+        "effective": False,
+        "reason": "微信提醒暂不可用，请在消息中心查看办理通知",
         "scenes": [
             {"key": scene, "label": _SUBSCRIBE_SCENE_LABELS.get(scene, scene),
-             "ready": bool(status["templates"].get(scene))}
+             "templateId": wechat._template_id(scene),
+             "ready": configured and bool(status["templates"].get(scene))}
             for scene in status["scenes"]
         ],
-        # 未配置时给出可诊断信息，供管理端排查；学生端只用它决定文案，不展示内部键名
         "missing": list(status["missing"]),
     }
 
@@ -1963,6 +1957,8 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
     is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
     if is_leave:
+        if _attachment_ids(body):
+            raise AppException("VALIDATION_ERROR", "请从我的请假办理，并在证明与补交材料中提交附件")
         # 请假必须走正式审批工作流（辅导员/学院/学工处多级节点），不能只落一条脱离
         # WorkflowInstance/affairs_status 的简化记录——否则学生自己的"我的请假"列表
         # 和老师端"待审批"队列都读不到这条申请（两条真相数据断层，分角色测试发现）。

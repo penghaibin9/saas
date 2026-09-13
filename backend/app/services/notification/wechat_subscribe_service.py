@@ -1,19 +1,8 @@
-"""V3 §9.3 微信订阅消息 provider adapter。
+"""微信订阅消息适配边界。
 
-在此之前 :mod:`message_channel_delivery_service` 的 WECHAT 分支无条件
-``SKIPPED / NOT_CONFIGURED``——也就是说这条渠道从来没有真正接上过。
-
-本模块把它接到真实 provider，同时严格保持 fail-closed：
-
-- **配置缺失就是配置缺失。** appid / secret / templateId / 用户 openid 任缺其一，
-  返回 ``SKIPPED`` + 可诊断的 reasonCode，绝不在学生端宣称"已开启"。
-- **只有用户显式授权过的场景才发。** 微信订阅消息是一次性授权，
-  没有 openid 或没有该模板授权，就不是"发送失败"，而是"根本不该发"。
-- **可重试与不可重试分清楚。** 网络/限流可重试（交给既有 lease + backoff + DEAD），
-  配置缺失与未授权不可重试，重试多少次都一样。
-
-真正的 HTTP 调用留在 :func:`_call_provider`：默认没有 provider 实现时返回
-PROVIDER_UNAVAILABLE，不伪造成功。
+发送实现和逐模板一次性授权记录尚未接通，当前明确返回不可用。
+openid 只证明微信绑定；模板配置和绑定均不能替代用户订阅授权。
+未来接入必须同时提供发送实现、授权校验与消费，不能仅设置配置开关。
 """
 from __future__ import annotations
 
@@ -41,7 +30,12 @@ def provider_status() -> dict[str, Any]:
         missing.append("WX_APPID")
     if not secret:
         missing.append("WX_SECRET")
+    from app.services.notification import providers
+    sender_ready = callable(getattr(providers, "send_wechat_subscribe", None))
+    # 尚无逐模板一次性授权的权威记录/消费机制，不能把 openid 当授权。
     return {
+        "providerReady": sender_ready,
+        "authorizationReady": False,
         "channel": "WECHAT",
         "configured": not missing,
         "missing": missing,
@@ -90,9 +84,16 @@ def send_subscribe_message(*, tenant_id: int, openid: str | None, scene: str,
 
     identifier = str(openid or "").strip()
     if not identifier:
-        # 没有 openid = 用户没授权过。这不是发送失败，重试也没有意义。
+        # openid 仅代表绑定身份，不代表订阅授权。
         return {"status": "SKIPPED", "reasonCode": "OPENID_UNAVAILABLE",
                 "reason": "用户未授权微信订阅", "retryable": False}
+
+    if not status.get("providerReady"):
+        return {"status": "SKIPPED", "reasonCode": "PROVIDER_UNAVAILABLE",
+                "reason": "微信提醒发送服务尚未接入", "retryable": False}
+    if not status.get("authorizationReady"):
+        return {"status": "SKIPPED", "reasonCode": "SUBSCRIPTION_AUTH_UNAVAILABLE",
+                "reason": "尚无可核验的逐模板订阅授权", "retryable": False}
 
     from app.core.config import settings
     try:

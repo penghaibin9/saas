@@ -13,9 +13,7 @@
           </view>
           <text class="me__sub">{{ user.className }}{{ user.studentNo ? ' · 学号 ' + user.studentNo : '' }}</text>
         </view>
-        <view class="me__edit" @click="toast('出示身份码（短时有效，不含敏感字段）')">
-          <text class="me__edit-icon">▣</text>
-        </view>
+
       </view>
     </view>
 
@@ -80,9 +78,6 @@ export default {
         { label: '在校服务', icon: '🛎', route: '/pages/student/campus-service/index' }
       ],
       listMenu: [
-        { key: 'card', label: '学生证 / 身份码', icon: '🪪', note: '' },
-        { key: 'material', label: '材料证照', icon: '📎', note: '' },
-        { key: 'parent', label: '家长授权', icon: '👨‍👩‍👧', note: '未授权' },
         { key: 'privacy', label: '隐私与安全', icon: '🔒', note: '' },
         { key: 'export', label: '个人数据导出', icon: '⬇', note: '' },
         { key: 'help', label: '帮助与反馈', icon: '💬', note: '' }
@@ -101,7 +96,7 @@ export default {
       if (row.key === 'privacy') return go('/pages/common/account-security/index')
       if (row.key === 'export') return this.exportData()
       if (row.key === 'help') return go('/pages/common/help/index')
-      toast(row.label + '：即将开放')
+
     },
     exportData() {
       uni.showLoading({ title: '正在生成…', mask: true })
@@ -131,8 +126,10 @@ export default {
       }).catch((e) => { uni.hideLoading(); toast((e && e.message) || '导出失败，请重试') })
     },
     logout() {
-      uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
-        if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/student/index') }
+      uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: async (r) => {
+        if (r.confirm) {
+          try { await useSessionStore().logoutCurrentSession() } catch (error) { toast(error?.message || '退出失败，请重试'); return }
+          relaunch('/pages/login/student/index') }
       } })
     }
   }

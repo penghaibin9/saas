@@ -368,6 +368,9 @@ def refresh(body: RefreshRequest):
     claims = consume_refresh(body.refreshToken)
     if not claims:
         raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    from app.services.browser_auth_session_blocklist import auth_session_blocked
+    if auth_session_blocked(claims.get("authSessionId")):
+        raise unauthorized("当前会话已退出，请重新登录")
     # 真实账号刷新前重新校验账号、租户、当前岗位与权限版本，防止已回收角色被旧 refresh 恢复。
     auth_service_db.validate_token_subject(claims)
     token = create_access_token(dict(claims))
@@ -379,14 +382,20 @@ def refresh(body: RefreshRequest):
 
 from typing import Optional as _Optional  # noqa: E402
 
-from fastapi import Header  # noqa: E402
+from fastapi import Header, Query  # noqa: E402
 
 
-@router.post("/logout", summary="登出（access 令牌 jti 进入黑名单即刻失效；吊销该用户全部 refreshToken）")
-def logout(user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None)):
+class LogoutRequest(BaseModel):
+    refreshToken: str | None = Field(default=None, max_length=512)
+
+
+@router.post("/logout", summary="登出（scope=current 仅撤销当前会话；默认保持账号全部 refresh 撤销合同）")
+def logout(body: LogoutRequest | None = None, user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None),
+           scope: Literal["all", "current"] = Query(default="all")):
     from app.core.exceptions import AppException
     from app.core.token_store import revoke_refresh_by_user
-    jti_ok = True
+    claims = {}
+    jti_ok = False
     refresh_ok = False
     errors = []
     try:
@@ -402,7 +411,18 @@ def logout(user=Depends(get_current_user), authorization: _Optional[str] = Heade
         jti_ok = False
         errors.append("access令牌拉黑失败")
     try:
-        revoke_refresh_by_user(str(user.get("userId", "")))
+        if scope == "current":
+            from app.core.token_store import revoke_refresh_by_session
+            from app.services.browser_auth_session_blocklist import block_auth_session
+            session_id = str(user.get("authSessionId") or "")
+            if session_id:
+                if not block_auth_session(session_id):
+                    raise AppException("AUTH_STORE_UNAVAILABLE", "当前会话撤销失败，请重试", http_status=503)
+                revoke_refresh_by_session(str(user.get("userId", "")), session_id)
+            elif not body or not body.refreshToken or not consume_refresh(body.refreshToken, expected_claims=claims):
+                raise AppException("AUTH_SESSION_REQUIRED", "旧会话刷新凭证不匹配或已失效，请重新登录", http_status=409)
+        else:
+            revoke_refresh_by_user(str(user.get("userId", "")))
         refresh_ok = True
     except AppException as e:
         errors.append(e.message)

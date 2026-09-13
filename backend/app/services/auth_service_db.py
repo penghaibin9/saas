@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import secrets
 
 from sqlalchemy import and_, select
 
@@ -420,6 +421,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
 
 def _login_result(db, user, context: dict, contexts: list[dict], client_type: str) -> dict:
     claims = _claims(db, user, context, contexts, client_type)
+    claims["authSessionId"] = secrets.token_urlsafe(24)
     access_token = create_access_token(claims)
     refresh_token = issue_refresh(dict(claims))
     return {

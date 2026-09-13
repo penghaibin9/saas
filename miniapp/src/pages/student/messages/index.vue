@@ -193,7 +193,7 @@ export default {
     open(message) {
       this._markRead(message)
       stashDetail(message)
-      go('/pages/common/message-detail/index')
+      go('/pages/common/message-detail/index?messageId=' + encodeURIComponent(String(message.messageId || message.id || '')))
     },
     openSearch() {
       stashSearchPool(Object.values((this.data && this.data.groups) || {}).flat())

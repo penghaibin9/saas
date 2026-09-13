@@ -86,6 +86,7 @@ import { studentApi } from '@/services/studentApi'
 import { clearTokens, commitNewSessionTokens, realRequest } from '@/services/request'
 import { go, relaunch, toast } from '@/utils/nav'
 import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { createIdentityCaptcha } from '../../../../shared/identityCaptcha.mjs'
 
 export default {
@@ -100,6 +101,8 @@ export default {
       agree: false,
       tenantOpen: !!rememberedTenantCode,
       account: { tenantCode: rememberedTenantCode, loginName: '', password: '', identifierType: 'ACCOUNT' },
+      loginAlive: true,
+      loginAttempt: 0,
       accLoading: false,
       wxLoading: false,
       binding: false,
@@ -128,13 +131,23 @@ export default {
     this.loginAlive = true
     // 登录前没有可信学校上下文；批次信息留给认证后的学生服务查询。
   },
-  beforeUnmount() { this.loginAlive = false; this.accountCaptchaFlow.dispose(); this.account.password = ''; this.cancelBind() },
+  beforeUnmount() { this.invalidateLogin(); this.accountCaptchaFlow.dispose() },
   watch: {
     'account.loginName': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
     'account.tenantCode': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
     'account.identifierType': { handler() { this.accountCaptchaFlow?.invalidate(); this.account.loginName = ''; this.account.password = '' }, flush: 'sync' }
   },
   methods: {
+    invalidateLogin() {
+      this.loginAlive = false
+      this.loginAttempt++
+      this.accLoading = false
+      this.wxLoading = false
+      this.bindLoading = false
+      this.account.password = ''
+      this.cancelBind()
+    },
+    isLoginCurrent(attempt) { return this.loginAlive && attempt === this.loginAttempt },
     loadCaptcha(target) {
       if (target === 'account') return this.accountCaptchaFlow.load()
       const box = target === 'bind' ? this.bindCaptcha : this.accountCaptcha
@@ -158,7 +171,8 @@ export default {
       toast(this.isTeacher ? '该账号为学生账号，请使用学生端小程序。' : '该账号不是学生账号，请使用教师端小程序。')
       return false
     },
-    completeLogin(data) {
+    completeLogin(data, attempt = this.loginAttempt) {
+      if (!this.isLoginCurrent(attempt)) return
       if (!this.assertEntryRole(data)) return
       const roleCode = data.currentRole?.roleCode || ''
       const roleKey = roleKeyFromBackendRole(roleCode)
@@ -170,25 +184,27 @@ export default {
         toast('账号角色未配置或暂不支持，请联系学校管理员')
         return
       }
-      commitNewSessionTokens(data.accessToken, data.refreshToken || '')
+      const generation = commitNewSessionTokens(data.accessToken, data.refreshToken || '')
       const session = useSessionStore()
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
-      const goHome = () => relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index')
+      const stillCurrent = () => this.isLoginCurrent(attempt) && generation === currentSessionGeneration()
+      const goHome = () => { if (stillCurrent()) relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index') }
       if (!this.isTeacher) {
-        studentApi.getProfile().then((profile) => session.hydrateStudentProfile(profile)).catch(() => {}).finally(goHome)
+        studentApi.getProfile().then((profile) => { if (stillCurrent()) session.hydrateStudentProfile(profile) }).catch(() => {}).finally(goHome)
       } else {
         goHome()
       }
     },
     async onAccountLogin() {
-      if (this.accLoading || this.wxLoading || this.bindLoading) return
+      if (!this.loginAlive || this.accLoading || this.wxLoading || this.bindLoading || this.binding) return
       if (!this.agree) { toast('请先勾选同意用户协议与隐私政策'); return }
       if (!this.account.loginName.trim() || !this.account.password) { toast(`请输入${this.isTeacher ? '工号' : '学号'} / 手机号和密码`); return }
+      const attempt = ++this.loginAttempt
       this.accLoading = true
       try {
       await this.accountCaptchaFlow.ensureNonce()
-      if (!this.loginAlive) return
+      if (!this.isLoginCurrent(attempt)) return
       if (this.accountCaptcha.required && (!this.accountCaptcha.id || !/^[0-9]{6}$/.test(this.accountCaptcha.code))) { toast('请输入图中 6 位验证码'); return }
       await realRequest('/auth/login', {
         method: 'POST',
@@ -201,53 +217,59 @@ export default {
           captchaId: this.accountCaptcha.id || undefined, captchaCode: this.accountCaptcha.code || undefined, clientNonce: this.accountCaptcha.nonce
         }
       }).then((data) => {
-        if (!this.loginAlive) return
+        if (!this.isLoginCurrent(attempt)) return
         saveLastTenantCode(this.account.tenantCode)
-        this.completeLogin(data)
-      }).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
-      } catch (error) { toast(error?.message || '登录失败，请重新提交') } finally { this.accLoading = false }
+        this.completeLogin(data, attempt)
+      }).catch((error) => { if (!this.isLoginCurrent(attempt)) return; this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { if (this.isLoginCurrent(attempt)) this.accLoading = false })
+      } catch (error) { if (this.isLoginCurrent(attempt)) toast(error?.message || '登录失败，请重新提交') } finally { if (this.isLoginCurrent(attempt)) this.accLoading = false }
     },
     onIdentifierTypeChange(value) { if (!this.accLoading && !this.wxLoading && this.identifierOptions.some(mode => mode.value === value)) this.account.identifierType = value },
     wechatLogin() {
-      if (this.wxLoading || this.accLoading) return
+      if (!this.loginAlive || this.wxLoading || this.accLoading || this.bindLoading || this.binding) return
       if (!this.agree) { toast('请先勾选同意用户协议与隐私政策'); return }
+      const attempt = ++this.loginAttempt
       this.wxLoading = true
       uni.login({
         provider: 'weixin',
         success: (result) => {
+          if (!this.isLoginCurrent(attempt)) return
           if (!result?.code) { toast('微信授权失败，请重试'); this.wxLoading = false; return }
           realRequest('/auth/wx-login', { method: 'POST', auth: false, data: { code: result.code } })
             .then((data) => {
+              if (!this.isLoginCurrent(attempt)) return
               if (data?.needBind) {
                 this.bindingApprovalRequired = false
                 this.bindingApprovalToken = ''
                 this.wxToken = data.wxToken
                 this.binding = true
               } else if (data?.needSelectTenant) {
-                this.selectWxTenant(data)
+                this.selectWxTenant(data, attempt)
               } else {
-                this.completeLogin(data)
+                this.completeLogin(data, attempt)
               }
             })
-            .catch((error) => toast(error?.message || '微信登录失败，请稍后重试'))
-            .finally(() => { this.wxLoading = false })
+            .catch((error) => { if (this.isLoginCurrent(attempt)) toast(error?.message || '微信登录失败，请稍后重试') })
+            .finally(() => { if (this.isLoginCurrent(attempt)) this.wxLoading = false })
         },
-        fail: () => { toast('微信授权失败，请重试'); this.wxLoading = false }
+        fail: () => { if (this.isLoginCurrent(attempt)) { toast('微信授权失败，请重试'); this.wxLoading = false } }
       })
     },
-    selectWxTenant(data) {
+    selectWxTenant(data, attempt = this.loginAttempt) {
+      if (!this.isLoginCurrent(attempt)) return
       const accounts = data?.accounts || []
       if (!accounts.length) { toast('未找到可登录的学校账号'); return }
       uni.showActionSheet({
         itemList: accounts.map((item) => `${item.tenantName} · ${item.displayName}`),
         success: ({ tapIndex }) => {
+          if (!this.isLoginCurrent(attempt)) return
           const selected = accounts[tapIndex]
           if (!selected) return
           realRequest('/auth/wx-select', { method: 'POST', auth: false, data: { wxToken: data.wxToken, tenantCode: selected.tenantCode } })
             .then((loginData) => {
+              if (!this.isLoginCurrent(attempt)) return
               saveLastTenantCode(selected.tenantCode)
-              this.completeLogin(loginData)
-            }).catch((error) => toast(error?.message || '学校账号登录失败，请重试'))
+              this.completeLogin(loginData, attempt)
+            }).catch((error) => { if (this.isLoginCurrent(attempt)) toast(error?.message || '学校账号登录失败，请重试') })
         }
       })
     },
@@ -256,6 +278,7 @@ export default {
       if (!this.bindForm.loginName.trim() || !this.bindForm.password) { toast(`请输入${this.isTeacher ? '工号' : '学号'} / 手机号和密码`); return }
       this.bindLoading = true
       const requestToken = this.wxToken
+      const attempt = this.loginAttempt
       realRequest('/auth/wx-bind', {
         method: 'POST',
         auth: false,
@@ -269,17 +292,17 @@ export default {
           captchaId: this.bindCaptcha.id || undefined, captchaCode: this.bindCaptcha.code || undefined, clientNonce: this.bindCaptcha.nonce
         }
       }).then((data) => {
-        if (!this.binding || this.wxToken !== requestToken) return
+        if (!this.isLoginCurrent(attempt) || !this.binding || this.wxToken !== requestToken) return
         saveLastTenantCode(this.bindForm.tenantCode)
         this.binding = false
         this.wxToken = ''
         this.bindForm.password = ''
         this.bindingApprovalToken = ''
         this.bindingApprovalRequired = false
-        this.completeLogin(data)
+        this.completeLogin(data, attempt)
       })
         .catch((error) => {
-          if (!this.binding || this.wxToken !== requestToken) return
+          if (!this.isLoginCurrent(attempt) || !this.binding || this.wxToken !== requestToken) return
           const code = String(error?.bizCode || '')
           if (code === 'WX_BIND_APPROVAL_REQUIRED' || code === 'WX_BIND_APPROVAL_INVALID') {
             this.bindingApprovalRequired = true
@@ -288,7 +311,7 @@ export default {
           this.handleCaptchaError(error, 'bind')
           toast(error?.message || '绑定失败，请检查账号密码')
         })
-        .finally(() => { this.bindLoading = false })
+        .finally(() => { if (this.isLoginCurrent(attempt)) this.bindLoading = false })
     },
     cancelBind() {
       this.binding = false
@@ -315,7 +338,7 @@ export default {
       const tenantCode = encodeURIComponent(this.account.tenantCode.trim() || getLastTenantCode())
       go(`/pages/student/orientation/activate/index${tenantCode ? `?tenantCode=${tenantCode}` : ''}`)
     },
-    switchEntry() { relaunch('/pages/login/index') },
+    switchEntry() { this.invalidateLogin(); relaunch('/pages/login/index') },
     openPasswordReset() { if (!this.accLoading && !this.wxLoading) go(`/pages/login/reset/index?entry=${this.isTeacher ? 'teacher' : 'student'}&identifierType=${this.account.identifierType}`) },
     // 正文已内置在小程序包内（见 config/legalDocs.js），无需依赖外链和业务域名配置，
     // 因此任何环境下都能打开，不会再出现"未配置链接"的死路。

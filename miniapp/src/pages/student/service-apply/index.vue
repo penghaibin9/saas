@@ -99,6 +99,10 @@ export default {
   },
   onLoad(q) {
     if (q && q.name) this.svcName = decodeQueryText(q.name)
+    if (this.svcName.includes('请假') || ['LEAVE', 'SV1'].includes(String(q?.serviceKey || q?.serviceType || '').toUpperCase())) {
+      uni.redirectTo({ url: '/pages/student/affairs/leave' })
+      return
+    }
     if (q && q.dept) this.dept = decodeQueryText(q.dept)
     if (q) this.needApprove = q.approve !== '0'
     this.typeOptions = TYPE_MAP[this.svcName] || TYPE_MAP.default
@@ -122,6 +126,7 @@ export default {
     },
     submit() {
       if (this.submitting) return
+      if (this.svcName.includes('请假')) { uni.redirectTo({ url: '/pages/student/affairs/leave' }); return }
       if (this.reason.trim().length < 5) {
         toast('申请事由至少 5 个字')
         return

@@ -6,7 +6,7 @@ import { defineStore } from 'pinia'
 import { getRoleConfig, hasAction, roleKeyFromBackendRole, ROLE } from '@/config/roles.config'
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
-import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
+import { realRequest, getToken, getRefreshToken, clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
 import { ENV } from '@/config/env'
 import { setForcePasswordChange } from '@/security/passwordChangeGate'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -154,6 +154,16 @@ export const useSessionStore = defineStore('session', {
         this.persist()
         throw e
       }
+    },
+    async logoutCurrentSession() {
+      // H5 由浏览器适配器撤销 HttpOnly 会话；原生端必须等待当前会话撤销结果。
+      // #ifndef H5
+      if (getToken() || getRefreshToken()) {
+        const result = await realRequest('/auth/logout?scope=current', { method: 'POST', data: { refreshToken: getRefreshToken() || undefined } })
+        if (!result?.tokenInvalidated) throw { message: '服务端会话未完全撤销，请重试退出' }
+      }
+      // #endif
+      this.logout()
     },
     logout() {
       this.clearBusinessContexts()

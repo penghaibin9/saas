@@ -61,9 +61,6 @@ export default {
       user: {}, roleConfig: {}, dataScopeText: '', statusBarHeight: 20,
       menu: [
         { key: 'switch', label: '身份切换', icon: '⇄', note: '' },
-        { key: 'scope', label: '授权范围', icon: '🗂', note: '' },
-        { key: 'log', label: '操作记录', icon: '📋', note: '' },
-        { key: 'device', label: '设备管理', icon: '📱', note: '' },
         { key: 'security', label: '安全设置', icon: '🔒', note: '' },
         { key: 'help', label: '帮助与反馈', icon: '💬', note: '' }
       ]
@@ -86,11 +83,13 @@ export default {
       if (row.key === 'switch') return go('/pages/role-switch/index')
       if (row.key === 'security') return go('/pages/common/account-security/index')
       if (row.key === 'help') return go('/pages/common/help/index')
-      toast(row.label + '：即将开放')
+
     },
     logout() {
-      uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: (r) => {
-        if (r.confirm) { useSessionStore().logout(); relaunch('/pages/login/teacher/index') }
+      uni.showModal({ title: '退出登录', content: '确认退出当前账号？', success: async (r) => {
+        if (r.confirm) {
+          try { await useSessionStore().logoutCurrentSession() } catch (error) { toast(error?.message || '退出失败，请重试'); return }
+          relaunch('/pages/login/teacher/index') }
       } })
     }
   }

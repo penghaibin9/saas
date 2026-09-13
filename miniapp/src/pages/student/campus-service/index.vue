@@ -109,6 +109,7 @@ export default {
     focusSearch() {},
     apply(s) {
       if (!s.available) return toast('当前不可办理：' + s.desc)
+      if (['LEAVE', 'SV1'].includes(String(s.id).toUpperCase()) || s.name === '学生请假') return go('/pages/student/affairs/leave')
       if (s.name === '心理健康问卷') return go('/pages/student/campus-service/mental-survey/index')
       const q = 'name=' + encodeURIComponent(s.name) + '&dept=' + encodeURIComponent(s.dept) + '&approve=' + (s.needApprove ? '1' : '0')
       go('/pages/student/service-apply/index?' + q)
