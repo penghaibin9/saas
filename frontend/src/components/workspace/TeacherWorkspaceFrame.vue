@@ -41,7 +41,7 @@ import WorkspaceDeskUtilities from './WorkspaceDeskUtilities.vue'
 import { RefreshLeft, Star, FullScreen, Close, Monitor, User, Calendar, House, Bell, ChatDotRound, Sunny, Help, Coin, DocumentChecked, Collection, DataAnalysis, School, Flag, DataBoard, SetUp, Reading, List, Select, Clock, Tickets, TrendCharts, Medal, Notebook, OfficeBuilding, CircleCheck, FolderChecked } from '@element-plus/icons-vue'
 import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
 import { systemConfirm } from '@/services/systemDialog'
-const props = defineProps({ horizontalModule: { type: String, default: '' }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
+const props = defineProps({ resolveDestination: { type: Function, default: path => path }, horizontalModule: { type: String, default: '' }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
 const emit = defineEmits(['tokens', 'theme-label'])
 const route = useRoute(), router = useRouter()
 const pages = computed(() => workspacePages(props.modules))
@@ -114,7 +114,7 @@ onBeforeUnmount(() => { mounted = false; for (const [name, value] of originalBod
 watch(() => route.fullPath, async path => { selectedModule.value = ''; mobileOpen.value = false; rememberCurrent(); await nextTick(); if (path === route.fullPath && mainElement.value) mainElement.value.scrollTop = scrollPositions.get(currentPage.value?.id) || 0 }, { flush: 'post' })
 function rememberScroll() { if (currentPage.value) scrollPositions.set(currentPage.value.id, mainElement.value?.scrollTop || 0) }
 function rememberCurrent() { const id = currentPage.value?.id; if (id && !currentPage.value.disabled && id !== '/workbench?view=recent') prefs.value.recent = [id, ...prefs.value.recent.filter(key => key !== id)].slice(0, 30); if (id && new URL(currentPage.value.path, window.location.origin).pathname === route.path) destinations.set(id, route.fullPath); if (id && !currentPage.value.disabled && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
-async function navigate(path) { const page = pages.value.find(item => item.id === path); const destination = destinations.get(path) || page?.destination || page?.path || path; if (destination && destination !== route.fullPath) await router.push(destination); mobileOpen.value = false }
+async function navigate(path) { const page = pages.value.find(item => item.id === path); const ref = destinations.get(path) || page?.destination || page?.path || path; const destination = ref && props.resolveDestination(ref); if (destination && router.resolve(destination).fullPath !== route.fullPath) await router.push(destination); mobileOpen.value = false }
 function selectItem(level, item) {
   if (level === 'second') {
     selectedModule.value = item.key

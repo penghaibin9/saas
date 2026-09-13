@@ -115,7 +115,7 @@ function markOffline() {
   if (!state.notified) {
     state.notified = true
     try {
-      toast.info('服务暂时不可用，已切换为只读体验数据')
+      toast.info('服务暂时不可用，请稍后重试')
     } catch {
       /* toast 不可用时静默 */
     }
@@ -181,7 +181,8 @@ async function rawRequest(path, {
 
     const timedOut = ['AbortError', 'TimeoutError'].includes(e?.name) || /abort/i.test(String(e?.message || ''))
     const failClosed = !canUseMockFallback() || isWriteMethod(method)
-    markOffline()
+    // A slow endpoint does not prove that unrelated endpoints are offline.
+    if (!timedOut) markOffline()
 
     if (timedOut) {
       throw transportFailure(e, {

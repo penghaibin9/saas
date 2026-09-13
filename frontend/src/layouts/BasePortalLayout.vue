@@ -88,7 +88,8 @@
                 </a>
               </template>
             </template>
-            <div v-else class="bpl-cmdk__empty">{{ fnQuery ? `未找到「${fnQuery}」相关结果` : '输入学生姓名、学号或功能名称' }}</div>
+            <div v-else class="bpl-cmdk__empty">{{ helpLoading ? '正在加载帮助索引…' : fnQuery ? `未找到「${fnQuery}」相关结果` : '输入学生姓名、学号或功能名称' }}</div>
+            <button v-if="helpError" type="button" @click="loadHelp">帮助索引加载失败，点击重试</button>
             <div v-if="useWorkspace && stuSearching" class="bpl-cmdk__loading">正在搜索学生…</div>
             <div v-else-if="useWorkspace && stuError" class="bpl-cmdk__empty" role="status">{{ stuError }}</div>
           </div>
@@ -135,9 +136,10 @@
             @blur="closeHelpSoon"
           >?</button>
           <div v-if="helpOpen" class="bpl-help__panel" @mousedown.prevent>
+            <button v-if="helpError" type="button" @click="loadHelp">帮助加载失败，点击重试</button>
             <a class="bpl-help__opt" href="javascript:void(0)" @click="goPageHelp">
               <span class="bpl-help__opt-lb">本页帮助</span>
-              <span class="bpl-help__opt-sub">{{ pageHelp ? pageHelp.title : '这一页暂无专属帮助，去帮助中心找' }}</span>
+              <span class="bpl-help__opt-sub">{{ helpLoading ? '正在加载本页帮助…' : pageHelp ? pageHelp.title : '这一页暂无专属帮助，去帮助中心找' }}</span>
             </a>
             <a
               class="bpl-help__opt"
@@ -310,7 +312,7 @@
 </template>
 
 <script>
-import { computed } from 'vue'
+import { computed, markRaw } from 'vue'
 import '@/styles/compact-business-workspace.css'
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
@@ -323,7 +325,6 @@ import { WORKBENCH_PAGE_TABS } from '@/modules/workbench/config/workbenchNavigat
 import WorkspaceDeskUtilities from '@/components/workspace/WorkspaceDeskUtilities.vue'
 import { OfficeBuilding } from '@element-plus/icons-vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
-import { searchHelp, findHelpForRoute } from '@/config/helpContent'
 import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, searchNavPlan, navRefMatches, navRefExactMatch, matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
@@ -436,6 +437,9 @@ export default {
       fnBlurTimer: null,
       /* ③ 常驻帮助入口（本页帮助 / 重看引导 / 帮助中心） */
       helpOpen: false,
+      helpApi: null,
+      helpLoading: false,
+      helpError: false,
       helpBlurTimer: null,
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
       expandedMods: {},
@@ -474,7 +478,7 @@ export default {
     },
     /** 当前路由对应的帮助任务卡（找不到为 null，此时「本页帮助」退回帮助中心首页） */
     pageHelp() {
-      return findHelpForRoute(this.$route.fullPath)
+      return this.helpApi?.findHelpForRoute(this.$route.fullPath) || null
     },
     /** 当前页是否登记了新手引导（未登记时把「重看本页引导」置灰，不给死按钮） */
     pageGuideAvailable() {
@@ -501,7 +505,7 @@ export default {
         }
       }
       // 帮助任务卡 / 帮助文档 / 业务流程图
-      searchHelp(q).forEach((h) => out.push({ kind: h.kind, label: h.title, sub: h.sub || '', to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
+      ;(this.helpApi?.searchHelp(q) || []).forEach((h) => out.push({ kind: h.kind, label: h.title, sub: h.sub || '', to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
       // 去重（label+to）后截断
       const seen = new Set()
       const dedup = out.filter((r) => {
@@ -766,7 +770,23 @@ export default {
       this.$router.push(to)
     },
     /** 本页帮助：能匹配到任务卡就直达该卡，匹配不到退回帮助中心首页（不乱跳）。 */
-    goPageHelp() {
+    async loadHelp() {
+      if (this.helpApi) return this.helpApi
+      if (this.helpLoading) return this.helpRequest
+      this.helpLoading = true
+      this.helpError = false
+      // Runtime 先完成已验证内容过滤，再供搜索和本页帮助消费。
+      this.helpRequest = import('@/config/helpCenterRuntime').then(api => {
+        this.helpApi = markRaw(api)
+        return api
+      }).catch(() => {
+        this.helpError = true
+        return null
+      }).finally(() => { this.helpLoading = false })
+      return this.helpRequest
+    },
+    async goPageHelp() {
+      if (!await this.loadHelp()) return
       this.helpOpen = false
       const to = this.pageHelp ? `/admin/help?topic=${this.pageHelp.id}` : '/admin/help'
       this.openHelpWindow(to)
@@ -899,6 +919,8 @@ export default {
     }
   },
   watch: {
+    fnOpen(open) { if (open) this.loadHelp() },
+    helpOpen(open) { if (open) this.loadHelp() },
     fnQuery(q) {
       if (this.useWorkspace && !this.isPlatformMode) this.queueStuSearch(q)
       this.fnActive = 0

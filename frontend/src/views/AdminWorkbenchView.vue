@@ -25,7 +25,7 @@
  * 切身份：顶栏 AppUserChip → POST /auth/switch-role（真实令牌轮换后整页刷新）。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import LoadingState from '@/components/business/LoadingState.vue'
 import WorkbenchView from '@/modules/workbench/views/WorkbenchView.vue'
 import { fetchLayoutContext } from '@/modules/workbench/api/workbench.api'
 import { getAuthContext } from '@/security/auth/auth.context'

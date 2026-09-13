@@ -108,7 +108,8 @@ export async function fetchLayoutContext() {
   const [brandResult, contextResult, messageResult] = await Promise.allSettled([
     workbenchRead('tenant-brand', '/tenant/brand', {}, 60_000),
     workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000),
-    fetchMessageCount()
+    // 普通页面壳只需要角标，不能为它重算整份待办/审批快照。
+    workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
   ])
 
   if (brandResult.status === 'fulfilled' && brandResult.value) {

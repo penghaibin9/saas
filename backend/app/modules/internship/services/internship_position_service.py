@@ -117,6 +117,8 @@ def _row(p: InternshipPosition, db=None) -> dict:
         batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
         result = evaluate_position_publishability(p, company, batch, db=db)
         checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
+        if not isinstance(checkin_cfg, dict):
+            checkin_cfg = {}
         out.update({
             "batchName": batch.batch_name if batch else "",
             "checkinRule": {

@@ -88,7 +88,9 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
-        recs = db.scalars(select(InternshipRecord).where(
+        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id,
@@ -98,8 +100,7 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
         maj_f = (major or "").strip()
         cls_f = (class_name or "").strip()
         kept = []
-        for r in recs:
-            stu = db.get(StudentProfile, r.student_id)
+        for r, stu in recs:
             if scoped and not in_scope(scope, db, r, stu):
                 continue
             if col_f or maj_f or cls_f:
@@ -268,12 +269,13 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
-        records = db.scalars(select(InternshipRecord).where(
+        records = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()
         cache, kept = {}, []
-        for rec in records:
-            stu = db.get(StudentProfile, rec.student_id)
+        for rec, stu in records:
             if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
                 continue
             org = _org_of(db, stu, cache)
@@ -331,13 +333,14 @@ def dimension_options(user, batch_id=None) -> dict:
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
-        recs = db.scalars(select(InternshipRecord).where(
+        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()
         cache = {}
         colleges, majors, classes = set(), set(), set()
-        for r in recs:
-            stu = db.get(StudentProfile, r.student_id)
+        for r, stu in recs:
             if scoped and not in_scope(scope, db, r, stu):
                 continue
             oc, om, ocl = _org_of(db, stu, cache)
@@ -368,13 +371,14 @@ def trends(user, college=None, major=None, class_name=None, months=6, batch_id=N
     scoped = scope.get("mode") == "SCOPED"
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
-        recs = db.scalars(select(InternshipRecord).where(
+        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()
         cache = {}
         kept = []
-        for rec in recs:
-            stu = db.get(StudentProfile, rec.student_id)
+        for rec, stu in recs:
             if scoped and not in_scope(scope, db, rec, stu):
                 continue
             org = _org_of(db, stu, cache)

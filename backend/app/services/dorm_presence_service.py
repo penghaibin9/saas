@@ -8,8 +8,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
+from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 
 from app.core.exceptions import AppException
 from app.core.timeutil import tenant_tz, to_utc_naive
@@ -269,6 +270,49 @@ def provider_status(user: dict | None = None) -> dict:
     }
 
 
+def _list_unconfigured_presence(db, stmt, *, rule, moment, status, page, page_size):
+    """未接门禁时只有有效请假/未知两种事实，直接在数据库统计、过滤和分页。"""
+    from app.models import CsLeave, DormBed, DormBuilding, DormRoom, StudentProfile
+    leaves = select(
+        CsLeave.student_id, CsLeave.id.label("leave_id"), CsLeave.end_time,
+        func.row_number().over(partition_by=CsLeave.student_id,
+                               order_by=(CsLeave.end_time.desc(), CsLeave.id.desc())).label("rank"),
+    ).where(
+        CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+        CsLeave.affairs_status == "APPROVED", CsLeave.start_time <= moment,
+        CsLeave.end_time >= moment,
+    ).subquery()
+    base = stmt.outerjoin(leaves, and_(leaves.c.student_id == StudentProfile.id, leaves.c.rank == 1))
+    state = case((leaves.c.leave_id.is_not(None), "ON_LEAVE"), else_="UNKNOWN")
+    counts = {key: 0 for key in PRESENCE_STATUSES}
+    for key, count in db.execute(base.with_only_columns(state, func.count(), maintain_column_froms=True).group_by(state)):
+        counts[key] = int(count)
+    selected = str(status).upper() if status else None
+    total = counts.get(selected, 0) if selected else sum(counts.values())
+    if not total:
+        return [], total, counts
+    if selected:
+        base = base.where(state == selected)
+    rows = db.execute(base.with_only_columns(
+        StudentProfile.id.label("student_id"), StudentProfile.student_no, StudentProfile.real_name,
+        DormBuilding.id.label("building_id"), DormBuilding.building_name,
+        DormRoom.id.label("room_id"), DormRoom.room_no, DormBed.bed_no,
+        leaves.c.leave_id, leaves.c.end_time, maintain_column_froms=True,
+    ).order_by(DormBuilding.building_name, DormRoom.room_no, DormBed.bed_no, DormBed.id)
+        .offset(max(page - 1, 0) * page_size).limit(page_size)).all()
+    items = []
+    for row in rows:
+        leave = SimpleNamespace(id=row.leave_id, end_time=row.end_time) if row.leave_id else None
+        current = _status_payload("ON_LEAVE" if leave else "UNKNOWN", leave=leave, policy=rule,
+                                  reason="APPROVED_LEAVE" if leave else "PROVIDER_DISABLED")
+        items.append({
+            "studentId": str(row.student_id), "studentNo": row.student_no, "studentName": row.real_name,
+            "buildingId": str(row.building_id), "buildingName": row.building_name,
+            "roomId": str(row.room_id), "roomNo": row.room_no, "bedNo": row.bed_no, **current,
+        })
+    return items, total, counts
+
+
 def list_presence(
     user: dict, *, status: str | None = None, page: int = 1, page_size: int = 50,
     now: datetime | None = None,
@@ -276,6 +320,8 @@ def list_presence(
     from app.models import DormBed, DormBuilding, DormRoom, StudentProfile
     from app.services import affairs_dorm_service as dorm
     moment = now or datetime.utcnow()
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc).replace(tzinfo=None)
     rule = _policy()
     adapter = _provider(rule["provider"])
     with session() as db:
@@ -289,11 +335,15 @@ def list_presence(
             DormBed.student_id.is_not(None), DormBed.student_id > 0,
             DormBed.is_deleted.is_(False), StudentProfile.is_deleted.is_(False),
             DormBuilding.is_deleted.is_(False), DormRoom.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(), DormBuilding.tenant_id == _tid(), DormRoom.tenant_id == _tid(),
         )
         if scope is not None:
             if not scope:
                 return [], 0, {key: 0 for key in PRESENCE_STATUSES}
             stmt = stmt.where(DormBed.building_id.in_(scope))
+        if adapter.code == "NONE":
+            return _list_unconfigured_presence(db, stmt, rule=rule, moment=moment, status=status,
+                                               page=page, page_size=page_size)
         rows = db.execute(stmt.order_by(DormBuilding.building_name, DormRoom.room_no, DormBed.bed_no)).all()
         items = []
         counts = {key: 0 for key in PRESENCE_STATUSES}

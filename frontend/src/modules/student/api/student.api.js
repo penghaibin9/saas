@@ -113,6 +113,12 @@ const STATUS_OPTIONS = {
     { value: 'EMPLOYMENT', label: '就业' },
     { value: 'FAMILY', label: '家庭' },
     { value: 'MANUAL', label: '人工登记' }
+  ],
+  riskTagStatus: [
+    { value: 'NEW', label: '新建' }, { value: 'ASSIGNED', label: '已分派' },
+    { value: 'PROCESSING', label: '处置中' }, { value: 'FOLLOWING', label: '持续跟进' },
+    { value: 'TRANSFERRED', label: '已转办' }, { value: 'ESCALATED', label: '已升级' },
+    { value: 'CLOSED', label: '已关闭' }, { value: 'REOPENED', label: '已重开' }
   ]
 }
 

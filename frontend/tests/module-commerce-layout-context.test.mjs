@@ -79,6 +79,7 @@ function configure(payload, { rbacFails = false, brandFails = false } = {}) {
       return { schoolName: '测试学校' }
     }
     if (path === '/admin/workbench-snapshot') return { summary: {}, todos: { items: [] }, messages: { unread: 0 } }
+    if (path === '/admin/messages/count') return { unread: 0, pendingAck: 0 }
     if (path === '/graduation/context') return { permissionActions: {}, fullScope: true }
     throw new Error('unexpected request: ' + path)
   } }
@@ -141,6 +142,38 @@ test('workbench: optional brand outage does not erase authoritative entitlements
   const ctx = await fetchLayoutContext()
   assert.deepEqual(menuKeys(ctx), ['graduation'])
   assert.equal(ctx.moduleAccessHealthy, true)
+})
+
+test('workbench: layout badge uses one lightweight read for concurrent consumers', async () => {
+  const calls = configure(input([...technical, 'graduationDesign']))
+  const read = globalThis.__MODULE_CONTEXT_IO__.read
+  globalThis.__MODULE_CONTEXT_IO__.read = async (path, ...args) => {
+    if (path === '/admin/messages/count') {
+      calls.push(path)
+      return { unread: 7, pendingAck: 2 }
+    }
+    return read(path, ...args)
+  }
+  const contexts = await Promise.all([fetchLayoutContext(), fetchLayoutContext(), fetchLayoutContext()])
+  for (const ctx of contexts) {
+    assert.equal(ctx.messageUnreadCount, 7)
+    assert.deepEqual(menuKeys(ctx), ['graduation'])
+  }
+  assert.equal(calls.filter((path) => path === '/admin/messages/count').length, 1)
+  assert.equal(calls.includes('/admin/workbench-snapshot'), false)
+})
+
+test('workbench: optional message count failure preserves authorized navigation', async () => {
+  configure(input([...technical, 'graduationDesign']))
+  const read = globalThis.__MODULE_CONTEXT_IO__.read
+  globalThis.__MODULE_CONTEXT_IO__.read = async (path, ...args) => {
+    if (path === '/admin/messages/count') throw new Error('message unavailable')
+    return read(path, ...args)
+  }
+  const ctx = await fetchLayoutContext()
+  assert.equal(ctx.messageUnreadCount, 0)
+  assert.equal(ctx.moduleAccessHealthy, true)
+  assert.deepEqual(menuKeys(ctx), ['graduation'])
 })
 
 test.after(() => {

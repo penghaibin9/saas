@@ -33,3 +33,15 @@ test('复查网络超时保持未确定，API 不自动重放', async () => {
   assert.equal(result.bizCode, 'REQUEST_TIMEOUT')
   assert.equal(result.httpStatus, undefined)
 })
+
+test('成绩更正按正式分页契约读取空队列与大整数申请编号', async () => {
+  for (const items of [[], [{ changeRequestId: '1000000000000000999' }]]) {
+    const target = api(async () => ({ items, total: items.length, page: 1, pageSize: 20 }))
+    const result = await target.getGradeChanges({ queue: 'PENDING' })
+    assert.equal(result.code, 0)
+    assert.equal(result.data.list, items)
+    assert.equal(result.data.total, items.length)
+  }
+  const invalid = await api(async () => ({ total: 0 })).getGradeChanges({})
+  assert.notEqual(invalid.code, 0, '损坏回执不能伪装成空队列')
+})

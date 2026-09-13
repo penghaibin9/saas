@@ -765,7 +765,7 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/records/${recordId}/change-request`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body }))
   },
   getGradeChanges(params) {
-    return call(() => request(`${BASE}/grade-changes`, { params }))
+    return callList(`${BASE}/grade-changes`, params, true)
   },
   getGradeChangeDetail(changeRequestId) {
     return call(() => request(`${BASE}/grade-changes/${changeRequestId}/detail`))

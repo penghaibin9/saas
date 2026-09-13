@@ -21,7 +21,7 @@ export function workspacePageMatches(current, candidate) {
   if (!candidate) return false
   const route = new URL(current, 'http://workspace.local')
   const page = new URL(candidate, 'http://workspace.local')
-  if (page.pathname === '/admin/graduation' && route.pathname !== page.pathname) return false
+  if (['/admin/graduation', '/admin/internship'].includes(page.pathname) && route.pathname !== page.pathname) return false
   // Graduation forms/details inherit their closest business list. List panel
   // parameters need not be present on a create/edit URL.
   if (route.pathname.startsWith('/admin/graduation/') && page.pathname.startsWith('/admin/graduation/')
@@ -65,8 +65,8 @@ export function workspaceRouteOwner(path, fullPath = path) {
   }
   // Object/filter and Graduation batch parameters extend a menu URL; they do not change its owner.
   // Reuse the same subset matching as activeWorkspacePage without changing other centers.
-  if (/^\/admin\/(academic-affairs|graduation)(?:\/|$)/.test(path)) {
-    const groupKey = path.startsWith('/admin/graduation') ? 'graduation' : 'academic-affairs'
+  if (/^\/admin\/(academic-affairs|graduation|internship)(?:\/|$)/.test(path)) {
+    const groupKey = path.split('/')[2]
     const group = NAV_PLAN.find(item => item.key === groupKey)
     const matches = (group?.children || []).flatMap(mod => (mod.children || [])
       .filter(leaf => !leaf.hidden && workspacePageMatches(fullPath, leaf.path))

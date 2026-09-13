@@ -11,7 +11,10 @@
 <script>
 import AppToast from '@/components/common/AppToast.vue'
 import SystemDialogHost from '@/components/common/SystemDialogHost.vue'
-import RouteAccessNotice from '@/views/security/RouteAccessNotice.vue'
+import { defineAsyncComponent } from 'vue'
+
+// 拒绝页仅在权限守卫裁定后加载，避免登录首屏提前拉入整个教师工作区。
+const RouteAccessNotice = defineAsyncComponent(() => import('@/views/security/RouteAccessNotice.vue'))
 
 export default {
   name: 'App',
