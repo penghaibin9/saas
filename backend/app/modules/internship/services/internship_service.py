@@ -1533,18 +1533,15 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
     from app.modules.internship.services.internship_batch_context import (
         batch_public_fields, resolve_batch)
 
-    # permissionPatterns 简单匹配（与前端 matchPermission 同口径：* 通配）
+    # 看板只投影当前身份实际可执行的动作。JWT 不携带 permissionPatterns 时，
+    # 不能把缺失误当作全权限，否则会产生点击后必然 403 的“待办”。
+    permission_cache = {}
+
     def _match(code: str) -> bool:
-        patterns = list((user or {}).get("permissionPatterns") or [])
-        if not patterns:
-            return True
-        for p in patterns:
-            p = str(p)
-            if p == code or p == "*":
-                return True
-            if p.endswith(".*") and code.startswith(p[:-1]):
-                return True
-        return False
+        from app.core.permissions import has_permission
+        if code not in permission_cache:
+            permission_cache[code] = has_permission(user or {}, code)
+        return permission_cache[code]
 
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)

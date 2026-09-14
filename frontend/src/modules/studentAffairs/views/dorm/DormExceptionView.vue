@@ -21,7 +21,8 @@
       <AppSectionCard title="今日归寝状态">
         <AppGlobalState :state="presenceLoading ? 'loading' : presenceError ? 'error' : 'ready'" :description="presenceError" loading-text="正在加载归寝状态…" @retry="loadPresence">
         <p class="dorm-exception-hint">仅依据批准请假和已标准化的 Provider 事件研判；无数据时保持“未知”，不会生成“未归”结论。</p>
-        <DataTable v-if="presenceItems.length || presencePagination.total" :columns="presenceColumns" :rows="presenceItems" row-key="studentId" :pagination="presencePagination" @page-change="onPresencePageChange">
+        <p v-if="!providerLoading && !provider.configured" class="sa-empty">门禁 Provider 未配置，暂不加载全量在住名单。</p>
+        <DataTable v-else-if="presenceItems.length || presencePagination.total" :columns="presenceColumns" :rows="presenceItems" row-key="studentId" :pagination="presencePagination" @page-change="onPresencePageChange">
           <template #cell-student="{ row }"><strong>{{ row.studentName }}</strong><br><span class="sa-muted">{{ row.studentNo }}</span></template>
           <template #cell-room="{ row }">{{ row.buildingName }} · {{ row.roomNo }}室 · {{ row.bedNo }}床</template>
           <template #cell-presenceStatus="{ row }"><AppStatusTag :type="presenceTone(row.status)" :label="row.statusLabel" /></template>
@@ -178,7 +179,17 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     async load() {
-      await Promise.all([this.loadExceptions(), this.loadProvider(), this.loadPresence()])
+      await Promise.all([this.loadExceptions(), this.loadProvider()])
+      if (this.provider.configured) {
+        await this.loadPresence()
+        return
+      }
+      this.requestEpochs.presence++
+      this.presenceLoading = false
+      this.presenceError = ''
+      this.presenceItems = []
+      this.presenceCounts = {}
+      this.presencePagination.total = 0
     },
     async loadExceptions() {
       const epoch = ++this.requestEpochs.exceptions

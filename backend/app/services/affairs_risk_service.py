@@ -21,6 +21,7 @@ from app.services.affairs_sla import get_risk_sla, risk_due_at, risk_is_overdue
 SOURCES = ("LEAVE_OVERDUE", "ACADEMIC_WARNING", "DORM", "MENTAL", "DISCIPLINE", "INTERNSHIP",
            "GRADUATION_DESIGN", "EMPLOYMENT", "FAMILY", "MANUAL")
 LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+ACTIVE_RISK_STATUSES = ("NEW", "ASSIGNED", "PROCESSING", "FOLLOWING", "REOPENED")
 # 兼容既有内部调用；实际时限一律由 affairs_sla 的等级配置决定。
 def _risk_new_assign_hours(level: str | None = None) -> float:
     return get_risk_sla(level)["assignHours"]
@@ -66,6 +67,27 @@ def _owner_role_user_ids(db) -> set[int]:
     return eligible
 
 
+def _is_owner_candidate(db, user_id: int) -> bool:
+    """按当前账号判断能否成为风险责任人，避免列表为一个人扫描全校角色。"""
+    from app.models import Role, User, UserRole
+
+    roles = db.scalars(select(Role).join(
+        UserRole, Role.id == UserRole.role_id
+    ).join(
+        User, User.id == UserRole.user_id
+    ).where(
+        UserRole.tenant_id == _tid(), UserRole.user_id == int(user_id),
+        UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
+        Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == "ACTIVE",
+        User.tenant_id == _tid(), User.is_deleted.is_(False), User.status == "ACTIVE",
+    )).all()
+    tenant_id = str(_tid())
+    return any(has_permission({
+        "userId": str(user_id), "currentRoleCode": role.role_code,
+        "tenantId": tenant_id, "activeContextId": f"role:{role.id}",
+    }, "studentAffairs.risk.handle") for role in roles)
+
+
 def list_owner_candidates(
     keyword: str | None = None, page: int = 1, page_size: int = 50,
 ) -> tuple[list[dict], int]:
@@ -103,7 +125,7 @@ def _validate_owner(db, owner_id, student_id=None) -> int:
     u = db.get(User, int(raw))
     if not u or u.is_deleted or u.tenant_id != _tid() or u.status != "ACTIVE":
         raise AppException("VALIDATION_ERROR", "责任人不存在或已停用")
-    if u.id not in _owner_role_user_ids(db):
+    if not _is_owner_candidate(db, u.id):
         raise AppException("VALIDATION_ERROR", "该账号无学工风险处置权限，不能作为责任人")
     if student_id is not None:
         from app.core.affairs_security import build_affairs_context
@@ -361,13 +383,13 @@ def _sensitive_view_audit(x, reason: str) -> None:
     )
 
 
-def _row(x, user, s=None, reveal=False, owner=None, allowed_actions=None) -> dict:
+def _row(x, user, s=None, reveal=False, owner=None, allowed_actions=None, *, sla=None, now=None) -> dict:
     # 列表恒遮蔽心理明细（仅摘要）；明细页须经授权角色 + 填写原因，get_risk 内 reveal=True 且写 SENSITIVE_VIEW。
     mental_masked = (x.source == "MENTAL" and not (reveal and _can_view_mental(user)))
     owner_name = (owner.real_name if owner else "") or ""
     owner_login = (owner.login_name if owner else "") or ""
-    sla = get_risk_sla(getattr(x, "risk_level", None))
-    due_at = risk_due_at(x)
+    sla = sla if sla is not None else get_risk_sla(getattr(x, "risk_level", None))
+    due_at = risk_due_at(x, sla=sla)
     row = {
         "riskId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -381,7 +403,7 @@ def _row(x, user, s=None, reveal=False, owner=None, allowed_actions=None) -> dic
         "assignedAt": _iso(getattr(x, "assigned_at", None)),
         "createdAt": _iso(getattr(x, "created_at", None)),
         "sla": {
-            **sla, "overdue": risk_is_overdue(x),
+            **sla, "overdue": risk_is_overdue(x, now=now, sla=sla),
             "dueAt": _iso(due_at) if due_at else None,
         },
     }
@@ -878,7 +900,7 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
 HIGH_CRITICAL_LEVELS = ("HIGH", "CRITICAL")
 
 
-def _overdue_predicate():
+def _overdue_predicate(sla_for=None):
     """超时判定谓词（单一来源）。
 
     指标卡的"超时"数字和「超时」快捷队列必须用同一份表达式，否则会出现
@@ -890,7 +912,7 @@ def _overdue_predicate():
     now = datetime.utcnow()
     pred = AffairsRiskRecord.status == "ESCALATED"
     for level in LEVELS:
-        sla = get_risk_sla(level)
+        sla = sla_for(level) if sla_for else get_risk_sla(level)
         pred |= (
             (AffairsRiskRecord.risk_level == level)
             & (
@@ -918,7 +940,7 @@ def _overdue_predicate():
 
 def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=None,
                        priority=None, overdue_only=False, unassigned_only=False,
-                       owner_id=None):
+                       owner_id=None, *, sla_for=None):
     """列表 / count / 聚合共用过滤条件（不含数据范围）。
 
     priority / overdue_only / unassigned_only / owner_id 是 U2 快捷队列的只读过滤：
@@ -931,6 +953,8 @@ def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=Non
         conds.append(AffairsRiskRecord.source == source)
     if status == "OPEN":
         conds.append(AffairsRiskRecord.status.notin_(["CLOSED"]))
+    elif status == "ACTIVE":
+        conds.append(AffairsRiskRecord.status.in_(ACTIVE_RISK_STATUSES))
     elif status == "PENDING":
         conds.append(AffairsRiskRecord.status.in_(
             ["NEW", "ASSIGNED", "REOPENED", "TRANSFERRED"]))
@@ -943,7 +967,7 @@ def _risk_filter_conds(source=None, status=None, risk_level=None, student_id=Non
     if str(priority or "").upper() == "HIGH_CRITICAL":
         conds.append(AffairsRiskRecord.risk_level.in_(HIGH_CRITICAL_LEVELS))
     if overdue_only:
-        conds.append(_overdue_predicate())
+        conds.append(_overdue_predicate(sla_for=sla_for))
     if unassigned_only:
         conds.append(AffairsRiskRecord.owner_id.is_(None))
     if owner_id is not None and str(owner_id).strip() != "":
@@ -982,13 +1006,13 @@ def _risk_scope_join(stmt, allowed):
     return stmt
 
 
-def _risk_stats_sql(db, base_conds, allowed) -> dict:
+def _risk_stats_sql(db, base_conds, allowed, *, sla_for=None) -> dict:
     """与列表同过滤/同范围的单次 SQL 条件聚合；超时阈值与 scan_timeout 共用配置。"""
     from sqlalchemy import case
     from app.models import AffairsRiskRecord
 
     # 与「超时」快捷队列共用同一份谓词，卡片数字和点进去的列表条数不会分裂。
-    overdue_pred = _overdue_predicate()
+    overdue_pred = _overdue_predicate(sla_for=sla_for)
     stmt = _risk_scope_join(
         select(
             func.count().label("total"),
@@ -1020,14 +1044,24 @@ def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
     from app.services.affairs_dashboard_service import _allowed_class_ids
     page, page_size = normalize_page(page, page_size)
     with session() as db:
+        slas = {}
+
+        def sla_for(level):
+            code = str(level or "").upper()
+            sla = slas.get(code)
+            if sla is None:
+                sla = get_risk_sla(level)
+                slas[code] = sla
+            return sla
+
         allowed, _ = _allowed_class_ids(db, user)
         base_conds = _risk_filter_conds(
             source, status, risk_level, student_id,
             priority=priority, overdue_only=overdue_only,
-            unassigned_only=unassigned_only,
+            unassigned_only=unassigned_only, sla_for=sla_for,
             owner_id=resolve_owner_filter(user, owner_id),
         )
-        stats = _risk_stats_sql(db, base_conds, allowed)
+        stats = _risk_stats_sql(db, base_conds, allowed, sla_for=sla_for)
         total = stats["total"]
         id_stmt = _risk_scope_join(
             select(AffairsRiskRecord.id).where(*base_conds), allowed
@@ -1055,14 +1089,15 @@ def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
         caller_can_own = (
             caller_id > 0
             and has_permission(user or {}, "studentAffairs.risk.handle")
-            and caller_id in _owner_role_user_ids(db)
+            and _is_owner_candidate(db, caller_id)
         )
+        now = datetime.utcnow()
         out = []
         for x in rows:
             actions = evaluate(x)
             row = _row(x, user, students.get(int(x.student_id)) if x.student_id else None,
                        owner=owners.get(int(x.owner_id)) if x.owner_id else None,
-                       allowed_actions=actions)
+                       allowed_actions=actions, sla=sla_for(getattr(x, "risk_level", None)), now=now)
             row["canClaim"] = bool(caller_can_own and "ASSIGN" in actions)
             out.append(row)
         return out, total, stats

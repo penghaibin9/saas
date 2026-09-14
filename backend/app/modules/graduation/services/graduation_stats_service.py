@@ -13,6 +13,7 @@ from app.modules.graduation.services import (graduation_archive_service, graduat
                           graduation_review_service, graduation_risk_service)
 from app.services.db_service import _tid, session
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, can_access_student, has_full_scope
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 
 STAGE_LABEL = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确认", "GUIDING": "指导中",
               "MIDTERM": "中期检查", "FINAL_CHECK": "成果检查", "DEFENSE": "答辩中", "ARCHIVED": "已归档"}
@@ -20,16 +21,32 @@ STAGE_LABEL = {"TOPIC_SELECTING": "选题中", "TASKBOOK_CONFIRM": "任务书确
 
 def overview_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        # Stage/risk cards are three aggregates over the same scoped students.  Keep the
+        # data-range predicate in SQL and obtain both breakdowns in one round trip.
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
                 GraduationStudent.record_status == "ACTIVE",
-                GraduationStudent.id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(*base)) or 0)
-        by_stage = [{"stage": s, "label": STAGE_LABEL[s],
-                    "count": int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
-                        *base, GraduationStudent.stage == s)) or 0)} for s in STAGE_LABEL]
-        by_risk = [{"level": lv, "count": int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            *base, GraduationStudent.risk_level == lv)) or 0)} for lv in ("NONE", "LOW", "MEDIUM", "HIGH")]
+                GraduationStudent.id.in_(scope)]
+        aggregates = db.execute(
+            select(
+                GraduationStudent.stage,
+                GraduationStudent.risk_level,
+                func.count(GraduationStudent.id),
+            )
+            .where(*base)
+            .group_by(GraduationStudent.stage, GraduationStudent.risk_level)
+        ).all()
+        total = sum(int(count) for _stage, _risk, count in aggregates)
+        stage_counts: dict[str, int] = {}
+        risk_counts: dict[str, int] = {}
+        for stage, risk_level, count in aggregates:
+            value = int(count)
+            stage_counts[str(stage or "")] = stage_counts.get(str(stage or ""), 0) + value
+            risk_counts[str(risk_level or "")] = risk_counts.get(str(risk_level or ""), 0) + value
+        by_stage = [{"stage": stage, "label": STAGE_LABEL[stage], "count": stage_counts.get(stage, 0)}
+                    for stage in STAGE_LABEL]
+        by_risk = [{"level": level, "count": risk_counts.get(level, 0)}
+                   for level in ("NONE", "LOW", "MEDIUM", "HIGH")]
     full_scope = has_full_scope()
     return {
         "batchId": str(batch_id) if batch_id else None,

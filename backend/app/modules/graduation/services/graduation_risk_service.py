@@ -12,7 +12,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -20,7 +20,8 @@ from app.models import (GraduationArchiveRecord, GraduationAuditTrail, Graduatio
                         GraduationGrade, GraduationGuidance, GraduationMidterm, GraduationProposal,
                         GraduationRiskCase, GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_scope_service import assert_student_access
 
 log = logging.getLogger("graduation.risk")
 
@@ -442,22 +443,38 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
 def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None,
                gd_student_id=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        q = select(GraduationRiskCase).where(GraduationRiskCase.tenant_id == _tid(),
-                                             GraduationRiskCase.is_deleted.is_(False),
-                                             GraduationRiskCase.gd_student_id.in_(scope_ids or [-1]))
+        # 风险台账和总览会在大批次下反复读取；以 SQL 子查询保持同一数据范围，
+        # 不把数千个学生 ID 展开为请求参数，也不为每条风险补一次学生查询。
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
+        base = [
+            GraduationRiskCase.tenant_id == _tid(),
+            GraduationRiskCase.is_deleted.is_(False),
+            GraduationRiskCase.gd_student_id.in_(scope),
+        ]
         if gd_student_id:
-            q = q.where(GraduationRiskCase.gd_student_id == int(gd_student_id))
+            base.append(GraduationRiskCase.gd_student_id == int(gd_student_id))
         if risk_code:
-            q = q.where(GraduationRiskCase.risk_code == risk_code)
+            base.append(GraduationRiskCase.risk_code == risk_code)
         if level:
-            q = q.where(GraduationRiskCase.level == level)
+            base.append(GraduationRiskCase.level == level)
         if status:
-            q = q.where(GraduationRiskCase.status == status)
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(q.order_by(GraduationRiskCase.id.desc())
-                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(r, db.get(GraduationStudent, r.gd_student_id)) for r in rows]
+            base.append(GraduationRiskCase.status == status)
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationRiskCase).where(*base)
+        ) or 0)
+        rows = db.execute(
+            select(GraduationRiskCase, GraduationStudent)
+            .outerjoin(GraduationStudent, and_(
+                GraduationStudent.id == GraduationRiskCase.gd_student_id,
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+            ))
+            .where(*base)
+            .order_by(GraduationRiskCase.id.desc())
+            .offset((max(1, page) - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        items = [_row(risk, student) for risk, student in rows]
         return items, total
 
 
@@ -515,9 +532,9 @@ def close_risk(rid, reason: str) -> dict:
 
 def risk_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationRiskCase.tenant_id == _tid(), GraduationRiskCase.is_deleted.is_(False),
-                GraduationRiskCase.gd_student_id.in_(scope_ids or [-1])]
+                GraduationRiskCase.gd_student_id.in_(scope)]
         total = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(*base)) or 0)
         open_count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             *base, GraduationRiskCase.status == "OPEN")) or 0)

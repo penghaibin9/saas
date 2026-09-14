@@ -589,6 +589,30 @@ def has_permission(user: dict, code: str) -> bool:
     return _match(code, patterns)
 
 
+def permission_decisions(user: dict, codes: Iterable[str]) -> dict[str, bool]:
+    """Resolve multiple non-mutating permission checks from one authority snapshot.
+
+    A page context commonly needs dozens of button decisions.  Fetching the same role
+    template and delegation set for every code turns that harmless projection into a
+    database hot path.  This helper intentionally keeps the snapshot request-local:
+    every new HTTP request re-reads authority, so a revocation takes effect immediately.
+    Deny exceptions and the legacy ``*`` probe retain the canonical per-code path.
+    """
+    requested = tuple(dict.fromkeys(str(code or "").strip() for code in codes if str(code or "").strip()))
+    if not requested:
+        return {}
+    patterns = get_effective_permission_patterns(user)
+    denied = ROLE_PERMISSION_DENY.get(_role_of(user), ())
+    return {
+        code: (
+            has_permission(user, code)
+            if code == "*" or (code in denied and "*" not in patterns)
+            else _match(code, patterns)
+        )
+        for code in requested
+    }
+
+
 def get_effective_access_context(
     user: dict,
     *,

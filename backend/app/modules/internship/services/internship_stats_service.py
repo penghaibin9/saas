@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 
 from app.models import (College, EmpStudent, InternshipAgreement, InternshipArchive,
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
@@ -66,6 +66,35 @@ def _org_of(db, stu, cache):
     return cache[stu.class_id]
 
 
+def _preload_org_cache(db, students):
+    """批量预热学生所属组织，保持 ``_org_of`` 的既有解析口径。"""
+    class_ids = {int(stu.class_id) for stu in students if stu and stu.class_id}
+    if not class_ids:
+        return {}
+    classes = {row.id: row for row in db.scalars(
+        select(SchoolClass).where(SchoolClass.id.in_(class_ids))
+    ).all()}
+    major_ids = {int(row.major_id) for row in classes.values() if row.major_id}
+    majors = {row.id: row for row in db.scalars(
+        select(Major).where(Major.id.in_(major_ids))
+    ).all()} if major_ids else {}
+    college_ids = {int(row.college_id) for row in majors.values() if row.college_id}
+    colleges = {row.id: row for row in db.scalars(
+        select(College).where(College.id.in_(college_ids))
+    ).all()} if college_ids else {}
+    cache = {}
+    for class_id in class_ids:
+        cls = classes.get(class_id)
+        major = majors.get(cls.major_id) if cls and cls.major_id else None
+        college = colleges.get(major.college_id) if major and major.college_id else None
+        cache[class_id] = (
+            (college.college_name or "") if college else "",
+            (major.major_name or "") if major else "",
+            (cls.class_name or "") if cls else "",
+        )
+    return cache
+
+
 def _rate(num, den):
     return round(num / den * 100, 1) if den else None
 
@@ -95,7 +124,7 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id,
         )).all()
-        cache = {}
+        cache = _preload_org_cache(db, [stu for _rec, stu in recs])
         col_f = (college or "").strip()
         maj_f = (major or "").strip()
         cls_f = (class_name or "").strip()
@@ -274,7 +303,7 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
             (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()
-        cache, kept = {}, []
+        cache, kept = _preload_org_cache(db, [stu for _rec, stu in records]), []
         for rec, stu in records:
             if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
                 continue
@@ -338,7 +367,7 @@ def dimension_options(user, batch_id=None) -> dict:
             (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()
-        cache = {}
+        cache = _preload_org_cache(db, [stu for _rec, stu in recs])
         colleges, majors, classes = set(), set(), set()
         for r, stu in recs:
             if scoped and not in_scope(scope, db, r, stu):
@@ -356,6 +385,7 @@ def dimension_options(user, batch_id=None) -> dict:
 def trends(user, college=None, major=None, class_name=None, months=6, batch_id=None) -> dict:
     """Return auditable monthly activity counts for the visible internship cohort."""
     from app.modules.internship.services.internship_batch_context import resolve_batch
+
     months = max(3, min(int(months or 6), 12))
     now = datetime.now()
     keys = []
@@ -366,58 +396,151 @@ def trends(user, college=None, major=None, class_name=None, months=6, batch_id=N
         if month == 0:
             year, month = year - 1, 12
     keys.reverse()
+    start_at = datetime.strptime(f"{keys[0]}-01", "%Y-%m-%d")
+    end_at = (datetime(now.year + 1, 1, 1) if now.month == 12
+              else datetime(now.year, now.month + 1, 1))
 
     scope, in_scope = _scope_ctx(user)
-    scoped = scope.get("mode") == "SCOPED"
+    role = str(scope.get("roleCode") or "").upper()
+    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR"}
+    advisor_user_ids = {int(value) for value in scope.get("advisorUserIds", set())
+                        if str(value).isdigit()}
+    # 导师范围只认稳定 user_id；缺少关联 ID 的历史记录需先治理，不能按姓名放宽可见范围。
+    # 其他受限身份继续沿用既有 Python 范围判断，避免把学院/班级等历史范围的细节静默改写。
+    can_aggregate = scope.get("mode") != "SCOPED" or (
+        role in advisor_roles
+    )
+
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
-        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
-            (StudentProfile.id == InternshipRecord.student_id) &
-            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-            InternshipRecord.batch_id == batch.id)).all()
-        cache = {}
-        kept = []
-        for rec, stu in recs:
-            if scoped and not in_scope(scope, db, rec, stu):
-                continue
-            org = _org_of(db, stu, cache)
-            if college and college != org[0]:
-                continue
-            if major and major != org[1]:
-                continue
-            if class_name and class_name != org[2]:
-                continue
-            kept.append(rec)
-        record_ids = [rec.id for rec in kept] or [0]
+        if not can_aggregate:
+            recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+                (StudentProfile.id == InternshipRecord.student_id) &
+                (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+                InternshipRecord.batch_id == batch.id)).all()
+            cache = _preload_org_cache(db, [stu for _rec, stu in recs])
+            kept = []
+            for rec, stu in recs:
+                if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
+                    continue
+                org = _org_of(db, stu, cache)
+                if college and college != org[0]:
+                    continue
+                if major and major != org[1]:
+                    continue
+                if class_name and class_name != org[2]:
+                    continue
+                kept.append(rec)
+            record_ids = [rec.id for rec in kept] or [0]
 
-        def count_by_month(rows, field):
+            def count_by_month(rows, field):
+                counts = {key: 0 for key in keys}
+                for row in rows:
+                    value = getattr(row, field, None)
+                    key = value.strftime("%Y-%m") if value else ""
+                    if key in counts:
+                        counts[key] += 1
+                return [{"month": key, "value": counts[key]} for key in keys]
+
+            common = lambda model: (
+                model.tenant_id == _tid(), model.is_deleted.is_(False), model.internship_id.in_(record_ids)
+            )
+            reports = db.scalars(select(WeeklyReport).where(*common(WeeklyReport))).all()
+            guidances = db.scalars(select(InternshipGuidance).where(*common(InternshipGuidance))).all()
+            visits = db.scalars(select(InternshipVisit).where(*common(InternshipVisit))).all()
+            return {
+                "months": keys,
+                "series": [
+                    {"key": "records", "label": "新增实习建档", "points": count_by_month(kept, "created_at")},
+                    {"key": "reports", "label": "报告提交", "points": count_by_month(reports, "submitted_at")},
+                    {"key": "guidance", "label": "指导记录", "points": count_by_month(guidances, "created_at")},
+                    {"key": "visits", "label": "巡访记录", "points": count_by_month(visits, "created_at")},
+                ],
+                "generatedAt": datetime.now().isoformat(timespec="seconds"),
+                "batchId": str(batch.id),
+            }
+
+        visible_query = select(
+            InternshipRecord.id.label("internship_id"),
+            InternshipRecord.created_at.label("occurred_at"),
+        ).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )
+        if scope.get("mode") == "SCOPED" and role in advisor_roles:
+            visible_query = visible_query.where(
+                InternshipRecord.advisor_user_id.in_(advisor_user_ids) if advisor_user_ids else false()
+            )
+
+        if college or major or class_name:
+            visible_query = visible_query.outerjoin(StudentProfile, and_(
+                StudentProfile.id == InternshipRecord.student_id,
+                StudentProfile.tenant_id == InternshipRecord.tenant_id,
+                StudentProfile.is_deleted.is_(False),
+            )).outerjoin(SchoolClass, and_(
+                SchoolClass.id == StudentProfile.class_id,
+                SchoolClass.tenant_id == InternshipRecord.tenant_id,
+                SchoolClass.is_deleted.is_(False),
+            )).outerjoin(Major, and_(
+                Major.id == SchoolClass.major_id,
+                Major.tenant_id == InternshipRecord.tenant_id,
+                Major.is_deleted.is_(False),
+            )).outerjoin(College, and_(
+                College.id == Major.college_id,
+                College.tenant_id == InternshipRecord.tenant_id,
+                College.is_deleted.is_(False),
+            ))
+            if college:
+                visible_query = visible_query.where(College.college_name == college)
+            if major:
+                visible_query = visible_query.where(Major.major_name == major)
+            if class_name:
+                visible_query = visible_query.where(SchoolClass.class_name == class_name)
+
+        visible = visible_query.subquery()
+        visible_ids = select(visible.c.internship_id)
+
+        def points_for(model, field, *, visible_field=None):
             counts = {key: 0 for key in keys}
-            for row in rows:
-                value = getattr(row, field, None)
-                key = value.strftime("%Y-%m") if value else ""
-                if key in counts:
-                    counts[key] += 1
+            if visible_field is not None:
+                statement = select(
+                    func.date_format(visible_field, "%Y-%m"), func.count(),
+                ).where(
+                    visible_field.is_not(None), visible_field >= start_at, visible_field < end_at,
+                )
+            else:
+                statement = select(
+                    func.date_format(field, "%Y-%m"), func.count(),
+                ).where(
+                    model.tenant_id == _tid(), model.is_deleted.is_(False),
+                    model.internship_id.in_(visible_ids), field.is_not(None),
+                    field >= start_at, field < end_at,
+                )
+            statement = statement.group_by(func.date_format(
+                visible_field if visible_field is not None else field, "%Y-%m"))
+            for month_key, value in db.execute(statement).all():
+                if str(month_key) in counts:
+                    counts[str(month_key)] = int(value or 0)
             return [{"month": key, "value": counts[key]} for key in keys]
 
-        common = lambda model: (
-            model.tenant_id == _tid(), model.is_deleted.is_(False), model.internship_id.in_(record_ids)
-        )
-        reports = db.scalars(select(WeeklyReport).where(*common(WeeklyReport))).all()
-        guidances = db.scalars(select(InternshipGuidance).where(*common(InternshipGuidance))).all()
-        visits = db.scalars(select(InternshipVisit).where(*common(InternshipVisit))).all()
         return {
             "months": keys,
             "series": [
-                {"key": "records", "label": "新增实习建档", "points": count_by_month(kept, "created_at")},
-                {"key": "reports", "label": "报告提交", "points": count_by_month(reports, "submitted_at")},
-                {"key": "guidance", "label": "指导记录", "points": count_by_month(guidances, "created_at")},
-                {"key": "visits", "label": "巡访记录", "points": count_by_month(visits, "created_at")},
+                {"key": "records", "label": "新增实习建档",
+                 "points": points_for(InternshipRecord, InternshipRecord.created_at,
+                                       visible_field=visible.c.occurred_at)},
+                {"key": "reports", "label": "报告提交",
+                 "points": points_for(WeeklyReport, WeeklyReport.submitted_at)},
+                {"key": "guidance", "label": "指导记录",
+                 "points": points_for(InternshipGuidance, InternshipGuidance.created_at)},
+                {"key": "visits", "label": "巡访记录",
+                 "points": points_for(InternshipVisit, InternshipVisit.created_at)},
             ],
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
             "batchId": str(batch.id),
         }
-
 
 def export_stats(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
     from app.services import xlsx_util

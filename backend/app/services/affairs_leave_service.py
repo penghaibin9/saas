@@ -1154,6 +1154,27 @@ def list_pending(user, page=1, page_size=20, keyword=None):
                  StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
         if allowed is not None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        # 数据范围只说明“能看到这个学生”，并不说明当前审批任务轮到该教师。
+        # 真实工作流已有明确 assignee 时，辅导员/学院管理员的待办队列必须与
+        # approve() 里的 _check_review_node 保持同一事实源；否则会出现列表有单、
+        # 详情却没有操作按钮的假待办。没有 workflow_instance_id 的历史请假仍按
+        # 既有数据范围规则展示，避免把迁移前的可处理记录静默藏掉。
+        if ctx.scope_type != "TENANT_ALL":
+            raw_uid = str((user or {}).get("userId") or "").removeprefix("db-")
+            actor_id = int(raw_uid) if raw_uid.isdigit() else 0
+            if actor_id:
+                from app.models import WorkflowTask
+                assigned_current_task = select(WorkflowTask.id).where(
+                    WorkflowTask.tenant_id == _tid(),
+                    WorkflowTask.instance_id == CsLeave.workflow_instance_id,
+                    WorkflowTask.node_code == CsLeave.affairs_status,
+                    WorkflowTask.assignee_id == actor_id,
+                    WorkflowTask.status == "PENDING",
+                    WorkflowTask.is_deleted.is_(False),
+                ).exists()
+                conds.append(or_(CsLeave.workflow_instance_id.is_(None), assigned_current_task))
+            else:
+                conds.append(CsLeave.workflow_instance_id.is_(None))
         k = str(keyword or "").strip()
         if k:
             conds.append(or_(StudentProfile.real_name.contains(k),

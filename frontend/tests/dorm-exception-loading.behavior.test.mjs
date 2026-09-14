@@ -21,9 +21,19 @@ function page(overrides = {}) {
   return { component, state: { ...component.data(), ...component.methods, $route: { query: {} } } }
 }
 
-test('slow or failed presence does not block ready exceptions and can retry independently', async () => {
-  const slow = deferred(); let exceptionReads = 0, presenceReads = 0
+test('unconfigured provider skips the full resident scan; configured presence remains independently retryable', async () => {
+  let presenceReads = 0
+  const unconfigured = page({
+    listDormPresence: async () => { presenceReads++; return { data: { items: [], total: 0 } } }
+  })
+  await unconfigured.state.load()
+  assert.equal(unconfigured.state.items.length, 1)
+  assert.equal(unconfigured.state.presenceLoading, false)
+  assert.equal(presenceReads, 0)
+
+  const slow = deferred(); let exceptionReads = 0
   const { state } = page({
+    getDormPresenceProvider: async () => ({ data: { configured: true } }),
     listDormExceptions: async () => { exceptionReads++; return { data: { items: [{ exceptionId: '1' }], total: 1 } } },
     listDormPresence: () => ++presenceReads === 1 ? slow.promise : Promise.resolve({ data: { items: [], total: 0 } })
   })

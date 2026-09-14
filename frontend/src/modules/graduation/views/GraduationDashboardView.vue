@@ -107,7 +107,7 @@
             <div v-else class="gdb-risks">
               <button v-for="r in visibleRiskAlerts" :key="r.id" class="gdb-risk-row" :class="r.level === 'HIGH' ? 'is-danger' : 'is-warning'" type="button" @click="goRisk(r)">
                 <span><strong>{{ r.code }} · {{ r.title }}</strong><small>{{ r.detail }}</small></span>
-                <RiskTag :level="r.level" /><i>处置 →</i>
+                <RiskTag :level="r.level" /><i>{{ r.actionLabel || '查看' }} →</i>
               </button>
             </div>
           </div>
@@ -126,13 +126,16 @@
         </div>
       </section>
 
-      <details v-if="hero.moduleStats?.length" class="gdb-more">
+      <details v-if="hasBatch" class="gdb-more" @toggle="onModuleStatsToggle">
         <summary>跨模块统计</summary>
-        <div class="gdb-modstats">
-          <button v-for="s in hero.moduleStats" :key="s.label" class="gdb-modstat" type="button" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">
+        <p v-if="moduleStatsLoading" class="mp-note">正在读取跨模块统计…</p>
+        <p v-else-if="moduleStatsError" class="mp-note">{{ moduleStatsError }}</p>
+        <div v-else-if="moduleStats.length" class="gdb-modstats">
+          <button v-for="s in moduleStats" :key="s.label" class="gdb-modstat" type="button" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">
             <strong>{{ s.value }}</strong><span>{{ s.label }}</span><small>{{ s.hint }}</small>
           </button>
         </div>
+        <p v-else class="mp-note">暂无可展示的跨模块统计。</p>
       </details>
     </div>
   </ModulePageShell>
@@ -141,10 +144,11 @@
 <script>
 import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const EMPTY_HERO = () => ({
-  stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [],
+  stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], actionableRiskCount: 0,
   batchName: '', batchRange: '', batchStatus: ''
 })
 const TODO_TARGETS = {
@@ -154,13 +158,33 @@ const TODO_TARGETS = {
   t4: { path: '/admin/graduation/defense', query: {} },
   t5: { path: '/admin/graduation/risk-archive', query: { panel: 'risk' } }
 }
+function moduleStatsFromOverview(overview = {}) {
+  const mentor = overview.mentor || {}
+  const guidance = overview.guidance || {}
+  const midterm = overview.midterm || {}
+  const review = overview.review || {}
+  const grade = overview.grade || {}
+  const archive = overview.archive || {}
+  const done = (stat, key) => (stat.byStatus || []).find((item) => item.status === key)?.count || 0
+  return [
+    { label: '导师已合格', value: String(mentor.qualifiedCount || 0), hint: `未分配学生 ${mentor.unassignedStudents || 0} · 满员 ${mentor.fullCapacityCount || 0}` },
+    { label: '指导平均次数', value: String(guidance.avgCount || 0), hint: `频次不足 ${guidance.insufficientCount || 0} 人` },
+    { label: '中期检查', value: String(midterm.total || 0), hint: `待检 ${done(midterm, 'PENDING')}` },
+    { label: '教师评阅', value: String(review.total || 0), hint: `已完成 ${done(review, 'COMPLETED')}` },
+    { label: '成绩已发布均分', value: String(grade.publishedAvg || '—'), hint: `优秀 ${grade.excellentCount || 0} 人` },
+    { label: '归档率', value: `${archive.archiveRate || 0}%`, hint: `已备案 ${archive.filedCount || 0}/${archive.studentTotal || 0}` }
+  ]
+}
 
 export default {
   name: 'GraduationDashboardView',
   components: { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO() }
+    return {
+      batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO(),
+      moduleStats: [], moduleStatsLoading: false, moduleStatsError: '', moduleStatsBatchId: '', moduleStatsLoadToken: 0
+    }
   },
   computed: {
     hasBatch() { return !!this.batchStore.selectedBatchId },
@@ -192,12 +216,15 @@ export default {
       const stat = (this.hero.stats || []).find((item) => item.label === '高风险学生')
       return Math.max(0, Number(stat?.value) || 0)
     },
+    actionableRiskCount() { return Math.max(0, Number(this.hero.actionableRiskCount) || 0) },
     priorityTodo() {
       return (this.hero.todos || []).filter((item) => Number(item.count) > 0).slice().sort((a, b) => Number(b.count) - Number(a.count))[0] || null
     },
     priorityConclusion() {
-      if (!this.todoLoad && !this.highRiskCount) return '当前批次暂无待处理事项'
-      if (this.highRiskCount) return `今日待办 ${this.todoLoad} 项，高风险 ${this.highRiskCount} 条`
+      if (!this.todoLoad && !this.actionableRiskCount) {
+        return this.highRiskCount ? `当前范围有 ${this.highRiskCount} 条风险提醒` : '当前批次暂无待处理事项'
+      }
+      if (this.actionableRiskCount) return `今日待办 ${this.todoLoad} 项，高风险 ${this.highRiskCount} 条`
       return this.priorityTodo ? `先处理「${this.priorityTodo.label}」` : `今日待办 ${this.todoLoad} 项`
     },
     priorityDetail() { return '继续关注队列、风险和阶段进度。' },
@@ -216,6 +243,11 @@ export default {
   methods: {
     batchStatusLabel(value) { return ({ DRAFT: '草稿', PREPARING: '准备中', RUNNING: '进行中', OPEN: '办理中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || (value ? `状态待确认（${value}）` : '—')) },
     async load() {
+      this.moduleStatsLoadToken += 1
+      this.moduleStats = []
+      this.moduleStatsLoading = false
+      this.moduleStatsError = ''
+      this.moduleStatsBatchId = ''
       if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); return }
       this.loading = true
       this.error = ''
@@ -225,6 +257,31 @@ export default {
         else this.error = res.message || '毕业设计总览加载失败，请稍后重试。'
       } catch (error) { this.error = error?.message || '毕业设计总览加载失败，请检查网络后重试。' }
       finally { this.loading = false }
+    },
+    onModuleStatsToggle(event) {
+      if (event?.target?.open) this.loadModuleStats()
+    },
+    async loadModuleStats() {
+      const batchId = String(this.batchStore.selectedBatchId || '')
+      if (!batchId || this.moduleStatsLoading || this.moduleStatsBatchId === batchId) return
+      const token = this.moduleStatsLoadToken + 1
+      this.moduleStatsLoadToken = token
+      this.moduleStatsLoading = true
+      this.moduleStatsError = ''
+      try {
+        const res = await graduationRiskArchiveApi.getOverviewStats({ batchId })
+        if (token !== this.moduleStatsLoadToken || batchId !== String(this.batchStore.selectedBatchId || '')) return
+        if (res.code !== 0) {
+          this.moduleStatsError = res.message || '跨模块统计加载失败，请重新展开后重试。'
+          return
+        }
+        this.moduleStats = moduleStatsFromOverview(res.data)
+        this.moduleStatsBatchId = batchId
+      } catch (error) {
+        if (token === this.moduleStatsLoadToken) this.moduleStatsError = error?.message || '跨模块统计加载失败，请重新展开后重试。'
+      } finally {
+        if (token === this.moduleStatsLoadToken) this.moduleStatsLoading = false
+      }
     },
     routeWithBatch(path, query = {}) {
       const [pathname, rawQuery = ''] = String(path || '').split('?')

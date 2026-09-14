@@ -926,7 +926,6 @@ def _scoped_academic_student_query(db, user):
 def _grade_analysis_filters(AcademicGrade, term):
     filters = [
         AcademicGrade.tenant_id == _core._tid(),
-        AcademicGrade.score.is_not(None),
         AcademicGrade.record_status == "ACTIVE",
         AcademicGrade.is_deleted.is_(False),
     ]
@@ -936,45 +935,58 @@ def _grade_analysis_filters(AcademicGrade, term):
 
 
 def _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters) -> bool:
-    """Detect the only case that requires Python effective-attempt arbitration.
+    """Only use SQL aggregation when it is provably equivalent to code-first identity.
 
-    Legacy-name rows deliberately key by their own id and therefore can never
-    compete.  Stable course ids/codes may have multiple active attempts; those
-    must continue through ``resolve_effective_grade`` so the frozen strategy is
-    honoured exactly.
+    Non-ASCII or control-character codes go to the existing canonical resolver.
+    A conservative false positive costs time; a false negative can double-count credits.
     """
-    # Do not concatenate and COUNT(DISTINCT ...) across the whole 20K corpus:
-    # that forces MySQL to materialise every derived identity before it can
-    # answer.  Two bounded existence probes preserve the exact identity rules
-    # while allowing the course-attempt and course-code indexes to serve the
-    # common no-competing-attempt case.
-    stable_id_competition = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
-        scoped_students,
-        AcademicGrade.acad_student_id == scoped_students.c.id,
-    ).filter(
-        *filters,
-        AcademicGrade.course_id.is_not(None),
-    ).group_by(
-        AcademicGrade.acad_student_id,
-        AcademicGrade.course_id,
-    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
-    if stable_id_competition is not None:
+    from sqlalchemy import and_, or_
+    from .academic_affairs_effective_grade_policy_service import VALID_ATTEMPT_STRATEGIES
+
+    code = AcademicGrade.course_code
+    strategy = AcademicGrade.effective_attempt_strategy
+    base = db.query(AcademicGrade.id).select_from(AcademicGrade).join(
+        scoped_students, AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters)
+    unusual = or_(
+        and_(code.is_not(None), or_(
+            func.octet_length(code) != func.char_length(code),
+            code.op("REGEXP")("[[:cntrl:]]"),
+            # The fast grouped probe below uses the stored code directly so
+            # MySQL can use its composite index.  Any value whose raw bytes
+            # differ from Python's strip/upper identity stays on the
+            # canonical resolver instead of relying on collation semantics.
+            func.hex(code) != func.hex(func.upper(func.trim(code))),
+        )),
+        func.hex(AcademicGrade.record_status) != "ACTIVE".encode().hex().upper(),
+        func.hex(AcademicGrade.pass_status).notin_([
+            value.encode().hex().upper() for value in ("PASSED", "FAIL", "FAILED", "PENDING")
+        ]),
+        and_(strategy.is_not(None), func.length(strategy) > 0,
+             func.hex(strategy).notin_([
+                 value.encode().hex().upper() for value in VALID_ATTEMPT_STRATEGIES
+             ])),
+    )
+    if base.filter(unusual).limit(1).first() is not None:
         return True
 
-    stable_code_competition = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
-        scoped_students,
-        AcademicGrade.acad_student_id == scoped_students.c.id,
-    ).filter(
-        *filters,
-        AcademicGrade.course_id.is_(None),
-        AcademicGrade.course_code.is_not(None),
-        AcademicGrade.course_code != "",
-    ).group_by(
-        AcademicGrade.acad_student_id,
-        AcademicGrade.course_code,
-        AcademicGrade.course_version,
+    # The guard above proves that raw course_code already equals its Python
+    # strip/upper form.  Grouping by it directly avoids a full temporary-table
+    # expression scan on every ordinary school-wide analysis request.
+    count_query = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
+        scoped_students, AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters)
+    coded = count_query.filter(code.is_not(None), code != "").group_by(
+        AcademicGrade.acad_student_id, code,
     ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
-    return stable_code_competition is not None
+    if coded is not None:
+        return True
+    uncoded = count_query.filter(
+        code.is_(None), AcademicGrade.course_id.is_not(None),
+    ).group_by(
+        AcademicGrade.acad_student_id, AcademicGrade.course_id,
+    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
+    return uncoded is not None
 
 
 def _grade_analysis_aggregate_columns(AcademicGrade):
@@ -1039,7 +1051,7 @@ def _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, d
     query = db.query(*columns).select_from(AcademicGrade).join(
         scoped_students,
         AcademicGrade.acad_student_id == scoped_students.c.id,
-    ).filter(*filters)
+    ).filter(*filters, AcademicGrade.score.is_not(None))
     if dimension not in {"course", "class"}:
         return _grade_analysis_stats_from_row(query.one())
 

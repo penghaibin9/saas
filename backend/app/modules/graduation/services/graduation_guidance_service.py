@@ -115,28 +115,14 @@ def guidance_count(gd_student_id) -> int:
 
 def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
     """按学生统计指导次数，标记低于阈值（GD-R06 指导不足预警）。"""
-    with session() as db:
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch_id))
-        students = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids or [-1]),
-            GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")))).all()
-        students = [student for student in students if can_access_student(db, student)]
-        insufficient = []
-        total_count = 0
-        for s in students:
-            cnt = int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
-                GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == s.id,
-                GraduationGuidance.is_deleted.is_(False))) or 0)
-            total_count += cnt
-            if cnt < threshold:
-                insufficient.append({"gdStudentId": str(s.id), "studentName": s.name,
-                                     "advisorName": s.advisor_name or "", "count": cnt})
-        return {"threshold": threshold, "studentCount": len(students),
-                "avgCount": round(total_count / len(students), 1) if students else 0,
-                "insufficientCount": len(insufficient), "insufficientStudents": insufficient[:50],
-                "batchId": str(batch_id) if batch_id else None}
+    # 仪表盘和预警页共用这一入口。统计读模型以一条分组查询保留零指导学生，
+    # 避免按学生逐条 count，批次规模扩大时不会让看板请求线性变慢。
+    from app.modules.graduation.services import graduation_guidance_stats_read_service
+
+    return graduation_guidance_stats_read_service.guidance_stats(
+        threshold=threshold,
+        batch_id=batch_id,
+    )
 
 
 # ═══════════ 指导计划 + 签到（P2 MVP） ═══════════
