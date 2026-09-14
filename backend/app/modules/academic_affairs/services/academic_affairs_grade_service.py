@@ -982,7 +982,7 @@ def _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, f
     if coded is not None:
         return True
     uncoded = count_query.filter(
-        code.is_(None), AcademicGrade.course_id.is_not(None),
+        or_(code.is_(None), code == ""), AcademicGrade.course_id.is_not(None),
     ).group_by(
         AcademicGrade.acad_student_id, AcademicGrade.course_id,
     ).having(func.count(AcademicGrade.id) > 1).limit(1).first()

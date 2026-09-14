@@ -112,3 +112,36 @@ def test_mysql_guard_conservative_code_path(db_mode, code, competing):
     finally:
         db.close()
         set_tenant(None)
+
+
+@pytest.mark.parametrize("codes", [("", ""), (None, ""), (None, None)])
+def test_mysql_guard_arbitrates_empty_code_attempts(db_mode, codes):
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicGrade, AcademicStudent
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as service
+
+    tid = 1000000000000000001
+    set_tenant({"tenantId": str(tid)})
+    db = get_sessionmaker()()
+    try:
+        student = AcademicStudent(tenant_id=tid, name="虚构空代码回归学生")
+        db.add(student)
+        db.flush()
+        for attempt, code in enumerate(codes, 1):
+            db.add(AcademicGrade(
+                tenant_id=tid, acad_student_id=student.id, course_code=code, course_id=901,
+                course_name="空代码课程", attempt_no=attempt, score=90 if attempt == 1 else None,
+                pass_status="PASSED" if attempt == 1 else "PENDING", record_status="ACTIVE",
+                effective_attempt_strategy="LATEST_ATTEMPT",
+            ))
+        db.commit()
+        scoped = select(AcademicStudent.id).where(AcademicStudent.id == student.id).subquery()
+        filters = service._grade_analysis_filters(AcademicGrade, None)
+        assert service._grade_analysis_has_competing_identity(db, AcademicGrade, scoped, filters)
+        assert service._grade_analysis_sql_fast_path(db, AcademicGrade, scoped, filters, None) is None
+        selected = service.resolve_effective_grade(db.scalars(select(AcademicGrade).where(*filters)).all())
+        assert len(selected) == 1 and selected[0].score is None
+    finally:
+        db.close()
+        set_tenant(None)
