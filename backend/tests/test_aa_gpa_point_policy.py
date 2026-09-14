@@ -222,8 +222,14 @@ def test_policy_version_chain_increments(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r1 = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
                      json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR"}).json()["data"]
-    r2 = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
-                     json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 8}).json()["data"]
+    invalid = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
+                          json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 8})
+    # 100 分会得到 6.25，拒绝发布且不能消耗策略版本。
+    assert invalid.status_code == 400
+    response = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
+                           json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 20})
+    assert response.status_code == 200, response.text
+    r2 = response.json()["data"]
     assert r2["policyVersion"] == r1["policyVersion"] + 1
     listing = client.get(f"{BASE}/gpa-policies", headers=hdr).json()["data"]
     statuses = {item["policyCode"]: item["status"] for item in listing if item["policyCode"] == "CHAIN_TEST"
