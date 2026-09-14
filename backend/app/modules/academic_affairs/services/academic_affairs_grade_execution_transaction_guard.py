@@ -7,7 +7,7 @@ as the canonical write.  Opening an outer Session and then calling the canonical
 old nested-session timeout; copying the whole write chain here fixed that timeout but created a second
 business implementation that had to stay lock-step with the canonical one.
 
-This adapter now uses a request-local ContextVar only for the two teacher write commands.  While the
+This adapter now uses a request-local ContextVar for the teacher write commands.  While the
 canonical service is running, its existing ``_core._check_course_scope(task, user)`` call is narrowly
 wrapped: the wrapper obtains the Session already owning ``task``, performs the live teacher check/lock
 inside that same transaction, then delegates the historical grade-task snapshot scope check.  No
@@ -93,6 +93,33 @@ def _submit_task_single_session(task_id: int, user, *, expected=None, command_ke
 _submit_task_single_session.__grade_single_session_guard__ = True
 
 
+def teacher_change_request(task_id: int, record_id: int, user, body, *, command_key=None) -> dict:
+    """Run the canonical correction command with its live teacher lock in one Session.
+
+    ``authority.source(..., lock=True)`` deliberately locks the formal teaching
+    class and frozen roster while the correction command validates its source.
+    Taking that same class lock in an outer authority Session makes MySQL wait on
+    this request's own uncommitted transaction.  The ContextVar bridge keeps the
+    live authority check inside the correction command's Session instead.
+    """
+    from . import academic_affairs_grade_correction_command as _correction
+
+    token = _ACTIVE_WRITE_USER.set(dict(user or {}))
+    try:
+        return _correction.change_request(
+            task_id,
+            record_id,
+            user,
+            body,
+            command_key=command_key,
+        )
+    finally:
+        _ACTIVE_WRITE_USER.reset(token)
+
+
+teacher_change_request.__grade_single_session_guard__ = True
+
+
 def install() -> None:
     """Install once; keep canonical business functions as the only write-rule owners."""
     global _INSTALLED, _ORIGINAL_CHECK_COURSE_SCOPE
@@ -110,4 +137,5 @@ def install() -> None:
 
     _exec.teacher_enter_score = _enter_score_single_session
     _exec.teacher_submit_task = _submit_task_single_session
+    _exec.teacher_change_request = teacher_change_request
     _INSTALLED = True

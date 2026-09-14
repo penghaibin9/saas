@@ -28,8 +28,19 @@ _canonical_resolve_change_assignee = _correction.resolve_change_assignee
 
 def change_request(task_id: int, record_id: int, user, body, *, command_key=None) -> dict:
     """Run the canonical append-only correction request under live teacher authority."""
-    with _execution._canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
-        return _correction.change_request(task_id, record_id, delegated_user, body, command_key=command_key)
+    # Correction validates the frozen teaching class under ``FOR UPDATE``.  Its
+    # live-teacher check must use that exact Session; an outer delegate Session
+    # would hold the same class row and self-block the canonical command.
+    from . import academic_affairs_grade_execution_transaction_guard as _transaction
+
+    _transaction.install()
+    return _transaction.teacher_change_request(
+        task_id,
+        record_id,
+        user,
+        body,
+        command_key=command_key,
+    )
 
 
 change_request._grade_live_teacher_authority = True
@@ -89,9 +100,10 @@ def install() -> None:
 
     ``academic_affairs_grade_execution_service`` originally exposed a convenience
     wrapper of its own. Once the public grade service is rebound here, leaving that
-    older wrapper in place would nest two independent live-owner row-lock sessions.
-    Rebinding the execution convenience name to this same function keeps exactly one
-    TeachingTask lock and one canonical correction command invocation.
+    older wrapper in place would nest independent live-owner row-lock sessions.
+    The shared transaction adapter now owns the single-session bridge, so this
+    function remains the public live-authority entry and delegates the one canonical
+    correction command without reopening a lock-owning Session.
     """
     for module in (_core, _public):
         current = getattr(module, "change_request", None)

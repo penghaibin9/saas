@@ -794,7 +794,7 @@ def change_academic_review(record_id, user, action, reason="", *, identity=None,
         request.decided_at = datetime.utcnow()
         request.current_task_id = None
 
-        emit_receiver_notice(
+        notice = emit_receiver_notice(
             db,
             event_code="GRADE.CORRECTED",
             source_module="academic-affairs",
@@ -805,6 +805,7 @@ def change_academic_review(record_id, user, action, reason="", *, identity=None,
             content=f"{task.course_name or ''} 成绩已更正为 {score}",
             receiver_as="student",
         )
+        notice_id = int(notice.id) if notice is not None else None
         _core._audit(
             db, "AA_GRADE_RECORD", record.id, "CHANGE_APPROVE",
             f"requestId={request.id};{request.before_total_score}→{score};newGradeId={corrected.id}",
@@ -824,7 +825,11 @@ def change_academic_review(record_id, user, action, reason="", *, identity=None,
         db.commit()
 
     from app.services.message_event_outbox_service import try_process_pending_outbox
-    try_process_pending_outbox(worker_id="aa-grade-change-inline")
+    if notice_id is not None:
+        try_process_pending_outbox(
+            worker_id="aa-grade-change-inline",
+            outbox_ids=[notice_id],
+        )
     effect = try_run_effect(effect_job_id, user)
     return receipts.record_grade_change_effect(actor, command_key, result, effect)
 

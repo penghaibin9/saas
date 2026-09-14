@@ -20,20 +20,36 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from app.core.exceptions import AppException
+
 from . import academic_affairs_effective_grade_policy_service as effective_policy
 from . import academic_affairs_warning_service as warning
 
 
-def _fail_counts(db) -> dict[int, int]:
+def _fail_counts(db, *, academic_student_ids: set[int] | None = None) -> dict[int, int]:
+    """Return effective failing-course counts for the requested students.
+
+    A normal publication can change many people and still needs the tenant-wide
+    stream.  A correction changes exactly one student's grade, so its durable
+    effect must not reread every active grade in the school before returning the
+    final-approval receipt.
+    """
     from app.models import AcademicGrade
+
+    conditions = [
+        AcademicGrade.tenant_id == warning._tid(),
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    ]
+    if academic_student_ids is not None:
+        scoped_ids = sorted({int(value) for value in academic_student_ids if int(value) > 0})
+        if not scoped_ids:
+            return {}
+        conditions.append(AcademicGrade.acad_student_id.in_(scoped_ids))
 
     statement = (
         select(AcademicGrade)
-        .where(
-            AcademicGrade.tenant_id == warning._tid(),
-            AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False),
-        )
+        .where(*conditions)
         .order_by(AcademicGrade.acad_student_id.asc(), AcademicGrade.id.asc())
         .execution_options(yield_per=500)
     )
@@ -66,6 +82,34 @@ def _fail_counts(db) -> dict[int, int]:
     return counts
 
 
+def _effect_scope_students(db, job) -> set[int] | None:
+    """Limit correction effects to the only student whose effective grade changed."""
+    if job is None or str(job.source_kind or "").upper() != "CORRECTION":
+        return None
+
+    from app.models import AcademicStudent
+    from app.models.academic_affairs_effective_grade import AaGradeChangeRequest
+
+    request = db.scalar(select(AaGradeChangeRequest).where(
+        AaGradeChangeRequest.id == int(job.source_id or 0),
+        AaGradeChangeRequest.tenant_id == warning._tid(),
+        AaGradeChangeRequest.is_deleted.is_(False),
+    ))
+    student_id = int(getattr(request, "student_id", 0) or 0)
+    academic_student_id = db.scalar(select(AcademicStudent.id).where(
+        AcademicStudent.tenant_id == warning._tid(),
+        AcademicStudent.student_id == student_id,
+        AcademicStudent.is_deleted.is_(False),
+    ))
+    if int(academic_student_id or 0) <= 0:
+        raise AppException(
+            "DATA_CONFLICT",
+            "成绩更正后置预警缺少来源学生，无法安全执行局部扫描",
+            http_status=409,
+        )
+    return {int(academic_student_id)}
+
+
 def _scan_warnings(user, effect_job=None) -> dict:
     """Mature EXAM_FAIL rule over canonical EffectiveGrade, without tenant-wide materialization."""
     threshold = warning._fail_threshold()
@@ -75,7 +119,8 @@ def _scan_warnings(user, effect_job=None) -> dict:
         if effect_job is not None:
             from .academic_grade_effect_service import lock_effect_for_scan
             job = lock_effect_for_scan(db, *effect_job)
-        counts = _fail_counts(db)
+        scope_students = _effect_scope_students(db, job)
+        counts = _fail_counts(db, academic_student_ids=scope_students)
         created = updated = 0
         rule_code = f"EXAM_FAIL_GE_{threshold}"
         for academic_student_id, fail_count in counts.items():
@@ -107,6 +152,7 @@ def _scan_warnings(user, effect_job=None) -> dict:
             "notified": None,
             "notificationState": "NOT_VERIFIED",
             "sourcePolicy": "LATEST_FORMAL_SOURCE_V1",
+            "scanScope": "CORRECTION_STUDENT" if scope_students is not None else "TENANT",
         }
         if job is not None:
             from .academic_grade_effect_service import finish_effect_in_scan

@@ -362,6 +362,43 @@ def test_final_approval_appends_new_version_and_supersedes_original(dynamic):
     assert receipt["state"] == "SUCCESS"
     assert receipt["result"]["correctedGradeId"] == result["correctedGradeId"]
 
+
+@pytest.mark.usefixtures("db_mode")
+def test_correction_effect_scans_only_the_changed_student_and_drains_its_notice(monkeypatch):
+    """终审不能因全校预警积压而重扫全校成绩或抢处理别人的通知。"""
+    from app.modules.academic_affairs.services import (
+        academic_affairs_warning_effective_grade_guard as warning_guard,
+    )
+    from app.services import message_event_outbox_service as outbox
+
+    ids = _seed_published_grade()
+    _apply(ids, new_final=90)
+    _college(ids)
+
+    scopes = []
+    original_fail_counts = warning_guard._fail_counts
+
+    def observe_fail_counts(db, *, academic_student_ids=None):
+        scopes.append(academic_student_ids)
+        return original_fail_counts(db, academic_student_ids=academic_student_ids)
+
+    drained = []
+    monkeypatch.setattr(warning_guard, "_fail_counts", observe_fail_counts)
+    monkeypatch.setattr(
+        outbox,
+        "try_process_pending_outbox",
+        lambda **kwargs: drained.append(kwargs),
+    )
+
+    result = _final(ids, command_key="correction-targeted-effect")
+
+    assert scopes == [{ids["acadStudentId"]}]
+    assert result["warningScanResult"]["scanScope"] == "CORRECTION_STUDENT"
+    assert len(drained) == 1
+    assert drained[0]["worker_id"] == "aa-grade-change-inline"
+    assert len(drained[0]["outbox_ids"]) == 1
+    assert int(drained[0]["outbox_ids"][0]) > 0
+
 @pytest.mark.usefixtures("db_mode")
 def test_consecutive_corrections_form_a_to_b_to_c_chain():
     """连续两次更正必须形成 A→B→C 完整链，只有最后一条是 ACTIVE。"""

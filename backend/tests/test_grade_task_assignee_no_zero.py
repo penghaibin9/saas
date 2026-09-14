@@ -61,10 +61,13 @@ def test_no_live_workflow_task_is_created_with_zero_assignee():
 
 
 def test_grade_correction_command_takes_over_all_entries():
-    """更正命令仍是唯一事实 owner；教师申请额外经过 C-W4 live authority。"""
+    """更正命令仍是唯一事实 owner；教师申请经过同事务的 live authority。"""
     from app.modules.academic_affairs.services import (
         academic_affairs_grade_core_service as core,
         academic_affairs_grade_service as public,
+    )
+    from app.modules.academic_affairs.services import (
+        academic_affairs_grade_execution_transaction_guard as transaction_guard,
     )
 
     command_owner = "academic_affairs_grade_correction_command"
@@ -74,8 +77,13 @@ def test_grade_correction_command_takes_over_all_entries():
         assert request_entry.__module__.endswith(live_owner), (
             f"{module.__name__}.change_request 未经过 live teacher authority")
         assert getattr(request_entry, "_grade_live_teacher_authority", False) is True
-        assert "_correction.change_request" in inspect.getsource(request_entry), (
-            "live authority 必须委托 canonical correction command，不能另写第二套更正事务")
+        live_source = inspect.getsource(request_entry)
+        assert "_transaction.teacher_change_request" in live_source, (
+            "live authority 必须进入同事务桥接，不能重开外层教师锁")
+        assert "_canonical_delegate" not in live_source
+        assert "return _correction.change_request" in inspect.getsource(
+            transaction_guard.teacher_change_request
+        ), "同事务桥接必须委托 canonical correction command，不能另写第二套更正事务"
 
         for name in ("change_college_review", "change_academic_review"):
             assert getattr(module, name).__module__.endswith(command_owner), (
