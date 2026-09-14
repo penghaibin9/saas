@@ -27,11 +27,12 @@ def seed_academic_operational_coverage(db,tenant_id:int)->dict:
  _put(db,AaClassTimeBand,tenant_id,{"slot_id":slot.id,"campus_code":"MAIN"},{"band_name":"秋季标准作息","effective_start":term.start_date,"effective_end":term.end_date,"start_time":slot.start_time,"end_time":slot.end_time,"status":"ENABLED"})
  _put(db,AaCourseMaterial,tenant_id,{"course_id":course.id,"material_type":"SYLLABUS","title":f"{MARKER}-课程教学大纲"},{"file_id":str(file.id),"file_name":file.file_name,"remark":"与当前培养方案和教学任务对应的课程大纲材料。","uploader":teacher.real_name,"status":"ACTIVE"})
  _put(db,AaRegistrationDeferral,tenant_id,{"batch_id":batch.id,"student_id":student.id},{"reason":"家庭突发事务影响报到材料递交，申请延后补交。","requested_until":REFERENCE_NOW+timedelta(days=3),"status":"APPROVED","review_note":"不影响学籍注册，补交材料后完成核验。","reviewed_at":REFERENCE_NOW-timedelta(days=1),"reviewed_by":admin.id})
- _put(db,AaScheduleRule,tenant_id,{"term_id":term.id,"batch_id":None,"rule_key":"maxDailySlots"},{"rule_value_json":"{\"value\":6}","remark":"当前学期教师与学生单日排课上限。","status":"ENABLED"})
+ for rule_key in ("AUTO_CLASS_MAX_PER_DAY","AUTO_TEACHER_MAX_PER_DAY"):
+  _put(db,AaScheduleRule,tenant_id,{"term_id":term.id,"batch_id":None,"rule_key":rule_key},{"rule_value_json":"6","remark":"当前学期教师与学生单日排课上限。","status":"ENABLED"})
  _put(db,AaTeacherAvailability,tenant_id,{"teacher_key":str(teacher.id),"term_id":term.id,"weekday":5,"slot_no":slot.slot_no},{"teacher_name":teacher.real_name,"reason":"企业巡访与学生实习指导固定时段。","review_reason":"与实习导师职责冲突，学院已采纳。","status":"ADOPTED"})
  db.commit();return validate_academic_operational_coverage(db,tenant_id)
 def validate_academic_operational_coverage(db,tenant_id):
  from app.models.academic_affairs import AaCourseMaterial,AaScheduleRule
- r={"material":bool(_one(db,AaCourseMaterial,tenant_id,title=f"{MARKER}-课程教学大纲")),"scheduleRule":bool(_one(db,AaScheduleRule,tenant_id,rule_key="maxDailySlots"))};r["passed"]=all(r.values())
+ r={"material":bool(_one(db,AaCourseMaterial,tenant_id,title=f"{MARKER}-课程教学大纲")),"scheduleRule":all(bool(_one(db,AaScheduleRule,tenant_id,rule_key=key)) for key in ("AUTO_CLASS_MAX_PER_DAY","AUTO_TEACHER_MAX_PER_DAY"))};r["passed"]=all(r.values())
  if not r["passed"]:raise RuntimeError(f"academic coverage invalid: {r}")
  return r

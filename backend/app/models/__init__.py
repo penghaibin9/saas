@@ -253,3 +253,5 @@ from app.modules.platform.document_lifecycle.models import (  # noqa: F401
     FileDerivedArtifact,
     StudentLifecycleFact,
 )
+
+from app.models import academic_affairs_optimizer as _academic_affairs_optimizer  # noqa: F401

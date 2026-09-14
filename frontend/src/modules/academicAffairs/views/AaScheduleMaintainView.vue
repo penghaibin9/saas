@@ -83,11 +83,11 @@
       </section>
 
       <LoadingState v-if="loading" />
-      <AppSectionCard v-else :title="classId ? ('班级 ' + (className || '已选择班级') + ' 课表') : '请先载入班级课表'">
+      <AppSectionCard v-else :title="classId ? ('班级 ' + (className || '已选择班级') + ' 课表') : preferredTask ? (preferredTask.teachingClassName + ' · ' + preferredTask.courseName) : '请先载入班级课表'">
         <AaScheduleGrid
           :items="items"
           :slots="slots"
-          :editable="!!classId && canEditBatch && !taskLoading && !taskLoadError"
+          :editable="!!(classId || preferredTask) && canEditBatch && !taskLoading && !taskLoadError"
           :conflict="conflictCell"
           @cell-click="onCellClick"
           @item-click="onItemClick"
@@ -398,7 +398,7 @@ export default {
         return
       }
       await this.loadReadyTasks()
-      if (!this.disposed && context === this.contextKey() && this.classId && !this.taskLoadError) await this.loadClass()
+      if (!this.disposed && context === this.contextKey() && (this.classId || this.preferredTask) && !this.taskLoadError) await this.loadClass()
     },
     returnToQueue() {
       return this.academicFlow?.back(this.$route.query.returnToken, '/admin/academic-affairs/scheduling')
@@ -486,8 +486,8 @@ export default {
       this.slots = res.code === 0 && Array.isArray(res.data) ? res.data : []
     },
     async loadClass() {
-      if (!this.classId) { toast.error('请先选择班级'); return }
-      if (this.$route.query.classId !== this.classId) {
+      if (!this.classId && !this.preferredTask?.teacherKey) { toast.error('请先选择班级或从教学任务进入'); return }
+      if (this.classId && this.$route.query.classId !== this.classId) {
         await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, classId: this.classId, taskId: undefined, itemId: undefined, className: undefined } })
         return
       }
@@ -497,12 +497,15 @@ export default {
       if (this.focusItemId) this.focusItemError = ''
       this.loading = true
       try {
-        const res = await academicAffairsApi.getScheduleClassView(this.batchId, this.classId)
+        const taskId = String(this.preferredTaskId || '')
+        const res = this.classId
+          ? await academicAffairsApi.getScheduleClassView(this.batchId, this.classId)
+          : await academicAffairsApi.getScheduleTeacherView(this.batchId, this.preferredTask.teacherKey)
         if (!current()) return
         if (isDeniedResult(res)) return this.clearSensitive(res.message)
         if (res.code !== 0) throw new Error(res.message || '载入失败')
         if (!Array.isArray(res.data?.items)) throw new Error('班级课表未完整返回，请重新读取。')
-        this.items = res.data.items
+        this.items = this.classId ? res.data.items : res.data.items.filter(item => String(item.taskId) === taskId)
         this.className = res.data?.className || ''
         this.locateFocusedItem()
         this.reconcilePendingWrite()

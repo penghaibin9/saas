@@ -8,7 +8,7 @@
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回课表批次</AppButton>
       <AppButton v-if="tab === 'rules' && canManageRules" variant="primary" :disabled="!canWriteRules" @click="openRuleEditor">维护规则版本</AppButton>
-      <AppButton v-else-if="tab === 'auto'" variant="primary" :disabled="!autoBatchId || autoLoading" @click="runAuto(true)">运行试排</AppButton>
+      <AppButton v-else-if="tab === 'auto'" variant="primary" :disabled="!autoBatchId || autoLoading" @click="$refs.optimizerPanel?.load()">检查排课条件</AppButton>
       <AppButton v-else-if="tab === 'conflict'" variant="primary" :disabled="!conflictBatchId" @click="loadConflict">处理当前冲突</AppButton>
       <AppButton v-else-if="tab === 'import'" variant="primary" :disabled="!canImportBatch" @click="importVisible = true">上传并预校验</AppButton>
       <AppButton v-else-if="tab === 'result'" variant="primary" :disabled="!workbench" @click="openPublishedSchedule">查看正式版本</AppButton>
@@ -375,33 +375,8 @@
 
     <!-- 自动排课：本轮不改算法 -->
     <div v-else-if="tab === 'auto'" class="mp-stack">
-      <div class="aasg-bar">
-        <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:260px" @change="syncBatchQuery(autoBatchId)" />
-        <AppButton variant="ghost" size="small" :loading="autoLoading" @click="runAuto(true)">试排预览</AppButton>
-        <AppButton variant="primary" size="small" :loading="autoLoading" @click="doAuto">一键自动排课</AppButton>
-        <AppButton variant="ghost" size="small" @click="doClearAuto">清除自动排课结果</AppButton>
-      </div>
-      <AppInlineAlert type="info" description="自动排课只处理已确认、已设周学时且未标记不排课的教学任务；手工排课不会被覆盖，排不下的任务会返回明确原因。" />
-      <template v-if="autoResult">
-        <div class="aasg-summary">
-          <span class="is-ok">已排入 {{ autoResult.placedSessions }} 节 / {{ autoResult.placedTasks }} 个任务</span>
-          <span :class="{ 'is-bad': autoResult.missedTasks }">漏排 {{ autoResult.missedTasks }} 个任务</span>
-          <span>可用教室 {{ autoResult.roomPoolSize }} 间</span>
-          <span v-if="autoResult.dryRun" class="is-warn">试排结果（未落库）</span>
-        </div>
-        <div v-if="autoMissSummary.length" class="aasg-section">
-          <div class="aasg-section-title">漏排原因分布</div>
-          <div class="aasg-reasons"><span v-for="item in autoMissSummary" :key="item.reason" class="aasg-reason-chip">{{ item.reasonLabel }} × {{ item.count }}</span></div>
-        </div>
-        <DataTable v-if="autoMisses.length" :columns="missColumns" :rows="autoMisses" row-key="taskId">
-          <template #cell-course="{ row }">{{ row.courseName }}<span v-if="row.className" class="aasg-sub">（{{ row.className }}）</span></template>
-          <template #cell-progress="{ row }">{{ row.placedSessions }} / {{ row.needSessions }} 节</template>
-          <template #cell-reason="{ row }"><span class="aasg-tag is-hard">{{ row.reasonLabel }}</span></template>
-          <template #cell-detail="{ row }"><span class="aasg-advice">{{ row.detail }}</span></template>
-        </DataTable>
-        <EmptyState v-else-if="!autoResult.missedTasks" title="全部排课成功" description="所有待排任务均已排入，无漏排" />
-      </template>
-      <EmptyState v-else title="尚未执行自动排课" description="选择课表批次后先试排预览，确认结果再正式落库" />
+      <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:320px" @change="syncBatchQuery(autoBatchId)" />
+      <AaSchedulingOptimizerPanel ref="optimizerPanel" :batch-id="String(autoBatchId || '')" :identity-key="routeContextKey()" :ctx="ctx" />
     </div>
 
     <!-- 冲突报告：本轮保持既有能力 -->
@@ -467,6 +442,7 @@ import AaAuthoritativeImportDrawer from '../components/AaAuthoritativeImportDraw
 import AaResourceOccupancyView from './AaResourceOccupancyView.vue'
 import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
+import AaSchedulingOptimizerPanel from '../components/AaSchedulingOptimizerPanel.vue'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
 const DEFAULT_DAYS = [
@@ -477,7 +453,7 @@ const DEFAULT_DAYS = [
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {

@@ -30,3 +30,5 @@ alibabacloud_dysmsapi20170525>=3.1,<4.0
 # 0.4.5 caps cryptography below 49; 0.4.6 supports the reviewed 50.x security release.
 alibabacloud-tea-openapi>=0.4.6,<0.5
 tencentcloud-sdk-python-sms>=3.0,<4.0
+# Intelligent timetable candidates; exact solver version is part of reproducibility.
+ortools==9.15.6755
