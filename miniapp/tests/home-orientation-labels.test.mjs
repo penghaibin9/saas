@@ -7,8 +7,8 @@ const { orientationStepLabel } = await import('data:text/javascript;base64,' + B
 
 const script = readFileSync(new URL('../src/pages/student/home/index.vue', import.meta.url), 'utf8')
   .match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
-const page = new Function('go', 'toast', 'deadlineText', 'messageModuleLabel', 'orientationStepLabel', script)(
-  () => {}, () => {}, () => '', () => '', orientationStepLabel)
+const page = new Function('go', 'toast', 'deadlineText', 'messageModuleLabel', 'orientationStepLabel', 'HomeQuickServices', script)(
+  () => {}, () => {}, () => '', () => '', orientationStepLabel, {})
 
 test('WeChat home displays Chinese orientation names instead of raw step codes', () => {
   const steps = page.computed.orientationSteps.call({ orientation: { steps: [

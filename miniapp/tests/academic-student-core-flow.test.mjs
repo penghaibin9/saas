@@ -49,10 +49,13 @@ test('student schedule carries the formal task identity into attendance detail',
 })
 
 test('student miniapp keeps schedule and selection reachable before orientation completes', () => {
-  assert.match(studentHome, /查看今天上什么课/)
+  assert.match(studentHome, /查看课表/)
   assert.match(studentHome, /pages\/student\/academic-affairs\/schedule/)
   assert.match(studentHome, /pages\/student\/academic-affairs\/selection/)
-  assert.match(studentHome, /课表与选课始终可查看/)
+  // 新生保留真实入口，但不能文案承诺绕过学校授权或办理条件。
+  assert.match(studentHome, /<HomeQuickServices/)
+  assert.match(fs.readFileSync(path.join(root, 'src/pages/student/home/HomeQuickServices.vue'), 'utf8'), /全部服务/)
+  assert.doesNotMatch(studentHome, /将自动解锁/)
   assert.doesNotMatch(studentHome, /完成报到后，课表、成绩/)
 })
 
