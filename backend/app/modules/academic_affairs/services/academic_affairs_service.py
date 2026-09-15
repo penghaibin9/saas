@@ -1789,16 +1789,42 @@ def require_writable_registration_batch(db, batch_id):
     return batch
 
 
-def register_student(batch_id, user, student_id) -> dict:
-    """学生注册：预检 → 写注册记录 REGISTERED → change_student_status(REGISTERED) 单一入口。"""
+def registration_self_service_window_state(batch, now=None) -> tuple[str, str]:
+    """注册批次的学生自助窗口状态。
+
+    未配置起止时间的旧批次仍可按既有 ``OPEN`` 状态办理；一旦学校配置了窗口，
+    页面提示和最终写命令必须消费同一条规则，不能只靠小程序禁用按钮。
+    """
+    now = now or datetime.utcnow()
+    if batch.window_start and now < batch.window_start:
+        return "NOT_STARTED", "注册窗口尚未开始，请在学校规定时间内办理"
+    if batch.window_end and now > batch.window_end:
+        return "EXPIRED", "注册窗口已结束，请联系辅导员或教务老师处理"
+    return "OPEN", ""
+
+
+def require_registration_self_service_window(batch, now=None) -> None:
+    state, reason = registration_self_service_window_state(batch, now=now)
+    if state != "OPEN":
+        raise AppException("DATA_CONFLICT", reason, http_status=409)
+
+
+def register_student(batch_id, user, student_id, *, self_service: bool = False) -> dict:
+    """完成一名学生的正式注册。
+
+    教务代办沿用原有范围/批次合同；学生本人入口额外在持有同一批次行锁的
+    最终事务里校验时间、资格和开放异常，避免旧页面或网络重试绕过窗口。
+    """
     _n, _r, uid = _op()
     with session() as db:
-        from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+        from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException, StudentProfile
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = require_writable_registration_batch(db, batch_id)
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
         if b.status != "OPEN":
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
+        if self_service:
+            require_registration_self_service_window(b)
         s = db.get(StudentProfile, int(student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
@@ -1807,6 +1833,18 @@ def register_student(batch_id, user, student_id) -> dict:
             AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
         if dup and dup.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已在本批次完成注册")
+        if self_service:
+            if dup and (dup.eligibility_status or "") == "INELIGIBLE":
+                raise AppException("DATA_CONFLICT", "注册资格核验未通过，请联系辅导员或教务处")
+            open_exception = db.scalars(select(AaRegistrationException).where(
+                AaRegistrationException.tenant_id == _tid(),
+                AaRegistrationException.batch_id == b.id,
+                AaRegistrationException.student_id == s.id,
+                AaRegistrationException.status == "OPEN",
+                AaRegistrationException.is_deleted.is_(False),
+            )).first()
+            if open_exception:
+                raise AppException("DATA_CONFLICT", "存在未解除的注册异常，请先联系辅导员处理")
         snap = _precheck(db, student_id)
         change_type = _REG_CHANGE_TYPE.get(b.register_type, "ANNUAL_REGISTER")
         from_status = s.student_status
@@ -2239,7 +2277,8 @@ def apply_registration_deferral(batch_id, user, student_id, reason, requested_un
         dup = db.scalars(select(AaRegistrationDeferral).where(
             AaRegistrationDeferral.tenant_id == _tid(), AaRegistrationDeferral.batch_id == b.id,
             AaRegistrationDeferral.student_id == int(student_id), AaRegistrationDeferral.status == "PENDING",
-            AaRegistrationDeferral.is_deleted.is_(False))).first()
+            AaRegistrationDeferral.is_deleted.is_(False)).with_for_update().execution_options(
+                populate_existing=True)).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该生在本批次已有待审的暂缓申请", http_status=409)
         d = AaRegistrationDeferral(tenant_id=_tid(), batch_id=b.id, student_id=int(student_id), reason=reason,

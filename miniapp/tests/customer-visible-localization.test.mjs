@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const page = (relative) => readFileSync(new URL(`../src/pages/${relative}`, import.meta.url), 'utf8')
+const source = (relative) => readFileSync(new URL(`../src/${relative}`, import.meta.url), 'utf8')
 
 test('教师移动端以中文展示业务状态，同时保留核对编号', () => {
   const integrity = page('teacher/platform-integrity/index.vue')
@@ -58,4 +59,15 @@ test('迎新、教务、实习和就业页面用中文标签并保留业务编�
 
   const evaluation = page('teacher/evaluation/index.vue')
   assert.match(evaluation, /batchStatusLabel\(t\.batchStatus\)/)
+})
+
+test('补考重修页面和错误展示层不向学生透出内部英文状态或原因码', () => {
+  const makeup = page('student/academic-affairs/makeup.vue')
+  const request = source('services/request.js')
+  assert.match(makeup, /retakeStatusLabel\(r\.status\)/)
+  assert.match(makeup, /exemptionStatusLabel\(e\.status, e\.currentNode\)/)
+  assert.match(makeup, /已编入教学班/)
+  assert.match(makeup, /任课教师审核中/)
+  assert.match(makeup, /已退回，待补充材料/)
+  assert.match(request, /INTERNAL_ERROR_CODE_PREFIX/)
 })

@@ -152,12 +152,16 @@ export default {
       retakeCount: 0, partialError: false, failedSources: [], showAll: false,
       taskTargets: {}, taskDetails: {}, priorityState: 'idle', secondaryState: 'idle',
       selectionCanEnroll: false, selectionOpen: false, requestEpoch: 0, hidden: false,
-      registrationBatches: [], scheduleLoaded: false, identity: currentSessionGeneration()
+      registrationBatches: [], registrationTotal: null, registrationNextDeadline: '', registrationNextBatchId: '', scheduleLoaded: false, identity: currentSessionGeneration()
     }
   },
   computed: {
     secondaryTaskCues() { return this.taskCues.filter(task => !['registration', 'warning'].includes(task.key)) },
-    registrationDeadline() { return this.registrationBatches.filter(batch => batch.registrationStatus !== 'REGISTERED').map(batch => String(batch.windowEnd || '')).filter(Boolean).sort()[0]?.replace('T', ' ').slice(0, 16) || '' },
+    registrationDeadline() {
+      const next = String(this.registrationNextDeadline || '')
+      if (next) return next.replace('T', ' ').slice(0, 16)
+      return this.registrationBatches.filter(batch => batch.registrationStatus !== 'REGISTERED').map(batch => String(batch.windowEnd || '')).filter(Boolean).sort()[0]?.replace('T', ' ').slice(0, 16) || ''
+    },
     commonEntries() { return this.entries.filter((x) => COMMON_KEYS.has(x.key)) },
     otherEntries() { return this.entries.filter((x) => !COMMON_KEYS.has(x.key)) },
     taskCues() {
@@ -187,6 +191,10 @@ export default {
     registrationSummary() {
       if (this.priorityState === 'loading' || this.priorityState === 'idle') return '核对中'
       if (this.failedSources.includes('学期注册')) return '暂时无法核对'
+      if (Number.isSafeInteger(this.registrationTotal)) {
+        if (this.registrationTotal === 0) return '暂无注册批次'
+        return this.registrationCount ? `${this.registrationCount} 项待完成` : '当前暂无待办理'
+      }
       if (!this.registrationBatches.length) return '暂无注册批次'
       if (this.registrationBatches.every((batch) => batch.registrationStatus === 'REGISTERED')) return '当前已完成'
       return this.registrationCount ? `${this.registrationCount} 项待完成` : '查看办理状态'
@@ -195,7 +203,7 @@ export default {
       if (this.priorityState === 'loading' || this.priorityState === 'idle') return '核对中'
       if (this.failedSources.includes('网上选课')) return '暂时无法核对'
       if (this.selectionCanEnroll) return '当前可办理'
-      return this.selectionOpen ? '当前无可办课程' : '当前未开放'
+      return this.selectionOpen ? '有开放批次' : '当前未开放'
     }
   },
   onLoad() {
@@ -215,7 +223,7 @@ export default {
     },
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/student/home/index') }) },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
-    statusText(s) { return ST[s] || s || '待确认' },
+    statusText(s) { return ST[s] || '状态待学校核对' },
     badgeOf(key) {
       if (key === 'warning') return this.warningCount || ''
       if (key === 'evaluation') return this.evaluationCount || ''
@@ -243,7 +251,7 @@ export default {
       this.state = 'loading'
       this.status = null; this.todayItems = []; this.scheduleItems = []; this.examItems = []
       this.warningCount = 0; this.registrationCount = 0; this.evaluationCount = 0; this.returnedDeferCount = 0; this.retakeCount = 0
-      this.registrationBatches = []; this.scheduleLoaded = false
+      this.registrationBatches = []; this.registrationTotal = null; this.registrationNextDeadline = ''; this.registrationNextBatchId = ''; this.scheduleLoaded = false
       this.todayDate = ''; this.selectionDeadline = ''
       this.partialError = false
       this.failedSources = []
@@ -286,31 +294,38 @@ export default {
       this.priorityState = 'loading'
       const results = await Promise.allSettled([
         studentApi.getMyExamSchedule(), studentApi.getMyWarnings(),
-        studentApi.getMyRegistration(), studentApi.getSelectionCourses()
+        studentApi.getMyRegistration({ page: 1, pageSize: 20 }), studentApi.getSelectionBatches({ page: 1, pageSize: 20 })
       ])
       if (epoch !== this.requestEpoch || this.hidden || this.identity !== currentSessionGeneration()) return
       const examRows = results[0].status === 'fulfilled' ? rowsOf(results[0].value, ['items', 'list']) : null
       const warningRowsRaw = results[1].status === 'fulfilled' ? rowsOf(results[1].value, ['items']) : null
-      const registrationRowsRaw = results[2].status === 'fulfilled' ? rowsOf(results[2].value, ['batches']) : null
+      const registrationPayload = results[2].status === 'fulfilled' ? results[2].value : null
+      const registrationRowsRaw = results[2].status === 'fulfilled' ? rowsOf(registrationPayload, ['batches']) : null
       const selectionPayload = results[3].status === 'fulfilled' ? results[3].value : null
-      const groups = Array.isArray(selectionPayload) ? selectionPayload : (isObject(selectionPayload) && Array.isArray(selectionPayload.groups) ? selectionPayload.groups : null)
+      const selectionBatches = rowsOf(selectionPayload, ['items'])
       this.examLoaded = Array.isArray(examRows)
       this.examItems = examRows || []
       const warningRows = unfinished(warningRowsRaw || [])
       this.registrationBatches = registrationRowsRaw || []
       const registrationRows = this.registrationBatches.filter((row) => row.registrationStatus !== 'REGISTERED' && (row.canRegister === true || row.canDefer === true))
       this.warningCount = warningRows.length
-      this.registrationCount = registrationRows.length
-      this.applyTask('registration', registrationRows[0])
+      const registrationTotal = Number(registrationPayload?.total)
+      const actionableTotal = Number(registrationPayload?.actionableTotal)
+      this.registrationTotal = Number.isSafeInteger(registrationTotal) && registrationTotal >= 0 ? registrationTotal : null
+      this.registrationCount = Number.isSafeInteger(actionableTotal) && actionableTotal >= 0 ? actionableTotal : registrationRows.length
+      this.registrationNextDeadline = registrationPayload?.nextActionDeadline || ''
+      this.registrationNextBatchId = registrationPayload?.nextActionBatchId || ''
+      this.applyTask('registration', this.registrationNextBatchId ? { batchId: this.registrationNextBatchId } : registrationRows[0])
       this.applyTask('warning', warningRows[0])
-      const validGroups = Array.isArray(groups) && groups.every((group) => isObject(group) && Array.isArray(group.courses))
-      if (validGroups) {
-        const courses = groups.flatMap((group) => group.courses)
-        this.selectionDeadline = courses.map(course => String(course.window?.endAt || '')).filter(Boolean).sort()[0]?.replace('T', ' ').slice(0, 16) || ''
-        this.selectionCanEnroll = courses.some((course) => Array.isArray(course && course.allowedActions) && course.allowedActions.some((action) => String(action).toUpperCase() === 'ENROLL'))
-        this.selectionOpen = this.selectionCanEnroll || groups.some((group) => String(group.batch && group.batch.status || '').toUpperCase() === 'OPEN')
+      const validSelectionBatches = Array.isArray(selectionBatches)
+      if (validSelectionBatches) {
+        this.selectionDeadline = selectionBatches.map(batch => String(batch.selectEndAt || '')).filter(Boolean).sort()[0]?.replace('T', ' ').slice(0, 16) || ''
+        // The home page deliberately reads only a bounded batch catalog.  Actual
+        // eligibility and ENROLL actions are confirmed on the selected course page.
+        this.selectionCanEnroll = false
+        this.selectionOpen = selectionBatches.some((batch) => String(batch && batch.status || '').toUpperCase() === 'OPEN')
       }
-      ;[['考试', examRows], ['学业预警', warningRowsRaw], ['学期注册', registrationRowsRaw], ['网上选课', validGroups ? groups : null]].forEach(([name, rows]) => {
+      ;[['考试', examRows], ['学业预警', warningRowsRaw], ['学期注册', registrationRowsRaw], ['网上选课', validSelectionBatches ? selectionBatches : null]].forEach(([name, rows]) => {
         if (!Array.isArray(rows)) this.addFailedSource(name)
       })
       this.priorityState = 'ready'
@@ -319,7 +334,9 @@ export default {
       if (this.secondaryState === 'loading' || this.secondaryState === 'ready') return
       this.secondaryState = 'loading'
       const results = await Promise.allSettled([
-        studentApi.getMyEvaluationTasks(), studentApi.getMyDeferrals(), studentApi.getMakeupOptions()
+        studentApi.getMyEvaluationTasks({ page: 1, pageSize: 20 }),
+        studentApi.getMyDeferrals({ status: 'RETURNED', page: 1, pageSize: 20 }),
+        studentApi.getMakeupOptions()
       ])
       if (epoch !== this.requestEpoch || this.hidden || this.identity !== currentSessionGeneration()) return
       const evaluationRowsRaw = results[0].status === 'fulfilled' ? rowsOf(results[0].value, ['list', 'items']) : null
@@ -329,9 +346,11 @@ export default {
       const evaluationRows = (evaluationRowsRaw || []).filter((row) => row && row.canSubmit === true && row.submitted !== true)
       const deferRows = (deferRowsRaw || []).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED')
       this.evaluationCount = evaluationRowsRaw ? Number(pendingEvaluationCount(results[0].value)) : 0
-      this.returnedDeferCount = deferRows.length
+      const deferTotal = Number(results[1].status === 'fulfilled' && results[1].value && results[1].value.total)
+      this.returnedDeferCount = deferRowsRaw ? (Number.isSafeInteger(deferTotal) && deferTotal >= 0 ? deferTotal : deferRows.length) : 0
       this.retakeCount = makeup ? makeup.retakeOptions.length : 0
-      this.applyTask('evaluation', evaluationRows[0])
+      const nextPendingTaskId = results[0].status === 'fulfilled' && results[0].value && results[0].value.nextPendingTaskId
+      this.applyTask('evaluation', nextPendingTaskId ? { taskId: String(nextPendingTaskId) } : evaluationRows[0])
       this.applyTask('defer', deferRows[0])
       this.applyTask('makeup', makeup && makeup.retakeOptions[0])
       ;[['学生评教', evaluationRowsRaw], ['缓考申请', deferRowsRaw], ['补考重修资格', makeup && makeup.retakeOptions]].forEach(([name, rows]) => {

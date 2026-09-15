@@ -214,13 +214,14 @@ def login(body: PasswordLoginRequest):
 class WxLoginRequest(BaseModel):
     code: str = Field(..., min_length=1, description="wx.login 返回的临时登录凭证 code")
     bindAnother: bool = Field(False, description="已绑定微信继续绑定另一所学校")
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="当前微信小程序入口")
 
 
 @router.post("/wx-login", summary="微信一键登录（code→openid；已绑定则登录，未绑定返回 needBind+wxToken）")
 def wx_login(body: WxLoginRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_login(body.code, bind_another=body.bindAnother)
+    result = wx_auth_service.wx_login(body.code, bind_another=body.bindAnother, client_type=body.clientType)
     if result.get("needBind"):
         audit.record("微信登录-待绑定", method="POST", path="/api/v1/auth/wx-login",
                      status_code=200, target_type="auth", target_id="-")
@@ -237,13 +238,14 @@ def wx_login(body: WxLoginRequest):
 class WxSelectRequest(BaseModel):
     wxToken: str = Field(..., min_length=10)
     tenantCode: str = Field(..., min_length=1)
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="发起微信登录的原入口")
 
 
 @router.post("/wx-select", summary="微信绑定多所学校时选择本次登录学校")
 def wx_select(body: WxSelectRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_select(body.wxToken, body.tenantCode)
+    result = wx_auth_service.wx_select(body.wxToken, body.tenantCode, client_type=body.clientType)
     audit.record("微信登录-选择学校", method="POST", path="/api/v1/auth/wx-select",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="登录成功")
@@ -259,7 +261,7 @@ class WxBindRequest(BaseModel):
     captchaId: str | None = Field(None, max_length=100)
     captchaCode: str | None = Field(None, min_length=4, max_length=12)
     clientNonce: str | None = Field(None, max_length=128)
-    clientType: str = Field("MP", max_length=40, description="STUDENT_MINI / TEACHER_MINI / MP")
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="STUDENT_MINI / TEACHER_MINI")
 
 
 @router.post("/wx-bind", summary="微信绑定校园账号（首次；绑定后 openid 免密登录）")
@@ -270,7 +272,7 @@ def wx_bind(body: WxBindRequest):
     from app.services import control_plane_auth_service as p0_auth
     result = p0_auth.wx_bind(
         body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
-        binding_approval_token=body.bindingApprovalToken)
+        binding_approval_token=body.bindingApprovalToken, client_type=body.clientType)
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")

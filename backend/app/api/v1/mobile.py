@@ -7,13 +7,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
 
-from app.core.permissions import require_module, require_permission
+from app.core.permissions import enforce_permission, require_module, require_permission
 from app.core.response import success
 from app.modules.academic_affairs.routers.warning_core_router import WarningInterventionBody
 from app.modules.academic_affairs.services import mobile_academic_warning_service as teacher_warning_svc
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_mobile_staff, require_mobile_student
 from app.modules.internship.services import internship_makeup_service as mk
-from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
+# 这里必须走最终公开入口：它在通用 facade 之上覆盖学生评教、毕业进度等
+# 已收口的安全合同。直接导入基础 facade 会让移动端绕过正式教学班名单评教读侧，
+# 造成已开放任务被误显示为“不可提交”。
+from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as aa
 from app.services import affairs_activity_service as activity_svc
 from app.services import dorm_inspection_service as dorm_inspection_svc
 from app.services import mobile_affairs_service as aff
@@ -24,6 +27,11 @@ from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
 router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
+
+
+def _require_mobile_grade_input(user=Depends(require_mobile_staff)):
+    """成绩录入的移动 URL 同时要求教师小程序会话和既有录入权限。"""
+    return enforce_permission(user, "academicAffairs.grade.input")
 
 # 毕设学生端子路由：与 PC 管理端同一模块授权开关，未授权租户即使绕过前端隐藏直调接口也 403。
 # 键用已注册的 "graduation"（见 platform_defaults.FEATURE_KEYS）；旧键 module.graduationDesign.enabled
@@ -46,7 +54,9 @@ internship_mobile = APIRouter(
 )
 internship_teacher_mobile = APIRouter(
     prefix="/teacher/internship", tags=["教师移动端-岗位实习"],
-    dependencies=[Depends(require_module("internship"))],
+    # 这里是教师小程序的完整正式实习面。模块授权之外，还必须校验令牌是
+    # TEACHER_MINI 且主体为学校教职工，不能让 PC/学生/平台令牌误入该端。
+    dependencies=[Depends(require_module("internship")), Depends(require_mobile_staff)],
 )
 
 
@@ -825,15 +835,16 @@ def teacher_academic(user=Depends(get_current_user)):
 @internship_teacher_mobile.get("", summary="教师·实习待批")
 def teacher_internship(
     batch_id: str | None = Query(default=None, alias="batchId"),
+    focus_report_id: str | None = Query(default=None, alias="recordId"),
     weekly_page: int = Query(default=1, ge=1, alias="weeklyPage"),
     exception_page: int = Query(default=1, ge=1, alias="exceptionPage"),
     page_size: int = Query(default=20, ge=1, le=50, alias="pageSize"),
     user=Depends(get_current_user),
 ):
-    # 教师路径拿不到 x-internship-batch-id 隐式上下文（中间件按设计只绑学生端路径），
-    # 批次必须由本接口显式接收；不传时页面照常打开，取不到的来源在 errors 里说明。
+    # 教师路径拿不到 x-internship-batch-id 隐式上下文。普通进入时小程序传已选
+    # 批次；从统一待办进入时仅传 recordId，服务端先校验该周报范围再解析批次。
     return success(tea.internship(
-        user, batch_id=batch_id, weekly_page=weekly_page,
+        user, batch_id=batch_id, focus_report_id=focus_report_id, weekly_page=weekly_page,
         exception_page=exception_page, page_size=page_size,
     ))
 
@@ -859,12 +870,17 @@ def teacher_student_detail(student_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/teacher/my-classes", summary="教师·我的班级（本人担任辅导员/班主任的行政班）")
-def teacher_my_classes(user=Depends(get_current_user)):
-    return success(tea.my_classes(user))
+def teacher_my_classes(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    keyword: str = Query("", max_length=100),
+    user=Depends(require_mobile_staff),
+):
+    return success(tea.my_classes(user, page=page, page_size=page_size, keyword=keyword))
 
 
 @router.get("/teacher/my-students", summary="教师·我的学生（本人负责班级学生名单，可按classId下钻）")
-def teacher_my_students(classId: str = None, user=Depends(get_current_user)):
+def teacher_my_students(classId: str = None, user=Depends(require_mobile_staff)):
     return success(tea.my_students(user, classId))
 
 
@@ -1201,93 +1217,106 @@ def teacher_affairs_class_material_void(material_id: str, body: dict = Body(defa
 
 
 @router.get("/teacher/academic/tasks", summary="教务老师·我的教学任务（按本人 teacherKey 收敛）")
-def teacher_academic_my_tasks(status: str = None, user=Depends(get_current_user)):
-    return success(tea.affairs_academic_my_tasks(user, status))
+def teacher_academic_my_tasks(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    taskId: str | None = None,
+    user=Depends(require_mobile_staff),
+):
+    return success(tea.affairs_academic_my_tasks(user, status, page, pageSize, taskId))
 
 
 @router.post("/teacher/academic/tasks/{task_id}/act", summary="教务老师·确认/退回教学任务（归属校验在服务层完成）")
-def teacher_academic_task_act(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_task_act(task_id: str, body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_task_act(
         user, task_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
 
 
 @router.get("/teacher/academic/schedule/mine", summary="教务老师·我的课表（供选择原课位发起调停课）")
-def teacher_academic_my_schedule(termId: str = None, week: int = None, user=Depends(get_current_user)):
+def teacher_academic_my_schedule(termId: str = None, week: int = None, user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_my_schedule(user, termId, week))
 
 
 @router.post("/teacher/academic/schedule-changes/conflict-check", summary="教务老师·调停课目标课位冲突预检")
-def teacher_academic_schedule_conflict_check(body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_schedule_conflict_check(body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_schedule_conflict_check(user, body))
 
 
 @router.post("/teacher/academic/schedule-changes", summary="教务老师·发起调停课（调课/停课/补课）")
-def teacher_academic_schedule_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_schedule_submit(body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_schedule_submit(user, body), message="已提交")
 
 
 @router.get("/teacher/academic/schedule-changes", summary="教务老师·我的调停课申请列表")
-def teacher_academic_schedule_changes(status: str = None, user=Depends(get_current_user)):
-    return success(tea.affairs_academic_schedule_changes(user, status))
+def teacher_academic_schedule_changes(status: str = None, page: int = Query(1, ge=1),
+                                      pageSize: int = Query(20, ge=1, le=50),
+                                      user=Depends(require_mobile_staff)):
+    return success(tea.affairs_academic_schedule_changes(user, status, page, pageSize))
 
 
 @router.get("/teacher/academic/schedule-changes/pending", summary="学院/教务处·调停课待我审批")
-def teacher_academic_schedule_change_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_academic_schedule_change_pending(user))
+def teacher_academic_schedule_change_pending(page: int = Query(1, ge=1),
+                                             pageSize: int = Query(20, ge=1, le=50),
+                                             changeId: str | None = None,
+                                             user=Depends(require_mobile_staff)):
+    return success(tea.affairs_academic_schedule_change_pending(user, page, pageSize, changeId))
 
 
 @router.post("/teacher/academic/schedule-changes/{change_id}/review", summary="学院/教务处·调停课审批（APPROVE/REJECT）")
 def teacher_academic_schedule_change_review(change_id: str, body: dict = Body(...),
-                                            user=Depends(get_current_user)):
+                                            user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_schedule_change_review(
         user, change_id, str((body or {}).get("action") or "").upper(),
-        (body or {}).get("comment") or (body or {}).get("reason")), message="已处理")
+        (body or {}).get("comment") or (body or {}).get("reason"),
+        (body or {}).get("expectedVersion")), message="已处理")
 
 
 @router.get("/teacher/academic/schedule-changes/{change_id}", summary="教务老师·调停课单详情（移动端补归属校验）")
-def teacher_academic_schedule_change_detail(change_id: str, user=Depends(get_current_user)):
+def teacher_academic_schedule_change_detail(change_id: str, user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_schedule_change_detail(user, change_id))
 
 
 @router.post("/teacher/academic/schedule-changes/{change_id}/cancel", summary="教务老师·撤销调停课申请（终审前）")
-def teacher_academic_schedule_cancel(change_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+def teacher_academic_schedule_cancel(change_id: str, body: dict = Body(default={}), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_schedule_cancel(user, change_id, (body or {}).get("reason")), message="已撤销")
 
 
 @router.get("/teacher/academic/defer/pending", summary="辅导员/任课教师·缓考待我审批（按当前身份节点自动收敛）")
-def teacher_academic_defer_pending(user=Depends(get_current_user)):
+def teacher_academic_defer_pending(user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_defer_pending(user))
 
 
 @router.post("/teacher/academic/defer/{defer_id}/review", summary="辅导员/任课教师·缓考审批（APPROVE/RETURN/REJECT）")
-def teacher_academic_defer_review(defer_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_defer_review(defer_id: str, body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_defer_review(
-        user, defer_id, str(body.get("action") or "").upper(), body.get("reason")), message="已处理")
+        user, defer_id, str(body.get("action") or "").upper(), body.get("reason"),
+        body.get("expectedVersion")), message="已处理")
 
 
 @router.get("/teacher/academic/evaluation/batches", summary="教务老师·评教窗口列表")
-def teacher_academic_evaluation_batches(user=Depends(get_current_user)):
+def teacher_academic_evaluation_batches(user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_evaluation_open_batches(user))
 
 
 @router.get("/teacher/academic/evaluation/tasks", summary="教务老师·我的评价任务（自评/同行/督导）")
-def teacher_academic_evaluation_my_tasks(evaluatorType: str, batchId: str = None, user=Depends(get_current_user)):
+def teacher_academic_evaluation_my_tasks(evaluatorType: str, batchId: str = None, user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_evaluation_my_tasks(user, evaluatorType, batchId))
 
 
 @router.post("/teacher/academic/evaluation/tasks/{task_id}/submit", summary="教务老师·提交评价")
-def teacher_academic_evaluation_submit(task_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_evaluation_submit(task_id: str, body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_evaluation_submit(
         user, task_id, body.get("answers"), body.get("objectiveScore"), body.get("comment")), message="已提交")
 
 
 @router.get("/teacher/academic/evaluation/results", summary="教务老师·我的评价结果（跨批次聚合）")
-def teacher_academic_evaluation_results(user=Depends(get_current_user)):
+def teacher_academic_evaluation_results(user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_evaluation_my_results(user))
 
 
 @router.post("/teacher/academic/evaluation/results/{result_id}/appeal", summary="教务老师·结果申诉（移动端补归属校验）")
-def teacher_academic_evaluation_appeal(result_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_academic_evaluation_appeal(result_id: str, body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(tea.affairs_academic_evaluation_submit_appeal(
         user, result_id, body.get("reason")), message="申诉已提交")
 
@@ -1813,16 +1842,24 @@ def teacher_warning_list(
     pageSize: int = Query(default=50, ge=1, le=100),
     status: str | None = Query(default=None),
     level: str | None = Query(default=None),
+    pendingOnly: bool = Query(default=False),
     user=Depends(get_current_user),
 ):
     return success(teacher_warning_svc.list_warnings(
-        user, page=page, page_size=pageSize, status=status, level=level,
+        user, page=page, page_size=pageSize, status=status, level=level, pending_only=pendingOnly,
     ))
 
 
+@router.get("/teacher/academic/warnings/summary", summary="教师·范围内待处理学业预警汇总")
+def teacher_warning_pending_summary(user=Depends(get_current_user)):
+    return success(teacher_warning_svc.pending_summary(user))
+
+
 @router.get("/teacher/academic/warning/{warning_id}/detail", summary="教师·本人负责预警及跟进记录")
-def teacher_warning_detail(warning_id: int = Path(..., gt=0), user=Depends(get_current_user)):
-    return success(teacher_warning_svc.detail(user, warning_id))
+def teacher_warning_detail(warning_id: int = Path(..., gt=0), user=Depends(get_current_user),
+                           interventionPage: int = Query(1, ge=1), interventionPageSize: int = Query(20, ge=1, le=100)):
+    return success(teacher_warning_svc.detail(user, warning_id,
+                                            intervention_page=interventionPage, intervention_page_size=interventionPageSize))
 
 
 @router.post("/teacher/academic/warning/{warning_id}/interventions", summary="教师·本人负责预警追加跟进")
@@ -1830,16 +1867,24 @@ def teacher_warning_intervention(
     body: WarningInterventionBody,
     warning_id: int = Path(..., gt=0),
     user=Depends(get_current_user),
+    command_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
-    return success(teacher_warning_svc.add_intervention(user, warning_id, body), message="已记录")
+    return success(teacher_warning_svc.add_intervention(user, warning_id, body, command_key), message="已记录")
+
+
+@router.get("/teacher/academic/warnings/commands/{command_key}", summary="教师·核对本人预警跟进操作结果")
+def teacher_warning_command_receipt(command_key: str, user=Depends(require_mobile_staff)):
+    from app.modules.academic_affairs.services import academic_affairs_grade_command_receipt as receipts
+    return success(receipts.read(user, "WARNING_FOLLOW_UP", command_key))
 
 
 @router.post("/teacher/academic/warning/{warning_id}/handle",
              summary="教师·学业预警处理（CLOSE/ESCALATE，范围校验+审计）")
 def teacher_warning_handle(warning_id: str, body: dict = Body(...),
                            user=Depends(get_current_user)):
-    return success(tea.warning_handle(user, warning_id, str(body.get("action") or "").upper(),
-                                      body.get("note") or ""), message="处理完成")
+    return success(teacher_warning_svc.handle(
+        user, warning_id, str(body.get("action") or "").upper(), body.get("note") or "",
+    ), message="处理完成")
 
 
 @router.post("/teacher/employment/followup", summary="教师·新增就业跟进（范围校验+审计）")
@@ -1901,8 +1946,12 @@ def affairs_overview(user=Depends(get_current_user)):
 
 
 @router.get("/affairs/leave/my", summary="学工·我的请假")
-def affairs_leave_my(user=Depends(get_current_user)):
-    return success(aff.leave_my(user))
+def affairs_leave_my(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(get_current_user),
+):
+    return success(aff.leave_my(user, page=page, page_size=pageSize))
 
 
 @router.post("/affairs/leave/{leave_id}/resubmit", summary="学工·退回后本人重新提交请假")
@@ -2277,121 +2326,192 @@ def teacher_affairs(
 
 # ── 13B 教务中心·学生自视图（P7 多端收口，本人只读 + 异动申请）──
 @router.get("/academic/schedule/my", summary="教务·我的课表（最新已发布，按行政班推导）")
-def academic_schedule_my(user=Depends(get_current_user)):
-    return success(aa.schedule_my(user))
+def academic_schedule_my(
+    week: int | None = Query(None, ge=1, le=99),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.schedule_my(user, week=week))
 
 
 @router.get("/academic/transcript/my", summary="教务·我的成绩单")
-def academic_transcript_my(user=Depends(get_current_user)):
-    return success(aa.transcript_my(user))
+def academic_transcript_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    term: str | None = Query(None, max_length=64),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.transcript_my(user, page=page, page_size=page_size, term=term))
 
 
 @router.post("/academic/transcript/print", summary="教务·成绩单打印留痕（本人）")
-def academic_transcript_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+def academic_transcript_print(body: dict = Body(default={}), user=Depends(require_mobile_student)):
     return success(aa.transcript_print_my(user, body or {}))
 
 
 @router.post("/academic/schedule/print", summary="教务·课表打印留痕（本人）")
-def academic_schedule_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+def academic_schedule_print(body: dict = Body(default={}), user=Depends(require_mobile_student)):
     return success(aa.schedule_print_my(user, body or {}))
 
 
 @router.get("/academic/status/my", summary="教务·我的学籍与异动")
-def academic_status_my(user=Depends(get_current_user)):
-    return success(aa.status_my(user))
+def academic_status_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.status_my(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/transfer-options", summary="教务·异动可选目标专业/同专业班级")
-def academic_transfer_options(user=Depends(get_current_user)):
-    return success(aa.transfer_options_my(user))
+def academic_transfer_options(
+    target: str = Query("major", min_length=5, max_length=5),
+    major_id: int | None = Query(None, alias="majorId", gt=0),
+    keyword: str = Query("", max_length=60),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.transfer_options_page_my(
+        user,
+        target=target,
+        major_id=major_id,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+    ))
 
 
 @router.post("/academic/status-change", summary="教务·学生本人发起学籍异动申请（唯一学生写入口）")
-def academic_status_change(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_status_change(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.submit_status_change_my(user, body), message="异动已提交")
 
 
 @router.get("/academic/graduation/my", summary="教务·我的毕业进度（十一项供数维度）")
-def academic_graduation_my(user=Depends(get_current_user)):
+def academic_graduation_my(user=Depends(require_mobile_student)):
     return success(aa.graduation_progress_my(user))
 
 
 @router.get("/academic/exam/my", summary="教务·我的考试安排（已发布座位/准考证）")
-def academic_exam_my(user=Depends(get_current_user)):
-    return success(aa.exam_my(user))
+def academic_exam_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.exam_my(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/exam/defer-options", summary="教务·缓考申请·本人可选课程（已排考未开考）")
-def academic_exam_defer_options(user=Depends(get_current_user)):
+def academic_exam_defer_options(user=Depends(require_mobile_student)):
     return success(aa.exam_defer_options_my(user))
 
 
 @router.get("/academic/exam/defer/my", summary="教务·缓考申请·本人申请列表")
-def academic_exam_defer_my(status: str = None, user=Depends(get_current_user)):
-    return success(aa.exam_defer_my(user, status))
+def academic_exam_defer_my(
+    status: str = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    defer_id: int | None = Query(None, alias="deferId", gt=0),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.exam_defer_my(user, status, page=page, page_size=page_size, defer_id=defer_id))
 
 
 @router.post("/academic/exam/defer/apply", summary="教务·缓考申请·本人提交（唯一学生写入口）")
-def academic_exam_defer_apply(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_exam_defer_apply(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.exam_defer_apply_my(user, body), message="缓考申请已提交")
 
 
 @router.post("/academic/exam/defer/{defer_id}/resubmit", summary="教务·缓考申请·退回后补材料重提")
-def academic_exam_defer_resubmit(defer_id: int, user=Depends(get_current_user)):
-    return success(aa.exam_defer_resubmit_my(user, defer_id), message="已重提")
+def academic_exam_defer_resubmit(defer_id: int, body: dict = Body(default={}), user=Depends(require_mobile_student)):
+    return success(aa.exam_defer_resubmit_my(user, defer_id, body or {}), message="已重提")
 
 
 @router.get("/academic/teacher-schedule/my", summary="教务·教师我的课表")
-def academic_teacher_schedule_my(user=Depends(get_current_user)):
-    return success(aa.teacher_schedule_my(user))
+def academic_teacher_schedule_my(
+    week: int | None = Query(None, ge=1, le=99),
+    user=Depends(require_mobile_staff),
+):
+    return success(aa.teacher_schedule_my(user, week=week))
 
 
 @router.get("/academic/credits/my", summary="教务·我的学分修读（真实汇总，无分类占比）")
-def academic_credits_my(user=Depends(get_current_user)):
-    return success(aa.credits_my(user))
+def academic_credits_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.credits_my(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/warning/my", summary="教务·我的学业预警")
-def academic_warning_my(user=Depends(get_current_user), page: int = Query(1, ge=1),
+def academic_warning_my(user=Depends(require_mobile_student), page: int = Query(1, ge=1),
                         page_size: int = Query(50, alias="pageSize", ge=1, le=100)):
     return success(aa.warning_my(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/makeup/my", summary="教务·我的补考重修（重修+免修申请）")
-def academic_makeup_my(user=Depends(get_current_user)):
-    return success(aa.makeup_my(user))
+def academic_makeup_my(
+    retake_page: int = Query(1, alias="retakePage", ge=1),
+    retake_page_size: int = Query(20, alias="retakePageSize", ge=1, le=50),
+    exemption_page: int = Query(1, alias="exemptionPage", ge=1),
+    exemption_page_size: int = Query(20, alias="exemptionPageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.makeup_my(
+        user,
+        retake_page=retake_page,
+        retake_page_size=retake_page_size,
+        exemption_page=exemption_page,
+        exemption_page_size=exemption_page_size,
+    ))
 
 
 @router.post("/academic/makeup/retake-apply", summary="教务·本人发起重修报名")
-def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_makeup_retake_apply(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.retake_apply_my(user, body), message="重修报名已提交")
 
 
 @router.post("/academic/makeup/exemption-apply", summary="教务·本人发起免修申请")
-def academic_makeup_exemption_apply(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_makeup_exemption_apply(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.exemption_apply_my(user, body), message="免修申请已提交")
 
 
+@router.post("/academic/makeup/exemption/{exemption_id}/resubmit", summary="教务·本人修改退回的免修申请并重新提交")
+def academic_makeup_exemption_resubmit(
+    exemption_id: int,
+    body: dict = Body(default={}),
+    user=Depends(require_mobile_student),
+):
+    return success(
+        aa.exemption_resubmit_my(user, exemption_id, body or {}),
+        message="免修申请已重新提交",
+    )
+
+
 @router.get("/academic/makeup/options", summary="教务·重修/免修可选挂科与未及格课程")
-def academic_makeup_options(user=Depends(get_current_user)):
-    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
-    return success(gaps.makeup_options_my(user))
+def academic_makeup_options(user=Depends(require_mobile_student)):
+    return success(aa.makeup_options_my(user))
 
 
 @router.get("/academic/registration/my", summary="教务·我的注册批次与自助状态")
-def academic_registration_my(user=Depends(get_current_user)):
+def academic_registration_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    batch_id: int | None = Query(None, alias="batchId", gt=0),
+    user=Depends(require_mobile_student),
+):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
-    return success(gaps.registration_my(user))
+    return success(gaps.registration_my(user, page=page, page_size=page_size, batch_id=batch_id))
 
 
 @router.post("/academic/registration/{batch_id}/register", summary="教务·本人完成注册")
-def academic_registration_self(batch_id: str, user=Depends(get_current_user)):
+def academic_registration_self(batch_id: str, user=Depends(require_mobile_student)):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.registration_self_register(user, batch_id), message="注册成功")
 
 
 @router.post("/academic/registration/{batch_id}/defer", summary="教务·本人申请暂缓注册")
-def academic_registration_defer(batch_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+def academic_registration_defer(batch_id: str, body: dict = Body(default={}), user=Depends(require_mobile_student)):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.registration_defer_apply_my(
         user, batch_id, (body or {}).get("reason"), (body or {}).get("requestedUntil")),
@@ -2399,196 +2519,327 @@ def academic_registration_defer(batch_id: str, body: dict = Body(default={}), us
 
 
 @router.get("/academic/attendance/my", summary="教务·我的课堂考勤（只读）")
-def academic_attendance_my(user=Depends(get_current_user)):
+def academic_attendance_my(
+    course: str = Query("", max_length=100),
+    teaching_task_id: int | None = Query(None, alias="teachingTaskId", gt=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    user=Depends(require_mobile_student),
+):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
-    return success(gaps.attendance_my(user))
+    return success(gaps.attendance_my(
+        user, page=page, page_size=page_size, course=course,
+        teaching_task_id=teaching_task_id,
+    ))
 
 
 @router.get("/academic/calendar/my", summary="教务·当前学期校历（只读）")
-def academic_calendar_my(user=Depends(get_current_user)):
+def academic_calendar_my(user=Depends(require_mobile_student)):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.calendar_my(user))
 
 
 @router.get("/academic/clearance/my", summary="教务·我的清考结果（只读）")
-def academic_clearance_my(user=Depends(get_current_user)):
+def academic_clearance_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
-    return success(gaps.clearance_my(user))
+    return success(gaps.clearance_my(user, page=page, page_size=page_size))
 
 
 @router.post("/academic/exam/ticket/print", summary="教务·准考证打印留痕（本人）")
-def academic_exam_ticket_print(body: dict = Body(default={}), user=Depends(get_current_user)):
+def academic_exam_ticket_print(body: dict = Body(default={}), user=Depends(require_mobile_student)):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.exam_ticket_print_my(user, body or {}))
 
 
 @router.post("/academic/status-change/print", summary="教务·学籍异动申请表打印留痕（本人）")
-def academic_status_change_print_mobile(body: dict = Body(default={}), user=Depends(get_current_user)):
+def academic_status_change_print_mobile(body: dict = Body(default={}), user=Depends(require_mobile_student)):
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.status_change_print_my(user, body or {}))
 
 
 @router.get("/academic/selection/courses", summary="教务·网上选课·可选课程（OPEN 批次+实时余量）")
-def academic_selection_courses(batch_id: str = None, user=Depends(get_current_user)):
+def academic_selection_courses(batch_id: str = None, user=Depends(require_mobile_student)):
     return success(aa.selection_courses_my(user, batch_id))
 
 
+@router.get("/academic/selection/batches", summary="教务·网上选课·本人可见批次（分页）")
+def academic_selection_batches(
+    page: int = Query(1, ge=1), page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.selection_batches_page_my(user, page=page, page_size=page_size))
+
+
+@router.get("/academic/selection/courses-page", summary="教务·网上选课·当前批次课程（服务端搜索分页）")
+def academic_selection_courses_page(
+    batch_id: str = Query(..., alias="batchId"), keyword: str = Query("", max_length=60),
+    page: int = Query(1, ge=1), page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.selection_courses_page_my(
+        user, batch_id, keyword=keyword, page=page, page_size=page_size,
+    ))
+
+
 @router.post("/academic/selection/preflight", summary="教务·网上选课·本人纯读预检")
-def academic_selection_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_selection_preflight(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.selection_preflight_my(user, body))
 
 
 @router.post("/academic/selection/drop-preflight", summary="教务·网上选课·本人退课纯读预检")
-def academic_selection_drop_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_selection_drop_preflight(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.selection_drop_preflight_my(user, body))
 
 
 @router.post("/academic/selection/enroll", summary="教务·网上选课·本人选课")
-def academic_selection_enroll(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_selection_enroll(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.selection_enroll_my(user, body), message="选课成功")
 
 
 @router.post("/academic/selection/drop", summary="教务·网上选课·本人退课")
-def academic_selection_drop(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_selection_drop(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.selection_drop_my(user, body), message="已退课")
 
 
 @router.get("/academic/selection/my", summary="教务·网上选课·本人选课记录")
-def academic_selection_my(batch_id: str = None, user=Depends(get_current_user)):
+def academic_selection_my(batch_id: str = None, user=Depends(require_mobile_student)):
     return success(aa.selection_records_my(user, batch_id))
+
+
+@router.get("/academic/selection/my-page", summary="教务·网上选课·本人记录（分页/精确回读）")
+def academic_selection_my_page(
+    batch_id: str = Query(..., alias="batchId"), selection_course_id: str | None = Query(None, alias="selectionCourseId"),
+    page: int = Query(1, ge=1), page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.selection_records_page_my(
+        user, batch_id, page=page, page_size=page_size,
+        selection_course_id=selection_course_id,
+    ))
 
 
 # ── 成绩认定/课程替代（学生自助） ──
 @router.get("/academic/recognition/my", summary="教务·我的成绩认定/课程替代申请")
-def academic_recognition_my(user=Depends(get_current_user)):
-    return success(aa.recognition_my(user))
+def academic_recognition_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.recognition_my(user, page=page, page_size=page_size))
 
 
 @router.post("/academic/recognition/submit", summary="教务·本人提交成绩认定申请")
-def academic_recognition_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_recognition_submit(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.recognition_submit_my(user, body), message="认定申请已提交")
 
 
 @router.get("/academic/grade-recheck/my", summary="教务·我的成绩复查申请")
-def academic_recheck_my(user=Depends(get_current_user)):
-    return success(aa.grade_recheck_my(user))
+def academic_recheck_my(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=100),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.grade_recheck_my(user, page=page, page_size=page_size))
+
+
+@router.get("/academic/grade-recheck/eligible/{grade_id}", summary="教务·本人可复查成绩深链")
+def academic_recheck_eligible(grade_id: int = Path(..., gt=0), user=Depends(require_mobile_student)):
+    return success(aa.grade_recheck_eligible_my(user, grade_id))
 
 
 @router.post("/academic/grade-recheck/submit", summary="教务·本人对已发布成绩发起复查")
-def academic_recheck_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_recheck_submit(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.grade_recheck_submit_my(user, body), message="复查申请已提交")
 
 
 @router.get("/academic/textbook/my", summary="教务·我的教材领用与费用")
-def academic_textbook_my(user=Depends(get_current_user)):
-    return success(aa.textbook_my(user))
+def academic_textbook_my(
+    distribution_page: int = Query(1, alias="distributionPage", ge=1),
+    distribution_page_size: int = Query(20, alias="distributionPageSize", ge=1, le=100),
+    distribution_record_id: str | None = Query(None, alias="distributionRecordId", max_length=32),
+    fee_page: int = Query(1, alias="feePage", ge=1),
+    fee_page_size: int = Query(20, alias="feePageSize", ge=1, le=100),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.textbook_my(
+        user,
+        distribution_page=distribution_page,
+        distribution_page_size=distribution_page_size,
+        distribution_record_id=distribution_record_id,
+        fee_page=fee_page,
+        fee_page_size=fee_page_size,
+    ))
 
 
 @router.post("/academic/textbook/{record_id}/sign", summary="教务·学生签收本人教材")
-def academic_textbook_sign(record_id: str, user=Depends(get_current_user)):
+def academic_textbook_sign(record_id: str, user=Depends(require_mobile_student)):
     return success(aa.textbook_sign_my(user, record_id), message="签收成功")
 
 
 # ── 等级考务报名（学生自助） ──
 @router.get("/academic/level-exam/my", summary="教务·考级·开放考试+我的报名")
-def academic_level_exam_my(user=Depends(get_current_user)):
-    return success(aa.level_exam_my(user))
+def academic_level_exam_my(
+    open_page: int = Query(1, alias="openPage", ge=1),
+    open_page_size: int = Query(20, alias="openPageSize", ge=1, le=50),
+    registration_page: int = Query(1, alias="registrationPage", ge=1),
+    registration_page_size: int = Query(20, alias="registrationPageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.level_exam_my(
+        user,
+        open_page=open_page,
+        open_page_size=open_page_size,
+        registration_page=registration_page,
+        registration_page_size=registration_page_size,
+    ))
 
 
 @router.post("/academic/level-exam/{examId}/register", summary="教务·考级·本人报名")
-def academic_level_register(examId: int = Path(...), user=Depends(get_current_user)):
+def academic_level_register(examId: int = Path(...), user=Depends(require_mobile_student)):
     return success(aa.level_register_my(user, examId), message="报名成功")
 
 
 @router.post("/academic/level-exam/{examId}/cancel", summary="教务·考级·取消报名")
-def academic_level_cancel(examId: int = Path(...), user=Depends(get_current_user)):
+def academic_level_cancel(examId: int = Path(...), user=Depends(require_mobile_student)):
     return success(aa.level_cancel_my(user, examId), message="已取消报名")
 
 
 # ── 专业分流志愿（学生自助） ──
 @router.get("/academic/major-split/my", summary="教务·分流·开放批次+我的志愿")
-def academic_major_split_my(user=Depends(get_current_user)):
-    return success(aa.major_split_my(user))
+def academic_major_split_my(
+    open_page: int = Query(1, alias="openPage", ge=1),
+    open_page_size: int = Query(20, alias="openPageSize", ge=1, le=50),
+    volunteer_page: int = Query(1, alias="volunteerPage", ge=1),
+    volunteer_page_size: int = Query(20, alias="volunteerPageSize", ge=1, le=50),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.major_split_my(
+        user,
+        open_page=open_page,
+        open_page_size=open_page_size,
+        volunteer_page=volunteer_page,
+        volunteer_page_size=volunteer_page_size,
+    ))
+
+
+@router.get("/academic/major-split/{batch_id}/options", summary="教务·分流·本人可选专业")
+def academic_major_split_options(
+    batch_id: int = Path(..., gt=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    keyword: str | None = Query(None, max_length=40),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.major_split_options_my(
+        user, batch_id, page=page, page_size=page_size, keyword=keyword,
+    ))
 
 
 @router.post("/academic/major-split/submit", summary="教务·分流·提交志愿")
-def academic_major_split_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_major_split_submit(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.major_split_submit_my(user, body), message="志愿已提交")
 
 
 @router.get("/academic/evaluation/tasks", summary="教务·学生评教·开放窗口内本班任务（匿名）")
-def academic_evaluation_tasks(user=Depends(get_current_user)):
-    return success(aa.evaluation_tasks_my(user))
+def academic_evaluation_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    task_id: int | None = Query(None, alias="taskId", gt=0),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.evaluation_tasks_my(user, page=page, page_size=page_size, task_id=task_id))
 
 
 @router.post("/academic/evaluation/submit", summary="教务·学生评教·匿名提交")
-def academic_evaluation_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def academic_evaluation_submit(body: dict = Body(...), user=Depends(require_mobile_student)):
     return success(aa.evaluation_submit_my(user, body), message="已提交")
 
 
 @router.get("/teacher/academic/grade-tasks", summary="教师·我的成绩录入任务")
-def teacher_grade_tasks(status: str = None, user=Depends(require_permission("academicAffairs.grade.input"))):
+def teacher_grade_tasks(status: str = None, user=Depends(_require_mobile_grade_input)):
     return success(aa.teacher_grade_tasks(user, status))
 
 
 @router.get("/teacher/academic/grade-tasks/{task_id}/roster", summary="教师·成绩录入·教学班名单（含已录回显）")
-def teacher_grade_roster(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
+def teacher_grade_roster(task_id: str, user=Depends(_require_mobile_grade_input)):
     return success(aa.teacher_grade_roster(task_id, user))
 
 
 @router.get("/teacher/academic/grade-tasks/{task_id}/records", summary="教师·成绩录入·已录记录")
-def teacher_grade_records(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
+def teacher_grade_records(task_id: str, user=Depends(_require_mobile_grade_input)):
     return success(aa.teacher_grade_records(task_id, user))
 
 
 @router.post("/teacher/academic/grade-tasks/{task_id}/enter-score", summary="教师·成绩录入·录入单生分数")
 def teacher_grade_enter_score(task_id: str, body: dict = Body(...),
-                              user=Depends(require_permission("academicAffairs.grade.input"))):
+                              user=Depends(_require_mobile_grade_input)):
     return success(aa.teacher_grade_enter_score(task_id, user, body))
 
 
 @router.post("/teacher/academic/grade-tasks/{task_id}/submit", summary="教师·成绩录入·提交学院审核")
-def teacher_grade_submit_task(task_id: str, user=Depends(require_permission("academicAffairs.grade.input"))):
+def teacher_grade_submit_task(task_id: str, user=Depends(_require_mobile_grade_input)):
     return success(aa.teacher_grade_submit_task(task_id, user), message="已提交学院审核")
 
 
 @router.get("/teacher/academic/attendance/class-options", summary="教师·课堂考勤·可选行政班")
-def teacher_attendance_class_options(user=Depends(get_current_user)):
+def teacher_attendance_class_options(user=Depends(require_mobile_staff)):
     return success(aa.teacher_attendance_class_options(user))
 
 
 @router.get("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·我的场次列表")
-def teacher_attendance_sessions(user=Depends(get_current_user)):
-    return success(aa.teacher_attendance_sessions(user))
+def teacher_attendance_sessions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_staff),
+):
+    return success(aa.teacher_attendance_sessions(user, page=page, page_size=page_size))
 
 
 @router.post("/teacher/academic/attendance/sessions", summary="教师·课堂考勤·新建场次（按行政班圈定名单）")
-def teacher_attendance_create(body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_attendance_create(body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(aa.teacher_attendance_create(user, body), message="考勤场次已创建")
 
 
 @router.get("/teacher/academic/attendance/sessions/{session_id}", summary="教师·课堂考勤·场次详情+名单")
-def teacher_attendance_detail(session_id: str, user=Depends(get_current_user)):
-    return success(aa.teacher_attendance_detail(session_id, user))
+def teacher_attendance_detail(
+    session_id: int = Path(..., gt=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, alias="pageSize", ge=1, le=50),
+    user=Depends(require_mobile_staff),
+):
+    return success(aa.teacher_attendance_detail(session_id, user, page=page, page_size=page_size))
 
 
 @router.post("/teacher/academic/attendance/sessions/{session_id}/mark", summary="教师·课堂考勤·标记单生状态")
-def teacher_attendance_mark(session_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_attendance_mark(session_id: int = Path(..., gt=0), body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(aa.teacher_attendance_mark(session_id, user, body))
 
 
 @router.post("/teacher/academic/attendance/sessions/{session_id}/submit", summary="教师·课堂考勤·提交场次（不可再改）")
-def teacher_attendance_submit(session_id: str, user=Depends(get_current_user)):
+def teacher_attendance_submit(session_id: int = Path(..., gt=0), user=Depends(require_mobile_staff)):
     return success(aa.teacher_attendance_submit(session_id, user), message="考勤已提交")
 
 
 @router.get("/teacher/academic/workload/my", summary="教师·我的工作量申报")
-def teacher_workload_my(user=Depends(get_current_user)):
-    return success(aa.workload_my(user))
+def teacher_workload_my(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    user=Depends(require_mobile_staff),
+):
+    return success(aa.workload_my(user, page=page, page_size=pageSize))
+
+
+@router.get("/teacher/academic/workload/command-receipts/{command_key}", summary="教师·工作量申报命令回执")
+def teacher_workload_command_receipt(command_key: str, user=Depends(require_mobile_staff)):
+    return success(aa.workload_command_receipt_my(user, command_key))
 
 
 @router.post("/teacher/academic/workload/submit", summary="教师·工作量申报（教学/监考/阅卷/出卷）")
-def teacher_workload_submit(body: dict = Body(...), user=Depends(get_current_user)):
+def teacher_workload_submit(body: dict = Body(...), user=Depends(require_mobile_staff)):
     return success(aa.workload_submit_my(user, body), message="工作量申报已提交")
 
 

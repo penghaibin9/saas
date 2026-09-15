@@ -14,7 +14,7 @@ def _token(user_id, *, user_type, role, student_id=None):
         "tid": "demo",
         "tenantId": "1000000000000000001",
         "currentRoleCode": role,
-        "clientType": "MP" if user_type == "STUDENT" else "PC",
+        "clientType": "STUDENT_MINI" if user_type == "STUDENT" else "TEACHER_MINI",
     }
     if student_id is not None:
         payload["studentId"] = str(student_id)
@@ -53,7 +53,7 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
     new_teacher = _token(ids["u2"], user_type="TEACHER", role="COUNSELOR")
 
     from app.db.session import get_sessionmaker
-    from app.models import StudentProfile
+    from app.models import AcademicStudent, StudentProfile
 
     with get_sessionmaker()() as db:
         # This story hands over existing students. Keep their creation before the
@@ -66,6 +66,23 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
         student_id = db.query(StudentProfile.id).filter_by(
             tenant_id=1000000000000000001, class_id=ids["a"], student_no="CA001"
         ).scalar()
+        other_student_id = db.query(StudentProfile.id).filter_by(
+            tenant_id=1000000000000000001, class_id=ids["a"], student_no="CA002"
+        ).scalar()
+        # The stable profile link is authoritative.  The later malformed
+        # legacy snapshot has A's number but explicitly belongs to B and must
+        # never become A's academic summary merely because it has the larger id.
+        db.add_all([
+            AcademicStudent(
+                tenant_id=1000000000000000001, student_id=student_id,
+                student_no="CA001", name="学生甲", gpa=3.3,
+            ),
+            AcademicStudent(
+                tenant_id=1000000000000000001, student_id=other_student_id,
+                student_no="CA001", name="错误绑定的学生乙", gpa=0.1,
+            ),
+        ])
+        db.commit()
     student = _token(910001, user_type="STUDENT", role="STUDENT", student_id=student_id)
 
     original = _data(_assign(client, admin, ids["a"], ids["u1"], reason="新学期带班安排"))
@@ -113,6 +130,23 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
         params={"classId": ids["a"], "pageSize": 20},
     ))
     assert str(student_id) in {row["studentId"] for row in new_deep_link["items"]}
+
+    # MyStudents and Student360 must compile exactly the same responsibility
+    # predicate.  A direct counselor/head-teacher relation is a real scope, not
+    # merely enough to render a list row that then fails with a false 404.
+    old_projection = client.get(
+        f"/api/v1/teacher-mobile/students/{student_id}/projection",
+        headers=old_teacher,
+    )
+    assert old_projection.status_code == 404, old_projection.text
+    new_projection = _data(client.get(
+        f"/api/v1/teacher-mobile/students/{student_id}/projection",
+        headers=new_teacher,
+    ))
+    assert new_projection["studentId"] == str(student_id)
+    assert new_projection["base"]["studentNo"] == "CA001"
+    academic = next(section for section in new_projection["sections"] if section["key"] == "academic")
+    assert "GPA 3.30" in academic["summary"]
 
     after_pc = _data(client.get("/api/v1/portal/profile/enrollment", headers=student))
     after_mini = _data(client.get("/api/v1/mobile/me/profile", headers=student))

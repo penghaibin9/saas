@@ -38,8 +38,8 @@
             <text class="sc__week-title">{{ currentWeekText }}</text>
             <text class="sc__week-sub">按周查看会自动处理起止周和单双周</text>
           </view>
-          <picker mode="selector" :range="weekLabels" :value="selectedWeek" @change="onWeekChange">
-            <view class="sc__week-picker">{{ weekLabels[selectedWeek] || '全部周次' }}⌄</view>
+          <picker mode="selector" :range="weekLabels" :value="weekPickerIndex" @change="onWeekChange">
+            <view class="sc__week-picker">{{ weekLabels[weekPickerIndex] || '当前教学周' }}⌄</view>
           </picker>
         </view>
         <view class="sc__week card sc__day-filter">
@@ -141,12 +141,18 @@ export default {
   onUnload() { this.hidden = true; this.requestEpoch += 1; this.copying = false },
   computed: {
     maxWeek() {
-      const itemMax = Math.max(1, ...(this.items || []).map((item) => Number(item.endWeek || 1)))
-      return Math.max(1, Number(this.teachingWeeks || 0), itemMax)
+      // 学期结束后墙钟日期仍会继续增长；它只能用于提示“已不在学期内”，
+      // 不能把第 19、20 周伪装成可请求的教学周，否则选择器会引导用户发起
+      // 服务端必然拒绝的 week 参数。学校配置的教学周数是唯一上限。
+      const configuredWeeks = Number(this.teachingWeeks)
+      if (Number.isInteger(configuredWeeks) && configuredWeeks > 0) return configuredWeeks
+      const current = Number(this.currentWeek)
+      return Number.isInteger(current) && current > 0 ? current : 1
     },
     weekLabels() {
-      return ['全部周次', ...Array.from({ length: this.maxWeek }, (_, index) => `第${index + 1}周`)]
+      return Array.from({ length: this.maxWeek }, (_, index) => `第${index + 1}周`)
     },
+    weekPickerIndex() { return Math.max(0, Math.min(this.maxWeek - 1, Number(this.selectedWeek || 1) - 1)) },
     dayLabels() { return ['全部日期', ...Object.keys(WEEK).map((day) => WEEK[day])] },
     filteredItems() {
       return (this.items || []).filter((item) => activeInWeek(item, this.selectedWeek)
@@ -185,7 +191,16 @@ export default {
   },
   methods: {
     changeText(value) { return { ROOM: '教室调整', TEACHER: '教师调整', TIME: '时间调整', CANCEL: '停课', SWAP: '调课' }[value] || '请核对学校最新安排' },
-    goAttendance(item) { go('/pages/student/academic-affairs/attendance?course=' + encodeURIComponent(item.courseName || '')) },
+    goAttendance(item) {
+      const params = [`course=${encodeURIComponent(item.courseName || '')}`]
+      // taskId is the formal schedule identity.  Keep the human-readable course
+      // name for the page title, but do not merge different teaching tasks that
+      // happen to use the same course name.
+      if (/^[1-9]\d*$/.test(String(item && item.taskId || ''))) {
+        params.push(`teachingTaskId=${encodeURIComponent(String(item.taskId))}`)
+      }
+      go('/pages/student/academic-affairs/attendance?' + params.join('&'))
+    },
     parity(item) {
       const value = item.weekParity === 'ODD' ? '单周' : item.weekParity === 'EVEN' ? '双周' : '全周'
       return item.startWeek && item.endWeek ? `${item.startWeek}-${item.endWeek}周·${value}` : '周次范围待确认'
@@ -198,7 +213,10 @@ export default {
       if (ranges.length > 1) return '按校区作息'
       return ''
     },
-    onWeekChange(event) { this.selectedWeek = Number(event.detail.value) || 0 },
+    onWeekChange(event) {
+      const nextWeek = Number(event.detail.value) + 1
+      if (Number.isInteger(nextWeek) && nextWeek >= 1 && nextWeek <= this.maxWeek && nextWeek !== this.selectedWeek) return this.load(nextWeek)
+    },
     onDayChange(event) { this.selectedDay = Number(event.detail.value) || 0 },
     toggleDetail(item) {
       const id = String(item && item.itemId || '')
@@ -220,7 +238,7 @@ export default {
       this.routeContextApplied = true
       return true
     },
-    load() {
+    load(requestedWeek = this.selectedWeek || this.targetWeek || undefined) {
       this.hidden = false
       const identity = currentSessionGeneration()
       if (identity !== this.identity) {
@@ -228,9 +246,13 @@ export default {
       }
       const epoch = ++this.requestEpoch
       this.state = 'loading'
-      return studentApi.getMySchedule().then((data) => {
+      return studentApi.getMySchedule({ week: requestedWeek || undefined }).then((data) => {
         if (epoch !== this.requestEpoch || this.hidden || identity !== currentSessionGeneration()) return
-        if (!data || !Array.isArray(data.items) || !Array.isArray(data.todayItems)) throw new Error('课表信息无法核对')
+        const returnedWeek = Number(data && data.week)
+        const noCurrentTerm = !String((data && data.termCode) || '') && data && data.week == null
+        if (!data || !Array.isArray(data.items) || !Array.isArray(data.todayItems)
+          || (!noCurrentTerm && (!Number.isInteger(returnedWeek) || returnedWeek < 1))
+          || (Number.isInteger(returnedWeek) && data.items.some((item) => !activeInWeek(item, returnedWeek)))) throw new Error('课表信息无法核对')
         const termChanged = this.termCode !== (data.termCode || '')
         this.items = data.items
         this.todayItems = data.todayItems || []
@@ -241,9 +263,10 @@ export default {
         this.currentWeek = data.currentWeek != null ? Number(data.currentWeek) : null
         this.teachingWeeks = data.teachingWeeks != null ? Number(data.teachingWeeks) : null
         this.termCode = data.termCode || ''
+        this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
         const appliedTarget = this.applyRouteContext(data.items)
         if (!appliedTarget && (!this.loadedOnce || termChanged)) {
-          this.selectedWeek = this.currentWeek && this.currentWeek <= this.maxWeek ? this.currentWeek : 0
+          this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
           this.selectedDay = 0
         }
         this.loadedOnce = true
@@ -258,7 +281,7 @@ export default {
     copySummary() {
       if (this.copying) return
       this.copying = true
-      const viewName = this.selectedWeek ? `第${this.selectedWeek}周` : '全部周次'
+      const viewName = `第${this.selectedWeek}周`
       const lines = this.filteredItems.map((item) =>
         `${WEEK[item.weekday] || item.weekday} 第${item.slotNo}节 ${item.courseName} ${item.classroom || ''} ${this.parity(item)}`).join('\n')
       const text = `个人课表摘要（${viewName}）\n\n${lines || '暂无课表'}`

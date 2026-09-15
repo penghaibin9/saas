@@ -11,7 +11,9 @@ const teacherPage = readFileSync(new URL('../src/pages/teacher/exam-defer/index.
 test('student exam page renders one canonical published schedule section', () => {
   const headingMatches = page.match(/<text class="section-head__title">我的考试安排<\/text>/g) || []
   assert.equal(headingMatches.length, 1, '我的考试安排 must render exactly once')
-  assert.match(page, /studentApi\.getMyExamSchedule\(\)/)
+  assert.match(page, /studentApi\.getMyExamSchedule\(\{ page, pageSize: EXAM_PAGE_SIZE \}\)/)
+  assert.match(page, /考试安排分页信息无法核对/)
+  assert.match(page, /hasMore !== page \* pageSize < total/)
   assert.match(page, /教务发布考场座位后，准考证与考场信息会出现在此/)
   assert.match(page, /考场 \{\{ it\.classroom/)
   assert.match(page, /座位 \{\{ it\.seatNo/)
@@ -45,4 +47,21 @@ test('student and teacher defer pages localize the canonical reason types', () =
   }
   assert.match(page, /reasonType: 'ILLNESS'/)
   assert.doesNotMatch(teacherPage, /\{\{ x\.reasonType \}\}/)
+})
+
+test('defer review and resubmit carry the server version and accept formal todo deep links', () => {
+  const realApi = readFileSync(new URL('../src/services/realApi.js', import.meta.url), 'utf8')
+  const teacherApi = readFileSync(new URL('../src/services/teacherApi.js', import.meta.url), 'utf8')
+  const studentApi = readFileSync(new URL('../src/services/studentApi.js', import.meta.url), 'utf8')
+
+  assert.match(teacherPage, /options\.id \|\| options\.deferId \|\| options\.recordId/)
+  assert.match(teacherPage, /reviewAcademicDefer\(deferId, action, reason, x\.version\)/)
+  assert.match(page, /options\.id \|\| options\.deferId \|\| options\.recordId/)
+  assert.match(page, /body: \{ deferId: r\.deferId, expectedVersion: r\.version \}/)
+  assert.match(page, /resubmitDefer\(body\.deferId, body\.expectedVersion\)/)
+  assert.match(realApi, /teacherAcademicDeferReview = \(deferId, action, reason, expectedVersion\)/)
+  assert.match(realApi, /data: \{ action, reason: reason \|\| '', expectedVersion \}/)
+  assert.match(realApi, /acadExamDeferResubmit = \(deferId, expectedVersion\)/)
+  assert.match(studentApi, /resubmitDefer: \(deferId, expectedVersion\)/)
+  assert.match(teacherApi, /reviewAcademicDefer: \(deferId, action, reason, expectedVersion\)/)
 })

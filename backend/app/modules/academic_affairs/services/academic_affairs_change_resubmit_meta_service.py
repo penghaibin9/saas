@@ -59,9 +59,9 @@ def get_my(user, change_id) -> dict:
 
 
 @wraps(_ORIGINAL_STATUS_MY)
-def status_my_with_resubmit_meta(user) -> dict:
+def status_my_with_resubmit_meta(user, page=None, page_size=20) -> dict:
     """Add edit metadata only to the owning student's RETURNED summary rows."""
-    result = _ORIGINAL_STATUS_MY(user)
+    result = _ORIGINAL_STATUS_MY(user, page=page, page_size=page_size)
     changes = list((result or {}).get("changes") or [])
     returned_ids = []
     for item in changes:

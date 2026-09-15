@@ -4,6 +4,105 @@ import vm from 'node:vm'
 import test from 'node:test'
 
 function mount(name, studentApi, confirm = async () => ({ confirm: true })) {
+  // 旧用例只关心“本人记录”的处理结果，未重复填写分页元数据。页面改为严格
+  // 服务端分页后，测试夹具统一补齐一个单页正式响应；专门分页用例仍传入完整元数据。
+  if (name === 'recognition' && typeof studentApi?.getMyRecognition === 'function') {
+    const readRecognition = studentApi.getMyRecognition
+    studentApi = {
+      ...studentApi,
+      getMyRecognition: async (params = {}) => {
+        const data = await readRecognition(params)
+        const items = Array.isArray(data?.items) ? data.items : []
+        const page = Number.isSafeInteger(data?.page) ? data.page : Number(params.page || 1)
+        const pageSize = Number.isSafeInteger(data?.pageSize) ? data.pageSize : Number(params.pageSize || 20)
+        const total = Number.isSafeInteger(data?.total) ? data.total : items.length
+        const hasMore = typeof data?.hasMore === 'boolean' ? data.hasMore : false
+        return { ...data, items, page, pageSize, total, hasMore }
+      }
+    }
+  }
+  if (name === 'level-exam' && typeof studentApi?.getMyLevelExam === 'function') {
+    const readLevelExam = studentApi.getMyLevelExam
+    studentApi = {
+      ...studentApi,
+      getMyLevelExam: async (params = {}) => {
+        const data = await readLevelExam(params)
+        const openExams = Array.isArray(data?.openExams) ? data.openExams : []
+        const myRegs = Array.isArray(data?.myRegs) ? data.myRegs : []
+        const openPage = Number.isSafeInteger(data?.openPagination?.page) ? data.openPagination.page : Number(params.openPage || 1)
+        const openPageSize = Number.isSafeInteger(data?.openPagination?.pageSize) ? data.openPagination.pageSize : Number(params.openPageSize || 20)
+        const openTotal = Number.isSafeInteger(data?.openPagination?.total) ? data.openPagination.total : openExams.length
+        const registrationPage = Number.isSafeInteger(data?.registrationPagination?.page) ? data.registrationPagination.page : Number(params.registrationPage || 1)
+        const registrationPageSize = Number.isSafeInteger(data?.registrationPagination?.pageSize) ? data.registrationPagination.pageSize : Number(params.registrationPageSize || 20)
+        const registrationTotal = Number.isSafeInteger(data?.registrationPagination?.total) ? data.registrationPagination.total : myRegs.length
+        return {
+          ...data,
+          openExams,
+          myRegs,
+          openPagination: {
+            page: openPage, pageSize: openPageSize, total: openTotal,
+            hasMore: typeof data?.openPagination?.hasMore === 'boolean' ? data.openPagination.hasMore : false
+          },
+          registrationPagination: {
+            page: registrationPage, pageSize: registrationPageSize, total: registrationTotal,
+            hasMore: typeof data?.registrationPagination?.hasMore === 'boolean' ? data.registrationPagination.hasMore : false
+          }
+        }
+      }
+    }
+  }
+  if (name === 'major-split' && typeof studentApi?.getMyMajorSplit === 'function') {
+    const readMajorSplit = studentApi.getMyMajorSplit
+    studentApi = {
+      ...studentApi,
+      getMyMajorSplit: async (params = {}) => {
+        const data = await readMajorSplit(params)
+        const openBatches = Array.isArray(data?.openBatches) ? data.openBatches : []
+        const myVolunteers = Array.isArray(data?.myVolunteers) ? data.myVolunteers : []
+        const openPage = Number.isSafeInteger(data?.openPagination?.page) ? data.openPagination.page : Number(params.openPage || 1)
+        const openPageSize = Number.isSafeInteger(data?.openPagination?.pageSize) ? data.openPagination.pageSize : Number(params.openPageSize || 20)
+        const openTotal = Number.isSafeInteger(data?.openPagination?.total) ? data.openPagination.total : openBatches.length
+        const volunteerPage = Number.isSafeInteger(data?.volunteerPagination?.page) ? data.volunteerPagination.page : Number(params.volunteerPage || 1)
+        const volunteerPageSize = Number.isSafeInteger(data?.volunteerPagination?.pageSize) ? data.volunteerPagination.pageSize : Number(params.volunteerPageSize || 20)
+        const volunteerTotal = Number.isSafeInteger(data?.volunteerPagination?.total) ? data.volunteerPagination.total : myVolunteers.length
+        return {
+          ...data, openBatches, myVolunteers,
+          openPagination: { page: openPage, pageSize: openPageSize, total: openTotal, hasMore: typeof data?.openPagination?.hasMore === 'boolean' ? data.openPagination.hasMore : false },
+          volunteerPagination: { page: volunteerPage, pageSize: volunteerPageSize, total: volunteerTotal, hasMore: typeof data?.volunteerPagination?.hasMore === 'boolean' ? data.volunteerPagination.hasMore : false }
+        }
+      }
+    }
+  }
+  if (name === 'evaluation' && typeof studentApi?.getMyEvaluationTasks === 'function') {
+    const readEvaluation = studentApi.getMyEvaluationTasks
+    studentApi = {
+      ...studentApi,
+      getMyEvaluationTasks: async (params = {}) => {
+        const data = await readEvaluation(params)
+        const list = Array.isArray(data?.list) ? data.list : []
+        const page = Number.isSafeInteger(data?.pagination?.page) ? data.pagination.page : Number(params.page || 1)
+        const pageSize = Number.isSafeInteger(data?.pagination?.pageSize) ? data.pagination.pageSize : Number(params.pageSize || 20)
+        const total = Number.isSafeInteger(data?.pagination?.total) ? data.pagination.total : list.length
+        const hasMore = typeof data?.pagination?.hasMore === 'boolean' ? data.pagination.hasMore : false
+        return { ...data, list, pagination: { page, pageSize, total, hasMore } }
+      }
+    }
+  }
+  if (name === 'registration' && typeof studentApi?.getMyRegistration === 'function') {
+    const readRegistration = studentApi.getMyRegistration
+    studentApi = {
+      ...studentApi,
+      getMyRegistration: async (params = {}) => {
+        const data = await readRegistration(params)
+        const batches = Array.isArray(data?.batches) ? data.batches : []
+        const page = Number.isSafeInteger(data?.page) ? data.page : Number(params.page || 1)
+        const pageSize = Number.isSafeInteger(data?.pageSize) ? data.pageSize : Number(params.pageSize || 20)
+        const total = Number.isSafeInteger(data?.total) ? data.total : batches.length
+        const hasMore = typeof data?.hasMore === 'boolean' ? data.hasMore : false
+        return { ...data, batches, page, pageSize, total, hasMore }
+      }
+    }
+  }
   const directory = new URL('../src/pages/student/academic-affairs/', import.meta.url)
   const session = { generation: 1 }
   const storage = new Map()
@@ -37,11 +136,35 @@ function mount(name, studentApi, confirm = async () => ({ confirm: true })) {
     return page
   }
   const page = reopen()
-  return { page, session, storage, reopen, hook: name => layers.forEach(layer => layer[name]?.call(page)), ledger: vm.runInContext('({ canUpdatePendingCommand, createPendingCommand, readPending, savePending })', context) }
+  return { page, session, storage, reopen, hook: (name, ...args) => layers.forEach(layer => layer[name]?.call(page, ...args)), ledger: vm.runInContext('({ canUpdatePendingCommand, createPendingCommand, readPending, savePending })', context) }
 }
 
 const allowRecognition = (page, courseId = '1000000000000063602', courseName = '电工技术') => {
   page.courseOptions = [{ courseId, courseCode: 'KC-01', courseName, version: '2026版' }]
+}
+
+for (const alias of ['id', 'deferId', 'recordId']) {
+  test(`缓考深链 ${alias} 服务端精确读取历史对象，并可返回全部申请`, async () => {
+    const calls = []
+    const { page, hook } = mount('exam', {
+      getMyExamSchedule: async () => ({ items: [], page: 1, pageSize: 20, total: 0, hasMore: false }),
+      getMyDeferOptions: async () => ({ items: [] }),
+      getMyDeferrals: async params => {
+        calls.push(JSON.parse(JSON.stringify(params)))
+        return { items: [{ deferId: params.deferId || 'latest', status: 'RETURNED' }], page: params.page, pageSize: 20, total: 1, hasMore: false }
+      }
+    })
+    hook('onLoad', { [alias]: '1000000000000000009' })
+    // Await the page's asynchronous onLoad read, without timers or a fake business result.
+    for (let i = 0; i < 12 && page.state === 'loading'; i++) await Promise.resolve()
+    assert.equal(page.state, 'ready')
+    assert.equal(page.d.deferrals[0].deferId, '1000000000000000009')
+    assert.deepEqual(calls, [{ page: 1, pageSize: 20, deferId: '1000000000000000009' }])
+    await page.showAllDeferrals()
+    assert.equal(page.targetId, '')
+    assert.deepEqual(calls[1], { page: 1, pageSize: 20 })
+    assert.equal(page.d.deferrals[0].deferId, 'latest')
+  })
 }
 
 test('returned and excluded textbooks remain readable without a new receipt action', async () => {
@@ -49,6 +172,228 @@ test('returned and excluded textbooks remain readable without a new receipt acti
   assert.equal(page.statusText('RETURNED'), '已退领')
   assert.equal(page.statusText('EXCLUDED'), '当前不发放')
   for (const status of ['RETURNED', 'EXCLUDED', 'RECEIVED', 'UNKNOWN']) assert.equal(page.canSign({ status }), false)
+})
+
+test('textbook keeps distribution and fee pages on the server', async () => {
+  const calls = []
+  const { page } = mount('textbook', {
+    getMyTextbook: async params => {
+      const request = JSON.parse(JSON.stringify(params))
+      calls.push(request)
+      return {
+        distributions: [{ recordId: 'd-' + request.distributionPage, textbookName: '教材', status: 'PENDING' }],
+        distributionPagination: { total: 23, page: request.distributionPage, pageSize: 20, hasMore: request.distributionPage < 2 },
+        fees: { items: [{ feeId: 'f-' + request.feePage, textbookName: '教材', amount: 10, paidAmount: 0, status: 'UNPAID' }], total: 22, page: request.feePage, pageSize: 20, hasMore: request.feePage < 2, totalDue: 220, totalPaid: 0, unpaid: 220 }
+      }
+    }
+  })
+  await page.load()
+  await page.changeDistributionPage(2)
+  await page.changeFeePage(2)
+  assert.deepEqual(calls, [
+    { distributionPage: 1, distributionPageSize: 20, feePage: 1, feePageSize: 20 },
+    { distributionPage: 2, distributionPageSize: 20, feePage: 1, feePageSize: 20 },
+    { distributionPage: 2, distributionPageSize: 20, feePage: 2, feePageSize: 20 }
+  ])
+  assert.equal(page.d.distributions[0].recordId, 'd-2')
+  assert.equal(page.d.fees.items[0].feeId, 'f-2')
+})
+
+test('status history requests bounded server pages and keeps returned records actionable', async () => {
+  const calls = []
+  const { page } = mount('status', {
+    getMyAcadStatus: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      const current = Number(params.page)
+      return {
+        studentStatus: 'REGISTERED', enrolled: true,
+        changes: current === 2
+          ? [{ changeId: '21', changeType: 'SUSPEND', status: 'RETURNED', reason: '补充正式材料', version: 7, decisionVersion: 3 }]
+          : Array.from({ length: 20 }, (_, index) => ({ changeId: String(index + 1), changeType: 'SUSPEND', status: 'SUBMITTED' })),
+        page: current, pageSize: params.pageSize, total: 21, hasMore: current < 2
+      }
+    }
+  })
+  await page.load()
+  await page.nextPage()
+  assert.deepEqual(calls, [{ page: 1, pageSize: 20 }, { page: 2, pageSize: 20 }])
+  assert.equal(page.data.changes.length, 1)
+  assert.equal(page.data.changes[0].changeId, '21')
+  assert.equal(page.resubmitReasons['21'], '补充正式材料')
+  assert.equal(page.page, 2)
+  assert.equal(page.pageCount, 2)
+})
+
+test('status transfer candidates stay server-paged, searchable, and scoped to the selected major', async () => {
+  const calls = []
+  const { page } = mount('status', {
+    getMyAcadStatus: async params => ({
+      studentStatus: 'REGISTERED', enrolled: true, changes: [],
+      page: params.page, pageSize: params.pageSize, total: 0, hasMore: false
+    }),
+    getTransferOptions: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      if (params.target === 'major') {
+        const second = Number(params.page) === 2
+        return {
+          target: 'major', majorId: '', currentMajorId: 'own-major', currentClassId: 'own-class',
+          items: second
+            ? [{ majorId: 'm-21', majorName: '第二页专业', collegeName: '商贸学院' }]
+            : [{ majorId: 'm-1', majorName: '第一页专业', collegeName: '信息学院' }],
+          page: Number(params.page), pageSize: Number(params.pageSize), total: 21, hasMore: !second
+        }
+      }
+      return {
+        target: 'class', majorId: params.majorId || 'own-major', currentMajorId: 'own-major', currentClassId: 'own-class',
+        items: [{ classId: `c-${params.majorId || 'own'}`, className: '目标班', grade: '2026', majorId: params.majorId || 'own-major' }],
+        page: Number(params.page), pageSize: Number(params.pageSize), total: 1, hasMore: false
+      }
+    }
+  })
+
+  await page.onType('TRANSFER_MAJOR')
+  assert.deepEqual(calls[0], { target: 'major', page: 1, pageSize: 20, keyword: '' })
+  await page.onMajorPick({ detail: { value: 0 } })
+  assert.deepEqual(calls[1], { target: 'class', page: 1, pageSize: 20, majorId: 'm-1', keyword: '' })
+  assert.equal(page.form.toMajorId, 'm-1')
+  assert.equal(page.form.toClassId, '')
+
+  page.majorKeyword = '第二页'
+  await page.searchMajorOptions()
+  assert.deepEqual(calls[2], { target: 'major', page: 1, pageSize: 20, keyword: '第二页' })
+  await page.nextMajorPage()
+  assert.deepEqual(calls[3], { target: 'major', page: 2, pageSize: 20, keyword: '第二页' })
+  assert.equal(page.form.toMajorId, 'm-1', '翻页或搜索不得错配既选专业')
+  assert.equal(page.selectedMajorText, '信息学院 · 第一页专业')
+
+  await page.onType('TRANSFER_CLASS')
+  assert.deepEqual(calls[4], { target: 'class', page: 1, pageSize: 20, keyword: '' })
+  assert.equal(page.sameMajorClasses[0].majorId, 'own-major')
+})
+
+test('status ignores a late transfer-candidate response after the student identity changes', async () => {
+  let finish
+  const delayed = new Promise(resolve => { finish = resolve })
+  const { page, session } = mount('status', {
+    getMyAcadStatus: async params => ({
+      studentStatus: 'REGISTERED', enrolled: true, changes: [],
+      page: params.page, pageSize: params.pageSize, total: 0, hasMore: false
+    }),
+    getTransferOptions: async () => delayed
+  })
+  page.form.changeType = 'TRANSFER_MAJOR'
+  const pending = page.loadMajorOptions(1)
+  session.generation += 1
+  page.resetAcademicContext()
+  finish({
+    target: 'major', majorId: '', currentMajorId: 'old-major', currentClassId: 'old-class',
+    items: [{ majorId: 'old-target', majorName: '旧账号专业', collegeName: '旧学院' }],
+    page: 1, pageSize: 20, total: 1, hasMore: false
+  })
+  await pending
+  assert.equal(page.majors.length, 0)
+  assert.equal(page.optionsLoading, false)
+})
+
+test('clearance history requests bounded server pages rather than slicing a full result', async () => {
+  const calls = []
+  const { page } = mount('clearance', {
+    getMyClearance: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      const current = Number(params.page)
+      return {
+        note: '清考结果以学校发布为准。',
+        items: current === 2
+          ? [{ recordId: '21', courseName: '课程二十一', status: 'PENDING_EXAM' }]
+          : Array.from({ length: 20 }, (_, index) => ({ recordId: String(index + 1), courseName: '课程', status: 'PENDING_EXAM' })),
+        page: current, pageSize: params.pageSize, total: 21, hasMore: current < 2
+      }
+    }
+  })
+  await page.load()
+  await page.nextPage()
+  assert.deepEqual(calls, [{ page: 1, pageSize: 20 }, { page: 2, pageSize: 20 }])
+  assert.equal(page.d.items.length, 1)
+  assert.equal(page.d.items[0].recordId, '21')
+  assert.match(page.clearanceCoverageText, /第 2\/2 页，本页 1 条，共 21 条/)
+})
+
+test('recognition history requests bounded server pages rather than slicing a full result', async () => {
+  const calls = []
+  const { page } = mount('recognition', {
+    getMyRecognition: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      const current = Number(params.page)
+      return {
+        items: current === 2
+          ? [{ recognitionId: '21', sourceCourseName: '课程二十一', targetCourseName: '目标课程', status: 'REJECTED', reviewReason: '请补充材料' }]
+          : Array.from({ length: 20 }, (_, index) => ({ recognitionId: String(index + 1), sourceCourseName: '课程', targetCourseName: '目标课程', status: 'SUBMITTED' })),
+        page: current, pageSize: params.pageSize, total: 21, hasMore: current < 2
+      }
+    }
+  })
+  await page.load()
+  await page.nextPage()
+  assert.deepEqual(calls, [{ page: 1, pageSize: 20 }, { page: 2, pageSize: 20 }])
+  assert.equal(page.d.items.length, 1)
+  assert.equal(page.d.items[0].recognitionId, '21')
+  assert.equal(page.historyPage, 2)
+  assert.equal(page.historyPageCount, 2)
+})
+
+test('level exam independently requests bounded pages for open exams and personal registrations', async () => {
+  const calls = []
+  const { page } = mount('level-exam', {
+    getMyLevelExam: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      const openPage = Number(params.openPage)
+      const registrationPage = Number(params.registrationPage)
+      return {
+        openExams: [{ examId: `open-${openPage}`, examName: `开放考试${openPage}`, registrationStatus: null }],
+        openPagination: { page: openPage, pageSize: params.openPageSize, total: 21, hasMore: openPage < 2 },
+        myRegs: [{ regId: `reg-${registrationPage}`, examId: `history-${registrationPage}`, examName: `历史考试${registrationPage}`, status: 'SCORED', examStatus: 'FINISHED' }],
+        registrationPagination: { page: registrationPage, pageSize: params.registrationPageSize, total: 21, hasMore: registrationPage < 2 }
+      }
+    }
+  })
+  await page.load()
+  await page.nextOpenPage()
+  await page.nextRegistrationPage()
+  assert.deepEqual(calls, [
+    { openPage: 1, openPageSize: 20, registrationPage: 1, registrationPageSize: 20 },
+    { openPage: 2, openPageSize: 20, registrationPage: 1, registrationPageSize: 20 },
+    { openPage: 2, openPageSize: 20, registrationPage: 2, registrationPageSize: 20 }
+  ])
+  assert.equal(page.openPage, 2)
+  assert.equal(page.registrationPage, 2)
+  assert.equal(page.examName(page.d.myRegs[0]), '历史考试2')
+})
+
+test('attendance sends formal teaching-task filtering and paging to the server', async () => {
+  const calls = []
+  const { page } = mount('attendance', {
+    getMyAttendance: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      return {
+        items: [{ sessionId: 's-' + params.page, courseName: params.course || '全部课程', status: 'PRESENT' }],
+        summary: { PRESENT: 21, LATE: 0, ABSENT: 0, LEAVE: 0, OTHER: 0 },
+        total: 21, page: params.page, pageSize: params.pageSize, hasMore: params.page < 2
+      }
+    }
+  })
+  await page.load()
+  page.courseFilter = '电工'
+  page.teachingTaskId = '101'
+  await page.load(1)
+  await page.changePage(2)
+  await page.clearCourseFilter()
+  assert.deepEqual(calls, [
+    { page: 1, pageSize: 20 },
+    { course: '电工', teachingTaskId: '101', page: 1, pageSize: 20 },
+    { course: '电工', teachingTaskId: '101', page: 2, pageSize: 20 },
+    { page: 1, pageSize: 20 }
+  ])
+  assert.equal(page.d.items[0].courseName, '全部课程')
 })
 
 test('recognition preserves draft after timeout and empty readback, and blocks a repeated command', async () => {
@@ -175,7 +520,10 @@ test('unsent recognition draft survives page recreation but never an identity sw
 
 test('recheck draft restores by stable grade id after records change their order', async () => {
   const grades = [{ gradeId: 'a', courseName: '甲课', score: 70 }, { gradeId: 'b', courseName: '乙课', score: 60 }]
-  const { page, reopen, hook } = mount('recheck', { getMyRecheck: async () => ({ items: [] }), getMyTranscript: async () => ({ items: grades }) })
+  const { page, reopen, hook } = mount('recheck', {
+    getMyRecheck: async () => ({ items: [], page: 1, pageSize: 20, total: 0, hasMore: false }),
+    getMyTranscript: async () => ({ items: grades })
+  })
   await page.load(); page.picked = 1; page.reason = '核对平时成绩'; page.showForm = true; hook('onHide')
   grades.reverse(); const resumed = reopen(); await resumed.load()
   assert.equal(resumed.grades[resumed.picked].gradeId, 'b'); assert.equal(resumed.reason, '核对平时成绩')
@@ -230,6 +578,104 @@ test('makeup restores unsent drafts by stable candidate and blocks removed candi
   assert.equal(restored.exemptionAvailable, false)
   await restored.submitRetake(); await restored.submitExemption()
   assert.equal(writes, 0)
+})
+
+test('registration keeps batches on server pages and preserves an exact batch deep link', async () => {
+  const calls = []
+  const batches = Array.from({ length: 42 }, (_, index) => ({
+    batchId: String(index + 1), batchName: `注册批次${index + 1}`,
+    canRegister: index !== 41, canDefer: index !== 41, registrationStatus: 'PENDING_REGISTER'
+  }))
+  const { page } = mount('registration', {
+    getMyRegistration: async params => {
+      const request = JSON.parse(JSON.stringify(params))
+      calls.push(request)
+      const batchId = request.batchId
+      if (batchId) {
+        const target = batches.find(batch => batch.batchId === String(batchId))
+        return { batches: target ? [target] : [], page: request.page, pageSize: request.pageSize, total: target ? 1 : 0, hasMore: false }
+      }
+      const start = (request.page - 1) * request.pageSize
+      return {
+        batches: batches.slice(start, start + request.pageSize),
+        page: request.page, pageSize: request.pageSize, total: batches.length,
+        hasMore: request.page * request.pageSize < batches.length
+      }
+    }
+  })
+  await page.load()
+  await page.changePage(2)
+  await page.changePage(3)
+  assert.deepEqual(calls.slice(0, 3), [
+    { page: 1, pageSize: 20 }, { page: 2, pageSize: 20 }, { page: 3, pageSize: 20 }
+  ])
+  assert.equal(page.d.batches.length, 2)
+  assert.equal(page.d.total, 42)
+  assert.equal(page.pageCount, 3)
+  page.targetId = '42'
+  await page.load(1)
+  assert.deepEqual(calls.at(-1), { page: 1, pageSize: 20, batchId: '42' })
+  assert.equal(page.d.batches[0].batchId, '42')
+})
+
+
+test('makeup keeps retake and exemption histories on independent server pages', async () => {
+  const calls = []
+  const { page } = mount('makeup', {
+    getMyMakeup: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      return {
+        retakes: [{ applyId: `r-${params.retakePage}`, courseName: '重修课程' }],
+        retakePagination: { total: 21, page: params.retakePage, pageSize: 20, hasMore: params.retakePage < 2 },
+        exemptions: [{ exemptionId: `e-${params.exemptionPage}`, courseName: '免修课程' }],
+        exemptionPagination: { total: 21, page: params.exemptionPage, pageSize: 20, hasMore: params.exemptionPage < 2 }
+      }
+    },
+    getMakeupOptions: async () => ({ retakeOptions: [], exemptionOptions: [] })
+  })
+  await page.load()
+  await page.changeRetakePage(2)
+  await page.changeExemptionPage(2)
+  assert.deepEqual(calls, [
+    { retakePage: 1, retakePageSize: 20, exemptionPage: 1, exemptionPageSize: 20 },
+    { retakePage: 2, retakePageSize: 20, exemptionPage: 1, exemptionPageSize: 20 },
+    { retakePage: 2, retakePageSize: 20, exemptionPage: 2, exemptionPageSize: 20 }
+  ])
+  assert.equal(page.d.retakes[0].applyId, 'r-2')
+  assert.equal(page.d.exemptions[0].exemptionId, 'e-2')
+})
+
+
+test('returned exemption keeps its original ID, can replace evidence, and never resends a historical term', async () => {
+  const returned = {
+    exemptionId: '9007199254740993', courseId: '201', courseName: '课程乙', reason: '原申请说明',
+    status: 'SUBMITTED', currentNode: 'STUDENT_RESUBMIT', returnReason: '请补充正式证明材料', canResubmit: true
+  }
+  let sent
+  const { page } = mount('makeup', {
+    getMyMakeup: async () => ({
+      retakes: [], retakePagination: { total: 0, page: 1, pageSize: 20, hasMore: false },
+      exemptions: [returned], exemptionPagination: { total: 1, page: 1, pageSize: 20, hasMore: false }
+    }),
+    getMakeupOptions: async () => ({ retakeOptions: [], exemptionOptions: [] }),
+    resubmitExemption: async (id, body) => {
+      sent = { id, body: JSON.parse(JSON.stringify(body)) }
+      returned.status = 'TEACHER_REVIEW'; returned.currentNode = 'TEACHER_REVIEW'; returned.canResubmit = false
+      return { exemptionId: id }
+    }
+  })
+  await page.load()
+  assert.equal(page.exemptionStatusLabel(returned.status, returned.currentNode), '已退回，待补充材料')
+  page.beginExemptionResubmit(returned)
+  page.materials = [{ fileId: '41', readyForBusiness: true }]
+  await page.submitExemption()
+  assert.deepEqual(sent, {
+    id: '9007199254740993',
+    body: { courseId: '201', courseName: '课程乙', reason: '原申请说明', materialFileIds: ['41'] }
+  })
+  assert.equal(page.pendingApplication, null)
+  assert.equal(page.resubmitExemptionId, '')
+  assert.equal(returned.status, 'TEACHER_REVIEW')
 })
 
 
@@ -327,6 +773,104 @@ test('major split keeps the command pending when a matching record lacks this co
   assert.match(page.notice.description, /不要重复提交/)
 })
 
+test('evaluation loads bounded server pages instead of extending a local full task list', async () => {
+  const calls = []
+  const { page } = mount('evaluation', {
+    getMyEvaluationTasks: async (params) => {
+      calls.push({ ...params })
+      const current = Number(params.page)
+      return {
+        list: current === 1
+          ? [{ taskId: 'task-1', courseName: '电工基础', canSubmit: true, submitted: false }]
+          : [{ taskId: 'task-21', courseName: '电子技术', canSubmit: true, submitted: false }],
+        pagination: { page: current, pageSize: 20, total: 21, hasMore: current === 1 }
+      }
+    }
+  })
+  await page.load()
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), { page: 1, pageSize: 20 })
+  assert.equal(page.d.list[0].taskId, 'task-1')
+  await page.changePage(2)
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), { page: 2, pageSize: 20 })
+  assert.equal(page.d.list[0].taskId, 'task-21')
+  assert.equal(page.pageCount, 2)
+})
+
+test('major split loads batch options and history through independent bounded server pages', async () => {
+  const reads = []
+  const optionReads = []
+  const batch = { batchId: 'batch-1', batchName: '2026 专业分流', maxChoices: 2 }
+  const api = {
+    getMyMajorSplit: async (params) => {
+      reads.push({ ...params })
+      const volunteerPage = Number(params.volunteerPage)
+      return {
+        openBatches: [batch],
+        openPagination: { page: Number(params.openPage), pageSize: 20, total: 1, hasMore: false },
+        myVolunteers: volunteerPage === 2
+          ? [{ volunteerId: 'v-2', batchId: 'history-2', batchName: '历史批次', choices: ['m-2'], choiceNames: ['历史专业'], status: 'ALLOCATED', statusLabel: '已分配专业，等待学校确认' }]
+          : [{ volunteerId: 'v-1', batchId: 'history-1', batchName: '历史批次', choices: ['m-1'], choiceNames: ['原专业'], status: 'PENDING', statusLabel: '志愿已提交，等待学校分流' }],
+        volunteerPagination: { page: volunteerPage, pageSize: 20, total: 21, hasMore: volunteerPage === 1 }
+      }
+    },
+    getMajorSplitOptions: async (batchId, params) => {
+      optionReads.push({ batchId, ...params })
+      const page = Number(params.page)
+      return {
+        items: page === 1
+          ? [{ optionId: 'o-1', majorId: 'm-1', majorName: '软件技术', capacity: 30, remain: 29 }]
+          : [{ optionId: 'o-2', majorId: 'm-2', majorName: '网络技术', capacity: 30, remain: 28 }],
+        page, pageSize: 20, total: 21, hasMore: page === 1
+      }
+    }
+  }
+  const { page } = mount('major-split', api)
+  await page.load()
+  assert.deepEqual(JSON.parse(JSON.stringify(reads[0])), { openPage: 1, openPageSize: 20, volunteerPage: 1, volunteerPageSize: 20 })
+  assert.equal(batch.options, undefined)
+  await page.toggleBatch(batch)
+  assert.deepEqual(JSON.parse(JSON.stringify(optionReads[0])), { batchId: 'batch-1', page: 1, pageSize: 20 })
+  assert.equal(page.optionState(batch).loaded, true)
+  assert.equal(page.batchOptions(batch)[0].majorName, '软件技术')
+  await page.loadOptions(batch, 2)
+  assert.deepEqual(JSON.parse(JSON.stringify(optionReads[1])), { batchId: 'batch-1', page: 2, pageSize: 20 })
+  assert.equal(page.batchOptions(batch)[0].majorName, '网络技术')
+  await page.nextVolunteerPage()
+  assert.deepEqual(JSON.parse(JSON.stringify(reads.at(-1))), { openPage: 1, openPageSize: 20, volunteerPage: 2, volunteerPageSize: 20 })
+  assert.equal(page.d.myVolunteers[0].choiceNames[0], '历史专业')
+})
+
+test('major split releases a stale option loading lock after the page is hidden', async () => {
+  let resolveOptions
+  let reads = 0
+  const options = new Promise(resolve => { resolveOptions = resolve })
+  const batch = { batchId: 'batch-stale', batchName: '待恢复批次', maxChoices: 2 }
+  const { page, hook } = mount('major-split', {
+    getMyMajorSplit: async () => ({ openBatches: [batch], myVolunteers: [] }),
+    getMajorSplitOptions: async () => {
+      reads += 1
+      if (reads === 1) return options
+      return { items: [{ optionId: 'o-2', majorId: 'm-2', majorName: '网络技术' }], page: 1, pageSize: 20, total: 1, hasMore: false }
+    }
+  })
+  await page.load()
+  const staleRead = page.loadOptions(batch, 1)
+  assert.equal(page.optionState(batch).loading, true)
+
+  hook('onHide')
+  assert.equal(page.optionState(batch).loading, false)
+  page.hidden = false
+  const retry = page.loadOptions(batch, 1)
+  assert.equal(reads, 2)
+  await retry
+  assert.equal(page.optionState(batch).loaded, true)
+
+  resolveOptions({ items: [{ optionId: 'o-1', majorId: 'm-1', majorName: '旧专业' }], page: 1, pageSize: 20, total: 1, hasMore: false })
+  await staleRead
+  assert.equal(page.batchOptions(batch)[0].majorName, '网络技术')
+  assert.equal(page.optionState(batch).loading, false)
+})
+
 test('major split clears only when its volunteer receipt, batch and ordered choices match', async () => {
   const batch = { batchId: 'b-1', batchName: '2026 专业分流', maxChoices: 2, options: [{ majorId: 'm-1', majorName: '机电一体化' }] }
   const volunteer = { volunteerId: 'v-1', batchId: 'b-1', choices: ['m-1'], status: 'SUBMITTED' }
@@ -388,7 +932,7 @@ const privacyCases = [
     prepare: page => { page.form.sourceCourseName = '敏感原课程' }, scrubbed: page => page.form.sourceCourseName === ''
   },
   {
-    name: 'recheck', scope: 'recheck', payload: { body: { acadGradeId: 'g-1', reason: '敏感复查理由' } }, api: denied => ({ getMyRecheck: async () => denied() ? Promise.reject({ httpStatus: 403, code: 403001 }) : ({ items: [] }), getMyTranscript: async () => ({ items: [{ gradeId: 'g-1', courseName: '课程' }] }) }),
+    name: 'recheck', scope: 'recheck', payload: { body: { acadGradeId: 'g-1', reason: '敏感复查理由' } }, api: denied => ({ getMyRecheck: async () => denied() ? Promise.reject({ httpStatus: 403, code: 403001 }) : ({ items: [], page: 1, pageSize: 20, total: 0, hasMore: false }), getMyTranscript: async () => ({ items: [{ gradeId: 'g-1', courseName: '课程' }] }) }),
     prepare: page => { page.reason = '敏感复查理由'; page.grades = [{ gradeId: 'g-1' }] }, scrubbed: page => page.reason === '' && page.grades.length === 0
   },
   {

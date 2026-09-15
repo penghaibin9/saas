@@ -175,8 +175,8 @@ def academic_exam_defer_apply(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.post("/academic/exam/defer/{defer_id}/resubmit", summary="缓考退回后补材料重提（本人）")
-def academic_exam_defer_resubmit(defer_id: str, user=Depends(get_current_user)):
-    return success(academic.exam_defer_resubmit(user, defer_id), message="已重提")
+def academic_exam_defer_resubmit(defer_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(academic.exam_defer_resubmit(user, defer_id, body or {}), message="已重提")
 
 
 @router.get("/academic/makeup", summary="我的补考重修与免修（本人）")
@@ -196,6 +196,11 @@ def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)
 @router.post("/academic/exemption/apply", summary="发起免修申请（本人）")
 def academic_exemption_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.exemption_apply(user, body))
+
+
+@router.post("/academic/exemption/{exemption_id}/resubmit", summary="修改被退回的免修申请并重新提交（本人）")
+def academic_exemption_resubmit(exemption_id: str, user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(academic.exemption_resubmit(user, exemption_id, body or {}), message="免修申请已重新提交")
 
 
 @router.get("/academic/registration", summary="我的注册批次与自助状态（本人）")

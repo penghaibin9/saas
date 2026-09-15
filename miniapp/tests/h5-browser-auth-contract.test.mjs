@@ -6,6 +6,7 @@ const read=(p)=>fs.readFileSync(new URL(p,import.meta.url),'utf8')
 const installer=read('../src/services/h5BrowserAuthInstaller.js')
 const main=read('../src/main.js')
 const request=read('../src/services/request.js')
+const session=read('../src/stores/session.js')
 const env=read('../src/config/env.js')
 const vite=read('../vite.config.js')
 
@@ -64,6 +65,13 @@ test('H5 refresh sentinel is non-secret and only preserves the existing single-f
   assert.match(request,/if \(_refreshing && _refreshing\.generation === expectedGeneration\)/)
   assert.match(request,/!getToken\(\) && getRefreshToken\(\)/)
   assert.match(request,/return _refreshOnce\(expectedGeneration\)\.then/)
+})
+
+test('an unverified H5 browser refresh never restores the previous account projection',()=>{
+  assert.match(session,/H5_BROWSER_REFRESH_SENTINEL = '__HTTPONLY_BROWSER_REFRESH__'/)
+  assert.match(session,/const h5UnverifiedBrowserSession = !token && refresh === H5_BROWSER_REFRESH_SENTINEL/)
+  assert.match(session,/if \(h5UnverifiedBrowserSession\) \{\s*this\.mockUser = skeleton/)
+  assert.match(session,/等 browser-refresh\s*\n\s*\/\/ 与 \/auth\/me 成功后由 applyRealUser 写入当前真实身份/)
 })
 
 test('an H5 tab with no recoverable browser session returns to in-app login instead of staying on a load error',()=>{

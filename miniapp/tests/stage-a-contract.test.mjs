@@ -61,11 +61,15 @@ test('ordinary GETs are single-flight and writes are rejected rather than dedupl
   assert.match(request, /export function realDownload/)
 })
 
-test('production session skeleton contains no fixed student or teacher identity', () => {
+test('formal session skeleton never imports or restores a demo identity', () => {
   const session = read('src/stores/session.js')
-  assert.match(session, /import\.meta\.env && import\.meta\.env\.PROD/)
   assert.match(session, /neutralUser/)
   assert.match(session, /name: '', studentNo: '', className: ''/)
+  assert.match(session, /function initialUser\(side\) \{ return neutralUser\(side\) \}/)
+  assert.doesNotMatch(session, /@\/mock\/user/)
+  assert.match(session, /this\.clearBusinessContexts\(\)\n\s*\/\/ 先清投影，后写入新身份[\s\S]*?this\.resetAuthenticatedProjection\(\)/)
+  assert.match(session, /const token = getToken\(\)\s*\n\s*const refresh = getRefreshToken\(\)[\s\S]*?if \(!token && !refresh\)[\s\S]*?uni\.removeStorageSync\(STORAGE_KEY\)/)
+  assert.match(session, /h5UnverifiedBrowserSession[\s\S]*?this\.mockUser = skeleton/)
 })
 
 test('teacher login accepts the backend academic role codes', () => {
@@ -87,11 +91,15 @@ test('teacher login accepts dorm managers and preserves the building data scope'
 test('real teacher contexts drive identity switching with canonical role keys', () => {
   const roles = read('src/config/roles.config.js')
   const session = read('src/stores/session.js')
+  const realApi = read('src/services/realApi.js')
   assert.match(roles, /INTERN_MENTOR: ROLE\.INTERN_MENTOR/)
   assert.match(roles, /roleKeyFromBackendRole\(roleCode\)/)
   assert.match(session, /this\.availableRoles = \[\.\.\.new Set\(this\.availableContexts/)
   assert.match(session, /roleKeyFromBackendRole\(item\.roleCode \|\| item\.contextType\) === roleKey/)
   assert.doesNotMatch(session, /item\.roleCode === roleKey/)
+  assert.match(session, /side === 'teacher' \? 'TEACHER_MINI' : 'STUDENT_MINI'/)
+  assert.match(realApi, /MINI_CLIENT_TYPES = new Set\(\['STUDENT_MINI', 'TEACHER_MINI'\]\)/)
+  assert.doesNotMatch(realApi, /clientType = 'MP'/)
 })
 
 test('high-frequency message, todo and risk pages use final database pagination endpoints', () => {

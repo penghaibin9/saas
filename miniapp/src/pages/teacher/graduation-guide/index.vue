@@ -20,11 +20,25 @@
               <view class="row-between"><text class="t-md t-bold">开题待批阅</text><text class="gg__qc">{{ proposalTotal }} 条</text></view>
               <text class="gg__qh">逐条看背景/方案/成果，处理后自动下一条</text>
               <button class="gg__go" @click.stop="enterReview('proposal', reviewQueue, 0)">开始批阅开题</button>
+              <view class="gg__paging">
+                <text>已加载 {{ reviewQueue.length }} / {{ proposalTotal }} 条</text>
+                <button v-if="proposalHasMore" class="gg__more" :disabled="proposalLoadingMore" @click.stop="loadMoreProposal">
+                  {{ proposalLoadingMore ? '加载中…' : '加载更多' }}
+                </button>
+                <text v-else>已到最后</text>
+              </view>
             </view>
             <view v-if="finalTotal > 0" class="gg__queue card" @click="enterReview('final', finalQueue, 0)">
               <view class="row-between"><text class="t-md t-bold">成果待批阅</text><text class="gg__qc">{{ finalTotal }} 条</text></view>
               <text class="gg__qh">逐条看论文类型/版本/查重/附件，查重超标不可通过</text>
               <button class="gg__go" @click.stop="enterReview('final', finalQueue, 0)">开始批阅成果</button>
+              <view class="gg__paging">
+                <text>已加载 {{ finalQueue.length }} / {{ finalTotal }} 条</text>
+                <button v-if="finalHasMore" class="gg__more" :disabled="finalLoadingMore" @click.stop="loadMoreFinal">
+                  {{ finalLoadingMore ? '加载中…' : '加载更多' }}
+                </button>
+                <text v-else>已到最后</text>
+              </view>
             </view>
             <view class="gg__filters">
               <text class="gg__filter" :class="{ 'is-active': f === 'all' }" @click="f = 'all'">全部 {{ data.list.length }}</text>
@@ -177,7 +191,7 @@
             <view v-if="detail.currentSafeVersions && detail.currentSafeVersions.length" class="rv__block">
               <text class="rv__label">当前安全版本（审核锁定）</text>
               <view v-for="v in detail.currentSafeVersions" :key="v.versionId" class="rv__att" @click="openVersion(v)">
-                <view><text class="rv__att-name">📎 {{ v.fileName }}</text><text class="rv__text">FileVersion {{ v.versionId }} · v{{ v.versionNo }} · {{ v.scanStatus }} · {{ v.reviewStatus || v.status }}</text></view>
+                <view><text class="rv__att-name">📎 {{ v.fileName }}</text><text class="rv__text">第 {{ v.versionNo || '—' }} 版 · {{ fileScanLabel(v.scanStatus) }} · {{ fileReviewLabel(v.reviewStatus || v.versionStatus || v.status) }}</text></view>
                 <text class="rv__att-dl">安全预览</text>
               </view>
               <text v-if="!detail.reviewReady" class="rv__warn">文件仍在扫描、已隔离或版本已变化，当前不能审核通过</text>
@@ -230,7 +244,8 @@ import { teacherApi } from '@/services/teacherApi'
 import { graduationTeacherCountTruth } from '@/services/graduationTeacherCountTruth'
 import { graduationTeacherPagingApi, GRADUATION_TEACHER_PAGE_SIZE } from '@/services/graduationTeacherPagingApi'
 import { normalizeError } from '@/services/request'
-import fileSdk from '@/services/fileSdk'
+import { isStaleReadError } from '@/services/latestRead'
+import fileSdk, { FILE_STATUS_TEXT } from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
 
 const KIND_LABEL = { proposal: '开题批阅', final: '成果批阅', midterm: '中期检查', peer: '评阅', grade: '成绩复核' }
@@ -247,13 +262,15 @@ export default {
       PEER_OPINION_CHIPS,
       data: null, state: 'loading', f: 'all', acting: false,
       reviewQueue: [], finalQueue: [], proposalTotal: 0, finalTotal: 0,
+      proposalPage: 1, proposalHasMore: false, proposalLoadingMore: false,
+      finalPage: 1, finalHasMore: false, finalLoadingMore: false,
       tab: 'review', midtermQueue: [], reviews: [], defense: [], gradeQueue: [],
       midtermPage: 1, midtermTotal: 0, midtermHasMore: false, midtermLoadingMore: false,
       gradePage: 1, gradeTotal: 0, gradeHasMore: false, gradeLoadingMore: false,
       midtermError: '', reviewsError: '', defenseError: '', gradeError: '',
       defenseScorePending: 0,
       loaded: { midterm: false, peer: false, defense: false, grade: false },
-      mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading',
+      mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading', detailRequestEpoch: 0,
       peerScore: '', peerOpinion: '',
       previewVersionConflict: false, previewVersionMessage: '', previewContext: null, previewReturnPending: false,
       _bootKind: ''
@@ -264,11 +281,15 @@ export default {
     const tab = String((options && options.tab) || '').toLowerCase()
     if (TAB_KEYS.includes(tab)) this.tab = tab
     const kind = String((options && options.kind) || '').toLowerCase()
+    const recordId = String((options && options.recordId) || '')
     if (kind === 'proposal' || kind === 'final') this._bootKind = kind
+    // 待办深链只在第一次打开时定位当前对象。处理成功后必须移除旧 recordId，
+    // 否则回读会把已经退回/通过的记录误当作仍待审，造成计数和队列残留。
+    this._exactTodoRoute = (kind === 'proposal' || kind === 'final') && /^\d+$/.test(recordId)
     this.load()
     if (this.tab !== 'review') this.switchTab(this.tab)
   },
-  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
+  onUnload() { this.detailRequestEpoch += 1; uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
   onShow() {
     if (this._entered) {
       if (this.mode === 'list') this.reloadTab()
@@ -316,22 +337,65 @@ export default {
     onBatchReady() { this.reloadTab() },
     toast,
     goPage(url) { go(url) },
-    applyReviewTruth(d) {
+    fileScanLabel(status) {
+      const code = String(status || '').trim().toUpperCase()
+      return FILE_STATUS_TEXT[code] || (code === 'PASSED' ? '安全可用' : '安全状态待确认')
+    },
+    fileReviewLabel(status) {
+      const code = String(status || '').trim().toUpperCase()
+      return ({
+        PENDING: '待审核',
+        SUBMITTED: '待审核',
+        APPROVED: '审核通过',
+        PASSED: '审核通过',
+        REJECTED: '已退回',
+        RETURNED: '已退回',
+        NOT_REQUIRED: '无需审核',
+        AVAILABLE: '材料可用'
+      })[code] || '审核状态待确认'
+    },
+    applyReviewTruth(d, { appendProposal = false, appendFinal = false } = {}) {
       this.data = d
-      this.reviewQueue = (d && d.reviewQueue) || []
-      this.finalQueue = (d && d.finalQueue) || []
+      const merge = (current, incoming, idKey, append) => {
+        if (!append) return incoming || []
+        const ids = new Set((current || []).map((row) => String(row[idKey] || '')))
+        return [...(current || []), ...(incoming || []).filter((row) => !ids.has(String(row[idKey] || '')))]
+      }
+      this.reviewQueue = merge(this.reviewQueue, (d && d.reviewQueue) || [], 'proposalId', appendProposal)
+      this.finalQueue = merge(this.finalQueue, (d && d.finalQueue) || [], 'finalId', appendFinal)
       this.proposalTotal = Number((d && d.proposalTotal) || 0)
       this.finalTotal = Number((d && d.finalTotal) || 0)
+      this.proposalPage = Number((d && d.proposalPage) || 1)
+      this.proposalHasMore = !!(d && d.proposalHasMore)
+      this.finalPage = Number((d && d.finalPage) || 1)
+      this.finalHasMore = !!(d && d.finalHasMore)
     },
     load(done) {
       if (!this.data) this.state = 'loading'
-      graduationTeacherCountTruth().then((d) => {
+      graduationTeacherCountTruth({ pageSize: GRADUATION_TEACHER_PAGE_SIZE }).then((d) => {
         this.applyReviewTruth(d)
         this.state = 'ready'
         this.loadMidterm(); this.loadGrade(); this.loadDefenseScorePending()
         this._maybeBootReview()
       }).catch((error) => { if (!this.data) this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
+    loadMoreReview(kind) {
+      const proposal = kind === 'proposal'
+      if ((proposal && (!this.proposalHasMore || this.proposalLoadingMore))
+        || (!proposal && (!this.finalHasMore || this.finalLoadingMore))) return
+      if (proposal) this.proposalLoadingMore = true
+      else this.finalLoadingMore = true
+      graduationTeacherCountTruth({
+        pageSize: GRADUATION_TEACHER_PAGE_SIZE,
+        proposalPage: proposal ? this.proposalPage + 1 : this.proposalPage,
+        finalPage: proposal ? this.finalPage : this.finalPage + 1
+      }).then((d) => {
+        this.applyReviewTruth(d, { appendProposal: proposal, appendFinal: !proposal })
+      }).catch((error) => { toast(normalizeError(error).text || '待批阅队列加载失败') })
+        .finally(() => { if (proposal) this.proposalLoadingMore = false; else this.finalLoadingMore = false })
+    },
+    loadMoreProposal() { this.loadMoreReview('proposal') },
+    loadMoreFinal() { this.loadMoreReview('final') },
     _maybeBootReview() {
       const kind = this._bootKind
       if (!kind || this.mode !== 'list') return
@@ -415,6 +479,7 @@ export default {
       this.loadDetail()
     },
     exitReview() {
+      this.detailRequestEpoch += 1
       this.mode = 'list'; this.detail = null; this.detailState = 'loading'
       this.peerScore = ''; this.peerOpinion = ''
       this.previewVersionConflict = false; this.previewVersionMessage = ''; this.previewContext = null; this.previewReturnPending = false
@@ -437,6 +502,7 @@ export default {
       }[kind] || null
     },
     loadDetail() {
+      const epoch = ++this.detailRequestEpoch
       const it = this.current
       if (!it) { this.detailState = 'empty'; return }
       this.peerScore = ''; this.peerOpinion = ''
@@ -450,13 +516,25 @@ export default {
       this.detailState = 'loading'; this.detail = null
       const api = this.detailApi()
       if (!api) { this.detailState = 'error'; return }
-      api().then((d) => { this.detail = d; this.detailState = 'ready' })
-        .catch((e) => { this.detailState = 'error'; toast(normalizeError(e).text) })
+      api().then((d) => {
+        if (epoch !== this.detailRequestEpoch) return
+        this.detail = d; this.detailState = 'ready'
+      }).catch((e) => {
+        if (epoch !== this.detailRequestEpoch || isStaleReadError(e)) return
+        this.detailState = 'error'; toast(normalizeError(e).text)
+      })
     },
     prev() { if (this.queueIndex > 0) { this.queueIndex--; this.loadDetail() } },
     next() { if (this.queueIndex < this.queue.length - 1) { this.queueIndex++; this.loadDetail() } },
     afterAction() {
       const kind = this.reviewKind
+      if (this._exactTodoRoute) {
+        this._exactTodoRoute = false
+        // 真实动作已经由服务端提交成功；用不带 recordId 的同一正式页面重新读取
+        // 当前批次，避免旧 deep-link 再次强行定位已处理对象。
+        uni.redirectTo({ url: '/pages/teacher/graduation-guide/index?tab=review' })
+        return
+      }
       if (kind !== 'proposal' && kind !== 'final') {
         this.queue.splice(this.queueIndex, 1)
         if (!this.queue.length) { this.exitReview(); return }

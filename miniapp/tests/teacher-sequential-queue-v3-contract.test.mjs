@@ -74,6 +74,22 @@ test('T5 abnormal queue carries the exact read-snapshot version into the canonic
   assert.doesNotMatch(adapter, /localStorage|setStorageSync|Promise\.all|itemIds|exceptionIds/)
 })
 
+test('T5 internship todo resolves a server-authorized batch instead of rendering an empty queue', () => {
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
+  const adapter = read('src/services/teacherSequentialV3Api.js')
+
+  assert.match(page, /useInternshipContextStore/)
+  assert.match(page, /routeBatchId/)
+  assert.match(page, /focusReportId/)
+  assert.match(page, /ensureBatchContext/)
+  assert.match(page, /当前实习批次/)
+  assert.match(page, /数据恢复前不要把空列表当作已处理完成/)
+  assert.match(page, /batchId: this\.batchId/)
+  assert.match(adapter, /focusReportId/)
+  assert.match(adapter, /recordId=\$\{encodeURIComponent\(String\(focusReportId\)\.trim\(\)\)\}/)
+  assert.doesNotMatch(adapter, /setStorageSync|localStorage/)
+})
+
 test('T5 only advances after server reload and cannot auto-advance while conflict is set', () => {
   const component = read('src/components/teacher/MobileSequentialQueue.vue')
   const leave = read('src/pages/teacher/affairs-leave/index.vue')

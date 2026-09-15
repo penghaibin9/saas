@@ -6,6 +6,7 @@ import re
 import json
 
 from sqlalchemy import and_, case, false, func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -122,6 +123,7 @@ def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
         "recordStatus": s.record_status, "counselor": s.counselor or "",
         "payableAmount": _amt(s.payable_amount), "paidAmount": _amt(s.paid_amount),
         "blockedStep": s.blocked_step or "", "blockedReason": s.blocked_reason or "",
+        "exceptionNote": s.exception_note or "",
         "updateTime": _iso(s.updated_at),
     }
     if detail:
@@ -251,7 +253,13 @@ def create_student(body: dict, *, db=None) -> dict:
             batch_id = int(body.get("batchId") or 0)
         except (TypeError, ValueError):
             batch_id = 0
-        batch = db.get(OrientationBatch, batch_id) if batch_id else None
+        # 名单新增与“空批次切换流程版本”必须竞争同一批次行锁；否则两边都
+        # 可能基于空名单/旧版本通过，最终生成与批次版本不一致的学生步骤。
+        batch = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.id == batch_id,
+            OrientationBatch.tenant_id == _tid(),
+            OrientationBatch.is_deleted.is_(False),
+        ).with_for_update()).first() if batch_id else None
         if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
             raise AppException("VALIDATION_ERROR", "请选择本校有效迎新批次")
         if batch.status == "CLOSED":
@@ -456,19 +464,57 @@ def void_student(sid, reason: str) -> dict:
         return {"id": str(s.id)}
 
 
-def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
+def verify_student(sid, passed: bool = True, reason: str = "", expected_version: int | None = None) -> dict:
     """新生信息核验：通过 → 预报到已核验（stage=PRE_STUDENT_VERIFIED，环节 INFO=DONE）；
     不通过 → 记录原因 + 标记高风险，stage 不前进。"""
     with session() as db:
-        s = _get_student(db, sid)
+        try:
+            student_id = int(sid)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "新生记录编号须为数字") from None
+        s = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.id == student_id,
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not s:
+            raise not_found("新生记录不存在或不在当前数据范围内")
         assert_orientation_student_scope(db, s)
+        if expected_version is None or int(expected_version) != int(s.version or 0):
+            raise AppException("DATA_CONFLICT", "新生核验状态已更新，请重新读取后再提交")
         if s.stage in ("ENROLLED", "CANCELLED", "NO_SHOW", "DEFERRED"):
             raise AppException("INVALID_STATE", "该新生已入学/已取消，不可再核验")
+        before = s.stage
+        was_info_blocked = s.blocked_step == "INFO"
         if passed:
-            before = s.stage
             if s.report_status != "CHECKED_IN":
                 s.stage = "PRE_STUDENT_VERIFIED"
             s.exception_note = ""
+            if was_info_blocked:
+                s.blocked_step = None
+                s.blocked_reason = None
+            identity_exceptions = db.scalars(select(OrientationException).where(
+                OrientationException.tenant_id == _tid(),
+                OrientationException.ori_student_id == s.id,
+                OrientationException.exception_type == "IDENTITY",
+                OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
+                OrientationException.is_deleted.is_(False),
+            ).with_for_update()).all()
+            for exception in identity_exceptions:
+                exception.status = "RESOLVED"
+                exception.last_follow_time = datetime.utcnow()
+                exception.version = int(exception.version or 0) + 1
+                _audit(db, "EXCEPTION", exception.id, "信息补正核验通过",
+                       detail="学生补正后信息核验通过", before="待处理", after="已处理")
+            active_other = db.scalars(select(OrientationException).where(
+                OrientationException.tenant_id == _tid(),
+                OrientationException.ori_student_id == s.id,
+                OrientationException.exception_type != "IDENTITY",
+                OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
+                OrientationException.is_deleted.is_(False),
+            )).all()
+            if was_info_blocked and s.risk_level == "HIGH" and not active_other:
+                s.risk_level = "LOW"
             set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
                                     source_biz_id=f"student:{s.id}:verify")
             _audit(db, "STUDENT", s.id, "信息核验通过", before=before, after="PRE_STUDENT_VERIFIED")
@@ -476,21 +522,57 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "核验不通过原因必填且不少于 5 字")
             s.exception_note = reason.strip()
+            if s.stage == "PRE_STUDENT_VERIFIED":
+                s.stage = "ADMITTED"
+            s.blocked_step = "INFO"
+            s.blocked_reason = reason.strip()
+            set_student_step_status(
+                db, s, "INFO", "BLOCKED", status_source="PROCESS_FACT",
+                source_biz_id=f"student:{s.id}:verify", blocked_reason=reason.strip(),
+            )
             if s.risk_level == "LOW":
                 s.risk_level = "HIGH"
-            _audit(db, "STUDENT", s.id, "信息核验不通过", reason.strip())
+            identity_exception = db.scalars(select(OrientationException).where(
+                OrientationException.tenant_id == _tid(),
+                OrientationException.ori_student_id == s.id,
+                OrientationException.exception_type == "IDENTITY",
+                OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
+                OrientationException.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if identity_exception:
+                identity_exception.description = reason.strip()
+                identity_exception.risk_level = "HIGH"
+                identity_exception.status = "OPEN"
+                identity_exception.handler = _op()[0]
+                identity_exception.last_follow_time = datetime.utcnow()
+                identity_exception.version = int(identity_exception.version or 0) + 1
+                exception_before = "已存在"
+            else:
+                identity_exception = OrientationException(
+                    tenant_id=_tid(), ori_student_id=s.id, exception_type="IDENTITY",
+                    description=reason.strip(), risk_level="HIGH", status="OPEN",
+                    handler=_op()[0], last_follow_time=datetime.utcnow(),
+                )
+                db.add(identity_exception)
+                db.flush()
+                exception_before = "不存在"
+            _audit(db, "EXCEPTION", identity_exception.id, "登记信息核验异常",
+                   detail=reason.strip(), before=exception_before, after="待处理")
+            _audit(db, "STUDENT", s.id, "信息核验不通过", reason.strip(), before=before, after="ADMITTED")
         s.version += 1
         db.commit()
-        return {"id": str(s.id), "stage": s.stage}
+        return {"id": str(s.id), "stage": s.stage, "passed": bool(passed), "version": int(s.version or 0)}
 
 
 # ═══ 报到进度 ═══
 
-def list_progress(page, page_size, keyword=None, blocked_only="NO"):
+def list_progress(page, page_size, keyword=None, blocked_only="NO", batch_id=None):
     with session() as db:
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
         if keyword:
             kw = f"%{keyword.strip()}%"
             q = q.where(or_(OrientationStudent.name.like(kw),
@@ -1378,8 +1460,10 @@ def get_dashboard(user=None, batch_id=None) -> dict:
         prepared = len(prepared_ids)
         funnel = {}
         for step in steps:
+            if step.step_key not in step_labels:
+                continue
             item = funnel.setdefault(step.step_key, {
-                "key": step.step_key, "label": step_labels.get(step.step_key, step.step_key), "done": 0,
+                "key": step.step_key, "label": step_labels[step.step_key], "done": 0,
             })
             if step.status in ("DONE", "WAIVED", "NOT_REQUIRED"):
                 item["done"] += 1
@@ -1441,6 +1525,7 @@ def _batch_row(b: OrientationBatch) -> dict:
         "status": b.status, "statusLabel": L_BATCH.get(b.status, b.status),
         "flowVersionId": str(b.flow_version_id) if b.flow_version_id else "",
         "plannedCount": int(b.planned_count or 0), "remark": b.remark or "",
+        "version": int(b.version or 0),
         "updateTime": _iso(b.updated_at),
     }
 
@@ -1527,6 +1612,43 @@ def activate_batch(bid) -> dict:
         _audit(db, "BATCH", b.id, "启用迎新批次", before="DRAFT", after="ACTIVE")
         db.commit()
         return {"id": str(b.id), "status": b.status}
+
+
+def refresh_empty_batch_flow_version(bid, expected_version: int) -> dict:
+    """Rebind only an empty, non-closed batch; existing student workflows stay immutable."""
+    with session() as db:
+        try:
+            batch_id = int(bid)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "批次编号须为数字") from None
+        b = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.id == batch_id,
+            OrientationBatch.tenant_id == _tid(),
+            OrientationBatch.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not b:
+            raise not_found("迎新批次不存在或不在当前数据范围内")
+        if b.status == "CLOSED":
+            raise AppException("INVALID_STATE", "已结束批次不可更换流程版本")
+        if int(b.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "批次已被其他操作更新，请重新读取后重试")
+        # 冻结版本属于所有历史流程实例；作废/软删名单仍是已存在实例，不能
+        # 因当前有效人数为零而改写其批次版本。
+        student_count = int(db.scalar(select(func.count()).select_from(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.batch_id == b.id,
+        )) or 0)
+        if student_count:
+            raise AppException("INVALID_STATE", f"该批次已有 {student_count} 名新生，不能更换冻结流程版本")
+        before = str(b.flow_version_id or "")
+        latest = ensure_published_flow_version(db, int(b.tenant_id))
+        if int(b.flow_version_id or 0) == int(latest.id):
+            return {"id": str(b.id), "flowVersionId": str(latest.id), "version": int(b.version or 0), "changed": False}
+        b.flow_version_id = latest.id
+        b.version = int(b.version or 0) + 1
+        _audit(db, "BATCH", b.id, "空批次采用最新流程版本",
+               detail="批次尚无新生，可安全更新流程快照", before=before, after=str(latest.id))
+        db.commit()
+        return {"id": str(b.id), "flowVersionId": str(latest.id), "version": int(b.version), "changed": True}
 
 
 def assign_batch_student_numbers(bid, body: dict) -> dict:
@@ -1740,11 +1862,104 @@ def list_flow_config():
         return [_flow_row(r) for r in rows]
 
 
+def complete_standard_flow_config():
+    """Explicitly restore missing canonical steps for future batches only.
+
+    Canonical rows retain their switches, custom rows remain stored, and known obsolete aliases
+    are disabled so future batches cannot require duplicate steps. Published versions are never
+    rewritten. The unique tenant/step key plus the fallback makes repeated clicks idempotent.
+    """
+    tenant_id = _tid()
+    try:
+        with session() as db:
+            rows = db.scalars(select(OrientationFlowConfig).where(
+                OrientationFlowConfig.tenant_id == tenant_id,
+            ).with_for_update()).all()
+            by_key = {str(row.step_key): row for row in rows}
+            added = []
+            restored = []
+            normalized = []
+            for index, step in enumerate(REGISTRATION_STEPS, start=1):
+                row = by_key.get(step["key"])
+                if row:
+                    if row.is_deleted:
+                        row.is_deleted = False
+                        row.version += 1
+                        restored.append(step["key"])
+                        _audit(db, "FLOW_CONFIG", row.id, "恢复标准流程环节",
+                               detail=f"恢复未来批次模板环节：{row.step_name}",
+                               before="已删除", after="已恢复")
+                    expected_order = index * 10
+                    if int(row.sort_order or 0) != expected_order:
+                        before_order = int(row.sort_order or 0)
+                        row.sort_order = expected_order
+                        row.version += 1
+                        normalized.append(step["key"])
+                        _audit(db, "FLOW_CONFIG", row.id, "规范标准流程顺序",
+                               detail=f"未来批次模板环节：{row.step_name}",
+                               before=str(before_order), after=str(expected_order))
+                    continue
+                row = OrientationFlowConfig(
+                    tenant_id=tenant_id, step_key=step["key"], step_name=step["label"],
+                    enabled=True, required=True, sort_order=index * 10,
+                    remark="标准迎新环节；仅供后续未绑定流程版本的批次采用。",
+                )
+                db.add(row); db.flush()
+                by_key[step["key"]] = row
+                added.append(step["key"])
+                _audit(db, "FLOW_CONFIG", row.id, "补齐标准流程环节",
+                       detail=f"补齐未来批次模板环节：{row.step_name}",
+                       before="不存在", after="已创建")
+            retired = []
+            for offset, key in enumerate(("IDENTITY", "FINANCE"), start=8):
+                row = by_key.get(key)
+                if not row or row.is_deleted:
+                    continue
+                before = f"enabled={bool(row.enabled)},sortOrder={int(row.sort_order or 0)}"
+                changed = bool(row.enabled) or int(row.sort_order or 0) != offset * 10
+                if changed:
+                    row.enabled = False
+                    row.sort_order = offset * 10
+                    row.version += 1
+                    retired.append(key)
+                    _audit(db, "FLOW_CONFIG", row.id, "停用历史兼容环节",
+                           detail=f"标准环节补齐后保留历史定义但不再供新批次执行：{row.step_name}",
+                           before=before, after=f"enabled=False,sortOrder={offset * 10}")
+            db.commit()
+            current = db.scalars(select(OrientationFlowConfig).where(
+                OrientationFlowConfig.tenant_id == tenant_id,
+                OrientationFlowConfig.is_deleted.is_(False),
+            ).order_by(OrientationFlowConfig.sort_order, OrientationFlowConfig.id)).all()
+            return {"addedCount": len(added), "restoredCount": len(restored),
+                    "normalizedCount": len(normalized), "retiredLegacyCount": len(retired),
+                    "addedKeys": added, "restoredKeys": restored,
+                    "normalizedKeys": normalized, "retiredLegacyKeys": retired,
+                    "totalCount": len(current), "items": [_flow_row(row) for row in current]}
+    except IntegrityError:
+        # A simultaneous request may win the unique tenant/step-key insert.  Re-read only
+        # after its commit; never report success while a canonical step remains absent.
+        with session() as db:
+            current = db.scalars(select(OrientationFlowConfig).where(
+                OrientationFlowConfig.tenant_id == tenant_id,
+                OrientationFlowConfig.is_deleted.is_(False),
+            ).order_by(OrientationFlowConfig.sort_order, OrientationFlowConfig.id)).all()
+            keys = {str(row.step_key) for row in current}
+            missing = [step["key"] for step in REGISTRATION_STEPS if step["key"] not in keys]
+            if missing:
+                raise AppException("DATA_CONFLICT", "流程模板正在被其他操作更新，请重新读取后重试") from None
+            return {"addedCount": 0, "restoredCount": 0, "normalizedCount": 0,
+                    "retiredLegacyCount": 0, "addedKeys": [], "restoredKeys": [],
+                    "normalizedKeys": [], "retiredLegacyKeys": [],
+                    "totalCount": len(current), "items": [_flow_row(row) for row in current]}
+
+
 def update_flow_config(fid, body):
     with session() as db:
         f = db.get(OrientationFlowConfig, int(fid))
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("流程环节不存在")
+        if body.get("enabled") is True and f.step_key in {"IDENTITY", "FINANCE"}:
+            raise AppException("INVALID_STATE", "该环节是历史兼容定义，不能重新启用；请使用对应的标准环节")
         if body.get("enabled") is not None:
             f.enabled = bool(body["enabled"])
         if body.get("required") is not None:

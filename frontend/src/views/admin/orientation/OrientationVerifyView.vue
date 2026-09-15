@@ -6,15 +6,19 @@
     :data-scope-name="dataScopeName"
     watermark-purpose="新生信息核验"
   >
+    <template #actions>
+      <button v-if="filters.batchId" type="button" @click="$router.push({ path: '/admin/orientation/batches', query: { batchId: filters.batchId, panel: 'students' } })">返回本批次名单</button>
+    </template>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
       <ModuleToolbar :actions="[]" :hint="`共 ${total} 名新生 · 核验动作全程留痕`" />
+      <p v-if="selectedBatch?.status === 'CLOSED'" role="status">该批次已结束，仅供查询，不能继续核验或报到。</p>
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <LoadingState v-if="loading" />
       <ErrorState v-else-if="error" :description="error" @retry="load" />
-      <EmptyState v-else-if="!rows.length" title="暂无待核验新生" description="当前数据范围内没有匹配的新生" />
+      <EmptyState v-else-if="!rows.length" :title="filters.batchId ? '暂无匹配新生' : '请选择迎新批次'" description="请先在迎新批次内设置新生，再办理信息核验" />
       <DataTable
         v-else
         :columns="tableColumns"
@@ -24,7 +28,15 @@
         @page-change="turnPage"
       >
         <template #cell-stage="{ row }">
-          <StatusTag :type="row.stage === 'PRE_STUDENT_VERIFIED' ? 'success' : 'warning'" :label="row.stageLabel" dot />
+          <StatusTag
+            :type="row.exceptionNote ? 'danger' : row.stage === 'PRE_STUDENT_VERIFIED' ? 'success' : 'warning'"
+            :label="row.exceptionNote ? '待补正' : row.stageLabel"
+            dot
+          />
+        </template>
+        <template #cell-exception="{ row }">
+          <span v-if="row.exceptionNote" class="verify-return-reason">{{ row.exceptionNote }}</span>
+          <span v-else class="verify-return-empty">—</span>
         </template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
@@ -38,9 +50,12 @@
         :type="confirmConf.type"
         :confirm-text="confirmConf.confirmText"
         :require-reason="confirmConf.requireReason"
+        :submitting="confirmSubmitting"
         reason-label="不通过原因（≥5 字）"
         @confirm="onConfirm"
-      />
+      >
+        <p v-if="confirmError" role="alert">{{ confirmError }}</p>
+      </AppConfirmDialog>
     </template>
   </ModulePageShell>
 </template>
@@ -53,8 +68,9 @@ import { TableActionColumn, NoPermissionState } from '@/modules/orientation/comp
 import * as api from '@/modules/orientation/api/orientation.api'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', stage: 'ADMITTED' })
+const EMPTY_FILTERS = () => ({ batchId: '', keyword: '', stage: 'ADMITTED' })
 const STAGE_OPTIONS = [
+  { value: '', label: '全部' },
   { value: 'ADMITTED', label: '待核验（已录取）' },
   { value: 'PRE_STUDENT_VERIFIED', label: '已核验' }
 ]
@@ -68,16 +84,19 @@ export default {
   data() {
     return {
       ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
-      filters: EMPTY_FILTERS(), confirmVisible: false, confirmMode: '', confirmRow: null
+      batches: [], confirmError: '',
+      filters: EMPTY_FILTERS(), confirmVisible: false, confirmMode: '', confirmRow: null, confirmSubmitting: false
     }
   },
   computed: {
+    selectedBatch() { return this.batches.find(b => String(b.id) === this.filters.batchId) },
     roleName() { return this.ctx?.currentRole?.roleName || '' },
     dataScopeName() { return this.ctx?.dataScope?.name || '' },
     perms() { return this.ctx?.permissionActions || {} },
     noPermission() { const p = this.perms['orientation.student.view']; return p ? !p.allowed : false },
     filterFields() {
       return [
+        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batches.map(b => ({ value: String(b.id), label: `${b.batchName}${b.status === 'CLOSED' ? '（已结束）' : ''}` })) },
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
         { key: 'stage', label: '核验状态', type: 'select', options: STAGE_OPTIONS }
       ]
@@ -89,6 +108,7 @@ export default {
         { key: 'idCard', title: '身份证（脱敏）' },
         { key: 'className', title: '班级' },
         { key: 'stage', title: '核验状态' },
+        { key: 'exception', title: '退回原因' },
         { key: 'actions', title: '操作' }
       ]
     },
@@ -101,35 +121,74 @@ export default {
     }
   },
   async created() {
-    const ctx = await api.getOrientationContext()
-    if (ctx.code === 0) this.ctx = ctx.data
-    await this.load()
+    try {
+      const [ctx, batches] = await Promise.all([api.getOrientationContext(), api.getOrientationBatches({ page: 1, pageSize: 200 })])
+      if (ctx.code === 0) this.ctx = ctx.data
+      if (batches.code !== 0) throw new Error(batches.message || '批次加载失败')
+      this.batches = batches.data.list || []
+      this.filters = {
+        batchId: String(this.$route.query.batchId || this.batches.find(b => b.status === 'ACTIVE')?.id || ''),
+        keyword: String(this.$route.query.keyword || ''),
+        stage: this.$route.query.stage === undefined ? 'ADMITTED' : String(this.$route.query.stage || '')
+      }
+      await this.load()
+    } catch (e) { this.error = e.message || '核验页面加载失败'; this.loading = false }
   },
   methods: {
     async load() {
       this.loading = true; this.error = ''
+      if (!this.filters.batchId) { this.rows = []; this.total = 0; this.loading = false; return }
       try {
         const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
     },
-    search() { this.page = 1; this.load() },
-    reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
+    search() {
+      this.page = 1
+      const query = {
+        ...this.$route.query,
+        batchId: this.filters.batchId || undefined,
+        keyword: this.filters.keyword || undefined,
+        stage: this.filters.stage === 'ADMITTED' ? undefined : (this.filters.stage || '')
+      }
+      const unchanged = String(this.$route.query.batchId || '') === String(query.batchId || '')
+        && String(this.$route.query.keyword || '') === String(query.keyword || '')
+        && String(this.$route.query.stage || '') === String(query.stage || '')
+      if (unchanged) this.load()
+      else this.$router.replace({ query })
+    },
+    reset() { const batchId = this.filters.batchId; this.filters = { ...EMPTY_FILTERS(), batchId }; this.search() },
     turnPage(p) { this.page = p; this.load() },
     rowActions(row) {
       const verified = row.stage === 'PRE_STUDENT_VERIFIED'
+      const closed = this.selectedBatch?.status === 'CLOSED'
       return [
-        { key: 'pass', label: '核验通过', disabled: verified, disabledReason: verified ? '该生已核验' : '' },
-        { key: 'fail', label: '不通过' }
+        { key: 'pass', label: row.exceptionNote ? '补正后通过' : '核验通过', disabled: closed || verified, disabledReason: closed ? '该批次已结束' : verified ? '该生已核验' : '' },
+        { key: 'fail', label: '不通过', disabled: closed, disabledReason: closed ? '该批次已结束' : '' }
       ]
     },
-    onRowAction(key, row) { this.confirmMode = key; this.confirmRow = row; this.confirmVisible = true },
-    async onConfirm(reason) {
-      const row = this.confirmRow; if (!row) return
-      const res = await api.verifyOrientationStudent(row.id, { passed: this.confirmMode === 'pass', reason })
-      if (res && res.code === 0) { toast.success('已核验'); this.confirmVisible = false; await this.load() }
-      else toast.error((res && res.message) || '操作失败')
+    onRowAction(key, row) { this.confirmError = ''; this.confirmMode = key; this.confirmRow = row; this.confirmVisible = true },
+    async onConfirm({ reason = '' } = {}) {
+      const row = this.confirmRow; if (!row || this.confirmSubmitting) return
+      this.confirmSubmitting = true
+      this.confirmError = ''
+      try {
+        const passed = this.confirmMode === 'pass'
+        const res = await api.verifyOrientationStudent(row.id, { passed, reason, expectedVersion: row.version })
+        if (res && res.code === 0) {
+          toast.success(passed ? '信息核验已通过' : '已退回学生补正，原因已记录')
+          this.confirmVisible = false
+          await this.load()
+        }
+        else { this.confirmError = (res && res.message) || '操作失败'; toast.error(this.confirmError) }
+      } catch (e) { this.confirmError = e.message || '核验未完成，请重试'; toast.error(this.confirmError) }
+      finally { this.confirmSubmitting = false }
     }
   }
 }
 </script>
+
+<style scoped>
+.verify-return-reason { color: #b42318; font-weight: 600; line-height: 1.55; }
+.verify-return-empty { color: #98a2b3; }
+</style>

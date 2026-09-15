@@ -24,13 +24,22 @@ const fixtures = {
   '/warning/my': { items: [{ warningId: 'fixture-warning', warnType: 'MULTI_FAIL', level: 'MEDIUM', reason: '演练 · 请关注未通过课程，核对补考安排。', status: 'ACTIVE' }] },
   '/status/my': { enrolled: true, studentStatus: 'REGISTERED', studentNo: 'TEST-001', realName: '演练学生', majorName: '机电技术', className: '机电2401', changes: [] },
   '/credits/my': { obtainedCredits: 36, requiredCredits: 144, resolutionStatus: 'RESOLVED', gpa: 3.18, failCount: 1, passedCourses: [{ courseName: '演练 · 大学英语', term: '2026春季', credit: 2, score: 85 }] },
-  '/clearance/my': { items: [{ recordId: 'fixture-clearance', courseName: '演练 · PLC应用基础', batchName: '演练 · 本届清考', originScore: 58, score: 65, status: 'PASSED' }], note: '演练 · 学校正式发布的清考结果。' },
+  '/clearance/my': { items: [{ recordId: 'fixture-clearance', courseName: '演练 · PLC应用基础', batchName: '演练 · 本届清考', originScore: 58, score: 65, status: 'PASSED' }], total: 1, page: 1, pageSize: 20, hasMore: false, note: '演练 · 学校正式发布的清考结果。' },
   '/makeup/my': { retakes: [], exemptions: [] }, '/makeup/options': { retakeOptions: [{ gradeId: 'fixture-grade', courseId: 'fixture-course', courseName: '演练 · PLC应用基础', termCode: '2026春季', score: 58 }], exemptionOptions: [{ courseId: 'fixture-course', courseName: '演练 · PLC应用基础', termCode: '2026秋季' }], identityDebtCount: 0 },
   '/exam/my': { items: [{ examCourseId: 'fixture-exam', courseName: '演练 · PLC应用基础', examDate: '2026-12-22', startTime: '09:00', endTime: '10:40', classroom: '知行楼302', seatNo: '12' }] },
   '/exam/defer-options': { items: [{ examCourseId: 'fixture-exam', courseName: '演练 · PLC应用基础', examDate: '2026-12-22', startTime: '09:00', canApply: true, hasActiveDefer: false }] }, '/exam/defer/my': { items: [] },
   '/textbook/my': { distributions: [{ recordId: 'fixture-book', textbookName: '演练 · PLC技术与应用', qty: 1, status: 'PENDING' }], fees: { totalDue: 36, totalPaid: 0, unpaid: 36, items: [] } },
-  '/level-exam/my': { openExams: [{ examId: 'fixture-level', examName: '演练 · 普通话等级考试', category: 'PUTONGHUA', fee: 50 }], myRegs: [] },
-  '/major-split/my': { openBatches: [{ batchId: 'fixture-major', batchName: '演练 · 专业方向选择', maxChoices: 2, options: [{ majorId: 'fixture-m1', majorName: '机电技术' }, { majorId: 'fixture-m2', majorName: '电气技术' }] }], myVolunteers: [] },
+  '/level-exam/my': {
+    openExams: [{ examId: 'fixture-level', examName: '演练 · 普通话等级考试', category: 'PUTONGHUA', fee: 50 }],
+    openPagination: { page: 1, pageSize: 20, total: 1, hasMore: false },
+    myRegs: [], registrationPagination: { page: 1, pageSize: 20, total: 0, hasMore: false }
+  },
+  '/major-split/my': {
+    openBatches: [{ batchId: 'fixture-major', batchName: '演练 · 专业方向选择', maxChoices: 2 }],
+    openPagination: { page: 1, pageSize: 20, total: 1, hasMore: false },
+    myVolunteers: [], volunteerPagination: { page: 1, pageSize: 20, total: 0, hasMore: false }
+  },
+  '/major-split/fixture-major/options': { items: [{ majorId: 'fixture-m1', majorName: '机电技术' }, { majorId: 'fixture-m2', majorName: '电气技术' }], page: 1, pageSize: 20, total: 2, hasMore: false },
   '/evaluation/tasks': { list: [{ taskId: 'fixture-evaluation', courseName: '演练 · PLC应用基础', teacherName: '李老师', canSubmit: true, submitted: false, windowStatus: 'OPEN' }], total: 1, pending: 1 },
   '/schedule/my': { items: [{ itemId: 'fixture-lesson', courseName: '演练 · PLC应用基础', teacherName: '李老师', classroom: '知行楼302', weekday: 2, slotNo: 1, startWeek: 1, endWeek: 18, weekParity: 'ALL' }], todayItems: [{ itemId: 'fixture-lesson', courseName: '演练 · PLC应用基础', teacherName: '李老师', classroom: '知行楼302', weekday: 2, slotNo: 1 }], todayDate: '2026-09-08', currentWeek: 2, teachingWeeks: 18, termCode: '2026秋季', calendarSource: 'NORMAL', timeBands: [{ slotNo: 1, startTime: '08:30', endTime: '09:15' }] }
 }
@@ -82,7 +91,7 @@ const server = http.createServer(async (req, res) => {
       if (route === '/status-change') { const row = { ...body, changeId: id, status: 'SUBMITTED', version: 1 }; fixtures['/status/my'].changes.push(row); return json(row) }
       if (route === '/exam/defer/apply') { const row = { ...body, deferId: id, courseName: '演练 · PLC应用基础', status: 'SUBMITTED' }; fixtures['/exam/defer/my'].items.push(row); fixtures['/exam/defer-options'].items[0].hasActiveDefer = true; return json(row) }
       if (route === '/evaluation/submit') { fixtures['/evaluation/tasks'].list[0].submitted = true; fixtures['/evaluation/tasks'].list[0].canSubmit = false; return json(null) }
-      if (route === '/major-split/submit') { fixtures['/major-split/my'].myVolunteers = [{ ...body, status: 'SUBMITTED' }]; return json(null) }
+      if (route === '/major-split/submit') { fixtures['/major-split/my'].myVolunteers = [{ ...body, volunteerId: id, status: 'PENDING', choiceNames: (body.choices || []).map(choice => choice === 'fixture-m1' ? '机电技术' : '电气技术') }]; fixtures['/major-split/my'].volunteerPagination = { page: 1, pageSize: 20, total: 1, hasMore: false }; return json({ volunteerId: id, batchId: body.batchId }) }
       if (route === '/makeup/retake-apply') { const row = { ...body, applyId: id, courseName: '演练 · PLC应用基础', status: 'SUBMITTED' }; fixtures['/makeup/my'].retakes.push(row); return json(row) }
       if (route === '/makeup/exemption-apply') { const row = { ...body, exemptionId: id, courseName: '演练 · PLC应用基础', status: 'SUBMITTED' }; fixtures['/makeup/my'].exemptions.push(row); return json(row) }
     }

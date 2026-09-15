@@ -58,7 +58,10 @@ function stripMockPayloadInProduction() {
 /**
  * 小程序 H5 的 uni.showModal/showActionSheet 默认由运行时控件渲染，
  * 在部分浏览器与嵌入式预览器中会退化为浏览器级弹层。统一转到当前
- * 应用文档内的对话服务；非 H5 运行时因全局钩子不存在，仍调用原 uni API。
+ * 应用文档内的对话服务。转换后的调用必须以标识符开头：若改为
+ * `(hook || uni.showModal)(...)`，上一句未显式分号时会被 JavaScript 解析成
+ * `上一句结果(...)`，例如把字符串“退回”当作函数。invoker 在 H5 启动时安装，
+ * 返回应用内实现或原 uni API，因此既不会触发 ASI，也保留跨端调用约定。
  */
 function keepDialogsInsideH5App() {
   return {
@@ -68,8 +71,8 @@ function keepDialogsInsideH5App() {
       const file = id.split('?')[0].replace(/\\/g, '/')
       if (!file.includes('/src/') || !/\.(?:[cm]?js|vue)$/.test(file)) return null
       const transformed = code
-        .replace(/\buni\.showModal\s*\(/g, '(globalThis.__schoolInAppModal || uni.showModal)(')
-        .replace(/\buni\.showActionSheet\s*\(/g, '(globalThis.__schoolInAppActionSheet || uni.showActionSheet)(')
+        .replace(/\buni\.showModal\s*\(/g, 'globalThis.__schoolInAppModalInvoker(uni.showModal)(')
+        .replace(/\buni\.showActionSheet\s*\(/g, 'globalThis.__schoolInAppActionSheetInvoker(uni.showActionSheet)(')
       return transformed === code ? null : { code: transformed, map: null }
     }
   }

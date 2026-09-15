@@ -6,7 +6,9 @@ const flush = () => new Promise(resolve => setImmediate(resolve))
 function component(path, context = {}) {
   const source = readFileSync(new URL('../src/' + path, import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*$/gm, '').replace('export default', 'module.exports =')
-  const scope = { module: { exports: {} }, ...context }
+  // 组件源码的 import 会在该轻量 VM 夹具中剥离；消息展示层的行为由
+  // message-presentation.test.mjs 独立覆盖，这里保留其纯投影接口以验证详情生命周期。
+  const scope = { module: { exports: {} }, presentMessage: item => item, ...context }
   vm.runInNewContext(source, scope)
   const c = scope.module.exports
   const state = c.data ? c.data() : {}
@@ -94,6 +96,42 @@ test('native logout waits for server confirmation and keeps local state on failu
   await assert.rejects(logout()); assert.equal(cleared, 0)
   result = { tokenInvalidated: true }; await logout()
   assert.equal(cleared, 1); assert.equal(request.path, '/auth/logout?scope=current')
+})
+
+test('academic session plugin cannot restore an identity before the browser session is verified', () => {
+  const source = readFileSync(new URL('../src/stores/sessionAcademicPlugin.js', import.meta.url), 'utf8')
+    .replace(/^import .*$/gm, '')
+    .replace('export function academicSessionPlugin', 'function academicSessionPlugin')
+    .replace('export default academicSessionPlugin', 'module.exports = academicSessionPlugin')
+  const storage = new Map([['gx_session_v1', JSON.stringify({
+    logged: true,
+    identity: { tenantId: 'tenant-a', studentId: 'student-a', realName: '旧学生A' }
+  })]])
+  const context = {
+    module: { exports: {} },
+    clearSensitiveLocalDrafts() {},
+    uni: {
+      getStorageSync: key => storage.get(key) || '',
+      setStorageSync: (key, value) => storage.set(key, value)
+    }
+  }
+  vm.runInNewContext(source, context)
+  const store = {
+    $id: 'session',
+    identity: {},
+    persistedIdentityVerified: false,
+    $patch(value) { Object.assign(this, value) },
+    persist() {},
+    restore() { this.identity = {}; this.persistedIdentityVerified = false },
+    applyRealUser() {},
+    setStudentIdentity() {},
+    hydrateStudentProfile() {},
+    logout() {}
+  }
+  context.module.exports({ store })
+  store.restore()
+  assert.deepEqual(store.identity, {})
+  assert.equal(Object.hasOwn(JSON.parse(storage.get('gx_session_v1')), 'identity'), false)
 })
 test('message stash is one-use and invalidates on session change and ID mismatch', () => {
   const source = readFileSync(new URL('../src/utils/msgStash.js', import.meta.url), 'utf8')

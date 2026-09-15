@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, not_found
 from app.models import InternshipProcessReport, WeeklyReport
 from app.modules.internship.services import internship_service as weekly_legacy
 from app.modules.internship.services import internship_process_report_service as legacy
@@ -152,7 +152,21 @@ def _weekly_row(row) -> dict:
     }
 
 
-def list_weekly(user: dict, *, batch_id, internship_id) -> dict:
+def list_weekly(
+    user: dict,
+    *,
+    batch_id,
+    internship_id,
+    page: int = 1,
+    page_size: int = 20,
+    focus_report_id: int | None = None,
+) -> dict:
+    """分页返回本人的周报；消息深链只可定位本人当前实习记录中的一条。"""
+    try:
+        safe_page = max(1, int(page or 1))
+        safe_page_size = min(50, max(1, int(page_size or 20)))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "周报分页参数不正确") from None
     with session() as db:
         record, _student, selected_batch_id = require_explicit_context(
             db,
@@ -160,18 +174,45 @@ def list_weekly(user: dict, *, batch_id, internship_id) -> dict:
             {"batchId": batch_id, "internshipId": internship_id},
             for_write=False,
         )
-        rows = db.scalars(select(WeeklyReport).where(
+        filters = (
             WeeklyReport.tenant_id == _tid(),
             WeeklyReport.internship_id == record.id,
             WeeklyReport.is_deleted.is_(False),
-        ).order_by(
+        )
+        total = int(db.scalar(select(func.count()).select_from(WeeklyReport).where(*filters)) or 0)
+        focus_page = None
+        if focus_report_id not in (None, ""):
+            try:
+                focus_id = int(focus_report_id)
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "周报编号不正确") from None
+            focused = db.scalar(select(WeeklyReport).where(*filters, WeeklyReport.id == focus_id))
+            # URL 参数即使被改成其他学生的 ID，也只能得到统一的不存在，不泄露对象或分页位置。
+            if focused is None:
+                raise not_found("周报不存在或不属于当前实习记录")
+            before_count = int(db.scalar(select(func.count()).select_from(WeeklyReport).where(
+                *filters,
+                or_(
+                    WeeklyReport.week_number > focused.week_number,
+                    and_(WeeklyReport.week_number == focused.week_number, WeeklyReport.id > focused.id),
+                ),
+            )) or 0)
+            focus_page = before_count // safe_page_size + 1
+        rows = db.scalars(select(WeeklyReport).where(*filters).order_by(
             WeeklyReport.week_number.desc(),
             WeeklyReport.id.desc(),
-        )).all()
+        ).offset((safe_page - 1) * safe_page_size).limit(safe_page_size)).all()
         return {
             "items": [_weekly_row(row) for row in rows],
             "batchId": str(selected_batch_id),
             "internshipId": str(record.id),
+            "page": safe_page,
+            "pageSize": safe_page_size,
+            "total": total,
+            "hasMore": safe_page * safe_page_size < total,
+            # 首屏仍返回第一页；客户端只在深链目标不在首屏时额外请求这一页，
+            # 不为对象定位把整个历史列表一次性拉到手机上。
+            "focusPage": focus_page,
         }
 
 

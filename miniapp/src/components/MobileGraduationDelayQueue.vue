@@ -9,7 +9,7 @@
     </view>
 
     <view v-if="loading && !rows.length" class="gddq__state"><text>正在加载延期答辩待办…</text></view>
-    <view v-else-if="error" class="gddq__state gddq__state--error">
+    <view v-else-if="error && !rows.length" class="gddq__state gddq__state--error">
       <text>{{ error }}。这不是“暂无待办”。</text>
       <button class="gddq__retry" @click="load">重新加载</button>
     </view>
@@ -31,6 +31,12 @@
       </view>
       <text v-else class="gddq__locked">该申请已不属于你的可处理范围，请刷新批次和身份上下文。</text>
     </view>
+    <view v-if="error && rows.length" class="gddq__inline-error">
+      <text>{{ error }}</text><button class="gddq__retry" @click="loadMore">重试加载更多</button>
+    </view>
+    <view v-if="hasMore" class="gddq__more">
+      <button class="gddq__retry" :loading="loadingMore" :disabled="loading || loadingMore" @click="loadMore">加载更多待审核申请</button>
+    </view>
   </view>
 </template>
 
@@ -40,7 +46,12 @@ function pageStack() { return typeof getCurrentPages === 'function' ? getCurrent
 let owner = null
 export default {
   name: 'MobileGraduationDelayQueue',
-  data() { return { visible: false, rows: [], error: '', busyId: '', lastBatchId: '', timer: null, owns: false, loading: false } },
+  data() {
+    return {
+      visible: false, rows: [], error: '', busyId: '', lastBatchId: '', timer: null, owns: false,
+      loading: false, loadingMore: false, page: 1, hasMore: false, requestEpoch: 0
+    }
+  },
   mounted() {
     const pages = pageStack(); const page = pages[pages.length - 1]
     const match = ((page && (page.route || page.__route__)) || '') === 'pages/teacher/graduation-guide/index'
@@ -58,18 +69,45 @@ export default {
     syncBatch() {
       const batch = getTeacherGraduationBatch()
       const id = batch && batch.id ? String(batch.id) : ''
-      if (!id) { this.rows = []; this.error = '请先选择毕业设计批次'; this.lastBatchId = ''; return }
-      if (id !== this.lastBatchId) { this.lastBatchId = id; this.load() }
+      if (!id) {
+        this.requestEpoch += 1; this.rows = []; this.error = '请先选择毕业设计批次'
+        this.lastBatchId = ''; this.page = 1; this.hasMore = false; this.loading = false; this.loadingMore = false; return
+      }
+      if (id !== this.lastBatchId) {
+        this.requestEpoch += 1; this.rows = []; this.error = ''; this.page = 1; this.hasMore = false
+        this.loading = false; this.loadingMore = false
+        this.lastBatchId = id; this.load()
+      }
     },
-    load() {
-      if (!getTeacherGraduationBatch() || this.loading) return
-      this.loading = true; this.error = ''
-      realRequest('/mobile/teacher/graduation/defense-delays/pending?page=1&pageSize=100').then((d) => {
-        this.rows = (d && (d.items || d.list)) || []
+    load({ more = false } = {}) {
+      if (!getTeacherGraduationBatch() || this.loading || (more && (this.loadingMore || !this.hasMore))) return
+      if (more) this.loadingMore = true
+      else {
+        this.loading = true; this.error = ''; this.page = 1; this.hasMore = false
+      }
+      const requestedPage = more ? this.page + 1 : 1
+      const epoch = ++this.requestEpoch
+      realRequest(`/mobile/teacher/graduation/defense-delays/pending?page=${requestedPage}&pageSize=20`).then((d) => {
+        if (epoch !== this.requestEpoch) return
+        const items = (d && (d.items || d.list)) || []
+        const byId = new Map((more ? this.rows : []).map((item) => [String(item.id), item]))
+        items.forEach((item) => byId.set(String(item.id), item))
+        this.rows = [...byId.values()]
+        this.page = Number((d && d.page) || requestedPage) || requestedPage
+        const total = Number((d && d.total) || this.rows.length)
+        this.hasMore = typeof (d && d.hasMore) === 'boolean'
+          ? d.hasMore
+          : this.rows.length < total
       }).catch((e) => {
-        this.rows = []; this.error = normalizeError(e).text || '延期答辩待办加载失败'
-      }).finally(() => { this.loading = false })
+        if (epoch !== this.requestEpoch) return
+        if (!more) this.rows = []
+        this.error = normalizeError(e).text || '延期答辩待办加载失败'
+      }).finally(() => {
+        if (epoch !== this.requestEpoch) return
+        this.loading = false; this.loadingMore = false
+      })
     },
+    loadMore() { this.load({ more: true }) },
     review(row, action) {
       if (!row.allowedActions || !row.allowedActions.advisorReview) {
         uni.showToast({ title: '当前身份不可处理该申请', icon: 'none' }); return
@@ -96,5 +134,5 @@ export default {
 </script>
 
 <style scoped>
-.gddq { margin:0 var(--page-padding-mobile) var(--space-3); padding:var(--space-3); border:1px solid var(--warning-100); border-radius:var(--radius-lg); background:var(--warning-50); overflow:hidden; }.gddq__head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-2); }.gddq__head-main { flex:1; min-width:0; }.gddq__title { display:block; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--text-primary); }.gddq__hint,.gddq__text,.gddq__empty { display:block; margin-top:4px; color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.55; word-break:break-word; }.gddq__count { flex:none; min-width:54px; padding:7px 9px; border-radius:var(--radius-md); background:var(--bg-card); text-align:center; }.gddq__count-value,.gddq__count-label { display:block; color:var(--warning-700); font-size:var(--font-size-xs); }.gddq__count-value { font-size:var(--font-size-lg); font-weight:var(--font-weight-medium); }.gddq__state { margin-top:var(--space-3); padding:var(--space-3); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-sm); }.gddq__state--error { border:1px solid var(--danger-100); background:var(--danger-50); color:var(--danger-600); }.gddq__retry { margin-top:var(--space-2); min-height:36px; line-height:36px; font-size:var(--font-size-sm); }.gddq__card { margin-top:var(--space-3); padding:var(--space-3); border:1px solid var(--warning-200); border-radius:var(--radius-md); background:var(--bg-card); overflow:hidden; }.gddq__student { flex:1; min-width:0; }.gddq__status { flex:none; color:var(--warning-700); font-size:var(--font-size-xs); }.gddq__reason { margin-top:var(--space-2); padding:var(--space-2); border-radius:var(--radius-sm); background:var(--gray-50); }.gddq__reason-text { display:block; color:var(--text-primary); font-size:var(--font-size-sm); line-height:1.6; word-break:break-word; }.gddq__label { display:block; margin-bottom:3px; color:var(--text-tertiary); font-size:var(--font-size-xs); }.gddq__actions { display:flex; gap:var(--space-2); margin-top:var(--space-3); }.gddq__action { flex:1; min-width:0; }.gddq__locked { display:block; margin-top:var(--space-2); color:var(--danger-600); font-size:var(--font-size-xs); line-height:1.5; }
+.gddq { margin:0 var(--page-padding-mobile) var(--space-3); padding:var(--space-3); border:1px solid var(--warning-100); border-radius:var(--radius-lg); background:var(--warning-50); overflow:hidden; }.gddq__head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-2); }.gddq__head-main { flex:1; min-width:0; }.gddq__title { display:block; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--text-primary); }.gddq__hint,.gddq__text,.gddq__empty { display:block; margin-top:4px; color:var(--text-secondary); font-size:var(--font-size-xs); line-height:1.55; word-break:break-word; }.gddq__count { flex:none; min-width:54px; padding:7px 9px; border-radius:var(--radius-md); background:var(--bg-card); text-align:center; }.gddq__count-value,.gddq__count-label { display:block; color:var(--warning-700); font-size:var(--font-size-xs); }.gddq__count-value { font-size:var(--font-size-lg); font-weight:var(--font-weight-medium); }.gddq__state { margin-top:var(--space-3); padding:var(--space-3); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-secondary); font-size:var(--font-size-sm); }.gddq__state--error { border:1px solid var(--danger-100); background:var(--danger-50); color:var(--danger-600); }.gddq__retry { margin-top:var(--space-2); min-height:36px; line-height:36px; font-size:var(--font-size-sm); }.gddq__card { margin-top:var(--space-3); padding:var(--space-3); border:1px solid var(--warning-200); border-radius:var(--radius-md); background:var(--bg-card); overflow:hidden; }.gddq__student { flex:1; min-width:0; }.gddq__status { flex:none; color:var(--warning-700); font-size:var(--font-size-xs); }.gddq__reason { margin-top:var(--space-2); padding:var(--space-2); border-radius:var(--radius-sm); background:var(--gray-50); }.gddq__reason-text { display:block; color:var(--text-primary); font-size:var(--font-size-sm); line-height:1.6; word-break:break-word; }.gddq__label { display:block; margin-bottom:3px; color:var(--text-tertiary); font-size:var(--font-size-xs); }.gddq__actions { display:flex; gap:var(--space-2); margin-top:var(--space-3); }.gddq__action { flex:1; min-width:0; }.gddq__locked { display:block; margin-top:var(--space-2); color:var(--danger-600); font-size:var(--font-size-xs); line-height:1.5; }.gddq__more,.gddq__inline-error { margin-top:var(--space-2); text-align:center; }.gddq__inline-error { color:var(--danger-600); font-size:var(--font-size-xs); }
 </style>

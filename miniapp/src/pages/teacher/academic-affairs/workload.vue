@@ -39,10 +39,10 @@
           </view>
         </view>
         <MobileGlobalState v-else-if="!showForm" state="empty" title="暂无申报" description="点击右上角新增，申报教学/监考/阅卷等工作量。" />
-        <view v-if="!showForm && declarationRows.length > 20" class="wl__pages">
-          <button class="btn btn-ghost" :disabled="declarationPageIndex === 0" @click="declarationPage = declarationPageIndex - 1">上一组</button>
-          <text>{{ declarationPageIndex + 1 }} / {{ Math.ceil(declarationRows.length / 20) }}</text>
-          <button class="btn btn-ghost" :disabled="(declarationPageIndex + 1) * 20 >= declarationRows.length" @click="declarationPage = declarationPageIndex + 1">下一组</button>
+        <view v-if="!showForm && declarationPageCount > 1" class="wl__pages">
+          <button class="btn btn-ghost" :disabled="declarationPageIndex <= 1 || state === 'loading'" @click="load(null, declarationPageIndex - 1)">上一页</button>
+          <text>{{ declarationPageIndex }} / {{ declarationPageCount }}</text>
+          <button class="btn btn-ghost" :disabled="!declarationHasMore || state === 'loading'" @click="load(null, declarationPageIndex + 1)">下一页</button>
         </view>
       </view>
     </MobileGlobalState>
@@ -61,16 +61,26 @@ const CATS = [
   { value: 'TEACHING', label: '教学' }, { value: 'INVIGILATE', label: '监考' },
   { value: 'MARKING', label: '阅卷' }, { value: 'PAPER', label: '出卷' }, { value: 'OTHER', label: '其他' }
 ]
+let workloadCommandSequence = 0
+
+function nextWorkloadCommandKey() {
+  workloadCommandSequence += 1
+  return `wmp_${Date.now().toString(36)}_${workloadCommandSequence.toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+}
 
 export default {
   data() {
-    return { d: null, state: 'loading', showForm: false, submitting: false, catIndex: 0, declarationPage: 0,
+    return { d: null, state: 'loading', showForm: false, submitting: false, catIndex: 0, declarationPage: 1,
       form: { hours: '', termCode: '', description: '' }, unknownWrites: {}, writeStorageBlocked: false }
   },
   computed: {
     declarationRows() { return (this.d && this.d.items) || [] },
-    declarationPageIndex() { return Math.min(this.declarationPage, Math.max(0, Math.ceil(this.declarationRows.length / 20) - 1)) },
-    visibleDeclarations() { return this.declarationRows.slice(this.declarationPageIndex * 20, (this.declarationPageIndex + 1) * 20) },
+    declarationPageIndex() { return Math.max(1, Number((this.d && this.d.page) || this.declarationPage || 1)) },
+    declarationPageSize() { return Math.max(1, Number((this.d && this.d.pageSize) || 20)) },
+    declarationTotal() { return Math.max(0, Number((this.d && this.d.total) || 0)) },
+    declarationPageCount() { return Math.max(1, Math.ceil(this.declarationTotal / this.declarationPageSize)) },
+    declarationHasMore() { return !!(this.d && this.d.hasMore) },
+    visibleDeclarations() { return this.declarationRows },
     categoryLabels() { return CATS.map((c) => c.label) },
     canSubmit() { return Number(this.form.hours) > 0 },
     writeObjectId() { return 'NEW_DECLARATION' }
@@ -86,7 +96,7 @@ export default {
       this.submitting = false
       this.showForm = false
       this.catIndex = 0
-      this.declarationPage = 0
+      this.declarationPage = 1
       this.form = { hours: '', termCode: '', description: '' }
       this.syncUnknownWrites()
       this._needsRefresh = false
@@ -110,33 +120,54 @@ export default {
     writeKey(objectId) { return `workload|${String(objectId || '')}` },
     hasUnknownWrite(objectId) { return this.writeStorageBlocked || !!this.unknownWrites[this.writeKey(objectId)] },
     syncUnknownWrites(context = this.contextKey()) { const result = listPersistentWrites(context); this.writeStorageBlocked = !result.ok; this.unknownWrites = result.ok ? Object.fromEntries(result.records.map((row) => [this.writeKey(row.objectId), row])) : {}; return result },
-    beginWrite(context, objectId) { const result = beginPersistentWrite(context, 'workload', objectId); this.syncUnknownWrites(); if (!result.ok) toast(result.storageError ? '无法安全保存待核对记录，本次未提交' : '该申报正在等待正式记录核对'); return result.ok },
+    beginWrite(context, objectId, requestKey) { const result = beginPersistentWrite(context, 'workload', objectId, { requestKey }); this.syncUnknownWrites(); if (!result.ok) toast(result.storageError ? '无法安全保存待核对记录，本次未提交' : '该申报正在等待正式记录核对'); return result.ok },
     ackWrite(context, objectId, ack) { const ok = persistWriteAck(context, 'workload', objectId, ack); this.syncUnknownWrites(); return ok },
     clearWrite(context, objectId) { const ok = clearPersistentWrite(context, 'workload', objectId); this.syncUnknownWrites(); return ok },
     clearPrivateWorkload() {
       this._loadEpoch = (this._loadEpoch || 0) + 1
       this._submitEpoch = (this._submitEpoch || 0) + 1
-      this.d = null; this.showForm = false; this.submitting = false; this.declarationPage = 0
+      this.d = null; this.showForm = false; this.submitting = false; this.declarationPage = 1
       this.catIndex = 0; this.form = { hours: '', termCode: '', description: '' }; this.state = 'error'
     },
-    reconcileWrites(rows) {
-      const pending = listPersistentWrites(this.contextKey())
+    async reconcileWrites(rows, context, epoch) {
+      const pending = listPersistentWrites(context)
       if (!pending.ok) { this.syncUnknownWrites(); return }
-      pending.records.forEach((record) => {
-        if (record.action === 'workload' && record.state === 'ACK' && record.ackId && rows.some((row) => String(row.declarationId || row.id || '') === record.ackId)) this.clearWrite(record.context, record.objectId)
-      })
+      for (const record of pending.records.filter((row) => row.action === 'workload')) {
+        if (record.state === 'ACK' && record.ackId && rows.some((row) => String(row.declarationId || row.id || '') === record.ackId)) {
+          this.clearWrite(record.context, record.objectId)
+          continue
+        }
+        // 旧版本没有命令键时无法安全推断其落单结果，继续保留“待核对”；
+        // 新版本按原命令键读取同一教师自己的正式回执，不会重新发起写操作。
+        if (!record.requestKey || typeof teacherApi.getWorkloadCommandReceipt !== 'function') continue
+        try {
+          const receipt = await teacherApi.getWorkloadCommandReceipt(record.requestKey)
+          if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
+          const result = receipt && receipt.state === 'SUCCESS' && receipt.result
+          const declarationId = String(result && (result.declarationId || result.id) || '')
+          if (receipt && receipt.operation === 'WORKLOAD_SUBMIT' && String(receipt.commandKey || '') === record.requestKey && declarationId) {
+            this.ackWrite(record.context, record.objectId, { ackId: declarationId, parentId: record.objectId })
+            this.clearWrite(record.context, record.objectId)
+          }
+        } catch (error) {
+          if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
+          if (isForbiddenResponse(error)) { this.clearPrivateWorkload(); return }
+        }
+      }
     },
-    async load(done) {
+    async load(done, requestedPage = this.declarationPage) {
       const epoch = (this._loadEpoch || 0) + 1
       this._loadEpoch = epoch
       const context = this.contextKey()
+      const page = Math.max(1, Number(requestedPage) || 1)
       this.state = 'loading'
       try {
-        const d = await teacherApi.getWorkloadDeclarations()
+        const d = await teacherApi.getWorkloadDeclarations({ page, pageSize: 20 })
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         this.d = d
-        this.reconcileWrites((d && d.items) || [])
+        this.declarationPage = Math.max(1, Number((d && d.page) || page))
         this.state = 'ready'
+        await this.reconcileWrites((d && d.items) || [], context, epoch)
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
           if (isForbiddenResponse(error)) this.clearPrivateWorkload()
@@ -147,15 +178,17 @@ export default {
     onCatChange(e) { this.catIndex = Number(e.detail.value) },
     submit() {
       if (!this.canSubmit || this.submitting || this.hasUnknownWrite(this.writeObjectId)) return
+      const commandKey = nextWorkloadCommandKey()
       const body = {
         category: CATS[this.catIndex].value,
         hours: Number(this.form.hours),
         termCode: this.form.termCode.trim() || undefined,
-        description: this.form.description.trim() || undefined
+        description: this.form.description.trim() || undefined,
+        commandKey
       }
       const context = this.contextKey()
       const objectId = this.writeObjectId
-      if (!this.beginWrite(context, objectId)) return
+      if (!this.beginWrite(context, objectId, commandKey)) return
       this.submitting = true
       const epoch = (this._submitEpoch || 0) + 1
       this._submitEpoch = epoch
@@ -165,8 +198,9 @@ export default {
           const declarationId = String(ack && (ack.declarationId || ack.id) || '')
           if (declarationId) this.ackWrite(context, objectId, { ackId: declarationId, parentId: objectId })
           if (!this._pageActive || this._submitEpoch !== epoch || this.contextKey() !== context) return
-          if (!declarationId) { toast('申报回执缺少单据编号，结果待核实，请勿重复提交'); return }
-          const reading = this.load()
+          if (!declarationId) { toast('申报回执缺少单据编号，结果待核实，请勿重复提交'); this.load(null, 1); return }
+          this.declarationPage = 1
+          const reading = this.load(null, 1)
           const readEpoch = this._loadEpoch
           await reading
           if (!this._pageActive || this._submitEpoch !== epoch || this._loadEpoch !== readEpoch || this.contextKey() !== context) return

@@ -155,3 +155,53 @@ def test_published_projection_batches_grade_read_without_business_writes(client,
         event.remove(engine, "before_cursor_execute", capture)
     assert sum(s.startswith("SELECT") and "FROM T_ACAD_GRADE" in s for s in statements) == 1
     assert not any(s.startswith(("INSERT", "UPDATE", "DELETE")) for s in statements)
+
+
+def test_mobile_clearance_history_is_server_paged(client, db_mode):
+    """手机只取当前页清考记录，不能把几十条历史记录一次交给前端截断。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicMakeup
+
+    ids, admin, batch_id, record_id = _arrange(client, db_mode)
+    with get_sessionmaker()() as db:
+        source = db.get(AcademicMakeup, record_id)
+        for attempt in range(100, 141):
+            db.add(AcademicMakeup(
+                tenant_id=TID,
+                acad_student_id=ids["a1"],
+                batch_id=batch_id,
+                course_id=ids["math"],
+                course_code=source.course_code,
+                course_version=source.course_version,
+                course_name=source.course_name,
+                term=source.term,
+                attempt_no=attempt,
+                kind="CLEARANCE",
+                status="PENDING_EXAM",
+                record_status="ACTIVE",
+                origin_score=55,
+            ))
+        db.commit()
+
+    student = _stu_token("清甲", "QK2201")
+    responses = [
+        client.get(f"/api/v1/mobile/academic/clearance/my?page={page}&pageSize=20", headers=student)
+        for page in (1, 2, 3)
+    ]
+    assert all(response.status_code == 200 for response in responses), [response.text for response in responses]
+    pages = [response.json()["data"] for response in responses]
+    assert [(row["page"], row["pageSize"], row["total"], row["hasMore"], len(row["items"])) for row in pages] == [
+        (1, 20, 42, True, 20),
+        (2, 20, 42, True, 20),
+        (3, 20, 42, False, 2),
+    ]
+    page_ids = [{item["recordId"] for item in page["items"]} for page in pages]
+    assert page_ids[0].isdisjoint(page_ids[1])
+    assert page_ids[0].isdisjoint(page_ids[2])
+    assert page_ids[1].isdisjoint(page_ids[2])
+    other = client.get(
+        "/api/v1/mobile/academic/clearance/my?page=1&pageSize=20",
+        headers=_stu_token("清乙", "QK2202"),
+    )
+    assert other.status_code == 200, other.text
+    assert other.json()["data"]["total"] == 0

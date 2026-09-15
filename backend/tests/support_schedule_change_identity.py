@@ -111,13 +111,42 @@ def _ensure_account(db, login_name):
 
 
 def seed_schedule_change_identity(db, *, college_ids=()):
-    """种出调停课两级真实受理人，并把指定学院秘书绑定到学院审核账号。"""
-    from app.models import College
+    """种出调停课两级真实受理人，并把指定学院秘书绑定到学院审核账号。
+
+    调停课用例会把课表发布为正式事实。正式发布要求课位的教室文本能回链
+    到学校教室字典，不能让测试再依赖已经废弃的自由文本课位。
+    """
+    from app.models import AaClassroom, College
 
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
     for college_id in college_ids:
         college = db.get(College, int(college_id))
         if college is not None:
             college.secretary_id = int(users["college_admin01"].id)
+
+    classroom = db.query(AaClassroom).filter(
+        AaClassroom.tenant_id == TID,
+        AaClassroom.building_code == "SC",
+        AaClassroom.room_code == "A101",
+        AaClassroom.is_deleted.is_(False),
+    ).first()
+    if classroom is None:
+        classroom = AaClassroom(
+            tenant_id=TID,
+            building_code="SC",
+            building_name="调停课教学楼",
+            room_code="A101",
+            room_name="A101",
+            capacity=120,
+            room_type="LECTURE",
+            allow_schedule=True,
+            status="AVAILABLE",
+        )
+        db.add(classroom)
+    else:
+        classroom.room_name = "A101"
+        classroom.capacity = max(int(classroom.capacity or 0), 120)
+        classroom.allow_schedule = True
+        classroom.status = "AVAILABLE"
     db.flush()
     return {name: int(user.id) for name, user in users.items()}

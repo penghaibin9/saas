@@ -79,6 +79,7 @@ test('recognition and exemption submit only scanned, formal file IDs and keep th
     assert.match(source, /materialScopeEpoch\+\+/)
   }
   assert.match(recognition, /attachmentFileIds: this\.materialIds/)
-  assert.match(makeup, /materialFileIds: this\.materialIds/)
+  assert.match(makeup, /body\.materialFileIds = this\.materialIds/)
   assert.match(makeup, /courseName: this\.selectedExemption\.courseName/)
+  assert.doesNotMatch(makeup, /termCode: this\.(retakeForm|exForm)\.termCode/)
 })

@@ -253,6 +253,7 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { normalizeError } from '@/services/request'
+import { isStaleReadError } from '@/services/latestRead'
 import fileSdk from '@/services/fileSdk'
 import { go, toast } from '@/utils/nav'
 
@@ -335,7 +336,10 @@ export default {
     },
     loadProcess() {
       this.processErrors = []
-      const track = (label, p) => p.catch(() => {
+      const track = (label, p) => p.catch((error) => {
+        // 账号/角色切换或本页刷新后的旧读取不能覆盖当前私有数据，
+        // 也不应被误报为一条真实的业务加载失败。
+        if (isStaleReadError(error)) return null
         this.processErrors.push(label)
         return null
       })

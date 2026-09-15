@@ -43,10 +43,10 @@
             <button v-else class="btn btn-primary" @click="openEvidence(t)">核对并处理 ›</button>
           </view>
         </view>
-        <view v-if="!detailId && tasks.length > 20" class="at__pager">
-          <button class="btn btn-ghost" :disabled="queuePage === 0" @click="queuePage--">上一组</button>
-          <text>{{ queuePage + 1 }} / {{ Math.ceil(tasks.length / 20) }}</text>
-          <button class="btn btn-ghost" :disabled="(queuePage + 1) * 20 >= tasks.length" @click="queuePage++">下一组</button>
+        <view v-if="!detailId && (queueTotal > queuePageSize || queuePage > 1)" class="at__pager">
+          <button class="btn btn-ghost" :disabled="queuePage <= 1 || state === 'loading'" @click="load(queuePage - 1)">上一组</button>
+          <text>{{ queuePage }} / {{ Math.max(1, Math.ceil(queueTotal / queuePageSize)) }}</text>
+          <button class="btn btn-ghost" :disabled="!queueHasMore || state === 'loading'" @click="load(queuePage + 1)">下一组</button>
         </view>
       </view>
     </MobileGlobalState>
@@ -72,7 +72,7 @@ const STATUS_TONES = {
 }
 
 export default {
-  data() { return { tasks: [], state: 'loading', acting: false, targetTaskId: '', detailId: '', queuePage: 0, reviewAttempts: {}, recoveryStorageBlocked: false } },
+  data() { return { tasks: [], state: 'loading', acting: false, targetTaskId: '', detailId: '', queuePage: 1, queueTotal: 0, queuePageSize: 20, queueHasMore: false, reviewAttempts: {}, recoveryStorageBlocked: false } },
   onLoad(options = {}) {
     this._pageActive = true
     this.targetTaskId = String(options.id || options.taskId || '')
@@ -92,7 +92,7 @@ export default {
   },
   computed: {
     unresolvedCount() { return Object.values(this.reviewAttempts).filter((attempt) => attempt.context === this.contextKey() && attempt.state === 'UNKNOWN').length + (this.recoveryStorageBlocked ? 1 : 0) },
-    displayedRows() { return this.detailId ? this.tasks.filter((row) => String(row.taskId) === this.detailId) : this.tasks.slice(this.queuePage * 20, (this.queuePage + 1) * 20) }
+    displayedRows() { return this.detailId ? this.tasks.filter((row) => String(row.taskId) === this.detailId) : this.tasks }
   },
   onBackPress() { if (!this.detailId) return false; this.backToQueue(); return true },
   methods: {
@@ -107,7 +107,8 @@ export default {
     clearPrivateReview() {
       this._loadEpoch = (this._loadEpoch || 0) + 1
       this.acting = false
-      this.tasks = []; this.detailId = ''; this.targetTaskId = ''; this.queuePage = 0
+      this.tasks = []; this.detailId = ''; this.targetTaskId = ''; this.queuePage = 1
+      this.queueTotal = 0; this.queueHasMore = false
       for (const attempt of Object.values(this.reviewAttempts)) if (attempt.context === this.contextKey()) attempt.observation = ''
       this.state = 'error'
     },
@@ -125,8 +126,10 @@ export default {
     backToQueue() {
       if (!this.detailId) return true
       if (this.acting) { toast('正在处理，请稍候'); return false }
+      const wasTargeted = !!this.targetTaskId
       this.detailId = ''
       this.targetTaskId = ''
+      if (wasTargeted) this.load(1)
       return false
     },
     contextKey() {
@@ -158,7 +161,9 @@ export default {
       if (index === 0) return rows
       return [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)]
     },
-    async load(done) {
+    async load(page, done) {
+      if (typeof page === 'function') { done = page; page = undefined }
+      const requestedPage = Math.max(1, Number(page || this.queuePage || 1))
       const epoch = (this._loadEpoch || 0) + 1
       this._loadEpoch = epoch
       const context = this.contextKey()
@@ -168,18 +173,39 @@ export default {
         this.acting = false
         this.tasks = []
         this.detailId = ''
-        this.queuePage = 0
+        this.queuePage = 1
+        this.queueTotal = 0
+        this.queueHasMore = false
         this.restoreReviewAttempts(context)
       } else if (this.recoveryStorageBlocked) this.restoreReviewAttempts(context)
       this.state = 'loading'
       try {
-        const d = await teacherApi.getAcademicMyTasks()
+        const d = await teacherApi.getAcademicMyTasks({
+          page: this.targetTaskId ? 1 : requestedPage,
+          pageSize: this.queuePageSize,
+          taskId: this.targetTaskId || undefined
+        })
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         const rows = (d && (d.list || d.items)) || []
+        if (this.targetTaskId && !rows.some((row) => this.isTarget(row))) {
+          toast('该教学任务不存在、已处理或不在当前身份范围内')
+          this.targetTaskId = ''
+          this.detailId = ''
+          this.tasks = []
+          this.queuePage = 1
+          this.queueTotal = 0
+          this.queueHasMore = false
+          this.state = 'loading'
+          this.load(1)
+          return
+        }
         this.tasks = this.focusTarget(rows)
+        this.queueTotal = Number((d && d.total) || 0)
+        this.queuePage = Number((d && d.page) || requestedPage)
+        this.queuePageSize = Number((d && d.pageSize) || this.queuePageSize || 20)
+        this.queueHasMore = !!(d && d.hasMore)
         this.observeReviewAttempts(this.tasks)
         if (this.detailId && !this.tasks.some((row) => String(row.taskId) === this.detailId)) this.detailId = ''
-        this.queuePage = Math.min(this.queuePage, Math.max(0, Math.ceil(this.tasks.length / 20) - 1))
         this.state = 'ready'
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {

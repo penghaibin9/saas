@@ -5,7 +5,7 @@
       <MobileStatusTag v-if="status" :status="status" />
     </view>
     <view class="mtc-meta">
-      <text v-if="sourceModule" class="mtc-module">{{ sourceModule }}</text>
+      <text v-if="moduleLabel" class="mtc-module">{{ moduleLabel }}</text>
       <text v-if="studentName" class="mtc-meta-item">{{ studentName }}</text>
       <text v-if="deadline" class="mtc-meta-item" :class="{ 'is-overdue-text': overdue }">
         截止 {{ deadline }}
@@ -25,6 +25,7 @@
 
 <script>
 import MobileStatusTag from './MobileStatusTag.vue'
+import { messageModuleLabel } from '@/services/messagePresentation'
 
 /**
  * MobileTodoCard 移动端待办卡片
@@ -47,7 +48,10 @@ export default {
     returnReason: { type: String, default: '' },
     actionText: { type: String, default: '去处理' }
   },
-  emits: ['view', 'handle']
+  emits: ['view', 'handle'],
+  computed: {
+    moduleLabel() { return this.sourceModule ? messageModuleLabel(this.sourceModule) : '' }
+  }
 }
 </script>
 

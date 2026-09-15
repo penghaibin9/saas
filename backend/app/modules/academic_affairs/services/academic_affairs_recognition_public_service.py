@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from sqlalchemy import func, select
+
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
@@ -316,6 +318,7 @@ def review(user, recognition_id, action, reason="", *, command_key=None) -> dict
 
 
 def my(user):
+    """兼容学生 PC 的完整本人历史读取；移动端必须调用 ``my_page``。"""
     from app.models import AaGradeRecognition
 
     with _base.session() as db:
@@ -326,3 +329,39 @@ def my(user):
             AaGradeRecognition.is_deleted.is_(False),
         ).order_by(AaGradeRecognition.id.desc()).all()
         return [_base._dto(row) for row in rows]
+
+
+def my_page(user, *, page: int, page_size: int) -> tuple[list[dict], int]:
+    """学生移动端认定历史的 MySQL 有界读取，绝不先取全量再由前端截断。"""
+    from app.models import AaGradeRecognition
+    from app.services.mobile_student_service import _require_student
+
+    _require_student(user)
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise AppException("VALIDATION_ERROR", "页码格式不正确")
+    try:
+        page = int(page)
+        page_size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "页码格式不正确") from exc
+    if page < 1 or page > 100000 or page_size < 1 or page_size > 50:
+        raise AppException("VALIDATION_ERROR", "页码须大于等于 1，每页最多 50 条")
+
+    with _base.session() as db:
+        profile = _resolve_student(db)
+        conditions = (
+            AaGradeRecognition.tenant_id == _base._tid(),
+            AaGradeRecognition.student_id == profile.id,
+            AaGradeRecognition.is_deleted.is_(False),
+        )
+        total = int(db.scalar(
+            select(func.count()).select_from(AaGradeRecognition).where(*conditions)
+        ) or 0)
+        rows = db.scalars(
+            select(AaGradeRecognition)
+            .where(*conditions)
+            .order_by(AaGradeRecognition.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        return [_base._dto(row) for row in rows], total

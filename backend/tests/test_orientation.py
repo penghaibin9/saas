@@ -185,6 +185,14 @@ def test_update_student(client, auth_headers, db_mode):
 
 def test_progress_blocked_and_resolve(client, auth_headers, db_mode):
     ids = _seed(db_mode)
+    scoped = client.get(
+        f"/api/v1/orientation/progress?batchId={ids['batch']}", headers=auth_headers,
+    ).json()
+    assert scoped["code"] == 0 and scoped["data"]["total"] == 1
+    other = client.get(
+        "/api/v1/orientation/progress?batchId=9007199254740991", headers=auth_headers,
+    ).json()
+    assert other["code"] == 0 and other["data"]["total"] == 0
     bad = client.put(f"/api/v1/orientation/progress/{ids['student']}/blocked", headers=auth_headers,
                      json={"blockedStep": "MATERIAL", "blockedReason": "短"}).json()
     assert bad["code"] == 422001
@@ -300,22 +308,61 @@ def test_batch_closed_loop(client, auth_headers, db_mode):
 
 
 def test_verify_closed_loop(client, auth_headers, db_mode):
+    from sqlalchemy import func, select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationException
+
     ids = _seed(db_mode)
     sid = ids["student"]
+    version = client.get(f"/api/v1/orientation/students/{sid}", headers=auth_headers).json()["data"]["student"]["version"]
     # 不通过但原因太短 → 拒绝
     bad = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
-                      json={"passed": False, "reason": "x"}).json()
+                      json={"passed": False, "reason": "x", "expectedVersion": version}).json()
     assert bad["code"] != 0
     # 通过 → stage=PRE_STUDENT_VERIFIED，环节 INFO=DONE
     ok = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
-                     json={"passed": True}).json()
+                     json={"passed": True, "expectedVersion": version}).json()
     assert ok["code"] == 0 and ok["data"]["stage"] == "PRE_STUDENT_VERIFIED"
+    stale = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
+                        json={"passed": False, "reason": "旧页面不得覆盖最新核验结果", "expectedVersion": version}).json()
+    assert stale["code"] != 0 and stale["bizCode"] == "DATA_CONFLICT"
+    version = ok["data"]["version"]
     det = client.get(f"/api/v1/orientation/students/{sid}", headers=auth_headers).json()
     assert det["data"]["student"]["steps"]["INFO"] == "DONE"
     # 不通过（含原因） → 记录成功
     fail = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
-                       json={"passed": False, "reason": "身份证与录取信息不一致"}).json()
-    assert fail["code"] == 0
+                       json={"passed": False, "reason": "身份证与录取信息不一致", "expectedVersion": version}).json()
+    assert fail["code"] == 0 and fail["data"]["stage"] == "ADMITTED" and fail["data"]["passed"] is False
+    version = fail["data"]["version"]
+    returned = client.get(f"/api/v1/orientation/students/{sid}", headers=auth_headers).json()["data"]["student"]
+    assert returned["steps"]["INFO"] == "BLOCKED"
+    assert returned["blockedStep"] == "INFO"
+    assert returned["blockedReason"] == "身份证与录取信息不一致"
+    assert returned["exceptionNote"] == "身份证与录取信息不一致"
+    db = get_sessionmaker()()
+    try:
+        identity_exception = db.scalars(select(OrientationException).where(
+            OrientationException.tenant_id == MAIN_TID,
+            OrientationException.ori_student_id == int(sid),
+            OrientationException.exception_type == "IDENTITY",
+            OrientationException.status == "OPEN",
+        )).one()
+        assert identity_exception.description == "身份证与录取信息不一致"
+    finally:
+        db.close()
+    repeated = client.post(f"/api/v1/orientation/students/{sid}/verify", headers=auth_headers,
+                           json={"passed": False, "reason": "身份证信息仍需学生补正", "expectedVersion": version}).json()
+    assert repeated["code"] == 0
+    db = get_sessionmaker()()
+    try:
+        assert db.scalar(select(func.count()).select_from(OrientationException).where(
+            OrientationException.tenant_id == MAIN_TID,
+            OrientationException.ori_student_id == int(sid),
+            OrientationException.exception_type == "IDENTITY",
+            OrientationException.status == "OPEN",
+        )) == 1
+    finally:
+        db.close()
     # 审计留痕（核验动作 ≥ 2 条）
     logs = client.get("/api/v1/orientation/audit-logs?keyword=核验", headers=auth_headers).json()
     assert logs["code"] == 0 and logs["data"]["total"] >= 2
@@ -377,6 +424,110 @@ def test_flow_config(client, auth_headers, db_mode):
     finally:
         db.close()
 
+
+def test_complete_standard_flow_config_is_explicit_idempotent_and_preserves_legacy(client, auth_headers, db_mode):
+    from sqlalchemy import delete, func, select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationAuditTrail, OrientationBatch, OrientationFlowConfig, OrientationFlowStep, OrientationFlowVersion, OrientationStudent
+    from app.services.orientation_flow_service import ensure_published_flow_version
+
+    db = get_sessionmaker()()
+    try:
+        db.execute(delete(OrientationFlowConfig).where(OrientationFlowConfig.tenant_id == MAIN_TID))
+        db.add_all([
+            OrientationFlowConfig(tenant_id=MAIN_TID, step_key="IDENTITY", step_name="身份核验", enabled=True, required=True, sort_order=10),
+            OrientationFlowConfig(tenant_id=MAIN_TID, step_key="DORM", step_name="宿舍办理", enabled=False, required=False, sort_order=20),
+            OrientationFlowConfig(tenant_id=MAIN_TID, step_key="FINANCE", step_name="绿色通道", enabled=True, required=False, sort_order=30),
+        ])
+        db.flush()
+        legacy_version = ensure_published_flow_version(db, MAIN_TID)
+        empty_batch = OrientationBatch(tenant_id=MAIN_TID, batch_name="空批次流程升级测试",
+                                       batch_no="ORI-EMPTY-FLOW-REFRESH", year="2027",
+                                       status="ACTIVE", flow_version_id=legacy_version.id)
+        db.add(empty_batch); db.flush()
+        empty_batch_id = int(empty_batch.id)
+        historical_batch = OrientationBatch(
+            tenant_id=MAIN_TID, batch_name="含作废历史名单的批次",
+            batch_no="ORI-HISTORICAL-FLOW-REFRESH", year="2027",
+            status="ACTIVE", flow_version_id=legacy_version.id,
+        )
+        db.add(historical_batch); db.flush()
+        historical_student = OrientationStudent(
+            tenant_id=MAIN_TID, batch_id=historical_batch.id, name="已作废新生",
+            admission_no="ORI-HISTORICAL-VOID-001", stage="ADMITTED",
+            report_status="NOT_REPORTED", record_status="VOIDED", is_deleted=True,
+            source_type="MANUAL", source_record_id="ORI-HISTORICAL-VOID-001",
+            steps_json={"INFO": "TODO"},
+        )
+        db.add(historical_student)
+        historical_batch_id = int(historical_batch.id)
+        legacy_version_id = int(legacy_version.id)
+        frozen_before = db.scalar(select(func.count()).select_from(OrientationFlowVersion).where(
+            OrientationFlowVersion.tenant_id == MAIN_TID,
+        )) or 0
+        db.commit()
+    finally:
+        db.close()
+
+    first = client.post("/api/v1/orientation/flow-config/complete-standard", headers=auth_headers).json()
+    assert first["code"] == 0
+    assert first["data"]["addedCount"] == 6
+    assert first["data"]["restoredCount"] == 0
+    assert first["data"]["totalCount"] == 9
+    assert {"ACTIVATE", "INFO", "MATERIAL", "PAYMENT", "DORM", "CHECKIN", "CONFIRM"}.issubset(
+        {item["stepKey"] for item in first["data"]["items"]}
+    )
+    dorm = next(item for item in first["data"]["items"] if item["stepKey"] == "DORM")
+    assert dorm["stepName"] == "宿舍办理" and dorm["enabled"] is False and dorm["required"] is False
+    assert {"IDENTITY", "FINANCE"}.issubset({item["stepKey"] for item in first["data"]["items"]})
+    assert first["data"]["retiredLegacyCount"] == 2
+    assert all(not item["enabled"] for item in first["data"]["items"] if item["stepKey"] in {"IDENTITY", "FINANCE"})
+    canonical = [item["stepKey"] for item in first["data"]["items"] if item["stepKey"] not in {"IDENTITY", "FINANCE"}]
+    assert canonical == ["ACTIVATE", "INFO", "MATERIAL", "PAYMENT", "DORM", "CHECKIN", "CONFIRM"]
+    legacy_id = next(item["id"] for item in first["data"]["items"] if item["stepKey"] == "IDENTITY")
+    blocked = client.put(f"/api/v1/orientation/flow-config/{legacy_id}", headers=auth_headers, json={"enabled": True}).json()
+    assert blocked["code"] != 0 and "历史兼容" in blocked["message"]
+
+    second = client.post("/api/v1/orientation/flow-config/complete-standard", headers=auth_headers).json()
+    assert second["code"] == 0 and second["data"]["addedCount"] == 0 and second["data"]["totalCount"] == 9
+
+    historical = client.post(
+        f"/api/v1/orientation/batches/{historical_batch_id}/refresh-flow-version",
+        headers=auth_headers, json={"expectedVersion": 0},
+    ).json()
+    assert historical["code"] != 0 and "已有 1 名新生" in historical["message"]
+
+    refreshed = client.post(f"/api/v1/orientation/batches/{empty_batch_id}/refresh-flow-version",
+                            headers=auth_headers, json={"expectedVersion": 0}).json()
+    assert refreshed["code"] == 0 and refreshed["data"]["changed"] is True
+    assert int(refreshed["data"]["flowVersionId"]) != legacy_version_id
+    stale = client.post(f"/api/v1/orientation/batches/{empty_batch_id}/refresh-flow-version",
+                        headers=auth_headers, json={"expectedVersion": 0}).json()
+    assert stale["code"] != 0 and "其他操作更新" in stale["message"]
+    db = get_sessionmaker()()
+    try:
+        assert (db.scalar(select(func.count()).select_from(OrientationFlowVersion).where(
+            OrientationFlowVersion.tenant_id == MAIN_TID,
+        )) or 0) == frozen_before + 1
+        assert (db.scalar(select(func.count()).select_from(OrientationFlowStep).where(
+            OrientationFlowStep.flow_version_id == legacy_version_id,
+        )) or 0) == 3
+        refreshed_steps = list(db.scalars(select(OrientationFlowStep).where(
+            OrientationFlowStep.flow_version_id == int(refreshed["data"]["flowVersionId"]),
+        ).order_by(OrientationFlowStep.sort_order)))
+        assert [step.step_key for step in refreshed_steps] == [
+            "ACTIVATE", "INFO", "MATERIAL", "PAYMENT", "DORM", "CHECKIN", "CONFIRM",
+            "IDENTITY", "FINANCE",
+        ]
+        assert [step.step_key for step in refreshed_steps if step.enabled] == [
+            "ACTIVATE", "INFO", "MATERIAL", "PAYMENT", "CHECKIN", "CONFIRM",
+        ]
+        assert (db.scalar(select(func.count()).select_from(OrientationAuditTrail).where(
+            OrientationAuditTrail.tenant_id == MAIN_TID,
+            OrientationAuditTrail.action == "补齐标准流程环节",
+        )) or 0) == 6
+    finally:
+        db.close()
 
 def test_notice_send(client, auth_headers, db_mode):
     a = client.post("/api/v1/orientation/notices", headers=auth_headers,

@@ -4,7 +4,7 @@
 
     <view class="sc__tabs">
       <view class="sc__tab" :class="{ 'is-on': tab === 'list' }" @click="switchTab('list')">
-        我的申请<text v-if="changes.length" class="sc__tab-badge">{{ changes.length }}</text>
+        我的申请<text v-if="changesTotal" class="sc__tab-badge">{{ changesTotal }}</text>
         <text v-if="tab === 'list'" class="sc__tab-u" />
       </view>
       <view class="sc__tab" :class="{ 'is-on': tab === 'new' }" @click="switchTab('new')">
@@ -43,10 +43,10 @@
         </view>
       </view>
 
-      <view v-if="tab === 'list' && changes.length > 20" class="page-pad sc__pages">
-        <button class="btn btn-ghost" :disabled="changePageIndex === 0" @click="changePage = changePageIndex - 1">上一组</button>
-        <text>{{ changePageIndex + 1 }} / {{ Math.ceil(changes.length / 20) }}</text>
-        <button class="btn btn-ghost" :disabled="(changePageIndex + 1) * 20 >= changes.length" @click="changePage = changePageIndex + 1">下一组</button>
+      <view v-if="tab === 'list' && (changesTotal > changesPageSize || changePage > 1)" class="page-pad sc__pages">
+        <button class="btn btn-ghost" :disabled="changePage <= 1 || state === 'loading'" @click="load(changePage - 1)">上一组</button>
+        <text>{{ changePage }} / {{ Math.max(1, Math.ceil(changesTotal / changesPageSize)) }}</text>
+        <button class="btn btn-ghost" :disabled="!changesHasMore || state === 'loading'" @click="load(changePage + 1)">下一组</button>
       </view>
       <!-- 发起申请 -->
       <view class="page-pad" v-if="tab === 'new'">
@@ -124,7 +124,8 @@ const CANCELLABLE = new Set(['SUBMITTED', 'COLLEGE_REVIEW'])
 export default {
   data() {
     return {
-      tab: 'list', state: 'loading', changes: [], acting: false, changePage: 0,
+      tab: 'list', state: 'loading', changes: [], changesTotal: 0, changesPageSize: 20,
+      changesHasMore: false, acting: false, changePage: 1,
       items: [], itemIndex: 0, typeIndex: 0, parityIndex: 0,
       targetWeekday: '', targetSlotNo: '', targetStartWeek: '', targetEndWeek: '', targetClassroom: '',
       makeupPlan: '', reason: '', checking: false, submitting: false,
@@ -150,8 +151,10 @@ export default {
       this.acting = false
       this.submitting = false
       this.checking = false
-      this.changePage = 0
+      this.changePage = 1
       this.changes = []
+      this.changesTotal = 0
+      this.changesHasMore = false
       this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
       this.requestedItemId = ''
       this.tab = 'list'
@@ -189,8 +192,7 @@ export default {
     this.load(() => uni.stopPullDownRefresh())
   },
   computed: {
-    changePageIndex() { return Math.min(this.changePage, Math.max(0, Math.ceil(this.changes.length / 20) - 1)) },
-    visibleChanges() { return this.changes.slice(this.changePageIndex * 20, (this.changePageIndex + 1) * 20) },
+    visibleChanges() { return this.changes },
     itemLabels() { return this.items.map((i) => `周${i.weekday}第${i.slotNo}节 · ${i.courseName}（${i.className}）`) },
     typeLabels() { return TYPES.map((t) => t.label) },
     typeKey() { return TYPES[this.typeIndex].key },
@@ -206,9 +208,9 @@ export default {
     contextKey() {
       return teacherWriteContext(useSessionStore())
     },
-    statusLabel(s) { return STATUS_LABELS[s] || (s ? `状态待确认（${s}）` : '状态待确认') },
+    statusLabel(s) { return STATUS_LABELS[s] || '状态待核对' },
     conflictTypeLabel(value) {
-      return ({ TEACHER: '教师时间冲突', CLASS: '班级时间冲突', CLASSROOM: '教室占用冲突' })[value] || (value ? `其他冲突（${value}）` : '冲突类型待确认')
+      return ({ TEACHER: '教师时间冲突', CLASS: '班级时间冲突', CLASSROOM: '教室占用冲突' })[value] || '其他冲突，请核对后重试'
     },
     writeKey(action, objectId) { return `${action}|${String(objectId || '')}` },
     hasUnknownWrite(action, objectId) { return this.writeStorageBlocked || !!this.unknownWrites[this.writeKey(action, objectId)] },
@@ -237,20 +239,26 @@ export default {
       this.tab = t
       if (t === 'new' && !this.items.length) this.loadSchedule()
     },
-    async load(done) {
+    async load(page = 1, done) {
+      if (typeof page === 'function') { done = page; page = 1 }
+      const requestedPage = Math.max(1, Number(page) || 1)
       const epoch = (this._listEpoch || 0) + 1
       this._listEpoch = epoch
       const context = this.contextKey()
       this.state = 'loading'
       try {
-        const d = await teacherApi.getAcademicScheduleChanges()
+        const d = await teacherApi.getAcademicScheduleChanges(undefined, requestedPage, this.changesPageSize)
         if (!this._pageActive || this._listEpoch !== epoch || this.contextKey() !== context) return
         this.changes = (d && d.list) || []
+        this.changesTotal = Number((d && d.total) || 0)
+        this.changePage = Number((d && d.page) || requestedPage)
+        this.changesPageSize = Number((d && d.pageSize) || this.changesPageSize || 20)
+        this.changesHasMore = !!(d && d.hasMore)
         this.reconcileWrites(this.changes)
         this.state = 'ready'
       } catch (error) {
         if (this._pageActive && this._listEpoch === epoch && this.contextKey() === context) {
-          if (isForbiddenResponse(error)) { this.changes = []; this.items = []; this.receipt = null; this.tab = 'list' }
+          if (isForbiddenResponse(error)) { this.changes = []; this.changesTotal = 0; this.changesHasMore = false; this.items = []; this.receipt = null; this.tab = 'list' }
           this.state = normalizeError(error).pageState || 'error'
         }
       } finally { if (done) done() }
@@ -350,7 +358,7 @@ export default {
           this.reason = ''; this.makeupPlan = ''; this.targetWeekday = ''; this.targetSlotNo = ''
           this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
           this.invalidateConflict()
-          this.tab = 'list'; this.load()
+          this.tab = 'list'; this.load(1)
         })
         .catch((e) => {
           if (isExplicitWriteRejection(e)) this.clearWrite(context, 'submit', originItemId)
@@ -381,13 +389,13 @@ export default {
               this.ackWrite(context, 'cancel', changeId, { parentId: changeId })
               if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context) return
               this.receipt = { title: '调停课申请已撤销', changeId, courseName: x.courseName || '课程', result: '已撤销并保留记录', next: '如仍需调整，请从正式课表重新发起' }
-              toast('已撤销'); this.load()
+              toast('已撤销'); this.load(this.changePage)
             })
             .catch((e) => {
               if (isExplicitWriteRejection(e)) this.clearWrite(context, 'cancel', changeId)
               if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context) return
               if (isExplicitWriteRejection(e)) toast((e && e.message) || '撤销未受理，请刷新后重试')
-              else { toast('撤销结果未确认，已停止重复提交；请刷新申请列表核对'); this.load() }
+              else { toast('撤销结果未确认，已停止重复提交；请刷新申请列表核对'); this.load(this.changePage) }
             })
             .finally(() => { if (this._writeEpoch === writeEpoch && this.contextKey() === context) this.acting = false })
         }

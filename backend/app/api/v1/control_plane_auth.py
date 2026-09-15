@@ -83,7 +83,7 @@ def wx_bind(body: WxBindRequest):
         body.captchaId, body.captchaCode, body.clientNonce, body.clientType,
     )
     result = p0.wx_bind(body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
-                        binding_approval_token=body.bindingApprovalToken)
+                        binding_approval_token=body.bindingApprovalToken, client_type=body.clientType)
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")

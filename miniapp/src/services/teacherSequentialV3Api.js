@@ -15,10 +15,19 @@ function rememberExceptionVersion(id, rawVersion) {
 }
 
 export async function getInternshipReviewQueue({
-  weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
+  batchId = '', focusReportId = '', weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
 } = {}) {
   if (!append) exceptionVersions.clear()
-  const query = `weeklyPage=${weeklyPage}&exceptionPage=${exceptionPage}&pageSize=${pageSize}`
+  const queryParts = [
+    `weeklyPage=${encodeURIComponent(weeklyPage)}`,
+    `exceptionPage=${encodeURIComponent(exceptionPage)}`,
+    `pageSize=${encodeURIComponent(pageSize)}`
+  ]
+  // 普通进入由教师已选批次驱动；统一待办只传 recordId，后端会在范围校验后
+  // 解析对应批次。小程序不从 recordId 推导或缓存任何跨学生业务上下文。
+  if (String(batchId || '').trim()) queryParts.push(`batchId=${encodeURIComponent(String(batchId).trim())}`)
+  if (String(focusReportId || '').trim()) queryParts.push(`recordId=${encodeURIComponent(String(focusReportId).trim())}`)
+  const query = queryParts.join('&')
   const d = await realRequest(`/mobile/teacher/internship?${query}`)
   const reports = (d.weeklyReports || []).map((r) => ({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
@@ -46,7 +55,8 @@ export async function getInternshipReviewQueue({
       missingDecisionFacts: Array.isArray(e.missingDecisionFacts) ? e.missingDecisionFacts : []
     }
   })
-  return { reports, abnormal, pagination: d.pagination || {
+  return { reports, abnormal, batchId: String(d.batchId || ''), available: d.available !== false,
+    errors: Array.isArray(d.errors) ? d.errors : [], pagination: d.pagination || {
     weeklyPage, exceptionPage, pageSize, weeklyHasMore: false, exceptionHasMore: false
   }, _real: true }
 }

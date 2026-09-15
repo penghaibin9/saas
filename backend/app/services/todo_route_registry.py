@@ -82,6 +82,7 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
     "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-mini-loan", "/pages/student/affairs/loan", FOCUS_LIST_FOCUS),
     "FEE_REDUCTION_CORRECTION": ("todo-route:student-mini-reduction", "/pages/student/affairs/reduction", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "LEAVE_STUDENT_RESUBMIT": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_OVERDUE": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_CANCEL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_EXTENSION": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
@@ -105,6 +106,7 @@ _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
     "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-pc-loan", "/campus-service", {"tab": "loan"}, FOCUS_LIST_FOCUS),
     "FEE_REDUCTION_CORRECTION": ("todo-route:student-pc-reduction", "/campus-service", {"tab": "reduction"}, FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "LEAVE_STUDENT_RESUBMIT": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_EXTENSION": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
@@ -147,7 +149,9 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "AA_SCHEDULE_CHANGE_APPROVAL": ("todo-route:teacher-mini-schedule-change", "/pages/teacher/academic-affairs/schedule-change-review", FOCUS_NONE),
     "AA_STATUS_APPROVAL": ("todo-route:teacher-mini-status-change", "/pages/teacher/academic-affairs/status-change-review", FOCUS_NONE),
     "AA_GRADE_ENTRY": ("todo-route:teacher-mini-grade-entry", "/pages/teacher/academic-affairs/grade-entry", FOCUS_NONE),
-    "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
+    # 开题报告不是选题志愿审核。毕业设计指导页已消费 recordId、按当前教师数据范围
+    # 精确回读待审开题并打开批阅工作区，故不得再把待办误送到选题页。
+    "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-proposal-review", "/pages/teacher/graduation-guide/index", FOCUS_LIST_FOCUS),
     "GD_TOPIC_CHANGE_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
     "GD_FINAL_REVIEW": ("todo-route:teacher-mini-graduation-guide", "/pages/teacher/graduation-guide/index", FOCUS_NONE),
     "GD_DEFENSE_SCORE": ("todo-route:teacher-mini-defense-score", "/pages/teacher/defense-score/index", FOCUS_NONE),
@@ -198,6 +202,12 @@ def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: 
     # Without type it defaults to AID_APPROVAL and can open a different business.
     if path == "/pages/teacher/affairs-review/index":
         query["type"] = type_code
+    # 毕设指导页承载开题和成果两种独立的审核状态机。仅有 recordId 时页面不能
+    # 推断它属于哪个队列，必须由后端 typed todo 传递 kind，才可以精确打开该条。
+    if type_code == "GD_PROPOSAL_REVIEW":
+        query["kind"] = "proposal"
+    elif type_code == "GD_FINAL_REVIEW":
+        query["kind"] = "final"
     return {
         "routeName": route_name,
         "routeParams": {"recordId": rid},

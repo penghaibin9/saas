@@ -543,6 +543,7 @@ def retake_list(user, status=None, student_only=False, page=1, page_size=50):
 
 def _ex_dto(e):
     return {"exemptionId": str(e.id), "studentId": str(e.student_id), "studentName": e.student_name,
+            "courseId": str(e.course_id) if e.course_id is not None else None,
             "courseName": e.course_name, "termCode": e.term_code, "reason": e.reason,
             "currentNode": e.current_node, "returnReason": e.return_reason, "status": e.status,
             "exemptionVersion": int(e.version or 0), "evidenceManifestHash": e.evidence_manifest_hash}

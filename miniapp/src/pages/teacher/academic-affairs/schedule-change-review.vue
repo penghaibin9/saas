@@ -20,7 +20,7 @@
             <view class="row-between">
               <view class="flex-1">
                 <text class="t-md t-bold">{{ x.courseName || '—' }}</text>
-                <text class="ed__sub">{{ x.changeTypeLabel || x.changeType }} · {{ x.teacherName || x.teacherKey || '' }}</text>
+                <text class="ed__sub">{{ changeTypeLabel(x) }} · {{ x.teacherName || x.teacherKey || '' }}</text>
               </view>
               <MobileStatusTag :label="reviewStatus(x.status)" type="warning" />
             </view>
@@ -48,10 +48,10 @@
             <button v-else class="btn btn-primary" @click="openEvidence(x)">核对并处理 ›</button>
           </view>
         </view>
-        <view v-if="!detailId && list.length > 20" class="ed__pager">
-          <button class="btn btn-ghost" :disabled="queuePage === 0" @click="queuePage--">上一组</button>
-          <text>{{ queuePage + 1 }} / {{ Math.ceil(list.length / 20) }}</text>
-          <button class="btn btn-ghost" :disabled="(queuePage + 1) * 20 >= list.length" @click="queuePage++">下一组</button>
+        <view v-if="!detailId && (pendingTotal > pendingPageSize || queuePage > 1)" class="ed__pager">
+          <button class="btn btn-ghost" :disabled="queuePage <= 1 || state === 'loading'" @click="load(queuePage - 1)">上一组</button>
+          <text>{{ queuePage }} / {{ Math.max(1, Math.ceil(pendingTotal / pendingPageSize)) }}</text>
+          <button class="btn btn-ghost" :disabled="!pendingHasMore || state === 'loading'" @click="load(queuePage + 1)">下一组</button>
         </view>
       </view>
     </MobileGlobalState>
@@ -65,7 +65,7 @@ import { toast } from '@/utils/nav'
 import { approvalContextKey, approvalReceiptChanged, hasExplicitApprovalReceipt, isApprovalConflict, isApprovalForbidden } from './approval-recovery'
 const RECOVERY_SCOPE = 'schedule-change-review'
 export default {
-  data() { return { list: [], state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 0, reviewAttempts: {}, recoveryStorageBlocked: false } },
+  data() { return { list: [], state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 1, pendingTotal: 0, pendingPageSize: 20, pendingHasMore: false, reviewAttempts: {}, recoveryStorageBlocked: false } },
   onLoad(options = {}) {
     this._pageActive = true
     this.targetChangeId = String(options.id || options.changeId || options.recordId || '')
@@ -85,7 +85,7 @@ export default {
   },
   computed: {
     unresolvedCount() { return Object.values(this.reviewAttempts).filter((attempt) => attempt.context === this.contextKey() && attempt.state === 'UNKNOWN').length + (this.recoveryStorageBlocked ? 1 : 0) },
-    displayedRows() { return this.detailId ? this.list.filter((row) => String(row.changeId) === this.detailId) : this.list.slice(this.queuePage * 20, (this.queuePage + 1) * 20) }
+    displayedRows() { return this.detailId ? this.list.filter((row) => String(row.changeId) === this.detailId) : this.list }
   },
   onBackPress() { if (!this.detailId) return false; this.backToQueue(); return true },
   methods: {
@@ -100,7 +100,8 @@ export default {
     clearPrivateReview() {
       this._loadEpoch = (this._loadEpoch || 0) + 1
       this.acting = false
-      this.list = []; this.detailId = ''; this.targetChangeId = ''; this.queuePage = 0
+      this.list = []; this.detailId = ''; this.targetChangeId = ''; this.queuePage = 1
+      this.pendingTotal = 0; this.pendingHasMore = false
       for (const attempt of Object.values(this.reviewAttempts)) if (attempt.context === this.contextKey()) attempt.observation = ''
       this.state = 'error'
     },
@@ -112,6 +113,7 @@ export default {
       }
     },
     reviewStatus(status) { return { SUBMITTED: '待学院审核', COLLEGE_REVIEW: '学院审核中', ACADEMIC_REVIEW: '教务审核中', APPROVED: '已通过', APPLIED: '已生效', REJECTED: '已驳回', CANCELLED: '已撤销' }[status] || '状态待核对' },
+    changeTypeLabel(row) { return row.changeTypeLabel || ({ ADJUST: '调课', STOP: '停课', MAKEUP: '补课' })[row.changeType] || '调停课事项' },
     openEvidence(row) {
       if (this.acting || !this.list.includes(row)) return
       this.detailId = String(row.changeId)
@@ -119,8 +121,10 @@ export default {
     backToQueue() {
       if (!this.detailId) return true
       if (this.acting) { toast('正在处理，请稍候'); return false }
+      const wasTargeted = !!this.targetChangeId
       this.detailId = ''
       this.targetChangeId = ''
+      if (wasTargeted) this.load(1)
       return false
     },
     contextKey() {
@@ -138,7 +142,7 @@ export default {
       const parity = slot.weekParity === 'ODD' ? '单周' : slot.weekParity === 'EVEN' ? '双周' : '每周'
       return `周${slot.weekday} 第${slot.slotNo}节 · ${slot.startWeek || '?'}-${slot.endWeek || '?'}周 ${parity}${slot.classroom ? ` · ${slot.classroom}` : ''}`
     },
-    nodeLabel(node) { return node === 'COLLEGE_REVIEW' ? '学院审核' : node === 'ACADEMIC_REVIEW' ? '教务终审' : (node || '—') },
+    nodeLabel(node) { return node === 'COLLEGE_REVIEW' ? '学院审核' : node === 'ACADEMIC_REVIEW' ? '教务终审' : '审批节点待核对' },
     responsibilityText(row) { return `${row.currentAssigneeName || row.assigneeName || '当前审批人'} · ${this.nodeLabel(row.currentNode)}` },
     isTarget(item) { return !!this.targetChangeId && String(item.changeId || item.scheduleChangeId || '') === this.targetChangeId },
     focusTarget(rows) {
@@ -153,27 +157,35 @@ export default {
       if (index === 0) return rows
       return [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)]
     },
-    async load(done) {
+    async load(page, done) {
+      if (typeof page === 'function') { done = page; page = undefined }
+      let requestedPage = Math.max(1, Number(page || this.queuePage) || 1)
       const epoch = (this._loadEpoch || 0) + 1
       this._loadEpoch = epoch
       const context = this.contextKey()
       if (this._actionContext !== context) {
+        requestedPage = 1
         this._actionContext = context
         this._writeEpoch = (this._writeEpoch || 0) + 1
         this.acting = false
         this.list = []
         this.detailId = ''
-        this.queuePage = 0
+        this.queuePage = 1
+        this.pendingTotal = 0
+        this.pendingHasMore = false
         this.restoreReviewAttempts(context)
       } else if (this.recoveryStorageBlocked) this.restoreReviewAttempts(context)
       this.state = 'loading'
       try {
-        const d = await teacherApi.getScheduleChangePending()
+        const d = await teacherApi.getScheduleChangePending(requestedPage, this.pendingPageSize, this.targetChangeId || undefined)
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         this.list = this.focusTarget((d && (d.list || d.items)) || [])
+        this.pendingTotal = Number((d && d.total) || 0)
+        this.queuePage = Number((d && d.page) || requestedPage)
+        this.pendingPageSize = Number((d && d.pageSize) || this.pendingPageSize || 20)
+        this.pendingHasMore = !!(d && d.hasMore)
         this.observeReviewAttempts(this.list)
         if (this.detailId && !this.list.some((row) => String(row.changeId) === this.detailId)) this.detailId = ''
-        this.queuePage = Math.min(this.queuePage, Math.max(0, Math.ceil(this.list.length / 20) - 1))
         this.state = 'ready'
       } catch (error) {
         if (this._pageActive && this._loadEpoch === epoch && this.contextKey() === context) {
@@ -197,6 +209,8 @@ export default {
           if (!r.confirm || !this._pageActive || this.acting || this._loadEpoch !== epoch || this.contextKey() !== context || !this.list.includes(x) || JSON.stringify(x) !== snapshot || String(x.changeId || '') !== changeId) return
           const comment = (r.content || '').trim()
           if (need && comment.length < 5) { toast('原因至少 5 字'); return }
+          const expectedVersion = Number(x.version)
+          if (!Number.isInteger(expectedVersion) || expectedVersion < 0) { toast('当前单据版本缺失，请刷新后再处理'); return }
           const writeEpoch = (this._writeEpoch || 0) + 1
           this._writeEpoch = writeEpoch
           this.acting = true
@@ -209,7 +223,7 @@ export default {
             return
           }
           this.reviewAttempts[key] = { context, objectId: String(storedAttempt.objectId), action, epoch: writeEpoch, state: 'SENDING', observation: '' }
-          teacherApi.reviewScheduleChange(changeId, action, comment)
+          teacherApi.reviewScheduleChange(changeId, action, comment, expectedVersion)
             .then((receipt) => {
               if (!hasExplicitApprovalReceipt(receipt, changeId, ['changeId', 'scheduleChangeId', 'id']) || !approvalReceiptChanged(receipt, x)) {
                 const saved = approvalContextKey.persistReceipt(RECOVERY_SCOPE, storedAttempt, receipt)
@@ -226,7 +240,7 @@ export default {
               }
               delete this.reviewAttempts[key]
               if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context) return
-              toast(action === 'APPROVE' ? '已通过' : '已驳回'); this.targetChangeId = ''; this.load()
+              toast(action === 'APPROVE' ? '已通过' : '已驳回'); this.targetChangeId = ''; this.load(1)
             })
             .catch((e) => {
               if (isApprovalConflict(e)) {

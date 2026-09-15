@@ -138,10 +138,21 @@ function showActionSheet(options = {}) {
 }
 
 export function installH5InAppDialogs() {
+  // vite 的 H5/小程序构建都会经过转换插件；因此 invoker 必须先在所有运行时
+  // 可用。原生微信没有 window 时，它原样返回 uni 的原生 API，绝不让一个 H5
+  // 体验优化改变 mp-weixin 的业务按钮行为。
+  const runtime = typeof globalThis === 'undefined' ? null : globalThis
+  if (runtime && typeof runtime.__schoolInAppModalInvoker !== 'function') {
+    runtime.__schoolInAppModalInvoker = (fallback) => runtime.__schoolInAppModal || fallback
+  }
+  if (runtime && typeof runtime.__schoolInAppActionSheetInvoker !== 'function') {
+    runtime.__schoolInAppActionSheetInvoker = (fallback) => runtime.__schoolInAppActionSheet || fallback
+  }
   if (typeof window === 'undefined' || typeof document === 'undefined' || window[INSTALL_FLAG]) return
   window[INSTALL_FLAG] = true
   // uni-app 会把 `uni` 编译为模块级绑定，并不总是挂在 window 上；
-  // H5 Vite transform 将调用改为这两个显式全局钩子。
+  // H5 Vite transform 通过 invoker 取得这两个显式全局钩子。invoker 自身以
+  // 标识符开头，避免在没有分号的业务语句后被解析为上一表达式的调用。
   window.__schoolInAppModal = showModal
   window.__schoolInAppActionSheet = showActionSheet
 }

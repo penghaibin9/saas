@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import argparse
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -388,7 +389,7 @@ class _Ticker:
         self.next_at = now + self.interval
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     # Install module-owned recurring-writer fences only after the broad service
     # package has finished importing. This avoids service-package circular imports
     # while guaranteeing the standalone scheduler is fenced before its first tick.
@@ -397,26 +398,39 @@ def main() -> int:
 
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
+    parser = argparse.ArgumentParser(description="独立调度进程")
+    parser.add_argument(
+        "--only",
+        choices=("delivery",),
+        action="append",
+        default=[],
+        help="只运行指定安全调度组；省略时运行完整生产调度。",
+    )
+    args = parser.parse_args(argv)
+    only = set(args.only or [])
+
     log.info(
         "external scheduler started intervals delivery=%ss affairs=%ss academic_effective=%ss grade_deadline=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
         INTERVAL_DELIVERY, INTERVAL_STUDENT_AFFAIRS, INTERVAL_ACADEMIC_EFFECTIVE,
         INTERVAL_GRADE_DEADLINE, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
         INTERVAL_LEAVE_OVERDUE, INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
     now0 = time.monotonic()
-    tickers = [
-        _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
-        _Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives),
-        _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background),
-        _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective),
-        _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline),
-        _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages),
-        _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_counselor_temp_expire),
-        _Ticker(INTERVAL_STATS, now0, job_stats_reconcile),
-        _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches)),
+    ticker_specs = [
+        ("delivery", _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox)),
+        ("file_derivatives", _Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives)),
+        ("student_affairs", _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background)),
+        ("academic_effective", _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective)),
+        ("grade_deadline", _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline)),
+        ("scheduled_messages", _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages)),
+        ("expire_nudge", _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge)),
+        ("leave_overdue", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue)),
+        ("risk_timeout", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout)),
+        ("counselor_temp", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_counselor_temp_expire)),
+        ("stats", _Ticker(INTERVAL_STATS, now0, job_stats_reconcile)),
+        ("cleanup", _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches))),
     ]
+    tickers = [ticker for name, ticker in ticker_specs if not only or name in only]
+    log.info("external scheduler active job groups=%s", sorted(only) if only else [name for name, _ in ticker_specs])
     while True:
         now = time.monotonic()
         for t in tickers:

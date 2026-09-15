@@ -53,24 +53,32 @@
                   </view>
                 </view>
                 <text v-else-if="detailState === 'ready'" class="aw__unavailable">暂无跟进记录</text>
+                <view v-if="detailState === 'ready' && detail && detail.interventionTotal > 20" class="aw__pages">
+                  <button class="btn btn-ghost" :disabled="detail.interventionPage <= 1" @click="loadDetail(detailId, detail.interventionPage - 1)">上一组</button>
+                  <text>{{ detail.interventionPage }} / {{ Math.ceil(detail.interventionTotal / 20) }}</text>
+                  <button class="btn btn-ghost" :disabled="!detail.interventionHasMore" @click="loadDetail(detailId, detail.interventionPage + 1)">下一组</button>
+                </view>
                 <view v-if="followAck" class="aw__receipt">
                   <text>已收到跟进编号 {{ followAck.interventionId }}</text>
                   <text>正在等待详情返回该编号；只读核对不会重复提交。</text>
                   <button class="btn btn-ghost" :disabled="detailState === 'loading'" @click="verifyFollowup">只读核对记录</button>
                 </view>
-                <picker mode="selector" :range="wayLabels" :value="followWayIndex" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" @change="onWayChange">
-                  <view class="aw__input">跟进方式：{{ wayLabels[followWayIndex] }}<text>▾</text></view>
-                </picker>
-                <textarea v-model="followForm.content" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="1000" placeholder="记录本次沟通过程与学生情况，至少 5 个字" class="aw__note" />
-                <input v-model="followForm.result" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="200" placeholder="跟进结果（选填）" class="aw__input" />
-                <input v-model="followForm.nextPlan" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="200" placeholder="下一步计划（选填）" class="aw__input" />
-                <button class="btn btn-primary" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w) || followForm.content.trim().length < 5" @click="submitFollowup(w)">{{ followSubmitting ? '提交中…' : followAck ? '等待核对记录' : '保存跟进记录' }}</button>
+                <template v-if="canWriteWarning('FOLLOW_UP')">
+                  <picker mode="selector" :range="wayLabels" :value="followWayIndex" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" @change="onWayChange">
+                    <view class="aw__input">跟进方式：{{ wayLabels[followWayIndex] }}<text>▾</text></view>
+                  </picker>
+                  <textarea v-model="followForm.content" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="1000" placeholder="记录本次沟通过程与学生情况，至少 5 个字" class="aw__note" />
+                  <input v-model="followForm.result" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="200" placeholder="跟进结果（选填）" class="aw__input" />
+                  <input v-model="followForm.nextPlan" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" maxlength="200" placeholder="下一步计划（选填）" class="aw__input" />
+                  <button class="btn btn-primary" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w) || followForm.content.trim().length < 5" @click="submitFollowup(w)">{{ followSubmitting ? '提交中…' : followAck ? '等待核对记录' : '保存跟进记录' }}</button>
+                </template>
+                <text v-else-if="detailState === 'ready'" class="aw__unavailable">当前身份仅可查看，不能办理这条预警。</text>
               </view>
             </template>
             <button v-else class="btn btn-primary" @click="openWarning(w)">查看预警并跟进 ›</button>
-            <view class="aw__actions" v-if="detailId && (w.status === 'PENDING_HANDLE' || w.status === 'PROCESSING' || w.status === 'ACTIVE')">
-              <button class="aw__escalate flex-1" :disabled="actingId === warningId(w) || followSubmitting || hasAnyUnknownWrite(w)" @click="handle(w, 'ESCALATE')">升级为风险</button>
-              <button class="aw__close flex-1" :disabled="actingId === warningId(w) || followSubmitting || hasAnyUnknownWrite(w)" @click="handle(w, 'CLOSE')">关闭预警</button>
+            <view class="aw__actions" v-if="detailId && (canWriteWarning('ESCALATE') || canWriteWarning('CLOSE'))">
+              <button v-if="canWriteWarning('ESCALATE')" class="aw__escalate flex-1" :disabled="actingId === warningId(w) || followSubmitting || hasAnyUnknownWrite(w)" @click="handle(w, 'ESCALATE')">升级为风险</button>
+              <button v-if="canWriteWarning('CLOSE')" class="aw__close flex-1" :disabled="actingId === warningId(w) || followSubmitting || hasAnyUnknownWrite(w)" @click="handle(w, 'CLOSE')">关闭预警</button>
             </view>
           </view>
         </view>
@@ -142,6 +150,10 @@ export default {
       return teacherWriteContext(useSessionStore())
     },
     warningId(item) { return String((item && (item.warningId || item.id)) || '') },
+    canWriteWarning(action) {
+      const actions = (this.detail && (this.detail.allowedActions || this.detail.warning?.allowedActions)) || []
+      return Array.isArray(actions) && actions.includes(action)
+    },
     unknownKey(item, action) { return `${action}|${this.warningId(item)}` },
     hasUnknownWrite(item, action) { return this.writeStorageBlocked || this.writeAccessDenied || !!this.unknownWrites[this.unknownKey(item, action)] },
     hasAnyUnknownWrite(item) { return ['FOLLOWUP', 'CLOSE', 'ESCALATE'].some((action) => this.hasUnknownWrite(item, action)) },
@@ -153,7 +165,7 @@ export default {
       this.followAck = follow ? { warningId: follow.parentId, interventionId: follow.ackId } : null
       return result
     },
-    beginWrite(context, action, objectId) { const result = beginPersistentWrite(context, action, objectId); this.syncUnknownWrites(); if (!result.ok) toast(result.storageError ? '无法安全保存待核对记录，本次未提交' : '该操作正在等待正式记录核对'); return result.ok },
+    beginWrite(context, action, objectId, meta = {}) { const result = beginPersistentWrite(context, action, objectId, meta); this.syncUnknownWrites(); if (!result.ok) toast(result.storageError ? '无法安全保存待核对记录，本次未提交' : '该操作正在等待正式记录核对'); return result.ok },
     ackWrite(context, action, objectId, ack) { const ok = persistWriteAck(context, action, objectId, ack); this.syncUnknownWrites(); return ok },
     clearWrite(context, action, objectId) { const ok = clearPersistentWrite(context, action, objectId); this.syncUnknownWrites(); return ok },
     clearPrivateState() {
@@ -175,7 +187,7 @@ export default {
         if (record.action === 'ESCALATE' && ['ESCALATED', 'HIGH_RISK'].includes(status)) this.clearWrite(record.context, record.action, record.objectId)
       })
     },
-    wayLabel(way) { const found = WAYS.find((item) => item.key === way); return found ? found.label : way || '跟进' },
+    wayLabel(way) { const found = WAYS.find((item) => item.key === way); return found ? found.label : '跟进记录' },
     onWayChange(event) { this.followWayIndex = Number(event.detail.value) },
     isTarget(item) { return !!this.targetWarningId && this.warningId(item) === this.targetWarningId },
     levelTone(lv) { return lv === 'HIGH' ? 'danger' : lv === 'MEDIUM' ? 'warning' : 'default' },
@@ -218,7 +230,12 @@ export default {
       }
       this.state = 'loading'
       try {
-        const d = await teacherApi.getAcademicWarnings({ page: this.queuePage + 1, pageSize: 20, level: this.levelFilter === 'all' ? undefined : this.levelFilter })
+        const d = await teacherApi.getAcademicWarnings({
+          page: this.queuePage + 1,
+          pageSize: 20,
+          level: this.levelFilter === 'all' ? undefined : this.levelFilter,
+          pendingOnly: true
+        })
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
         const rows = (d && (d.list || d.items)) || []
         this.queueTotal = Number(d && d.total != null ? d.total : rows.length)
@@ -244,7 +261,7 @@ export default {
         }
       } finally { if (done) done() }
     },
-    async loadDetail(warningId = this.detailId) {
+    async loadDetail(warningId = this.detailId, interventionPage = 1) {
       const id = String(warningId || '')
       if (!id) return null
       const context = this.contextKey()
@@ -252,7 +269,7 @@ export default {
       this._detailEpoch = epoch
       this.detailState = 'loading'
       try {
-        const detail = await teacherApi.getAcademicWarningDetail(id)
+        const detail = await teacherApi.getAcademicWarningDetail(id, { interventionPage, interventionPageSize: 20 })
         if (!this._pageActive || this._detailEpoch !== epoch || this.contextKey() !== context || this.detailId !== id) return null
         if (this.warningId(detail && detail.warning) !== id) {
           this.detail = null
@@ -261,6 +278,16 @@ export default {
           return null
         }
         this.detail = detail || { interventions: [] }
+        const pending = listPersistentWrites(context)
+        const command = pending.ok && pending.records.find(row => row.action === 'FOLLOWUP' && row.objectId === id && row.requestKey)
+        if (command && typeof teacherApi.getAcademicWarningReceipt === 'function') {
+          const receipt = await teacherApi.getAcademicWarningReceipt(command.requestKey)
+          if (!this._pageActive || this._detailEpoch !== epoch || this.contextKey() !== context || this.detailId !== id) return null
+          const result = receipt && receipt.state === 'SUCCESS' && receipt.result
+          if (receipt?.operation === 'WARNING_FOLLOW_UP' && receipt.commandKey === command.requestKey && String(result?.warningId || '') === id && result.interventionId) {
+            this.ackWrite(context, 'FOLLOWUP', id, { ackId: String(result.interventionId), parentId: id })
+          }
+        }
         this.writeAccessDenied = false
         this.reconcileWarningWrites(this.list || [], detail)
         this.syncUnknownWrites(context)
@@ -294,17 +321,18 @@ export default {
     async submitFollowup(w) {
       const id = this.warningId(w)
       const content = this.followForm.content.trim()
-      if (!id || this.followSubmitting || this.followAck || this.hasAnyUnknownWrite(w) || content.length < 5) return
+      if (!id || !this.canWriteWarning('FOLLOW_UP') || this.followSubmitting || this.followAck || this.hasAnyUnknownWrite(w) || content.length < 5) return
       const context = this.contextKey()
       const detailEpoch = this._detailEpoch
       const snapshot = JSON.stringify([id, this.followWayIndex, this.followForm])
       const body = { way: WAYS[this.followWayIndex].key, content, result: this.followForm.result.trim(), nextPlan: this.followForm.nextPlan.trim() }
-      if (!this.beginWrite(context, 'FOLLOWUP', id)) return
+      const commandKey = `warning_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+      if (!this.beginWrite(context, 'FOLLOWUP', id, { requestKey: commandKey })) return
       this.followSubmitting = true
       const writeEpoch = (this._writeEpoch || 0) + 1
       this._writeEpoch = writeEpoch
       try {
-        const ack = await teacherApi.addAcademicWarningIntervention(id, body)
+        const ack = await teacherApi.addAcademicWarningIntervention(id, body, commandKey)
         const ackId = String(ack && ack.interventionId || '')
         const ackParentId = String(ack && ack.warningId || '')
         if (ackId && ackParentId === id) this.ackWrite(context, 'FOLLOWUP', id, { ackId, parentId: ackParentId })
@@ -338,7 +366,7 @@ export default {
     },
     handle(w, action) {
       const id = this.warningId(w)
-      if (!id || this.actingId || this.followSubmitting || this.hasAnyUnknownWrite(w)) return
+      if (!id || !this.canWriteWarning(action) || this.actingId || this.followSubmitting || this.hasAnyUnknownWrite(w)) return
       const context = this.contextKey()
       const epoch = this._loadEpoch
       const snapshot = JSON.stringify(w)

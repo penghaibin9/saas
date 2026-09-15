@@ -28,10 +28,10 @@
         <text class="ts__section-label">今日工作 · 本人授课</text>
         <view class="ts__week">
           <view>
-            <text class="ts__week-title">{{ selectedWeek ? `第 ${selectedWeek} 周` : '全部周次' }}{{ weekDateLabel ? ' · ' + weekDateLabel : '' }}</text>
+            <text class="ts__week-title">{{ selectedWeek ? `第 ${selectedWeek} 周` : '当前教学周' }}{{ weekDateLabel ? ' · ' + weekDateLabel : '' }}</text>
           </view>
-          <picker class="ts__week-control" mode="selector" :range="weekLabels" :value="selectedWeek" @change="onWeekChange">
-            <view class="ts__week-picker">{{ weekLabels[selectedWeek] || '全部周次' }}⌄</view>
+          <picker class="ts__week-control" mode="selector" :range="weekLabels" :value="weekPickerIndex" @change="onWeekChange">
+            <view class="ts__week-picker">{{ weekLabels[weekPickerIndex] || '当前教学周' }}⌄</view>
           </picker>
         </view>
         <text v-if="timeBands.length" class="ts__meta">节次时间来自学校作息；日期按学校教学周展示。</text>
@@ -138,12 +138,16 @@ export default {
     },
     lesson() { return this.lessonId ? (this.lessonIsToday ? this.todayItems : (this.items || [])).find((item) => String(item.scheduleItemId || item.itemId || '') === this.lessonId) || null : null },
     maxWeek() {
-      const itemMax = Math.max(1, ...(this.items || []).map((item) => Number(item.endWeek || 1)))
-      return Math.max(1, Number(this.teachingWeeks || 0), itemMax)
+      // The server owns the formal term boundary.  A wall-clock currentWeek can
+      // be greater than teachingWeeks after term end; including it here offered
+      // invalid weeks that the same server correctly rejected as 400/422.
+      const plannedWeeks = Number(this.teachingWeeks || 0)
+      return plannedWeeks > 0 ? plannedWeeks : Math.max(1, Number(this.currentWeek || 0))
     },
     weekLabels() {
-      return ['全部周次', ...Array.from({ length: this.maxWeek }, (_, index) => `第${index + 1}周`)]
+      return Array.from({ length: this.maxWeek }, (_, index) => `第${index + 1}周`)
     },
+    weekPickerIndex() { return Math.max(0, Math.min(this.maxWeek - 1, Number(this.selectedWeek || 1) - 1)) },
     filteredItems() {
       return (this.items || []).filter((item) => activeInWeek(item, this.selectedWeek))
     },
@@ -158,11 +162,10 @@ export default {
     currentWeekText() {
       if (this.currentWeek == null) return '当前周次待校历确认'
       if (Number(this.currentWeek) === 0) return '当前学期尚未开始'
+      if (Number(this.teachingWeeks || 0) > 0 && Number(this.currentWeek) > Number(this.teachingWeeks)) return '当前不在教学期'
       return `当前第${this.currentWeek}周`
     },
-    emptyText() {
-      return this.selectedWeek ? `第${this.selectedWeek}周暂无授课安排` : '暂无已发布课表'
-    },
+    emptyText() { return this.selectedWeek ? `第${this.selectedWeek}周暂无授课安排` : '暂无已发布课表' },
     todayNote() {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
@@ -244,9 +247,10 @@ export default {
       toast((item && item.attendanceBlockReason) || '该课程当前仅可查看')
     },
     onWeekChange(event) {
-      this.selectedWeek = Number(event.detail.value) || 0
+      const nextWeek = Number(event.detail.value) + 1
+      if (Number.isInteger(nextWeek) && nextWeek >= 1 && nextWeek <= this.maxWeek && nextWeek !== this.selectedWeek) return this.load(nextWeek)
     },
-    async load() {
+    async load(requestedWeek = this.selectedWeek || this.targetWeek || undefined) {
       this._pageActive = true
       const epoch = (this._loadEpoch || 0) + 1
       this._loadEpoch = epoch
@@ -256,8 +260,13 @@ export default {
       const selectedLessonWasToday = this.lessonIsToday
       this.state = 'loading'
       try {
-        const data = await teacherApi.getMySchedule()
+        const data = await teacherApi.getMySchedule({ week: requestedWeek || undefined })
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
+        const returnedWeek = Number(data && data.week)
+        const noCurrentTerm = !String((data && data.termCode) || '') && data && data.week == null
+        if (!data || !Array.isArray(data.items) || !Array.isArray(data.todayItems)
+          || (!noCurrentTerm && (!Number.isInteger(returnedWeek) || returnedWeek < 1))
+          || (Number.isInteger(returnedWeek) && data.items.some((item) => !activeInWeek(item, returnedWeek)))) throw new Error('课表信息无法核对')
         this.items = (data && data.items) || []
         this.todayItems = (data && data.todayItems) || []
         this.todayDate = (data && data.todayDate) || ''
@@ -268,10 +277,10 @@ export default {
         this.termCode = (data && data.termCode) || ''
         this.termStartDate = (data && data.termStartDate) || ''
         if (!this._selectionInitialized) {
-          this.selectedWeek = this.currentWeek && this.currentWeek <= this.maxWeek ? this.currentWeek : 0
+          this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
           this.selectedDay = this.todayWeekday || 1
           this._selectionInitialized = true
-        } else if (this.selectedWeek > this.maxWeek) this.selectedWeek = 0
+        } else if (this.selectedWeek > this.maxWeek || this.selectedWeek < 1) this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
         if (this.targetLessonId) this.focusDeepLink()
         else if (selectedLessonId) {
           const rows = selectedLessonWasToday ? this.todayItems : this.items

@@ -48,7 +48,7 @@ const emptyPriority = {
   getMyExamSchedule: async () => ({ items: [] }),
   getMyWarnings: async () => ({ items: [] }),
   getMyRegistration: async () => ({ batches: [] }),
-  getSelectionCourses: async () => []
+  getSelectionBatches: async () => ({ items: [] })
 }
 
 test('read pages clear same-session private data on 403 and ignore a late result after unload', async () => {
@@ -87,7 +87,7 @@ test('home treats malformed successful reads as pending and carries exact lesson
     getMyExamSchedule: async () => ({ items: null }),
     getMyWarnings: async () => ({ items: [] }),
     getMyRegistration: async () => ({ batches: [] }),
-    getSelectionCourses: async () => ({ groups: [{ batch: {}, courses: null }] })
+    getSelectionBatches: async () => ({ items: null })
   })
   await partial.page.loadPriority(0)
   assert.ok(partial.page.failedSources.includes('考试'))
@@ -97,11 +97,17 @@ test('home treats malformed successful reads as pending and carries exact lesson
 
 test('schedule keeps a deep-linked lesson visible by selecting its valid week and day, and clears it on 403', async () => {
   let forbidden = false
+  const scheduleCalls = []
   const schedule = mount('schedule', {
-    getMySchedule: async () => {
+    getMySchedule: async params => {
+      scheduleCalls.push(params)
       if (forbidden) throw { httpStatus: 403, code: '403001' }
+      const requestedWeek = Number(params?.week)
       return {
-        termCode: '2026-1', currentWeek: 6, teachingWeeks: 18, todayItems: [],
+        termCode: '2026-1', currentWeek: 6, teachingWeeks: 18,
+        // The server owns recurrence filtering. A stale deep link to even week 4
+        // is safely normalized to the first real occurrence in week 3.
+        week: requestedWeek === 4 ? 3 : (requestedWeek || 3), todayItems: [],
         items: [{ itemId: 'lesson-001', courseName: '嵌入式系统', weekday: 3, slotNo: 2, startWeek: 3, endWeek: 5, weekParity: 'ODD' }]
       }
     }
@@ -111,9 +117,9 @@ test('schedule keeps a deep-linked lesson visible by selecting its valid week an
   assert.equal(schedule.page.selectedWeek, 3)
   assert.equal(schedule.page.selectedDay, 3)
   assert.equal(schedule.page.filteredItems[0].itemId, 'lesson-001')
-  schedule.page.onWeekChange({ detail: { value: 5 } })
+  assert.equal(scheduleCalls[0].week, 4)
+  await schedule.page.onWeekChange({ detail: { value: 4 } })
   schedule.page.onDayChange({ detail: { value: 4 } })
-  await schedule.page.load()
   assert.equal(schedule.page.selectedWeek, 5)
   assert.equal(schedule.page.selectedDay, 4)
   forbidden = true
@@ -130,25 +136,80 @@ test('schedule keeps a deep-linked lesson visible by selecting its valid week an
   assert.equal(unloading.page.items, null)
 })
 
-test('published grades and clearance preserve zero, and list coverage never claims a complete unseen result', async () => {
-  const transcript = mount('transcript', { getMyTranscript: async () => ({ total: 3, items: [{ gradeId: '0007', courseName: '数学', term: '2026-1', score: 0, credit: 2 }] }) })
+test('schedule never offers a wall-clock week beyond the configured teaching weeks', async () => {
+  const schedule = mount('schedule', {
+    getMySchedule: async () => ({
+      termCode: '2026-1', currentWeek: 19, teachingWeeks: 18,
+      week: 1, items: [], todayItems: [], calendarSource: 'OUT_OF_TERM'
+    })
+  })
+  await schedule.page.load()
+  assert.equal(schedule.page.maxWeek, 18)
+  assert.equal(schedule.page.weekLabels.length, 18)
+  assert.equal(schedule.page.weekLabels.at(-1), '第18周')
+})
+
+test('published grades and clearance preserve zero, and list coverage reports the server page', async () => {
+  const transcript = mount('transcript', { getMyTranscript: async () => ({
+    page: 1, pageSize: 20, total: 3, hasMore: false, term: null, terms: ['2026-1'],
+    items: [{ gradeId: '0007', courseName: '数学', term: '2026-1', score: 0, credit: 2 }]
+  }) })
   await transcript.page.load()
   assert.equal(transcript.page.scoreText(transcript.page.data.items[0]), 0)
-  assert.match(transcript.page.gradeCoverageText, /1\/3/)
+  assert.match(transcript.page.gradeCoverageText, /本页 1 条，共 3 条/)
   assert.match(transcript.source, /encodeURIComponent\(g\.gradeId\)/)
 
-  const clearance = mount('clearance', { getMyClearance: async () => ({ total: 2, items: [{ recordId: 'c-1', status: 'FINISHED', score: '0' }] }) })
+  const clearance = mount('clearance', { getMyClearance: async () => ({ page: 1, pageSize: 20, total: 2, hasMore: false, items: [{ recordId: 'c-1', status: 'FINISHED', score: '0' }] }) })
   await clearance.page.load()
   assert.equal(clearance.page.hasPublishedScore(clearance.page.d.items[0]), true)
   assert.equal(clearance.page.publishedScore(clearance.page.d.items[0]), '0')
   assert.equal(clearance.page.hasPublishedScore({ status: 'FINISHED', score: false }), false)
   assert.equal(clearance.page.hasPublishedScore({ status: 'FINISHED', score: ' ' }), false)
-  assert.match(clearance.page.clearanceCoverageText, /1\/2/)
+  assert.match(clearance.page.clearanceCoverageText, /本页 1 条，共 2 条/)
 
   const warning = mount('warning', { getMyWarnings: async () => ({ total: 51, page: 1, pageSize: 20, hasMore: true, items: [{ warningId: 'w-1' }] }) })
   await warning.page.load()
   assert.match(warning.page.warningCoverageText, /本页 1 条，共 51 条/)
   assert.equal(warning.page.hasNext, true)
+})
+
+test('transcript and credits request bounded server pages instead of growing a local list', async () => {
+  const transcriptCalls = []
+  const transcript = mount('transcript', {
+    getMyTranscript: async params => {
+      transcriptCalls.push(params)
+      const page = params.page
+      return {
+        page, pageSize: 20, total: 21, hasMore: page === 1, term: params.term || null,
+        terms: ['2026-2', '2026-1'], items: [{ gradeId: `g-${page}`, courseName: '课程', term: '2026-2', credit: 2, passStatus: 'PASSED' }]
+      }
+    }
+  })
+  await transcript.page.load()
+  assert.equal(transcriptCalls[0].pageSize, 20)
+  assert.equal(transcript.page.hasNext, true)
+  await transcript.page.nextPage()
+  assert.equal(transcriptCalls[1].page, 2)
+  assert.equal(transcript.page.data.items[0].gradeId, 'g-2')
+
+  const creditCalls = []
+  const credits = mount('credits', {
+    getMyCredits: async params => {
+      creditCalls.push(params)
+      const page = params.page
+      return {
+        obtainedCredits: 42, requiredCredits: 80, gpa: 3.5, failCount: 0,
+        page, pageSize: 20, passedCoursesTotal: 21, hasMore: page === 1,
+        passedCourses: [{ gradeId: `c-${page}`, courseName: '已通过课程', credit: 2, passStatus: 'PASSED' }]
+      }
+    }
+  })
+  await credits.page.load()
+  assert.equal(creditCalls[0].pageSize, 20)
+  assert.equal(credits.page.hasNext, true)
+  await credits.page.nextPage()
+  assert.equal(creditCalls[1].page, 2)
+  assert.equal(credits.page.d.passedCourses[0].gradeId, 'c-2')
 })
 
 test('calendar distinguishes malformed data from a valid partial calendar and validates attendance summary', async () => {

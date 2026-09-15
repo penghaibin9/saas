@@ -369,6 +369,24 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "实习周报提醒",
         "require_ack": False,
     },
+    # 周报的审核结果必须和状态变更在同一事务中入 outbox。不能只让学生下次
+    # 手动打开周报页才发现被退回，否则真实的“退回→修改重交”闭环会断开。
+    "INTERNSHIP.WEEKLY_RETURNED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "RETURNED_NOTICE",
+        "title": "实习周报已退回",
+        "require_ack": False,
+    },
+    "INTERNSHIP.WEEKLY_APPROVED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "实习周报已通过",
+        "require_ack": False,
+    },
     # SP-E02/E04：就业去向登记单节点审批结果通知。
     "EMPLOYMENT_DESTINATION.APPROVED": {
         "source_module": "employment",

@@ -5,6 +5,7 @@ import { selectionScope, selectionScopePath, selectionScopeBody } from '../../..
  * 读取保持 latest-wins，不创建第二套岗位或志愿记录，也不回退旧企业岗位全量接口。
  */
 import { realRequest as baseRequest } from './request'
+import { latestRead as latestProjectionRead } from './latestRead'
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
 
@@ -36,20 +37,10 @@ export function normalizeMobileCatalogQuery(input = {}) {
 
 export function createInternshipSelectionApi(input = {}) {
 const scope = selectionScope(input)
-const latestReads = new Map()
+const scopeKey = [scope.batchId || '', scope.campaignId || '', scope.recordId || ''].join(':') || 'current'
 
 function latestRead(key, task) {
-  let exposed
-  const raw = Promise.resolve().then(task)
-  exposed = raw.then(
-    (value) => latestReads.get(key) === exposed ? value : latestReads.get(key),
-    (error) => {
-      if (latestReads.get(key) !== exposed) return latestReads.get(key)
-      throw error
-    }
-  )
-  latestReads.set(key, exposed)
-  return exposed
+  return latestProjectionRead(`student:internship-selection:${scopeKey}:${key}`, task)
 }
 
 function realRequest(path, options = {}) {

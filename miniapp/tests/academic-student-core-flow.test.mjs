@@ -8,6 +8,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
 const selection = fs.readFileSync(path.join(root, 'src/pages/student/academic-affairs/selection.vue'), 'utf8')
 const schedule = fs.readFileSync(path.join(root, 'src/pages/student/academic-affairs/schedule.vue'), 'utf8')
+const status = fs.readFileSync(path.join(root, 'src/pages/student/academic-affairs/status.vue'), 'utf8')
+const registration = fs.readFileSync(path.join(root, 'src/pages/student/academic-affairs/registration.vue'), 'utf8')
 const academicHome = fs.readFileSync(path.join(root, 'src/pages/student/academic-affairs/index.vue'), 'utf8')
 const studentHome = fs.readFileSync(path.join(root, 'src/pages/student/home/index.vue'), 'utf8')
 const teacherSchedule = fs.readFileSync(path.join(root, 'src/pages/teacher/my-schedule/index.vue'), 'utf8')
@@ -41,6 +43,11 @@ test('student miniapp consumes backend todayItems and refreshes whenever shown',
   assert.match(schedule, /calendarSource === 'OUT_OF_TERM'/)
 })
 
+test('student schedule carries the formal task identity into attendance detail', () => {
+  assert.match(schedule, /teachingTaskId=\$\{encodeURIComponent\(String\(item\.taskId\)\)\}/)
+  assert.ok(schedule.includes("if (/^[1-9]\\d*$/.test(String(item && item.taskId || '')))"))
+})
+
 test('student miniapp keeps schedule and selection reachable before orientation completes', () => {
   assert.match(studentHome, /查看今天上什么课/)
   assert.match(studentHome, /pages\/student\/academic-affairs\/schedule/)
@@ -54,6 +61,30 @@ test('student academic home consumes the same server-projected Today truth', () 
   assert.match(academicHome, /return this\.todayItems/)
   assert.match(academicHome, /calendarSource === 'OUT_OF_TERM'/)
   assert.doesNotMatch(academicHome, /new Date\(\)\.getDay\(\)/)
+})
+
+test('student academic home keeps its secondary evaluation read bounded', () => {
+  assert.match(academicHome, /getMyEvaluationTasks\(\{ page: 1, pageSize: 20 \}\)/)
+  assert.doesNotMatch(academicHome, /studentApi\.getMyEvaluationTasks\(\)(?:,|\))/)
+})
+
+test('student status-change candidates use server paging instead of an all-school target map', () => {
+  assert.match(status, /getTransferOptions\(\{ \.\.\.params, target, page, pageSize: TRANSFER_OPTION_PAGE_SIZE \}\)/)
+  assert.match(status, /loadOptionPage\('major', 'major'/)
+  assert.match(status, /loadOptionPage\('targetClass', 'class'/)
+  assert.match(status, /majorId: selectedMajorId/)
+  assert.doesNotMatch(status, /majorClasses/)
+  assert.doesNotMatch(status, /getTransferOptions\(\)(?:,|\))/)
+})
+
+test('student registration reads server pages and uses the server-wide actionable total on home', () => {
+  assert.match(registration, /getMyRegistration\(\{ page, pageSize: PAGE_SIZE, batchId: this\.targetId \|\| undefined \}\)/)
+  assert.match(registration, /注册批次分页信息无法核对/)
+  assert.match(registration, /changePage\(page\) \{ return this\.load\(page\) \}/)
+  assert.doesNotMatch(registration, /studentApi\.getMyRegistration\(\)(?:,|\))/)
+  assert.match(academicHome, /getMyRegistration\(\{ page: 1, pageSize: 20 \}\)/)
+  assert.match(academicHome, /registrationPayload\?\.actionableTotal/)
+  assert.match(academicHome, /registrationPayload\?\.nextActionBatchId/)
 })
 
 test('teacher miniapp full timetable leads with the same server-projected Today truth', () => {

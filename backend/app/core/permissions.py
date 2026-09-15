@@ -291,6 +291,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
         # 越权（非本班 classId / 教师课表 / 教室课表）一律 403002，不额外放大到排课管理/规则/冲突。
         "academicAffairs.schedule.view",
+        # 学业预警：辅导员只可查看并处置本人负责班级或正式分配给本人的预警；
+        # mobile_academic_warning_service 仍以租户、正式账号、数据范围、待办和状态机逐层裁决。
+        "academicAffairs.warning.view", "academicAffairs.warning.handle",
         # 消息中心：本班普通/重要通知发布（范围由受众服务按负责班级收敛）
         "workbench.message.publish",
         "workbench.message.class.publish",

@@ -37,6 +37,29 @@ LEGACY_DEMO_ROLE_BY_LOGIN = {
 }
 
 
+def assert_mini_client_user_type(user, client_type: str | None) -> None:
+    """Reject a mobile surface that does not match the authenticated account plane.
+
+    This guard intentionally lives beside the canonical account/role resolver so
+    password, WeChat and role-switch paths cannot drift into separate mappings.
+    It is not a UI decision: a token issued for one mini-program surface must
+    never be usable as the other surface merely because the client changed a
+    request field.
+    """
+    client = str(client_type or "").strip().upper()
+    if client not in {"STUDENT_MINI", "TEACHER_MINI"}:
+        return
+    user_type = str(
+        getattr(user, "user_type", None)
+        or (user.get("userType") if isinstance(user, dict) else "")
+        or ""
+    ).strip().upper()
+    if client == "STUDENT_MINI" and user_type != "STUDENT":
+        raise AppException("NO_PERMISSION", "当前账号不能进入学生小程序，请从正确入口登录", http_status=403)
+    if client == "TEACHER_MINI" and user_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}:
+        raise AppException("NO_PERMISSION", "当前账号不能进入教师小程序，请从正确入口登录", http_status=403)
+
+
 def _subject_cache_key(user_ctx: dict) -> str:
     return (f"auth:subject:{user_ctx.get('tenantId') or '0'}:"
             f"{user_ctx.get('userId') or '-'}")
@@ -674,6 +697,7 @@ def switch_role(user_ctx: dict, context_id: str, client_type: str) -> dict:
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        assert_mini_client_user_type(user, client_type)
         contexts = _role_contexts(db, user)
         target = _pick_context(contexts, context_id=context_id)
         if target is None or target["contextId"] != context_id:

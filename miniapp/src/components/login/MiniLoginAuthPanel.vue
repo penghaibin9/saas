@@ -184,14 +184,27 @@ export default {
         toast('账号角色未配置或暂不支持，请联系学校管理员')
         return
       }
-      const generation = commitNewSessionTokens(data.accessToken, data.refreshToken || '')
       const session = useSessionStore()
+      // 先轮换逻辑会话代次，再清空旧账号投影并建立新身份。这样旧账号的迟到请求、
+      // 页面缓存和资料读取不会在 A 退出 / B 登录的临界窗口重新写回界面。
+      const generation = commitNewSessionTokens(data.accessToken, data.refreshToken || '')
       session.login(roleKey, { skipRealLogin: true })
       session.applyRealUser(data)
       const stillCurrent = () => this.isLoginCurrent(attempt) && generation === currentSessionGeneration()
       const goHome = () => { if (stillCurrent()) relaunch(this.isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index') }
+      // 临时密码仅允许进入既有强制改密路由；提前查询业务资料会被服务器拒绝，
+      // 并可能与请求层改密跳转形成重复导航。
+      if (session.mustChangePassword) {
+        goHome()
+        return
+      }
       if (!this.isTeacher) {
-        studentApi.getProfile().then((profile) => { if (stillCurrent()) session.hydrateStudentProfile(profile) }).catch(() => {}).finally(goHome)
+        studentApi.getProfile()
+          .then((profile) => { if (stillCurrent()) session.hydrateStudentProfile(profile) })
+          .catch((error) => {
+            if (stillCurrent()) toast(error?.message || '已登录，但个人资料暂时加载失败，请在首页重试')
+          })
+          .finally(goHome)
       } else {
         goHome()
       }
@@ -234,7 +247,10 @@ export default {
         success: (result) => {
           if (!this.isLoginCurrent(attempt)) return
           if (!result?.code) { toast('微信授权失败，请重试'); this.wxLoading = false; return }
-          realRequest('/auth/wx-login', { method: 'POST', auth: false, data: { code: result.code } })
+          realRequest('/auth/wx-login', {
+            method: 'POST', auth: false,
+            data: { code: result.code, clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI' }
+          })
             .then((data) => {
               if (!this.isLoginCurrent(attempt)) return
               if (data?.needBind) {
@@ -264,7 +280,13 @@ export default {
           if (!this.isLoginCurrent(attempt)) return
           const selected = accounts[tapIndex]
           if (!selected) return
-          realRequest('/auth/wx-select', { method: 'POST', auth: false, data: { wxToken: data.wxToken, tenantCode: selected.tenantCode } })
+          realRequest('/auth/wx-select', {
+            method: 'POST', auth: false,
+            data: {
+              wxToken: data.wxToken, tenantCode: selected.tenantCode,
+              clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI'
+            }
+          })
             .then((loginData) => {
               if (!this.isLoginCurrent(attempt)) return
               saveLastTenantCode(selected.tenantCode)

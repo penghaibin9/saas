@@ -15,7 +15,7 @@ from app.api.v1.teacher_mobile_employment import router as employment_router
 from app.api.v1.teacher_mobile_internship import router as internship_router
 from app.api.v1.teacher_mobile_sequential import router as sequential_router
 from app.core.response import success
-from app.core.security import require_staff
+from app.core.security import require_mobile_staff
 from app.services import teacher_mobile_student_keyset_service as student_svc
 from app.services import teacher_mobile_student360_projection_service as student360_svc
 from app.services import teacher_mobile_todo_grouped_service as todo_grouped_svc
@@ -32,7 +32,7 @@ def grouped_todos(
     group: str = Query(default="all", max_length=32),
     cursor: Optional[str] = Query(default=None, max_length=2048),
     pageSize: int = Query(default=20, ge=1, le=100),
-    user=Depends(require_staff),
+    user=Depends(require_mobile_staff),
 ):
     return success(todo_grouped_svc.list_grouped_continuous(
         user,
@@ -49,7 +49,7 @@ def list_students(
     keyword: Optional[str] = Query(default=None, max_length=100),
     cursor: Optional[str] = Query(default=None, max_length=2048),
     pageSize: int = Query(default=20, ge=1, le=100),
-    user=Depends(require_staff),
+    user=Depends(require_mobile_staff),
 ):
     return success(student_svc.list_continuous(
         user,
@@ -62,5 +62,5 @@ def list_students(
 
 @router.get("/students/{student_id}/projection", summary="教师端 Student360 单学生投影",
             name="teacher_mobile_student360_projection")
-def student360_projection(student_id: str, user=Depends(require_staff)):
+def student360_projection(student_id: str, user=Depends(require_mobile_staff)):
     return success(student360_svc.get_projection(user, student_id))

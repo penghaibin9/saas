@@ -10,6 +10,9 @@ from urllib.parse import parse_qsl, urlsplit
 os.environ["APP_ENV"] = "test"
 os.environ["DB_ENABLED"] = "false"
 os.environ["DATABASE_URL"] = ""
+# 测试不得复用日常沙箱 Redis 的分布式限流桶；否则一个用例的登录次数会泄漏给
+# 下一用例。pytest 已通过 reset_all_for_tests() 清理专用进程内状态，生产限流不受影响。
+os.environ["REDIS_URL"] = ""
 # 测试套件在独立测试库里自建租户，约定主租户 = demo(MAIN_TENANT_ID 1000000000000000001)，
 # 与生产库里的真实租户无关。生产默认租户已于 2026-07-28 收敛为 sandbox-school，故此处
 # 必须显式钉住测试自己的租户约定，否则 mock-login 会解析到沙箱租户而与夹具数据跨租户不可见。
@@ -856,6 +859,10 @@ def _reset_security_state():
 _TRANSIENT_DDL_ERRNOS = ("1050", "1051", "1146", "1205", "1684")  # 表已存在/表已不存在/表定义连锁缺失/锁等待超时/并发DDL冲突——均为竞态副产物
 
 
+class _IncompleteTestSchema(RuntimeError):
+    """``create_all`` returned while a concurrent MySQL DDL skipped a table."""
+
+
 def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
     """MySQL 并发 DDL 竞态重试包装：本仓库多个 worktree/子智能体并行跑 pytest 时共用同一张
     TEST_DATABASE_URL 物理 MySQL 库（student_lifecycle_test），db_mode 每测试一次全量
@@ -873,6 +880,10 @@ def _ddl_with_retry(fn, attempts=20, base_delay=2.0):
         try:
             fn()
             return
+        except _IncompleteTestSchema:
+            if i == attempts - 1:
+                raise
+            time.sleep(base_delay)
         except (OperationalError, ProgrammingError) as e:
             if not any(code in str(e) for code in _TRANSIENT_DDL_ERRNOS) or i == attempts - 1:
                 raise
@@ -900,6 +911,26 @@ def _drop_all_mysql(engine, metadata):
             conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
 
 
+def _create_all_mysql_verified(engine, metadata):
+    """Create then verify every ORM table really exists.
+
+    MySQL can silently skip an individual CREATE while another local pytest run
+    holds the table-definition lock.  SQLAlchemy's ``create_all`` then returns
+    without an exception, leaving a later business test to fail with 1146.  The
+    fixture owns an isolated test schema, so retrying the whole create pass is
+    safer and more truthful than treating that as an application regression.
+    """
+    from sqlalchemy import inspect
+
+    metadata.create_all(bind=engine)
+    expected = {table.name for table in metadata.sorted_tables}
+    existing = set(inspect(engine).get_table_names())
+    missing = expected - existing
+    if missing:
+        preview = ", ".join(sorted(missing)[:5])
+        raise _IncompleteTestSchema(f"test schema missing {len(missing)} ORM tables after create_all: {preview}")
+
+
 @pytest.fixture(scope="session")
 def _session_mysql_schema():
     """FAST_TEST_SCHEMA 模式：会话只建一次 schema，单用例只清空数据。"""
@@ -915,7 +946,7 @@ def _session_mysql_schema():
     reset_state()
     engine = get_engine()
     _ddl_with_retry(lambda: _drop_all_mysql(engine, metadata))
-    _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+    _ddl_with_retry(lambda: _create_all_mysql_verified(engine, metadata))
     try:
         yield engine
     finally:
@@ -989,7 +1020,7 @@ def db_mode(tmp_path, request):
             if not is_sqlite:
                 event.listen(engine, "connect", _set_ddl_lock_timeout)
                 _ddl_with_retry(lambda: _drop_all_mysql(engine, metadata))
-                _ddl_with_retry(lambda: metadata.create_all(bind=engine))
+                _ddl_with_retry(lambda: _create_all_mysql_verified(engine, metadata))
             else:
                 metadata.create_all(bind=engine)
         # 最小种子

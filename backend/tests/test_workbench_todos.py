@@ -18,12 +18,13 @@ OTHER = 1000000000000000009
 CA_UID, CB_UID = 51001, 51002
 
 
-def _token(user_id, login_name, role="COUNSELOR", user_type="TEACHER", tenant_id=MAIN):
+def _token(user_id, login_name, role="COUNSELOR", user_type="TEACHER", tenant_id=MAIN,
+           client_type="PC"):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u_{user_id}", "loginName": login_name, "realName": f"姓名{user_id}",
         "userType": user_type, "tid": "demo", "tenantId": str(tenant_id),
-        "activeContextId": "ctx", "currentRoleCode": role, "clientType": "PC"})}
+        "activeContextId": "ctx", "currentRoleCode": role, "clientType": client_type})}
 
 
 def _seed(_db_mode):
@@ -138,6 +139,51 @@ def test_count_matches_list(client, db_mode):
     assert cnt["code"] == 0, cnt
     assert cnt["data"]["total"] == lst["data"]["total"], (cnt["data"], lst["data"]["total"])
     assert sum(cnt["data"]["byType"].values()) == cnt["data"]["total"]
+
+
+def test_graduation_todo_is_hidden_outside_its_active_role_context(client, db_mode):
+    """同一教师的教务身份不能收到只能由毕设导师办理的毕业设计待办。
+
+    这是工作台/普通分页/连续分页的共同回归：之前直接按 assignee_id 放行，导致
+    ACADEMIC_TEACHER 点击 GD_PROPOSAL_REVIEW 后被毕设域正确拒绝，页面表现为加载失败。
+    切换到 GD_MENTOR 后同一条待办仍必须出现，避免用前端隐藏掩盖真实任务。
+    """
+    _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedTodo
+
+    db = get_sessionmaker()()
+    try:
+        db.add(UnifiedTodo(
+            tenant_id=MAIN, source_module="graduation", source_biz_type="GD_PROPOSAL",
+            source_biz_id=9191, todo_type="GD_PROPOSAL_REVIEW", assignee_id=CA_UID,
+            title="仅毕设导师可办的开题待批阅", status="PENDING",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    academic = _token(CA_UID, "counselorA", role="ACADEMIC_TEACHER")
+    academic_mobile = _token(
+        CA_UID, "counselorA", role="ACADEMIC_TEACHER", client_type="TEACHER_MINI",
+    )
+    mentor = _token(CA_UID, "counselorA", role="GD_MENTOR")
+
+    ordinary = client.get("/api/v1/admin/todos", headers=academic).json()
+    assert "仅毕设导师可办的开题待批阅" not in _titles(ordinary)
+    workbench_page = client.get(
+        "/api/v1/mobile/performance/teacher/todos-page", headers=academic_mobile,
+    ).json()
+    assert workbench_page["code"] == 0, workbench_page
+    assert "仅毕设导师可办的开题待批阅" not in [item["title"] for item in workbench_page["data"]["list"]]
+    continuous = client.get(
+        "/api/v1/teacher-mobile/todos/grouped-continuous", headers=academic_mobile,
+    ).json()
+    assert continuous["code"] == 0, continuous
+    assert "仅毕设导师可办的开题待批阅" not in [item["title"] for item in continuous["data"]["items"]]
+
+    allowed = client.get("/api/v1/admin/todos", headers=mentor).json()
+    assert "仅毕设导师可办的开题待批阅" in _titles(allowed)
 
 
 def test_domain_command_todo_rejects_generic_complete_and_stays_pending(client, db_mode):

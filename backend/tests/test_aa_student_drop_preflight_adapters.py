@@ -6,6 +6,7 @@ import pytest
 
 from app.core.exceptions import AppException
 from app.modules.academic_affairs.services import academic_affairs_selection_final_service as canonical
+from app.modules.academic_affairs.services import academic_affairs_selection_service as selection
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as mobile
 from app.student_portal.services import academic_service as portal
 
@@ -52,6 +53,25 @@ def test_non_student_is_rejected_before_query(monkeypatch, adapter):
     monkeypatch.setattr(canonical, "student_drop_preflight", forbidden)
     with pytest.raises(AppException) as error:
         adapter({"userType": "TEACHER", "userId": "db-101"}, {"selectionCourseId": "10"})
+    assert error.value.code == "NO_PERMISSION"
+
+
+@pytest.mark.parametrize("adapter, invoke", [
+    (mobile.selection_courses_my, lambda fn: fn({"userType": "TEACHER", "userId": "db-101"}, "10")),
+    (mobile.selection_preflight_my, lambda fn: fn({"userType": "TEACHER", "userId": "db-101"}, {"selectionCourseId": "10", "studentId": "999"})),
+    (mobile.selection_enroll_my, lambda fn: fn({"userType": "TEACHER", "userId": "db-101"}, {"selectionCourseId": "10", "studentId": "999"})),
+    (mobile.selection_drop_my, lambda fn: fn({"userType": "TEACHER", "userId": "db-101"}, {"selectionCourseId": "10", "studentId": "999"})),
+    (mobile.selection_records_my, lambda fn: fn({"userType": "TEACHER", "userId": "db-101"}, "10")),
+])
+def test_all_other_mobile_selection_adapters_reject_non_student_before_canonical_query(monkeypatch, adapter, invoke):
+    """A forged studentId must not turn a teacher token into a student selection read/write."""
+    def forbidden(*args, **kwargs):
+        pytest.fail("Non-student must be rejected before the selection domain is called")
+
+    for name in ("student_courses", "student_preflight", "student_enroll", "student_drop", "my_selections"):
+        monkeypatch.setattr(selection, name, forbidden)
+    with pytest.raises(AppException) as error:
+        invoke(adapter)
     assert error.value.code == "NO_PERMISSION"
 
 

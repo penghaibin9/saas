@@ -43,7 +43,7 @@ def _self_leave_condition(db, stu):
     return or_(CsLeave.student_id == stu.id, and_(CsLeave.student_id.is_(None), CsLeave.cs_student_id.in_(linked or [-1])))
 
 
-def leave_my(user) -> dict:
+def leave_my(user, *, page: int = 1, page_size: int = 20) -> dict:
     """本人请假记录：t_cs_leave 双状态列并行(P0 §4.2 集成①)——13A 新提交走
     student_id+affairs_status；老 campus-service 提交只有 cs_student_id+status。
     只按 student_id 查会漏掉老记录（学生自己在「我的申请」能看到、在本页却看不到），
@@ -51,11 +51,20 @@ def leave_my(user) -> dict:
     from app.models import CsLeave
     from app.services import affairs_leave_service as leave_svc
     L = {**leave_svc.L_AFF, "PENDING_REVIEW": "待审批"}
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
     with session() as db:
         stu = _me(db, user)
-        rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), _self_leave_condition(db, stu), CsLeave.is_deleted.is_(False))
-            .order_by(CsLeave.id.desc())).all()
+        conds = [
+            CsLeave.tenant_id == _tid(),
+            _self_leave_condition(db, stu),
+            CsLeave.is_deleted.is_(False),
+        ]
+        total = int(db.scalar(select(func.count()).select_from(CsLeave).where(*conds)) or 0)
+        rows = db.scalars(select(CsLeave).where(*conds)
+            .order_by(CsLeave.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)).all()
         items = []
         for x in rows:
             st = x.affairs_status or x.status
@@ -70,7 +79,13 @@ def leave_my(user) -> dict:
                 "version": int(x.version or 0),
                 "allowedActions": actions,
             })
-        return {"items": items}
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": page * page_size < total,
+        }
 
 
 def leave_detail_my(user, leave_id: int) -> dict:
@@ -87,7 +102,7 @@ def leave_detail_my(user, leave_id: int) -> dict:
         ))
         if record is None:
             raise not_found("请假申请不存在或不属于本人")
-        result = svc._row(record, student)
+        result = svc._row(record, student, include_attachments=True, db=db)
         result['leaveId'] = str(record.id)
         result['affairsStatus'] = record.affairs_status or record.status
         result['status'] = result['affairsStatus']

@@ -762,6 +762,9 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
             InternshipAuditTrail.target_type == "REPORT").order_by(InternshipAuditTrail.id)).all()
         row = _report_row(w, rec, stu)
         row.update({
+            # 教师移动端从统一待办进入周报队列时，需要先由服务端把待办对象
+            # 解析回它所属的正式实习批次；客户端不能猜测或自行拼接批次。
+            "batchId": str(rec.batch_id) if rec and rec.batch_id else "",
             "positionName": rec.position_name if rec else "",
             "content": {"work": w.work_content or "", "harvest": w.harvest_content or "",
                         "plan": w.plan_content or ""},
@@ -807,7 +810,48 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         _trail(db, w.id, "REPORT", f"REVIEW_{action}", detail)
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.todo_done(db, biz_id=w.id, todo_type=ix_todo.TODO_WEEKLY)
+        # 审核结果与状态、审计和待办同事务写入 outbox；不直接造 UnifiedMessage，
+        # 这样 worker 的幂等、失败重试和收件人账号绑定仍由公共消息体系守住。
+        from app.services.message_action_registry import validate_action
+        from app.services.message_event_outbox_service import emit_receiver_notice
+        action_key, action_params = validate_action(
+            "student.internship.weekly-report",
+            {
+                "reportId": str(w.id),
+                "batchId": str(rec.batch_id),
+                "internshipId": str(rec.id),
+                "weekNo": int(w.week_number),
+            },
+        )
+        if action == "RETURN":
+            event_code = "INTERNSHIP.WEEKLY_RETURNED"
+            title = f"第 {w.week_number} 周实习周报已退回"
+            content = f"指导教师退回了第 {w.week_number} 周实习周报。退回原因：{(comment or '').strip()}"
+        else:
+            event_code = "INTERNSHIP.WEEKLY_APPROVED"
+            title = f"第 {w.week_number} 周实习周报已通过"
+            extra = f"指导意见：{(comment or '').strip()}" if (comment or '').strip() else "请继续按计划完成实习。"
+            content = f"第 {w.week_number} 周实习周报已通过。{extra}"
+        outbox = emit_receiver_notice(
+            db,
+            event_code=event_code,
+            source_module="internship",
+            source_biz_type="WEEKLY_REPORT",
+            source_biz_id=w.id,
+            receiver_id=stu.id,
+            title=title,
+            content=content,
+            receiver_as="student",
+            action_key=action_key,
+            action_params=action_params,
+            dedup_extra=f"v:{new_ver}",
+        )
         db.commit()
+        # 成功路径尽力即时投递，失败则保留 PENDING 由 worker 重试；绝不把已经提交的
+        # 审核结果回滚成“没有批阅”。
+        if outbox is not None:
+            from app.services.message_event_outbox_service import try_process_pending_outbox
+            try_process_pending_outbox(worker_id="internship-weekly-review", outbox_ids=[int(outbox.id)])
         return {"id": str(w.id), "status": status, "version": new_ver,
                 "statusLabel": REPORT_STATUS_LABEL.get(status, status)}
 

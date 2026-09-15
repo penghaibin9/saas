@@ -72,8 +72,8 @@ test('miniapp H5 converts framework dialogs into the current application surface
   assert.match(source, /window\.__schoolInAppActionSheet\s*=\s*showActionSheet/)
   assert.match(source, /role', 'dialog'/)
   assert.doesNotMatch(source, /window\.open\s*\(/)
-  assert.match(viteConfig, /globalThis\.__schoolInAppModal\s*\|\|\s*uni\.showModal/)
-  assert.match(viteConfig, /globalThis\.__schoolInAppActionSheet\s*\|\|\s*uni\.showActionSheet/)
+  assert.match(viteConfig, /globalThis\.__schoolInAppModalInvoker\(uni\.showModal\)\(/)
+  assert.match(viteConfig, /globalThis\.__schoolInAppActionSheetInvoker\(uni\.showActionSheet\)\(/)
 })
 
 test('guard detects native calls but permits local business methods', () => {

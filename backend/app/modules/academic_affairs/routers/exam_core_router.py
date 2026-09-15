@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path
 from pydantic import BaseModel
 
 from app.core.permissions import require_any_permission, require_permission
@@ -362,8 +362,8 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
-def defer_resubmit(deferId: int = Path(...), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId), message="已重提")
+def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
@@ -389,7 +389,7 @@ def defer_counselor_review(
     deferId: int = Path(...),
     user=Depends(require_permission(_DEFER_COUNSELOR)),
 ):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 @router.post("/deferred-exams/{deferId}/review", summary="缓考教师/学院/教务处审批")
@@ -398,4 +398,4 @@ def defer_review(
     deferId: int = Path(...),
     user=Depends(require_permission(_DEFER_REVIEW)),
 ):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")

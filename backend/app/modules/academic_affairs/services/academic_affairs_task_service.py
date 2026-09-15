@@ -546,7 +546,7 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50):
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                   page=1, page_size=50):
+                   page=1, page_size=50, task_id=None):
     from app.models import AaTeachingTask
 
     with session() as db:
@@ -557,6 +557,11 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             conditions.append(AaTeachingTask.course_id == int(course_id))
         if status:
             conditions.append(AaTeachingTask.status == status)
+        if task_id not in (None, ""):
+            try:
+                conditions.append(AaTeachingTask.id == int(task_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "taskId 格式错误")
         if mergeable:
             conditions.extend([
                 AaTeachingTask.status.in_(_core._PRE_CONFIRM_STATUSES),
@@ -569,13 +574,15 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         else:
             scope = _scope(user, db)
             conditions.extend(_visible_task_conditions(scope, AaTeachingTask))
+        current_page = max(1, int(page or 1))
+        current_page_size = max(1, int(page_size or 50))
+        total = int(db.scalar(
+            select(func.count()).select_from(AaTeachingTask).where(*conditions)
+        ) or 0)
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
-        )).all()
-        output = [_core._task_row(task) for task in rows]
-        total = len(output)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return output[start:start + int(page_size)], total
+        ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
+        return [_core._task_row(task) for task in rows], total
 
 
 def get_batch_workbench(batch_id, user) -> dict:

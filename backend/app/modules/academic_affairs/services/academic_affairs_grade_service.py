@@ -1093,7 +1093,7 @@ def _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, d
     return result
 
 
-def _transcript_page(db, student_id, page, page_size):
+def _transcript_page(db, student_id, page, page_size, *, term=None, pass_status=None):
     """Page the ordinary unique-course projection; preserve canonical arbitration
     for historical or competing attempts instead of inventing a SQL policy.
     """
@@ -1104,37 +1104,49 @@ def _transcript_page(db, student_id, page, page_size):
         AcademicStudent.tenant_id == _core._tid(), AcademicStudent.student_id == int(student_id),
         AcademicStudent.is_deleted.is_(False),
     ))
-    meta = {"studentId": str(student_id), "page": page, "pageSize": page_size}
+    selected_term = str(term or "").strip()
+    selected_status = str(pass_status or "").upper().strip()
+    if selected_status and selected_status not in {"PASSED", "FAIL", "FAILED", "PENDING"}:
+        raise AppException("VALIDATION_ERROR", "成绩状态筛选不合法")
+    meta = {
+        "studentId": str(student_id), "page": page, "pageSize": page_size,
+        "term": selected_term or None, "passStatus": selected_status or None,
+    }
     if student is None:
         return {**meta, "items": [], "total": 0, "earnedCredits": 0, "gpa": None,
-                "failCount": 0, "note": "无学业记录"}
-    conditions = [AcademicGrade.tenant_id == _core._tid(), AcademicGrade.acad_student_id == student.id,
-                  AcademicGrade.record_status == "ACTIVE", func.length(AcademicGrade.record_status) == 6,
-                  AcademicGrade.is_deleted.is_(False)]
+                "failCount": 0, "terms": [], "hasMore": False, "note": "无学业记录"}
+    base_conditions = [AcademicGrade.tenant_id == _core._tid(), AcademicGrade.acad_student_id == student.id,
+                       AcademicGrade.record_status == "ACTIVE", func.length(AcademicGrade.record_status) == 6,
+                       AcademicGrade.is_deleted.is_(False)]
+    conditions = list(base_conditions)
+    if selected_term:
+        conditions.append(AcademicGrade.term == selected_term)
+    if selected_status:
+        conditions.append(func.upper(AcademicGrade.pass_status) == selected_status)
     missing_identity = db.scalar(select(AcademicGrade.id).where(
-        *conditions, AcademicGrade.course_id.is_(None),
+        *base_conditions, AcademicGrade.course_id.is_(None),
     ).limit(1))
-    competing = db.execute(select(AcademicGrade.course_id).where(*conditions)
+    competing = db.execute(select(AcademicGrade.course_id).where(*base_conditions)
                            .group_by(AcademicGrade.course_id)
                            .having(func.count(AcademicGrade.id) > 1).limit(1)).first()
     # Include bytes in DISTINCT so a case/accent/pad-insensitive DB collation
     # cannot hide malformed legacy values from canonical Python validation.
     strategies = [row[0] for row in db.execute(select(
         AcademicGrade.effective_attempt_strategy, func.hex(AcademicGrade.effective_attempt_strategy),
-    ).where(*conditions).distinct())]
+    ).where(*base_conditions).distinct())]
     statuses = [row[0] for row in db.execute(select(
         AcademicGrade.pass_status, func.hex(AcademicGrade.pass_status),
-    ).where(*conditions).distinct())]
+    ).where(*base_conditions).distinct())]
     ordinary = missing_identity is None and competing is None and all(
         not value or str(value).upper() in VALID_ATTEMPT_STRATEGIES for value in strategies
     ) and all(str(value or "").upper() in {"PASSED", "FAIL", "FAILED", "PENDING"} for value in statuses)
     if ordinary:
-        aggregate = db.execute(select(
-            func.count(AcademicGrade.id),
+        summary = db.execute(select(
             func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status) == "PASSED", AcademicGrade.credit_value), else_=0)), 0),
             func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status).in_(["FAIL", "FAILED"]), 1), else_=0)), 0),
-        ).where(*conditions)).one()
-        total, earned, failures = int(aggregate[0]), float(aggregate[1]), int(aggregate[2])
+        ).where(*base_conditions)).one()
+        total = int(db.scalar(select(func.count(AcademicGrade.id)).where(*conditions)) or 0)
+        earned, failures = float(summary[0]), int(summary[1])
         rows = db.scalars(select(AcademicGrade).where(*conditions).order_by(
             func.coalesce(AcademicGrade.term, ""),
             func.coalesce(func.nullif(AcademicGrade.course_code, ""), AcademicGrade.course_name, ""),
@@ -1143,29 +1155,35 @@ def _transcript_page(db, student_id, page, page_size):
     else:
         # One student's exceptional attempts use the existing frozen policy,
         # including its 409 on unresolved historical identity/strategy debt.
-        effective = sorted(resolve_effective_grade(db.scalars(select(AcademicGrade).where(*conditions)).all()),
-                           key=lambda row: (str(row.term or ""), str(row.course_code or row.course_name or ""), int(row.id)))
+        all_effective = sorted(resolve_effective_grade(db.scalars(select(AcademicGrade).where(*base_conditions)).all()),
+                               key=lambda row: (str(row.term or ""), str(row.course_code or row.course_name or ""), int(row.id)))
+        effective = [row for row in all_effective if (
+            (not selected_term or str(row.term or "") == selected_term)
+            and (not selected_status or str(row.pass_status or "").upper() == selected_status)
+        )]
         total = len(effective)
-        earned = sum(float(row.credit_value or 0) for row in effective if str(row.pass_status or "").upper() == "PASSED")
-        failures = sum(1 for row in effective if str(row.pass_status or "").upper() in {"FAIL", "FAILED"})
+        earned = sum(float(row.credit_value or 0) for row in all_effective if str(row.pass_status or "").upper() == "PASSED")
+        failures = sum(1 for row in all_effective if str(row.pass_status or "").upper() in {"FAIL", "FAILED"})
         rows = effective[(page - 1) * page_size:page * page_size]
+    term_rows = db.scalars(select(AcademicGrade.term).where(*base_conditions).distinct()).all()
+    terms = sorted({str(value).strip() for value in term_rows if str(value or "").strip()}, reverse=True)
     return {**meta, "total": total, "earnedCredits": earned, "gpa": float(student.gpa or 0),
             "failCount": failures, "policyCode": "LATEST_FORMAL_SOURCE_V1", "items": [{
                 "gradeId": str(row.id), "courseId": str(row.course_id or ""), "courseCode": row.course_code or "",
                 "courseVersion": row.course_version, "attemptNo": row.attempt_no, "courseName": row.course_name,
                 "term": row.term or "", "credit": float(row.credit_value or 0), "score": row.score,
                 "passStatus": row.pass_status, "source": row.source or "LEGACY",
-            } for row in rows]}
+            } for row in rows], "terms": terms, "hasMore": page * page_size < total}
 
 
-def transcript(student_id, user, page=None, page_size=50) -> dict:
+def transcript(student_id, user, page=None, page_size=50, *, term=None) -> dict:
     from app.models import AcademicGrade, AcademicStudent
 
     with _core.session() as db:
         if page is not None:
             if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 200:
                 raise AppException("VALIDATION_ERROR", "成绩单页码须在1至100000、每页条数须在1至200之间")
-            return _transcript_page(db, student_id, int(page), int(page_size))
+            return _transcript_page(db, student_id, int(page), int(page_size), term=term)
         academic_student = db.scalars(select(AcademicStudent).where(
             AcademicStudent.tenant_id == _core._tid(),
             AcademicStudent.student_id == int(student_id),
@@ -1210,6 +1228,16 @@ def transcript(student_id, user, page=None, page_size=50) -> dict:
             ),
             "policyCode": "LATEST_FORMAL_SOURCE_V1",
         }
+
+
+def passed_courses_page(student_id, user, page=1, page_size=20) -> dict:
+    """学分页的已通过课程真分页，禁止调用方先拉全量成绩再在内存中过滤。"""
+    if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 200:
+        raise AppException("VALIDATION_ERROR", "已通过课程页码须在1至100000、每页条数须在1至200之间")
+    with _core.session() as db:
+        return _transcript_page(
+            db, student_id, int(page), int(page_size), pass_status="PASSED",
+        )
 
 
 def export_transcript_xlsx(user, student_id, purpose="") -> bytes:

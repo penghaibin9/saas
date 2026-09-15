@@ -419,6 +419,22 @@ export default {
       if (detail) this.taskDetails[key] = detail
       return true
     },
+    setWarningSummary(result) {
+      if (result.status !== 'fulfilled') {
+        if (isExpectedForbidden(result)) this.available.warning = false
+        return false
+      }
+      this.available.warning = true
+      const summary = result.value || {}
+      const total = Number(summary.total)
+      this.counts.warning = Number.isFinite(total) && total > 0 ? total : 0
+      const first = summary.first || null
+      const target = taskTarget('warning', first)
+      if (target) this.taskTargets.warning = target
+      const detail = taskDetail('warning', first)
+      if (detail) this.taskDetails.warning = detail
+      return true
+    },
     toggleMoreServices() {
       this.showMoreServices = !this.showMoreServices
       if (this.showMoreServices && !this.secondaryLoaded && !this.secondaryLoading) this.loadSecondary()
@@ -429,11 +445,13 @@ export default {
       const context = this.contextKey()
       const results = await Promise.allSettled([
         teacherApi.getGradeTasks(),
-        teacherApi.getAcademicMyTasks()
+        teacherApi.getAcademicMyTasks(),
+        teacherApi.getAcademicWarningSummary()
       ])
       if (!this._pageActive || this._priorityEpoch !== epoch || this.contextKey() !== context) return
       this.setResult('grade', results[0], true)
       this.setResult('academicTask', results[1], true)
+      this.setWarningSummary(results[2])
       this.partialError = this.partialError || results.some((result) => result.status === 'rejected' && !isExpectedForbidden(result))
     },
     async loadSecondary() {
@@ -449,11 +467,10 @@ export default {
         teacherApi.getScheduleChangePending(),
         teacherApi.getStatusChangePending(),
         teacherApi.getAcademicDeferPending(),
-        teacherApi.getAcademicWarnings(),
         teacherApi.getWorkloadDeclarations()
       ])
       if (!this._pageActive || this._secondaryEpoch !== epoch || this.contextKey() !== context) return
-      const keys = ['attendance', 'scheduleChange', 'scheduleReview', 'statusReview', 'defer', 'warning', 'workload']
+      const keys = ['attendance', 'scheduleChange', 'scheduleReview', 'statusReview', 'defer', 'workload']
       keys.forEach((key, index) => this.setResult(key, results[index], true))
       this.secondaryError = results.some((result) => result.status === 'rejected' && !isExpectedForbidden(result))
       this.secondaryLoaded = !this.secondaryError

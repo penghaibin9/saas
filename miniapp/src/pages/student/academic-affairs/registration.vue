@@ -36,6 +36,11 @@
             <button class="btn btn-primary" :disabled="submitting || !!pendingApplication || deferReason.trim().length < 2 || !deferUntil" @click="submitDefer(b)">提交暂缓申请</button>
           </view>
         </view>
+        <view v-if="d.total > 0 || page > 1" class="mk__pager">
+          <button class="btn" :disabled="page <= 1 || state === 'loading'" @click="changePage(page - 1)">上一页</button>
+          <text>第 {{ page }} / {{ pageCount }} 页，共 {{ d.total }} 项</text>
+          <button class="btn" :disabled="!d.hasMore || state === 'loading'" @click="changePage(page + 1)">下一页</button>
+        </view>
       </view>
     </AcademicPageState>
     <MobileTabBar side="student" active="" />
@@ -51,33 +56,54 @@ import { savePending } from './pending-ledger'
 const isForbidden = error => Number(error?.httpStatus || error?.statusCode) === 403 || /^403/.test(String(error?.code || '')) || error?.code === 'NO_PERMISSION'
 const REGISTRATION_STATUS = { REGISTERED: '已完成注册', PENDING: '待注册', PENDING_REGISTER: '待注册', UNREGISTERED: '未注册', DEFERRED: '已申请暂缓', CLOSED: '已关闭' }
 const ELIGIBILITY_STATUS = { ELIGIBLE: '资格已通过', BLOCKED: '当前有待处理事项', INELIGIBLE: '当前无资格', PENDING: '资格待核对' }
+const PAGE_SIZE = 20
+function normalizePagination(value, requestedPage) {
+  const page = value?.page
+  const pageSize = value?.pageSize
+  const total = value?.total
+  const hasMore = value?.hasMore
+  if (!Number.isSafeInteger(page) || page !== requestedPage || page < 1
+    || pageSize !== PAGE_SIZE || !Number.isSafeInteger(total) || total < 0
+    || typeof hasMore !== 'boolean' || hasMore !== page * pageSize < total) {
+    throw new Error('注册批次分页信息无法核对')
+  }
+  return { page, pageSize, total, hasMore }
+}
 export default {
   components: { AcademicPageNav, AcademicPageState },
   mixins: [academicApplicationPage],
   created() { this.applicationScope = 'registration' },
-  data() { return { d: null, state: 'loading', targetId: '', deferBatchId: '', deferReason: '', deferUntil: '', academicDraftFields: ['deferBatchId', 'deferReason', 'deferUntil'] } },
+  data() { return { d: null, state: 'loading', targetId: '', deferBatchId: '', deferReason: '', deferUntil: '', page: 1, academicDraftFields: ['deferBatchId', 'deferReason', 'deferUntil'] } },
+  computed: {
+    pageCount() { return this.d?.total ? Math.ceil(this.d.total / PAGE_SIZE) : 1 }
+  },
   onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
   methods: {
     restorePendingDraft(pending) { if (pending.kind === 'defer') { this.deferBatchId = String(pending.body.batchId); this.deferReason = pending.body.reason; this.deferUntil = pending.body.requestedUntil || '' } },
     deferralText(value) { return { PENDING: '待学校审核', SUBMITTED: '已提交', APPROVED: '已批准暂缓', REJECTED: '未批准' }[value] || '状态待核对' },
     registrationText(value) { return REGISTRATION_STATUS[value] || '状态待确认' },
     eligibilityText(value) { return ELIGIBILITY_STATUS[value] || '资格待确认' },
-    resetAcademicContext() { this.clearApplicationContext(); this.targetId = ''; this.deferBatchId = ''; this.deferReason = ''; this.deferUntil = '' },
+    resetAcademicContext() { this.clearApplicationContext(); this.targetId = ''; this.deferBatchId = ''; this.deferReason = ''; this.deferUntil = ''; this.page = 1 },
     clearForbiddenRegistration() {
       const hadPending = this.protectPendingReference()
-      this.d = null; this.targetId = ''; this.deferBatchId = ''; this.deferReason = ''; this.deferUntil = ''; this.submitting = false
+      this.d = null; this.targetId = ''; this.deferBatchId = ''; this.deferReason = ''; this.deferUntil = ''; this.page = 1; this.submitting = false
       this.applicationNotice = hadPending ? '当前无权核对注册记录；本次办理仍待核实。' : ''
       savePending('draft:' + this.applicationScope, null)
     },
     finishApplication(kind) { this.deferBatchId = ''; this.deferReason = ''; this.deferUntil = ''; this.applicationNotice = kind === 'register' ? '已核对学校记录：本批次注册已完成。' : '已核对学校记录：暂缓申请已登记。' },
-    load() {
+    load(requestedPage = this.page) {
+      const page = Number(requestedPage)
+      if (!Number.isSafeInteger(page) || page < 1) return Promise.resolve(null)
       return this.readAcademic(async () => {
         const identity = currentSessionGeneration(); const epoch = this.readEpoch
-        try { return await studentApi.getMyRegistration() }
+        try { return await studentApi.getMyRegistration({ page, pageSize: PAGE_SIZE, batchId: this.targetId || undefined }) }
         catch (error) { if (isForbidden(error) && epoch === this.readEpoch && identity === currentSessionGeneration() && !this.readHidden) this.clearForbiddenRegistration(); throw error }
       }, d => {
-        if (!Array.isArray(d.batches)) throw new Error('注册记录无法核对')
-        this.d = d
+        if (!Array.isArray(d.batches) || d.batches.length > PAGE_SIZE) throw new Error('注册记录无法核对')
+        const pagination = normalizePagination(d, page)
+        if (d.batches.length > 0 && pagination.total < (pagination.page - 1) * PAGE_SIZE + d.batches.length) throw new Error('注册批次分页记录不完整')
+        this.d = { ...d, ...pagination }
+        this.page = pagination.page
         if (this.pendingApplication?.kind === 'defer') {
           const deferrals = d.batches.filter(batch => batch.deferral).map(batch => ({ ...batch.deferral, batchId: batch.batchId }))
           this.acceptApplication(deferrals, 'deferralId', (row, body) => !!this.pendingApplication?.returnedId && String(row.batchId) === String(body.batchId) && row.reason === body.reason && String(row.requestedUntil || '').slice(0, 10) === body.requestedUntil)
@@ -86,6 +112,7 @@ export default {
         }
       })
     },
+    changePage(page) { return this.load(page) },
     doRegister(b) {
       if (b.canRegister !== true || this.submitting || this.pendingApplication) return
       return this.sendApplication({ title: '确认完成学期注册', kind: 'register', body: { batchId: b.batchId }, existingId: b.batchId,

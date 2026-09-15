@@ -187,7 +187,10 @@ def test_logout_purges_sensitive_grade_drafts_and_identity_is_not_mock_only():
     plugin = (root / "miniapp/src/stores/sessionAcademicPlugin.js").read_text(encoding="utf-8")
     cleanup = (root / "miniapp/src/services/sensitiveDraftStorage.js").read_text(encoding="utf-8")
 
-    assert "clearSensitiveLocalDrafts" not in session
+    # 注销路径已下沉到 session store，避免插件未完成安装时仍残留敏感草稿；
+    # 插件保留是为了兼容既有 Pinia 安装顺序，二者都必须走同一清理器。
+    assert "clearSensitiveLocalDrafts" in session
+    assert "clearSensitiveLocalDrafts()" in session
     assert "clearSensitiveLocalDrafts()" in plugin
     assert "const baseLogout = store.logout.bind(store)" in plugin
     assert "aa-grade-entry-draft:" in cleanup
@@ -195,4 +198,5 @@ def test_logout_purges_sensitive_grade_drafts_and_identity_is_not_mock_only():
     assert "uni.removeStorageSync(key)" in cleanup
     for field in ("tenantId", "userId", "activeContextId", "roleCode"):
         assert field in plugin
-    assert "identity: {" in session
+    assert "identity: freshIdentity()" in session
+    assert "snapshot.identity =" in plugin

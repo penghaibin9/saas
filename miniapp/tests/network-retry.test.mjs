@@ -39,6 +39,29 @@ test('explicit development fallback keeps its existing offline cooldown', async 
   assert.equal(api.calls(), 1)
 })
 
+test('GET omits absent optional query values before the H5 adapter serializes them', async () => {
+  const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
+    .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')
+    .replace(/export default[\s\S]*$/, '').replace(/^export /gm, '')
+  let sent
+  const uni = {
+    getStorageSync: () => '', showToast() {},
+    request(options) {
+      sent = options
+      queueMicrotask(() => options.success({ statusCode: 200, data: { code: 0, data: { ok: true } } }))
+    }
+  }
+  const realRequest = new Function('ENV', 'markMobileViewsDirty', 'uni', ...Object.keys(generation), `${source}\nreturn realRequest`)(
+    { useMock: false, allowMockFallback: false, apiBaseUrl: 'http://127.0.0.1:18310', apiPrefix: '/api/v1', requestTimeout: 8000 },
+    () => {}, uni, ...Object.values(generation))
+
+  await realRequest('/mobile/academic/schedule/my', {
+    auth: false,
+    data: { week: undefined, term: null, page: 1, keyword: '' }
+  })
+  assert.deepEqual(sent.data, { page: 1, keyword: '' })
+})
+
 test('mobile request presentation distinguishes denial, license, auth and transport failure', () => {
   const { normalizeError } = setup()
   for (const [error, expected] of [
@@ -54,4 +77,52 @@ test('mobile request presentation distinguishes denial, license, auth and transp
     assert.equal(result.pageState, expected)
     assert.doesNotMatch(result.text, /academicAffairs|NO_PERMISSION/)
   }
+})
+
+test('transport never exposes gateway or database text, while a short Chinese validation reason remains actionable', async () => {
+  const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
+    .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')
+    .replace(/export default[\s\S]*$/, '').replace(/^export /gm, '')
+  const makeApi = (body) => {
+    const uni = {
+      getStorageSync: () => '', showToast() {},
+      request(options) { queueMicrotask(() => options.success({ statusCode: 200, data: body })) }
+    }
+    return new Function('ENV', 'markMobileViewsDirty', 'uni', ...Object.keys(generation), `${source}\nreturn { realRequest, normalizeError }`)(
+      { useMock: false, allowMockFallback: false, apiBaseUrl: 'https://school.test', apiPrefix: '/api/v1', requestTimeout: 1000 },
+      () => {}, uni, ...Object.values(generation))
+  }
+
+  const unsafe = makeApi({ code: 422001, bizCode: 'VALIDATION_ERROR', message: 'sqlalchemy.exc: SELECT password FROM users' })
+  await assert.rejects(unsafe.realRequest('/safe-error', { auth: false }), (error) => {
+    assert.equal(error.message, '填写内容有误，请检查后重试')
+    assert.equal(error.serverMessage, 'sqlalchemy.exc: SELECT password FROM users')
+    assert.equal(unsafe.normalizeError(error).text, '填写内容有误，请检查后重试')
+    return true
+  })
+
+  const actionable = makeApi({ code: 422001, bizCode: 'VALIDATION_ERROR', message: '请填写不少于5字的退回原因' })
+  await assert.rejects(actionable.realRequest('/safe-error', { auth: false }), (error) => {
+    assert.equal(error.message, '请填写不少于5字的退回原因')
+    assert.equal(actionable.normalizeError(error).text, '请填写不少于5字的退回原因')
+    return true
+  })
+})
+
+test('download transport never displays a native error string', async () => {
+  const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
+    .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')
+    .replace(/export default[\s\S]*$/, '').replace(/^export /gm, '')
+  const uni = {
+    getStorageSync: () => '', showToast() {},
+    downloadFile(options) { queueMicrotask(() => options.fail({ errMsg: 'downloadFile:fail https://gateway.internal/secret' })) }
+  }
+  const api = new Function('ENV', 'markMobileViewsDirty', 'uni', ...Object.keys(generation), `${source}\nreturn { realDownload }`)(
+    { useMock: false, allowMockFallback: false, apiBaseUrl: 'https://school.test', apiPrefix: '/api/v1', requestTimeout: 1000 },
+    () => {}, uni, ...Object.values(generation))
+  await assert.rejects(api.realDownload('/files/1', { auth: false }), (error) => {
+    assert.equal(error.message, '附件下载失败，请检查网络后重试')
+    assert.equal(error.serverMessage, 'downloadFile:fail https://gateway.internal/secret')
+    return true
+  })
 })

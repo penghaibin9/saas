@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, case, func, or_
 
 from . import academic_affairs_textbook_service as legacy
 
@@ -123,6 +123,94 @@ def list_fees(user, status=None, page=1, page_size=50):
             "status": row.status,
             "waiveReason": row.waive_reason,
         } for row in rows], total
+
+
+def my_student_distributions(user, student_id, page=1, page_size=20, *, record_id=None):
+    """Current student's distribution page, with an optional self-scoped receipt reread."""
+    from app.models import AaTextbook, AaTextbookDistributionRecord
+
+    page, page_size = _page(page, page_size)
+    page_size = min(page_size, 100)
+    with legacy.session() as db:
+        conds = [
+            AaTextbookDistributionRecord.tenant_id == legacy._tid(),
+            AaTextbookDistributionRecord.student_id == int(student_id),
+            AaTextbookDistributionRecord.is_deleted.is_(False),
+        ]
+        if record_id is not None:
+            try:
+                exact_record_id = int(record_id)
+            except (TypeError, ValueError) as exc:
+                raise legacy._bad("教材发放记录标识不正确") from exc
+            if exact_record_id <= 0:
+                raise legacy._bad("教材发放记录标识不正确")
+            conds.append(AaTextbookDistributionRecord.id == exact_record_id)
+        total = int(db.query(func.count(AaTextbookDistributionRecord.id)).filter(*conds).scalar() or 0)
+        rows = db.query(AaTextbookDistributionRecord, AaTextbook.isbn).outerjoin(
+            AaTextbook,
+            and_(
+                AaTextbook.id == AaTextbookDistributionRecord.textbook_id,
+                AaTextbook.tenant_id == legacy._tid(),
+                AaTextbook.is_deleted.is_(False),
+            ),
+        ).filter(*conds).order_by(
+            AaTextbookDistributionRecord.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return {
+            "items": [{
+                "recordId": str(record.id), "textbookName": record.textbook_name,
+                "qty": record.qty, "isbn": isbn, "status": record.status,
+                "receivedAt": legacy._iso(record.received_at),
+            } for record, isbn in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": page * page_size < total,
+        }
+
+
+def my_student_fees(user, student_id, page=1, page_size=20):
+    """Current student's fee page plus full SQL totals; never materialize the ledger in Python."""
+    from app.models import AaTextbookFeeLedger
+
+    page, page_size = _page(page, page_size)
+    page_size = min(page_size, 100)
+    with legacy.session() as db:
+        conds = [
+            AaTextbookFeeLedger.tenant_id == legacy._tid(),
+            AaTextbookFeeLedger.student_id == int(student_id),
+            AaTextbookFeeLedger.is_deleted.is_(False),
+        ]
+        total = int(db.query(func.count(AaTextbookFeeLedger.id)).filter(*conds).scalar() or 0)
+        gross_amount, waived_amount, total_paid = db.query(
+            func.coalesce(func.sum(AaTextbookFeeLedger.amount), 0),
+            func.coalesce(func.sum(case(
+                (AaTextbookFeeLedger.status == "WAIVED", AaTextbookFeeLedger.amount), else_=0,
+            )), 0),
+            func.coalesce(func.sum(AaTextbookFeeLedger.paid_amount), 0),
+        ).filter(*conds).one()
+        gross_amount = float(gross_amount or 0)
+        waived_amount = float(waived_amount or 0)
+        total_paid = float(total_paid or 0)
+        total_due = gross_amount - waived_amount
+        rows = db.query(AaTextbookFeeLedger).filter(*conds).order_by(
+            AaTextbookFeeLedger.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size).all()
+        return {
+            "items": [{
+                "feeId": str(fee.id), "textbookName": fee.textbook_name,
+                "amount": legacy._fnum(fee.amount), "paidAmount": legacy._fnum(fee.paid_amount),
+                "status": fee.status,
+            } for fee in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": page * page_size < total,
+            "totalDue": round(total_due, 2),
+            "totalPaid": round(total_paid, 2),
+            "waivedAmount": round(waived_amount, 2),
+            "unpaid": round(total_due - total_paid, 2),
+        }
 
 
 def textbook_stock(user):

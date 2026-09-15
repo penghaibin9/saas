@@ -1410,15 +1410,37 @@ def graduation_proposal(user: dict) -> dict:
             GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == g.id,
             GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
         ).limit(1)).first() is not None
-        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交
-        can_submit = can_submit_topic and tb_ok and (latest is None or latest.status == "REJECTED")
+        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交。
+        # 还必须确认当前批次实际冻结了权威的 PROPOSAL_REPORT 材料。不能只用
+        # topic/taskbook 推导按钮可用，否则配置漂移时学生会填写整页内容后才在
+        # 后端收到 MATERIAL_NOT_IN_BATCH_RULE，形成假入口。
+        proposal_material_ready = False
+        proposal_material_reason = ""
+        if g.batch_id:
+            from app.modules.graduation.materials.rule_service import rule_item
+            try:
+                _, proposal_item = rule_item(db, int(g.batch_id), "PROPOSAL_REPORT")
+                proposal_material_ready = str(proposal_item.owner_role or "").upper() == "STUDENT"
+                if not proposal_material_ready:
+                    proposal_material_reason = "当前批次开题报告材料未配置为学生可提交，请联系毕业设计管理员"
+            except AppException:
+                proposal_material_reason = "当前批次尚未配置开题报告材料，暂不能提交，请联系毕业设计管理员"
+        else:
+            proposal_material_reason = "毕业设计档案缺少有效批次，暂不能提交开题报告"
+        can_submit = (
+            can_submit_topic and tb_ok and proposal_material_ready
+            and (latest is None or latest.status == "REJECTED")
+        )
         reason = ""
         if not can_submit_topic:
             reason = "请先完成选题确认后再提交开题报告"
         elif not tb_ok:
             reason = "请先确认任务书后再提交开题报告"
+        elif not proposal_material_ready:
+            reason = proposal_material_reason
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "canSubmit": can_submit,
+                "proposalMaterialReady": proposal_material_ready,
                 "reason": reason,
                 "latest": None if not latest else {
                     "id": str(latest.id), "version": latest.version or "", "status": latest.status,

@@ -636,8 +636,24 @@ def _warning_or_404(db, warning_id, *, lock=False):
     return w
 
 
-def get_warning_detail(user, warning_id, *, mobile_teacher_scope=False) -> dict:
+def _sync_academic_student_projection(db, warning):
+    """Keep the existing student academic summary aligned with canonical warning writes."""
+    from app.models import AcademicStudent
+    from app.services.academic_service import _sync_student_warning
+
+    student = db.scalar(select(AcademicStudent).where(
+        AcademicStudent.id == int(warning.acad_student_id),
+        AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False),
+    ))
+    if student is not None:
+        _sync_student_warning(db, student)
+
+
+def get_warning_detail(user, warning_id, *, mobile_teacher_scope=False,
+                       intervention_page=1, intervention_page_size=None) -> dict:
     from app.models import AcademicIntervention, AcademicStudent
+    if intervention_page_size is not None and (intervention_page < 1 or not 1 <= intervention_page_size <= 100):
+        raise _bad("跟进记录分页参数非法")
     with session() as db:
         w = _warning_or_404(db, warning_id)
         if mobile_teacher_scope:
@@ -646,10 +662,19 @@ def get_warning_detail(user, warning_id, *, mobile_teacher_scope=False) -> dict:
         else:
             _assert_handle_allowed(db, user, w)
         a = db.get(AcademicStudent, int(w.acad_student_id))
-        itvs = db.scalars(select(AcademicIntervention).where(
+        intervention_query = select(AcademicIntervention).where(
             AcademicIntervention.tenant_id == _tid(), AcademicIntervention.warning_id == w.id,
-        ).order_by(AcademicIntervention.id.desc())).all()
+        )
+        total = int(db.scalar(select(func.count()).select_from(intervention_query.subquery())) or 0)
+        intervention_query = intervention_query.order_by(AcademicIntervention.id.desc())
+        if intervention_page_size is not None:
+            intervention_query = intervention_query.offset((intervention_page - 1) * intervention_page_size).limit(intervention_page_size)
+        itvs = db.scalars(intervention_query).all()
         return {
+            "interventionPage": intervention_page,
+            "interventionPageSize": intervention_page_size or total,
+            "interventionTotal": total,
+            "interventionHasMore": intervention_page_size is not None and intervention_page * intervention_page_size < total,
             "warning": {"warningId": str(w.id), "level": w.level, "status": w.status,
                        "warnType": w.warn_type, "reason": w.reason or "", "sourceCode": w.source_code or "",
                        "sourceLabel": SOURCE_LABELS.get(w.source_code or "", w.source_code or ""),
@@ -697,11 +722,26 @@ def assign_warning(user, warning_id, owner_id, owner_name) -> dict:
         return {"warningId": str(w.id), "owner": owner_name, "status": w.status}
 
 
-def add_intervention(user, warning_id, way, content, result="", next_plan="", *, mobile_teacher_scope=False) -> dict:
+def add_intervention(user, warning_id, way, content, result="", next_plan="", *, mobile_teacher_scope=False, command_key=None) -> dict:
     content = (content or "").strip()
     if len(content) < 5:
         raise _bad("跟进内容不少于 5 个字")
     with session() as db:
+        from . import academic_affairs_grade_command_receipt as receipts
+        receipt = None
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import _staff
+            from app.core.permissions import has_permission
+            _staff(user)
+            if not has_permission(user, "academicAffairs.warning.handle"):
+                from app.core.exceptions import no_permission
+                raise no_permission("当前身份无权记录预警跟进")
+            if not command_key:
+                raise _bad("缺少本次操作编号，请刷新页面后重新提交")
+            receipt, replay = receipts.begin(db, user, "WARNING_FOLLOW_UP", command_key,
+                {"warningId": str(warning_id), "way": way, "content": content, "result": result, "nextPlan": next_plan})
+            if replay is not None:
+                return replay
         w = _warning_or_404(db, warning_id, lock=True)
         if mobile_teacher_scope:
             from .mobile_academic_warning_service import require_warning_scope
@@ -719,34 +759,49 @@ def add_intervention(user, warning_id, way, content, result="", next_plan="", *,
         db.add(itv)
         if w.status == "PENDING_HANDLE":
             w.status, w.version = "PROCESSING", w.version + 1
+            _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "INTERVENTION", content[:200])
+        db.flush()
+        response = {"warningId": str(w.id), "interventionId": str(itv.id), "status": w.status}
+        receipts.finish(db, receipt, response)
         db.commit()
-        return {"warningId": str(w.id), "interventionId": str(itv.id), "status": w.status}
+        return response
 
 
-def escalate_warning(user, warning_id, reason) -> dict:
+def escalate_warning(user, warning_id, reason, *, mobile_teacher_scope=False) -> dict:
     reason = (reason or "").strip()
     if len(reason) < 5:
         raise _bad("升级说明不少于 5 个字")
     with session() as db:
         w = _warning_or_404(db, warning_id, lock=True)
-        _assert_handle_allowed(db, user, w)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w, writing=True)
+        else:
+            _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法升级")
+        if w.status == "ESCALATED":
+            raise _conflict("预警已升级，请勿重复处理")
         before = w.status
         w.status, w.level, w.version = "ESCALATED", "HIGH", w.version + 1
+        _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "ESCALATE", reason, before, "ESCALATED")
         db.commit()
         return {"warningId": str(w.id), "status": w.status}
 
 
-def close_warning(user, warning_id, result) -> dict:
+def close_warning(user, warning_id, result, *, mobile_teacher_scope=False) -> dict:
     result = (result or "").strip()
     if len(result) < 5:
         raise _bad("关闭说明不少于 5 个字")
     with session() as db:
         w = _warning_or_404(db, warning_id, lock=True)
-        _assert_handle_allowed(db, user, w)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w, writing=True)
+        else:
+            _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED":
             raise _conflict("预警已关闭")
         if w.record_status == "VOIDED":
@@ -754,6 +809,7 @@ def close_warning(user, warning_id, result) -> dict:
         before = w.status
         w.status, w.close_result, w.version = "CLOSED", result, w.version + 1
         mark_todos_done(db, w.id)
+        _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "CLOSE", result, before, "CLOSED")
         db.commit()
         return {"warningId": str(w.id), "status": w.status}

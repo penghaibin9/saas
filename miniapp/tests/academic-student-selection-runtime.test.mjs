@@ -26,6 +26,28 @@ function mount(overrides = {}) {
     dropSelection: async id => { calls.push(['drop', id]); return { recordId: 'r' } },
     ...overrides
   }
+  // Production uses bounded mobile endpoints.  Keep the existing action-state
+  // fixtures compact by adapting their old array fixtures into those contracts.
+  studentApi.getSelectionBatches = studentApi.getSelectionBatches || (async () => {
+    const value = await studentApi.getSelectionCourses()
+    const groups = Array.isArray(value) ? value : (value && value.groups) || []
+    return { items: groups.map(item => item.batch).filter(Boolean), total: groups.length, page: 1, pageSize: 20, hasMore: false }
+  })
+  studentApi.getSelectionCoursesPage = studentApi.getSelectionCoursesPage || (async params => {
+    const value = await studentApi.getSelectionCourses(params && params.batchId)
+    const groups = Array.isArray(value) ? value : (value && value.groups) || []
+    const selected = groups.find(item => String(item?.batch?.batchId) === String(params?.batchId)) || groups[0]
+    const items = (selected && selected.courses) || []
+    const keyword = String(params?.keyword || '').toLowerCase()
+    const filtered = keyword ? items.filter(item => [item.courseName, item.courseCode, item.teacherName].join(' ').toLowerCase().includes(keyword)) : items
+    return { batch: selected?.batch || { batchId: params?.batchId || 'A', batchName: 'A' }, items: filtered, total: filtered.length, page: 1, pageSize: 20, hasMore: false }
+  })
+  studentApi.getMySelectionsPage = studentApi.getMySelectionsPage || (async params => {
+    const value = await studentApi.getMySelections(params && params.batchId)
+    const rows = Array.isArray(value) ? value : (value && value.items) || []
+    const filtered = params?.selectionCourseId == null ? rows : rows.filter(item => String(item.selectionCourseId) === String(params.selectionCourseId))
+    return { items: filtered, total: filtered.length, page: 1, pageSize: 20, hasMore: false }
+  })
   const context = {
     ...helpers, studentApi, bookIcon: '', currentSessionGeneration: () => generation,
     readPending: () => ledger, savePending: (_key, value) => { if (failSaves) return false; ledger = value; saved.push(value); return true },
@@ -50,6 +72,67 @@ test('canonical lottery.mode and null capacity snapshots retain their actual mea
   assert.equal(page.remain({ remain: null, capacity: 20, selectedCount: 3 }), null)
   assert.equal(page.remain({ capacity: null, selectedCount: null }), null)
   assert.equal(page.remain({ remain: 0 }), 0)
+})
+
+test('selection sends batch, course search and personal history paging to the server', async () => {
+  const courseCalls = [], recordCalls = []
+  const rows = Array.from({ length: 20 }, (_, index) => course(`c-${index + 1}`))
+  const { page } = mount({
+    getSelectionCoursesPage: async params => {
+      courseCalls.push(params)
+      return { batch: { batchId: 'A', batchName: '当前批次' }, items: rows, total: 45, page: params.page, pageSize: params.pageSize, hasMore: params.page < 3 }
+    },
+    getMySelectionsPage: async params => {
+      recordCalls.push(params)
+      return { items: [record('SELECTED', `r-${params.page}`)], total: 41, page: params.page, pageSize: params.pageSize, hasMore: params.page < 3 }
+    }
+  })
+  await page.readCourses('A')
+  await page.readRecords('A')
+  assert.equal(page.courseTotal, 45)
+  assert.equal(page.activeGroups[0].courses.length, 20)
+  assert.equal(page.recordTotal, 41)
+  page.searchDraft = '人工智能'
+  await page.searchCourses()
+  assert.equal(courseCalls.at(-1).keyword, '人工智能')
+  await page.changeCoursePage(2)
+  await page.changeRecordPage(2)
+  assert.equal(courseCalls.at(-1).page, 2)
+  assert.equal(recordCalls.at(-1).page, 2)
+})
+
+test('selection keeps a failed batch catalog in an error state with a retry path', async () => {
+  const { page } = mount({ getSelectionBatches: async () => { throw new Error('网络中断') } })
+  page.activeBatchId = ''
+  page.courseState = 'loading'
+  page.recordsState = 'loading'
+  await page.load()
+  assert.equal(page.courseState, 'error')
+  assert.equal(page.recordsState, 'error')
+  assert.match(page.courseError, /网络异常|网络中断/)
+})
+
+test('selection retries the same batch catalog page after load-more fails', async () => {
+  const pages = []
+  let failPageTwo = true
+  const { page } = mount({
+    getSelectionBatches: async ({ page: requestedPage }) => {
+      pages.push(requestedPage)
+      if (requestedPage === 2 && failPageTwo) {
+        failPageTwo = false
+        throw new Error('网络中断')
+      }
+      return { items: [{ batchId: `batch-${requestedPage}`, batchName: `第${requestedPage}页` }], total: 40, page: requestedPage, pageSize: 20, hasMore: requestedPage < 2 }
+    }
+  })
+  page.batchCatalog = [{ batchId: 'batch-1', batchName: '第1页' }]
+  page.batchPage = 1
+  page.batchHasMore = true
+  await page.loadMoreBatches()
+  assert.equal(page.batchPage, 1)
+  await page.loadMoreBatches()
+  assert.deepEqual(pages, [2, 2])
+  assert.equal(page.batchPage, 2)
 })
 
 test('an acknowledged lottery POST reads personal records and never emits seat success', async () => {

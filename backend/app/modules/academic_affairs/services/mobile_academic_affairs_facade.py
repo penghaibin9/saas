@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.core.affairs_security import _derive_keys
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import enforce_permission
 from app.services.db_service import _tid
 
 from . import mobile_academic_affairs_service as _legacy
@@ -191,6 +192,53 @@ def _schedule_meta(db, term, batch):
     }
 
 
+def resolve_mobile_schedule_week(requested_week, *, teaching_weeks=None, current_week=None) -> int | None:
+    """Resolve one bounded teaching-week read without trusting an unbounded client range."""
+    total_weeks = int(teaching_weeks or 0)
+    if requested_week is None:
+        candidate = int(current_week or 0)
+        # Outside the term, ``currentWeek`` is a wall-clock calculation and can be
+        # far beyond this term. The default mobile read must still open week 1
+        # instead of rejecting an otherwise valid historical/current-term timetable.
+        if candidate <= 0 or (total_weeks and candidate > total_weeks):
+            candidate = 1 if total_weeks else 0
+    else:
+        if isinstance(requested_week, bool):
+            raise AppException("VALIDATION_ERROR", "教学周次必须是正整数")
+        try:
+            candidate = int(requested_week)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "教学周次必须是正整数") from exc
+    if candidate <= 0:
+        return None
+    if candidate > 99 or (total_weeks and candidate > total_weeks):
+        raise AppException("VALIDATION_ERROR", "教学周次不在当前学期范围内")
+    return candidate
+
+
+def schedule_item_active_in_week(item: dict, week_no: int | None) -> bool:
+    """Use the same recurrence truth for both student and teacher mobile projections."""
+    if week_no is None:
+        return True
+    start = int(item.get("startWeek") or 1)
+    end = int(item.get("endWeek") or start)
+    if week_no < start or week_no > end:
+        return False
+    parity = str(item.get("weekParity") or "ALL").upper()
+    if parity == "ODD":
+        return week_no % 2 == 1
+    if parity == "EVEN":
+        return week_no % 2 == 0
+    if parity != "ALL":
+        raise AppException("DATA_CONFLICT", "正式课表存在未知单双周配置", http_status=409)
+    return True
+
+
+def mobile_schedule_week_items(items, week_no: int | None) -> list[dict]:
+    """Project a formal schedule to one week before it leaves the API boundary."""
+    return [item for item in (items or []) if schedule_item_active_in_week(item, week_no)]
+
+
 _NO_CLASS_CALENDAR_MESSAGES = {
     "该日期为校历调休停课日，不能创建普通课堂考勤": "SWAP_SOURCE",
     "该日期为节假日，不能创建普通课堂考勤": "HOLIDAY",
@@ -254,20 +302,7 @@ def _student_today_context(db, term, now=None) -> dict:
 def _schedule_item_occurs(item: dict, *, week_no: int, weekday: int) -> bool:
     if int(item.get("weekday") or 0) != int(weekday):
         return False
-    start = int(item.get("startWeek") or 0)
-    end = int(item.get("endWeek") or 0)
-    if start and week_no < start:
-        return False
-    if end and week_no > end:
-        return False
-    parity = str(item.get("weekParity") or "ALL").upper()
-    if parity == "ODD":
-        return week_no % 2 == 1
-    if parity == "EVEN":
-        return week_no % 2 == 0
-    if parity != "ALL":
-        raise AppException("DATA_CONFLICT", "正式课表存在未知单双周配置", http_status=409)
-    return True
+    return schedule_item_active_in_week(item, week_no)
 
 
 def project_student_today_items(items, context) -> list[dict]:
@@ -292,7 +327,7 @@ def project_student_today_items(items, context) -> list[dict]:
     ))
 
 
-def schedule_my(user) -> dict:
+def schedule_my(user, week=None) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
 
     with _legacy.session() as db:
@@ -300,33 +335,67 @@ def schedule_my(user) -> dict:
         term, batch = _current_term_and_batch(db)
         meta = _schedule_meta(db, term, batch)
         today_context = _student_today_context(db, term)
+        selected_week = resolve_mobile_schedule_week(
+            week,
+            teaching_weeks=meta.get("teachingWeeks"),
+            current_week=today_context.get("todayWeek") or meta.get("currentWeek"),
+        )
         student_id = student.id
     if not term:
-        return {**meta, **today_context, "items": [], "todayItems": [], "note": "学校尚未设置当前学期"}
+        return {**meta, **today_context, "week": selected_week, "items": [], "todayItems": [], "note": "学校尚未设置当前学期"}
     if not batch:
-        return {**meta, **today_context, "items": [], "todayItems": [], "note": "当前学期暂无已发布课表"}
+        return {**meta, **today_context, "week": selected_week, "items": [], "todayItems": [], "note": "当前学期暂无已发布课表"}
     data = schedule.student_view(batch.id, user, student_id)
-    today_items = project_student_today_items(data.get("items") or [], today_context)
-    return {**meta, **today_context, **data, "todayItems": today_items}
+    all_items = data.get("items") or []
+    today_items = project_student_today_items(all_items, today_context)
+    return {
+        **meta,
+        **today_context,
+        **data,
+        "items": mobile_schedule_week_items(all_items, selected_week),
+        "week": selected_week,
+        "todayItems": today_items,
+    }
 
 
-def teacher_schedule_my(user) -> dict:
+def teacher_schedule_my(user, week=None) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
 
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
+    enforce_permission(user, "academicAffairs.schedule.view")
     teacher_key = stable_teacher_key(user)
     if not teacher_key:
         raise no_permission("当前教师账号缺少稳定工号，请联系管理员")
     with _legacy.session() as db:
         term, batch = _current_term_and_batch(db)
         meta = _schedule_meta(db, term, batch)
+        today_context = _student_today_context(db, term)
+        selected_week = resolve_mobile_schedule_week(
+            week,
+            teaching_weeks=meta.get("teachingWeeks"),
+            current_week=today_context.get("todayWeek") or meta.get("currentWeek"),
+        )
     if not term:
-        return {**meta, "items": [], "note": "学校尚未设置当前学期"}
+        return {
+            **meta, **today_context, "week": selected_week,
+            "items": [], "todayItems": [], "note": "学校尚未设置当前学期",
+        }
     if not batch:
-        return {**meta, "items": [], "note": "当前学期暂无已发布课表"}
+        return {
+            **meta, **today_context, "week": selected_week,
+            "items": [], "todayItems": [], "note": "当前学期暂无已发布课表",
+        }
     data = schedule.teacher_view(batch.id, user, teacher_key)
-    return {**meta, **data}
+    all_items = data.get("items") or []
+    return {
+        **meta,
+        **today_context,
+        **data,
+        "items": mobile_schedule_week_items(all_items, selected_week),
+        "week": selected_week,
+        "todayItems": project_student_today_items(all_items, today_context),
+    }
 
 
 def teacher_attendance_class_options(user) -> dict:
@@ -336,6 +405,7 @@ def teacher_attendance_class_options(user) -> dict:
 
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
+    enforce_permission(user, "academicAffairs.attendance.view")
     role = str((user or {}).get("currentRoleCode") or "").upper()
     keys = stable_teacher_keys(user)
     if role not in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"} and not keys:
@@ -434,9 +504,35 @@ def teacher_attendance_class_options(user) -> dict:
         }
 
 
-def exam_my(user) -> dict:
+def teacher_attendance_sessions(user, page=1, page_size=20) -> dict:
+    """教师移动端的会话读取仍复用正式考勤服务，不让身份门禁代替权限裁决。"""
+    enforce_permission(user, "academicAffairs.attendance.view")
+    return _legacy.teacher_attendance_sessions(user, page=page, page_size=page_size)
+
+
+def teacher_attendance_create(user, body) -> dict:
+    enforce_permission(user, "academicAffairs.attendance.view")
+    return _legacy.teacher_attendance_create(user, body)
+
+
+def teacher_attendance_detail(session_id, user, page=1, page_size=30) -> dict:
+    enforce_permission(user, "academicAffairs.attendance.view")
+    return _legacy.teacher_attendance_detail(session_id, user, page=page, page_size=page_size)
+
+
+def teacher_attendance_mark(session_id, user, body) -> dict:
+    enforce_permission(user, "academicAffairs.attendance.view")
+    return _legacy.teacher_attendance_mark(session_id, user, body)
+
+
+def teacher_attendance_submit(session_id, user) -> dict:
+    enforce_permission(user, "academicAffairs.attendance.view")
+    return _legacy.teacher_attendance_submit(session_id, user)
+
+
+def exam_my(user, page=None, page_size=20) -> dict:
     from . import student_exam_read_service as safe_exam
-    return safe_exam.exam_my(user)
+    return safe_exam.exam_my(user, page=page, page_size=page_size)
 
 
 def exam_defer_options_my(user) -> dict:
@@ -450,6 +546,40 @@ def exam_defer_apply_my(user, body) -> dict:
     if not isinstance(body, dict):
         body = vars(body) if body is not None and hasattr(body, "__dict__") else {}
     return safe_exam.defer_apply(user, body or {})
+
+
+def exam_defer_my(user, status=None, page=1, page_size=20, defer_id=None) -> dict:
+    """本人缓考历史：沿用唯一工作流，按稳定学生身份在数据库分页。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam
+
+    if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 100:
+        raise AppException("VALIDATION_ERROR", "缓考记录页码须在1至100000、每页条数须在1至100之间")
+    page = int(page)
+    page_size = int(page_size)
+    items, total = exam.defer_list(
+        user,
+        status=status,
+        student_only=True,
+        page=page,
+        page_size=page_size,
+        defer_id=defer_id,
+    )
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+        "hasMore": page * page_size < total,
+    }
+
+
+def exam_defer_resubmit_my(user, defer_id, body=None) -> dict:
+    """退回后的本人重提仍由既有状态机和审计 owner 处理。"""
+    from app.modules.academic_affairs.services import academic_affairs_exam_service as exam
+
+    payload = body or {}
+    expected_version = payload.get("expectedVersion") if isinstance(payload, dict) else getattr(payload, "expectedVersion", None)
+    return exam.defer_resubmit(user, defer_id, expected_version)
 
 
 def _identity_options(user) -> dict:
@@ -529,6 +659,65 @@ def makeup_options_my(user) -> dict:
     return _identity_options(user)
 
 
+def _page_value(value, *, default: int = 1, maximum: int = 50) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(maximum, max(1, number))
+
+
+def _page_size_value(value, *, default: int = 20, maximum: int = 50) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(maximum, max(1, number))
+
+
+def makeup_my(
+    user,
+    *,
+    retake_page: int = 1,
+    retake_page_size: int = 20,
+    exemption_page: int = 1,
+    exemption_page_size: int = 20,
+) -> dict:
+    """Read the two independent mobile lists with database pagination.
+
+    A student can have a long historical retake list without it making the
+    unrelated exemption list or the mobile `setData` payload unbounded.
+    """
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+
+    retake_page = _page_value(retake_page)
+    retake_page_size = _page_size_value(retake_page_size)
+    exemption_page = _page_value(exemption_page)
+    exemption_page_size = _page_size_value(exemption_page_size)
+    retakes, retake_total = makeup.retake_list(
+        user, student_only=True, page=retake_page, page_size=retake_page_size,
+    )
+    exemptions, exemption_total = makeup.exemption_list(
+        user, student_only=True, page=exemption_page, page_size=exemption_page_size,
+    )
+    return {
+        "retakes": retakes,
+        "retakePagination": {
+            "page": retake_page,
+            "pageSize": retake_page_size,
+            "total": retake_total,
+            "hasMore": retake_page * retake_page_size < retake_total,
+        },
+        "exemptions": exemptions,
+        "exemptionPagination": {
+            "page": exemption_page,
+            "pageSize": exemption_page_size,
+            "total": exemption_total,
+            "hasMore": exemption_page * exemption_page_size < exemption_total,
+        },
+    }
+
+
 def retake_apply_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
 
@@ -548,7 +737,6 @@ def retake_apply_my(user, body) -> dict:
         )
     return makeup.retake_apply(user, _legacy._ns({
         "gradeId": int(grade_id),
-        "termCode": payload.get("termCode"),
         "reason": payload.get("reason"),
     }))
 
@@ -572,10 +760,22 @@ def exemption_apply_my(user, body) -> dict:
         )
     return makeup.exemption_apply(user, _legacy._ns({
         "courseId": int(course_id),
-        "termCode": payload.get("termCode"),
         "reason": payload.get("reason"),
         "materialFileIds": payload.get("materialFileIds") or [],
     }))
+
+
+def exemption_resubmit_my(user, exemption_id, body) -> dict:
+    """Student-only correction of the same returned exemption application."""
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+
+    payload = body or {}
+    command = {}
+    if "reason" in payload:
+        command["reason"] = payload.get("reason")
+    if "materialFileIds" in payload:
+        command["materialFileIds"] = payload.get("materialFileIds")
+    return makeup.exemption_resubmit(user, int(exemption_id), _legacy._ns(command))
 
 
 def recognition_submit_my(user, body) -> dict:

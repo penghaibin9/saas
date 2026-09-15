@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.tenant_scoped import tenant_get
@@ -338,3 +338,71 @@ def cancel(cid, user, reason="") -> dict:
         db.commit()
         db.refresh(change)
         return _legacy._row(change)
+
+
+def pending_for_assignee(user, nodes, *, page=1, page_size=20, change_id=None) -> dict:
+    """Return only the caller's current formal schedule-change tasks.
+
+    Permission checks decide which workflow nodes a role may handle.  They do not
+    prove that a particular task was assigned to that person, so the mobile queue
+    must use the same ``WorkflowTask.assignee_id`` fact that :func:`review` uses.
+    This is deliberately a database-paged projection; a client must never receive
+    a school-wide candidate list and filter it on the phone.
+    """
+    actor_id = _actor_numeric_id(user)
+    allowed_nodes = {str(node or "").upper() for node in (nodes or []) if str(node or "").strip()}
+    if not allowed_nodes:
+        return {"list": [], "total": 0, "page": 1, "pageSize": 20, "hasMore": False}
+
+    try:
+        current_page = max(1, int(page or 1))
+        size = min(50, max(1, int(page_size or 20)))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "分页参数不合法")
+
+    with _legacy.session() as db:
+        from app.models import AaScheduleChange, WorkflowTask
+
+        task_join = (
+            (WorkflowTask.tenant_id == _legacy._tid())
+            & (WorkflowTask.instance_id == AaScheduleChange.workflow_instance_id)
+            & (WorkflowTask.node_code == AaScheduleChange.current_node)
+        )
+        conditions = [
+            AaScheduleChange.tenant_id == _legacy._tid(),
+            AaScheduleChange.is_deleted.is_(False),
+            AaScheduleChange.status.in_(_legacy._ACTIVE),
+            AaScheduleChange.current_node.in_(allowed_nodes),
+            WorkflowTask.assignee_id == actor_id,
+            WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False),
+        ]
+        if change_id not in (None, ""):
+            raw_change_id = str(change_id)
+            if not raw_change_id.isdigit():
+                return {"list": [], "total": 0, "page": current_page, "pageSize": size, "hasMore": False}
+            conditions.append(AaScheduleChange.id == int(raw_change_id))
+
+        # Keep a malformed historical workflow with duplicate pending tasks from
+        # duplicating a record in the phone queue.  ``review`` will still reject
+        # that condition with 409 until it is repaired, rather than choosing one.
+        ids_stmt = (
+            select(AaScheduleChange.id)
+            .join(WorkflowTask, task_join)
+            .where(*conditions)
+            .distinct()
+            .order_by(AaScheduleChange.id.desc())
+        )
+        total = int(db.scalar(select(func.count()).select_from(ids_stmt.subquery())) or 0)
+        ids = list(db.scalars(ids_stmt.offset((current_page - 1) * size).limit(size)).all())
+        if not ids:
+            return {"list": [], "total": total, "page": current_page, "pageSize": size, "hasMore": current_page * size < total}
+        rows = db.scalars(select(AaScheduleChange).where(AaScheduleChange.id.in_(ids))).all()
+        by_id = {int(row.id): row for row in rows}
+        return {
+            "list": [_legacy._row(by_id[int(row_id)]) for row_id in ids if int(row_id) in by_id],
+            "total": total,
+            "page": current_page,
+            "pageSize": size,
+            "hasMore": current_page * size < total,
+        }

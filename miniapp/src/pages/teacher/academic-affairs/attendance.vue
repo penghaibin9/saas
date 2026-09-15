@@ -54,10 +54,10 @@
         </view>
       </view>
 
-      <view v-if="!active && sessions.length > 20" class="page-pad at__pages">
-        <button class="btn btn-ghost" :disabled="sessionPageIndex === 0" @click="sessionPage = sessionPageIndex - 1">上一组</button>
-        <text>{{ sessionPageIndex + 1 }} / {{ Math.ceil(sessions.length / 20) }}</text>
-        <button class="btn btn-ghost" :disabled="(sessionPageIndex + 1) * 20 >= sessions.length" @click="sessionPage = sessionPageIndex + 1">下一组</button>
+      <view v-if="!active && (sessionPage > 1 || sessionHasMore)" class="page-pad at__pages">
+        <button class="btn btn-ghost" :disabled="sessionPage <= 1" @click="load(sessionPage - 1)">上一页</button>
+        <text>{{ sessionPage }} / {{ sessionPageCount }}</text>
+        <button class="btn btn-ghost" :disabled="!sessionHasMore" @click="load(sessionPage + 1)">下一页</button>
       </view>
         <view class="page-pad" v-if="active">
           <text class="at__back" @click="closeSession">‹ 返回场次列表</text>
@@ -74,11 +74,12 @@
           <MobileStatusTag :status="active.status" />
         </view>
 
-        <view v-if="!detailLoading && items.length" class="at__progress card">
+        <view v-if="!detailLoading && rosterTotal" class="at__progress card">
           <view>
-            <text class="at__progress-title">已核对 {{ markedCount }} / {{ items.length }} 人</text>
+            <text class="at__progress-title">已核对 {{ markedCount }} / {{ rosterTotal }} 人</text>
             <text class="at__source-note">{{ unmarkedCount ? `还有 ${unmarkedCount} 人未点名。未操作不会按出勤提交。` : '全班已完成点名，请核对后提交。' }}</text>
             <text class="at__source-note">正式名单：出勤 {{ statusCounts.PRESENT }} · 迟到 {{ statusCounts.LATE }} · 缺勤 {{ statusCounts.ABSENT }} · 请假 {{ statusCounts.LEAVE }}</text>
+            <text v-if="rosterIntegrity !== 'READY'" class="at__integrity">名单数据待教务处核对，暂不能提交本场考勤。</text>
           </view>
           <text class="at__progress-value">{{ attendanceProgress }}%</text>
         </view>
@@ -92,7 +93,7 @@
                 <text class="t-md">{{ item.realName }}</text>
                 <text class="at__sub">{{ item.studentNo }}</text>
               </view>
-              <view class="at__seg" :class="{ 'is-pending': marking[item.studentId] || hasUnknownWrite(`mark:${active.sessionId}`, item.studentId) }">
+              <view class="at__seg" :class="{ 'is-pending': marking[item.studentId] || hasUnknownWrite(`mark:${active.sessionId}`, item.studentId), 'is-readonly': active.status !== 'DRAFT' }">
                 <text
                   v-for="option in STATUS_OPTS" :key="option.value"
                   class="at__seg-item" :class="{ 'is-active': item.status === option.value }"
@@ -101,18 +102,18 @@
               </view>
             </view>
           </view>
-          <view v-if="items.length > 30" class="at__pages">
-            <button class="btn btn-ghost" :disabled="studentPageIndex === 0" @click="studentPage = studentPageIndex - 1">上一组</button>
-            <text>{{ studentPageIndex * 30 + 1 }}–{{ Math.min((studentPageIndex + 1) * 30, items.length) }} / {{ items.length }} 人</text>
-            <button class="btn btn-ghost" :disabled="(studentPageIndex + 1) * 30 >= items.length" @click="studentPage = studentPageIndex + 1">下一组</button>
+          <view v-if="rosterPage > 1 || rosterHasMore" class="at__pages">
+            <button class="btn btn-ghost" :disabled="rosterPage <= 1" @click="openSession(active, rosterPage - 1)">上一页</button>
+            <text>{{ rosterPage }} / {{ rosterPageCount }} · 共 {{ rosterTotal }} 人</text>
+            <button class="btn btn-ghost" :disabled="!rosterHasMore" @click="openSession(active, rosterPage + 1)">下一页</button>
           </view>
-          <text v-if="items.length > 30" class="at__source-note">页面每组显示 30 人；提交时核对并提交本场完整正式名单 {{ items.length }} 人。</text>
-          <button v-if="unmarkedCount && items.length > 30" class="btn btn-ghost" @click="showNextUnmarked">定位下一位未点名学生所在分组</button>
+          <text v-if="active.status !== 'DRAFT'" class="at__source-note">本场考勤已提交，名单仅供查看，不能再修改。</text>
+          <text v-else-if="rosterTotal > items.length" class="at__source-note">名单按页加载；请逐页完成点名，提交时由服务端核对全班正式名单。</text>
         </template>
 
-        <MobileSafeAreaBar v-if="!detailLoading && active.status === 'DRAFT' && items.length">
-          <button class="btn btn-primary flex-1" :disabled="submitting || hasPendingMarks || hasUnknownMarks || unmarkedCount || hasUnknownWrite('submit', active.sessionId)" @click="submitSession">
-            {{ submitting ? '提交中…' : hasUnknownWrite('submit', active.sessionId) ? '等待核对结果' : hasUnknownMarks ? '请先核对待确认的学生标记' : hasPendingMarks ? '正在保存标记…' : unmarkedCount ? `还有${unmarkedCount}人未点名` : '提交考勤（提交后不可再改）' }}
+        <MobileSafeAreaBar v-if="!detailLoading && active.status === 'DRAFT' && rosterTotal">
+          <button class="btn btn-primary flex-1" :disabled="submitting || hasPendingMarks || hasUnknownMarks || unmarkedCount || rosterIntegrity !== 'READY' || hasUnknownWrite('submit', active.sessionId)" @click="submitSession">
+            {{ submitting ? '提交中…' : hasUnknownWrite('submit', active.sessionId) ? '等待核对结果' : rosterIntegrity !== 'READY' ? '名单待核对，暂不能提交' : hasUnknownMarks ? '请先核对待确认的学生标记' : hasPendingMarks ? '正在保存标记…' : unmarkedCount ? `还有${unmarkedCount}人未点名` : '提交考勤（提交后不可再改）' }}
           </button>
         </MobileSafeAreaBar>
       </view>
@@ -138,7 +139,10 @@ const ALLOWED_TASK_STATUSES = new Set(['TEACHER_CONFIRMED', 'COLLEGE_REVIEW', 'A
 export default {
   data() {
     return {
-      sessions: [], loaded: false, state: 'loading', showForm: false, creating: false, sessionPage: 0, studentPage: 0,
+      sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
+      sessionPage: 1, sessionPageSize: 20, sessionTotal: 0, sessionHasMore: false,
+      rosterPage: 1, rosterPageSize: 30, rosterTotal: 0, rosterHasMore: false,
+      rosterSummary: null, rosterIntegrity: 'READY',
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
       taskOptions: [], taskIndex: 0, patternIndex: -1, taskSelectionInvalid: false, routeSeed: null, sessionSeed: null,
       form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', scheduleItemId: '', sessionType: '' },
@@ -146,10 +150,10 @@ export default {
     }
   },
   computed: {
-    sessionPageIndex() { return Math.min(this.sessionPage, Math.max(0, Math.ceil(this.sessions.length / 20) - 1)) },
-    studentPageIndex() { return Math.min(this.studentPage, Math.max(0, Math.ceil(this.items.length / 30) - 1)) },
-    visibleSessions() { return this.sessions.slice(this.sessionPageIndex * 20, (this.sessionPageIndex + 1) * 20) },
-    visibleStudents() { return this.items.slice(this.studentPageIndex * 30, (this.studentPageIndex + 1) * 30) },
+    sessionPageCount() { return Math.max(1, Math.ceil(Number(this.sessionTotal || 0) / Number(this.sessionPageSize || 20))) },
+    visibleSessions() { return this.sessions },
+    visibleStudents() { return this.items },
+    rosterPageCount() { return Math.max(1, Math.ceil(Number(this.rosterTotal || 0) / Number(this.rosterPageSize || 30))) },
     taskLabels() {
       return (this.taskOptions || []).map((task) => `${task.courseName || '未命名课程'} · ${task.className || '未关联班级'}`)
     },
@@ -195,14 +199,21 @@ export default {
       const sessionId = String(this.active && this.active.sessionId || '')
       return !!sessionId && Object.values(this.unknownWrites).some((record) => record && record.action === `mark:${sessionId}`)
     },
-    markedCount() { return this.items.filter((item) => STATUS_OPTS.some((option) => option.value === item.status)).length },
+    markedCount() {
+      if (this.rosterSummary) return STATUS_OPTS.reduce((count, option) => count + Number(this.rosterSummary[option.value] || 0), 0)
+      return this.items.filter((item) => STATUS_OPTS.some((option) => option.value === item.status)).length
+    },
     statusCounts() {
       const counts = { PRESENT: 0, LATE: 0, ABSENT: 0, LEAVE: 0 }
+      if (this.rosterSummary) {
+        STATUS_OPTS.forEach((option) => { counts[option.value] = Number(this.rosterSummary[option.value] || 0) })
+        return counts
+      }
       this.items.forEach((item) => { if (Object.prototype.hasOwnProperty.call(counts, item.status)) counts[item.status] += 1 })
       return counts
     },
-    unmarkedCount() { return Math.max(0, this.items.length - this.markedCount) },
-    attendanceProgress() { return this.items.length ? Math.round(this.markedCount * 100 / this.items.length) : 0 },
+    unmarkedCount() { return this.rosterSummary ? Math.max(0, Number(this.rosterSummary.UNMARKED || 0)) : Math.max(0, this.items.length - this.markedCount) },
+    attendanceProgress() { const total = this.rosterTotal || this.items.length; return total ? Math.round(this.markedCount * 100 / total) : 0 },
     occurrenceKey() { return [this.form.teachingTaskId, this.form.sessionDate, this.form.slotNo, this.form.scheduleItemId, this.form.sessionType].map((value) => String(value || '')).join('|') }
   },
   onLoad(options = {}) {
@@ -227,8 +238,14 @@ export default {
       this.form = { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', scheduleItemId: '', sessionType: '' }
       this.active = null
       this.items = []
-      this.sessionPage = 0
-      this.studentPage = 0
+      this.sessionPage = 1
+      this.sessionTotal = 0
+      this.sessionHasMore = false
+      this.rosterPage = 1
+      this.rosterTotal = 0
+      this.rosterHasMore = false
+      this.rosterSummary = null
+      this.rosterIntegrity = 'READY'
       this.marking = {}
       this.showForm = false
       this.sessionSeed = null
@@ -242,7 +259,7 @@ export default {
     this._needsRefresh = false
     this.load()
     if (this.showForm || this.routeSeed) this.loadTasks()
-    if (this.active && this.active.sessionId) this.openSession(this.active)
+    if (this.active && this.active.sessionId) this.openSession(this.active, this.rosterPage)
   },
   onHide() {
     this._pageActive = false
@@ -261,13 +278,6 @@ export default {
   methods: {
     toggleCreateForm() { if (this.creating) return; this.showForm = !this.showForm; if (this.showForm) this.loadTasks() },
     backToSessions() { if (!this.active) return true; this.closeSession(); return false },
-    showNextUnmarked() {
-      const start = (this.studentPageIndex + 1) * 30
-      const unmarked = (item) => !STATUS_OPTS.some((option) => option.value === item.status)
-      let index = this.items.findIndex((item, i) => i >= start && unmarked(item))
-      if (index < 0) index = this.items.findIndex(unmarked)
-      if (index >= 0) this.studentPage = Math.floor(index / 30)
-    },
     contextKey() {
       return teacherWriteContext(useSessionStore())
     },
@@ -307,6 +317,7 @@ export default {
       this._detailEpoch = (this._detailEpoch || 0) + 1
       this._writeEpoch = (this._writeEpoch || 0) + 1
       this.sessions = []; this.taskOptions = []; this.active = null; this.items = []; this.marking = {}
+      this.rosterPage = 1; this.rosterTotal = 0; this.rosterHasMore = false; this.rosterSummary = null; this.rosterIntegrity = 'READY'
       this.showForm = false; this.creating = false; this.submitting = false; this.detailLoading = false
       this.form = { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', scheduleItemId: '', sessionType: '' }
       this.state = 'error'
@@ -322,24 +333,51 @@ export default {
     },
     exactMarkReceipt(ack, sessionId, studentId, status) {
       if (String(ack && (ack.sessionId || ack.id) || '') !== String(sessionId)) return false
-      const row = ((ack && ack.items) || []).find((item) => String(item.studentId || '') === String(studentId))
+      const row = (ack && ack.item) || ((ack && ack.items) || []).find((item) => String(item.studentId || '') === String(studentId))
       return !!row && String(row.status || '') === String(status)
     },
     exactSubmitReceipt(ack, sessionId) {
       const terminal = new Set(['SUBMITTED', 'LOCKED', 'FINALIZED', 'CLOSED'])
       return String(ack && (ack.sessionId || ack.id) || '') === String(sessionId) && terminal.has(String(ack && ack.status || '').toUpperCase())
     },
+    applySessionPage(data, fallbackPage = 1) {
+      const page = Number(data && data.page)
+      const pageSize = Number(data && data.pageSize)
+      this.sessions = (data && data.items) || []
+      this.sessionPage = Number.isInteger(page) && page > 0 ? page : fallbackPage
+      this.sessionPageSize = Number.isInteger(pageSize) && pageSize > 0 ? pageSize : 20
+      this.sessionTotal = Math.max(0, Number(data && data.total) || 0)
+      this.sessionHasMore = Boolean(data && data.hasMore)
+    },
+    applyRosterPage(data, fallbackPage = 1) {
+      const page = Number(data && data.page)
+      const pageSize = Number(data && data.pageSize)
+      const total = Number(data && data.total)
+      this.items = (data && data.items) || []
+      this.rosterPage = Number.isInteger(page) && page > 0 ? page : fallbackPage
+      this.rosterPageSize = Number.isInteger(pageSize) && pageSize > 0 ? pageSize : 30
+      this.rosterTotal = Math.max(0, Number.isFinite(total) ? total : Number(data && data.totalCount) || this.items.length)
+      this.rosterHasMore = Boolean(data && data.hasMore)
+      this.rosterSummary = data && data.summary && typeof data.summary === 'object' ? data.summary : null
+      this.rosterIntegrity = String(data && data.rosterIntegrity || 'READY')
+    },
     async readBackSession(sessionId, context, writeEpoch, terminalOnly = false) {
       const listEpoch = (this._listEpoch || 0) + 1
       this._listEpoch = listEpoch
+      const page = Math.max(1, Number(this.sessionPage) || 1)
       try {
-        const data = await teacherApi.getAttendanceSessions()
+        const data = await teacherApi.getAttendanceSessions({ page, pageSize: this.sessionPageSize })
         if (!this._pageActive || this._writeEpoch !== writeEpoch || this._listEpoch !== listEpoch || this.contextKey() !== context) return null
-        this.sessions = (data && data.items) || []
+        this.applySessionPage(data, page)
         this.loaded = true
         this.reconcileSessions(this.sessions)
-        const row = this.sessions.find((item) => String(item.sessionId || '') === String(sessionId))
-        if (!row) return null
+        let row = this.sessions.find((item) => String(item.sessionId || '') === String(sessionId))
+        if (!row) {
+          const detail = await teacherApi.getAttendanceDetail(sessionId, { page: 1, pageSize: 1 })
+          if (!this._pageActive || this._writeEpoch !== writeEpoch || this._listEpoch !== listEpoch || this.contextKey() !== context) return null
+          if (String(detail && detail.sessionId || '') !== String(sessionId)) return null
+          row = detail
+        }
         if (terminalOnly && !new Set(['SUBMITTED', 'LOCKED', 'FINALIZED', 'CLOSED']).has(String(row.status || '').toUpperCase())) return null
         return row
       } catch (error) {
@@ -395,7 +433,6 @@ export default {
       }
       const index = this.sessions.findIndex((row) => String(row.sessionId || '') === seed.sessionId)
       if (index >= 0) {
-        this.sessionPage = Math.floor(index / 20)
         this.openSession(this.sessions[index])
         return
       }
@@ -507,15 +544,16 @@ export default {
         this.applyTask(null)
       }
     },
-    async load() {
+    async load(requestedPage = this.sessionPage || 1) {
       const epoch = (this._listEpoch || 0) + 1
       this._listEpoch = epoch
       const context = this.contextKey()
+      const page = Math.max(1, Number(requestedPage) || 1)
       this.state = 'loading'
       try {
-        const data = await teacherApi.getAttendanceSessions()
+        const data = await teacherApi.getAttendanceSessions({ page, pageSize: this.sessionPageSize })
         if (!this._pageActive || this._listEpoch !== epoch || this.contextKey() !== context) return
-        this.sessions = (data && data.items) || []
+        this.applySessionPage(data, page)
         this.reconcileSessions(this.sessions)
         this.loaded = true
         this.state = 'ready'
@@ -553,6 +591,9 @@ export default {
         }
         this.ackWrite(context, 'create', requestKey, { ackId: sessionId, parentId: requestKey })
         if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context) return
+        // Newly created sessions are ordered at the top of the formal list.
+        // Re-read page 1 rather than treating a stale local page as the whole queue.
+        this.sessionPage = 1
         const formal = await this.readBackSession(sessionId, context, writeEpoch)
         if (!formal) {
           if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context) toast('已收到场次编号，正式列表尚未核对，请勿重复创建')
@@ -582,13 +623,25 @@ export default {
       this._detailEpoch = (this._detailEpoch || 0) + 1
       this.active = null
       this.items = []
+      this.rosterPage = 1
+      this.rosterTotal = 0
+      this.rosterHasMore = false
+      this.rosterSummary = null
+      this.rosterIntegrity = 'READY'
       this.marking = {}
       this.detailLoading = false
     },
-    openSession(session) {
+    openSession(session, requestedPage = 1) {
       if (this.hasPendingMarks || this.submitting) return
       const sessionId = String(session.sessionId || '')
-      if (String(this.active && this.active.sessionId || '') !== sessionId) this.studentPage = 0
+      const page = Math.max(1, Number(requestedPage) || 1)
+      if (String(this.active && this.active.sessionId || '') !== sessionId) {
+        this.rosterPage = 1
+        this.rosterTotal = 0
+        this.rosterHasMore = false
+        this.rosterSummary = null
+        this.rosterIntegrity = 'READY'
+      }
       const epoch = (this._detailEpoch || 0) + 1
       this._detailEpoch = epoch
       const context = this.contextKey()
@@ -596,17 +649,22 @@ export default {
       this.items = []
       this.marking = {}
       this.detailLoading = true
-      teacherApi.getAttendanceDetail(session.sessionId).then((data) => {
+      teacherApi.getAttendanceDetail(session.sessionId, { page, pageSize: this.rosterPageSize }).then((data) => {
         if (!this._pageActive || this._detailEpoch !== epoch || this.contextKey() !== context || String(this.active && this.active.sessionId || '') !== sessionId) return
         if (String(data && data.sessionId || sessionId) !== sessionId) { this.active = null; this.items = []; toast('名单对象校验失败，请重新打开'); return }
         this.active = data
-        this.items = (data && data.items) || []
+        this.applyRosterPage(data, page)
         this.reconcileMarks(sessionId, data)
       }).catch((error) => {
         if (!this._pageActive || this._detailEpoch !== epoch || this.contextKey() !== context || String(this.active && this.active.sessionId || '') !== sessionId) return
         if (isForbiddenResponse(error)) { this.clearPrivateAttendance(); return }
         this.active = null
         this.items = []
+        this.rosterPage = 1
+        this.rosterTotal = 0
+        this.rosterHasMore = false
+        this.rosterSummary = null
+        this.rosterIntegrity = 'READY'
         this.marking = {}
         toast(error && error.biz ? normalizeError(error).text : '名单加载失败，请稍后重试')
       }).finally(() => {
@@ -629,6 +687,8 @@ export default {
       teacherApi.markAttendance(sessionId, studentId, status).then((ack) => {
         if (this.exactMarkReceipt(ack, sessionId, studentId, status)) {
           this.ackWrite(context, action, studentId, { ackId: status, parentId: sessionId })
+          if (ack && ack.summary && typeof ack.summary === 'object') this.rosterSummary = ack.summary
+          if (ack && ack.rosterIntegrity) this.rosterIntegrity = String(ack.rosterIntegrity)
         } else if (this._pageActive && this._detailEpoch === epoch && this.contextKey() === context && String(this.active && this.active.sessionId || '') === sessionId) {
           toast('该生点名结果待确认，已停止重复提交并刷新正式名单')
         }
@@ -644,20 +704,21 @@ export default {
       }).finally(() => {
         if (this.marking[studentId] !== marker || this.contextKey() !== context || String(this.active && this.active.sessionId || '') !== sessionId) return
         this.marking[studentId] = false
-        if (this._pageActive && !this.hasPendingMarks && !this.submitting) this.openSession(this.active)
+        if (this._pageActive && !this.hasPendingMarks && !this.submitting) this.openSession(this.active, this.rosterPage)
       })
     },
     syncAttendanceCounts() {
       if (!this.active) return
-      this.active.presentCount = this.items.filter((item) => item.status === 'PRESENT').length
-      this.active.absentCount = this.items.filter((item) => item.status === 'ABSENT').length
+      this.active.presentCount = this.statusCounts.PRESENT
+      this.active.absentCount = this.statusCounts.ABSENT
     },
     async submitSession() {
-      if (this.submitting || this.detailLoading || this.hasPendingMarks || this.hasUnknownMarks || this.unmarkedCount || !this.active || !this.items.length || this.hasUnknownWrite('submit', this.active.sessionId)) return
+      const total = this.rosterTotal || this.items.length
+      if (this.submitting || this.detailLoading || this.hasPendingMarks || this.hasUnknownMarks || this.unmarkedCount || this.rosterIntegrity !== 'READY' || !this.active || !total || this.hasUnknownWrite('submit', this.active.sessionId)) return
       const sessionId = String(this.active.sessionId || '')
       const context = this.contextKey()
       const courseName = this.active.courseName || '本课程'
-      const itemCount = this.items.length
+      const itemCount = total
       const epoch = this._detailEpoch
       const snapshot = JSON.stringify(this.items.map((item) => [item.studentId, item.status]))
       const confirmed = await this.confirmModal(
@@ -665,7 +726,7 @@ export default {
         `即将提交${courseName}共${itemCount}人的考勤结果。提交后教师端不可直接修改，确认继续？`,
         '确认提交'
       )
-      if (!confirmed || !this._pageActive || this.submitting || this.hasPendingMarks || this.unmarkedCount || this._detailEpoch !== epoch || this.contextKey() !== context || String(this.active && this.active.sessionId || '') !== sessionId) return
+      if (!confirmed || !this._pageActive || this.submitting || this.hasPendingMarks || this.unmarkedCount || this.rosterIntegrity !== 'READY' || this._detailEpoch !== epoch || this.contextKey() !== context || String(this.active && this.active.sessionId || '') !== sessionId) return
       if (JSON.stringify(this.items.map((item) => [item.studentId, item.status])) !== snapshot) { toast('点名结果已变化，请重新确认'); return }
       if (!this.beginWrite(context, 'submit', sessionId)) return
       this.submitting = true
@@ -688,6 +749,7 @@ export default {
           if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context && String(this.active && this.active.sessionId || '') === sessionId) toast('已收到提交回执，正式状态尚未核对，请勿重复提交')
           return
         }
+        this.clearWrite(context, 'submit', sessionId)
         if (ack.warningScanOk === false) {
           toast(ack.warningScanError || '考勤已提交；旷课预警扫描待核对')
         } else {
@@ -695,6 +757,11 @@ export default {
         }
         this.active = null
         this.items = []
+        this.rosterPage = 1
+        this.rosterTotal = 0
+        this.rosterHasMore = false
+        this.rosterSummary = null
+        this.rosterIntegrity = 'READY'
         this.marking = {}
       }).catch((error) => {
         if (isExplicitWriteRejection(error)) this.clearWrite(context, 'submit', sessionId)
@@ -723,6 +790,7 @@ export default {
 .at__title-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .at__source-tag { display: inline-flex; align-items: center; min-height: 22px; padding: 0 var(--space-2); border-radius: 999px; background: var(--teacher-50); color: var(--teacher-700); font-size: var(--font-size-xs); font-weight: 600; }
 .at__source-note { display: block; margin-top: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
+.at__integrity { display: block; margin-top: 4px; color: var(--danger-600); font-size: var(--font-size-xs); line-height: 1.5; }
 .at__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .at__back { display: inline-block; font-size: var(--font-size-sm); color: var(--teacher-700); margin-bottom: var(--space-3); }
 .at__row { align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -732,6 +800,7 @@ export default {
 .at__progress-value { flex-shrink: 0; color: var(--teacher-700); font-size: 22px; font-weight: 700; }
 .at__seg { display: flex; flex-shrink: 0; border: 1px solid var(--border-base); border-radius: var(--radius-md); overflow: hidden; }
 .at__seg.is-pending { opacity: .55; pointer-events: none; }
+.at__seg.is-readonly { opacity: .55; }
 .at__seg-item { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; font-size: var(--font-size-xs); color: var(--text-secondary); padding: 6px 8px; }
 .at__seg-item.is-active { background: var(--teacher-600); color: #fff; }
 </style>

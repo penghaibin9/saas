@@ -155,6 +155,49 @@ def reduction_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, a
         return False
 
 
+@register_file_resolver("AFFAIRS_LEAVE")
+def affairs_leave_evidence_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """请假材料按既有 CsLeave 的学生本人和教师实时数据范围授权。
+
+    不能沿用历史 ``LEAVE`` 的实习附件兼容 resolver：两种请假都叫 leave，
+    但业务对象、教师范围和授权语义不同。这里仅接收正式 ``AFFAIRS_LEAVE``
+    binding，避免凭猜测的 fileId、bizId 或通用查看权限越权读取材料。
+    """
+    if db is None or not str(file_obj.biz_id or "").isdigit():
+        return False
+    try:
+        from app.models import CsLeave
+        from app.services import affairs_leave_service as leave_svc
+        from app.services.mobile_student_service import resolve_student
+
+        leave = db.get(CsLeave, int(file_obj.biz_id))
+        if not leave or leave.is_deleted or int(leave.tenant_id) != int(file_obj.tenant_id):
+            return False
+        active = [item for item in bindings if (
+            not item.is_deleted and item.status == "ACTIVE" and item.is_current
+            and str(item.biz_type or "").upper() == "AFFAIRS_LEAVE"
+            and str(item.biz_id or "") == str(leave.id)
+            and str(item.relation_type or "").upper() == "BUSINESS_EVIDENCE"
+            and str(item.subject_type or "").upper() == "STUDENT"
+            and str(item.subject_id or "") == str(leave.student_id or "")
+        )]
+        if not active:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            student = resolve_student(db, user or {})
+            return bool(
+                student
+                and int(student.id) == int(leave.student_id or 0)
+                and _owner_allows(file_obj, user or {})
+            )
+        if not has_permission(user or {}, "studentAffairs.leave.view"):
+            return False
+        leave_svc._scope_or_403(db, leave, user or {})
+        return True
+    except Exception:
+        return False
+
+
 def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[int], set[int]]:
     """从文件对象、绑定与请假单中还原权威实习记录/学生范围。"""
     student_ids: set[int] = set()

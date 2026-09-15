@@ -37,6 +37,7 @@ import { useSessionStore } from '@/stores/session'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
 import { ackMessageReceipt, getMessageDetail, markMessageRead } from '@/services/realApi'
 import { ackTeacherMessageReceipt, getTeacherMessageDetail, markTeacherMessageRead } from '@/services/teacherMessagesV3Api'
+import { presentMessage } from '@/services/messagePresentation'
 
 export default {
   data() { return { m: null, acking: false, loading: false, side: 'student', messageId: '', summary: null, summaryGeneration: -1, epoch: 0, generation: 0, active: true, reading: false, readError: false, errorState: 'empty', errorText: '消息不存在或已过期' } },
@@ -79,7 +80,7 @@ export default {
       this.acking = false
       if (!/^\d+$/.test(this.messageId)) {
         this.loading = false
-        this.m = this.summaryGeneration === this.generation ? this.summary : null
+      this.m = this.summaryGeneration === this.generation ? presentMessage(this.summary) : null
         return
       }
       this.loading = true
@@ -90,7 +91,7 @@ export default {
         if (!message || String(message.messageId || message.id || '').replace(/^msg-/, '') !== this.messageId) {
           this.errorState = 'empty'; this.errorText = '消息不存在或已过期'; return
         }
-        this.m = message
+        this.m = presentMessage(message)
         this.readMessage()
       } catch (error) {
         if (!this.isCurrent(epoch)) return

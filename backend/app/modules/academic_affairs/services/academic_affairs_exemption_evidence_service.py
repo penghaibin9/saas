@@ -210,9 +210,9 @@ def require_valid_manifest(db, record, *, kind: str = "EXEMPTION") -> dict:
         found = result["problems"]
         raise AppException(
             "DATA_CONFLICT",
-            f"EVIDENCE_INVALIDATED：{spec['label']}在审批期间已失效，不能据此生成正式成绩："
+            f"{spec['label']}在审批期间已失效，不能据此生成正式成绩："
             + "；".join(found[:5]) + ("…" if len(found) > 5 else ""),
-            details={"problems": found[:50], "recordId": str(record.id), "kind": kind},
+            details={"reasonCode": "EVIDENCE_INVALIDATED", "problems": found[:50], "recordId": str(record.id), "kind": kind},
             http_status=409,
         )
     return result

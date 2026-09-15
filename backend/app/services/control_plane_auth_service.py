@@ -284,6 +284,7 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
 
 
 def build_login_result(db, user, client_type: str = "PC") -> dict:
+    auth_service_db.assert_mini_client_user_type(user, client_type)
     if str(client_type or "").upper() in {"MP", "STUDENT_MINI", "TEACHER_MINI"}:
         from app.services.wx_binding_approval_service import assert_school_wx_subject
         assert_school_wx_subject(user)
@@ -458,7 +459,8 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
 
 
 def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | None = None,
-            *, binding_approval_token: str | None = None) -> dict:
+            *, binding_approval_token: str | None = None,
+            client_type: str = "STUDENT_MINI") -> dict:
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
     try:
@@ -467,6 +469,10 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效或已过期，请重新发起微信登录")
     if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效")
+    from app.services.wx_auth_service import normalize_mini_client_type
+    client_type = normalize_mini_client_type(client_type)
+    if str(claims.get("clientType") or "").upper() != client_type:
+        raise AppException("UNAUTHORIZED", "微信绑定凭证与当前入口不匹配，请重新发起微信登录")
     openid = claims["wxOpenid"]
     login_name = str(login_name or "").strip()
     normalized_tenant = str(tenant_code or "").strip() or None
@@ -501,6 +507,7 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
         from app.services.wx_binding_approval_service import (
             assert_school_wx_subject, consume_in_session,
         )
+        auth_service_db.assert_mini_client_user_type(user, client_type)
         assert_school_wx_subject(user)
         auth_service_db._ensure_tenant_login_allowed(db, user)
         if not auth_service_db._role_contexts(db, user):
@@ -528,7 +535,7 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
         db.commit()
         db.refresh(user)
         _reset_account_risk(lock_key, tenant_id=tenant_id, plane=TENANT)
-        return build_login_result(db, user, client_type="MP")
+        return build_login_result(db, user, client_type=client_type)
     except Exception:
         db.rollback()
         raise

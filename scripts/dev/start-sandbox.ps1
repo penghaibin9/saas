@@ -56,6 +56,64 @@ Write-Host '[3/4] Waiting for MySQL; verifying the original school and database 
 & $Python (Join-Path $PSScriptRoot 'check-sandbox-runtime.py') wait
 if ($LASTEXITCODE -ne 0) { throw 'Sandbox identity/version verification failed. No application service was started.' }
 
+# The backend is intentionally configured with SCHEDULER_MODE=external.  Starting
+# only the web process leaves durable message/outbox rows without a consumer, which
+# makes a successful approval look like a missing notification in the miniapp.
+# Keep the existing standalone scheduler under the same verified local launcher so
+# every daily-sandbox client observes eventual delivery just as deployment does.
+$SchedulerEntry = Join-Path $Root 'backend/scripts/run_scheduled_jobs.py'
+$SchedulerModule = 'scripts.run_scheduled_jobs'
+$SchedulerArgs = '-m scripts.run_scheduled_jobs --only delivery'
+$SchedulerStatePath = Join-Path $RuntimeDir 'scheduler.json'
+$SavedScheduler = if (Test-Path -LiteralPath $SchedulerStatePath) {
+    Get-Content -LiteralPath $SchedulerStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+} else { $null }
+$SavedSchedulerProcess = if ($SavedScheduler) {
+    Get-CimInstance Win32_Process -Filter "ProcessId=$($SavedScheduler.pid)"
+} else { $null }
+$SavedSchedulerCreatedUtc = if ($SavedScheduler -and $SavedScheduler.created) {
+    ([datetime]$SavedScheduler.created).ToUniversalTime()
+} else { $null }
+$SchedulerCreatedMatches = $SavedSchedulerProcess -and $SavedSchedulerCreatedUtc -and `
+    [Math]::Abs(($SavedSchedulerProcess.CreationDate.ToUniversalTime() - $SavedSchedulerCreatedUtc).TotalSeconds) -lt 1
+$SchedulerOwned = $SavedSchedulerProcess -and $SavedSchedulerProcess.CommandLine.Contains($SchedulerModule) -and $SchedulerCreatedMatches
+$SchedulerChanged = $false
+if ($SchedulerOwned) {
+    $SchedulerInputs = @(Get-Item -LiteralPath $SchedulerEntry)
+    $SchedulerInputs += Get-ChildItem -LiteralPath (Join-Path $Root 'backend/app') -Recurse -File -Filter '*.py'
+    $SchedulerInputs += Get-Item -LiteralPath $PSCommandPath
+    $SchedulerChanged = @($SchedulerInputs | Where-Object {
+        $_.LastWriteTimeUtc -gt $SavedSchedulerProcess.CreationDate.ToUniversalTime()
+    }).Count -gt 0
+}
+if ($SchedulerOwned -and ($Restart -or $SchedulerChanged)) {
+    $SchedulerTree = @(Get-CimInstance Win32_Process)
+    $SchedulerStopIds = @([int]$SavedScheduler.pid)
+    do {
+        $SchedulerChildren = @($SchedulerTree | Where-Object {
+            $_.ParentProcessId -in $SchedulerStopIds -and $_.ProcessId -notin $SchedulerStopIds
+        } | Select-Object -ExpandProperty ProcessId)
+        $SchedulerStopIds += $SchedulerChildren
+    } while ($SchedulerChildren.Count)
+    foreach ($SchedulerStopId in $SchedulerStopIds) {
+        Stop-Process -Id $SchedulerStopId -ErrorAction SilentlyContinue
+    }
+    $SchedulerOwned = $false
+}
+if (-not $SchedulerOwned) {
+    if (-not (Test-Path -LiteralPath $SchedulerEntry)) { throw 'Missing backend scheduler entry.' }
+    $SchedulerProcess = Start-Process -FilePath $Python -WorkingDirectory (Join-Path $Root 'backend') -WindowStyle Hidden -PassThru `
+        -ArgumentList $SchedulerArgs `
+        -RedirectStandardOutput (Join-Path $RuntimeDir 'scheduler.out.log') `
+        -RedirectStandardError (Join-Path $RuntimeDir 'scheduler.err.log')
+    Start-Sleep -Milliseconds 500
+    if ($SchedulerProcess.HasExited) { throw 'Sandbox scheduler exited during startup. See .codex-temp/daily-sandbox/scheduler.err.log.' }
+    $SchedulerStarted = Get-CimInstance Win32_Process -Filter "ProcessId=$($SchedulerProcess.Id)"
+    @{ pid=$SchedulerProcess.Id; created=$SchedulerStarted.CreationDate.ToUniversalTime().ToString('o'); root=$Root; entry=$SchedulerEntry } |
+        ConvertTo-Json | Set-Content -LiteralPath $SchedulerStatePath -Encoding UTF8
+}
+Write-Host '[OK] scheduler -> sandbox-school' -ForegroundColor Green
+
 $Services = @(
     @{ Name='backend'; Port=8000; Dir='backend'; Exe=$Python; Entry=(Join-Path $PSScriptRoot 'check-sandbox-runtime.py'); Args='serve'; Url='http://127.0.0.1:8000/health' },
     @{ Name='pc'; Port=5173; Dir='frontend'; Exe=$Node; Entry=(Join-Path $Root 'frontend/node_modules/vite/bin/vite.js'); Args='--host 127.0.0.1 --port 5173 --strictPort'; Url='http://127.0.0.1:5173/login' },

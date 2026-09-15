@@ -161,7 +161,7 @@
             v-for="t in home.todos"
             :key="t.id"
             :title="t.title"
-            :source-module="t.module === 'student-affairs' ? '学工服务' : t.module"
+            :source-module="t.module"
             :deadline="fmtDeadline(t.deadline)"
             :status="t.status"
             :action-text="t.action && t.action.label ? '去办理' : '去办理'"
@@ -177,7 +177,7 @@
           <view v-for="n in home.notices" :key="n.id" class="home__notice" @click="runAction(n.action)">
             <text v-if="n.important" class="home__notice-tag">重要</text>
             <text class="home__notice-title ellipsis flex-1">{{ n.title }}</text>
-            <text class="home__notice-src">{{ n.source }}</text>
+            <text class="home__notice-src">{{ messageModuleLabel(n.source) }}</text>
           </view>
           <MobileGlobalState v-if="!home.notices.length" state="empty" title="暂无校园通知"
             description="学校发布与你相关的通知后会显示在这里。" />
@@ -204,12 +204,12 @@ import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
+import { messageModuleLabel } from '@/services/messagePresentation'
+import { orientationStepLabel } from '@/services/orientationPresentation'
 
 const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
 
-const STEP_LABELS = { ACTIVATE: '账号激活', INFO: '信息核对', MATERIAL: '材料上传',
-  PAYMENT: '缴费/绿色通道', DORM: '宿舍确认', CHECKIN: '现场报到', CONFIRM: '学院确认' }
 const STEP_ROUTE = {
   ACTIVATE: '/pages/student/orientation/collect/index', INFO: '/pages/student/orientation/collect/index',
   MATERIAL: '/pages/student/orientation/index', PAYMENT: '/pages/student/orientation/green-channel/index',
@@ -264,7 +264,7 @@ export default {
         const done = step.status === 'DONE'
         const state = done ? 'done' : (metCurrent ? 'wait' : 'now')
         if (!done) metCurrent = true
-        return { key: step.key, label: STEP_LABELS[step.key] || step.key, state,
+        return { key: step.key, label: orientationStepLabel(step), state,
           stateLabel: done ? '已完成' : (state === 'now' ? '进行中' : '待办') }
       })
     },
@@ -307,6 +307,7 @@ export default {
   },
   methods: {
     go, toast, deadlineText,
+    messageModuleLabel,
     fmtDeadline(value) { return value ? deadlineText(value) : '' },
     gradClass(index) { return GRAD_CLASSES[index % GRAD_CLASSES.length] },
     goMessages() { go('/pages/student/messages/index') },

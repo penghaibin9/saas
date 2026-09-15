@@ -87,6 +87,54 @@ def test_transcript_consumers_share_effective_identity(db_mode):
         set_tenant(None)
 
 
+def test_transcript_term_page_and_passed_course_page_share_canonical_grade_truth(db_mode):
+    from app.core.context import set_current_user, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicGrade, AcademicStudent
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as service
+
+    tid = 1000000000000000001
+    user = {"tenantId": str(tid), "userId": "81004", "realName": "成绩分页回归",
+            "userType": "TEACHER", "currentRoleCode": "ACADEMIC_ADMIN",
+            "permissions": ["academicAffairs.gradeViews.query"], "dataScope": "ALL"}
+    set_tenant({"tenantId": str(tid)})
+    set_current_user(user)
+    db = get_sessionmaker()()
+    try:
+        student = AcademicStudent(tenant_id=tid, student_id=db_mode["student"], name="成绩分页回归学生")
+        db.add(student)
+        db.flush()
+        for code, course_id, term, status, score in (
+            ("PAGE01", 9101, "2026-1", "PASSED", 88),
+            ("PAGE02", 9102, "2026-2", "PASSED", 86),
+            ("PAGE03", 9103, "2026-2", "FAILED", 55),
+        ):
+            db.add(AcademicGrade(
+                tenant_id=tid, acad_student_id=student.id, course_code=code, course_id=course_id,
+                course_version=1, attempt_no=1, course_name=f"分页课程{code[-1]}", credit_value=2,
+                score=score, pass_status=status, record_status="ACTIVE", source="PUBLISH", term=term,
+                effective_attempt_strategy="LATEST_ATTEMPT", gpa_point=3, gpa_policy_code="FROZEN_TEST",
+                gpa_policy_version=1,
+            ))
+        db.commit()
+        student_id = student.student_id
+    finally:
+        db.close()
+
+    try:
+        second_term = service.transcript(student_id, user, page=1, page_size=1, term="2026-2")
+        passed = service.passed_courses_page(student_id, user, page=1, page_size=1)
+        assert second_term["total"] == 2 and second_term["hasMore"] is True
+        assert second_term["terms"] == ["2026-2", "2026-1"]
+        assert all(row["term"] == "2026-2" for row in second_term["items"])
+        assert second_term["earnedCredits"] == 4 and second_term["failCount"] == 1
+        assert passed["total"] == 2 and passed["hasMore"] is True
+        assert all(row["passStatus"] == "PASSED" for row in passed["items"])
+    finally:
+        set_current_user(None)
+        set_tenant(None)
+
+
 @pytest.mark.parametrize("code,competing", [("ASCII01", False), ("数学01", True), ("A\t01", True)])
 def test_mysql_guard_conservative_code_path(db_mode, code, competing):
     from app.core.context import set_tenant

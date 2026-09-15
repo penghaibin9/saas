@@ -68,14 +68,14 @@ import { normalizeError } from '@/services/request'
 
 const RECOVERY_SCOPE = 'exam-defer-review'
 
-const STATUS_LABELS = { COUNSELOR_REVIEW: '辅导员审批中', TEACHER_CONFIRM: '任课教师确认中' }
+const STATUS_LABELS = { COUNSELOR_REVIEW: '辅导员审批中', TEACHER_CONFIRM: '任课教师确认中', COLLEGE_REVIEW: '学院审核中', ACADEMIC_FINAL: '教务终审中', APPROVED: '已通过', RETURNED: '已退回补材料', REJECTED: '已驳回' }
 const REASON_LABELS = { ILLNESS: '疾病', SICK: '疾病', MEDICAL: '疾病', OFFICIAL: '公务或学校安排', EMERGENCY: '突发事件', FAMILY: '家庭重大事项', OTHER: '其他' }
 
 export default {
   data() { return { list: [], state: 'loading', acting: false, targetDeferId: '', detailId: '', queuePage: 0, reviewAttempts: {}, recoveryStorageBlocked: false } },
   onLoad(options = {}) {
     this._pageActive = true
-    this.targetDeferId = String(options.id || options.deferId || '')
+    this.targetDeferId = String(options.id || options.deferId || options.recordId || '')
     this.restoreReviewAttempts()
     this.load()
   },
@@ -215,7 +215,7 @@ export default {
             return
           }
           this.reviewAttempts[key] = { context, objectId: String(storedAttempt.objectId), action, epoch: writeEpoch, state: 'SENDING', observation: '' }
-          teacherApi.reviewAcademicDefer(deferId, action, reason)
+          teacherApi.reviewAcademicDefer(deferId, action, reason, x.version)
             .then((receipt) => {
               if (!hasExplicitApprovalReceipt(receipt, deferId, ['deferId', 'id']) || !approvalReceiptChanged(receipt, x)) {
                 const saved = approvalContextKey.persistReceipt(RECOVERY_SCOPE, storedAttempt, receipt)

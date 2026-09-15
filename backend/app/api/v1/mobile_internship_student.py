@@ -307,10 +307,19 @@ def submit_selected_report(
 def my_selected_weekly_reports(
     batchId: int = Query(..., ge=1),
     internshipId: int = Query(..., ge=1),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=50),
+    focusReportId: int | None = Query(default=None, ge=1),
     user=Depends(get_current_user),
 ):
     return success(reports.list_weekly(
-        user, batch_id=batchId, internship_id=internshipId))
+        user,
+        batch_id=batchId,
+        internship_id=internshipId,
+        page=page,
+        page_size=pageSize,
+        focus_report_id=focusReportId,
+    ))
 
 
 @router.post("/context/weekly-reports", summary="按当前批次和版本提交周报")

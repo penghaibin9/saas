@@ -30,6 +30,7 @@ from .academic_affairs_grade_identity_service import next_study_attempt_no, sour
 from .academic_affairs_roster_consumer_service import consumer_counts, get_consumer_snapshot
 
 _ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
+_EX_STUDENT_RESUBMIT = "STUDENT_RESUBMIT"
 
 
 def __getattr__(name):
@@ -41,6 +42,49 @@ def _value(body, name, default=None):
     if isinstance(body, dict):
         return body.get(name, default)
     return getattr(body, name, default)
+
+
+def _has_field(body, name: str) -> bool:
+    """Keep an omitted field distinct from an explicit empty update.
+
+    The mobile endpoint deliberately receives a plain object so that a returned
+    application can keep its original evidence unless the student uploads a new
+    set. Pydantic bodies from the PC route also expose ``model_fields_set``.
+    """
+    if isinstance(body, dict):
+        return name in body
+    fields_set = getattr(body, "model_fields_set", None)
+    if fields_set is not None:
+        return name in fields_set
+    return hasattr(body, name)
+
+
+def _material_ids(raw_ids, *, label: str = "免修材料附件") -> list[int]:
+    values = raw_ids if isinstance(raw_ids, list) else [raw_ids]
+    if raw_ids in (None, ""):
+        values = []
+    ids: list[int] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text.isdigit() or int(text) <= 0:
+            raise _core._bad(f"{label}ID格式不正确")
+        ids.append(int(text))
+    if len(set(ids)) != len(ids):
+        raise _core._bad(f"{label}重复提交")
+    return ids
+
+
+def _optional_reason(body, *, keep_absent: bool = False):
+    """Normalize user-entered reasons before a database column can reject them."""
+    if keep_absent and not _has_field(body, "reason"):
+        return None
+    value = _value(body, "reason")
+    if value is None:
+        return None
+    text = str(value).strip()
+    if len(text) > 500:
+        raise _core._bad("申请说明不能超过500字")
+    return text
 
 
 def _term_code(term) -> str:
@@ -183,7 +227,12 @@ def _require_retake_origin(db, row):
     from .academic_affairs_makeup_evidence_projection import grade_chains
 
     if not row.origin_grade_id:
-        raise AppException("DATA_CONFLICT", "SOURCE_GRADE_UNRESOLVED：重修申请未保存原成绩ID，请退回后从正式成绩重新申请", http_status=409)
+        raise AppException(
+            "DATA_CONFLICT",
+            "重修申请未保存原成绩关联，请退回后从正式成绩重新申请",
+            details={"reasonCode": "SOURCE_GRADE_UNRESOLVED"},
+            http_status=409,
+        )
     original = db.query(AcademicGrade).filter(
         AcademicGrade.id == row.origin_grade_id, AcademicGrade.tenant_id == _core._tid(),
         AcademicGrade.is_deleted.is_(False),
@@ -1149,10 +1198,22 @@ def retake_list(user, status=None, student_only=False, page=1, page_size=50, *, 
 
 
 def exemption_apply(user, body):
-    from app.models import AaCourse, AaExemption, AcademicGrade
+    from app.models import AaCourse, AaExemption, AcademicGrade, StudentProfile
 
     with _core.session() as db:
         student = _student(db, user)
+        # AaExemption has no portable MySQL partial unique constraint for
+        # "non-terminal only" rows. Locking this stable profile row gives all
+        # create attempts for the same student a common serialization point,
+        # including the empty-history case where a row lock alone cannot stop
+        # two concurrent inserts.
+        student = db.query(StudentProfile).filter(
+            StudentProfile.id == int(student.id),
+            StudentProfile.tenant_id == _core._tid(),
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update().populate_existing().first()
+        if not student:
+            raise not_found("当前账号尚未绑定唯一学生档案")
         term = _current_term(db)
         requested = str(_value(body, "termCode") or "").strip()
         term_code = _term_code(term)
@@ -1168,6 +1229,20 @@ def exemption_apply(user, body):
         ).first()
         if not course or not course.course_code or not course.version:
             raise not_found("课程版本不存在或缺少稳定课程身份")
+        # This query runs after the student lock. It protects both ordinary
+        # double-clicks and concurrent retry requests without trusting a UI
+        # flag, and a returned application remains the same application to
+        # repair rather than a reason to create another one.
+        in_flight = db.query(AaExemption).filter(
+            AaExemption.tenant_id == _core._tid(),
+            AaExemption.student_id == int(student.id),
+            AaExemption.course_id == int(course.id),
+            AaExemption.term_code == term_code,
+            AaExemption.status.notin_([_core._EX_REJECTED, _core._EX_CANCELLED]),
+            AaExemption.is_deleted.is_(False),
+        ).with_for_update().populate_existing().first()
+        if in_flight:
+            raise _core._conflict("该课程已有在途免修申请，请在原申请中补充材料或等待审核")
         academic_student = _academic_student_for_profile(db, student.id)
         if academic_student:
             grades = db.query(AcademicGrade).filter(
@@ -1196,13 +1271,7 @@ def exemption_apply(user, body):
         ).count()
         if used >= maximum:
             raise _core._bad(f"本学期免修申请已达上限{maximum}门")
-        raw_ids = _value(body, "materialFileIds", []) or []
-        ids = raw_ids if isinstance(raw_ids, list) else [raw_ids]
-        int_ids = [int(value) for value in ids if str(value).isdigit()]
-        if len(int_ids) != len(ids):
-            raise _core._bad("免修材料附件ID格式不正确")
-        if len(set(int_ids)) != len(int_ids):
-            raise _core._bad("免修材料附件重复提交")
+        int_ids = _material_ids(_value(body, "materialFileIds", []) or [])
         row = AaExemption(
             tenant_id=_core._tid(),
             student_id=student.id,
@@ -1212,7 +1281,7 @@ def exemption_apply(user, body):
             course_name=course.course_name,
             term_code=term_code,
             college_id=getattr(student, "college_id", None),
-            reason=_value(body, "reason"),
+            reason=_optional_reason(body),
             material_file_ids=json.dumps([str(value) for value in int_ids], ensure_ascii=False) if int_ids else None,
             current_node=_core._EX_TEACHER,
             status=_core._EX_TEACHER,
@@ -1250,6 +1319,68 @@ def exemption_apply(user, body):
         return result
 
 
+def exemption_resubmit(user, exemption_id, body=None):
+    """Return a single returned exemption application to its teacher node.
+
+    Students may correct the reason and replace the frozen evidence set, but
+    never change the original course, term, tenant, or student identity. This
+    is deliberately an update of the returned row, not a fresh application.
+    """
+    from app.models import AaExemption
+
+    payload = body or {}
+    with _core.session() as db:
+        student = _student(db, user)
+        row = db.query(AaExemption).filter(
+            AaExemption.id == int(exemption_id),
+            AaExemption.tenant_id == _core._tid(),
+            AaExemption.student_id == int(student.id),
+            AaExemption.is_deleted.is_(False),
+        ).with_for_update().populate_existing().first()
+        if not row:
+            raise not_found("免修申请不存在或不属于当前学生")
+        if (row.status != _core._EX_SUBMITTED
+                or row.current_node not in {_EX_STUDENT_RESUBMIT, _core._EX_SUBMITTED}):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该免修申请当前不能重新提交，请刷新后核对状态", http_status=409)
+        _guard_code(db, row.term_code)
+
+        reason = _optional_reason(payload, keep_absent=True)
+        if reason is not None:
+            row.reason = reason
+
+        evidence = None
+        if _has_field(payload, "materialFileIds"):
+            int_ids = _material_ids(_value(payload, "materialFileIds") or [])
+            row.material_file_ids = json.dumps([str(value) for value in int_ids], ensure_ascii=False) if int_ids else None
+            # A supplied list replaces the frozen set. Older bindings remain
+            # auditable, but they can no longer influence final approval; the
+            # new manifest is the only evidence truth for this version.
+            evidence = evidence_service.freeze_manifest(
+                db, row, int_ids,
+                actor=get_current_user_ctx() or {},
+                student=student,
+                kind="EXEMPTION",
+                scope={"termCode": row.term_code, "courseId": str(row.course_id or "")},
+            )
+
+        row.status = _core._EX_TEACHER
+        row.current_node = _core._EX_TEACHER
+        row.return_reason = None
+        row.version = int(row.version or 0) + 1
+        detail = "to=TEACHER_REVIEW"
+        if evidence is not None:
+            detail += f";evidence={evidence['count']};manifestHash={evidence['manifestHash'][:16]}"
+        _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_RESUBMIT", detail)
+        db.commit()
+        result = _core._ex_dto(row)
+        if evidence is not None:
+            result.update({
+                "evidenceCount": evidence["count"],
+                "evidenceManifestHash": evidence["manifestHash"],
+            })
+        return result
+
+
 def exemption_review(user, exemption_id, action, reason="", *, identity=None, command_key=None):
     from app.models import AaCourse, AaExemption, AcademicGrade
 
@@ -1283,7 +1414,7 @@ def exemption_review(user, exemption_id, action, reason="", *, identity=None, co
             if len(reason_text) < 5:
                 raise _core._bad("退回/驳回原因必填且不少于5字")
             row.status = _core._EX_SUBMITTED if action_code == "RETURN" else _core._EX_REJECTED
-            row.current_node = _core._EX_SUBMITTED if action_code == "RETURN" else None
+            row.current_node = _EX_STUDENT_RESUBMIT if action_code == "RETURN" else None
             row.return_reason = reason_text
             row.version = int(row.version or 0) + 1
             _core._audit(db, "AA_EXEMPTION", row.id, "EXEMPTION_REVIEW", f"{action_code}->{row.status}")
@@ -1410,7 +1541,17 @@ def exemption_list(user, status=None, student_only=False, page=1, page_size=50, 
             actions = [] if student_only else _exemption_actions(row, ctx, user)
             if projected[row.id]["evidenceState"] == "INVALID":
                 actions = [action for action in actions if action != "APPROVE"]
-            items.append({**_core._ex_dto(row), **projected[row.id], "allowedActions": actions})
+            can_resubmit = bool(
+                student_only
+                and row.status == _core._EX_SUBMITTED
+                and row.current_node in {_EX_STUDENT_RESUBMIT, _core._EX_SUBMITTED}
+            )
+            items.append({
+                **_core._ex_dto(row),
+                **projected[row.id],
+                "allowedActions": actions,
+                "canResubmit": can_resubmit,
+            })
         return items, total
 
 

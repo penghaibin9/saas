@@ -13,10 +13,32 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, client_type="TEACHER_MINI"):
     data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def test_schedule_change_mobile_routes_reject_non_teacher_mini_tokens(client, db_mode):
+    """PC and student tokens must not use a teacher-mini route by changing a URL."""
+    # 采用测试夹具已经登记在该租户的学生账号，避免伪造 tenant 声明先被
+    # 令牌租户校验拦截，从而掩盖教师小程序路由自身的角色拒绝。
+    student_headers = _hdr(client, "student01", client_type="STUDENT_MINI")
+    pc_headers = _hdr(client, "academic01", client_type="ADMIN_PC")
+    cases = [
+        ("GET", f"{MOB}/teacher/academic/schedule/mine", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/conflict-check", {}),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes", {}),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes", None),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes/pending", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/1/review", {"action": "APPROVE", "expectedVersion": 0}),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes/1", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/1/cancel", {}),
+    ]
+    for headers in (student_headers, pc_headers):
+        for method, path, body in cases:
+            response = client.request(method, path, headers=headers, json=body)
+            assert response.status_code == 403, (method, path, response.text)
 
 
 def _seed(db_mode):

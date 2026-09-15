@@ -6,6 +6,22 @@ const source = readFileSync(new URL('../src/components/login/MiniLoginAuthPanel.
   .match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 const component = new Function(source)()
 
+test('forced password change skips forbidden business profile loading and navigates once', () => {
+  for (const isTeacher of [false, true]) {
+    const calls = []
+    const session = { mustChangePassword: true, login() {}, applyRealUser() {} }
+    const panel = new Function('roleKeyFromBackendRole', 'useSessionStore', 'commitNewSessionTokens',
+      'currentSessionGeneration', 'relaunch', 'studentApi', source)(
+      () => 'student', () => session, () => 7, () => 7,
+      path => calls.push(['navigate', path]),
+      { getProfile() { calls.push(['profile']); throw new Error('must not request business data') } }
+    )
+    panel.methods.completeLogin.call({ isTeacher, isLoginCurrent: () => true, assertEntryRole: () => true },
+      { currentRole: { roleCode: 'STUDENT' }, accessToken: 'unit-test-token' })
+    assert.deepEqual(calls, [['navigate', isTeacher ? '/pages/teacher/workbench/index' : '/pages/student/home/index']])
+  }
+})
+
 test('login initialization does not query school business data before authentication', () => {
   for (const isTeacher of [false, true]) {
     const calls = []

@@ -10,6 +10,10 @@
         <picker v-if="batchCatalog.length" :range="batchCatalog" range-key="batchName" :value="activeBatchIndex" @change="onBatchPick">
           <view class="sl__batch-picker">{{ activeBatchName }}</view>
         </picker>
+        <view v-if="batchTotal > batchCatalog.length" class="sl__batch-more">
+          <text>已显示 {{ batchCatalog.length }} / {{ batchTotal }} 个批次</text>
+          <button class="btn btn-ghost" :disabled="batchLoading" @click="loadMoreBatches">{{ batchLoading ? '读取中…' : '加载更多批次' }}</button>
+        </view>
         <text class="sl__hero-desc">余量仅供参考，不是名额预留。</text>
 
         <MobileAcademicDecisionCard v-if="decisionError" class="sl__decision"
@@ -30,7 +34,7 @@
 
         <view class="sl__tabs">
           <button class="sl__tab" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">可办理课程 <text>{{ courseCount }}</text></button>
-          <button class="sl__tab" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">我的选课与报名 <text>{{ visibleRecords.length }}</text></button>
+          <button class="sl__tab" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">我的选课与报名 <text>{{ recordTotal }}</text></button>
         </view>
 
         <template v-if="tab === 'courses'">
@@ -73,8 +77,12 @@
               </view>
             </view>
           </view>
-          <button v-if="matchingCourseCount > courseLimit" class="btn btn-ghost" @click="courseLimit += 20">再显示 20 门课程</button>
-          <text v-if="searchTerm && !matchingCourseCount && courseState === 'ready'" class="sl__stale">当前批次没有匹配的课程</text>
+          <view v-if="courseTotal" class="sl__pages">
+            <button class="btn btn-ghost" :disabled="coursePage <= 1 || courseState === 'loading'" @click="changeCoursePage(coursePage - 1)">上一页</button>
+            <text>第 {{ coursePage }} / {{ Math.max(1, Math.ceil(courseTotal / 20)) }} 页，共 {{ courseTotal }} 门</text>
+            <button class="btn btn-ghost" :disabled="!courseHasMore || courseState === 'loading'" @click="changeCoursePage(coursePage + 1)">下一页</button>
+          </view>
+          <text v-if="searchTerm && !courseTotal && courseState === 'ready'" class="sl__stale">当前批次没有匹配的课程</text>
         </template>
 
         <template v-else>
@@ -86,7 +94,7 @@
           <view v-if="recordsStale" class="sl__stale"><text>以下为上次已确认记录，最新状态尚未取回。</text></view>
           <AcademicPageState v-if="recordsState !== 'loading' && recordsState !== 'error' && !visibleRecords.length" state="empty"
             :title="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次回读暂未查到记录' : '本批次暂无选课记录'" :description="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次操作仍待核实，请勿重复提交。稍后再核对本人记录。' : '这里会保留待抽签、已获名额、未中签、已退课与课程取消等正式状态。'" />
-          <view v-for="record in visibleRecords.slice(0, recordLimit)" :key="record.recordId || record.selectionCourseId" class="sl__record">
+          <view v-for="record in visibleRecords" :key="record.recordId || record.selectionCourseId" class="sl__record">
             <view class="sl__record-head">
               <view class="flex-1">
                 <text class="sl__course-title">{{ record.courseName || '课程名称待补充' }}</text>
@@ -98,7 +106,11 @@
             <button v-if="unresolvedFor(record)" class="btn btn-ghost sl__record-action" :disabled="recordsState === 'loading'" @click="refreshRecords">结果待核实 · 核对本人记录</button>
             <button v-else-if="recordHasAction(record, 'DROP')" class="btn btn-ghost sl__record-action" :disabled="!!acting || courseStale || recordsStale" @click="drop(record)">{{ normalizeStatus(record.status) === 'PENDING_LOTTERY' ? '撤回抽签报名' : '申请退课' }}</button>
           </view>
-          <button v-if="visibleRecords.length > recordLimit" class="btn btn-ghost" @click="recordLimit += 20">再显示 20 条记录</button>
+          <view v-if="recordTotal" class="sl__pages">
+            <button class="btn btn-ghost" :disabled="recordPage <= 1 || recordsState === 'loading'" @click="changeRecordPage(recordPage - 1)">上一页</button>
+            <text>第 {{ recordPage }} / {{ Math.max(1, Math.ceil(recordTotal / 20)) }} 页，共 {{ recordTotal }} 条</text>
+            <button class="btn btn-ghost" :disabled="!recordHasMore || recordsState === 'loading'" @click="changeRecordPage(recordPage + 1)">下一页</button>
+          </view>
         </template>
 
         <view class="sl__rule-note">
@@ -134,7 +146,9 @@ export default {
       recordsStale: false, loaded: false, acting: null, decisionError: null, receipt: null,
       requestEpoch: 0, recordsEpoch: 0, contextEpoch: 0, writeToken: 0, hidden: false,
       identity: currentSessionGeneration(), unresolved: {},
-      searchDraft: '', searchTerm: '', courseLimit: 20, recordLimit: 20
+      searchDraft: '', searchTerm: '', batchPage: 1, batchTotal: 0, batchHasMore: false, batchLoading: false,
+      coursePage: 1, courseTotal: 0, courseHasMore: false,
+      recordPage: 1, recordTotal: 0, recordHasMore: false
     }
   },
   computed: {
@@ -146,21 +160,8 @@ export default {
     visibleRecords() { return this.activeRecords.filter(isVisibleSelectionRecord) },
     confirmedRecords() { return this.visibleRecords.filter((record) => CONFIRMED_SEAT_STATUSES.includes(normalizeSelectionStatus(record && record.status))) },
     pendingRecords() { return this.visibleRecords.filter(isPendingLottery) },
-    courseCount() { return this.activeGroups.reduce((sum, group) => sum + ((group && group.courses && group.courses.length) || 0), 0) },
-    matchingGroups() {
-      const query = this.searchTerm.toLowerCase()
-      return this.activeGroups.map((group) => ({ ...group, courses: (group.courses || []).filter((course) =>
-        !query || [course.courseName, course.courseCode, course.teacherName].join(' ').toLowerCase().includes(query)) }))
-    },
-    matchingCourseCount() { return this.matchingGroups.reduce((sum, group) => sum + group.courses.length, 0) },
-    displayedGroups() {
-      let remaining = this.courseLimit
-      return this.matchingGroups.map((group) => {
-        const courses = group.courses.slice(0, remaining)
-        remaining -= courses.length
-        return { ...group, courses }
-      })
-    },
+    courseCount() { return this.courseTotal },
+    displayedGroups() { return this.activeGroups },
     pageState() {
       if (!this.loaded) return 'loading'
       if (this.courseState === 'error' && this.recordsState === 'error' && !this.activeGroups.length && !this.activeRecords.length) return this.decisionError?.restricted ? 'forbidden' : 'error'
@@ -189,6 +190,9 @@ export default {
       this.batchCatalog = []; this.courseCache = {}; this.recordCache = {}; this.unresolved = {}
       this.activeBatchId = ''; this.receipt = null; this.decisionError = null; this.detailId = ''; this.loaded = false
       this.searchDraft = ''; this.searchTerm = ''; this.tab = 'courses'
+      this.batchPage = 1; this.batchTotal = 0; this.batchHasMore = false; this.batchLoading = false
+      this.coursePage = 1; this.courseTotal = 0; this.courseHasMore = false
+      this.recordPage = 1; this.recordTotal = 0; this.recordHasMore = false
     },
     isForbiddenSelectionError(reason) {
       const code = String(reason && reason.code || '').toUpperCase()
@@ -213,7 +217,18 @@ export default {
     },
     identityMatches() { return !this.hidden && this.identity === currentSessionGeneration() },
     contextMatches(captured) { return this.identityMatches() && captured.contextEpoch === this.contextEpoch && captured.batchId === this.activeBatchId && captured.writeToken === this.writeToken },
-    searchCourses() { this.searchTerm = this.searchDraft.trim(); this.courseLimit = 20 },
+    searchCourses() {
+      this.searchTerm = this.searchDraft.trim(); this.coursePage = 1
+      return this.activeBatchId ? this.readCourses(this.activeBatchId) : null
+    },
+    changeCoursePage(page) {
+      if (page < 1 || page === this.coursePage || this.courseState === 'loading') return
+      this.coursePage = page; this.detailId = ''; return this.readCourses(this.activeBatchId)
+    },
+    changeRecordPage(page) {
+      if (page < 1 || page === this.recordPage || this.recordsState === 'loading') return
+      this.recordPage = page; return this.readRecords(this.activeBatchId)
+    },
     onBatchPick(event) { const batch = this.batchCatalog[Number(event.detail.value)]; if (batch) this.switchBatch(batch.batchId) },
     courseDeadline(course) { const end = String(course?.window?.endAt || '').replace('T', ' ').slice(5, 16); return end ? end + ' 截止' : '截止时间待学校发布' },
     unresolvedKey(courseId, batchId = this.activeBatchId) { return `${batchId}:${courseId}` },
@@ -302,49 +317,90 @@ export default {
       })
       this.batchCatalog = [...catalog.values()]
     },
-    load() {
+    async load() {
       if (this.identity !== currentSessionGeneration()) this.resetIdentity()
       this.unresolved = readPending('selection') || {}
-      return Promise.allSettled([this.readCourses('', true), this.readRecords('')])
+      if (!this.activeBatchId) {
+        this.batchPage = 1
+        const catalog = await this.readBatchCatalog(true)
+        if (!this.identityMatches()) return null
+        if (catalog === null) return null
+        if (!this.activeBatchId) {
+          this.courseState = 'ready'; this.recordsState = 'ready'; this.loaded = true
+          return catalog
+        }
+      }
+      return this.loadBatch(this.activeBatchId)
+    },
+    readBatchCatalog(reset = false, requestedPage = reset ? 1 : this.batchPage) {
+      const epoch = (this._batchEpoch || 0) + 1
+      this._batchEpoch = epoch
+      const context = this.contextEpoch
+      const page = Number(requestedPage)
+      if (!Number.isSafeInteger(page) || page < 1) return Promise.resolve(null)
+      this.batchLoading = true
+      return studentApi.getSelectionBatches({ page, pageSize: 20 }).then((value) => {
+        if (!this.identityMatches() || context !== this.contextEpoch || this._batchEpoch !== epoch) return null
+        const rows = value && value.items
+        if (!Array.isArray(rows)) throw new Error('选课批次信息无法核对')
+        const catalog = new Map((reset ? [] : this.batchCatalog).map((batch) => [String(batch.batchId), batch]))
+        rows.forEach((batch) => { if (batch && batch.batchId) catalog.set(String(batch.batchId), batch) })
+        this.batchCatalog = [...catalog.values()]
+        this.batchTotal = Number(value.total != null ? value.total : this.batchCatalog.length)
+        this.batchHasMore = !!value.hasMore
+        this.batchPage = page
+        if (!this.activeBatchId && this.batchCatalog.length) this.activeBatchId = String(this.batchCatalog[0].batchId)
+        return this.batchCatalog
+      }).catch((reason) => {
+        if (!this.identityMatches() || context !== this.contextEpoch || this._batchEpoch !== epoch) return null
+        this.consumeReadError('courses', reason); this.recordsState = 'error'; this.recordsError = this.courseError
+        return null
+      }).finally(() => {
+        if (this._batchEpoch === epoch && context === this.contextEpoch) { this.batchLoading = false; this.loaded = true }
+      })
+    },
+    loadMoreBatches() {
+      if (!this.batchHasMore || this.batchLoading) return null
+      return this.readBatchCatalog(false, this.batchPage + 1)
     },
     switchBatch(batchId) {
       const next = String(batchId || '')
       if (!next || next === this.activeBatchId) return
       this.invalidateContext()
       this.activeBatchId = next; this.detailId = ''; this.receipt = null; this.decisionError = null
-      this.courseLimit = 20; this.recordLimit = 20; this.searchDraft = ''; this.searchTerm = ''
+      this.coursePage = 1; this.recordPage = 1; this.searchDraft = ''; this.searchTerm = ''
+      this.courseTotal = 0; this.courseHasMore = false; this.recordTotal = 0; this.recordHasMore = false
       const pending = Object.values(this.unresolved).find((item) => item.batchId === next)
       if (pending) this.showUnknown(pending)
       return this.loadBatch(next)
     },
     loadBatch(batchId) {
-      return Promise.allSettled([this.readCourses(String(batchId || ''), false), this.readRecords(String(batchId || ''))])
+      if (!batchId) return Promise.resolve([])
+      return Promise.allSettled([this.readCourses(String(batchId || '')), this.readRecords(String(batchId || ''))])
     },
-    readCourses(capturedBatch, discover = false) {
+    readCourses(capturedBatch) {
       const epoch = ++this.requestEpoch
       const context = this.contextEpoch
-      const key = capturedBatch || '__all__'
-      const current = () => this.identityMatches() && context === this.contextEpoch && this.requestEpoch === epoch && (discover || this.activeBatchId === capturedBatch)
+      const key = capturedBatch
+      const current = () => this.identityMatches() && context === this.contextEpoch && this.requestEpoch === epoch && this.activeBatchId === capturedBatch
       this.courseState = 'loading'; this.courseStale = !!this.activeGroups.length; this.courseError = ''
-      return studentApi.getSelectionCourses(capturedBatch || undefined).then((value) => {
+      return studentApi.getSelectionCoursesPage({ batchId: capturedBatch, keyword: this.searchTerm, page: this.coursePage, pageSize: 20 }).then((value) => {
         if (!current()) return null
-        const groups = this.normalizeGroups(value)
-        if (discover) {
-          const history = this.batchCatalog
-          this.batchCatalog = groups.map((group) => group.batch).filter(Boolean)
-          this.mergeBatches(history)
-          if (!this.activeBatchId && this.batchCatalog.length) this.activeBatchId = String(this.batchCatalog[0].batchId)
-          groups.forEach((group) => this.setCourseCache(String(group.batch.batchId), [group]))
-          if (this.activeBatchId && !groups.some((group) => String(group.batch.batchId) === this.activeBatchId)) this.setCourseCache(this.activeBatchId, [])
-        } else {
-          const selectedGroups = capturedBatch ? groups.filter((group) => String(group && group.batch && group.batch.batchId) === capturedBatch) : groups
-          this.setCourseCache(key, selectedGroups)
+        if (!value || !value.batch || !Array.isArray(value.items)) throw new Error('课程信息无法核对')
+        const total = Number(value.total)
+        const maxPage = Math.max(1, Math.ceil((Number.isFinite(total) ? total : 0) / 20))
+        if (this.coursePage > maxPage) {
+          this.coursePage = maxPage
+          return this.readCourses(capturedBatch)
         }
+        this.courseTotal = Number.isFinite(total) && total >= 0 ? total : value.items.length
+        this.courseHasMore = !!value.hasMore
+        this.setCourseCache(key, [{ batch: value.batch, courses: value.items }])
         this.courseState = 'ready'; this.courseStale = false; this.loaded = true
         if (this.recordsState === 'ready' && this.decisionError?.readSource) this.decisionError = null
         const pending = Object.values(this.unresolved).find(item => item.batchId === this.activeBatchId)
         if (pending) this.showUnknown(pending)
-        return groups
+        return value.items
       }).catch((reason) => {
         if (!current()) return null
         this.consumeReadError('courses', reason); this.loaded = true
@@ -357,14 +413,22 @@ export default {
     readRecords(batchId) {
       const epoch = ++this.recordsEpoch
       const context = this.contextEpoch
-      const key = batchId || '__all__'
+      const key = batchId
       const current = () => this.identityMatches() && this.recordsEpoch === epoch && context === this.contextEpoch
       this.recordsState = 'loading'; this.recordsStale = !!this.activeRecords.length; this.recordsError = ''
-      return studentApi.getMySelections(batchId || undefined).then((value) => {
+      return studentApi.getMySelectionsPage({ batchId, page: this.recordPage, pageSize: 20 }).then((value) => {
         if (!current()) return null
-        const records = this.filterRecordsForBatch(this.normalizeRecords(value), batchId)
+        if (!value || !Array.isArray(value.items)) throw new Error('本人记录无法核对')
+        const total = Number(value.total)
+        const maxPage = Math.max(1, Math.ceil((Number.isFinite(total) ? total : 0) / 20))
+        if (this.recordPage > maxPage) {
+          this.recordPage = maxPage
+          return this.readRecords(batchId)
+        }
+        const records = value.items
+        this.recordTotal = Number.isFinite(total) && total >= 0 ? total : records.length
+        this.recordHasMore = !!value.hasMore
         this.setRecordCache(key, records)
-        this.mergeBatches(records)
         this.recordsState = 'ready'; this.recordsStale = false; this.loaded = true
         if (this.courseState === 'ready' && this.decisionError?.readSource) this.decisionError = null
         this.reconcilePending(records, batchId)
@@ -377,6 +441,18 @@ export default {
         if (!current()) return
         this.loaded = true
       })
+    },
+    readExactRecord(captured) {
+      if (!captured || !captured.batchId || !captured.selectionCourseId) return Promise.resolve(null)
+      const context = this.contextEpoch
+      return studentApi.getMySelectionsPage({
+        batchId: captured.batchId, selectionCourseId: captured.selectionCourseId, page: 1, pageSize: 1
+      }).then((value) => {
+        if (!this.identityMatches() || context !== this.contextEpoch || this.activeBatchId !== captured.batchId) return null
+        const records = value && value.items
+        if (!Array.isArray(records)) return null
+        return records.find((item) => String(item && item.selectionCourseId) === String(captured.selectionCourseId)) || null
+      }).catch(() => null)
     },
     async refreshRecords() {
       const batchId = this.activeBatchId; const context = this.contextEpoch
@@ -416,7 +492,12 @@ export default {
     confirmedTarget(captured) {
       if (!this.contextMatches(captured) || captured.courseEpoch !== this.requestEpoch) return null
       const course = this.activeGroups.flatMap((group) => group.courses || []).find((item) => String(item.selectionCourseId) === captured.selectionCourseId)
-      return course && this.recordAllowed(course, captured.operation) ? course : null
+      if (course && this.recordAllowed(course, captured.operation)) return course
+      // The student's own record can be on a different course page.  Its server
+      // allowedActions remain authoritative for a DROP; do not force a full course
+      // list just to reopen the same formal record.
+      const record = captured.operation === 'DROP' && findSelectionRecord(this.activeRecords, captured.selectionCourseId)
+      return record && this.recordAllowed(record, captured.operation) ? record : null
     },
     matchesDropPreflight(captured, preflight) {
       return !!preflight && preflight.allowed === true && String(preflight.action || '').toUpperCase() === 'DROP' &&
@@ -580,6 +661,9 @@ export default {
       if (!this.contextMatches(captured)) return null
       const records = await this.readRecords(captured.batchId)
       if (!this.contextMatches(captured)) return null
+      const exactRecord = await this.readExactRecord(captured)
+      if (!this.contextMatches(captured)) return null
+      if (exactRecord) this.reconcilePending([...(records || []), exactRecord], captured.batchId)
       this.tab = 'mine'
       if (this.unresolved[this.unresolvedKey(captured.selectionCourseId, captured.batchId)]) {
         this.showUnknown(captured)
@@ -599,6 +683,8 @@ button, input, textarea { font-family: inherit; }
 .sl { padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom)); }
 .sl__hero { padding: 4px 0 12px; }
 .sl__search { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.sl__batch-more, .sl__pages { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; color:var(--text-secondary); font-size:12px; }
+.sl__batch-more button, .sl__pages button { margin:0; font-size:12px; }
 .sl__search input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 10px; font-size: 14px; }
 .sl__search button { margin: 0; font-size: 13px; }
 .sl__course-summary { margin-top: 12px; }

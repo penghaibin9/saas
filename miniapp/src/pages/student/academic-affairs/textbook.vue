@@ -14,7 +14,7 @@
 
         <view class="section-head"><text class="section-head__title">教材领用</text></view>
         <view class="list-group" v-if="d.distributions && d.distributions.length">
-          <view v-for="r in d.distributions.slice(0, listLimit)" :key="r.recordId" class="tb__object">
+          <view v-for="r in d.distributions" :key="r.recordId" class="tb__object">
           <view class="list-row tb__item">
             <view class="flex-1">
               <text class="t-md">{{ r.textbookName }}<text v-if="r.qty > 1"> ×{{ r.qty }}</text></text>
@@ -36,7 +36,11 @@
           </view>
         </view>
         <AcademicPageState v-else state="empty" title="暂无教材记录" description="学校完成教材征订发放后，这里出现你的领用与费用。" />
-        <button v-if="d.distributions.length > listLimit" class="btn" @click="listLimit += 20">查看更多教材</button>
+        <view v-if="showDistributionPagination" class="tb__pages">
+          <button v-if="distributionPage > 1" class="btn" :disabled="state === 'loading'" @click="changeDistributionPage(distributionPage - 1)">上一页</button>
+          <text>领用记录第 {{ distributionPage }}/{{ distributionPageCount }} 页，共 {{ d.distributionPagination.total }} 条</text>
+          <button v-if="d.distributionPagination.hasMore" class="btn" :disabled="state === 'loading'" @click="changeDistributionPage(distributionPage + 1)">下一页</button>
+        </view>
         <text class="tb__sub">签收表示本人已领取教材，不代表教材费已支付。</text>
 
         <view class="section-head" v-if="d.fees.items && d.fees.items.length"><text class="section-head__title">教材费用明细</text></view>
@@ -48,6 +52,11 @@
             </view>
             <MobileStatusTag :status="f.status" :label="f.status === 'WAIVED' ? '已减免' : ''" />
           </view>
+        </view>
+        <view v-if="showFeePagination" class="tb__pages">
+          <button v-if="feePage > 1" class="btn" :disabled="state === 'loading'" @click="changeFeePage(feePage - 1)">上一页</button>
+          <text>费用明细第 {{ feePage }}/{{ feePageCount }} 页，共 {{ d.fees.total }} 条</text>
+          <button v-if="d.fees.pagination.hasMore" class="btn" :disabled="state === 'loading'" @click="changeFeePage(feePage + 1)">下一页</button>
         </view>
       </view>
     </AcademicPageState>
@@ -64,11 +73,22 @@ import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { savePending } from './pending-ledger'
 const isForbidden = error => Number(error?.httpStatus || error?.statusCode) === 403 || /^403/.test(String(error?.code || '')) || error?.code === 'NO_PERMISSION'
 const DIST_STATUS = { PENDING: '待签收', RECEIVED: '已领取', EXCLUDED: '当前不发放', RETURNED: '已退领', EXCHANGED: '已换领' }
+const PAGE_SIZE = 20
+const pageNumber = value => Math.max(1, Number(value) || 1)
+const pageCount = page => Math.max(1, Math.ceil(Number(page?.total || 0) / Math.max(1, Number(page?.pageSize || PAGE_SIZE))))
 export default {
   components: { AcademicPageNav, AcademicPageState },
   mixins: [academicApplicationPage],
   created() { this.applicationScope = 'textbook' },
   data() { return { d: null, state: 'loading', signingId: '', received: false } },
+  computed: {
+    distributionPage() { return pageNumber(this.d?.distributionPagination?.page) },
+    feePage() { return pageNumber(this.d?.fees?.pagination?.page) },
+    distributionPageCount() { return pageCount(this.d?.distributionPagination) },
+    feePageCount() { return pageCount(this.d?.fees?.pagination) },
+    showDistributionPagination() { return Number(this.d?.distributionPagination?.total || 0) > PAGE_SIZE },
+    showFeePagination() { return Number(this.d?.fees?.total || 0) > PAGE_SIZE }
+  },
   onLoad() { this.load() },
   onHide() { this.received = false },
   methods: {
@@ -84,17 +104,55 @@ export default {
     },
     finishApplication() { this.signingId = ''; this.received = false; this.applicationNotice = '已核对学校记录：教材已签收。签收不代表已缴费。' },
     openSign(r) { if (this.submitting || this.pendingApplication || !this.canSign(r)) return; this.signingId = String(r.recordId); this.received = false },
-    load() {
-      return this.readAcademic(async () => {
+    async load(requestedPages = {}) {
+      let focusedRecordId = ''
+      let resolvedPages = null
+      const result = await this.readAcademic(async () => {
         const identity = currentSessionGeneration(); const epoch = this.readEpoch
-        try { return await studentApi.getMyTextbook() }
+        const distributionPage = pageNumber(requestedPages.distributionPage || this.d?.distributionPagination?.page)
+        const feePage = pageNumber(requestedPages.feePage || this.d?.fees?.pagination?.page)
+        resolvedPages = { distributionPage, feePage }
+        // A cold-start after an uncertain sign only reads the exact original receipt under
+        // the current student's server scope; it never scans all historical records.
+        focusedRecordId = String(this.pendingApplication?.existingId || '')
+        try {
+          return await studentApi.getMyTextbook({
+            distributionPage,
+            distributionPageSize: PAGE_SIZE,
+            distributionRecordId: focusedRecordId || undefined,
+            feePage,
+            feePageSize: PAGE_SIZE
+          })
+        }
         catch (error) { if (isForbidden(error) && epoch === this.readEpoch && identity === currentSessionGeneration() && !this.readHidden) this.clearForbiddenTextbook(); throw error }
       }, d => {
         if (!Array.isArray(d.distributions) || !d.fees) throw new Error('教材信息无法核对')
-        this.d = d
-        this.acceptApplication(d.distributions, 'recordId', (row, body) => String(this.pendingApplication?.returnedId || '') === String(body.recordId) && row.status === 'RECEIVED')
+        const distributionPagination = {
+          total: Number(d.distributionPagination?.total ?? d.distributions.length),
+          page: pageNumber(d.distributionPagination?.page),
+          pageSize: Number(d.distributionPagination?.pageSize || PAGE_SIZE),
+          hasMore: Boolean(d.distributionPagination?.hasMore)
+        }
+        const fees = {
+          ...d.fees,
+          items: Array.isArray(d.fees.items) ? d.fees.items : [],
+          total: Number(d.fees.total ?? d.fees.items?.length ?? 0),
+          pagination: {
+            page: pageNumber(d.fees.pagination?.page ?? d.fees.page),
+            pageSize: Number(d.fees.pagination?.pageSize ?? d.fees.pageSize ?? PAGE_SIZE),
+            hasMore: Boolean(d.fees.pagination?.hasMore ?? d.fees.hasMore)
+          }
+        }
+        this.d = { ...d, distributions: d.distributions, distributionPagination, fees }
+        this.acceptApplication(this.d.distributions, 'recordId', (row, body) => String(this.pendingApplication?.returnedId || '') === String(body.recordId) && row.status === 'RECEIVED')
       })
+      // After a successful exact recovery, return to the original paged list rather than
+      // leaving the user on a one-row recovery projection.
+      if (result && focusedRecordId && !this.pendingApplication) return this.load(resolvedPages || requestedPages)
+      return result
     },
+    changeDistributionPage(page) { return this.load({ distributionPage: page, feePage: this.feePage }) },
+    changeFeePage(page) { return this.load({ distributionPage: this.distributionPage, feePage: page }) },
     sign(r) {
       if (!this.canSign(r) || this.submitting || this.pendingApplication || !this.received || this.signingId !== String(r.recordId)) return
       return this.sendApplication({ title: '确认本人已领取：' + r.textbookName, content: `${r.textbookName}，应收${r.qty ?? '待核对'}册。请确认书目与数量一致，签收不代表已缴费。`, body: { recordId: r.recordId }, existingId: r.recordId,
@@ -120,4 +178,6 @@ button, input, textarea { font-family: inherit; }
 .tb__notice { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--success-50); color: var(--success-700); font-size: 12px; }
 .tb__notice.is-warning { background: var(--warning-50); color: var(--warning-700); }
 .tb__notice text:first-child { font-size: 14px; font-weight: 700; }
+.tb__pages { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--text-tertiary); font-size:12px; }
+.tb__pages .btn { margin:0; min-width:72px; }
 </style>

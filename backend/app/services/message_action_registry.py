@@ -36,6 +36,19 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
         "label": "原志愿办理结果",
     },
+    "student.internship.weekly-report": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["reportId", "batchId", "internshipId", "weekNo"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": "/pages/student/weekly-report/index",
+        "teacherMini": None,
+        # 周报页读取 reportId / weekNo，并在拿到正式列表后切到对应周；不是
+        # 仅跳到一个泛化实习大厅，故可以声明对象级 list focus。
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "focusParam": "reportId",
+        "label": "实习周报",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],

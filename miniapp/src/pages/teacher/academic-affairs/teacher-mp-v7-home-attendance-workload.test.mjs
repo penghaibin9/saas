@@ -185,13 +185,18 @@ test('attendance submit keeps ambiguous command locked and exact submit closes o
   assert.equal(next.events.successToasts.includes('考勤已提交'), true)
 })
 
-test('attendance displays exact full-list status counts while rendering thirty students', () => {
+test('attendance displays server summary for a 65-person class while rendering only the current thirty-person page', () => {
   const { instance } = page('./attendance.vue')
-  instance.items = Array.from({ length: 65 }, (_, index) => ({ studentId: String(index + 1), status: ['PRESENT', 'LATE', 'ABSENT', 'LEAVE'][index % 4] }))
+  instance.applyRosterPage({
+    items: Array.from({ length: 30 }, (_, index) => ({ studentId: String(index + 1), status: 'PRESENT' })),
+    total: 65, page: 1, pageSize: 30, hasMore: true,
+    summary: { PRESENT: 17, LATE: 16, ABSENT: 16, LEAVE: 16, UNMARKED: 0 },
+    rosterIntegrity: 'READY'
+  })
   assert.equal(instance.visibleStudents.length, 30)
   assert.equal(Object.values(instance.statusCounts).reduce((sum, count) => sum + count, 0), 65)
-  instance.studentPage = 2
-  assert.equal(instance.visibleStudents.length, 5)
+  assert.equal(instance.rosterPageCount, 3)
+  assert.equal(instance.rosterHasMore, true)
 })
 
 test('an unconfirmed student mark blocks whole-session submission', async () => {
@@ -264,6 +269,58 @@ test('workload exact ACK requires formal declaration readback and preserves newe
   assert.equal(instance.showForm, true)
   assert.equal(events.toasts.includes('原申报已核对，当前新内容已保留'), true)
   assert.equal(instance.hasUnknownWrite('NEW_DECLARATION'), false)
+})
+
+test('attendance session list requests the next formal server page instead of slicing a local fifty-row cap', async () => {
+  const requests = []
+  const { instance } = page('./attendance.vue', { teacherApi: {
+    getAttendanceSessions: async (params) => {
+      requests.push(params)
+      return {
+        items: [{ sessionId: String(params.page) }], total: 41,
+        page: params.page, pageSize: params.pageSize, hasMore: params.page === 1
+      }
+    }
+  } })
+  await instance.load(1)
+  assert.equal(requests[0].page, 1)
+  assert.equal(requests[0].pageSize, 20)
+  assert.equal(instance.sessions.length, 1)
+  assert.equal(instance.sessionPageCount, 3)
+  assert.equal(instance.sessionHasMore, true)
+  await instance.load(2)
+  assert.equal(requests[1].page, 2)
+  assert.equal(requests[1].pageSize, 20)
+  assert.equal(instance.sessions[0].sessionId, '2')
+  assert.equal(instance.sessionHasMore, false)
+})
+
+test('workload uses a durable command key and resolves an uncertain POST from the formal receipt', async () => {
+  const pageCalls = []
+  let sent = null
+  const { instance } = page('./workload.vue', {
+    teacherApi: {
+      submitWorkload: async (body) => { sent = body; throw { code: 'NETWORK' } },
+      getWorkloadDeclarations: async (params) => {
+        pageCalls.push(params)
+        return { items: [], total: 21, page: params.page, pageSize: params.pageSize, hasMore: params.page === 1 }
+      },
+      getWorkloadCommandReceipt: async (key) => ({
+        commandKey: key, operation: 'WORKLOAD_SUBMIT', state: 'SUCCESS', result: { declarationId: '91' }
+      })
+    }
+  })
+  instance._viewContext = instance.contextKey(); instance.showForm = true
+  instance.form = { hours: '4', termCode: '2026-1', description: '期末监考' }
+  instance.submit()
+  await flush(); await flush(); await flush()
+  assert.match(sent.commandKey, /^wmp_[A-Za-z0-9_]+$/)
+  assert.equal(pageCalls[0].page, 1)
+  assert.equal(pageCalls[0].pageSize, 20)
+  assert.equal(instance.hasUnknownWrite('NEW_DECLARATION'), false)
+  assert.equal(instance.declarationPageCount, 2)
+  await instance.load(null, 2)
+  assert.equal(pageCalls.at(-1).page, 2)
 })
 
 test('workload 403 clears private data and entered form', async () => {

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
+from app.core.permissions import enforce_permission
 from app.core.tenant_scoped import tenant_get
 from app.db.session import db_enabled, get_sessionmaker
 
@@ -42,7 +43,7 @@ def is_teacher_user(user: dict | None) -> bool:
 
 def _require_teacher(user: dict | None):
     u = user or {}
-    if (u.get("userType") or "").upper() == "STUDENT":
+    if (u.get("userType") or "").upper() not in ("TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"):
         raise AppException("NO_PERMISSION", "该接口仅教师端可用")
     return u
 
@@ -1308,14 +1309,37 @@ def affairs_class_material_void(user: dict, material_id: str, reason: str | None
 # ══════════ 教务·教师任务确认（直接复用 academic_affairs_task_service，该函数已按
 # teacher_key 自校验归属，管理角色代管豁免；list 用 mine=True 收敛为本人任务） ══════════
 
-def affairs_academic_my_tasks(user: dict, status: str | None = None) -> dict:
+def affairs_academic_my_tasks(
+    user: dict,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    task_id: str | None = None,
+) -> dict:
     """我的教学任务（仅本人 teacher_key 命中的任务，PENDING_ASSIGN/ASSIGNED 等各状态均可查看）。"""
     u = _require_teacher(user)
     if not db_enabled():
-        return {"list": [], "total": 0}
+        return {"list": [], "total": 0, "page": 1, "pageSize": page_size, "hasMore": False}
     from app.modules.academic_affairs.services import academic_affairs_task_service as task_svc
-    items, total = task_svc.list_all_tasks(u, status=status, mine=True, page=1, page_size=200)
-    return {"list": items, "total": total}
+    current_page = max(1, int(page or 1))
+    current_page_size = max(1, min(int(page_size or 20), 50))
+    if task_id not in (None, ""):
+        current_page = 1
+    items, total = task_svc.list_all_tasks(
+        u,
+        status=status,
+        mine=True,
+        page=current_page,
+        page_size=current_page_size,
+        task_id=task_id,
+    )
+    return {
+        "list": items,
+        "total": total,
+        "page": current_page,
+        "pageSize": current_page_size,
+        "hasMore": current_page * current_page_size < total,
+    }
 
 
 def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str | None = None) -> dict:
@@ -1330,9 +1354,7 @@ def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str
     return result
 
 
-# ══════════ 教务·发起调停课（直接复用 academic_affairs_schedule_change_service，
-# submit/cancel/conflict_check/list_changes 均已按 teacher_key/COLLEGE 自校验；
-# get_change PC 端本身无归属校验，移动端补一道校验，不改 PC） ══════════
+# ══════════ 教务·发起调停课（读取沿用正式服务；写入必须经过 R3 事务门）══════════
 
 def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: int | None = None) -> dict:
     """我的课表（供选择「原课位」发起调停课）。
@@ -1341,6 +1363,7 @@ def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: i
     因此优先 loginName，再按 `_user_keys` 逐个回退，避免「有排课但我的课表空白」。
     """
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.schedule.view")
     if not db_enabled():
         return {"items": [], "batchId": None, "weeklyHours": 0, "note": ""}
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as sched_svc
@@ -1363,18 +1386,20 @@ def affairs_academic_my_schedule(user: dict, term_id: str | None = None, week: i
 def affairs_academic_schedule_conflict_check(user: dict, body: dict) -> dict:
     """目标课位冲突预检（只读，归属校验在服务层完成）。"""
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.scheduleChange.apply")
     if not db_enabled():
         return {"conflict": None}
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
     return chg_svc.conflict_check(_ns(body), u)
 
 
 def affairs_academic_schedule_submit(user: dict, body: dict) -> dict:
     """发起调停课（调课/停课/补课），提交即冲突预检，归属校验在服务层完成。"""
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.scheduleChange.apply")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
     result = chg_svc.submit(_ns(body), u)
     _audit_write("MOBILE_ACADEMIC_SCHEDULE_SUBMIT", f"schedule-change:{result.get('changeId')}",
                  {"operator": u.get("realName"), "changeType": result.get("changeType")})
@@ -1384,31 +1409,38 @@ def affairs_academic_schedule_submit(user: dict, body: dict) -> dict:
 def affairs_academic_schedule_cancel(user: dict, change_id: str, reason: str | None = None) -> dict:
     """撤销调停课申请（终审前，归属校验在服务层完成）。"""
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.scheduleChange.apply")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
     result = chg_svc.cancel(change_id, u, reason or "")
     _audit_write("MOBILE_ACADEMIC_SCHEDULE_CANCEL", f"schedule-change:{change_id}",
                  {"operator": u.get("realName")})
     return result
 
 
-def affairs_academic_schedule_changes(user: dict, status: str | None = None) -> dict:
-    """我的调停课申请列表（list_changes 内部已按 teacher_key/COLLEGE 自校验范围）。"""
+def affairs_academic_schedule_changes(user: dict, status: str | None = None,
+                                      page: int = 1, page_size: int = 20) -> dict:
+    """调停课申请列表（SQL 分页，范围由正式读服务收敛）。"""
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.scheduleChange.view")
     if not db_enabled():
-        return {"list": [], "total": 0}
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
-    items, total = chg_svc.list_changes(u, status=status, page=1, page_size=100)
-    return {"list": items, "total": total}
+        return {"list": [], "total": 0, "page": 1, "pageSize": 20, "hasMore": False}
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
+    current_page = max(1, int(page or 1))
+    current_size = min(50, max(1, int(page_size or 20)))
+    items, total = chg_svc.list_changes(u, status=status, page=current_page, page_size=current_size)
+    return {"list": items, "total": total, "page": current_page, "pageSize": current_size,
+            "hasMore": current_page * current_size < total}
 
 
 def affairs_academic_schedule_change_detail(user: dict, change_id: str) -> dict:
     """调停课单详情（归属校验已在服务层 get_change 完成）。"""
     u = _require_teacher(user)
+    enforce_permission(u, "academicAffairs.scheduleChange.view")
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
     return chg_svc.get_change(change_id, u)
 
 
@@ -1418,6 +1450,10 @@ def affairs_academic_schedule_change_detail(user: dict, change_id: str) -> dict:
 # 再逐条复用 PC 端 _check_defer_scope 同款范围判断，只留下真正轮到本人审批的） ══════════
 
 _DEFER_NODE_STATUS_BY_ROLE = {"COUNSELOR": "COUNSELOR_REVIEW", "ACADEMIC_TEACHER": "TEACHER_CONFIRM"}
+_DEFER_PERMISSION_BY_ROLE = {
+    "COUNSELOR": "academicAffairs.deferredExam.counselorReview",
+    "ACADEMIC_TEACHER": "academicAffairs.deferredExam.review",
+}
 
 
 def affairs_academic_defer_pending(user: dict) -> dict:
@@ -1431,19 +1467,21 @@ def affairs_academic_defer_pending(user: dict) -> dict:
     node_status = _DEFER_NODE_STATUS_BY_ROLE.get(role)
     if not node_status:
         return {"list": [], "total": 0}
+    enforce_permission(u, _DEFER_PERMISSION_BY_ROLE[role])
     from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
     items, total = exam_svc.defer_list(u, status=node_status, page=1, page_size=500)
     return {"list": items, "total": total}
 
 
-def affairs_academic_defer_review(user: dict, defer_id: str, action: str, reason: str | None = None) -> dict:
+def affairs_academic_defer_review(user: dict, defer_id: str, action: str,
+                                  reason: str | None = None, expected_version=None) -> dict:
     """缓考审批动作（APPROVE 推进/RETURN 退回/REJECT 驳回），节点角色+范围校验在服务层
     _check_defer_scope 完成（辅导员限本人所带班级/任课教师限本人授课）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
-    result = exam_svc.defer_review(u, defer_id, action, reason or "")
+    result = exam_svc.defer_review(u, defer_id, action, reason or "", expected_version)
     _audit_write("MOBILE_ACADEMIC_DEFER_REVIEW", f"defer:{defer_id}",
                  {"operator": u.get("realName"), "action": action})
     return result
@@ -1821,8 +1859,8 @@ def student_detail(user: dict, student_id) -> dict:
 
 # ══════════ 六域教师页（真实结构，租户过滤 + scopeMode） ══════════
 
-def internship(user: dict, batch_id=None, *, weekly_page=1, exception_page=1,
-               page_size=20) -> dict:
+def internship(user: dict, batch_id=None, *, focus_report_id=None, weekly_page=1,
+               exception_page=1, page_size=20) -> dict:
     """教师·实习待批。
 
     实习域的查询按批次收敛，而请求中间件只把 x-internship-batch-id 绑给学生端路径
@@ -1841,6 +1879,27 @@ def internship(user: dict, batch_id=None, *, weekly_page=1, exception_page=1,
     weekly_page = max(1, int(weekly_page or 1))
     exception_page = max(1, int(exception_page or 1))
     page_size = max(1, min(int(page_size or 20), 50))
+
+    # 统一待办只持有业务记录 ID，不能由小程序自行推导其所属批次。先复用同一
+    # 周报详情服务完成租户和教师范围校验，再以该事实确定队列批次。这样修改
+    # recordId 不会把教师带入其他学生或其他批次的数据。
+    if focus_report_id not in (None, ""):
+        focus = internship_service.get_weekly_report_detail(focus_report_id, user=u)
+        focus_batch_id = str(focus.get("batchId") or "").strip()
+        if not focus_batch_id:
+            raise AppException("DATA_CONFLICT", "待办周报缺少实习批次，请联系管理员核对数据")
+        if batch_id not in (None, "") and str(batch_id) != focus_batch_id:
+            raise AppException("DATA_CONFLICT", "待办与当前实习批次不一致，请重新打开待办")
+        batch_id = focus_batch_id
+
+    if batch_id in (None, ""):
+        raise AppException("VALIDATION_ERROR", "请选择实习批次后查看待办")
+
+    # 不再让无效/跨学校 batchId 在 _src 的降级分支里变成空数组；当前页面的
+    # 主数据源必须明确失败，前端才能正确展示可操作错误而不是“暂无周报”。
+    with _session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        resolve_batch(db, batch_id)
 
     def _src(source: str, fn, source_page: int, **kw):
         try:
@@ -1872,7 +1931,7 @@ def internship(user: dict, batch_id=None, *, weekly_page=1, exception_page=1,
         stats = internship_service.get_dashboard_summary(user=u, batch_id=batch_id)
     except Exception:  # noqa: BLE001
         stats = {"pendingReports": rtotal, "abnormal": etotal}
-    return {"hasData": (rtotal + etotal) > 0, "weeklyReports": reports,
+    return {"hasData": (rtotal + etotal) > 0, "batchId": str(batch_id), "weeklyReports": reports,
             "abnormalCheckins": excs, "stats": stats, "scopeMode": scope["mode"],
             "pagination": {
                 "pageSize": page_size,
@@ -2841,7 +2900,14 @@ def internship_application_review(user: dict, application_id: str, action: str, 
     return result
 
 
-def proposal_review(user: dict, proposal_id: str, action: str, comment: str | None = None) -> dict:
+def proposal_review(
+    user: dict,
+    proposal_id: str,
+    action: str,
+    comment: str | None = None,
+    expected_version: int | None = None,
+    file_version_id: int | None = None,
+) -> dict:
     """毕设开题批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生。"""
     u = _require_teacher(user)
     if not db_enabled():
@@ -2854,7 +2920,12 @@ def proposal_review(user: dict, proposal_id: str, action: str, comment: str | No
                                advisor_name=detail.get("advisorName"),
                                student_no=detail.get("studentNo")):
             raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
-    result = material_center.review_proposal(int(proposal_id), action, comment, u)
+    # 审核必须携带详情端返回的权威材料版本；不能因为移动聚合层漏传参数而
+    # 退化成“读到什么就批什么”的旧版写入。
+    result = material_center.review_proposal(
+        int(proposal_id), action, comment, u,
+        expected_version=expected_version, file_version_id=file_version_id,
+    )
     _audit_write("MOBILE_PROPOSAL_REVIEW", f"graduation/proposal:{proposal_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
@@ -2874,6 +2945,9 @@ def proposal_detail(user: dict, proposal_id: str) -> dict:
         raise AppException("NO_PERMISSION", "该开题不在你的指导范围内")
     content = detail.get("content") or {}
     return {"id": str(detail.get("id") or proposal_id),
+            # graduation_service 的历史 DTO 将毕设学生 id 命名为 projectId；
+            # 小程序的精确待办深链使用 gdStudentId，故在唯一移动适配层统一。
+            "gdStudentId": str(detail.get("gdStudentId") or detail.get("projectId") or ""),
             "studentName": detail.get("studentName") or "", "className": detail.get("className") or "",
             "topicTitle": detail.get("topicTitle") or "", "version": detail.get("version") or "",
             "isResubmit": bool(detail.get("isResubmit")), "submitAt": detail.get("submitAt") or "",
@@ -2882,7 +2956,16 @@ def proposal_detail(user: dict, proposal_id: str) -> dict:
             "outcome": content.get("outcome") or "", "reviewComment": detail.get("reviewComment") or "",
             "attachments": int(detail.get("attachments") or 0),
             "attachmentsList": detail.get("attachmentsList") or [],
-            "versions": detail.get("versions") or []}
+            "versions": detail.get("versions") or [],
+            # 这些字段来自材料中心的安全读模型。不可由小程序依据普通附件
+            # 列表自行推导，否则扫描、隔离或版本冲突时会错误放开审核按钮。
+            "materialId": detail.get("materialId"),
+            "materialVersion": detail.get("materialVersion"),
+            "fileVersionId": detail.get("fileVersionId"),
+            "currentSafeVersions": detail.get("currentSafeVersions") or [],
+            "currentVersionCount": int(detail.get("currentVersionCount") or 0),
+            "reviewReady": detail.get("reviewReady") is True,
+            "migrationRequired": detail.get("migrationRequired") is True}
 
 
 def final_detail(user: dict, final_id: str) -> dict:
@@ -2899,6 +2982,7 @@ def final_detail(user: dict, final_id: str) -> dict:
             student_no=detail.get("studentNo")):
         raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
     return {"id": str(detail.get("id") or final_id),
+            "gdStudentId": str(detail.get("gdStudentId") or detail.get("projectId") or ""),
             "studentName": detail.get("studentName") or "", "className": detail.get("className") or "",
             "topicTitle": detail.get("topicTitle") or "", "type": detail.get("type") or "",
             "version": detail.get("version") or "", "submitAt": detail.get("submitAt") or "",
@@ -2908,10 +2992,24 @@ def final_detail(user: dict, final_id: str) -> dict:
             "plagiarismTone": detail.get("plagiarismTone") or "success",
             "reviewComment": detail.get("reviewComment") or "",
             "attachmentsList": detail.get("attachmentsList") or [],
-            "versions": detail.get("versions") or []}
+            "versions": detail.get("versions") or [],
+            "materialId": detail.get("materialId"),
+            "materialVersion": detail.get("materialVersion"),
+            "fileVersionId": detail.get("fileVersionId"),
+            "currentSafeVersions": detail.get("currentSafeVersions") or [],
+            "currentVersionCount": int(detail.get("currentVersionCount") or 0),
+            "reviewReady": detail.get("reviewReady") is True,
+            "migrationRequired": detail.get("migrationRequired") is True}
 
 
-def final_review(user: dict, final_id: str, action: str, comment: str | None = None) -> dict:
+def final_review(
+    user: dict,
+    final_id: str,
+    action: str,
+    comment: str | None = None,
+    expected_version: int | None = None,
+    file_version_id: int | None = None,
+) -> dict:
     """毕设成果批阅（APPROVE/REJECT）。SCOPED 教师只能批阅范围内学生；查重超标不可直接通过。"""
     u = _require_teacher(user)
     if not db_enabled():
@@ -2924,7 +3022,10 @@ def final_review(user: dict, final_id: str, action: str, comment: str | None = N
                                advisor_name=detail.get("advisorName"),
                                student_no=detail.get("studentNo")):
             raise AppException("NO_PERMISSION", "该成果不在你的指导范围内")
-    result = material_center.review_final(int(final_id), action, comment, u)
+    result = material_center.review_final(
+        int(final_id), action, comment, u,
+        expected_version=expected_version, file_version_id=file_version_id,
+    )
     _audit_write("MOBILE_FINAL_REVIEW", f"graduation/final:{final_id}",
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
@@ -2995,27 +3096,9 @@ def graduation_change_request_review(user: dict, request_id: str, action: str,
 
 
 def warning_handle(user: dict, warning_id: str, action: str, note: str | None = None) -> dict:
-    """学业预警处理：CLOSE（关闭）/ ESCALATE（升级）。"""
-    u = _require_teacher(user)
-    if not db_enabled():
-        raise AppException("VALIDATION_ERROR", "演示模式不支持真实处理")
-    scope = resolve_teacher_scope(u)
-    if scope.get("mode") == "SCOPED":
-        detail = academic_service.get_warning_detail(warning_id)  # 不存在 → 404
-        w = detail.get("warning") or {}
-        s = detail.get("student") or {}
-        if not scope_match_row(scope, class_name=w.get("className") or s.get("className"),
-                               student_no=s.get("studentNo")):
-            raise AppException("NO_PERMISSION", "该预警学生不在你的负责范围内")
-    if action == "CLOSE":
-        result = academic_service.close_warning(warning_id, note or "")
-    elif action == "ESCALATE":
-        result = academic_service.escalate_warning(warning_id, note or "")
-    else:
-        raise AppException("VALIDATION_ERROR", "action 必须是 CLOSE/ESCALATE")
-    _audit_write("MOBILE_WARNING_HANDLE", f"academic/warning:{warning_id}",
-                 {"operator": u.get("realName"), "action": action, "note": (note or "")[:200]})
-    return result
+    """Compatibility shim; all warning writes use the canonical mobile permission guard."""
+    from app.modules.academic_affairs.services import mobile_academic_warning_service
+    return mobile_academic_warning_service.handle(user, warning_id, action, note or "")
 
 
 def followup_create(user: dict, body: dict) -> dict:
@@ -3334,48 +3417,44 @@ def graduation_grade_review(user: dict, gd_student_id: str, action: str, comment
                  {"operator": u.get("realName"), "action": action, "comment": (comment or "")[:200]})
     return result
 
-def affairs_academic_schedule_change_pending(user: dict) -> dict:
-    """调停课待我审批：学院节点看 SUBMITTED；教务处节点看 COLLEGE_REVIEW。"""
+def affairs_academic_schedule_change_pending(user: dict, page: int = 1, page_size: int = 20,
+                                             change_id: str | None = None) -> dict:
+    """调停课待我审批：权限节点和 WorkflowTask 的真实受理人都必须命中。"""
     u = _require_teacher(user)
     if not db_enabled():
-        return {"list": [], "total": 0}
+        return {"list": [], "total": 0, "page": 1, "pageSize": 20, "hasMore": False}
     from app.core.permissions import has_permission
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
-    statuses = []
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
+    nodes = []
     if has_permission(u, _SC_COLLEGE_PERM):
-        statuses.append("SUBMITTED")
+        nodes.append("COLLEGE_REVIEW")
     if has_permission(u, _SC_ACADEMIC_PERM):
-        statuses.append("COLLEGE_REVIEW")
-    if not statuses:
-        return {"list": [], "total": 0, "note": "当前身份无调停课审批权限"}
-    items, _ = chg_svc.list_changes(u, status=",".join(statuses), page=1, page_size=200)
-    # 再按 currentNode 收口，避免学院/教务处权限并存时串节点
-    out = []
-    for it in items:
-        node = (it.get("currentNode") or "").upper()
-        st = (it.get("status") or "").upper()
-        if st == "SUBMITTED" and node == "COLLEGE_REVIEW" and has_permission(u, _SC_COLLEGE_PERM):
-            out.append(it)
-        elif st == "COLLEGE_REVIEW" and node == "ACADEMIC_REVIEW" and has_permission(u, _SC_ACADEMIC_PERM):
-            out.append(it)
-    return {"list": out, "total": len(out)}
+        nodes.append("ACADEMIC_REVIEW")
+    if not nodes:
+        return {"list": [], "total": 0, "page": 1, "pageSize": 20, "hasMore": False,
+                "note": "当前身份无调停课审批权限"}
+    return chg_svc.pending_for_assignee(
+        u, nodes, page=page, page_size=page_size, change_id=change_id,
+    )
 
 def affairs_academic_schedule_change_review(user: dict, change_id: str, action: str,
-                                            comment: str | None = None) -> dict:
-    """调停课审批（APPROVE/REJECT）；节点权限由路由侧 + 本函数预检，服务层改写课表。"""
+                                            comment: str | None = None, expected_version=None) -> dict:
+    """调停课审批：节点权限、任务受理人和版本必须同时匹配。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
-    from app.core.permissions import has_permission
-    from app.modules.academic_affairs.services import academic_affairs_schedule_change_service as chg_svc
+    from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as chg_svc
     action = (action or "").upper()
     detail = chg_svc.get_change(change_id, u)
     node = (detail.get("currentNode") or "").upper()
-    if node == "COLLEGE_REVIEW" and not has_permission(u, _SC_COLLEGE_PERM):
-        raise AppException("NO_PERMISSION", "无权进行学院调停课审批", http_status=403)
-    if node == "ACADEMIC_REVIEW" and not has_permission(u, _SC_ACADEMIC_PERM):
-        raise AppException("NO_PERMISSION", "无权进行教务处调停课审批", http_status=403)
-    result = chg_svc.review(change_id, u, action, comment or "")
+    permission = {
+        "COLLEGE_REVIEW": _SC_COLLEGE_PERM,
+        "ACADEMIC_REVIEW": _SC_ACADEMIC_PERM,
+    }.get(node)
+    if not permission:
+        raise AppException("APPROVAL_VERSION_CONFLICT", "当前调停课单不在可审批节点，请刷新后重试", http_status=409)
+    enforce_permission(u, permission)
+    result = chg_svc.review(change_id, u, action, comment or "", expected_version=expected_version)
     _audit_write("MOBILE_ACADEMIC_SCHEDULE_REVIEW", f"schedule-change:{change_id}",
                  {"operator": u.get("realName"), "action": action})
     return result

@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.modules.academic_affairs.services import academic_affairs_exam_public_contract as exam_contract
@@ -72,12 +72,12 @@ def _student(db, user):
     return student
 
 
-def _formal_exam_rows(db, student_id: int, *, batch_statuses=None):
-    """本人正式考试事实，一条查询跨 seat/room/course/batch，不消费编排草稿。"""
+def _formal_exam_statement(student_id: int, *, batch_statuses=None):
+    """本人正式考试事实，供计数、分页和读取共用，不消费编排草稿。"""
     from app.models import AaExamBatch, AaExamCourse, AaExamRoom, AaExamRoomStudent
 
     statuses = sorted(batch_statuses or _VISIBLE_BATCH_STATUSES)
-    return db.execute(
+    return (
         select(AaExamRoomStudent, AaExamRoom, AaExamCourse, AaExamBatch)
         .join(
             AaExamRoom,
@@ -108,16 +108,36 @@ def _formal_exam_rows(db, student_id: int, *, batch_statuses=None):
             AaExamBatch.is_deleted.is_(False),
         )
         .order_by(AaExamCourse.exam_date, AaExamCourse.start_time, AaExamRoom.room_seq, AaExamRoomStudent.id)
-    ).all()
+    )
 
 
-def exam_my(user) -> dict:
+def _formal_exam_rows(db, student_id: int, *, batch_statuses=None, page=None, page_size=None):
+    statement = _formal_exam_statement(student_id, batch_statuses=batch_statuses)
+    if page is not None:
+        statement = statement.offset((int(page) - 1) * int(page_size)).limit(int(page_size))
+    return db.execute(statement).all()
+
+
+def _formal_exam_total(db, student_id: int, *, batch_statuses=None) -> int:
+    statement = _formal_exam_statement(student_id, batch_statuses=batch_statuses).order_by(None)
+    return int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
+
+
+def exam_my(user, page=None, page_size=20) -> dict:
     """本人已发布/已结束/已归档正式考试安排，包含座位与本地开考状态。"""
+    if page is not None and (
+        isinstance(page, bool) or isinstance(page_size, bool)
+        or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 100
+    ):
+        raise AppException("VALIDATION_ERROR", "考试安排页码须在1至100000、每页条数须在1至100之间")
     with session() as db:
         student = _student(db, user)
         zone, zone_name = _tenant_timezone(db)
+        total = _formal_exam_total(db, student.id)
         items = []
-        for seat, room, course, batch in _formal_exam_rows(db, student.id):
+        for seat, room, course, batch in _formal_exam_rows(
+            db, student.id, page=page, page_size=page_size,
+        ):
             items.append({
                 "examCourseId": str(course.id),
                 "courseName": course.course_name or "",
@@ -137,7 +157,10 @@ def exam_my(user) -> dict:
                 "source": "FORMAL_EXAM_SEAT",
             })
         return {
-            "hasData": bool(items), "items": items, "total": len(items), "timezone": zone_name,
+            "hasData": bool(total), "items": items, "total": total, "timezone": zone_name,
+            "page": int(page) if page is not None else None,
+            "pageSize": int(page_size) if page is not None else None,
+            "hasMore": bool(page is not None and int(page) * int(page_size) < total),
             "note": "" if items else "暂无已发布的个人考试安排",
         }
 

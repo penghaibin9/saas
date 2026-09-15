@@ -4,6 +4,28 @@ import vm from 'node:vm'
 import test from 'node:test'
 
 function mount(name, studentApi, confirm = async () => ({ confirm: true })) {
+  if (name === 'major-split' && typeof studentApi?.getMyMajorSplit === 'function') {
+    const readMajorSplit = studentApi.getMyMajorSplit
+    studentApi = {
+      ...studentApi,
+      getMyMajorSplit: async (params = {}) => {
+        const data = await readMajorSplit(params)
+        const openBatches = Array.isArray(data?.openBatches) ? data.openBatches : []
+        const myVolunteers = Array.isArray(data?.myVolunteers) ? data.myVolunteers : []
+        const openPage = Number.isSafeInteger(data?.openPagination?.page) ? data.openPagination.page : Number(params.openPage || 1)
+        const openPageSize = Number.isSafeInteger(data?.openPagination?.pageSize) ? data.openPagination.pageSize : Number(params.openPageSize || 20)
+        const openTotal = Number.isSafeInteger(data?.openPagination?.total) ? data.openPagination.total : openBatches.length
+        const volunteerPage = Number.isSafeInteger(data?.volunteerPagination?.page) ? data.volunteerPagination.page : Number(params.volunteerPage || 1)
+        const volunteerPageSize = Number.isSafeInteger(data?.volunteerPagination?.pageSize) ? data.volunteerPagination.pageSize : Number(params.volunteerPageSize || 20)
+        const volunteerTotal = Number.isSafeInteger(data?.volunteerPagination?.total) ? data.volunteerPagination.total : myVolunteers.length
+        return {
+          ...data, openBatches, myVolunteers,
+          openPagination: { page: openPage, pageSize: openPageSize, total: openTotal, hasMore: typeof data?.openPagination?.hasMore === 'boolean' ? data.openPagination.hasMore : false },
+          volunteerPagination: { page: volunteerPage, pageSize: volunteerPageSize, total: volunteerTotal, hasMore: typeof data?.volunteerPagination?.hasMore === 'boolean' ? data.volunteerPagination.hasMore : false }
+        }
+      }
+    }
+  }
   const source = readFileSync(new URL(`../src/pages/student/academic-affairs/${name}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component =')
   const context = { studentApi, readPending: () => null, savePending: () => true, createPendingCommand: (_scope, value) => ({ ...value, commandId: 'cmd-1', _pendingOwner: 'test-owner' }), canUpdatePendingCommand: () => true, currentSessionGeneration: () => 1, createSubmitLock: () => ({ run: fn => fn() }), normalizeError: e => ({ text: e.message }), toast() {}, modalConfirm: confirm, isUncertainWriteError: e => !e.biz, getStatusBarHeight: () => 20, go() {} }
@@ -73,7 +95,7 @@ test('home never converts failed reads or absence of registration batches into c
     getMyExamSchedule: async () => { throw Error('offline') },
     getMyWarnings: async () => { throw Error('offline') },
     getMyRegistration: async () => { throw Error('offline') },
-    getSelectionCourses: async () => { throw Error('offline') }
+    getSelectionBatches: async () => { throw Error('offline') }
   })
   await page.loadPriority(0)
   assert.equal(page.registrationSummary, '暂时无法核对')
@@ -99,7 +121,7 @@ test('major split clears recovered read failure without discarding unsent choice
 
 test('home adds the official slot time without deriving a different Today schedule', async () => {
   const today = [{ itemId: 'today', slotNo: 2, courseName: '学校今日安排' }]
-  const { page } = mount('index', { getMyAcadStatus: async () => ({}), getMySchedule: async () => ({ items: [{ itemId: 'other', slotNo: 1 }], todayItems: today, timeBands: [{ slotNo: 2, startTime: '10:10' }], todayDate: '2026-09-08', currentWeek: 2 }), getMyExamSchedule: async () => ({ items: [] }), getMyWarnings: async () => ({ items: [] }), getMyRegistration: async () => ({ batches: [] }), getSelectionCourses: async () => [] })
+  const { page } = mount('index', { getMyAcadStatus: async () => ({}), getMySchedule: async () => ({ items: [{ itemId: 'other', slotNo: 1 }], todayItems: today, timeBands: [{ slotNo: 2, startTime: '10:10' }], todayDate: '2026-09-08', currentWeek: 2 }), getMyExamSchedule: async () => ({ items: [] }), getMyWarnings: async () => ({ items: [] }), getMyRegistration: async () => ({ batches: [] }), getSelectionBatches: async () => ({ items: [] }) })
   await page.load()
   assert.equal(page.todayCourses.length, 1)
   assert.equal(page.todayCourses[0].itemId, 'today')

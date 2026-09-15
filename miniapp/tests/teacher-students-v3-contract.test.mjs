@@ -38,6 +38,15 @@ test('teacher MyStudents V3 retains rows when load-more network fails', () => {
   assert.doesNotMatch(catchBlock, /this\.items = \[\]/)
 })
 
+test('teacher MyStudents V3 discards late results from an older search or cursor', () => {
+  const page = read('src/pages/teacher/my-students/index.vue')
+  assert.match(page, /_loadEpoch/)
+  assert.match(page, /const epoch = this\._loadEpoch \+ 1/)
+  assert.match(page, /this\._loadEpoch !== epoch/)
+  assert.match(page, /onUnload\(\)[\s\S]*this\._loadEpoch \+= 1/)
+  assert.match(page, /const request = \{[\s\S]*cursor: append \? this\.nextCursor : ''/)
+})
+
 test('teacher MyStudents V3 classId is only a narrowing request parameter', () => {
   const page = read('src/pages/teacher/my-students/index.vue')
   const api = read('src/services/teacherStudentV3Api.js')

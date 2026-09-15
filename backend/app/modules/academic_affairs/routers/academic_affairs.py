@@ -4,7 +4,7 @@ from __future__ import annotations
 import io
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, Header, Path, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -3653,6 +3653,7 @@ class DeferApplyBody(BaseModel):
 class DeferReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/RETURN/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 # batch
@@ -3867,8 +3868,8 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
-def defer_resubmit(deferId: int = Path(...), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId), message="已重提")
+def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
@@ -3881,13 +3882,13 @@ def defer_list(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
 @router.post("/deferred-exams/{deferId}/counselor-review", summary="缓考辅导员首级审批")
 def defer_counselor_review(body: DeferReviewBody, deferId: int = Path(...),
                            user=Depends(require_permission(_DEFER_COUNSELOR))):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 @router.post("/deferred-exams/{deferId}/review", summary="缓考教师/学院/教务处审批")
 def defer_review(body: DeferReviewBody, deferId: int = Path(...),
                  user=Depends(require_permission(_DEFER_REVIEW))):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 # ══════════════ 补考重修缓考免修（13B-SM-12，/academic-affairs/makeup|retake|exemption/*） ══════════════
@@ -3936,6 +3937,11 @@ class RetakeEnrollBody(BaseModel):
 
 class ExemptionApplyBody(BaseModel):
     courseId: str = Field(..., min_length=1, description="课程库具体课程版本ID，课程名/学期由服务器推导")
+    reason: Optional[str] = Field(None, max_length=500)
+    materialFileIds: Optional[list] = None
+
+
+class ExemptionResubmitBody(BaseModel):
     reason: Optional[str] = Field(None, max_length=500)
     materialFileIds: Optional[list] = None
 
@@ -4097,6 +4103,11 @@ def exemption_apply(body: ExemptionApplyBody, user=Depends(_require_student)):
 def exemption_my(status: Optional[str] = None, user=Depends(_require_student)):
     items, total = makeup_svc.exemption_list(user, status, student_only=True)
     return success(paginate(items, total, 1, len(items) or 1))
+
+
+@router.post("/exemption/applies/{eid}/resubmit", summary="学生修改退回的原免修申请并重新提交")
+def exemption_resubmit(body: ExemptionResubmitBody, eid: int = Path(..., gt=0), user=Depends(_require_student)):
+    return success(makeup_svc.exemption_resubmit(user, eid, body), message="免修申请已重新提交")
 
 
 @router.get("/exemption/applies", summary="免修审批列表（教师/学院/教务处）")

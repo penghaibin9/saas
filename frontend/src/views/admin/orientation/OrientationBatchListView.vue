@@ -1,7 +1,18 @@
 <template>
+  <section v-if="rosterBatchId" class="ob-roster">
+    <header class="ob-roster-header">
+      <button type="button" @click="$router.push('/admin/orientation/batches')">‹ 返回批次列表</button>
+      <span>批次设置 → 新生名单 → 信息核验 → 报到办理</span>
+      <button v-if="rosterBatch" type="button" @click="$router.push({ path: '/admin/orientation/verify', query: { batchId: rosterBatchId } })">下一步：信息核验</button>
+    </header>
+    <LoadingState v-if="rosterLoading" />
+    <ErrorState v-else-if="rosterError" :description="rosterError" @retry="loadRosterBatch" />
+    <OrientationStudentListView v-else-if="rosterBatch" :fixed-batch="rosterBatch" />
+  </section>
   <ModulePageShell
-    title="迎新批次"
-    subtitle="组织整轮迎新的时间轴与状态骨架（草稿 → 进行中 → 已结束）"
+    v-else
+    title="迎新批次与新生名单"
+    subtitle="先创建批次，在批次内新增或导入新生、维护录取班级，再进入核验与报到"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="迎新批次管理"
@@ -52,6 +63,7 @@
         :type="confirmConf.type"
         :confirm-text="confirmConf.confirmText"
         :require-reason="confirmConf.requireReason"
+        :submitting="confirmSubmitting"
         reason-label="作废原因（≥5 字）"
         @confirm="onConfirm"
       />
@@ -84,6 +96,7 @@ import { AppConfirmDialog, AppTextInput } from '@/components/common'
 import { EditDrawer, TableActionColumn, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { toast } from '@/utils/toast'
+import OrientationStudentListView from './OrientationStudentListView.vue'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '' })
 const STATUS_OPTIONS = [
@@ -95,6 +108,7 @@ const STATUS_OPTIONS = [
 export default {
   name: 'OrientationBatchListView',
   components: {
+    OrientationStudentListView,
     ModulePageShell,
     ModuleToolbar,
     AdvancedFilter,
@@ -112,6 +126,9 @@ export default {
   data() {
     return {
       ctx: null,
+      rosterBatch: null,
+      rosterLoading: false,
+      rosterError: '',
       loading: true,
       error: '',
       submitting: false,
@@ -126,6 +143,7 @@ export default {
       confirmVisible: false,
       confirmMode: '',
       confirmRow: null,
+      confirmSubmitting: false,
       numberingVisible: false,
       numberingRow: null,
       numberingSubmitting: false,
@@ -134,6 +152,7 @@ export default {
     }
   },
   computed: {
+    rosterBatchId() { return this.$route.query.panel === 'students' ? String(this.$route.query.batchId || '') : '' },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -189,6 +208,9 @@ export default {
       if (this.confirmMode === 'close') {
         return { title: '结束批次', message: r ? `将「${r.batchName}」置为「已结束」，结束后批次不可再编辑。` : '', type: 'danger', confirmText: '确认结束', requireReason: false }
       }
+      if (this.confirmMode === 'refreshFlow') {
+        return { title: '采用最新报到流程', message: r ? `仅当「${r.batchName}」尚无新生时，才会改用最新的标准流程；已有新生或已结束批次会被服务器拒绝。` : '', type: 'primary', confirmText: '确认采用最新流程', requireReason: false }
+      }
       if (this.confirmMode === 'void') {
         return { title: '作废批次', message: r ? `作废「${r.batchName}」后将从列表移除（逻辑作废，可审计）。` : '', type: 'danger', confirmText: '确认作废', requireReason: true }
       }
@@ -196,9 +218,22 @@ export default {
     }
   },
   async created() {
-    await this.init()
+    if (this.rosterBatchId) await this.loadRosterBatch()
+    else await this.init()
   },
   methods: {
+    async loadRosterBatch() {
+      this.rosterLoading = true; this.rosterError = ''; this.rosterBatch = null
+      try {
+        const res = await api.getOrientationBatch(this.rosterBatchId)
+        if (res.code !== 0) throw new Error(res.message || '批次加载失败')
+        this.rosterBatch = res.data
+      } catch (e) { this.rosterError = e.message || '批次加载失败' }
+      finally { this.rosterLoading = false }
+    },
+    openRoster(row) {
+      this.$router.push({ path: '/admin/orientation/batches', query: { batchId: String(row.id), panel: 'students' } })
+    },
     async init() {
       const ctx = await api.getOrientationContext()
       if (ctx.code === 0) this.ctx = ctx.data
@@ -259,6 +294,7 @@ export default {
       this.editVisible = true
     },
     async onEditSubmit(form) {
+      if (this.submitting) return
       this.submitting = true
       try {
         const res = this.editing
@@ -267,7 +303,8 @@ export default {
         if (res.code === 0) {
           toast.success(this.editing ? '已保存' : '已新建批次')
           this.editVisible = false
-          await this.load()
+          if (!this.editing && res.data?.id) this.openRoster(res.data)
+          else await this.load()
         } else {
           toast.error(res.message || '保存失败')
         }
@@ -277,14 +314,17 @@ export default {
     },
     rowActions(row) {
       return [
+        { key: 'students', label: row.status === 'CLOSED' ? '查看新生名单' : '设置新生' },
         { key: 'edit', label: '编辑', disabled: row.status === 'CLOSED', disabledReason: row.status === 'CLOSED' ? '已结束批次不可编辑' : '' },
         { key: 'numbers', label: '一键生成学号', disabled: row.status === 'CLOSED', disabledReason: row.status === 'CLOSED' ? '已结束批次不可再编号' : '' },
+        { key: 'refreshFlow', label: '采用最新流程', disabled: row.status !== 'ACTIVE', disabledReason: row.status === 'DRAFT' ? '草稿批次启用时会自动采用最新流程' : row.status === 'CLOSED' ? '已结束批次保持原冻结流程' : '' },
         { key: 'activate', label: '启用', disabled: row.status !== 'DRAFT', disabledReason: row.status !== 'DRAFT' ? '仅草稿可启用' : '' },
         { key: 'close', label: '结束', disabled: row.status !== 'ACTIVE', disabledReason: row.status !== 'ACTIVE' ? '仅进行中可结束' : '' },
         { key: 'void', label: '作废', disabled: row.status === 'ACTIVE', disabledReason: row.status === 'ACTIVE' ? '进行中批次不可作废' : '' }
       ]
     },
     onRowAction(key, row) {
+      if (key === 'students') return this.openRoster(row)
       if (key === 'edit') return this.openEdit(row)
       if (key === 'numbers') {
         this.numberingRow = row
@@ -296,20 +336,25 @@ export default {
       this.confirmRow = row
       this.confirmVisible = true
     },
-    async onConfirm(reason) {
+    async onConfirm({ reason = '' } = {}) {
       const row = this.confirmRow
-      if (!row) return
-      let res
-      if (this.confirmMode === 'activate') res = await api.activateOrientationBatch(row.id)
-      else if (this.confirmMode === 'close') res = await api.closeOrientationBatch(row.id)
-      else if (this.confirmMode === 'void') res = await api.voidOrientationBatch(row.id, reason)
-      if (res && res.code === 0) {
-        toast.success('操作成功')
-        this.confirmVisible = false
-        await this.load()
-      } else {
-        toast.error((res && res.message) || '操作失败')
-      }
+      if (!row || this.confirmSubmitting) return
+      this.confirmSubmitting = true
+      try {
+        let res
+        if (this.confirmMode === 'activate') res = await api.activateOrientationBatch(row.id)
+        else if (this.confirmMode === 'refreshFlow') res = await api.refreshOrientationBatchFlow(row.id, row.version)
+        else if (this.confirmMode === 'close') res = await api.closeOrientationBatch(row.id)
+        else if (this.confirmMode === 'void') res = await api.voidOrientationBatch(row.id, reason)
+        if (res && res.code === 0) {
+          toast.success('操作成功')
+          this.confirmVisible = false
+          await this.load()
+        } else {
+          toast.error((res && res.message) || '操作失败')
+        }
+      } catch (e) { toast.error(e.message || '操作未完成，请重试') }
+      finally { this.confirmSubmitting = false }
     },
     async onNumberingConfirm() {
       if (!this.numberingRow || this.numberingSubmitting) return
@@ -334,6 +379,8 @@ export default {
 </script>
 
 <style scoped>
+.ob-roster-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 24px 0; color: var(--text-secondary); font-size: 13px; }
+.ob-roster-header button { min-height: 40px; padding: 8px 14px; border: 1px solid var(--border-light); border-radius: 6px; background: var(--bg-card); color: var(--primary-600); cursor: pointer; }
 .ob-numbering-grid { display: grid; gap: 12px; margin-top: 14px; }
 .ob-numbering-grid label { display: grid; gap: 6px; color: var(--text-secondary); font-size: var(--font-size-sm); }
 .ob-numbering-note { display: block; margin-top: 12px; color: var(--text-tertiary); }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
 import * as approvalRecovery from './approval-recovery.js'
+import { matchCompletedStatusTask } from './status-review-recovery.js'
 
 // Each test represents an isolated device; page recreations within a test share its storage.
 beforeEach(() => {
@@ -54,6 +55,8 @@ function page(file, dependencies = {}) {
     normalizeError: () => ({ text: '请求失败' }),
     ...contract,
     ...approvalRecovery,
+    matchCompletedStatusTask,
+    getDoneApprovals: async () => ({ items: [], total: 0 }),
     useSessionStore: () => ({ identity: { tenantId: 1, userId: 1, activeContextId: 10 }, currentRole: 'teacher', realUser: { tenantId: 1 } }),
     ...dependencies,
     uni: { getStorageSync: contract.storage.getStorageSync, setStorageSync: contract.storage.setStorageSync, ...suppliedUni }
@@ -72,6 +75,37 @@ function page(file, dependencies = {}) {
 }
 
 const ambiguousServerFailure = () => ({ code: 500001, biz: true, httpStatus: 500, message: '服务端异常' })
+
+test('home loads server warning total before secondary services are opened', async () => {
+  let reads = 0
+  const instance = page('./index.vue', { teacherApi: {
+    getGradeTasks: async () => [], getAcademicMyTasks: async () => [],
+    getAcademicWarningSummary: async () => { reads++; return { total: 81, first: { id: '91', name: '本班学生' } } }
+  } })
+  await instance.loadPriority()
+  assert.equal(reads, 1)
+  assert.equal(instance.counts.warning, 81)
+  assert.equal(instance.taskTargets.warning, '/pages/teacher/academic-warning/index?id=91')
+  assert.equal(instance.showMoreServices, false)
+})
+
+test('warning missing transport ACK is recovered from its original server command receipt', async () => {
+  const contract = loadWriteResultContract()
+  const instance = page('../academic-warning/index.vue', { writeContract: contract, teacherApi: {
+    getAcademicWarningDetail: async (_id, params) => ({ warning: { warningId: '7' }, interventions: [{ id: '31' }], interventionPage: params.interventionPage }),
+    getAcademicWarningReceipt: async key => ({ state: 'SUCCESS', commandKey: key, operation: 'WARNING_FOLLOW_UP', result: { warningId: '7', interventionId: '31' } })
+  } })
+  instance.detailId = '7'
+  const context = instance.contextKey()
+  contract.beginPersistentWrite(context, 'FOLLOWUP', '7', { requestKey: 'warning_original_command' })
+  await instance.loadDetail('7', 2)
+  assert.equal(instance.detail.interventionPage, 2)
+  assert.equal(instance.followAck.interventionId, '31')
+  instance.load = () => {}
+  assert.equal(await instance.verifyFollowup(), true)
+  assert.equal(instance.detail.interventionPage, 1)
+  assert.equal(contract.listPersistentWrites(context).records.length, 0)
+})
 
 function grade(dependencies) {
   const instance = page('./grade-entry.vue', dependencies)
@@ -305,6 +339,33 @@ const approvalPages = [
 ]
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
+test('schedule-change approval refuses a record without an authoritative version', () => {
+  let modal, writes = 0
+  const instance = page('./schedule-change-review.vue', {
+    uni: { showModal: options => { modal = options } },
+    teacherApi: { reviewScheduleChange: () => { writes++ } }
+  })
+  const row = { changeId: '21', status: 'SUBMITTED' }
+  instance.list = [row]
+  instance.doAct(row, 'APPROVE')
+  modal?.success({ confirm: true })
+  assert.equal(writes, 0)
+})
+
+test('schedule-change refresh preserves the server page and resets it for a new identity', async () => {
+  const calls = []
+  const session = { identity: { userId: 'A', tenantId: '1', activeContextId: '10' }, currentRole: 'teacher', realUser: { tenantId: '1' } }
+  const instance = page('./schedule-change-review.vue', { useSessionStore: () => session, teacherApi: {
+    getScheduleChangePending: async (page, pageSize) => { calls.push(page); return { items: [], page, pageSize, total: 45, hasMore: page < 3 } }
+  } })
+  await instance.load()
+  await instance.load(2)
+  await instance.load()
+  session.identity.userId = 'B'
+  await instance.load()
+  assert.deepEqual(calls, [1, 2, 2, 1])
+})
+
 for (const error of [Object.assign(new Error('服务响应超时'), { status: 503, code: 'SERVICE_UNAVAILABLE' }), new TypeError('Failed to fetch')]) {
   test(`status-change unknown write stays locked after queue observation: ${error.message}`, async () => {
     let modal, writes = 0, reads = 0
@@ -334,12 +395,17 @@ test('status-change POST 403 clears sensitive rows and invalidates a late read w
     teacherApi: { getStatusChangePending: () => ++reads === 1 ? Promise.resolve({ items: [row] }) : lateRead.promise, reviewStatusChange: () => request.promise }
   })
   await instance.load(); instance.openEvidence(row)
+  const older = approvalRecovery.approvalContextKey.createAttempt('status-change-review', instance.contextKey(), '88', 'APPROVE', { status: 'IN_REVIEW' })
+  approvalRecovery.approvalContextKey.persistAttempt('status-change-review', older)
+  instance.restoreReviewAttempts()
   instance.doAct(row, 'APPROVE'); modal.success({ confirm: true })
   const loading = instance.load()
   request.reject(Object.assign(new Error('无权限'), { status: 403, code: 'REQUEST_FAILED', bizCode: 'NO_DATA_SCOPE' }))
   await flush()
   assert.equal(instance.list.length, 0); assert.equal(instance.detailId, ''); assert.equal(instance.targetChangeId, '')
   assert.equal(instance.unresolvedCount, 1)
+  assert.equal(instance.reviewAttempts[instance.reviewKey(row.changeId)], undefined)
+  assert.ok(instance.reviewAttempts[instance.reviewKey('88')])
   assert.doesNotMatch(JSON.stringify(instance.reviewAttempts), /旧身份私密姓名|私密原因/)
   lateRead.resolve({ items: [row] }); await loading
   assert.equal(instance.list.length, 0); assert.equal(instance.state, 'error')
@@ -390,11 +456,11 @@ test('status-change queue absence or a changed node never claims the timed-out c
   await instance.load(); instance.doAct(row, 'APPROVE'); modal.success({ confirm: true }); await flush()
   rows = []; await instance.load()
   assert.equal(instance.unresolvedCount, 1)
-  assert.match(instance.reviewObservation(row), /未返回原对象.*不能据此确认/)
+  assert.match(instance.reviewObservation(row), /尚未找到可唯一匹配.*保留待确认/)
   rows = [{ ...row, currentNode: 'AA_OFFICE_FINAL' }]; await instance.load()
   instance.doAct(rows[0], 'APPROVE'); modal.success({ confirm: true }); await flush()
   assert.equal(writes, 1); assert.equal(instance.unresolvedCount, 1)
-  assert.match(instance.reviewObservation(rows[0]), /教务终审.*仍未确认/)
+  assert.match(instance.reviewObservation(rows[0]), /保留待确认/)
   assert.equal(messages.some(message => message === '已处理'), false)
 })
 
@@ -437,7 +503,7 @@ for (const [file, list, id, action, choice, read, write] of approvalPages) {
   test(`${file}: repeated confirmation sends one command`, async () => {
     let modal, calls = 0
     const pending = deferred()
-    const row = { [id]: 7 }
+    const row = { [id]: 7, version: 1 }
     const instance = page(file, { uni: { showModal: (options) => { modal = options } }, teacherApi: { [write]: () => { calls += 1; return pending.promise } } })
     instance[list] = [row]
     instance.load = () => {}
@@ -457,7 +523,7 @@ for (const [file, list, id, action, choice, read, write] of approvalPages) {
     const instance = page(file, {
       useSessionStore: () => session,
       uni: { showModal: (options) => { modal = options } },
-      teacherApi: { [read]: async () => ({ items: [{ [id]: 7 }, { [id]: 8 }] }), [write]: () => pending[calls++].promise }
+      teacherApi: { [read]: async () => ({ items: [{ [id]: 7, version: 1 }, { [id]: 8, version: 1 }] }), [write]: () => pending[calls++].promise }
     })
     await instance.load()
     instance[action](instance[list][0], choice)
@@ -566,15 +632,16 @@ test('evaluation keeps its object stable until the current submission settles', 
 for (const [file, list, id] of approvalPages.filter(([file]) => !file.includes('academic-warning'))) {
   test(`${file}: object review returns to the same bounded queue group`, () => {
     const instance = page(file)
-    instance[list] = Array.from({ length: 45 }, (_, i) => ({ [id]: i + 1 }))
-    instance.queuePage = 1
+    const serverPaged = file.includes('schedule-change-review') || file.includes('academic-task')
+    instance[list] = Array.from({ length: serverPaged ? 20 : 45 }, (_, i) => ({ [id]: i + (serverPaged ? 21 : 1) }))
+    instance.queuePage = serverPaged ? 2 : 1
     assert.equal(instance.displayedRows.length, 20)
-    instance.openEvidence(instance[list][23])
+    instance.openEvidence(instance[list][serverPaged ? 3 : 23])
     assert.equal(instance.displayedRows.length, 1)
     assert.equal(instance.displayedRows[0][id], 24)
     assert.equal(instance.backToQueue(), false)
     assert.equal(instance.displayedRows[0][id], 21)
-    assert.equal(instance.queuePage, 1)
+    assert.equal(instance.queuePage, serverPaged ? 2 : 1)
   })
 }
 
@@ -641,21 +708,21 @@ test('missing identifiers do not accidentally open occurrence or invigilation de
   assert.equal(home.selectedInvig, null)
 })
 
-test('attendance groups preserve marks and block submission for an unseen unmarked student', async () => {
+test('attendance server summary blocks submission for an unseen unmarked student', async () => {
   let submissions = 0
   const instance = page('./attendance.vue', { teacherApi: { submitAttendanceSession: async () => { submissions += 1 } } })
   instance.active = { sessionId: 1, status: 'DRAFT' }
-  instance.items = Array.from({ length: 65 }, (_, i) => ({ studentId: i + 1, status: i === 64 ? null : 'PRESENT' }))
+  instance.applyRosterPage({
+    items: Array.from({ length: 30 }, (_, i) => ({ studentId: i + 1, status: 'PRESENT' })),
+    total: 65, page: 1, pageSize: 30, hasMore: true,
+    summary: { PRESENT: 64, LATE: 0, ABSENT: 0, LEAVE: 0, UNMARKED: 1 },
+    rosterIntegrity: 'READY'
+  })
   assert.equal(instance.visibleStudents.length, 30)
   assert.equal(instance.unmarkedCount, 1)
-  instance.showNextUnmarked()
-  assert.equal(instance.studentPageIndex, 2)
-  assert.equal(instance.visibleStudents.length, 5)
-  instance.studentPage = 0
-  assert.equal(instance.items[30].status, 'PRESENT')
   await instance.submitSession()
   assert.equal(submissions, 0)
-  assert.equal(instance.items.length, 65)
+  assert.equal(instance.items.length, 30)
 })
 
 test('attendance grouping submits the formal whole session once all students are marked', async () => {
@@ -665,10 +732,14 @@ test('attendance grouping submits the formal whole session once all students are
     uni: { showToast() {} }
   })
   instance.active = { sessionId: 9, status: 'DRAFT' }
-  instance.items = Array.from({ length: 65 }, (_, i) => ({ studentId: i + 1, status: 'PRESENT' }))
+  instance.applyRosterPage({
+    items: Array.from({ length: 30 }, (_, i) => ({ studentId: i + 1, status: 'PRESENT' })),
+    total: 65, page: 3, pageSize: 30, hasMore: false,
+    summary: { PRESENT: 65, LATE: 0, ABSENT: 0, LEAVE: 0, UNMARKED: 0 },
+    rosterIntegrity: 'READY'
+  })
   instance.confirmModal = async () => true
   instance.load = () => {}
-  instance.studentPage = 2
   await instance.submitSession()
   await flush()
   assert.deepEqual(calls, ['9'])
@@ -676,9 +747,13 @@ test('attendance grouping submits the formal whole session once all students are
 
 test('attendance return blocks pending marks and preserves the session queue group', () => {
   const instance = page('./attendance.vue')
-  instance.sessions = Array.from({ length: 42 }, (_, i) => ({ sessionId: i + 1 }))
-  instance.sessionPage = 1
-  instance.active = instance.sessions[25]
+  // The formal API owns session paging.  Page 2 contains only its own 20 rows;
+  // it must not be reconstructed by slicing an arbitrary client-side full list.
+  instance.sessions = Array.from({ length: 20 }, (_, i) => ({ sessionId: i + 21 }))
+  instance.sessionPage = 2
+  instance.sessionTotal = 42
+  instance.sessionHasMore = true
+  instance.active = instance.sessions[5]
   instance.marking = { 1: 7 }
   assert.equal(instance.backToSessions(), false)
   assert.equal(instance.active.sessionId, 26)
@@ -753,17 +828,19 @@ test('warning queue uses server paging and preserves its page after detail retur
   assert.equal(calls.at(-1).level, 'LOW')
 })
 
-test('workload grouping keeps the declaration form and clamps after list shrink', () => {
+test('workload keeps the declaration form while rendering one server page', () => {
   const instance = page('./workload.vue')
-  instance.d = { items: Array.from({ length: 43 }, (_, i) => ({ declarationId: i + 1 })) }
-  instance.declarationPage = 2
+  instance.d = { items: [{ declarationId: 41 }, { declarationId: 42 }, { declarationId: 43 }], total: 43, page: 3, pageSize: 20, hasMore: false }
+  instance.declarationPage = 3
   instance.showForm = true
   instance.form.hours = '8'
   instance.backToDeclarations()
   assert.equal(instance.visibleDeclarations[0].declarationId, 41)
   assert.equal(instance.form.hours, '8')
-  instance.d.items = [{ declarationId: 1 }]
-  assert.equal(instance.declarationPageIndex, 0)
+  assert.equal(instance.declarationPageIndex, 3)
+  assert.equal(instance.declarationPageCount, 3)
+  instance.d = { items: [{ declarationId: 1 }], total: 1, page: 1, pageSize: 20, hasMore: false }
+  assert.equal(instance.declarationPageIndex, 1)
   assert.equal(instance.visibleDeclarations.length, 1)
 })
 
@@ -855,6 +932,7 @@ test('attendance late submission cannot close a new identity session', async () 
 test('schedule day strip uses calendar dates but today lessons remain server authoritative', () => {
   const instance = page('../my-schedule/index.vue')
   instance.todayDate = '2026-09-08'; instance.currentWeek = 2; instance.selectedWeek = 2; instance.selectedDay = 2
+  instance.termStartDate = '2026-08-31'
   instance.items = [{ itemId: 1, weekday: 2, slotNo: 1, startWeek: 1, endWeek: 18, weekParity: 'ALL' }]
   instance.todayItems = []
   instance.calendarSource = 'HOLIDAY'
@@ -865,9 +943,11 @@ test('schedule day strip uses calendar dates but today lessons remain server aut
   instance.todayItems = [{ scheduleItemId: 99, weekday: 5, slotNo: 3, attendanceRoute: '/formal' }]
   assert.equal(instance.dayItems[0].scheduleItemId, 99)
   instance.selectedWeek = 3
-  assert.equal(instance.weekDays[0].dateNumber, undefined)
+  assert.equal(instance.weekDays[0].dateNumber, 14)
   assert.equal(instance.dayIsToday, false)
   assert.equal(instance.dayItems[0].itemId, 1)
+  instance.termStartDate = ''
+  assert.equal(instance.weekDays[0].dateNumber, undefined)
 })
 
 test('schedule rejects invalid date labels and retains selected day across same-identity refresh', async () => {
@@ -987,6 +1067,7 @@ test('warning handling 5xx response blocks all further writes for that object', 
   instance.load = () => {}; instance._loadEpoch = 1
   const row = { warningId: 7, status: 'PENDING_HANDLE' }
   instance.list = [row]; instance.detailId = '7'
+  instance.detail = { warning: row, allowedActions: ['CLOSE', 'ESCALATE', 'FOLLOW_UP'] }
   instance.handle(row, 'CLOSE'); await flush()
   assert.equal(instance.hasUnknownWrite(row, 'CLOSE'), true)
   instance.handle(row, 'ESCALATE'); await flush()
@@ -1001,6 +1082,7 @@ test('warning followup requires original ACK id and exact detail record before s
     getAcademicWarningDetail: async () => ({ warning: { warningId: 7, status: 'PROCESSING' }, interventions: [{ id: 31, content: '正式记录' }] })
   } })
   instance.load = () => {}; instance.list = [row]; instance.detailId = '7'; instance._detailEpoch = 1
+  instance.detail = { warning: row, allowedActions: ['FOLLOW_UP'] }
   instance.followForm.content = '已经完成第一次面谈'
   assert.equal(await instance.submitFollowup(row), true)
   assert.equal(writes, 1)
@@ -1015,7 +1097,7 @@ test('warning followup never matches old content when ACK is missing or unverifi
     addAcademicWarningIntervention: async () => { writes += 1; throw ambiguousServerFailure() },
     getAcademicWarningDetail: async () => ({ warning: { warningId: 7, status: 'PROCESSING' }, interventions: [{ id: 4, content: '已经完成第一次面谈' }] })
   } })
-  unknown.list = [row]; unknown.detailId = '7'; unknown._detailEpoch = 1; unknown.followForm.content = '已经完成第一次面谈'
+  unknown.list = [row]; unknown.detailId = '7'; unknown._detailEpoch = 1; unknown.detail = { warning: row, allowedActions: ['FOLLOW_UP'] }; unknown.followForm.content = '已经完成第一次面谈'
   await unknown.submitFollowup(row)
   assert.equal(unknown.hasUnknownWrite(row, 'FOLLOWUP'), true)
   await unknown.submitFollowup(row)
@@ -1025,7 +1107,7 @@ test('warning followup never matches old content when ACK is missing or unverifi
     addAcademicWarningIntervention: async () => ({ warningId: 7, interventionId: 32 }),
     getAcademicWarningDetail: async () => ({ warning: { warningId: 7, status: 'PROCESSING' }, interventions: [{ id: 4, content: '已经完成第一次面谈' }] })
   } })
-  delayed.list = [row]; delayed.detailId = '7'; delayed._detailEpoch = 1; delayed.followForm.content = '已经完成第一次面谈'
+  delayed.list = [row]; delayed.detailId = '7'; delayed._detailEpoch = 1; delayed.detail = { warning: row, allowedActions: ['FOLLOW_UP'] }; delayed.followForm.content = '已经完成第一次面谈'
   assert.equal(await delayed.submitFollowup(row), false)
   assert.equal(delayed.followAck.interventionId, '32')
   assert.equal(delayed.followForm.content, '已经完成第一次面谈')
@@ -1133,7 +1215,7 @@ test('warning followup and legacy handling write 403 clear private UI but preser
     teacherApi: { addAcademicWarningIntervention: async () => { throw forbidden } }
   })
   const followContext = follow.contextKey()
-  follow.list = [row]; follow.detailId = '7'; follow.detail = { warning: row }
+  follow.list = [row]; follow.detailId = '7'; follow.detail = { warning: row, allowedActions: ['FOLLOW_UP'] }
   follow.followForm = { content: '已经完成第一次面谈', result: '继续观察', nextPlan: '下周复查' }
   await follow.submitFollowup(row)
   assert.equal(follow.list.length, 0)
@@ -1149,7 +1231,7 @@ test('warning followup and legacy handling write 403 clear private UI but preser
     teacherApi: { handleWarning: async () => { throw forbidden } }
   })
   const handleContext = handled.contextKey()
-  handled.list = [row]; handled.detailId = '7'; handled.detail = { warning: row }; handled._loadEpoch = 1
+  handled.list = [row]; handled.detailId = '7'; handled.detail = { warning: row, allowedActions: ['CLOSE'] }; handled._loadEpoch = 1
   handled.handle(row, 'CLOSE')
   await flush()
   assert.equal(handled.list.length, 0)
@@ -1202,7 +1284,7 @@ test('warning empty handle ACK cannot claim a different observed terminal state 
     getAcademicWarningDetail: async () => { reads++; return { warning: { warningId: '8', status: 'CLOSED' } } }
   } })
   const warning = { warningId: '8', status: 'PROCESSING' }
-  instance.list = [warning]; instance.detailId = '8'
+  instance.list = [warning]; instance.detailId = '8'; instance.detail = { warning, allowedActions: ['CLOSE'] }
   instance.handle(warning, 'CLOSE'); modal.success({ confirm: true, content: '已经核实处理情况' })
   await flush()
   assert.ok(instance.hasUnknownWrite(warning, 'CLOSE'))

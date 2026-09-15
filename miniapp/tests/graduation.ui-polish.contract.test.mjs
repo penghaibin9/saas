@@ -66,3 +66,12 @@ test('teacher guide keeps continuous review and real-role handoff instead of a m
   assert.match(guide, /pages\/teacher\/defense-score\/index/)
   assert.doesNotMatch(guide, /BasePortalLayout|TeacherWorkspaceFrame/)
 })
+
+test('teacher guide never exposes file workflow machine codes to teachers', () => {
+  const guide = read('pages/teacher/graduation-guide/index.vue')
+  assert.match(guide, /第 \{\{ v\.versionNo \|\| '—' \}\} 版/)
+  assert.match(guide, /fileScanLabel\(v\.scanStatus\)/)
+  assert.match(guide, /fileReviewLabel\(v\.reviewStatus \|\| v\.versionStatus \|\| v\.status\)/)
+  assert.match(guide, /FILE_STATUS_TEXT/)
+  assert.doesNotMatch(guide, /FileVersion \{\{ v\.versionId \}\}/)
+})

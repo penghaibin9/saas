@@ -132,8 +132,13 @@ export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
 // ── 学生岗位实习：当前批次权威流程 ──
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
-export const studentInternshipWeeklyReports = (batchId, internshipId) => {
-  try { return realRequest(studentContextPath('/mobile/internship/context/weekly-reports', batchId, internshipId)) }
+export const studentInternshipWeeklyReports = (batchId, internshipId, page = 1, pageSize = 20, focusReportId = '') => {
+  try {
+    let path = studentContextPath('/mobile/internship/context/weekly-reports', batchId, internshipId)
+    path += `&page=${enc(page)}&pageSize=${enc(pageSize)}`
+    if (String(focusReportId || '').trim()) path += `&focusReportId=${enc(focusReportId)}`
+    return realRequest(path)
+  }
   catch (e) { return Promise.reject(e) }
 }
 export const studentInternshipWeeklySubmit = (body) =>

@@ -47,7 +47,7 @@ test('evaluation clears the external anonymous-answer drawer and local drafts af
   const { page, pending, savePending, createPendingCommand } = mountEvaluation({
     getMyEvaluationTasks: async () => {
       if (forbidden) throw { httpStatus: 403, code: 'NO_PERMISSION', biz: true }
-      return { list: [{ taskId: 'task-1', courseName: '电工技术', teacherName: '教师甲', canSubmit: true, submitted: false }] }
+      return { list: [{ taskId: 'task-1', courseName: '电工技术', teacherName: '教师甲', canSubmit: true, submitted: false }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false } }
     },
   })
 
@@ -87,7 +87,7 @@ for (const changeIdentity of [false, true]) {
   test(`late 403 cannot clear a newer evaluation drawer (identity changed: ${changeIdentity})`, async () => {
     let rejectOld, reads = 0
     const old = new Promise((_resolve, reject) => { rejectOld = reject })
-    const run = mountEvaluation({ getMyEvaluationTasks: () => ++reads === 1 ? old : Promise.resolve({ list: [{ taskId: 'new-task', canSubmit: true, submitted: false }] }) })
+    const run = mountEvaluation({ getMyEvaluationTasks: () => ++reads === 1 ? old : Promise.resolve({ list: [{ taskId: 'new-task', canSubmit: true, submitted: false }], pagination: { page: 1, pageSize: 20, total: 1, hasMore: false } }) })
     const first = run.page.load()
     if (changeIdentity) run.session.generation++
     await run.page.load()

@@ -20,6 +20,72 @@ def _count(db, model, tenant_id: int) -> int:
     )) or 0)
 
 
+def _ensure_canonical_proposal_report_item(db, tenant_id: int, batch) -> bool:
+    """Repair only the sandbox's early-rule seed drift without touching business records.
+
+    The real proposal command writes the authoritative ``PROPOSAL_REPORT`` material.
+    An older 007 operational seed exposed a similarly named ``PROPOSAL_OUTLINE`` only,
+    which made the student page offer a submit button that the material state machine
+    correctly rejected.  This is a sandbox configuration repair, not a second proposal
+    model and not a direct transition of any student's business record.
+    """
+    from app.models import GraduationAuditTrail, GraduationMaterialItem, GraduationMaterialRule
+
+    rule = db.scalars(select(GraduationMaterialRule).where(
+        GraduationMaterialRule.tenant_id == tenant_id,
+        GraduationMaterialRule.batch_id == batch.id,
+        GraduationMaterialRule.rule_code == "GD2027-EARLY-MATERIAL",
+        GraduationMaterialRule.status == "ENABLED",
+        GraduationMaterialRule.enabled.is_(True),
+        GraduationMaterialRule.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if rule is None:
+        return False
+    items = {
+        row.material_code: row
+        for row in db.scalars(select(GraduationMaterialItem).where(
+            GraduationMaterialItem.tenant_id == tenant_id,
+            GraduationMaterialItem.rule_id == rule.id,
+            GraduationMaterialItem.is_deleted.is_(False),
+        ).with_for_update()).all()
+    }
+    changed = False
+    if "PROPOSAL_REPORT" not in items:
+        db.add(GraduationMaterialItem(
+            tenant_id=tenant_id, rule_id=rule.id, biz_stage="PROPOSAL",
+            material_code="PROPOSAL_REPORT", material_name="开题报告", owner_role="STUDENT",
+            required=True, allowed_ext_json=["pdf", "doc", "docx"], max_files=1,
+            max_size_bytes=50 * 1024 * 1024, version_policy="IMMUTABLE_APPEND",
+            review_required=True, archive_required=True, sensitivity_level="SENSITIVE",
+            sort_no=2, enabled=True, description="学生提交并由指导教师审核的正式开题报告。",
+        ))
+        changed = True
+    # 提纲可以作为前期补充材料，但正式开题状态机只认 PROPOSAL_REPORT；不能把
+    # 一个没有提交入口的补充项继续标记为必交，从而制造下一处假阻断。
+    outline = items.get("PROPOSAL_OUTLINE")
+    if outline is not None and outline.required:
+        outline.required = False
+        outline.sort_no = max(int(outline.sort_no or 0), 3)
+        changed = True
+    required = [str(code) for code in (rule.required_items_json or [])]
+    normalized = ["PROPOSAL_REPORT" if code == "PROPOSAL_OUTLINE" else code for code in required]
+    if "PROPOSAL_REPORT" not in normalized:
+        normalized.append("PROPOSAL_REPORT")
+    if normalized != required:
+        rule.required_items_json = normalized
+        changed = True
+    if changed:
+        rule.version = int(rule.version or 0) + 1
+        db.add(GraduationAuditTrail(
+            tenant_id=tenant_id, batch_id=batch.id, biz_type="MATERIAL", biz_id=str(rule.id),
+            action="修复开题报告材料规则", operator="007 沙箱初始化", role_name="SYSTEM",
+            detail="补齐 PROPOSAL_REPORT，保持正式开题提交与材料状态机使用同一材料代码。",
+            before_val="PROPOSAL_OUTLINE", after_val="PROPOSAL_REPORT", occurred_at=datetime.utcnow(),
+        ))
+        db.flush()
+    return changed
+
+
 def seed_graduation_operational_coverage(db, tenant_id: int) -> dict:
     from app.models import (
         GraduationAuditTrail, GraduationBatch, GraduationGuidancePlan, GraduationMaterialItem,
@@ -40,7 +106,14 @@ def seed_graduation_operational_coverage(db, tenant_id: int) -> dict:
         GraduationTopicRound.is_deleted.is_(False),
     )).first()
     if prior is not None:
-        return {"resumed": True, "validation": validate_graduation_operational_coverage(db, tenant_id)}
+        repaired = _ensure_canonical_proposal_report_item(db, tenant_id, batch)
+        if repaired:
+            db.commit()
+        return {
+            "resumed": True,
+            "proposalReportRuleRepaired": repaired,
+            "validation": validate_graduation_operational_coverage(db, tenant_id),
+        }
 
     students = list(db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == tenant_id, GraduationStudent.batch_id == batch.id,
@@ -101,7 +174,7 @@ def seed_graduation_operational_coverage(db, tenant_id: int) -> dict:
         tenant_id=tenant_id, batch_id=batch.id, rule_code="GD2027-EARLY-MATERIAL",
         rule_name="GD-2027 选题开题材料规则", rule_version=1, status="ENABLED", enabled=True,
         applicable_scope_json={"batchNo": "GD-2027", "stage": ["TOPIC_SELECTING", "GUIDING"]},
-        required_items_json=["TOPIC_FORM", "PROPOSAL_OUTLINE"], allowed_ext_json=["pdf", "docx"],
+        required_items_json=["TOPIC_FORM", "PROPOSAL_REPORT"], allowed_ext_json=["pdf", "doc", "docx"],
         effective_at=REFERENCE_NOW - timedelta(days=10), remark="当前届早期过程材料，不包含未来定稿或答辩材料。",
     )
     db.add(rule)
@@ -110,9 +183,14 @@ def seed_graduation_operational_coverage(db, tenant_id: int) -> dict:
         GraduationMaterialItem(tenant_id=tenant_id, rule_id=rule.id, biz_stage="TOPIC_SELECTING",
                               material_code="TOPIC_FORM", material_name="选题志愿确认单", sort_no=1,
                               allowed_ext_json=["pdf"], description="学生确认选题后的电子签署材料。"),
+        GraduationMaterialItem(tenant_id=tenant_id, rule_id=rule.id, biz_stage="PROPOSAL",
+                              material_code="PROPOSAL_REPORT", material_name="开题报告", sort_no=2,
+                              allowed_ext_json=["doc", "docx", "pdf"],
+                              description="学生提交并由指导教师审核的正式开题报告。"),
         GraduationMaterialItem(tenant_id=tenant_id, rule_id=rule.id, biz_stage="GUIDING",
-                              material_code="PROPOSAL_OUTLINE", material_name="开题报告提纲", sort_no=2,
-                              allowed_ext_json=["docx", "pdf"], description="开题审核前的提纲版本。"),
+                              material_code="PROPOSAL_OUTLINE", material_name="开题报告提纲", sort_no=3,
+                              required=False, allowed_ext_json=["docx", "pdf"],
+                              description="开题前的可选补充提纲，不替代正式开题报告。"),
     ])
     for index, student in enumerate(students[:4]):
         status = ("APPROVED", "RETURNED", "SUBMITTED", "MISSING")[index]
@@ -175,7 +253,10 @@ def seed_graduation_operational_coverage(db, tenant_id: int) -> dict:
 
 
 def validate_graduation_operational_coverage(db, tenant_id: int) -> dict:
-    from app.models import GraduationMaterialRule, GraduationStudentMaterial, GraduationTemplate, GraduationTopicRound
+    from app.models import (
+        GraduationBatch, GraduationMaterialItem, GraduationMaterialRule,
+        GraduationStudentMaterial, GraduationTemplate, GraduationTopicRound,
+    )
     report = {
         "topicRounds": _count(db, GraduationTopicRound, tenant_id),
         "materialRules": _count(db, GraduationMaterialRule, tenant_id),
@@ -184,5 +265,25 @@ def validate_graduation_operational_coverage(db, tenant_id: int) -> dict:
     }
     if not all(report.values()):
         raise RuntimeError(f"GD-2027 operational coverage incomplete: {report}")
+    batch = db.scalars(select(GraduationBatch).where(
+        GraduationBatch.tenant_id == tenant_id, GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    )).first()
+    rule = db.scalars(select(GraduationMaterialRule).where(
+        GraduationMaterialRule.tenant_id == tenant_id,
+        GraduationMaterialRule.batch_id == getattr(batch, "id", None),
+        GraduationMaterialRule.status == "ENABLED", GraduationMaterialRule.enabled.is_(True),
+        GraduationMaterialRule.is_deleted.is_(False),
+    )).first()
+    proposal_item = db.scalars(select(GraduationMaterialItem).where(
+        GraduationMaterialItem.tenant_id == tenant_id,
+        GraduationMaterialItem.rule_id == getattr(rule, "id", None),
+        GraduationMaterialItem.material_code == "PROPOSAL_REPORT",
+        GraduationMaterialItem.owner_role == "STUDENT",
+        GraduationMaterialItem.enabled.is_(True), GraduationMaterialItem.is_deleted.is_(False),
+    )).first()
+    if not proposal_item:
+        raise RuntimeError("GD-2027 当前材料规则缺少学生可提交的 PROPOSAL_REPORT")
+    report["proposalReportRuleReady"] = True
     report["passed"] = True
     return report
