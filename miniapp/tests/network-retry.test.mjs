@@ -47,6 +47,42 @@ test('HTTP handling preserves business rejection, valid login JSON and malformed
   await assert.rejects(malformed.realRequest('/auth/login', { method: 'POST', auth: false }), error => error.code === 'BAD_RESPONSE')
 })
 
+test('unauthenticated password login presents captcha and credential rejection instead of session expiry', async () => {
+  const captcha = responseApi(401, {
+    code: 401001,
+    bizCode: 'CAPTCHA_REQUIRED',
+    message: '请输入图形验证码后继续',
+    details: { captchaRequired: true, scene: 'PASSWORD_LOGIN' }
+  })
+  await assert.rejects(captcha.realRequest('/auth/login', { method: 'POST', auth: false }), error => {
+    assert.equal(error.loginAttempt, true)
+    assert.equal(error.message, '请输入图形验证码后继续')
+    assert.equal(error.bizCode, 'CAPTCHA_REQUIRED')
+    assert.equal(captcha.normalizeError(error).kind, 'invalid')
+    assert.doesNotMatch(captcha.normalizeError(error).text, /登录已失效/)
+    return true
+  })
+
+  const credentials = responseApi(401, {
+    code: 401001,
+    bizCode: 'UNAUTHORIZED',
+    message: '账号、学校编码或密码不正确'
+  })
+  await assert.rejects(credentials.realRequest('/auth/browser-login', { method: 'POST', auth: false }), error => {
+    assert.equal(error.message, '账号、学校编码或密码不正确')
+    assert.equal(credentials.normalizeError(error).text, '账号、学校编码或密码不正确')
+    return true
+  })
+
+  const expired = responseApi(401, { code: 401001, bizCode: 'UNAUTHORIZED', message: '令牌已失效' })
+  await assert.rejects(expired.realRequest('/protected', { auth: true, _retried: true }), error => {
+    assert.equal(error.loginAttempt, false)
+    assert.equal(error.message, '登录已失效，请重新登录')
+    assert.equal(expired.normalizeError(error).pageState, 'unauthorized')
+    return true
+  })
+})
+
 function setup(allowMockFallback = false) {
   const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')

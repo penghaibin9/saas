@@ -117,13 +117,26 @@ function safeMessageForCode(e, fallback) {
   return e?.biz ? safeBusinessMessage(e.message, fallback) : fallback
 }
 
-function requestErrorMessage(code, bizCode, message) {
+function isPasswordLoginRequest(path, auth) {
+  if (auth) return false
+  return /^\/auth\/(?:browser-)?login$/.test(String(path || '').split('?')[0])
+}
+
+function requestErrorMessage(code, bizCode, message, { auth = true, path = '' } = {}) {
   const error = { code, bizCode, biz: true, message }
   if (Number(code) === 400001 || Number(code) === 422001) return safeMessageForCode(error, '填写内容有误，请检查后重试')
   if (Number(code) === 409001) return safeMessageForCode(error, '当前记录已被处理或状态已变化，请刷新后核对')
   if (Number(code) === 404001) return '数据不存在或已变更'
   if (Number(code) === 429001) return '操作过于频繁，请稍后再试'
-  if (Number(code) === 401001) return '登录已失效，请重新登录'
+  // 登录请求本来就没有会话。它的 401 表示验证码、账号或密码被拒绝，不能误报为
+  // “登录已失效”；否则用户既不知道该输入验证码，也会误以为后端会话出了问题。
+  // 已登录业务请求仍保持统一的会话失效提示与刷新逻辑。
+  if (Number(code) === 401001) {
+    if (isPasswordLoginRequest(path, auth)) {
+      return safeBusinessMessage(message, '账号、学校编码或密码不正确，请检查后重试')
+    }
+    return '登录已失效，请重新登录'
+  }
   if (Number(code) === 403001 || Number(code) === 403002) return '暂无访问权限，请联系学校管理员'
   return '服务暂时不可用，请稍后重试'
 }
@@ -135,6 +148,9 @@ export function normalizeError(e) {
   if (statuses.some(value => value >= 500 && value < 600)) return { kind: 'unknown', pageState: 'error', text: '服务暂时不可用，请稍后重试' }
   if (e?.code === 'HTTP_ERROR' && (statuses.includes(404) || statuses.includes(405))) return { kind: 'unknown', pageState: 'error', text: httpResponseError(statuses.find(status => status === 404 || status === 405)).message }
   if (isNetworkError(e)) return { kind: 'network', pageState: 'offline', text: '网络异常，请检查网络后重试' }
+  if (e?.loginAttempt && (statuses.includes(401) || statuses.includes(419))) {
+    return { kind: 'invalid', pageState: 'error', text: safeBusinessMessage(e.message, '账号、学校编码或密码不正确，请检查后重试') }
+  }
   if (statuses.includes(401) || statuses.includes(419)) return { kind: 'auth', pageState: 'unauthorized', text: '登录已失效，请重新登录' }
   if (statuses.includes(403) || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(e?.bizCode || e?.code)) {
     const noLicense = e?.bizCode === 'MODULE_NOT_AUTHORIZED' || e?.bizCode === 'MODULE_EXPIRED_READONLY' || /^模块未购买或未授权[：:]/.test(String(e?.message || ''))
@@ -466,13 +482,14 @@ function executeRealRequest(path, effectivePath, {
           reject({
             code: body.code,
             biz: true,
-            message: requestErrorMessage(body.code, body.bizCode, body.message),
+            message: requestErrorMessage(body.code, body.bizCode, body.message, { auth, path }),
             serverMessage: body.message || '',
             traceId: body.traceId,
             bizCode: body.bizCode,
             details: body.details,
             decisionTrace: body.decisionTrace,
-            httpStatus: res.statusCode
+            httpStatus: res.statusCode,
+            loginAttempt: isPasswordLoginRequest(path, auth)
           })
           return
         }
