@@ -22,32 +22,54 @@ export function decodeQueryText(value, fallback = '') {
   try { return decodeURIComponent(source) } catch (e) { return source }
 }
 
+let pendingNavigation = null
+// 一次只允许一个宿主路由转换；迟到回调不能解锁后续操作。
+function navigate(method, options, fallback) {
+  if (pendingNavigation && Date.now() - pendingNavigation.startedAt < 8000) return false
+  const operation = { startedAt: Date.now() }
+  pendingNavigation = operation
+  const release = () => { if (pendingNavigation === operation) pendingNavigation = null }
+  const run = (name, args, recovery) => {
+    let recovering = false
+    try {
+      uni[name]({ ...args,
+        fail() {
+          if (pendingNavigation !== operation) return
+          if (recovery) { recovering = true; run(recovery.method, recovery.options) }
+          else toast('页面暂时无法打开，请稍后重试')
+        },
+        complete() { if (!recovering) release() }
+      })
+    } catch (error) {
+      release()
+      toast('页面暂时无法打开，请稍后重试')
+    }
+  }
+  run(method, options, fallback)
+  return true
+}
+
 export function go(url) {
   const target = secureTarget(url)
   // 本工程使用自定义底部 Tab（pages.json 无原生 tabBar），uni.switchTab 永远会失败，
   // 放在兜底链里只是多一次无效调用并吞掉真实报错；直接降级到 reLaunch
   // （2026-08-04 复审：即 V2 报告 P2-07）。
-  uni.navigateTo({
-    url: target,
-    fail() {
-      uni.reLaunch({ url: target })
-    }
-  })
+  navigate('navigateTo', { url: target }, { method: 'reLaunch', options: { url: target } })
 }
 export function relaunch(url) {
-  uni.reLaunch({ url: secureTarget(url) })
+  return navigate('reLaunch', { url: secureTarget(url) })
 }
 export function back(fallbackUrl = '/pages/login/index') {
   // 强制改密期间不能通过返回按钮回到业务页面。
   if (forcePasswordChangeRequired()) {
-    uni.reLaunch({ url: FORCE_PASSWORD_CHANGE_ROUTE })
+    relaunch(FORCE_PASSWORD_CHANGE_ROUTE)
     return
   }
   if (typeof getCurrentPages === 'function' && getCurrentPages().length <= 1) {
     relaunch(fallbackUrl)
     return
   }
-  uni.navigateBack({ fail() { relaunch(fallbackUrl) } })
+  navigate('navigateBack', {}, { method: 'reLaunch', options: { url: secureTarget(fallbackUrl) } })
 }
 export function toast(title, icon = 'none') {
   uni.showToast({ title, icon })

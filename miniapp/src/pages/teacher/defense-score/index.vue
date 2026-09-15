@@ -48,6 +48,9 @@
             </template>
           </view>
         </view>
+        <view class="page-pad" v-if="hasMore">
+          <button class="btn btn-secondary" :disabled="loadingMore || acting" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多答辩学生' }}</button>
+        </view>
       </view>
     </MobileGlobalState>
   </view>
@@ -56,6 +59,7 @@
 <script>
 import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherPagingApi } from '@/services/graduationTeacherPagingApi'
 import { toast } from '@/utils/nav'
 
 function errorText(error) {
@@ -73,35 +77,48 @@ export default {
   data() {
     return {
       list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false,
-      loadToken: 0, actionReceipt: null
+      loadToken: 0, actionReceipt: null, page: 1, total: 0, hasMore: false, loadingMore: false
     }
   },
   onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
   onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady); ++this.loadToken },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    onBatchReady() { this.load() },
+    onBatchReady() { this.expanded = null; this.drafts = {}; this.actionReceipt = null; this.load() },
     statusTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'SCORED' ? 'warning' : 'default' },
-    load(done) {
+    load(done, append = false) {
       const token = ++this.loadToken
-      this.state = 'loading'
+      const targetPage = append ? this.page + 1 : 1
+      if (!append) { this.state = 'loading'; this.hasMore = false }
+      this.loadingMore = append
       this.loadError = ''
-      return teacherApi.getGraduationDefenseScorePending()
+      return graduationTeacherPagingApi.defenseScores(targetPage)
         .then((d) => {
           if (token !== this.loadToken) return
-          this.list = Array.isArray(d) ? d : []
+          const rows = Array.isArray(d) ? d : []
+          this.list = append ? [...(this.list || []), ...rows] : rows
+          this.page = rows._pageMeta?.page ?? targetPage
+          this.total = rows._pageMeta?.total ?? this.list.length
+          this.hasMore = !!rows._pageMeta?.hasMore
           this.state = 'ready'
+          return true
         })
         .catch((e) => {
           if (token !== this.loadToken) return
-          this.list = null
           this.loadError = errorText(e)
-          this.state = normalizeError(e).pageState || 'error'
+          if (!append) { this.list = null; this.state = normalizeError(e).pageState || 'error' }
+          else toast(this.loadError)
+          return false
         })
-        .finally(() => { if (done) done() })
+        .finally(() => { if (token === this.loadToken) this.loadingMore = false; if (done) done() })
+    },
+    loadMore() {
+      if (!this.hasMore || this.loadingMore || this.acting || this.state !== 'ready') return
+      return this.load(null, true)
     },
     toggle(d) {
       if (d.myStatus === 'CONFIRMED') { toast('已确认成绩，不可再修改'); return }
@@ -119,6 +136,7 @@ export default {
     },
     submit(d) {
       if (this.acting) return
+      const token = this.loadToken
       const draft = this.drafts[d.gdStudentId] || {}
       const body = { comment: (draft.comment || '').trim(), absent: !!draft.absent }
       if (draft.absent) {
@@ -126,7 +144,7 @@ export default {
         body.absentReason = draft.absentReason.trim()
       } else {
         const v = draft.score
-        if (v === '' || v === null || v === undefined || Number(v) < 0 || Number(v) > 100) {
+        if (v === null || v === undefined || !String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 100) {
           toast('评分必须是 0-100 的数字'); return
         }
         body.score = Number(v)
@@ -134,21 +152,29 @@ export default {
       this.acting = true
       teacherApi.submitGraduationDefenseScore(d.gdStudentId, body)
         .then(() => {
+          if (token !== this.loadToken) return
           this.expanded = null
           delete this.drafts[d.gdStudentId]
-          return this.load().then(() => {
+          const readToken = this.loadToken + 1
+          return this.load().then((readBack) => {
+            if (readToken !== this.loadToken) return
+            if (!readBack) {
+              this.actionReceipt = { title: `${d.studentName || '当前学生'}的答辩评分已保存`, result: '最新队列读取失败', next: '请刷新确认结果后继续办理。' }
+              return
+            }
             const saved = (this.list || []).find((item) => String(item.gdStudentId) === String(d.gdStudentId))
             const next = (this.list || []).find((item) => item.myStatus === 'PENDING' && String(item.gdStudentId) !== String(d.gdStudentId))
             this.actionReceipt = {
               title: `${d.studentName || '当前学生'}的答辩评分已保存`,
-              result: `服务器最新状态：${saved?.myStatusLabel || '已评分'}`,
-              next: next ? `下一位待评分学生：${next.studentName}` : '当前队列已处理完，无需继续操作。',
+              result: saved ? `服务器最新状态：${saved.myStatusLabel}` : '评分已保存，已刷新当前队列。',
+              next: next ? `下一位待评分学生：${next.studentName}` : this.hasMore ? '后续还有答辩学生，请加载更多继续办理。' : '当前已加载队列没有待评分学生。',
               nextId: next?.gdStudentId || '', nextName: next?.studentName || ''
             }
             toast('评分已保存，服务器状态已回读')
           })
         })
         .catch((e) => {
+          if (token !== this.loadToken) return
           const code = String(e?.code || '')
           if (code.startsWith('409') || code === 'DATA_CONFLICT') {
             toast(e?.message || '当前状态不可修改，正在刷新')

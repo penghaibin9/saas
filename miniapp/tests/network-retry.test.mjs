@@ -3,6 +3,50 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import * as generation from '../src/services/sessionGeneration.mjs'
 
+function responseApi(statusCode, data) {
+  const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
+    .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')
+    .replace(/export default[\s\S]*$/, '').replace(/^export /gm, '')
+  const toasts = []
+  const reply = options => options.success({ statusCode, data })
+  const uni = { getStorageSync: () => '', showToast: value => toasts.push(value), request: reply, uploadFile: reply }
+  return { ...new Function('ENV', 'markMobileViewsDirty', 'uni', ...Object.keys(generation),
+    `${source}\nreturn { realRequest, realUpload, normalizeError, isNetworkError }`)(
+    { useMock: false, allowMockFallback: false, apiBaseUrl: 'http://127.0.0.1:8000', apiPrefix: '/api/v1' },
+    () => {}, uni, ...Object.values(generation)), toasts }
+}
+
+test('login and uploads preserve gateway HTTP errors without claiming a network failure or exposing HTML', async () => {
+  for (const status of [404, 405, 502, 503]) {
+    for (const body of ['<html>gateway secret</html>', { detail: 'Not Found' }, { code: 0, data: { accessToken: 'must-not-accept' } }]) {
+      const api = responseApi(status, body)
+      for (const send of [() => api.realRequest('/auth/login', { method: 'POST', auth: false }),
+        () => api.realUpload('/files', '/test.pdf', { auth: false })]) {
+        await assert.rejects(send(), error => {
+          assert.equal(error.code, 'HTTP_ERROR')
+          assert.equal(error.httpStatus, status)
+          assert.equal(api.isNetworkError(error), false)
+          assert.equal(api.normalizeError(error).pageState, 'error')
+          assert.doesNotMatch(error.message, /secret|html|响应结构异常/)
+          if (status < 500) assert.match(error.message, new RegExp(`HTTP ${status}`))
+          return true
+        })
+      }
+      assert.deepEqual(api.toasts, [])
+    }
+  }
+})
+
+test('HTTP handling preserves business rejection, valid login JSON and malformed success rejection', async () => {
+  const denied = responseApi(422, { code: 422001, message: '请填写学校编码' })
+  await assert.rejects(denied.realRequest('/auth/login', { method: 'POST', auth: false }), error =>
+    error.code === 422001 && error.biz === true && error.message === '请填写学校编码')
+  const valid = responseApi(200, JSON.stringify({ code: 0, data: { accessToken: 'test-only' } }))
+  assert.deepEqual(await valid.realRequest('/auth/login', { method: 'POST', auth: false }), { accessToken: 'test-only' })
+  const malformed = responseApi(200, '<html>bad body</html>')
+  await assert.rejects(malformed.realRequest('/auth/login', { method: 'POST', auth: false }), error => error.code === 'BAD_RESPONSE')
+})
+
 function setup(allowMockFallback = false) {
   const source = readFileSync(new URL('../src/services/request.js', import.meta.url), 'utf8')
     .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')

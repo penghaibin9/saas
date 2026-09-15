@@ -24,3 +24,12 @@ test('late process report approval cannot create receipt or advance a different 
   finish({ code: 0, data: { id: '1' } }); await old
   assert.equal(vm.lastReceipt, null); assert.equal(vm.detail.id, '2')
 })
+
+test('an older load of the same process report cannot overwrite a refreshed version', async () => {
+  const pending = []
+  const vm = view({ getProcessReportDetail: () => new Promise(resolve => pending.push(resolve)) })
+  const old = vm.load(); const fresh = vm.load()
+  pending[1]({ code: 0, data: { id: '1', version: 4 } }); await fresh
+  pending[0]({ code: 0, data: { id: '1', version: 2 } }); await old
+  assert.equal(vm.detail.version, 4); assert.equal(vm.loading, false)
+})

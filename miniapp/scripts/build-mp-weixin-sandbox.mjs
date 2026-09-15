@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -21,6 +21,14 @@ export function verifySandboxOutput(source) {
   }
 }
 
+export function configureSandboxProject(outputDir) {
+  const path = resolve(outputDir, 'project.private.config.json')
+  const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
+  // 仅本机沙箱产物允许访问 HTTP 回环地址；发布脚本仍强制开启域名校验。
+  config.setting = { ...config.setting, urlCheck: false }
+  writeFileSync(path, JSON.stringify(config, null, 2) + '\n')
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = spawnSync(process.execPath, [
     resolve(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'), 'build', '-p', 'mp-weixin'
@@ -28,5 +36,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status || 1)
   verifySandboxOutput(readFileSync(resolve(root, 'dist/build/mp-weixin/config/env.js'), 'utf8'))
+  configureSandboxProject(resolve(root, 'dist/build/mp-weixin'))
   console.log('微信沙箱构建已校验：本机接口 8000，真实数据模式。请重新打开开发者工具项目以加载新包。')
 }

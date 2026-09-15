@@ -1,6 +1,38 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sandboxBuildEnv, verifySandboxOutput } from '../scripts/build-mp-weixin-sandbox.mjs'
+import { sandboxBuildEnv, verifySandboxOutput, configureSandboxProject } from '../scripts/build-mp-weixin-sandbox.mjs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { defaultWeixinBuildArgs } from '../scripts/build-mp-weixin.mjs'
+
+test('daily Weixin build uses the sandbox while release keeps its dedicated finalizer', () => {
+  const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(scripts['build:mp-weixin'], 'node scripts/build-mp-weixin.mjs')
+  for (const env of [{}, { CI: 'false' }]) {
+    const args = defaultWeixinBuildArgs(env)
+    assert.equal(args.length, 1)
+    assert.match(args[0], /build-mp-weixin-sandbox\.mjs$/)
+  }
+  const ciArgs = defaultWeixinBuildArgs({ CI: 'true' })
+  assert.match(ciArgs[0], /uni\.js$/)
+  assert.deepEqual(ciArgs.slice(1), ['build', '-p', 'mp-weixin'])
+  assert.equal(scripts['build:mp-weixin:release'], 'uni build -p mp-weixin && node scripts/finalize-mp-weixin-release.mjs')
+})
+
+test('sandbox enables localhost debugging only in its private output config and preserves developer settings', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'weixin-sandbox-'))
+  try {
+    configureSandboxProject(dir)
+    const path = join(dir, 'project.private.config.json')
+    assert.equal(JSON.parse(readFileSync(path, 'utf8')).setting.urlCheck, false)
+    writeFileSync(path, JSON.stringify({ libVersion: '3.17.2', setting: { urlCheck: true, es6: true }, condition: { miniprogram: {} } }))
+    configureSandboxProject(dir)
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), {
+      libVersion: '3.17.2', setting: { urlCheck: false, es6: true }, condition: { miniprogram: {} }
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
 
 test('sandbox build overrides inherited release target without mutating the parent environment', () => {
   const inherited = { VITE_API_BASE_URL: 'https://example.com', VITE_USE_MOCK: 'true', PATH: 'kept' }

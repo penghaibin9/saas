@@ -4,11 +4,11 @@
 
     <view class="gt__tabs">
       <view class="gt__tab" :class="{ 'is-on': tab === 'choice' }" @click="switchTab('choice')">
-        志愿确认<text v-if="choices && choices.length" class="gt__tab-badge">{{ choices.length }}</text>
+        志愿确认<text v-if="graduationQueues.choices.total" class="gt__tab-badge">{{ graduationQueues.choices.total }}</text>
         <text v-if="tab === 'choice'" class="gt__tab-u" />
       </view>
       <view class="gt__tab" :class="{ 'is-on': tab === 'change' }" @click="switchTab('change')">
-        变更审核<text v-if="changes && changes.length" class="gt__tab-badge">{{ changes.length }}</text>
+        变更审核<text v-if="graduationQueues.changes.total" class="gt__tab-badge">{{ graduationQueues.changes.total }}</text>
         <text v-if="tab === 'change'" class="gt__tab-u" />
       </view>
     </view>
@@ -62,12 +62,16 @@
           </view>
         </view>
       </view>
+      <view class="page-pad" v-if="activeQueue.hasMore">
+        <button class="btn btn-secondary" :disabled="activeQueue.loading || acting" @click="loadMore">{{ activeQueue.loading ? '加载中…' : '加载更多' }}</button>
+      </view>
     </MobileGlobalState>
   </view>
 </template>
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherQueue } from '@/services/graduationTeacherQueue'
 import { toast } from '@/utils/nav'
 
 function messageOf(error, fallback) {
@@ -80,66 +84,78 @@ function messageOf(error, fallback) {
 }
 
 export default {
+  mixins: [graduationTeacherQueue(['choices', 'changes'])],
   data() {
     return {
-      tab: 'choice', choices: null, changes: null, state: 'loading', acting: false,
-      choiceError: '', changeError: '', loadError: ''
+      tab: 'choice', state: 'loading', acting: false, loadError: '', loadEpoch: 0
     }
   },
+  computed: {
+    choices() { return this.graduationQueues.choices.items },
+    changes() { return this.graduationQueues.changes.items },
+    choiceError() { return this.graduationQueues.choices.error },
+    changeError() { return this.graduationQueues.changes.error },
+    activeQueue() { return this.graduationQueues[this.tab === 'choice' ? 'choices' : 'changes'] }
+  },
   onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
-  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
+  onUnload() { this.loadEpoch++; this.resetGraduationQueues(); uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    onBatchReady() { this.load() },
+    onBatchReady() { this.resetGraduationQueues(); this.load() },
     switchTab(t) { if (this.tab !== t) this.tab = t },
     async load(done) {
+      const epoch = ++this.loadEpoch
       this.state = 'loading'
-      this.choiceError = ''; this.changeError = ''; this.loadError = ''
-      const [choiceResult, changeResult] = await Promise.allSettled([
-        teacherApi.getGraduationChoicesPending(),
-        teacherApi.getGraduationChangeRequestsPending()
+      this.loadError = ''
+      await Promise.all([
+        this.loadGraduationQueue('choices'),
+        this.loadGraduationQueue('changes')
       ])
-      if (choiceResult.status === 'fulfilled') this.choices = Array.isArray(choiceResult.value) ? choiceResult.value : []
-      else { this.choices = []; this.choiceError = messageOf(choiceResult.reason, '志愿队列加载失败，请重试') }
-      if (changeResult.status === 'fulfilled') this.changes = Array.isArray(changeResult.value) ? changeResult.value : []
-      else { this.changes = []; this.changeError = messageOf(changeResult.reason, '变更队列加载失败，请重试') }
+      if (epoch !== this.loadEpoch) { if (done) done(); return }
       this.loadError = this.choiceError && this.changeError ? `${this.choiceError}；${this.changeError}` : ''
       this.state = this.loadError ? 'error' : 'ready'
       if (done) done()
     },
+    loadMore() {
+      if (this.acting || this.state !== 'ready') return
+      return this.loadGraduationQueue(this.tab === 'choice' ? 'choices' : 'changes', true)
+    },
     reviewChoice(c, action) {
-      if (this.acting) return
+      if (this.acting || this.state !== 'ready') return
+      const epoch = this.loadEpoch
       const reject = action === 'REJECT'
       uni.showModal({
         title: reject ? '驳回志愿' : '确认录取', editable: reject,
         placeholderText: reject ? '请填写驳回原因（学生可见）' : '',
         content: reject ? '' : `确认录取「${c.studentName}」到题目「${c.topicTitle}」？该生同轮其余志愿将自动关闭。`,
         success: (r) => {
-          if (!r.confirm) return
+          if (!r.confirm || this.acting || epoch !== this.loadEpoch) return
           if (reject && !(r.content || '').trim()) { toast('请填写驳回原因'); return }
           this.acting = true
           teacherApi.reviewGraduationChoice(c.id, action, r.content || '')
-            .then(() => { toast(reject ? '已驳回' : '已确认录取'); this.load() })
+            .then(() => { toast(reject ? '已驳回' : '已确认录取'); return this.load() })
             .catch((e) => this._err(e, reject ? '驳回' : '确认'))
             .finally(() => { this.acting = false })
         }
       })
     },
     reviewChange(r0, action) {
-      if (this.acting) return
+      if (this.acting || this.state !== 'ready') return
+      const epoch = this.loadEpoch
       const reject = action === 'REJECT'
       uni.showModal({
         title: reject ? '驳回变更' : '通过变更', editable: true,
         placeholderText: reject ? '请填写驳回意见' : '可填写审核意见（可选）', content: '',
         success: (r) => {
-          if (!r.confirm) return
+          if (!r.confirm || this.acting || epoch !== this.loadEpoch) return
           if (reject && !(r.content || '').trim()) { toast('请填写驳回意见'); return }
           this.acting = true
           teacherApi.reviewGraduationChangeRequest(r0.id, action, r.content || '')
-            .then(() => { toast(reject ? '已驳回' : '已通过'); this.load() })
+            .then(() => { toast(reject ? '已驳回' : '已通过'); return this.load() })
             .catch((e) => this._err(e, reject ? '驳回' : '通过'))
             .finally(() => { this.acting = false })
         }

@@ -13,6 +13,7 @@
  */
 import { ENV } from '@/config/env'
 import { markMobileViewsDirty } from '@/utils/viewFreshness'
+import { relaunch } from '@/utils/nav'
 import {
   advanceSessionGeneration, assertSessionSnapshot, captureSessionSnapshot,
   currentSessionGeneration, guardSessionPromise, isSessionSnapshotCurrent, sessionChangedError
@@ -132,6 +133,7 @@ export function normalizeError(e) {
   const statuses = [e?.httpStatus, e?.status, e?.statusCode, e?.response?.status, code]
     .map(Number).filter(Number.isFinite).map(value => value >= 100000 ? Math.trunc(value / 1000) : value)
   if (statuses.some(value => value >= 500 && value < 600)) return { kind: 'unknown', pageState: 'error', text: '服务暂时不可用，请稍后重试' }
+  if (e?.code === 'HTTP_ERROR' && (statuses.includes(404) || statuses.includes(405))) return { kind: 'unknown', pageState: 'error', text: httpResponseError(statuses.find(status => status === 404 || status === 405)).message }
   if (isNetworkError(e)) return { kind: 'network', pageState: 'offline', text: '网络异常，请检查网络后重试' }
   if (statuses.includes(401) || statuses.includes(419)) return { kind: 'auth', pageState: 'unauthorized', text: '登录已失效，请重新登录' }
   if (statuses.includes(403) || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(e?.bizCode || e?.code)) {
@@ -191,20 +193,32 @@ export function createSubmitLock(cooldownMs = 1200) {
 let _forceLogoutHandler = null
 export function registerForceLogoutHandler(fn) { _forceLogoutHandler = fn }
 
-let _redirecting = false
+let _redirecting = null
 export function requireAuthOrRedirect(message = '登录已失效，请重新登录') {
+  if (_redirecting && isSessionSnapshotCurrent(_redirecting, getToken(), getRefreshToken())) return
   if (_forceLogoutHandler) {
     try { _forceLogoutHandler() } catch (e) { clearTokens() }
   } else {
     clearTokens()
   }
-  if (_redirecting) return
-  _redirecting = true
+  const operation = captureSessionSnapshot(getToken(), getRefreshToken())
+  _redirecting = operation
   safeToast(message, 'none')
-  setTimeout(() => {
-    try { uni.reLaunch({ url: '/pages/login/index' }) } catch (e) { /* 忽略 */ }
-    _redirecting = false
-  }, 600)
+  const redirect = () => {
+    if (_redirecting !== operation) return
+    // 旧会话的延迟跳转不能销毁新登录正在打开的首页。
+    if (!isSessionSnapshotCurrent(operation, getToken(), getRefreshToken())) {
+      _redirecting = null
+      return
+    }
+    // 等当前页面切换结束；不能绕过路由锁，也不能丢失必要的登录跳转。
+    if (relaunch('/pages/login/index') === false) {
+      setTimeout(redirect, 100)
+      return
+    }
+    _redirecting = null
+  }
+  setTimeout(redirect, 600)
 }
 
 /** 模拟一次数据请求。fail=true 时用于演示 error 态。 */
@@ -390,6 +404,15 @@ function normalizeJsonResponseBody(value) {
   try { return JSON.parse(text) } catch { return value }
 }
 
+function httpResponseError(status) {
+  const httpStatus = Number(status)
+  if (!Number.isFinite(httpStatus) || httpStatus < 300) return null
+  const message = httpStatus === 404 || httpStatus === 405
+    ? `接口暂不可用（HTTP ${httpStatus}），请联系管理员`
+    : '服务暂时不可用，请稍后重试'
+  return { code: 'HTTP_ERROR', message, httpStatus }
+}
+
 function executeRealRequest(path, effectivePath, {
   method, data, auth, _retried, _rawPage, _expectedGeneration, headers = {}
 }) {
@@ -426,6 +449,12 @@ function executeRealRequest(path, effectivePath, {
         }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
+          return
+        }
+        // 网关可能返回 HTML 或普通 JSON；保留 HTTP 错误，不误报断网或接受错误状态中的 code: 0。
+        const httpError = httpResponseError(res.statusCode)
+        if (httpError && (!body || typeof body.code !== 'number' || body.code === 0)) {
+          reject(httpError)
           return
         }
         if (!body || typeof body.code !== 'number') {
@@ -549,6 +578,11 @@ export function realUpload(path, filePath, {
         }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
+          return
+        }
+        const httpError = httpResponseError(res.statusCode)
+        if (httpError && (!body || typeof body.code !== 'number' || body.code === 0)) {
+          reject(httpError)
           return
         }
         if (!body || typeof body.code !== 'number') {
