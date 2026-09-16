@@ -779,52 +779,58 @@ def affairs_leave_return(user: dict, leave_id: str, reason: str, expected_versio
 
 def affairs_leave_cancel_confirm(user: dict, leave_id: str, action: str,
                                  actual_return_at: str | None = None,
-                                 reason: str | None = None, note: str | None = None) -> dict:
+                                 reason: str | None = None, note: str | None = None,
+                                 expected_version=None) -> dict:
     """销假确认(CONFIRM)/退回(RETURN)，owner 校验在服务层完成。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
     result = leave_svc.confirm_cancel(leave_id, u, action=action, actual_return_at=actual_return_at,
-                                      reason=reason or "", note=note or "")
+                                      reason=reason or "", note=note or "",
+                                      expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_CANCEL_CONFIRM", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "action": action})
     return result
 
 
 def affairs_leave_proxy_cancel(user: dict, leave_id: str, actual_return_at: str,
-                               note: str | None = None) -> dict:
+                               note: str | None = None, expected_version=None) -> dict:
     """代登记销假（学生无法自行操作时，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.proxy_cancel(leave_id, u, actual_return_at, note or "")
+    result = leave_svc.proxy_cancel(leave_id, u, actual_return_at, note or "",
+                                    expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_PROXY_CANCEL", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName")})
     return result
 
 
-def affairs_leave_overdue_handle(user: dict, leave_id: str, handle_type: str, note: str) -> dict:
+def affairs_leave_overdue_handle(user: dict, leave_id: str, handle_type: str, note: str,
+                                 expected_version=None) -> dict:
     """逾期处置登记（CONTACT/TO_HOME_SCHOOL/CLOSE，说明≥5字，owner 校验在服务层完成）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.handle_overdue(leave_id, u, handle_type, note)
+    result = leave_svc.handle_overdue(leave_id, u, handle_type, note,
+                                      expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_OVERDUE_HANDLE", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "handleType": handle_type})
     return result
 
 
 def affairs_leave_extension_approve(user: dict, leave_id: str, action: str = "APPROVE",
-                                    reason: str | None = None) -> dict:
+                                    reason: str | None = None, expected_version=None) -> dict:
     """续假审批(APPROVE/REJECT)，owner 校验在服务层完成。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_leave_service as leave_svc
-    result = leave_svc.approve_extension(leave_id, u, action=action, reason=reason or "")
+    result = leave_svc.approve_extension(leave_id, u, action=action, reason=reason or "",
+                                         expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_LEAVE_EXTENSION_APPROVE", f"affairs-leave:{leave_id}",
                  {"operator": u.get("realName"), "action": action})
     return result
@@ -904,17 +910,16 @@ def _filter_by_assignee_todos(user, items, *, id_keys: tuple[str, ...], todo_typ
     return [x for x in items if _biz_id(x) in allowed_ids]
 
 
-def affairs_aid_pending(user: dict) -> dict:
+def affairs_aid_pending(user: dict, page: int = 1, page_size: int = 20,
+                        kind: str = "ALL", keyword: str | None = None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_aid_service as svc
-    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
-    nodes = {"CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "ADJUST_REVIEW"}
-    out = [x for x in items if (x.get("status") or "") in nodes]
-    out = _filter_by_assignee_todos(
-        u, out, id_keys=("applyId", "id"), todo_types=("AID_APPROVAL", "AID_ADJUST"))
-    return {"list": out, "total": len(out)}
+    # 由权威服务在 COUNT/LIMIT 之前按工作流当前责任人与数据范围过滤，不能先取 100 条再在手机端筛。
+    items, total, _status_counts = svc.list_applications(
+        u, page=page, page_size=page_size, pending_kind=kind, keyword=keyword)
+    return {"list": items, "total": total}
 
 
 def affairs_aid_detail(user: dict, apply_id: str) -> dict:
@@ -947,17 +952,15 @@ def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
     return result
 
 
-def affairs_funding_pending(user: dict) -> dict:
+def affairs_funding_pending(user: dict, page: int = 1, page_size: int = 20,
+                            keyword: str | None = None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_funding_service as svc
-    items, _, _status_counts = svc.list_applications(u, page=1, page_size=100)
-    nodes = {"COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"}
-    out = [x for x in items if (x.get("status") or "") in nodes]
-    out = _filter_by_assignee_todos(
-        u, out, id_keys=("applicationId", "appId", "id"), todo_types=("FUNDING_APPROVAL",))
-    return {"list": out, "total": len(out)}
+    items, total, _status_counts = svc.list_applications(
+        u, page=page, page_size=page_size, pending_only=True, keyword=keyword)
+    return {"list": items, "total": total}
 
 
 def affairs_funding_detail(user: dict, app_id: str) -> dict:
@@ -968,12 +971,14 @@ def affairs_funding_detail(user: dict, app_id: str) -> dict:
     return svc.get_application(app_id, u)
 
 
-def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "") -> dict:
+def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "",
+                           expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_funding_service as svc
-    result = svc.review(app_id, u, (action or "APPROVE").upper(), reason=reason or "")
+    result = svc.review(app_id, u, (action or "APPROVE").upper(), reason=reason or "",
+                        expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_FUNDING_REVIEW", f"funding:{app_id}",
                  {"operator": u.get("realName"), "action": action})
     return result
@@ -1001,7 +1006,8 @@ def affairs_discipline_detail(user: dict, case_id: str) -> dict:
     return svc.get_case(case_id, u)
 
 
-def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "") -> dict:
+def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str = "",
+                              expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
@@ -1009,9 +1015,11 @@ def affairs_discipline_review(user: dict, case_id: str, action: str, reason: str
     act = (action or "APPROVE").upper()
     detail = svc.get_case(case_id, u)
     if (detail or {}).get("status") == "REMOVE_REVIEW":
-        result = svc.review_remove(case_id, u, act, reason=reason or "")
+        result = svc.review_remove(case_id, u, act, reason=reason or "",
+                                   expected_version=expected_version)
     else:
-        result = svc.review(case_id, u, act, reason=reason or "")
+        result = svc.review(case_id, u, act, reason=reason or "",
+                            expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_DISC_REVIEW", f"discipline:{case_id}",
                  {"operator": u.get("realName"), "action": act})
     return result
@@ -1069,115 +1077,59 @@ def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
     return result
 
 
-def _dorm_filter_by_class(user: dict, items: list, student_id_key: str = "studentId") -> list:
-    """辅导员按班级范围收敛宿舍待办；宿管/全域由 dorm list_* 自身楼栋范围已处理。"""
-    if not db_enabled():
-        return items
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    from app.services.db_service import _tid, session as _session
-    with _session() as db:
-        allowed, _ = _allowed_class_ids(db, user)
-        if allowed is None:
-            return items
-        if not allowed:
-            return []
-        out = []
-        for x in items:
-            sid = x.get(student_id_key)
-            if not sid:
-                continue
-            try:
-                sid_i = int(sid)
-            except (TypeError, ValueError):
-                continue
-            s = db.get(StudentProfile, sid_i)
-            if s and not s.is_deleted and s.tenant_id == _tid() and s.class_id in allowed:
-                out.append(x)
-        return out
 
 
-def affairs_dorm_pending(user: dict) -> dict:
-    """调宿待审 + 宿舍异常待处置（辅导员看本班 COUNSELOR_REVIEW；宿管看楼栋内全部节点/异常）。"""
+def affairs_dorm_pending(user: dict, page: int = 1, page_size: int = 20) -> dict:
+    """调宿/异常按权威数据范围分页；总数来自 SQL，不用当前页条数冒充。"""
     u = _require_teacher(user)
+    from app.core.pagination import normalize_page
+    page, page_size = normalize_page(page, page_size)
+    page_size = min(page_size, 100)
     if not db_enabled():
-        return {"transfers": [], "exceptions": [], "total": 0}
+        return {"transfers": [], "exceptions": [], "transferTotal": 0, "exceptionTotal": 0,
+                "total": 0, "page": page, "pageSize": page_size}
     from app.core.affairs_security import build_affairs_context
     from app.services import affairs_dorm_service as dorm
     from app.services import dorm_allocation_service as allocation
+    from app.services import dorm_presence_service as presence
     from app.services.db_service import session as _session
-    role = str((u or {}).get("currentRoleCode") or "").upper()
     with _session() as db:
         ctx = build_affairs_context(u, db)
-    transfers = []
-    if role == "DORM_MANAGER" or ctx.scope_type == "TENANT_ALL":
-        for st in ("COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW"):
-            rows, _ = dorm.list_transfers(u, status=st, page=1, page_size=100)
-            transfers.extend(rows)
-    else:
-        rows, _ = dorm.list_transfers(u, status="COUNSELOR_REVIEW", page=1, page_size=100)
-        transfers = _dorm_filter_by_class(u, rows, "studentId")
-    exceptions, _ = dorm.list_exceptions(u, status="PENDING_HANDLE", page=1, page_size=100)
-    # 异常列表无 studentId 时用空；有 realName 的尽量按 cs 解析后的范围已在 list_exceptions 楼栋收敛
-    if role != "DORM_MANAGER" and ctx.scope_type not in ("TENANT_ALL",):
-        # 仅保留能解析到本班学生的异常（csStudentId 可能为 CsServiceStudent.id）
-        from app.models import CsServiceStudent, StudentProfile
-        from app.services.affairs_dashboard_service import _allowed_class_ids
-        from app.services.db_service import _tid, session as _session
-        with _session() as db:
-            allowed, _ = _allowed_class_ids(db, u)
-            if allowed is None:
-                pass
-            elif not allowed:
-                exceptions = []
-            else:
-                kept = []
-                for x in exceptions:
-                    csid = x.get("csStudentId")
-                    if not csid or str(csid) in ("", "0"):
-                        continue
-                    try:
-                        csid_i = int(csid)
-                    except (TypeError, ValueError):
-                        continue
-                    class_id = None
-                    cs = tenant_get(db, CsServiceStudent, csid_i)
-                    if cs and not cs.is_deleted and cs.student_id:
-                        s = tenant_get(db, StudentProfile, int(cs.student_id))
-                        class_id = s.class_id if s else None
-                    if class_id is None:
-                        s2 = tenant_get(db, StudentProfile, csid_i)
-                        class_id = s2.class_id if s2 and not s2.is_deleted else None
-                    if class_id in allowed:
-                        kept.append(x)
-                exceptions = kept
-    from app.services import dorm_presence_service as presence
+    status = "PENDING" if ctx.scope_type in ("TENANT_ALL", "DORM_BUILDING") else "COUNSELOR_REVIEW"
+    # list_transfers 的正式范围守卫在 SQL 分页前收敛班级/学院/本人或宿管楼栋。
+    transfers, transfer_total = dorm.list_transfers(u, status=status, page=page, page_size=page_size)
+    # 异常沿用权威服务楼栋权限，不在移动适配层扩大辅导员可见范围。
+    exceptions, exception_total = dorm.list_exceptions(u, status="PENDING_HANDLE", page=page, page_size=page_size)
     return {
-        "transfers": transfers,
-        "exceptions": exceptions,
+        "transfers": transfers, "exceptions": exceptions,
+        "transferTotal": transfer_total, "exceptionTotal": exception_total,
         "allocationSummary": allocation.teacher_summary(u),
         "presenceSummary": presence.teacher_summary(u),
-        "total": len(transfers) + len(exceptions),
+        "total": transfer_total + exception_total, "page": page, "pageSize": page_size,
     }
 
 
-def affairs_dorm_transfer_review(user: dict, transfer_id: str, action: str, reason: str = "") -> dict:
+def affairs_dorm_transfer_review(user: dict, transfer_id: str, action: str, reason: str = "",
+                                expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_dorm_service as dorm
-    result = dorm.review_transfer(transfer_id, u, action, reason=reason or "")
+    result = dorm.review_transfer(transfer_id, u, action, reason=reason or "",
+                                  expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_DORM_TRANSFER_REVIEW", f"transfer:{transfer_id}",
                  {"action": action, "operator": u.get("realName")})
     return result
 
 
-def affairs_dorm_exception_handle(user: dict, exception_id: str, note: str) -> dict:
+def affairs_dorm_exception_handle(user: dict, exception_id: str, note: str,
+                                  expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_dorm_service as dorm
-    result = dorm.handle_exception(exception_id, u, note=note or "")
+    result = dorm.handle_exception(exception_id, u, note=note or "",
+                                   expected_version=expected_version)
     _audit_write("MOBILE_AFFAIRS_DORM_EXCEPTION_HANDLE", f"exception:{exception_id}",
                  {"operator": u.get("realName")})
     return result
@@ -1711,7 +1663,8 @@ def talk_follow_up(user: dict, talk_id, body: dict) -> dict:
     _require_teacher(user)  # 纵深防御：与同族 talk_* 一致显式收口非教师（底层 _scope_or_403 仍在）
     from app.services import affairs_talk_service as talk
     b = body or {}
-    return talk.follow_up(talk_id, user, b.get("action"), b.get("content", ""))
+    return talk.follow_up(talk_id, user, b.get("action"), b.get("content", ""),
+                          expected_version=b.get("expectedVersion", b.get("version")))
 
 
 def talk_stats(user: dict, group_by="TYPE") -> dict:
@@ -1749,19 +1702,25 @@ def mental_create(user: dict, body: dict) -> dict:
 def mental_follow(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.follow_referral(user, ref_id, (body or {}).get("content", ""))
+    b = body or {}
+    return mental.follow_referral(user, ref_id, b.get("content", ""),
+                                  expected_version=b.get("expectedVersion", b.get("version")))
 
 
 def mental_escalate(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.escalate_crisis(user, ref_id, (body or {}).get("content", ""))
+    b = body or {}
+    return mental.escalate_crisis(user, ref_id, b.get("content", ""),
+                                  expected_version=b.get("expectedVersion", b.get("version")))
 
 
 def mental_close(user: dict, ref_id, body: dict) -> dict:
     _require_teacher(user)
     from app.services import affairs_mental_service as mental
-    return mental.close_referral(user, ref_id, (body or {}).get("conclusion", ""))
+    b = body or {}
+    return mental.close_referral(user, ref_id, b.get("conclusion", ""),
+                                 expected_version=b.get("expectedVersion", b.get("version")))
 
 
 def mental_stats(user: dict) -> dict:

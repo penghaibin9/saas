@@ -126,3 +126,61 @@ def test_all_leave_entrypoints_install_the_same_date_contract():
     assert "normalize_range(" in four_end
     assert "normalize_reason(" in four_end
     assert 'pattern=r"^\\d{6}$"' in four_end
+
+
+def test_mobile_teacher_adapters_preserve_authority_pagination_and_versions():
+    """移动端不得在适配层截断待办或丢失服务层的乐观锁版本。"""
+    impl = _read("backend/app/services/_mobile_teacher_service_impl.py")
+    routes = _read("backend/app/api/v1/mobile.py")
+
+    assert 'def affairs_aid_pending(user: dict, page: int = 1, page_size: int = 20,' in impl
+    assert 'pending_kind=kind, keyword=keyword' in impl
+    assert 'def affairs_funding_pending(user: dict, page: int = 1, page_size: int = 20,' in impl
+    assert 'pending_only=True, keyword=keyword' in impl
+    assert 'def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "",' in impl
+    assert 'expected_version=expected_version' in impl
+
+    for command in (
+        'leave_svc.confirm_cancel', 'leave_svc.proxy_cancel', 'leave_svc.handle_overdue',
+        'leave_svc.approve_extension', 'svc.review_remove', 'dorm.review_transfer',
+        'dorm.handle_exception', 'talk.follow_up', 'mental.follow_referral',
+        'mental.escalate_crisis', 'mental.close_referral',
+    ):
+        start = impl.index(command)
+        assert 'expected_version=' in impl[start:start + 280], command
+
+    for marker in (
+        'body.get("actualReturnAt"), body.get("reason"), body.get("note"), body.get("version")',
+        'body.get("actualReturnAt") or "", body.get("note"), body.get("version")',
+        'expected_version=(body or {}).get("version")',
+        'body.get("note") or "", body.get("version")',
+    ):
+        assert marker in routes
+
+
+def test_student_service_work_order_has_a_real_teacher_mobile_queue_and_result_readback():
+    routes = _read("backend/app/api/v1/mobile.py")
+    teacher_api = _read("miniapp/src/services/teacherApi.js")
+    teacher_page = _read("miniapp/src/pages/teacher/campus-service/index.vue")
+    student_service = _read("backend/app/services/mobile_student_service.py")
+
+    assert 'require_permission("campusService.workOrder.view")' in routes
+    assert 'require_permission("campusService.workOrder.handle")' in routes
+    assert 'campus_service.list_work_orders(page, pageSize' in routes
+    assert 'campus_service.handle_work_order(' in routes
+    assert 'campus_service.close_work_order(' in routes
+    assert 'getCampusWorkOrders' in teacher_api
+    assert 'handleCampusWorkOrder' in teacher_api
+    assert '服务工单' in teacher_page
+    assert 'version: order.version' in teacher_page
+    assert '工单已办结，学生可查看处理结果' in teacher_page
+    assert '"COMPLETED": "已办结"' in student_service
+    campus_service = _read("backend/app/services/campus_service_service.py")
+    outbox = _read("backend/app/services/message_event_outbox_service.py")
+    assert 'event_code="CAMPUS_SERVICE.WORKORDER_UPDATED"' in campus_service
+    assert '_drain_work_order_notice(outbox_id)' in campus_service
+    assert '"CAMPUS_SERVICE.WORKORDER_UPDATED"' in outbox
+    registry = _read("backend/app/services/message_action_registry.py")
+    focus = _read("backend/app/services/mobile_focus_contract.py")
+    assert '"student.campus-service.work-order"' in registry
+    assert '"/pages/student/my-work/index": "caseId"' in focus

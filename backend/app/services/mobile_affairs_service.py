@@ -463,9 +463,9 @@ def teacher_affairs(user) -> dict:
         existing_types = {c["todoType"] for c in cards}
         try:
             from app.services import mobile_teacher_service as tea
-            dorm = tea.affairs_dorm_pending(user)
-            tr_n = len((dorm or {}).get("transfers") or [])
-            ex_n = len((dorm or {}).get("exceptions") or [])
+            dorm = tea.affairs_dorm_pending(user, page_size=1)
+            tr_n = int((dorm or {}).get("transferTotal") or 0)
+            ex_n = int((dorm or {}).get("exceptionTotal") or 0)
             if tr_n and "DORM_TRANSFER" not in existing_types:
                 cards.append({"todoType": "DORM_TRANSFER", "label": label["DORM_TRANSFER"], "count": tr_n})
             if ex_n and "DORM_EXCEPTION" not in existing_types:

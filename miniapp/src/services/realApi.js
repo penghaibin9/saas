@@ -445,7 +445,7 @@ export const teacherAffairsRiskClose = (riskId, conclusion) =>
 
 /** 班干部任命/免去：我的班级 / 班级学生名单 / 班干部名单 / 任命 / 免去
  * （owner+范围校验，真实接口，无 mock 兜底） */
-export const teacherAffairsDormPending = () => realRequest('/mobile/teacher/affairs/dorm/pending')
+export const teacherAffairsDormPending = (params = {}) => realRequest('/mobile/teacher/affairs/dorm/pending', { data: params })
 export const teacherAffairsDormTransferReview = (transferId, body) =>
   realRequest(`/mobile/teacher/affairs/dorm/transfers/${transferId}/review`, { method: 'POST', data: body || {} })
 export const teacherAffairsDormExceptionHandle = (exceptionId, note) =>
@@ -763,6 +763,14 @@ export const teacherMentalStats = () => realRequest('/mobile/teacher/mental-stat
 
 /** 教师·在校服务待处理 & 学业预警待处理列表（真实接口，_domain 结构：{hasData,list,total,module}，范围过滤，无 mock 兜底） */
 export const teacherCampusServicePending = () => realRequest('/mobile/teacher/campus-service')
+export const teacherCampusWorkOrders = ({ page = 1, pageSize = 20, keyword, status } = {}) =>
+  realRequest('/mobile/teacher/campus-service/work-orders', { data: { page, pageSize, keyword, status } })
+export const teacherCampusWorkOrderDetail = (workOrderId) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}`)
+export const teacherCampusWorkOrderHandle = (workOrderId, body) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}/handle`, { method: 'POST', data: body })
+export const teacherCampusWorkOrderClose = (workOrderId, body) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}/close`, { method: 'POST', data: body })
 export const teacherAcademicWarnings = ({ page = 1, pageSize = 50, status, level, pendingOnly = false } = {}) =>
   realRequest('/mobile/teacher/academic/warnings', { data: { page, pageSize, status, level, pendingOnly } })
 export const teacherAcademicWarningSummary = () =>
@@ -776,11 +784,15 @@ export const teacherAcademicWarningReceipt = (commandKey) =>
 
 export const employmentMy = () => realRequest('/mobile/employment/my')
 
-export async function enrichCampusService(mock) {
-  const r = await realRequest('/mobile/campus-service/my')
-  if (!r || !r.hasData) return { ...mock, myRecords: null, _real: false }
-  return { ...mock, myRecords: { leaves: r.leaves || [], workOrders: r.workOrders || [],
-    disciplineNotice: r.disciplineNotice, mentalNotice: r.mentalNotice }, _real: true }
+export async function enrichCampusService() {
+  // 完整目录独立于首页阶段推荐；授权读取失败不得用本地菜单回退。
+  const r = await realRequest('/mobile/student/services')
+  if (!r || !Array.isArray(r.categories) || !r.categories.length || !Array.isArray(r.items) ||
+      r.categories.some(c => !c.key || !c.label || !c.action) ||
+      r.items.some(s => !s.id || !s.name || !s.action || !r.categories.some(c => c.key === s.cat))) {
+    throw new Error('服务目录数据格式异常，请重试')
+  }
+  return { ...r, _real: true }
 }
 
 /* 教师端·移动聚合兼容导出 */
@@ -1359,7 +1371,7 @@ export const acadTeacherScheduleMy = (params = {}) => realRequest('/mobile/acade
 export const acadCreditsMy = (params = {}) => realRequest('/mobile/academic/credits/my', { data: params })
 export const acadWarningMy = (params = {}) => realRequest('/mobile/academic/warning/my', { data: params })
 export const acadMakeupMy = (params = {}) => realRequest('/mobile/academic/makeup/my', { data: params })
-export const acadMakeupOptions = () => realRequest('/mobile/academic/makeup/options')
+export const acadMakeupOptions = (params = {}) => realRequest('/mobile/academic/makeup/options', { data: params })
 export const acadRetakeApply = (payload, termCode, reason) => {
   const data = typeof payload === 'string'
     ? { courseName: payload, termCode, reason }

@@ -1138,8 +1138,8 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/activities/${id}/transition`, { method: 'POST', body: { action, version } }))
   },
   /** 活动名单。 */
-  getActivityParticipants(id) {
-    return callStrict(() => request(`/student-affairs/activities/${id}/participants`))
+  getActivityParticipants(id, { page = 1, pageSize = 20 } = {}) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/participants`, { params: { page, pageSize } }))
   },
   /** 确认名单+生成学时/积分→进360。 */
   confirmActivity(id, version) {

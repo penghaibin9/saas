@@ -51,6 +51,20 @@ const emptyPriority = {
   getSelectionBatches: async () => ({ items: [] })
 }
 
+test('home keeps services reachable after a transient status failure but blocks an explicit denial', async () => {
+  for (const forbidden of [false, true]) {
+    const home = mount('index', {
+      ...emptyPriority,
+      getMyAcadStatus: async () => { throw forbidden ? { httpStatus: 403 } : Error('offline') },
+      getMySchedule: async () => ({ items: [], todayItems: [] })
+    })
+    await home.page.load()
+    assert.equal(home.page.state, forbidden ? 'forbidden' : 'ready')
+    assert.equal(home.page.status, null)
+    if (!forbidden) assert.ok(home.page.failedSources.includes('学籍信息'))
+  }
+})
+
 test('read pages clear same-session private data on 403 and ignore a late result after unload', async () => {
   const transcript = mount('transcript', { getMyTranscript: async () => { throw { httpStatus: 403, code: '403001' } } })
   transcript.page.data = { items: [{ courseName: '旧成绩' }] }

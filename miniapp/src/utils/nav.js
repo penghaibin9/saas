@@ -59,6 +59,23 @@ export function go(url) {
 export function relaunch(url) {
   return navigate('reLaunch', { url: secureTarget(url) })
 }
+/** 同级目录切换：复用栈中已有页面，否则替换当前同级页，保留上一级返回位置。 */
+export function goSibling(url, directory) {
+  const target = secureTarget(url)
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  const path = target.split('?')[0].replace(/^\//, '')
+  const current = pages[pages.length - 1]?.route || ''
+  if (current === path && !target.includes('?')) return
+  let existing = -1
+  pages.forEach((page, index) => { if (page.route === path) existing = index })
+  if (existing >= 0 && !target.includes('?')) {
+    navigate('navigateBack', { delta: pages.length - 1 - existing })
+  } else if (current.startsWith(directory.replace(/^\//, '')) && !current.endsWith('/index')) {
+    navigate('redirectTo', { url: target })
+  } else {
+    go(target)
+  }
+}
 export function back(fallbackUrl = '/pages/login/index') {
   // 强制改密期间不能通过返回按钮回到业务页面。
   if (forcePasswordChangeRequired()) {

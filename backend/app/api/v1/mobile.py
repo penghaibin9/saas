@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Depends, Header, Path, Query, Request
 
 from app.core.permissions import enforce_permission, require_module, require_permission
 from app.core.response import success
+from app.schemas.campus_service import HandleBody as WorkOrderHandleBody, ReasonBody as WorkOrderCloseBody
 from app.modules.academic_affairs.routers.warning_core_router import WarningInterventionBody
 from app.modules.academic_affairs.services import mobile_academic_warning_service as teacher_warning_svc
 from app.core.security import get_current_user, require_mobile_staff, require_mobile_student
@@ -76,6 +77,12 @@ def me_overview(user=Depends(get_current_user)):
 @router.get("/home", summary="学生首页聚合（总览+迎新+批次，一次鉴权）")
 def student_home(user=Depends(get_current_user)):
     return success(stu.home(user))
+
+
+@router.get("/student/services", summary="学生·四大模块服务目录（非首页推荐）")
+def student_services(user=Depends(require_mobile_student)):
+    from app.services.mobile_service_directory import service_directory
+    return success(service_directory(user))
 
 
 @router.get("/me/wechat-subscribe", summary="学生·微信重要提醒的真实状态（未配置/未授权都如实返回）")
@@ -827,6 +834,51 @@ def teacher_campus(user=Depends(get_current_user)):
     return success(tea.campus(user))
 
 
+@router.get("/teacher/campus-service/work-orders", summary="教师·服务工单待处理（本人数据范围）")
+def teacher_campus_work_orders(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    keyword: str | None = Query(None, max_length=100),
+    status: str | None = Query(None, pattern="^(PENDING_HANDLE|PROCESSING|COMPLETED|CLOSED)$"),
+    user=Depends(require_permission("campusService.workOrder.view")),
+):
+    # 与 PC 复用同一 CsWorkOrder 查询、数据范围与状态真值；不能由移动端重建一份待办。
+    from app.services import campus_service_service as campus_service
+    items, total = campus_service.list_work_orders(page, pageSize, keyword=keyword, status=status)
+    return success({"list": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/campus-service/work-orders/{work_order_id}", summary="教师·服务工单详情")
+def teacher_campus_work_order_detail(
+    work_order_id: str,
+    user=Depends(require_permission("campusService.workOrder.view")),
+):
+    from app.services import campus_service_service as campus_service
+    return success(campus_service.get_work_order_detail(work_order_id))
+
+
+@router.post("/teacher/campus-service/work-orders/{work_order_id}/handle", summary="教师·更新服务工单进度")
+def teacher_campus_work_order_handle(
+    work_order_id: str,
+    body: WorkOrderHandleBody,
+    user=Depends(require_permission("campusService.workOrder.handle")),
+):
+    from app.services import campus_service_service as campus_service
+    return success(campus_service.handle_work_order(
+        work_order_id, body.note, body.close, body.version), message="工单进度已更新")
+
+
+@router.post("/teacher/campus-service/work-orders/{work_order_id}/close", summary="教师·关闭服务工单")
+def teacher_campus_work_order_close(
+    work_order_id: str,
+    body: WorkOrderCloseBody,
+    user=Depends(require_permission("campusService.workOrder.handle")),
+):
+    from app.services import campus_service_service as campus_service
+    return success(campus_service.close_work_order(
+        work_order_id, body.reason, body.version), message="工单已关闭")
+
+
 @router.get("/teacher/academic", summary="教师·学业预警待处理")
 def teacher_academic(user=Depends(get_current_user)):
     return success(teacher_warning_svc.list_warnings(user, status="PENDING_HANDLE"))
@@ -950,14 +1002,14 @@ def teacher_affairs_leave_cancel_confirm(leave_id: str, body: dict = Body(...),
                                          user=Depends(get_current_user)):
     return success(tea.affairs_leave_cancel_confirm(
         user, leave_id, str(body.get("action") or "CONFIRM").upper(),
-        body.get("actualReturnAt"), body.get("reason"), body.get("note")), message="已处理")
+        body.get("actualReturnAt"), body.get("reason"), body.get("note"), body.get("version")), message="已处理")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/proxy-cancel", summary="辅导员·代登记销假（owner 校验）")
 def teacher_affairs_leave_proxy_cancel(leave_id: str, body: dict = Body(...),
                                        user=Depends(get_current_user)):
     return success(tea.affairs_leave_proxy_cancel(
-        user, leave_id, body.get("actualReturnAt") or "", body.get("note")), message="已登记")
+        user, leave_id, body.get("actualReturnAt") or "", body.get("note"), body.get("version")), message="已登记")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/overdue-handle",
@@ -965,7 +1017,8 @@ def teacher_affairs_leave_proxy_cancel(leave_id: str, body: dict = Body(...),
 def teacher_affairs_leave_overdue_handle(leave_id: str, body: dict = Body(...),
                                          user=Depends(get_current_user)):
     return success(tea.affairs_leave_overdue_handle(
-        user, leave_id, str(body.get("handleType") or "").upper(), body.get("note") or ""), message="已登记")
+        user, leave_id, str(body.get("handleType") or "").upper(), body.get("note") or "",
+        body.get("version")), message="已登记")
 
 
 @router.post("/teacher/affairs/leaves/{leave_id}/extension-approve",
@@ -973,7 +1026,8 @@ def teacher_affairs_leave_overdue_handle(leave_id: str, body: dict = Body(...),
 def teacher_affairs_leave_extension_approve(leave_id: str, body: dict = Body(default={}),
                                             user=Depends(get_current_user)):
     return success(tea.affairs_leave_extension_approve(
-        user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason")), message="已处理")
+        user, leave_id, str(body.get("action") or "APPROVE").upper(), body.get("reason"),
+        body.get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/aid/pending", summary="辅导员·困难认定待审")
@@ -1013,7 +1067,8 @@ def teacher_affairs_funding_review(app_id: str, body: dict = Body(default={}),
                                    user=Depends(get_current_user)):
     return success(tea.affairs_funding_review(
         user, app_id, str((body or {}).get("action") or "APPROVE"),
-        reason=str((body or {}).get("reason") or "")), message="已处理")
+        reason=str((body or {}).get("reason") or ""),
+        expected_version=(body or {}).get("version")), message="已处理")
 
 
 @router.get("/teacher/affairs/work-study/posts", summary="教师·勤工岗位")
@@ -2210,8 +2265,8 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 
 # ── 教师端·学工待办卡（P7）──
 @router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
-def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_dorm_pending(user))
+def teacher_affairs_dorm_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
+    return success(tea.affairs_dorm_pending(user, page=page, page_size=pageSize))
 
 
 @router.get("/teacher/affairs/dorm/inspection-templates", summary="教师·宿舍检查模板")
@@ -2303,7 +2358,8 @@ def teacher_affairs_dorm_rectification_recheck(
 def teacher_affairs_dorm_transfer_review(transfer_id: str, body: dict = Body(...),
                                          user=Depends(get_current_user)):
     return success(tea.affairs_dorm_transfer_review(
-        user, transfer_id, str(body.get("action") or "").upper(), body.get("reason") or ""),
+        user, transfer_id, str(body.get("action") or "").upper(), body.get("reason") or "",
+        body.get("version")),
         message="已处理")
 
 
@@ -2312,7 +2368,7 @@ def teacher_affairs_dorm_transfer_review(transfer_id: str, body: dict = Body(...
 def teacher_affairs_dorm_exception_handle(exception_id: str, body: dict = Body(...),
                                           user=Depends(get_current_user)):
     return success(tea.affairs_dorm_exception_handle(
-        user, exception_id, body.get("note") or ""), message="已处置")
+        user, exception_id, body.get("note") or "", body.get("version")), message="已处置")
 
 @router.get("/teacher/affairs", summary="教师·学工待办（真分页与全量统计）")
 def teacher_affairs(
@@ -2489,8 +2545,16 @@ def academic_makeup_exemption_resubmit(
 
 
 @router.get("/academic/makeup/options", summary="教务·重修/免修可选挂科与未及格课程")
-def academic_makeup_options(user=Depends(require_mobile_student)):
-    return success(aa.makeup_options_my(user))
+def academic_makeup_options(
+    page: int = Query(1, ge=1, le=100000),
+    page_size: int = Query(20, alias="pageSize", ge=1, le=50),
+    keyword: str = Query('', max_length=60),
+    grade_id: int | None = Query(None, alias="gradeId", gt=0),
+    course_id: int | None = Query(None, alias="courseId", gt=0),
+    user=Depends(require_mobile_student),
+):
+    return success(aa.makeup_options_my(user, page=page, page_size=page_size,
+        keyword=keyword, grade_id=grade_id, course_id=course_id))
 
 
 @router.get("/academic/registration/my", summary="教务·我的注册批次与自助状态")

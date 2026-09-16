@@ -582,14 +582,19 @@ def exam_defer_resubmit_my(user, defer_id, body=None) -> dict:
     return exam.defer_resubmit(user, defer_id, expected_version)
 
 
-def _identity_options(user) -> dict:
+def _identity_options(user, *, page=None, page_size=20, keyword='', grade_id=None, course_id=None) -> dict:
     from app.models import AcademicGrade
+    from app.models import AcademicStudent
+    from sqlalchemy import func, or_
+    from sqlalchemy.orm import load_only
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_service
-    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
 
     with _legacy.session() as db:
         student = _legacy._me(db, user)
-        academic_student = gaps._best_grades_for_me(db, student)[1]
+        academic_student = db.scalar(select(AcademicStudent).where(
+            AcademicStudent.tenant_id == _tid(), AcademicStudent.student_id == student.id,
+            AcademicStudent.is_deleted.is_(False),
+        ))
         if not academic_student:
             return {
                 "retakeOptions": [],
@@ -597,14 +602,26 @@ def _identity_options(user) -> dict:
                 "retakeTotal": 0,
                 "exemptionTotal": 0,
                 "identityDebtCount": 0,
+                "retakePagination": {"page": page, "pageSize": page_size, "total": 0, "hasMore": False},
+                "exemptionPagination": {"page": page, "pageSize": page_size, "total": 0, "hasMore": False},
                 "note": "尚未建立学业成绩台账",
             }
-        rows = db.query(AcademicGrade).filter(
+        query = db.query(AcademicGrade).filter(
             AcademicGrade.tenant_id == _legacy._tid(),
             AcademicGrade.acad_student_id == academic_student.id,
             AcademicGrade.record_status == "ACTIVE",
             AcademicGrade.is_deleted.is_(False),
-        ).all()
+        )
+        # 规则判定需要同一课程的完整修读历史。只读取规则与候选投影所需列，
+        # 不重复加载整份成绩 ORM；筛选、排序与候选分页在判定之后交给数据库。
+        rows = query.options(load_only(
+            AcademicGrade.id, AcademicGrade.acad_student_id, AcademicGrade.course_id,
+            AcademicGrade.course_code, AcademicGrade.course_version, AcademicGrade.attempt_no,
+            AcademicGrade.course_name, AcademicGrade.term, AcademicGrade.score,
+            AcademicGrade.credit_value, AcademicGrade.pass_status, AcademicGrade.record_status,
+            AcademicGrade.source, AcademicGrade.exam_type, AcademicGrade.effective_attempt_strategy,
+            AcademicGrade.nature,
+        )).all()
         effective = grade_service.effective_grade_rows(rows)
         retakes, exemptions, debts = [], [], []
         for row in effective:
@@ -641,11 +658,36 @@ def _identity_options(user) -> dict:
         )
         retakes.sort(key=key)
         exemptions.sort(key=key)
+        retake_total, exemption_total = len(retakes), len(exemptions)
+        def candidate_page(items, exact_column, exact_id):
+            candidates = query.filter(AcademicGrade.id.in_([int(item['gradeId']) for item in items]))
+            if keyword:
+                escaped = keyword.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+                candidates = candidates.filter(or_(
+                    AcademicGrade.course_name.like(f'%{escaped}%', escape='\\'),
+                    AcademicGrade.course_code.like(f'%{escaped}%', escape='\\'),
+                ))
+            if exact_id is not None:
+                candidates = candidates.filter(exact_column == int(exact_id))
+            total = candidates.with_entities(func.count(AcademicGrade.id)).scalar() or 0
+            ids = candidates.with_entities(AcademicGrade.id).order_by(
+                AcademicGrade.term, AcademicGrade.course_code, AcademicGrade.attempt_no, AcademicGrade.id,
+            ).offset((page - 1) * page_size).limit(page_size).all()
+            by_id = {int(item['gradeId']): item for item in items}
+            return [by_id[row_id] for (row_id,) in ids], {
+                'page': page, 'pageSize': page_size, 'total': total, 'hasMore': page * page_size < total,
+            }
+        retake_pagination = exemption_pagination = None
+        if page is not None:
+            retakes, retake_pagination = candidate_page(retakes, AcademicGrade.id, grade_id)
+            exemptions, exemption_pagination = candidate_page(exemptions, AcademicGrade.course_id, course_id)
         return {
             "retakeOptions": retakes,
             "exemptionOptions": exemptions,
-            "retakeTotal": len(retakes),
-            "exemptionTotal": len(exemptions),
+            "retakeTotal": retake_total,
+            "exemptionTotal": exemption_total,
+            "retakePagination": retake_pagination,
+            "exemptionPagination": exemption_pagination,
             "identityDebtCount": len(debts),
             "identityDebtItems": debts[:50],
             "note": (
@@ -655,8 +697,8 @@ def _identity_options(user) -> dict:
         }
 
 
-def makeup_options_my(user) -> dict:
-    return _identity_options(user)
+def makeup_options_my(user, **params) -> dict:
+    return _identity_options(user, **params)
 
 
 def _page_value(value, *, default: int = 1, maximum: int = 50) -> int:

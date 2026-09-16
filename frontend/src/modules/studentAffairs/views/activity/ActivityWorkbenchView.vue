@@ -79,15 +79,18 @@
         </template>
       </AppDrawer>
 
-      <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.list.length + '）'" mode="modal" size="xlarge" @update:visible="pv.visible = $event">
+      <AppDrawer :visible="pv.visible" :title="pv.name + ' · 名单（' + pv.total + '）'" mode="modal" size="xlarge" @update:visible="pv.visible = $event">
         <div class="participant-note">确认名单前请核对报名状态与签到时间；名单确认后会生成正式第二课堂记录。</div>
+        <AppGlobalState :state="pv.state" :description="pv.error" @retry="loadParticipants">
         <DataTable v-if="pv.list.length" :columns="participantColumns" :rows="pv.list" row-key="signupId">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
           <template #cell-studentNo="{ row }">{{ row.studentNo||'—' }}</template>
           <template #cell-status="{ row }">{{ signupLabel(row.signupStatus) }}</template>
           <template #cell-checkin="{ row }">{{ (row.checkinAt||'').slice(0,16).replace('T',' ')||'—' }}</template>
         </DataTable>
-        <p v-else class="sa-empty">暂无报名记录。</p>
+        <p v-else class="sa-empty">当前数据范围暂无报名记录。</p>
+        <AppPagination v-model:page="pv.page" v-model:pageSize="pv.pageSize" :total="pv.total" @change="loadParticipants" />
+        </AppGlobalState>
         <template #footer>
           <AppButton @click="pv.visible = false">关闭</AppButton>
         </template>
@@ -106,6 +109,8 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { currentSessionGeneration } from '@/services/http/client'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 const ACTIVITY_COLUMNS = [
   { key: 'name', title: '活动' },
@@ -148,7 +153,7 @@ export default {
       activeType: '', activityTypeFilters: [{ value: '', label: '全部类型' }, ...TYPE_OPTIONS],
       pagination: { page: 1, pageSize: 20, total: 0 },
       formVisible: false, form: this.blankForm(),
-      pv: { visible: false, name: '', list: [] }
+      pv: { visible: false, name: '', list: [], id: '', page: 1, pageSize: 20, total: 0, state: 'loading', error: '', seq: 0 }
     }
   },
   computed: {
@@ -171,6 +176,7 @@ export default {
     }
   },
   mounted() { this.load() },
+  beforeUnmount() { this.pv.visible = false },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     blankForm() { return { activityName: '', activityType: 'ACTIVITY', creditType: 'SECOND_CLASS', creditValue: null, categoryCode: '', quota: null, startAt: '', endAt: '', location: '', error: '' } },
@@ -238,9 +244,20 @@ export default {
       }
     },
     async openParticipants(a) {
-      this.pv = { visible: true, name: a.activityName, list: [] }
-      const res = await studentAffairsApi.getActivityParticipants(a.activityId)
-      if (res.code === 0 && res.data) this.pv.list = res.data.items || []
+      this.pv = { visible: true, name: a.activityName, id: a.activityId, list: [], page: 1, pageSize: 20, total: 0, state: 'loading', error: '', seq: 0 }
+      return this.loadParticipants()
+    },
+    async loadParticipants() {
+      const pv = this.pv, generation = currentSessionGeneration(), seq = ++pv.seq
+      const current = () => pv === this.pv && pv.visible && seq === pv.seq && generation === currentSessionGeneration()
+      pv.state = 'loading'; pv.error = ''
+      try {
+        const res = await studentAffairsApi.getActivityParticipants(pv.id, { page: pv.page, pageSize: pv.pageSize })
+        if (!current()) return
+        if (res.code !== 0) throw res
+        if (!Array.isArray(res.data?.items) || !Number.isInteger(res.data.total)) throw new Error('活动名单未完整加载，请重试')
+        pv.list = res.data.items; pv.total = res.data.total; pv.state = 'ready'
+      } catch (e) { if (current()) { const err = normalizeUiError(e); pv.error = err.userMessage; pv.state = err.pageState; pv.list = [] } }
     },
     typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') },
     creditUnit(t) { return t === 'VOLUNTEER_HOUR' ? ' 时长' : (t === 'MORAL' ? ' 积分' : ' 学时') },

@@ -146,6 +146,14 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "销假被退回",
         "require_ack": False,
     },
+    "CAMPUS_SERVICE.WORKORDER_UPDATED": {
+        "source_module": "campus-service",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "STATUS_CHANGED",
+        "title": "服务申请进度已更新",
+        "require_ack": False,
+    },
     "INTERNSHIP.RISK_CREATED": {
         "source_module": "internship",
         "category": "WARNING",

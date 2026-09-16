@@ -4,6 +4,16 @@
     <AcademicPageState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
         <view v-if="applicationNotice" class="card"><text>{{ applicationNotice }}</text><button v-if="pendingApplication" class="btn" @click="load">核对本人记录</button></view>
+        <view v-if="showRetake || (showExemption && !resubmitExemptionId)" class="card stack-sm">
+          <input v-model="optionKeyword" class="mk__input" placeholder="搜索课程名称或课程代码" @confirm="searchOptions" />
+          <button class="btn" :disabled="submitting || !!pendingApplication" @click="searchOptions">查询可申请课程</button>
+          <text v-if="targetId" class="mk__sub">当前已定位待办课程。查询可查看其他课程。</text>
+          <view class="mk__pages">
+            <button v-if="optionPage > 1" class="btn" :disabled="submitting || !!pendingApplication" @click="changeOptionPage(optionPage - 1)">上一页课程</button>
+            <text>可选课程第 {{ optionPage }} 页</text>
+            <button v-if="opts.retakePagination?.hasMore || opts.exemptionPagination?.hasMore" class="btn" :disabled="submitting || !!pendingApplication" @click="changeOptionPage(optionPage + 1)">下一页课程</button>
+          </view>
+        </view>
         <view v-if="opts.identityDebtCount" class="mk__debt card">
           <text class="mk__debt-title">有 {{ opts.identityDebtCount }} 条历史成绩需要学校核对课程信息</text>
           <text class="mk__sub">这些成绩暂不能用于重修或免修，请联系教务处处理。</text>
@@ -113,7 +123,7 @@ mixins: [academicApplicationPage],
       retakeForm: { gradeId: '', reason: '' },
       exForm: { courseId: '', reason: '', materialFileIds: [] },
       resubmitExemptionId: '', resubmitExemptionCourseId: '', resubmitExemptionCourseName: '',
-      targetId: ''
+      targetId: '', optionPage: 1, optionKeyword: '', appliedOptionKeyword: ''
     }
   },
   computed: {
@@ -184,12 +194,14 @@ mixins: [academicApplicationPage],
         try {
           return await Promise.all([
             studentApi.getMyMakeup({ retakePage, retakePageSize: PAGE_SIZE, exemptionPage, exemptionPageSize: PAGE_SIZE }),
-            studentApi.getMakeupOptions()
+            studentApi.getMakeupOptions({ page: this.optionPage, pageSize: PAGE_SIZE,
+              keyword: this.appliedOptionKeyword || undefined, gradeId: this.targetId || undefined })
           ])
         }
         catch (error) { if (isForbidden(error) && epoch === this.readEpoch && identity === currentSessionGeneration() && !this.readHidden) this.clearForbiddenMakeup(); throw error }
       }, ([d, opts]) => {
           if (!d || !Array.isArray(d.retakes) || !Array.isArray(d.exemptions) || !opts || !Array.isArray(opts.retakeOptions) || !Array.isArray(opts.exemptionOptions)) throw new Error('补考重修信息无法核对')
+          if (opts.retakeOptions.length > PAGE_SIZE || opts.exemptionOptions.length > PAGE_SIZE) throw new Error('可选课程返回过多，请重试')
           const retakePagination = {
             total: Number(d.retakePagination?.total ?? d.retakes.length),
             page: pageNumber(d.retakePagination?.page ?? resolvedPages?.retakePage),
@@ -220,6 +232,18 @@ mixins: [academicApplicationPage],
     },
     changeRetakePage(page) { return this.load({ retakePage: page, exemptionPage: this.exemptionPage }) },
     changeExemptionPage(page) { return this.load({ retakePage: this.retakePage, exemptionPage: page }) },
+    searchOptions() {
+      if (this.submitting || this.pendingApplication || this.state !== 'ready') return
+      this.appliedOptionKeyword = this.optionKeyword.trim()
+      return this.changeOptionPage(1)
+    },
+    changeOptionPage(page) {
+      if (this.submitting || this.pendingApplication || this.state !== 'ready') return
+      this.optionPage = page; this.targetId = ''
+      this.retakeForm.gradeId = ''
+      if (!this.resubmitExemptionId) { this.exForm.courseId = ''; this.materials = []; this.materialScopeEpoch++ }
+      return this.load()
+    },
     retakeStatusLabel(status) {
       return {
         SUBMITTED: '已提交，等待教务审核',
@@ -243,7 +267,7 @@ mixins: [academicApplicationPage],
         CANCELLED: '已取消'
       }[String(status || '').toUpperCase()] || ''
     },
-    resetAcademicContext() { this.clearApplicationContext(); this.materials = []; this.materialBusy = false; this.materialScopeEpoch++; this.opts = { retakeOptions: [], exemptionOptions: [], identityDebtCount: 0 }; this.targetId = ''; this.retakeForm = { gradeId: '', reason: '' }; this.exForm = { courseId: '', reason: '', materialFileIds: [] }; this.resubmitExemptionId = ''; this.resubmitExemptionCourseId = ''; this.resubmitExemptionCourseName = ''; this.showRetake = false; this.showExemption = false },
+    resetAcademicContext() { this.clearApplicationContext(); this.optionPage = 1; this.optionKeyword = ''; this.appliedOptionKeyword = ''; this.materials = []; this.materialBusy = false; this.materialScopeEpoch++; this.opts = { retakeOptions: [], exemptionOptions: [], identityDebtCount: 0 }; this.targetId = ''; this.retakeForm = { gradeId: '', reason: '' }; this.exForm = { courseId: '', reason: '', materialFileIds: [] }; this.resubmitExemptionId = ''; this.resubmitExemptionCourseId = ''; this.resubmitExemptionCourseName = ''; this.showRetake = false; this.showExemption = false },
     finishApplication(kind) { if (kind === 'retake') { this.retakeForm.reason = ''; this.showRetake = false } else { this.exForm.reason = ''; this.showExemption = false; this.materials = []; this.materialBusy = false; this.materialScopeEpoch++; this.resubmitExemptionId = ''; this.resubmitExemptionCourseId = ''; this.resubmitExemptionCourseName = '' } },
     syncPickDefaults() {
       if (this.retakeForm.gradeId) {
@@ -255,7 +279,7 @@ mixins: [academicApplicationPage],
           : -1
         this.retakeIndex = targetIndex >= 0 ? targetIndex : 0
         const retake = rows[this.retakeIndex]
-        this.retakeForm = { gradeId: retake?.gradeId || '', reason: '' }
+        this.retakeForm = { ...this.retakeForm, gradeId: retake?.gradeId || '' }
         if (targetIndex >= 0) this.showRetake = true
       }
 
@@ -263,7 +287,7 @@ mixins: [academicApplicationPage],
         this.exIndex = (this.opts.exemptionOptions || []).findIndex(row => String(row.courseId) === String(this.exForm.courseId))
       } else {
         const exemption = (this.opts.exemptionOptions || [])[0]
-        this.exForm = { courseId: exemption?.courseId || '', reason: '', materialFileIds: [] }
+        this.exForm = { ...this.exForm, courseId: exemption?.courseId || '', materialFileIds: [] }
         this.exIndex = 0
       }
     },

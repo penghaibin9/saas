@@ -619,6 +619,45 @@ test('registration keeps batches on server pages and preserves an exact batch de
 })
 
 
+test('makeup candidate paging and search preserve reasons and query exact deep links', async () => {
+  const calls = []
+  const { page } = mount('makeup', {
+    getMyMakeup: async () => ({ retakes: [], exemptions: [] }),
+    getMakeupOptions: async params => {
+      calls.push({ ...params })
+      return {
+        retakeOptions: [{ gradeId: params.gradeId || `grade-${params.page}`, courseName: '重修课程' }],
+        exemptionOptions: [{ courseId: `course-${params.page}`, courseName: '免修课程' }],
+        retakePagination: { page: params.page, pageSize: 20, total: 25, hasMore: params.page === 1 },
+        exemptionPagination: { page: params.page, pageSize: 20, total: 25, hasMore: params.page === 1 }
+      }
+    }
+  })
+  page.targetId = '9223372036854775001'
+  await page.load()
+  assert.equal(calls[0].gradeId, page.targetId)
+  assert.equal(page.retakeForm.gradeId, page.targetId)
+  page.retakeForm.reason = '保留重修说明'
+  page.exForm.reason = '保留免修说明'
+  await page.changeOptionPage(2)
+  assert.equal(calls.at(-1).page, 2)
+  assert.equal(calls.at(-1).gradeId, undefined)
+  assert.equal(page.retakeForm.gradeId, 'grade-2')
+  assert.equal(page.retakeForm.reason, '保留重修说明')
+  assert.equal(page.exForm.reason, '保留免修说明')
+  page.optionKeyword = '  数学  '
+  await page.searchOptions()
+  assert.equal(calls.at(-1).page, 1)
+  assert.equal(calls.at(-1).pageSize, 20)
+  assert.equal(calls.at(-1).keyword, '数学')
+  page.submitting = true
+  page.optionKeyword = '不可在提交时切换'
+  const count = calls.length
+  await page.searchOptions()
+  assert.equal(calls.length, count)
+  assert.equal(page.appliedOptionKeyword, '数学')
+})
+
 test('makeup keeps retake and exemption histories on independent server pages', async () => {
   const calls = []
   const { page } = mount('makeup', {

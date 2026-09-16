@@ -75,10 +75,7 @@ export const studentApi = {
   submitOrientationMaterial: (body) => real.orientationMaterialSubmit(body),
   submitOrientationGreenChannel: (body) => real.orientationGreenChannelSubmit(body),
   issueOrientationCheckinToken: () => real.orientationCheckinToken(),
-  getServices: () =>
-    realFirstStrict('student.campus',
-      () => real.enrichCampusService({ categories: M.serviceCategories, items: M.serviceItems }),
-      () => mockRequest({ categories: M.serviceCategories, items: M.serviceItems })),
+  getServices: () => real.enrichCampusService(),
   getAcademic: () =>
     realFirstStrict('student.academic',
       () => real.enrichAcademic(),
@@ -241,7 +238,7 @@ export const studentApi = {
   getMyCredits: (params = {}) => real.acadCreditsMy(params),
   getMyWarnings: (params) => real.acadWarningMy(params),
   getMyMakeup: (params = {}) => real.acadMakeupMy(params),
-  getMakeupOptions: () => real.acadMakeupOptions(),
+  getMakeupOptions: (params = {}) => real.acadMakeupOptions(params),
   applyRetake: (payload) => real.acadRetakeApply(payload),
   applyExemption: (payload) => real.acadExemptionApply(payload),
   resubmitExemption: (exemptionId, payload) => real.acadExemptionResubmit(exemptionId, payload),

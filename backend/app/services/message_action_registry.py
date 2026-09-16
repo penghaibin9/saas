@@ -228,6 +228,18 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "teacherMini": None,
         "label": "我的办理",
     },
+    "student.campus-service.work-order": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["caseId"],
+        "pc": None,
+        "studentPc": None,
+        # 服务工单的真实学生回读页是“我的办理”；caseId 为 source:bizId 复合键，
+        # 页面已按该键精确聚焦，不能再指向泛化服务大厅。
+        "studentMini": "/pages/student/my-work/index",
+        "teacherMini": None,
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "服务申请办理结果",
+    },
     "student.warning.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["warningId"],

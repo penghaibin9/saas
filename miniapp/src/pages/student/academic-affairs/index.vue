@@ -3,7 +3,7 @@
     <AcademicPageNav variant="default" title="我的教务" show-back />
 
     <AcademicPageState :state="state" @retry="load">
-      <view class="page-pad aa__body" v-if="status">
+      <view class="page-pad aa__body" v-if="state === 'ready'">
         <view v-if="partialError" class="aa__partial" @click="load">
           <text>{{ failedSources.join('、') || '部分教务数据' }}暂未更新</text><text>点击重试</text>
         </view>
@@ -266,10 +266,14 @@ export default {
       if (epoch !== this.requestEpoch || this.hidden || this.identity !== currentSessionGeneration()) return
       if (core[0].status !== 'fulfilled' || !isObject(core[0].value)) {
         const error = core[0].reason || {}
-        this.state = Number(error?.httpStatus) === 403 || /^403/.test(String(error?.code || '')) ? 'forbidden' : 'error'
-        return
+        if (Number(error?.httpStatus) === 403 || /^403/.test(String(error?.code || ''))) {
+          this.state = 'forbidden'
+          return
+        }
+        this.addFailedSource('学籍信息')
+      } else {
+        this.status = core[0].value
       }
-      this.status = core[0].value
       const schedule = core[1].status === 'fulfilled' ? core[1].value : null
       if (isObject(schedule) && Array.isArray(schedule.items) && Array.isArray(schedule.todayItems)) {
         this.scheduleLoaded = true
@@ -336,7 +340,7 @@ export default {
       const results = await Promise.allSettled([
         studentApi.getMyEvaluationTasks({ page: 1, pageSize: 20 }),
         studentApi.getMyDeferrals({ status: 'RETURNED', page: 1, pageSize: 20 }),
-        studentApi.getMakeupOptions()
+        studentApi.getMakeupOptions({ page: 1, pageSize: 1 })
       ])
       if (epoch !== this.requestEpoch || this.hidden || this.identity !== currentSessionGeneration()) return
       const evaluationRowsRaw = results[0].status === 'fulfilled' ? rowsOf(results[0].value, ['list', 'items']) : null
@@ -348,7 +352,7 @@ export default {
       this.evaluationCount = evaluationRowsRaw ? Number(pendingEvaluationCount(results[0].value)) : 0
       const deferTotal = Number(results[1].status === 'fulfilled' && results[1].value && results[1].value.total)
       this.returnedDeferCount = deferRowsRaw ? (Number.isSafeInteger(deferTotal) && deferTotal >= 0 ? deferTotal : deferRows.length) : 0
-      this.retakeCount = makeup ? makeup.retakeOptions.length : 0
+      this.retakeCount = makeup ? Number(makeup.retakeTotal ?? makeup.retakeOptions.length) : 0
       const nextPendingTaskId = results[0].status === 'fulfilled' && results[0].value && results[0].value.nextPendingTaskId
       this.applyTask('evaluation', nextPendingTaskId ? { taskId: String(nextPendingTaskId) } : evaluationRows[0])
       this.applyTask('defer', deferRows[0])

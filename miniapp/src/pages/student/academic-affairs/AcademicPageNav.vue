@@ -16,14 +16,14 @@
   </view>
 </template>
 <script>
-import { go } from '@/utils/nav'
+import { goSibling } from '@/utils/nav'
 import catalogIcon from './catalog.svg'
 const pages = [['index','教务中心'],['registration','学期注册'],['schedule','我的课表'],['selection','网上选课'],['attendance','我的考勤'],['calendar','校历'],['transcript','我的成绩'],['evaluation','学生评教'],['recheck','成绩复查'],['exam','考试与缓考'],['makeup','补考重修 / 免修'],['clearance','清考结果'],['status','学籍与异动'],['credits','学分修读'],['warning','学业预警'],['textbook','教材领用'],['level-exam','等级考试'],['major-split','专业分流'],['recognition','成绩认定'],['graduation','毕业进度']]
 export default {
   inheritAttrs: false,
   data() { return { open: false, search: '', catalogIcon } },
   computed: { filtered() { return pages.filter(item => item[1].includes(this.search.trim())) } },
-  methods: { navigate(key) { this.open = false; this.search = ''; go('/pages/student/academic-affairs/' + key) } }
+  methods: { navigate(key) { this.open = false; this.search = ''; goSibling('/pages/student/academic-affairs/' + key, '/pages/student/academic-affairs/') } }
 }
 </script>
 <style scoped>

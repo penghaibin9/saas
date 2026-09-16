@@ -599,8 +599,10 @@ def my_messages(user: dict) -> dict:
             for wo in db.scalars(select(CsWorkOrder).where(CsWorkOrder.tenant_id == _tid(),
                                  CsWorkOrder.cs_student_id == cs.id, CsWorkOrder.is_deleted.is_(False)
                                  ).order_by(CsWorkOrder.id.desc()).limit(10)).all():
+                status_label = {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                                "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(wo.status, "状态更新中")
                 progress_msgs.append({"id": "wo-" + str(wo.id),
-                                      "title": f"工单「{wo.title}」当前状态：{wo.status}",
+                                      "title": f"工单「{wo.title}」当前状态：{status_label}",
                                       "module": "服务进度", "level": "normal",
                                       "time": None, "deadline": None,
                                       "read": wo.status not in ("PENDING_HANDLE",),
@@ -1902,6 +1904,10 @@ def my_applications(user: dict) -> dict:
             s = (s or "").upper()
             return "done" if s in _done else "rejected" if s in _rej else "processing"
 
+        def _work_order_status_label(status):
+            return {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                    "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(status, "状态更新中")
+
         # t_cs_leave 双状态列并行(P0 §4.2 集成①)：13A 新提交只挂 student_id(cs_student_id=0)，
         # 老 campus-service 提交只挂 cs_student_id。按 cs.id 单一条件查会漏掉新提交的请假，
         # 这里补上 student_id 分支，两条线都要查，不能只认其中一条。
@@ -1933,7 +1939,7 @@ def my_applications(user: dict) -> dict:
                                  ).order_by(CsWorkOrder.id.desc())).all():
                 apps.append({"id": "wo-" + str(wo.id), "no": wo.code or ("WO" + str(wo.id)),
                              "name": wo.title, "group": _grp(wo.status), "status": wo.status,
-                             "statusText": wo.status, "applyTime": None, "dept": "服务中心",
+                             "statusText": _work_order_status_label(wo.status), "applyTime": None, "dept": "服务中心",
                              "handler": wo.handler or "待分配", "lastOpinion": "",
                              "hasResult": _grp(wo.status) != "processing", "sourceType": "WORKORDER"})
         return {"hasData": bool(apps), "tabs": tabs, "applications": apps}
