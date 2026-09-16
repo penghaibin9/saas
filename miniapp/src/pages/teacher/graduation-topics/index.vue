@@ -13,6 +13,7 @@
       </view>
     </view>
 
+    <MobileGraduationBatchContext />
     <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="tab === 'choice'">
         <MobileGlobalState v-if="choiceError" state="error" title="志愿队列加载失败" :description="choiceError" @retry="load" />

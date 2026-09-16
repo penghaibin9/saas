@@ -15,6 +15,7 @@
     "appid": "wxb569328a0dbf268b",
     "setting": { "urlCheck": true, "es6": true, "minified": true },
     "usingComponents": true,
+    "optimization": { "subPackages": true },
     "__usePrivacyCheck__": true,
     "requiredPrivateInfos": ["getLocation"],
     "permission": {

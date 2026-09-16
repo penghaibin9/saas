@@ -1,6 +1,7 @@
 <template>
   <view class="page-wrap">
     <MobilePrivacyGate />
+    <MobileGraduationSectionErrors />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="g && !g.hasBatch">
         <MobileGlobalState state="empty" title="当前暂无毕业设计任务" description="进入毕业设计阶段后，这里会显示课题、任务书、开题、中期、答辩等节点。" />
@@ -247,6 +248,8 @@
         </view>
       </view>
     </MobileGlobalState>
+  <MobileGraduationExtensionPanel />
+    <MobileGraduationTempFileJanitor />
   </view>
 </template>
 

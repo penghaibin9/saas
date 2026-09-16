@@ -17,7 +17,7 @@ test('daily Weixin build uses the sandbox while release keeps its dedicated fina
   const ciArgs = defaultWeixinBuildArgs({ CI: 'true' })
   assert.match(ciArgs[0], /uni\.js$/)
   assert.deepEqual(ciArgs.slice(1), ['build', '-p', 'mp-weixin'])
-  assert.equal(scripts['build:mp-weixin:release'], 'uni build -p mp-weixin && node scripts/finalize-mp-weixin-release.mjs')
+  assert.equal(scripts['build:mp-weixin:release'], 'uni build -p mp-weixin && node scripts/optimize-mp-weixin.mjs && node scripts/finalize-mp-weixin-release.mjs')
 })
 
 test('sandbox enables localhost debugging only in its private output config and preserves developer settings', () => {

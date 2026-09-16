@@ -7,6 +7,7 @@
       <text class="ds__receipt-next">{{ actionReceipt.next }}</text>
       <button v-if="actionReceipt.nextId" class="btn btn-primary" @click="continueNext">继续下一名：{{ actionReceipt.nextName }}</button>
     </view>
+    <MobileGraduationBatchContext />
     <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待评分学生"

@@ -1,3 +1,4 @@
+import { normalizeLoginTenantHint } from '../src/utils/loginTenantHint.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -8,7 +9,7 @@ function component(path, context = {}) {
     .replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*$/gm, '').replace('export default', 'module.exports =')
   // 组件源码的 import 会在该轻量 VM 夹具中剥离；消息展示层的行为由
   // message-presentation.test.mjs 独立覆盖，这里保留其纯投影接口以验证详情生命周期。
-  const scope = { module: { exports: {} }, presentMessage: item => item, ...context }
+  const scope = { module: { exports: {} }, normalizeLoginTenantHint, presentMessage: item => item, ...context }
   vm.runInNewContext(source, scope)
   const c = scope.module.exports
   const state = c.data ? c.data() : {}

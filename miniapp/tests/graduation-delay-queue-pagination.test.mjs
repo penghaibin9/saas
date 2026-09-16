@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 
 function loadComponent(realRequest, getTeacherGraduationBatch = () => ({ id: 'batch-1' })) {
-  const source = fs.readFileSync(new URL('../src/components/MobileGraduationDelayQueue.vue', import.meta.url), 'utf8')
+  const source = fs.readFileSync(new URL('../src/pages/teacher/components/MobileGraduationDelayQueue.vue', import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^import[^\n]+\n/gm, '')
     .replace('export default', 'return')

@@ -1,6 +1,6 @@
 <template>
   <view class="student-hero" :style="{ paddingTop: top + 'px' }">
-    <image class="student-hero__art" src="/static/student-shell/campus-header.png" mode="aspectFill" />
+    <image class="student-hero__art" src="/static/student-shell/campus-header.jpg" mode="aspectFill" />
     <view class="student-hero__content">
       <text class="student-hero__title">{{ title }}</text>
       <text v-if="subtitle" class="student-hero__subtitle">{{ subtitle }}</text>

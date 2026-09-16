@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
+import { optimizeWeixin } from './optimize-mp-weixin.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const apiBaseUrl = 'http://127.0.0.1:8000'
@@ -36,6 +37,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status || 1)
   verifySandboxOutput(readFileSync(resolve(root, 'dist/build/mp-weixin/config/env.js'), 'utf8'))
+  optimizeWeixin(resolve(root, 'dist/build/mp-weixin'))
   configureSandboxProject(resolve(root, 'dist/build/mp-weixin'))
   console.log('微信沙箱构建已校验：本机接口 8000，真实数据模式。请重新打开开发者工具项目以加载新包。')
 }

@@ -6,7 +6,9 @@
               @click="switchTab(t.key)">{{ t.label }}<text v-if="t.count" class="gg__tab-badge">{{ t.count }}</text></text>
       </view>
 
-      <MobileGlobalState :state="state" @retry="load">
+      <MobileGraduationBatchContext />
+    <MobileGraduationDelayQueue />
+    <MobileGlobalState :state="state" @retry="load">
         <view class="page-pad" v-if="data">
           <template v-if="tab === 'review'">
             <view class="gg__hub">

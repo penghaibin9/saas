@@ -12,6 +12,7 @@
       </view>
     </view>
 
+    <MobileGraduationBatchContext />
     <MobileGlobalState :state="state" @retry="load">
       <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">

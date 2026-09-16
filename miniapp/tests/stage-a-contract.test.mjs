@@ -219,16 +219,17 @@ test('release build rejects leaked local build paths', () => {
   assert.match(release, /构建产物泄露本机绝对路径/)
 })
 
-test('release build fails at the proactive 1.80 MiB split threshold', () => {
+test('release build warns, not fails, at the internal 1.80 MiB threshold', () => {
   const release = read('scripts/finalize-mp-weixin-release.mjs')
   // V3 S1.5：main.js 不再全局安装高频适配（那会把两端 API 与 mock 图重新提升进主包），
-  // 改由各自分包页面显式安装；主包体积门禁本身不变。
+  // 改由各自分包页面显式安装；保留优化，但内部 1.80 MiB 线不阻止发布。
   assert.doesNotMatch(read('src/main.js'), /mobilePerformanceInstaller/)
   assert.match(read('src/pages/student/messages/index.vue'), /ensureStudentPerformanceApi\(\)/)
   assert.match(read('src/pages/teacher/workbench/index.vue'), /ensureTeacherPerformanceApi\(\)/)
   assert.match(release, /MAIN_PACKAGE_SPLIT_TRIGGER/)
   assert.match(release, /1\.8 \* 1024 \* 1024/)
-  assert.match(release, /达到 1\.80 MiB 主动分包线/)
+  assert.match(release, /达到 1\.80 MiB 性能提醒线/)
+  assert.match(release, /if \(mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER\) \{\s*console\.warn\(/)
 })
 
 test('teacher weekly review carries the CAS version from list to mutation', () => {

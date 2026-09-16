@@ -49,7 +49,7 @@ test('privacy gate registers one runtime listener and chooses one current UI own
 })
 
 test('graduation delay timeline keeps all four rows on the same visual contract', () => {
-  const panel = read('src/components/MobileGraduationExtensionPanel.vue')
+  const panel = read('src/pages/student/components/MobileGraduationExtensionPanel.vue')
   assert.equal((panel.match(/class="gdex__timeline-item"/g) || []).length, 4)
   assert.doesNotMatch(panel, /:class="\{ done:/)
 })

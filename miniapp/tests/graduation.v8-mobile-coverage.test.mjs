@@ -59,7 +59,7 @@ test('student mobile material center is human-first and topic catalog has truthf
 })
 
 test('teacher graduation pages reliably reload when the first batch context becomes ready', () => {
-  const context = read('src/components/MobileGraduationBatchContext.vue')
+  const context = read('src/pages/teacher/components/MobileGraduationBatchContext.vue')
   assert.match(context, /uni\.\$emit\('graduation:teacher-batch-ready'\)/)
   for (const page of [
     'src/pages/teacher/graduation-guide/index.vue',

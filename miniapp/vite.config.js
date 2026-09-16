@@ -68,6 +68,7 @@ function keepDialogsInsideH5App() {
     name: 'miniapp-h5-in-app-dialog-surface',
     enforce: 'pre',
     transform(code, id) {
+      if (process.env.UNI_PLATFORM !== 'h5') return null
       const file = id.split('?')[0].replace(/\\/g, '/')
       if (!file.includes('/src/') || !/\.(?:[cm]?js|vue)$/.test(file)) return null
       const transformed = code

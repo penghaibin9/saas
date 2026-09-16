@@ -93,8 +93,9 @@ test('teacher editable decisions reopen with the previous text after non-conflic
   }
   assert.match(dorm, /value:\s*initial/)
   assert.match(dorm, /v-model="actionDlg\.value"/)
-  assert.match(dorm, /n\.kind !== 'conflict'/)
-  assert.match(dorm, /setTimeout\(/)
+  assert.match(dorm, /if \(n\.kind === 'conflict'\) this\.load\(\)/)
+  assert.match(dorm, /if \(!ok && current\(\) && action === 'REJECT'\) this\.reviewTransfer/)
+  assert.match(dorm, /if \(!ok && current\(\)\) this\.handleException\(x, note\)/)
   assert.doesNotMatch(dorm, /uni\.showModal/)
 })
 
@@ -113,7 +114,7 @@ test('orientation and dorm review surfaces use in-page dialogs, stable request i
   assert.match(green, /reviewDialog\.visible/)
   assert.doesNotMatch(green, /uni\.showModal/)
   assert.match(requestIds, /student_lifecycle_client_request_sequence/)
-  assert.match(inspection, /clientRequestId: this\.inspection\.clientRequestId/)
+  assert.match(inspection, /clientRequestId:\s*inspection\.clientRequestId/)
   assert.match(studentDorm, /clientRequestId: this\.rectRequestIds\[x\.rectificationId\]/)
   assert.match(portalOrientation, /clientRequestId: greenRequestId\.value/)
   assert.doesNotMatch(portalOrientation, /演示租户为只读/)

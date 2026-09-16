@@ -22,8 +22,8 @@ const MAIN_PACKAGE_LIMIT = 2 * 1024 * 1024
 const TOTAL_PACKAGE_LIMIT = 20 * 1024 * 1024
 
 /**
- * V3 §3.2 内部包体硬预算（不是微信平台上限）。
- * 超预算必须做依赖追踪，禁止通过抬高这里的数字把 CI 修绿。
+ * 2026-09-16 用户决定：不以项目自定包体预算限制功能或阻止发布。
+ * 历史 V3 数值仅作性能提醒；平台大小限制与安全门禁仍为硬校验。
  */
 const V3_PACKAGE_BUDGET = {
   main: 520 * 1024,
@@ -325,10 +325,15 @@ async function main() {
       fileCount: bucket.fileCount,
       budgetBytes: budgetBytes ?? null,
       overBudget: budgetBytes != null && bucket.bytes > budgetBytes,
+      platformLimitBytes: MAIN_PACKAGE_LIMIT,
+      overPlatformLimit: bucket.bytes > MAIN_PACKAGE_LIMIT,
+      platformHeadroomBytes: MAIN_PACKAGE_LIMIT - bucket.bytes,
       topFiles: [...bucket.files].sort((left, right) => right.bytes - left.bytes).slice(0, TOP_FILE_COUNT)
     }
   })
   const overBudget = budgetRows.filter((row) => row.overBudget)
+  const platformViolations = budgetRows.filter((row) => row.overPlatformLimit)
+  const platformPass = totalBytes <= TOTAL_PACKAGE_LIMIT && platformViolations.length === 0
   const packageReport = {
     schema: 'miniapp-package-report/1',
     generatedAt: new Date().toISOString(),
@@ -337,35 +342,39 @@ async function main() {
     duplicateAssets: duplicateAssets.slice(0, TOP_FILE_COUNT),
     duplicateWastedBytes: duplicateAssets.reduce((sum, item) => sum + item.wastedBytes, 0),
     budgetPass: overBudget.length === 0,
+    budgetMode: 'warning',
+    platformPass,
     platformLimits: {
       mainPackageSplitTrigger: MAIN_PACKAGE_SPLIT_TRIGGER,
       mainPackageLimit: MAIN_PACKAGE_LIMIT,
+      singlePackageLimit: MAIN_PACKAGE_LIMIT,
       totalPackageLimit: TOTAL_PACKAGE_LIMIT
     }
   }
   await fs.writeFile(PACKAGE_REPORT, `${JSON.stringify(packageReport, null, 2)}\n`, 'utf8')
 
   if (overBudget.length) {
-    fail(
-      'V3 内部包体预算未通过：' +
+    console.warn(
+      '[mp-weixin release] 性能参考值提醒（不阻止发布）：' +
       overBudget
         .map((row) => `${row.package} ${(row.bytes / 1024).toFixed(1)} KiB > ${(row.budgetBytes / 1024).toFixed(1)} KiB`)
         .join('；') +
-      '。请做依赖追踪（跨包静态 import、重复大 JSON/图标、非必要组件），禁止抬高预算阈值。'
+      '。按实际加载体验优化，不为满足历史预算删减功能或降低材料清晰度。'
     )
   }
 
   if (totalBytes > TOTAL_PACKAGE_LIMIT) {
     fail(`小程序总包约 ${(totalBytes / 1024 / 1024).toFixed(2)} MiB，超过 20 MiB`)
   }
-  if (mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER) {
-    fail(
-      `主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，达到 1.80 MiB 主动分包线；` +
-      '必须实施 pages.json 分包后再发布'
-    )
+  if (platformViolations.length) {
+    fail('超过微信单个主包/分包 2 MiB 上限：' + platformViolations.map((row) =>
+      `${row.package} ${(row.bytes / 1024 / 1024).toFixed(2)} MiB`).join('；'))
   }
-  if (mainPackageBytes > MAIN_PACKAGE_LIMIT) {
-    fail(`主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，超过 2 MiB`)
+  if (mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER) {
+    console.warn(
+      `[mp-weixin release] 主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，达到 1.80 MiB 性能提醒线；` +
+      '尚未超过平台上限，不阻止发布。'
+    )
   }
 
   const apiHost = expectedApiBase.replace(/^https:\/\//i, '')
@@ -378,15 +387,15 @@ async function main() {
     `API: ${expectedApiBase}`,
     `AppID: ${uploadReady ? projectConfig.appid : `${projectConfig.appid}（占位，未配置真实 AppID）`}`,
     `AppID 来源: ${appidSource || '未配置'}`,
-    `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB（主动分包线 1.80 MiB / 上限 2 MiB）`,
+    `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB（平台上限 2 MiB；1.80 MiB 仅提醒）`,
     `总包大小: ${(totalBytes / 1024 / 1024).toFixed(2)} MiB（上限 20 MiB）`,
     `分包数量: ${subPackages.length}`,
     ...budgetRows.map((row) => (
       `  ${row.package}: ${(row.bytes / 1024).toFixed(1)} KiB` +
-      (row.budgetBytes != null ? `（V3 内部预算 ${(row.budgetBytes / 1024).toFixed(1)} KiB）` : '')
+      (row.budgetBytes != null ? `（历史性能参考 ${(row.budgetBytes / 1024).toFixed(1)} KiB，仅提醒）` : '')
     )),
     `跨包重复资产浪费: ${(packageReport.duplicateWastedBytes / 1024).toFixed(1)} KiB`,
-    `包体报告: miniapp-package-report.json（budgetPass=${packageReport.budgetPass}）`,
+    `包体报告: miniapp-package-report.json（platformPass=${packageReport.platformPass}；budgetPass=${packageReport.budgetPass} 仅供性能参考）`,
     '学生端入口: pages/login/student/index',
     '教师端入口: pages/login/teacher/index',
     '',

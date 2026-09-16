@@ -1,7 +1,7 @@
 <template>
   <view class="mini-login" :class="{ 'mini-login--teacher': isTeacher }">
     <view class="hero" :style="{ paddingTop: heroTop + 'px' }">
-      <image class="hero__art" :src="isTeacher ? '/static/teacher-shell/campus-header.png' : '/static/login/student-campus.png'" mode="aspectFill" />
+      <image class="hero__art" :src="isTeacher ? '/static/teacher-shell/campus-header.jpg' : '/static/login/student-campus.jpg'" mode="aspectFill" />
       <view class="brand">
         <image v-if="brand.logo" :src="brand.logo" class="brand__logo-img" mode="aspectFit" />
         <text v-else class="brand__logo">{{ logoText }}</text>
@@ -77,6 +77,7 @@
 </template>
 
 <script>
+import { normalizeLoginTenantHint } from '@/utils/loginTenantHint.mjs'
 import { tenantBrandConfig, roleKeyFromBackendRole } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
@@ -91,10 +92,11 @@ import { shellIcon } from '../student-shell-icons.mjs'
 export default {
   name: 'MiniLoginAuthPanel',
   props: {
+    tenantCodeHint: { type: String, default: '' },
     entry: { type: String, required: true, validator: (value) => ['student', 'teacher'].includes(value) }
   },
   data() {
-    const rememberedTenantCode = getLastTenantCode()
+    const rememberedTenantCode = normalizeLoginTenantHint(this.tenantCodeHint) || getLastTenantCode()
     return {
       brand: tenantBrandConfig,
       agree: false,
@@ -143,6 +145,12 @@ export default {
     // #endif
   },
   watch: {
+    tenantCodeHint: { immediate: true, handler(value) {
+      const code = normalizeLoginTenantHint(value)
+      if (!code || code === this.account.tenantCode) return
+      if (this.accLoading || this.wxLoading || this.binding) this.invalidateLogin()
+      this.loginAlive = true; this.account.tenantCode = code; this.bindForm.tenantCode = code; this.tenantOpen = true
+    } },
     'account.loginName': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
     'account.tenantCode': { handler() { this.accountCaptchaFlow?.invalidate() }, flush: 'sync' },
     'account.identifierType': { handler() { this.accountCaptchaFlow?.invalidate(); this.account.loginName = ''; this.account.password = ''; this.passwordVisible = false }, flush: 'sync' }

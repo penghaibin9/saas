@@ -1,9 +1,5 @@
 <template>
   <view class="mobile-global-state">
-    <!-- 教师批次与高优先级错误在主页面之前；学生低频扩展事项在主流程之后。 -->
-    <MobileGraduationBatchContext />
-    <MobileGraduationDelayQueue />
-    <MobileGraduationSectionErrors />
 
     <slot v-if="state === 'ready'" />
 
@@ -34,8 +30,6 @@
       </view>
     </view>
 
-    <MobileGraduationExtensionPanel />
-    <MobileGraduationTempFileJanitor />
   </view>
 </template>
 

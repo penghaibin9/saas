@@ -49,6 +49,11 @@ export const TEACHER_SERVICE_ROUTES = {
         mental: '/pages/teacher/affairs/mental/index',
         affairs: '/pages/teacher/affairs/index',
         familyContact: '/pages/teacher/family-contact/index',
+        contact: '/pages/teacher/my-students/index',
+        record: '/pages/teacher/family-contact/index?mode=create',
+        // Historical shortcut keys reuse the named real service, not a new command.
+        care: '/pages/teacher/affairs/talk/index',
+        urge: '/pages/teacher/notify-publish/index',
         affairsLeave: '/pages/teacher/affairs-leave/index',
         dormReview: '/pages/teacher/dorm-review/index',
         classCadre: '/pages/teacher/class-cadre/index',
