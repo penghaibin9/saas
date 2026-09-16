@@ -42,7 +42,7 @@ export function optimizeWeixin(output) {
     }
   }
   const moves = new Map()
-  for (const [n, set] of owners) if (rootOf(n) === 'main' && set.size === 1 && !set.has('main') && !set.has('pages/student') && /^(components|services|modules|utils)\//.test(n)) {
+  for (const [n, set] of owners) if (rootOf(n) === 'main' && set.size === 1 && !set.has('main') && /^(components|services|modules|utils)\//.test(n)) {
     const dest = [...set][0] + '/_shared/' + n
     if (files.has(dest)) throw Error('Refusing to overwrite existing package artifact: ' + dest)
     moves.set(n, dest)

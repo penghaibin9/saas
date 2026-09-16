@@ -48,3 +48,17 @@ test('a component referenced by login never moves into a subpackage', () => {
   try { put('login.json', '{"usingComponents":{"widget":"./components/Widget"}}'); const r = optimizeWeixin(dir); assert.ok(!r.movedFiles['components/Widget.js']) }
   finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('student-only dependencies leave the main package too', () => {
+  const { dir, put } = fixture()
+  try {
+    put('app.json', JSON.stringify({ pages: ['login'], subPackages: [{ root: 'pages/student', pages: ['home'] }] }))
+    put('pages/student/home.js', 'exports.read=()=>require("../../services/student.js").value')
+    put('services/student.js', 'exports.value=9')
+    const result = optimizeWeixin(dir)
+    const req = createRequire(path.join(dir, 'app.js'))
+    assert.equal(req('./pages/student/home.js').read(), 9)
+    assert.ok(!existsSync(path.join(dir, 'services/student.js')))
+    assert.equal(result.movedFiles['services/student.js'], 'pages/student/_shared/services/student.js')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
