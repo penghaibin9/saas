@@ -39,6 +39,13 @@ function fail(message) {
   throw new Error(`[mp-weixin release] ${message}`)
 }
 
+function hasCleartextNetworkAddress(text) {
+  // SVG's xmlns is an identifier, not a network request. Keep real HTTP URLs
+  // (including URLs on w3.org outside this exact attribute) subject to the gate.
+  const networkText = text.replace(/\bxmlns=(\\?["'])http:\/\/www\.w3\.org\/2000\/svg\1/g, '')
+  return /http:\/\/(?!localhost(?=[:/\s"'\\]|$)|127\.0\.0\.1(?=[:/\s"'\\]|$))/i.test(networkText)
+}
+
 async function readJson(file) {
   try {
     return JSON.parse(await fs.readFile(file, 'utf8'))
@@ -200,7 +207,7 @@ async function main() {
   for (const file of textFiles) {
     const text = await fs.readFile(file, 'utf8')
     if (text.includes(expectedApiBase)) apiBaseFound = true
-    if (/http:\/\/(?!localhost|127\.0\.0\.1)/i.test(text)) cleartextApiFiles.push(normalizeRelative(file))
+    if (hasCleartextNetworkAddress(text)) cleartextApiFiles.push(normalizeRelative(file))
   }
   if (!apiBaseFound) fail(`构建产物未注入正式 API：${expectedApiBase}`)
   if (cleartextApiFiles.length) {

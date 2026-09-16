@@ -134,7 +134,6 @@ export default {
 .quick__title { font-size:19px; font-weight:700 }
 /* Class-only selectors also work inside isolated WeChat components. */
 .quick__link,.quick__item,.quick__empty,.quick__small,.quick__tab,.quick__choice,.quick__save { margin:0; line-height:1.5; border:0 }
-.quick__link::after,.quick__item::after,.quick__empty::after,.quick__small::after,.quick__tab::after,.quick__choice::after,.quick__save::after { border:0 }
 .quick__link { background:transparent; color:#1671f8; font-size:13px; padding:10px 3px }
 .quick__grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px 8px }
 .quick__item { display:flex; flex-direction:column; align-items:center; gap:9px; background:transparent; padding:0; font-size:13px; color:#142440; min-width:0 }

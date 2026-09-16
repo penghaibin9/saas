@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="学籍异动审批" subtitle="待我审批" :before-back="backToQueue" show-back />
+    <MobileNavBar variant="teacher" title="学籍异动审批" :subtitle="completedTasks.length ? '本人审批记录' : '待我审批'" :before-back="backToQueue" show-back />
     <view v-if="unresolvedCount" class="card ed__pending" role="status">
       <text class="t-md t-bold">有 {{ unresolvedCount }} 笔审批结果待确认</text>
       <text class="t-sm">原审批暂不可重复提交。核对会读取待审队列和本人已处理任务，不会重发审批。</text>
@@ -10,6 +10,10 @@
     <view v-if="recoveredNotice" class="card ed__pending" role="status"><text>{{ recoveredNotice }}</text></view>
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
+        <MobileCompletedApprovalReceipt v-if="completedTasks.length" :tasks="completedTasks" />
+        <MobileGlobalState v-else-if="targetUnavailable" state="empty" title="当前身份下未找到该事项"
+          description="当前待审队列及本人已办记录均未返回原事项，请返回核对身份或联系学校管理员。" />
+        <template v-else>
         <view v-if="detailId" class="ed__detail-head">
           <button class="btn btn-ghost" :disabled="acting" @click="backToQueue">‹ 返回列表</button>
           <text class="t-md t-bold">异动证据核对</text>
@@ -49,6 +53,7 @@
           <text>{{ queuePage + 1 }} / {{ Math.ceil(list.length / 20) }}</text>
           <button class="btn btn-ghost" :disabled="(queuePage + 1) * 20 >= list.length" @click="queuePage++">下一组</button>
         </view>
+        </template>
       </view>
     </MobileGlobalState>
   </view>
@@ -63,7 +68,7 @@ import { toast } from '@/utils/nav'
 import { approvalContextKey, approvalReceiptChanged, hasExplicitApprovalReceipt, isApprovalConflict, isApprovalForbidden } from './approval-recovery'
 const RECOVERY_SCOPE = 'status-change-review'
 export default {
-  data() { return { list: [], state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 0, reviewAttempts: {}, recoveryStorageBlocked: false, recoveredNotice: '' } },
+  data() { return { list: [], completedTasks: [], targetUnavailable: false, state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 0, reviewAttempts: {}, recoveryStorageBlocked: false, recoveredNotice: '' } },
   onLoad(options = {}) {
     this._pageActive = true
     this.targetChangeId = String(options.id || options.changeId || options.recordId || '')
@@ -103,6 +108,7 @@ export default {
       this._loadEpoch = (this._loadEpoch || 0) + 1
       this.acting = false
       this.list = []; this.detailId = ''; this.targetChangeId = ''; this.queuePage = 0
+      this.completedTasks = []; this.targetUnavailable = false
       this.recoveredNotice = ''
       for (const attempt of Object.values(this.reviewAttempts)) if (attempt.context === this.contextKey()) attempt.observation = ''
       this.state = 'error'
@@ -147,6 +153,9 @@ export default {
       this.detailId = String(row.changeId)
     },
     backToQueue() {
+      if (this.completedTasks.length || this.targetUnavailable) {
+        this.completedTasks = []; this.targetUnavailable = false; this.targetChangeId = ''; return false
+      }
       if (!this.detailId) return true
       if (this.acting) { toast('正在处理，请稍候'); return false }
       this.detailId = ''
@@ -199,10 +208,21 @@ export default {
         this.restoreReviewAttempts(context)
       } else if (this.recoveryStorageBlocked) this.restoreReviewAttempts(context)
       this.state = 'loading'
+      this.completedTasks = []; this.targetUnavailable = false
       try {
         const d = await teacherApi.getStatusChangePending()
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
-        this.list = this.focusTarget((d && (d.list || d.items)) || [])
+        const rows = (d && (d.list || d.items)) || []
+        if (this.targetChangeId && !rows.some(row => this.isTarget(row))) {
+          // A completed todo no longer belongs to the pending queue. Read only
+          // this user's canonical completed tasks, matching the business ID exactly.
+          const doneTasks = await getDoneApprovals(1, 100, this.targetChangeId, 'AA_STATUS_CHANGE')
+          if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
+          this.completedTasks = (doneTasks?.items || []).filter(task =>
+            task.sourceBizType === 'AA_STATUS_CHANGE' && String(task.sourceBizId) === this.targetChangeId)
+          this.targetUnavailable = !this.completedTasks.length
+          this.list = rows
+        } else this.list = this.focusTarget(rows)
         this.observeReviewAttempts(this.list)
         await this.recoverCompletedTasks(context, epoch)
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
@@ -217,6 +237,7 @@ export default {
       } finally { if (done) done() }
     },
     doAct(x, action) {
+      if (this.completedTasks.length || this.targetUnavailable) return
       if (this._actionContext && this._actionContext !== this.contextKey()) { this.load(); return }
       if (this.acting || this.reviewLocked(x)) return
       const changeId = String(x.changeId || '')

@@ -102,6 +102,11 @@ export const useSessionStore = defineStore('session', {
       return cfg.homeRoute
     },
     applyRealUser(d) {
+      // /auth/me omits the school name. Retain the verified login name only
+      // within the same tenant; never carry it into a different school's session.
+      const tenantName = d?.tenantName || (d?.tenantId != null &&
+        String(d.tenantId) === String(this.realUser?.tenantId) && this.persistedIdentityVerified
+        ? this.mockUser?.tenantName || '' : '')
       this.realUser = d || null
       if (!d) return
       const role = d.currentRole || {}
@@ -127,7 +132,7 @@ export const useSessionStore = defineStore('session', {
       this.mockUser = {
         ...initialUser(side),
         name: d.displayName || d.realName || d.user?.realName || d.user?.name || '',
-        tenantName: d.tenantName || ''
+        tenantName
       }
       this.persist()
     },

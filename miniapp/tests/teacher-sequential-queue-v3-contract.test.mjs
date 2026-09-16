@@ -84,7 +84,7 @@ test('T5 internship todo resolves a server-authorized batch instead of rendering
   assert.match(page, /ensureBatchContext/)
   assert.match(page, /当前实习批次/)
   assert.match(page, /数据恢复前不要把空列表当作已处理完成/)
-  assert.match(page, /batchId: this\.batchId/)
+  assert.match(page, /batchId = this\.batchId/)
   assert.match(adapter, /focusReportId/)
   assert.match(adapter, /recordId=\$\{encodeURIComponent\(String\(focusReportId\)\.trim\(\)\)\}/)
   assert.doesNotMatch(adapter, /setStorageSync|localStorage/)

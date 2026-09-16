@@ -106,7 +106,7 @@ test('S1.5-G1 仍走 performance adapter 的高频页必须先显式安装；T8 
 
   const todoSource = read('src/pages/teacher/todos/index.vue')
   assert.match(todoSource, /createNetworkPager/)
-  assert.match(todoSource, /teacherTodoT8Api\.list\(\{ group: this\.filter, cursor, pageSize \}\)/)
+  assert.match(todoSource, /teacherTodoT8Api\.list\(\{ group, cursor, pageSize \}\)/)
   assert.doesNotMatch(todoSource, /getTodosPage\(/)
   assert.doesNotMatch(todoSource, /ensureTeacherPerformanceApi\(\)/)
 })

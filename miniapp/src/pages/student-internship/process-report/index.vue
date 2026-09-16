@@ -98,6 +98,7 @@ export default {
     }
   },
   onLoad(q) {
+    this.requestedBatchId = String(q?.batchId || '')
     const raw = String((q && q.type) || '').toLowerCase()
     if (raw === 'monthly') this.reportType = 'MONTHLY'
     else if (raw === 'summary') this.reportType = 'SUMMARY'
@@ -121,7 +122,7 @@ export default {
       const sequence = ++this.loadSequence
       this.pageState = 'loading'
       try {
-        const dashboard = await studentApi.getInternship()
+        const dashboard = await studentApi.getInternship(this.requestedBatchId)
         if (sequence !== this.loadSequence) return
         this.batchId = dashboard.batchId || ''
         this.internshipId = dashboard.recordId || ''

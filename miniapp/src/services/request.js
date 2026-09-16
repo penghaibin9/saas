@@ -408,9 +408,9 @@ function omitAbsentGetParams(data, method) {
   return normalized
 }
 
-function inflightKey(method, effectivePath, data, auth) {
+function inflightKey(method, effectivePath, data, auth, internshipBatchId) {
   const identity = auth ? `${currentSessionGeneration()}|${getToken()}` : 'public'
-  return `${method}|${effectivePath}|${stablePayload(data)}|${identity}`
+  return `${method}|${effectivePath}|${stablePayload(data)}|${identity}|${internshipBatchId}`
 }
 
 function normalizeJsonResponseBody(value) {
@@ -430,7 +430,7 @@ function httpResponseError(status) {
 }
 
 function executeRealRequest(path, effectivePath, {
-  method, data, auth, _retried, _rawPage, _expectedGeneration, headers = {}
+  method, data, auth, _retried, _rawPage, _expectedGeneration, _internshipBatchId, headers = {}
 }) {
   if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
     return Promise.reject(sessionChangedError())
@@ -440,8 +440,7 @@ function executeRealRequest(path, effectivePath, {
     const header = { 'Content-Type': 'application/json', ...headers }
     const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
-    const internshipBatchId = selectedInternshipBatchId(path)
-    if (internshipBatchId) header['X-Internship-Batch-Id'] = internshipBatchId
+    if (_internshipBatchId) header['X-Internship-Batch-Id'] = _internshipBatchId
     uni.request({
       url: ENV.apiBaseUrl + ENV.apiPrefix + effectivePath,
       method,
@@ -456,7 +455,7 @@ function executeRealRequest(path, effectivePath, {
         if (body && body.code === 401001 && auth && !_retried && path.split('?')[0] !== '/auth/refresh') {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {
-              method, data, auth, _retried: true, _rawPage, headers,
+              method, data, auth, _retried: true, _rawPage, headers, _internshipBatchId,
               _expectedGeneration: requestSnapshot.generation
             }))
             .then(resolve)
@@ -513,7 +512,8 @@ function executeRealRequest(path, effectivePath, {
 
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, {
-  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null, headers = {}
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null, headers = {},
+  _internshipBatchId = selectedInternshipBatchId(path)
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
   const normalizedData = omitAbsentGetParams(data, normalizedMethod)
@@ -525,7 +525,7 @@ export function realRequest(path, {
   if (auth && !_retried && String(path || '').split('?')[0] !== '/auth/refresh' && !getToken() && getRefreshToken()) {
     const expectedGeneration = currentSessionGeneration()
     return _refreshOnce(expectedGeneration).then(() => realRequest(path, {
-      method: normalizedMethod, data: normalizedData, auth, _retried: true, _rawPage, headers,
+      method: normalizedMethod, data: normalizedData, auth, _retried: true, _rawPage, headers, _internshipBatchId,
       _expectedGeneration: expectedGeneration
     }))
   }
@@ -535,15 +535,17 @@ export function realRequest(path, {
   // 401 刷新后的重试和内部显式分页必须绕过原单飞槽位，避免等待自身 Promise。
   if (_retried || _rawPage) {
     return executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers
+      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
     })
   }
 
-  const key = inflightKey(normalizedMethod, effectivePath, normalizedData, auth)
+  // Batch is request context: snapshot it before any async refresh and keep it in
+  // the single-flight key, so another batch cannot reuse this response or retry.
+  const key = inflightKey(normalizedMethod, effectivePath, normalizedData, auth, _internshipBatchId)
   if (normalizedMethod === 'GET') {
     if (_getInflight.has(key)) return _getInflight.get(key)
     const pending = executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers
+      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
     }).finally(() => _getInflight.delete(key))
     _getInflight.set(key, pending)
     return pending
@@ -554,7 +556,7 @@ export function realRequest(path, {
   }
   _mutationInflight.add(key)
   return executeRealRequest(path, effectivePath, {
-    method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers
+    method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
   }).finally(() => _mutationInflight.delete(key))
 }
 

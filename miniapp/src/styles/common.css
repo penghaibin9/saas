@@ -89,6 +89,11 @@
   line-height: 1.2;
 }
 .btn::after { border: none; }
+/* WeChat component styles stay class-only; these unique button resets live in app.wxss. */
+.common-services .ts-plain::after, .common-services .ts-action::after,
+.teacher-hero__identity::after,
+.quick__link::after, .quick__item::after, .quick__empty::after, .quick__small::after,
+.quick__tab::after, .quick__choice::after, .quick__save::after { border: none; }
 .btn-primary { background: var(--brand-primary); color: var(--text-inverse); }
 .btn-ghost { background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
 .btn-block { display: flex; width: 100%; }

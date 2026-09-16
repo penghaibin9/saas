@@ -1,11 +1,12 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="实习过程办理" subtitle="周报批阅 · 指导巡访 · 打卡异常" show-back />
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :title="state === 'empty' ? '暂无可办理的实习批次' : ''"
+      :description="loadError" @retry="load">
       <view v-if="data">
         <view v-if="batches.length" class="page-pad ir__batch">
           <text class="ir__batch-label">当前实习批次</text>
-          <picker :range="batches" range-key="name" :value="batchIndex" @change="onBatchChange">
+          <picker :range="batches" range-key="name" :value="batchIndex" :disabled="acting || visitActing" @change="onBatchChange">
             <view class="ir__batch-choice"><text>{{ currentBatchLabel }}</text><text>切换 ›</text></view>
           </picker>
         </view>
@@ -146,6 +147,7 @@
 
           <view v-else-if="tab === 'visit'" class="stack">
             <MobileGlobalState v-if="visitState === 'loading'" state="loading" />
+            <MobileGlobalState v-else-if="visitState === 'error'" state="error" @retry="loadVisits" />
             <MobileGlobalState v-else-if="!visitPlans.length" state="empty" title="本月暂无巡访计划" description="学院或教务下发巡访计划后会出现在这里。" />
             <template v-else>
               <view v-for="p in visitPlans" :key="p.id" class="ir card">
@@ -207,18 +209,19 @@ import { useInternshipContextStore } from '@/stores/internshipContext'
 import { normalizeError } from '@/services/request'
 import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 export default {
   components: { InternshipVisitEvidenceForm, MobileSequentialQueue },
   mixins: [listPaging(20)],
   data() {
     return {
-      data: null, state: 'loading', tab: 'weekly', acting: false,
+      data: null, state: 'loading', loadError: '', tab: 'weekly', acting: false,
       tabs: [{ key: 'weekly', label: '周报批阅' }, { key: 'visit', label: '指导巡访' }, { key: 'abnormal', label: '打卡异常' }],
       visitPlans: [], visitState: 'loading', visitActing: false, visitTarget: null,
       remindActingId: '', sequentialMode: false, sequentialIndex: 0, sequentialConflict: false,
       pagingBusy: false, context: null, batches: [], batchId: '', batchIndex: 0,
-      routeBatchId: '', focusReportId: ''
+      routeBatchId: '', focusReportId: '', readEpoch: 0, visitEpoch: 0, hidden: false
     }
   },
   computed: {
@@ -257,10 +260,14 @@ export default {
     sequentialCurrent() { return this.sequentialItems[this.sequentialIndex] || null }
   },
   onLoad(query) {
+    if (['weekly', 'visit', 'abnormal'].includes(query?.tab)) this.tab = query.tab
     this.routeBatchId = String(query?.batchId || '')
     this.focusReportId = String(query?.recordId || '')
     this.load(); this.loadVisits()
   },
+  onShow() { if (this.hidden) { this.hidden = false; this.load(); this.loadVisits() } },
+  onHide() { this.invalidateReads() },
+  onUnload() { this.invalidateReads() },
   onReachBottom() { if (!this.sequentialMode && this.tab !== 'visit') this.loadMoreQueue(this.tab) },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -271,6 +278,8 @@ export default {
   },
   methods: {
     toast,
+    invalidateReads() { this.hidden = true; this.readEpoch++; this.visitEpoch++; this.pagingBusy = false },
+    readIsCurrent(epoch, generation) { return !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration() },
     async ensureBatchContext() {
       if (!this.context) this.context = useInternshipContextStore()
       if (!this.context.loaded) {
@@ -291,12 +300,14 @@ export default {
       return this.batchId
     },
     onBatchChange(event) {
+      if (this.acting || this.visitActing) return
       const selected = this.batches[Number(event?.detail?.value)]
       if (!selected || !this.context || !this.context.selectBatch(selected.id)) return
       this.batchId = String(this.context.selectedBatchId || '')
       this.batchIndex = Math.max(0, this.batches.findIndex((item) => String(item.id) === this.batchId))
       // 用户明确切换批次后不能继续带着另一批次待办的 recordId 请求。
       this.focusReportId = ''; this.routeBatchId = ''
+      this.stopSequential(); this.closeVisitForm()
       this.load()
     },
     pagingList() {
@@ -317,22 +328,24 @@ export default {
       const pagination = this.data.pagination || {}
       const hasMore = kind === 'weekly' ? pagination.weeklyHasMore : pagination.exceptionHasMore
       if (!hasMore) return
+      const epoch = this.readEpoch, generation = currentSessionGeneration(), batchId = this.batchId
       this.pagingBusy = true
       try {
         const next = await teacherApi.getWeeklyReports({
           weeklyPage: kind === 'weekly' ? Number(pagination.weeklyPage || 1) + 1 : Number(pagination.weeklyPage || 1),
           exceptionPage: kind === 'abnormal' ? Number(pagination.exceptionPage || 1) + 1 : Number(pagination.exceptionPage || 1),
-          batchId: this.batchId, pageSize: Number(pagination.pageSize || 20), append: true
+          batchId, pageSize: Number(pagination.pageSize || 20), append: true
         })
+        if (!this.readIsCurrent(epoch, generation) || this.batchId !== batchId) return
         const key = kind === 'weekly' ? 'reports' : 'abnormal'
         const known = new Set((this.data[key] || []).map((item) => String(item.id)))
         this.data[key].push(...(next[key] || []).filter((item) => !known.has(String(item.id))))
         this.data.pagination = { ...pagination, ...(next.pagination || {}) }
         this.pagedLoadMore()
       } catch (e) {
-        toast(normalizeError(e).text)
+        if (this.readIsCurrent(epoch, generation)) toast(normalizeError(e).text)
       } finally {
-        this.pagingBusy = false
+        if (this.readIsCurrent(epoch, generation)) this.pagingBusy = false
       }
     },
     startSequential() {
@@ -350,9 +363,12 @@ export default {
     },
     nextSequential() { if (!this.sequentialConflict && !this.acting && this.sequentialIndex < this.sequentialItems.length - 1) this.sequentialIndex += 1 },
     load(done) {
-      this.state = 'loading'; this.pagedReset()
+      const epoch = ++this.readEpoch, generation = currentSessionGeneration()
+      this.state = 'loading'; this.loadError = ''; this.pagedReset()
       const currentId = this.sequentialCurrent && String(this.sequentialCurrent.id)
+      this.data = null; this.pagingBusy = false
       const request = this.ensureBatchContext().then(() => {
+        if (!this.readIsCurrent(epoch, generation)) return null
         // 从统一待办来的 URL 仅含 recordId 时，后端负责验证对象范围并回填真正
         // 批次；普通页面进入则严格使用已选批次，绝不以本地缓存猜测。
         const batchId = this.focusReportId && !this.routeBatchId ? '' : this.batchId
@@ -360,6 +376,7 @@ export default {
           batchId, focusReportId: this.focusReportId, weeklyPage: 1, exceptionPage: 1, pageSize: 20
         })
       }).then((d) => {
+        if (!d || !this.readIsCurrent(epoch, generation)) return
         if (d.batchId) {
           if (!this.context.selectBatch(d.batchId)) throw { code: 'DATA_CONFLICT', message: '待办所属批次不在当前指导范围内' }
           this.batchId = String(d.batchId)
@@ -378,7 +395,16 @@ export default {
         }
         this.state = 'ready'
         return d
-      }).catch((e) => { this.state = 'error'; throw e }).finally(() => { if (done) done() })
+      }).catch((e) => {
+        if (!this.readIsCurrent(epoch, generation)) return
+        if (e?.code === 'BATCH_REQUIRED') {
+          this.state = 'empty'
+          this.loadError = '当前指导范围内没有实习批次，请联系学校实习管理员核对批次与指导安排。'
+        } else {
+          const error = normalizeError(e)
+          this.state = error.pageState || 'error'; this.loadError = error.text || ''
+        }
+      }).finally(() => { if (typeof done === 'function') done() })
       return request
     },
     afterSequentialSuccess(processedId, oldIndex) {
@@ -409,13 +435,16 @@ export default {
         .finally(() => { this.remindActingId = '' })
     },
     loadVisits() {
+      const epoch = ++this.visitEpoch, generation = currentSessionGeneration()
+      const current = () => !this.hidden && epoch === this.visitEpoch && generation === currentSessionGeneration()
       this.visitState = 'loading'
       return teacherApi.getInternshipVisitPlans().then((d) => {
+        if (!current()) return
         this.visitPlans = (d && d.plans) || []
         this.tabs[1].badge = this.visitPlans.reduce((total, plan) => total + (plan.students || []).filter((item) => !item.visited).length, 0)
         this.visitState = 'ready'
         return d
-      }).catch((e) => { this.visitState = 'error'; throw e })
+      }).catch(() => { if (current()) this.visitState = 'error' })
     },
     openVisitForm(s, plan) {
       if (this.visitActing || !s || !s.internshipId) return
@@ -446,10 +475,11 @@ export default {
       return normalized
     },
     review(w, type) {
-      if (this.acting) return
+      if (this.acting || this.state !== 'ready' || this.hidden) return
+      const epoch = this.readEpoch, generation = currentSessionGeneration()
       const label = type === 'pass' ? '通过' : '退回'
       uni.showModal({ title: '周报' + label, editable: true, placeholderText: '填写评阅意见', success: (r) => {
-        if (!r.confirm || this.acting) return
+        if (!r.confirm || this.acting || !this.readIsCurrent(epoch, generation)) return
         if (type !== 'pass' && (!r.content || r.content.trim().length < 5)) { toast('退回需填写至少 5 字意见'); return }
         if (!/^\d+$/.test(String(w.id))) { toast('当前为离线数据，无法批阅，请恢复网络后重试'); return }
         if (!Number.isInteger(w.expectedVersion) || w.expectedVersion < 0) { toast('周报版本已失效，正在刷新'); if (this.sequentialMode) this.sequentialConflict = true; this.load(); return }
@@ -466,13 +496,14 @@ export default {
       } })
     },
     ck(c, type) {
-      if (this.acting) return
+      if (this.acting || this.state !== 'ready' || this.hidden) return
+      const epoch = this.readEpoch, generation = currentSessionGeneration()
       if (!this.canDecideException(c)) { toast(this.decisionFactMessage(c)); return }
       const isRisk = type === 'risk'
       const action = type === 'ok' ? 'REASONABLE' : isRisk ? 'TO_RISK' : 'ABNORMAL'
       const title = type === 'ok' ? '认定有效' : isRisk ? '转为高风险跟进' : '异常计入'
       uni.showModal({ title, editable: true, placeholderText: isRisk ? '填写转风险原因（至少 5 字）' : '填写处理意见（至少 5 字）', success: (r) => {
-        if (!r.confirm || this.acting) return
+        if (!r.confirm || this.acting || !this.readIsCurrent(epoch, generation)) return
         if (!r.content || r.content.trim().length < 5) { toast(isRisk ? '转风险原因至少 5 字' : '处理意见至少 5 字'); return }
         if (!/^\d+$/.test(String(c.id))) { toast('当前为离线数据，无法处理，请恢复网络后重试'); return }
         const oldIndex = this.sequentialIndex

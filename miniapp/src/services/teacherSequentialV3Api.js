@@ -5,6 +5,7 @@ import { realRequest } from './request'
 // commands. Reloading the queue replaces the map, so a 409 refresh cannot accidentally reuse a
 // stale version from an older snapshot.
 const exceptionVersions = new Map()
+let queueEpoch = 0
 
 function rememberExceptionVersion(id, rawVersion) {
   const key = String(id || '')
@@ -17,6 +18,7 @@ function rememberExceptionVersion(id, rawVersion) {
 export async function getInternshipReviewQueue({
   batchId = '', focusReportId = '', weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
 } = {}) {
+  const epoch = ++queueEpoch
   if (!append) exceptionVersions.clear()
   const queryParts = [
     `weeklyPage=${encodeURIComponent(weeklyPage)}`,
@@ -29,6 +31,8 @@ export async function getInternshipReviewQueue({
   if (String(focusReportId || '').trim()) queryParts.push(`recordId=${encodeURIComponent(String(focusReportId).trim())}`)
   const query = queryParts.join('&')
   const d = await realRequest(`/mobile/teacher/internship?${query}`)
+  // A late queue must not replace the lock versions used by the visible batch.
+  if (epoch !== queueEpoch) throw { code: 'STALE_READ', staleRead: true, message: '请以当前批次为准' }
   const reports = (d.weeklyReports || []).map((r) => ({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
     className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),

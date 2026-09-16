@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="调停课审批" subtitle="待我审批" :before-back="backToQueue" show-back />
+    <MobileNavBar variant="teacher" title="调停课审批" :subtitle="completedTasks.length ? '本人审批记录' : '待我审批'" :before-back="backToQueue" show-back />
     <view v-if="unresolvedCount" class="card ed__pending" role="status">
       <text class="t-md t-bold">有 {{ unresolvedCount }} 笔审批结果待确认</text>
       <text class="t-sm">原命令没有明确回执，暂不可重复提交。这里只读刷新正式待审队列。</text>
@@ -8,6 +8,10 @@
     </view>
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
+        <MobileCompletedApprovalReceipt v-if="completedTasks.length" :tasks="completedTasks" />
+        <MobileGlobalState v-else-if="targetUnavailable" state="empty" title="当前身份下未找到该事项"
+          description="当前待审队列及本人已办记录均未返回原事项，请返回核对身份或联系学校管理员。" />
+        <template v-else>
         <view v-if="detailId" class="ed__detail-head">
           <button class="btn btn-ghost" :disabled="acting" @click="backToQueue">‹ 返回列表</button>
           <text class="t-md t-bold">调停课证据核对</text>
@@ -53,6 +57,7 @@
           <text>{{ queuePage }} / {{ Math.max(1, Math.ceil(pendingTotal / pendingPageSize)) }}</text>
           <button class="btn btn-ghost" :disabled="!pendingHasMore || state === 'loading'" @click="load(queuePage + 1)">下一组</button>
         </view>
+        </template>
       </view>
     </MobileGlobalState>
   </view>
@@ -60,12 +65,13 @@
 <script>
 import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
+import { getDoneApprovals } from '@/services/approvalApi'
 import { useSessionStore } from '@/stores/session'
 import { toast } from '@/utils/nav'
 import { approvalContextKey, approvalReceiptChanged, hasExplicitApprovalReceipt, isApprovalConflict, isApprovalForbidden } from './approval-recovery'
 const RECOVERY_SCOPE = 'schedule-change-review'
 export default {
-  data() { return { list: [], state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 1, pendingTotal: 0, pendingPageSize: 20, pendingHasMore: false, reviewAttempts: {}, recoveryStorageBlocked: false } },
+  data() { return { list: [], completedTasks: [], targetUnavailable: false, state: 'loading', acting: false, targetChangeId: '', detailId: '', queuePage: 1, pendingTotal: 0, pendingPageSize: 20, pendingHasMore: false, reviewAttempts: {}, recoveryStorageBlocked: false } },
   onLoad(options = {}) {
     this._pageActive = true
     this.targetChangeId = String(options.id || options.changeId || options.recordId || '')
@@ -101,6 +107,7 @@ export default {
       this._loadEpoch = (this._loadEpoch || 0) + 1
       this.acting = false
       this.list = []; this.detailId = ''; this.targetChangeId = ''; this.queuePage = 1
+      this.completedTasks = []; this.targetUnavailable = false
       this.pendingTotal = 0; this.pendingHasMore = false
       for (const attempt of Object.values(this.reviewAttempts)) if (attempt.context === this.contextKey()) attempt.observation = ''
       this.state = 'error'
@@ -119,6 +126,9 @@ export default {
       this.detailId = String(row.changeId)
     },
     backToQueue() {
+      if (this.completedTasks.length || this.targetUnavailable) {
+        this.completedTasks = []; this.targetUnavailable = false; this.targetChangeId = ''; this.load(1); return false
+      }
       if (!this.detailId) return true
       if (this.acting) { toast('正在处理，请稍候'); return false }
       const wasTargeted = !!this.targetChangeId
@@ -176,10 +186,19 @@ export default {
         this.restoreReviewAttempts(context)
       } else if (this.recoveryStorageBlocked) this.restoreReviewAttempts(context)
       this.state = 'loading'
+      this.completedTasks = []; this.targetUnavailable = false
       try {
         const d = await teacherApi.getScheduleChangePending(requestedPage, this.pendingPageSize, this.targetChangeId || undefined)
         if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
-        this.list = this.focusTarget((d && (d.list || d.items)) || [])
+        const rows = (d && (d.list || d.items)) || []
+        if (this.targetChangeId && !rows.some(row => this.isTarget(row))) {
+          const doneTasks = await getDoneApprovals(1, 100, this.targetChangeId, 'AA_SCHEDULE_CHANGE')
+          if (!this._pageActive || this._loadEpoch !== epoch || this.contextKey() !== context) return
+          this.completedTasks = (doneTasks?.items || []).filter(task =>
+            task.sourceBizType === 'AA_SCHEDULE_CHANGE' && String(task.sourceBizId) === this.targetChangeId)
+          this.targetUnavailable = !this.completedTasks.length
+          this.list = rows
+        } else this.list = this.focusTarget(rows)
         this.pendingTotal = Number((d && d.total) || 0)
         this.queuePage = Number((d && d.page) || requestedPage)
         this.pendingPageSize = Number((d && d.pageSize) || this.pendingPageSize || 20)
@@ -195,6 +214,7 @@ export default {
       } finally { if (done) done() }
     },
     doAct(x, action) {
+      if (this.completedTasks.length || this.targetUnavailable) return
       if (this._actionContext && this._actionContext !== this.contextKey()) { this.load(); return }
       if (this.acting || this.reviewLocked(x)) return
       const changeId = String(x.changeId || '')

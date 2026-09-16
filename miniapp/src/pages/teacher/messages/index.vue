@@ -1,41 +1,32 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="default" title="消息" />
-    <view class="msg__head">
-      <view><text class="t-lg">教师消息</text><text class="msg__summary">未读 {{ unreadTotal }} · 服务端分页</text></view>
-      <text class="msg__search" @click="openSearch">搜索</text>
-    </view>
-    <scroll-view scroll-x class="msg__tabs">
-      <view class="msg__tabs-inner">
-        <view v-for="t in tabs" :key="t.key" class="msg__tab" :class="{ 'msg__tab--active': tab === t.key }" @click="selectTab(t.key)">
-          <text>{{ t.label }}</text><text v-if="Number(t.badge) > 0" class="msg__badge">{{ t.badge > 99 ? '99+' : t.badge }}</text>
-        </view>
-      </view>
-    </scroll-view>
-    <view class="page-pad">
-      <MobileGlobalState v-if="state === 'loading' && !list.length" state="loading" title="消息加载中" />
-      <MobileGlobalState v-else-if="state === 'error' && !list.length" state="error" title="消息加载失败" description="请检查网络后重试。" @retry="refresh" />
-      <MobileGlobalState v-else-if="!list.length" state="empty" title="暂无消息" description="当前分类没有新的消息。" />
-      <view v-else class="stack">
-        <view v-for="m in list" :key="m.id" class="card msg__row" @click="openMessage(m)">
-          <view class="row-between msg__row-top">
-            <view class="msg__meta"><view v-if="!m.read" class="msg__dot" /><text class="t-sm t-tertiary">{{ m.module || currentTabLabel }}</text></view>
-            <text class="t-xs t-tertiary">{{ fromNow(m.time || m.eventAt) }}</text>
-          </view>
-          <text class="msg__title" :class="{ 'msg__title--unread': !m.read }">{{ m.title }}</text>
-          <view class="row-between msg__bottom">
-            <view class="msg__tags"><text v-if="m.level === 'high'" class="msg__risk">重要</text><text v-if="m.requireAck && !m.acked" class="msg__ack">待确认</text><text v-if="m.withdrawn" class="msg__withdrawn">已撤回</text></view>
-            <button v-if="canHandle(m)" class="btn btn-ghost msg__action" @click.stop="handle(m)">{{ (m.action && m.action.label) || '去处理' }}</button>
+  <view class="teacher-shell">
+    <MobileTeacherHero title="消息" :role-label="roleLabel" />
+    <view class="message-tools"><text v-if="badgeLoaded" class="ts-muted">未读 {{ unreadTotal }}</text><button class="ts-link ts-plain" @click="openSearch"><MobileShellIcon name="search" :size="18" />搜索消息</button></view>
+    <scroll-view scroll-x class="ts-tabs"><view class="ts-tabs-inner"><button v-for="t in tabs" :key="t.key" class="ts-tab ts-plain" :class="{ 'is-active': tab === t.key }" @click="selectTab(t.key)"><text>{{ t.label }}</text><text v-if="badgeLoaded && t.badge" class="message-tab-badge" :aria-label="t.badge + '条未读'">{{ t.badge > 99 ? '99+' : t.badge }}</text></button></view></scroll-view>
+    <view class="ts-pad message-content">
+      <MobileGlobalState v-if="state !== 'ready' && (!list.length || state !== 'loading')" :state="state" :title="state === 'loading' ? '正在加载消息' : '消息加载失败'" @retry="refresh" />
+      <view v-else-if="!list.length" class="ts-panel ts-empty">当前分类暂无消息。</view>
+      <view v-else class="ts-panel">
+        <view v-for="m in list" :key="m.id" class="ts-row message-row" @click="openMessage(m)">
+          <MobileShellIcon :name="messageVisual().icon" :tone="messageVisual().tone" :size="25" round />
+          <view class="ts-body"><view class="message-heading"><text class="ts-row-title" :class="{ 'message-read': m.read }">{{ m.title }}</text><view v-if="!m.read" class="message-unread" aria-label="未读" /></view>
+            <text v-if="m.summary || m.content || m.body || m.description" class="ts-muted message-preview">{{ m.summary || m.content || m.body || m.description }}</text>
+            <view class="message-tags"><text v-if="m.level === 'high'" class="message-risk">重要</text><text v-if="m.requireAck && !m.acked" class="message-ack">待确认</text><text v-if="m.withdrawn" class="ts-muted">已撤回</text></view>
+            <view class="message-meta"><text>{{ m.module || currentTabLabel }}</text><text>{{ fromNow(m.time || m.eventAt) }}</text></view>
+            <button v-if="canHandle(m)" class="ts-link ts-plain message-action" @click.stop="handle(m)">{{ m.action.label || '去处理' }}<MobileShellIcon name="chevron-right" :size="16" /></button>
           </view>
         </view>
-        <view class="msg__footer"><text v-if="pagerState.loading" class="t-sm t-tertiary">加载中…</text><text v-else-if="pagerState.hasMore" class="t-sm t-tertiary">继续上拉加载</text><text v-else class="t-sm t-tertiary">没有更多了</text></view>
       </view>
+      <view v-if="pagingError" class="ts-error"><text>更多消息加载失败</text><button class="ts-link ts-plain" @click="loadMore">重试</button></view>
+      <button v-else-if="pagerState.hasMore" class="message-more ts-link ts-plain" @click="loadMore">{{ pagerState.loading ? '加载中…' : '加载更多' }}</button>
     </view>
-    <MobileTabBar side="teacher" active="messages" />
+    <MobileTeacherTabBar ref="badges" active="message" :unread="badgeLoaded ? unreadTotal : null" />
   </view>
 </template>
 
 <script>
+import { useSessionStore } from '@/stores/session'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { normalizeError } from '@/services/request'
 import { createNetworkPager } from '@/utils/networkPager'
 import { fromNow } from '@/utils/format'
@@ -51,16 +42,26 @@ const TAB_DEFS = [
 const emptyPagerState = () => ({ items: [], cursor: '', hasMore: false, loading: false, refreshing: false, requestEpoch: 0, error: null })
 
 export default {
-  data() { return { tab: 'system', state: 'loading', badges: { system: 0, dynamic: 0, risk: 0, urge: 0 }, pagerState: emptyPagerState() } },
+  data() { return { tab: 'system', state: 'loading', badges: { system: 0, dynamic: 0, risk: 0, urge: 0 }, pagerState: emptyPagerState(), roleLabel: '', epoch: 0, pagingError: false, badgeLoaded: false } },
   computed: {
     tabs() { return TAB_DEFS.map((t) => ({ ...t, badge: Number(this.badges[t.key] || 0) })) },
     list() { return this.pagerState.items || [] },
     unreadTotal() { return Object.values(this.badges).reduce((sum, value) => sum + Number(value || 0), 0) },
     currentTabLabel() { const found = TAB_DEFS.find((t) => t.key === this.tab); return found ? found.label : '消息' }
   },
-  onLoad() { this.setupPager(); this.refresh() },
-  onUnload() { if (this._pager) this._pager.reset(); this._pager = null },
-  onReachBottom() { if (this._pager) this._pager.loadMore().catch((error) => { this.state = normalizeError(error).pageState || 'error' }) },
+  onLoad() { this.setupPager() },
+  onShow() {
+    const session = useSessionStore()
+    this.roleLabel = session.roleConfig.label
+    const key = [currentSessionGeneration(), session.currentRole, session.identity.userId].join('|')
+    if (this._context !== key) { this.tab = 'system'; this.badges = { system: 0, dynamic: 0, risk: 0, urge: 0 }; this.setupPager() }
+    this._context = key
+    this.refresh()
+    this.$refs?.badges?.refresh()
+  },
+  onHide() { this.epoch++; this.$refs?.badges?.invalidate() },
+  onUnload() { this.epoch++; if (this._pager) this._pager.reset(); this._pager = null },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() { this.refresh().finally(() => uni.stopPullDownRefresh()) },
   methods: {
     setupPager() {
@@ -69,7 +70,7 @@ export default {
         const data = await getTeacherMessagesPage({ tab: this.tab, cursor, pageSize })
         return { items: (data && data.items) || [], nextCursor: (data && data.nextCursor) || '' }
       }, { pageSize: 20, maxItems: 100, idKey: 'id' })
-      this.pagerState = this._pager.state
+      this.syncPagerState(this._pager.state)
     },
     syncPagerState(state) {
       const value = state || emptyPagerState()
@@ -77,21 +78,35 @@ export default {
       // snapshot after each request so H5/mini-program renderers observe item changes.
       this.pagerState = { ...value, items: [...(value.items || [])] }
     },
-    async loadBadges() {
-      try { const data = await getTeacherMessageBadges(); this.badges = { ...this.badges, ...((data && data.badges) || {}) } } catch (_error) {}
+    async loadBadges(epoch = this.epoch) {
+      const generation = currentSessionGeneration()
+      try {
+        const data = await getTeacherMessageBadges()
+        if (epoch !== this.epoch || generation !== currentSessionGeneration()) return
+        this.badges = { system: 0, dynamic: 0, risk: 0, urge: 0, ...(data.badges || {}) }; this.badgeLoaded = true
+      } catch (_) { if (epoch === this.epoch) this.badgeLoaded = false }
     },
     async refresh() {
-      this.state = 'loading'
+      const epoch = ++this.epoch, generation = currentSessionGeneration(), pager = this._pager
+      if (!pager) return
+      this.state = 'loading'; this.pagingError = false
       try {
-        const [pagerState] = await Promise.all([this._pager.refresh(), this.loadBadges()])
+        const [pagerState] = await Promise.all([pager.refresh(), this.loadBadges(epoch)])
+        if (epoch !== this.epoch || generation !== currentSessionGeneration()) return
         this.syncPagerState(pagerState)
         this.state = 'ready'
-      } catch (_error) { this.state = normalizeError(_error).pageState || 'error' }
+      } catch (error) { if (epoch === this.epoch && generation === currentSessionGeneration()) this.state = normalizeError(error).pageState || 'error' }
     },
     async loadMore() {
       if (!this._pager || this.pagerState.loading || !this.pagerState.hasMore) return
-      try { this.syncPagerState(await this._pager.loadMore()) } catch (_error) { /* 保留当前页供重试 */ }
+      const epoch = this.epoch, generation = currentSessionGeneration(), pager = this._pager
+      this.pagingError = false
+      try {
+        const value = await pager.loadMore()
+        if (epoch === this.epoch && generation === currentSessionGeneration()) this.syncPagerState(value)
+      } catch (_) { if (epoch === this.epoch && generation === currentSessionGeneration()) this.pagingError = true }
     },
+    messageVisual() { return { system: { icon: 'bell', tone: 'violet' }, dynamic: { icon: 'file-text', tone: 'teal' }, risk: { icon: 'alert-circle', tone: 'red' }, urge: { icon: 'bell', tone: 'amber' } }[this.tab] },
     async selectTab(next) { if (!next || next === this.tab) return; this.tab = next; this.setupPager(); await this.refresh() },
     openSearch() { go('/pages/common/search/index') },
     isDetailOnly(action) { return !!(action && action.target && action.target.path === '/pages/common/message-detail/index') },
@@ -101,22 +116,34 @@ export default {
     markRead(m) {
       if (!m || m.read || m.kind !== 'UNIFIED_MESSAGE') return
       const raw = String(m.messageId || m.id || ''); if (!/^\d+$/.test(raw)) return
-      m.read = true; this.badges = { ...this.badges, [this.tab]: Math.max(0, Number(this.badges[this.tab] || 0) - 1) }
-      markTeacherMessageRead(raw).catch(() => { m.read = false; this.badges = { ...this.badges, [this.tab]: Number(this.badges[this.tab] || 0) + 1 } })
+      const tab = this.tab, generation = currentSessionGeneration()
+      m.read = true; this.badges = { ...this.badges, [tab]: Math.max(0, Number(this.badges[tab] || 0) - 1) }
+      markTeacherMessageRead(raw).catch(() => {
+        if (generation !== currentSessionGeneration()) return
+        m.read = false; this.loadBadges()
+      })
     },
     fromNow
   }
 }
 </script>
-
-<style scoped>
-.msg__head { display:flex;align-items:center;justify-content:space-between;padding:var(--space-4) var(--page-padding-mobile) var(--space-2); }
-.msg__summary { display:block;margin-top:2px;font-size:var(--font-size-xs);color:var(--text-tertiary); }.msg__search{font-size:var(--font-size-sm);color:var(--brand-primary);padding:var(--space-2)}
-.msg__tabs{white-space:nowrap;border-bottom:1px solid var(--border-light)}.msg__tabs-inner{display:inline-flex;gap:var(--space-1);padding:0 var(--page-padding-mobile)}
-.msg__tab{position:relative;display:flex;align-items:center;gap:4px;padding:var(--space-3) var(--space-2);font-size:var(--font-size-sm);color:var(--text-secondary)}.msg__tab--active{color:var(--brand-primary);font-weight:var(--font-weight-semibold)}.msg__tab--active::after{content:'';position:absolute;left:var(--space-2);right:var(--space-2);bottom:0;height:2px;background:var(--brand-primary);border-radius:2px}
-.msg__badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;line-height:18px;text-align:center;font-size:10px;color:#fff;background:var(--danger-500)}
-.msg__row{padding:var(--space-4)}.msg__row-top{gap:var(--space-2)}.msg__meta{display:flex;align-items:center;gap:6px;min-width:0}.msg__dot{width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:var(--brand-primary)}
-.msg__title{display:block;margin-top:var(--space-2);font-size:var(--font-size-base);color:var(--text-secondary);line-height:1.5}.msg__title--unread{color:var(--text-primary);font-weight:var(--font-weight-semibold)}
-.msg__bottom{margin-top:var(--space-3);min-height:28px}.msg__tags{display:flex;gap:var(--space-2);align-items:center}.msg__risk,.msg__ack,.msg__withdrawn{font-size:11px;padding:2px 7px;border-radius:var(--radius-sm)}.msg__risk{color:var(--danger-700);background:var(--danger-50)}.msg__ack{color:var(--warning-700);background:var(--warning-50)}.msg__withdrawn{color:var(--text-tertiary);background:var(--bg-muted)}
-.msg__action{min-height:28px;height:28px;line-height:26px;padding:0 var(--space-3);font-size:var(--font-size-xs)}.msg__footer{display:flex;justify-content:center;padding:var(--space-3) 0 var(--space-6)}
+<style lang="scss">
+@import '@/styles/teacher-shell.scss';
+.teacher-shell {
+.message-tools { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; margin-top: -8px; position: relative; }
+.message-tools .ts-link { margin-left: auto; font-size: 12px; }
+.message-content { padding-top: 8px; }
+.message-row { align-items: flex-start !important; padding-top: 22px !important; padding-bottom: 22px !important; }
+.message-heading { display: flex; align-items: flex-start; gap: 8px; }
+.message-heading .ts-row-title { flex: 1; }
+.message-unread { width: 7px; height: 7px; border-radius: 50%; background: #ee5353; margin-top: 8px; flex-shrink: 0; }
+.message-tab-badge { display: inline-block; vertical-align: middle; margin-left: 4px; min-width: 16px; padding: 0 4px; border-radius: 9px; background: #ee5353; color: #fff; font-size: 10px; line-height: 17px; text-align: center; }
+.message-read { font-weight: 500 !important; }
+.message-preview { margin-top: 6px; display: -webkit-box !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.message-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; margin-top: 16px; font-size: 12px; line-height: 1.6; color: #75839a; }
+.message-tags { display: flex; gap: 6px; margin-top: 6px; }
+.message-ack, .message-risk { padding: 3px 7px; border-radius: 5px; font-size: 12px; line-height: 1.5; }
+.message-ack { color: #af7100; background: #fff3d6; }.message-risk { color: #d84b4b; background: #ffeded; }
+.message-action { float: right; font-size: 13px !important; }.message-more { margin: 0 auto !important; }
+}
 </style>

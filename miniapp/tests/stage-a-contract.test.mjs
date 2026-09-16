@@ -124,7 +124,7 @@ test('high-frequency message, todo and risk pages use final database pagination 
   assert.match(todos, /createNetworkPager/)
   assert.match(todos, /teacherTodoT8Api\.list/)
   assert.match(todos, /pagerState\.hasMore/)
-  assert.match(todos, /this\._pager\.loadMore\(\)/)
+  assert.match(todos, /pager\.loadMore\(\)/)
   assert.doesNotMatch(todos, /pagedSlice|getTodosPage/)
   assert.match(todoApi, /\/teacher-mobile\/todos\/grouped-continuous/)
   assert.match(todoApi, /cursor=/)
@@ -163,7 +163,7 @@ test('read state is only ever set locally for messages that can actually persist
   assert.match(teacher, /m\.kind !== 'UNIFIED_MESSAGE'/, 'Teacher T9 只允许 UnifiedMessage 乐观已读')
   assert.ok(teacher.includes("if (!/^\\d+$/.test(raw)) return"), 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
   assert.match(teacher, /markTeacherMessageRead\(raw\)/)
-  assert.match(teacher, /\.catch\(\(\) => \{ m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
+  assert.match(teacher, /\.catch\(\(\) => \{[\s\S]*?m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
   const teacherAssignments = teacher.match(/m\.read = true/g) || []
   assert.equal(teacherAssignments.length, 1, 'Teacher T9 只允许 markRead() 内部一处乐观写 read=true')
 })

@@ -23,7 +23,7 @@ test('miniapp registers one shared help page', () => {
 
 test('student and teacher personal centers both open the shared help page', () => {
   assert.match(studentMe, /row\.key === 'help'.*pages\/common\/help\/index/s)
-  assert.match(teacherMe, /row\.key === 'help'.*pages\/common\/help\/index/s)
+  assert.match(teacherMe, /@click="go\('\/pages\/common\/help\/index'\)">[\s\S]*?帮助与反馈/)
   assert.doesNotMatch(studentMe, /help[^\n]+即将开放/)
   assert.doesNotMatch(teacherMe, /help[^\n]+即将开放/)
 })

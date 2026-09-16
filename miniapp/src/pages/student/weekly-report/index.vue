@@ -125,6 +125,7 @@ export default {
     }
   },
   onLoad(options = {}) {
+    this.requestedBatchId = String(options.batchId || '')
     this.focusReportId = String(options.reportId || '').trim()
     this.focusWeek = Number(options.weekNo || 0) || 0
     this.load()
@@ -152,7 +153,7 @@ export default {
       this.state = 'loading'
       this.loadingMore = false
       try {
-        const d = await studentApi.getInternship()
+        const d = await studentApi.getInternship(this.requestedBatchId)
         if (sequence !== this.loadSequence) return
         this.company = d.company || ''
         this.post = d.post || ''

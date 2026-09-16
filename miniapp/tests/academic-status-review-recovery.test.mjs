@@ -38,6 +38,35 @@ function harness(done = async () => ({ items: [], total: 0 })) {
 }
 const task = { taskId: '801', sourceModule: 'academic-affairs', sourceBizType: 'AA_STATUS_CHANGE', sourceBizId: '43', nodeCode: 'COUNSELOR_REVIEW', status: 'APPROVED', submittedAt: '2026-09-09T01:00:00', actedAt: '2026-09-09T02:00:00' }
 
+test('completed todo deep links read the exact personal receipt and cannot submit another approval', async () => {
+  const h = harness(async () => ({ items: [task, { ...task, taskId: 'other', sourceBizId: '143' }] })), page = h.mount()
+  page.reviewAttempts = {}; page.targetChangeId = '43'
+  await page.load()
+  assert.equal(page.completedTasks.length, 1)
+  assert.equal(page.completedTasks[0].taskId, '801')
+  assert.equal(page.targetUnavailable, false)
+  page.doAct({ changeId: '43' }, 'APPROVE')
+  assert.equal(h.writes(), 0)
+  assert.equal(page.backToQueue(), false)
+  assert.equal(page.completedTasks.length, 0)
+})
+
+test('missing completed records do not silently display an unrelated pending queue', async () => {
+  const h = harness(), page = h.mount()
+  page.reviewAttempts = {}; page.targetChangeId = '43'
+  await page.load()
+  assert.equal(page.completedTasks.length, 0); assert.equal(page.targetUnavailable, true)
+  page.doAct({ changeId: '43' }, 'APPROVE'); assert.equal(h.writes(), 0)
+})
+
+test('a completed-detail response arriving after hiding the page cannot populate it', async () => {
+  const response = deferred(), h = harness(() => response.promise), page = h.mount()
+  page.reviewAttempts = {}; page.targetChangeId = '43'
+  const loading = page.load(); await Promise.resolve(); page._pageActive = false
+  response.resolve({ items: [task] }); await loading
+  assert.equal(page.completedTasks.length, 0)
+})
+
 test('workbench recordId deep links preserve the exact approval object', () => {
   for (const file of ['status-change-review.vue', 'schedule-change-review.vue']) {
     const source = readFileSync(new URL(file, dir), 'utf8')

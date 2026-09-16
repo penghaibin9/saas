@@ -50,9 +50,39 @@ test('login mode rejects invalid values and switching while either login is pend
 
 test('changing identity mode clears both credentials and invalidates the old captcha', () => {
   let invalidated = 0
-  const state = { account: { loginName: 'test-account', password: 'test-password' }, accountCaptchaFlow: { invalidate() { invalidated++ } } }
+  const state = { passwordVisible: true, account: { loginName: 'test-account', password: 'test-password' }, accountCaptchaFlow: { invalidate() { invalidated++ } } }
   component.watch['account.identifierType'].handler.call(state)
   assert.equal(state.account.loginName, '')
   assert.equal(state.account.password, '')
+  assert.equal(state.passwordVisible, false)
   assert.equal(invalidated, 1)
+})
+
+test('leaving the login page clears the visible password and cancels binding', () => {
+  let cancelled = 0
+  const state = { account: { password: 'test-only' }, passwordVisible: true, loginAlive: true, loginAttempt: 2, cancelBind() { cancelled++ } }
+  component.methods.invalidateLogin.call(state)
+  assert.equal(state.account.password, '')
+  assert.equal(state.passwordVisible, false)
+  assert.equal(state.loginAlive, false)
+  assert.equal(state.loginAttempt, 3)
+  assert.equal(cancelled, 1)
+})
+
+test('native login content starts below either the capsule or navigation safe area', () => {
+  // Use the same H5 conditional removal as the native compilation target.
+  const nativeSource = source.replace(/\s*\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
+  for (const scenario of [
+    { status: 47, capsule: 83, expected: 93 },
+    { status: 24, capsule: 0, expected: 68 },
+    { status: 20, throws: true, expected: 64 }
+  ]) {
+    const native = new Function('uni', 'getStatusBarHeight', nativeSource)(
+      { getMenuButtonBoundingClientRect() { if (scenario.throws) throw new Error('unsupported'); return { bottom: scenario.capsule } } },
+      () => scenario.status
+    )
+    const state = {}
+    native.mounted.call(state)
+    assert.equal(state.heroTop, scenario.expected)
+  }
 })

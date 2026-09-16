@@ -143,7 +143,7 @@ export default {
       return 'warning'
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) { this.requestedBatchId = String(options.batchId || ''); this.load() },
   methods: {
     onEntRate(e) { if (!this.readonly) this.form.enterpriseRating = Number(e.detail.value) + 1 },
     onPosRate(e) { if (!this.readonly) this.form.positionRating = Number(e.detail.value) + 1 },
@@ -152,7 +152,7 @@ export default {
     async load() {
       this.pageState = 'loading'
       try {
-        const dashboard = await studentApi.getInternship()
+        const dashboard = await studentApi.getInternship(this.requestedBatchId)
         const [data, appeal] = await Promise.all([
           studentApi.getInternshipSelfEval(dashboard?.batchId, dashboard?.recordId),
           studentApi.getInternshipScoreAppeal(dashboard?.batchId, dashboard?.recordId)
