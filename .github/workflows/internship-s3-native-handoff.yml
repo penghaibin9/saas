@@ -110,7 +110,16 @@ jobs:
           if (project.compileType !== 'miniprogram') throw new Error(`compileType=${project.compileType}`)
           if (project.appid !== process.env.EXPECTED_WECHAT_APPID) throw new Error(`appid=${project.appid}`)
           if (project.setting?.urlCheck !== true) throw new Error('project.config urlCheck is not true')
-          if (report.platformPass !== true) throw new Error('miniapp platform package limits did not pass')
+          const mainPackage = (report.packages || []).find((item) => item.package === 'main')
+          const platformLimits = report.platformLimits || {}
+          const derivedHistoricalPlatformPass =
+            report.platformPass == null &&
+            Number.isFinite(Number(report.totalBytes)) &&
+            Number.isFinite(Number(mainPackage?.bytes)) &&
+            Number(report.totalBytes) <= Number(platformLimits.totalPackageLimit) &&
+            Number(mainPackage.bytes) <= Number(platformLimits.mainPackageLimit)
+          const platformPass = report.platformPass === true || derivedHistoricalPlatformPass
+          if (!platformPass) throw new Error('miniapp platform package limits did not pass')
           if (!release.includes(`API: ${process.env.PRODUCT_API_BASE}`)) throw new Error('release info is not bound to production API')
           if (!envJs.includes(`VITE_API_BASE_URL:\"${process.env.PRODUCT_API_BASE}\"`)) throw new Error('compiled env missing production API')
           if (!envJs.includes('VITE_USE_MOCK:\"false\"')) throw new Error('compiled env is not mock=false')
@@ -160,7 +169,7 @@ jobs:
             mockEnabled: false,
             packageBudgetPass: report.budgetPass === true, // advisory only
             packageBudgetMode: report.budgetMode,
-            packagePlatformPass: report.platformPass === true,
+            packagePlatformPass: platformPass,
             requiredInternshipPages,
             wechatServerDomainConfig: 'PENDING_PLATFORM_CONFIRMATION',
             privacyLocationDeclaration: 'PENDING_PLATFORM_CONFIRMATION',

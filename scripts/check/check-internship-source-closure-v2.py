@@ -306,10 +306,13 @@ for job in ("internship_audit_outbox", "internship_overdue"):
 
 # ---- Local dependency closure -------------------------------------------------
 def resolve_js(source: Path, spec: str, surface_root: Path) -> Path | None:
-    if spec.startswith("@/"):
-        base = surface_root / "src" / spec[2:]
-    elif spec.startswith("."):
-        base = source.parent / spec
+    # Vite resource queries (for example .css?raw / .html?raw) are local-file
+    # dependencies. Resolve the file path, not the loader query suffix.
+    clean_spec = spec.split("?", 1)[0].split("#", 1)[0]
+    if clean_spec.startswith("@/"):
+        base = surface_root / "src" / clean_spec[2:]
+    elif clean_spec.startswith("."):
+        base = source.parent / clean_spec
     else:
         return None
     candidates = [

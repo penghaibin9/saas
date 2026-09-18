@@ -481,8 +481,12 @@ export default {
       this[section] = section === 'templates' ? [] : {}
       if (section === 'templates') { this.selectedTemplate = null; this.templateImpact = null; this.fence.start('impact'); this.impactLoading = '' }
       try {
-        const method = { summary: 'summary', catalog: 'permissionCatalog', templates: 'roleTemplates' }[section]
-        const data = unwrap(await schoolIamApi[method]())
+        const loadSectionData = {
+          summary: () => schoolIamApi.summary(),
+          catalog: () => schoolIamApi.permissionCatalog(),
+          templates: () => schoolIamApi.roleTemplates()
+        }[section]
+        const data = unwrap(await loadSectionData())
         if (!current()) return
         if (!data || (section === 'templates' && !Array.isArray(data.items)) || (section === 'catalog' && !Array.isArray(data.customRoleAssignablePermissions))) throw new Error('返回内容不完整，请重新读取')
         this[section] = section === 'templates' ? data.items : data
