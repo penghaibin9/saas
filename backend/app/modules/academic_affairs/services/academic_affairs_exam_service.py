@@ -16,6 +16,7 @@ from app.core.affairs_security import _derive_keys, build_affairs_context, no_da
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 # 批次 6 态
@@ -710,14 +711,14 @@ def my_exam_schedule(user, student_id) -> dict:
             return {"hasData": False, "items": [], "note": "暂无已发布的个人考试安排"}
         items = []
         for s in seats:
-            c = db.get(AaExamCourse, s.exam_course_id)
+            c = tenant_get(db, AaExamCourse, s.exam_course_id)
             if not c or c.is_deleted or c.tenant_id != _tid():
                 continue
-            b = db.get(AaExamBatch, c.batch_id) if c.batch_id else None
+            b = tenant_get(db, AaExamBatch, c.batch_id) if c.batch_id else None
             # 仅已发布批次对学生可见（DRAFT/排考中不露）
             if b and (b.status or "") not in ("PUBLISHED", "CLOSED", "ARCHIVED"):
                 continue
-            room = db.get(AaExamRoom, s.exam_room_id)
+            room = tenant_get(db, AaExamRoom, s.exam_room_id)
             items.append({
                 "examCourseId": str(c.id),
                 "courseName": c.course_name or "",

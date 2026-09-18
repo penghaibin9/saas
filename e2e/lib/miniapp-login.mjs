@@ -8,11 +8,12 @@ export async function loginMiniH5(page, { baseUrl, entry = 'student', account, t
   await page.goto(`${baseUrl}/#/pages/login/${kind}/index`)
 
   const accountLabel = kind === 'teacher' ? '工号或统一账号' : '学号或统一账号'
-  const accountInput = page.locator(`input[aria-label="${accountLabel}"]`)
+  const accountPlaceholder = kind === 'teacher' ? '请输入工号或统一账号' : '请输入学号或统一账号'
+  const accountInput = page.locator(`input[aria-label="${accountLabel}"], input[placeholder="${accountPlaceholder}"]`).first()
   await accountInput.waitFor({ state: 'visible', timeout })
   await accountInput.fill(loginName)
 
-  const passwordInput = page.locator('input[aria-label="密码"]')
+  const passwordInput = page.locator('input[aria-label="密码"], input[placeholder="密码"]').first()
   await passwordInput.waitFor({ state: 'visible', timeout })
   await passwordInput.fill(password)
 

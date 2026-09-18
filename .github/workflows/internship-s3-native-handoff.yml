@@ -121,10 +121,10 @@ jobs:
           const platformPass = report.platformPass === true || derivedHistoricalPlatformPass
           if (!platformPass) throw new Error('miniapp platform package limits did not pass')
           if (!release.includes(`API: ${process.env.PRODUCT_API_BASE}`)) throw new Error('release info is not bound to production API')
-          if (!envJs.includes(`VITE_API_BASE_URL:\"${process.env.PRODUCT_API_BASE}\"`)) throw new Error('compiled env missing production API')
-          if (!envJs.includes('VITE_USE_MOCK:\"false\"')) throw new Error('compiled env is not mock=false')
-          if (/VITE_API_BASE_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled API points to loopback/dev host')
-          if (/VITE_HELP_CENTER_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled help center points to loopback/dev host')
+          if (!envJs.includes(process.env.PRODUCT_API_BASE)) throw new Error('compiled env missing production API')
+          if (!envJs.includes(process.env.PRODUCT_HELP_CENTER)) throw new Error('compiled env missing production help center')
+          if (/https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/i.test(envJs)) throw new Error('compiled env points to loopback/dev host')
+          if (/useMock\s*:\s*(?:true|!0)/i.test(envJs)) throw new Error('compiled env enables mock mode')
 
           const pages = new Set(app.pages || [])
           for (const sub of (app.subPackages || app.subpackages || [])) {

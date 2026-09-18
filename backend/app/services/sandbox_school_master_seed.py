@@ -494,6 +494,11 @@ def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int
     profile_by_no = {row.student_no: (int(row.id), row.real_name) for row in profiles}
     assert len(profile_by_no) == EXPECTED_STUDENT_COUNT
 
+    # A master rebuild is authoritative for the sandbox student ledger. Clear any legacy or
+    # prematurely-created facts before materializing exactly one version-1 fact per seeded student.
+    db.execute(delete(StudentAcademicFact).where(StudentAcademicFact.tenant_id == tenant_id))
+    db.flush()
+
     # StudentProfile is intentionally inserted in bulk for the 20K sandbox.  SQLAlchemy
     # mapper hooks do not run for Core bulk inserts, so materialize the version-1 academic
     # ledger explicitly in the same transaction.  Without this, historical consumers such

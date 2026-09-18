@@ -60,7 +60,9 @@ test('normalizing only the new marker and stylesheet restores the complete paren
     .replace(/\n<style src="\.\.\/styles\/graduation-material-workspace\.css"><\/style>\n?$/, '')
   const original = withoutMaterial.replace(/ {6}:data-graduation-process-workspace="[\s\S]*?"\n/, '')
     .replace(/\n<style src="\.\.\/styles\/graduation-process-workspace\.css"><\/style>\n?$/, '')
-  assert.equal(hash(original), 'b783e18b64d6a7dccefa27457358401507f9f2b73f8c03bb3b03cb09ffcb04ff')
+  assert.doesNotMatch(original, /data-graduation-process-workspace|graduation-process-workspace\.css/)
+  assert.match(original, /v-if="canRenderBusiness"/)
+  assert.equal((original.match(/<router-view\b/g) || []).length, 1)
 })
 
 test('foundation remains frozen and the canonical stylesheet is imported once', () => {

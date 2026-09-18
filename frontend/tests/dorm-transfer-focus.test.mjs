@@ -21,7 +21,7 @@ test('mobile completed rectification history is paged and cannot be reviewed aga
  let query
  const row={rectificationId:'7',status:'CLOSED',allowedActions:[],rectifyNote:'学生补交说明',recheckNote:'已通过'}
  const vm=mount(mobile,{realRequest:async(path,o)=>{query={path,...o};return {items:[row],total:21}},normalizeError:e=>({text:e.message}),toast:()=>{}},'')
- vm.tab='recheck';vm.recheckStatus='CLOSED';vm.recheckPage=2
+ vm.sessionGeneration=1;vm.tab='recheck';vm.recheckStatus='CLOSED';vm.recheckPage=2
  await vm.load()
  assert.deepEqual(query.data,{status:'CLOSED',page:2,pageSize:20})
  assert.equal(vm.rectifications[0].rectifyNote,'学生补交说明');assert.equal(vm.recheckTotal,21)
@@ -54,7 +54,7 @@ test('mobile checkout loads a bounded queue and confirms the exact version befor
  const requests=[]
  const row={requestId:'9007199254740993',version:4,studentName:'测试学生',studentNo:'A001',bedLabel:'1栋/101/4床',allowedActions:['CONFIRM'],blockers:[]}
  const vm=mount(mobile,{realRequest:async(path,options)=>{requests.push({path,...options});return options.method==='POST'?{...row,status:'CONFIRMED'}:{items:[],total:0}},normalizeError:e=>({text:e.message}),toast:()=>{}},'')
- vm.tab='checkout';vm.checkoutPage=2
+ vm.sessionGeneration=1;vm.tab='checkout';vm.checkoutPage=2
  await vm.load()
  assert.deepEqual(requests[0].data,{status:'PENDING',page:2,pageSize:20})
  vm.confirmCheckout(row)

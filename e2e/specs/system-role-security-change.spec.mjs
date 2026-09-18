@@ -229,11 +229,13 @@ test('approved system UI: create role → permissions → additive members → d
   const removeCandidate = page.locator('[data-permission] input:checked:not(:disabled)').first()
   const addingPermission = (await addCandidate.count()) > 0
   const permissionInput = addingPermission ? addCandidate : removeCandidate
-  await expect(permissionInput).toBeVisible()
+  const permissionRow = permissionInput.locator('xpath=ancestor::label[1]')
+  await expect(permissionRow).toBeVisible()
   const code = await permissionInput.evaluate((node) => node.closest('[data-permission]')?.getAttribute('data-permission') || '')
   expect(code).toBeTruthy()
-  if (addingPermission) await permissionInput.check()
-  else await permissionInput.uncheck()
+  await permissionRow.click()
+  if (addingPermission) await expect(permissionInput).toBeChecked()
+  else await expect(permissionInput).not.toBeChecked()
   await page.getByTestId('A017-review').click()
   await page.getByRole('dialog').locator('textarea').fill('真实浏览器验证角色权限办理')
   const saveResponse = page.waitForResponse(r => r.request().method() === 'PUT' && new URL(r.url()).pathname.endsWith(`/system/roles/${roleId}/permissions`))

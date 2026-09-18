@@ -8,6 +8,7 @@ from datetime import datetime
 
 from sqlalchemy import and_, false, func, or_, select
 
+from app.core.tenant_scoped import tenant_get
 from app.models import (College, EmpStudent, InternshipAgreement, InternshipArchive,
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipGuidance, InternshipLeave, InternshipRecord,
@@ -52,14 +53,14 @@ def _org_of(db, stu, cache):
         return ("", "", "")
     if stu.class_id in cache:
         return cache[stu.class_id]
-    cls = db.get(SchoolClass, stu.class_id)
+    cls = tenant_get(db, SchoolClass, stu.class_id)
     college = major = cname = ""
     if cls:
         cname = cls.class_name or ""
-        mj = db.get(Major, cls.major_id) if cls.major_id else None
+        mj = tenant_get(db, Major, cls.major_id) if cls.major_id else None
         if mj:
             major = mj.major_name or ""
-            col = db.get(College, mj.college_id) if mj.college_id else None
+            col = tenant_get(db, College, mj.college_id) if mj.college_id else None
             if col:
                 college = col.college_name or ""
     cache[stu.class_id] = (college, major, cname)
@@ -343,7 +344,7 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
         start = (max(1, int(page)) - 1) * int(page_size)
         rows = []
         for rec in selected[start:start + int(page_size)]:
-            stu = db.get(StudentProfile, rec.student_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id)
             org = _org_of(db, stu, cache)
             rows.append({"internshipId": str(rec.id), "studentId": str(rec.student_id),
                          "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",

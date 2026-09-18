@@ -9,6 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import encrypt_field, mask_id_card_encrypted, mask_phone_encrypted
 from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
+from app.core.tenant_scoped import tenant_get
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
 from app.services import shadow_student_service as shadow
@@ -121,7 +122,7 @@ def _require_cs_scope(db, cs_student_id, scope_ids="__q__", student_id=None):
         from app.services.affairs_dashboard_service import _allowed_class_ids
         allowed, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
         if allowed is not None:
-            s = db.get(StudentProfile, int(student_id))
+            s = tenant_get(db, StudentProfile, int(student_id))
             if not s or s.class_id not in allowed:
                 raise AppException("NO_DATA_SCOPE", "该记录不在您的数据范围内")
         return
@@ -131,7 +132,7 @@ def _require_cs_scope(db, cs_student_id, scope_ids="__q__", student_id=None):
 
 
 def _get_stu(db, sid) -> CsServiceStudent:
-    s = db.get(CsServiceStudent, int(sid))
+    s = tenant_get(db, CsServiceStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("学生服务记录不存在或不在当前数据范围内")
     _require_cs_scope(db, s.id)
@@ -139,7 +140,7 @@ def _get_stu(db, sid) -> CsServiceStudent:
 
 
 def _stu_of(db, csid):
-    return db.get(CsServiceStudent, csid)
+    return tenant_get(db, CsServiceStudent, csid)
 
 
 def _cs_students_by_ids(db, rows, attr="cs_student_id"):
@@ -332,7 +333,7 @@ def list_grants(page, page_size, keyword=None, type=None, status=None):
 
 def get_grant_detail(gid) -> dict:
     with session() as db:
-        x = db.get(CsGrant, int(gid))
+        x = tenant_get(db, CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
         _require_cs_scope(db, x.cs_student_id)
@@ -345,7 +346,7 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", 
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        x = db.get(CsGrant, int(gid))
+        x = tenant_get(db, CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
         _require_cs_scope(db, x.cs_student_id)
@@ -476,7 +477,7 @@ def handle_dorm_exception(eid, note, complete=False, expected_version=None) -> d
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        e = db.get(CsDormException, int(eid))
+        e = tenant_get(db, CsDormException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
         _require_cs_scope(db, e.cs_student_id)
@@ -594,7 +595,7 @@ def list_work_orders(page, page_size, keyword=None, type=None, status=None, prio
 
 def get_work_order_detail(wid) -> dict:
     with session() as db:
-        x = db.get(CsWorkOrder, _as_id(wid))
+        x = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, x.cs_student_id)
@@ -639,7 +640,7 @@ def assign_work_orders(ids, handler) -> dict:
     with session() as db:
         scope_ids = _cs_scope_student_ids(db)
         for wid in ids:
-            w = db.get(CsWorkOrder, int(wid))
+            w = tenant_get(db, CsWorkOrder, int(wid))
             if not w or w.tenant_id != _tid() or w.is_deleted:
                 continue
             if scope_ids is not None and int(w.cs_student_id or 0) not in scope_ids:
@@ -661,7 +662,7 @@ def handle_work_order(wid, note, close=False, expected_version=None) -> dict:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        w = db.get(CsWorkOrder, _as_id(wid))
+        w = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
@@ -692,7 +693,7 @@ def close_work_order(wid, reason, expected_version=None) -> dict:
         raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        w = db.get(CsWorkOrder, _as_id(wid))
+        w = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)

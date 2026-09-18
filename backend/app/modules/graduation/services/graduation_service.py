@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import enforce_permission, permission_decisions
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic, StudentAccountLink,
                         UnifiedMessage)
@@ -98,7 +99,7 @@ def _deliver_student_reminder(db, stu, *, task_name: str, action_key: str, chann
     if not link:
         raise AppException("DELIVERY_FAILED", "学生未绑定有效登录账号，提醒未发送")
 
-    batch = db.get(GraduationBatch, stu.batch_id)
+    batch = tenant_get(db, GraduationBatch, stu.batch_id)
     batch_name = batch.batch_name if batch else ""
     deadline = None
     expected_stages = ("PROPOSAL",) if task_name == "开题报告" else ("SUBMISSION", "FINAL_CHECK")
@@ -214,7 +215,7 @@ def _mark_material_files(db, attachment_ids: list[str]) -> None:
 
 
 def _stu_of(db, sid):
-    return db.get(GraduationStudent, sid)
+    return tenant_get(db, GraduationStudent, sid)
 
 
 def resolve_material_download(file_id: str):
@@ -232,7 +233,7 @@ def resolve_material_download(file_id: str):
             bound = {_att_id(raw) for raw in (material.attachments_json or [])}
             if file_id not in bound:
                 continue
-            student = db.get(GraduationStudent, material.gd_student_id)
+            student = tenant_get(db, GraduationStudent, material.gd_student_id)
             assert_student_access(db, student, "graduation.material.download")
             return file_service.resolve_download(file_id, allow_graduation_material=True)
     return None
@@ -419,7 +420,7 @@ def review_proposal(pid, action, comment=None) -> dict:
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationProposal, int(pid))
+        p = tenant_get(db, GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
@@ -549,7 +550,7 @@ def hold_proposal_defense(pid, result, comment=None) -> dict:
     if result == "FAIL" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "开题答辩不通过时评语必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationProposal, int(pid))
+        p = tenant_get(db, GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
@@ -825,7 +826,7 @@ def review_final(fid, action, comment=None) -> dict:
 def get_final_detail(fid) -> dict:
     """成果批阅详情：本条 + 同生历史版本 + 退回意见 + 真实附件（文件中心解析）。供教师移动端批阅前查看。"""
     with session() as db:
-        f = db.get(GraduationFinal, int(fid))
+        f = tenant_get(db, GraduationFinal, int(fid))
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
@@ -1011,7 +1012,7 @@ def _recompute_defense(db, g):
 def _require_defense_batch(db, batch_id) -> GraduationBatch:
     if batch_id is None or batch_id == "":
         raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次 batchId")
-    b = db.get(GraduationBatch, int(batch_id))
+    b = tenant_get(db, GraduationBatch, int(batch_id))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("毕设批次不存在")
     if b.status in ("ARCHIVED", "VOIDED"):
@@ -1086,7 +1087,7 @@ def update_defense_group(gid, group_name=None, defense_date=None, location=None,
                          member_mentor_ids=None) -> dict:
     """编辑不可改 batch_id（禁止跨批迁移）。"""
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if group_name and group_name.strip():
@@ -1118,7 +1119,7 @@ def update_defense_group(gid, group_name=None, defense_date=None, location=None,
 
 def get_defense_group_detail(gid) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
@@ -1151,7 +1152,7 @@ def list_defense_eligible_students(gid=None, keyword=None) -> list:
         group_batch = None
         gid_int = int(gid) if gid else None
         if gid_int:
-            g = db.get(GraduationDefenseGroup, gid_int)
+            g = tenant_get(db, GraduationDefenseGroup, gid_int)
             if not g or g.is_deleted or g.tenant_id != _tid():
                 raise not_found("答辩组不存在")
             group_batch = g.batch_id
@@ -1178,7 +1179,7 @@ def list_defense_eligible_students(gid=None, keyword=None) -> list:
 
 def assign_defense_students(gid, student_ids) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not g.batch_id:
@@ -1186,7 +1187,7 @@ def assign_defense_students(gid, student_ids) -> dict:
         current = len(_assigned_students(db, g.id))
         add_ids = [int(x) for x in (student_ids or [])]
         for sid in add_ids:
-            s = db.get(GraduationStudent, sid)
+            s = tenant_get(db, GraduationStudent, sid)
             if not s or s.is_deleted or s.tenant_id != _tid():
                 raise not_found(f"学生 {sid} 不存在")
             if s.defense_group_id == g.id:
@@ -1225,11 +1226,11 @@ def assign_defense_students(gid, student_ids) -> dict:
 
 def unassign_defense_students(gid, student_ids) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         for sid in [int(x) for x in (student_ids or [])]:
-            s = db.get(GraduationStudent, sid)
+            s = tenant_get(db, GraduationStudent, sid)
             if s and s.defense_group_id == g.id:
                 s.defense_group_id = None
                 s.defense_group = None
@@ -1243,7 +1244,7 @@ def unassign_defense_students(gid, student_ids) -> dict:
 
 def publish_defense(gid) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         _recompute_defense(db, g)  # 发布前按最新分配重算冲突/人数
@@ -1267,7 +1268,7 @@ def notify_defense_group(gid, user=None) -> dict:
     if not gid:
         raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
@@ -1372,12 +1373,12 @@ def export_defense_xlsx(batch_id=None) -> dict:
 def student_defense_view(gd_student_id) -> dict:
     """学生端查看本人答辩安排（仅已发布才展示时间/地点/评委）。"""
     with session() as db:
-        s = db.get(GraduationStudent, int(gd_student_id))
+        s = tenant_get(db, GraduationStudent, int(gd_student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             return {"hasData": False}
         if not s.defense_group_id:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
-        g = db.get(GraduationDefenseGroup, s.defense_group_id)
+        g = tenant_get(db, GraduationDefenseGroup, s.defense_group_id)
         if not g or g.is_deleted:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
         if not g.published:
@@ -1651,7 +1652,7 @@ def get_dashboard(batch_id=None) -> dict:
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
         cur_batch = None
         if batch_id:
-            cur_batch = db.get(GraduationBatch, int(batch_id))
+            cur_batch = tenant_get(db, GraduationBatch, int(batch_id))
             if cur_batch and (cur_batch.tenant_id != _tid() or cur_batch.is_deleted):
                 cur_batch = None
         if not cur_batch:

@@ -16,6 +16,7 @@ from sqlalchemy import and_, case, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.pagination import normalize_page
+from app.core.tenant_scoped import tenant_get
 from app.core.timeutil import parse_api_datetime, local_day_bounds_utc
 from app.services.db_service import _iso, _tid, session
 from app.services.affairs_sla import (
@@ -476,10 +477,10 @@ def _resolve_class_names(db, rows: list[dict]) -> list[dict]:
 
 def _load(db, leave_id):
     from app.models import CsLeave, StudentProfile
-    x = db.get(CsLeave, int(leave_id))
+    x = tenant_get(db, CsLeave, int(leave_id))
     if not x or x.is_deleted or x.tenant_id != _tid() or x.affairs_status is None:
         raise not_found("请假申请不存在")
-    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
     return x, s
 
 
@@ -489,7 +490,7 @@ def _scope_or_403(db, x, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该请假不在您的数据范围内")
 
@@ -551,7 +552,7 @@ def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
         # 同一学生的请假创建共享一把主档行锁。若只做“查询重叠→insert”，
         # 两个首次请求会同时看到空集合并各自落单；行锁使第二个事务在首单
         # 提交后再检查正式记录，从数据库层兜住双击和网络重试。
-        s = db.get(StudentProfile, student_id, with_for_update=True)
+        s = db.scalars(select(StudentProfile).where(StudentProfile.id == student_id, StudentProfile.tenant_id == _tid()).with_for_update()).first()
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在或不在数据范围内")
         # 数据范围：非全域角色只能为本范围学生代发起请假（与 approve/reject 等一致）。
@@ -595,7 +596,7 @@ def apply_leave(body, user, *, skip_scope_check: bool = False) -> dict:
 
 def _act_task(db, x, action, reason=""):
     from app.models import WorkflowInstance
-    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.affairs_status) if inst else None
     if task:
         task.status = action
@@ -760,7 +761,7 @@ def resubmit(leave_id, user, expected_version=None, *, self_only: bool = False, 
         if reason_clean:
             x.reason = reason_clean
         x.version += 1
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
         if inst:
             inst.status, inst.current_node = "RUNNING", first
         assignee = _assignee_for(db, first, x.student_id)
