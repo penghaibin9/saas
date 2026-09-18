@@ -42,21 +42,27 @@ fi
 [[ -r "$ENV_FILE" && -r "$BACKUP_ENV_FILE" ]] || { echo "Production env/backup env is missing or unreadable." >&2; exit 1; }
 
 commit=""
+snapshot_sha256=""
 if [[ -f "$release_root/.release-commit" ]]; then commit="$(tr -d '[:space:]' < "$release_root/.release-commit")"; fi
+if [[ -f "$release_root/.release-source-sha256" ]]; then snapshot_sha256="$(tr -d '[:space:]' < "$release_root/.release-source-sha256")"; fi
 if [[ -z "$commit" ]] && git -C "$release_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   [[ -z "$(git -C "$release_root" status --porcelain --untracked-files=all)" ]] || { echo "Refusing dirty git release source." >&2; exit 1; }
   commit="$(git -C "$release_root" rev-parse HEAD)"
 fi
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "Release must carry .release-commit or be a clean git checkout." >&2; exit 1; }
+if ! git -C "$release_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  [[ "$snapshot_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Offline release must carry a checked .release-source-sha256 marker." >&2; exit 1;
+  }
+fi
 
-exec 9>"$LOCK_FILE"; flock -n 9 || { echo "Another release is already in progress." >&2; exit 1; }
 old="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
 echo "release_start=$(date -u +%Y-%m-%dT%H:%M:%SZ) previous=${old:-none} commit=$commit"
 
 # The guarded installer performs: verified MySQL+uploads backup, migration, atomic
 # current switch, service restart, nginx/health/readiness and production acceptance.
-SOURCE_ROOT="$release_root" RELEASE_COMMIT="$commit" APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" BACKUP_ENV_FILE="$BACKUP_ENV_FILE" \
+SOURCE_ROOT="$release_root" RELEASE_COMMIT="$commit" RELEASE_SNAPSHOT_SHA256="$snapshot_sha256" APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" BACKUP_ENV_FILE="$BACKUP_ENV_FILE" \
   bash "$release_root/scripts/deploy/install-systemd-release.sh" --apply
 
 new="$(readlink -f "$APP_ROOT/current")"
-echo "release_success=$(date -u +%Y-%m-%dT%H:%M:%SZ) version=$(basename "$new") commit=$(cat "$new/.release-commit")"
+echo "release_success=$(date -u +%Y-%m-%dT%H:%M:%SZ) version=$(basename "$new") commit=$(cat "$new/.release-commit") snapshot=${snapshot_sha256:-git-archive}"

@@ -7,8 +7,8 @@ ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
 exec 9>"$LOCK_FILE"; flock -n 9 || { echo "A release/rollback is already in progress." >&2; exit 1; }
 current="$(readlink -f "$APP_ROOT/current")"; [[ -d "$current" ]] || { echo "No active release to roll back." >&2; exit 1; }
-candidate="$(find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d ! -samefile "$current" -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
-[[ -n "$candidate" && -f "$candidate/.release-commit" ]] || { echo "No previous immutable release is available." >&2; exit 1; }
+candidate="$(find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d ! -samefile "$current" -exec test -f '{}/.release-accepted.json' \; -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+[[ -n "$candidate" && -f "$candidate/.release-commit" && -f "$candidate/.release-accepted.json" ]] || { echo "No previous accepted release is available." >&2; exit 1; }
 echo "rollback_start from=$(basename "$current") to=$(basename "$candidate") database_action=NONE"
 ln -sfnT "$candidate" "$APP_ROOT/current.next"; mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
 for unit in school-lifecycle-backend.service school-lifecycle-scheduler.service school-lifecycle-file-scan.service; do

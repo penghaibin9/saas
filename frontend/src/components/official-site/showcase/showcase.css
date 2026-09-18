@@ -93,3 +93,37 @@ body[data-yueke-showcase="active"] .yk-mobile-site-dock{display:none!important}
 #ykw-site .news-section{background:#fff}#ykw-site .news-preview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}#ykw-site .news-card{border:1px solid #dfe7f2;border-radius:13px;padding:27px;background:#fbfdff}#ykw-site .news-card small{font-size:11px;color:#6992c3}#ykw-site .news-card h3{font-size:18px;line-height:1.65;margin:12px 0}#ykw-site .news-card p{font-size:12px;color:#7e91a9;line-height:1.9}#ykw-site .news-empty{grid-column:1/-1;font-size:13px;color:#7e91a9;padding:25px;border:1px dashed #d9e4f2;border-radius:10px}#ykw-site .news-empty a{margin-left:15px;color:#316cc8}@media(max-width:750px){#ykw-site .news-preview{grid-template-columns:1fr}#ykw-site .news-card{padding:21px}}
 
 #ykw-site .music-credit{font-size:10px;color:#9cb5d2;padding:0 24px;line-height:1.7}#ykw-site .music-credit a{text-decoration:underline}
+
+/* Third product line: the sourced training manual stays readable and does not imitate the school products. */
+#ykw-site .suite-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+#ykw-site .training-suite{background:#f5faf9;border-color:#d7e9e5}
+#ykw-site .training-suite .suite-number{color:#6bada0}
+#ykw-site .training-pill{background:#e5f3f0;color:#29796b}
+#ykw-site .training-suite .lifecycle{border-color:#d7e9e5}
+#ykw-site .training-suite .lifecycle li{color:#477c74}
+#ykw-site .training-section{background:#f4f9f8}
+#ykw-site .training-section h2 em{color:#28796c}
+#ykw-site .training-intro{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.72fr);gap:64px;align-items:center}
+#ykw-site .training-copy{max-width:560px}
+#ykw-site .training-copy .kicker{color:#29796b}
+#ykw-site .training-copy h3{font-size:30px;line-height:1.6;letter-spacing:-.5px;margin-top:14px}
+#ykw-site .training-copy>p:not(.kicker){font-size:14px;line-height:2;color:#647d88;margin-top:17px}
+#ykw-site .training-actions{display:flex;flex-wrap:wrap;align-items:center;gap:19px;margin-top:28px}
+#ykw-site .training-actions .primary{background:#28796c}
+#ykw-site .training-actions .primary:hover{background:#1f655a}
+#ykw-site .training-manual-feature{overflow:hidden;border:1px solid #d6e7e3;border-radius:12px;background:#fff;box-shadow:0 20px 50px #245b5311}
+#ykw-site .training-manual-feature img{width:100%;height:auto;background:#fff}
+#ykw-site .training-manual-feature p{padding:12px 16px;font-size:11px;color:#56756f;border-top:1px solid #e0eeeb}
+#ykw-site .training-flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:40px 0 27px;padding:0;list-style:none}
+#ykw-site .training-flow li{display:flex;align-items:center;gap:9px;min-height:54px;padding:10px;border:1px solid #d8e8e4;border-radius:8px;background:#fbfefd;color:#376e65}
+#ykw-site .training-flow b{font:600 10px/1 Arial,sans-serif;color:#2d8878;letter-spacing:.5px}
+#ykw-site .training-flow span{font-size:11px;line-height:1.5}
+#ykw-site .training-manual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+#ykw-site .training-manual-grid a{overflow:hidden;border:1px solid #d8e8e4;border-radius:10px;background:#fff;box-shadow:0 12px 32px #245b530c;transition:transform .18s,box-shadow .18s}
+#ykw-site .training-manual-grid a:hover{transform:translateY(-2px);box-shadow:0 18px 38px #245b5319}
+#ykw-site .training-manual-grid img{width:100%;height:auto;background:#fff}
+#ykw-site .training-manual-grid span{display:block;padding:14px 16px;font-size:12px;line-height:1.75;color:#486d67;border-top:1px solid #e0eeeb}
+#ykw-site .training-note{margin-top:18px;color:#718984;font-size:11px;line-height:1.8}
+@media(max-width:1100px){#ykw-site .suite-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#ykw-site .training-intro{gap:38px}}
+@media(max-width:760px){#ykw-site .training-intro{grid-template-columns:1fr;gap:27px}#ykw-site .training-copy h3{font-size:27px}#ykw-site .training-manual-feature{max-width:520px}#ykw-site .training-flow{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:30px}#ykw-site .training-manual-grid{gap:16px}}
+@media(max-width:540px){#ykw-site .suite-grid{grid-template-columns:1fr}#ykw-site .training-actions{align-items:stretch;flex-direction:column;gap:10px}#ykw-site .training-actions .btn,#ykw-site .training-actions .text-link{justify-content:center;width:100%}#ykw-site .training-flow{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#ykw-site .training-flow li{min-height:50px;padding:9px 8px;gap:7px}#ykw-site .training-flow span{font-size:10px}#ykw-site .training-manual-grid{grid-template-columns:1fr;gap:18px}#ykw-site .training-manual-grid span{font-size:11px}}

@@ -9,6 +9,7 @@ APP_ROOT="${APP_ROOT:-/opt/school-lifecycle}"
 ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
 CURRENT="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
 EXPECTED_RELEASE_COMMIT="${EXPECTED_RELEASE_COMMIT:-}"
+EXPECTED_RELEASE_SNAPSHOT_SHA256="${EXPECTED_RELEASE_SNAPSHOT_SHA256:-}"
 BACKUP_FILE="${BACKUP_FILE:-}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-$APP_ROOT/release-evidence}"
 
@@ -21,6 +22,17 @@ ACTUAL_COMMIT="$(tr -d '[:space:]' < "$CURRENT/.release-commit")"
   echo "candidate commit does not match the deployed release" >&2
   exit 1
 }
+if [ -n "$EXPECTED_RELEASE_SNAPSHOT_SHA256" ]; then
+  [ -f "$CURRENT/.release-source-sha256" ] || { echo "offline release has no source snapshot marker" >&2; exit 1; }
+  ACTUAL_SNAPSHOT_SHA256="$(tr -d '[:space:]' < "$CURRENT/.release-source-sha256")"
+  [[ "$ACTUAL_SNAPSHOT_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "release source snapshot marker is invalid" >&2; exit 1; }
+  [ "$ACTUAL_SNAPSHOT_SHA256" = "$EXPECTED_RELEASE_SNAPSHOT_SHA256" ] || {
+    echo "candidate source snapshot does not match the deployed release" >&2
+    exit 1
+  }
+else
+  ACTUAL_SNAPSHOT_SHA256=""
+fi
 
 # Use the deployed release's own scripts, never a mutable checkout beside it.
 SOURCE_ROOT="$CURRENT" ENV_FILE="$ENV_FILE" bash "$CURRENT/scripts/deploy/preflight-linux.sh"
@@ -44,7 +56,7 @@ HOST_FINGERPRINT="$(hostname | sha256sum | awk '{print $1}')"
 BACKUP_SHA="$(sha256sum "$BACKUP_FILE" | awk '{print $1}')"
 RELEASE_ID="$(basename "$CURRENT")"
 
-python3 - "$EVIDENCE_FILE" "$ACTUAL_COMMIT" "$RELEASE_ID" "$HOST_FINGERPRINT" "$BACKUP_SHA" <<'PY'
+python3 - "$EVIDENCE_FILE" "$ACTUAL_COMMIT" "$ACTUAL_SNAPSHOT_SHA256" "$RELEASE_ID" "$HOST_FINGERPRINT" "$BACKUP_SHA" <<'PY'
 from __future__ import annotations
 import json
 import os
@@ -52,12 +64,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-out, commit, release_id, host_fp, backup_sha = sys.argv[1:]
+out, commit, source_snapshot_sha, release_id, host_fp, backup_sha = sys.argv[1:]
 payload = {
     "schemaVersion": 1,
     "evidenceType": "TARGET_SERVER_RUNTIME_ACCEPTANCE",
     "status": "PASS",
     "commit": commit,
+    "sourceSnapshotSha256": source_snapshot_sha or None,
     "releaseId": release_id,
     "hostFingerprintSha256": host_fp,
     "recordedAt": datetime.now(timezone.utc).isoformat(),
@@ -81,5 +94,33 @@ os.chmod(tmp, 0o600)
 os.replace(tmp, path)
 PY
 
+ACCEPTED_FILE="$CURRENT/.release-accepted.json"
+python3 - "$ACCEPTED_FILE" "$ACTUAL_COMMIT" "$ACTUAL_SNAPSHOT_SHA256" "$RELEASE_ID" "$BACKUP_SHA" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out, commit, source_snapshot_sha, release_id, backup_sha = sys.argv[1:]
+payload = {
+    "schemaVersion": 1,
+    "status": "ACCEPTED",
+    "releaseId": release_id,
+    "commit": commit,
+    "sourceSnapshotSha256": source_snapshot_sha or None,
+    "backupSha256": backup_sha,
+    "acceptedAt": datetime.now(timezone.utc).isoformat(),
+}
+path = Path(out)
+tmp = path.with_suffix(path.suffix + ".tmp")
+tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+os.chmod(tmp, 0o444)
+os.replace(tmp, path)
+PY
+
 printf 'Target-server runtime acceptance PASS. Evidence: %s\n' "$EVIDENCE_FILE"
+printf 'Release acceptance marker: %s\n' "$ACCEPTED_FILE"
 printf 'Restore drill and real-role/cross-tenant smoke remain separate mandatory evidence; this file never claims they passed.\n'

@@ -67,7 +67,7 @@ const moduleRoutes = projectNavigationRoutePermissions([
 const projectedCoreControlRoutes = projectNavigationRoutePermissions(coreControlRoutes, [...NAV_PLAN, PLATFORM_PLAN])
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       /* PORTAL-ROOT：主域名根路径 = 对外统一门户首页（公开，不需登录）。

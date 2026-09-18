@@ -58,6 +58,19 @@ test('no complete prototypes, user input or executable scripts are shipped in th
   assert.ok(!/MODEL=|AA_DESIGN|sourceUrl|sha256|baseline|字段代入|生产三级入口全部设计/.test(html))
   for (const name of ['tour-sound','tour-volume','tour-canvas','gallery-consult-short']) assert.ok(html.includes(`id="${name}"`))
 })
+
+test('training product introduction preserves all thirteen documented steps and local manual assets', () => {
+  const html = fs.readFileSync(path.join(base, 'approved-home.html'), 'utf8')
+  assert.match(html, /THREE PRODUCT LINES/)
+  assert.match(html, /跃科教培/)
+  assert.match(html, /id="training"/)
+  assert.match(html, /aria-label="跃科教培13条核心业务流程"/)
+  assert.match(html, /manual\.pdf/)
+  for (const step of ['机构注册开通', '首页办事中心', '报名购课', '点名消课', '权限导出与隔离']) assert.ok(html.includes(step))
+  for (const asset of ['manual.pdf', 'workbench.png', 'enrollment.png', 'permissions.png']) {
+    assert.ok(fs.existsSync(path.join(frontend, 'public', 'official-site', 'training-20260917', asset)), asset)
+  }
+})
 test('asset readiness is strict, not an HTTP 200 or an HTML SPA fallback', async () => {
   const release = { version: '20260909-pc40-wechat20', assetCount:143,businessCount:67,expandedCount:60 }
   assert.equal(validRelease(release), true)

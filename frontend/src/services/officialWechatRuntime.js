@@ -71,8 +71,8 @@ function shareMetaForPath(path) {
   }
 
   return {
-    title: '跃科｜服务学生成长，成就教师发展',
-    desc: '学生全生命周期管理与高校人事管理两条主线，服务学生成长与教师发展。精选 PC 和微信端业务画面，预约完整产品讲解。',
+    title: '跃科｜学生、教师与教培机构数字化服务',
+    desc: '学生全生命周期管理、高校人事管理与跃科教培三条产品线，服务学生成长、教师发展和培训机构日常管理。',
     link: OFFICIAL_SITE_CONTACT.canonicalOrigin,
     imgUrl: absoluteUrl(document.querySelector('#ykw-site') ? '/official-site/showcase-20260909/scenes/overview.webp' : FALLBACK_SHARE_IMAGE)
   }

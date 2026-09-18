@@ -16,7 +16,7 @@ test('跃科公开门户提供企业注册/登录真实入口', () => {
   assert.match(markup, /首次注册由学校邀请激活/)
 
   assert.match(config, /VITE_PORTAL_ENTERPRISE_LOGIN_URL/)
-  assert.match(config, /'\/enterprise\/login'/)
+  assert.match(config, /\$\{STUDENT_PORTAL_ORIGIN\}\/enterprise\/login/)
   assert.match(home, /ENTERPRISE_LOGIN_URL/)
   assert.match(home, /企业注册 \/ 登录/)
   assert.match(home, /首次注册由学校邀请激活/)

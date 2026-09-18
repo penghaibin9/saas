@@ -31,8 +31,8 @@ let instance = null
 let previousBodyMarker
 let previousTitle
 const ownedHead = []
-const title = '跃科｜服务学生成长，成就教师发展'
-const description = '跃科高校师生全生命周期解决方案：学生管理与高校人事两条产品线，教务、学工、岗位实习、毕业设计 PC 各十页，教师与学生微信小程序各十页，预约完整产品讲解。'
+const title = '跃科｜服务学生成长，成就教师发展，做好教培日常管理'
+const description = '跃科提供学生全生命周期管理、高校人事管理与跃科教培三条产品线。教务、学工、岗位实习、毕业设计与教培机构高频流程均有可查看的产品介绍和操作手册。'
 function metadata(selector, attributes, value) {
   let node = document.head.querySelector(selector)
   const previous = node?.getAttribute('content')
