@@ -8,7 +8,7 @@
           <view class="ts-row profile-scope"><MobileShellIcon name="user" :size="25" round /><view class="ts-body"><text class="ts-muted">工作范围</text><text class="ts-row-title">{{ dataScopeText || '以当前业务授权范围为准' }}</text></view></view>
           <button class="ts-row ts-plain profile-setting" @click="go('/pages/role-switch/index')"><MobileShellIcon name="clipboard-check" tone="violet" :size="25" round /><text class="ts-body">身份切换</text><text class="ts-muted">{{ identityCount }}个可用身份</text><MobileShellIcon name="chevron-right" tone="gray" :size="18" /></button>
           <button class="ts-row ts-plain profile-setting" @click="go('/pages/common/account-security/index')"><MobileShellIcon name="shield-check" tone="green" :size="25" round /><text class="ts-body">安全设置</text><MobileShellIcon name="chevron-right" tone="gray" :size="18" /></button>
-          <button class="ts-row ts-plain profile-setting" @click="go('/pages/common/help/index')"><MobileShellIcon name="message-dots" tone="amber" :size="25" round /><text class="ts-body">帮助与反馈</text><MobileShellIcon name="chevron-right" tone="gray" :size="18" /></button>
+          <button class="ts-row ts-plain profile-setting" @click="go('/pages/common/help/index')"><MobileShellIcon name="message-dots" tone="amber" :size="25" round /><text class="ts-body">{{ helpEntry.label }}</text><MobileShellIcon name="chevron-right" tone="gray" :size="18" /></button>
         </view>
         <view class="profile-footer"><text class="ts-muted">{{ versionText }}</text><button class="profile-logout ts-plain" @click="logout">退出登录</button></view>
     </view>
@@ -30,7 +30,7 @@ export default {
   },
   data() {
     return {
-      user: {}, roleConfig: {}, dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0
+      user: {}, roleConfig: {}, dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0,\n      helpEntry: { key: 'help', label: '帮助与反馈' }
     }
   },
   onShow() { this.load(); this.$refs?.badges?.refresh() },

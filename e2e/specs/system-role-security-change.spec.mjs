@@ -225,8 +225,11 @@ test('approved system UI: create role → permissions → additive members → d
   await expect(page.locator('.sw-worktitle')).toContainText(name)
   await expect(page).toHaveURL(new RegExp(`roleId=${roleId}`))
   const original = await browserApi(page, token, 'GET', `/system/roles/${roleId}`)
-  const code = 'systemAdmin.user.view'
-  await page.locator(`[data-permission="${code}"] input`).check()
+  const permissionInput = page.locator('[data-permission] input:not(:checked):not(:disabled)').first()
+  await expect(permissionInput).toBeVisible()
+  const code = await permissionInput.evaluate((node) => node.closest('[data-permission]')?.getAttribute('data-permission') || '')
+  expect(code).toBeTruthy()
+  await permissionInput.check()
   await page.getByTestId('A017-review').click()
   await page.getByRole('dialog').locator('textarea').fill('真实浏览器验证角色权限办理')
   const saveResponse = page.waitForResponse(r => r.request().method() === 'PUT' && new URL(r.url()).pathname.endsWith(`/system/roles/${roleId}/permissions`))

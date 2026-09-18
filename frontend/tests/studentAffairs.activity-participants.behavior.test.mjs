@@ -6,7 +6,7 @@ import { parse } from '@vue/compiler-sfc'
 const parsed = parse(readFileSync(new URL('../src/modules/studentAffairs/views/activity/ActivityWorkbenchView.vue', import.meta.url), 'utf8'))
 assert.deepEqual(parsed.errors, [])
 const script = parsed.descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
-  .replace(/  components: \{[\s\S]*?\n  \},/, '  components: {},').replace('export default', 'return')
+  .replace(/ {2}components: \{[\s\S]*?\n {2}\},/, '  components: {},').replace('export default', 'return')
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
 function mount(api) {
   let generation = 1
