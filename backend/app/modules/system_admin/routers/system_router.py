@@ -32,6 +32,86 @@ _EFFECTIVE_ACCESS_KEYS = (
 )
 
 
+def _tenant_safe_student_account_meta(db, account) -> dict:
+    """Harden the frozen bundle's student projection without changing frozen bytes."""
+    try:
+        from app.models import College, Major, SchoolClass, StudentAccountLink, StudentProfile
+
+        link = db.scalars(select(StudentAccountLink).where(
+            StudentAccountLink.tenant_id == account.tenant_id,
+            StudentAccountLink.user_id == account.id,
+            StudentAccountLink.link_status == "ACTIVE",
+            StudentAccountLink.is_deleted.is_(False),
+        )).first()
+        sp = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == link.student_id,
+            StudentProfile.tenant_id == int(account.tenant_id),
+            StudentProfile.is_deleted.is_(False),
+        )).first() if link is not None else None
+        if sp is None and link is None:
+            sp = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == account.tenant_id,
+                StudentProfile.is_deleted.is_(False),
+                StudentProfile.student_no == account.login_name,
+            )).first()
+        if sp is None:
+            return {
+                "studentId": "", "studentNo": account.login_name,
+                "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+                "classId": "", "className": "", "grade": "",
+                "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
+                "currentStage": "", "profileBound": False,
+            }
+
+        college = db.scalars(select(College).where(
+            College.id == sp.college_id,
+            College.tenant_id == int(account.tenant_id),
+            College.is_deleted.is_(False),
+        )).first() if sp.college_id else None
+        major = db.scalars(select(Major).where(
+            Major.id == sp.major_id,
+            Major.tenant_id == int(account.tenant_id),
+            Major.is_deleted.is_(False),
+        )).first() if sp.major_id else None
+        cls = db.scalars(select(SchoolClass).where(
+            SchoolClass.id == sp.class_id,
+            SchoolClass.tenant_id == int(account.tenant_id),
+            SchoolClass.is_deleted.is_(False),
+        )).first() if sp.class_id else None
+        student_status = str(sp.student_status or sp.status or "").upper()
+        return {
+            "studentId": str(sp.id), "studentNo": sp.student_no,
+            "collegeId": str(sp.college_id or ""),
+            "collegeName": college.college_name if college else "",
+            "majorId": str(sp.major_id or ""),
+            "majorName": major.major_name if major else "",
+            "classId": str(sp.class_id or ""),
+            "className": cls.class_name if cls else "",
+            "grade": sp.grade or (cls.grade if cls else "") or "",
+            "studentStatus": student_status,
+            "studentStatusLabel": {
+                "NORMAL": "正常在籍", "REGISTERED": "已注册", "SUSPENDED": "休学",
+                "GRADUATED": "已毕业", "WITHDRAWN": "已退学", "MERGED": "已合并",
+                "RECYCLED": "已作废",
+            }.get(student_status, student_status or "未设置"),
+            "currentStage": str(sp.current_stage or ""),
+            "profileBound": True,
+        }
+    except Exception:
+        return {
+            "studentId": "", "studentNo": account.login_name,
+            "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+            "classId": "", "className": "", "grade": "",
+            "studentStatus": "UNBOUND", "studentStatusLabel": "主档读取失败",
+            "currentStage": "", "profileBound": False,
+        }
+
+
+# S0 keeps system_bundle byte-frozen. Any bundle route that calls its global
+# _student_account_meta now consumes this tenant-scoped adapter at runtime.
+_bundle._student_account_meta = _tenant_safe_student_account_meta
+
+
 def _assert_permission_rows_exist(codes: set[str]) -> None:
     """Tenant runtime may consume Permission rows but may never create them."""
     concrete = sorted({c for c in codes if c and c != "*" and not c.endswith(".*") and not c.startswith("*.")})

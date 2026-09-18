@@ -219,8 +219,8 @@ def _student_account_meta(db, account) -> dict:
             StudentAccountLink.link_status == "ACTIVE",
             StudentAccountLink.is_deleted.is_(False),
         )).first()
-        sp = db.query(StudentProfile).filter(StudentProfile.id == link.student_id, StudentProfile.tenant_id == int(account.tenant_id)).first() if link is not None else None
-        if sp is None and link is None:
+        sp = db.get(StudentProfile, link.student_id) if link is not None else None
+        if sp is None:
             sp = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == account.tenant_id,
                 StudentProfile.is_deleted.is_(False),
@@ -234,9 +234,9 @@ def _student_account_meta(db, account) -> dict:
                 "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
                 "currentStage": "", "profileBound": False,
             }
-        college = db.query(College).filter(College.id == sp.college_id, College.tenant_id == int(account.tenant_id)).first() if sp.college_id else None
-        major = db.query(Major).filter(Major.id == sp.major_id, Major.tenant_id == int(account.tenant_id)).first() if sp.major_id else None
-        cls = db.query(SchoolClass).filter(SchoolClass.id == sp.class_id, SchoolClass.tenant_id == int(account.tenant_id)).first() if sp.class_id else None
+        college = db.get(College, sp.college_id) if sp.college_id else None
+        major = db.get(Major, sp.major_id) if sp.major_id else None
+        cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
         student_status = str(sp.student_status or sp.status or "").upper()
         return {
             "studentId": str(sp.id), "studentNo": sp.student_no,
@@ -1788,8 +1788,7 @@ def set_system_role_status(role_id: int, body: dict = Body(...),
         db.close()
 
 
-# Public status writes are registered only by system_p1_closure: signed preview required.
-# Keep this internal adapter for existing service consumers, never mount it as a route.
+@router.put("/system/org-nodes/{node_id}/status", summary="停用 / 启用组织节点（学院/专业/班级）")
 def set_system_org_node_status(node_id: int, body: dict = Body(...),
                                user=Depends(require_permission("systemAdmin.org.manage"))):
     from app.core.exceptions import AppException
@@ -3183,7 +3182,7 @@ def transition_org_version(
     )
 
 
-# The public impact URL is owned by system_p1_closure and returns its signed receipt.
+@router.get("/system/org-nodes/{org_type}/{node_id}/impact", summary="移动或停用该节点会影响谁")
 def org_node_impact(org_type: str, node_id: int, user=Depends(require_permission("systemAdmin.org.view"))):
     from app.services import organization_version_service as svc
 

@@ -120,7 +120,7 @@ async function assertRoute(page, route, expectedAllowed) {
   await expect.poll(async () => {
     const final = new URL(page.url())
     const body = await page.locator('body').innerText().catch(() => '')
-    const denied = final.pathname === '/security/403' || /403|无权限|禁止访问|没有权限/.test(body)
+    const denied = final.pathname === '/security/403' || /403|无权限|禁止访问|没有权限|学校尚未开通此模块|尚未开通此模块/.test(body)
     return expectedAllowed ? !denied && !/\/(login|platform-login)$/.test(final.pathname) : denied
   }, {
     message: `${route} expectedAllowed=${expectedAllowed} final=${page.url()}`,
