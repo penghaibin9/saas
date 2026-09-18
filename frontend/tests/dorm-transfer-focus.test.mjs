@@ -7,7 +7,8 @@ function mount(path, values, id) {
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g,(_,names)=>{imports.push(...names.split(',').map(s=>s.trim()));return ''})
     .replace(/import\s+(\w+)\s+from\s+['"][^'"]+['"]/g,(_,name)=>{imports.push(name);return ''}).replace('export default','return')
-  const c=new Function(...imports,script)(...imports.map(name=>values[name] || {}))
+  const defaults={ currentSessionGeneration:()=>1 }
+  const c=new Function(...imports,script)(...imports.map(name=>values[name] ?? defaults[name] ?? {}))
   const vm={...c.data(),...c.methods,$route:{query:{recordId:id}}}
   for(const [key,get] of Object.entries(c.computed||{}))Object.defineProperty(vm,key,{get:()=>get.call(vm)})
   if(!c.computed?.recordId)vm.recordId=id

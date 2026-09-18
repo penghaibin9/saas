@@ -135,8 +135,13 @@ def test_ra1_records_show_source_and_change_history(client, db_mode):
     assert rec0["prevTotalScore"] is None and rec0["changeReason"] == "" and rec0["versionNo"] == 1
 
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr).status_code == 200
-    assert client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=school_hdr,
-                       json={"action": "APPROVE"}).status_code == 200
+    evidence = client.get(f"{BASE}/grade-tasks/{tid}/review-evidence", headers=college_hdr)
+    assert evidence.status_code == 200, evidence.text
+    reviewed = client.post(
+        f"{BASE}/grade-tasks/{tid}/college-review", headers=college_hdr,
+        json={"action": "APPROVE", "expectedEvidenceHash": evidence.json()["data"]["evidenceHash"]},
+    )
+    assert reviewed.status_code == 200, reviewed.text
     pub = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     assert pub.status_code == 200, pub.text
     after_publish = client.get(f"{BASE}/grade-tasks/{tid}/records", headers=school_hdr).json()["data"]["items"][0]

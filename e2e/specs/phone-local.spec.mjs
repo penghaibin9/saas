@@ -111,13 +111,14 @@ test('teacher and student H5 entries authenticate with ACCOUNT and PHONE at mobi
     if (item.type === 'PHONE') {
       await page.getByRole('button', { name: '手机号登录', exact: true }).tap()
     }
-    await page.getByRole('textbox').nth(0).fill(item.identifier)
-    await page.getByRole('textbox').nth(1).fill(item.password)
-    await page.getByText('学校编码', { exact: true }).click()
-    await page.getByRole('textbox').nth(2).fill(tenant)
-    await page.getByText('我已阅读并同意学校提供的', { exact: true }).click()
+    const accountLabel = item.side === 'teacher' ? '工号或统一账号' : '学号或统一账号'
+    await page.locator(`input[aria-label="${accountLabel}"]`).fill(item.identifier)
+    await page.locator('input[aria-label="密码"]').fill(item.password)
+    await page.locator('button.tenant-box').click()
+    await page.locator('input.field--tenant').fill(tenant)
+    await page.locator('button.agreement-toggle[aria-label="同意用户协议与隐私政策"]').click()
     const response = page.waitForResponse(r => r.url().includes('/auth/browser-login') && r.request().method() === 'POST', { timeout: 20000 })
-    await page.locator('uni-button.account-button').click()
+    await page.locator('button.account-button').click()
     expect((await response).status()).toBe(200)
     await expect(page).toHaveURL(new RegExp(item.home.replaceAll('/', '\\/')))
     await context.close()

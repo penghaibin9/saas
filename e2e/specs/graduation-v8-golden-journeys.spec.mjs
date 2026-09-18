@@ -9,6 +9,7 @@ import { items, loginApi, prepareGraduationFixture } from '../lib/api-fixture.mj
 import { dismissGraduationGuide, ensureArchiveProjection } from '../lib/graduation-scenario-fixture.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const MINI_BASE_URL = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
 const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR
@@ -104,15 +105,7 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
 
 async function loginTeacherMini(page, account = u8TeacherAccount) {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto(`${MINI_BASE_URL}/#/pages/login/teacher/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入教师工作台', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
+  await loginMiniH5(page, { baseUrl: MINI_BASE_URL, entry: 'teacher', account, timeout: 15_000 })
   await assertHealthyPage(page)
 }
 

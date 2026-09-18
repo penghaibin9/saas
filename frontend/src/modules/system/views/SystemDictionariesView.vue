@@ -127,7 +127,7 @@ export default {
     },
     consumerLabels(consumers = []) {
       const labels = { studentCenter: '学工中心' }
-      return consumers.map((code) => labels[code] || code).join('、')
+      return consumers.map((code) => labels[code] || '其他业务页面').join('、')
     },
     select(code) { this.selectedCode = code; this.message = ''; this.error = '' },
     async load() {

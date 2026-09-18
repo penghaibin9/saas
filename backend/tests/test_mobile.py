@@ -10,7 +10,7 @@ def _stu_token(real_name, tenant_id=MAIN, tid="demo"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{real_name}", "realName": real_name, "userType": "STUDENT",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _teacher_token(tenant_id=MAIN, tid="demo", role="COUNSELOR"):
@@ -18,7 +18,7 @@ def _teacher_token(tenant_id=MAIN, tid="demo", role="COUNSELOR"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": "u-teacher", "realName": "王辅导", "userType": "TEACHER",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": role, "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": "TEACHER_MINI"})}
 
 
 def _seed_two_students(_db_mode):

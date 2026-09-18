@@ -3,6 +3,8 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
+import { submitInAppPrompt } from '../lib/in-app-dialog.mjs'
 
 const miniBaseUrl = process.env.E2E_STUDENT_MINI_BASE_URL
   || process.env.E2E_MINIAPP_BASE_URL
@@ -40,17 +42,7 @@ async function pickInternshipStudent(page, fixture) {
 }
 
 async function loginMini(page, entry, account) {
-  await page.goto(`${miniBaseUrl}/#/pages/login/${entry}/index`)
-  const accountHint = entry === 'teacher' ? '工号 / 手机号' : '学号 / 手机号'
-  const accountField = page.locator('uni-input.field').filter({ hasText: accountHint }).first()
-  const passwordField = page.locator('uni-input.field').filter({ hasText: '密码' }).first()
-  await accountField.locator('input').fill(account.username)
-  await passwordField.locator('input').fill(account.password)
-  await page.locator('.agreement__box').click()
-  await page.locator('uni-button.account-button').click()
-  await expect(page).toHaveURL(entry === 'teacher'
-    ? /#\/pages\/teacher\/workbench\/index/
-    : /#\/pages\/student\/home\/index/)
+  await loginMiniH5(page, { baseUrl: miniBaseUrl, entry, account })
 
   if (entry === 'teacher') {
     // e2e_advisor_a is intentionally multi-role (GD_MENTOR + INTERN_MENTOR).
@@ -154,15 +146,12 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
 
-    page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('prompt')
-      await dialog.accept(REJECT_REASON)
-    })
     const rejectPromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/portal/internship/context/agreements/${oldAgreementId}/confirm`
         && response.request().method() === 'POST'
     )
     await page.getByRole('button', { name: '驳回协议', exact: true }).click()
+    await submitInAppPrompt(page, REJECT_REASON, { confirmText: '确认驳回' })
     const rejected = await rejectPromise
     const rejectBody = rejected.request().postDataJSON()
     expect(rejectBody?.action).toBe('REJECT')

@@ -15,10 +15,10 @@ BASE = "/api/v1/student-affairs"
 MB = "/api/v1/mobile"
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, client_type="PC"):
     data = client.post(
         "/api/v1/auth/mock-login",
-        json={"loginName": login_name, "password": "any"},
+        json={"loginName": login_name, "password": "any", "clientType": client_type},
     ).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
@@ -30,7 +30,7 @@ def _stu_token(real_name, student_no):
         "studentNo": student_no, "userType": "STUDENT",
         "tid": "x", "tenantId": str(TID),
         "activeContextId": "ctx", "currentRoleCode": "STUDENT",
-        "clientType": "MP",
+        "clientType": "STUDENT_MINI",
     })}
 
 
@@ -149,7 +149,7 @@ def test_four_end_routes_registered(client, db_mode):
 def test_student_leave_and_teacher_mobile_share_version_contract(client, db_mode):
     ids = _seed_students(db_mode, prefix="FE41")
     admin = _hdr(client, "school_admin01")
-    counselor = _hdr(client, "counselor01")
+    counselor = _hdr(client, "counselor01", "TEACHER_MINI")
     leave = client.post(f"{BASE}/leave", headers=admin, json={
         "studentId": str(ids["one"]), "leaveType": "PERSONAL",
         "startTime": "2026-08-01", "endTime": "2026-08-02",

@@ -33,17 +33,21 @@ _SCORE_FIELDS = (
 
 
 def _member(db, context) -> InternshipEnterpriseMember:
-    row = db.scalar(
-        select(InternshipEnterpriseMember).where(
-            InternshipEnterpriseMember.id == context.member_id,
-            InternshipEnterpriseMember.tenant_id == context.tenant_id,
-            InternshipEnterpriseMember.company_id == context.company_id,
-            InternshipEnterpriseMember.user_id == context.user_id,
-            InternshipEnterpriseMember.member_role == context.member_role,
-            InternshipEnterpriseMember.status == "ACTIVE",
-            InternshipEnterpriseMember.is_deleted.is_(False),
-        )
-    )
+    conditions = [
+        InternshipEnterpriseMember.id == context.member_id,
+        InternshipEnterpriseMember.tenant_id == context.tenant_id,
+        InternshipEnterpriseMember.company_id == context.company_id,
+        InternshipEnterpriseMember.member_role == context.member_role,
+        InternshipEnterpriseMember.status == "ACTIVE",
+        InternshipEnterpriseMember.is_deleted.is_(False),
+    ]
+    # INTERNSHIP_COLLAB contexts are already bound to a unique active member_id.
+    # Some authenticated contexts also carry user_id; when present, verify it as
+    # an additional invariant without making it a required field for every caller.
+    context_user_id = getattr(context, "user_id", None)
+    if context_user_id is not None:
+        conditions.append(InternshipEnterpriseMember.user_id == context_user_id)
+    row = db.scalar(select(InternshipEnterpriseMember).where(*conditions))
     if not row:
         raise no_permission("企业成员已失效")
     return row

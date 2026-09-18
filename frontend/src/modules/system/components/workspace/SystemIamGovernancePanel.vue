@@ -23,6 +23,11 @@
           <span>这些角色仍以角色权限为运行时真值，但无法证明来自哪个角色模板版本；发布或回滚前必须先修复来源登记。</span>
         </section>
 
+        <section class="card boundary-note">
+          <strong>学校权限与企业权限分开治理</strong>
+          <p class="muted">企业管理员、人力资源人员、企业导师及企业实习权限由“企业成员和访问授权”功能管理，不能在学校角色中分配；企业实习权限不会进入学校可分配权限目录。身份权限通过后，具体业务对象仍由业务守卫再次校验。</p>
+        </section>
+
         <section class="surface-grid">
           <button v-for="item in surfaces" :key="item.key" class="surface card" @click="go(item.path)">
             <strong>{{ item.label }}</strong>

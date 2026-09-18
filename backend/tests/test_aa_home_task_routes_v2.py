@@ -121,8 +121,12 @@ def test_teacher_wechat_pages_consume_workbench_task_ids():
 def test_admin_pc_keeps_real_todo_workbench_and_drill_routes():
     root = Path(__file__).resolve().parents[2]
     dashboard = (root / "frontend/src/modules/academicAffairs/views/AaDashboardView.vue").read_text(encoding="utf-8")
+    overview = (root / "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue").read_text(encoding="utf-8")
 
-    assert 'id="adb-todos"' in dashboard
-    assert "点击直达处理页面" in dashboard
-    assert "todo.drillRoute" in dashboard
-    assert "getDashboardReminders" in dashboard
+    assert 'activePanel === \'todos\'' in dashboard
+    assert 'mode="todos"' in dashboard
+    assert "getDashboardRoleQueue" in overview
+    assert "adaptTypedTodoPage" in overview
+    assert "typedRouteTarget" in overview
+    assert "canOpenTodo" in overview
+    assert "继续办理" in overview

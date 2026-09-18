@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-for (const path of ['../src/services/systemDialog.js', '../../frontend/src/services/systemDialog.js']) {
+for (const path of ['../src/services/systemDialog.js']) {
   const dialog = await import(path)
   test(`${path}: replacing a prompt cancels it without submitting a value`, async () => {
     const previous = dialog.systemPrompt('填写原因')

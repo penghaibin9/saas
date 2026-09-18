@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-09-09.module-commerce-retain.1"
+REGISTRY_VERSION = "2026-09-18.module-commerce-m8-review.1"
 REVIEWED_ALEMBIC_HEAD = "20260821_ctrl_teacher_merge"
 
 PURGE = "PURGE"
@@ -53,6 +53,10 @@ _RETAIN_EXACT = {
     "t_tenant_module_cancellation_plan",
     "t_tenant_module_offboarding_job",
     "t_tenant_module_offboarding_step",
+    # M8 refund/invoice cases are minimum commercial evidence tied to retained
+    # order facts and external settlement/invoice references.
+    "t_commercial_refund_case",
+    "t_commercial_invoice_case",
 }
 
 _PURGE_EXACT = {
@@ -81,6 +85,10 @@ _PURGE_EXACT = {
     "t_business_form_version",
     "t_document_compare_result",
     "t_integrity_exception",
+    # M8 after-sales linkage and service-cost rows remain tenant operational
+    # business data. They are exported before offboarding and then destroyed.
+    "t_commercial_after_sales_link",
+    "t_commercial_service_cost_record",
     # Teacher V3 recommendation fact is tenant business data.  Keep it explicit
     # even though the t_emp_ family below would also classify it: advancing the
     # reviewed schema head is a deliberate destructive-data review decision.

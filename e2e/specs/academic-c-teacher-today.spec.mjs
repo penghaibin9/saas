@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../..')
@@ -30,17 +31,7 @@ function readFixture() {
 }
 
 async function loginTeacherMini(page, account) {
-  await page.goto(`${miniBase}/#/pages/login/teacher/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  if ((await fields.count()) < 3) {
-    await page.getByText('填写', { exact: true }).click()
-  }
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入教师工作台', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
+  await loginMiniH5(page, { baseUrl: miniBase, entry: 'teacher', account, timeout: 15_000 })
 }
 
 async function clearMiniSession(page) {

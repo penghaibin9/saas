@@ -154,8 +154,15 @@ def test_bf5_publish_then_transcript_consistent(client, db_mode):
         "studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
     assert entered.status_code == 200, entered.text
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
-    assert client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr,
-                       json={"action": "APPROVE"}).status_code == 200
+    college_hdr = _hdr(client, "college_admin01")
+    evidence = client.get(f"{BASE}/grade-tasks/{tid}/review-evidence", headers=college_hdr)
+    assert evidence.status_code == 200, evidence.text
+    evidence_hash = evidence.json()["data"]["evidenceHash"]
+    reviewed = client.post(
+        f"{BASE}/grade-tasks/{tid}/college-review", headers=college_hdr,
+        json={"action": "APPROVE", "expectedEvidenceHash": evidence_hash},
+    )
+    assert reviewed.status_code == 200, reviewed.text
     pub_resp = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     assert pub_resp.status_code == 200, pub_resp.text
     pub = pub_resp.json()

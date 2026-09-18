@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_EXACT_SHA: f34b800249252e84f9ab5f34b801742b76c0e68c
+  PRODUCT_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   PRODUCT_API_BASE: https://api.hnyueke.com
   PRODUCT_HELP_CENTER: https://hnyueke.com/help
   EXPECTED_WECHAT_APPID: wxb569328a0dbf268b

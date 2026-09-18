@@ -161,7 +161,7 @@ def _student_token(index: int) -> str:
             "tenantId": str(TENANT_ID),
             "activeContextId": f"perf-student-context-{index:04d}",
             "currentRoleCode": "STUDENT",
-            "clientType": "MP",
+            "clientType": "STUDENT_MINI",
             "studentNo": _student_no(index),
         },
         expires_in=3600,
@@ -187,7 +187,7 @@ def _teacher_token(index: int) -> str:
             "tenantId": str(TENANT_ID),
             "activeContextId": _teacher_context(index),
             "currentRoleCode": "LEADER",
-            "clientType": "MP",
+            "clientType": "TEACHER_MINI",
         },
         expires_in=3600,
     )

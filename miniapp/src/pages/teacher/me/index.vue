@@ -30,7 +30,8 @@ export default {
   },
   data() {
     return {
-      user: {}, roleConfig: {}, dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0,\n      helpEntry: { key: 'help', label: '帮助与反馈' }
+      user: {}, roleConfig: {}, dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0,
+      helpEntry: { key: 'help', label: '帮助与反馈' }
     }
   },
   onShow() { this.load(); this.$refs?.badges?.refresh() },

@@ -103,15 +103,18 @@ async function auditMobileFit(page, expectedViewport) {
 
 async function loginMini(page, account, kind) {
   await page.goto(`${MINI_BASE_URL}/#/pages/login/${kind}/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意', { exact: false }).click()
+  const accountLabel = kind === 'teacher' ? '工号或统一账号' : '学号或统一账号'
+  await page.locator(`input[aria-label="${accountLabel}"]`).fill(account.username)
+  await page.locator('input[aria-label="密码"]').fill(account.password)
+  if (account.tenant) {
+    const tenantToggle = page.locator('button.tenant-box')
+    if ((await page.locator('input.field--tenant').count()) === 0) await tenantToggle.click()
+    await page.locator('input.field--tenant').fill(account.tenant)
+  }
+  await page.locator('button.agreement-toggle[aria-label="同意用户协议与隐私政策"]').click()
   await expect(page.locator('.agreement__box')).toHaveClass(/agreement__box--checked/)
   const action = kind === 'teacher' ? '进入教师工作台' : '进入学生首页'
-  const loginButton = page.locator('.account-button').filter({ hasText: action })
+  const loginButton = page.locator('button.account-button').filter({ hasText: action })
   await expect(loginButton).toBeEnabled()
   await loginButton.click()
   await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })

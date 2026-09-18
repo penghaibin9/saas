@@ -234,6 +234,7 @@ case "$SUITE" in
         ! -name 'internship-leave-lifecycle.spec.mjs' \
         ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \
         ! -name 'internship-placement-assignment-audit.spec.mjs' \
+        ! -name 'phone-local.spec.mjs' \
         -print | sort
     )
     if [[ "${#SPECS[@]}" -eq 0 ]]; then

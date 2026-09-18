@@ -9,19 +9,12 @@ import {
   expectRenderedPdfCanvas
 } from '../lib/graduation-scenario-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const MINI_BASE = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
 
 async function loginTeacherMini(page) {
-  await page.goto(`${MINI_BASE}/#/pages/login/teacher/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(config.mentor.username)
-  await fields.nth(1).fill(config.mentor.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(config.mentor.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入教师工作台', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
+  await loginMiniH5(page, { baseUrl: MINI_BASE, entry: 'teacher', account: config.mentor, timeout: 15_000 })
 }
 
 // uni-app H5 may render uni-button rather than a native HTML button. Assert

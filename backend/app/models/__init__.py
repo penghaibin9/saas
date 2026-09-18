@@ -230,7 +230,8 @@ from app.models.workbench import RoleWorkbenchConfig  # noqa: F401
 from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
 from app.models.sandbox import SandboxBaseline  # noqa: F401
-from app.models.feedback import Feedback  # noqa: F401  (帮助与反馈·独立新文件)\nfrom app.models.customer_success import RenewalTask, SupportTicket, TrainingRecord  # noqa: F401
+from app.models.feedback import Feedback  # noqa: F401  (帮助与反馈·独立新文件)
+from app.models.customer_success import RenewalTask, SupportTicket, TrainingRecord  # noqa: F401
 from app.models.system_implementation import (SystemImplementationCheck,  # noqa: F401
                                                SystemBusinessRelationBatch,
                                                SystemBusinessRelationInstallItem,
