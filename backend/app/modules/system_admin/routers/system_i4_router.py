@@ -217,11 +217,35 @@ def _key(route) -> tuple[str, str]:
     return (",".join(methods), getattr(route, "path", ""))
 
 
+_P1_LATE_REPLACEMENTS = {
+    ("GET", "/system/context"),
+    ("GET", "/system/effective-config"),
+    ("PUT", "/system/config-overrides"),
+    ("GET", "/system/config-history/{config_key}"),
+    ("GET", "/system/accounts/{user_id}/effective-identity"),
+    ("POST", "/system/accounts/{user_id}/repair-binding"),
+    ("POST", "/system/accounts/{user_id}/unbind"),
+    ("POST", "/system/role-assignments"),
+    ("POST", "/system/role-assignments/{assignment_id}/revoke"),
+    ("POST", "/system/role-assignments/{assignment_id}/transfer"),
+    ("GET", "/system/org-nodes/{org_type}/{node_id}/impact"),
+    ("PUT", "/system/org-nodes/{node_id}/status"),
+}
+
+
+def _is_late_p1_replacement(route) -> bool:
+    methods = {str(value).upper() for value in (getattr(route, "methods", None) or set())}
+    path = str(getattr(route, "path", "") or "")
+    return any((method, path) in _P1_LATE_REPLACEMENTS for method in methods)
+
+
 def _compose() -> APIRouter:
     replacement = {_key(route): route for route in _extra.routes}
     composed = APIRouter()
     routes = []
     for route in _base.router.routes:
+        if _is_late_p1_replacement(route):
+            continue
         routes.append(replacement.pop(_key(route), route))
     routes.extend(replacement.values())
     composed.routes = routes

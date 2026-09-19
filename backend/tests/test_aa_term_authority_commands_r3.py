@@ -28,10 +28,12 @@ COLLEGE_USER = {
 def _patch_tenant(monkeypatch) -> None:
     from app.core import affairs_security
     from app.modules.academic_affairs.services import academic_affairs_archive_core_service as archive_core
+    from app.services import db_service
 
     monkeypatch.setattr(facade._legacy, "_tid", lambda: TID)
     monkeypatch.setattr(affairs_security, "_tid", lambda: TID)
     monkeypatch.setattr(archive_core, "_tid", lambda: TID)
+    monkeypatch.setattr(db_service, "_tid", lambda: TID)
 
 
 def _seed_terms():
