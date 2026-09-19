@@ -475,7 +475,8 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
                     if exc.http_status >= 500:
                         raise
                     row.status = 'EXPIRED'
-                    row.phone_encrypted = row.code_encrypted = None
+                    row.phone_encrypted = None
+                    row.code_encrypted = None
                     row.locked_by = row.lease_expires_at = None
                     db.commit()
                     continue
@@ -485,7 +486,8 @@ def process_delivery_jobs(*, limit: int = 20, worker_id: str = "password-reset-s
                 from app.services.notification.sms_service import notify_phone_verification
                 if not delivery_is_current(db, row):
                     row.status = "EXPIRED"
-                    row.phone_encrypted = row.code_encrypted = None
+                    row.phone_encrypted = None
+                    row.code_encrypted = None
                     row.locked_by = row.lease_expires_at = None
                     db.commit()
                     continue

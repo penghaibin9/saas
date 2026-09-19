@@ -161,7 +161,7 @@ const extensionUi = read('frontend/src/modules/graduation/views/GraduationExtens
 const studentApi = read('frontend/src/modules/graduation/api/graduation-student.api.js')
 const portalApp = read('student-portal/src/App.vue')
 const mobileShell = read('miniapp/src/components/MobileGlobalState.vue')
-const teacherDelayUi = read('miniapp/src/components/MobileGraduationDelayQueue.vue')
+const teacherDelayUi = read('miniapp/src/pages/teacher/components/MobileGraduationDelayQueue.vue')
 
 if (!extensionSafety.includes('def _assert_bound_advisor')
     || !extensionSafety.includes('IntegrityError')
