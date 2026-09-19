@@ -11,8 +11,10 @@ os.environ["APP_ENV"] = "test"
 os.environ["DB_ENABLED"] = "false"
 os.environ["DATABASE_URL"] = ""
 # 测试不得复用日常沙箱 Redis 的分布式限流桶；否则一个用例的登录次数会泄漏给
-# 下一用例。pytest 已通过 reset_all_for_tests() 清理专用进程内状态，生产限流不受影响。
-os.environ["REDIS_URL"] = ""
+# 下一用例。只有 CI 中显式声明 PYTEST_USE_REAL_REDIS=1 的专用 Redis 合同允许保留
+# REDIS_URL；其他 pytest 仍强制使用进程内状态，避免跨用例/跨开发环境污染。
+if os.environ.get("PYTEST_USE_REAL_REDIS") != "1":
+    os.environ["REDIS_URL"] = ""
 # 测试套件在独立测试库里自建租户，约定主租户 = demo(MAIN_TENANT_ID 1000000000000000001)，
 # 与生产库里的真实租户无关。生产默认租户已于 2026-07-28 收敛为 sandbox-school，故此处
 # 必须显式钉住测试自己的租户约定，否则 mock-login 会解析到沙箱租户而与夹具数据跨租户不可见。

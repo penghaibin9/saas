@@ -218,6 +218,7 @@ jobs:
       FAST_TEST_SCHEMA: "0"
       REDIS_URL: redis://127.0.0.1:6379/13
       REDIS_KEY_PREFIX: canonical-phone-mysql
+      PYTEST_USE_REAL_REDIS: "1"
       REDIS_CONNECT_TIMEOUT: "2"
       REDIS_SOCKET_TIMEOUT: "2"
       JWT_SECRET: canonical-phone-main-secret-at-least-32-bytes
@@ -288,6 +289,7 @@ jobs:
       FAST_TEST_SCHEMA: "0"
       REDIS_URL: redis://127.0.0.1:6379/12
       REDIS_KEY_PREFIX: canonical-phone-browser
+      PYTEST_USE_REAL_REDIS: "1"
       REDIS_CONNECT_TIMEOUT: "2"
       REDIS_SOCKET_TIMEOUT: "2"
       JWT_SECRET: canonical-phone-browser-secret-at-least-32-bytes
