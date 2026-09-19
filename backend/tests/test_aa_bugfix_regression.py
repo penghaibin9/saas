@@ -17,10 +17,21 @@ def _hdr(client, login_name):
 
 def _seed_students(n=1):
     from app.db.session import get_sessionmaker
-    from app.models import AaTerm, College, Major, SchoolClass, StudentProfile
+    from app.models import AaTerm, College, Major, SchoolClass, StudentProfile, Tenant
     from tests.support_grade_review_identity import seed_grade_review_identity
 
     db = get_sessionmaker()()
+    if db.get(Tenant, TID) is None:
+        db.add(Tenant(
+            id=TID,
+            tenant_code="aa-bugfix-regression",
+            school_name="教务回归测试学校",
+            short_name="教务回归",
+            deploy_mode="SAAS",
+            db_mode="SHARED",
+            status="ACTIVE",
+        ))
+        db.flush()
     term = AaTerm(
         tenant_id=TID, year_code="2026-2027", term_no=1,
         term_name="2026-2027第1学期", teaching_weeks=18,
