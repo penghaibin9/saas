@@ -75,10 +75,27 @@ async function miniappLogin(page) {
 }
 
 async function pcRow(page, batchName, courseName) {
-  const batch = page.locator('.batch-card').filter({ hasText: batchName }).first()
-  await expect(batch).toBeVisible({ timeout: 20_000 })
-  const row = batch.locator('tr').filter({ hasText: courseName }).first()
+  const picker = page.getByLabel('选课批次')
+  await expect(picker).toBeVisible({ timeout: 20_000 })
+  const option = picker.locator('option').filter({ hasText: batchName })
+  await expect(option).toHaveCount(1)
+  const current = await picker.inputValue()
+  const target = await option.getAttribute('value')
+  if (current !== target) {
+    await picker.selectOption(target)
+    await expect(picker).toHaveValue(target)
+  }
+  const row = page.locator('.course-table tbody tr').filter({ hasText: courseName }).first()
   await expect(row).toBeVisible({ timeout: 20_000 })
+  return row
+}
+
+async function openPcCourse(page, batchName, courseName) {
+  const row = await pcRow(page, batchName, courseName)
+  const action = row.getByRole('button', { name: /查看与办理|查看原因|核对退课/ }).first()
+  await expect(action).toBeVisible()
+  await action.click()
+  await expect(page.getByRole('heading', { name: courseName, level: 2 })).toBeVisible()
   return row
 }
 
@@ -99,13 +116,14 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await pcLogin.login(config.student)
   await pc.goto(`${config.studentBaseUrl}/academic/selection`)
 
-  const blocked = await pcRow(pc, batch.batchName, blockerCourse.courseName)
-  await expect(blocked).toContainText('不可选')
-  await expect(blocked).toContainText('课程容量已满')
-  await expect(blocked).toContainText('下一步：')
-  await expect(blocked.getByRole('button')).toHaveCount(0)
-  const pcEligible = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcEligible.getByRole('button', { name: '立即选课', exact: true })).toBeVisible()
+  const blocked = await openPcCourse(pc, batch.batchName, blockerCourse.courseName)
+  await expect(blocked.getByRole('button', { name: '查看原因', exact: true })).toBeVisible()
+  await expect(pc.locator('body')).toContainText('课程容量已满')
+  await expect(pc.getByRole('button', { name: '当前不可办理', exact: true })).toBeDisabled()
+  await pc.getByRole('button', { name: '返回可办理课程', exact: true }).click()
+
+  const pcEligible = await openPcCourse(pc, batch.batchName, pcCourse.courseName)
+  await expect(pcEligible.getByRole('button', { name: '查看与办理', exact: true })).toBeVisible()
   await screenshot(pc, testInfo, 'w5-pc-server-actions-before-1440x900')
 
   const pcPreflight = pc.waitForResponse((response) =>
@@ -114,18 +132,19 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   const pcEnroll = pc.waitForResponse((response) =>
     response.url().includes('/portal/academic/course-selection/enroll') && response.request().method() === 'POST'
   )
-  await pcEligible.getByRole('button', { name: '立即选课', exact: true }).click()
+  await pc.getByRole('button', { name: '核对并提交', exact: true }).click()
   expect((await pcPreflight).ok()).toBeTruthy()
   expect((await pcEnroll).ok()).toBeTruthy()
-  const pcSelected = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcSelected).toContainText('已选')
-  await expect(pcSelected.getByRole('button', { name: '退课', exact: true })).toBeVisible()
-  await expect(pcSelected.getByRole('button', { name: '立即选课', exact: true })).toHaveCount(0)
+  await expect(pc.getByRole('heading', { name: '选课已确认' })).toBeVisible({ timeout: 15_000 })
+  await pc.getByRole('button', { name: '查看我的选课与报名', exact: true }).click()
+  const pcSelectedRecord = pc.locator('.selection-record').filter({ hasText: pcCourse.courseName }).first()
+  await expect(pcSelectedRecord).toContainText('已取得名额')
+  await expect(pcSelectedRecord.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   await screenshot(pc, testInfo, 'w5-pc-selected-drop-action-1440x900')
 
   await pc.reload()
   const pcAfterRefresh = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcAfterRefresh.getByRole('button', { name: '退课', exact: true })).toBeVisible()
+  await expect(pcAfterRefresh.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   await pcContext.close()
 
   const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
@@ -198,11 +217,9 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await reloginPage.login(config.student)
   await relogin.goto(`${config.studentBaseUrl}/academic/selection`)
   const miniCourseOnPc = await pcRow(relogin, batch.batchName, miniCourse.courseName)
-  await expect(miniCourseOnPc).toContainText('已选')
-  await expect(miniCourseOnPc.getByRole('button', { name: '退课', exact: true })).toBeVisible()
+  await expect(miniCourseOnPc.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   const droppedOnPc = await pcRow(relogin, batch.batchName, pcCourse.courseName)
-  await expect(droppedOnPc).toContainText('已退课')
-  await expect(droppedOnPc.getByRole('button', { name: '立即选课', exact: true })).toBeVisible()
+  await expect(droppedOnPc.getByRole('button', { name: '查看与办理', exact: true })).toBeVisible()
   await miniCourseOnPc.scrollIntoViewIfNeeded()
   await screenshot(relogin, testInfo, 'w5-pc-cross-end-relogin-1280x720')
   await reloginContext.close()

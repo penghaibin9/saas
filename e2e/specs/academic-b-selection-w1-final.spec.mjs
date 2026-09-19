@@ -131,6 +131,21 @@ async function installErrorToastAudit(page) {
   })
 }
 
+async function selectStudentPcBatch(page, batchName) {
+  const picker = page.getByLabel('选课批次')
+  await expect(picker).toBeVisible({ timeout: 20_000 })
+  await expect(picker.locator('option').filter({ hasText: batchName })).toHaveCount(1)
+  await picker.selectOption({ label: batchName })
+  await expect(picker).toHaveValue(/\d+/)
+}
+
+async function studentPcCourseRow(page, batchName, courseName) {
+  await selectStudentPcBatch(page, batchName)
+  const row = page.locator('.course-table tbody tr').filter({ hasText: courseName }).first()
+  await expect(row).toBeVisible({ timeout: 20_000 })
+  return row
+}
+
 async function expectNoErrorToast(page, stage) {
   await page.waitForTimeout(750)
   const errors = await page.evaluate(() => Array.from(new Set(window.__academicBW1ErrorToasts || [])))
@@ -246,28 +261,27 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const studentLogin = new StudentLoginPage(student, config.studentBaseUrl)
     await studentLogin.login(config.student)
     await student.goto(`${config.studentBaseUrl}/academic/selection`)
-    const studentBatch = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
-    await expect(studentBatch).toBeVisible({ timeout: 20_000 })
-    const firstRow = studentBatch.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
-    await expect(firstRow).toBeVisible()
+    const firstRow = await studentPcCourseRow(student, fixture.ready.batchName, fixture.courses[0].name)
+    await firstRow.getByRole('button', { name: '查看与办理', exact: true }).click()
+    await expect(student.getByRole('heading', { name: fixture.courses[0].name, level: 2 })).toBeVisible()
     const portalPreflight = student.waitForResponse((response) =>
       response.url().includes('/portal/academic/course-selection/preflight') && response.request().method() === 'POST'
     )
     const portalEnroll = student.waitForResponse((response) =>
       response.url().includes('/portal/academic/course-selection/enroll') && response.request().method() === 'POST'
     )
-    await firstRow.getByRole('button', { name: '立即选课', exact: true }).click()
+    await student.getByRole('button', { name: '核对并提交', exact: true }).click()
     expect((await portalPreflight).ok()).toBeTruthy()
     expect((await portalEnroll).ok()).toBeTruthy()
-    await expect(firstRow).toHaveClass(/is-selected/, { timeout: 15_000 })
-    await expect(firstRow.getByRole('button', { name: '退课', exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(student.getByRole('heading', { name: '选课已确认' })).toBeVisible({ timeout: 15_000 })
+    await student.getByRole('button', { name: '查看我的选课与报名', exact: true }).click()
+    const selectedRecord = student.locator('.selection-record').filter({ hasText: fixture.courses[0].name }).first()
+    await expect(selectedRecord).toContainText('已取得名额')
+    await expect(selectedRecord.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
     await screenshot(student, testInfo, 'w1-student-pc-selected-1440x900')
     await student.reload()
-    const studentBatchAfterRefresh = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
-    await expect(studentBatchAfterRefresh).toBeVisible({ timeout: 20_000 })
-    const firstAfterRefresh = studentBatchAfterRefresh.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
-    await expect(firstAfterRefresh).toHaveClass(/is-selected/, { timeout: 20_000 })
-    await expect(firstAfterRefresh.getByRole('button', { name: '退课', exact: true })).toBeVisible({ timeout: 20_000 })
+    const firstAfterRefresh = await studentPcCourseRow(student, fixture.ready.batchName, fixture.courses[0].name)
+    await expect(firstAfterRefresh.getByRole('button', { name: '核对退课', exact: true })).toBeVisible({ timeout: 20_000 })
     await studentContext.close()
 
     const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
