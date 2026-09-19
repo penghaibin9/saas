@@ -120,8 +120,18 @@ def _exam_cap(room) -> int:
 
 
 def _eff_cap(room, seat_mode) -> int:
-    """考试容量已经是实际考位数；隔座只影响座位编号，不再次减半。"""
-    return _exam_cap(room)
+    """返回当前座位模式下的真实可用考位。
+
+    exam_seats 是学校显式维护的“考试实际考位数”，已包含隔座等物理约束，
+    因此存在时必须原样使用；只有历史教室未配置 exam_seats、回退普通上课
+    capacity 时，SPACED 才按奇数座位 1/3/5... 折算有效容量。
+    """
+    if room.exam_seats is not None:
+        return max(0, int(room.exam_seats))
+    capacity = max(0, int(room.capacity or 0))
+    if str(seat_mode or "").upper() == "SPACED":
+        return (capacity + 1) // 2
+    return capacity
 
 
 def _load_rooms(db) -> list:
