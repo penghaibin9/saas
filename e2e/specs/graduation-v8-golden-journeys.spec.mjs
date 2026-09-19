@@ -244,7 +244,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff)
-      await handoff.locator('.common-service').filter({ hasText: /^批阅中期$/ }).click()
+      await handoff.getByText('批阅中期', { exact: true }).click()
       await expect(handoff.getByText(/中期/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-04', 'C-handoff')
       const rows = await adminApi.get('/graduation/gd-guidances', { batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 30 })

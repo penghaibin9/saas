@@ -142,7 +142,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/graduation/audit-console?tab=results&batchId=${batch.batchId}`)
     await dismissPageGuide(page)
-    await expect(page.getByText('审核结果', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '审核结果', level: 1 })).toBeVisible()
     const abnormalIdentity = abnormal.realName || abnormal.studentId
     const abnormalRow = page.locator('tr').filter({ hasText: abnormalIdentity }).filter({ hasText: '系统异常' }).first()
     await expect(abnormalRow).toBeVisible({ timeout: 10000 })

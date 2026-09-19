@@ -147,7 +147,10 @@ async function assertDirectUrlDenied(page, session) {
   await expect.poll(async () => {
     const finalUrl = new URL(page.url())
     const body = await page.locator('body').innerText().catch(() => '')
-    return finalUrl.pathname !== target.pathname || /403|无权限|禁止访问|没有权限/.test(body)
+    const accessNoticeVisible = await page.locator('.route-access-notice').isVisible().catch(() => false)
+    return finalUrl.pathname !== target.pathname
+      || accessNoticeVisible
+      || /403|无权限|禁止访问|没有权限|暂不能办理此业务|缺少此页面所需权限/.test(body)
   }, {
     message: `${session.roleCode} direct URL unexpectedly entered ${target.pathname}`,
     timeout: 30_000

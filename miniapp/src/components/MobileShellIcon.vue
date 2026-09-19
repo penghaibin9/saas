@@ -1,6 +1,6 @@
 <template>
   <view class="shell-icon" :class="{ 'shell-icon--round': round }" :style="{ backgroundColor: round ? backgrounds[tone] || backgrounds.blue : 'transparent', width: (round ? size + 22 : size) + 'px', height: (round ? size + 22 : size) + 'px' }" aria-hidden="true">
-    <image :src="shellIcon(name, tone)" :style="{ width: size + 'px', height: size + 'px' }" mode="aspectFit" />
+    <image :src="shellIcon(name, tone)" :style="{ width: size + 'px', height: size + 'px' }" mode="aspectFit" alt="" />
   </view>
 </template>
 <script>

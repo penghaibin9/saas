@@ -1,6 +1,6 @@
 <template>
   <view class="teacher-hero" :style="{ paddingTop: top + 'px' }">
-    <image class="teacher-hero__art" src="/static/teacher-shell/campus-header.jpg" mode="aspectFill" />
+    <image class="teacher-hero__art" src="/static/teacher-shell/campus-header.jpg" mode="aspectFill" alt="" />
     <view class="teacher-hero__content">
       <view class="teacher-hero__heading">
         <text class="teacher-hero__title">{{ title }}</text>
