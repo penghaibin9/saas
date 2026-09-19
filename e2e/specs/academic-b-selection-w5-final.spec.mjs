@@ -90,13 +90,12 @@ async function pcRow(page, batchName, courseName) {
   return row
 }
 
-async function openPcCourse(page, batchName, courseName) {
+async function openPcCourse(page, batchName, courseName, actionName) {
   const row = await pcRow(page, batchName, courseName)
-  const action = row.getByRole('button', { name: /查看与办理|查看原因|核对退课/ }).first()
+  const action = row.getByRole('button', { name: actionName, exact: true })
   await expect(action).toBeVisible()
   await action.click()
   await expect(page.getByRole('heading', { name: courseName, level: 2 })).toBeVisible()
-  return row
 }
 
 async function miniCard(page, batchName, courseName) {
@@ -116,14 +115,12 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await pcLogin.login(config.student)
   await pc.goto(`${config.studentBaseUrl}/academic/selection`)
 
-  const blocked = await openPcCourse(pc, batch.batchName, blockerCourse.courseName)
-  await expect(blocked.getByRole('button', { name: '查看原因', exact: true })).toBeVisible()
+  await openPcCourse(pc, batch.batchName, blockerCourse.courseName, '查看原因')
   await expect(pc.locator('body')).toContainText('课程容量已满')
   await expect(pc.getByRole('button', { name: '当前不可办理', exact: true })).toBeDisabled()
   await pc.getByRole('button', { name: '返回可办理课程', exact: true }).click()
 
-  const pcEligible = await openPcCourse(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcEligible.getByRole('button', { name: '查看与办理', exact: true })).toBeVisible()
+  await openPcCourse(pc, batch.batchName, pcCourse.courseName, '查看与办理')
   await screenshot(pc, testInfo, 'w5-pc-server-actions-before-1440x900')
 
   const pcPreflight = pc.waitForResponse((response) =>
