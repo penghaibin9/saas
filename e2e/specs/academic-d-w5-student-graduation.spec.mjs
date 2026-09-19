@@ -99,7 +99,7 @@ async function assertAbnormalStudentSurface(page) {
   await expect(page.getByText('不能把实时通过显示成已批准毕业', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '当前毕业条件已通过实时核验' })).toHaveCount(0)
-  await expect(page.locator('.graduation-hero')).not.toHaveClass(/is-passed/)
+  await expect(page.getByRole('heading', { name: '当前实时核验已通过' })).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText('毕业自查暂时无法加载')
 }
 

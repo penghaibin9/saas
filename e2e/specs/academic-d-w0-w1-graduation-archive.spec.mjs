@@ -166,17 +166,19 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownBatchName = `D-W1待治理正式归档-${suffix}`
     const notApplicableBatchName = `D-W1不适用正式归档-${suffix}`
 
+    const unknownYear = 2070 + testInfo.retry * 4
+    const notApplicableYear = unknownYear + 2
     const unknownTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `U${suffix}`,
+      yearCode: `${unknownYear}-${unknownYear + 1}`,
       termNo: 1,
       termName: unknownName
     }), 'create W1 missing-date term')
     const notApplicableTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `N${suffix}`,
+      yearCode: `${notApplicableYear}-${notApplicableYear + 1}`,
       termNo: 2,
       termName: notApplicableName,
-      startDate: '2098-02-01',
-      endDate: '2098-07-31'
+      startDate: `${notApplicableYear}-02-01`,
+      endDate: `${notApplicableYear}-07-31`
     }), 'create W1 no-business term')
 
     const unknownPrecheck = await expectApiOk(await browserApi(

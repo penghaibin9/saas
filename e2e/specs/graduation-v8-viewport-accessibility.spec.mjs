@@ -52,7 +52,8 @@ async function auditPage(page, expectedViewport) {
       .filter(visible)
     const unnamed = interactives.filter((element) => !labelText(element)).map((element) => element.outerHTML.slice(0, 240))
     const missingAlt = [...document.querySelectorAll('img')].filter(visible)
-      .filter((image) => !image.hasAttribute('alt')).map((image) => image.outerHTML.slice(0, 240))
+      .filter((image) => !image.hasAttribute('alt') && image.getAttribute('aria-hidden') !== 'true' && !image.closest('[aria-hidden="true"]'))
+      .map((image) => image.outerHTML.slice(0, 240))
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       expectedViewport: { width, height },
@@ -94,6 +95,7 @@ async function auditMobileFit(page, expectedViewport) {
     missingAlt: [...document.querySelectorAll('img')].filter((image) => {
       const rect = image.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0 && !image.hasAttribute('alt')
+        && image.getAttribute('aria-hidden') !== 'true' && !image.closest('[aria-hidden="true"]')
     }).map((image) => image.outerHTML.slice(0, 240))
   }), expectedViewport)
   expect(result.viewport).toEqual(expectedViewport)

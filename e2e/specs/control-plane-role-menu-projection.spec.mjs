@@ -186,12 +186,10 @@ test('W12 real Browser Role/Menu Projection Seal covers every school role, platf
       const token = await openWithRotatedSession(page, session)
 
       const schoolMenu = page.getByRole('navigation', { name: '一级菜单', exact: true })
-      const visibleRail = session.plane === 'SCHOOL'
-        ? schoolMenu.getByRole('button', { name: session.visibleGroup, exact: true })
-        : page.locator('.bpl-rail__item').filter({ hasText: session.visibleGroup }).first()
-      const hiddenRail = session.plane === 'SCHOOL'
-        ? schoolMenu.getByRole('button', { name: session.hiddenGroup, exact: true })
-        : page.locator('.bpl-rail__lb').filter({ hasText: session.hiddenGroup })
+      // School and platform layouts now share TeacherWorkspaceFrame; the primary
+      // center rail is exposed consistently as the accessible "一级菜单" nav.
+      const visibleRail = schoolMenu.getByRole('button', { name: session.visibleGroup, exact: true })
+      const hiddenRail = schoolMenu.getByRole('button', { name: session.hiddenGroup, exact: true })
       await expect(visibleRail).toBeVisible()
       await expect(hiddenRail).toHaveCount(0)
       await visibleRail.click()

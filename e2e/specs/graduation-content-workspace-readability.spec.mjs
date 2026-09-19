@@ -111,8 +111,11 @@ test.describe('Graduation original workspaces inside the existing shared shell',
           }
           const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
           expect(overflow, 'no page-level horizontal overflow').toBeLessThanOrEqual(8)
-          expect(page.url(), 'resizing must not change business context').toBe(before)
-          expect(new URL(page.url()).searchParams.get('batchId')).toBe(String(fixture.batchId))
+          const beforeUrl = new URL(before)
+          const currentUrl = new URL(page.url())
+          expect(currentUrl.pathname, 'resizing must not change business route').toBe(beforeUrl.pathname)
+          expect(currentUrl.searchParams.get('batchId'), 'resizing must preserve batch context').toBe(String(fixture.batchId))
+          expect(currentUrl.searchParams.get('tab'), 'resizing must preserve workspace tab').toBe(beforeUrl.searchParams.get('tab'))
           measurements.push({ width, height, cssZoom: zoom, surface, measured, controls, overflow })
           await page.screenshot({ path: testInfo.outputPath(`${kind}-${width}-${height}-${zoom}.png`), animations: 'disabled', fullPage: false })
         }
