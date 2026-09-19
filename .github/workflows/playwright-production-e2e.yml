@@ -92,6 +92,9 @@ jobs:
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_ENTERPRISE_BASE_URL: http://127.0.0.1:5202/enterprise
       E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+      E2E_DENIAL_TENANT: iam-denied-school
+      E2E_DENIAL_USERNAME: iam_denied_teacher
+      E2E_DENIAL_PASSWORD: E2eIam@2026
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
