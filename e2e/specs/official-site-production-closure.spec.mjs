@@ -54,7 +54,7 @@ async function fillLeadForm(page, {
 test.describe('official website production closure', () => {
   test('desktop product CTA carries source product into the contact form', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator('.yk-site')).toBeVisible()
+    await expect(page.locator('#ykw-site')).toBeVisible()
     await expect(page.getByText('135 4966 6867').first()).toBeVisible()
 
     await page.goto('/products/academic-affairs')
@@ -96,8 +96,8 @@ test.describe('official website production closure', () => {
     await productsLink.click()
 
     await expect(page).toHaveURL(/\/#products$/)
-    await expect(page.locator('#products')).toBeVisible()
-    await expect.poll(async () => page.locator('#products').evaluate((node) => Math.abs(node.getBoundingClientRect().top))).toBeLessThan(180)
+    await expect(page.locator('#students')).toBeVisible()
+    await expect.poll(async () => page.locator('#students').evaluate((node) => Math.abs(node.getBoundingClientRect().top))).toBeLessThan(180)
   })
 
   test('390px mobile public pages do not overflow and invalid phone never calls the lead API', async ({ page }) => {
@@ -105,7 +105,8 @@ test.describe('official website production closure', () => {
 
     for (const path of ['/', '/products/internship', '/contact?product=internship']) {
       await page.goto(path)
-      await expect(page.locator('.yk-site')).toBeVisible()
+      const officialRoot = path === '/' ? page.locator('#ykw-site') : page.locator('.yk-site')
+      await expect(officialRoot).toBeVisible()
       await expectNoHorizontalOverflow(page)
     }
 
