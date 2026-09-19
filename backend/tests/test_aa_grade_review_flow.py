@@ -14,6 +14,12 @@ from __future__ import annotations
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
+from tests.support_grade_change_identity import (
+    change_request_payload,
+    college_approve_grade_task,
+    review_payload,
+)
+
 
 def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
@@ -170,7 +176,7 @@ def test_rf1_return_resubmit_approve_publish(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 75, "finalScore": 80})
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
-    appr = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    appr = college_approve_grade_task(client, BASE, tid, hdr)
     assert appr.status_code == 200 and appr.json()["data"]["status"] == "ACADEMIC_REVIEW"
     pub = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     assert pub.status_code == 200 and pub.json()["data"]["status"] == "PUBLISHED"
@@ -207,8 +213,7 @@ def test_rf4_teacher_cannot_publish_even_with_wildcard_403(client, db_mode):
                           json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     assert entered.status_code == 200, entered.text
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=admin_hdr).status_code == 200
-    appr = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=admin_hdr,
-                       json={"action": "APPROVE"})
+    appr = college_approve_grade_task(client, BASE, tid, admin_hdr)
     assert appr.status_code == 200 and appr.json()["data"]["status"] == "ACADEMIC_REVIEW"
     assert client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=teacher_hdr).status_code == 403
     assert client.post(f"{BASE}/grade-tasks/{tid}/archive", headers=teacher_hdr).status_code == 403
@@ -221,7 +226,7 @@ def test_rf5_archived_change_request_409(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr, json={"action": "APPROVE"})
+    college_approve_grade_task(client, BASE, tid, hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/archive", headers=hdr)
     from app.db.session import get_sessionmaker
@@ -231,8 +236,14 @@ def test_rf5_archived_change_request_409(client, db_mode):
     assert rec is not None
     rid = int(rec.id)
     db.close()
-    r = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=hdr,
-                    json={"newFinalScore": 85, "reason": "重新核算成绩"})
+    r = client.post(
+        f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request",
+        headers=hdr,
+        json=change_request_payload(
+            client, BASE, hdr, tid, rid,
+            newFinalScore=85, reason="重新核算成绩",
+        ),
+    )
     assert r.status_code == 409
 
 
@@ -244,7 +255,7 @@ def test_rf6_change_reject_keeps_original(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=school_hdr, json={"action": "APPROVE"})
+    college_approve_grade_task(client, BASE, tid, school_hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord
@@ -253,11 +264,24 @@ def test_rf6_change_reject_keeps_original(client, db_mode):
     assert rec is not None
     rid = int(rec.id)
     db.close()
-    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=school_hdr,
-                     json={"newFinalScore": 60, "reason": "疑似录入错误需核实"})
+    cr = client.post(
+        f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request",
+        headers=school_hdr,
+        json=change_request_payload(
+            client, BASE, school_hdr, tid, rid,
+            newFinalScore=60, reason="疑似录入错误需核实",
+        ),
+    )
     assert cr.status_code == 200, cr.text
-    rj = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=college_hdr,
-                     json={"action": "REJECT", "reason": "核实后原分数无误"})
+    request_id = cr.json()["data"]["changeRequestId"]
+    rj = client.post(
+        f"{BASE}/grade-change/{rid}/college-review",
+        headers=college_hdr,
+        json=review_payload(
+            client, BASE, college_hdr, request_id,
+            "REJECT", "核实后原分数无误",
+        ),
+    )
     assert rj.status_code == 200, rj.text
     tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=school_hdr).json()["data"]
     assert any(g["courseName"] == "大学物理" and g["score"] == 80 for g in tr["items"])
@@ -271,7 +295,7 @@ def test_rf7_change_two_level_approve_new_value_applied(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 60, "finalScore": 60})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
-    client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=school_hdr, json={"action": "APPROVE"})
+    college_approve_grade_task(client, BASE, tid, school_hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord
@@ -280,13 +304,27 @@ def test_rf7_change_two_level_approve_new_value_applied(client, db_mode):
     assert rec is not None
     rid = int(rec.id)
     db.close()
-    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=school_hdr,
-                     json={"newFinalScore": 30, "reason": "复核发现期末分录入错误"})
+    cr = client.post(
+        f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request",
+        headers=school_hdr,
+        json=change_request_payload(
+            client, BASE, school_hdr, tid, rid,
+            newFinalScore=30, reason="复核发现期末分录入错误",
+        ),
+    )
     assert cr.status_code == 200, cr.text
-    college = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=college_hdr,
-                          json={"action": "APPROVE"})
+    request_id = cr.json()["data"]["changeRequestId"]
+    college = client.post(
+        f"{BASE}/grade-change/{rid}/college-review",
+        headers=college_hdr,
+        json=review_payload(client, BASE, college_hdr, request_id, "APPROVE"),
+    )
     assert college.status_code == 200, college.text
-    fin = client.post(f"{BASE}/grade-change/{rid}/academic-review", headers=school_hdr, json={"action": "APPROVE"})
+    fin = client.post(
+        f"{BASE}/grade-change/{rid}/academic-review",
+        headers=school_hdr,
+        json=review_payload(client, BASE, school_hdr, request_id, "APPROVE"),
+    )
     assert fin.status_code == 200, fin.text
     tr = client.get(f"{BASE}/students/{sids[0]}/transcript", headers=school_hdr).json()["data"]
     row = next(g for g in tr["items"] if g["courseName"] == "大学物理")

@@ -12,6 +12,8 @@ from __future__ import annotations
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
+from tests.support_grade_change_identity import change_request_payload, review_payload
+
 
 def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
@@ -148,14 +150,27 @@ def test_ra1_records_show_source_and_change_history(client, db_mode):
     assert after_publish["source"] == "PUBLISH"
 
     rid = after_publish["recordId"]
-    cr = client.post(f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request", headers=school_hdr,
-                     json={"newFinalScore": 90, "reason": "复核发现期末分登记错误"})
+    cr = client.post(
+        f"{BASE}/grade-tasks/{tid}/records/{rid}/change-request",
+        headers=school_hdr,
+        json=change_request_payload(
+            client, BASE, school_hdr, tid, rid,
+            newFinalScore=90, reason="复核发现期末分登记错误",
+        ),
+    )
     assert cr.status_code == 200, cr.text
-    college = client.post(f"{BASE}/grade-change/{rid}/college-review", headers=college_hdr,
-                          json={"action": "APPROVE"})
+    request_id = cr.json()["data"]["changeRequestId"]
+    college = client.post(
+        f"{BASE}/grade-change/{rid}/college-review",
+        headers=college_hdr,
+        json=review_payload(client, BASE, college_hdr, request_id, "APPROVE"),
+    )
     assert college.status_code == 200, college.text
-    fin = client.post(f"{BASE}/grade-change/{rid}/academic-review", headers=school_hdr,
-                      json={"action": "APPROVE"})
+    fin = client.post(
+        f"{BASE}/grade-change/{rid}/academic-review",
+        headers=school_hdr,
+        json=review_payload(client, BASE, school_hdr, request_id, "APPROVE"),
+    )
     assert fin.status_code == 200, fin.text
 
     after_change = client.get(f"{BASE}/grade-tasks/{tid}/records", headers=school_hdr).json()["data"]["items"][0]
