@@ -1057,22 +1057,26 @@ def affairs_risk_detail(user: dict, risk_id: str) -> dict:
     return svc.get_risk(risk_id, u)
 
 
-def affairs_risk_process(user: dict, risk_id: str, content: str) -> dict:
+def affairs_risk_process(user: dict, risk_id: str, content: str, *, expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_risk_service as svc
-    result = svc.process(risk_id, u, content=content or "")
+    result = svc.process(
+        risk_id, u, content=content or "", expected_version=expected_version,
+    )
     _audit_write("MOBILE_AFFAIRS_RISK_PROCESS", f"risk:{risk_id}", {"operator": u.get("realName")})
     return result
 
 
-def affairs_risk_close(user: dict, risk_id: str, conclusion: str) -> dict:
+def affairs_risk_close(user: dict, risk_id: str, conclusion: str, *, expected_version=None) -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")
     from app.services import affairs_risk_service as svc
-    result = svc.close(risk_id, u, conclusion=conclusion or "")
+    result = svc.close(
+        risk_id, u, conclusion=conclusion or "", expected_version=expected_version,
+    )
     _audit_write("MOBILE_AFFAIRS_RISK_CLOSE", f"risk:{risk_id}", {"operator": u.get("realName")})
     return result
 

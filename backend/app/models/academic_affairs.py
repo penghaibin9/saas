@@ -1760,9 +1760,13 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
     adjust_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
                                               comment="MERGE/SPLIT/DISBAND/GRADUATE_CLEAR")
     from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="JSON数组，来源行政班id列表")
+    # Expand/contract shadow columns: this release keeps legacy fields authoritative so N-1
+    # application bytes can still run after migration. A later release may switch writers.
+    from_class_ids_text: Mapped[str | None] = mapped_column(Text)
     to_class_id: Mapped[int | None] = mapped_column(BigInteger, comment="合班目标班级（MERGE专用）")
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)
     check_result_json: Mapped[str | None] = mapped_column(String(2000))
+    check_result_text: Mapped[str | None] = mapped_column(Text)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")

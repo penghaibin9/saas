@@ -172,8 +172,8 @@ def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     ).read_text(encoding="utf-8")
 
     assert 'push:\n    branches: [ "main" ]' in ci_workflow
-    assert 'github.event_name }}" = "schedule"' in ci_workflow
-    assert "timeout 80m pytest -q" in ci_workflow
+    assert 'EVENT_NAME: ${{ github.event_name }}' in ci_workflow
+    assert 'if [ "$EVENT_NAME" = "schedule" ]; then flags+=(--full); count=12; fi' in ci_workflow
     assert "select_pytest_targets.py" in ci_workflow
     # 40m 已在 PR #191 的真实变更感知回归中误杀完成测试；60m 仍低于 90m job ceiling，保留快速门禁属性。
     assert "timeout 60m pytest $TARGETS" in ci_workflow

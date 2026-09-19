@@ -1,6 +1,6 @@
 """Candidate-only MySQL tables. Not a second official timetable authority."""
 from sqlalchemy import (MetaData, Table, Column, BigInteger, Integer, String,
-    DateTime, Boolean, JSON, UniqueConstraint, Index, ForeignKeyConstraint)
+    DateTime, Boolean, JSON, LargeBinary, UniqueConstraint, Index, ForeignKeyConstraint)
 from sqlalchemy.dialects.mysql import MEDIUMBLOB, DATETIME
 
 metadata = MetaData()
@@ -11,7 +11,7 @@ snapshots = Table('t_aa_optimizer_snapshot', metadata,
     Column('batch_id', BigInteger, nullable=False),
     Column('input_hash', String(64), nullable=False),
     Column('source_revision', String(128), nullable=False),
-    Column('payload_zlib', MEDIUMBLOB, nullable=False),
+    Column('payload_zlib', LargeBinary().with_variant(MEDIUMBLOB(), 'mysql'), nullable=False),
     Column('payload_bytes', Integer, nullable=False),
     Column('created_at', DATETIME(fsp=6), nullable=False),
     UniqueConstraint('tenant_id', 'input_hash', name='uk_aa_opt_snapshot_hash'),

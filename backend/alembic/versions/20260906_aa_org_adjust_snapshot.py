@@ -15,17 +15,19 @@ TABLE = 't_aa_class_adjustment_request'
 
 
 def upgrade():
-    for column, limit, nullable in [('from_class_ids', 500, False), ('check_result_json', 2000, True)]:
-        op.alter_column(TABLE, column, existing_type=sa.String(limit), type_=mysql.LONGTEXT(), existing_nullable=nullable)
+    # Expand-only release: preserve the N-1 columns unchanged so previous application
+    # bytes remain rollback-compatible.  The new LONGTEXT shadows are nullable,
+    # backfilled from the legacy values, and can be adopted by a later release only
+    # after the old writers have been retired.
+    op.add_column(TABLE, sa.Column('from_class_ids_text', mysql.LONGTEXT(), nullable=True))
+    op.add_column(TABLE, sa.Column('check_result_text', mysql.LONGTEXT(), nullable=True))
+    op.execute(sa.text(
+        f'UPDATE {TABLE} SET from_class_ids_text = from_class_ids, '
+        'check_result_text = check_result_json '
+        'WHERE from_class_ids_text IS NULL OR check_result_text IS NULL'
+    ))
 
 
 def downgrade():
-    # MySQL DDL commits implicitly: validate BOTH columns before shrinking either.
-    bind = op.get_bind()
-    oversized = bind.execute(sa.text(
-        f'SELECT COUNT(*) FROM {TABLE} WHERE CHAR_LENGTH(from_class_ids) > 500 OR CHAR_LENGTH(check_result_json) > 2000'
-    )).scalar_one()
-    if oversized:
-        raise RuntimeError('Existing organization adjustment receipts exceed the old limits; downgrade would truncate history.')
-    for column, limit, nullable in [('from_class_ids', 500, False), ('check_result_json', 2000, True)]:
-        op.alter_column(TABLE, column, existing_type=mysql.LONGTEXT(), type_=sa.String(limit), existing_nullable=nullable)
+    op.drop_column(TABLE, 'check_result_text')
+    op.drop_column(TABLE, 'from_class_ids_text')

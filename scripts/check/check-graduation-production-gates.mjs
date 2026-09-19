@@ -65,8 +65,12 @@ const miniRequest = read('miniapp/src/services/request.js')
 const mobileStudent = read('backend/app/services/mobile_student_service.py')
 const graduationService = read('backend/app/modules/graduation/services/graduation_service.py')
 const gradeService = read('backend/app/modules/graduation/services/graduation_grade_service.py')
-if (!miniEnv.includes('if (env && env.PROD) return false')) failures.push('小程序生产构建未强制 useMock=false')
-if (!miniEnv.includes('allowMockFallback')) failures.push('小程序缺少开发/生产 mock 回退隔离开关')
+if (!miniEnv.includes('function resolveUseMock()')
+    || !miniEnv.includes('return false')
+    || !miniEnv.includes('useMock: resolveUseMock()')) {
+  failures.push('小程序生产构建未强制 useMock=false')
+}
+if (!miniEnv.includes('allowMockFallback: false')) failures.push('小程序缺少开发/生产 mock 回退隔离开关')
 if (!miniRequest.includes('ENV.allowMockFallback && mockFn')) failures.push('小程序 realFirst 未限制 mock 回退环境')
 if (mobileStudent.includes('body.get("plagiarismRate")')) failures.push('学生端仍可伪造毕业设计查重率')
 if (!graduationService.includes('/api/v1/graduation/materials') || !graduationService.includes('resolve_material_download')) {
@@ -149,7 +153,10 @@ if (!defenseSchema.includes('class DefenseScoreEntryRequest')
     || defenseSchema.split('class DefenseAbsenceRequest')[0].includes('class DefenseAbsenceRequest')) {
   failures.push('答辩评分 DTO 未正确登记评分/缺席字段')
 }
-if (!topicMiniPage.includes('Promise.allSettled') || topicMiniPage.includes('catch(() => [])')) {
+if (!topicMiniPage.includes('choiceError')
+    || !topicMiniPage.includes('changeError')
+    || !topicMiniPage.includes('state="error"')
+    || topicMiniPage.includes('catch(() => [])')) {
   failures.push('教师小程序仍把权限/接口错误伪装为空待办')
 }
 
@@ -160,7 +167,7 @@ const extensionQuery = read('backend/app/modules/graduation/services/graduation_
 const extensionUi = read('frontend/src/modules/graduation/views/GraduationExtensionAdminPanel.vue')
 const studentApi = read('frontend/src/modules/graduation/api/graduation-student.api.js')
 const portalApp = read('student-portal/src/App.vue')
-const mobileShell = read('miniapp/src/components/MobileGlobalState.vue')
+const mobileStudentGraduation = read('miniapp/src/pages/student/graduation/index.vue')
 const teacherDelayUi = read('miniapp/src/pages/teacher/components/MobileGraduationDelayQueue.vue')
 
 if (!extensionSafety.includes('def _assert_bound_advisor')
@@ -194,7 +201,7 @@ if (!studentApi.includes('params: withBatch({ page: 1, pageSize: 200, ...params 
   failures.push('答辩组选择器未绑定当前批次或未兼容 canonical date DTO')
 }
 if (!(portalApp.indexOf('<router-view />') < portalApp.indexOf('<GraduationExtensionPanel'))
-    || !(mobileShell.indexOf('<slot v-if="state === \'ready\'"') < mobileShell.indexOf('<MobileGraduationExtensionPanel'))
+    || !(mobileStudentGraduation.indexOf('</MobileGlobalState>') < mobileStudentGraduation.indexOf('<MobileGraduationExtensionPanel'))
     || !teacherDelayUi.includes('这不是“暂无待办”')) {
   failures.push('学生主流程、扩展事项或教师待办首屏层级仍不清晰')
 }
