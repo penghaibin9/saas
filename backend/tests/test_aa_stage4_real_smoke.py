@@ -22,14 +22,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _headers(role: str, *, user_type: str = "TEACHER", login_name: str = "stage4-user",
-             real_name: str = "第四阶段验收用户", student_no: str | None = None) -> dict:
+             real_name: str = "第四阶段验收用户", student_no: str | None = None,
+             client_type: str = "PC") -> dict:
     claims = {
         "userId": f"stage4-{role.lower()}",
         "loginName": login_name,
         "realName": real_name,
         "userType": user_type,
         "currentRoleCode": role,
-        "clientType": "PC" if user_type != "STUDENT" else "MP",
+        "clientType": client_type,
         "tid": str(TID),
         "tenantId": str(TID),
         "activeContextId": f"stage4-{role.lower()}-context",
@@ -153,6 +154,14 @@ def test_stage4_real_mysql_admin_teacher_student_smoke(db_mode):
         "STUDENT", user_type="STUDENT", login_name="2023115001",
         real_name="赵一凡", student_no="2023115001",
     )
+    teacher_mobile = _headers(
+        "ACADEMIC_TEACHER", login_name="T-STAGE4", real_name="第四阶段任课教师",
+        client_type="TEACHER_MINI",
+    )
+    student_mobile = _headers(
+        "STUDENT", user_type="STUDENT", login_name="2023115001",
+        real_name="赵一凡", student_no="2023115001", client_type="STUDENT_MINI",
+    )
 
     with TestClient(app) as client:
         # 教务管理员：真实读取九个核心入口。
@@ -171,7 +180,7 @@ def test_stage4_real_mysql_admin_teacher_student_smoke(db_mode):
 
         # 任课教师：本人任务、课表、成绩录入队列可读；学校级发布动作必须拒绝。
         _assert_ok(client.get("/api/v1/academic-affairs/teaching-tasks?mine=true", headers=teacher), "教师本人教学任务")
-        _assert_ok(client.get("/api/v1/mobile/teacher/academic/schedule/mine", headers=teacher), "教师本人课表")
+        _assert_ok(client.get("/api/v1/mobile/teacher/academic/schedule/mine", headers=teacher_mobile), "教师本人课表")
         _assert_ok(client.get("/api/v1/academic-affairs/grade-tasks", headers=teacher), "教师成绩录入入口")
         _assert_forbidden(
             client.post(f"/api/v1/academic-affairs/terms/{term_id}/publish", headers=teacher),
@@ -184,14 +193,17 @@ def test_stage4_real_mysql_admin_teacher_student_smoke(db_mode):
             ("/api/v1/portal/academic/transcript", "学生PC成绩"),
             ("/api/v1/portal/academic/exam", "学生PC考试"),
             ("/api/v1/portal/academic/makeup", "学生PC补考"),
+        ):
+            _assert_ok(client.get(path, headers=student), label)
+        for path, label in (
             ("/api/v1/mobile/academic/my", "学生小程序成绩概览"),
             ("/api/v1/mobile/academic/exam-v2/my", "学生小程序考试"),
         ):
-            _assert_ok(client.get(path, headers=student), label)
+            _assert_ok(client.get(path, headers=student_mobile), label)
 
         # 学生不能进入教师或学校管理接口；未知后端路由明确 404，不产生 500。
         _assert_forbidden(client.get("/api/v1/academic-affairs/dashboard", headers=student), "学生不得进入教务管理")
-        _assert_forbidden(client.get("/api/v1/mobile/teacher/academic/tasks", headers=student), "学生不得进入教师接口")
+        _assert_forbidden(client.get("/api/v1/mobile/teacher/academic/tasks", headers=student_mobile), "学生不得进入教师接口")
         unknown = client.get("/api/v1/__stage4_unknown_route__", headers=admin)
         assert unknown.status_code == 404
 

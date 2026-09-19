@@ -19,7 +19,7 @@ def _stu_token(real_name, student_no):
     """使用正式 DB 登录链生成 token，禁止测试自行伪造真实账号上下文。"""
     from app.services.auth_service_db import login_with_password
 
-    data = login_with_password(student_no, "Test@123456", client_type="MP")
+    data = login_with_password(student_no, "Test@123456", client_type="STUDENT_MINI")
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 

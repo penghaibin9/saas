@@ -167,7 +167,7 @@ def _student_header(real_name, student_no, tenant_id=MAIN, tid="demo"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "userType": "STUDENT",
         "studentNo": student_no, "tid": tid, "tenantId": str(tenant_id),
-        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "MP",
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI",
     })}
 
 

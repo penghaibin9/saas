@@ -12,7 +12,7 @@ def _stu_token(real_name, student_no):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "userType": "STUDENT",
         "studentNo": student_no, "tid": "demo", "tenantId": str(MAIN),
-        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _seed_dist(student_no, real_name, book="高等数学教材", price=45, qty=1):

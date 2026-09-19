@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
@@ -10,7 +9,6 @@ const layout = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGra
 const script = layout.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ''
 const scopedStyles = [...layout.matchAll(/<style scoped>([\s\S]*?)<\/style>/g)].map(match => match[1])
 const integration = scopedStyles.find(style => style.includes('Final graduation-only integration polish.')) || ''
-const hash = text => createHash('sha256').update(text).digest('hex')
 
 function marker(name) {
   return layout.match(new RegExp(`:${name}="([\\s\\S]*?)"`))?.[1] || ''
