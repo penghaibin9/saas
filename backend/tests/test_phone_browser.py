@@ -199,7 +199,7 @@ def test_local_four_surface_phone_and_account_browser(phone_identity, phone_surf
         'SMS_ENABLED': 'false', 'SMS_PROVIDER': 'mock',
         'SENSITIVE_SEARCH_HMAC_KEY': settings.SENSITIVE_SEARCH_HMAC_KEY,
         'DEFAULT_TENANT_CODE': phone_identity['tenant'],
-        'CORS_ORIGINS': 'http://127.0.0.1:15310,http://127.0.0.1:15311,http://localhost:5189',
+        'CORS_ORIGINS': 'http://127.0.0.1:15310,http://127.0.0.1:15311,http://localhost:5188',
         'E2E_ALLOW_DESTRUCTIVE_TESTS': 'true', 'E2E_STAFF_BASE_URL': 'http://127.0.0.1:15310',
         'E2E_STUDENT_BASE_URL': 'http://127.0.0.1:15311/portal', 'E2E_API_BASE_URL': 'http://127.0.0.1:18310/api/v1',
         'PHONE_TEST_TENANT': phone_identity['tenant'], 'PHONE_TEST_ACCOUNT': phone_identity['login'],
@@ -208,7 +208,7 @@ def test_local_four_surface_phone_and_account_browser(phone_identity, phone_surf
         'PHONE_TEST_INITIAL_STUDENT_ACCOUNT': phone_surface_identities['initial_student_account'],
         'PHONE_TEST_MINI_TEACHER_ACCOUNT': phone_surface_identities['teacher_account'],
         'PHONE_TEST_MINI_TEACHER_PHONE': phone_surface_identities['teacher_phone'],
-        'PHONE_TEST_MINI_BASE_URL': 'http://localhost:5189'}
+        'PHONE_TEST_MINI_BASE_URL': 'http://localhost:5188'}
     server = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1',
         '--port', '18310', '--no-access-log'], cwd=root / 'backend', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -333,7 +333,7 @@ def test_real_xlsx_import_to_four_surface_phone_browser(
         'CLAMAV_PORT': os.environ.get('CLAMAV_PORT', '3310'),
         'SENSITIVE_SEARCH_HMAC_KEY': settings.SENSITIVE_SEARCH_HMAC_KEY,
         'DEFAULT_TENANT_CODE': phone_identity['tenant'],
-        'CORS_ORIGINS': 'http://127.0.0.1:15310,http://127.0.0.1:15311,http://localhost:5189',
+        'CORS_ORIGINS': 'http://127.0.0.1:15310,http://127.0.0.1:15311,http://localhost:5188',
         'E2E_ALLOW_DESTRUCTIVE_TESTS': 'true',
         'E2E_STAFF_BASE_URL': 'http://127.0.0.1:15310',
         'E2E_STUDENT_BASE_URL': 'http://127.0.0.1:15311/portal',
@@ -348,7 +348,7 @@ def test_real_xlsx_import_to_four_surface_phone_browser(
         'PHONE_IMPORT_STUDENT_PHONE': student['phone'],
         'PHONE_IMPORT_STUDENT_CHANGED_PHONE': changed_phone,
         'PHONE_IMPORT_STUDENT_TEMPLATE': student['template'],
-        'PHONE_TEST_MINI_BASE_URL': 'http://localhost:5189',
+        'PHONE_TEST_MINI_BASE_URL': 'http://localhost:5188',
         'PHONE_SMS_MAILBOX': str(mailbox),
     }
     server = subprocess.Popen([

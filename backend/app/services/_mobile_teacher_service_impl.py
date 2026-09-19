@@ -3060,8 +3060,9 @@ def graduation_change_request_review(user: dict, request_id: str, action: str,
 
 def warning_handle(user: dict, warning_id: str, action: str, note: str | None = None) -> dict:
     """Compatibility shim; all warning writes use the canonical mobile permission guard."""
+    u = _require_teacher(user)
     from app.modules.academic_affairs.services import mobile_academic_warning_service
-    return mobile_academic_warning_service.handle(user, warning_id, action, note or "")
+    return mobile_academic_warning_service.handle(u, warning_id, action, note or "")
 
 
 def followup_create(user: dict, body: dict) -> dict:
@@ -3437,6 +3438,9 @@ _ST_NODE_PERMS = {
 def affairs_academic_status_change_pending(user: dict) -> dict:
     """学籍异动待我审批（节点权限、正式任务受理人均须命中本人）。"""
     u = _require_teacher(user)
+    # Fail closed on the same teacher scope authority used by the rest of the mobile
+    # workbench before any tenant rows or workflow assignments are read.
+    resolve_teacher_scope(u)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.core.permissions import has_permission

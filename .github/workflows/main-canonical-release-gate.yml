@@ -361,8 +361,8 @@ jobs:
           mkdir -p /tmp/phone-browser
           (cd frontend && nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:18310 npm run dev -- --host 127.0.0.1 --port 15310 > /tmp/phone-browser/staff.log 2>&1 &)
           (cd student-portal && nohup env VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:18310 npm run dev -- --host 127.0.0.1 --port 15311 > /tmp/phone-browser/student.log 2>&1 &)
-          (cd miniapp && nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:18310 npm run dev:h5 -- --host 127.0.0.1 --port 5189 > /tmp/phone-browser/mini.log 2>&1 &)
-          for url in http://127.0.0.1:15310/login http://127.0.0.1:15311/portal/login http://127.0.0.1:5189/; do
+          (cd miniapp && nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:18310 npm run dev:h5 -- --host 127.0.0.1 --port 5188 > /tmp/phone-browser/mini.log 2>&1 &)
+          for url in http://127.0.0.1:15310/login http://127.0.0.1:15311/portal/login http://127.0.0.1:5188/; do
             for attempt in $(seq 1 90); do
               if curl -fsS "$url" >/dev/null; then break; fi
               if [ "$attempt" = 90 ]; then
