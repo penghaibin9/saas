@@ -226,8 +226,8 @@ export async function voidOrientationStudent(id, { reason }) {
   return callData(() => request(`/orientation/students/${id}/void`, { method: 'POST', body: { reason } }))
 }
 
-export async function verifyOrientationStudent(id, { passed = true, reason = '' } = {}) {
-  return callData(() => request(`/orientation/students/${id}/verify`, { method: 'POST', body: { passed, reason } }))
+export async function verifyOrientationStudent(id, { passed = true, reason = '', expectedVersion } = {}) {
+  return callData(() => request(`/orientation/students/${id}/verify`, { method: 'POST', body: { passed, reason, expectedVersion } }))
 }
 
 export async function batchRemindStudents() {
@@ -371,11 +371,12 @@ export async function downloadImportTemplate(listKey) {
   return callData(() => request('/import/domain/orientation/template'))
 }
 
-export async function validateImport(listKey, file) {
+export async function validateImport(listKey, file, orientationBatchId) {
   if (listKey !== 'studentList') return fail('当前列表未配置导入能力', 400001)
   if (!file) return fail('请选择 .xlsx 文件', 400001)
   return callData(async () => {
-    const data = await requestUpload('/import/domain/orientation/validate-file', file)
+    const endpoint = '/import/domain/orientation/validate-file'
+    const data = await requestUpload(orientationBatchId ? `${endpoint}?orientationBatchId=${encodeURIComponent(orientationBatchId)}` : endpoint, file)
     return {
       batchNo: data.batchNo,
       status: data.status,
@@ -455,6 +456,10 @@ export async function getOrientationBatches(params = {}) {
   return callList('/orientation/batches', params)
 }
 
+export async function getOrientationBatch(id) {
+  return callData(() => request(`/orientation/batches/${id}`))
+}
+
 export async function createOrientationBatch(payload = {}) {
   return callData(() => request('/orientation/batches', { method: 'POST', body: payload }))
 }
@@ -506,6 +511,14 @@ export async function getFlowConfig() {
 
 export async function updateFlowConfig(id, payload) {
   return callData(() => request(`/orientation/flow-config/${id}`, { method: 'PUT', body: payload }))
+}
+
+export async function refreshOrientationBatchFlow(id, expectedVersion) {
+  return callData(() => request(`/orientation/batches/${id}/refresh-flow-version`, { method: 'POST', body: { expectedVersion } }))
+}
+
+export async function completeStandardFlowConfig() {
+  return callData(() => request('/orientation/flow-config/complete-standard', { method: 'POST' }))
 }
 
 export async function getNoticeTasks(params = {}) {

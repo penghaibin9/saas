@@ -12,7 +12,7 @@
             @click="selectCandidate(candidate)">
             <view class="flex-1">
               <text class="t-md t-bold">{{ candidate.batchName || `批次 ${candidate.batchId}` }}</text>
-              <text class="in__candidate-sub">实习状态 {{ candidate.status }} · 记录 {{ candidate.recordId }}</text>
+              <text class="in__candidate-sub">实习状态 {{ candidateStatusLabel(candidate.status) }} · 记录 {{ candidate.recordId }}</text>
             </view>
             <MobileStatusTag :label="String(candidate.batchId) === String(selectedBatchId) ? '已选择' : '选择'"
               :type="String(candidate.batchId) === String(selectedBatchId) ? 'success' : 'info'" />
@@ -124,6 +124,10 @@ import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
 
 const STORAGE_KEY = 'gx_student_internship_batch_v1'
+const INTERNSHIP_RECORD_STATUS_LABELS = {
+  DRAFT: '待完善', APPLIED: '待审核', APPROVED: '待确认', ONBOARD: '实习中',
+  ASSESSING: '考核中', ENDED: '已结束', ARCHIVED: '已归档', TERMINATED: '已终止'
+}
 
 export default {
   data() {
@@ -156,7 +160,7 @@ export default {
     qualificationHint() { return ({ QUALIFIED: '学校已完成本批次实习资格认定。', PENDING: '学校正在核对实习资格。需要补充材料时，请联系校内指导教师。', UNQUALIFIED: '本次认定未通过。请联系指导教师了解原因及后续安排。' })[this.qualification.status] || '请刷新认定结果，或联系指导教师核对。' },
     canShowDailyWork() { return this.i?.hasBatch && !this.i.historyMode && this.i.statusText === 'ONBOARD' },
     needSelect() { return !!(this.i?.needSelect || this.compliance?.needSelect) && !this.selectedBatchId },
-    candidateLabels() { return this.candidates.map((x) => `${x.batchName || `批次 ${x.batchId}`} · ${x.status}`) },
+    candidateLabels() { return this.candidates.map((x) => `${x.batchName || `批次 ${x.batchId}`} · ${this.candidateStatusLabel(x.status)}`) },
     candidateIndex() { return Math.max(0, this.candidates.findIndex((x) => String(x.batchId) === String(this.selectedBatchId))) },
     currentCandidateLabel() { return this.candidateLabels[this.candidateIndex] || this.i?.batch || '请选择批次' },
     visibleComplianceItems() { return (this.compliance.items || []).filter((x) => x.required || x.status !== 'NOT_APPLICABLE') },
@@ -200,6 +204,7 @@ export default {
   methods: {
     formatDateTime,
     toast, go,
+    candidateStatusLabel(status) { return INTERNSHIP_RECORD_STATUS_LABELS[String(status || '').toUpperCase()] || '状态待确认' },
     restoreBatch() { try { this.selectedBatchId = String(uni.getStorageSync(STORAGE_KEY) || '') } catch (e) {} },
     persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync(STORAGE_KEY, this.selectedBatchId); else uni.removeStorageSync(STORAGE_KEY) } catch (e) {} },
     withBatch(path) { if (!this.selectedBatchId) return path; return `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(this.selectedBatchId)}` },
@@ -219,6 +224,13 @@ export default {
       this.compliance = compliance.status === 'fulfilled' ? compliance.value : { items: [], blockers: [], warnings: [], timeline: [] }
       this.complianceError = compliance.status === 'rejected' ? (compliance.reason?.message || '合规状态暂不可用，请稍后重试') : ''
       this.candidates = this.i?.candidates?.length ? this.i.candidates : (this.compliance?.candidates || [])
+      // 首次进入没有本地选择时，以刚从服务端回读的实习记录批次为准。候选数组可同时
+      // 包含已归档历史批次，不能因 picker 默认第 0 项而把“当前批次”显示成历史事实。
+      const serverBatchId = String(this.i?.batchId || '')
+      if (!this.selectedBatchId && serverBatchId && this.candidates.some((x) => String(x.batchId) === serverBatchId)) {
+        this.selectedBatchId = serverBatchId
+        this.persistBatch()
+      }
       this.state = 'ready'
     },
     complianceTone(status) { if (['VALID', 'EXEMPTED', 'NOT_APPLICABLE'].includes(status)) return 'success'; if (['REJECTED', 'CONFIG_ERROR'].includes(status)) return 'danger'; return 'warning' },

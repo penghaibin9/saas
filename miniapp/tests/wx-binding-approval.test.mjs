@@ -1,3 +1,4 @@
+import { normalizeLoginTenantHint } from '../src/utils/loginTenantHint.mjs'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -12,7 +13,7 @@ function panel({ reject = false } = {}) {
   let settle
   const requests = [], messages = [], logins = [], copies = []
   const context = {
-    module: { exports: {} }, tenantBrandConfig: {}, getLastTenantCode: () => 'school-a',
+    module: { exports: {} }, normalizeLoginTenantHint, tenantBrandConfig: {}, getLastTenantCode: () => 'school-a',
     saveLastTenantCode: () => {}, toast: text => messages.push(text),
     realRequest: (path, options) => { requests.push({ path, options }); return new Promise((resolve, fail) => { settle = reject ? fail : resolve }) },
     uni: { showModal: options => { context.modal = options }, setClipboardData: options => { copies.push(options.data); options.success() } }

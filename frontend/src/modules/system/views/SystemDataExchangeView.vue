@@ -132,8 +132,7 @@ export default {
   },
   watch: { contextKey() { this.recreate() }, '$route.query': { deep: true, handler() { this.syncRoute() } } },
   created() { this.recreate() },
-  mounted() { window.addEventListener('beforeunload', this.beforeUnload) },
-  beforeUnmount() { this.controller?.dispose(); window.removeEventListener('beforeunload', this.beforeUnload) },
+  beforeUnmount() { this.controller?.dispose() },
   beforeRouteLeave() { return this.canLeave() }, beforeRouteUpdate() { return this.canLeave() },
   methods: {
     taskKey, taskCount, taskCounts, taskLabel, taskStatus,
@@ -178,7 +177,6 @@ export default {
     },
     resetFilters() { if (!this.locked) { this.state.filters = { keyword: '', jobType: '', status: '' }; this.controller.search() } },
     canLeave() { if (this.locked) { this.state.operationError = this.state.busy ? '当前请求尚未返回，请等待结果后再离开。' : '请先完成或取消当前操作核对。'; return false }; return true },
-    beforeUnload(event) { if (this.state.busy) { event.preventDefault(); event.returnValue = '' } }
   }
 }
 </script>

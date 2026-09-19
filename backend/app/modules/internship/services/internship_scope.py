@@ -56,7 +56,7 @@ def apply_internship_record_scope(query, user):
     if scope.get("mode") != "SCOPED":
         return query
     role = (scope.get("roleCode") or "").upper()
-    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR"}
+    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR"}
     advisor_ids = [int(x) for x in scope.get("advisorUserIds", set()) if str(x).isdigit()]
     if role in advisor_roles:
         # 运行时授权只认稳定 user_id；历史只有 advisor_name 的记录必须先治理数据，
@@ -147,6 +147,4 @@ def apply_internship_record_scope(query, user):
     clauses = []
     if student_clauses:
         clauses.append(InternshipRecord.student_id.in_(student_ids.where(or_(*student_clauses))))
-    if advisor_ids:
-        clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
     return query.where(or_(*clauses) if clauses else false())

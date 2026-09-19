@@ -1,5 +1,7 @@
 import { getTeacherGraduationBatch, realRequest, setTeacherGraduationBatch } from './request'
 
+const DEFAULT_PAGE_SIZE = 20
+
 function parseQuery(raw = '') {
   const query = String(raw || '').replace(/^.*?\?/, '')
   if (!query || query === raw && !String(raw).includes('?')) return {}
@@ -28,14 +30,36 @@ function currentPageOptions() {
 
 function normalizeTaskContext(options = {}) {
   const route = currentPageOptions()
+  const rawRecordId = String(options.recordId || options.proposalId || options.finalId || route.recordId || route.proposalId || route.finalId || '')
   return {
     batchId: String(options.batchId || route.batchId || ''),
     kind: String(options.kind || route.kind || '').toLowerCase(),
     gdStudentId: String(options.gdStudentId || route.gdStudentId || ''),
-    recordId: String(options.recordId || route.recordId || ''),
+    recordId: /^\d+$/.test(rawRecordId) ? rawRecordId : '',
     materialVersion: String(options.materialVersion || route.materialVersion || ''),
     fileVersionId: String(options.fileVersionId || route.fileVersionId || '')
   }
+}
+
+function pageNumber(value, fallback = 1) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function pageSize(value) {
+  return Math.min(100, Math.max(1, pageNumber(value, DEFAULT_PAGE_SIZE)))
+}
+
+function workbenchPath(options = {}) {
+  const size = pageSize(options.pageSize)
+  const query = [
+    ['page', pageNumber(options.page)],
+    ['pageSize', size],
+    ['studentPage', pageNumber(options.studentPage)],
+    ['proposalPage', pageNumber(options.proposalPage)],
+    ['finalPage', pageNumber(options.finalPage)]
+  ]
+  return `/mobile/teacher/graduation?${query.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')}`
 }
 
 function exactQueue(rows, context, idKey) {
@@ -45,6 +69,45 @@ function exactQueue(rows, context, idKey) {
     if (context.gdStudentId && String(row.gdStudentId || '') !== context.gdStudentId) return false
     return true
   })
+}
+
+function proposalRow(detail = {}) {
+  return {
+    proposalId: String(detail.id || ''), gdStudentId: String(detail.gdStudentId || detail.projectId || ''),
+    studentName: detail.studentName || detail.name || '', className: detail.className || '',
+    topicTitle: detail.topicTitle || '', submitAt: detail.submitAt || detail.submittedAt || '',
+    version: detail.version || '', isResubmit: !!detail.isResubmit
+  }
+}
+
+function finalRow(detail = {}) {
+  return {
+    finalId: String(detail.id || ''), gdStudentId: String(detail.gdStudentId || detail.projectId || ''),
+    studentName: detail.studentName || detail.name || '', className: detail.className || '',
+    topicTitle: detail.topicTitle || '', submitAt: detail.submitAt || detail.submittedAt || '',
+    type: detail.type || '', version: detail.version || '', plagiarismRate: detail.plagiarismRate || '—'
+  }
+}
+
+async function resolveExactPendingRow(kind, rows, context) {
+  if (context.kind !== kind || !context.recordId) return rows
+  const idKey = kind === 'proposal' ? 'proposalId' : 'finalId'
+  const focused = exactQueue(rows, context, idKey)
+  if (focused.length) return focused
+
+  // 深链中的对象可能在第 2 页以后。直接读取受 batch + teacher scope 保护的详情，
+  // 而不是为了找一条记录把所有待办页下载到手机。
+  const path = kind === 'proposal'
+    ? `/mobile/teacher/graduation/proposal/${encodeURIComponent(context.recordId)}`
+    : `/mobile/teacher/graduation/final/${encodeURIComponent(context.recordId)}`
+  const detail = await realRequest(path)
+  if (!detail || String(detail.id || '') !== context.recordId || String(detail.status || '') !== 'PENDING_REVIEW') {
+    throw { code: 409001, biz: true, message: '该毕业设计待办已处理或状态已变化，请返回工作台刷新' }
+  }
+  if (context.gdStudentId && String(detail.gdStudentId || detail.projectId || '') !== context.gdStudentId) {
+    throw { code: 404001, biz: true, message: '指定毕业设计待办与学生信息不一致，已拒绝打开' }
+  }
+  return [kind === 'proposal' ? proposalRow(detail) : finalRow(detail)]
 }
 
 /**
@@ -67,7 +130,7 @@ export async function graduationTeacherCountTruth(options = {}) {
 
   const selected = getTeacherGraduationBatch()
   if (!selected?.id) throw { code: 422001, biz: true, message: '请先选择毕业设计批次' }
-  const d = await realRequest('/mobile/teacher/graduation')
+  const d = await realRequest(workbenchPath(options))
   const responseBatchId = String(d.batchId || selected.id || '')
   if (responseBatchId !== String(selected.id)) {
     throw { code: 409001, biz: true, message: '教师小程序返回的毕业设计批次与当前选择不一致，请重新进入任务' }
@@ -95,8 +158,8 @@ export async function graduationTeacherCountTruth(options = {}) {
       version: f.version || '', plagiarismRate: f.plagiarismRate || '—'
     }))
 
-  const reviewQueue = context.kind === 'proposal' ? exactQueue(proposalRows, context, 'proposalId') : proposalRows
-  const finalQueue = context.kind === 'final' ? exactQueue(finalRows, context, 'finalId') : finalRows
+  const reviewQueue = await resolveExactPendingRow('proposal', proposalRows, context)
+  const finalQueue = await resolveExactPendingRow('final', finalRows, context)
   const exactMode = Boolean(context.kind && (context.recordId || context.gdStudentId))
   const targetQueue = context.kind === 'final' ? finalQueue : context.kind === 'proposal' ? reviewQueue : null
   if (exactMode && !targetQueue?.length) {
@@ -109,6 +172,11 @@ export async function graduationTeacherCountTruth(options = {}) {
     finalQueue,
     proposalTotal: Number(d.proposalTotal || 0),
     finalTotal: Number(d.finalTotal || 0),
+    studentPage: Number(d.studentPage || 1), studentTotal: Number(d.studentTotal || list.length),
+    studentHasMore: !!d.studentHasMore,
+    proposalPage: Number(d.proposalPage || 1), proposalHasMore: !!d.proposalHasMore,
+    finalPage: Number(d.finalPage || 1), finalHasMore: !!d.finalHasMore,
+    pageSize: Number(d.pageSize || DEFAULT_PAGE_SIZE),
     batchId: responseBatchId,
     taskContext: context,
     _real: true

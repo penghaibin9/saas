@@ -10,11 +10,13 @@ const customer = read('src/modules/platform/views/control/PlatformCustomerSucces
 const tenantProfile = read('src/modules/platform/components/TenantProfileEditor.vue')
 const platformP1Api = read('src/modules/platform/api/platformP1Closure.api.js')
 const platformLayout = read('src/modules/platform/views/AdminPlatformLayout.vue')
+const basePortalLayout = read('src/layouts/BasePortalLayout.vue')
 const platformRoutes = read('src/modules/platform/platform.routes.js')
 const platformCatalog = read('src/modules/platform/platformManagementCatalog.js')
 const serviceCatalog = read('src/modules/platform/views/control/PlatformServiceCatalogView.vue')
 const serviceConfigDrawer = read('src/modules/platform/components/PlatformServiceConfigDrawer.vue')
 const systemPanel = read('src/modules/system/components/SystemP1ClosurePanel.vue')
+const systemOrgWorkspace = read('src/modules/system/components/SystemOrgWorkspace.vue')
 const systemLayout = read('src/modules/system/views/AdminSystemLayout.vue')
 const systemClosureApi = read('src/modules/system/api/systemP1Closure.api.js')
 const roleAssignments = read('src/modules/system/views/SystemRoleAssignmentView.vue')
@@ -72,6 +74,9 @@ test('every service catalog row has an honest configuration entry and COS uses t
 })
 
 test('tenant detail profile uses a dedicated optimistic audited API and keeps environment read-only', () => {
+  assert.match(platformLayout, /<BasePortalLayout[\s\S]*\bworkspace\b/)
+  assert.match(basePortalLayout, /return this\.workspace \|\| \(!this\.isPlatformMode/)
+  assert.match(basePortalLayout, /this\.isPlatformMode \? '搜索平台功能或帮助'/)
   assert.match(platformLayout, /TenantProfileEditor/)
   assert.match(platformLayout, /platform-tenant-detail/)
   assert.match(platformP1Api, /\/profile/)
@@ -85,6 +90,7 @@ test('tenant detail profile uses a dedicated optimistic audited API and keeps en
 })
 
 test('formal role UI is immediate-only and hides writes without grant authority', () => {
+  assert.match(systemLayout, /<BasePortalLayout[\s\S]*\bworkspace\b/)
   assert.match(systemLayout, /SystemP1ClosurePanel/)
   assert.match(systemPanel, /grantRoleAssignment/)
   assert.match(systemPanel, /未来排期暂不开放/)
@@ -123,12 +129,13 @@ test('identity exception surfaces separate read authority from binding mutation 
 })
 
 test('organization deprecation carries a signed preview receipt to the server write boundary', () => {
-  assert.match(systemPanel, /getOrgNodeImpact/)
-  assert.match(systemPanel, /previewToken/)
-  assert.match(systemPanel, /expectedVersion:\s*this\.orgImpact\.nodeVersion/)
+  assert.match(systemOrgWorkspace, /getOrgNodeImpact/)
+  assert.match(systemOrgWorkspace, /previewToken/)
+  assert.match(systemOrgWorkspace, /expectedVersion:\s*receipt\.nodeVersion/)
+  assert.match(systemOrgWorkspace, /deprecateOrgNodeWithPreview/)
   assert.match(systemClosureApi, /deprecateOrgNodeWithPreview/)
   assert.match(systemClosureApi, /previewToken/)
   assert.match(systemClosureApi, /expectedVersion/)
-  assert.match(systemPanel, /systemApi\.deprecateOrgNode\s*=\s*async/)
-  assert.match(systemPanel, /服务端签名预演凭证/)
+  assert.match(systemOrgWorkspace, /impact\.value\s*=\s*null/)
+  assert.match(systemOrgWorkspace, /检查结果最多 5 分钟有效/)
 })

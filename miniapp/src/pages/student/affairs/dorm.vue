@@ -23,7 +23,7 @@
           <view class="row-between"><text class="dm__step-t">归寝状态</text><MobileStatusTag :label="presenceLabel" :type="presenceTone" /></view>
           <text class="dm__history-reason">{{ cfg.presence?.summary || '暂无可靠归寝数据' }}</text>
           <text class="dm__history-route">最近可靠事件：{{ fmtTime(cfg.presence?.lastEventAt) }}</text>
-          <text v-if="cfg.presence?.status === 'UNKNOWN'" class="dm__unknown">“未知”表示 Provider 未配置或无可靠数据，不等同于“未归”。</text>
+          <text v-if="cfg.presence?.status === 'UNKNOWN'" class="dm__unknown">“未知”表示归寝数据来源未配置或无可靠数据，不等同于“未归”。</text>
         </view>
         <MobileInlineAlert v-if="pendingTransfer" type="warning" title="已有调宿申请处理中" :description="`当前状态：${statusLabel(pendingTransfer.status || pendingTransfer.currentNode)}。审批完成或驳回前不能重复提交。`" />
         <MobileInlineAlert v-if="transferError" type="warning" title="调宿记录暂不可用" :description="transferError" />
@@ -32,6 +32,7 @@
         </template>
         <view class="dm__history">
           <text class="dm__step-t">检查整改</text>
+          <MobileInlineAlert v-if="rectError" type="warning" title="整改任务暂不可用" :description="rectError" />
           <view v-for="x in rectifications" :key="x.rectificationId" class="dm__rect">
             <view class="row-between"><text class="dm__history-status">{{ rectStatusLabel(x.status) }} · {{ severityLabel(x.severity) }}</text><text class="dm__deadline" :class="{ overdue: x.overdue }">{{ fmtTime(x.deadlineAt) }}</text></view>
             <text class="dm__history-route">{{ x.buildingName }} · {{ x.roomNo }}室</text>
@@ -47,7 +48,8 @@
             </view>
             <text v-if="x.status === 'WAITING_RECHECK'" class="dm__uploaded">整改证据已提交，等待宿管复检。</text>
           </view>
-          <text v-if="!rectifications.length" class="dm__empty-text">暂无整改任务</text>
+          <text v-if="!rectError && !rectifications.length" class="dm__empty-text">暂无整改任务</text>
+          <button v-if="!rectificationId && rectifications.length < rectTotal" class="dm__secondary" :disabled="rectLoading" @click="loadMoreRectifications">{{ rectLoading ? '加载中…' : '加载更多整改记录' }}</button>
         </view>
 
         <template v-if="!rectificationId">
@@ -59,12 +61,14 @@
             <view v-for="b in buildings" :key="b.buildingId" class="dm__chip" :class="{ 'is-on': sel.building === b.buildingId }" @click="pickBuilding(b)">{{ b.buildingName }}（空 {{ b.vacantBeds }}）</view>
           </view>
           <text v-if="optionsLoading" class="dm__loading">正在加载可选房源…</text>
+          <button v-if="cfg.hasBed && buildingPage * 20 < buildingTotal" class="dm__secondary" :disabled="optionsLoading" @click="loadTransferOptions(true)">更多楼栋</button>
 
           <template v-if="sel.building">
             <text class="dm__label">② 选房间</text>
             <view class="dm__chips">
               <view v-for="r in rooms" :key="r.roomId" class="dm__chip" :class="{ 'is-on': sel.room === r.roomId, 'is-full': r.vacantBeds === 0 }" @click="r.vacantBeds > 0 && pickRoom(r)">{{ r.floorNo }}层 {{ r.roomNo }}（空 {{ r.vacantBeds }}）</view>
             </view>
+            <button v-if="cfg.hasBed && roomPage * 20 < roomTotal" class="dm__secondary" :disabled="optionsLoading" @click="loadTransferRooms(true)">更多房间</button>
           </template>
 
           <template v-if="sel.room">
@@ -97,7 +101,8 @@
         <view class="dm__history">
           <text class="dm__step-t">住宿历史</text>
           <view v-for="x in stays" :key="x.stayId" class="dm__history-row"><text class="dm__history-status">{{ stayStatusLabel(x.status) }}</text><text class="dm__history-route">{{ x.bedLabel || ('床位 #' + x.bedId) }}</text><text class="dm__history-reason">{{ (x.checkinAt || '未记录') + ' → ' + (x.checkoutAt || '当前') }}</text></view>
-          <text v-if="!stays.length" class="dm__empty-text">暂无住宿历史</text>
+          <MobileInlineAlert v-if="stayError" type="warning" title="住宿历史暂不可用" :description="stayError" />
+          <text v-if="!stayError && !stays.length" class="dm__empty-text">暂无住宿历史</text>
         </view>
         </template>
       </view>
@@ -120,6 +125,7 @@ import { affairsContractApi } from '@/services/affairsContractApi'
 import { safeToast, createSubmitLock, normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
 import { createClientRequestId } from '@/utils/clientRequestId'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const PENDING = ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_REVIEW', 'PENDING']
 
@@ -127,7 +133,8 @@ export default {
   data() {
     return {
       needsLogin: false, rectificationId: '', loadSerial: 0, loadError: '', cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
-      transferError: '', optionError: '', optionsLoading: false,
+      transferError: '', stayError: '', rectError: '', optionError: '', optionsLoading: false,
+      buildingPage: 1, buildingTotal: 0, roomPage: 1, roomTotal: 0, rectPage: 1, rectTotal: 0, rectLoading: false, rectRequestPayloads: {}, disposed: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
       transferReason: '', rectNotes: {}, rectFiles: {}, rectRequestIds: {}, confirmDlg: { visible: false, current: '', reason: '' }, _lock: createSubmitLock()
     }
@@ -164,7 +171,7 @@ export default {
     window.addEventListener('hashchange', this._onRectHashChange)
     // #endif
   },
-  onShow() { this.load() },
+  onShow() { if (!this.submitting) this.load() },
   onUnload() { this.disposeRectificationFocus() },
   beforeUnmount() { this.disposeRectificationFocus() },
   methods: {
@@ -175,107 +182,163 @@ export default {
       if (this._onRectHashChange) window.removeEventListener('hashchange', this._onRectHashChange)
       // #endif
       this.loadSerial++
+      this.disposed = true
     },
     syncRectificationHash(hash) {
       const [path, query = ''] = String(hash || '').replace(/^#/, '').split('?')
       if (path !== '/pages/student/affairs/dorm') return
       const id = new URLSearchParams(query).get('rectificationId') || ''
       if (id === this.rectificationId) return
-      this.rectificationId = id; this.rectifications = []; this.rectNotes = {}; this.rectFiles = {}; this.rectRequestIds = {}
+      this.rectificationId = id; this.rectifications = []; this.rectNotes = {}; this.rectFiles = {}; this.rectRequestIds = {}; this.rectRequestPayloads = {}
       this.confirmDlg.visible = false
       return this.load()
     },
-    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s || '处理中' },
+    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || '状态待确认' },
     stayStatusLabel(s) { return ({ RESERVED: '待入住', ACTIVE: '当前在住', ENDED: '已退宿', CANCELLED: '已取消' })[String(s || '').toUpperCase()] || '状态待确认' },
-    rectStatusLabel(s) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[s] || s },
-    severityLabel(s) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[s] || s },
+    rectStatusLabel(s) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[s] || '状态待确认' },
+    severityLabel(s) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[s] || '风险待确认' },
     fmtTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
-    showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
+    showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || fallback); if (n.kind === 'conflict') this.load(); return n },
+    isCurrent(serial, generation) { return !this.disposed && serial === this.loadSerial && generation === currentSessionGeneration() },
     async load() {
       const serial = ++this.loadSerial
-      this.loadError = ''; this.needsLogin = false
+      const generation = currentSessionGeneration()
+      if (this.sessionGeneration !== generation) {
+        this.sessionGeneration = generation; this.cfg = null; this.transfers = []; this.stays = []; this.rectifications = []
+        this.rectNotes = {}; this.rectFiles = {}; this.rectRequestIds = {}; this.rectRequestPayloads = {}; this.transferReason = ''; this.confirmDlg.visible = false; this.submitting = false
+      }
+      this.buildings = []; this.buildingTotal = 0; this.roomTotal = 0; this.rectTotal = 0; this.rectLoading = false; this.optionsLoading = false
+      this.loadError = ''; this.needsLogin = false; this.stayError = ''; this.rectError = ''
       this.state = 'loading'; this.sel = { building: '', room: '', bed: '' }; this.rooms = []; this.beds = []; this.transferError = ''; this.optionError = ''
       if (this.rectificationId) {
         try {
           if (!/^[1-9]\d*$/.test(this.rectificationId)) throw new Error('整改编号无效，请从待办或消息重新进入')
           const row = await affairsContractApi.getMyDormRectification(this.rectificationId)
-          if (serial !== this.loadSerial) return
+          if (!this.isCurrent(serial, generation)) return
           if (!row || String(row.rectificationId) !== this.rectificationId) throw new Error('该整改单不存在或不在本人权限范围内')
           this.rectifications = [row]; this.state = 'ready'
-        } catch (e) { if (serial !== this.loadSerial) return; this.rectifications = []; this.needsLogin = normalizeError(e).kind === 'auth'; this.loadError = e.message || '整改记录加载失败'; this.state = 'error'; this.showError(e, this.loadError) }
+        } catch (e) { if (!this.isCurrent(serial, generation)) return; this.rectifications = []; this.needsLogin = normalizeError(e).kind === 'auth'; this.loadError = normalizeError(e).text || '整改记录加载失败'; this.state = 'error'; this.showError(e, this.loadError) }
         return
       }
       const [dormResult, transferResult, stayResult, rectResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers(), affairsContractApi.getMyDormStays(), affairsContractApi.getMyDormRectifications()])
-      if (serial !== this.loadSerial) return
-      if (dormResult.status === 'rejected') { this.state = 'error'; this.showError(dormResult.reason, '宿舍信息加载失败'); return }
+      if (!this.isCurrent(serial, generation)) return
+      if (dormResult.status === 'rejected' || !dormResult.value || typeof dormResult.value.hasBed !== 'boolean') { this.state = 'error'; this.loadError = '宿舍信息加载失败，请重试'; return }
       this.cfg = dormResult.value
-      if (transferResult.status === 'fulfilled') this.transfers = (transferResult.value && transferResult.value.items) || []
+      if (transferResult.status === 'fulfilled' && Array.isArray(transferResult.value?.items)) this.transfers = transferResult.value.items
       else { this.transfers = []; this.transferError = normalizeError(transferResult.reason).text || '调宿记录加载失败，请稍后重试' }
       this.stays = stayResult.status === 'fulfilled' ? ((stayResult.value && stayResult.value.items) || []) : []
       this.rectifications = rectResult.status === 'fulfilled' ? ((rectResult.value && rectResult.value.items) || []) : []
+      this.rectPage = 1; this.rectTotal = rectResult.status === 'fulfilled' ? Number(rectResult.value?.total || this.rectifications.length) : 0
+      if (stayResult.status === 'rejected') this.stayError = normalizeError(stayResult.reason).text || '住宿历史加载失败，请重试'
+      if (rectResult.status === 'rejected') this.rectError = normalizeError(rectResult.reason).text || '整改任务加载失败，请重试'
+      if (stayResult.status === 'fulfilled' && !Array.isArray(stayResult.value?.items)) { this.stays = []; this.stayError = '住宿历史未完整加载，请重试' }
+      if (rectResult.status === 'fulfilled' && !Array.isArray(rectResult.value?.items)) { this.rectifications = []; this.rectError = '整改任务未完整加载，请重试' }
       this.state = 'ready'
       if (this.cfg.hasBed && this.canChoose) this.loadTransferOptions()
       else if (!this.cfg.hasBed && (this.cfg.canSelfSelect || this.cfg.selfSelectEnabled)) this.loadSelfSelectOptions()
     },
     async loadSelfSelectOptions() {
+      const serial = this.loadSerial, generation = currentSessionGeneration()
       this.optionsLoading = true; this.optionError = ''
-      try { const d = await studentApi.getDormOptions(); this.buildings = d.buildings || [] }
-      catch (e) { this.buildings = []; this.optionError = normalizeError(e).text || '可选楼栋加载失败' }
-      finally { this.optionsLoading = false }
+      try { const d = await studentApi.getDormOptions(); if (this.isCurrent(serial, generation)) this.buildings = d.buildings || [] }
+      catch (e) { if (this.isCurrent(serial, generation)) { this.buildings = []; this.optionError = normalizeError(e).text || '可选楼栋加载失败' } }
+      finally { if (this.isCurrent(serial, generation)) this.optionsLoading = false }
     },
-    async loadTransferOptions() {
+    async loadTransferOptions(more = false) {
+      if (this.optionsLoading) return
+      const serial = this.loadSerial, generation = currentSessionGeneration(), page = more ? this.buildingPage + 1 : 1
       this.optionsLoading = true; this.optionError = ''
-      try { const d = await affairsContractApi.getDormTransferOptions(); this.buildings = d.items || [] }
-      catch (e) { this.buildings = []; this.optionError = normalizeError(e).text || '调宿可选楼栋加载失败' }
-      finally { this.optionsLoading = false }
+      try { const d = await affairsContractApi.getDormTransferOptions({ page, pageSize: 20 }); if (!this.isCurrent(serial, generation)) return; if (!Array.isArray(d?.items)) throw new Error('调宿可选楼栋未完整加载'); this.buildings = more ? [...this.buildings, ...d.items] : d.items; this.buildingPage = page; this.buildingTotal = Number(d.total) || 0 }
+      catch (e) { if (this.isCurrent(serial, generation)) this.optionError = normalizeError(e).text || '调宿可选楼栋加载失败' }
+      finally { if (this.isCurrent(serial, generation)) this.optionsLoading = false }
     },
     async pickBuilding(b) {
       if (this.optionsLoading) return
-      this.sel = { building: b.buildingId, room: '', bed: '' }; this.rooms = []; this.beds = []; this.optionError = ''; this.optionsLoading = true
+      this.sel = { building: b.buildingId, room: '', bed: '' }; this.rooms = []; this.beds = []; this.roomPage = 1; this.roomTotal = 0; this.optionError = ''
+      if (this.cfg.hasBed) return this.loadTransferRooms()
+      const serial = this.loadSerial, generation = currentSessionGeneration(); this.optionsLoading = true
       try {
-        const d = await (this.cfg.hasBed ? affairsContractApi.getDormTransferRooms(b.buildingId) : studentApi.getDormRooms(b.buildingId))
+        const d = await studentApi.getDormRooms(b.buildingId)
+        if (!this.isCurrent(serial, generation)) return
         this.rooms = d.items || []
-      } catch (e) { this.optionError = normalizeError(e).text || '房间加载失败' }
-      finally { this.optionsLoading = false }
+      } catch (e) { if (this.isCurrent(serial, generation)) this.optionError = normalizeError(e).text || '房间加载失败' }
+      finally { if (this.isCurrent(serial, generation)) this.optionsLoading = false }
+    },
+    async loadTransferRooms(more = false) {
+      if (this.optionsLoading || !this.sel.building) return
+      const serial = this.loadSerial, generation = currentSessionGeneration(), building = this.sel.building, page = more ? this.roomPage + 1 : 1
+      this.optionsLoading = true; this.optionError = ''
+      try {
+        const d = await affairsContractApi.getDormTransferRooms(building, { page, pageSize: 20 })
+        if (!this.isCurrent(serial, generation) || building !== this.sel.building) return
+        if (!Array.isArray(d?.items)) throw new Error('调宿房间未完整加载')
+        this.rooms = more ? [...this.rooms, ...d.items] : d.items; this.roomPage = page; this.roomTotal = Number(d.total) || 0
+      } catch (e) { if (this.isCurrent(serial, generation)) this.optionError = normalizeError(e).text || '房间加载失败' }
+      finally { if (this.isCurrent(serial, generation)) this.optionsLoading = false }
+    },
+    async loadMoreRectifications() {
+      if (this.rectLoading || this.rectifications.length >= this.rectTotal) return
+      const serial = this.loadSerial, generation = currentSessionGeneration(), page = this.rectPage + 1
+      this.rectLoading = true; this.rectError = ''
+      try {
+        const data = await affairsContractApi.getMyDormRectifications({ page, pageSize: 20 })
+        if (!this.isCurrent(serial, generation)) return
+        if (!Array.isArray(data?.items)) throw new Error('整改记录未完整加载')
+        this.rectifications = [...this.rectifications, ...data.items]; this.rectTotal = Number(data.total) || 0; this.rectPage = page
+      } catch (e) { if (this.isCurrent(serial, generation)) this.rectError = normalizeError(e).text || '整改记录加载失败' }
+      finally { if (this.isCurrent(serial, generation)) this.rectLoading = false }
     },
     async pickRoom(r) {
       if (this.optionsLoading) return
+      const serial = this.loadSerial, generation = currentSessionGeneration()
       this.sel.room = r.roomId; this.sel.bed = ''; this.beds = []; this.optionError = ''; this.optionsLoading = true
       try {
         const d = await (this.cfg.hasBed ? affairsContractApi.getDormTransferBeds(r.roomId) : studentApi.getDormBeds(r.roomId))
+        if (!this.isCurrent(serial, generation)) return
         this.beds = d.items || []
-      } catch (e) { this.optionError = normalizeError(e).text || '床位加载失败' }
-      finally { this.optionsLoading = false }
+      } catch (e) { if (this.isCurrent(serial, generation)) this.optionError = normalizeError(e).text || '床位加载失败' }
+      finally { if (this.isCurrent(serial, generation)) this.optionsLoading = false }
     },
     async startRect(x) {
       if (this.submitting) return
+      const serial = this.loadSerial, generation = currentSessionGeneration()
       this.submitting = true
-      try { await affairsContractApi.startDormRectification(x.rectificationId, x.version); safeToast('已开始整改', 'success'); await this.load() }
-      catch (e) { this.showError(e, '开始整改失败') }
-      finally { this.submitting = false }
+      try { await affairsContractApi.startDormRectification(x.rectificationId, x.version); if (!this.isCurrent(serial, generation)) return; safeToast('已开始整改', 'success'); await this.load() }
+      catch (e) { if (this.isCurrent(serial, generation)) this.showError(e, '开始整改失败') }
+      finally { if (!this.disposed && generation === currentSessionGeneration()) this.submitting = false }
     },
     async uploadRectPhoto(x) {
       if (this.submitting) return
+      const serial = this.loadSerial, generation = currentSessionGeneration()
+      this.submitting = true
       try {
-        const selected = await fileSdk.choose(); if (!selected) return
-        this.submitting = true
+        const selected = await fileSdk.choose(); if (!selected || !this.isCurrent(serial, generation)) return
         const uploaded = await fileSdk.upload(selected, { bizType: 'TEMP_PRIVATE' })
+        if (!this.isCurrent(serial, generation)) return
+        if (!uploaded?.fileId && !uploaded?.id) throw new Error('上传结果缺少文件编号，请重试')
         this.rectFiles[x.rectificationId] = { fileId: String(uploaded.fileId || uploaded.id), fileName: uploaded.fileName || selected.name || '整改照片' }
-        this.rectRequestIds[x.rectificationId] = createClientRequestId('dorm-rectify')
-      } catch (e) { this.showError(e, '照片上传失败') }
-      finally { this.submitting = false }
+      } catch (e) { if (this.isCurrent(serial, generation)) this.showError(e, '照片上传失败') }
+      finally { if (!this.disposed && generation === currentSessionGeneration()) this.submitting = false }
     },
     async submitRect(x) {
+      if (this.submitting) return
+      const serial = this.loadSerial, generation = currentSessionGeneration()
       const note = String(this.rectNotes[x.rectificationId] || '').trim(); const file = this.rectFiles[x.rectificationId]
       if (note.length < 5 || !file) return safeToast('请填写至少5字整改说明并上传照片')
       this.submitting = true
       try {
-        if (!this.rectRequestIds[x.rectificationId]) this.rectRequestIds[x.rectificationId] = createClientRequestId('dorm-rectify')
+        const payloadKey = JSON.stringify([x.version, note, file.fileId])
+        if (!this.rectRequestIds[x.rectificationId] || this.rectRequestPayloads[x.rectificationId] !== payloadKey) this.rectRequestIds[x.rectificationId] = createClientRequestId('dorm-rectify')
+        this.rectRequestPayloads[x.rectificationId] = payloadKey
         await affairsContractApi.submitDormRectification(x.rectificationId, { expectedVersion: x.version, note, fileIds: [file.fileId], clientRequestId: this.rectRequestIds[x.rectificationId] })
+        if (!this.isCurrent(serial, generation)) return
         delete this.rectRequestIds[x.rectificationId]
+        delete this.rectRequestPayloads[x.rectificationId]
+        delete this.rectNotes[x.rectificationId]
+        delete this.rectFiles[x.rectificationId]
         safeToast('整改已提交复检', 'success'); await this.load()
-      } catch (e) { this.showError(e, '整改提交失败') }
-      finally { this.submitting = false }
+      } catch (e) { if (this.isCurrent(serial, generation)) this.showError(e, '整改提交失败') }
+      finally { if (!this.disposed && generation === currentSessionGeneration()) this.submitting = false }
     },
     confirm() {
       if (this.submitting || !this.sel.bed || !this.canChoose) return
@@ -288,14 +351,16 @@ export default {
       if (this.submitting) return
       const reason = this.confirmDlg.reason
       this.confirmDlg.visible = false
-      this.doSubmit(reason)
+      return this.doSubmit(reason)
     },
     doSubmit(reason) {
+      if (this.submitting || !this.sel.bed || !this.canChoose) return
+      const serial = this.loadSerial, generation = currentSessionGeneration(), hasBed = this.cfg.hasBed, bed = this.sel.bed
       this.submitting = true
-      this._lock.run(() => this.cfg.hasBed ? affairsContractApi.submitDormTransfer(this.sel.bed, reason) : studentApi.selfSelectBed(this.sel.bed))
-        .then(() => { safeToast(this.cfg.hasBed ? '调宿申请已提交' : '选床成功', 'success'); this.transferReason = ''; this.load() })
-        .catch((e) => { if (e && e.code === 'LOCKED') return; this.showError(e, '提交失败') })
-        .finally(() => { this.submitting = false })
+      return this._lock.run(() => { if (!this.isCurrent(serial, generation)) return; return hasBed ? affairsContractApi.submitDormTransfer(bed, reason) : studentApi.selfSelectBed(bed) })
+        .then(() => { if (!this.isCurrent(serial, generation)) return; safeToast(hasBed ? '调宿申请已提交' : '选床成功', 'success'); this.transferReason = ''; return this.load() })
+        .catch((e) => { if (!this.isCurrent(serial, generation) || e?.code === 'LOCKED') return; this.showError(e, '提交失败') })
+        .finally(() => { if (!this.disposed && generation === currentSessionGeneration()) this.submitting = false })
     }
   }
 }

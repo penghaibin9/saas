@@ -291,6 +291,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
         # 越权（非本班 classId / 教师课表 / 教室课表）一律 403002，不额外放大到排课管理/规则/冲突。
         "academicAffairs.schedule.view",
+        # 学业预警：辅导员只可查看并处置本人负责班级或正式分配给本人的预警；
+        # mobile_academic_warning_service 仍以租户、正式账号、数据范围、待办和状态机逐层裁决。
+        "academicAffairs.warning.view", "academicAffairs.warning.handle",
         # 消息中心：本班普通/重要通知发布（范围由受众服务按负责班级收敛）
         "workbench.message.publish",
         "workbench.message.class.publish",
@@ -425,7 +428,7 @@ def _granted(role: str) -> set[str]:
     return ROLE_PERMISSIONS.get(normalized, set())
 
 
-def _db_granted(user: dict) -> set[str] | None:
+def _db_granted(user: dict, *, strict: bool = False) -> set[str] | None:
     """DB 角色上下文：SYSTEM 只读发布版 RoleTemplate，CUSTOM 只读 t_role_permission。"""
     context_id = str(user.get("activeContextId") or "")
     tenant_id = str(user.get("tenantId") or "")
@@ -458,6 +461,8 @@ def _db_granted(user: dict) -> set[str] | None:
             db.close()
     except Exception:
         # 鉴权 Authority 读取异常默认拒绝，绝不回落为更宽的静态内置授权。
+        if strict:
+            raise
         return set()
 
 
@@ -482,7 +487,7 @@ def _covers_school_permission_universe(patterns: Iterable[str]) -> bool:
     return bool(universe) and all(_match(code, normalized) for code in universe)
 
 
-def get_base_permission_patterns(user: dict) -> list[str]:
+def get_base_permission_patterns(user: dict, *, strict: bool = False) -> list[str]:
     """不含临时授权的基础权限。
 
     临时授权创建时必须用本函数校验授权上限，禁止把别人临时授予的权限
@@ -490,7 +495,7 @@ def get_base_permission_patterns(user: dict) -> list[str]:
     """
     if is_super_admin(user):
         return ["*"]
-    database_patterns = _db_granted(user)
+    database_patterns = _db_granted(user, strict=True) if strict else _db_granted(user)
     if database_patterns is not None:
         return sorted(set(database_patterns))
     role = _role_of(user)
@@ -555,15 +560,17 @@ def assert_delegable_permission_codes(user: dict | None, permission_codes: Itera
         )
 
 
-def get_effective_permission_patterns(user: dict) -> list[str]:
+def get_effective_permission_patterns(user: dict, *, strict: bool = False) -> list[str]:
     """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""
     if is_super_admin(user):
         return ["*"]
-    patterns = set(get_base_permission_patterns(user))
+    patterns = set(get_base_permission_patterns(user, strict=True) if strict else get_base_permission_patterns(user))
     try:
         from app.services import system_governance_service as gov
         patterns.update(gov.active_delegation_permission_patterns(user) or [])
     except Exception:
+        if strict:
+            raise
         pass
     return sorted(patterns)
 
@@ -583,6 +590,30 @@ def has_permission(user: dict, code: str) -> bool:
         if from_db is None:
             return False
     return _match(code, patterns)
+
+
+def permission_decisions(user: dict, codes: Iterable[str]) -> dict[str, bool]:
+    """Resolve multiple non-mutating permission checks from one authority snapshot.
+
+    A page context commonly needs dozens of button decisions.  Fetching the same role
+    template and delegation set for every code turns that harmless projection into a
+    database hot path.  This helper intentionally keeps the snapshot request-local:
+    every new HTTP request re-reads authority, so a revocation takes effect immediately.
+    Deny exceptions and the legacy ``*`` probe retain the canonical per-code path.
+    """
+    requested = tuple(dict.fromkeys(str(code or "").strip() for code in codes if str(code or "").strip()))
+    if not requested:
+        return {}
+    patterns = get_effective_permission_patterns(user)
+    denied = ROLE_PERMISSION_DENY.get(_role_of(user), ())
+    return {
+        code: (
+            has_permission(user, code)
+            if code == "*" or (code in denied and "*" not in patterns)
+            else _match(code, patterns)
+        )
+        for code in requested
+    }
 
 
 def get_effective_access_context(

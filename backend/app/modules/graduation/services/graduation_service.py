@@ -8,11 +8,13 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.core.permissions import enforce_permission
+from app.core.permissions import enforce_permission, permission_decisions
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic, StudentAccountLink,
                         UnifiedMessage)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
+from app.modules.graduation.services import graduation_proposal_read_service as proposal_read
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
 )
@@ -97,7 +99,7 @@ def _deliver_student_reminder(db, stu, *, task_name: str, action_key: str, chann
     if not link:
         raise AppException("DELIVERY_FAILED", "学生未绑定有效登录账号，提醒未发送")
 
-    batch = db.get(GraduationBatch, stu.batch_id)
+    batch = tenant_get(db, GraduationBatch, stu.batch_id)
     batch_name = batch.batch_name if batch else ""
     deadline = None
     expected_stages = ("PROPOSAL",) if task_name == "开题报告" else ("SUBMISSION", "FINAL_CHECK")
@@ -213,7 +215,7 @@ def _mark_material_files(db, attachment_ids: list[str]) -> None:
 
 
 def _stu_of(db, sid):
-    return db.get(GraduationStudent, sid)
+    return tenant_get(db, GraduationStudent, sid)
 
 
 def resolve_material_download(file_id: str):
@@ -231,7 +233,7 @@ def resolve_material_download(file_id: str):
             bound = {_att_id(raw) for raw in (material.attachments_json or [])}
             if file_id not in bound:
                 continue
-            student = db.get(GraduationStudent, material.gd_student_id)
+            student = tenant_get(db, GraduationStudent, material.gd_student_id)
             assert_student_access(db, student, "graduation.material.download")
             return file_service.resolve_download(file_id, allow_graduation_material=True)
     return None
@@ -348,17 +350,20 @@ def list_proposals(page, ps, keyword=None, status=None, batch_id=None):
 
 def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
     """派生未提交开题报告的学生：已确认选题（topic_id 存在或阶段已过选题中）且无任何开题记录。"""
-    have = {r for (r,) in db.execute(select(GraduationProposal.gd_student_id).where(
-        GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False))).all()}
+    visible_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+    if not visible_ids:
+        return []
+    scope = visible_ids
+    have = set(db.scalars(select(GraduationProposal.gd_student_id).where(
+        GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
+        GraduationProposal.gd_student_id.in_(scope),
+    )).all())
     stus = db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-        GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
+        GraduationStudent.record_status == "ACTIVE", GraduationStudent.id.in_(scope),
+    ).order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
-        if not can_access_student(db, s):
-            continue
-        if not _match_batch(s, batch_id):
-            continue
         if s.id in have:
             continue
         confirmed_topic = bool(s.topic_id) or s.stage not in ("TOPIC_SELECTING", None, "")
@@ -372,7 +377,6 @@ def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
                      "version": "—", "isResubmit": False, "submitAt": "", "attachments": 0,
                      "status": "NOT_SUBMITTED", "statusLabel": L_MAT["NOT_SUBMITTED"]})
     return rows
-
 
 def get_proposal_detail(pid) -> dict:
     with session() as db:
@@ -416,7 +420,7 @@ def review_proposal(pid, action, comment=None) -> dict:
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationProposal, int(pid))
+        p = tenant_get(db, GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
@@ -546,7 +550,7 @@ def hold_proposal_defense(pid, result, comment=None) -> dict:
     if result == "FAIL" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "开题答辩不通过时评语必填且不少于 5 字")
     with session() as db:
-        p = db.get(GraduationProposal, int(pid))
+        p = tenant_get(db, GraduationProposal, int(pid))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("开题材料不存在")
         stu = _stu_of(db, p.gd_student_id)
@@ -822,7 +826,7 @@ def review_final(fid, action, comment=None) -> dict:
 def get_final_detail(fid) -> dict:
     """成果批阅详情：本条 + 同生历史版本 + 退回意见 + 真实附件（文件中心解析）。供教师移动端批阅前查看。"""
     with session() as db:
-        f = db.get(GraduationFinal, int(fid))
+        f = tenant_get(db, GraduationFinal, int(fid))
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
@@ -1008,7 +1012,7 @@ def _recompute_defense(db, g):
 def _require_defense_batch(db, batch_id) -> GraduationBatch:
     if batch_id is None or batch_id == "":
         raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次 batchId")
-    b = db.get(GraduationBatch, int(batch_id))
+    b = tenant_get(db, GraduationBatch, int(batch_id))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("毕设批次不存在")
     if b.status in ("ARCHIVED", "VOIDED"):
@@ -1083,7 +1087,7 @@ def update_defense_group(gid, group_name=None, defense_date=None, location=None,
                          member_mentor_ids=None) -> dict:
     """编辑不可改 batch_id（禁止跨批迁移）。"""
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if group_name and group_name.strip():
@@ -1115,7 +1119,7 @@ def update_defense_group(gid, group_name=None, defense_date=None, location=None,
 
 def get_defense_group_detail(gid) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
@@ -1148,7 +1152,7 @@ def list_defense_eligible_students(gid=None, keyword=None) -> list:
         group_batch = None
         gid_int = int(gid) if gid else None
         if gid_int:
-            g = db.get(GraduationDefenseGroup, gid_int)
+            g = tenant_get(db, GraduationDefenseGroup, gid_int)
             if not g or g.is_deleted or g.tenant_id != _tid():
                 raise not_found("答辩组不存在")
             group_batch = g.batch_id
@@ -1175,7 +1179,7 @@ def list_defense_eligible_students(gid=None, keyword=None) -> list:
 
 def assign_defense_students(gid, student_ids) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not g.batch_id:
@@ -1183,7 +1187,7 @@ def assign_defense_students(gid, student_ids) -> dict:
         current = len(_assigned_students(db, g.id))
         add_ids = [int(x) for x in (student_ids or [])]
         for sid in add_ids:
-            s = db.get(GraduationStudent, sid)
+            s = tenant_get(db, GraduationStudent, sid)
             if not s or s.is_deleted or s.tenant_id != _tid():
                 raise not_found(f"学生 {sid} 不存在")
             if s.defense_group_id == g.id:
@@ -1222,11 +1226,11 @@ def assign_defense_students(gid, student_ids) -> dict:
 
 def unassign_defense_students(gid, student_ids) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         for sid in [int(x) for x in (student_ids or [])]:
-            s = db.get(GraduationStudent, sid)
+            s = tenant_get(db, GraduationStudent, sid)
             if s and s.defense_group_id == g.id:
                 s.defense_group_id = None
                 s.defense_group = None
@@ -1240,7 +1244,7 @@ def unassign_defense_students(gid, student_ids) -> dict:
 
 def publish_defense(gid) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         _recompute_defense(db, g)  # 发布前按最新分配重算冲突/人数
@@ -1264,7 +1268,7 @@ def notify_defense_group(gid, user=None) -> dict:
     if not gid:
         raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
@@ -1369,12 +1373,12 @@ def export_defense_xlsx(batch_id=None) -> dict:
 def student_defense_view(gd_student_id) -> dict:
     """学生端查看本人答辩安排（仅已发布才展示时间/地点/评委）。"""
     with session() as db:
-        s = db.get(GraduationStudent, int(gd_student_id))
+        s = tenant_get(db, GraduationStudent, int(gd_student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             return {"hasData": False}
         if not s.defense_group_id:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
-        g = db.get(GraduationDefenseGroup, s.defense_group_id)
+        g = tenant_get(db, GraduationDefenseGroup, s.defense_group_id)
         if not g or g.is_deleted:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
         if not g.published:
@@ -1415,91 +1419,125 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         return _page(items, page, ps)
 
 
+_DASHBOARD_PERMISSION_CODES = (
+    "graduationDesign.proposal.view",
+    "graduationDesign.final.view",
+    "graduationDesign.proposal.review",
+    "graduationDesign.final.review",
+    "graduationDesign.defense.view",
+    "graduationDesign.defense.publish",
+    "graduationDesign.proposal.remind",
+    "graduationDesign.risk.view",
+    "graduationDesign.risk.accept",
+    "graduationDesign.risk.process",
+    "graduationDesign.risk.close",
+)
+
+
 def get_dashboard(batch_id=None) -> dict:
+    current_user = get_current_user_ctx() or {}
+    permissions = permission_decisions(current_user, _DASHBOARD_PERMISSION_CODES)
+    can_view_proposal = permissions["graduationDesign.proposal.view"]
+    can_view_final = permissions["graduationDesign.final.view"]
+    can_review_proposal = can_view_proposal and permissions["graduationDesign.proposal.review"]
+    can_review_final = can_view_final and permissions["graduationDesign.final.review"]
+    can_view_defense = permissions["graduationDesign.defense.view"]
+    can_publish_defense = can_view_defense and permissions["graduationDesign.defense.publish"]
+    can_remind_proposal = can_view_proposal and permissions["graduationDesign.proposal.remind"]
+    can_view_risk = permissions["graduationDesign.risk.view"]
+    can_accept_risk = permissions["graduationDesign.risk.accept"]
+    can_process_risk = permissions["graduationDesign.risk.process"]
+    can_close_risk = permissions["graduationDesign.risk.close"]
+
+    def _risk_action(row):
+        status = str(row.get("status") or "").upper()
+        if status == "OPEN" and can_accept_risk:
+            return "去受理"
+        if status == "PROCESSING" and can_process_risk:
+            return "记录处理"
+        if can_close_risk and (status == "PROCESSING" or (
+                status == "OPEN" and row.get("conditionActive") is False)):
+            return "关闭风险"
+        return ""
     with session() as db:
-        visible_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        total = len(visible_ids)
-        scope = visible_ids or [-1]
-        pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
-            GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
-            GraduationProposal.is_deleted.is_(False),
-            GraduationProposal.gd_student_id.in_(scope))) or 0
-        pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False),
-            GraduationFinal.gd_student_id.in_(scope))) or 0
-        high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
-            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(scope))) or 0
-        flow = {}
-        for s in db.scalars(select(GraduationStudent).where(
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.id.in_(scope))).all():
-            flow[s.stage] = flow.get(s.stage, 0) + 1
+        # 看板只需要聚合数字和最多 8 条对象，不能先把整个批次的学生 ID / ORM
+        # 实体读取到 Python。复用开题读模型的同一 SQL 数据范围，避免看板和列表
+        # 对学院、专业、导师等角色出现范围口径分叉。
+        scope = proposal_read.student_scope_select(db, _tid(), batch_id=batch_id)
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationStudent).where(GraduationStudent.id.in_(scope))
+        ) or 0)
+        pend_prop = 0
+        if can_review_proposal:
+            pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
+                GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
+                GraduationProposal.is_deleted.is_(False),
+                GraduationProposal.gd_student_id.in_(scope))) or 0
+        pend_final = 0
+        if can_review_final:
+            pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+                GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope))) or 0
+        high_risk = 0
+        if can_view_risk:
+            high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
+                GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(scope))) or 0
+        flow = {
+            str(stage): int(count)
+            for stage, count in db.execute(
+                select(GraduationStudent.stage, func.count())
+                .where(GraduationStudent.id.in_(scope))
+                .group_by(GraduationStudent.stage)
+            ).all()
+        }
         # 答辩待发布：按答辩组自身 batch_id（与列表/导出一致）
         bid = int(batch_id) if batch_id else None
-        defense_q = select(GraduationDefenseGroup).where(
-            GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
-            GraduationDefenseGroup.is_deleted.is_(False))
-        if bid is not None:
-            defense_q = defense_q.where(GraduationDefenseGroup.batch_id == bid)
-        defense_groups = db.scalars(defense_q).all()
+        defense_groups = []
+        if can_view_defense:
+            defense_q = select(GraduationDefenseGroup).where(
+                GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
+                GraduationDefenseGroup.is_deleted.is_(False))
+            if bid is not None:
+                defense_q = defense_q.where(GraduationDefenseGroup.batch_id == bid)
+            defense_groups = db.scalars(defense_q).all()
         pend_defense = 0
         for group in defense_groups:
             if not _can_access_defense_group(db, group):
                 continue
             pend_defense += 1
         # 未提交开题：与开题列表同一批次
-        not_submitted_rows = _not_submitted_proposals(db, batch_id=batch_id)
-        not_submitted = len(not_submitted_rows)
+        if can_remind_proposal:
+            # 复用真分页读模型：count 由 SQL 完成，首屏只取任务卡实际会显示的 8 条。
+            not_submitted_rows, not_submitted = proposal_read.list_proposals(
+                db, _tid(), 1, 8, status="NOT_SUBMITTED", batch_id=batch_id
+            )
+        else:
+            not_submitted_rows, not_submitted = [], 0
         # 真实风险预警（未关闭；限定当前批次）
         risk_alerts = []
-        try:
-            from app.modules.graduation.services import graduation_risk_service as risk_svc
-            items, _ = risk_svc.list_risks(1, 50, batch_id=batch_id)
-            for r in items:
-                if r.get("status") == "CLOSED":
-                    continue
-                risk_alerts.append({"id": r["id"], "code": r["riskCode"], "title": r["riskName"],
-                                    "gdStudentId": r.get("gdStudentId"),
-                                    "studentName": r.get("studentName") or "",
-                                    "level": r.get("level") or "MEDIUM",
-                                    "detail": f"{r.get('studentName') or '—'}"
-                                              + (f" · 指导 {r['advisorName']}" if r.get("advisorName") else "")
-                                              + f" · {r.get('statusLabel') or ''}",
-                                    "time": r.get("detectedAt") or ""})
-                if len(risk_alerts) >= 6:
-                    break
-        except Exception:  # noqa: BLE001 - 风险模块异常不应影响看板主体
-            risk_alerts = []
-        # 跨模块统计：与综合统计同一批次
-        module_stats = []
-        try:
-            from app.modules.graduation.services import graduation_stats_service as stats_svc
-            ov = stats_svc.overview_stats(batch_id=batch_id)
-            m, gu, mt = ov.get("mentor", {}), ov.get("guidance", {}), ov.get("midterm", {})
-            rv, gr, ar = ov.get("review", {}), ov.get("grade", {}), ov.get("archive", {})
-
-            def _done(stat, key):
-                return next((x["count"] for x in stat.get("byStatus", []) if x["status"] == key), 0)
-            module_stats = [
-                {"label": "导师已合格", "value": str(m.get("qualifiedCount", 0)),
-                 "hint": f"未分配学生 {m.get('unassignedStudents', 0)} · 满员 {m.get('fullCapacityCount', 0)}"},
-                {"label": "指导平均次数", "value": str(gu.get("avgCount", 0)),
-                 "hint": f"频次不足 {gu.get('insufficientCount', 0)} 人"},
-                {"label": "中期检查", "value": str(mt.get("total", 0)),
-                 "hint": f"待检 {_done(mt, 'PENDING')}"},
-                {"label": "教师评阅", "value": str(rv.get("total", 0)),
-                 "hint": f"已完成 {_done(rv, 'COMPLETED')}"},
-                {"label": "成绩已发布均分", "value": str(gr.get("publishedAvg") or "—"),
-                 "hint": f"优秀 {gr.get('excellentCount', 0)} 人"},
-                {"label": "归档率", "value": f"{ar.get('archiveRate', 0)}%",
-                 "hint": f"已备案 {ar.get('filedCount', 0)}/{ar.get('studentTotal', 0)}"},
-            ]
-        except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
-            module_stats = []
-
+        if can_view_risk:
+            try:
+                from app.modules.graduation.services import graduation_risk_service as risk_svc
+                items, _ = risk_svc.list_risks(1, 50, batch_id=batch_id)
+                for r in items:
+                    if r.get("status") == "CLOSED":
+                        continue
+                    action_label = _risk_action(r)
+                    risk_alerts.append({"id": r["id"], "code": r["riskCode"], "title": r["riskName"],
+                                        "gdStudentId": r.get("gdStudentId"),
+                                        "studentName": r.get("studentName") or "",
+                                        "level": r.get("level") or "MEDIUM",
+                                        "detail": f"{r.get('studentName') or '—'}"
+                                                  + (f" · 指导 {r['advisorName']}" if r.get("advisorName") else "")
+                                                  + f" · {r.get('statusLabel') or ''}",
+                                        "time": r.get("detectedAt") or "",
+                                        "actionLabel": action_label or "查看",
+                                        "canHandle": bool(action_label)})
+                    if len(risk_alerts) >= 6:
+                        break
+            except Exception:  # noqa: BLE001 - 风险模块异常不应影响看板主体
+                risk_alerts = []
         # 角色范围内的「今天具体做什么」。聚合数字留在第二层，第一层必须是可以直接
         # 落到某个学生/业务对象的工作项，避免用数量大小冒充优先级。
         today_work_items = []
@@ -1510,7 +1548,8 @@ def get_dashboard(batch_id=None) -> dict:
                 clean["batchId"] = str(batch_id)
             return {"label": label, "path": path, "query": clean}
 
-        for risk in risk_alerts:
+        actionable_risks = [risk for risk in risk_alerts if risk.get("canHandle")]
+        for risk in actionable_risks:
             level = str(risk.get("level") or "MEDIUM").upper()
             today_work_items.append({
                 "id": f"risk:{risk['id']}",
@@ -1522,17 +1561,22 @@ def get_dashboard(batch_id=None) -> dict:
                 "nextActor": "风险复核人与该生后续环节负责人",
                 "dueAt": "",
                 "recentChange": risk.get("time") or "最近一次风险扫描仍命中",
-                "primaryAction": _action("去处置", "/admin/graduation/risk-archive", panel="risk", rsel=risk.get("id")),
+                "primaryAction": _action(risk.get("actionLabel") or "查看风险",
+                                           "/admin/graduation/risk-archive", panel="risk", rsel=risk.get("id")),
             })
 
-        pending_proposals = db.scalars(select(GraduationProposal).where(
-            GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
-            GraduationProposal.is_deleted.is_(False), GraduationProposal.gd_student_id.in_(scope),
-        ).order_by(GraduationProposal.submit_at.asc(), GraduationProposal.id.asc()).limit(8)).all()
-        pending_finals = db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
-        ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
+        pending_proposals = []
+        if can_review_proposal:
+            pending_proposals = db.scalars(select(GraduationProposal).where(
+                GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
+                GraduationProposal.is_deleted.is_(False), GraduationProposal.gd_student_id.in_(scope),
+            ).order_by(GraduationProposal.submit_at.asc(), GraduationProposal.id.asc()).limit(8)).all()
+        pending_finals = []
+        if can_review_final:
+            pending_finals = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+                GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
+            ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
         pending_student_ids = {
             int(row.gd_student_id) for row in (*pending_proposals, *pending_finals)
             if row.gd_student_id is not None
@@ -1584,16 +1628,17 @@ def get_dashboard(batch_id=None) -> dict:
                 "primaryAction": _action("查看并催交", "/admin/graduation/proposals", tab="NOT_SUBMITTED", studentId=student_id),
             })
 
-        for group in defense_groups[:8]:
-            today_work_items.append({
-                "id": f"defense-group:{group.id}", "priority": "RELEASE_BLOCKER",
-                "student": {"id": "", "name": group.group_name or "未命名答辩组"},
-                "business": "答辩发布", "whyHere": "答辩组已创建但尚未发布，学生还看不到时间与地点。",
-                "waitingOn": "答辩安排负责人",
-                "nextActor": "学生与答辩专家",
-                "dueAt": group.defense_date or "", "recentChange": "等待发布",
-                "primaryAction": _action("检查并发布", "/admin/graduation/defense", groupId=group.id),
-            })
+        if can_publish_defense:
+            for group in defense_groups[:8]:
+                today_work_items.append({
+                    "id": f"defense-group:{group.id}", "priority": "RELEASE_BLOCKER",
+                    "student": {"id": "", "name": group.group_name or "未命名答辩组"},
+                    "business": "答辩发布", "whyHere": "答辩组已创建但尚未发布，学生还看不到时间与地点。",
+                    "waitingOn": "答辩安排负责人",
+                    "nextActor": "学生与答辩专家",
+                    "dueAt": group.defense_date or "", "recentChange": "等待发布",
+                    "primaryAction": _action("检查并发布", "/admin/graduation/defense", groupId=group.id),
+                })
 
         priority_rank = {
             "CRITICAL": 0, "HIGH": 1, "OVERDUE": 2, "DUE_24H": 3,
@@ -1607,7 +1652,7 @@ def get_dashboard(batch_id=None) -> dict:
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
         cur_batch = None
         if batch_id:
-            cur_batch = db.get(GraduationBatch, int(batch_id))
+            cur_batch = tenant_get(db, GraduationBatch, int(batch_id))
             if cur_batch and (cur_batch.tenant_id != _tid() or cur_batch.is_deleted):
                 cur_batch = None
         if not cur_batch:
@@ -1627,38 +1672,52 @@ def get_dashboard(batch_id=None) -> dict:
         else:
             batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
         _active_stage = _active_student_stage(cur_batch)
+        stats = [
+            {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
+        ]
+        if can_review_proposal:
+            stats.append({"label": "开题待审阅", "value": str(pend_prop),
+                          "trend": f"待批 {pend_prop}", "trendQuality": "bad" if pend_prop else "good"})
+        if can_review_final:
+            stats.append({"label": "成果待审阅", "value": str(pend_final),
+                          "trend": f"待批 {pend_final}", "trendQuality": "neutral"})
+        if can_view_defense:
+            stats.append({"label": "答辩待发布", "value": str(pend_defense),
+                          "trend": f"未发布 {pend_defense} 组", "trendQuality": "neutral"})
+        if can_view_risk:
+            stats.append({"label": "高风险学生", "value": str(high_risk),
+                          "trend": "", "trendQuality": "bad" if high_risk else "good"})
+        todos = []
+        if can_review_proposal:
+            todos.append({"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",
+                          "route": "/admin/graduation/proposals", "hint": "指导教师批阅开题报告"})
+        if can_remind_proposal:
+            todos.append({"id": "t2", "label": "开题未提交催交", "count": not_submitted, "tone": "warning",
+                          "route": "/admin/graduation/proposals", "hint": "已确认选题但未交开题"})
+        if can_review_final:
+            todos.append({"id": "t3", "label": "成果待审阅", "count": pend_final, "tone": "warning",
+                          "route": "/admin/graduation/finals", "hint": "论文初稿/定稿批阅"})
+        if can_publish_defense:
+            todos.append({"id": "t4", "label": "答辩组待发布", "count": pend_defense, "tone": "warning",
+                          "route": "/admin/graduation/defense", "hint": "分组排期完成后发布"})
+        if actionable_risks:
+            todos.append({"id": "t5", "label": "未处理风险", "count": len(actionable_risks), "tone": "danger",
+                          "route": "/admin/graduation/risk-archive",
+                          "hint": "受理并处置过程风险"})
         return {"batchId": str(batch_id) if batch_id else (str(cur_batch.id) if cur_batch else None),
                 "batchName": batch_name, "batchRange": batch_range,
-                "moduleStats": module_stats,
+                # 跨模块统计由折叠区按需走 /graduation/gd-stats/overview，不能拖慢首次打开总览。
+                "moduleStats": [],
+                "moduleStatsDeferred": True,
                 "batchStatus": batch_status,
-                "stats": [
-                    {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
-                    {"label": "开题待审阅", "value": str(pend_prop),
-                     "trend": f"待批 {pend_prop}", "trendQuality": "bad" if pend_prop else "good"},
-                    {"label": "成果待审阅", "value": str(pend_final),
-                     "trend": f"待批 {pend_final}", "trendQuality": "neutral"},
-                    {"label": "答辩待发布", "value": str(pend_defense),
-                     "trend": f"未发布 {pend_defense} 组", "trendQuality": "neutral"},
-                    {"label": "高风险学生", "value": str(high_risk),
-                     "trend": "", "trendQuality": "bad" if high_risk else "good"},
-                ],
+                "stats": stats,
                 # active 按当前批次阶段时间轴真实推算（此前写死 FINAL_CHECK，无论毕设走到哪
                 # 都恒亮「成果检查」）。未配阶段日期时 _active_student_stage 返回 None，不高亮。
                 "flow": [{"label": L_STAGE[k], "value": flow.get(k, 0), "active": k == _active_stage}
                           for k in L_STAGE],
                 "todayWorkItems": today_work_items[:20],
-                "todos": [
-                    {"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",
-                     "route": "/admin/graduation/proposals", "hint": "指导教师批阅开题报告"},
-                    {"id": "t2", "label": "开题未提交催交", "count": not_submitted, "tone": "warning",
-                     "route": "/admin/graduation/proposals", "hint": "已确认选题但未交开题"},
-                    {"id": "t3", "label": "成果待审阅", "count": pend_final, "tone": "warning",
-                     "route": "/admin/graduation/finals", "hint": "论文初稿/定稿批阅"},
-                    {"id": "t4", "label": "答辩组待发布", "count": pend_defense, "tone": "warning",
-                     "route": "/admin/graduation/defense", "hint": "分组排期完成后发布"},
-                    {"id": "t5", "label": "未处理风险", "count": len(risk_alerts), "tone": "danger",
-                     "route": "/admin/graduation/risk-archive", "hint": "受理并处置过程风险"},
-                ],
+                "actionableRiskCount": len(actionable_risks),
+                "todos": todos,
                 "riskAlerts": risk_alerts}
 
 

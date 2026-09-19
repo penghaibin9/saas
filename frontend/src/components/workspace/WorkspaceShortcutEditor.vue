@@ -1,5 +1,6 @@
 <template>
-  <dialog ref="dialog" class="shortcut-editor" aria-labelledby="shortcut-editor-title" @close="dragged = ''">
+  <dialog ref="dialog" class="shortcut-editor" aria-labelledby="shortcut-editor-title" @close="dragged = ''; opened = false">
+    <template v-if="opened">
     <header class="editor-head"><div><p>常用入口，按你的习惯排列</p><h2 id="shortcut-editor-title">编辑快捷栏</h2></div><button type="button" class="icon-button" aria-label="关闭快捷栏编辑" @click="dialog.close()"><Close /></button></header>
     <div class="editor-body">
       <section class="editor-selection">
@@ -31,25 +32,31 @@
       </section>
     </div>
     <footer class="editor-footer"><button type="button" class="reset-button" @click="resetDraft">恢复默认</button><span>保存后生效</span><button type="button" @click="dialog.close()">取消</button><button type="button" class="save-button" @click="save">保存快捷栏</button></footer>
+    </template>
   </dialog>
 </template>
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowUp, ArrowDown, Check, Close, Rank } from '@element-plus/icons-vue'
 import { restoreWorkspace, shortcutAppearance, WORKSPACE_TONES } from './teacherWorkspace'
 import { SHORTCUT_ICONS, SHORTCUT_ICON_LABELS } from './shortcutIcons'
 const props = defineProps({ pages: { type: Array, required: true }, prefs: { type: Object, required: true }, identityKey: { type: String, required: true } })
 const emit = defineEmits(['save'])
+const opened = ref(false)
 const dialog = ref(null), draft = ref({ shortcuts: [], appearance: {} }), selectedId = ref(''), tab = ref('add'), query = ref(''), dragged = ref('')
 const selectedPages = computed(() => draft.value.shortcuts.map(id => props.pages.find(page => page.id === id)).filter(Boolean))
 const selectedPage = computed(() => props.pages.find(page => page.id === selectedId.value))
 const availablePages = computed(() => props.pages.filter(page => `${page.title} ${page.trail}`.toLowerCase().includes(query.value.trim().toLowerCase())))
 const look = page => shortcutAppearance(page, draft.value.appearance)
 const iconStyle = page => ({ background: WORKSPACE_TONES[look(page).color].value })
-function open() {
+async function open() {
   const restored = restoreWorkspace(props.prefs, props.pages)
   draft.value = { shortcuts: [...restored.shortcuts], appearance: structuredClone(restored.appearance) }
   selectedId.value = draft.value.shortcuts[0] || ''; tab.value = selectedId.value ? 'style' : 'add'; query.value = ''
+  opened.value = true
+  const identity = props.identityKey
+  await nextTick()
+  if (identity !== props.identityKey || !dialog.value) { opened.value = false; return }
   dialog.value.showModal()
 }
 function select(id) { selectedId.value = id; tab.value = 'style' }

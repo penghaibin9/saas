@@ -36,7 +36,10 @@ test('学生 PC 目标页面消费首页传入的业务 ID', () => {
 test('学生注册使用非阻塞确认并在成功后保留动作回执', () => {
   const source = read('../src/views/academic/StudentRegistrationView.vue')
 
-  assert.equal(source.includes('window.confirm'), false)
+  // The registration dialog is independent of the deferral application's confirmation.
+  const registration = source.match(/async function register\([^]*?(?=\n(?:async )?function |\nconst |\nwatch\()/)?.[0]
+  assert.ok(registration, '缺少正式注册办理函数')
+  assert.equal(registration.includes('window.confirm'), false)
   for (const marker of [
     'role="dialog"', 'aria-modal="true"', '确认并提交注册',
     'actionReceipt', '本学期注册已完成', '查看本学期课表'

@@ -9,7 +9,7 @@
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.leaveCount }}</text><text class="stat-strip__label">请假</text></view>
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.aidApproved }}</text><text class="stat-strip__label">困难认定</text></view>
         <view class="stat-strip__item"><text class="stat-strip__val">{{ data.fundingGranted }}</text><text class="stat-strip__label">获资助</text></view>
-        <view class="stat-strip__item"><text class="stat-strip__val">{{ openMaterials.length }}</text><text class="stat-strip__label">待补材料</text></view>
+        <view class="stat-strip__item"><text class="stat-strip__val">{{ materialLoading || materialError ? '—' : openMaterials.length }}</text><text class="stat-strip__label">本页待补</text></view>
       </view>
     </view>
 
@@ -36,10 +36,11 @@
           </view>
         </view>
 
-        <view id="affairs-material-section" class="section-head"><text class="section-head__title">材料补交</text><text class="af__refresh" @click="loadMaterials">刷新</text></view>
+        <view id="affairs-material-section" class="section-head"><text class="section-head__title">材料补交</text><text class="af__refresh" @click="loadMaterials()">{{ materialLoading ? '加载中…' : '刷新' }}</text></view>
         <view v-if="materialReturnContext.bizType" class="card af__context"><text>仅显示{{ bizLabel(materialReturnContext.bizType) }}材料</text><button class="btn" @click="returnToApplication">{{ materialReturnContext.bizType === 'PROFILE' ? '返回学生档案' : '返回原申请' }}</button></view>
         <MobileInlineAlert v-if="materialError" type="warning" title="材料列表暂不可用" :description="materialError" />
-        <view v-else-if="!materials.length" class="card af__empty"><text>暂无材料缺项</text></view>
+        <view v-else-if="materialLoading" class="card af__empty"><text>正在读取材料…</text></view>
+        <view v-else-if="!materials.length" class="card af__empty"><text>{{ focusMaterialId ? '未找到这项材料，请返回原申请核对' : '暂无材料记录' }}</text></view>
         <view v-else class="stack">
           <view
             v-for="item in materials"
@@ -110,6 +111,7 @@ import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
 import { go, toast } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
 const ENTRIES = [
@@ -120,7 +122,7 @@ const ENTRIES = [
   { key: 'discipline', label: '违纪申诉', icon: '⚖️', route: '/pages/student/affairs/discipline' },
   { key: 'talk', label: '谈心谈话', icon: '💬', route: '/pages/student/affairs/talk' },
   { key: 'activity', label: '活动与二课', icon: '🎉', route: '/pages/student/affairs/activity' },
-  { key: 'service', label: '在校服务', icon: '🏫', route: '/pages/student/campus-service/index' }
+  { key: 'service', label: '服务申请', icon: '🏫', route: '/pages/student/service-apply/index' }
 ]
 
 export default {
@@ -142,13 +144,18 @@ export default {
       materialPage: 1,
       materialPageSize: 20,
       materialTotal: 0,
+      materialLoading: false,
+      materialLoadSeq: 0,
+      pageDisposed: false,
       materialLoadingMore: false
     }
   },
   onLoad(query) {
     this.leaveContext = query && ['PROFILE', 'LEAVE', 'AID', 'FUNDING'].includes(query.bizType) && /^\d+$/.test(String(query.bizId || '')) ? { bizType: query.bizType, bizId: query.bizId } : {}
     this.statusBarHeight = getStatusBarHeight()
-    this.focusMaterialId = String((query && (query.materialRequirementId || query.requirementId)) || '')
+    this._session = currentSessionGeneration()
+    const focusId = String((query && (query.materialRequirementId || query.requirementId)) || '')
+    this.focusMaterialId = /^\d+$/.test(focusId) ? focusId : ''
     this.load()
     // #ifdef H5
     this._beforeUnload = (event) => {
@@ -158,9 +165,25 @@ export default {
     window.addEventListener('beforeunload', this._beforeUnload)
     // #endif
   },
-  onShow() { this.pageVisible = true; this.syncMaterialLeaveAlert() },
-  onHide() { this.pageVisible = false; this.syncMaterialLeaveAlert() },
+  onShow() {
+    this.pageVisible = true
+    if (this._session !== undefined && this._session !== currentSessionGeneration()) {
+      this.data = null; this.disc = null; this.materials = []; this.materialTotal = 0
+      this.selectedFiles = {}; this.materialNotes = {}; this.uploadedMaterials = {}; this.materialNotices = {}
+      this.leaveContext = {}; this.focusMaterialId = ''; this.materialBusy = ''
+      this.materialLoading = false; this.materialLoadingMore = false; this.materialLoadSeq++
+      this._loadPromise = null; this._materialsPromise = null
+      this._session = currentSessionGeneration()
+      this._resumeLoad = true
+    }
+    if (this._resumeLoad && !this.materialBusy && !this.hasMaterialDraft()) this.load()
+    this._resumeLoad = false
+    this.syncMaterialLeaveAlert()
+  },
+  onHide() { this.pageVisible = false; this._resumeLoad = true; this.syncMaterialLeaveAlert() },
   onUnload() {
+    this.pageDisposed = true
+    clearTimeout(this._materialScrollTimer)
     this.pageVisible = false; this.syncMaterialLeaveAlert()
     // #ifdef H5
     window.removeEventListener('beforeunload', this._beforeUnload)
@@ -182,12 +205,13 @@ export default {
     },
     materialGuardActive() { return !!this.materialBusy || this.hasMaterialDraft() },
     discNote() {
-      if (!this.disc) return '生效中处分数量'
+      if (!this.disc) return '处分摘要暂不可用，点击进入查看或重试'
       return this.disc.activeCount > 0 ? `生效中 ${this.disc.activeCount} 条（${this.disc.detailNote || '明细请联系辅导员'}）` : '暂无生效处分'
     },
-    openMaterials() { return this.materials.filter((x) => ['MISSING', 'RETURNED', 'PENDING_REVIEW'].includes(x.status)) }
+    openMaterials() { return this.materials.filter((x) => ['MISSING', 'RETURNED'].includes(x.status)) }
   },
   methods: {
+    isCurrent(session) { return !this.pageDisposed && session === currentSessionGeneration() },
     hasMaterialDraft() { return Object.values(this.selectedFiles).some(Boolean) || Object.values(this.materialNotes).some(note => String(note || '').trim()) },
     syncMaterialLeaveAlert() {
       // #ifdef MP-WEIXIN
@@ -234,61 +258,90 @@ export default {
     },
     canSubmitMaterial(item) { return (item.allowedActions || []).includes('SUBMIT_MATERIAL') },
     load() {
+      if (this._loadPromise) return this._loadPromise
+      const session = currentSessionGeneration()
       this.state = 'loading'
-      Promise.all([
+      const pending = Promise.all([
         studentApi.getAffairsOverview(),
         studentApi.getMyDiscipline().catch(() => null),
         this.loadMaterials(false)
       ]).then(([ov, d]) => {
+        if (!this.isCurrent(session)) return
+        if (!ov || typeof ov !== 'object') throw new Error('学工摘要数据格式异常')
         this.data = ov
         this.disc = d
         this.state = 'ready'
         this.scrollToMaterial()
-      }).catch(() => { this.state = 'error' })
+      }).catch(() => { if (this.isCurrent(session)) this.state = 'error' })
+        .finally(() => { if (this._loadPromise === pending) this._loadPromise = null })
+      this._loadPromise = pending
+      return pending
     },
     loadMaterials(showToast = true, reset = true) {
+      if (this.materialLoading) return this._materialsPromise
+      const session = currentSessionGeneration()
+      const seq = ++this.materialLoadSeq
+      const current = () => this.isCurrent(session) && seq === this.materialLoadSeq
+      this.materialLoading = true
+      this.materialLoadingMore = false
       this.materialError = ''
       if (reset) this.materialPage = 1
-      return affairsContractApi.getMyMaterialRequirements({
+      const pending = affairsContractApi.getMyMaterialRequirements({
         ...this.leaveContext, page: this.materialPage,
         pageSize: this.materialPageSize,
         requirementId: this.focusMaterialId || undefined
       }).then((d) => {
-        this.materials = (d && d.items) || []
-        this.materialTotal = Number((d && d.total) || 0)
+        if (!current()) return []
+        if (!d || !Array.isArray(d.items) || !Number.isFinite(Number(d.total))) throw new Error('材料列表数据格式异常，请重试')
+        this.materials = d.items
+        this.materialTotal = Number(d.total)
         this.scrollToMaterial()
         return this.materials
       }).catch((e) => {
+        if (!current()) return []
         this.materialError = normalizeError(e).text || '材料列表加载失败'
         if (showToast) toast(this.materialError)
         return []
-      })
+      }).finally(() => { if (current()) this.materialLoading = false })
+      this._materialsPromise = pending
+      return pending
     },
     loadMoreMaterials() {
-      if (this.materialLoadingMore || this.materials.length >= this.materialTotal) return
+      if (this.materialLoading || this.materialLoadingMore || this.materials.length >= this.materialTotal) return
+      const session = currentSessionGeneration()
+      const seq = this.materialLoadSeq
+      const current = () => this.isCurrent(session) && seq === this.materialLoadSeq
       this.materialLoadingMore = true
       const nextPage = this.materialPage + 1
-      affairsContractApi.getMyMaterialRequirements({ ...this.leaveContext, requirementId: this.focusMaterialId || undefined, page: nextPage, pageSize: this.materialPageSize })
+      return affairsContractApi.getMyMaterialRequirements({ ...this.leaveContext, requirementId: this.focusMaterialId || undefined, page: nextPage, pageSize: this.materialPageSize })
         .then((d) => {
-          this.materials = this.materials.concat((d && d.items) || [])
-          this.materialTotal = Number((d && d.total) || this.materialTotal)
+          if (!current()) return
+          if (!d || !Array.isArray(d.items) || !Number.isFinite(Number(d.total))) throw new Error('材料列表数据格式异常，请重试')
+          const ids = new Set(this.materials.map(item => String(item.requirementId)))
+          this.materials = this.materials.concat(d.items.filter(item => !ids.has(String(item.requirementId))))
+          this.materialTotal = Number(d.total)
           this.materialPage = nextPage
         })
-        .catch((e) => toast(normalizeError(e).text || '更多材料加载失败'))
-        .finally(() => { this.materialLoadingMore = false })
+        .catch((e) => { if (current()) toast(normalizeError(e).text || '更多材料加载失败') })
+        .finally(() => { if (current()) this.materialLoadingMore = false })
     },
     scrollToMaterial() {
       if (!this.focusMaterialId && !this.leaveContext.bizId) return
+      const session = currentSessionGeneration()
       this.$nextTick(() => {
-        setTimeout(() => {
+        if (!this.isCurrent(session)) return
+        clearTimeout(this._materialScrollTimer)
+        this._materialScrollTimer = setTimeout(() => {
+          if (!this.isCurrent(session) || !this.pageVisible) return
           try { uni.pageScrollTo({ selector: this.focusMaterialId ? '#material-' + this.focusMaterialId : '#affairs-material-section', duration: 250 }) } catch (e) {}
         }, 80)
       })
     },
     chooseMaterial(item) {
       if (this.materialBusy) return
+      const session = currentSessionGeneration()
       const done = (res) => {
-        if (this.materialBusy) return
+        if (!this.isCurrent(session) || this.materialBusy) return
         const file = (res && res.tempFiles && res.tempFiles[0]) || null
         if (!file) return
         this.selectedFiles = { ...this.selectedFiles, [item.requirementId]: {
@@ -298,12 +351,15 @@ export default {
         delete this.uploadedMaterials[item.requirementId]
         delete this.materialNotices[item.requirementId]
       }
+      const fail = (error) => {
+        if (this.isCurrent(session) && !/cancel/i.test(error?.errMsg || '')) toast('文件选择失败，请重试')
+      }
       if (typeof uni.chooseMessageFile === 'function') {
-        uni.chooseMessageFile({ count: 1, type: 'file', success: done, fail: () => {} })
+        uni.chooseMessageFile({ count: 1, type: 'file', success: done, fail })
       } else if (typeof uni.chooseFile === 'function') {
-        uni.chooseFile({ count: 1, success: done, fail: () => {} })
+        uni.chooseFile({ count: 1, success: done, fail })
       } else {
-        uni.chooseImage({ count: 1, success: done, fail: () => {} })
+        uni.chooseImage({ count: 1, success: done, fail })
       }
     },
     materialFileHint(file) {
@@ -316,34 +372,37 @@ export default {
     async submitMaterial(item) {
       const chosen = this.selectedFiles[item.requirementId]
       if (!chosen || !chosen.path || this.materialBusy) return
+      const session = currentSessionGeneration()
       this.materialBusy = item.requirementId
       delete this.materialNotices[item.requirementId]
       try {
-        if (!this.uploadedMaterials[item.requirementId]) this.uploadedMaterials[item.requirementId] = await affairsContractApi.uploadMaterialFile(chosen.path)
+        if (!this.uploadedMaterials[item.requirementId]) {
+          const result = await affairsContractApi.uploadMaterialFile(chosen.path)
+          if (!this.isCurrent(session)) return
+          this.uploadedMaterials[item.requirementId] = result
+        }
         const uploaded = this.uploadedMaterials[item.requirementId]
         const metadata = await fileSdk.metadata(uploaded.fileId)
+        if (!this.isCurrent(session)) return
         this.uploadedMaterials[item.requirementId] = metadata
         if (metadata.readyForBusiness !== true) return
         await affairsContractApi.submitMaterialVersion(item.requirementId, uploaded.fileId, this.materialNotes[item.requirementId] || '', item.version)
+        if (!this.isCurrent(session)) return
         toast('材料已补交，等待老师审核')
         delete this.selectedFiles[item.requirementId]
         delete this.uploadedMaterials[item.requirementId]
         this.materialNotes[item.requirementId] = ''
         await this.loadMaterials(false)
       } catch (e) {
+        if (!this.isCurrent(session)) return
         this.materialNotices[item.requirementId] = normalizeError(e).text || '材料补交失败，文件与说明已保留，请重试'
-      } finally { this.materialBusy = '' }
+      } finally { if (this.isCurrent(session)) this.materialBusy = '' }
     },
     downloadMaterial(version) {
-      affairsContractApi.downloadMaterialFile(version.fileId).then((d) => {
-        const path = d && d.tempFilePath
-        if (!path) throw new Error('下载文件路径为空')
-        uni.openDocument({
-          filePath: path,
-          showMenu: true,
-          fail: () => uni.saveFile({ tempFilePath: path, success: () => toast('文件已保存'), fail: () => toast('文件暂无法打开') })
-        })
-      }).catch((e) => toast(normalizeError(e).text || '材料下载失败'))
+      const session = currentSessionGeneration()
+      return fileSdk.open(version.fileId).catch((e) => {
+        if (this.isCurrent(session)) toast(normalizeError(e).text || '材料暂无法查看')
+      })
     }
   }
 }
@@ -353,6 +412,8 @@ export default {
 .af__hero { padding: 0 var(--page-padding-mobile) var(--space-4); }
 .af__navbar { position: relative; height: 40px; display: flex; align-items: center; justify-content: center; }
 .af__navbar-back { position: absolute; left: 0; color: #fff; font-size: 22px; padding: 4px 8px; }
+.af__navbar-back { min-width: 44px; min-height: 40px; box-sizing: border-box; display: flex; align-items: center; }
+.af__hero .stat-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .af__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
 .link,.af__link,.af__refresh { color: #2563eb; }
 .link { display: block; margin-top: 8px; }
@@ -371,4 +432,7 @@ export default {
 .af__version-actions { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .af__current { color: var(--brand-primary); background: #eff6ff; padding: 2px 6px; border-radius: 5px; }
 .af__work-study { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; padding:12px 2px 2px; border-top:1px solid var(--border-light); }
+.af__work-study > view { flex: 1; min-width: 0; }
+.af__work-study .card-title,.af__work-study .t-xs { display: block; line-height: 1.6; }
+.af__work-study .link { flex-shrink: 0; white-space: nowrap; margin: 0; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; }
 </style>

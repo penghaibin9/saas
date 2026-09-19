@@ -28,7 +28,10 @@ from app.models.permission_governance import (
     RoleTemplate,
     RoleTemplatePermission,
 )
-from app.modules.system_admin.policies.role_template_plane import assert_school_role_template_code
+from app.modules.system_admin.policies.role_template_plane import (
+    assert_school_role_template_code,
+    is_school_role_template_code,
+)
 from app.services.system_role_shadow_service import (
     custom_role_permission_codes,
     published_system_role_permissions,
@@ -192,6 +195,11 @@ def template_catalog() -> list[dict]:
         seen = set()
         result = []
         for item in rows:
+            # Older seeds labelled platform/enterprise templates as TENANT.
+            # Discovery must exclude them; explicit access and school template
+            # permission validation below still fail closed.
+            if not is_school_role_template_code(item.template_code):
+                continue
             code = assert_school_role_template_code(item.template_code)
             if code in seen:
                 continue

@@ -73,6 +73,12 @@
             </view>
           </view>
         </template>
+
+        <view v-if="hasMore" class="wr__more">
+          <button class="btn btn-secondary" :disabled="loadingMore" @click="loadMore">
+            {{ loadingMore ? '加载中…' : '加载更多历史周报' }}
+          </button>
+        </view>
       </view>
     </MobileGlobalState>
 
@@ -96,7 +102,11 @@ export default {
       company: '', post: '', schoolMentor: '', lastFeedback: '',
       currentWeek: 1, weeklyList: [], selectedWeek: 1,
       form: { workContent: '', harvestContent: '', planContent: '' },
-      submitting: false, receipt: null, loadSequence: 0, batchId: '', internshipId: ''
+      submitting: false, receipt: null, loadSequence: 0, batchId: '', internshipId: '',
+      // 来自正式消息 action 的对象聚焦。数据回读完成后才使用，避免旧列表或迟到
+      // 响应把用户送回当前周而看不到退回原因。
+      focusReportId: '', focusWeek: 0,
+      weeklyPageSize: 20, weeklyTotal: 0, loadedWeeklyPages: [], hasMore: false, loadingMore: false
     }
   },
   computed: {
@@ -114,13 +124,36 @@ export default {
       return (!this.selectedReport && this.selectedWeek === this.currentWeek) || this.selectedReport?.status === 'RETURNED'
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) {
+    this.requestedBatchId = String(options.batchId || '')
+    this.focusReportId = String(options.reportId || '').trim()
+    this.focusWeek = Number(options.weekNo || 0) || 0
+    this.load()
+  },
+  onReachBottom() { this.loadMore() },
   methods: {
+    mergeWeeklyItems(items) {
+      const rows = new Map(this.weeklyList.map((row) => [String(row.id), row]))
+      for (const row of (items || [])) rows.set(String(row.id), row)
+      this.weeklyList = Array.from(rows.values()).sort((a, b) => {
+        const byWeek = Number(b.week || 0) - Number(a.week || 0)
+        return byWeek || String(b.id).localeCompare(String(a.id))
+      })
+    },
+    applyWeeklyPage(result) {
+      const page = Number(result?.page || 1)
+      this.mergeWeeklyItems(result?.items || [])
+      this.weeklyTotal = Number(result?.total || 0)
+      if (!this.loadedWeeklyPages.includes(page)) this.loadedWeeklyPages = [...this.loadedWeeklyPages, page].sort((a, b) => a - b)
+      const totalPages = Math.ceil(this.weeklyTotal / this.weeklyPageSize)
+      this.hasMore = this.loadedWeeklyPages.length < totalPages
+    },
     async load() {
       const sequence = ++this.loadSequence
       this.state = 'loading'
+      this.loadingMore = false
       try {
-        const d = await studentApi.getInternship()
+        const d = await studentApi.getInternship(this.requestedBatchId)
         if (sequence !== this.loadSequence) return
         this.company = d.company || ''
         this.post = d.post || ''
@@ -128,17 +161,57 @@ export default {
         this.lastFeedback = (d.weekly && d.weekly.lastFeedback) || ''
         this.batchId = d.batchId || ''
         this.internshipId = d.recordId || ''
-        const result = await studentApi.getInternshipWeeklyReports(this.batchId, this.internshipId)
+        const result = await studentApi.getInternshipWeeklyReports(
+          this.batchId, this.internshipId, 1, this.weeklyPageSize, this.focusReportId
+        )
         if (sequence !== this.loadSequence) return
-        this.weeklyList = result.items || []
+        this.weeklyList = []
+        this.weeklyTotal = 0
+        this.loadedWeeklyPages = []
+        this.applyWeeklyPage(result)
+        // 深链永远先取当前首屏，确保当前周的真实状态不会被遗漏；目标不在首屏时
+        // 最多再请求目标所在的一页，而不是一次把整学期历史全部拉取。
+        const focusPage = Number(result?.focusPage || 0)
+        if (this.focusReportId && focusPage > 1) {
+          const focused = await studentApi.getInternshipWeeklyReports(
+            this.batchId, this.internshipId, focusPage, this.weeklyPageSize
+          )
+          if (sequence !== this.loadSequence) return
+          this.applyWeeklyPage(focused)
+        }
         const m = String((d.weekly && d.weekly.week) || '第 1 周').match(/\d+/)
         this.currentWeek = m ? Number(m[0]) : 1
-        this.selectedWeek = this.currentWeek
+        const focusedReport = this.weeklyList.find((row) => String(row.id) === this.focusReportId)
+        const focusedWeek = Number(focusedReport?.week || this.focusWeek || 0)
+        this.selectedWeek = focusedWeek || this.currentWeek
         this.selectWeek(this.selectedWeek)
         this.loaded = true
         this.state = 'ready'
       } catch (e) {
         if (sequence === this.loadSequence) this.state = 'error'
+      }
+    },
+    async loadMore() {
+      if (!this.loaded || this.loadingMore || !this.hasMore) return
+      const totalPages = Math.ceil(this.weeklyTotal / this.weeklyPageSize)
+      const nextPage = Array.from({ length: totalPages }, (_, index) => index + 1)
+        .find((page) => !this.loadedWeeklyPages.includes(page))
+      if (!nextPage) {
+        this.hasMore = false
+        return
+      }
+      const sequence = this.loadSequence
+      this.loadingMore = true
+      try {
+        const result = await studentApi.getInternshipWeeklyReports(
+          this.batchId, this.internshipId, nextPage, this.weeklyPageSize
+        )
+        if (sequence !== this.loadSequence) return
+        this.applyWeeklyPage(result)
+      } catch (e) {
+        if (sequence === this.loadSequence) toast('历史周报加载失败，请检查网络后重试')
+      } finally {
+        if (sequence === this.loadSequence) this.loadingMore = false
       }
     },
     selectWeek(week) {
@@ -210,4 +283,6 @@ export default {
 .wr__fb-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
 .wr__fb-avatar { width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--brand-gradient); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .wr__fb-text { display: block; margin-top: 4px; font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.5; }
+.wr__more { margin: var(--card-gap-mobile) 0; }
+.wr__more .btn { width: 100%; }
 </style>

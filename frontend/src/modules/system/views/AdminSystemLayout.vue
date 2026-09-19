@@ -5,6 +5,8 @@
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"
+    workspace
+    horizontal-module="sys-org"
     @menu-select="onMenuSelect"
   >
     <template v-if="ctx">
@@ -50,8 +52,7 @@ const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
 const P1_CLOSURE_PATHS = new Set([
   '/admin/system/role-assignments',
   '/admin/system/login-policy',
-  '/admin/system/account-exceptions',
-  '/admin/system/org'
+  '/admin/system/account-exceptions'
 ])
 
 export default {
@@ -59,7 +60,7 @@ export default {
   components: { BasePortalLayout, LoadingState, ErrorState, SystemP1ClosurePanel },
   data() { return { menus: MENUS, ctx: null, contextError: '', childKey: 0 } },
   computed: {
-    brandTitle() { return this.ctx ? this.ctx.tenantBrandConfig.schoolName + ' · 管理端' : '管理端' },
+    brandTitle() { return this.ctx ? this.ctx.tenantBrandConfig.schoolName + ' · 管理端' : '高校学生全生命周期管理平台' },
     activeKey() {
       const path = this.$route.path
       const hit = [...this.menus].sort((a, b) => b.path.length - a.path.length)

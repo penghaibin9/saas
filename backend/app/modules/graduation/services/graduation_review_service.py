@@ -403,13 +403,22 @@ def return_review(rid, reason: str) -> dict:
 
 def review_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationReview.tenant_id == _tid(), GraduationReview.is_deleted.is_(False),
-                GraduationReview.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationReview).where(*base)) or 0)
-        by_status = [{"status": s, "label": REVIEW_STATUS_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(GraduationReview).where(
-                          *base, GraduationReview.status == s)) or 0)} for s in REVIEW_STATUS_LABEL]
+                GraduationReview.gd_student_id.in_(scope)]
+        status_counts = {
+            str(status or ""): int(count)
+            for status, count in db.execute(
+                select(GraduationReview.status, func.count(GraduationReview.id))
+                .where(*base)
+                .group_by(GraduationReview.status)
+            ).all()
+        }
+        total = sum(status_counts.values())
+        by_status = [{"status": status, "label": REVIEW_STATUS_LABEL[status],
+                      "count": status_counts.get(status, 0)} for status in REVIEW_STATUS_LABEL]
         return {"total": total, "byStatus": by_status,
                 "batchId": str(batch_id) if batch_id else None}
 

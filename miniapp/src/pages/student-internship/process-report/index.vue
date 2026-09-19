@@ -4,7 +4,7 @@
       <view class="page-pad stack" v-if="loaded">
         <view class="card">
           <text class="card-title">{{ typeLabel }}</text>
-          <text class="pr__hint">提交后由指导教师在 PC 端批阅，退回后可修改重交。</text>
+          <text class="pr__hint">提交后由指导教师批阅，退回后可在原报告上修改重交。</text>
           <view v-if="showTypePick" class="pr__types">
             <text
               v-for="t in typeOptions"
@@ -45,7 +45,7 @@
         </view>
       </view>
     </MobileGlobalState>
-    <MobileSafeAreaBar v-if="loaded">
+    <MobileSafeAreaBar v-if="loaded && pageState === 'ready'">
       <button class="btn btn-primary flex-1" :disabled="submitting || !canSubmit" @click="submit">{{ submitting ? '提交中…' : (currentReport ? '重新提交' : '提交') + typeLabel }}</button>
     </MobileSafeAreaBar>
   </view>
@@ -93,11 +93,12 @@ export default {
       return this.typeReports.find((item) => item.periodKey === period) || null
     },
     canSubmit() {
-      return (!this.currentReport || this.currentReport.status === 'RETURNED') &&
+      return this.pageState === 'ready' && (!this.currentReport || this.currentReport.status === 'RETURNED') &&
         (this.reportType === 'SUMMARY' || !!this.form.periodKey) && this.form.content.trim().length >= this.minimum
     }
   },
   onLoad(q) {
+    this.requestedBatchId = String(q?.batchId || '')
     const raw = String((q && q.type) || '').toLowerCase()
     if (raw === 'monthly') this.reportType = 'MONTHLY'
     else if (raw === 'summary') this.reportType = 'SUMMARY'
@@ -121,7 +122,7 @@ export default {
       const sequence = ++this.loadSequence
       this.pageState = 'loading'
       try {
-        const dashboard = await studentApi.getInternship()
+        const dashboard = await studentApi.getInternship(this.requestedBatchId)
         if (sequence !== this.loadSequence) return
         this.batchId = dashboard.batchId || ''
         this.internshipId = dashboard.recordId || ''
@@ -141,6 +142,7 @@ export default {
       this.reportType = v
       uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
       this.prepareForm(v)
+      if (this.currentReport) this.form.content = this.currentReport.content || ''
     },
     statusLabel(status) { return ({ PENDING_REVIEW: '待批阅', APPROVED: '已通过', RETURNED: '已退回' })[status] || status || '未知' },
     selectRecord(item) {

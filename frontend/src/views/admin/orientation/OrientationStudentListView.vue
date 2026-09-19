@@ -1,7 +1,8 @@
 <template>
-  <ModulePageShell title="新生报到学生列表" subtitle="按迎新批次管理录取名单 · 敏感字段默认脱敏展示" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生台账查阅">
+  <ModulePageShell :title="fixedBatch ? `${fixedBatch.batchName} · 新生名单` : '新生名单管理'" subtitle="新增、导入新生并维护录取班级；现场报到请进入新生报到" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="新生台账查阅">
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
+      <p v-if="fixedBatch?.status === 'CLOSED'" role="status">该迎新批次已结束，名单仅供查阅。</p>
       <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名新生 · 操作全程留痕`" @action="onToolbar">
         <template #right>
           <ColumnSettings v-model:selected-keys="visibleColumnKeys" :columns="allColumns" />
@@ -59,7 +60,7 @@
         v-model:visible="editVisible"
         :title="editing ? '编辑报到信息' : '新增新生记录'"
         :fields="editFields"
-        :model="editing"
+        :model="editing || { batchId: filters.batchId }"
         :submitting="submitting"
         @submit="onEditSubmit"
       />
@@ -87,6 +88,7 @@
       <ImportDialog
         v-model:visible="importVisible"
         :template="importTemplate"
+        :batch-name="fixedBatch?.batchName || ''"
         :download-template-fn="downloadImportTemplateFn"
         :validate-fn="validateImportFn"
         :import-fn="confirmImportFn"
@@ -136,6 +138,7 @@ const EMPTY_FILTERS = () => ({ batchId: '', keyword: '', classId: '', stage: '',
 
 export default {
   name: 'OrientationStudentListView',
+  props: { fixedBatch: { type: Object, default: null } },
   components: {
     ModulePageShell,
     ModuleToolbar,
@@ -215,7 +218,7 @@ export default {
     },
     filterFields() {
       return [
-        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions },
+        ...(!this.fixedBatch ? [{ key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions }] : []),
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
         { key: 'classId', label: '班级', type: 'select', options: this.filterOptions.classes || [] },
         { key: 'stage', label: '学生阶段', type: 'select', options: this.statusOptions.stage || [] },
@@ -248,7 +251,7 @@ export default {
       return [
         { key: 'name', label: '姓名', type: 'text', required: true, disabled: !!this.editing },
         { key: 'admissionNo', label: '录取编号', type: 'text', required: true, disabled: !!this.editing },
-        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions, required: true, disabled: !!this.editing },
+        { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions, required: true, disabled: !!this.editing || !!this.fixedBatch },
         { key: 'classId', label: '录取班级（自动确定学院/专业）', type: 'select', options: this.filterOptions.classes || [], required: true },
         { key: 'admissionType', label: '录取类型', type: 'text' },
         { key: 'counselor', label: '辅导员', type: 'text' },
@@ -266,14 +269,16 @@ export default {
   },
   watch: { '$route.query.batchId'(value) { if (value !== undefined && String(value) !== this.filters.batchId) { this.filters.batchId = String(value); this.search() } } },
   async created() {
-    if (this.$route.query.batchId) this.filters.batchId = String(this.$route.query.batchId)
+    if (this.fixedBatch) this.filters.batchId = String(this.fixedBatch.id)
+    else if (this.$route.query.batchId) this.filters.batchId = String(this.$route.query.batchId)
     await this.init()
   },
   methods: {
     permAction(key, action) {
       const p = this.perms[key]
       if (p && !p.visible) return null
-      return { ...action, disabled: p ? !p.allowed : false, disabledReason: p?.reason }
+      const closed = this.fixedBatch?.status === 'CLOSED' && ['orientation.student.create', 'orientation.student.import'].includes(key)
+      return { ...action, disabled: closed || (p ? !p.allowed : false), disabledReason: closed ? '该批次已结束，仅可查阅' : p?.reason }
     },
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
@@ -287,7 +292,7 @@ export default {
         api.getBatchActions('studentList'),
         api.getImportTemplate('studentList'),
         api.getExportOptions('studentList'),
-        api.getOrientationBatches({ page: 1, pageSize: 200 })
+        this.fixedBatch ? Promise.resolve({ code: 0, data: { list: [this.fixedBatch] } }) : api.getOrientationBatches({ page: 1, pageSize: 200 })
       ])
       if (ctx.code === 0) this.ctx = ctx.data
       if (status.code === 0) this.statusOptions = status.data
@@ -307,6 +312,7 @@ export default {
       await this.load()
     },
     async load() {
+      if (this.fixedBatch) this.filters.batchId = String(this.fixedBatch.id)
       this.loading = true
       this.error = ''
       this.selected = []
@@ -328,7 +334,7 @@ export default {
     },
     reset() {
       this.filters = EMPTY_FILTERS()
-      const activeBatch = this.batches.find((row) => row.status !== 'CLOSED')
+      const activeBatch = this.fixedBatch || this.batches.find((row) => row.status !== 'CLOSED')
       if (activeBatch) this.filters.batchId = String(activeBatch.id)
       this.page = 1
       this.load()
@@ -338,20 +344,20 @@ export default {
       this.load()
     },
     viewDetail(row) {
-      this.$router.push(`/admin/orientation/students/${row.id}`)
+      this.$router.push({ path: `/admin/orientation/students/${row.id}`, query: { batchId: this.filters.batchId || undefined, from: this.fixedBatch ? 'batch' : undefined } })
     },
     rowActions(row) {
       const edit = this.perms['orientation.student.edit']
       const voidP = this.perms['orientation.student.void']
       return [
         { key: 'view', label: '详情' },
-        { key: 'edit', label: '编辑', disabled: edit ? !edit.allowed : false, disabledReason: edit?.reason, visible: edit ? edit.visible : true },
+        { key: 'edit', label: '编辑', disabled: this.fixedBatch?.status === 'CLOSED' || (edit ? !edit.allowed : false), disabledReason: this.fixedBatch?.status === 'CLOSED' ? '该批次已结束，仅可查阅' : edit?.reason, visible: edit ? edit.visible : true },
         {
           key: 'void',
           label: '作废',
           danger: true,
-          disabled: (voidP ? !voidP.allowed : false) || row.recordStatus === 'VOIDED',
-          disabledReason: row.recordStatus === 'VOIDED' ? '该记录已作废' : voidP?.reason,
+          disabled: this.fixedBatch?.status === 'CLOSED' || (voidP ? !voidP.allowed : false) || row.recordStatus === 'VOIDED',
+          disabledReason: this.fixedBatch?.status === 'CLOSED' ? '该批次已结束，仅可查阅' : row.recordStatus === 'VOIDED' ? '该记录已作废' : voidP?.reason,
           visible: voidP ? voidP.visible : true
         }
       ]
@@ -388,6 +394,8 @@ export default {
       this.auditVisible = true
     },
     async onEditSubmit(form) {
+      if (this.submitting) return
+      if (this.fixedBatch) form = { ...form, batchId: String(this.fixedBatch.id) }
       this.submitting = true
       try {
         const res = this.editing ? await api.updateOrientationStudent(this.editing.id, Object.fromEntries(this.editFields.map(f => [f.key, form[f.key]]))) : await api.createOrientationStudent(form)
@@ -451,7 +459,7 @@ export default {
       return api.downloadImportTemplate('studentList')
     },
     validateImportFn(file) {
-      return api.validateImport('studentList', file)
+      return api.validateImport('studentList', file, this.fixedBatch?.id || this.filters.batchId)
     },
     confirmImportFn(payload) {
       return api.confirmImport('studentList', payload)

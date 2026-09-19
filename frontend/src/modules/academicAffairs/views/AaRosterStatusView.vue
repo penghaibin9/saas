@@ -4,6 +4,7 @@
     subtitle="学籍状态分布总览 · 点击状态卡片下钻学籍名册"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <ErrorState v-if="error" :description="error" @retry="load" />

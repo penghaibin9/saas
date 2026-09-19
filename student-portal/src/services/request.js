@@ -30,6 +30,8 @@ const API_BASE = (() => {
 let accessToken = ''
 let sessionGeneration = 0
 
+export function currentSessionGeneration() { return sessionGeneration }
+
 for (const key of [TOKEN_KEY, REFRESH_KEY]) {
   try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
 }
@@ -311,16 +313,16 @@ function browserAuthBody(path, body) {
 }
 
 export async function request(path, {
-  method = 'GET', body, auth = true, params, query, _retried = false
+  method = 'GET', body, auth = true, params, query, _retried = false, headers: extraHeaders = {}, noAuthRetry = false
 } = {}) {
   if (auth && !_retried && path === '/auth/me' && !getToken()) {
     await refreshOnce()
-    return request(path, { method, body, auth, params, query, _retried: true })
+    return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
   }
 
   cleanupStaleGraduationTemps()
   const generationAtStart = sessionGeneration
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = { 'Content-Type': 'application/json', ...extraHeaders }
   const token = getToken()
   if (auth && token) headers.Authorization = `Bearer ${token}`
   addInternshipBatchHeader(headers, path)
@@ -341,13 +343,14 @@ export async function request(path, {
   const payload = await responseJson(res)
   if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
+    if (noAuthRetry) throw authError((payload && payload.message) || undefined, payload, res.status)
     if (auth && !_retried && !path.startsWith('/auth/')) {
       if (accessToken && accessToken !== token) {
-        return request(path, { method, body, auth, params, query, _retried: true })
+        return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
       }
       await refreshOnce()
       if (sessionGeneration !== generationAtStart) throw staleSessionError()
-      return request(path, { method, body, auth, params, query, _retried: true })
+      return request(path, { method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry })
     }
     if (auth) _invalidateIfCurrent(token)
     throw authError((payload && payload.message) || undefined, payload, res.status)

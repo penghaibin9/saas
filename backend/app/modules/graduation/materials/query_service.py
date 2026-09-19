@@ -608,13 +608,19 @@ def _rule_for_student(db, student: GraduationStudent) -> GraduationMaterialRule:
 def student_library(gd_student_id: int | None, user: dict, *, include_history: bool = True) -> dict:
     with session() as db:
         if _role(user) == "STUDENT":
+            from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+
+            current = resolve_current_gd_student(db, user)
+            if not current:
+                raise not_found("毕业设计材料库不存在")
             stmt = select(GraduationStudent).where(
                 GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id == current.id,
                 GraduationStudent.record_status == "ACTIVE",
                 GraduationStudent.is_deleted.is_(False),
                 student_scope_predicate(user),
             )
-            student = db.scalars(stmt.order_by(GraduationStudent.id.desc())).first()
+            student = db.scalars(stmt).first()
             if not student or (gd_student_id and int(gd_student_id) != int(student.id)):
                 raise not_found("毕业设计材料库不存在")
         else:

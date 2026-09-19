@@ -1,0 +1,154 @@
+{
+  "schema": "yueke.news-package/1",
+  "title": "2026年9月教育管理新观察首发包",
+  "articles": [
+    {
+      "title": "教师节观察：把教育家精神落实到教师发展全过程",
+      "summary": "第42个教师节前夕，多项权威部署再次强调教师队伍建设。院校可从师德引领、专业发展、减负支持与服务保障四条线形成连续工作闭环。",
+      "category": "hr",
+      "file": "articles/0001.md",
+      "cover": "assets/teacher-classroom.jpg",
+      "sources": [
+        {
+          "title": "教育部：在第四十二个教师节到来之际向全国广大教师和教育工作者致以节日祝贺和诚挚问候",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/s6052/moe_838/202609/t20260909_1449965.html",
+          "published_at": "2026-09-09T00:00:00+08:00"
+        },
+        {
+          "title": "教育部：教育家精神绽放在每个三尺讲台",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/s5148/202609/t20260907_1449635.html",
+          "published_at": "2026-09-06T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "教师发展国家行动释放哪些学校治理信号",
+      "summary": "2026年教师队伍建设重点工作强调高水平培养、培训质量、资源配置和权益保障。对院校而言，关键是让培养、考核、服务与岗位发展能够连续留痕。",
+      "category": "hr",
+      "file": "articles/0002.md",
+      "cover": "assets/teacher-classroom.jpg",
+      "sources": [
+        {
+          "title": "教育部：介绍教师队伍建设有关情况和第42个教师节宣传庆祝活动",
+          "url": "https://www.moe.gov.cn/fbh/live/2026/78355/twwd/202609/t20260904_1449210.html",
+          "published_at": "2026-09-04T00:00:00+08:00"
+        },
+        {
+          "title": "教育部：教育家精神铸魂强师行动推进会暨2026年教师队伍建设重点工作部署会召开",
+          "url": "https://www.moe.gov.cn/jyb_zzjg/huodong/202603/t20260324_1431955.html",
+          "published_at": "2026-03-24T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "“人工智能+教育”行动计划：职业院校先补三类能力",
+      "summary": "五部门行动计划把人工智能带入学生学习、教师教学、学校治理和人才培养。职业院校落地时，应优先建立场景清单、数据责任和师生智能素养。",
+      "category": "technology",
+      "file": "articles/0003.md",
+      "cover": "assets/digital-governance.jpg",
+      "sources": [
+        {
+          "title": "教育部等五部门关于印发《“人工智能+教育”行动计划》的通知",
+          "url": "https://hudong.moe.gov.cn/srcsite/A16/s3342/202604/t20260410_1433240.html",
+          "published_at": "2026-04-08T00:00:00+08:00"
+        },
+        {
+          "title": "教育部召开国家教育数字化战略行动2026年部署会",
+          "url": "https://www.moe.gov.cn/jyb_zzjg/huodong/202603/t20260331_1432621.html",
+          "published_at": "2026-03-31T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "职业教育教学关键要素改革怎样形成一条线",
+      "summary": "专业、课程、教材、教师和实习实训不应各自推进。教育部相关部署提示院校，以人才培养目标为主线，才能让关键要素协同更新并形成质量证据。",
+      "category": "academic",
+      "file": "articles/0004.md",
+      "cover": "assets/skills-workshop.jpg",
+      "sources": [
+        {
+          "title": "教育部部署深化职业教育教学关键要素改革",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202602/t20260212_1428779.html",
+          "published_at": "2026-02-12T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "高校毕业生就业百日冲刺：服务怎样形成闭环",
+      "summary": "教育部部署2026届高校毕业生就业百日冲刺，并推进重点群体就业行动。学校可把岗位汇集、学生触达、能力提升、困难帮扶和结果回读串成闭环。",
+      "category": "internship",
+      "file": "articles/0005.md",
+      "cover": "assets/campus-autumn.jpg",
+      "sources": [
+        {
+          "title": "教育部部署2026届高校毕业生就业“百日冲刺”行动",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202606/t20260608_1439860.html",
+          "published_at": "2026-06-08T00:00:00+08:00"
+        },
+        {
+          "title": "教育部等八部门联合开展2026年度高校毕业生等重点群体促就业“国聘行动”",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202606/t20260602_1438533.html",
+          "published_at": "2026-06-02T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "职业教育活动周观察：高技能人才培养走向产教协同",
+      "summary": "2026年职业教育活动周围绕技能成才、产教融合和职业体验展开。院校可借此重新检查专业建设、企业参与和实习实训是否真正围绕岗位能力协同。",
+      "category": "internship",
+      "file": "articles/0006.md",
+      "cover": "assets/skills-workshop.jpg",
+      "sources": [
+        {
+          "title": "教育部：2026年职业教育活动周专题",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/xw_zt/moe_357/2026/2026_zt06/",
+          "published_at": "2026-05-11T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "学生安全治理案例：把责任、隐患和协同落成台账",
+      "summary": "青岛暑期学生安全工作案例强调责任链条、隐患排查、协同联动和闭环整改。对院校管理系统而言，重点是让风险从发现到销号全程可追溯。",
+      "category": "affairs",
+      "file": "articles/0007.md",
+      "cover": "assets/campus-autumn.jpg",
+      "sources": [
+        {
+          "title": "教育部：山东青岛以“四个坚持”筑牢暑期学生安全防护屏障",
+          "url": "https://www.moe.gov.cn/jyb_xwfb/xw_zt/moe_357/2026/2026_zt10/gdjy/202608/t20260812_1446711.html",
+          "published_at": "2026-08-12T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    },
+    {
+      "title": "第42个教师节工作提示：尊师重教也要落到日常服务",
+      "summary": "教育部关于教师节工作的通知，不只安排主题宣传，也强调教师发展支持和服务保障。学校可把节庆活动与全年教师服务、成长和减负工作衔接起来。",
+      "category": "hr",
+      "file": "articles/0008.md",
+      "cover": "assets/teacher-classroom.jpg",
+      "sources": [
+        {
+          "title": "教育部办公厅关于做好庆祝第42个教师节有关工作的通知",
+          "url": "https://www.moe.gov.cn/srcsite/A10/s7002/202608/t20260821_1447456.html",
+          "published_at": "2026-08-19T00:00:00+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    }
+  ]
+}

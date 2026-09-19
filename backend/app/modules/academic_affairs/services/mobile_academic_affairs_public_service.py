@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.permissions import enforce_permission, has_permission
 from app.services.db_service import _tid, session
 
 from . import mobile_academic_affairs_facade as _base
@@ -147,14 +148,38 @@ def graduation_progress_my(user) -> dict:
         }
 
 
-def evaluation_tasks_my(user) -> dict:
+def evaluation_tasks_my(user, *, page=None, page_size=20, task_id=None) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_evaluation_service as evaluation
 
-    items = evaluation.my_student_tasks(user, include_closed=True)
+    if page is None:
+        items, total, pending = evaluation.my_student_tasks(
+            user,
+            include_closed=True,
+            task_id=task_id,
+            pending_summary=True,
+        )
+        pagination = None
+    else:
+        items, total, pending = evaluation.my_student_tasks(
+            user,
+            include_closed=True,
+            page=page,
+            page_size=page_size,
+            task_id=task_id,
+            pending_summary=True,
+        )
+        pagination = {
+            "page": int(page),
+            "pageSize": int(page_size),
+            "total": total,
+            "hasMore": int(page) * int(page_size) < total,
+        }
     return {
         "list": items,
-        "total": len(items),
-        "pending": sum(1 for item in items if item.get("canSubmit")),
+        "total": total,
+        "pending": pending["count"],
+        "nextPendingTaskId": pending["nextTaskId"],
+        "pagination": pagination,
         "note": "仅展示本人正式教学班内的评教任务；提交后答卷保持匿名。",
     }
 
@@ -184,16 +209,31 @@ def evaluation_submit_my(user, body) -> dict:
     )
 
 
-def teacher_schedule_my(user) -> dict:
-    """教师移动课表纯读聚合正式课次、执行状态、完整监考工作台与成绩待办。"""
+def teacher_schedule_my(user, week=None) -> dict:
+    """教师移动课表只返回一个教学周，今日课次仍由同一正式投影单独提供。"""
     from . import academic_affairs_invigilation_workbench_service as invigilation_workbench
     from . import academic_affairs_teacher_today_execution_state_service as execution_state
     from . import academic_affairs_teacher_today_service as teacher_today
     from . import academic_affairs_teacher_today_work_service as teacher_work
 
+    if (
+        not has_permission(user, "academicAffairs.schedule.view")
+        and not teacher_today.has_formal_teacher_relation(user)
+    ):
+        enforce_permission(user, "academicAffairs.schedule.view")
     result = teacher_today.teacher_today_projection(user)
+    selected_week = _base.resolve_mobile_schedule_week(
+        week,
+        teaching_weeks=result.get("teachingWeeks"),
+        current_week=result.get("currentWeek"),
+    )
     with session() as db:
         enriched = dict(result)
+        enriched["items"] = _base.mobile_schedule_week_items(
+            result.get("items") or [],
+            selected_week,
+        )
+        enriched["week"] = selected_week
         enriched["todayItems"] = execution_state.enrich_today_execution_state(
             db,
             result.get("todayItems") or [],

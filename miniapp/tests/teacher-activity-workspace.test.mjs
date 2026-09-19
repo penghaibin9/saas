@@ -26,5 +26,5 @@ test('teacher activity deep link uses the business activity id', () => {
   const entry = read('src/pages/teacher/affairs/index.vue')
   assert.match(page, /query\.activityId \|\| query\.recordId/)
   assert.match(entry, /\/pages\/teacher\/affairs\/activity\/index/)
-  assert.match(page, /getTeacherActivityParticipants\(item\.activityId\)/)
+  assert.match(page, /getTeacherActivityParticipants\(selected\.activityId, \{ page, pageSize: 20 \}\)/)
 })

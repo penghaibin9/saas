@@ -15,7 +15,7 @@
       <span>{{ serviceBanner }}</span>
       <button type="button" class="mp-link" @click="reloadContext">重试</button>
     </div>
-    <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked && !batchBlocked" />
+    <InternshipBatchStrip v-if="ctx && !hasBusinessHeader && !permissionServiceBlocked && !batchBlocked" />
     <!-- 子页只能在统一批次 Authority 完成首轮解析后挂载；否则 immediate watcher 会先发无 batchId 请求。 -->
     <div class="ix-content"><ErrorState
       v-if="contextError"
@@ -53,6 +53,7 @@
 </template>
 
 <script>
+import { provideBusinessHeader } from '@/components/business/businessHeader'
 /**
  * AdminInternshipLayout — /admin/internship 父布局。
  * 侧栏二级/三级菜单由 BasePortalLayout + navPlan.js（getVisibleNavPlan）渲染，禁止在此硬编码业务菜单。
@@ -69,6 +70,7 @@ import { withInternshipBatch } from '../navigation.js'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 export default {
+  setup() { return { hasBusinessHeader: provideBusinessHeader(InternshipBatchStrip) } },
   name: 'AdminInternshipLayout',
   components: { BasePortalLayout, LoadingState, ErrorState, InternshipBatchStrip, AppConfirmDialog },
   provide() {

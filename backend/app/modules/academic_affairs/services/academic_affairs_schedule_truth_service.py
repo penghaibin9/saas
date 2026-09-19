@@ -54,7 +54,9 @@ def lock_scope_head(db, term_id, scope_type, scope_id):
             AaScheduleScopeHead.is_deleted.is_(False),
         )
 
-    head = _query().with_for_update().first()
+    # A prior ordinary read may have cached an older head in this Session.
+    # Refresh the ORM object from the current locking read as well as taking X.
+    head = _query().populate_existing().with_for_update().first()
     if head:
         return head
     # 并发下另一个事务可能抢先插入同键，唯一约束会让本次 INSERT 失败。用 savepoint 包住：
@@ -72,7 +74,7 @@ def lock_scope_head(db, term_id, scope_type, scope_id):
     except IntegrityError:
         head = None
     # 重新加锁读，确保拿到的是行锁而不仅仅是本事务的待插入对象
-    return _query().with_for_update().first() or head
+    return _query().populate_existing().with_for_update().first() or head
 
 
 def active_batch_id(db, term_id, scope_type, scope_id):
@@ -132,6 +134,8 @@ def active_batch_ids_by_term(db, term_ids) -> dict[int, list[int]]:
     ):
         batch = valid_by_id.get(int(head.active_batch_id))
         if not batch or int(batch.term_id) != int(head.term_id):
+            continue
+        if scope_of(batch) != (str(head.scope_type or "").upper(), int(head.scope_id or 0)):
             continue
         term_batches = result[int(head.term_id)]
         if int(batch.id) not in term_batches:
@@ -285,6 +289,36 @@ def validate_school_wide_conflicts(db, batch, *, replacing_batch_id=None) -> dic
     return {"problems": problems, "items": len(own), "comparedAgainst": len(others)}
 
 
+def batch_truth(db, batch) -> dict:
+    """精确批次的当前正式头，只读；不为缺失的头创建或回填数据。"""
+    from app.models import AaScheduleBatch, AaScheduleScopeHead
+
+    scope_type, scope_id = scope_of(batch)
+    head = db.query(AaScheduleScopeHead).filter(
+        AaScheduleScopeHead.tenant_id == _tid(),
+        AaScheduleScopeHead.term_id == batch.term_id,
+        AaScheduleScopeHead.scope_type == scope_type,
+        AaScheduleScopeHead.scope_id == scope_id,
+        AaScheduleScopeHead.is_deleted.is_(False),
+    ).first()
+    active = db.query(AaScheduleBatch).filter(
+        AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.id == (head.active_batch_id if head else 0),
+        AaScheduleBatch.term_id == batch.term_id,
+        AaScheduleBatch.status == "PUBLISHED",
+        AaScheduleBatch.is_deleted.is_(False),
+    ).first() if head and head.active_batch_id else None
+    valid = bool(active and scope_of(active) == (scope_type, scope_id))
+    return {
+        "scopeType": scope_type, "scopeId": str(scope_id),
+        "activeBatchId": str(head.active_batch_id) if head and head.active_batch_id else None,
+        "headVersion": head.version if head else None,
+        "publishedAt": head.published_at.isoformat() if head and head.published_at else None,
+        "isCurrent": (int(active.id) == int(batch.id)) if valid else None,
+        "truthStatus": "VERIFIED" if valid else "INVALID" if head and head.active_batch_id else "NOT_PUBLISHED",
+    }
+
+
 def promote_to_active(db, batch, head) -> dict:
     """CAS 换版：旧 active 标 SUPERSEDED，本批次成为该范围唯一正式课表。"""
     from app.models import AaScheduleBatch
@@ -307,6 +341,9 @@ def promote_to_active(db, batch, head) -> dict:
         "scopeId": str(head.scope_id),
         "activeBatchId": str(head.active_batch_id),
         "headVersion": head.version,
+        "publishedAt": head.published_at.isoformat(),
+        "isCurrent": True,
+        "truthStatus": "VERIFIED",
         "supersededBatchId": str(previous_id) if previous_id and previous_id != int(batch.id) else None,
     }
 

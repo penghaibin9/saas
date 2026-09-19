@@ -81,7 +81,7 @@ test.describe.serial('Golden rollout · student 360 detail workspaces · Batch 1
         minHeight: parseFloat(style.minHeight)
       }
     })
-    expect(affairsVisual.radius).toBe(0)
+    expect(affairsVisual.radius).toBe(16)
     const summaryBox = await page.locator('.profile-summary').boundingBox()
     expect(summaryBox.height).toBeGreaterThan(40)
     expect(summaryBox.height).toBeLessThanOrEqual(160)

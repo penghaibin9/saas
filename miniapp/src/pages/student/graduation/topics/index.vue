@@ -91,6 +91,7 @@
                 <MobileStatusTag :label="r.statusLabel" :type="changeTag(r.status)" />
               </view>
             </view>
+            <MobileInlineAlert v-if="changeRequestError" type="warning" title="变更记录加载失败" :description="changeRequestError" />
           </view>
         </template>
       </view>
@@ -108,6 +109,7 @@
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const choiceLock = createSubmitLock(1500)
 const changeLock = createSubmitLock(1500)
@@ -122,7 +124,8 @@ export default {
       topics: [], activeRound: null, changeRequests: [],
       topicKeyword: '', topicCategory: '', topicsNextCursor: '', topicsHasMore: false, topicLoading: false, topicError: '',
       selectedChoices: [], choiceSubmitting: false, withdrawing: false,
-      showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false
+      showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false,
+      readEpoch: 0, topicEpoch: 0, hidden: false, topicQuery: '', changeRequestError: ''
     }
   },
   computed: {
@@ -138,14 +141,26 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onShow() { if (this.hidden) { this.hidden = false; this.load() } },
+  onHide() { this.invalidateReads() },
+  onUnload() { this.invalidateReads() },
   methods: {
+    invalidateReads() { this.hidden = true; this.readEpoch++; this.topicEpoch++; this.topicLoading = false },
     load() {
+      const epoch = ++this.readEpoch, generation = currentSessionGeneration()
+      const current = () => !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration()
+      this.topicEpoch++; this.topicLoading = false
       this.state = 'loading'
-      studentApi.getGraduation().then((g) => {
+      return studentApi.getGraduation().then((g) => {
+        if (!current()) return null
         this.hasTopic = !!(g && g.hasTopic)
+        if (this.batchId !== (g?.batchId || '')) {
+          this.selectedChoices = []; this.changeTargetTopicId = ''; this.topics = []; this.changeRequests = []
+        }
         this.batchId = (g && g.batchId) || ''
         return studentApi.getGraduationActiveRound()
       }).then((r) => {
+        if (!current()) return
         this.activeRound = r || null
         this.loaded = true
         this.state = 'ready'
@@ -155,13 +170,21 @@ export default {
           this.loadTopics(true, topicBatchId)
         }
         if (this.hasTopic) {
-          studentApi.getMyGraduationChangeRequests().then((r2) => { this.changeRequests = r2 || [] }).catch(() => {})
+          this.changeRequestError = ''
+          studentApi.getMyGraduationChangeRequests().then((r2) => { if (current()) this.changeRequests = r2 || [] })
+            .catch(() => { if (current()) this.changeRequestError = '暂时无法核对课题变更进度，请刷新重试。' })
         }
-      }).catch(() => { this.state = 'error' })
+      }).catch((error) => { if (current()) this.state = normalizeError(error).pageState || 'error' })
     },
     loadTopics(reset = true, explicitBatchId = '') {
-      if (this.topicLoading) return Promise.resolve()
+      if (this.topicLoading && !reset) return Promise.resolve()
       const batchId = explicitBatchId || (this.activeRound && this.activeRound.batchId) || this.batchId || ''
+      const query = JSON.stringify([batchId, this.topicKeyword.trim(), this.topicCategory])
+      if (query !== this.topicQuery) reset = true
+      this.topicQuery = query
+      const epoch = ++this.topicEpoch, generation = currentSessionGeneration()
+      const current = () => !this.hidden && epoch === this.topicEpoch && generation === currentSessionGeneration()
+      if (reset) { this.topics = []; this.topicsNextCursor = ''; this.topicsHasMore = false }
       this.topicLoading = true
       this.topicError = ''
       const params = {
@@ -169,14 +192,16 @@ export default {
         cursor: reset ? '' : this.topicsNextCursor, pageSize: 20
       }
       return studentApi.getGraduationTopics(params).then((payload) => {
+        if (!current()) return
         const data = Array.isArray(payload) ? { items: payload, hasMore: false, nextCursor: '' } : (payload || {})
         this.topics = reset ? (data.items || []) : [...this.topics, ...(data.items || [])]
         this.topicsNextCursor = data.nextCursor || ''
         this.topicsHasMore = data.hasMore === true
       }).catch((error) => {
+        if (!current()) return
         if (reset) this.topics = []
         this.topicError = (error && error.message) || '题目列表加载失败，请重试'
-      }).finally(() => { this.topicLoading = false })
+      }).finally(() => { if (current()) this.topicLoading = false })
     },
     applyTopicFilters() { return this.loadTopics(true) },
     clearTopicFilters() {

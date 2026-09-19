@@ -321,12 +321,19 @@ def _validate_term(db, meta, rows):
 def _persist_term(db, rows) -> dict:
     from sqlalchemy import select
     from app.models import AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+    resource_guard.lock_formal_authority(db)
+    # A dry-run does not reserve the term. Recheck inside the committing transaction.
+    existing = {(term.year_code, term.term_no): term for term in db.scalars(select(AaTerm).where(
+        AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False),
+    ).order_by(AaTerm.id).with_for_update().execution_options(populate_existing=True))}
     created = updated = 0
     for r in rows:
-        hit = db.scalars(select(AaTerm).where(
-            AaTerm.tenant_id == _tid(), AaTerm.year_code == r["yearCode"],
-            AaTerm.term_no == r["termNo"], AaTerm.is_deleted.is_(False))).first()
+        hit = existing.get((r["yearCode"], r["termNo"]))
         if hit:
+            if hit.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "导入确认时学期已不再是草稿，请重新校验", http_status=409)
+            resource_guard.require_no_formal_timeline(db, hit.id)
             hit.term_name, hit.start_date, hit.end_date = r["termName"], r["startDate"], r["endDate"]
             hit.teaching_weeks, hit.exam_week_start = r["teachingWeeks"], r["examWeekStart"]
             hit.version = (hit.version or 0) + 1
@@ -338,6 +345,7 @@ def _persist_term(db, rows) -> dict:
                             teaching_weeks=r["teachingWeeks"], exam_week_start=r["examWeekStart"],
                             status="DRAFT")
             db.add(target)
+            existing[(r["yearCode"], r["termNo"])] = target
             created += 1
         if r["isCurrent"]:
             db.flush()
@@ -394,12 +402,23 @@ def _validate_calendar(db, meta, rows):
 def _persist_calendar(db, rows) -> dict:
     from sqlalchemy import select
     from app.models import AaCalendarEvent
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+    from app.modules.academic_affairs.services.academic_affairs_service import _validate_event_dates
+    resource_guard.lock_formal_authority(db)
+    terms = {}
+    for term_id in sorted({int(row["termId"]) for row in rows}):
+        term = resource_guard.lock_term(db, term_id)
+        if term.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "导入确认时学期已不再是草稿，不能覆盖校历", http_status=409)
+        resource_guard.require_no_formal_timeline(db, term_id)
+        terms[term_id] = term
     created = updated = 0
     for r in rows:
+        _validate_event_dates(terms[int(r["termId"])], r["eventType"], r["startDate"], r["endDate"], r["swapToDate"])
         hit = db.scalars(select(AaCalendarEvent).where(
             AaCalendarEvent.tenant_id == _tid(), AaCalendarEvent.term_id == r["termId"],
             AaCalendarEvent.event_type == r["eventType"], AaCalendarEvent.start_date == r["startDate"],
-            AaCalendarEvent.is_deleted.is_(False))).first()
+            AaCalendarEvent.is_deleted.is_(False)).with_for_update().execution_options(populate_existing=True)).first()
         if hit:
             hit.end_date, hit.swap_to_date, hit.remark = r["endDate"], r["swapToDate"], r["remark"]
             hit.version = (hit.version or 0) + 1

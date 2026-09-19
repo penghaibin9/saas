@@ -157,7 +157,8 @@ export default {
       exportVisible: false,
       auditVisible: false,
       auditLogs: [],
-      reportTagType: REPORT_TAG_TYPE
+      reportTagType: REPORT_TAG_TYPE,
+      batchId: ''
     }
   },
   computed: {
@@ -229,6 +230,7 @@ export default {
     }
   },
   async created() {
+    this.batchId = String(this.$route.query.batchId || '')
     await this.init()
   },
   methods: {
@@ -265,7 +267,7 @@ export default {
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getRegistrationProgress({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getRegistrationProgress({ ...this.filters, batchId: this.batchId || undefined, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total

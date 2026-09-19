@@ -145,10 +145,24 @@ def list_courses(user, bid, page=1, page_size=100):
 
 
 def _effective_room_capacity(room) -> int:
-    capacity = int(getattr(room, "capacity", 0) or 0)
-    if _status(getattr(room, "seat_mode", None)) == "SPACED":
-        return (capacity + 1) // 2
-    return capacity
+    # Capacity is the number of usable exam places, not the largest seat label.
+    return int(getattr(room, "capacity", 0) or 0)
+
+
+def _require_classroom_rules(db, classroom_id, capacity):
+    from app.models import AaClassroom
+
+    if not classroom_id:
+        return  # Preserve historical exam venues without a classroom dictionary link.
+    classroom = db.query(AaClassroom).filter(
+        AaClassroom.id == int(classroom_id), AaClassroom.tenant_id == _legacy._tid(),
+        AaClassroom.is_deleted.is_(False),
+    ).populate_existing().with_for_update().first()
+    if not classroom or classroom.status != "AVAILABLE" or not classroom.allow_exam:
+        raise AppException("DATA_CONFLICT", "所选教室当前不可用或未允许排考", http_status=409)
+    actual = int(classroom.exam_seats if classroom.exam_seats is not None else (classroom.capacity or 0))
+    if actual <= 0 or int(capacity or 0) > actual:
+        raise AppException("DATA_CONFLICT", f"考场容量超过教室实际可用考位 {actual}，请重新核对", http_status=409)
 
 
 def assign_seats(user, room_id, student_ids):
@@ -170,6 +184,7 @@ def assign_seats(user, room_id, student_ids):
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid("仅课程确认/编排阶段可铺位")
+        _require_classroom_rules(db, room.classroom_id, room.capacity)
         if not course.teaching_task_id:
             raise AppException("DATA_CONFLICT", "考试课程未关联教学任务，无法核验考生名单")
 
@@ -330,6 +345,10 @@ def _check_arrangement_complete(db, batch_id):
         for seat in seats:
             seats_by_room.setdefault(int(seat.exam_room_id), []).append(seat)
         for room in rooms:
+            try:
+                _require_classroom_rules(db, room.classroom_id, room.capacity)
+            except AppException as exc:
+                problems.append(f"{label}：考场{room.room_seq}：{exc.message}")
             room_seats = seats_by_room.get(int(room.id), [])
             if not room_seats:
                 problems.append(f"{label}：考场{room.room_seq}无座位")
@@ -804,6 +823,8 @@ def add_room(user, cid, body):
         else:
             classroom_id = _legacy._resolve_classroom_id(db, classroom_text)
 
+        _require_classroom_rules(db, classroom_id, getattr(body, "capacity", 0))
+
         # 课程行锁只保证"同一时刻只有一个事务能算这个课程的下一个室号"，但普通 MAX 查询
         # 仍然可能读到本事务开始时(通常是更早的 _ctx()调用)就已经定格的 REPEATABLE READ
         # 快照——事务B排队等到事务A提交后才拿到锁，此时它的普通读依然看不见A刚插入的行，
@@ -1062,7 +1083,7 @@ def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
-            inv_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            inv_room = db.query(AaExamRoom).filter(AaExamRoom.id == int(inv.exam_room_id), AaExamRoom.tenant_id == _legacy._tid()).first()
             if not inv_room:
                 continue
             inv_course = _legacy._get_course(db, inv_room.exam_course_id)

@@ -85,6 +85,7 @@ import { AppButton } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 export default {
   name: 'PlatformOnboardingCheckView',
@@ -158,9 +159,9 @@ export default {
     selectRow(row) { this.selected = row },
     openTenant(row) { this.$router.push(`/admin/platform/tenants/${row.tenantId}`) },
     async acceptSelected() {
-      const comment = window.prompt('请输入平台交付意见（至少 2 个字符）')
+      const comment = await systemPrompt({ title:'填写平台交付意见', message:'交付意见将写入验收记录。', minLength:2, confirmText:'继续交付' })
       if (!comment || comment.trim().length < 2) return
-      const confirmText = window.prompt('输入“确认交付”完成商业交接')
+      const confirmText = await systemPrompt({ title:'确认商业交接', message:'输入“确认交付”完成商业交接。', placeholder:'确认交付', minLength:4, confirmText:'确认交付' })
       if (confirmText !== '确认交付') return
       const res = await platformControlApi.acceptDelivery(this.selected.tenantId, {
         confirmText,

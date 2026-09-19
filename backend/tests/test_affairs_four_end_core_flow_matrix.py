@@ -20,7 +20,7 @@ def _route_matrix(app) -> set[tuple[str, str]]:
                 rows.add((verb, str(path)))
     return rows
 
-def test_four_end_core_flow_routes_are_all_registered(client, db_mode):
+def test_four_end_core_flow_routes_are_all_registered(client):
     routes = _route_matrix(client.app)
     expected = {
         ("POST", "/api/v1/portal/affairs/leave"),

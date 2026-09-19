@@ -1,0 +1,35 @@
+/* Shared school workspaces: reserve vertical space for actual business content. */
+#app .base-portal-layout.bpl-workspace .mps--compact > .mps__head {
+  display:flex; align-items:center; flex-wrap:wrap; min-height:44px;
+  padding:0; margin:0; gap:8px 16px; border:0; border-radius:0;
+  background:transparent; box-shadow:none;
+}
+#app .base-portal-layout.bpl-workspace .mps--compact > .mps__head::before { display:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact > .mps__head .mps__title { font-size:22px; line-height:1.35; }
+#app .base-portal-layout.bpl-workspace .mps--compact > .mps__toolbar { min-height:40px; margin:0; padding:2px 0; }
+#app .base-portal-layout.bpl-workspace .mps--compact .gdb-kpis { display:flex; gap:0; overflow-x:auto; }
+#app .base-portal-layout.bpl-workspace .mps--compact .gdb-kpi { display:flex; align-items:center; gap:8px; padding:4px 12px; border:0; border-right:1px solid var(--line,#dce6f1); border-radius:0; background:transparent; white-space:nowrap; }
+#app .base-portal-layout.bpl-workspace .mps--compact .gdb-kpi strong { font-size:18px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .gdb-kpi small { font-size:12px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .pr-hero,
+#app .base-portal-layout.bpl-workspace .mps--compact .fr-command { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:6px 10px; gap:8px; min-height:40px; border-radius:6px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .pr-hero__copy strong,
+#app .base-portal-layout.bpl-workspace .mps--compact .fr-command__copy strong { font-size:14px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .pr-hero__metrics { display:flex; gap:12px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .pr-hero__metrics div { display:flex; align-items:center; gap:5px; padding:0; border:0; background:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact .pr-hero__metrics span { font-size:16px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .fr-command__copy > span { display:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact > .mp-stats { display:flex; flex-wrap:wrap; gap:0; margin:0; }
+#app .base-portal-layout.bpl-workspace .mps--compact > .mp-stats > .mp-stat { display:flex; align-items:center; gap:8px; padding:6px 12px; border:0; border-right:1px solid var(--line,#dce6f1); border-radius:0; min-height:36px; }
+#app .base-portal-layout.bpl-workspace .mps--compact > .mp-stats .mp-stat__val { font-size:18px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .sa-dashboard-metrics { display:flex; gap:0; overflow-x:auto; }
+#app .base-portal-layout.bpl-workspace .mps--compact .sa-dashboard-metrics .app-metric-card { display:flex; align-items:center; flex:0 0 auto; gap:8px; padding:8px 12px; min-height:40px; border-radius:0; box-shadow:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact .sa-dashboard-metrics .app-metric-card__value { font-size:18px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .m02-metrics { display:flex; flex-wrap:wrap; gap:0; }
+#app .base-portal-layout.bpl-workspace .mps--compact .m02-metrics article { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:0; }
+#app .base-portal-layout.bpl-workspace .mps--compact .m02-metrics strong { font-size:18px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .idb-journey { padding:6px 10px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .idb-journey__intro { display:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact .idb-journey__step { padding:6px 10px; min-height:36px; }
+#app .base-portal-layout.bpl-workspace .mps--compact .idb-journey__step small { display:none; }
+#app .base-portal-layout.bpl-workspace .mps--compact .gdb-kpi { flex: 0 0 auto; }

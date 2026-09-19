@@ -1,0 +1,139 @@
+diff --git a/performance/tools/seed_local_capacity_env.py b/performance/tools/seed_local_capacity_env.py
+--- a/performance/tools/seed_local_capacity_env.py
++++ b/performance/tools/seed_local_capacity_env.py
+@@ -28,7 +28,7 @@
+ from sqlalchemy import delete, select
+ 
+ 
+-TENANT_ID = 1000000000000000001
++TENANT_ID = 1000000000000000973
+ STUDENT_NO = "PERF-STU-001"
+ TEACHER_MESSAGE_SOURCE = "capacity-gate-teacher"
+ TEACHER_USER_ID_BASE = 8_500_000_000
+@@ -53,6 +53,7 @@
+     from app.db.session import get_sessionmaker
+     from app.models import EmpStudent, StudentProfile, UnifiedMessage
+ 
++    ensure_capacity_commercial_fixture()
+     db = get_sessionmaker()()
+     try:
+         for index in range(1, token_count + 1):
+@@ -208,6 +209,73 @@
+     (out_dir / ".gitignore").write_text("*\n!.gitignore\n", encoding="utf-8")
+ 
+ 
++
++CAPACITY_ORDER_REMARK = "Local capacity owned paid prerequisite; synthetic test data only"
++
++
++def _activate_owned_capacity_order(platform, commercial) -> str:
++    """Resume this fixture's exact order; never replace a foreign contract or FEATURES."""
++    orders = platform.list_orders(tenant_id=TENANT_ID)
++    if len(orders) > 1:
++        raise ValueError("ambiguous capacity commercial history")
++    if orders:
++        order = orders[0]
++        if not (order.get("remark") == CAPACITY_ORDER_REMARK
++                and order.get("packageCode") == "professional"
++                and order.get("orderType") == "NEW"
++                and order.get("status") in {"unpaid", "paid"}
++                and order.get("amount") == 1):
++            raise ValueError("capacity fixture refuses to replace a foreign commercial order")
++    else:
++        state = commercial.commercial_state(TENANT_ID)
++        if state.get("packageCode", "trial") != "trial":
++            raise ValueError("capacity fixture refuses existing formal commercial state")
++        order = platform.create_order({
++            "tenantId": str(TENANT_ID), "packageCode": "professional", "orderType": "NEW",
++            "durationDays": 30, "amount": 1, "remark": CAPACITY_ORDER_REMARK,
++        })
++    state = commercial.commercial_state(TENANT_ID)
++    def verified(value):
++        return (value.get("verified") is True and value.get("authoritySource") == "PAID_ORDER"
++                and value.get("commercialOrderNo") == order["orderNo"]
++                and all(value.get("features", {}).get(key) is True for key in ("internship", "employment")))
++    if verified(state):
++        return str(order["orderNo"])
++    paid = platform.order_action(
++        order["orderNo"], "mark-paid" if order["status"] == "unpaid" else "repair-activation",
++        expected_version=int(order["version"]), reason="本地临时容量库正式订单授权夹具",
++    )
++    if paid.get("repairTaskRequired"):
++        paid = platform.order_action(order["orderNo"], "repair-activation",
++            expected_version=int(paid["version"]), reason="本地临时容量库修复授权激活")
++    if not paid.get("tenantActivated") or not verified(commercial.commercial_state(TENANT_ID)):
++        raise ValueError("capacity commercial prerequisite failed authoritative verification")
++    return str(order["orderNo"])
++
++
++def ensure_capacity_commercial_fixture() -> None:
++    """The exact loopback test schema only; all payment facts remain synthetic and local."""
++    assert_ephemeral_target(os.environ)
++    from app.db.session import get_sessionmaker
++    from app.models import Tenant
++    from app.services import commercial_entitlement_authority_service as commercial
++    from app.services import platform_service
++    from app.services.module_access_service import module_access_state
++
++    with get_sessionmaker()() as db:
++        tenant = db.get(Tenant, TENANT_ID)
++        if tenant is None:
++            db.add(Tenant(id=TENANT_ID, tenant_code="perf-local",
++                school_name="本地临时容量验收学校", status="ACTIVE"))
++            db.commit()
++        elif tenant.tenant_code != "perf-local" or tenant.status != "ACTIVE" or tenant.is_deleted:
++            raise ValueError("capacity tenant ID has foreign ownership or inactive status")
++    _activate_owned_capacity_order(platform_service, commercial)
++    for key in ("internship", "employment"):
++        if module_access_state(TENANT_ID, key).get("allowed") is not True:
++            raise ValueError("capacity fixture cannot bypass school module access: " + key)
++
++
+ def main() -> None:
+     parser = argparse.ArgumentParser(description="Seed local capacity data")
+     parser.add_argument("--out", type=Path, default=ROOT / "performance/secrets")
+diff --git a/performance/tools/test_download_repair.py b/performance/tools/test_download_repair.py
+--- a/performance/tools/test_download_repair.py
++++ b/performance/tools/test_download_repair.py
+@@ -40,4 +40,41 @@
+         doc['identity']['uniqueStudentSubjects']=300
+         self.assertTrue(_identity_pool_assertion(doc,profile='p300',mode='cold')[0])
+ 
++class CapacityCommercialFixtureTests(unittest.TestCase):
++    def test_owned_paid_order_is_reused_without_mutation(self):
++        from seed_local_capacity_env import _activate_owned_capacity_order, CAPACITY_ORDER_REMARK
++        class Platform:
++            def list_orders(self, **kwargs):
++                return [{"orderNo":"OWNED", "remark":CAPACITY_ORDER_REMARK, "packageCode":"professional",
++                         "orderType":"NEW", "status":"paid", "amount":1, "version":2}]
++        class Commercial:
++            def commercial_state(self, tid):
++                return {"verified":True, "authoritySource":"PAID_ORDER", "commercialOrderNo":"OWNED",
++                        "features":{"internship":True,"employment":True}}
++        self.assertEqual(_activate_owned_capacity_order(Platform(),Commercial()),"OWNED")
++    def test_foreign_order_fails_before_payment_or_activation(self):
++        from seed_local_capacity_env import _activate_owned_capacity_order
++        class Platform:
++            def list_orders(self, **kwargs):return [{"remark":"foreign"}]
++        with self.assertRaises(ValueError):_activate_owned_capacity_order(Platform(),None)
++    def test_fixture_uses_new_order_and_canonical_activation(self):
++        from seed_local_capacity_env import _activate_owned_capacity_order, CAPACITY_ORDER_REMARK
++        class Commercial:
++            paid=False
++            def commercial_state(self, tid):
++                return {"packageCode":"professional" if self.paid else "trial", "verified":self.paid,
++                        "authoritySource":"PAID_ORDER" if self.paid else "TRIAL", "commercialOrderNo":"OWNED",
++                        "features":{"internship":self.paid,"employment":self.paid}}
++        c=Commercial()
++        class Platform:
++            def list_orders(self, **kwargs):return []
++            def create_order(self, body):
++                assert body["remark"]==CAPACITY_ORDER_REMARK and body["orderType"]=="NEW"
++                return {"orderNo":"OWNED","status":"unpaid","version":1}
++            def order_action(self, number, action, **kwargs):
++                assert number=="OWNED" and action=="mark-paid" and kwargs["expected_version"]==1
++                c.paid=True
++                return {"tenantActivated":True,"version":2}
++        self.assertEqual(_activate_owned_capacity_order(Platform(),c),"OWNED")
++
+ if __name__=='__main__':unittest.main()

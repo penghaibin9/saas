@@ -12,6 +12,7 @@ const STATUS_MAP = {
   PENDING_SUBMIT: { label: '待提交', type: 'default' },
   PENDING: { label: '待处理', type: 'warning' },
   PENDING_REVIEW: { label: '待审核', type: 'warning' },
+  TEACHER_REVIEW: { label: '任课教师审核中', type: 'warning' },
   PENDING_HANDLE: { label: '待处理', type: 'warning' },
   PENDING_CONFIRM: { label: '待确认', type: 'warning' },
   SUBMITTED: { label: '已提交', type: 'processing' },
@@ -19,6 +20,8 @@ const STATUS_MAP = {
   REVIEWING: { label: '审核中', type: 'processing' },
   PROCESSING: { label: '处理中', type: 'processing' },
   APPROVED: { label: '已通过', type: 'success' },
+  ALLOCATED: { label: '已分配', type: 'processing' },
+  UNALLOCATED: { label: '待学校调剂', type: 'warning' },
   CONFIRMED: { label: '已确认', type: 'success' },
   COMPLETED: { label: '已完成', type: 'success' },
   FINISHED: { label: '已结束', type: 'success' },
@@ -35,6 +38,14 @@ const STATUS_MAP = {
   NOT_STARTED: { label: '未开始', type: 'default' },
   TODO: { label: '待办理', type: 'warning' },
   DONE: { label: '已完成', type: 'success' },
+  // 统一消息的阅读状态不是业务审批状态，仍需给出明确、可理解的文案。
+  UNREAD: { label: '未读', type: 'processing' },
+  READ: { label: '已读', type: 'info' },
+  SENT: { label: '已发送', type: 'processing' },
+  DELIVERED: { label: '已送达', type: 'processing' },
+  PENDING_ACK: { label: '待确认', type: 'warning' },
+  ACKNOWLEDGED: { label: '已确认', type: 'success' },
+  EXPIRED: { label: '已失效', type: 'default' },
   IN_PROGRESS: { label: '办理中', type: 'processing' },
   DOING: { label: '办理中', type: 'processing' },
   BLOCKED: { label: '暂未通过', type: 'danger' },
@@ -66,6 +77,10 @@ const STATUS_MAP = {
   ARRANGED: { label: '已编排', type: 'processing' },
   REMOVED: { label: '已移除', type: 'default' },
   ACTIVE: { label: '有效', type: 'success' },
+  EFFECTIVE: { label: '已生效', type: 'success' },
+  VERIFIED: { label: '已核验', type: 'success' },
+  ONBOARD: { label: '已到岗', type: 'success' },
+  NONE: { label: '暂无记录', type: 'info' },
   ENROLLED: { label: '在读', type: 'success' },
   NORMAL: { label: '在读', type: 'success' },
   REGISTERED: { label: '已注册', type: 'success' },
@@ -82,6 +97,8 @@ const STATUS_MAP = {
   COLLEGE_REVIEW: { label: '学院审核中', type: 'warning' },
   ACADEMIC_REVIEW: { label: '教务终审中', type: 'processing' },
   CHANGE_REVIEW: { label: '更正审核中', type: 'warning' },
+  UPHELD: { label: '维持原成绩', type: 'success' },
+  ADJUSTED: { label: '成绩已调整', type: 'success' },
 
   // 教材征订 / 发放 / 费用
   ORDERED: { label: '已征订', type: 'processing' },
@@ -102,6 +119,15 @@ const STATUS_MAP = {
   ACADEMIC_FINAL: { label: '教务处终审中', type: 'processing' }
 }
 
+const HAS_CHINESE_TEXT = (value) => /[\u3400-\u9fff]/.test(String(value || ''))
+
+function readableLabel(label, mapped) {
+  const value = String(label || '').trim()
+  if (value && HAS_CHINESE_TEXT(value)) return value
+  if (mapped) return mapped.label
+  return value ? '状态待确认' : ''
+}
+
 export default {
   name: 'MobileStatusTag',
   props: {
@@ -117,7 +143,8 @@ export default {
       return this.type || (this.mapped ? this.mapped.type : 'default')
     },
     displayLabel() {
-      if (this.label && (!this.status || this.label !== this.status)) return this.label
+      const supplied = readableLabel(this.label, this.mapped)
+      if (supplied) return supplied
       if (this.mapped) return this.mapped.label
       if (this.status && typeof console !== 'undefined') console.warn('[unknown-mobile-status]', this.status)
       return this.status ? '状态待确认' : '—'

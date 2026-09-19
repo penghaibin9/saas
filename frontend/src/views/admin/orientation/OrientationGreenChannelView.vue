@@ -42,6 +42,7 @@
         :type="confirmConf.type"
         :confirm-text="confirmConf.confirmText"
         :require-reason="confirmConf.requireReason"
+        :submitting="confirmSubmitting"
         :reason-label="confirmConf.reasonLabel"
         @confirm="onConfirm"
       />
@@ -76,7 +77,7 @@ export default {
     return {
       ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(),
-      confirmVisible: false, confirmMode: '', confirmRow: null,
+      confirmVisible: false, confirmMode: '', confirmRow: null, confirmSubmitting: false,
       statusTagType: { SUBMITTED: 'warning', REVIEWING: 'primary', APPROVED: 'success', RETURNED: 'warning', REJECTED: 'danger' }
     }
   },
@@ -141,14 +142,18 @@ export default {
       ]
     },
     onRowAction(key, row) { this.confirmMode = key; this.confirmRow = row; this.confirmVisible = true },
-    async onConfirm(reason) {
-      const row = this.confirmRow; if (!row) return
-      let res
-      if (this.confirmMode === 'approve') res = await api.approveGreenChannel(row.id, { remark: '', expectedVersion: row.version })
-      else if (this.confirmMode === 'return') res = await api.returnGreenChannel(row.id, { reason, expectedVersion: row.version })
-      else if (this.confirmMode === 'reject') res = await api.rejectGreenChannel(row.id, { reason, expectedVersion: row.version })
-      if (res && res.code === 0) { toast.success('已处理'); this.confirmVisible = false; await this.load() }
-      else toast.error((res && res.message) || '操作失败')
+    async onConfirm({ reason = '' } = {}) {
+      const row = this.confirmRow; if (!row || this.confirmSubmitting) return
+      this.confirmSubmitting = true
+      try {
+        let res
+        if (this.confirmMode === 'approve') res = await api.approveGreenChannel(row.id, { remark: '', expectedVersion: row.version })
+        else if (this.confirmMode === 'return') res = await api.returnGreenChannel(row.id, { reason, expectedVersion: row.version })
+        else if (this.confirmMode === 'reject') res = await api.rejectGreenChannel(row.id, { reason, expectedVersion: row.version })
+        if (res && res.code === 0) { toast.success('已处理'); this.confirmVisible = false; await this.load() }
+        else toast.error((res && res.message) || '操作失败')
+      } catch (e) { toast.error(e.message || '审核未完成，请重试') }
+      finally { this.confirmSubmitting = false }
     }
   }
 }

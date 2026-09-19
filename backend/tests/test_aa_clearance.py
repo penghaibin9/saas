@@ -26,7 +26,7 @@ def _stu_token(real_name, student_no):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _seed(db_mode):

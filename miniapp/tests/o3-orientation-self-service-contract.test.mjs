@@ -55,8 +55,8 @@ test('orientation completion hands useful results back to the student', () => {
 })
 
 test('orientation timeline has student-facing titles and status labels', () => {
-  assert.match(api, /ORIENTATION_STEP_LABELS/)
-  assert.match(api, /title: ORIENTATION_STEP_LABELS\[s\.key\]/)
+  assert.match(api, /import \{ orientationStepLabel \} from '.\/orientationPresentation'/)
+  assert.match(api, /title: orientationStepLabel\(s\)/)
   assert.match(statusTag, /DONE: \{ label: '已完成'/)
   assert.match(statusTag, /DOING: \{ label: '办理中'/)
   assert.match(timeline, /'DONE', 'WAIVED', 'NOT_REQUIRED'/)

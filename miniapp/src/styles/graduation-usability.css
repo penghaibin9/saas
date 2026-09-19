@@ -121,6 +121,65 @@
   text-align: center;
 }
 
+/* 移动端毕业设计高频入口统一遵守现有 44px 触控令牌。
+   !important 仅用于覆盖页面 scoped 样式中历史遗留的 34/38/40/42px，
+   不改变 disabled、权限、提交锁或点击处理。 */
+.gg__tab,
+.gg__filter,
+.gg__hub-link,
+.gg__go,
+.gg__more,
+.gt__tab,
+.tb__tab,
+.tb__more,
+.rv__back,
+.rv__confirm,
+.rv__nav,
+.rv__act,
+.ds__row,
+.ds__input,
+.gd__quick,
+.gd__att,
+.gd__att-add,
+.tp__topic,
+.tp__chip,
+.tp__search {
+  min-height: var(--touch-target-min) !important;
+}
+
+.gg__tab,
+.gg__filter,
+.gg__hub-link,
+.rv__back,
+.gd__quick,
+.gd__att,
+.tp__chip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.gg__filter,
+.gd__quick,
+.gd__att,
+.tp__chip {
+  justify-content: center;
+}
+
+/* 移动端正文 14–16px、辅助 12–13px；极小数字徽标仍允许使用 xs 令牌。 */
+.gg__cls,
+.gt__sub,
+.tb__sub,
+.ds__sub,
+.gd__topic-sub,
+.tp__topic-sub,
+.gd__hint,
+.rv__label,
+.rv__ver,
+.rv__glab {
+  font-size: var(--font-size-sm) !important;
+  line-height: 1.5;
+}
+
 .rv {
   width: 100%;
   min-height: 100vh;
@@ -162,7 +221,8 @@
 .rv__ta,
 .ds__input,
 .ds__textarea,
-.gd__reason {
+.gd__reason,
+.tp__search {
   box-sizing: border-box;
   max-width: 100%;
 }
@@ -192,7 +252,6 @@
 }
 
 .ds__input {
-  min-height: 40px;
   padding: 0 var(--space-2);
   border: 1px solid var(--border-base);
   border-radius: var(--radius-md);
@@ -229,6 +288,11 @@
 }
 
 .gd__att-add { flex: 0 0 auto; }
+
+.tp__search {
+  padding: 0 var(--space-3) !important;
+  font-size: var(--font-size-base);
+}
 
 @media (max-width: 380px) {
   .gg__actions button,

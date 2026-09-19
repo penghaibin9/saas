@@ -8,8 +8,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
+from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 
 from app.core.exceptions import AppException
 from app.core.timeutil import tenant_tz, to_utc_naive
@@ -186,6 +187,68 @@ def _active_leave(db, student_id: int, now: datetime):
     ).order_by(CsLeave.end_time.desc(), CsLeave.id.desc())).first()
 
 
+def _active_leaves_for_students(db, *, student_ids: set[int], now: datetime) -> dict[int, SimpleNamespace]:
+    """读取当前住校学生的有效请假，保持单人查询的最新结束时间口径。"""
+    if not student_ids:
+        return {}
+    from app.models import CsLeave
+    ranked = select(
+        CsLeave.student_id.label("student_id"), CsLeave.id.label("leave_id"), CsLeave.end_time,
+        func.row_number().over(
+            partition_by=CsLeave.student_id,
+            order_by=(CsLeave.end_time.desc(), CsLeave.id.desc()),
+        ).label("rank"),
+    ).where(
+        CsLeave.tenant_id == _tid(), CsLeave.student_id.in_(sorted(student_ids)),
+        CsLeave.affairs_status == "APPROVED", CsLeave.start_time <= now,
+        CsLeave.end_time >= now, CsLeave.is_deleted.is_(False),
+    ).subquery()
+    rows = db.execute(select(
+        ranked.c.student_id, ranked.c.leave_id, ranked.c.end_time,
+    ).where(ranked.c.rank == 1)).all()
+    return {
+        int(row.student_id): SimpleNamespace(id=row.leave_id, end_time=row.end_time)
+        for row in rows
+    }
+
+
+def _latest_usable_events_for_students(
+    db, *, student_ids: set[int], building_ids: set[int], since: datetime, provider_code: str,
+) -> dict[tuple[int, int], SimpleNamespace]:
+    """批量取得每个学生-楼栋对的最新成功事件。
+
+    当前正式 Provider 都是 ``DatabasePresenceProvider``。单人路径会按时间倒序跳过失败
+    事件，因此这里先限定 SUCCESS 再按同一排序取首行，结果与 ``get_events`` 完全一致。
+    """
+    if not student_ids or not building_ids:
+        return {}
+    from app.models import DormAccessEvent
+    ranked = select(
+        DormAccessEvent.student_id, DormAccessEvent.building_id,
+        DormAccessEvent.event_type, DormAccessEvent.event_time,
+        func.row_number().over(
+            partition_by=(DormAccessEvent.student_id, DormAccessEvent.building_id),
+            order_by=(DormAccessEvent.event_time.desc(), DormAccessEvent.id.desc()),
+        ).label("rank"),
+    ).where(
+        DormAccessEvent.tenant_id == _tid(), DormAccessEvent.provider == provider_code,
+        DormAccessEvent.student_id.in_(sorted(student_ids)),
+        DormAccessEvent.building_id.in_(sorted(building_ids)),
+        DormAccessEvent.event_time >= since, DormAccessEvent.is_deleted.is_(False),
+        func.upper(DormAccessEvent.result) == "SUCCESS",
+    ).subquery()
+    rows = db.execute(select(
+        ranked.c.student_id, ranked.c.building_id,
+        ranked.c.event_type, ranked.c.event_time,
+    ).where(ranked.c.rank == 1)).all()
+    return {
+        (int(row.student_id), int(row.building_id)): SimpleNamespace(
+            event_type=row.event_type, event_time=row.event_time,
+        )
+        for row in rows
+    }
+
+
 def _status_payload(status: str, *, event=None, leave=None, policy: dict, reason: str | None = None) -> dict:
     return {
         "status": status, "statusLabel": STATUS_LABELS[status],
@@ -196,6 +259,25 @@ def _status_payload(status: str, *, event=None, leave=None, policy: dict, reason
         "reason": reason,
         "policyVersion": int(policy.get("policyVersion") or 1),
     }
+
+
+def _presence_from_latest_event(event, *, moment: datetime, since: datetime, rule: dict) -> dict:
+    """按已经解析出的最新可用事件研判，供单人和批量路径共用。"""
+    if not event:
+        return _status_payload("UNKNOWN", policy=rule, reason="NO_USABLE_EVENT")
+    if event.event_time < since:
+        return _status_payload("UNKNOWN", event=event, policy=rule, reason="STALE_EVENT")
+    if event.event_type == "IN":
+        curfew = _parse_clock(str(rule.get("curfewTime")), "curfewTime")
+        deadline = _local_clock_utc(event.event_time, curfew) + timedelta(
+            minutes=int(rule.get("lateGraceMinutes") or 0)
+        )
+        status = "LATE_RETURN" if event.event_time > deadline else "IN_DORM"
+        return _status_payload(status, event=event, policy=rule)
+    judgement = _parse_clock(str(rule.get("notReturnTime")), "notReturnTime")
+    judgement_at = _local_clock_utc(moment, judgement)
+    status = "NOT_RETURNED" if moment >= judgement_at else "OUT"
+    return _status_payload(status, event=event, policy=rule)
 
 
 def evaluate_presence(
@@ -223,21 +305,7 @@ def evaluate_presence(
     except Exception:
         return _status_payload("UNKNOWN", policy=rule, reason="PROVIDER_UNAVAILABLE")
     event = next((row for row in events if str(getattr(row, "result", "")).upper() == "SUCCESS"), None)
-    if not event:
-        return _status_payload("UNKNOWN", policy=rule, reason="NO_USABLE_EVENT")
-    if event.event_time < since:
-        return _status_payload("UNKNOWN", event=event, policy=rule, reason="STALE_EVENT")
-    if event.event_type == "IN":
-        curfew = _parse_clock(str(rule.get("curfewTime")), "curfewTime")
-        deadline = _local_clock_utc(event.event_time, curfew) + timedelta(
-            minutes=int(rule.get("lateGraceMinutes") or 0)
-        )
-        status = "LATE_RETURN" if event.event_time > deadline else "IN_DORM"
-        return _status_payload(status, event=event, policy=rule)
-    judgement = _parse_clock(str(rule.get("notReturnTime")), "notReturnTime")
-    judgement_at = _local_clock_utc(moment, judgement)
-    status = "NOT_RETURNED" if moment >= judgement_at else "OUT"
-    return _status_payload(status, event=event, policy=rule)
+    return _presence_from_latest_event(event, moment=moment, since=since, rule=rule)
 
 
 def provider_status(user: dict | None = None) -> dict:
@@ -269,6 +337,49 @@ def provider_status(user: dict | None = None) -> dict:
     }
 
 
+def _list_unconfigured_presence(db, stmt, *, rule, moment, status, page, page_size):
+    """未接门禁时只有有效请假/未知两种事实，直接在数据库统计、过滤和分页。"""
+    from app.models import CsLeave, DormBed, DormBuilding, DormRoom, StudentProfile
+    leaves = select(
+        CsLeave.student_id, CsLeave.id.label("leave_id"), CsLeave.end_time,
+        func.row_number().over(partition_by=CsLeave.student_id,
+                               order_by=(CsLeave.end_time.desc(), CsLeave.id.desc())).label("rank"),
+    ).where(
+        CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+        CsLeave.affairs_status == "APPROVED", CsLeave.start_time <= moment,
+        CsLeave.end_time >= moment,
+    ).subquery()
+    base = stmt.outerjoin(leaves, and_(leaves.c.student_id == StudentProfile.id, leaves.c.rank == 1))
+    state = case((leaves.c.leave_id.is_not(None), "ON_LEAVE"), else_="UNKNOWN")
+    counts = {key: 0 for key in PRESENCE_STATUSES}
+    for key, count in db.execute(base.with_only_columns(state, func.count(), maintain_column_froms=True).group_by(state)):
+        counts[key] = int(count)
+    selected = str(status).upper() if status else None
+    total = counts.get(selected, 0) if selected else sum(counts.values())
+    if not total:
+        return [], total, counts
+    if selected:
+        base = base.where(state == selected)
+    rows = db.execute(base.with_only_columns(
+        StudentProfile.id.label("student_id"), StudentProfile.student_no, StudentProfile.real_name,
+        DormBuilding.id.label("building_id"), DormBuilding.building_name,
+        DormRoom.id.label("room_id"), DormRoom.room_no, DormBed.bed_no,
+        leaves.c.leave_id, leaves.c.end_time, maintain_column_froms=True,
+    ).order_by(DormBuilding.building_name, DormRoom.room_no, DormBed.bed_no, DormBed.id)
+        .offset(max(page - 1, 0) * page_size).limit(page_size)).all()
+    items = []
+    for row in rows:
+        leave = SimpleNamespace(id=row.leave_id, end_time=row.end_time) if row.leave_id else None
+        current = _status_payload("ON_LEAVE" if leave else "UNKNOWN", leave=leave, policy=rule,
+                                  reason="APPROVED_LEAVE" if leave else "PROVIDER_DISABLED")
+        items.append({
+            "studentId": str(row.student_id), "studentNo": row.student_no, "studentName": row.real_name,
+            "buildingId": str(row.building_id), "buildingName": row.building_name,
+            "roomId": str(row.room_id), "roomNo": row.room_no, "bedNo": row.bed_no, **current,
+        })
+    return items, total, counts
+
+
 def list_presence(
     user: dict, *, status: str | None = None, page: int = 1, page_size: int = 50,
     now: datetime | None = None,
@@ -276,6 +387,8 @@ def list_presence(
     from app.models import DormBed, DormBuilding, DormRoom, StudentProfile
     from app.services import affairs_dorm_service as dorm
     moment = now or datetime.utcnow()
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc).replace(tzinfo=None)
     rule = _policy()
     adapter = _provider(rule["provider"])
     with session() as db:
@@ -289,31 +402,75 @@ def list_presence(
             DormBed.student_id.is_not(None), DormBed.student_id > 0,
             DormBed.is_deleted.is_(False), StudentProfile.is_deleted.is_(False),
             DormBuilding.is_deleted.is_(False), DormRoom.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(), DormBuilding.tenant_id == _tid(), DormRoom.tenant_id == _tid(),
         )
         if scope is not None:
             if not scope:
                 return [], 0, {key: 0 for key in PRESENCE_STATUSES}
             stmt = stmt.where(DormBed.building_id.in_(scope))
+        if adapter.code == "NONE":
+            return _list_unconfigured_presence(db, stmt, rule=rule, moment=moment, status=status,
+                                               page=page, page_size=page_size)
         rows = db.execute(stmt.order_by(DormBuilding.building_name, DormRoom.room_no, DormBed.bed_no)).all()
         items = []
         counts = {key: 0 for key in PRESENCE_STATUSES}
-        for bed, student, building, room in rows:
-            current = evaluate_presence(
-                db, student_id=int(student.id), building_id=int(building.id), now=moment,
-                policy=rule, provider=adapter,
-            )
-            counts[current["status"]] += 1
-            if status and current["status"] != str(status).upper():
-                continue
-            items.append({
-                "studentId": str(student.id), "studentNo": student.student_no,
-                "studentName": student.real_name, "buildingId": str(building.id),
-                "buildingName": building.building_name, "roomId": str(room.id),
-                "roomNo": room.room_no, "bedNo": bed.bed_no, **current,
-            })
-        total = len(items)
         start = max(page - 1, 0) * page_size
-        return items[start:start + page_size], total, counts
+        end = start + page_size
+        total = 0
+        if isinstance(adapter, DatabasePresenceProvider):
+            student_ids = {int(student.id) for _, student, _, _ in rows}
+            building_ids = {int(building.id) for _, _, building, _ in rows}
+            active_leaves = _active_leaves_for_students(db, student_ids=student_ids, now=moment)
+            since = moment - timedelta(hours=max(int(rule.get("noEventHours") or 24), 1))
+            try:
+                latest_events = _latest_usable_events_for_students(
+                    db, student_ids=student_ids, building_ids=building_ids,
+                    since=since, provider_code=adapter.code,
+                )
+            except Exception:
+                latest_events = None
+            for bed, student, building, room in rows:
+                leave = active_leaves.get(int(student.id))
+                if leave:
+                    current = _status_payload("ON_LEAVE", leave=leave, policy=rule, reason="APPROVED_LEAVE")
+                elif latest_events is None:
+                    current = _status_payload("UNKNOWN", policy=rule, reason="PROVIDER_UNAVAILABLE")
+                else:
+                    current = _presence_from_latest_event(
+                        latest_events.get((int(student.id), int(building.id))),
+                        moment=moment, since=since, rule=rule,
+                    )
+                counts[current["status"]] += 1
+                if status and current["status"] != str(status).upper():
+                    continue
+                if start <= total < end:
+                    items.append({
+                        "studentId": str(student.id), "studentNo": student.student_no,
+                        "studentName": student.real_name, "buildingId": str(building.id),
+                        "buildingName": building.building_name, "roomId": str(room.id),
+                        "roomNo": room.room_no, "bedNo": bed.bed_no, **current,
+                    })
+                total += 1
+        else:
+            # 保留未来非数据库 Provider 的单人适配器契约；当前已启用的正式 Provider
+            # 均走上方固定三次读取的批量路径。
+            for bed, student, building, room in rows:
+                current = evaluate_presence(
+                    db, student_id=int(student.id), building_id=int(building.id), now=moment,
+                    policy=rule, provider=adapter,
+                )
+                counts[current["status"]] += 1
+                if status and current["status"] != str(status).upper():
+                    continue
+                if start <= total < end:
+                    items.append({
+                        "studentId": str(student.id), "studentNo": student.student_no,
+                        "studentName": student.real_name, "buildingId": str(building.id),
+                        "buildingName": building.building_name, "roomId": str(room.id),
+                        "roomNo": room.room_no, "bedNo": bed.bed_no, **current,
+                    })
+                total += 1
+        return items, total, counts
 
 
 def my_presence(user: dict) -> dict:

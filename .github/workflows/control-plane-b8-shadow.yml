@@ -98,7 +98,7 @@ jobs:
           assert summary['usedLegacyPattern'] == 0
           assert summary['b8ConcreteExact'] == 641
           assert summary['b8PostCutoverCompatibilityExact'] == 192
-          assert summary['catalogExact'] == 706
+          assert summary['catalogExact'] == 717
           assert summary['runtimeWildcardProbe'] > 0
           assert data['runtimeWildcardProbe']
           print(json.dumps(summary, ensure_ascii=False, sort_keys=True))

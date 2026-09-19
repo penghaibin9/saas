@@ -217,7 +217,11 @@ def student_courses(user, batch_id=None):
         ]
 
 
-def reselect_guide(user, batch_id):
+def reselect_guide(user, batch_id, page=1, page_size=20):
+    from app.models import AaSelectionRecord
+
+    safe_page = max(1, int(page or 1))
+    safe_size = max(1, min(100, int(page_size or 20)))
     with _core.session() as db:
         ctx = _core._ctx(user, db)
         scoped = _scope_values(db, ctx)
@@ -231,7 +235,32 @@ def reselect_guide(user, batch_id):
             _core._course_dto(row) for row in courses
             if row.status == _core._COURSE_OPEN and int(row.selected_count or 0) < int(row.capacity or 0)
         ]
-        return {"batchId": str(batch.id), "cancelledCourses": cancelled, "availableCourses": available}
+        # Student identities follow the same course authority as course_roster, never
+        # the broader catalog visibility of an ordinary teacher's batch selector.
+        keys = _core._derive_keys(user)
+        manageable = ctx.scope_type in ("COLLEGE", "TENANT_ALL")
+        course_ids = [row.id for row in courses if manageable or row.teacher_key in keys]
+        affected_query = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(), AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.selection_course_id.in_(course_ids or [-1]),
+            AaSelectionRecord.status == _core._REC_COURSE_CANCELLED,
+            AaSelectionRecord.is_deleted.is_(False),
+        )
+        total = affected_query.count()
+        affected = affected_query.order_by(AaSelectionRecord.id).offset(
+            (safe_page - 1) * safe_size,
+        ).limit(safe_size).all()
+        return {
+            "batchId": str(batch.id), "cancelledCourses": cancelled, "availableCourses": available,
+            "affectedRecords": {
+                "items": [{**_core._record_dto(row), "allowedActions": ["VIEW"],
+                           "resolutionStatus": "UNVERIFIED", "replacementRecordId": None,
+                           "nextOwner": "学生本人 / 选课管理岗",
+                           "note": "取消课程为正式受影响事实；尚无原记录到替代记录的正式关联，补选完成情况待核对。"}
+                          for row in affected],
+                "total": total, "page": safe_page, "pageSize": safe_size,
+            },
+        }
 
 
 def batch_stats(user, batch_id):

@@ -1,9 +1,12 @@
 <template>
   <section class="aa-bulk" aria-label="批量注册工作区">
+    <div v-if="!batchIsOpen" class="aa-bulk__notice aa-bulk__state" role="status">{{ batchStateMessage }}</div>
+    <template v-if="batchIsOpen">
     <div class="aa-bulk__head">
       <div>
         <p class="aa-bulk__eyebrow">高频办理</p>
         <h3 class="aa-bulk__title">批量注册</h3>
+        <p class="aa-bulk__desc">来源：注册批次 {{ batchId }} · 当前办理岗位：{{ ctx.currentRole?.roleName || '待核对' }} · 范围：{{ ctx.dataScope?.scopeName || '待核对' }}</p>
         <p class="aa-bulk__desc">
           系统自动带入学生、班级、专业、当前学籍状态和资格说明；先预览，再确认。最终仍逐人走正式注册校验与学籍状态流水。
         </p>
@@ -18,21 +21,22 @@
           v-model.trim="keyword"
           class="aa-bulk__input"
           type="search"
+          :disabled="applying"
           placeholder="按姓名或学号搜索"
           @keyup.enter="search"
         />
       </label>
-      <AppButton :disabled="loading" @click="search">{{ loading ? '查询中…' : '查询' }}</AppButton>
-      <AppButton :disabled="loading || !rows.length" @click="toggleCurrentPage">
+      <AppButton :disabled="loading || applying" @click="search">{{ loading ? '查询中…' : '查询' }}</AppButton>
+      <AppButton :disabled="loading || applying || previewing || unknownReceipt || !canRegister || !rows.length" @click="toggleCurrentPage">
         {{ allCurrentPageSelected ? '取消本页选择' : '选择本页' }}
       </AppButton>
     </div>
 
     <div class="aa-bulk__summary" aria-live="polite">
-      <div class="aa-bulk__metric"><strong>{{ total }}</strong><span>当前候选</span></div>
+      <div class="aa-bulk__metric"><strong>{{ loading ? '读取中' : error ? '待核对' : total }}</strong><span>当前候选</span></div>
       <div class="aa-bulk__metric"><strong>{{ selectedIds.length }}</strong><span>已选择</span></div>
-      <div class="aa-bulk__metric"><strong>{{ preview?.ready || 0 }}</strong><span>预览可执行</span></div>
-      <div class="aa-bulk__metric"><strong>{{ preview?.blocked || 0 }}</strong><span>预览阻断</span></div>
+      <div class="aa-bulk__metric"><strong>{{ preview?.ready ?? '待预览' }}</strong><span>预览可执行</span></div>
+      <div class="aa-bulk__metric"><strong>{{ preview?.blocked ?? '待预览' }}</strong><span>预览阻断</span></div>
     </div>
 
     <div v-if="error" class="aa-bulk__notice aa-bulk__notice--error" role="alert">
@@ -65,6 +69,7 @@
               <input
                 :aria-label="`选择 ${row.realName || row.studentNo}`"
                 type="checkbox"
+                :disabled="applying || previewing || unknownReceipt || !canRegister"
                 :checked="isSelected(row.studentId)"
                 @change="toggleStudent(row.studentId)"
               />
@@ -96,8 +101,8 @@
     <div v-if="rows.length" class="aa-bulk__pager">
       <span>第 {{ page }} / {{ totalPages }} 页</span>
       <div>
-        <AppButton :disabled="loading || page <= 1" @click="changePage(page - 1)">上一页</AppButton>
-        <AppButton :disabled="loading || page >= totalPages" @click="changePage(page + 1)">下一页</AppButton>
+        <AppButton :disabled="loading || applying || page <= 1" @click="changePage(page - 1)">上一页</AppButton>
+        <AppButton :disabled="loading || applying || page >= totalPages" @click="changePage(page + 1)">下一页</AppButton>
       </div>
     </div>
 
@@ -106,7 +111,7 @@
         <strong>已选择 {{ selectedIds.length }} 人</strong>
         <span>预览不会写库；只有确认后才逐人进入正式注册写链。</span>
       </div>
-      <AppButton type="primary" :disabled="previewing || applying || !selectedIds.length" @click="makePreview">
+      <AppButton variant="primary" :disabled="!canRegister || previewing || applying || unknownReceipt || !selectedIds.length" @click="makePreview">
         {{ previewing ? '预览中…' : '预览批量注册' }}
       </AppButton>
     </div>
@@ -140,16 +145,32 @@
 
       <div class="aa-bulk__preview-actions">
         <AppButton :disabled="applying" @click="cancelPreview">返回调整</AppButton>
-        <AppButton type="primary" :disabled="applying || !reviewed || !preview.ready" @click="apply">
+        <AppButton variant="primary" :disabled="!canRegister || applying || !reviewed || !previewCurrent || !preview.ready" @click="apply">
           {{ applying ? '正在正式注册…' : `确认注册 ${preview.ready} 人` }}
         </AppButton>
       </div>
     </div>
+    </template>
+
+    <div v-if="commandError" class="aa-bulk__notice aa-bulk__notice--error" role="alert">{{ commandError }}</div>
+    <div v-if="unknownReceipt" class="aa-bulk__notice" role="status" data-testid="bulk-registration-unknown">
+      <template v-if="unknownReceiptCurrent">批次 {{ unknownReceipt.batchId }} 的注册结果待核对，不能据此认定整批未写入。已请求刷新下方正式名单，当前页面暂停重复提交。
+        <button type="button" class="aa-bulk__link" :disabled="applying" @click="recheckRegistration">重新核对正式名单</button>
+      </template>
+      <template v-else>此前办理上下文的注册结果仍待核对，当前页面暂停重复提交。请回到原身份与原批次核对正式名单。</template>
+    </div>
 
     <div v-if="result" class="aa-bulk__result" data-testid="bulk-registration-result">
       <strong>本次处理完成：成功 {{ result.succeeded }} 人，未成功 {{ result.failed }} 人。</strong>
-      <span v-if="result.failed">未成功项目已保留真实业务原因，可处理后重新发起；系统没有把部分失败伪装成整批成功。</span>
-      <span v-else>全部学生均已通过最终校验并进入正式注册事实链。</span>
+      <span>以下为正式命令的逐项回执；后续办理以重新读取的注册记录与当前状态为准。</span>
+      <ul class="aa-bulk__receipt-list">
+        <li v-for="item in result.items" :key="item.studentId">
+          <strong>学生 ID：{{ item.studentId }} · {{ item.ok ? '注册成功' : '未成功' }}</strong>
+          <span>{{ item.message || item.reason || '回执未提供具体原因' }}</span>
+          <span v-if="item.registrationId">注册记录 ID：{{ item.registrationId }}</span>
+          <span v-if="item.studentStatus">本次回执学籍状态：{{ academicStatusLabel(item.studentStatus) }}</span>
+        </li>
+      </ul>
     </div>
   </section>
 </template>
@@ -158,14 +179,18 @@
 import { AppButton } from '@/components/ui'
 import { rosterRegistrationConvenienceApi } from '@/modules/academicAffairs/api/roster-registration-convenience.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 export default {
   name: 'AaRegistrationBulkPanel',
   components: { AppButton },
   props: {
-    batchId: { type: [String, Number], required: true }
+    batchId: { type: [String, Number], required: true },
+    batchState: { type: String, default: 'UNKNOWN' },
+    ctx: { type: Object, required: true }
   },
-  emits: ['applied'],
+  emits: ['applied', 'busy', 'recheck'],
   data() {
     return {
       keyword: '',
@@ -180,10 +205,24 @@ export default {
       preview: null,
       reviewed: false,
       applying: false,
-      result: null
+      result: null,
+      requestVersion: 0, scopeVersion: 0, disposed: false, previewSignature: '', commandError: '', unknownReceipt: null
     }
   },
   computed: {
+    contextKey() { return JSON.stringify([String(this.batchId), this.scopeVersion, this.ctx, this.batchState]) },
+    identityKey() { return JSON.stringify(this.ctx) },
+    unknownReceiptCurrent() { return !!this.unknownReceipt && this.unknownReceipt.identity === this.identityKey && String(this.unknownReceipt.batchId) === String(this.batchId) },
+    selectionSignature() { return JSON.stringify([this.contextKey, this.selectedIds]) },
+    previewCurrent() { return this.batchIsOpen && !!this.preview?.previewToken && this.previewSignature === this.selectionSignature && String(this.preview.batchId) === String(this.batchId) },
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.registration.manage') },
+    batchIsOpen() { return !this.disposed && this.batchState === 'OPEN' },
+    canRegister() { return this.canManage && this.batchIsOpen },
+    batchStateMessage() {
+      return { DRAFT: '本批次为草稿，尚未开放注册。当前可查看正式记录。',
+        CLOSED: '本批次已关闭，当前查看正式注册记录，不再提供本页的选择、预览或确认注册。',
+        ARCHIVED: '本批次已归档，当前查看正式注册记录，不再提供本页的选择、预览或确认注册。' }[this.batchState] || '批次状态尚未核对，暂不开放选择、预览或确认注册。请先核对原批次。'
+    },
     totalPages() {
       return Math.max(1, Math.ceil(this.total / this.pageSize))
     },
@@ -194,7 +233,41 @@ export default {
   created() {
     this.load()
   },
+  watch: {
+    batchId() { this.resetContext() },
+    batchState() { this.pauseBatchWork(); if (this.batchIsOpen) this.load() },
+    ctx: { deep: true, handler() { this.resetContext() } },
+    applying(value) { this.$emit('busy', value) }
+  },
+  beforeUnmount() { this.disposed = true; this.requestVersion++; this.scopeVersion++ },
   methods: {
+    academicStatusLabel,
+    pauseBatchWork() {
+      this.scopeVersion++; this.requestVersion++; this.rows = []; this.total = 0; this.selectedIds = []
+      this.preview = null; this.previewSignature = ''; this.previewing = false; this.reviewed = false; this.loading = false; this.error = ''
+    },
+    resetContext() {
+      this.scopeVersion++; this.requestVersion++; this.selectedIds = []; this.rows = []; this.page = 1
+      this.preview = null; this.previewSignature = ''; this.previewing = false; this.reviewed = false; this.result = null; this.commandError = ''; this.keyword = ''
+      this.load()
+    },
+    isForbidden(res) {
+      return ['NO_PERMISSION', 'NO_DATA_SCOPE'].includes(res.bizCode || res.code) || [403, 403001, 403002].includes(Number(res.code))
+    },
+    clearRestrictedData() {
+      this.scopeVersion++; this.requestVersion++
+      this.rows = []; this.total = 0; this.selectedIds = []; this.keyword = ''
+      this.previewing = false; this.loading = false; this.invalidatePreview()
+    },
+    recheckRegistration() {
+      if (this.applying || !this.unknownReceiptCurrent) return
+      this.$emit('recheck', { batchId: this.unknownReceipt.batchId })
+    },
+    receiptMatches(data, target) {
+      if (String(data?.batchId) !== String(target.batchId) || !Number.isInteger(data?.succeeded) || !Number.isInteger(data?.failed) || data.succeeded < 0 || data.failed < 0 || !Array.isArray(data?.items)) return false
+      const ids = data.items.map(item => String(item.studentId))
+      return data.selected === target.studentIds.length && ids.length === target.studentIds.length && new Set(ids).size === ids.length && ids.every(id => target.studentIds.includes(id)) && data.items.every(item => typeof item.ok === 'boolean') && data.items.filter(item => item.ok).length === data.succeeded && data.items.filter(item => !item.ok).length === data.failed
+    },
     eligibilityLabel(value) {
       return ({ ELIGIBLE: '已通过', INELIGIBLE: '不通过', PENDING: '待核验' })[value] || (value ? '待确认' : '待核验')
     },
@@ -209,9 +282,11 @@ export default {
     invalidatePreview() {
       this.preview = null
       this.reviewed = false
+      this.previewSignature = ''
       this.result = null
     },
     toggleStudent(studentId) {
+      if (!this.canRegister || this.applying || this.previewing || this.unknownReceipt) return
       const id = String(studentId)
       if (this.isSelected(id)) {
         this.selectedIds = this.selectedIds.filter((value) => value !== id)
@@ -224,6 +299,7 @@ export default {
       this.invalidatePreview()
     },
     toggleCurrentPage() {
+      if (!this.canRegister || this.applying || this.previewing || this.unknownReceipt) return
       const pageIds = this.rows.map((row) => String(row.studentId))
       if (this.allCurrentPageSelected) {
         this.selectedIds = this.selectedIds.filter((id) => !pageIds.includes(id))
@@ -238,14 +314,18 @@ export default {
       this.invalidatePreview()
     },
     async search() {
+      if (!this.batchIsOpen || this.applying) return
       this.page = 1
       await this.load()
     },
     async changePage(page) {
+      if (!this.batchIsOpen || this.applying) return
       this.page = page
       await this.load()
     },
     async load() {
+      if (!this.batchIsOpen) { this.pauseBatchWork(); return }
+      const version = ++this.requestVersion, context = this.contextKey
       this.loading = true
       this.error = ''
       const res = await rosterRegistrationConvenienceApi.getCandidates(this.batchId, {
@@ -253,6 +333,7 @@ export default {
         page: this.page,
         pageSize: this.pageSize
       })
+      if (this.disposed || version !== this.requestVersion || context !== this.contextKey) return
       if (res.code === 0) {
         this.total = res.data.total
         if (this.page > this.totalPages) {
@@ -264,44 +345,67 @@ export default {
       } else {
         this.rows = []
         this.total = 0
+        if (this.isForbidden(res)) {
+          this.clearRestrictedData()
+          this.$emit('recheck', { batchId: String(this.batchId) })
+        }
         this.error = res.message || '候选名单加载失败'
       }
       this.loading = false
     },
     async makePreview() {
-      if (!this.selectedIds.length || this.previewing) return
+      if (!this.canRegister || !this.selectedIds.length || this.previewing || this.applying || this.unknownReceipt) return
+      const signature = this.selectionSignature, context = this.contextKey, batchId = this.batchId, ids = [...this.selectedIds]
       this.previewing = true
+      this.preview = null; this.previewSignature = ''; this.commandError = ''
       this.result = null
-      const res = await rosterRegistrationConvenienceApi.previewBulkRegistration(this.batchId, this.selectedIds)
+      const res = await rosterRegistrationConvenienceApi.previewBulkRegistration(batchId, ids)
+      if (this.disposed || context !== this.contextKey) return
       this.previewing = false
+      if (signature !== this.selectionSignature) return
       if (res.code !== 0) {
+        if (this.isForbidden(res)) {
+          this.clearRestrictedData()
+          this.$emit('recheck', { batchId: String(this.batchId) })
+        }
         toast.error(res.message || '批量注册预览失败')
         return
       }
-      this.preview = res.data
+      if (String(res.data?.batchId) !== String(batchId)) { this.commandError = '预览批次不一致，请重新读取候选名单'; return }
+      this.preview = res.data; this.previewSignature = signature
       this.reviewed = false
     },
     cancelPreview() {
+      if (this.applying) return
       this.preview = null
       this.reviewed = false
     },
     async apply() {
-      if (!this.preview || !this.reviewed || !this.preview.ready || this.applying) return
+      if (!this.canRegister || !this.previewCurrent || !this.reviewed || !this.preview.ready || this.applying || this.unknownReceipt) return
+      const target = { batchId: String(this.batchId), token: this.preview.previewToken, context: this.contextKey, identity: this.identityKey, studentIds: [...this.selectedIds] }
       this.applying = true
-      const res = await rosterRegistrationConvenienceApi.confirmBulkRegistration(this.batchId, this.selectedIds)
+      this.preview = null; this.previewSignature = ''; this.reviewed = false; this.commandError = ''; this.result = null
+      const res = await rosterRegistrationConvenienceApi.confirmBulkRegistration(target.batchId, target.token)
+      if (this.disposed) return
       this.applying = false
-      if (res.code !== 0) {
-        toast.error(res.message || '批量注册失败')
+      const current = target.context === this.contextKey
+      if (res.code !== 0 || !this.receiptMatches(res.data, target)) {
+        // The service commits each student separately; even a 409 can follow earlier commits.
+        // No error envelope here proves that the whole command wrote zero rows.
+        this.unknownReceipt = target
+        if (!current) return
+        if (this.isForbidden(res)) this.clearRestrictedData()
+        this.commandError = res.code !== 0 ? (res.message || '未取得正式注册回执') : '注册回执对象、逐项结果或数量不完整，请先核对正式名单'
+        this.recheckRegistration()
         return
       }
+      if (!current) return
       this.result = res.data
-      this.preview = null
-      this.reviewed = false
       this.selectedIds = []
-      if (res.data.failed) toast.info(`处理完成：成功 ${res.data.succeeded} 人，未成功 ${res.data.failed} 人`)
-      else toast.success(`已完成 ${res.data.succeeded} 人注册`)
+      if (res.data.failed) toast.info('处理完成：成功 ' + res.data.succeeded + ' 人，未成功 ' + res.data.failed + ' 人')
+      else toast.success('已完成 ' + res.data.succeeded + ' 人注册')
       await this.load()
-      this.$emit('applied', res.data)
+      if (!this.disposed && target.context === this.contextKey) this.$emit('applied', res.data)
     }
   }
 }
@@ -318,12 +422,13 @@ export default {
 .aa-bulk__search { flex: 1; min-width: 220px; }
 .aa-bulk__input { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--border-300, #d0d5dd); border-radius: 8px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font: inherit; outline: none; }
 .aa-bulk__input:focus { border-color: var(--primary-500, #3b82f6); box-shadow: 0 0 0 3px rgba(59, 130, 246, .1); }
-.aa-bulk__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 0 24px 16px; }
-.aa-bulk__metric { padding: 12px 14px; border: 1px solid var(--border-100, #eef0f3); border-radius: 10px; background: var(--bg-50, #f8fafc); }
-.aa-bulk__metric strong { display: block; color: var(--text-900, #1f2329); font-size: 20px; line-height: 1.2; }
-.aa-bulk__metric span { display: block; margin-top: 4px; color: var(--text-500, #7a8494); font-size: 12px; }
+.aa-bulk__summary { display: flex; flex-wrap: wrap; gap: 18px; padding: 0 24px 16px; }
+.aa-bulk__metric { display: flex; gap: 6px; align-items: baseline; }
+.aa-bulk__metric strong { color: var(--text-900, #1f2329); font-size: 13px; }
+.aa-bulk__metric span { color: var(--text-500, #7a8494); font-size: 12px; }
 .aa-bulk__notice, .aa-bulk__empty { margin: 0 24px 16px; padding: 16px; border-radius: 10px; background: var(--bg-50, #f8fafc); color: var(--text-600, #667085); font-size: 13px; }
 .aa-bulk__notice--error { color: #b42318; background: #fff4f2; }
+.aa-bulk__state { margin-top: 16px; }
 .aa-bulk__link { margin-left: 8px; border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
 .aa-bulk__empty { display: flex; flex-direction: column; gap: 4px; }
 .aa-bulk__empty strong { color: var(--text-800, #344054); }
@@ -369,6 +474,8 @@ export default {
 .aa-bulk__preview-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .aa-bulk__result { display: flex; flex-direction: column; gap: 4px; margin: 0 24px 20px; padding: 14px 16px; border-radius: 10px; color: #05603a; background: #ecfdf3; font-size: 13px; }
 .aa-bulk__result span { color: #087443; font-size: 12px; }
+.aa-bulk__receipt-list { margin: 8px 0 0; padding: 0; list-style: none; }
+.aa-bulk__receipt-list li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border-200, #e4e7ec); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 900px) {
   .aa-bulk__head, .aa-bulk__actions, .aa-bulk__preview-head { flex-direction: column; align-items: stretch; }

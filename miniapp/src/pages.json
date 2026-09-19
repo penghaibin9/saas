@@ -1,5 +1,5 @@
 {
-  "easycom": {"autoscan": true, "custom": {"^Mobile(.*)": "@/components/Mobile$1.vue", "^App(.*)": "@/components/App$1.vue"}},
+  "easycom": {"autoscan": true, "custom": {"^MobileGraduationBatchContext$": "@/pages/teacher/components/MobileGraduationBatchContext.vue", "^MobileGraduationDelayQueue$": "@/pages/teacher/components/MobileGraduationDelayQueue.vue", "^MobileGraduationSectionErrors$": "@/pages/student/components/MobileGraduationSectionErrors.vue", "^MobileGraduationExtensionPanel$": "@/pages/student/components/MobileGraduationExtensionPanel.vue", "^MobileGraduationTempFileJanitor$": "@/pages/student/components/MobileGraduationTempFileJanitor.vue", "^Mobile(.*)": "@/components/Mobile$1.vue", "^App(.*)": "@/components/App$1.vue"}},
   "pages": [
     {"path": "pages/login/index", "style": {"navigationBarTitleText": "选择登录身份", "navigationStyle": "custom"}},
     {"path": "pages/login/student/index", "style": {"navigationBarTitleText": "学生登录", "navigationStyle": "custom"}},
@@ -122,12 +122,13 @@
         {"path": "academic-affairs/grade-entry", "style": {"navigationBarTitleText": "成绩录入", "navigationStyle": "custom"}},
         {"path": "academic-affairs/attendance", "style": {"navigationBarTitleText": "课堂考勤", "navigationStyle": "custom"}},
         {"path": "academic-affairs/workload", "style": {"navigationBarTitleText": "工作量申报", "navigationStyle": "custom"}},
+        {"path": "services/index", "style": {"navigationBarTitleText": "服务大厅", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "workbench/index", "style": {"navigationBarTitleText": "工作台", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "orientation/worklist/index", "style": {"navigationBarTitleText": "迎新办理", "navigationStyle": "custom"}},
         {"path": "orientation/verify/index", "style": {"navigationBarTitleText": "现场报到核验", "navigationStyle": "custom"}},
         {"path": "orientation/dashboard/index", "style": {"navigationBarTitleText": "迎新看板", "navigationStyle": "custom"}},
         {"path": "orientation/green-channel/index", "style": {"navigationBarTitleText": "绿色通道审核", "navigationStyle": "custom"}},
-        {"path": "todos/index", "style": {"navigationBarTitleText": "今日待办", "navigationStyle": "custom"}},
+        {"path": "todos/index", "style": {"navigationBarTitleText": "今日待办", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "approval/index", "style": {"navigationBarTitleText": "审批处理", "navigationStyle": "custom"}},
         {"path": "risk-students/index", "style": {"navigationBarTitleText": "风险学生"}},
         {"path": "student-detail/index", "style": {"navigationBarTitleText": "学生详情", "navigationStyle": "custom"}},

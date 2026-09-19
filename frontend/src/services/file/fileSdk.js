@@ -55,12 +55,62 @@ function emitTo(listeners, value) {
   })
 }
 
-function openBlob(blob) {
+function showInAppPreview(url, fileName = '附件', dispose = null) {
+  if (typeof document === 'undefined') return { url, opened: false }
+  const overlay = document.createElement('div')
+  overlay.className = 'school-file-preview-overlay'
+  overlay.setAttribute('role', 'presentation')
+  Object.assign(overlay.style, {
+    position: 'fixed', inset: '0', zIndex: '2147483000', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', padding: '24px',
+    background: 'rgba(15, 23, 42, .46)', boxSizing: 'border-box'
+  })
+  const panel = document.createElement('section')
+  panel.setAttribute('role', 'dialog')
+  panel.setAttribute('aria-modal', 'true')
+  panel.setAttribute('aria-label', `预览：${fileName || '附件'}`)
+  Object.assign(panel.style, {
+    width: 'min(100%, 1180px)', height: 'min(100%, 780px)', display: 'grid',
+    gridTemplateRows: 'auto minmax(0, 1fr)', background: '#fff', borderRadius: '12px',
+    overflow: 'hidden', boxShadow: '0 24px 64px rgba(15,23,42,.25)'
+  })
+  const toolbar = document.createElement('header')
+  Object.assign(toolbar.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '12px 16px', borderBottom: '1px solid #dfe7f2' })
+  const title = document.createElement('strong')
+  title.textContent = fileName || '附件预览'
+  title.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#23314a;'
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.textContent = '关闭预览'
+  close.style.cssText = 'min-height:32px;padding:0 12px;border:1px solid #cbd8ea;border-radius:7px;background:#fff;color:#1769e0;cursor:pointer;'
+  const frame = document.createElement('iframe')
+  frame.src = url
+  frame.title = `${fileName || '附件'}预览`
+  frame.setAttribute('sandbox', 'allow-downloads allow-forms allow-scripts allow-same-origin')
+  frame.style.cssText = 'width:100%;height:100%;border:0;background:#f8fbff;'
+  let closed = false
+  const finish = () => {
+    if (closed) return
+    closed = true
+    document.removeEventListener('keydown', onKeydown)
+    overlay.remove()
+    if (typeof dispose === 'function') dispose()
+  }
+  const onKeydown = (event) => { if (event.key === 'Escape') finish() }
+  close.addEventListener('click', finish)
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) finish() })
+  toolbar.append(title, close)
+  panel.append(toolbar, frame)
+  overlay.appendChild(panel)
+  document.body.appendChild(overlay)
+  document.addEventListener('keydown', onKeydown)
+  close.focus()
+  return { url, opened: true, close: finish }
+}
+
+function openBlob(blob, fileName = '附件') {
   const url = URL.createObjectURL(blob)
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  if (!opened) URL.revokeObjectURL(url)
-  else setTimeout(() => URL.revokeObjectURL(url), 60000)
-  return { url, opened: Boolean(opened) }
+  return showInAppPreview(url, fileName, () => URL.revokeObjectURL(url))
 }
 
 function saveBlob(blob, fileName = '附件') {
@@ -75,10 +125,13 @@ function saveBlob(blob, fileName = '附件') {
 }
 
 function openAuthorizedUrl(url, fileName = '附件', preview = false) {
+  if (preview) {
+    return showInAppPreview(url, fileName)
+  }
   const anchor = document.createElement('a')
   anchor.href = url
-  if (!preview) anchor.download = fileName || '附件'
-  anchor.target = preview ? '_blank' : '_self'
+  anchor.download = fileName || '附件'
+  anchor.target = '_self'
   anchor.rel = 'noopener noreferrer'
   document.body.appendChild(anchor)
   anchor.click()
@@ -321,7 +374,7 @@ export const fileSdk = {
     if (auth?.delivery === 'COS_PRESIGNED' && /^https:\/\//i.test(auth.url || '')) {
       return openAuthorizedUrl(auth.url, auth.fileName, true)
     }
-    return openBlob(await this.blob(fileId))
+    return openBlob(await this.blob(fileId), auth?.fileName)
   },
   async previewFrom(authorizedPath) {
     if (/^https:\/\//i.test(authorizedPath || '')) return openAuthorizedUrl(authorizedPath, '附件', true)

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="课程库 · 控制台"
-    subtitle="课程分类 · 课程性质 · 学分学时 · 课程大纲 · 考核方式 · 课程负责人 · 课程材料 · 课程停用 · 历史课程"
+    :title="tabs.find(item => item.key === tab)?.label || '业务工作区'"
+    subtitle="核对当前对象和版本，按权限办理；切换对象后重新读取正式记录"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,9 +10,9 @@
       <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
     </template>
 
-    <div class="aacc-tabs">
+    <details class="aacc-workspace-directory"><summary>切换相关工作区</summary><div class="aacc-tabs">
       <button v-for="t in tabs" :key="t.key" :class="['aacc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
-    </div>
+    </div></details>
 
     <!-- 分类/性质/考核方式：快捷筛选芯片（带计数） -->
     <div v-if="tab === 'category' || tab === 'nature' || tab === 'assessment'" class="aacc-chips">
@@ -75,6 +75,13 @@
           <button class="mp-link" @click="$router.push(`/admin/academic-affairs/courses/${row.courseId}`)">详情</button>
         </template>
       </DataTable>
+      <nav v-if="filteredRows.length > viewPageSize" class="aacc-pagination" aria-label="课程工作区分页">
+        <span>共 {{ filteredRows.length }} 条 · 第 {{ viewPage }} / {{ totalPages }} 页</span>
+        <div>
+          <AppButton size="sm" :disabled="viewPage <= 1" @click="viewPage -= 1">上一页</AppButton>
+          <AppButton size="sm" :disabled="viewPage >= totalPages" @click="viewPage += 1">下一页</AppButton>
+        </div>
+      </nav>
     </template>
 
     <!-- 调整类别/性质/考核方式 -->
@@ -208,6 +215,7 @@ import {
 } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { COURSE_CATEGORY, COURSE_NATURE, EXAM_MODE, MATERIAL_TYPE, REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -221,7 +229,7 @@ export default {
   data() {
     return {
       tab: 'category', loading: true, error: '', rows: [], saving: false, formError: '',
-      dimFilter: '', ownerFilter: '', statusFilter: '', archiveFilter: '',
+      dimFilter: '', ownerFilter: '', statusFilter: '', archiveFilter: '', viewPage: 1, viewPageSize: 50,
       tabs: [
         { key: 'category', label: '课程分类' },
         { key: 'nature', label: '课程性质' },
@@ -310,7 +318,7 @@ export default {
       }
       return map[this.tab] || []
     },
-    displayRows() {
+    filteredRows() {
       if (this.tab === 'archive') return this.archiveFilteredRows
       let list = this.rows
       if ((this.tab === 'category' || this.tab === 'nature' || this.tab === 'assessment') && this.dimFilter) {
@@ -323,7 +331,28 @@ export default {
         list = this.statusFilter ? this.rows.filter((r) => r.status === this.statusFilter) : this.togglableRows
       }
       return list
+    },
+    totalPages() { return Math.max(1, Math.ceil(this.filteredRows.length / this.viewPageSize)) },
+    displayRows() {
+      const safePage = Math.min(this.viewPage, this.totalPages)
+      const start = (safePage - 1) * this.viewPageSize
+      return this.filteredRows.slice(start, start + this.viewPageSize)
     }
+  },
+  watch: {
+    '$route.query.tab': function (nextTab) {
+      if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
+      this.tab = nextTab
+      this.dimFilter = ''
+      this.ownerFilter = ''
+      this.statusFilter = ''
+      this.archiveFilter = ''
+      this.viewPage = 1
+    },
+    dimFilter() { this.viewPage = 1 },
+    ownerFilter() { this.viewPage = 1 },
+    statusFilter() { this.viewPage = 1 },
+    archiveFilter() { this.viewPage = 1 }
   },
   created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
@@ -331,6 +360,7 @@ export default {
     this.load()
   },
   methods: {
+    hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor,
     statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
     examModeLabel(v) { return EXAM_MODE[v] || (v ? '考核方式待确认' : '') },
@@ -339,6 +369,7 @@ export default {
     dimCount(v) { return this.rows.filter((r) => r[this.dimFieldName(this.tab)] === v).length },
     switchTab(k) {
       this.tab = k
+      this.viewPage = 1
       this.dimFilter = ''; this.ownerFilter = ''; this.statusFilter = ''; this.archiveFilter = ''
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
     },
@@ -516,4 +547,7 @@ export default {
 .aacc-material-add { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border-300, #d0d3d9); display: flex; flex-direction: column; gap: 10px; }
 .aacc-material-add__title { font-size: 13px; font-weight: 600; color: var(--text-700, #4e5969); }
 .aacc-material-add__actions { display: flex; justify-content: flex-end; }
+.aacc-workspace-directory{margin-bottom:14px}.aacc-workspace-directory summary{cursor:pointer;color:var(--primary-600,#2d5cad);font-size:13px;padding:8px 0}
+.aacc-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 4px 0; color: var(--text-500, #86909c); font-size: 13px; }
+.aacc-pagination div { display: flex; gap: 8px; }
 </style>

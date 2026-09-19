@@ -38,7 +38,7 @@ def test_w76_student_reject_message_is_transactional_projection_of_append_only_f
     assert "GRADUATION_DESIGN.REVIEW_REJECTED" in guard
     assert "student.graduation.review-feedback" in guard
     assert '"studentPc": "/graduation/feedback"' in guard
-    assert '"studentMini": None' in guard
+    assert '"studentMini": "/pages/student/graduation/index"' in guard
     assert "message_event_outbox_service" in guard
     assert "UnifiedMessage" not in feedback
 
@@ -53,7 +53,8 @@ def test_w76_resubmit_reuses_canonical_proposal_final_todos():
     todo = text("backend/app/modules/graduation/services/graduation_todo_helper.py")
 
     assert "is_resubmit=bool(existing)" in records
-    assert "todo.push_proposal_todo(db, proposal, student)" in records
+    assert "todo.require_mentor_assignee_id(db, student, action_label=\"开题报告\")" in records
+    assert "todo.push_proposal_todo(db, proposal, student, assignee_id=assignee_id)" in records
     assert "same_type = [row for row in existing if row.final_type == final_type]" in records
     assert "todo.push_final_todo(db, final, student)" in records
     assert 'TODO_PROPOSAL = "GD_PROPOSAL_REVIEW"' in todo

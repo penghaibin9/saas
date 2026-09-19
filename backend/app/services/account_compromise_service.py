@@ -38,6 +38,7 @@ def contain_in_session(db, *, tenant_id: int, user_id: int, expected_version: in
     user.status = "DISABLED"
     user.must_change_password = True
     user.version = expected_version + 1
+    user.credential_version = int(user.credential_version or 0) + 1
     user.wx_openid = None
     bindings = db.execute(update(WxAccountBinding).where(
         WxAccountBinding.tenant_id == tenant_id, WxAccountBinding.user_id == user_id,

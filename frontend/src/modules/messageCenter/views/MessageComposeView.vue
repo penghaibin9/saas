@@ -143,6 +143,7 @@ import {
   fetchActionKeys
 } from '@/modules/messageCenter/api/message-campaign.api'
 import { safeEnumLabel } from '@/utils/presentationSafety'
+import { systemConfirm } from '@/services/systemDialog'
 
 const CATEGORY_LABELS = Object.freeze({ ANNOUNCEMENT: '公告', BUSINESS: '业务通知', REMINDER: '提醒', EMERGENCY: '紧急消息' })
 const EXCLUDE_LABELS = Object.freeze({ ACCOUNT_UNLINKED: '学籍未开通账号', STUDENT_STATUS_EXCLUDED: '学籍状态不可发', ACCOUNT_DISABLED: '账号已停用' })
@@ -340,9 +341,11 @@ export default {
         this.error = '请填写计划发布时间'
         return
       }
-      const ok = window.confirm(
-        `确认向约 ${n} 人${this.needsReviewHint ? '提交审核' : '发布'}？\n标题：${this.form.title}\n\n发布后请在「发布记录」查看；「我的消息」只显示别人发给你的通知。`
-      )
+      const ok = await systemConfirm({
+        title: this.needsReviewHint ? '确认提交消息审核' : '确认发布消息',
+        message: `预计接收 ${n} 人。\n标题：${this.form.title}\n\n发布后请在「发布记录」查看；「我的消息」只显示别人发给你的通知。`,
+        confirmText: this.needsReviewHint ? '提交审核' : '确认发布'
+      })
       if (!ok) return
       this.publishing = true
       this.error = ''

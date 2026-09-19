@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const source=readFileSync(new URL('../src/pages/student/affairs/index.vue',import.meta.url),'utf8')
 const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm,'').replace('export default','return')
 function make(api,sdk) {
-  const component=new Function('affairsContractApi','fileSdk','normalizeError','toast','go',script)(api,sdk,e=>({text:e.message}),()=>{},()=>{})
+  const component=new Function('affairsContractApi','fileSdk','normalizeError','toast','go','currentSessionGeneration',script)(api,sdk,e=>({text:e.message}),()=>{},()=>{},()=>1)
   return {...component.data(),...component.methods,loadMaterials:async()=>{}}
 }
 test('mobile scanning retries keep one upload and submit once with the original version',async()=>{

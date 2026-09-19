@@ -176,7 +176,13 @@ def main() -> int:
     portal_contract_source = (ROOT / "student-portal" / "src" / "services" / "affairsFourEndApi.js").read_text(encoding="utf-8")
     dorm_transfer_pagination = all(token in dorm_api_source for token in (
         "page: int = Query(1, ge=1)", "pageSize: int = Query(100, ge=1, le=200)", '"hasMore": page * pageSize < total',
-    )) and all("loadAllTransferPages" in source for source in (mini_contract_source, portal_contract_source))
+    )) and "loadAllTransferPages" in portal_contract_source and "loadAllTransferPages" not in mini_contract_source and all(
+        token in mini_contract_source for token in (
+            "getDormTransferOptions: ({ page = 1, pageSize = 20 } = {})",
+            "getDormTransferRooms: (buildingId, { page = 1, pageSize = 20 } = {})",
+            "data: { page, pageSize }",
+        )
+    )
     dorm_view_source = (ROOT / "frontend" / "src" / "modules" / "studentAffairs" / "views" / "dorm" / "DormTransferView.vue").read_text(encoding="utf-8")
     mental_view_source = (ROOT / "frontend" / "src" / "modules" / "studentAffairs" / "views" / "mental" / "MentalReferralFollowView.vue").read_text(encoding="utf-8")
     workstudy_view_source = (ROOT / "frontend" / "src" / "modules" / "studentAffairs" / "views" / "funding" / "WorkStudyView.vue").read_text(encoding="utf-8")

@@ -122,10 +122,18 @@ _ORIGINAL_TRANSCRIPT = getattr(
 
 
 @wraps(_ORIGINAL_TRANSCRIPT)
-def scoped_transcript(student_id, user):
+def scoped_transcript(student_id, user, page=None, page_size=50, *, term=None):
     with grade_core.session() as db:
         require_student_scope(db, user, student_id)
-    return _ORIGINAL_TRANSCRIPT(student_id, user)
+    if page is None:
+        return _ORIGINAL_TRANSCRIPT(student_id, user)
+    return _ORIGINAL_TRANSCRIPT(
+        student_id,
+        user,
+        page=page,
+        page_size=page_size,
+        term=term,
+    )
 
 
 scoped_transcript._academic_object_scope_guard = True

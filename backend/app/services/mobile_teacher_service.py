@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException
 from app.core.security import MOBILE_STAFF_USER_TYPES
@@ -140,6 +140,88 @@ def my_students(user: dict, class_id=None) -> dict:
             "status": row.student_status,
         } for row in rows]
         return {"hasData": bool(items), "items": items, "total": int(total)}
+
+
+def _teacher_list_page_args(page, page_size, *, label: str) -> tuple[int, int]:
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise AppException("VALIDATION_ERROR", f"{label}页码格式不正确")
+    try:
+        page = int(page)
+        page_size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", f"{label}页码格式不正确") from exc
+    if page < 1 or page > 100000 or page_size < 1 or page_size > 50:
+        raise AppException("VALIDATION_ERROR", f"{label}每页最多50条")
+    return page, page_size
+
+
+def my_classes(user: dict, page=1, page_size=20, keyword="") -> dict:
+    """教师本人可见班级：先按真实关系收敛，再由 MySQL 聚合人数和分页。
+
+    The previous implementation loaded every class and issued one student count
+    query per row.  This endpoint is used in the teacher miniapp, so both the
+    class search and student counts must remain server-bounded.
+    """
+    u = _require_teacher(user)
+    page, page_size = _teacher_list_page_args(page, page_size, label="班级列表")
+    keyword = str(keyword or "").strip()
+    if len(keyword) > 100:
+        raise AppException("VALIDATION_ERROR", "班级搜索内容不能超过100字")
+    if not _impl.db_enabled():
+        return {"hasData": False, "items": [], "total": 0, "page": page,
+                "pageSize": page_size, "hasMore": False, "note": "当前无法读取班级数据"}
+
+    scope = resolve_teacher_scope(u)
+    tid = _impl._tid()
+    with _impl._session() as db:
+        from app.models import SchoolClass, StudentProfile
+
+        filters = [SchoolClass.tenant_id == tid, SchoolClass.is_deleted.is_(False)]
+        if scope["mode"] != "ADMIN_TENANT":
+            numeric_uid = _impl._teacher_numeric_id(u)
+            if numeric_uid is None:
+                return {"hasData": False, "items": [], "total": 0, "page": page,
+                        "pageSize": page_size, "hasMore": False,
+                        "note": "未识别到教师身份，无法匹配班级"}
+            filters.append(or_(SchoolClass.counselor_id == numeric_uid,
+                               SchoolClass.head_teacher_id == numeric_uid))
+        if keyword:
+            pattern = f"%{keyword}%"
+            filters.append(or_(SchoolClass.class_name.like(pattern), SchoolClass.grade.like(pattern)))
+
+        total = int(db.scalar(select(func.count()).select_from(SchoolClass).where(*filters)) or 0)
+        student_join = and_(
+            StudentProfile.tenant_id == tid,
+            StudentProfile.class_id == SchoolClass.id,
+            StudentProfile.is_deleted.is_(False),
+        )
+        rows = db.execute(
+            select(
+                SchoolClass.id,
+                SchoolClass.class_name,
+                SchoolClass.grade,
+                SchoolClass.status,
+                func.count(StudentProfile.id).label("student_count"),
+            )
+            .select_from(SchoolClass)
+            .outerjoin(StudentProfile, student_join)
+            .where(*filters)
+            .group_by(SchoolClass.id, SchoolClass.class_name, SchoolClass.grade, SchoolClass.status)
+            .order_by(SchoolClass.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        items = [{
+            "classId": str(row.id),
+            "className": row.class_name,
+            "grade": row.grade or "",
+            "studentCount": int(row.student_count or 0),
+            "status": row.status,
+        } for row in rows]
+        return {
+            "hasData": bool(total), "items": items, "total": total,
+            "page": page, "pageSize": page_size, "hasMore": page * page_size < total,
+        }
 
 
 def _error_payload(source: str, exc: Exception) -> dict:
@@ -322,6 +404,7 @@ _impl.is_teacher_user = is_teacher_user
 _impl._require_teacher = _require_teacher
 _impl._real_name_is_ambiguous = _strict_real_name_is_ambiguous
 _impl.resolve_teacher_scope = resolve_teacher_scope
+_impl.my_classes = my_classes
 _impl.my_students = my_students
 _impl.overview = overview
 _impl.todos = todos

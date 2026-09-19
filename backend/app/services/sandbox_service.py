@@ -235,7 +235,11 @@ def seed_sandbox(db) -> dict:
     _add_user("student2", SBX_STUDENT_NAME, "STUDENT")
     db.flush()
     # 页面里的责任人/指导教师选择器必须来自真实在职账号与真实角色关系。
-    role_specs = (("SCHOOL_ADMIN", "学校管理员", "admin2"),)
+    role_specs = (
+        ("SCHOOL_ADMIN", "学校管理员", "admin2"),
+        ("COUNSELOR", "辅导员", "teacher2"),
+        ("STUDENT", "学生", "student2"),
+    )
     for role_code, role_name, login_name in role_specs:
         role = db.scalars(select(Role).where(
             Role.tenant_id == SANDBOX_TID, Role.role_code == role_code,

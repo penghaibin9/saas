@@ -10,6 +10,7 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-saas_user}"
 DB_NAME="${DB_NAME:-saas_lifecycle}"
 : "${DB_PASSWORD:?DB_PASSWORD must be set}"
+DB_RESTORE_USE_LOCAL_ROOT="${DB_RESTORE_USE_LOCAL_ROOT:-false}"
 UPLOAD_DIR="${UPLOAD_DIR:-/opt/school-lifecycle/shared/uploads}"
 BACKUP_DIR="$(cd "$(dirname "$manifest")" && pwd)"
 manifest="$(cd "$BACKUP_DIR" && pwd)/$(basename "$manifest")"
@@ -64,7 +65,18 @@ verify_object() {
   test "$(sha256sum "$file" | awk '{print $1}')" = "$expected_hash"
 }
 
-mysql_base=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1)
+# Routine definitions in a governed dump may require MySQL administrative
+# privileges when binary logging is enabled.  The release/backup service runs
+# as root on the database host, so production can opt into the local Unix
+# socket account without storing a second database password.  Remote or
+# ordinary restore flows retain the least-privileged application account.
+if [ "$DB_RESTORE_USE_LOCAL_ROOT" = "true" ]; then
+  mysql_base=(mysql --protocol=socket -u root --binary-mode=1)
+  mysql_auth=(env)
+else
+  mysql_base=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --binary-mode=1)
+  mysql_auth=(env "MYSQL_PWD=$DB_PASSWORD")
+fi
 
 verify_object "$db_file" "$db_hash"
 gzip -t "$db_file"
@@ -81,25 +93,25 @@ event_name_expr="${quote_expr//%s/EVENT_NAME}"
 table_name_expr="${quote_expr//%s/TABLE_NAME}"
 routine_name_expr="${quote_expr//%s/ROUTINE_NAME}"
 cleanup_sql="$({
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+  "${mysql_auth[@]}" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
     "SELECT CONCAT('DROP EVENT IF EXISTS ', $event_name_expr, ';') FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE() ORDER BY EVENT_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+  "${mysql_auth[@]}" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
     "SELECT CONCAT('DROP VIEW IF EXISTS ', $table_name_expr, ';') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+  "${mysql_auth[@]}" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
     "SELECT CONCAT('DROP TABLE IF EXISTS ', $table_name_expr, ';') FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME;"
-  MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
+  "${mysql_auth[@]}" "${mysql_base[@]}" -N -B "$DB_NAME" -e \
     "SELECT CONCAT('DROP ', ROUTINE_TYPE, ' IF EXISTS ', $routine_name_expr, ';') FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() ORDER BY ROUTINE_TYPE, ROUTINE_NAME;"
 } || exit 1)"
 {
   echo "SET FOREIGN_KEY_CHECKS=0;"
   printf '%s\n' "$cleanup_sql"
   echo "SET FOREIGN_KEY_CHECKS=1;"
-} | MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" "$DB_NAME"
+} | "${mysql_auth[@]}" "${mysql_base[@]}" "$DB_NAME"
 
 # The dump is hash-verified immediately above and includes the pre-release table schema/data plus
 # configured routines/events/triggers. After the reset, no candidate-only object can survive.
 echo "[$(date -Is)] restoring database from governed backup: $(basename "$db_file")"
-gzip -cd "$db_file" | MYSQL_PWD="$DB_PASSWORD" "${mysql_base[@]}" "$DB_NAME"
+gzip -cd "$db_file" | "${mysql_auth[@]}" "${mysql_base[@]}" "$DB_NAME"
 
 if [ -n "$upload_name" ]; then
   upload_file="$BACKUP_DIR/$upload_name"

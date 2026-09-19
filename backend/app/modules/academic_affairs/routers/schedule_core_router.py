@@ -48,6 +48,14 @@ def schedule_batches(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/schedule-batches/{batchId}", summary="课表精确批次与当前正式头（只读）")
+def schedule_batch_detail(
+    batchId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.schedule.view")),
+):
+    return success(sched_svc.get_batch(batchId, user))
+
+
 @router.post("/schedule-batches/{batchId}/items", summary="手工排课（三重冲突检测→409）")
 def schedule_add_item(
     body: ScheduleItemBody,

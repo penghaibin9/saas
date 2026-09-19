@@ -1,4 +1,5 @@
 /** UI-only contracts. Authorization and business state remain server-owned. */
+import { permissionDisplayLabel } from './permissionLabels.js'
 export function actionAllowed(ctx, key) {
   const value = ctx?.permissionActions?.[key]
   return value?.visible === true && value?.allowed === true
@@ -69,7 +70,7 @@ export function permissionGroups(tree) {
       for (const node of nodes) {
         if (typeof node.key !== 'string' || seen.has(node.key)) throw new Error('权限目录存在无效或重复编码')
         seen.add(node.key)
-        rows.push(node)
+        rows.push({ ...node, label: permissionDisplayLabel(node.key, node.label) })
       }
     }
     return { key: group.key, label: group.label, rows }

@@ -24,7 +24,7 @@ test('学生小程序五个目标页消费 id 并显示精确落点', () => {
     '../src/pages/student/academic-affairs/makeup.vue'
   ]) {
     const source = read(path)
-    assert.ok(source.includes("options.id || ''"), `${path} 未消费首页 id`)
+    assert.match(source, /String\(options\.id\s*\|\|/, `${path} 未消费首页 id`)
     assert.ok(source.includes('is-target'), `${path} 未显示精确落点`)
   }
 })

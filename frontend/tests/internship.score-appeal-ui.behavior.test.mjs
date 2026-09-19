@@ -9,7 +9,7 @@ const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+
 const record = (extra = {}) => ({ id: '9007199254740999', batchId: '1', version: 2, studentName: '测试学生', status: 'PENDING', scoreSnapshot: { scoreVersion: 3, totalScore: 0 }, currentScore: { id: '88', version: 3, status: 'PUBLISHED', totalScore: 0 }, ...extra })
 function setup(api = {}, permission = () => true) {
   const events = [], guards = [], browser = { confirm: () => false, addEventListener() {}, removeEventListener() {} }
-  const def = new Function('scoreApi', 'canCode', 'isConflict', 'window', script)(api, permission, isConflict, browser)
+  const def = new Function('scoreApi', 'canCode', 'isConflict', 'systemConfirm', 'window', script)(api, permission, isConflict, () => Promise.resolve(browser.confirm()), browser)
   const vm = { ...def.data(), appealId: record().id, batchId: '1', ctx: {}, $emit: (...event) => events.push(event), $nextTick: fn => fn(), $el: { querySelector: () => ({ focus() {} }) }, $router: { beforeEach: fn => { guards.push(fn); return () => {} } } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) Object.defineProperty(vm, key, { get: () => fn.call(vm) })
@@ -65,11 +65,11 @@ test('old decision completion cannot mutate a switched identity', async () => {
   const first = vm.submit(); def.watch.ctx.handler.call(vm); finish({ code: 0, data: { id: record().id, version: 3 } }); await first
   assert.equal(vm.receipt, null); assert.deepEqual(events, []); assert.equal(vm.reason, '')
 })
-test('navigation protects unsaved opinions and allows leaving after durable success', () => {
+test('navigation protects unsaved opinions and allows leaving after durable success', async () => {
   const { vm, def, guards, browser } = setup(); def.mounted.call(vm); vm.reason = '未提交意见'
   const from = { path: '/scores', fullPath: '/scores?appealId=8' }, to = { path: '/other', fullPath: '/other', query: {} }
-  assert.equal(guards[0](to, from), false); browser.confirm = () => true; assert.equal(guards[0](to, from), true)
-  vm.submitting = true; assert.equal(guards[0](to, from), false); vm.submitting = false; vm.completed = true; browser.confirm = () => assert.fail('saved decision should not prompt'); assert.equal(guards[0](to, from), true)
+  assert.equal(await guards[0](to, from), false); browser.confirm = () => true; assert.equal(await guards[0](to, from), true)
+  vm.submitting = true; assert.equal(await guards[0](to, from), false); vm.submitting = false; vm.completed = true; browser.confirm = () => assert.fail('saved decision should not prompt'); assert.equal(await guards[0](to, from), true)
 })
 test('audit display excludes internal snapshot metadata', () => {
   const { vm } = setup(); vm.record = record({ trail: [{ kind: 'INTERNSHIP_SCORE_APPEAL_META', scoreId: '88' }, { action: 'APPROVE', operator: '测试老师', note: '真实处理意见', at: '2026-09-07' }] })

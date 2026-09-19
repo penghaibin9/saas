@@ -1,10 +1,13 @@
 <template>
   <ModulePageShell
+    compact
     title="题目库"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <template #title-meta><span class="gd-topic-total">共 {{ total }} 条</span></template>
+    <template #context><GraduationBatchStrip class="gd-topic-batch" /></template>
     <template #actions>
       <div class="gd-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
@@ -15,19 +18,16 @@
       </div>
     </template>
 
-    <div v-if="activePanel === 'category' && categoryStats.length" class="mp-stats">
-      <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="mp-stat" @click="drillCategory(c.category)">
-        <div class="mp-stat__val">{{ c.count }}</div>
-        <div class="mp-stat__lbl">{{ c.category }}</div>
-        <div class="mp-stat__sub">入池 {{ c.inPool }} · 满员 {{ c.full }}</div>
-      </button>
-    </div>
-    <div v-if="activePanel === 'capacity' && libStats" class="mp-stats">
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.inPool }}</div><div class="mp-stat__lbl">在池题目</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.availableCount }}</div><div class="mp-stat__lbl">可选余量</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.fullCount }}</div><div class="mp-stat__lbl">已满员</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.uncategorized }}</div><div class="mp-stat__lbl">未分类</div></div>
-    </div>
+    <template #summary>
+      <template v-if="activePanel === 'category'">
+        <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="gd-inline-stat" :title="`入池 ${c.inPool} · 满员 ${c.full}`" @click="drillCategory(c.category)">
+          <span>{{ c.category }}</span><strong>{{ c.count }}</strong>
+        </button>
+      </template>
+      <template v-else-if="activePanel === 'capacity' && libStats">
+        <span v-for="(label, key) in { inPool: '在池题目', availableCount: '可选余量', fullCount: '已满员', uncategorized: '未分类' }" :key="key" class="gd-inline-stat">{{ label }} <strong>{{ libStats[key] }}</strong></span>
+      </template>
+    </template>
 
     <div class="mp-stack">
       <div class="mp-tabs gd-primary-tabs" aria-label="题目主视图">
@@ -235,6 +235,7 @@ import {
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { buildTopicLibQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const EMPTY_FILTERS = () => ({
@@ -352,7 +353,7 @@ const TOPIC_LIB_INLINE_ROUTES = new Set([
 
 export default {
   name: 'TopicLibListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { GraduationBatchStrip, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -763,6 +764,15 @@ export default {
 </script>
 
 <style scoped>
+.gd-topic-total { color: var(--t3); font-size: 13px; white-space: nowrap; }
+.gd-topic-batch { margin-left: auto; padding: 0; border: 0; background: transparent; max-width: 65%; }
+.gd-topic-batch :deep(.gbs__select) { min-width: 0; width: 300px; max-width: 100%; }
+.gd-topic-batch :deep(.gbs__meta) { display: none; }
+.gd-inline-stat { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 0; border-right: 1px solid var(--line, #dce5f3); background: transparent; color: var(--t3); white-space: nowrap; font: inherit; font-size: 13px; }
+button.gd-inline-stat { cursor: pointer; }
+.gd-inline-stat strong { font-size: 18px; color: var(--pri); }
+@media(max-width: 1000px) { .gd-topic-batch { max-width: 100%; } }
+
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .mp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }

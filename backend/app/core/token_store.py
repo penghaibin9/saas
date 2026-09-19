@@ -92,7 +92,7 @@ def issue_refresh(claims: dict) -> str:
     return token
 
 
-def consume_refresh(token: str) -> dict | None:
+def consume_refresh(token: str, *, expected_claims: dict | None = None) -> dict | None:
     """校验并轮换：旧 refresh 立即作废，返回 claims；无效/过期返回 None。
     DB 模式用「删除即消费」保证并发下同一 refresh 只能成功一次。
     生产/DB 开启时查询失败不得静默回落内存。"""
@@ -111,9 +111,11 @@ def consume_refresh(token: str) -> dict | None:
             if row is None:
                 # 仅演示模式允许兼容进程内存中的旧 token
                 if not must_persist:
-                    return _consume_refresh_memory(token)
+                    return _consume_refresh_memory(token, expected_claims=expected_claims)
                 return None
             claims = dict(row.claims_json or {})
+            if expected_claims is not None and not _refresh_subject_matches(claims, expected_claims):
+                return None
             expired = row.expires_at < datetime.utcnow()
             res = db.execute(delete(AuthRefreshToken).where(
                 AuthRefreshToken.token_hash == h))
@@ -130,10 +132,10 @@ def consume_refresh(token: str) -> dict | None:
                 pass
             if must_persist:
                 raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503) from e
-            return _consume_refresh_memory(token)
+            return _consume_refresh_memory(token, expected_claims=expected_claims)
         finally:
             db.close()
-    return _consume_refresh_memory(token)
+    return _consume_refresh_memory(token, expected_claims=expected_claims)
 
 
 
@@ -226,7 +228,15 @@ def _consume_refresh_memory_if_matches(
     _refresh.pop(token or "", None)
     return claims
 
-def _consume_refresh_memory(token: str) -> dict | None:
+def _refresh_subject_matches(claims: dict, expected: dict) -> bool:
+    return all(str(claims.get(key) or "") == str(expected.get(key) or "")
+               for key in ("userId", "tenantId", "activeContextId", "clientType", "authSessionId"))
+
+
+def _consume_refresh_memory(token: str, *, expected_claims: dict | None = None) -> dict | None:
+    item = _refresh.get(token or "")
+    if item and expected_claims is not None and not _refresh_subject_matches(item["claims"], expected_claims):
+        return None
     item = _refresh.pop(token or "", None)
     if not item or item["exp"] < _now():
         return None

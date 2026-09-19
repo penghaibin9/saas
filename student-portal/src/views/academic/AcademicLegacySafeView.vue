@@ -1,75 +1,28 @@
 <template>
-  <div ref="root" class="legacy-safe">
-    <section class="legacy-safe__notice" role="status">
-      <div>
-        <strong>综合教务兼容页</strong>
-        <p>旧课表、客户端“官方成绩单”和旧评教面板已停用。请使用对应独立工作区；学校正式证明须由服务端生成并验真。</p>
-      </div>
-      <div class="legacy-safe__actions">
-        <button type="button" class="legacy-safe__action is-secondary" @click="goSchedule">进入课表工作区</button>
-        <button type="button" class="legacy-safe__action is-secondary" @click="goEvaluation">进入评教工作区</button>
-        <button type="button" class="legacy-safe__action" @click="goGrades">进入成绩工作区</button>
-      </div>
-    </section>
-    <AcademicView />
+  <div data-academic-page class="sp-page academic-prototype academic-directory">
+    <AcademicPrototypeHeader title="全部教务事项" group="全部教务事项" description="查找本人教务服务，进入具体事项办理。" @refresh="search = ''" />
+    <div class="stack"><div class="toolbar"><input v-model.trim="search" class="input" type="search" placeholder="搜索本人教务事项" aria-label="搜索本人教务事项" /><button class="btn">查找</button></div>
+      <p v-if="!visibleItems.length" class="muted">没有找到匹配的教务事项，请调整关键词。</p>
+      <div class="screen-list"><RouterLink v-for="item in visibleItems" :key="item.to" :to="item.to" class="service-btn"><span class="iconbox"><AcademicPrototypeIcon :name="item.icon" /></span><span><strong>{{ item.title }}</strong><small>{{ item.group }}</small></span></RouterLink></div>
+    </div>
   </div>
 </template>
-
 <script setup>
-import { nextTick, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import AcademicView from './AcademicView.vue'
-
-const router = useRouter()
-const root = ref(null)
-const goSchedule = () => router.push('/academic/schedule')
-const goEvaluation = () => router.push('/academic/evaluation')
-const goGrades = () => router.push('/academic/grades')
-
-onMounted(async () => {
-  await nextTick()
-  // 旧组件默认tab=课表。安全兼容页主动落到第2项“选课”，避免先展示错误课表。
-  const tabs = root.value?.querySelectorAll('.sp-tabs .sp-tab') || []
-  if (tabs.length > 1) tabs[1].click()
-})
+import { computed, ref } from 'vue'
+import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
+import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
+const search = ref('')
+// 目录仅包含本人教务查询与申请，不包含教师管理动作。
+const groups = [
+  ['学业工作台', [['学业总览', '', 'house']]],
+  ['注册与安排', [['学期注册','registration','id-card'],['我的课表','schedule','calendar-days'],['网上选课','selection','book-open'],['课堂考勤','attendance','clipboard-check'],['校历','calendar','calendar-days']]],
+  ['成绩与考试', [['我的成绩','grades','chart-column'],['学生评教','evaluation','star'],['成绩复查','recheck','file-circle-question'],['考试与缓考','exam','file-lines'],['补考重修','makeup','arrows-rotate'],['清考结果','clearance','circle-check']]],
+  ['培养与毕业', [['学籍与异动','status','address-card'],['学分修读','credits','chart-simple'],['学业预警','warning','triangle-exclamation'],['教材领用','textbook','book'],['等级考试','level-exam','medal'],['专业分流','major-split','code-branch'],['成绩认定','recognition','file-circle-check'],['毕业资格自查','graduation','graduation-cap']]]
+]
+const items = groups.flatMap(([group, entries]) => entries.map(([title,path,icon]) => ({ title, group, icon, to:'/academic' + (path ? '/' + path : '') })))
+const visibleItems = computed(() => items.filter(item => !search.value || (item.title + item.group).includes(search.value)))
 </script>
-
+<style src="../../components/academic/studentAcademicPrototype.css"></style>
 <style scoped>
-.legacy-safe__notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin: 20px 24px 0;
-  padding: 16px 18px;
-  border: 1px solid #bfdbfe;
-  border-radius: 14px;
-  background: #eff6ff;
-  color: #1e3a5f;
-}
-.legacy-safe__notice strong { display: block; margin-bottom: 4px; font-size: 15px; }
-.legacy-safe__notice p { margin: 0; color: #475569; font-size: 13px; line-height: 1.6; }
-.legacy-safe__actions { display: flex; flex: 0 0 auto; gap: 8px; }
-.legacy-safe__action {
-  min-height: 38px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 9px;
-  background: #2563eb;
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-}
-.legacy-safe__action.is-secondary { border: 1px solid #93c5fd; background: #fff; color: #1d4ed8; }
-
-/* 旧综合页第1项是错误课表、第5项是客户端拼HTML成绩单、第6项是过期评教合同；仅保留源码追溯。 */
-.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(1)),
-.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(5)),
-.legacy-safe :deep(.sp-tabs .sp-tab:nth-child(6)) { display: none !important; }
-
-@media (max-width: 900px) {
-  .legacy-safe__notice { align-items: flex-start; flex-direction: column; margin: 12px 12px 0; }
-  .legacy-safe__actions { width: 100%; flex-direction: column; }
-  .legacy-safe__action { width: 100%; }
-}
+.screen-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.service-btn{display:flex;gap:12px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:9px;text-align:left;align-items:center;color:var(--ink)}.service-btn strong{display:block}.service-btn small{display:block;margin-top:3px}@media(max-width:900px){.screen-list{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.screen-list{grid-template-columns:1fr}}
 </style>

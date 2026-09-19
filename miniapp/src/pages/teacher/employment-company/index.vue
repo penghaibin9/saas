@@ -93,6 +93,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
@@ -122,7 +123,7 @@ export default {
       teacherApi.getEmploymentCompanies().then((d) => {
         this.companies = (d && d.list) || []
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
     loadJobs() {
       teacherApi.getEmploymentJobs().then((d) => { this.jobs = (d && d.list) || [] }).catch(() => { this.jobs = [] })

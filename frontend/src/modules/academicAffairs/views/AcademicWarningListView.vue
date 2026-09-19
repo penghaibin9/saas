@@ -8,6 +8,7 @@
     <template #actions>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
+    <p v-if="actionNotice" class="awl-notice" role="status">{{ actionNotice }}</p>
 
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
@@ -121,10 +122,12 @@ import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, R
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { ExportDrawer, ColumnSettingsDrawer, FormDrawer } from '@/modules/academicAffairs/components'
 import {
-  getAcademicWarnings, createWarning, updateWarningLevel, voidWarning, assignWarnings, remindWarnings,
+  getAcademicWarnings, getWarningDetail, createWarning, updateWarningLevel, voidWarning, assignWarnings, remindWarnings,
   getFieldColumns, getExportOptions, createExport, getAcademicStudents
 } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', level: '', status: '', classId: '', recordStatus: '' })
 
@@ -137,6 +140,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      alive: true, scope: 0, readSeq: 0, pendingOp: null, actionNotice: '',
       loading: true,
       error: '',
       rows: [],
@@ -156,6 +160,7 @@ export default {
     }
   },
   computed: {
+    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope])},
     filterFields() {
       const o = this.ctx.statusOptions
       const f = this.ctx.filterOptions
@@ -201,16 +206,20 @@ export default {
       return [{ key: 'ownerId', label: '跟进人', type: 'select', required: true, options: this.ctx.filterOptions.owners }]
     }
   },
+  watch:{identity(){this.clearPrivate()}},
   async created() {
-    const cols = await getFieldColumns('warningList')
-    if (cols.code === 0) {
-      this.allColumns = cols.data
-      this.visibleKeys = cols.data.filter((c) => c.locked || c.default).map((c) => c.key)
-    }
+    const c=this.capture();const cols = await getFieldColumns('warningList')
+    if (this.current(c)&&cols.code === 0&&Array.isArray(cols.data)) { this.allColumns = cols.data; this.visibleKeys = cols.data.filter((item) => item.locked || item.default).map((item) => item.key) }
     await this.load()
     if (this.$route.query.create) this.openCreate(String(this.$route.query.create))
   },
+  beforeUnmount(){this.alive=false;this.clearPrivate()},
   methods: {
+    capture(){return {scope:this.scope,identity:this.identity}},
+    current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity},
+    clearPrivate(){this.scope++;this.readSeq++;this.rows=[];this.selected=[];this.studentsOptions=[];this.loading=false;this.error='';this.pendingOp=null;this.actionNotice='';this.createForm={visible:false,submitting:false,model:{}};this.levelForm={visible:false,submitting:false,code:'',model:{},row:null};this.assignForm={visible:false,submitting:false,model:{}};this.voidDialog={visible:false,submitting:false,row:null}},
+    denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
+    fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)
@@ -243,17 +252,13 @@ export default {
       this.load()
     },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await getAcademicWarnings({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.pagination.total = res.data.total
-      } else {
-        this.error = res.message
-      }
-      this.loading = false
+      const c={...this.capture(),seq:++this.readSeq,page:this.pagination.page,filters:JSON.stringify(this.filters)};this.loading=true;this.error=''
+      try{const res=await getAcademicWarnings({...this.filters,page:c.page,pageSize:20});if(!this.current(c)||c.seq!==this.readSeq||c.page!==this.pagination.page||c.filters!==JSON.stringify(this.filters))return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};this.rows=res.data.list;this.pagination.pageSize=20;this.pagination.total=Number.isFinite(res.data.total)?res.data.total:res.data.list.length}
+      catch(err){if(this.current(c)&&c.seq===this.readSeq)this.error=this.fail(err,'预警名单读取失败，请重试。')}
+      finally{if(this.current(c)&&c.seq===this.readSeq)this.loading=false}
     },
+    async readExact(ids,predicate){const reads=await Promise.all(ids.map(id=>getWarningDetail(id)));return reads.every((res,index)=>res?.code===0&&String(res.data?.warning?.id)===String(ids[index])&&predicate(res.data,index))},
+    async runWrite(kind,ids,send,verify,success){if(this.pendingOp||!ids.length)return false;const c=this.capture();this.pendingOp={kind,ids:[...ids]};this.actionNotice='结果待核实，请勿重复操作。';let res;try{res=await send()}catch(err){res=err}if(!this.current(c))return false;if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingOp=null;this.actionNotice='';toast.error(this.fail(res,'本次操作未受理。'));return false}let verified=false;try{verified=res?.code===0&&await verify(res)}catch{verified=false}if(!this.current(c))return false;if(verified){this.pendingOp=null;this.actionNotice=success;toast.success(success);await this.load();return true}this.actionNotice='结果待核实：不能确认本次操作是否落库，请勿重复操作。';return false},
     async onToolbar(key) {
       if (key === 'create') this.openCreate()
       else if (key === 'export') this.openExport()
@@ -262,80 +267,49 @@ export default {
     async openCreate(studentId = '') {
       if (!this.can('academic.warning.create')) return
       if (!this.studentsOptions.length) {
-        const res = await getAcademicStudents({ pageSize: 100 })
-        if (res.code === 0) this.studentsOptions = res.data.list.map((s) => ({ value: s.id, label: `${s.name}（${s.className}）` }))
+        const res = await getAcademicStudents({ page:1,pageSize:20 })
+        if (res.code === 0&&Array.isArray(res.data?.list)) this.studentsOptions = res.data.list.map((s) => ({ value: s.id, label: `${s.name}（${s.className}）` }))
       }
       this.createForm = { visible: true, submitting: false, model: { studentId, level: 'MEDIUM' } }
     },
     async submitCreate() {
-      this.createForm.submitting = true
-      const res = await createWarning(this.createForm.model)
-      this.createForm.submitting = false
-      if (res.code === 0) {
-        toast.success(`预警 ${res.data.code} 已创建，已写入审计日志`)
-        this.createForm.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const frozen={...this.createForm.model};this.createForm.submitting=true;let createdId=''
+      const ok=await this.runWrite('create',['new'],async()=>{const res=await createWarning(frozen);createdId=String(res?.data?.id||'');return res},()=>createdId&&this.readExact([createdId],fresh=>String(fresh.warning.studentId)===String(frozen.studentId)&&fresh.warning.type===frozen.type&&fresh.warning.level===(frozen.level||'MEDIUM')&&fresh.warning.reason===String(frozen.reason||'').trim()),'已核对正式新增预警。')
+      this.createForm.submitting=false;if(ok)this.createForm.visible=false
     },
     openLevel(row) {
       if (!this.can('academic.warning.editLevel')) return
       this.levelForm = { visible: true, submitting: false, code: row.code, model: { level: row.level, reason: '' }, row }
     },
     async submitLevel() {
-      this.levelForm.submitting = true
-      const res = await updateWarningLevel(this.levelForm.row.id, this.levelForm.model)
-      this.levelForm.submitting = false
-      if (res.code === 0) {
-        toast.success('预警等级已调整，原因已留痕')
-        this.levelForm.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const id=String(this.levelForm.row.id),frozen={...this.levelForm.model};this.levelForm.submitting=true
+      const ok=await this.runWrite('level',[id],()=>updateWarningLevel(id,frozen),()=>this.readExact([id],fresh=>fresh.warning.level===frozen.level),'已核对当前预警等级；调整原因以审计记录为准。')
+      this.levelForm.submitting=false;if(ok)this.levelForm.visible=false
     },
     openAssign() {
       if (!this.can('academic.warning.batchAssign')) return
       this.assignForm = { visible: true, submitting: false, model: {} }
     },
     async submitAssign() {
-      this.assignForm.submitting = true
       const owner = this.ctx.filterOptions.owners.find((o) => o.value === this.assignForm.model.ownerId)
-      const res = await assignWarnings(this.selected, { ownerId: this.assignForm.model.ownerId, ownerName: owner ? owner.label : '' })
-      this.assignForm.submitting = false
-      if (res.code === 0) {
-        toast.success(`已将 ${res.data.count} 条预警分配给 ${owner.label}，已留痕`)
-        this.assignForm.visible = false
-        this.selected = []
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      if(!owner)return;const ids=this.selected.map(String),payload={ownerId:this.assignForm.model.ownerId,ownerName:owner.label};this.assignForm.submitting=true
+      const ok=await this.runWrite('assign',ids,()=>assignWarnings(ids,payload),()=>this.readExact(ids,fresh=>fresh.warning.owner===payload.ownerName),'已核对所选预警的当前跟进人。')
+      this.assignForm.submitting=false;if(ok){this.assignForm.visible=false;this.selected=[]}
     },
     async batchRemind() {
       if (!this.can('academic.warning.batchRemind')) return
-      const res = await remindWarnings(this.selected)
-      if (res.code === 0) toast.success(`已向 ${res.data.count} 条预警的学生与跟进人发送提醒，已留痕`)
-      else toast.error(res.message)
-      this.selected = []
-      this.load()
+      const ids=this.selected.map(String),before=new Map(this.rows.filter(row=>ids.includes(String(row.id))).map(row=>[String(row.id),Number(row.remindCount)]))
+      const ok=await this.runWrite('remind',ids,()=>remindWarnings(ids),()=>this.readExact(ids,fresh=>Number.isFinite(before.get(String(fresh.warning.id)))&&Number(fresh.warning.remindCount)>before.get(String(fresh.warning.id))),'已核对所选预警提醒计数更新；送达和阅读状态需另行核对。')
+      if(ok)this.selected=[]
     },
     openVoid(row) {
       if (!this.can('academic.warning.void')) return
       this.voidDialog = { visible: true, submitting: false, row }
     },
     async submitVoid({ reason }) {
-      this.voidDialog.submitting = true
-      const res = await voidWarning(this.voidDialog.row.id, { reason })
-      this.voidDialog.submitting = false
-      if (res.code === 0) {
-        toast.success('预警已作废（误报，逻辑删除），说明已留痕')
-        this.voidDialog.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const id=String(this.voidDialog.row.id),frozen=String(reason||'').trim();this.voidDialog.submitting=true
+      const ok=await this.runWrite('void',[id],()=>voidWarning(id,{reason:frozen}),()=>this.readExact([id],fresh=>fresh.warning.recordStatus==='VOIDED'&&String(fresh.warning.voidReason||'')===frozen),'已核对正式作废状态和误报说明。')
+      this.voidDialog.submitting=false;if(ok)this.voidDialog.visible=false
     },
     async openExport() {
       if (!this.can('academic.warning.export')) return
@@ -357,6 +331,7 @@ export default {
 .awl-danger {
   color: var(--danger-600);
 }
+.awl-notice { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-base); background: var(--warning-50, #fff7e8); color: var(--warning-700, #9a5200); }
 .mp-link + .mp-link {
   margin-left: var(--space-2);
 }

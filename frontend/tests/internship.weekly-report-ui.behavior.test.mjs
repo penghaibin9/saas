@@ -24,3 +24,15 @@ test('late weekly report approval cannot create receipt or advance a different r
   finish({ code: 0, data: { id: '1' } }); await old
   assert.equal(vm.lastReceipt, null); assert.equal(vm.detail.id, '2')
 })
+
+test('returning to the same weekly report cannot revive the older request', async () => {
+  const pending = []
+  const vm = view({ getWeeklyReportDetail: () => new Promise(resolve => pending.push(resolve)) })
+  const old = vm.load()
+  vm.$route.params.id = '2'; const second = vm.load()
+  vm.$route.params.id = '1'; const fresh = vm.load()
+  pending[2]({ code: 0, data: { id: '1', version: 4 } }); await fresh
+  pending[1]({ code: 0, data: { id: '2', version: 1 } }); await second
+  pending[0]({ code: 0, data: { id: '1', version: 2 } }); await old
+  assert.equal(vm.detail.version, 4); assert.equal(vm.detail.id, '1')
+})

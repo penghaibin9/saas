@@ -92,10 +92,10 @@ def install() -> None:
             return p0.consume_challenge(captcha_id)
         return original_captcha_consume(captcha_id)
 
-    def adaptive_captcha_required(scene: str, tenant_code: str | None, login_name: str | None) -> bool:
+    def adaptive_captcha_required(scene: str, tenant_code: str | None, login_name: str | None, identifier_type: str = "ACCOUNT") -> bool:
         if use_durable():
-            return p0.captcha_required(scene, tenant_code, login_name)
-        return original_captcha_required(scene, tenant_code, login_name)
+            return p0.captcha_required(scene, tenant_code, login_name, identifier_type)
+        return original_captcha_required(scene, tenant_code, login_name, identifier_type)
 
     # Canonical compatibility facade.
     token_store.login_locked = login_locked

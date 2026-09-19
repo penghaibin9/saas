@@ -238,7 +238,7 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(page.locator('.dgf-context')).toContainText(scoringFixture.studentNo)
 
     const comment = `已核对本轮答辩表现，提交本人评分。${scoringFixture.runId}`
-    await page.getByLabel(/答辩评分/).fill('88')
+    await page.getByRole('spinbutton', { name: '答辩评分（0–100）', exact: true }).fill('88')
     await page.getByLabel('答辩评语', { exact: false }).fill(comment)
     await expect(page.getByRole('button', { name: '提交本人评分', exact: true })).toBeEnabled()
     await capture(page, testInfo, 'gd-v6-deep-defense-score', 1440, 900)

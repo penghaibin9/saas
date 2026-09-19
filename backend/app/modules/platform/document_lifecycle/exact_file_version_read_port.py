@@ -19,7 +19,6 @@ from app.core.context import current_tenant_id
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
 from app.models.file import FileAsset, FileBinding, FileObject, FileVersion
-from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
 from app.services.file_access_service import authorize_file_object
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")

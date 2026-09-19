@@ -13,15 +13,15 @@
         <view class="stack" v-else>
           <view v-for="x in list" :key="rowKey(x)" class="card ar">
             <view class="row-between">
-              <view class="flex-1"><text class="t-md t-bold">{{ x.realName || x.studentName || '—' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.statusLabel || x.status || '' }}</text></view>
-              <MobileStatusTag :label="x.statusLabel || x.status || '待处理'" type="warning" />
+              <view class="flex-1"><text class="t-md t-bold">{{ x.realName || x.studentName || '—' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ nodeText(x) }}</text></view>
+              <MobileStatusTag :label="nodeText(x)" type="warning" />
             </view>
             <view class="ar__row" v-if="!focusId && summary(x)"><text class="ar__k">摘要</text><text class="flex-1 t-sm">{{ summary(x) }}</text></view>
             <view class="ar__row" v-if="!focusId && nodeText(x)"><text class="ar__k">流程节点</text><text class="flex-1 t-sm">{{ nodeText(x) }}</text></view>
             <view class="ar__row" v-if="x.progressHint"><text class="ar__k">办理进度</text><text class="flex-1 t-sm">{{ x.progressHint }}</text></view>
             <view class="ar__row" v-if="!focusId && recommendedActionText(x)"><text class="ar__k">建议动作</text><text class="flex-1 t-sm">{{ recommendedActionText(x) }}</text></view>
             <view class="ar__row" v-if="x.reason && expandedId !== rowKey(x)"><text class="ar__k">理由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
-            <view class="ar__row" v-if="x.riskLevel"><text class="ar__k">等级</text><text class="flex-1 t-sm">{{ x.riskLevel }}</text></view>
+            <view class="ar__row" v-if="x.riskLevel"><text class="ar__k">等级</text><text class="flex-1 t-sm">{{ riskLevelText(x.riskLevel) }}</text></view>
             <MobileInlineAlert v-if="!hasVersion(x)" type="warning" title="记录缺少版本号" description="当前记录不能处理，请刷新后重试。" />
 
             <view class="ar__detail" v-if="expandedId === rowKey(x)">
@@ -123,7 +123,13 @@ export default {
     openAidMaterials(row) { uni.navigateTo({ url: '/pages/teacher/affairs/index?bizType=AID&bizId=' + encodeURIComponent(row.applyId) }) },
     rowKey(x) { return String(x.objectionId || x.appealId || x.applyId || x.applicationId || x.caseId || x.riskId || x.id || '') },
     summary(x) { return x.title || x.topic || x.statement || x.applyLevelLabel || x.claimCreditType || x.discTypeLabel || '' },
-    nodeText(x) { return x.statusLabel || x.status || '待处理' },
+    nodeText(x) {
+      const value = x.status
+      return x.statusLabel || ({ PENDING: '待处理', PENDING_REVIEW: '待审核', PROCESSING: '处理中', APPROVED: '已通过', RETURNED: '已退回', REJECTED: '已驳回', CLOSED: '已关闭' })[value] || (value ? `状态待确认（${value}）` : '待处理')
+    },
+    riskLevelText(value) {
+      return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[value] || (value && /[一-鿿]/.test(value) ? value : value ? `等级待确认（${value}）` : '等级待确认')
+    },
     actionLabel(action) {
       if (action === 'APPROVE') return '通过'
       if (action === 'RETURN') return '退回'
@@ -180,7 +186,7 @@ export default {
         this.detailMap = { [this.focusId]: detail }; this.expandedId = this.focusId; this.state = 'ready'
       }).catch(error => {
         if (requestId !== this.requestSeq) return
-        this.list = []; this.total = 0; this.state = 'error'; this._err(error, '申请加载')
+        this.list = []; this.total = 0; this.state = normalizeError(error).pageState || 'error'; this._err(error, '申请加载')
       })
     },
     loadMore() {
@@ -206,7 +212,7 @@ export default {
       }).catch((e) => {
         if (requestId !== this.requestSeq) return
         if (append) this.moreError = '后续待办暂未加载，已显示的记录仍保留。'
-        else this.state = 'error'
+        else this.state = normalizeError(e).pageState || 'error'
         this._err(e, '加载')
       }).finally(() => { if (requestId === this.requestSeq) this.loadingMore = false })
     },
@@ -225,7 +231,7 @@ export default {
         ['申请调整', d.adjustment ? `${d.adjustment.fromLabel} → ${d.adjustment.targetLabel}（待审核）` : ''],
         ['调整原因', d.adjustment?.reason],
         ['主张类型', d.claimCreditType], ['主张数值', d.claimValue], ['申诉类型', d.appealType],
-        ['节点', d.statusLabel || d.status], ['退回原因', d.returnReason], ['复核结论', d.resultLabel], ['复核意见', d.reviewOpinion],
+        ['节点', this.nodeText(d)], ['退回原因', d.returnReason], ['复核结论', d.resultLabel], ['复核意见', d.reviewOpinion],
         ['说明', d.remark || d.note || d.content || d.description], ['学院', d.collegeName], ['班级', d.className],
         ['提交时间', (d.createdAt || d.submittedAt) ? this.historyTime(d.createdAt || d.submittedAt) : '']
       ]

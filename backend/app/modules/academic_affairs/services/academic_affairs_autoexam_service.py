@@ -115,21 +115,32 @@ def _load_params(db, batch) -> dict:
 # ══════════ 资源加载 ══════════
 
 def _exam_cap(room) -> int:
-    """考试容量：优先考试座位数（隔座物理约束），未设则回退上课容量。"""
-    return int(room.exam_seats or room.capacity or 0)
+    """实际可用考位；只对历史未设值回退，明确的 0 不得扩大。"""
+    return int(room.exam_seats if room.exam_seats is not None else (room.capacity or 0))
 
 
 def _eff_cap(room, seat_mode) -> int:
-    """有效容纳：隔座模式下实际只能坐一半（奇数座位）。"""
-    cap = _exam_cap(room)
-    return (cap + 1) // 2 if seat_mode == "SPACED" else cap
+    """返回当前座位模式下的真实可用考位。
+
+    exam_seats 是学校显式维护的“考试实际考位数”，已包含隔座等物理约束，
+    因此存在时必须原样使用；只有历史教室未配置 exam_seats、回退普通上课
+    capacity 时，SPACED 才按奇数座位 1/3/5... 折算有效容量。
+    """
+    if room.exam_seats is not None:
+        return max(0, int(room.exam_seats))
+    capacity = max(0, int(room.capacity or 0))
+    if str(seat_mode or "").upper() == "SPACED":
+        return (capacity + 1) // 2
+    return capacity
 
 
 def _load_rooms(db) -> list:
     from app.models import AaClassroom
     rows = db.scalars(select(AaClassroom).where(
         AaClassroom.tenant_id == _tid(), AaClassroom.status == "AVAILABLE",
-        AaClassroom.is_exclusive.is_(False), AaClassroom.is_deleted.is_(False))).all()
+        AaClassroom.allow_exam.is_(True),
+        AaClassroom.is_exclusive.is_(False), AaClassroom.is_deleted.is_(False))
+        .order_by(AaClassroom.id).with_for_update()).all()
     return [r for r in rows if _exam_cap(r) > 0]
 
 

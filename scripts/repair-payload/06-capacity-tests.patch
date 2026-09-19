@@ -1,0 +1,85 @@
+diff --git a/performance/k6/test-download-repair.mjs b/performance/k6/test-download-repair.mjs
+new file mode 100644
+--- /dev/null
++++ b/performance/k6/test-download-repair.mjs
+@@ -0,0 +1,32 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { classifyResponse, identityCounts, missingMeasuredRoutes, routeEvidence } from './lib/evidence.js'
++
++test('HTTP success is not business success and missing/null code cannot coerce to zero',()=>{
++  for(const body of [{},{code:null},{code:''},{code:403001}])assert.equal(classifyResponse({status:200,json:()=>body}).success,false)
++  assert.equal(classifyResponse({status:200,json:()=>({code:0})}).success,true)
++  assert.equal(classifyResponse({status:200,json:()=>{throw Error('invalid')}}).businessBucket,'invalid_json')
++  assert.equal(classifyResponse({status:403}).statusBucket,'403')
++  assert.equal(classifyResponse({status:0}).statusBucket,'transport')
++})
++test('registered zero trends and zero samples are missing routes',()=>{
++  const metrics={'http_req_duration{route:r}':{values:{'p(95)':0}}}
++  assert.deepEqual(missingMeasuredRoutes(routeEvidence(metrics,['r']),['r']),['r'])
++  metrics['capacity_route_attempts{route:r}']={values:{count:10}}
++  metrics['capacity_route_successes{route:r}']={values:{count:9}}
++  assert.deepEqual(missingMeasuredRoutes(routeEvidence(metrics,['r']),['r']),[])
++})
++test('unique token strings are distinct from unique business subjects',()=>{
++  const d=()=>({tenantId:'1',studentNo:'s',activeContextId:'ctx',capacitySynthetic:true})
++  const result=identityCounts(['jwt1','jwt1','jwt2'],d,'student')
++  assert.equal(result.tokens,2);assert.equal(result.identities,1);assert.equal(result.synthetic,true)
++})
++test('tenant+subject uniqueness does not merge two school identities',()=>{
++  const result=identityCounts(['1','2'],token=>({tenantId:token,studentNo:'same'}),'student')
++  assert.equal(result.identities,2)
++})
++test('error classifications never project raw body, token, URL or personal fields',()=>{
++  const result=classifyResponse({status:200,json:()=>({code:999999,message:'private',token:'secret',phone:'13800000000'})})
++  assert.deepEqual(Object.keys(result).sort(),['businessBucket','statusBucket','success'])
++  assert.equal(JSON.stringify(result).includes('secret'),false)
++})
+diff --git a/performance/tools/test_download_repair.py b/performance/tools/test_download_repair.py
+new file mode 100644
+--- /dev/null
++++ b/performance/tools/test_download_repair.py
+@@ -0,0 +1,43 @@
++import os
++import unittest
++from ephemeral_capacity_guard import assert_ephemeral_target
++from evaluate_capacity_result import measured_route_failures, REQUIRED_STUDENT, REQUIRED_TEACHER, _identity_pool_assertion
++
++class CapacityRepairTests(unittest.TestCase):
++    def setUp(self):
++        self.env={'APP_ENV':'test','DEPLOYMENT_MODE':'development','CAPACITY_EPHEMERAL_ACK':'student_lifecycle_test',
++            'DATABASE_URL':'mysql+pymysql://u:p@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4',
++            'TEST_DATABASE_URL':'mysql+pymysql://u:p@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4'}
++    def test_exact_ephemeral_target_accepted(self):self.assertTrue(assert_ephemeral_target(self.env))
++    def test_production_environment_rejected(self):
++        for key,value in [('APP_ENV','production'),('DEPLOYMENT_MODE','production'),('CAPACITY_EPHEMERAL_ACK','')]:
++            with self.subTest(key=key),self.assertRaises(ValueError):assert_ephemeral_target({**self.env,key:value})
++    def test_remote_lookalike_socket_and_alt_database_rejected(self):
++        for url in ['mysql+pymysql://u:p@example.test/student_lifecycle_test',
++                    'mysql+pymysql://u:p@127.0.0.1/student_lifecycle_test_backup',
++                    'mysql+pymysql://u:p@127.0.0.1/student_lifecycle_test?unix_socket=/tmp/prod.sock',
++                    'sqlite:///student_lifecycle_test','mysql+pymysql://u:p@localhost:3310/student_lifecycle_test']:
++            with self.subTest(url=url),self.assertRaises(ValueError):
++                assert_ephemeral_target({**self.env,'DATABASE_URL':url,'TEST_DATABASE_URL':url})
++    def test_database_url_mismatch_rejected(self):
++        with self.assertRaises(ValueError):assert_ephemeral_target({**self.env,'TEST_DATABASE_URL':''})
++    def test_zero_latency_metrics_and_advertised_empty_missing_array_do_not_prove_coverage(self):
++        doc={'scenario':'mixed','measurementSchema':2,'missingRoutes':[], 'routes':{r:{'p95':0,'p99':0} for r in REQUIRED_STUDENT|REQUIRED_TEACHER}}
++        self.assertEqual(set(measured_route_failures(doc)),REQUIRED_STUDENT|REQUIRED_TEACHER)
++    def test_all_real_samples_pass(self):
++        doc={'scenario':'mixed','measurementSchema':2,'measuredRoutes':{r:{'attempts':50,'successes':50} for r in REQUIRED_STUDENT|REQUIRED_TEACHER}}
++        self.assertFalse(measured_route_failures(doc))
++        doc['measuredRoutes']['teacher_visit']['successes']=0
++        self.assertEqual(measured_route_failures(doc),['teacher_visit'])
++    def test_inconsistent_samples_fail(self):
++        doc={'scenario':'student','measurementSchema':2,'measuredRoutes':{r:{'attempts':1,'successes':2} for r in REQUIRED_STUDENT}}
++        self.assertEqual(set(measured_route_failures(doc)),REQUIRED_STUDENT)
++    def test_unique_jwts_for_same_student_are_not_identity_scale(self):
++        doc={'scenario':'mixed','identity':{'studentTokensAvailable':300,'teacherTokensAvailable':300,
++            'uniqueStudentTokens':300,'uniqueTeacherTokens':300,'uniqueTeacherContexts':300,
++            'uniqueStudentSubjects':1,'uniqueTeacherSubjects':300,'uniqueTeacherSubjects':300,'identityClaimsComplete':True}}
++        self.assertFalse(_identity_pool_assertion(doc,profile='p300',mode='cold')[0])
++        doc['identity']['uniqueStudentSubjects']=300
++        self.assertTrue(_identity_pool_assertion(doc,profile='p300',mode='cold')[0])
++
++if __name__=='__main__':unittest.main()

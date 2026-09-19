@@ -48,7 +48,7 @@ export default {
   onLoad(query) { this.focusId = String(query?.recordId || query?.caseId || ''); this.load() },
   methods: {
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
-    appealText(s) { return APPEAL_L[s] || s },
+    appealText(s) { return APPEAL_L[s] || '申诉状态待确认' },
     statusText(item) { return item?.caseStatus === 'REMOVED' ? '处分已解除' : (item?.appealStatus ? this.appealText(item.appealStatus) : '可申诉') },
     load() {
       this.state = 'loading'
@@ -56,6 +56,7 @@ export default {
         .catch(() => { this.state = 'error' })
     },
     async appeal(x) {
+      if (this.busy) return
       const reason = (this.reasons[x.caseId] || '').trim()
       if (reason.length < 5) {
         uni.showToast({ title: '申诉理由至少5字', icon: 'none' })

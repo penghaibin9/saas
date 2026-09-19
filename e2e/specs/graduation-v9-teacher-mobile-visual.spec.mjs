@@ -3,19 +3,12 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 
 async function loginTeacherMini(page) {
-  await page.goto(`${miniBase}/#/pages/login/teacher/index`)
-  const loginFields = page.getByRole('textbox')
-  await loginFields.nth(0).fill(u8TeacherAccount.username)
-  await loginFields.nth(1).fill(u8TeacherAccount.password)
-  await page.getByText('填写', { exact: true }).click()
-  await loginFields.nth(2).fill(u8TeacherAccount.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入教师工作台', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 10_000 })
+  await loginMiniH5(page, { baseUrl: miniBase, entry: 'teacher', account: u8TeacherAccount, timeout: 10_000 })
 }
 
 async function settle(page) {

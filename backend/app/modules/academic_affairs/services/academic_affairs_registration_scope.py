@@ -41,12 +41,10 @@ def register_student(batch_id, user, student_id) -> dict:
     legacy = _legacy()
     _n, _r, uid = legacy._op()
     with legacy.session() as db:
-        from app.models import AaRegistration, AaRegistrationBatch
+        from app.models import AaRegistration
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
-        batch = db.get(AaRegistrationBatch, int(batch_id))
-        if not batch or batch.is_deleted or batch.tenant_id != legacy._tid():
-            raise legacy.not_found("注册批次不存在")
+        batch = legacy.require_writable_registration_batch(db, batch_id)
         guard_term_writable(db, batch.term_id)
         if batch.status != "OPEN":
             raise legacy.AppException("DATA_CONFLICT", "注册批次未开放或已关闭")

@@ -752,96 +752,24 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
 
 def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
                      bucket: str = "", page: int = 1, page_size: int = 50) -> dict:
-    """成员列表 + 首屏结论。进来先跑一次回收，页面看到的永远是回收后的真实状态。"""
-    from app.models import User, UserRole
-    from app.models.role_assignment import RoleAssignmentValidity
+    """Reclaim expired grants, then read the requested ledger page in MySQL."""
+    from app.services.role_assignment_query_service import list_page
 
     tid = _tid(tenant_id)
     now = _now()
+    page = max(1, int(page or 1))
+    page_size = min(200, max(1, int(page_size or 50)))
     db = get_sessionmaker()()
+    touched = set()
     try:
         touched = _expire_due(db, tid, now=now)
         if touched:
             _audit_expiry_in_session(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
             db.commit()
-
-        stmt = select(RoleAssignmentValidity).where(
-            RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.is_deleted.is_(False))
-        if role_code.strip():
-            stmt = stmt.where(RoleAssignmentValidity.role_code == role_code.strip().upper())
-        rows = db.scalars(stmt.order_by(RoleAssignmentValidity.id.desc())).all()
-
-        accounts = {int(a.id): a for a in db.scalars(select(User).where(
-            User.tenant_id == tid, User.is_deleted.is_(False))).all()}
-        links = {int(link.id): link for link in db.scalars(select(UserRole).where(
-            UserRole.tenant_id == tid, UserRole.is_deleted.is_(False))).all()}
-
-        items = [
-            _row_dto(row, str(getattr(links.get(int(row.user_role_id)), "status", "") or ""),
-                     getattr(accounts.get(int(row.user_id)), "login_name", ""),
-                     getattr(accounts.get(int(row.user_id)), "real_name", ""), now=now)
-            for row in rows
-        ]
-
-        # 未登记有效期的历史授权：来源不明，必须让学校看见（在会话内取完值再出去）
-        from app.models import Role
-
-        role_by_id = {int(r.id): r.role_code for r in db.scalars(select(Role).where(
-            Role.tenant_id == tid, Role.is_deleted.is_(False))).all()}
-        registered = {int(r.user_role_id) for r in rows}
-        legacy_items = [{
-            "assignmentId": "", "userRoleId": str(link.id), "userId": str(link.user_id),
-            "loginName": getattr(accounts.get(int(link.user_id)), "login_name", ""),
-            "realName": getattr(accounts.get(int(link.user_id)), "real_name", ""),
-            "roleCode": role_by_id.get(int(link.role_id), ""),
-            "status": VALIDITY_ACTIVE, "linkStatus": str(link.status or ""),
-            "effectiveAt": str(link.created_at or "")[:19], "expiresAt": "", "daysLeft": None,
-            "sourceType": SOURCE_UNKNOWN, "sourceId": "", "reason": "",
-            "grantedBy": "", "lastReviewedAt": "", "lastReviewedTerm": "",
-            "transferredToUserId": "", "version": 0,
-        } for link in links.values()
-            if int(link.id) not in registered and str(link.status or "").upper() == "ACTIVE"]
+        result = list_page(db, tenant_id=tid, now=now, role_code=role_code,
+                           bucket=bucket, page=page, page_size=page_size)
+        return {**result, "reclaimedNow": len(touched)}
     finally:
         db.close()
-    if touched:
-        _invalidate(touched, tid)
-
-    all_items = items + legacy_items
-    soon_line = now + timedelta(days=EXPIRING_SOON_DAYS)
-    buckets: dict[str, list[dict]] = {
-        BUCKET_EXPIRING_SOON: [i for i in all_items
-                               if i["status"] == VALIDITY_ACTIVE and i["expiresAt"]
-                               and datetime.strptime(i["expiresAt"], "%Y-%m-%d %H:%M:%S") <= soon_line],
-        BUCKET_EXPIRED_NOT_RECLAIMED: [i for i in all_items
-                                       if i["status"] == VALIDITY_EXPIRED
-                                       and i["linkStatus"] == "ACTIVE"],
-        BUCKET_UNREVIEWED: [i for i in all_items
-                            if i["status"] == VALIDITY_ACTIVE and not i["expiresAt"]
-                            and not i["lastReviewedAt"]],
-        BUCKET_UNKNOWN_SOURCE: [i for i in all_items if i["sourceType"] == SOURCE_UNKNOWN],
-    }
-    holders: dict[str, set[str]] = {}
-    for i in all_items:
-        if i["roleCode"] in HIGH_PRIVILEGE_ROLES and i["status"] == VALIDITY_ACTIVE:
-            holders.setdefault(i["roleCode"], set()).add(i["userId"])
-    buckets[BUCKET_HIGH_PRIV_MULTI] = [
-        {"roleCode": code, "holders": sorted(uids), "count": len(uids)}
-        for code, uids in holders.items() if len(uids) > 1
-    ]
-
-    if bucket:
-        if bucket not in buckets:
-            raise AppException("VALIDATION_ERROR", f"未知的分类：{bucket}")
-        all_items = buckets[bucket]
-
-    page = max(1, int(page or 1))
-    page_size = min(200, max(1, int(page_size or 50)))
-    start = (page - 1) * page_size
-    return {
-        "list": all_items[start:start + page_size],
-        "total": len(all_items),
-        "page": page, "pageSize": page_size,
-        "summary": {k: len(v) for k, v in buckets.items()},
-        "reclaimedNow": len(touched),
-    }
+        if touched:
+            _invalidate(touched, tid)

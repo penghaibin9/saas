@@ -46,10 +46,11 @@ def teacher_activities(
 )
 def teacher_activity_participants(
     activity_id: int = Path(..., ge=1),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
     user=Depends(require_permission("studentAffairs.activity.view")),
 ):
     from app.services import affairs_activity_service as activity
-    return success({"items": activity.list_participants(activity_id, user)})
+    return success(activity.list_participants(activity_id, user, page=page, page_size=pageSize))
 
 
 @router.post(

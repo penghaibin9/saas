@@ -39,17 +39,20 @@
           </view>
           <view class="activity-facts">
             <text>{{ timeText(selected) }}</text>
-            <text>报名 {{ participantSummary.total }} · 已签到 {{ participantSummary.checkedIn }}</text>
+            <text>当前范围报名 {{ participantSummary.total }} · 已签到 {{ participantSummary.checkedIn }}</text>
             <text v-if="selected.creditValue != null">确认后每人计 {{ selected.creditValue }} {{ creditUnit(selected.creditType) }}</text>
           </view>
           <MobileInlineAlert v-if="detailError" type="warning" title="名单暂不可用" :description="detailError" />
-          <view v-else class="activity-participants">
+          <button v-if="detailError" class="btn btn-secondary" @click="loadParticipants()">重新加载名单</button>
+          <view class="activity-participants">
             <view class="activity-section-head"><text>参与名单</text><text>{{ participantSummary.checkedIn }}/{{ participantSummary.total }} 已签到</text></view>
-            <text v-if="!participants.length" class="activity-empty">尚无报名学生</text>
+            <text v-if="participantLoading && !participants.length" class="activity-empty">正在加载名单…</text>
+            <text v-else-if="!participants.length && !detailError" class="activity-empty">当前范围暂无报名学生</text>
             <view v-for="person in participants" :key="person.signupId" class="participant-row">
               <view><text class="participant-name">{{ person.realName || '学生' }}</text><text class="activity-meta">{{ person.studentNo || '学号未同步' }}</text></view>
               <MobileStatusTag :status="person.signupStatus" :label="participantLabel(person.signupStatus)" />
             </view>
+            <button v-if="participants.length < participantTotal" class="btn btn-secondary" :disabled="participantLoading" @click="loadParticipants(true)">{{ participantLoading ? '加载中…' : '加载更多名单' }}</button>
           </view>
         </scroll-view>
         <view v-if="actionable" class="activity-actions">
@@ -57,7 +60,7 @@
           <button v-if="allows('START')" class="btn btn-primary" :disabled="!!busy" @click="confirmTransition('START')">开始活动</button>
           <button v-if="selected.status === 'ONGOING'" class="btn btn-secondary" :disabled="!!busy" @click="showCode">生成签到码</button>
           <button v-if="allows('FINISH')" class="btn btn-primary" :disabled="!!busy" @click="confirmTransition('FINISH')">结束活动</button>
-          <button v-if="allows('CONFIRM')" class="btn btn-primary" :disabled="!!busy || participantSummary.checkedIn === 0" @click="confirmRoster">确认名单并生成积分</button>
+          <button v-if="allows('CONFIRM')" class="btn btn-primary" :disabled="!!busy || participantLoading || !!detailError || participantSummary.checkedIn === 0" @click="confirmRoster">确认名单并生成积分</button>
         </view>
       </view>
     </view>
@@ -77,6 +80,7 @@
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const STATUS_ORDER = ['PUBLISHED', 'ENROLL_CLOSED', 'ONGOING', 'FINISHED', 'CONFIRMED', 'ARCHIVED']
 
@@ -86,6 +90,8 @@ export default {
       state: 'loading', loadError: '', status: 'PUBLISHED,ENROLL_CLOSED,ONGOING,FINISHED', activities: [], total: 0,
       page: 1, loadingMore: false, selected: null, participants: [], detailError: '', busy: '', codeData: null,
       focusId: '',
+      participantPage: 1, participantTotal: 0, participantLoading: false, participantSeq: 0,
+      rosterSummary: { total: 0, checkedIn: 0 }, disposed: false,
       filters: [
         { value: 'PUBLISHED,ENROLL_CLOSED,ONGOING,FINISHED', label: '待处理' },
         { value: 'ONGOING', label: '进行中' },
@@ -102,10 +108,7 @@ export default {
   },
   computed: {
     participantSummary() {
-      return {
-        total: this.participants.filter(x => x.signupStatus !== 'CANCELLED').length,
-        checkedIn: this.participants.filter(x => ['CHECKED_IN', 'CONFIRMED'].includes(x.signupStatus)).length
-      }
+      return this.rosterSummary
     },
     actionable() { return this.selected && (this.selected.allowedActions || []).some(x => ['ENROLL_CLOSE', 'START', 'FINISH', 'CONFIRM'].includes(x)) }
   },
@@ -113,6 +116,7 @@ export default {
   onShow() { if (this.state === 'ready' && !this.selected) this.load(false) },
   onPullDownRefresh() { this.load(false).finally(() => uni.stopPullDownRefresh()) },
   onBackPress() { if (this.codeData) { this.codeData = null; return true } if (this.selected) { this.closeDetail(); return true } return false },
+  onUnload() { this.disposed = true; this.participantSeq++; this.codeData = null },
   methods: {
     count(value) { return String(value).split(',').reduce((sum, key) => sum + Number(this.statusCounts[key] || 0), 0) },
     allows(action) { return Array.isArray(this.selected?.allowedActions) && this.selected.allowedActions.includes(action) },
@@ -136,20 +140,32 @@ export default {
           else { this.loadError = '该活动不存在、已变更，或不在当前权限范围内'; this.state = 'error' }
         }
       } catch (e) {
-        if (!more) { this.loadError = normalizeError(e).text || e.message || '活动列表加载失败'; this.state = 'error' }
+        if (!more) { this.loadError = normalizeError(e).text || e.message || '活动列表加载失败'; this.state = normalizeError(e).pageState || 'error' }
         else toast(normalizeError(e).text || '加载更多失败')
       } finally { this.loadingMore = false }
     },
     loadMore() { return this.load(true) },
     async openActivity(item) {
       this.selected = item; this.participants = []; this.detailError = ''
-      try {
-        const data = await affairsContractApi.getTeacherActivityParticipants(item.activityId)
-        if (!Array.isArray(data?.items)) throw new Error('活动名单暂不可用')
-        this.participants = data.items
-      } catch (e) { this.detailError = normalizeError(e).text || e.message || '活动名单加载失败' }
+      this.participantTotal = 0; this.rosterSummary = { total: 0, checkedIn: 0 }
+      return this.loadParticipants()
     },
-    closeDetail() { if (!this.busy) { this.selected = null; this.participants = []; this.detailError = ''; this.focusId = '' } },
+    async loadParticipants(more = false) {
+      if (!this.selected || (more && (this.participantLoading || this.participants.length >= this.participantTotal))) return
+      const selected = this.selected, seq = ++this.participantSeq, generation = currentSessionGeneration()
+      const page = more ? this.participantPage + 1 : 1
+      const current = () => !this.disposed && generation === currentSessionGeneration() && seq === this.participantSeq && selected === this.selected
+      this.participantLoading = true; this.detailError = ''
+      try {
+        const data = await affairsContractApi.getTeacherActivityParticipants(selected.activityId, { page, pageSize: 20 })
+        if (!current()) return
+        if (!Array.isArray(data?.items) || !Number.isInteger(data.total) || !data.summary) throw new Error('活动名单暂不可用')
+        this.participants = more ? [...this.participants, ...data.items] : data.items
+        this.participantTotal = data.total; this.participantPage = page; this.rosterSummary = data.summary
+      } catch (e) { if (current()) this.detailError = normalizeError(e).text || '活动名单加载失败' }
+      finally { if (current()) this.participantLoading = false }
+    },
+    closeDetail() { if (!this.busy) { this.participantSeq++; this.participantLoading = false; this.selected = null; this.participants = []; this.detailError = ''; this.focusId = '' } },
     confirmTransition(action) {
       const label = { ENROLL_CLOSE: '截止报名', START: '开始活动', FINISH: '结束活动' }[action]
       const note = action === 'FINISH' ? '结束后将进入名单确认，确认名单才会生成积分。' : `确认${label}“${this.selected.activityName}”？`
@@ -164,7 +180,7 @@ export default {
       } catch (e) { toast(normalizeError(e).text || '状态更新失败，请刷新后重试') } finally { this.busy = '' }
     },
     confirmRoster() {
-      if (!this.selected || this.participantSummary.checkedIn === 0) return
+      if (!this.selected || this.participantLoading || this.detailError || this.participantSummary.checkedIn === 0) return
       uni.showModal({ title: '确认参与名单', content: `将为 ${this.participantSummary.checkedIn} 名已签到学生生成正式积分。确认后如需撤销，请在教师 PC 办理。`, success: res => { if (res.confirm) this.runConfirm() } })
     },
     async runConfirm() {

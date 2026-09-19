@@ -5,9 +5,10 @@ import test from 'node:test'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
+const readSource = url => fs.readFileSync(url, 'utf8').replace(/\r\n/g, '\n')
 const apiUrl = new URL('../src/modules/graduation/api/graduation-defense-grade.api.js', import.meta.url)
-const apiSource = fs.readFileSync(apiUrl, 'utf8')
-  .replace(/^import .*\r?\n/gm, '')
+const apiSource = readSource(apiUrl)
+  .replace(/^import .*\n/gm, '')
   .replace(/\bexport const /g, 'const ')
   .replace(/^export default .*$/gm, '')
 
@@ -64,11 +65,11 @@ test('plagiarism type normalization never bypasses the original permission or ba
 
 const gateUrl = new URL('../../scripts/check/check-graduation-browser-architecture.mjs', import.meta.url)
 const scenarioPath = fileURLToPath(new URL('../../e2e/lib/graduation-scenario-fixture.mjs', import.meta.url))
-const gateSource = fs.readFileSync(gateUrl, 'utf8')
-  .replace(/^#!.*\r?\n/, '')
-  .replace(/^import .*\r?\n/gm, '')
+const gateSource = readSource(gateUrl)
+  .replace(/^#!.*\n/, '')
+  .replace(/^import .*\n/gm, '')
   .replaceAll('import.meta.url', 'entryUrl')
-const scenarioSource = fs.readFileSync(scenarioPath, 'utf8')
+const scenarioSource = readSource(scenarioPath)
 
 function runGate(scenario = scenarioSource) {
   const result = []

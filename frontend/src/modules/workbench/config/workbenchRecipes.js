@@ -183,7 +183,7 @@ export const RECIPES = {
     quickLinks: [
       { label: '成绩录入', to: TODO_TYPE_ROUTES.AA_GRADE_ENTRY },
       { label: '我的课表', to: MY_SCHEDULE },
-      { label: '教学任务', to: '/admin/academic-affairs/teaching-tasks' },
+      { label: '教学任务', to: '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
       { label: '发起调停课', to: '/admin/academic-affairs/schedule-change/apply' }
     ]
   },

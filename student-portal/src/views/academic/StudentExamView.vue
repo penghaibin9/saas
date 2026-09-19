@@ -1,155 +1,62 @@
 <template>
-  <div class="sp-page exam-page">
-    <section class="exam-hero">
-      <div>
-        <div class="exam-hero__eyebrow">教务学业 · 考试与缓考</div>
-        <h1>查看本人考试并办理缓考</h1>
-        <p>考试安排只展示本人正式名单内已发布场次；缓考申请、退回补充和处理结果使用独立流程。</p>
-      </div>
-      <button class="sp-btn sp-btn--ghost" type="button" :disabled="loading || !!actingKey" @click="load">
-        {{ loading ? '加载中…' : '刷新安排' }}
-      </button>
-    </section>
-
+  <div data-academic-page class="sp-page academic-prototype exam-page">
+    <AcademicPrototypeHeader :title="tab === 'apply' ? '缓考申请' : '考试与缓考'" group="成绩与考试" :object="tab === 'apply'" description="查看本人正式考试安排，跟踪缓考申请。" :loading="loading || !!actingKey" @refresh="load" />
     <StateBlock v-if="loading" type="loading" text="正在读取本人考试与缓考数据…" />
-    <section v-else-if="error" class="sp-card exam-error">
-      <StateBlock type="error" :text="error" />
-      <button class="sp-btn sp-btn--ghost" type="button" @click="load">重新加载</button>
-    </section>
-
-    <template v-else>
-      <section class="exam-summary">
-        <article class="summary-card"><span>已发布考试</span><b>{{ exams.length }}</b></article>
-        <article class="summary-card" :class="{ 'is-action': deferOptions.length }"><span>可申请缓考</span><b>{{ deferOptions.length }}</b></article>
-        <article class="summary-card" :class="{ 'is-action': returnedDeferrals.length }"><span>退回待补充</span><b>{{ returnedDeferrals.length }}</b></article>
-      </section>
-
-      <nav class="exam-tabs" aria-label="考试页面">
-        <button type="button" :class="{ 'is-active': tab === 'schedule' }" @click="tab = 'schedule'">考试安排</button>
-        <button type="button" :class="{ 'is-active': tab === 'apply' }" @click="tab = 'apply'">申请缓考</button>
-        <button type="button" :class="{ 'is-active': tab === 'records' }" @click="tab = 'records'">我的申请</button>
-      </nav>
-
-      <section v-if="tab === 'schedule'" class="sp-card work-card">
-        <header class="section-head">
-          <div><strong>本人考试安排</strong><span>时间按学校时区显示，考场和座位以已发布安排为准</span></div>
-          <StatusTag :text="`${upcomingExams.length} 场待考`" :tone="upcomingExams.length ? 'primary' : 'default'" />
-        </header>
+    <div v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="load">重新加载</button></div>
+    <div v-else class="stack">
+      <AcademicBusinessReceipt :receipt="receipt" :tone="receiptTone" />
+      <template v-if="tab === 'apply'">
+        <AcademicPrototypeSteps />
+        <section class="card"><header class="card-head"><h2>{{ selectedOption?.courseName || '选择本人考试' }} · 本人缓考申请</h2></header><form class="card-body" @submit.prevent="selectedOption && applyDefer(selectedOption)">
+          <div class="form-grid">
+            <label class="field"><span class="req">考试课程</span><select v-model="selectedOptionId"><option value="">请选择可办理考试</option><option v-for="option in deferOptions" :key="deferOptionKey(option)" :value="deferOptionKey(option)">{{ option.courseName }} · {{ dateText(option.examDate) }} {{ timeText(option) }}</option></select></label>
+            <template v-if="selectedOption"><label class="field"><span class="req">事由类型</span><select v-model="drafts[selectedOptionId].reasonType"><option value="ILLNESS">疾病</option><option value="OFFICIAL">公务或学校安排</option><option value="FAMILY">家庭重大事项</option><option value="OTHER">其他</option></select></label><label class="field full"><span class="req">缓考说明</span><textarea v-model.trim="drafts[selectedOptionId].reason" maxlength="300" placeholder="说明无法按时参加考试的原因（至少 5 字）" /></label></template>
+          </div><div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>提交后进入学校审核，未获批准前仍应按原考试安排准备。</span></div>
+          <footer class="form-foot"><button class="btn" type="button" @click="tab = 'schedule'">返回考试安排</button><button class="btn primary" :disabled="!!actingKey || !selectedOption || !canApply(selectedOption)">{{ actingKey ? '提交中…' : '提交缓考申请' }}</button></footer>
+        </form></section>
+      </template>
+      <template v-else>
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>本页面只显示本人正式考试安排；缓考申请不会自动修改考试时间。</span></div>
         <StateBlock v-if="!exams.length" type="empty" text="暂无已发布的本人考试安排" />
-        <div v-else class="exam-list">
-          <article v-for="exam in exams" :key="examKey(exam)" class="exam-item" :class="{ 'is-past': isPast(exam) }">
-            <div class="exam-item__time">
-              <strong>{{ dateText(exam.examDate || exam.startAt) }}</strong>
-              <span>{{ timeText(exam) }}</span>
-            </div>
-            <div class="exam-item__main">
-              <strong>{{ exam.courseName || '课程名称待补充' }}</strong>
-              <span>{{ exam.courseCode || '' }}{{ exam.examTypeLabel ? ` · ${exam.examTypeLabel}` : '' }}</span>
-              <small>{{ exam.campusName || exam.campusCode || '校区待定' }} · {{ exam.roomName || exam.classroom || '考场待定' }} · 座位 {{ exam.seatNo || '待定' }}</small>
-            </div>
-            <StatusTag :text="isPast(exam) ? '已结束' : '待参加'" :tone="isPast(exam) ? 'default' : 'primary'" />
-          </article>
-        </div>
-      </section>
-
-      <section v-else-if="tab === 'apply'" class="sp-card work-card">
-        <header class="section-head">
-          <div><strong>发起缓考申请</strong><span>只展示后端确认仍在申请窗口且本人有资格的考试课程</span></div>
-          <StatusTag :text="`${deferOptions.length} 项可办`" :tone="deferOptions.length ? 'primary' : 'default'" />
-        </header>
-        <StateBlock v-if="!deferOptions.length" type="empty" text="暂无可申请缓考的考试" />
-        <div v-else class="option-list">
-          <article v-for="option in deferOptions" :key="deferOptionKey(option)" class="option-item">
-            <header>
-              <div>
-                <strong>{{ option.courseName || '课程名称待补充' }}</strong>
-                <span>{{ dateText(option.examDate || option.startAt) }} · {{ timeText(option) }} · {{ option.roomName || option.classroom || '考场待定' }}</span>
-              </div>
-              <StatusTag text="可申请" tone="primary" />
-            </header>
-            <div class="option-item__form">
-              <label>
-                <span>原因类型</span>
-                <select v-model="drafts[deferOptionKey(option)].reasonType" class="sp-inp">
-                  <option value="ILLNESS">疾病</option>
-                  <option value="OFFICIAL">公务或学校安排</option>
-                  <option value="FAMILY">家庭重大事项</option>
-                  <option value="OTHER">其他</option>
-                </select>
-              </label>
-              <label>
-                <span>申请说明（至少 5 字，最多 300 字）</span>
-                <textarea
-                  v-model.trim="drafts[deferOptionKey(option)].reason"
-                  class="sp-inp"
-                  maxlength="300"
-                  placeholder="请说明无法按时参加考试的原因；证明材料要求以学校制度为准"
-                />
-              </label>
-            </div>
-            <footer>
-              <span>提交后进入学校审核，未获批准前仍应按原考试安排准备。</span>
-              <button
-                class="sp-btn"
-                type="button"
-                :disabled="!!actingKey || !canApply(option)"
-                @click="applyDefer(option)"
-              >{{ actingKey === `apply:${deferOptionKey(option)}` ? '提交中…' : '提交缓考申请' }}</button>
-            </footer>
-          </article>
-        </div>
-      </section>
-
-      <section v-else class="sp-card work-card">
-        <header class="section-head">
-          <div><strong>我的缓考申请</strong><span>展示本人申请、退回补充和最终处理结果</span></div>
-          <StatusTag :text="`${deferrals.length} 条`" tone="default" />
-        </header>
-        <StateBlock v-if="!deferrals.length" type="empty" text="暂无缓考申请" />
-        <div v-else class="record-list">
-          <article v-for="record in deferrals" :key="record.deferId || record.id" class="record-item" :class="{ 'is-target': String(record.deferId || record.id) === focusDeferId }">
-            <header>
-              <div>
-                <strong>{{ record.courseName || '课程名称待补充' }}</strong>
-                <span>{{ dateText(record.examDate || record.startAt) }} · 申请于 {{ dateTime(record.applyAt || record.createdAt) }}</span>
-              </div>
-              <StatusTag :text="deferStatusText(record.status)" :tone="deferStatusTone(record.status)" />
-            </header>
-            <dl>
-              <div><dt>原因类型</dt><dd>{{ reasonTypeText(record.reasonType) }}</dd></div>
-              <div><dt>申请说明</dt><dd>{{ record.reason || '—' }}</dd></div>
-              <div v-if="record.reviewNote || record.rejectReason || record.returnReason"><dt>处理意见</dt><dd>{{ record.reviewNote || record.rejectReason || record.returnReason }}</dd></div>
-            </dl>
-            <footer v-if="String(record.status || '').toUpperCase() === 'RETURNED'">
-              <span>请按处理意见补充材料后重新提交。</span>
-              <button
-                class="sp-btn"
-                type="button"
-                :disabled="!!actingKey"
-                @click="resubmit(record)"
-              >{{ actingKey === `resubmit:${record.deferId}` ? '重提中…' : '确认补充完成并重提' }}</button>
-            </footer>
-          </article>
-        </div>
-      </section>
-
-      <section class="sp-card exam-note">
-        <strong>重要提醒</strong>
-        <span>考试日期、时间、考场、座位和缓考资格均以服务器已发布数据为准。页面不会根据课程名称或班级自行拼接考试安排。</span>
-      </section>
-    </template>
+        <div class="grid-equal"><section v-for="exam in exams" :key="examKey(exam)" class="card"><header class="card-head"><h2>{{ exam.courseName || '课程名称待补充' }}</h2></header><div class="card-body">
+          <div class="row between"><span class="tag" :class="isPast(exam) ? 'gray' : 'green'">{{ isPast(exam) ? '已结束' : '已发布' }}</span><b>{{ dateText(exam.examDate || exam.startAt) }}</b></div>
+          <dl class="definition"><dt>考试时间</dt><dd>{{ timeText(exam) }}</dd><dt>考试地点</dt><dd>{{ exam.roomName || exam.classroom || '考场待定' }}</dd><dt>本人座位</dt><dd>{{ exam.seatNo || '待定' }}</dd><dt>考试身份</dt><dd>本人正式考试安排</dd></dl>
+          <footer class="form-foot"><button class="btn small" :disabled="!!actingKey" @click="printTicket(exam)">准考证 / 查询件</button><button v-if="optionForExam(exam)" class="btn primary small" @click="selectedOptionId = deferOptionKey(optionForExam(exam)); tab = 'apply'">申请缓考</button><span v-else class="label">当前暂无可办理的缓考申请</span></footer>
+        </div></section></div>
+        <button v-if="deferOptions.some(option => !exams.some(exam => String(exam.examCourseId) === String(option.examCourseId)))" class="btn" @click="tab = 'apply'">查看其他可申请缓考的考试</button>
+        <section class="card"><header class="card-head"><h2>我的缓考申请</h2></header><div class="card-body">
+          <p v-if="!deferrals.length" class="muted">暂无缓考申请。</p>
+          <article v-for="record in deferrals" :key="record.deferId || record.id" :class="{ 'is-target': String(record.deferId || record.id) === focusDeferId }">
+            <div class="taskline"><div class="iconbox amber"><AcademicPrototypeIcon name="circle-info" /></div><div class="grow"><strong>{{ record.courseName || '本人考试' }} · 缓考申请</strong><small>{{ dateTime(record.createdAt || record.applyAt) }} → {{ deferStatusText(record.status) }}</small></div><span class="tag amber">{{ deferStatusText(record.status) }}</span></div>
+            <dl class="definition"><dt>申请说明</dt><dd>{{ record.reason || '未提供' }}</dd><dt v-if="record.reviewNote || record.rejectReason || record.returnReason">处理意见</dt><dd v-if="record.reviewNote || record.rejectReason || record.returnReason">{{ record.reviewNote || record.rejectReason || record.returnReason }}</dd></dl>
+            <button v-if="record.status === 'RETURNED'" class="btn small" :disabled="!!actingKey" @click="resubmit(record)">确认补充完成并重提</button>
+          </article><p class="label">以受理节点返回为准，不把“学院通过”显示成全流程批准。</p>
+        </div></section>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
+import { academicErrorKind, academicErrorMessage, academicReceipt, markStudentAcademicFormClean } from '../../components/academic/studentAcademicUi'
 import StateBlock from '../../components/StateBlock.vue'
-import StatusTag from '../../components/StatusTag.vue'
+import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
+import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
+import AcademicPrototypeSteps from '../../components/academic/AcademicPrototypeSteps.vue'
+import { createStudentAcademicCommandGuard, readStudentAcademicSnapshot, studentAcademicIdentity, studentAcademicWriteErrorKind } from '../../components/academic/studentAcademicCommandGuard'
+
 import { portalApi } from '../../services/portalApi'
+import { createInAppPrintFrame } from '../../services/printInApp'
+import { systemConfirm, systemPrompt } from '../../services/systemDialog'
+import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const session = useSessionStore()
+const guard = createStudentAcademicCommandGuard(() => studentAcademicIdentity(session), 'exam-defer')
 const route = useRoute()
 const focusDeferId = computed(() => String(route.query.deferId || ''))
 const loading = ref(true)
@@ -159,9 +66,14 @@ const tab = ref(['schedule', 'apply', 'records'].includes(String(route.query.tab
 const exams = ref([])
 const deferOptions = ref([])
 const deferrals = ref([])
+const receipt = ref(null)
+const receiptTone = ref('success')
 const drafts = reactive({})
+const selectedOptionId = ref('')
+const uncertainKeys = ref([])
+const selectedOption = computed(() => deferOptions.value.find(option => deferOptionKey(option) === selectedOptionId.value))
+function optionForExam(exam) { return deferOptions.value.find(option => String(option.examCourseId) === String(exam.examCourseId)) }
 
-const upcomingExams = computed(() => exams.value.filter((exam) => !isPast(exam)))
 const returnedDeferrals = computed(() => deferrals.value.filter((record) => String(record.status || '').toUpperCase() === 'RETURNED'))
 
 function rowsOf(data) {
@@ -192,20 +104,9 @@ function isPast(exam) {
   const value = examTimestamp(exam)
   return value != null && value < Date.now()
 }
-function reasonTypeText(value) {
-  const map = { ILLNESS: '疾病', OFFICIAL: '公务或学校安排', FAMILY: '家庭重大事项', OTHER: '其他' }
-  return map[String(value || '').toUpperCase()] || value || '未分类'
-}
 function deferStatusText(value) {
   const map = { SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核中', TEACHER_CONFIRM: '任课教师确认中', ACADEMIC_REVIEW: '教务审核中', APPROVED: '已批准', REJECTED: '未批准', RETURNED: '退回待补充', CANCELLED: '已撤销' }
   return map[String(value || '').toUpperCase()] || value || '待确认'
-}
-function deferStatusTone(value) {
-  const status = String(value || '').toUpperCase()
-  if (status === 'APPROVED') return 'success'
-  if (['REJECTED', 'CANCELLED'].includes(status)) return 'danger'
-  if (status === 'RETURNED') return 'warn'
-  return 'primary'
 }
 function ensureDraft(option) {
   const key = deferOptionKey(option)
@@ -213,122 +114,185 @@ function ensureDraft(option) {
 }
 function canApply(option) {
   const draft = drafts[deferOptionKey(option)]
-  return !!option?.examCourseId && !!draft?.reasonType && String(draft.reason || '').trim().length >= 5
+  return !uncertainKeys.value.includes(`apply:${deferOptionKey(option)}`) && !!option?.examCourseId && !!draft?.reasonType && String(draft.reason || '').trim().length >= 5
+}
+function persistentCommandCleared(reference) {
+  const pending = guard.pendingCommands()
+  return Boolean(reference?.commandKey) && reference.identity === studentAcademicIdentity(session) && !pending.persistenceError && !pending.some((item) => item.commandKey === reference.commandKey)
+}
+function reconcilePersistentCommands() {
+  const pending = guard.pendingCommands().filter((item) => ['APPLY_DEFER', 'RESUBMIT_DEFER'].includes(item.action))
+  uncertainKeys.value = pending.map((item) => `${item.action === 'APPLY_DEFER' ? 'apply' : 'resubmit'}:${item.objectId}`)
+  for (const reference of pending) {
+    const applying = reference.action === 'APPLY_DEFER'
+    const formal = reference.ackId ? deferrals.value.find((row) => String(row.deferId || row.id || '') === reference.ackId) : null
+    const confirmed = applying
+      ? formal && String(formal.examCourseId || '') === reference.objectId
+      : formal && reference.ackId === reference.objectId && String(formal.status || '').toUpperCase() !== 'RETURNED'
+    if (confirmed && guard.completePersistentCommand(reference)) {
+      receiptTone.value = 'success'
+      receipt.value = academicReceipt({ title: `原缓考申请${applying ? '' : '重新'}提交已通过正式记录确认`, object: formal.courseName || formal.examName || '原考试', status: deferStatusText(formal.status), operatedAt: formal.updatedAt || formal.createdAt || formal.submittedAt, next: '请继续在申请记录中跟踪学校受理结果。' })
+    } else {
+      receiptTone.value = 'waiting'
+      receipt.value = academicReceipt({ title: '原缓考申请结果待确认', object: formal?.courseName || formal?.examName || '原考试', status: reference.ackId ? (confirmed ? '正式记录已读到，但本地待确认引用未能安全清理' : formal ? '原申请仍待重新提交确认' : '尚未读取到原回执对应的本人记录') : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
+    }
+  }
+  uncertainKeys.value = guard.pendingCommands().filter((item) => ['APPLY_DEFER', 'RESUBMIT_DEFER'].includes(item.action)).map((item) => `${item.action === 'APPLY_DEFER' ? 'apply' : 'resubmit'}:${item.objectId}`)
 }
 async function load() {
+  if (!actingKey.value) receipt.value = null
   loading.value = true
   error.value = ''
-  try {
-    const [examResult, optionResult, recordResult] = await Promise.all([
+  const read = await readStudentAcademicSnapshot(guard, () => Promise.all([
       portalApi.academicExam(),
       portalApi.academicExamDeferOptions(),
       portalApi.academicExamDefer()
-    ])
-    exams.value = rowsOf(examResult)
-    deferOptions.value = rowsOf(optionResult)
-    deferrals.value = rowsOf(recordResult)
-    for (const option of deferOptions.value) ensureDraft(option)
-    if (returnedDeferrals.value.length && tab.value === 'schedule') tab.value = 'records'
-  } catch (e) {
-    error.value = e?.message || '考试与缓考数据读取失败，请稍后重试'
-  } finally {
+  ]))
+  if (read.stale) return false
+  if (!read.ok) {
+    if (academicErrorKind(read.error) === 'forbidden') { clearSensitive(read.error); return false }
+    error.value = academicErrorMessage(read.error, '考试与缓考数据读取失败，请稍后重试')
     loading.value = false
+    return false
   }
+  const [examResult, optionResult, recordResult] = read.value
+  exams.value = rowsOf(examResult)
+  deferOptions.value = rowsOf(optionResult)
+  deferrals.value = rowsOf(recordResult)
+  reconcilePersistentCommands()
+  for (const option of deferOptions.value) ensureDraft(option)
+  if (returnedDeferrals.value.length && tab.value === 'schedule') tab.value = 'records'
+  loading.value = false
+  return true
 }
 async function applyDefer(option) {
   const key = deferOptionKey(option)
   if (actingKey.value || !canApply(option)) return
   const draft = drafts[key]
-  actingKey.value = `apply:${key}`
+  const command = guard.beginCommand({ key: `apply:${key}`, examCourseId: String(option.examCourseId), reasonType: draft.reasonType, reason: String(draft.reason || '').trim(), object: option.courseName || option.examName || '当前考试' })
+  if (!await systemConfirm({ title:'确认缓考申请', message:`确认对“${command.object}”提交缓考申请？原考试安排在批准前仍然有效。`, confirmText:'提交缓考申请' })) return
+  if (!guard.isCurrentCommand(command)) return
+  const persistent = guard.preparePersistentCommand({ action: 'APPLY_DEFER', objectId: command.examCourseId })
+  if (!persistent) { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '缓考申请未发送', object: command.object, status: '浏览器无法保存待确认引用', next: '请检查浏览器本地存储后再提交。' }); return }
+  actingKey.value = command.key
   try {
-    await portalApi.academicExamDeferApply({
-      examCourseId: option.examCourseId,
-      reasonType: draft.reasonType,
-      reason: String(draft.reason || '').trim()
+    const result = await portalApi.academicExamDeferApply({
+      examCourseId: command.examCourseId,
+      reasonType: command.reasonType,
+      reason: command.reason
     })
-    drafts[key] = { reasonType: 'ILLNESS', reason: '' }
-    ui.notify('缓考申请已提交')
-    tab.value = 'records'
-    await load()
+    if (!guard.isCurrentCommand(command)) return
+    const acknowledged = guard.rememberPersistentAck(persistent, result?.deferId || result?.id)
+    uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '提交结果待正式记录确认', object: command.object, status: '正在读取本人正式缓考申请', next: '确认前不要重复提交。' })
+    const readOk = await load()
+    if (!guard.isCurrentCommand(command) || !readOk) return
+    const formal = acknowledged?.ackId ? deferrals.value.find((row) => String(row.deferId || row.id) === acknowledged.ackId) : null
+    const sameExam = formal && String(formal.examCourseId || '') === command.examCourseId
+    if (sameExam && persistentCommandCleared(persistent)) {
+      receiptTone.value = 'success'; receipt.value = academicReceipt({ title: '缓考申请已提交并核对', object: command.object, status: deferStatusText(formal.status), operatedAt: formal.createdAt || formal.submittedAt || result?.createdAt, next: '原考试安排仍然有效，请在申请记录中跟踪学校受理结果。' })
+      uncertainKeys.value = uncertainKeys.value.filter(value => value !== command.key)
+      drafts[key] = { reasonType: 'ILLNESS', reason: '' }; tab.value = 'records'
+      markStudentAcademicFormClean()
+    } else {
+      uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
+      receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '提交结果待正式记录确认', object: command.object, status: '尚未读取到匹配的本人缓考申请', next: '请刷新本页核对。确认前不要重复提交。' })
+    }
   } catch (e) {
-    ui.notify(e?.message || '缓考申请提交失败')
+    if (!guard.isCurrentCommand(command)) return
+    if (studentAcademicWriteErrorKind(e) === 'forbidden') { clearSensitive(e); return }
+    await handleActionError(e, command, '缓考申请', persistent)
   } finally {
-    actingKey.value = ''
+    if (guard.isCurrentCommand(command)) actingKey.value = ''
   }
 }
 async function resubmit(record) {
   const id = record?.deferId || record?.id
-  if (!id || actingKey.value) return
-  const confirmed = window.confirm('确认已按处理意见补充材料并重新提交？')
-  if (!confirmed) return
-  actingKey.value = `resubmit:${id}`
+  const commandKey = `resubmit:${String(id || '')}`
+  if (!id || actingKey.value || uncertainKeys.value.includes(commandKey)) return
+  const command = guard.beginCommand({ key: commandKey, deferId: String(id), object: record.courseName || record.examName || '当前考试' })
+  if (!await systemConfirm({ title:'确认重新提交缓考', message:`确认已按处理意见补充“${command.object}”并重新提交？`, confirmText:'确认重新提交' })) return
+  if (!guard.isCurrentCommand(command)) return
+  const persistent = guard.preparePersistentCommand({ action: 'RESUBMIT_DEFER', objectId: command.deferId })
+  if (!persistent) { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '缓考重新提交未发送', object: command.object, status: '浏览器无法保存待确认引用', next: '请检查浏览器本地存储后再提交。' }); return }
+  actingKey.value = command.key
   try {
-    await portalApi.academicExamDeferResubmit(id)
-    ui.notify('缓考申请已重新提交')
-    await load()
+    const result = await portalApi.academicExamDeferResubmit(command.deferId)
+    if (!guard.isCurrentCommand(command)) return
+    const acknowledged = guard.rememberPersistentAck(persistent, result?.deferId || result?.id)
+    uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '重新提交结果待正式记录确认', object: command.object, status: '正在读取本人正式缓考申请', next: '确认前不要重复提交。' })
+    const readOk = await load()
+    if (!guard.isCurrentCommand(command) || !readOk) return
+    const formal = acknowledged?.ackId === command.deferId ? deferrals.value.find((row) => String(row.deferId || row.id) === command.deferId) : null
+    if (formal && String(formal.status || '').toUpperCase() !== 'RETURNED' && persistentCommandCleared(persistent)) {
+      receiptTone.value = 'success'; receipt.value = academicReceipt({ title: '缓考申请已重新提交并核对', object: command.object, status: deferStatusText(formal.status), operatedAt: formal.updatedAt || formal.submittedAt || result?.updatedAt, next: '请继续在申请记录中跟踪学校受理结果。' })
+      uncertainKeys.value = uncertainKeys.value.filter(value => value !== command.key)
+      markStudentAcademicFormClean()
+    } else {
+      uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
+      receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '重新提交结果待正式记录确认', object: command.object, status: formal ? deferStatusText(formal.status) : '未读到本人缓考申请', next: '请刷新本页核对。确认前不要重复提交。' })
+    }
   } catch (e) {
-    ui.notify(e?.message || '重新提交失败')
+    if (!guard.isCurrentCommand(command)) return
+    if (studentAcademicWriteErrorKind(e) === 'forbidden') { clearSensitive(e); return }
+    await handleActionError(e, command, '重新提交', persistent)
   } finally {
-    actingKey.value = ''
+    if (guard.isCurrentCommand(command)) actingKey.value = ''
   }
 }
+async function printTicket(exam) {
+  if (actingKey.value || loading.value || error.value) return
+  const reason = await systemPrompt({ title:'填写考试安排开具事由', message:'本次事由将写入审计记录。', defaultValue:'本人考试安排查询', minLength:5, confirmText:'确认开具' })
+  if (reason == null) return
+  if (reason.trim().length < 5) { ui.notify('开具事由不少于5个字'); return }
+  const win = createInAppPrintFrame('本人考试查询件')
+  win.document.body.textContent = '正在读取正式考试查询件…'
+  actingKey.value = 'print:' + examKey(exam)
+  try {
+    const audit = await portalApi.academicExamTicketPrint({ bizId: examKey(exam), reason: reason.trim() })
+    const document = audit?.document
+    const items = rowsOf(document)
+    if (!items.length) throw new Error('学校暂未返回可打印的本人正式考试安排')
+    const doc = win.document
+    doc.title = '本人考试查询件'; doc.body.textContent = ''
+    const append = (parent, tag, value) => { const node = doc.createElement(tag); node.textContent = String(value ?? ''); parent.appendChild(node); return node }
+    const style = doc.createElement('style')
+    style.textContent = 'body{font-family:Microsoft YaHei,sans-serif;padding:28px;color:#203450}h1{text-align:center;font-size:22px}table{width:100%;border-collapse:collapse;font-size:13px}td,th{border:1px solid #dce5f3;padding:10px;text-align:left}p{font-size:12px;color:#586d89}.watermark{position:fixed;top:42%;left:10%;transform:rotate(-25deg);color:rgba(32,52,80,.09);font-size:32px;pointer-events:none}'
+    doc.head.appendChild(style)
+    append(doc.body, 'h1', '本人考试查询件')
+    append(doc.body, 'p', [document.realName, document.studentNo, '开具事由：' + reason.trim(), '留痕时间：' + (audit.loggedAt || '以学校记录为准')].filter(Boolean).join(' · '))
+    if (audit.watermark) append(doc.body, 'div', audit.watermark).className = 'watermark'
+    const table = append(doc.body, 'table', '')
+    const header = append(table, 'tr', '')
+    for (const title of ['考试课程','日期','时间','考场','座位','准考编号']) append(header, 'th', title)
+    for (const item of items) { const row = append(table, 'tr', ''); for (const value of [item.courseName, dateText(item.examDate || item.startAt), timeText(item), item.classroom || item.roomName, item.seatNo, item.admissionNo]) append(row, 'td', value || '待公布') }
+    append(doc.body, 'p', '考试信息来自学校本人正式安排。入场证件要求以学校通知为准。')
+    win.focus(); win.print()
+  } catch (e) {
+    if (!win.closed) win.close()
+    if (studentAcademicWriteErrorKind(e) === 'forbidden') clearSensitive(e)
+    else ui.notify(academicErrorMessage(e, '考试查询件生成失败'))
+  } finally { actingKey.value = '' }
+}
+async function handleActionError(e, command, action, persistent) {
+  const kind = studentAcademicWriteErrorKind(e)
+  if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
+  if (kind === 'network' || kind === 'conflict') uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
+  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '考试事实已变化', object: command.object, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
+  else ui.notify(academicErrorMessage(e, `${action}失败`))
+}
 
+function clearSensitive(e) {
+  guard.invalidate()
+  exams.value = []; deferOptions.value = []; deferrals.value = []; Object.keys(drafts).forEach((key) => delete drafts[key])
+  receipt.value = null; selectedOptionId.value = ''
+  loading.value = false; actingKey.value = ''
+  error.value = academicErrorMessage(e)
+}
 onMounted(load)
+onBeforeUnmount(() => guard.dispose())
 </script>
 
-<style scoped>
-.exam-page { max-width: 1120px; margin: 0 auto; }
-.exam-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 16px; padding: 24px 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, #fff, var(--pri-50)); }
-.exam-hero__eyebrow { color: var(--pri); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
-.exam-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
-.exam-hero p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
-.exam-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.exam-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-.summary-card { padding: 16px 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
-.summary-card span { display: block; color: var(--t3); font-size: 12px; }
-.summary-card b { display: block; margin-top: 7px; color: var(--t1); font-size: 22px; }
-.summary-card.is-action b { color: var(--pri); }
-.exam-tabs { display: flex; gap: 6px; margin-bottom: 14px; padding: 5px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
-.exam-tabs button { flex: 1; min-height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--t3); cursor: pointer; }
-.exam-tabs button.is-active { background: var(--pri-50); color: var(--pri); font-weight: 600; }
-.work-card { padding: 18px 20px; }
-.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-.section-head strong, .section-head span { display: block; }
-.section-head strong { color: var(--t1); font-size: 15px; }
-.section-head span { margin-top: 4px; color: var(--t3); font-size: 12px; }
-.exam-list, .option-list, .record-list { display: grid; gap: 10px; }
-.exam-item { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
-.exam-item.is-past { opacity: .72; }
-.exam-item__time strong, .exam-item__time span, .exam-item__main strong, .exam-item__main span, .exam-item__main small { display: block; }
-.exam-item__time strong { color: var(--t1); font-size: 13px; }
-.exam-item__time span { margin-top: 4px; color: var(--pri); font-size: 12px; }
-.exam-item__main strong { color: var(--t1); font-size: 14px; }
-.exam-item__main span { margin-top: 3px; color: var(--t3); font-size: 11.5px; }
-.exam-item__main small { margin-top: 5px; color: var(--t4); font-size: 11.5px; }
-.option-item, .record-item { padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
-.record-item.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
-.option-item > header, .record-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.option-item > header strong, .option-item > header span, .record-item > header strong, .record-item > header span { display: block; }
-.option-item > header strong, .record-item > header strong { color: var(--t1); font-size: 14px; }
-.option-item > header span, .record-item > header span { margin-top: 4px; color: var(--t4); font-size: 11.5px; }
-.option-item__form { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; margin-top: 12px; }
-.option-item label { display: grid; gap: 6px; }
-.option-item label span { color: var(--t2); font-size: 12px; font-weight: 600; }
-.option-item textarea { min-height: 76px; resize: vertical; }
-.option-item footer, .record-item footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 12px; }
-.option-item footer span, .record-item footer span { color: var(--t4); font-size: 12px; }
-.record-item dl { display: grid; gap: 7px; margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line2); }
-.record-item dl div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; }
-.record-item dt { color: var(--t4); font-size: 12px; }
-.record-item dd { margin: 0; color: var(--t2); font-size: 12.5px; overflow-wrap: anywhere; }
-.exam-note { display: flex; gap: 12px; margin-top: 14px; color: var(--t3); font-size: 12.5px; }
-.exam-note strong { color: var(--t1); white-space: nowrap; }
-@media (max-width: 760px) {
-  .exam-hero, .section-head, .option-item > header, .record-item > header, .option-item footer, .record-item footer { align-items: stretch; flex-direction: column; }
-  .exam-summary { grid-template-columns: 1fr; }
-  .exam-item { grid-template-columns: 1fr; }
-  .option-item__form { grid-template-columns: 1fr; }
-  .record-item dl div { grid-template-columns: 1fr; gap: 3px; }
-  .option-item footer .sp-btn, .record-item footer .sp-btn { width: 100%; }
-}
-</style>
+<style src="../../components/academic/studentAcademicPrototype.css"></style>
+<style scoped>.definition{margin:14px 0}.form-notice{margin-top:14px}.is-target{outline:2px solid var(--pri);outline-offset:4px;border-radius:8px}</style>

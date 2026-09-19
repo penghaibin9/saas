@@ -36,6 +36,11 @@ FOCUS_READY_PAGES: dict[str, str] = {
     "/pages/student/affairs/leave": "recordId",
     "/pages/student/affairs/aid": "recordId",
     "/pages/student/affairs/funding": "recordId",
+    "/pages/student/my-work/index": "caseId",
+    "/pages/student/weekly-report/index": "reportId",
+    # 教师毕设批阅页会先以 batchId + recordId 读取受范围保护的详情，再进入该条批阅，
+    # 不能退化成只打开队列第一页。
+    "/pages/teacher/graduation-guide/index": "recordId",
     # 补交材料入口早于 V3 就已实现聚焦，沿用它自己的参数名，不为统一而改坏现网深链。
     "/pages/student/affairs/index": "materialRequirementId",
 }

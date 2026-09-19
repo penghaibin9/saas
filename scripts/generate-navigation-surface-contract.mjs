@@ -33,7 +33,13 @@ function projectGroup(group) {
       moduleKey: group.moduleKey,
       workspaceKey: workspace.key,
       workspaceLabel: workspace.label,
-      surfaceKey: surfaceKey(workspace, node, index),
+      surfaceKey: group.key === 'academic-affairs' ? node.leafId : surfaceKey(workspace, node, index),
+      ...(group.key === 'academic-affairs' ? {
+        leafId: node.leafId,
+        sourceKey: node.sourceKey,
+        canonicalLeafId: node.canonicalLeafId,
+        legacyWorkspaceIds: [...(node.legacyWorkspaceIds || [])]
+      } : {}),
       label: node.label,
       path: node.path || null,
       permissionKey: node.permissionKey || null,

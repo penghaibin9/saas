@@ -4,13 +4,14 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import { graduationTemplateCopy } from './graduation-template-copy.mjs'
 
-const layout = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8')
-const batchStrip = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/GraduationBatchStrip.vue', import.meta.url), 'utf8')
-const processView = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationProcessView.vue', import.meta.url), 'utf8')
-const materialCenter = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationMaterialCenterView.vue', import.meta.url), 'utf8')
-const reviewWorkspace = fs.readFileSync(new URL('../src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue', import.meta.url), 'utf8')
-const batchList = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationBatchListView.vue', import.meta.url), 'utf8')
-const studentWorkbench = fs.readFileSync(new URL('../../student-portal/src/views/graduation/GraduationWorkbenchView.vue', import.meta.url), 'utf8')
+const readText = (url) => fs.readFileSync(url, 'utf8').replace(/\r\n/g, '\n')
+const layout = readText(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url))
+const batchStrip = readText(new URL('../src/modules/graduation/views/_shared/GraduationBatchStrip.vue', import.meta.url))
+const processView = readText(new URL('../src/modules/graduation/views/GraduationProcessView.vue', import.meta.url))
+const materialCenter = readText(new URL('../src/modules/graduation/views/GraduationMaterialCenterView.vue', import.meta.url))
+const reviewWorkspace = readText(new URL('../src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue', import.meta.url))
+const batchList = readText(new URL('../src/modules/graduation/views/GraduationBatchListView.vue', import.meta.url))
+const studentWorkbench = readText(new URL('../../student-portal/src/views/graduation/GraduationWorkbenchView.vue', import.meta.url))
 const graduationStylesDir = new URL('../src/modules/graduation/styles/', import.meta.url)
 
 const REVIEWED_PRODUCTION_FILES = [
@@ -57,7 +58,7 @@ function optionsFrom(source, bindings = {}) {
     graduationPickerAdapters: {},
     matchPermission() { throw new Error('permission algorithm must not be replaced by this harness') },
     useGraduationBatchStore() { throw new Error('unexpected store initialization') },
-    graduationApi: {}, router: {},
+    graduationApi: {}, router: {}, URLSearchParams,
     ...bindings
   }
   vm.runInNewContext(body, sandbox, { timeout: 1000 })
@@ -205,6 +206,7 @@ test('G10 behavior: menu navigation retains the selected batch without overwriti
     router: { push(target) { destinations.push(target); return Promise.resolve() } }
   })
   const context = { $route: { fullPath: '/admin/graduation' } }
+  context.resolveWorkspaceDestination = options.methods.resolveWorkspaceDestination.bind(context)
   options.methods.onMenuSelect.call(context, { path: '/admin/graduation/finals' })
   options.methods.onMenuSelect.call(context, { path: '/admin/graduation/proposals?tab=PENDING_REVIEW' })
   options.methods.onMenuSelect.call(context, { path: '/admin/graduation/finals?batchId=other' })
@@ -226,7 +228,7 @@ test('G10 behavior: route and default panel determine the existing business life
 test('G10 full reconstruction review inventory remains readable and avoids unsafe presentation shortcuts', () => {
   assert.equal(REVIEWED_PRODUCTION_FILES.length, 28)
   for (const relative of REVIEWED_PRODUCTION_FILES) {
-    const source = fs.readFileSync(new URL(relative, import.meta.url), 'utf8')
+    const source = readText(new URL(relative, import.meta.url))
     assert.match(source, /<template[\s>]/, `${relative} must retain a real Vue template`)
     assert.match(source, /<script[\s>]/, `${relative} must retain executable Vue logic`)
     assert.doesNotMatch(source, /\bv-html\s*=/, `${relative} must not render untrusted HTML`)

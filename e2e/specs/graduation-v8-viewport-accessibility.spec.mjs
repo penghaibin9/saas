@@ -7,6 +7,7 @@ import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const VIEWPORTS = [
   { width: 1920, height: 1080 },
@@ -51,7 +52,8 @@ async function auditPage(page, expectedViewport) {
       .filter(visible)
     const unnamed = interactives.filter((element) => !labelText(element)).map((element) => element.outerHTML.slice(0, 240))
     const missingAlt = [...document.querySelectorAll('img')].filter(visible)
-      .filter((image) => !image.hasAttribute('alt')).map((image) => image.outerHTML.slice(0, 240))
+      .filter((image) => !image.hasAttribute('alt') && image.getAttribute('aria-hidden') !== 'true' && !image.closest('[aria-hidden="true"]'))
+      .map((image) => image.outerHTML.slice(0, 240))
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       expectedViewport: { width, height },
@@ -93,6 +95,7 @@ async function auditMobileFit(page, expectedViewport) {
     missingAlt: [...document.querySelectorAll('img')].filter((image) => {
       const rect = image.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0 && !image.hasAttribute('alt')
+        && image.getAttribute('aria-hidden') !== 'true' && !image.closest('[aria-hidden="true"]')
     }).map((image) => image.outerHTML.slice(0, 240))
   }), expectedViewport)
   expect(result.viewport).toEqual(expectedViewport)
@@ -102,21 +105,9 @@ async function auditMobileFit(page, expectedViewport) {
 }
 
 async function loginMini(page, account, kind) {
-  await page.goto(`${MINI_BASE_URL}/#/pages/login/${kind}/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意', { exact: false }).click()
-  await expect(page.locator('.agreement__box')).toHaveClass(/agreement__box--checked/)
-  const action = kind === 'teacher' ? '进入教师工作台' : '进入学生首页'
-  const loginButton = page.locator('.account-button').filter({ hasText: action })
-  await expect(loginButton).toBeEnabled()
-  await loginButton.click()
-  await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })
+  await loginMiniH5(page, { baseUrl: MINI_BASE_URL, entry: kind, account })
   await expect(page.locator('body')).not.toContainText(/操作过于频繁|登录失败|验证码加载失败/)
-  if (kind === 'teacher') await expect(page.getByText('当前身份：指导教师', { exact: false })).toBeVisible()
+  if (kind === 'teacher') await expect(page.locator('.teacher-hero__identity')).toContainText('指导教师')
 }
 
 test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidence', () => {
@@ -193,7 +184,7 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
     for (const viewport of MOBILE_VIEWPORTS) {
       await page.setViewportSize(viewport)
       await page.goto(`${MINI_BASE_URL}/#/pages/teacher/workbench/index`)
-      await expect(page.getByText('当前身份：指导教师', { exact: false })).toBeVisible()
+      await expect(page.locator('.teacher-hero__identity')).toContainText('指导教师')
       await expect(page.getByText('批阅开题', { exact: true })).toBeVisible()
       await expect(page.getByText('任务书', { exact: true }).first()).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/真实接口不可用|加载失败|网络不稳定，开发演示数据/)
@@ -202,7 +193,7 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       const workbenchShot = path.join(ARTIFACT_DIR, `teacher-mini-workbench-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: workbenchShot, fullPage: false, animations: 'disabled', caret: 'hide' })
 
-      await page.getByText('任务书', { exact: true }).first().click()
+      await page.locator('.common-service').filter({ hasText: /^任务书$/ }).click()
       await expect(page).toHaveURL(/pages\/teacher\/graduation-taskbook\/index/)
       await expect(page.getByText('毕设任务书', { exact: true })).toBeVisible()
       await expect(page.getByText(/任务书列表/).first()).toBeVisible()

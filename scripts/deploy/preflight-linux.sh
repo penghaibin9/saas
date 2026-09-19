@@ -14,6 +14,10 @@ failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
 
 printf '== 2U4G 非容器部署预检（只读）==\n'
 
+# ClamAV is a daemon dependency, not a required command-line client.  Minimal
+# server installations commonly expose only `clamd`; the authenticated PING
+# below is the actual runtime readiness check, so do not reject that layout
+# simply because a non-existent `clamav` wrapper is absent.
 for cmd in python3 nginx mysql mysqldump redis-cli curl rsync gzip sha256sum systemctl flock; do
   command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || failure "$cmd 未安装"
 done

@@ -152,7 +152,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaArchiveItem, AaAttendanceSession,
                                          AaCalendarEvent,
                                          AaClassAdjustmentRequest, AaClassTimeBand,
-                                         AaClassroom, AaClassroomBooking,
+                                         AaClassroom, AaClassroomBooking, AaTeachingBuilding,
                                          AaCourse, AaCourseMaterial, AaDeferredExam,
                                          AaLabResource, AaEquipment,
                                          AaLabBooking, AaResourceRepair,
@@ -198,6 +198,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
 from app.models.academic_affairs_registry import *  # noqa: F401,F403
+from app.models.academic_grade_effect_job import AcademicGradeEffectJob  # noqa: F401
 from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 学期治理投影)
                                           CalendarTransitionEvent, CalendarWindow)
 from app.models.organization_version import (OrgVersion, OrgVersionItem,  # noqa: F401  (SYS-04 组织版本与任职)
@@ -230,6 +231,7 @@ from app.models.auth_token import AuthBlockedJti, AuthRefreshToken  # noqa: F401
 from app.models.portal import TenantPortalConfig  # noqa: F401
 from app.models.sandbox import SandboxBaseline  # noqa: F401
 from app.models.feedback import Feedback  # noqa: F401  (帮助与反馈·独立新文件)
+from app.models.customer_success import RenewalTask, SupportTicket, TrainingRecord  # noqa: F401
 from app.models.system_implementation import (SystemImplementationCheck,  # noqa: F401
                                                SystemBusinessRelationBatch,
                                                SystemBusinessRelationInstallItem,
@@ -242,6 +244,7 @@ from app.models.national_standard import (NationalMajorCatalog, NationalStandard
 
 from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)
 from app.models.password_reset import PasswordResetSmsJob  # noqa: F401
+from app.models.phone_login import PhoneLoginBinding, PhoneLoginCandidate  # noqa: F401
 from app.modules.platform.business_forms.models import (  # noqa: F401
     BusinessFormDefinition,
     BusinessFormVersion,
@@ -251,3 +254,5 @@ from app.modules.platform.document_lifecycle.models import (  # noqa: F401
     FileDerivedArtifact,
     StudentLifecycleFact,
 )
+
+from app.models import academic_affairs_optimizer as _academic_affairs_optimizer  # noqa: F401

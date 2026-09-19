@@ -40,15 +40,16 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.error = ''
-      try { const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize }); if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
+      try { const res = await api.getOrientationStudents({ ...this.filters, batchId: this.$route.query.batchId || undefined, page: this.page, pageSize: this.pageSize }); if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     async onToolbar(k) {
       if (k !== 'export') return
+      if (!this.$route.query.batchId) { toast.error('请先从迎新批次进入，再导出该批次数据'); return }
       const res = await api.createExport('orientationStudents', {
-        scope: 'FILTERED', mask: true, auditConfirmed: true, purpose: '迎新新生数据台账导出'
+        scope: 'FILTERED', mask: true, auditConfirmed: true, purpose: '迎新新生数据台账导出', batchId: this.$route.query.batchId
       })
       if (res.code === 0) toast.success(`已生成导出：${res.data.fileName}`)
       else toast.error(res.message || '导出失败')

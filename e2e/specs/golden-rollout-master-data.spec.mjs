@@ -144,7 +144,7 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     expect(classContract).not.toBeNull()
     expect(classContract.headRadius).toBe('0px')
     expect(classContract.filterRadius).toBe('14px')
-    expect(classContract.tableRadius).toBe('0px')
+    expect(classContract.tableRadius).toBe('16px')
     expect(classContract.noteRadius).toBe('12px')
 
     await capture(page, testInfo, 'rollout-master-affairs-classes-b')

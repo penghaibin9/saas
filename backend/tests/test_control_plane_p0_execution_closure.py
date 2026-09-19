@@ -67,6 +67,8 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_security_activation",
         "t_tenant_usage_snapshot",
         "t_tenant_fair_use_violation",
+        "t_commercial_refund_case",
+        "t_commercial_invoice_case",
     }
     purged = {
         "t_menu_node",
@@ -90,6 +92,8 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_business_form_version",
         "t_document_compare_result",
         "t_integrity_exception",
+        "t_commercial_after_sales_link",
+        "t_commercial_service_cost_record",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()

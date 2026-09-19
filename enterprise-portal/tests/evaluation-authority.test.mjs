@@ -20,7 +20,10 @@ test('evaluation preserves existing canonical five score dimensions',()=>{
 
 test('returned evaluation is prefilled and resubmitted with canonical version CAS',()=>{
   assert.match(page,/schoolReviewStatus==='RETURNED'/)
-  assert.match(page,/evaluationVersion/)
-  assert.match(page,/payload\.expectedVersion=selected\.value\.evaluationVersion/)
+  const context=fs.readFileSync(new URL('../src/services/evaluationContext.js',import.meta.url),'utf8')
+  assert.match(context,/const version = item.evaluationVersion/)
+  assert.match(page,/payload\.expectedVersion=target\.expectedVersion/)
+  assert.match(page,/freezeEvaluationTarget/)
+  assert.match(page,/assertEvaluationContext/)
   assert.match(page,/修改后重交/)
 })

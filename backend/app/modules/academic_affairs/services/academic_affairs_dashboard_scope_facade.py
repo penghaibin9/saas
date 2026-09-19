@@ -94,6 +94,8 @@ def publish_term(term_id, user) -> dict:
     from .academic_affairs_archive_service import guard_term_writable
 
     with _legacy.session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
         _assert_term_command_scope(user, db)
         resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
 
@@ -136,6 +138,8 @@ def set_current_term(term_id, user) -> dict:
     from .academic_affairs_term_context_service import resolve_current_term
 
     with _legacy.session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
         _assert_term_command_scope(user, db)
         resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
         if resolved.authority != "AA_TERM_COMPAT" or not resolved.can_direct_switch:

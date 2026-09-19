@@ -25,7 +25,8 @@ test('teacher taskbook never silently converts the issue-student error into an e
 
 test('all graduation specialist backend roles survive mobile context mapping with one focused queue', () => {
   const roles = read('src/config/roles.config.js')
-  const workbench = read('src/pages/teacher/workbench/index.vue')
+  const workbench = read('src/services/teacherServiceCatalog.mjs')
+  assert.match(read('src/pages/teacher/workbench/index.vue'), /teacherServiceRoute\(q.key, session.currentRole\)/)
   for (const role of [
     'GRADUATION_ADMIN', 'GD_COLLEGE_ADMIN', 'GD_MAJOR_ADMIN', 'GD_MENTOR',
     'GD_REVIEWER', 'GD_DEFENSE_SECRETARY', 'GD_DEFENSE_EXPERT', 'GD_GRADE_ADMIN'
@@ -58,7 +59,7 @@ test('student mobile material center is human-first and topic catalog has truthf
 })
 
 test('teacher graduation pages reliably reload when the first batch context becomes ready', () => {
-  const context = read('src/components/MobileGraduationBatchContext.vue')
+  const context = read('src/pages/teacher/components/MobileGraduationBatchContext.vue')
   assert.match(context, /uni\.\$emit\('graduation:teacher-batch-ready'\)/)
   for (const page of [
     'src/pages/teacher/graduation-guide/index.vue',

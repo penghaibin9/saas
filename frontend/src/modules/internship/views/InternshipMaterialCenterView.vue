@@ -118,8 +118,8 @@
                     <td>v{{ item.versionNo }}</td>
                     <td class="mono">{{ item.versionId }}</td>
                     <td :title="item.fileName">{{ item.fileName }}</td>
-                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ item.scanStatus }}</AppStatusTag></td>
-                    <td>{{ item.reviewStatus || '-' }}</td>
+                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ scanResultLabel(item.scanStatus) }}</AppStatusTag></td>
+                    <td>{{ reviewStatusLabel(item.reviewStatus) }}</td>
                     <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
                   </tr>
                   <tr v-if="!selected.items.length"><td colspan="7" class="empty-cell">暂无文件版本</td></tr>
@@ -325,7 +325,8 @@ export default {
       return ['FROZEN', 'PACKAGED'].includes(value) ? 'success' : (value === 'REVOKED' ? 'danger' : 'warning')
     },
     manifestStatusLabel(value) { return ({ DRAFT: '草稿', FROZEN: '已冻结', PACKAGED: '已打包', REVOKED: '已撤销', PENDING: '生成中' })[value] || (value ? '状态待确认' : '—') },
-    scanResultLabel(value) { return ({ CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' })[value] || (value ? '扫描结果待确认' : '—') }
+    scanResultLabel(value) { return ({ CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' })[value] || (value ? '扫描结果待确认' : '—') },
+    reviewStatusLabel(value) { return ({ PENDING: '待审核', SUBMITTED: '已提交', APPROVED: '已通过', ACCEPTED: '已验收', RETURNED: '已退回', REJECTED: '未通过', WAIVED: '已免交', SUPERSEDED: '已被新版本替代' })[value] || (value ? `审核状态待确认（${value}）` : '—') }
   }
 }
 </script>

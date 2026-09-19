@@ -33,19 +33,18 @@ test('V8 Student Mini honors an exact numeric batch deep link before loading ser
   assert.match(student, /this\.persistBatch\(\)/)
 })
 
-test('V8 Teacher Mini puts concrete Today objects before fifteen compatibility actions', () => {
-  const conclusion = teacher.indexOf('今日工作结论')
-  const todayObjects = teacher.indexOf('今天先处理')
-  const riskObjects = teacher.indexOf('<text class="section-head__title">风险学生</text>')
-  const compatibility = teacher.indexOf('更多办理入口')
-
-  assert.ok(conclusion >= 0)
-  assert.ok(todayObjects > conclusion)
+test('V8 Teacher Mini puts concrete tasks and risks before common services, retaining the full queue', () => {
+  const todayObjects = teacher.indexOf('待我处理')
+  const riskObjects = teacher.indexOf('需要关注')
+  const compatibility = teacher.indexOf('<MobileTeacherCommonServices')
+  assert.ok(todayObjects >= 0)
   assert.ok(riskObjects > todayObjects)
   assert.ok(compatibility > riskObjects)
-  assert.match(teacher, /v-for="t in wb\.dueSoon"/)
+  assert.match(teacher, /v-for="\(t,index\) in priorityTodos"/)
+  assert.match(teacher, /go\('\/pages\/teacher\/todos\/index'\)/)
   assert.match(teacher, /v-for="r in wb\.riskStudents"/)
-  assert.match(teacher, /v-for="\(q, i\) in visibleQuickActions"/)
+  assert.match(teacher, /:services="commonServices"/)
+  assert.match(read('src/components/MobileTeacherCommonServices.vue'), /go\('\/pages\/teacher\/services\/index'\)/)
 })
 
 test('V8 Teacher Mini exception decision facts match PC truth and fail closed', () => {

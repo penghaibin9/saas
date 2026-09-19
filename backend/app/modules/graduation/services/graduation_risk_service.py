@@ -12,15 +12,17 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationArchiveRecord, GraduationAuditTrail, GraduationDefenseScore, GraduationFinal,
                         GraduationGrade, GraduationGuidance, GraduationMidterm, GraduationProposal,
                         GraduationRiskCase, GraduationStudent, GraduationTaskBook)
 from app.services.db_service import _iso, _tid, session
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_scope_service import assert_student_access
 
 log = logging.getLogger("graduation.risk")
 
@@ -168,7 +170,7 @@ def _require_batch(db, batch_id):
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次后再执行")
     from app.models import GraduationBatch
     bid = int(batch_id)
-    b = db.get(GraduationBatch, bid)
+    b = tenant_get(db, GraduationBatch, bid)
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("毕设批次不存在")
     return b
@@ -320,7 +322,7 @@ def apply_hits_for_student(db, s: GraduationStudent, hits: list[str] | None = No
 
 def scan_student_risks_in_session(db, gd_student_id: int) -> dict:
     """事件钩子：单生轻量重扫（调用方负责 commit）。"""
-    s = db.get(GraduationStudent, int(gd_student_id))
+    s = tenant_get(db, GraduationStudent, int(gd_student_id))
     if not s or s.is_deleted or s.tenant_id != _tid() or s.record_status != "ACTIVE":
         return {"skipped": True}
     return apply_hits_for_student(db, s)
@@ -442,31 +444,47 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
 def list_risks(page: int, page_size: int, risk_code=None, level=None, status=None,
                gd_student_id=None, batch_id=None) -> tuple[list[dict], int]:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        q = select(GraduationRiskCase).where(GraduationRiskCase.tenant_id == _tid(),
-                                             GraduationRiskCase.is_deleted.is_(False),
-                                             GraduationRiskCase.gd_student_id.in_(scope_ids or [-1]))
+        # 风险台账和总览会在大批次下反复读取；以 SQL 子查询保持同一数据范围，
+        # 不把数千个学生 ID 展开为请求参数，也不为每条风险补一次学生查询。
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
+        base = [
+            GraduationRiskCase.tenant_id == _tid(),
+            GraduationRiskCase.is_deleted.is_(False),
+            GraduationRiskCase.gd_student_id.in_(scope),
+        ]
         if gd_student_id:
-            q = q.where(GraduationRiskCase.gd_student_id == int(gd_student_id))
+            base.append(GraduationRiskCase.gd_student_id == int(gd_student_id))
         if risk_code:
-            q = q.where(GraduationRiskCase.risk_code == risk_code)
+            base.append(GraduationRiskCase.risk_code == risk_code)
         if level:
-            q = q.where(GraduationRiskCase.level == level)
+            base.append(GraduationRiskCase.level == level)
         if status:
-            q = q.where(GraduationRiskCase.status == status)
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(q.order_by(GraduationRiskCase.id.desc())
-                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(r, db.get(GraduationStudent, r.gd_student_id)) for r in rows]
+            base.append(GraduationRiskCase.status == status)
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationRiskCase).where(*base)
+        ) or 0)
+        rows = db.execute(
+            select(GraduationRiskCase, GraduationStudent)
+            .outerjoin(GraduationStudent, and_(
+                GraduationStudent.id == GraduationRiskCase.gd_student_id,
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.is_deleted.is_(False),
+            ))
+            .where(*base)
+            .order_by(GraduationRiskCase.id.desc())
+            .offset((max(1, page) - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        items = [_row(risk, student) for risk, student in rows]
         return items, total
 
 
 def accept_risk(rid, assignee: str = None) -> dict:
     with session() as db:
-        r = db.get(GraduationRiskCase, int(rid))
+        r = tenant_get(db, GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
-        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.accept")
+        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.accept")
         if r.status != "OPEN":
             raise AppException("DATA_CONFLICT", "仅「待受理」风险可受理")
         n, _ = _op()
@@ -474,31 +492,31 @@ def accept_risk(rid, assignee: str = None) -> dict:
         r.assignee = assignee or n
         _audit(db, r.id, "受理风险")
         db.commit()
-        return _row(r, db.get(GraduationStudent, r.gd_student_id))
+        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def process_risk(rid, note: str) -> dict:
     with session() as db:
-        r = db.get(GraduationRiskCase, int(rid))
+        r = tenant_get(db, GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
-        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.process")
+        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.process")
         if r.status != "PROCESSING":
             raise AppException("DATA_CONFLICT", "仅「处理中」风险可记录处理")
         r.handle_note = note
         _audit(db, r.id, "处理风险", note)
         db.commit()
-        return _row(r, db.get(GraduationStudent, r.gd_student_id))
+        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def close_risk(rid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
     with session() as db:
-        r = db.get(GraduationRiskCase, int(rid))
+        r = tenant_get(db, GraduationRiskCase, int(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("风险记录不存在")
-        assert_student_access(db, db.get(GraduationStudent, r.gd_student_id), "risk.close")
+        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.close")
         # 处理中可关；待受理且条件已消失也可直接关闭（避免空转受理）
         allow_open_inactive = (
             r.status == "OPEN" and getattr(r, "condition_active", True) is False
@@ -510,14 +528,14 @@ def close_risk(rid, reason: str) -> dict:
         r.closed_at = _now()
         _audit(db, r.id, "关闭风险", reason.strip())
         db.commit()
-        return _row(r, db.get(GraduationStudent, r.gd_student_id))
+        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def risk_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationRiskCase.tenant_id == _tid(), GraduationRiskCase.is_deleted.is_(False),
-                GraduationRiskCase.gd_student_id.in_(scope_ids or [-1])]
+                GraduationRiskCase.gd_student_id.in_(scope)]
         total = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(*base)) or 0)
         open_count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
             *base, GraduationRiskCase.status == "OPEN")) or 0)
@@ -530,7 +548,7 @@ def risk_stats(batch_id=None) -> dict:
         last_scan = None
         if batch_id:
             from app.models import GraduationBatch
-            b = db.get(GraduationBatch, int(batch_id))
+            b = tenant_get(db, GraduationBatch, int(batch_id))
             if b and b.tenant_id == _tid():
                 last_scan = {
                     "lastScanAt": _iso(b.last_risk_scan_at),

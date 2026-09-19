@@ -128,6 +128,7 @@ class BatchUpdate(BaseModel):
 class VerifyBody(BaseModel):
     passed: bool = True
     reason: Optional[str] = Field(default="")
+    expectedVersion: int = Field(..., ge=0)
 
 
 class PointCreate(BaseModel):
@@ -150,6 +151,10 @@ class FlowUpdate(BaseModel):
     enabled: Optional[bool] = None
     required: Optional[bool] = None
     remark: Optional[str] = None
+
+
+class BatchFlowRefreshBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
 
 
 class NoticeCreate(BaseModel):

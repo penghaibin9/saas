@@ -44,7 +44,8 @@ test('A1 routes and navigation use the canonical backend orientation view permis
 
 test('A1 student import is a real xlsx template, upload dry-run and atomic confirm chain', () => {
   assert.match(api, /request\('\/import\/domain\/orientation\/template'\)/)
-  assert.match(api, /requestUpload\('\/import\/domain\/orientation\/validate-file', file\)/)
+  assert.match(api, /const endpoint = '\/import\/domain\/orientation\/validate-file'/)
+  assert.match(api, /orientationBatchId=\$\{encodeURIComponent\(orientationBatchId\)\}/)
   assert.match(api, /request\('\/import\/domain\/confirm'/)
   assert.match(api, /status === 'DRY_RUN_PASSED'/)
   assert.match(importDialog, /accept="\.xlsx"/)

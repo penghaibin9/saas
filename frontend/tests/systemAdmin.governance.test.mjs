@@ -1,5 +1,5 @@
 /**
- * 系统管理 9 工作区与权限门覆盖冒烟。
+ * 系统管理工作区与正式入口权限回归。
  */
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -11,21 +11,49 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const toUrl = (p) => pathToFileURL(p).href
 
-test('system management catalog has 9 workspaces', async () => {
+test('restricted viewers can find the same read workspaces accepted by the server', async () => {
+  const { getVisibleNavPlan } = await import(toUrl(path.join(root, 'src/config/navPlan.js')))
+  const visiblePaths = (permission) => {
+    const plan = getVisibleNavPlan({ permissionPatterns: [permission], ctxKey: `restricted-${permission}` })
+    return plan.flatMap(group => group.children || []).flatMap(group => group.children || []).map(item => item.path)
+  }
+  assert.ok(visiblePaths('systemAdmin.role.view').includes('/admin/system/iam?surface=templates'))
+  assert.ok(visiblePaths('systemAdmin.role.view').includes('/admin/system/iam?surface=permissions'))
+  assert.ok(visiblePaths('systemAdmin.audit.view').includes('/admin/system/logs?tab=operation'))
+  assert.ok(visiblePaths('systemAdmin.audit.view').includes('/admin/system/logs?tab=login'))
+  assert.ok(visiblePaths('systemAdmin.config.view').includes('/admin/system/config?tab=brand'))
+  assert.ok(!visiblePaths('academicAffairs.grade.view').includes('/admin/system/iam?surface=permissions'))
+})
+
+test('all recorded legacy capabilities retain their exact deep links after regrouping', async () => {
+  const { SYSTEM_MANAGEMENT_ITEMS } = await import(toUrl(path.join(root, 'src/modules/system/systemManagementCatalog.js')))
+  const record = fs.readFileSync(path.join(root, '../docs/03-业务模块设计/系统管理中心/04-学校级系统管理-8组26项能力目录与实施规范.md'), 'utf8')
+  const entries = [...record.matchAll(/\| `(sys-[^`]+)` \| [^|]+ \| `([^`]+)` \|/g)]
+  assert.equal(entries.length, 52)
+  for (const [, key, route] of entries) assert.equal(SYSTEM_MANAGEMENT_ITEMS.find(item => item.key === key)?.path, route, key)
+})
+
+test('system management has 8 workspaces and retains operational dictionary and implementation entries', async () => {
   const mod = await import(toUrl(path.join(root, 'src/modules/system/systemManagementCatalog.js')))
-  assert.equal(mod.SYSTEM_MANAGEMENT_CATALOG.length, 9)
+  assert.equal(mod.SYSTEM_MANAGEMENT_CATALOG.length, 8)
   const labels = mod.SYSTEM_MANAGEMENT_CATALOG.map((g) => g.label)
   for (const need of [
-    '系统总览', '实施与验收', '身份与账号', '组织与任职',
-    '角色权限与数据范围', '模块与学校配置', '流程配置与运行',
-    '安全与审计', '接口同步与数据迁移',
+    '系统概览', '身份与账号', '组织主数据',
+    '角色与权限', '学校配置', '流程配置',
+    '安全与审计', '接口与同步',
   ]) {
     assert.ok(labels.includes(need), `missing ${need}`)
   }
   const itemKeys = mod.SYSTEM_MANAGEMENT_ITEMS.map((item) => item.key)
+  assert.equal(itemKeys.length, 52)
+  assert.equal(new Set(itemKeys).size, 52)
+  assert.ok(itemKeys.includes('sys-dictionaries-fields'))
+  const overview = mod.SYSTEM_MANAGEMENT_CATALOG.find(group => group.key === 'sys-overview')
+  assert.equal(overview.items[0].path, '/admin/system/overview')
+  assert.ok(overview.items.some(item => item.key === 'sys-implementation-wizard'))
+  assert.ok(overview.items.some(item => item.key === 'sys-implementation-acceptance'))
   for (const nonOperational of [
     'sys-numbering-rules',
-    'sys-dictionaries-fields',
     'sys-process-rules',
     'sys-process-monitor',
   ]) {

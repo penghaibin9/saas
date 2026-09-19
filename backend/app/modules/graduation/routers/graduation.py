@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.exceptions import no_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.core.permissions import has_permission, require_permission
+from app.core.permissions import permission_decisions, require_permission
 from app.modules.graduation.schemas.graduation import (AssignStudentsBody, DefenseGroupBody,  # noqa: F401
                                     ProposalSubmitBody, RemindBody, ReviewBody)
 from app.modules.graduation.materials import record_service as material_records
@@ -66,11 +66,11 @@ _ACTION_PERMISSION_MAP = {
 def get_context(user=Depends(get_current_user)):
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
     org = org_scope_status(user)
+    decisions = permission_decisions(user, _ACTION_PERMISSION_MAP.values())
     return success({
         "roleCode": role,
         "fullScope": has_full_scope(),
-        "permissionActions": {key: has_permission(user, code)
-                              for key, code in _ACTION_PERMISSION_MAP.items()},
+        "permissionActions": {key: decisions[code] for key, code in _ACTION_PERMISSION_MAP.items()},
         **org,
     })
 

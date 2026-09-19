@@ -60,6 +60,7 @@ import { businessFormsApi } from '@/modules/system/api/businessForms.api'
 import BusinessFormVersionWorkbench from '@/modules/platform/businessForms/components/BusinessFormVersionWorkbench.vue'
 import CompliancePanel from '@/modules/platform/businessForms/components/CompliancePanel.vue'
 import SchemaBusinessForm from '@/modules/platform/businessForms/components/SchemaBusinessForm.vue'
+import { systemConfirm } from '@/services/systemDialog'
 
 const definitions = ref([])
 const versions = ref([])
@@ -104,14 +105,14 @@ async function impactVersion(item) {
 async function publishVersion(item) {
   try {
     const analysis = await businessFormsApi.impact(item.versionId)
-    const ack = !(analysis.resolveActivePolicyRefs || []).length || window.confirm('该版本引用 RESOLVE_ACTIVE 策略，已审阅影响分析并继续发布？')
+    const ack = !(analysis.resolveActivePolicyRefs || []).length || await systemConfirm({ title:'确认发布表单版本', message:'该版本引用 RESOLVE_ACTIVE 策略，请确认已审阅影响分析。', confirmText:'确认发布' })
     if (!ack) return
     await businessFormsApi.publish(item.versionId, { expectedVersion: item.version, resolveActiveImpactAck: true })
     notice.value = '版本已发布。'; await selectDefinition(selected.value)
   } catch (e) { error.value = messageOf(e, '发布失败') }
 }
 async function disableVersion(item) {
-  if (!window.confirm('停用后四端将无法加载该版本，确认继续？')) return
+  if (!await systemConfirm({ title:'确认停用表单版本', message:'停用后四端将无法加载该版本。', confirmText:'确认停用', type:'danger' })) return
   try { await businessFormsApi.disable(item.versionId, { expectedVersion: item.version }); notice.value = '版本已停用。'; await selectDefinition(selected.value) }
   catch (e) { error.value = messageOf(e, '停用失败') }
 }

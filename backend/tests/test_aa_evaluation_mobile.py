@@ -11,10 +11,22 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, *, client_type="TEACHER_MINI"):
     data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def _student_hdr(real_name, student_no, *, client_type="STUDENT_MINI"):
+    from app.core.security import create_access_token
+
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{student_no}", "realName": real_name,
+        "studentNo": student_no, "userType": "STUDENT",
+        "tenantId": str(TID), "tid": "evaluation-mobile",
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT",
+        "clientType": client_type,
+    })}
 
 
 def _seed(db_mode, teacher_key="academic01", teacher_name="赵敏", code="EVMOB1",
@@ -94,7 +106,10 @@ def _seed(db_mode, teacher_key="academic01", teacher_name="赵敏", code="EVMOB1
     assert teaching_class.roster_status == "LOCKED"
     assert teaching_class.current_roster_version_id is not None
 
-    ids = {"tt": int(task.id), "term": int(term.id)}
+    ids = {
+        "tt": int(task.id), "term": int(term.id),
+        "studentNo": student.student_no, "studentName": student.real_name,
+    }
     db.commit(); db.close()
     return ids
 
@@ -159,6 +174,98 @@ def test_my_tasks_and_submit_flow_via_mobile(client, db_mode):
         json={"objectiveScore": 88},
     )
     assert dup.status_code == 409
+
+
+def test_student_evaluation_mobile_uses_formal_roster_and_actionable_contract(client, db_mode):
+    """学生小程序必须拿到正式名单任务的窗口/提交状态，不能落回历史兼容读侧。"""
+    ids = _seed(db_mode, code="EVSTU1")
+    admin = _hdr(client, "school_admin01")
+    _eval_batch_ready_for_submit(client, admin, ids, name="学生移动评教批次")
+    student = _student_hdr(ids["studentName"], ids["studentNo"])
+
+    first = client.get(f"{MOB}/academic/evaluation/tasks", headers=student)
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["code"] == 0
+    row = next(item for item in body["data"]["list"] if item["teachingTaskId"] == str(ids["tt"]))
+    assert row["windowStatus"] == "OPEN"
+    assert row["submitted"] is False
+    assert row["canSubmit"] is True
+
+    submitted = client.post(
+        f"{MOB}/academic/evaluation/submit",
+        headers=student,
+        json={"taskId": row["taskId"], "objectiveScore": 91, "answers": {"overall": 91}},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    reread = client.get(f"{MOB}/academic/evaluation/tasks", headers=student).json()
+    latest = next(item for item in reread["data"]["list"] if item["taskId"] == row["taskId"])
+    assert latest["submitted"] is True
+    assert latest["canSubmit"] is False
+
+
+def test_student_evaluation_mobile_tasks_are_server_paged_and_mobile_scoped(client, db_mode):
+    """42 项本人评教任务只能按页读取；深链精确任务不依赖前端本地全量切片。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaEvaluationBatch, AaEvaluationTask, AaTeachingTask
+
+    ids = _seed(db_mode, code="EVPG1", year_code="2035-2036")
+    db = get_sessionmaker()()
+    try:
+        teaching_task = db.get(AaTeachingTask, ids["tt"])
+        for index in range(42):
+            batch = AaEvaluationBatch(
+                tenant_id=TID, batch_name=f"移动评教分页批次{index:02d}", term_id=ids["term"],
+                # 最新 20 个批次已经进入结果阶段：首页第 1 页不能把“当前页没有
+                # 待评”错误地写成“本人没有待评”，仍须返回后页的 22 项待办。
+                anonymous=True, status="RESULT_READY" if index >= 22 else "OPEN",
+            )
+            db.add(batch)
+            db.flush()
+            db.add(AaEvaluationTask(
+                tenant_id=TID, batch_id=batch.id, teaching_task_id=teaching_task.id,
+                course_id=teaching_task.course_id, course_name=teaching_task.course_name,
+                class_id=teaching_task.class_id, teacher_key=teaching_task.teacher_key,
+                teacher_name=teaching_task.teacher_name, evaluator_type="STUDENT", status="PENDING",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    student = _student_hdr(ids["studentName"], ids["studentNo"])
+    pages = [client.get(
+        f"{MOB}/academic/evaluation/tasks", headers=student,
+        params={"page": page, "pageSize": 20},
+    ) for page in (1, 2, 3)]
+    assert all(response.status_code == 200 for response in pages)
+    data = [response.json()["data"] for response in pages]
+    assert [(item["pagination"]["page"], item["pagination"]["pageSize"], item["pagination"]["total"], item["pagination"]["hasMore"], len(item["list"])) for item in data] == [
+        (1, 20, 42, True, 20), (2, 20, 42, True, 20), (3, 20, 42, False, 2),
+    ]
+    task_ids = [{item["taskId"] for item in page["list"]} for page in data]
+    assert task_ids[0].isdisjoint(task_ids[1]) and task_ids[0].isdisjoint(task_ids[2]) and task_ids[1].isdisjoint(task_ids[2])
+    assert [item["pending"] for item in data] == [22, 22, 22]
+    assert data[0]["nextPendingTaskId"] not in task_ids[0]
+    assert data[0]["nextPendingTaskId"] in task_ids[1]
+    focused_id = next(iter(task_ids[2]))
+    focused = client.get(
+        f"{MOB}/academic/evaluation/tasks", headers=student,
+        params={"page": 1, "pageSize": 20, "taskId": focused_id},
+    ).json()["data"]
+    assert focused["pagination"] == {"page": 1, "pageSize": 20, "total": 1, "hasMore": False}
+    assert [item["taskId"] for item in focused["list"]] == [focused_id]
+
+    teacher = _hdr(client, "academic01")
+    assert client.get(f"{MOB}/academic/evaluation/tasks", headers=teacher).status_code == 403
+    assert client.get(
+        f"{MOB}/academic/evaluation/tasks",
+        headers=_student_hdr(ids["studentName"], ids["studentNo"], client_type="MP"),
+    ).status_code == 403
+    assert client.get(
+        f"{MOB}/academic/evaluation/tasks",
+        headers=_student_hdr(ids["studentName"], ids["studentNo"], client_type="STUDENT_PC"),
+    ).status_code == 200
 
 
 def test_cross_evaluator_submit_403_via_mobile(client, db_mode):

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffInternshipLeavePage, StudentInternshipPage } from '../pages/internship.page.mjs'
 import {
@@ -36,18 +37,7 @@ function assertHttpsRuntime(page) {
 
 async function loginMini(page, { role, account }) {
   const entry = role === 'teacher' ? 'teacher' : 'student'
-  await page.goto(`${miniBase}/#/pages/login/${entry}/index`)
-  assertHttpsRuntime(page)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText(role === 'teacher' ? '进入教师工作台' : '进入学生首页', { exact: true }).click()
-  await expect(page).toHaveURL(role === 'teacher'
-    ? /pages\/teacher\/workbench\/index/
-    : /pages\/student\/home\/index/, { timeout: 30_000 })
+  await loginMiniH5(page, { baseUrl: miniBase, entry, account, timeout: 30_000 })
   assertHttpsRuntime(page)
 }
 

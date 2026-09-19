@@ -17,9 +17,10 @@ function campaignFromAuthContext(authContext,campaignId){
 function campaignRows(data){return Array.isArray(data)?data:(Array.isArray(data?.items)?data.items:[])}
 function findCampaign(data,campaignId){return campaignRows(data).find(item=>String(item.id||item.campaignId)===String(campaignId))||null}
 function validId(value){return /^[1-9]\d*$/.test(String(value??'').trim())}
+let nextContextEpoch=0
 
 export const useEnterpriseContextStore=defineStore('enterpriseContext',{
-  state:()=>({schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},unreadMessages:0,contextReady:false,loading:false,error:''}),
+  state:()=>({scopeKey:'',contextEpoch:0,schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},unreadMessages:0,contextReady:false,loading:false,error:''}),
   getters:{
     historyMode:(state)=>['CLOSED','ARCHIVED'].includes(String(state.campaign?.status||'')),
     recruitmentContextReady:(state)=>state.contextReady&&state.contextMode==='RECRUITMENT',
@@ -35,6 +36,8 @@ export const useEnterpriseContextStore=defineStore('enterpriseContext',{
     },
     async load(){
       if(this.loading)return
+      this.contextEpoch=++nextContextEpoch
+      this.scopeKey=''
       const campaignId=getSelectedCampaignId()
       if(!campaignId){this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.campaign=null;setEnterpriseApiContext('NONE',0);this.error='尚未选择招聘季，请先从企业登录后的招聘季列表进入。';return}
       this.loading=true;this.error='';this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.campaign=null;setEnterpriseApiContext('NONE',0)
@@ -51,6 +54,7 @@ export const useEnterpriseContextStore=defineStore('enterpriseContext',{
         }
         if(!authContext)throw recruitmentError||new Error('当前企业没有可用的招聘或实习协同授权')
 
+        this.scopeKey=JSON.stringify([authContext.tenantId,authContext.companyId,authContext.memberId,authContext.grantId].map(value=>String(value||'')))
         this.contextMode=mode
         this.memberRole=authContext?.memberRole||''
         const fromAuth=campaignFromAuthContext(authContext,campaignId)

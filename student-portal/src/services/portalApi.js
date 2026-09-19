@@ -19,7 +19,7 @@ export const portalApi = {
   passwordResetVerify: (body) => request('/auth/password-reset/verify', { method: 'POST', auth: false, body }),
   passwordResetConfirm: (body) => request('/auth/password-reset/confirm', { method: 'POST', auth: false, body }),
   login: (loginName, password, tenantCode, challenge = {}) =>
-    request('/auth/login', { method: 'POST', auth: false, body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
+    request('/auth/login', { method: 'POST', auth: false, body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
   profile: () => request('/mobile/me/profile'),
@@ -43,6 +43,7 @@ export const portalApi = {
   academicSchedulePrint: (body) => request('/portal/academic/schedule/print', { method: 'POST', body }),
   academicCourseSelection: (batchId) => request(`/portal/academic/course-selection${q({ batchId })}`),
   academicSelectionPreflight: (body) => request('/portal/academic/course-selection/preflight', { method: 'POST', body }),
+  academicSelectionDropPreflight: (body) => request('/portal/academic/course-selection/drop-preflight', { method: 'POST', body }),
   academicEnroll: (body) => request('/portal/academic/course-selection/enroll', { method: 'POST', body }),
   academicDrop: (body) => request('/portal/academic/course-selection/drop', { method: 'POST', body }),
   academicSelectionRecords: (batchId) => request(`/portal/academic/course-selection/records${q({ batchId })}`),
@@ -79,7 +80,8 @@ export const portalApi = {
   academicMajorSplit: () => request('/portal/academic/major-split'),
   academicMajorSplitSubmit: (body) => request('/portal/academic/major-split/submit', { method: 'POST', body }),
   academicCredits: () => request('/portal/academic/credits'),
-  academicWarning: () => request('/portal/academic/warning'),
+  academicWarning: (params) => request('/portal/academic/warning' + q(params)),
+  academicRecognitionCourses: (params) => request('/academic-affairs/grade-recognitions/student/course-options' + q(params)),
   academicRecognition: () => request('/portal/academic/recognition'),
   academicRecognitionSubmit: (body) => request('/portal/academic/recognition', { method: 'POST', body }),
 

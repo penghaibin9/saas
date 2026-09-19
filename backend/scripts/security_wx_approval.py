@@ -44,6 +44,16 @@ def _operator() -> str:
     return "os:" + pwd.getpwuid(os.geteuid()).pw_name[:90]
 
 
+def _private_ticket_platform_supported() -> bool:
+    """The delivery file relies on POSIX O_NOFOLLOW + 0600 semantics.
+
+    Keep the platform decision in one tiny seam so the transaction tests can
+    exercise the post-commit ordering on Windows without relaxing the actual
+    command's production guard.
+    """
+    return os.name == "posix"
+
+
 def main(argv=None) -> int:
     arguments = parser()
     args = arguments.parse_args(argv)
@@ -61,7 +71,7 @@ def main(argv=None) -> int:
     delivery_complete = False
     approval_ref = None
     try:
-        if os.name != "posix":
+        if not _private_ticket_platform_supported():
             raise RuntimeError("Use the controlled Linux backend environment for private ticket delivery")
         # Reserve without clobbering a file/symlink. Do not print a code to stdout.
         fd = os.open(args.ticket_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)

@@ -155,7 +155,7 @@ export default {
         this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready'
         if (this.focusTalkId) this.openTalk({ talkId: this.focusTalkId })
       })
-        .catch((e) => { this.state = 'error'; this.showError(e, '谈话记录加载失败') })
+        .catch((e) => { this.state = normalizeError(e).pageState || 'error'; this.showError(e, '谈话记录加载失败') })
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
     createPlan() {

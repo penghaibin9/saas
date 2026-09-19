@@ -200,14 +200,19 @@ def _seek_after(UnifiedTodo, *, bucket_expr, payload: dict[str, Any]):
 
 
 def _teacher_todo_visibility(user: dict, UnifiedTodo):
-    """Self-assigned Todo OR unassigned pool Todo whose student is visible in SQL."""
+    """Self-assigned/pool visibility plus active-role-compatible task projection."""
     parts = []
     uid = todo_svc._uid(user)
     if uid:
         parts.append(UnifiedTodo.assignee_id == uid)
     student_visibility = compile_teacher_student_visibility(user, UnifiedTodo.student_id)
     parts.append(and_(UnifiedTodo.assignee_id == 0, student_visibility))
-    return or_(*parts) if parts else None
+    if not parts:
+        return None
+    # The offset workbench path uses this same shared projection gate.  Keep the
+    # keyset reader aligned so a role switch cannot make an unreachable graduation
+    # task disappear from one list but remain actionable-looking in another.
+    return and_(or_(*parts), todo_svc._role_todo_visibility_cond(user, UnifiedTodo))
 
 
 def list_continuous(

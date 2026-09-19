@@ -113,6 +113,12 @@ const STATUS_OPTIONS = {
     { value: 'EMPLOYMENT', label: '就业' },
     { value: 'FAMILY', label: '家庭' },
     { value: 'MANUAL', label: '人工登记' }
+  ],
+  riskTagStatus: [
+    { value: 'NEW', label: '新建' }, { value: 'ASSIGNED', label: '已分派' },
+    { value: 'PROCESSING', label: '处置中' }, { value: 'FOLLOWING', label: '持续跟进' },
+    { value: 'TRANSFERRED', label: '已转办' }, { value: 'ESCALATED', label: '已升级' },
+    { value: 'CLOSED', label: '已关闭' }, { value: 'REOPENED', label: '已重开' }
   ]
 }
 
@@ -282,9 +288,10 @@ function normalizeClassOptions(payload) {
 }
 
 async function buildContext() {
-  const [brand, ctx, todoSummary, classesResult] = await Promise.all([
+  const [brand, ctx, todoSummary, classesResult, dictionaryResult] = await Promise.all([
     request('/tenant/brand'), request('/rbac/current-context'), request('/todos/summary').catch(() => null),
-    request('/student-affairs/classes', { params: { page: 1, pageSize: 200 } }).catch(() => null)
+    request('/student-affairs/classes', { params: { page: 1, pageSize: 200 } }).catch(() => null),
+    request('/school/dictionaries/effective', { params: { consumer: 'studentCenter' } }).catch(() => null)
   ])
   const patterns = Array.isArray(ctx?.permissionPatterns) ? ctx.permissionPatterns : []
   const classes = normalizeClassOptions(classesResult)
@@ -303,7 +310,8 @@ async function buildContext() {
     permissionPatterns: patterns, moduleEntitlements: Array.isArray(ctx?.moduleEntitlements) ? ctx.moduleEntitlements : [],
     moduleStates: ctx?.moduleStates || {}, moduleAccessHealthy: ctx?.moduleAccessHealthy !== false,
     moduleAccessError: ctx?.moduleAccessError || '', readonlyTenant: !!ctx?.readonlyTenant, readonlyReason: ctx?.readonlyReason || '',
-    permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns), statusOptions: STATUS_OPTIONS,
+    permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns),
+    statusOptions: { ...STATUS_OPTIONS, ...(dictionaryResult?.statusOptions || {}) },
     filterOptions: { colleges, majors, classes, grades, counselors: [] }, pendingCount: Number(todoSummary?.pending || 0),
     identityVerificationCapability: {
       status: 'NOT_CONFIGURED', message: '第三方实名/人脸核验服务当前未配置；新生人工信息核验请使用数字迎新。'

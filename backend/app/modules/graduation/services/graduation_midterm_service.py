@@ -174,17 +174,26 @@ def review_rectification(gd_student_id, action: str, comment: str = None) -> dic
 
 def midterm_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
-                GraduationMidterm.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(*base)) or 0)
-        by_status = [{"status": s, "label": STATUS_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(
-                          *base, GraduationMidterm.status == s)) or 0)} for s in STATUS_LABEL]
+                GraduationMidterm.gd_student_id.in_(scope)]
+        status_counts = {
+            str(status or ""): int(count)
+            for status, count in db.execute(
+                select(GraduationMidterm.status, func.count(GraduationMidterm.id))
+                .where(*base)
+                .group_by(GraduationMidterm.status)
+            ).all()
+        }
+        total = sum(status_counts.values())
+        by_status = [{"status": status, "label": STATUS_LABEL[status],
+                      "count": status_counts.get(status, 0)} for status in STATUS_LABEL]
         not_started = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "MIDTERM",
-            GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
+            GraduationStudent.id.in_(scope))) or 0)
         return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started,
                 "batchId": str(batch_id) if batch_id else None}
 

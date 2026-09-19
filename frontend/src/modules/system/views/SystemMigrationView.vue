@@ -34,7 +34,7 @@
               />
             </div>
             <div class="smv-domain__meta">
-              <div>目标表：<code>{{ d.targetTable }}</code></div>
+              <div>导入对象：<strong>{{ d.label }}</strong></div>
               <div>唯一键：{{ d.uniqueKey }}</div>
               <div>
                 前置依赖：

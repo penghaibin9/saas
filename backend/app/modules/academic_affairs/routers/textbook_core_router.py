@@ -6,6 +6,7 @@ legacy 的目录、选用、审核、征订、到货、发放签收、费用、�
 from __future__ import annotations
 
 from typing import Optional
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
@@ -70,12 +71,14 @@ class DistGenerateBody(BaseModel):
     orderBatchId: str = Field(..., min_length=1)
     classId: Optional[str] = None
     studentIds: list[str] = Field(default_factory=list)
+    appendToBatchId: Optional[str] = Field(None, pattern=r"^[1-9]\d*$", description="仅显式补充此既有批次的未列入学生；不替换原记录")
 
 
 class FeeMarkBody(BaseModel):
     action: str = Field(..., description="PAID/PARTIAL/WAIVE")
     amount: Optional[float] = Field(None, ge=0, description="PARTIAL 部分收款金额")
     waiveReason: Optional[str] = Field("", max_length=500)
+    expectedPaidAmount: Optional[Decimal] = Field(None, ge=0, max_digits=12, decimal_places=2, description="本次操作核对的原已收金额，部分收款必填")
 
 
 @router.post("/textbooks", summary="新增教材目录")
@@ -168,7 +171,8 @@ def order_archive(bid: int = Path(...), user=Depends(require_permission(_TB_ORDE
 
 @router.post("/textbooks/distribution-batches", summary="生成发放名单（按班级+征订批次）")
 def dist_generate(body: DistGenerateBody, user=Depends(require_permission(_TB_DIST))):
-    return success(textbook_svc.generate_distribution(user, int(body.orderBatchId), body.classId, body.studentIds), message="已生成")
+    return success(textbook_svc.generate_distribution(user, int(body.orderBatchId), body.classId, body.studentIds,
+        append_to_batch_id=int(body.appendToBatchId) if body.appendToBatchId else None), message="已处理发放名单")
 
 
 @router.get("/textbooks/distribution-batches/{bid}/records", summary="发放明细")
@@ -191,7 +195,8 @@ def fee_ledger(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
 
 @router.post("/textbooks/fee-ledger/{fid}/mark", summary="标记已收/部分收款/减免")
 def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permission(_TB_FEE))):
-    return success(textbook_svc.mark_fee(user, fid, body.action, body.amount, body.waiveReason), message="已处理")
+    return success(textbook_svc.mark_fee(user, fid, body.action, body.amount, body.waiveReason,
+        expected_paid_amount=body.expectedPaidAmount), message="已处理")
 
 
 @router.get("/textbooks/stock", summary="教材库存（到货量-已发放签收量）")

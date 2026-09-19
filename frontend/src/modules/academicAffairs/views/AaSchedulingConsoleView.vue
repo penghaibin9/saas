@@ -1,17 +1,64 @@
 <template>
   <ModulePageShell
-    title="排课中心"
-    subtitle="数据准备 → 教师偏好 → 自动初排 → 人工微调 → 冲突与漏排 → 预发布 → 正式发布"
+    :title="pageMeta.title"
+    :subtitle="pageMeta.subtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <div class="aasg-tabs">
-      <button v-for="item in tabs" :key="item.key" :class="['aasg-tab', { 'is-active': tab === item.key }]" @click="tab = item.key">
-        {{ item.label }}
-      </button>
+    <template #actions>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回课表批次</AppButton>
+      <AppButton v-if="tab === 'rules' && canManageRules" variant="primary" :disabled="!canWriteRules" @click="openRuleEditor">维护规则版本</AppButton>
+      <AppButton v-else-if="tab === 'auto'" variant="primary" :disabled="!autoBatchId || autoLoading" @click="$refs.optimizerPanel?.load()">检查排课条件</AppButton>
+      <AppButton v-else-if="tab === 'conflict'" variant="primary" :disabled="!conflictBatchId" @click="loadConflict">处理当前冲突</AppButton>
+      <AppButton v-else-if="tab === 'import'" variant="primary" :disabled="!canImportBatch" @click="importVisible = true">上传并预校验</AppButton>
+      <AppButton v-else-if="tab === 'result'" variant="primary" :disabled="!workbench" @click="openPublishedSchedule">查看正式版本</AppButton>
+      <AppButton v-else-if="tab === 'adjust' && workbench?.batchStatus === 'PUBLISHED'" variant="primary" :disabled="!hasPublishedGap || !canCorrectSchedule" @click="openCorrectionDraft()">创建纠错草稿</AppButton>
+    </template>
+
+    <div v-if="tab !== 'room'" class="mp-stack aasg-page-context">
+      <AaScheduleObjectBar
+        :name="contextObject.name"
+        :identity="contextObject.identity"
+        :source="contextObject.source"
+        :status="contextObject.status"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="冲突核对岗 → 课表预发布 / 发布岗"
+      />
+      <AaScheduleStageRail mode="scheduling" :active-index="pageMeta.stage" />
     </div>
 
-    <div v-if="tab === 'workbench'" class="mp-stack">
+    <ErrorState v-if="routeError" :description="routeError" />
+    <div v-else-if="tab === 'room'" class="mp-stack">
+      <AppInlineAlert type="info" title="核对教室占用时段" description="按日期查看已批准预约和正式课表占用；未列出占用不代表保证空闲，安排课位仍须通过正式冲突检查。" />
+      <AaResourceOccupancyView v-if="canReadOccupancy" />
+      <ErrorState v-else description="当前身份没有资源占用查看权限，请由教学资源负责人核对教室时段。" />
+    </div>
+    <div v-else-if="['import', 'result', 'adjust'].includes(tab)" class="mp-stack">
+      <AppSectionCard :title="pageMeta.sectionTitle">
+        <AppScheduleBatchPicker v-model="workbenchBatchId" @change="loadWorkbench" />
+        <p class="mp-note">请选择要查看或办理的课表批次。</p>
+        <ErrorState v-if="workbenchError" :description="workbenchError" @retry="loadWorkbench" />
+        <LoadingState v-else-if="workbenchLoading" />
+        <template v-else-if="workbench">
+          <p>{{ workbench.batchName }} · {{ batchStatusLabel(workbench.batchStatus) }}</p>
+          <template v-if="tab === 'import'">
+            <p>下载当前模板，上传排课结果后先预检，再明确确认导入；不会直接执行自动排课。</p>
+            <AppButton :disabled="!canImportBatch" @click="importVisible = true">导入当前批次排课结果</AppButton>
+            <p v-if="!canImportBatch" class="mp-note">仅具有导入权限的可编辑草稿允许导入。</p>
+          </template>
+          <template v-else-if="tab === 'result'">
+            <p>应排 {{ workbench.expectedHours }} 节，已排 {{ workbench.scheduledHours }} 节；此批次状态以服务端结果为准。</p>
+            <AppButton @click="openPublishedSchedule">查看本批次课表</AppButton>
+          </template>
+          <template v-else>
+            <AppButton v-if="workbench.batchStatus === 'DRAFT'" :disabled="!canCorrectSchedule" @click="openBatchEditor">进入本批次编排</AppButton>
+            <AppButton v-else-if="hasPublishedGap" :disabled="!canCorrectSchedule" @click="openCorrectionDraft()">创建纠错草稿后补排</AppButton>
+            <p v-else class="mp-note">当前批次不允许直接编辑。请返回排课工作台核对状态和正式可用动作。</p>
+          </template>
+        </template>
+      </AppSectionCard>
+    </div>
+    <div v-else-if="tab === 'workbench'" class="mp-stack">
       <AppSectionCard title="排课批次与当前进度">
         <div class="aasg-workbench-filter">
           <label class="aasg-field">
@@ -328,39 +375,14 @@
 
     <!-- 自动排课：本轮不改算法 -->
     <div v-else-if="tab === 'auto'" class="mp-stack">
-      <div class="aasg-bar">
-        <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:260px" />
-        <AppButton variant="ghost" size="small" :loading="autoLoading" @click="runAuto(true)">试排预览</AppButton>
-        <AppButton variant="primary" size="small" :loading="autoLoading" @click="doAuto">一键自动排课</AppButton>
-        <AppButton variant="ghost" size="small" @click="doClearAuto">清除自动排课结果</AppButton>
-      </div>
-      <AppInlineAlert type="info" description="自动排课只处理已确认、已设周学时且未标记不排课的教学任务；手工排课不会被覆盖，排不下的任务会返回明确原因。" />
-      <template v-if="autoResult">
-        <div class="aasg-summary">
-          <span class="is-ok">已排入 {{ autoResult.placedSessions }} 节 / {{ autoResult.placedTasks }} 个任务</span>
-          <span :class="{ 'is-bad': autoResult.missedTasks }">漏排 {{ autoResult.missedTasks }} 个任务</span>
-          <span>可用教室 {{ autoResult.roomPoolSize }} 间</span>
-          <span v-if="autoResult.dryRun" class="is-warn">试排结果（未落库）</span>
-        </div>
-        <div v-if="autoMissSummary.length" class="aasg-section">
-          <div class="aasg-section-title">漏排原因分布</div>
-          <div class="aasg-reasons"><span v-for="item in autoMissSummary" :key="item.reason" class="aasg-reason-chip">{{ item.reasonLabel }} × {{ item.count }}</span></div>
-        </div>
-        <DataTable v-if="autoMisses.length" :columns="missColumns" :rows="autoMisses" row-key="taskId">
-          <template #cell-course="{ row }">{{ row.courseName }}<span v-if="row.className" class="aasg-sub">（{{ row.className }}）</span></template>
-          <template #cell-progress="{ row }">{{ row.placedSessions }} / {{ row.needSessions }} 节</template>
-          <template #cell-reason="{ row }"><span class="aasg-tag is-hard">{{ row.reasonLabel }}</span></template>
-          <template #cell-detail="{ row }"><span class="aasg-advice">{{ row.detail }}</span></template>
-        </DataTable>
-        <EmptyState v-else-if="!autoResult.missedTasks" title="全部排课成功" description="所有待排任务均已排入，无漏排" />
-      </template>
-      <EmptyState v-else title="尚未执行自动排课" description="选择课表批次后先试排预览，确认结果再正式落库" />
+      <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:320px" @change="syncBatchQuery(autoBatchId)" />
+      <AaSchedulingOptimizerPanel ref="optimizerPanel" :batch-id="String(autoBatchId || '')" :identity-key="routeContextKey()" :ctx="ctx" />
     </div>
 
     <!-- 冲突报告：本轮保持既有能力 -->
     <div v-else class="mp-stack">
       <div class="aasg-bar">
-        <AppScheduleBatchPicker v-model="conflictBatchId" style="max-width:260px" />
+        <AppScheduleBatchPicker v-model="conflictBatchId" style="max-width:260px" @change="syncBatchQuery(conflictBatchId)" />
         <AppButton variant="primary" size="small" @click="loadConflict">生成冲突报告</AppButton>
       </div>
       <template v-if="conflict">
@@ -391,6 +413,10 @@
       </template>
     </div>
 
+    <AaAuthoritativeImportDrawer v-if="importVisible && canImportBatch" v-model:visible="importVisible" title="导入当前批次排课结果" template-name="排课结果导入模板.xlsx"
+      show-import-mode :download-template-fn="() => academicAffairsApi.downloadScheduleImportTemplate()"
+      :upload-fn="(file, mode) => academicFileExchangeApi.uploadScheduleImport(workbenchBatchId, file, mode)"
+      @imported="loadWorkbench" />
     <AppConfirmDialog
       v-model:visible="confirmVisible"
       :title="confirmTitle"
@@ -409,6 +435,14 @@ import { AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatch
 import { academicAffairsApi, academicAffairsSchedulingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import { academicRouteState, academicIdentity, createAcademicRequestGate } from '../academicFlowContext.js'
+import { currentUserFromToken } from '@/services/http/client'
+import { academicFileExchangeApi } from '../api/academic-file-exchange.api'
+import AaAuthoritativeImportDrawer from '../components/AaAuthoritativeImportDrawer.vue'
+import AaResourceOccupancyView from './AaResourceOccupancyView.vue'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
+import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
+import AaSchedulingOptimizerPanel from '../components/AaSchedulingOptimizerPanel.vue'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
 const DEFAULT_DAYS = [
@@ -419,12 +453,14 @@ const DEFAULT_DAYS = [
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel },
+  props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
-      ctx: { currentRole: { roleName: '', roleCode: '' }, dataScope: { scopeName: '' }, permissionPatterns: null },
+      academicAffairsApi, academicFileExchangeApi, routeError: '', importVisible: false, routeSyncing: false, disposed: false,
       tab: 'workbench',
-      tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }],
+      tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }, { key: 'room', label: '教室可用时间' }, { key: 'import', label: '导入排课结果' }, { key: 'result', label: '排课结果' }, { key: 'adjust', label: '排课调整' }],
       termId: '', termInfo: null,
       workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '',
       rules: [], catalog: [], timeSlots: [],
@@ -433,7 +469,7 @@ export default {
       ruleForm: { ruleKey: '', scopeType: 'TERM', batchId: '', value: null, remark: '' },
       avails: [], conflictBatchId: '', conflict: null,
       autoBatchId: '', autoResult: null, autoLoading: false,
-      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null, pendingContextKey: '',
       confirmRequireReason: false, confirmReasonLabel: '',
       correctionTargetTask: null,
       ruleColumns: [
@@ -453,6 +489,37 @@ export default {
     }
   },
   computed: {
+    pageMeta() {
+      const pages = {
+        workbench: { title: '排课工作台', subtitle: '从就绪教学任务进入编排，按真实阻断推进到正式发布。', sectionTitle: '当前批次排课进度', stage: 2 },
+        rules: { title: this.$route?.query?.tab === 'constraint' ? '排课约束' : '排课规则', subtitle: '规则与排课引擎同源，保留版本、作用范围和优先级。', sectionTitle: '规则与适用范围', stage: 1 },
+        availability: { title: '教师可用时间', subtitle: '教师时间偏好作为排课约束输入，不直接改写正式课表。', sectionTitle: '教师可用时段', stage: 1 },
+        auto: { title: '自动排课', subtitle: '保留已有课位，先试排并处理冲突，再进入发布门禁。', sectionTitle: '自动排课工作区', stage: 2 },
+        conflict: { title: '冲突报告', subtitle: '硬冲突直达具体任务与课位，软提醒保留规则依据。', sectionTitle: '冲突与可解决路径', stage: 3 },
+        room: { title: '教室可用时间', subtitle: '区分正式课表、预约和维修占用，排课仍由服务端最终校验。', sectionTitle: '资源占用', stage: 1 },
+        import: { title: '导入排课结果', subtitle: '上传后先预校验，再按原始行号确认正式导入结果。', sectionTitle: '准备与预校验', stage: 2 },
+        result: { title: '排课结果', subtitle: '读取指定批次和正式版本，不按列表顺序猜测当前课表。', sectionTitle: '指定批次排课结果', stage: 3 },
+        adjust: { title: '排课调整', subtitle: '已发布结果不原地编辑；纠错草稿保留当前正式课表在线。', sectionTitle: '课表调整与纠错', stage: 3 }
+      }
+      return pages[this.tab] || pages.workbench
+    },
+    contextObject() {
+      if (this.workbench) return {
+        name: this.workbench.batchName || '当前课表批次',
+        identity: `批次 #${this.workbench.batchId} · 学期 #${this.workbench.termId}`,
+        source: '来源：正式教学任务、排课规则、教师时间与资源可用性',
+        status: this.batchStatusLabel(this.workbench.batchStatus)
+      }
+      if (this.termInfo) return {
+        name: this.termInfo.termName || `${this.termInfo.yearCode || ''} 第${this.termInfo.termNo || '—'}学期`,
+        identity: `学期 #${this.termId} · ${this.pageMeta.title}`,
+        source: '来源：当前正式学期与排课规则目录',
+        status: this.termStatusLabel(this.termInfo.status)
+      }
+      return { name: this.pageMeta.sectionTitle, identity: '选择学期或课表批次后读取正式对象', source: '来源：教务排课服务', status: '对象待选择' }
+    },
+    canReadOccupancy() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.resourceOccupancy.view') },
+    canImportBatch() { return this.workbench?.batchStatus === 'DRAFT' && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.import') },
     canManageRules() { return MANAGE_ROLES.has(String(this.ctx.currentRole.roleCode || '').toUpperCase()) },
     canCorrectSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.edit') },
     repairRemaining() { return Math.max(0, Number(this.workbench?.expectedHours || 0) - Number(this.workbench?.scheduledHours || 0)) },
@@ -499,59 +566,97 @@ export default {
     }
   },
   watch: {
+    confirmVisible(value) { if (value) this.pendingContextKey = this.commandContextKey() },
+    '$route.fullPath'() { this.syncRoute() },
+    ctx() { this.syncRoute() },
     tab(value) {
+      if (this.routeSyncing) return
+      const requested = this.$route.query.tab === 'constraint' ? 'rules' : (this.$route.query.tab || 'workbench')
+      if (requested !== value) { this.$router.push({ path: this.$route.path, query: { ...this.$route.query, tab: value } }); return }
       if (value === 'availability') this.loadAvails()
       if (value === 'workbench' && this.workbenchBatchId) this.loadWorkbench()
     }
   },
   async created() {
-    const queryTab = this.$route?.query?.tab
-    if (queryTab && this.tabs.some(item => item.key === queryTab)) this.tab = queryTab
-    await this.loadContext()
+    this.routeGate = createAcademicRequestGate(() => this.routeContextKey())
+    this.workbenchGate = createAcademicRequestGate(() => JSON.stringify([this.routeContextKey(), this.workbenchBatchId]))
+    this.ruleGate = createAcademicRequestGate(() => JSON.stringify([this.routeContextKey(), this.termId]))
     await Promise.all([this.loadCatalog(), this.loadTimeSlots()])
-    const current = await academicAffairsApi.getCurrentTerm()
-    if (current.code === 0 && current.data?.termId) this.termId = String(current.data.termId)
-    await this.onTermChange()
-    await this.selectDefaultWorkbenchBatch()
+    await this.syncRoute()
   },
+  beforeUnmount() { this.disposed = true; this.routeGate.invalidate(); this.workbenchGate.invalidate(); this.ruleGate.invalidate(); this.pendingAction = null },
   methods: {
+    switchTab(tab) { return this.$router.push({ path: this.$route.path, query: { ...this.$route.query, tab } }) },
+    routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
+    commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
+    async syncRoute() {
+      if (!this.routeGate || this.disposed) return
+      const current = this.routeGate.begin()
+      this.workbenchGate.invalidate(); this.ruleGate.invalidate()
+      this.confirmVisible = false; this.pendingAction = null; this.importVisible = false; this.closeRuleEditor()
+      this.workbench = null; this.workbenchLoading = false; this.workbenchError = ''; this.conflict = null; this.autoResult = null; this.autoLoading = false; this.avails = []
+      this.rules = []; this.termInfo = null; this.ruleLoading = false; this.saving = false
+      const state = academicRouteState(this.$route, { tabs: [...this.tabs.map(item => item.key), 'constraint'], defaultTab: 'workbench' })
+      this.routeError = state.error
+      this.routeSyncing = true; this.tab = state.tab === 'constraint' ? 'rules' : state.tab
+      this.termId = state.termId; this.workbenchBatchId = state.batchId; this.autoBatchId = state.batchId; this.conflictBatchId = state.batchId
+      await this.$nextTick(); this.routeSyncing = false
+      if (!current() || state.error) return
+      if (['rules', 'availability'].includes(this.tab) && !state.termId) {
+        const currentTerm = await academicAffairsApi.getCurrentTerm()
+        if (!current()) return
+        if (currentTerm.code !== 0 || !currentTerm.data?.termId) {
+          this.termError = currentTerm.message || '当前学期尚未配置，请先到教务基础确认正式学期'
+          return
+        }
+        await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: String(currentTerm.data.termId) } })
+        return
+      }
+      if (['rules', 'availability'].includes(this.tab)) await this.onTermChange()
+      if (!current()) return
+      if (this.tab === 'availability' && this.termId) await this.loadAvails()
+      if (state.batchId && ['workbench', 'import', 'result', 'adjust'].includes(this.tab)) await this.loadWorkbench()
+      if (state.batchId && this.tab === 'conflict') await this.loadConflict()
+    },
     cloneValue(value) {
       if (value == null) return value
       return JSON.parse(JSON.stringify(value))
     },
-    async loadContext() {
-      const response = await academicAffairsApi.getContext()
-      if (response.code === 0) this.ctx = response.data
-    },
-    async selectDefaultWorkbenchBatch() {
-      const response = await academicAffairsApi.getScheduleBatches({ termId: this.termId || undefined, page: 1, pageSize: 100 })
-      if (response.code !== 0) return
-      const rows = response.data?.list || []
-      const preferred = rows.find(row => ['DRAFT', 'PRE_PUBLISHED'].includes(row.status)) || rows.find(row => row.status === 'PUBLISHED') || rows[0]
-      if (!preferred?.batchId) return
-      this.workbenchBatchId = String(preferred.batchId)
-      if (this.tab === 'workbench') await this.loadWorkbench()
-    },
     async loadWorkbench(value) {
-      if (value !== undefined && value !== null && value !== '') this.workbenchBatchId = String(value)
-      if (!this.workbenchBatchId || this.workbenchLoading) return
-      this.workbenchLoading = true; this.workbenchError = ''
-      const response = await academicAffairsApi.getScheduleSummary(this.workbenchBatchId)
+      if (typeof value === 'string' || typeof value === 'number') this.workbenchBatchId = String(value)
+      const batchId = this.workbenchBatchId
+      const current = this.workbenchGate.begin()
+      this.workbench = null; this.workbenchError = ''; this.workbenchLoading = false
+      if (String(this.$route.query.batchId || '') !== batchId) {
+        await this.syncBatchQuery(batchId); return
+      }
+      if (!batchId) return
+      this.workbenchLoading = true
+      const response = await academicAffairsApi.getScheduleSummary(batchId)
+      if (!current()) return
       this.workbenchLoading = false
-      if (response.code === 0) this.workbench = response.data
-      else { this.workbench = null; this.workbenchError = response.message || '排课工作台加载失败' }
+      if (response.code === 0 && String(response.data?.batchId) === batchId) this.workbench = response.data
+      else this.workbenchError = response.code === 0 ? '返回的课表批次与当前入口不一致，请返回原队列核对' : (response.message || '指定排课批次读取失败，请返回原队列核对')
+      this.academicFlow?.restorePosition()
     },
+    syncBatchQuery(batchId) {
+      const query = { ...this.$route.query }
+      if (batchId) query.batchId = String(batchId); else delete query.batchId
+      return this.$router.replace({ path: this.$route.path, query })
+    },
+    returnQuery() { const returnToken = this.academicFlow?.captureReturn(); return returnToken ? { returnToken } : {} },
+    openBatchEditor() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`, query: this.returnQuery() }) },
     batchStatusLabel(status) {
       return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档' })[status] || (status ? '状态待确认' : '状态待确认')
     },
     weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
     roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
     openTeachingTasks() { this.$router.push('/admin/academic-affairs/teaching-tasks') },
-    openPublishedSchedule() { this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`) },
+    openPublishedSchedule() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`, query: this.returnQuery() }) },
     openTask(row) {
       this.$router.push({
         path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`,
-        query: { classId: row.classId, className: row.className || '', taskId: row.taskId }
+        query: { classId: row.classId, className: row.className || '', taskId: row.taskId, ...this.returnQuery() }
       })
     },
     openCorrectionDraft(row = null) {
@@ -565,10 +670,12 @@ export default {
       this.confirmVisible = true
     },
     async createCorrectionDraft(reason) {
+      const context = this.commandContextKey()
       const sourceBatchId = this.workbenchBatchId
       const targetTask = this.correctionTargetTask
       this.correctionTargetTask = null
       const response = await academicAffairsApi.startScheduleCorrection(sourceBatchId, String(reason || '').trim())
+      if (context !== this.commandContextKey()) return
       if (response.code !== 0) {
         toast.error(response.message || '创建纠错草稿失败')
         return
@@ -580,10 +687,10 @@ export default {
     },
     runWorkbenchAction(code) {
       if (code === 'TEACHING_TASKS') return this.openTeachingTasks()
-      if (code === 'AVAILABILITY') { this.tab = 'availability'; return }
-      if (code === 'AUTO_DRY_RUN') { this.autoBatchId = this.workbenchBatchId; this.tab = 'auto'; return }
+      if (code === 'AVAILABILITY') return this.switchTab('availability')
+      if (code === 'AUTO_DRY_RUN') return this.switchTab('auto')
       if (code === 'TASK_QUEUE') { document.querySelector('.aasg-queue-note')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return }
-      if (code === 'CONFLICTS') { this.conflictBatchId = this.workbenchBatchId; this.tab = 'conflict'; this.$nextTick(() => this.loadConflict()); return }
+      if (code === 'CONFLICTS') return this.switchTab('conflict')
       if (code === 'HANDLE_OBJECTIONS') return this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`)
       if (['PRE_PUBLISH', 'PUBLISH'].includes(code)) return this.$router.push({ path: '/admin/academic-affairs/schedule/publish', query: { batchId: this.workbenchBatchId } })
       if (code === 'BATCH_REISSUE') return this.openCorrectionDraft()
@@ -610,9 +717,16 @@ export default {
     },
     async onTermChange(value) {
       if (value !== undefined && value !== null) this.termId = value ? String(value) : ''
-      this.closeRuleEditor(); this.termInfo = null; this.termError = ''; this.ruleError = ''
+      const termId = this.termId
+      const current = this.ruleGate.begin()
+      this.closeRuleEditor(); this.termInfo = null; this.termError = ''; this.ruleError = ''; this.rules = []; this.ruleLoading = false
+      if (String(this.$route.query.termId || '') !== termId) {
+        const query = { ...this.$route.query }; if (termId) query.termId = termId; else delete query.termId
+        await this.$router.replace({ path: this.$route.path, query }); return
+      }
       if (!this.termId) { this.rules = []; this.termError = '请选择学期后查看排课规则'; return }
-      const detail = await academicAffairsApi.getTermDetail(this.termId)
+      const detail = await academicAffairsApi.getTermDetail(termId)
+      if (!current()) return
       if (detail.code !== 0) {
         this.rules = []
         this.termError = detail.message || '学期状态加载失败，已禁止修改排课规则'
@@ -622,9 +736,11 @@ export default {
       await this.loadRules()
     },
     async loadRules() {
-      if (!this.termId || this.ruleLoading || this.termError) return
+      if (!this.termId || this.termError) return
+      const current = this.ruleGate.begin()
       this.ruleLoading = true; this.ruleError = ''
       const response = await api.listRules({ termId: this.termId })
+      if (!current()) return
       this.ruleLoading = false
       if (response.code === 0) this.rules = response.data.items || []
       else { this.rules = []; this.ruleError = response.message || '排课规则加载失败' }
@@ -685,6 +801,7 @@ export default {
       const error = this.localRuleError()
       if (error) { this.formError = error; return }
       this.saving = true; this.formError = ''
+      const context = this.commandContextKey(), form = this.ruleForm
       const response = await api.saveRule({
         ruleKey: this.ruleForm.ruleKey,
         termId: this.termId,
@@ -692,6 +809,7 @@ export default {
         ruleValue: this.cloneValue(this.ruleForm.value),
         remark: this.ruleForm.remark || undefined
       })
+      if (context !== this.commandContextKey() || form !== this.ruleForm) return
       this.saving = false
       if (response.code === 0) {
         toast.success(`${response.data.ruleLabel || '排课规则'}已保存`)
@@ -703,7 +821,9 @@ export default {
       this.confirmTitle = `删除“${row.ruleLabel}”`
       this.confirmMessage = '删除后自动排课将恢复该参数的安全默认值。历史审计记录仍会保留。'
       this.pendingAction = async () => {
+        const context = this.commandContextKey()
         const response = await api.deleteRule(row.ruleId)
+        if (context !== this.commandContextKey()) return
         if (response.code === 0) { toast.success('规则已删除'); await this.loadRules() }
         else toast.error(response.message || '删除规则失败')
       }
@@ -740,12 +860,17 @@ export default {
     },
     dimLabel(value) { return ({ TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' })[value] || (value ? '待确认' : '—') },
     async loadAvails() {
+      const context = this.commandContextKey()
+      if (!this.termId) { this.avails = []; return }
       const response = await api.listAvailability({ termId: this.termId || undefined })
+      if (context !== this.commandContextKey()) return
       this.avails = response.code === 0 ? (response.data.items || []) : []
       if (response.code !== 0) toast.error(response.message || '教师不可排时间加载失败')
     },
     async reviewAvail(id, action) {
+      const context = this.commandContextKey()
       const response = await api.reviewAvailability(id, action)
+      if (context !== this.commandContextKey()) return
       if (response.code === 0) { toast.success('已采纳'); await this.loadAvails() }
       else toast.error(response.message || '处理失败')
     },
@@ -753,7 +878,9 @@ export default {
       this.confirmRequireReason = true; this.confirmReasonLabel = '驳回原因（≥5字）'
       this.confirmTitle = '驳回教师不可排时间'; this.confirmMessage = '原因将写入处理记录并供申请教师查看。'
       this.pendingAction = async (reason) => {
+        const context = this.commandContextKey()
         const response = await api.reviewAvailability(id, 'REJECT', String(reason || '').trim())
+        if (context !== this.commandContextKey()) return
         if (response.code === 0) { toast.success('已驳回'); await this.loadAvails() }
         else toast.error(response.message || '驳回失败')
       }
@@ -761,14 +888,19 @@ export default {
     },
     async loadConflict() {
       if (!this.conflictBatchId) { toast.error('请选择课表批次'); return }
-      const response = await api.conflictReport(this.conflictBatchId)
+      const context = this.commandContextKey(), batchId = this.conflictBatchId
+      this.conflict = null
+      const response = await api.conflictReport(batchId)
+      if (context !== this.commandContextKey()) return
       if (response.code === 0) this.conflict = response.data
       else toast.error(response.message || '冲突报告生成失败')
     },
     async runAuto(dryRun) {
       if (!this.autoBatchId) { toast.error('请选择课表批次'); return }
+      const context = this.commandContextKey(), batchId = this.autoBatchId
       this.autoLoading = true
-      const response = await api.autoSchedule(this.autoBatchId, dryRun)
+      const response = await api.autoSchedule(batchId, dryRun)
+      if (context !== this.commandContextKey()) return
       this.autoLoading = false
       if (response.code === 0) { this.autoResult = response.data; toast.success(dryRun ? '试排完成（未落库）' : `已排入 ${response.data.placedSessions} 节`) }
       else toast.error(response.message || '自动排课失败')
@@ -784,7 +916,9 @@ export default {
       this.confirmRequireReason = false; this.confirmTitle = '清除自动排课结果'
       this.confirmMessage = '只清除该批次由系统自动生成的课位，手工和导入课位继续保留。'
       this.pendingAction = async () => {
+        const context = this.commandContextKey()
         const response = await api.clearAuto(this.autoBatchId)
+        if (context !== this.commandContextKey()) return
         if (response.code === 0) { toast.success(`已清除 ${response.data.cleared} 节`); this.autoResult = null }
         else toast.error(response.message || '清除失败')
       }
@@ -792,8 +926,9 @@ export default {
     },
     async onConfirm(payload = {}) {
       const action = this.pendingAction
+      const valid = this.pendingContextKey === this.commandContextKey()
       this.pendingAction = null; this.confirmVisible = false; this.confirmRequireReason = false
-      if (action) await action(payload.reason || '')
+      if (action && valid) await action(payload.reason || '')
     }
   }
 }

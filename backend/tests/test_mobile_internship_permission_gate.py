@@ -6,6 +6,7 @@ import pytest
 
 from app.core.exceptions import AppException
 from app.core.mobile_internship_permission_gate import (
+    _preflight_user,
     _reject_legacy_teacher_write,
     resolve_teacher_internship_permission,
 )
@@ -62,6 +63,27 @@ def test_route_permission_mapping(method, path, expected):
 def test_non_internship_mobile_route_is_ignored():
     assert resolve_teacher_internship_permission(
         "GET", "/api/v1/mobile/orientation/batch-status") is None
+
+
+def test_db_token_preflight_preserves_credential_epoch(monkeypatch):
+    """Phone-login credential rotation must not turn valid internship requests into 401."""
+    import app.core.mobile_internship_permission_gate as gate
+    from app.core import token_store
+    from app.services import auth_service_db
+
+    monkeypatch.setattr(token_store, "jti_blocked", lambda _jti: False)
+    monkeypatch.setattr(gate, "decode_token", lambda _token: {
+        "userId": "db-123", "tenantId": str(TID), "tid": "sandbox-school",
+        "currentRoleCode": "INTERN_MENTOR", "activeContextId": "role:1",
+        "credentialVersion": 7, "jti": "test-jti", "exp": 1234567890,
+    })
+    captured = {}
+    monkeypatch.setattr(auth_service_db, "validate_token_subject", lambda ctx: captured.update(ctx) or ctx)
+
+    user = _preflight_user("Bearer test-token")
+
+    assert user["credentialVersion"] == 7
+    assert captured["credentialVersion"] == 7
 
 
 @pytest.mark.parametrize("path", [

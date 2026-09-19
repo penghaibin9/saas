@@ -65,7 +65,7 @@ export default {
       } catch (e) {
         if (request !== this.requestSeq) return
         if (more) this.moreError = '加载失败，已加载记录仍保留，请重试'
-        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = 'error' }
+        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = normalizeError(e).pageState || 'error' }
       } finally { if (request === this.requestSeq) this.refreshing = false }
     }, search() { this.appliedKeyword = this.keyword.trim(); return this.loadItems() }, changeStatus(value) { if (this.status === value) return; this.status = value; return this.loadItems() },
     openAction(item, action) { this.actionTarget = item; this.actionType = action; this.reason = ''; this.actionError = ''; this.form = { loanType: item.loanType || 'ORIGIN', yearCode: item.yearCode || '', amount: item.amount || '', bankName: item.bankName || '', bankLast4: item.bankLast4 || '', receiptCode: '' }; this.fileIds = item.receiptFile?.fileId ? [item.receiptFile.fileId] : []; this.fileReady = !this.fileIds.length }, closeAction() { if (!this.busy) this.actionTarget = null }, attachmentError(error) { this.actionError = normalizeError(error).text || '回执材料处理失败' },

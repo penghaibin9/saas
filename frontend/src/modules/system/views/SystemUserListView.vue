@@ -8,6 +8,7 @@
     <template #actions>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar">
         <template #right>
+          <button class="mp-link" @click="phoneOpen = !phoneOpen">{{ phoneOpen ? '返回账号列表' : '手机号治理' }}</button>
           <span class="mp-note">操作均写入审计日志</span>
           <div class="su-cols">
             <button class="mp-link" @click="colsOpen = !colsOpen">▥ 列设置</button>
@@ -22,7 +23,8 @@
       </ModuleToolbar>
     </template>
 
-    <div class="mp-stack">
+    <PhoneGovernancePanel v-if="phoneOpen" :ctx="ctx" :account-type="accountType" />
+    <div v-else class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -131,6 +133,7 @@
         </template>
         <div v-else class="mp-kv"><span class="mp-kv__k">业务归属</span><span class="mp-kv__v">{{ detail.data.orgName }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">手机号</span><span class="mp-kv__v">{{ maskPhone(detail.data.phone) }} <span class="mp-note" :title="reason('viewSensitiveFull')">（完整号码需审计授权）</span></span></div>
+        <PhoneGovernancePanel :ctx="ctx" :user-id="String(detail.data.id)" :account-type="accountType" />
         <div class="mp-kv"><span class="mp-kv__k">邮箱</span><span class="mp-kv__v">{{ maskEmail(detail.data.email) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="statusTone(detail.data.status)" :label="detail.data.statusLabel" dot /></span></div>
         <div class="mp-kv"><span class="mp-kv__k">账号来源</span><span class="mp-kv__v">{{ sourceLabel(detail.data.source) }}</span></div>
@@ -289,9 +292,11 @@ import { AppCheckboxGroup, AppSelect } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import RoleScopeEditor from '@/modules/system/components/RoleScopeEditor.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
+import PhoneGovernancePanel from '@/modules/system/components/PhoneGovernancePanel.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord } from '@/utils/presentationSafety'
+import { accountDetailsChanged, roleAssignmentSignature } from '@/modules/system/utils/accountEditChanges'
 
 const STAGE_LABELS = { ORIENTATION: '迎新报到', ENROLLED: '在校学习', INTERNSHIP: '岗位实习', GRADUATION: '毕业审核', EMPLOYMENT: '就业跟踪', ALUMNI: '校友阶段', ARCHIVED: '已归档' }
 const SOURCE_LABELS = { MANUAL: '人工创建', IMPORT: '批量导入', ORIENTATION: '迎新建档', SYNC: '外部系统同步', SYSTEM: '系统生成', API: '接口同步' }
@@ -306,13 +311,14 @@ export default {
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppCheckboxGroup, AppSelect,
-    FormFields, RoleScopeEditor, ExportDialog
+    FormFields, RoleScopeEditor, ExportDialog, PhoneGovernancePanel
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     const accountType = this.$route.meta.accountType === 'STUDENT' ? 'STUDENT' : 'STAFF'
     const accountEntityKey = accountType === 'STUDENT' ? 'studentAccounts' : 'staffAccounts'
     return {
+      phoneOpen: false,
       loading: true,
       error: '',
       rows: [],
@@ -575,12 +581,14 @@ export default {
         name: detail.name,
         phone: detail.phone
       }
+      this.form.originalValue = { ...this.form.value }
       this.form.roleAssignments = assignments
       this.form.originalRoleAssignments = JSON.parse(JSON.stringify(assignments))
       this.form.loading = false
       this.form.scopeLoading = false
     },
     async submitForm() {
+      if (this.form.submitting || this.form.loading || this.form.scopeLoading) return
       if (!this.form.id) {
         toast.error('师生账号只能通过统一导入入口创建')
         return
@@ -588,7 +596,14 @@ export default {
       const errors = FormFields.validateRequired(this.formFields, this.form.value)
       this.form.errors = errors
       if (Object.keys(errors).length) return
-      if (this.can('assignRole')) {
+      const detailsChanged = accountDetailsChanged(this.form.value, this.form.originalValue)
+      const rolesChanged = this.can('assignRole') && roleAssignmentSignature(this.form.roleAssignments)
+        !== roleAssignmentSignature(this.form.originalRoleAssignments)
+      if (!detailsChanged && !rolesChanged) {
+        toast.info('内容未修改，无需保存')
+        return
+      }
+      if (rolesChanged) {
         if (!this.form.roleAssignments.length) return toast.error('至少保留一个角色')
         const missing = this.form.roleAssignments.find((item) =>
           item.scopeMode !== 'AUTO' && item.scopeType !== 'SCHOOL' && !(item.scopeIds || []).length
@@ -596,28 +611,37 @@ export default {
         if (missing) return toast.error(`请为「${missing.roleName}」选择授权范围`)
       }
       this.form.submitting = true
-      const res = await systemApi.updateUser(this.form.id, this.form.value)
-      if (res.code !== 0) {
-        this.form.submitting = false
-        toast.error(res.message)
-        return
-      }
-      if (this.can('assignRole')) {
-        const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
-        const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
-        if (roleRes.code !== 0) {
-          this.form.submitting = false
-          toast.error(`基础信息已保存，但角色身份保存失败：${roleRes.message}`)
-          await this.load()
-          return
+      try {
+        if (detailsChanged) {
+          const res = await systemApi.updateUser(this.form.id, this.form.value)
+          if (res.code !== 0) {
+            this.form.submitting = false
+            toast.error(res.message)
+            return
+          }
+          // A partial retry must never replay already committed profile changes.
+          this.form.originalValue = { ...this.form.value }
         }
-      }
-      this.form.submitting = false
-      toast.success(this.can('assignRole')
-        ? '账号与角色身份已更新，重新登录后生效'
-        : '账号基础信息已更新，已写入审计日志')
-      this.form.open = false
-      this.load()
+        if (rolesChanged) {
+          const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
+          const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
+          if (roleRes.code !== 0) {
+            this.form.submitting = false
+            toast.error(`${detailsChanged ? '基础信息已保存，但' : ''}角色身份保存失败：${roleRes.message}`)
+            await this.load()
+            return
+          }
+          this.form.originalRoleAssignments = JSON.parse(JSON.stringify(this.form.roleAssignments))
+        }
+        this.form.submitting = false
+        toast.success(rolesChanged
+          ? '账号与角色身份已更新，重新登录后生效'
+          : '账号基础信息已更新，已写入审计日志')
+        this.form.open = false
+        this.load()
+      } catch (error) {
+        toast.error(error.message || '保存失败，已保留输入，请重试')
+      } finally { this.form.submitting = false }
     },
     async openDetail(row) {
       this.detail = { open: true, loading: true, data: null }

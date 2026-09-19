@@ -60,7 +60,9 @@ test('A03-9 mobile job card keeps only 2-3 compact tags and backend match state'
 })
 
 test('A03 production seal makes mobile authority reads latest-wins and context fail-closed', () => {
+  assert.match(apiSource, /import \{ latestRead as latestProjectionRead \} from '\.\/latestRead'/)
   assert.match(apiSource, /function latestRead\(/)
+  assert.match(apiSource, /return latestProjectionRead\(`student:internship-selection:/)
   assert.match(apiSource, /context\(\) \{ return latestRead\('context'/)
   assert.match(apiSource, /position\(positionId\) \{ return latestRead\('position'/)
   assert.match(apiSource, /company\(companyId\) \{ return latestRead\('company'/)

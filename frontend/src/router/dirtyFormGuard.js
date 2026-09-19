@@ -1,19 +1,21 @@
+import { systemConfirm } from '../services/systemDialog.js'
+
 // Stage B / B4：统一长表单未保存保护。
 // 先覆盖实习批次/企业，再扩到同域岗位、指导、企业评价、协议模板等长表单；
 // 后续只需追加 route name，不再复制页面级 beforeRouteLeave。
 const DEFAULT_GUARDED_ROUTES = new Set([
   'internship-plans',
-  'internship-recruitment-campaign-new',
-  'internship-recruitment-campaign-edit',
   'internship-batch-new',
   'internship-batch-edit',
-  'internship-student-detail',
   'internship-enterprise-new',
   'internship-enterprise-edit',
   'internship-position-new',
   'internship-position-edit',
   'internship-guidance-new',
   'internship-enterprise-eval-new',
+  'internship-recruitment-campaign-new',
+  'internship-recruitment-campaign-edit',
+  'internship-student-detail',
   'internship-agreement-new',
   'internship-agreement-template-new',
   'internship-agreement-template-edit'
@@ -41,7 +43,6 @@ export function installDirtyFormGuard(router, options = {}) {
 
   const markDirty = (event) => {
     if (!event?.isTrusted || !isGuarded(router.currentRoute.value, guardedRoutes)) return
-    // 计划页由业务草稿快照驱动，筛选与批阅意见不算计划修改。
     if (routeName(router.currentRoute.value) === 'internship-plans') return
     const target = event.target
     if (!(target instanceof Element) || !target.matches(EDITABLE_SELECTOR)) return
@@ -60,14 +61,13 @@ export function installDirtyFormGuard(router, options = {}) {
   document.addEventListener('change', markDirty, true)
   window.addEventListener('beforeunload', beforeUnload)
 
-  const removeBefore = router.beforeEach((to, from) => {
+  const removeBefore = router.beforeEach(async (to, from) => {
     if (!dirty || !isGuarded(from, guardedRoutes)) {
       pendingDiscardFrom = ''
       return true
     }
     if (String(to?.fullPath || '') === String(from?.fullPath || '')) return true
     if (routeName(from) === 'internship-plans' && to?.path === from?.path && String(to.query?.batchId || '') === String(from.query?.batchId || '')) return true
-    // 学生详情各分区保留同一份认定草稿，页内切换不构成离开档案。
     if (routeName(from) === 'internship-student-detail' && to?.path === from?.path) {
       const keys = new Set([...Object.keys(to.query || {}), ...Object.keys(from.query || {})])
       if ([...keys].every((key) => key === 'section' || to.query?.[key] === from.query?.[key])) return true
@@ -76,22 +76,18 @@ export function installDirtyFormGuard(router, options = {}) {
     // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
     // 用户确认丢弃时也只记录“本次离开已确认”，真正导航成功后才在 afterEach 清理。
     // 若后续权限/业务 guard 取消或导航失败，dirty 必须继续保留，下一次离开仍会提醒。
-    const finishConfirmation = (accepted) => {
-      if (accepted === true) {
-        pendingDiscardFrom = String(from?.fullPath || '')
-        return true
-      }
-      pendingDiscardFrom = ''
-      return false
+    let accepted = false
+    try {
+      accepted = confirmationHandler
+        ? await confirmationHandler(message)
+        : await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+    } catch { accepted = false }
+    if (accepted === true) {
+      pendingDiscardFrom = String(from?.fullPath || '')
+      return true
     }
-    // The internship layout renders the existing confirmation component. A rejected
-    // or failed dialog never grants navigation; dirty is still cleared only in afterEach.
-    if (confirmationHandler) {
-      try {
-        return Promise.resolve(confirmationHandler(message)).then(finishConfirmation, () => finishConfirmation(false))
-      } catch { return finishConfirmation(false) }
-    }
-    return finishConfirmation(window.confirm(message))
+    pendingDiscardFrom = ''
+    return false
   })
 
   const removeAfter = router.afterEach((to, from, failure) => {

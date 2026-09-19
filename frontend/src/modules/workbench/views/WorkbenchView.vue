@@ -94,7 +94,7 @@
             role="region"
             :aria-labelledby="taskSource === 'approval' ? 'approval-tab' : 'business-tab'"
           >
-            <p v-if="loading" class="wb-empty" role="status">正在加载待办…</p>
+            <p v-if="loading || (taskSource === 'approval' && approvalsLoading)" class="wb-empty" role="status">正在加载待办…</p>
             <p
               v-else-if="taskSource === 'approval' && approvalsError"
               class="wb-empty wb-error-text"
@@ -194,7 +194,7 @@
             <button v-for="c in scopeCards" :key="c.key" type="button" @click="onDrill(c)">
               <span>{{ c.title }}</span
               ><strong>{{
-                loading || valueOf(c.source) === null ? '—' : valueOf(c.source)
+                loading || statsLoading || valueOf(c.source) === null ? '—' : valueOf(c.source)
               }}</strong>
             </button>
           </div>
@@ -313,6 +313,7 @@ export default {
       loadingRequest: false,
       error: '',
       statsError: false,
+      statsLoading: true,
       role: '',
       summary: { ...EMPTY_SUMMARY },
       stats: { ...EMPTY_STATS },
@@ -320,6 +321,7 @@ export default {
       todos: [],
       approvals: [],
       approvalsError: '',
+      approvalsLoading: true,
       todoTotal: 0,
       taskSource: 'approval',
       businessPage: 1, businessEpoch: 0, businessMoreBusy: false, businessMoreError: '',
@@ -449,6 +451,27 @@ export default {
   created() {
     this.load()
   },
+  beforeUnmount() {
+    this.businessEpoch++
+  },
+  watch: {
+    'ctx.ctxKey'() {
+      this.loadingRequest = false
+      this.role = ''
+      this.summary = { ...EMPTY_SUMMARY }
+      this.stats = { ...EMPTY_STATS }
+      this.byType = {}
+      this.todos = []
+      this.approvals = []
+      this.todoTotal = 0
+      this.unread = 0
+      this.scheduleItems = []
+      this.scheduleLoading = false
+      this.tilePref = { order: [], hidden: [] }
+      this.favPaths = []
+      this.load()
+    }
+  },
   methods: {
     showBusinessQueue() {
       this.taskSource = 'business'
@@ -474,37 +497,25 @@ export default {
       if (this.editing) this.$el.querySelector('.wb-personal-details').open = true
     },
     async load() {
-      // V3 施工手册 TP-W08：核心待办/消息与非核心范围内统计（stats.workbench）
-      // 分区加载，用 allSettled 而不是 all——以前统计接口一超时/500，
-      // Promise.all 整体 reject，连正常返回的待办和消息也被 catch 块清空重置成
-      // 假空态，让老师以为自己"今天没有待办"。
-      this.$refs.priorityPanel?.load()
       if (this.loadingRequest) return
+      this.$refs.priorityPanel?.load()
       this.businessEpoch++; this.businessPage = 1; this.businessMoreBusy = false; this.businessMoreError = ''
+      const epoch = this.businessEpoch
       this.loadingRequest = true
       this.loading = true
       this.error = ''
       this.statsError = false
+      this.statsLoading = true
+      this.approvalsLoading = true
 
-      const [coreResult, statsResult, approvalResult] = await Promise.allSettled([
-        Promise.all([fetchTodoSummary(), fetchTodoCount(), fetchTodoList(), fetchMessageCount()]),
-        fetchSchoolStats(),
-        approvalApi.getTodos({ page: 1, pageSize: 8 })
-      ])
-
-      this.approvalsError = ''
-      if (approvalResult.status === 'fulfilled' && approvalResult.value.code === 0) {
-        this.approvals = approvalResult.value.data.list || []
-      } else {
-        this.approvals = []
-        this.approvalsError =
-          approvalResult.status === 'rejected'
-            ? approvalResult.reason?.message || '审批任务加载失败'
-            : approvalResult.value.message || '审批任务加载失败'
-      }
-
-      if (coreResult.status === 'fulfilled') {
-        const [summary, count, list, msg] = coreResult.value
+      // 各区收到结果即显示；统计、课表和偏好不再卡住已经返回的待办。
+      const statsRequest = this.loadStatsQuiet(epoch)
+      const approvalRequest = this.loadApprovalsQuiet(epoch)
+      try {
+        const [summary, count, list, msg] = await Promise.all([
+          fetchTodoSummary(), fetchTodoCount(), fetchTodoList(), fetchMessageCount()
+        ])
+        if (epoch !== this.businessEpoch) return
         this.role = summary.role || ''
         this.summary = {
           pending: Number(summary.pending) || 0,
@@ -516,18 +527,47 @@ export default {
         this.todos = Array.isArray(list.items) ? list.items : []
         this.todoTotal = Number(list.total) || 0
         this.unread = Number(msg.unread) || 0
-      } else {
+      } catch (error) {
+        if (epoch !== this.businessEpoch) return
         this.role = ''
         this.summary = { ...EMPTY_SUMMARY }
         this.byType = {}
         this.todos = []
         this.todoTotal = 0
         this.unread = 0
-        this.error = (coreResult.reason && coreResult.reason.message) || '请求失败'
+        this.error = error?.message || '请求失败'
+      } finally {
+        if (epoch === this.businessEpoch) {
+          this.loading = false
+          this.loadingRequest = false
+        }
       }
 
-      const schoolStats = statsResult.status === 'fulfilled' ? statsResult.value : null
-      if (schoolStats && typeof schoolStats === 'object') {
+      await Promise.allSettled([
+        statsRequest, approvalRequest, this.loadPrefsQuiet(epoch),
+        this.recipe.showSchedule ? this.loadScheduleQuiet(epoch) : Promise.resolve()
+      ])
+    },
+    async loadApprovalsQuiet(epoch) {
+      this.approvalsError = ''
+      try {
+        const result = await approvalApi.getTodos({ page: 1, pageSize: 8 })
+        if (epoch !== this.businessEpoch) return
+        if (result?.code !== 0) throw new Error(result?.message || '审批任务加载失败')
+        this.approvals = result.data.list || []
+      } catch (error) {
+        if (epoch !== this.businessEpoch) return
+        this.approvals = []
+        this.approvalsError = error?.message || '审批任务加载失败'
+      } finally {
+        if (epoch === this.businessEpoch) this.approvalsLoading = false
+      }
+    },
+    async loadStatsQuiet(epoch) {
+      try {
+        const schoolStats = await fetchSchoolStats()
+        if (epoch !== this.businessEpoch) return
+        if (!schoolStats || typeof schoolStats !== 'object') throw new Error('统计暂不可用')
         this.stats = {
           studentTotal: Number(schoolStats.studentTotal) || 0,
           pendingApproval: Number(schoolStats.pendingApproval) || 0,
@@ -536,38 +576,39 @@ export default {
           orientationPending: Number(schoolStats.orientationPending) || 0,
           scopeLabel: schoolStats.scopeLabel || ''
         }
-      } else {
+      } catch {
+        if (epoch !== this.businessEpoch) return
         this.stats = { ...EMPTY_STATS }
-        this.statsError = statsResult.status === 'rejected'
+        this.statsError = true
+      } finally {
+        if (epoch === this.businessEpoch) this.statsLoading = false
       }
-
-      await this.loadPrefsQuiet()
-      if (this.recipe.showSchedule) await this.loadScheduleQuiet()
-      this.loading = false
-      this.loadingRequest = false
     },
-    async loadScheduleQuiet() {
+    async loadScheduleQuiet(epoch = this.businessEpoch) {
       this.scheduleLoading = true
       this.scheduleError = false
       try {
         const u = currentUserFromToken() || {}
         const key = String(u.loginName || u.userId || '').trim()
         const res = await fetchMyScheduleToday(key)
+        if (epoch !== this.businessEpoch) return
         this.scheduleItems = Array.isArray(res.items) ? res.items : []
       } catch {
+        if (epoch !== this.businessEpoch) return
         // V3 施工手册 TP-W09：故障与"今天真的没课"是两种不同事实，不能都显示
         // "今天暂无安排"——教务接口故障时必须诚实报错，不能伪装成空。
         this.scheduleItems = []
         this.scheduleError = true
       } finally {
-        this.scheduleLoading = false
+        if (epoch === this.businessEpoch) this.scheduleLoading = false
       }
     },
-    async loadPrefsQuiet() {
+    async loadPrefsQuiet(epoch = this.businessEpoch) {
       try {
         const tk = tilesPrefKey(this.role)
         const fk = favoritesPrefKey(this.role)
         const items = await loadPrefs([tk, fk])
+        if (epoch !== this.businessEpoch) return
         this.tilePref = parseJsonPref(items[tk], { order: [], hidden: [] })
         this.favPaths = parseJsonPref(items[fk], [])
         if (!Array.isArray(this.favPaths)) this.favPaths = []
@@ -629,7 +670,7 @@ export default {
       if (ns === 'todoType') return this.byType[key] || 0
       // V3 施工手册 TP-W08：范围内统计（stats.workbench）故障时诚实返回 null（模板
       // 显示"—"），不能借 EMPTY_STATS 的兜底 0 冒充"范围内真的是 0"。
-      if (ns === 'stats') return this.statsError ? null : this.stats[key] || 0
+      if (ns === 'stats') return this.statsLoading || this.statsError ? null : this.stats[key] || 0
       if (ns === 'message') return this.unread || 0
       return 0
     },

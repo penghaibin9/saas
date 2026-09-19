@@ -155,6 +155,13 @@
         "miniapp/src/services/leavePresentation.js",
         "student-portal/src/services/leavePresentation.js"
       ]
+    },
+    {
+      "reason": "登录页与学生壳静态资源分别独立打包，均需随本地 Tabler 图标资源保留同一上游许可证",
+      "paths": [
+        "miniapp/src/static/login/TABLER-LICENSE.txt",
+        "miniapp/src/static/student-shell/TABLER-LICENSE.txt"
+      ]
     }
   ]
 }

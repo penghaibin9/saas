@@ -94,7 +94,7 @@ export default {
       const serial = ++this.requestSerial
       this.loading = true; this.error = ''
       try {
-        const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize, pendingArrival: true })
+        const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize, pendingArrival: true, batchId: this.$route?.query?.batchId || undefined })
         if (serial !== this.requestSerial) return
         if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       } catch (e) { if (serial === this.requestSerial) this.error = e.message || '加载失败' } finally { if (serial === this.requestSerial) this.loading = false }

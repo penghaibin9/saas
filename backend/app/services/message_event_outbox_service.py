@@ -21,6 +21,18 @@ log = logging.getLogger("app.message_outbox")
 
 # 首批登记的事件模板（请假样板）
 _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
+    "AUTH.PHONE_VERIFY_REMINDER": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "NORMAL",
+        "message_type": "SYSTEM", "title": "请完成本人登录号码验证", "require_ack": False,
+    },
+    "AUTH.PASSWORD_RESET": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "IMPORTANT",
+        "message_type": "SYSTEM", "title": "账号登录密码已重置", "require_ack": False,
+    },
+    "AUTH.PHONE_CHANGED": {
+        "source_module": "systemAdmin", "category": "SYSTEM", "priority": "IMPORTANT",
+        "message_type": "SYSTEM", "title": "账号登录号码已变更", "require_ack": False,
+    },
     "LEAVE.APPROVED": {
         "source_module": "student-affairs",
         "category": "BUSINESS",
@@ -132,6 +144,14 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "priority": "IMPORTANT",
         "message_type": "RETURNED_NOTICE",
         "title": "销假被退回",
+        "require_ack": False,
+    },
+    "CAMPUS_SERVICE.WORKORDER_UPDATED": {
+        "source_module": "campus-service",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "STATUS_CHANGED",
+        "title": "服务申请进度已更新",
         "require_ack": False,
     },
     "INTERNSHIP.RISK_CREATED": {
@@ -357,6 +377,24 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "实习周报提醒",
         "require_ack": False,
     },
+    # 周报的审核结果必须和状态变更在同一事务中入 outbox。不能只让学生下次
+    # 手动打开周报页才发现被退回，否则真实的“退回→修改重交”闭环会断开。
+    "INTERNSHIP.WEEKLY_RETURNED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "RETURNED_NOTICE",
+        "title": "实习周报已退回",
+        "require_ack": False,
+    },
+    "INTERNSHIP.WEEKLY_APPROVED": {
+        "source_module": "internship",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "实习周报已通过",
+        "require_ack": False,
+    },
     # SP-E02/E04：就业去向登记单节点审批结果通知。
     "EMPLOYMENT_DESTINATION.APPROVED": {
         "source_module": "employment",
@@ -401,9 +439,13 @@ def emit_message_event(    db,
     dedup_key: Optional[str] = None,
     content: Optional[str] = None,
     title: Optional[str] = None,
+    tenant_id: int | None = None,
 ) -> Any:
     """同事务写入 outbox。调用方负责 commit。重复 dedup_key 返回已有行。"""
     from app.models import MessageEventOutbox
+    effective_tenant = int(tenant_id) if tenant_id is not None else _tid()
+    if effective_tenant <= 0:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少学校上下文", http_status=403)
 
     code = str(event_code or "").strip().upper()
     if code not in _EVENT_TEMPLATES:
@@ -413,7 +455,7 @@ def emit_message_event(    db,
 
     key = dedup_key or f"{code}:{source_biz_type}:{int(source_biz_id)}"
     existed = db.scalar(select(MessageEventOutbox).where(
-        MessageEventOutbox.tenant_id == _tid(),
+        MessageEventOutbox.tenant_id == effective_tenant,
         MessageEventOutbox.dedup_key == key,
         MessageEventOutbox.is_deleted.is_(False),
     ))
@@ -430,7 +472,7 @@ def emit_message_event(    db,
         "template": code,
     }
     row = MessageEventOutbox(
-        tenant_id=_tid(),
+        tenant_id=effective_tenant,
         event_code=code,
         source_module=source_module or tpl["source_module"],
         source_biz_type=source_biz_type,
@@ -448,7 +490,7 @@ def emit_message_event(    db,
             db.flush()
     except IntegrityError:
         existed = db.scalar(select(MessageEventOutbox).where(
-            MessageEventOutbox.tenant_id == _tid(),
+            MessageEventOutbox.tenant_id == effective_tenant,
             MessageEventOutbox.dedup_key == key,
             MessageEventOutbox.is_deleted.is_(False),
         ))

@@ -8,12 +8,15 @@ import { HOME_FAQS, HOME_PAIN_POINTS, IMPLEMENTATION_STEPS, LIFECYCLE_STAGES, PL
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
-const homeSource = fs.readFileSync(path.join(root, 'src/views/PortalHomeView.vue'), 'utf8')
+const homeSource = fs.readFileSync(path.join(root, 'src/views/PortalLegacyView.vue'), 'utf8')
 const salesSource = fs.readFileSync(path.join(root, 'src/views/official-site/OfficialSalesPageView.vue'), 'utf8')
 const prerenderSource = fs.readFileSync(path.join(root, 'scripts/prerender-official-site.mjs'), 'utf8')
 const publicAsset = (url) => path.join(root, 'public', url.replace(/^\//, ''))
 
-test('homepage keeps a concise sales narrative, visible system access and GEO answer layers', () => {
+test('legacy fallback keeps its sales narrative, visible system access and GEO answer layers', () => {
+  const gate = fs.readFileSync(path.join(root, 'src/views/PortalHomeView.vue'), 'utf8')
+  assert.ok(gate.includes('hasShowcaseAssets'))
+  assert.ok(gate.includes('./PortalLegacyView.vue'))
   assert.equal(HOME_PAIN_POINTS.length, 4)
   assert.equal(LIFECYCLE_STAGES.length, 6)
   assert.equal(WORK_HUB_PROOFS.length, 3)

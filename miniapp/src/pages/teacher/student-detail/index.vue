@@ -11,7 +11,7 @@
               <MobileRiskTag v-if="s.risk && s.risk.level !== 'LOW'" :level="s.risk.level" />
             </view>
             <text class="sd__sub">{{ s.base.studentNo }} · {{ s.base.className || '未分班' }}</text>
-            <text class="sd__sub">{{ stageText(s.base.stage) }} · {{ s.base.status || '—' }}</text>
+            <text class="sd__sub">{{ stageText(s.base.stage) }} · {{ studentStatusText(s.base.status) }}</text>
           </view>
         </view>
 
@@ -92,12 +92,8 @@
 import { teacherStudent360V3Api } from '@/services/teacherStudent360V3Api'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
-
-const RISK = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '严重', URGENT: '紧急' }
-const STAGE = {
-  ADMITTED: '录取', PRE_STUDENT_VERIFIED: '预备生', REGISTERED_PENDING_ENROLLMENT: '待注册',
-  ENROLLED: '在校', INTERN: '实习', GRADUATING: '毕业年级', GRADUATED: '已毕业', ALUMNI: '校友'
-}
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { studentStatusText, riskText, stageText, disciplineStatusText } from '@/services/student360Presentation'
 const ACTION_ICON = { RECORD_CONTACT: '联', NEW_TALK: '谈', FAMILY_CONTACT: '家', EMPLOYMENT_FOLLOWUP: '就' }
 
 function query(params) {
@@ -108,38 +104,56 @@ function query(params) {
 }
 
 export default {
-  data() { return { s: null, state: 'loading', id: '' } },
-  onLoad(q) { this.id = (q && q.id) || '' },
-  onShow() { if (this.id) this.load() },
+  data() { return { s: null, state: 'loading', id: '', readEpoch: 0, pageActive: true } },
+  onLoad(q) {
+    this.id = String((q && q.id) || '').trim()
+    if (!this.id) this.state = 'empty'
+  },
+  onShow() { this.pageActive = true; if (this.id) this.load() },
+  onHide() { this.pageActive = false; this.readEpoch += 1; this.s = null },
+  onUnload() { this.pageActive = false; this.readEpoch += 1; this.s = null },
   computed: {
     riskDescription() {
       if (!this.s || !this.s.risk) return ''
       const parts = []
       if (Number(this.s.risk.warningCount || 0) > 0) parts.push(`${this.s.risk.warningCount} 条学业预警`)
-      if (this.s.risk.internshipRisk && this.s.risk.internshipRisk !== 'NONE') parts.push(`实习 ${this.s.risk.internshipRisk}`)
-      if (this.s.risk.affairsRisk && this.s.risk.affairsRisk !== 'LOW') parts.push(`学工 ${this.s.risk.affairsRisk}`)
+      if (this.s.risk.internshipRisk && this.s.risk.internshipRisk !== 'NONE') parts.push(`实习风险：${riskText(this.s.risk.internshipRisk)}`)
+      if (this.s.risk.affairsRisk && this.s.risk.affairsRisk !== 'LOW') parts.push(`学工风险：${riskText(this.s.risk.affairsRisk)}`)
       return parts.join(' · ') || '存在需要关注的业务状态'
     }
   },
   methods: {
-    riskText(value) { return RISK[value] || value || '—' },
-    stageText(value) { return STAGE[value] || value || '当前阶段' },
-    statusText(value) { return value === 'EFFECTIVE' ? '存在生效处分' : (value || '存在记录') },
+    studentStatusText,
+    riskText,
+    stageText,
+    statusText: disciplineStatusText,
     actionIcon(key) { return ACTION_ICON[key] || '办' },
     formatTime(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
     load() {
+      const epoch = ++this.readEpoch
+      const identity = currentSessionGeneration()
+      const studentId = this.id
+      const current = () => this.pageActive && epoch === this.readEpoch && studentId === this.id && identity === currentSessionGeneration()
+      this.s = null
+      if (!this.id) {
+        this.s = null
+        this.state = 'empty'
+        return Promise.resolve()
+      }
       this.state = 'loading'
-      teacherStudent360V3Api.get(this.id).then((data) => {
+      return teacherStudent360V3Api.get(this.id).then((data) => {
+        if (!current()) return
         this.s = data && data.hasData ? data : null
         this.state = this.s ? 'ready' : 'empty'
       }).catch((error) => {
+        if (!current()) return
         const normalized = normalizeError(error)
         if (normalized.kind === 'forbidden' || normalized.kind === 'notfound') {
           toast(normalized.kind === 'forbidden' ? '无权限查看该学生' : '未找到该学生')
           this.s = null
-          this.state = 'empty'
+          this.state = normalized.kind === 'forbidden' ? 'forbidden' : 'empty'
         } else {
-          this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       })
     },

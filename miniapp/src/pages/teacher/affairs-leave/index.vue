@@ -132,7 +132,7 @@ export default {
         return { pending: this.pending, followup: this.followup }
       }).catch((e) => {
         if (epoch !== this.loadEpoch) return
-        this.state = 'error'
+        this.state = normalizeError(e).pageState || 'error'
         this._err(e, '加载')
         throw e
       }).finally(() => { if (typeof done === 'function') done() })

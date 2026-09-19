@@ -84,7 +84,7 @@ export default {
     LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '',
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', loadEpoch: 0,
       submitting: false, conflict: emptyConflict(), lastReceipt: null }
   },
   computed: {
@@ -110,6 +110,7 @@ export default {
     }
   },
   created() { this.load() },
+  beforeUnmount() { this.loadEpoch++ },
   methods: {
     onPickChip(text) {
       if (!text || this.submitting || this.conflict.active) return
@@ -117,11 +118,12 @@ export default {
       this.comment = cur ? cur + '；' + text : text
     },
     async load() {
+      const epoch = ++this.loadEpoch
       this.loading = true
       this.error = ''
       const id = this.$route.params.id
       const res = await internshipApi.getProcessReportDetail(id)
-      if (id !== this.$route.params.id) return // 队列快速跳转时丢弃过期响应
+      if (epoch !== this.loadEpoch || id !== this.$route.params.id) return
       if (res.code === 0) this.detail = res.data
       else this.error = res.message || '加载失败'
       this.loading = false

@@ -142,6 +142,52 @@ def test_orientation_real_file_import_export_roundtrip(client, db_mode):
     exported.close()
 
 
+def test_batch_workspace_import_is_bound_to_selected_batch(client, db_mode):
+    headers = _headers("SCHOOL_ADMIN")
+    ids = _authority()
+
+    def upload(batch_id, batch_no):
+        return client.post(
+            f"/api/v1/import/domain/orientation/validate-file?orientationBatchId={batch_id}",
+            headers=headers,
+            files={"file": ("batch-roster.xlsx", _xlsx([
+                [batch_no, "BOUND-LQ-1", "BOUND-CAND-1", "批次联调新生",
+                 "A1-COL", "A1-MAJ", "A1-CLS", "统招"]
+            ]), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+
+    # Blank spreadsheet batch inherits the explicitly chosen, tenant-checked batch.
+    preview = upload(ids["batch"], "")
+    assert preview.status_code == 200, preview.text
+    data = preview.json()["data"]
+    assert data["status"] == "DRY_RUN_PASSED"
+    mismatch = upload(ids["batch"], "WRONG-BATCH").json()["data"]
+    assert mismatch["status"] == "DRY_RUN_FAILED"
+    assert "当前迎新批次不一致" in mismatch["errors"][0]["message"]
+    assert upload(99999999, "").status_code == 404
+
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationBatch
+    from app.services.orientation_flow_service import ensure_published_flow_version
+    with get_sessionmaker()() as db:
+        foreign_flow = ensure_published_flow_version(db, TID + 1)
+        own_flow = ensure_published_flow_version(db, TID)
+        foreign = OrientationBatch(tenant_id=TID + 1, batch_no="FOREIGN", batch_name="另一校批次",
+                                   status="ACTIVE", planned_count=0, flow_version_id=foreign_flow.id)
+        closed = OrientationBatch(tenant_id=TID, batch_no="CLOSED", batch_name="结束批次",
+                                  status="CLOSED", planned_count=0, flow_version_id=own_flow.id)
+        db.add_all([foreign, closed]); db.commit()
+        foreign_id, closed_id = foreign.id, closed.id
+    assert upload(foreign_id, "").status_code == 404
+    assert upload(closed_id, "").status_code == 400
+    receipt = client.post("/api/v1/import/domain/confirm", headers={
+        **headers, "Idempotency-Key": "batch-workspace-import"
+    }, json={"domain": "orientation", "batchNo": data["batchNo"]})
+    assert receipt.status_code == 200, receipt.text
+    rows = client.get(f"/api/v1/orientation/students?batchId={ids['batch']}", headers=headers).json()["data"]["items"]
+    assert len(rows) == 1 and rows[0]["admissionNo"] == "BOUND-LQ-1"
+
+
 def test_orientation_import_export_rejects_unrelated_dorm_role(client, db_mode):
     headers = _headers("DORM_MANAGER")
     assert client.get(

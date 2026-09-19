@@ -16,8 +16,8 @@
  * 复用工作台壳上下文；侧栏由 navPlan「消息中心」叶子驱动。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
-import { fetchLayoutContext, fetchMessageCount } from '@/modules/workbench/api/workbench.api'
+import LoadingState from '@/components/business/LoadingState.vue'
+import { fetchLayoutContext } from '@/modules/workbench/api/workbench.api'
 import { messageCenterPickerAdapters } from '@/modules/messageCenter/pickerAdapters'
 import router from '@/router'
 
@@ -40,15 +40,7 @@ export default {
   },
   async created() {
     try {
-      const base = await fetchLayoutContext()
-      let messageUnreadCount = 0
-      try {
-        const cnt = await fetchMessageCount()
-        messageUnreadCount = (cnt && cnt.unread) || 0
-      } catch {
-        /* 角标失败不阻断页面 */
-      }
-      this.ctx = { ...base, messageUnreadCount }
+      this.ctx = await fetchLayoutContext()
     } catch {
       this.ctx = {
         tenantBrandConfig: { schoolName: '管理端' },

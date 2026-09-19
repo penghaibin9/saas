@@ -51,7 +51,7 @@
 
 <script>
 import { teacherStudentV3Api, TEACHER_STUDENT_PAGE_SIZE } from '@/services/teacherStudentV3Api'
-import { toastError } from '@/services/request'
+import { normalizeError, toastError } from '@/services/request'
 import { decodeQueryText, go } from '@/utils/nav'
 
 export default {
@@ -66,14 +66,21 @@ export default {
       classId: '',
       className: '',
       keywordInput: '',
-      keyword: ''
+      keyword: '',
+      _loadEpoch: 0,
+      _pageActive: true
     }
   },
   onLoad(q) {
+    this._pageActive = true
     this.classId = (q && q.classId) || ''
     // H5 路由会对已编码的中文 query 再编码一次；兼容微信宿主的一次编码和 H5 的双重编码。
     this.className = decodeQueryText(decodeQueryText(q && q.className))
     this.reload()
+  },
+  onUnload() {
+    this._pageActive = false
+    this._loadEpoch += 1
   },
   onReachBottom() {
     this.loadMore()
@@ -90,13 +97,20 @@ export default {
         this.nextCursor = ''
         this.hasMore = false
       }
+      const epoch = this._loadEpoch + 1
+      this._loadEpoch = epoch
+      const request = {
+        classId: this.classId,
+        keyword: this.keyword,
+        cursor: append ? this.nextCursor : '',
+        pageSize: TEACHER_STUDENT_PAGE_SIZE
+      }
       try {
-        const data = await teacherStudentV3Api.list({
-          classId: this.classId,
-          keyword: this.keyword,
-          cursor: append ? this.nextCursor : '',
-          pageSize: TEACHER_STUDENT_PAGE_SIZE
-        })
+        const data = await teacherStudentV3Api.list(request)
+        // Search, refresh and load-more can overlap on a slow network.  A late
+        // response belongs to its original filter/cursor and must not overwrite
+        // the newer server page or attach an old cursor to the next request.
+        if (!this._pageActive || this._loadEpoch !== epoch) return
         const incoming = Array.isArray(data && data.items) ? data.items : []
         if (append) {
           const seen = new Set(this.items.map((item) => String(item.studentId)))
@@ -109,13 +123,14 @@ export default {
         this.hasMore = Boolean(data && data.hasMore && this.nextCursor)
         this.state = 'ready'
       } catch (error) {
+        if (!this._pageActive || this._loadEpoch !== epoch) return
         if (append) {
           toastError(error)
         } else {
-          this.state = 'error'
+          this.state = normalizeError(error).pageState || 'error'
         }
       } finally {
-        this.loadingMore = false
+        if (this._pageActive && this._loadEpoch === epoch) this.loadingMore = false
       }
     },
     reload() {

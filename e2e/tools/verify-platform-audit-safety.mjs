@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, expect } from '@playwright/test'
 import { createServer } from '../../frontend/node_modules/vite/dist/node/index.js'
+import { acceptInAppConfirm } from '../lib/in-app-dialog.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const out = path.join(root, 'artifacts/platform-workspace/audited-ui')
 const report = { realVue: true, liveBackend: false, credentialsUsed: false, irreversibleOperations: false, checks: [], pageErrors: [], apiRequests: [] }
@@ -22,7 +23,6 @@ try {
   server = await createServer({ root: path.join(root, 'frontend'), configFile: path.join(root, 'frontend/vite.config.js'), server: {host:'127.0.0.1', port:5179, strictPort:true, open:false} })
   await server.listen(); browser = await chromium.launch({ headless:true }); page = await browser.newPage({ viewport:{width:1366,height:950} })
   page.on('pageerror', error => report.pageErrors.push(String(error)))
-  page.on('dialog', dialog => dialog.accept())
   await page.route(/^https?:\/\/[^/]+\/api\//, route => {report.apiRequests.push(route.request().url()); return route.abort()})
   await check('portal failed read has retry but no editable defaults or save', async () => {
     await open('portal','read-error')
@@ -85,15 +85,18 @@ try {
   await check('reversible request and cancel display state transitions in the real component', async () => {
     await open('exit'); await page.locator('textarea').fill('隔离验证学校申请终止服务核验流程')
     await page.getByRole('button',{name:'发起退租并冻结只读',exact:true}).click()
+    await acceptInAppConfirm(page, { confirmText: '冻结并继续' })
     await expect(page.locator('.top__job-grid')).toContainText('已冻结只读')
     await page.getByPlaceholder('取消原因（至少 5 个字符）').fill('核验结束继续使用')
     await page.getByRole('button',{name:'取消退租',exact:true}).click()
+    await acceptInAppConfirm(page, { confirmText: '取消退租并恢复' })
     await expect(page.getByRole('button',{name:'发起退租并冻结只读',exact:true})).toBeVisible()
     assert.deepEqual((await writes()).map(item=>item.operation),['offboard-request','offboard-cancel'])
   })
   await check('unconfirmed offboarding request cannot repeat from the same record', async () => {
     await open('exit','save-error'); await page.locator('textarea').fill('隔离验证学校申请终止服务核验流程')
     await page.getByRole('button',{name:'发起退租并冻结只读',exact:true}).click()
+    await acceptInAppConfirm(page, { confirmText: '冻结并继续' })
     await expect(page.getByRole('button',{name:'发起退租并冻结只读',exact:true})).toBeDisabled()
     await page.getByRole('button',{name:'只读取当前状态',exact:true}).click()
     await expect(page.getByRole('button',{name:'发起退租并冻结只读',exact:true})).toBeDisabled()

@@ -168,10 +168,13 @@ def _submit_and_approve(client, hdr, tid):
     """走完提交→真实学院受理人审核→（回到 ACADEMIC_REVIEW，供调用方自行发布）。"""
     s = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
     assert s.status_code == 200, s.text
+    college_hdr = _hdr(client, "college_admin01")
+    evidence = client.get(f"{BASE}/grade-tasks/{tid}/review-evidence", headers=college_hdr)
+    assert evidence.status_code == 200, evidence.text
     r = client.post(
         f"{BASE}/grade-tasks/{tid}/college-review",
-        headers=_hdr(client, "college_admin01"),
-        json={"action": "APPROVE"},
+        headers=college_hdr,
+        json={"action": "APPROVE", "expectedEvidenceHash": evidence.json()["data"]["evidenceHash"]},
     )
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "ACADEMIC_REVIEW"

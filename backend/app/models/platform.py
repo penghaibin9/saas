@@ -1,8 +1,10 @@
 """平台总控（P6）：通用配置存储 + 订单 + 公告。
-t_platform_config 为控制面 KV（tenant_id=0 表示全局默认）；t_order 按冻结册 §4.1.5。"""
+t_platform_config 为控制面 KV（tenant_id=0 表示全局默认）；t_order 按冻结册 §4.1.5。
+"""
 from __future__ import annotations
 
 from datetime import datetime
+import sys as _sys
 
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -58,3 +60,42 @@ class PlatformNotice(PKMixin, CommonMixin, Base):
                                         comment="DRAFT/PUBLISHED/OFFLINE")
     publish_at: Mapped[datetime | None] = mapped_column(DateTime)
     remark: Mapped[str | None] = mapped_column(String(500))
+
+
+# Register M1-M8 tables in Base.metadata while preserving the existing large
+# app.models aggregator. Existing services import models from ``app.models``;
+# expose the additions there without introducing a second model registry.
+from app.models.commercial import (  # noqa: E402,F401
+    CommercialInvoiceCase,
+    CommercialOrderItem,
+    CommercialRefundCase,
+    CommercialSkuVersion,
+    TenantCommercialProfile,
+    TenantModuleCancellationPlan,
+    TenantModuleOffboardingJob,
+    TenantModuleOffboardingStep,
+    TenantModuleState,
+    TenantModuleSubscriptionSource,
+)
+from app.models.commercial_operations import (  # noqa: E402,F401
+    CommercialAfterSalesLink,
+    CommercialServiceCostRecord,
+)
+
+_models_package = _sys.modules.get("app.models")
+if _models_package is not None:
+    for _model_name in (
+        "CommercialAfterSalesLink",
+        "CommercialInvoiceCase",
+        "CommercialOrderItem",
+        "CommercialRefundCase",
+        "CommercialServiceCostRecord",
+        "CommercialSkuVersion",
+        "TenantCommercialProfile",
+        "TenantModuleCancellationPlan",
+        "TenantModuleOffboardingJob",
+        "TenantModuleOffboardingStep",
+        "TenantModuleState",
+        "TenantModuleSubscriptionSource",
+    ):
+        setattr(_models_package, _model_name, globals()[_model_name])

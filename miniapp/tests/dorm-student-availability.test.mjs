@@ -20,3 +20,25 @@ test('returning to the dorm page refreshes teacher changes',()=>{
  page.onShow.call({load(){loaded++}})
  assert.equal(loaded,1)
 })
+
+test('returning from the file picker does not invalidate an in-flight submission', () => {
+ let loaded = 0
+ page.onShow.call({ submitting: true, load() { loaded++ } })
+ assert.equal(loaded, 0)
+})
+
+test('failed stay and rectification queries expose errors, not empty success', async () => {
+ const c = new Function('createSubmitLock', 'studentApi', 'affairsContractApi', 'normalizeError', 'currentSessionGeneration', script)(()=>({}),
+  {getMyDorm:async()=>({hasBed:false})}, {
+   getMyDormTransfers:async()=>({items:[]}),
+   getMyDormStays:async()=>{throw Error('住宿服务暂不可用')},
+   getMyDormRectifications:async()=>{throw Error('整改服务暂不可用')}
+  }, e=>({text:e.message}), () => 1)
+ const vm={...c.data(),...c.methods}
+ await vm.load()
+ assert.equal(vm.state,'ready')
+ assert.equal(vm.stayError,'住宿服务暂不可用')
+ assert.equal(vm.rectError,'整改服务暂不可用')
+ assert.match(source,/v-if="!rectError && !rectifications.length"/)
+ assert.match(source,/v-if="!stayError && !stays.length"/)
+})

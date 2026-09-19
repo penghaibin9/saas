@@ -18,8 +18,8 @@ test('D2-U PC helper exposes candidate → preview → token-bound confirm while
   assert.match(api, /bulk-register-preview`/)
   assert.match(api, /bulk-register`/)
   assert.match(api, /previewBulkRegistration/)
-  assert.match(api, /result\.data\?\.previewToken/)
-  assert.match(api, /confirmBulkRegistration\(batchId\)/)
+  assert.doesNotMatch(api, /previewTokens/)
+  assert.match(api, /confirmBulkRegistration\(batchId, previewToken\)/)
   assert.match(api, /body: \{ previewToken \}/)
   assert.match(api, /请先重新预览本次批量注册名单/)
 
@@ -51,7 +51,8 @@ test('D2-U batch panel is human-readable and has an explicit preview review gate
   assert.match(panel, /reviewed/)
   assert.match(panel, /confirmBulkRegistration/)
   assert.match(panel, /单次最多 100 人/)
-  assert.match(panel, /系统没有把部分失败伪装成整批成功/)
+  assert.match(panel, /v-for="item in result.items"/)
+  assert.match(panel, /item.message \|\| item.reason/)
 })
 
 test('D2-U shrinking the last page refetches the clamped valid page before committing rows', async () => {

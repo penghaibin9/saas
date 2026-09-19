@@ -6,6 +6,7 @@
 import { request } from '@/services/http'
 import { currentUserFromToken, getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
+import { projectModuleAccess } from '@/security/moduleEntitlement'
 import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
 /**
@@ -107,7 +108,8 @@ export async function fetchLayoutContext() {
   const [brandResult, contextResult, messageResult] = await Promise.allSettled([
     workbenchRead('tenant-brand', '/tenant/brand', {}, 60_000),
     workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000),
-    fetchMessageCount()
+    // 普通页面壳只需要角标，不能为它重算整份待办/审批快照。
+    workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
   ])
 
   if (brandResult.status === 'fulfilled' && brandResult.value) {
@@ -158,6 +160,7 @@ export async function fetchLayoutContext() {
     currentRole,
     dataScope,
     permissionPatterns,
+    ...projectModuleAccess(contextPayload),
     messageUnreadCount,
     ctxKey,
     readonlyTenant,

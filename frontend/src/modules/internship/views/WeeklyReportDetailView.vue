@@ -162,7 +162,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false,
-      openVersions: [], conflict: emptyConflict(), lastReceipt: null }
+      openVersions: [], conflict: emptyConflict(), lastReceipt: null, loadEpoch: 0 }
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.report.review') },
@@ -199,6 +199,7 @@ export default {
   created() {
     this.load()
   },
+  beforeUnmount() { this.loadEpoch++ },
   methods: {
     toggleVersion(i) {
       const at = this.openVersions.indexOf(i)
@@ -211,11 +212,12 @@ export default {
       this.comment = cur ? cur + '；' + text : text
     },
     async load() {
+      const epoch = ++this.loadEpoch
       this.loading = true
       this.error = ''
       const id = this.$route.params.id
       const res = await internshipApi.getWeeklyReportDetail(id)
-      if (id !== this.$route.params.id) return // 队列快速跳转时丢弃过期响应
+      if (epoch !== this.loadEpoch || id !== this.$route.params.id) return
       if (res.code === 0) this.detail = res.data
       else this.error = res.message
       this.loading = false

@@ -9,6 +9,7 @@ const root = resolve(here, '..')
 const read = (path) => readFileSync(resolve(root, path), 'utf8')
 
 const homePage = read('src/pages/student/home/index.vue')
+const shortcuts = read('src/pages/student/home/HomeQuickServices.vue')
 const agendaPage = read('src/pages/student/agenda/index.vue')
 const adapter = read('src/services/realApi.js')
 const homeAdapter = adapter.match(/export async function studentHomeReal\(\)[\s\S]*?\n\}/)[0]
@@ -26,15 +27,18 @@ test('S3 首页指标不再硬编码 null，真值缺失时显示 —', () => {
   assert.match(homePage, /Number\.isFinite\(value\) \? `\$\{value\}%` : '—'/)
 })
 
-test('S3 首页所有可点项都走 runAction，不再自己拼 route', () => {
+test('S3 首页业务对象走 runAction，全部服务是独立目录入口', () => {
   assert.match(homePage, /import \{ canNavigate, disabledReasonOf, runAction \} from '@\/services\/actionRouter'/)
-  assert.match(homePage, /@action="runAction\(home\.nextAction\)"/)
-  assert.match(homePage, /@click="runAction\(q\.action\)"/)
-  assert.match(homePage, /@handle="runAction\(t\.action\)"/)
+  assert.match(homePage, /@click\.stop="runAction\(home\.nextAction\)"/)
+  assert.match(homePage, /<HomeQuickServices :key="loadedContextKey" :defaults="home.quickServices"/)
+  assert.match(shortcuts, /runAction\(item.action, \{ side: 'student' \}\)/)
+  assert.match(homePage, /@click="runAction\(t\.action\)"/)
   assert.match(homePage, /@click="runAction\(n\.action\)"/)
   // 阻断项不得再统一丢去“我的申请”大厅
   assert.doesNotMatch(homePage, /go\('\/pages\/student\/my-applications\/index'\)/)
-  assert.doesNotMatch(homePage, /go\('\/pages\/student\/campus-service\/index'\)/)
+  const blockerSection = homePage.slice(homePage.indexOf('<!-- 当前阻断 -->'), homePage.indexOf('<!-- 今日安排'))
+  assert.doesNotMatch(blockerSection, /go\('\/pages\/student\/campus-service\/index'\)/)
+  assert.match(shortcuts, /allServices\(\) \{ go\('\/pages\/student\/campus-service\/index'\)/)
   assert.match(homePage, /@click="runAction\(b\.action\)"/)
 })
 

@@ -21,7 +21,7 @@ def __getattr__(name):
     return getattr(_legacy, name)
 
 
-def _enrolled_items(db, student_id, batch_id):
+def _enrolled_items(db, student_id, batch_id, membership=None):
     from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
 
     locked = db.query(AaSelectionRecord).filter(
@@ -45,13 +45,16 @@ def _enrolled_items(db, student_id, batch_id):
     for course in courses:
         if not course.teaching_task_id:
             continue
-        rows = db.query(AaScheduleItem).filter(
+        query = db.query(AaScheduleItem).filter(
             AaScheduleItem.tenant_id == _legacy._tid(),
             AaScheduleItem.batch_id == int(batch_id),
             AaScheduleItem.task_id == int(course.teaching_task_id),
             AaScheduleItem.status == "EFFECTIVE",
             AaScheduleItem.is_deleted.is_(False),
-        ).all()
+        )
+        if membership is not None:
+            query=query.filter(membership)
+        rows=query.all()
         for item in rows:
             if item.id in seen_item_ids:
                 continue
@@ -96,22 +99,39 @@ def merge_student_schedule_items(base_items, enrolled_items):
 
 def student_view(batch_id, user, student_id):
     """行政班课表 + 本人LOCKED选课，同一批次内合并并去重。"""
-    from app.models import AaScheduleItem, StudentProfile
+    from sqlalchemy import select, exists, or_
+    from app.models import AaScheduleItem, StudentProfile, AaTeachingClass, AaTeachingClassMember, AaTeachingClassRosterVersion
 
     with _legacy.session() as db:
         student = db.get(StudentProfile, int(student_id))
         if not student or student.is_deleted or student.tenant_id != _legacy._tid():
             raise _legacy.not_found("学生不存在")
 
-        base_items = (
-            _legacy._view(
-                db,
-                batch_id,
-                [AaScheduleItem.class_id == int(student.class_id)],
-            )
-            if student.class_id else []
-        )
-        enrolled_items = _enrolled_items(db, student.id, batch_id)
+        # Once a task has a formal teaching class, its current roster owns membership.
+        # Administrative class fallback is retained only for unprojected legacy tasks.
+        tid=_legacy._tid()
+        projected=exists(select(AaTeachingClass.id).where(
+            AaTeachingClass.tenant_id==tid,AaTeachingClass.teaching_task_id==AaScheduleItem.task_id,
+            AaTeachingClass.is_deleted.is_(False)))
+        roster_tasks=select(AaTeachingClass.teaching_task_id).join(AaTeachingClassRosterVersion,
+            (AaTeachingClassRosterVersion.id==AaTeachingClass.current_roster_version_id)
+            & (AaTeachingClassRosterVersion.teaching_class_id==AaTeachingClass.id)
+            & (AaTeachingClassRosterVersion.tenant_id==tid)
+            & (AaTeachingClassRosterVersion.status=='LOCKED')
+            & AaTeachingClassRosterVersion.is_deleted.is_(False)).join(AaTeachingClassMember,
+            (AaTeachingClassMember.teaching_class_id==AaTeachingClass.id)
+            & (AaTeachingClassMember.roster_version_id==AaTeachingClass.current_roster_version_id)
+            & (AaTeachingClassMember.tenant_id==tid)).where(
+                AaTeachingClass.tenant_id==tid,AaTeachingClass.status=='ACTIVE',AaTeachingClass.roster_status=='LOCKED',
+                AaTeachingClass.is_deleted.is_(False),AaTeachingClass.current_roster_version_id.is_not(None),
+                AaTeachingClassMember.student_id==student.id,AaTeachingClassMember.status=='ACTIVE',
+                AaTeachingClassMember.is_deleted.is_(False))
+        membership=AaScheduleItem.task_id.in_(roster_tasks)
+        if student.class_id:
+            membership=or_(membership,(AaScheduleItem.class_id==int(student.class_id)) & ~projected)
+        base_items=_legacy._view(db,batch_id,[membership])
+        enrolled_membership=or_(membership,~projected)
+        enrolled_items = _enrolled_items(db, student.id, batch_id,enrolled_membership)
         items = merge_student_schedule_items(base_items, enrolled_items)
-        note = "" if student.class_id else "学生无行政班归属；仅展示已锁定选课课程"
+        note = "" if items else "当前正式课表中暂无本人课程"
         return {"items": items, "note": note}

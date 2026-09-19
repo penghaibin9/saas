@@ -64,6 +64,29 @@ def _load_batch(db, batch_id, *, writable=True, lock=True):
     return batch
 
 
+def get_batch(batch_id, user) -> dict:
+    from app.models import AaScheduleBatch
+    from . import academic_affairs_schedule_truth_service as truth_service
+    from .academic_affairs_schedule_write_scope_r3 import assert_schedule_write_scope
+
+    with _base.session() as db:
+        batch = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _base._tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("课表批次不存在")
+        if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ADMIN":
+            assert_schedule_write_scope(db, user, batch)
+        return {
+            "batchId": str(batch.id), "batchName": batch.batch_name,
+            "termId": str(batch.term_id), "collegeId": str(batch.college_id) if batch.college_id else None,
+            "status": batch.status, "publishAt": _base._iso(batch.publish_at),
+            "supersedesBatchId": str(batch.supersedes_batch_id) if batch.supersedes_batch_id else None,
+            "activeTruth": truth_service.batch_truth(db, batch),
+        }
+
+
 def _task_batch_ids(db, batch) -> list[int]:
     from app.models import AaTeachingTaskBatch
 
@@ -216,10 +239,12 @@ def _classroom(db, task, text, *, preload=None):
                 AaClassroom.id == int(classroom_id),
                 AaClassroom.tenant_id == _base._tid(),
                 AaClassroom.is_deleted.is_(False),
-            ).first()
+            ).populate_existing().with_for_update().first()
         )
         if not room or room.status != "AVAILABLE":
             raise AppException("DATA_CONFLICT", "所选教室当前不可用", http_status=409)
+        if not room.allow_schedule:
+            raise AppException("DATA_CONFLICT", "所选教室未允许排课", http_status=409)
         if task.required_room_type and room.room_type != task.required_room_type:
             raise AppException(
                 "DATA_CONFLICT",
@@ -855,6 +880,8 @@ def start_correction_draft(batch_id, user, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "创建纠错草稿必须填写至少 5 个字的原因")
 
     with _base.session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
         source = _load_batch(db, batch_id)
         if source.status != "PUBLISHED":
             raise AppException(
@@ -980,8 +1007,10 @@ def publish(batch_id, user) -> dict:
     from app.services.message_event_outbox_service import emit_receiver_notice
 
     from . import academic_affairs_schedule_truth_service as truth_service
+    from . import academic_affairs_schedule_resource_guard as resource_guard
 
     with _base.session() as db:
+        resource_guard.lock_formal_authority(db)
         batch = _load_batch(db, batch_id)
         # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，
         # 同一学期就出现两份 PUBLISHED，学生的正式课表变得没有答案。
@@ -1006,6 +1035,7 @@ def publish(batch_id, user) -> dict:
                 "status": "PUBLISHED",
                 "notified": int(last.notified_count or 0) if last else 0,
                 "idempotent": True,
+                "activeTruth": truth_service.batch_truth(db, batch),
             }
         if batch.status != "PRE_PUBLISHED":
             raise AppException(
@@ -1020,7 +1050,14 @@ def publish(batch_id, user) -> dict:
                 f"仍有 {pending_objections} 条教师异议未处理，不能发布",
                 http_status=409,
             )
+        term = resource_guard.lock_term(db, batch.term_id)
+        policy.resolve_scope(db, batch_id=batch.id, writable=True)
         gate = gate_service.require_publishable(db, batch)
+        effective_items = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == _base._tid(), AaScheduleItem.batch_id == batch.id,
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
+        ).order_by(AaScheduleItem.id)).all()
+        resource_guard.require_no_booking_conflict(db, term, effective_items)
         # 全校共享资源（教师/教室/班级）跨批次校验：学院级批次内部合法不等于全校合法。
         # 换版草稿会完整复制当前正式版本；只排除本范围即将被它顶替的旧版本，
         # 其他学院/范围的正式课表仍必须参与共享资源冲突检测。

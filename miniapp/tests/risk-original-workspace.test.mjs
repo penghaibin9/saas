@@ -3,8 +3,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 const source=fs.readFileSync(new URL('../src/pages/teacher/risk-students/index.vue',import.meta.url),'utf8')
 const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm,'').replace('export default','return')
+const requestSource=fs.readFileSync(new URL('../src/services/request.js',import.meta.url),'utf8')
+const classification=requestSource.slice(requestSource.indexOf('export function isBusinessError'),requestSource.indexOf('/* ── 防刷屏'))
+const normalizeError=new Function(classification.replace(/export /g,'')+'\nreturn normalizeError')()
 function mount(request,api={}){
- const c=new Function('ensureTeacherPerformanceApi','realRequest','affairsContractApi',script)(()=>{},request,api)
+ const c=new Function('ensureTeacherPerformanceApi','realRequest','affairsContractApi','normalizeError',script)(()=>{},request,api,normalizeError)
  return {...c.data(),...c.methods,_pageActive:true,recordId:'9007199254740993'}
 }
 test('risk focus reads exact business record and uses server actions',async()=>{
@@ -26,4 +29,8 @@ test('successful close reads back authority state and original handle history',a
 })
 test('invalid deep link makes no request',async()=>{
  const vm=mount(()=>assert.fail('invalid request'));vm.recordId='x';await vm.loadRisk();assert.equal(vm.state,'error')
+})
+test('risk access denial is distinct from a failed read and clears the selected object',async()=>{
+ const vm=mount(async()=>{throw {code:403001,bizCode:'NO_PERMISSION'}});vm.risk={riskId:'previous'}
+ await vm.loadRisk();assert.equal(vm.state,'forbidden');assert.equal(vm.risk,null)
 })

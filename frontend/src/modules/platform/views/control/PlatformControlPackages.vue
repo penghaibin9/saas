@@ -23,6 +23,7 @@ import { AppButton, AppCard } from '@/components/ui'
 import { LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 export default {
   name: 'PlatformControlPackages',
@@ -42,7 +43,7 @@ export default {
       else toast.error(res.message)
     },
     async save(p) {
-      const reason = window.prompt('请输入套餐变更原因（至少 5 个字符）')
+      const reason = await systemPrompt({ title:'填写套餐变更原因', message:'变更原因将写入审计记录。', minLength:5, confirmText:'保存套餐变更' })
       if (!reason || reason.trim().length < 5) return
       const res = await platformControlApi.updatePackage(p.packageCode, {
         price: p.price, durationDays: p.durationDays, maxStudents: p.maxStudents,

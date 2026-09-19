@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="毕业资格审核 · 审核工作台"
-    subtitle="十一项跨域供数三态判定 · 学分/课程/实践达成审核 · 毕设/实习/处分状态联动 · 教务终审 · 归档"
+    :title="currentTabLabel"
+    :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,82 +11,33 @@
 
     <div class="mp-stack">
       <section v-if="actionReceipt" class="agc-receipt" role="status">
-        <div><strong>✓ {{ actionReceipt.title }}</strong><span>{{ actionReceipt.subject }} · {{ actionReceipt.businessId }}</span></div>
+        <div><strong>{{ actionReceipt.verified ? '✓' : '…' }} {{ actionReceipt.title }}</strong><span>{{ actionReceipt.subject }} · {{ actionReceipt.businessId }}</span></div>
         <div><small>处理结果</small><b>{{ actionReceipt.result }}</b></div>
         <div><small>下一步</small><b>{{ actionReceipt.next }}</b></div>
       </section>
-      <section class="agc-overview" aria-label="毕业审核批次健康概览">
-        <div class="agc-overview__top">
-          <div class="agc-overview__copy">
-            <span class="agc-eyebrow">当前毕业审核批次</span>
-            <h2>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</h2>
-            <p>
-              {{ currentBatch
-                ? batchHealthDescription
-                : '选择批次后，这里会基于现有应审、系统通过、系统异常、已终审和已归档事实给出办理优先级。' }}
-            </p>
-            <div class="agc-batch-select">
-              <AppGraduationBatchPicker
-                v-model="batchId"
-                :options="batchOptions"
-                :disabled="loadingBatches"
-                :placeholder="loadingBatches ? '批次加载中…' : '选择批次'"
-                @change="onBatchChange"
-              />
-            </div>
-          </div>
-
-          <aside v-if="currentBatch" :class="['agc-decision', batchHealthTone]">
-            <span>当前结论</span>
-            <strong>{{ batchHealthLabel }}</strong>
-            <div class="agc-progress-row">
-              <small>终审覆盖度</small>
-              <b>{{ finalProgressPct }}%</b>
-            </div>
-            <div class="agc-progress" aria-hidden="true">
-              <i :style="{ width: `${finalProgressPct}%` }"></i>
-            </div>
-            <div class="agc-next">
-              <small>建议下一动作</small>
-              <b>{{ batchNextAction }}</b>
-            </div>
-          </aside>
+      <section class="agc-context" aria-label="毕业审核批次健康概览">
+        <div class="agc-context__object">
+          <span class="agc-eyebrow">当前毕业审核批次</span>
+          <strong>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</strong>
+          <small>{{ currentBatch ? `来源：毕业审核批次 #${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
+          <AppGraduationBatchPicker
+            v-model="batchId"
+            :options="batchOptions"
+            :disabled="loadingBatches || !!pendingWrite"
+            :placeholder="loadingBatches ? '批次加载中…' : '选择批次'"
+            @change="onBatchChange"
+          />
         </div>
-
-        <div v-if="currentBatch" class="agc-metrics">
-          <article>
-            <span>应审学生</span>
-            <strong>{{ batchTotal }}</strong>
-            <small>本批次纳入审核范围</small>
-          </article>
-          <article class="is-pass">
-            <span>系统通过</span>
-            <strong>{{ batchPassed }}</strong>
-            <small>共享毕业核验器通过</small>
-          </article>
-          <article :class="{ 'is-risk': batchAbnormal > 0 }">
-            <span>系统异常</span>
-            <strong>{{ batchAbnormal }}</strong>
-            <small>{{ batchAbnormal ? '优先核对责任模块证据' : '当前无系统异常' }}</small>
-          </article>
-          <article class="is-final">
-            <span>已终审</span>
-            <strong>{{ batchConcluded }}</strong>
-            <small>已形成正式终审结论</small>
-          </article>
-          <article class="is-archive">
-            <span>已归档</span>
-            <strong>{{ batchArchived }}</strong>
-            <small>按既有归档范围收敛</small>
-          </article>
-        </div>
-
-        <EmptyState
-          v-if="!loadingBatches && !batches.length"
-          title="暂无审核批次"
-          description="请先到「审核批次」页新建批次并执行预审"
-        />
+        <div><span>当前结论</span><strong>{{ batchHealthLabel || '等待选择' }}</strong><small>{{ currentBatch ? `系统通过 ${batchPassed} · 异常 ${batchAbnormal} · 已形成正式终审结论 ${batchConcluded}` : '选择批次后读取正式状态' }}</small></div>
+        <div><span>当前责任</span><strong>{{ currentOwner }}</strong><small>{{ responsibilityReason }}</small></div>
+        <div><span>当前阻断</span><strong :class="{ 'is-risk-text': batchAbnormal > 0 }">{{ currentBlocker }}</strong><small>建议下一动作：{{ batchNextAction }}</small></div>
+        <div><span>下一岗位</span><strong>{{ nextOwner }}</strong><small>完成当前主动作后回到本批次原队列</small></div>
       </section>
+
+      <GraduationStageRail :active="stageIndex" />
+      <div v-if="currentBatch" class="agc-coverage"><span>终审覆盖度</span><b>{{ finalProgressPct }}%</b><i><em :style="{ width: `${finalProgressPct}%` }"></em></i></div>
+
+      <EmptyState v-if="!loadingBatches && !batches.length" title="暂无审核批次" description="请先到「审核批次」页新建批次并执行预审" />
 
       <div class="agc-tabs" aria-label="毕业审核工作区">
         <button
@@ -96,6 +47,34 @@
           @click="switchTab(t.key)"
         >{{ t.label }}</button>
       </div>
+
+      <section v-if="showEvidenceBoard && queueRows.length" class="agc-evidence-board" aria-label="毕业资格证据办理工作区">
+        <aside class="agc-queue">
+          <header><strong>责任队列</strong><span>{{ pagination.total || queueRows.length }} 人</span></header>
+          <button v-for="row in queueRows.slice(0, 8)" :key="row.resultId" :class="{ 'is-active': focusedRow && row.resultId === focusedRow.resultId }" @click="focusResult(row)">
+            <span>{{ row.realName || row.studentName || `学生 ${row.studentId}` }}</span>
+            <small>{{ row.studentNo || row.studentId }} · {{ statusLabel(row.status) }}</small>
+          </button>
+        </aside>
+        <article v-if="focusedRow" class="agc-focus">
+          <header>
+            <div><span class="agc-eyebrow">当前学生对象</span><h2>{{ focusedRow.realName || focusedRow.studentName || `学生 ${focusedRow.studentId}` }}</h2><small>正式审核结果 #{{ focusedRow.resultId }} · 来源批次 #{{ focusedRow.batchId }}</small></div>
+            <AppStatusTag :type="overallColor(focusedRow.overall)" dot>{{ overallLabel(focusedRow.overall) }}</AppStatusTag>
+          </header>
+          <div class="agc-focus__items">
+            <div v-for="item in focusedItems" :key="item.item" class="agc-focus__item">
+              <span>{{ itemLabel(item.item) }}</span>
+              <AppStatusTag :type="gradItemColor(item.result)" dot>{{ itemResultLabel(item.result) }}</AppStatusTag>
+              <p>{{ item.evidence || '当前正式证据未提供' }}</p>
+              <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
+            </div>
+          </div>
+          <footer>
+            <span>{{ currentBlocker }}</span>
+            <AppButton variant="primary" @click="openDetail(focusedRow)">{{ tab === 'final' ? '核对十一项并终审' : '查看十一项完整证据' }}</AppButton>
+          </footer>
+        </article>
+      </section>
 
       <template v-if="!batchId">
         <EmptyState title="请先选择批次" description="从上方选择一个审核批次后再进入具体审核工作区" />
@@ -126,8 +105,8 @@
           </template>
           <template #cell-ops="{ row }">
             <template v-if="tab === 'fee'">
-              <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'CLEARED')">勾选已结清</button>
-              <button class="mp-link" :disabled="feeBusy" @click="markFee(row, 'OWED')">勾选仍欠费</button>
+              <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'CLEARED')">勾选已结清</button>
+              <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'OWED')">勾选仍欠费</button>
             </template>
             <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
             <button class="mp-link" @click="openDetail(row)">十一项详情</button>
@@ -252,7 +231,7 @@
       <template v-else-if="tab === 'archive'">
         <AppSectionCard title="归档操作">
           <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档（ARCHIVED）；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
-          <AppButton variant="primary" :disabled="!batchId || archiving" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
+          <AppButton variant="primary" :disabled="!canManagePermission || !batchId || archiving || !!pendingWrite" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
         </AppSectionCard>
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -263,7 +242,7 @@
       </template>
     </div>
 
-    <AppDrawer :visible="detail.visible" title="预审结果详情（十一项）" mode="modal" size="xlarge" @close="detail.visible = false">
+    <AppDrawer :visible="detail.visible" title="预审结果详情（十一项）" mode="modal" size="xlarge" @close="closeDetail">
       <template v-if="detail.row">
         <div class="agc-detail-head">
           <div>
@@ -353,6 +332,11 @@ import {
   CONCLUSION_LABEL, GRAD_STATUS_LABEL, GRAD_FAIL_GROUPS
 } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
+import { matchPermission } from '@/config/navPlan'
+import { systemConfirm } from '@/services/systemDialog'
+import GraduationStageRail from '@/modules/academicAffairs/components/graduation/GraduationStageRail.vue'
 
 const TAB_CONFIG = {
   credit: { label: '学分达成审核', item: 'CREDIT' },
@@ -375,6 +359,7 @@ const LINK_ITEM = {
 }
 
 const freshPagination = () => ({ page: 1, pageSize: 20, total: 0 })
+const exactId = value => typeof value === 'string' && value.trim() ? value : (typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '')
 
 // 后端事实语义：费用结清默认 UNKNOWN（不阻断）；用户界面展示为“待治理”。
 export default {
@@ -382,11 +367,12 @@ export default {
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
     AppSectionCard, AppConfirmDialog, AppInlineAlert, AppDrawer, AppStatusTag,
-    AppGraduationBatchPicker, AppRadioGroup
+    AppGraduationBatchPicker, AppRadioGroup, GraduationStageRail
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      alive: true, scope: 0, readSeq: {}, pendingWrite: null,
       CONCLUSION_LABEL,
       conclusionOptions: Object.entries(CONCLUSION_LABEL).map(([value, label]) => ({ value, label })),
       tabs: Object.keys(TAB_CONFIG).map((key) => ({ key, label: TAB_CONFIG[key].label })),
@@ -435,12 +421,43 @@ export default {
       reasonColumns: [
         { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
         { key: 'reason', title: '不通过原因' }, { key: 'ops', title: '操作', width: '100px' }
-      ]
+      ],
+      focusedResultId: ''
     }
   },
   computed: {
+    identity() { const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns]) },
+    canCollegePermission(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.collegeReview')},
+    canFinalPermission(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.final')},
+    canManagePermission(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.manage')},
     currentTabLabel() { return TAB_CONFIG[this.tab] ? TAB_CONFIG[this.tab].label : '' },
-    currentBatch() { return this.batches.find((b) => b.batchId === this.batchId) || null },
+    pageSubtitle() {
+      const copy = {
+        roster: '确认批次正式学生范围，查看毕业、结业与延毕名单',
+        credit: '核对学分达成证据，异常返回培养与成绩责任模块治理',
+        course: '分别核对必修课程与选修学分，保留两类正式证据',
+        practice: '核对培养方案要求的实践环节完成证据',
+        thesis: '读取毕业设计正式状态，缺失或未通过时返回责任模块',
+        internship: '读取岗位实习正式状态，缺失或未通过时返回责任模块',
+        fee: '财务未供数时保持 UNKNOWN；人工标记必须回读正式结果',
+        discipline: '核对未解除处分等正式阻断证据',
+        final: '逐项查看十一项正式证据，锁定学生与审核结果后执行终审',
+        reason: '按系统异常、学院退回和延毕分类返回责任岗位治理',
+        results: '查看正式预审、学院审核与教务终审结论',
+        archive: '封存已终审结果；UNKNOWN 与未闭环对象继续留在责任队列'
+      }
+      return copy[this.tab] || '毕业资格审核工作区'
+    },
+    stageIndex(){return ['roster'].includes(this.tab)?1:['credit','course','practice','thesis','internship','fee','discipline','reason'].includes(this.tab)?2:this.tab==='final'?4:['results','archive'].includes(this.tab)?5:0},
+    queueRows(){return this.tab==='course'?[...this.courseRequiredRows,...this.courseElectiveRows].filter((row,index,all)=>all.findIndex(item=>String(item.resultId)===String(row.resultId))===index):this.rows},
+    focusedRow(){return this.queueRows.find(row=>String(row.resultId)===String(this.focusedResultId))||this.queueRows[0]||null},
+    focusedItems(){if(!this.focusedRow)return[];if(this.tab==='final')return this.focusedRow.items||[];if(this.tab==='course')return (this.focusedRow.items||[]).filter(item=>['COURSE_REQUIRED','COURSE_ELECTIVE'].includes(item.item));const item=this.itemOf(this.focusedRow);return item?.item?[item]:[]},
+    showEvidenceBoard(){return ['credit','course','practice','thesis','internship','discipline','fee','final'].includes(this.tab)},
+    currentOwner(){if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
+    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.tab==='final')return'学院初审通过且系统预审通过，轮到教务终审';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;return'当前阶段需要核对正式证据与责任来源'},
+    currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
+    nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
+    currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
     batchTotal() { return Number(this.currentBatch?.total || 0) },
     batchPassed() { return Number(this.currentBatch?.passed || 0) },
     batchAbnormal() { return Number(this.currentBatch?.abnormal || 0) },
@@ -483,7 +500,7 @@ export default {
     },
     batchOptions() {
       return this.batches.map((b) => ({
-        value: b.batchId,
+        value: String(b.batchId),
         label: `${b.batchName}（${b.status}，应审 ${b.total}）`
       }))
     },
@@ -507,26 +524,37 @@ export default {
       }))
     }
   },
+  watch:{identity(){this.reloadForIdentity()},'$route.query':{deep:true,handler(q){if(this.loading||this.detailBusy||this.finalDlg.submitting||this.archiving)return;const tab=q?.tab&&TAB_CONFIG[q.tab]?q.tab:this.tab;const batch=q?.batchId?String(q.batchId):this.batchId;if(tab!==this.tab||batch!==this.batchId){this.scope++;this.tab=tab;this.batchId=batch;this.detail={visible:false,row:null};this.actionReceipt=null;this.pagination.page=1;this.resetSpecialPagination();this.loadTab()}}}},
   async created() {
     const q = this.$route && this.$route.query
     if (q && q.tab && TAB_CONFIG[q.tab]) this.tab = q.tab
     await this.loadBatches()
-    if (q && q.batchId && this.batches.some((b) => b.batchId === q.batchId)) this.batchId = q.batchId
+    if (q && q.batchId && this.batches.some((b) => String(b.batchId) === String(q.batchId))) this.batchId = String(q.batchId)
     else if (this.batches.length) this.batchId = (this.batches.find((b) => b.status !== 'ARCHIVED') || this.batches[0]).batchId
     await this.loadTab()
     if (q && q.resultId) {
-      const res = await academicAffairsApi.getGradResult(q.resultId)
-      if (res.code === 0) this.openDetail(res.data)
-      else toast.error(res.message || '指定毕业审核结果加载失败')
+      const requested=exactId(q.resultId);if(!requested){toast.error('指定毕业审核结果标识无效');return}
+      const res = await academicAffairsApi.getGradResult(requested)
+      if (res.code === 0&&exactId(res.data?.resultId)===requested&&String(res.data?.batchId)===String(this.batchId)) this.openDetail(res.data)
+      else toast.error('指定毕业审核结果与当前批次不一致，已阻止办理')
     }
   },
+  beforeUnmount(){this.alive=false;this.invalidatePrivate()},
   methods: {
+    token(kind){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,route:this.$route.fullPath,batchId:String(this.batchId),tab:this.tab}},
+    current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
+    denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
+    invalidatePrivate(){this.scope++;this.readSeq={};this.batches=[];this.batchId='';this.rows=[];this.courseRequiredRows=[];this.courseElectiveRows=[];this.rosterData=null;this.reasonRows={SYSTEM_ABNORMAL:[],REJECTED:[],DELAYED:[]};this.detail={visible:false,row:null};this.focusedResultId='';this.actionReceipt=null;this.pendingWrite=null;this.loading=false;this.loadingBatches=false;this.detailBusy=false;this.archiving=false;this.feeBusy=false;this.finalDlg={visible:false,submitting:false};this.archiveDlg={visible:false};this.collegeRejectDlg={visible:false}},
+    async reloadForIdentity(){this.invalidatePrivate();await this.loadBatches();if(!this.alive)return;this.batchId=String((this.batches.find((b)=>b.status!=='ARCHIVED')||this.batches[0])?.batchId||'');await this.loadTab()},
+    fail(err,fallback){if(this.denied(err))this.invalidatePrivate();return gradeError(err,fallback)},
     gradItemColor, overallColor,
     itemLabel(i) { return GRAD_ITEM_LABEL[i] || i },
     itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
+    ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERNSHIP_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
+    focusResult(row){if(!row||this.pendingWrite)return;this.focusedResultId=String(row.resultId||'')},
     itemOf(row, key) {
       const target = key || (TAB_CONFIG[this.tab] && TAB_CONFIG[this.tab].item)
       return (row.items || []).find((it) => it.item === target) || row.itemDetail || {}
@@ -539,11 +567,11 @@ export default {
       return LINK_ITEM[cfg.item](it.refId)
     },
     canCollegeApprove(r) {
-      return Boolean(r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canCollegeReject(r) { return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
     canCollegeReview(r) { return this.canCollegeApprove(r) || this.canCollegeReject(r) },
-    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canNormalFinal(r) { return Boolean(this.canFinalPermission&&!this.pendingWrite&&r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     resetSpecialPagination() {
       this.courseRequiredPagination = freshPagination()
       this.courseElectivePagination = freshPagination()
@@ -554,29 +582,16 @@ export default {
       }
     },
     async markFee(row, status) {
-      if (!this.batchId || this.feeBusy) return
+      if (!this.canManagePermission || !this.batchId || this.feeBusy || this.pendingWrite) return
       const label = status === 'CLEARED' ? '已结清' : '仍欠费'
-      if (!window.confirm(`确认将 ${row.realName || row.studentNo || row.studentId} 费用状态勾选为「${label}」？`)) return
-      this.feeBusy = true
-      try {
-        const res = await academicAffairsApi.markFeeClearance(this.batchId, {
-          studentNo: row.studentNo,
-          studentId: row.studentId,
-          status,
-          evidence: `人工勾选过渡（${label}）`
-        })
-        if (res.code === 0) {
-          toast.success('费用结清已勾选')
-          await this.loadTab()
-        } else toast.error(res.message || '勾选失败')
-      } catch (e) {
-        toast.error((e && e.message) || '勾选失败')
-      } finally {
-        this.feeBusy = false
-      }
+      if (!await systemConfirm({ title:'确认费用状态', message:`确认将 ${row.realName || row.studentNo || row.studentId} 费用状态勾选为「${label}」？`, confirmText:`确认${label}` })) return
+      const batchId=String(this.batchId),payload={studentNo:row.studentNo,studentId:row.studentId,status,evidence:`人工勾选过渡（${label}）`},expected=status==='CLEARED'?'PASS':'FAIL';this.feeBusy=true
+      const ok=await this.performResultWrite('fee',row,()=>academicAffairsApi.markFeeClearance(batchId,payload),fresh=>(fresh.items||[]).some(item=>item.item==='FEE'&&item.result===expected),{title:'已核对正式费用证据',result:`费用状态：${label}`,next:'费用证据变化后应重新执行完整十一项预审'})
+      this.feeBusy=false;if(ok){toast.success('已回读费用证据');await this.loadTab()}
     },
     switchTab(k) {
-      if (this.loading || this.detailBusy || this.finalDlg.submitting || this.archiving) return
+      if (this.loading || this.detailBusy || this.finalDlg.submitting || this.archiving || this.pendingWrite) return
+      this.scope++;this.detail={visible:false,row:null};this.actionReceipt=null;this.focusedResultId=''
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
       this.pagination.page = 1
@@ -584,6 +599,8 @@ export default {
       this.loadTab()
     },
     onBatchChange() {
+      if(this.pendingWrite)return
+      this.scope++;this.detail={visible:false,row:null};this.actionReceipt=null;this.focusedResultId='';this.rows=[];this.courseRequiredRows=[];this.courseElectiveRows=[];this.rosterData=null
       this.$router.replace({ query: { ...this.$route.query, batchId: this.batchId } }).catch(() => {})
       this.pagination.page = 1
       this.resetSpecialPagination()
@@ -598,7 +615,7 @@ export default {
       this.loadReasonTab()
     },
     async loadBatches() {
-      this.loadingBatches = true
+      const c=this.token('batches');this.loadingBatches = true
       try {
         const pageSize = 100
         const all = []
@@ -606,44 +623,46 @@ export default {
         let total = 0
         do {
           const res = await academicAffairsApi.listGradBatches({ page, pageSize })
-          if (res.code !== 0) {
-            toast.error(res.message || '毕业审核批次加载失败')
-            return
-          }
+          if(!this.current(c))return
+          if (res.code !== 0) throw res
           const list = Array.isArray(res.data?.list) ? res.data.list : []
           all.push(...list)
           total = Number(res.data?.total || all.length)
           if (!list.length) break
           page += 1
         } while (all.length < total)
-        this.batches = all
+        if(this.current(c))this.batches = all
       } catch (e) {
-        toast.error((e && e.message) || '毕业审核批次加载失败')
+        if(this.current(c))toast.error(this.fail(e,'毕业审核批次加载失败'))
       } finally {
-        this.loadingBatches = false
+        if(this.current(c))this.loadingBatches=false
       }
+    },
+    async readGradBatch(batchId){
+      let page=1
+      while(page<=3){const res=await academicAffairsApi.listGradBatches({page,pageSize:20});if(res?.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};const found=res.data.list.find(row=>String(row.batchId)===String(batchId));if(found)return found;if(res.data.list.length<20||page*20>=Number(res.data.total))break;page++}
+      return null
     },
     async loadTab() {
       if (this.tab === 'course') { await this.loadCourseTab(); return }
       if (this.tab === 'roster') { await this.loadRosterTab(); return }
       if (this.tab === 'reason') { await this.loadReasonTab(); return }
       if (!this.batchId) { this.rows = []; this.pagination.total = 0; return }
-      this.loading = true
+      const c=this.token('tab');this.loading = true
       this.error = ''
       try {
         const cfg = TAB_CONFIG[this.tab] || {}
         const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
         if (cfg.item) params.item = cfg.item
         if (cfg.status) params.status = cfg.status
-        const res = await academicAffairsApi.getGradResults(this.batchId, params)
-        if (res.code === 0) {
-          this.rows = res.data.list
-          this.pagination.total = res.data.total
-        } else this.error = res.message || '毕业审核数据加载失败'
+        const res = await academicAffairsApi.getGradResults(c.batchId, params)
+        if(!this.current(c)||c.batchId!==String(this.batchId)||c.tab!==this.tab)return
+        if(res.code!==0)throw res;if(!Array.isArray(res.data?.list)||res.data.list.some(row=>String(row.batchId)!==c.batchId))throw {code:503}
+        this.rows=res.data.list;this.pagination.total=Number.isFinite(res.data.total)?res.data.total:res.data.list.length
       } catch (e) {
-        this.error = (e && e.message) || '毕业审核数据加载失败'
+        if(this.current(c))this.error=this.fail(e,'毕业审核数据加载失败')
       } finally {
-        this.loading = false
+        if(this.current(c))this.loading=false
       }
     },
     async loadCourseTab() {
@@ -654,47 +673,48 @@ export default {
         this.courseElectivePagination.total = 0
         return
       }
-      this.loading = true
+      const c=this.token('course');this.loading = true
       this.error = ''
       try {
         const [req, ele] = await Promise.all([
-          academicAffairsApi.getGradResults(this.batchId, {
+          academicAffairsApi.getGradResults(c.batchId, {
             item: 'COURSE_REQUIRED',
             page: this.courseRequiredPagination.page,
             pageSize: this.courseRequiredPagination.pageSize
           }),
-          academicAffairsApi.getGradResults(this.batchId, {
+          academicAffairsApi.getGradResults(c.batchId, {
             item: 'COURSE_ELECTIVE',
             page: this.courseElectivePagination.page,
             pageSize: this.courseElectivePagination.pageSize
           })
         ])
-        if (req.code === 0) {
+        if(!this.current(c)||c.batchId!==String(this.batchId)||this.tab!=='course')return
+        if(this.denied(req)||this.denied(ele))throw (this.denied(req)?req:ele)
+        if(req.code===0&&Array.isArray(req.data?.list)&&req.data.list.every(row=>String(row.batchId)===c.batchId)) {
           this.courseRequiredRows = req.data.list
           this.courseRequiredPagination.total = req.data.total
         } else this.error = req.message || '必修课程审核加载失败'
-        if (ele.code === 0) {
+        if (ele.code===0&&Array.isArray(ele.data?.list)&&ele.data.list.every(row=>String(row.batchId)===c.batchId)) {
           this.courseElectiveRows = ele.data.list
           this.courseElectivePagination.total = ele.data.total
         } else this.error = this.error || ele.message || '选修课程审核加载失败'
       } catch (e) {
-        this.error = (e && e.message) || '课程达成审核加载失败'
+        if(this.current(c))this.error=this.fail(e,'课程达成审核加载失败')
       } finally {
-        this.loading = false
+        if(this.current(c))this.loading=false
       }
     },
     async loadRosterTab() {
       if (!this.batchId) { this.rosterData = null; return }
-      this.loading = true
+      const c=this.token('roster');this.loading = true
       this.error = ''
       try {
-        const res = await academicAffairsApi.getGradRosters(this.batchId)
-        if (res.code === 0) this.rosterData = res.data
-        else this.error = res.message || '毕业名单加载失败'
+        const res = await academicAffairsApi.getGradRosters(c.batchId);if(!this.current(c)||c.batchId!==String(this.batchId)||this.tab!=='roster')return
+        if(res.code!==0)throw res;if(!['graduated','completed','delayed'].every(key=>Array.isArray(res.data?.[key])))throw {code:503};this.rosterData=res.data
       } catch (e) {
-        this.error = (e && e.message) || '毕业名单加载失败'
+        if(this.current(c))this.error=this.fail(e,'毕业名单加载失败')
       } finally {
-        this.loading = false
+        if(this.current(c))this.loading=false
       }
     },
     async loadReasonTab() {
@@ -703,23 +723,25 @@ export default {
         Object.values(this.reasonPagination).forEach((p) => { p.total = 0 })
         return
       }
-      this.loading = true
+      const c=this.token('reason');this.loading = true
       this.error = ''
       try {
         const results = await Promise.all(GRAD_FAIL_GROUPS.map((g) => {
           const pg = this.reasonPagination[g.status] || freshPagination()
-          return academicAffairsApi.getGradResults(this.batchId, {
+          return academicAffairsApi.getGradResults(c.batchId, {
             status: g.status,
             page: pg.page,
             pageSize: pg.pageSize
           })
         }))
+        if(!this.current(c)||c.batchId!==String(this.batchId)||this.tab!=='reason')return
+        const forbidden=results.find(r=>this.denied(r));if(forbidden)throw forbidden
         const next = {}
         let firstErr = ''
         GRAD_FAIL_GROUPS.forEach((g, idx) => {
           const r = results[idx]
           const pg = this.reasonPagination[g.status]
-          if (r.code === 0) {
+          if (r.code===0&&Array.isArray(r.data?.list)&&r.data.list.every(row=>String(row.batchId)===c.batchId)) {
             next[g.status] = r.data.list
             if (pg) pg.total = r.data.total
           } else {
@@ -731,9 +753,9 @@ export default {
         this.reasonRows = next
         this.error = firstErr
       } catch (e) {
-        this.error = (e && e.message) || '不通过原因加载失败'
+        if(this.current(c))this.error=this.fail(e,'不通过原因加载失败')
       } finally {
-        this.loading = false
+        if(this.current(c))this.loading=false
       }
     },
     reasonText(row) {
@@ -744,10 +766,16 @@ export default {
       if (fails.length) parts.push(fails.join('；'))
       return parts.join('；') || '暂无明细，请点右侧「十一项详情」核对'
     },
+    resultSignature(row){return JSON.stringify([String(row?.resultId||''),String(row?.batchId||''),row?.status||'',row?.overall||'',row?.version??null,(row?.items||[]).map(item=>[item.item,item.result,item.evidence??null,item.refId??null,item.evidenceHash||'',item.checkedAt||''])])},
+    freezeDecision(row){return {scope:this.scope,identity:this.identity,route:this.$route.fullPath,row:JSON.parse(JSON.stringify(row)),conclusion:this.finalConclusion}},
+    sameDecision(c){return !!c&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&String(c.row?.batchId)===String(this.batchId)&&String(c.row?.resultId)===String(this.detail.row?.resultId)&&this.resultSignature(c.row)===this.resultSignature(this.detail.row)},
     openDetail(row) {
+      if(this.pendingWrite||this.detailBusy||this.finalDlg.visible||this.collegeRejectDlg.visible)return
+      if(!row||exactId(row.resultId)!==String(row.resultId)||String(row.batchId)!==String(this.batchId)){toast.error('毕业审核结果与当前批次不一致，已阻止办理');return}
       this.detail = { visible: true, row }
       this.finalConclusion = 'GRADUATED'
     },
+    closeDetail(){this.detail={visible:false,row:null};if(this.$route.query.resultId){const query={...this.$route.query};delete query.resultId;this.$router.replace({query}).catch(()=>{})}},
     openFinal(row) {
       if (!this.canNormalFinal(row)) {
         toast.error('系统预审仍为异常，普通教务终审不可用；请先治理阻断项并重新预审')
@@ -758,57 +786,50 @@ export default {
     },
     openCollegeReject() {
       if (this.detailBusy || !this.canCollegeReject(this.detail.row)) return
+      this.collegeRejectDlg.command=this.freezeDecision(this.detail.row)
       this.collegeRejectDlg.visible = true
     },
-    recordActionReceipt(row, title, result, next) {
+    recordActionReceipt(row, title, result, next, verified=true) {
       this.actionReceipt = {
-        title, result, next,
+        title, result, next, verified,
         subject: row?.realName || row?.studentName || '毕业审核对象',
-        businessId: row?.resultId ? `结果 ${row.resultId}` : `批次 ${this.batchId}`
+        businessId: row?.resultId ? '正式毕业审核结果' : '正式审核批次'
       }
+    },
+    async performResultWrite(kind,row,send,verify,receipt){
+      if(this.pendingWrite||!row)return false
+      const resultId=exactId(row.resultId),batchId=String(this.batchId);if(!resultId||String(row.batchId)!==batchId)return false
+      const c=this.token('write'),shown=this.resultSignature(row);this.detailBusy=true
+      try{const before=await academicAffairsApi.getGradResult(resultId);if(!this.current(c))return false;if(before?.code!==0)throw before;if(exactId(before.data?.resultId)!==resultId||String(before.data?.batchId)!==batchId)throw {code:409};if(this.resultSignature(before.data)!==shown){this.detail.row=before.data;throw {code:409,message:'正式结果已变化'} }
+        this.pendingWrite={kind,resultId,batchId};let res;try{res=await send(before.data)}catch(err){res=err}if(!this.current(c))return false
+        if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;throw res}
+        const after=await academicAffairsApi.getGradResult(resultId);if(!this.current(c))return false;if(after?.code!==0)throw after
+        if(res?.code===0&&after?.code===0&&exactId(after.data?.resultId)===resultId&&String(after.data?.batchId)===batchId&&verify(after.data,res)){this.detail.row=after.data;this.pendingWrite=null;this.recordActionReceipt(after.data,receipt.title,receipt.result,receipt.next,true);return true}
+        this.recordActionReceipt(row,'结果待核实','已读取当前正式结果，但不能证明本次操作完成','请勿重复操作，由有权限人员核对评估与决定记录',false);return false
+      }catch(err){if(this.current(c))toast.error(this.fail(err,'操作前核对未完成，请重新读取。'));return false}finally{if(this.current(c))this.detailBusy=false}
     },
     async doCollegeReject({ reason } = {}) {
       if (this.detailBusy || !this.detail.row) return
       const note = String(reason || '').trim()
       if (note.length < 5) { toast.error('退回原因不少于 5 字'); return }
-      this.detailBusy = true
-      try {
-        const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', note)
-        if (res.code === 0) {
-          this.recordActionReceipt(this.detail.row, '学院审核已退回', '已记录退回原因', '责任人员治理阻断证据后重新预审')
-          toast.success('已处理')
-          this.collegeRejectDlg.visible = false
-          this.detail.visible = false
-          await this.loadTab()
-        } else toast.error(res.message || '处理失败')
-      } catch (e) {
-        toast.error((e && e.message) || '处理失败')
-      } finally {
-        this.detailBusy = false
-      }
+      const command=this.collegeRejectDlg.command
+      if(!this.sameDecision(command)||!this.canCollegeReject(command.row)){this.collegeRejectDlg.visible=false;toast.error('审核对象已变化，请重新核对');return}
+      const row=command.row
+      const ok=await this.performResultWrite('college-reject',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'REJECT',note),fresh=>fresh.status==='REJECTED'&&String(fresh.reviewNote||'')===note,{title:'学院审核已退回',result:'正式退回原因已回读',next:'本批次不支持再次提交；需要时并入下一批次'})
+      if(ok){toast.success('已回读学院退回结果');this.collegeRejectDlg.visible=false;this.detail.visible=false;await this.loadTab()}
     },
     async doCollegeReview(action) {
       if (this.detailBusy || action !== 'APPROVE' || !this.canCollegeApprove(this.detail.row)) return
-      this.detailBusy = true
-      try {
-        const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'APPROVE', '')
-        if (res.code === 0) {
-          this.recordActionReceipt(this.detail.row, '学院审核已通过', '进入教务终审队列', '教务处核对十一项证据并形成终审结论')
-          toast.success('已处理')
-          this.detail.visible = false
-          await this.loadTab()
-        } else toast.error(res.message || '处理失败')
-      } catch (e) {
-        toast.error((e && e.message) || '处理失败')
-      } finally {
-        this.detailBusy = false
-      }
+      const row=this.detail.row
+      const ok=await this.performResultWrite('college-approve',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'APPROVE',''),fresh=>fresh.status==='ACADEMIC_REVIEW'&&fresh.overall==='SYSTEM_PASSED',{title:'学院审核已通过',result:'当前进入教务终审队列',next:'教务处继续核对十一项正式证据'})
+      if(ok){toast.success('已回读学院通过结果');this.detail.visible=false;await this.loadTab()}
     },
     confirmFinal() {
       if (this.finalDlg.submitting || !this.canNormalFinal(this.detail.row)) {
         toast.error('系统预审仍为异常，禁止打开普通终审确认')
         return
       }
+      this.finalDlg.command=this.freezeDecision(this.detail.row)
       this.finalDlg.visible = true
     },
     async doFinal() {
@@ -818,55 +839,55 @@ export default {
         toast.error('系统预审已变化或仍为异常，请重新加载并治理阻断项')
         return
       }
+      const command=this.finalDlg.command
+      if(!this.sameDecision(command)||command.conclusion!==this.finalConclusion){this.finalDlg.visible=false;toast.error('终审对象或结论已变化，请重新确认');return}
+      const row=command.row
       const resultId = this.detail.row.resultId
-      this.finalDlg.submitting = true
+      const batchId=String(this.batchId),c=this.token('write'),shown=this.resultSignature(row)
+      this.finalDlg.submitting=true;this.detailBusy=true
       try {
         const fresh = await academicAffairsApi.getGradResult(resultId)
-        if (fresh.code !== 0) { toast.error(fresh.message || '终审前状态重读失败'); return }
+        if(!this.current(c))return
+        if(fresh?.code!==0||exactId(fresh.data?.resultId)!==exactId(resultId)||String(fresh.data?.batchId)!==batchId||this.resultSignature(fresh.data)!==shown)throw fresh
         this.detail.row = fresh.data
-        if (!this.canNormalFinal(fresh.data)) {
-          this.finalDlg.visible = false
-          toast.error('终审前状态已变化，请重新核对最新预审结果')
-          await this.loadTab()
-          return
-        }
-        const res = await academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)
-        if (res.code === 0) {
-          this.recordActionReceipt(fresh.data, '毕业资格终审完成', CONCLUSION_LABEL[this.finalConclusion] || this.finalConclusion, '终审结论已写入学籍；进入证书与批次归档')
-          toast.success('终审完成，已写学籍')
-          this.finalDlg.visible = false
-          this.detail.visible = false
-          await this.loadBatches()
-          await this.loadTab()
-        } else toast.error(res.message || '终审失败')
-      } catch (e) {
-        toast.error((e && e.message) || '终审失败')
-      } finally {
-        this.finalDlg.submitting = false
-      }
+        if (!this.canNormalFinal(fresh.data)) throw {code:409}
+        this.pendingWrite={kind:'final',resultId:exactId(resultId),batchId}
+        let res;try{res=await academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)}catch(err){res=err}
+        if(!this.current(c))return
+        if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;throw res}
+        const after=await academicAffairsApi.getGradResult(resultId)
+        if(!this.current(c))return
+        if(after?.code!==0)throw after
+        if(res?.code===0&&after?.code===0&&exactId(after.data?.resultId)===exactId(resultId)&&String(after.data?.batchId)===batchId&&after.data.status===this.finalConclusion&&after.data.conclusion===this.finalConclusion){this.pendingWrite=null;this.detail.row=after.data;this.recordActionReceipt(after.data,'毕业资格终审完成',CONCLUSION_LABEL[this.finalConclusion]||this.finalConclusion,'终审结论已写入学籍；可继续证书与批次归档',true);toast.success('已回读正式终审结论');this.finalDlg.visible=false;this.detail.visible=false;await this.loadBatches();await this.loadTab()}
+        else this.recordActionReceipt(row,'结果待核实','已读取当前正式结果，但不能证明本次终审完成','请勿重复终审，由有权限人员核对正式决定记录',false)
+      }catch(err){if(this.current(c))toast.error(this.fail(err,'终审前核对未完成，请重新读取。'))}
+      finally{if(this.current(c)){this.finalDlg.submitting=false;this.detailBusy=false}}
     },
     confirmArchive() {
-      if (!this.batchId || this.archiving) return
+      if (!this.canManagePermission || !this.batchId || this.archiving || this.pendingWrite) return
+      this.archiveDlg.command={batchId:String(this.batchId),scope:this.scope,identity:this.identity,route:this.$route.fullPath}
       this.archiveDlg.visible = true
     },
     async doArchive() {
       if (!this.batchId || this.archiving) return
+      if (!this.canManagePermission || this.pendingWrite) return
+      const command=this.archiveDlg.command
+      if(!command||command.batchId!==String(this.batchId)||command.scope!==this.scope||command.identity!==this.identity||command.route!==this.$route.fullPath){this.archiveDlg.visible=false;toast.error('归档批次已变化，请重新确认');return}
       const batchId = this.batchId
-      this.archiving = true
+      const batch=this.currentBatch,c=this.token('archiveWrite');this.archiving=true
       try {
-        const res = await academicAffairsApi.archiveGradBatch(batchId)
-        if (res.code === 0) {
-          const batch = this.currentBatch
-          this.recordActionReceipt({ realName: batch?.batchName }, '毕业审核批次已归档', `${res.data.archived} 条正式结果`, '归档结果只读；后续变更必须走正式纠错链')
-          toast.success(`已归档 ${res.data.archived} 条`)
-          this.archiveDlg.visible = false
-          await this.loadBatches()
-          await this.loadTab()
-        } else toast.error(res.message || '归档失败')
+        const before=await this.readGradBatch(batchId);if(!this.current(c))return;if(!before||String(before.batchId)!==batchId)throw {code:409}
+        this.pendingWrite={kind:'archive',batchId}
+        let res;try{res=await academicAffairsApi.archiveGradBatch(batchId)}catch(err){res=err}if(!this.current(c))return
+        if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;throw res}
+        const after=await this.readGradBatch(batchId);if(!this.current(c))return
+        if(res?.code===0&&Number.isFinite(res.data?.archived)&&after?.status==='ARCHIVED'){
+          this.pendingWrite=null;this.recordActionReceipt({realName:batch?.batchName},'毕业审核批次已归档',`正式回执归档 ${res.data.archived} 条结果`,'后续变更必须走正式纠错链；此处不代表十三域学期归档完成',true);toast.success('已回读批次归档状态');this.archiveDlg.visible=false;await this.loadBatches();await this.loadTab()
+        } else this.recordActionReceipt({realName:batch?.batchName},'归档结果待核实','已读取当前批次，但不能确认本次命令完成','请勿重复归档，由有权限人员核对正式批次',false)
       } catch (e) {
-        toast.error((e && e.message) || '归档失败')
+        if(this.current(c))toast.error(this.fail(e,'归档前核对未完成'))
       } finally {
-        this.archiving = false
+        if(this.current(c))this.archiving=false
       }
     }
   }
@@ -875,6 +896,38 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+
+.agc-context { display: grid; grid-template-columns: minmax(280px, 1.5fr) repeat(4, minmax(150px, 1fr)); overflow: hidden; border: 1px solid #dbe5f2; border-radius: 12px; background: #fff; }
+.agc-context > div { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 14px 16px; border-right: 1px solid #e8eef6; }
+.agc-context > div:last-child { border-right: 0; }
+.agc-context span, .agc-context small { color: #728198; font-size: 12px; line-height: 1.45; }
+.agc-context strong { overflow: hidden; color: #18365f; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.agc-context__object strong { font-size: 16px; }
+.agc-context__object :deep(.app-select), .agc-context__object :deep(select) { margin-top: 5px; }
+.is-risk-text { color: #b45f0b !important; }
+.agc-coverage { display: grid; grid-template-columns: auto auto minmax(120px, 1fr); align-items: center; gap: 10px; margin-top: -8px; color: #75849a; font-size: 12px; }
+.agc-coverage b { color: #1f5fbf; font-variant-numeric: tabular-nums; }
+.agc-coverage i { height: 5px; overflow: hidden; border-radius: 999px; background: #e7edf6; }
+.agc-coverage em { display: block; height: 100%; border-radius: inherit; background: #3978d2; }
+
+.agc-evidence-board { display: grid; grid-template-columns: minmax(220px, .72fr) minmax(0, 1.8fr); overflow: hidden; min-height: 310px; border: 1px solid #dbe5f2; border-radius: 12px; background: #fff; }
+.agc-queue { padding: 14px; border-right: 1px solid #e6edf6; background: #f8faff; }
+.agc-queue header { display: flex; justify-content: space-between; gap: 12px; margin: 0 3px 10px; color: #18365f; }
+.agc-queue header span { color: #75849a; font-size: 12px; }
+.agc-queue button { display: grid; width: 100%; gap: 4px; margin: 0 0 7px; padding: 10px 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #314866; text-align: left; cursor: pointer; }
+.agc-queue button:hover, .agc-queue button.is-active { border-color: #c9dcf6; background: #eaf2ff; color: #1d5fb8; }
+.agc-queue button span { font-weight: 650; }
+.agc-queue button small { color: #7b899c; }
+.agc-focus { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; padding: 19px 21px; }
+.agc-focus > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid #edf1f6; }
+.agc-focus h2 { margin: 5px 0 4px; color: #17345c; font-size: 20px; }
+.agc-focus header small { color: #78869a; }
+.agc-focus__items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 9px; padding: 15px 0; }
+.agc-focus__item { display: grid; grid-template-columns: minmax(92px, auto) auto; align-items: center; gap: 6px 10px; min-width: 0; padding: 11px 12px; border: 1px solid #e1e9f4; border-radius: 9px; background: #fbfcfe; }
+.agc-focus__item > span { color: #314866; font-weight: 650; }
+.agc-focus__item p, .agc-focus__item small { grid-column: 1 / -1; margin: 0; color: #6f7e92; font-size: 12px; line-height: 1.55; }
+.agc-focus__item small { color: #8a96a7; }
+.agc-focus > footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-top: 13px; border-top: 1px solid #edf1f6; color: #7b5d20; font-size: 12px; }
 
 .agc-overview {
   overflow: hidden;
@@ -1062,11 +1115,16 @@ export default {
 .agc-radio { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 
 @media (max-width: 1080px) {
+  .agc-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agc-context > div { border-bottom: 1px solid #e8eef6; }
   .agc-overview__top { grid-template-columns: 1fr; }
   .agc-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .agc-metrics article { border-bottom: 1px solid #e8eef7; }
 }
 @media (max-width: 760px) {
+  .agc-evidence-board { grid-template-columns: 1fr; }
+  .agc-queue { border-right: 0; border-bottom: 1px solid #e6edf6; }
+  .agc-focus__items { grid-template-columns: 1fr; }
   .agc-receipt { grid-template-columns: 1fr; gap: 10px; }
   .agc-overview__top { padding: 20px; }
   .agc-overview__copy h2 { font-size: 21px; }
@@ -1075,6 +1133,7 @@ export default {
   .agc-detail-head { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 520px) {
+  .agc-context { grid-template-columns: 1fr; }
   .agc-metrics { grid-template-columns: 1fr; }
   .agc-metrics article { border-right: 0; }
   .agc-tab { width: 100%; text-align: left; }

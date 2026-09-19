@@ -599,8 +599,10 @@ def my_messages(user: dict) -> dict:
             for wo in db.scalars(select(CsWorkOrder).where(CsWorkOrder.tenant_id == _tid(),
                                  CsWorkOrder.cs_student_id == cs.id, CsWorkOrder.is_deleted.is_(False)
                                  ).order_by(CsWorkOrder.id.desc()).limit(10)).all():
+                status_label = {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                                "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(wo.status, "状态更新中")
                 progress_msgs.append({"id": "wo-" + str(wo.id),
-                                      "title": f"工单「{wo.title}」当前状态：{wo.status}",
+                                      "title": f"工单「{wo.title}」当前状态：{status_label}",
                                       "module": "服务进度", "level": "normal",
                                       "time": None, "deadline": None,
                                       "read": wo.status not in ("PENDING_HANDLE",),
@@ -1410,15 +1412,37 @@ def graduation_proposal(user: dict) -> dict:
             GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == g.id,
             GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
         ).limit(1)).first() is not None
-        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交
-        can_submit = can_submit_topic and tb_ok and (latest is None or latest.status == "REJECTED")
+        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交。
+        # 还必须确认当前批次实际冻结了权威的 PROPOSAL_REPORT 材料。不能只用
+        # topic/taskbook 推导按钮可用，否则配置漂移时学生会填写整页内容后才在
+        # 后端收到 MATERIAL_NOT_IN_BATCH_RULE，形成假入口。
+        proposal_material_ready = False
+        proposal_material_reason = ""
+        if g.batch_id:
+            from app.modules.graduation.materials.rule_service import rule_item
+            try:
+                _, proposal_item = rule_item(db, int(g.batch_id), "PROPOSAL_REPORT")
+                proposal_material_ready = str(proposal_item.owner_role or "").upper() == "STUDENT"
+                if not proposal_material_ready:
+                    proposal_material_reason = "当前批次开题报告材料未配置为学生可提交，请联系毕业设计管理员"
+            except AppException:
+                proposal_material_reason = "当前批次尚未配置开题报告材料，暂不能提交，请联系毕业设计管理员"
+        else:
+            proposal_material_reason = "毕业设计档案缺少有效批次，暂不能提交开题报告"
+        can_submit = (
+            can_submit_topic and tb_ok and proposal_material_ready
+            and (latest is None or latest.status == "REJECTED")
+        )
         reason = ""
         if not can_submit_topic:
             reason = "请先完成选题确认后再提交开题报告"
         elif not tb_ok:
             reason = "请先确认任务书后再提交开题报告"
+        elif not proposal_material_ready:
+            reason = proposal_material_reason
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "canSubmit": can_submit,
+                "proposalMaterialReady": proposal_material_ready,
                 "reason": reason,
                 "latest": None if not latest else {
                     "id": str(latest.id), "version": latest.version or "", "status": latest.status,
@@ -1829,31 +1853,25 @@ def wechat_subscribe_status(user: dict) -> dict:
     站内消息分类与微信订阅是两条独立渠道，不能用一个开关表示两种东西。
     provider 未配置或用户未授权时，这里如实返回 false —— 绝不在学生端宣称"已开启"。
     """
-    u = _require_student(user)
+    _require_student(user)
     from app.services.notification import wechat_subscribe_service as wechat
 
     status = wechat.provider_status()
-    authorized = False
-    if db_enabled():
-        with _session() as db:
-            from app.models import User
-            uid = _resolve_uid(u)
-            row = tenant_get(db, User, uid) if uid else None
-            authorized = bool(row and getattr(row, "wx_openid", None))
+    # openid 只能证明绑定微信，不能证明用户接受过某个模板的一次性提醒。
+    configured = bool(status["configured"] and status.get("providerReady")
+                      and status.get("authorizationReady") and any(status["templates"].values()))
     return {
         "channel": "WECHAT",
-        # 学校/运维是否配好了微信订阅能力
-        "configured": bool(status["configured"]),
-        # 本人是否授权过（有 openid）
-        "authorized": authorized,
-        # 只有两者都成立，才算这条渠道真的能收到提醒
-        "effective": bool(status["configured"]) and authorized,
+        "configured": configured,
+        "authorized": False,
+        "effective": False,
+        "reason": "微信提醒暂不可用，请在消息中心查看办理通知",
         "scenes": [
             {"key": scene, "label": _SUBSCRIBE_SCENE_LABELS.get(scene, scene),
-             "ready": bool(status["templates"].get(scene))}
+             "templateId": wechat._template_id(scene),
+             "ready": configured and bool(status["templates"].get(scene))}
             for scene in status["scenes"]
         ],
-        # 未配置时给出可诊断信息，供管理端排查；学生端只用它决定文案，不展示内部键名
         "missing": list(status["missing"]),
     }
 
@@ -1886,6 +1904,10 @@ def my_applications(user: dict) -> dict:
             s = (s or "").upper()
             return "done" if s in _done else "rejected" if s in _rej else "processing"
 
+        def _work_order_status_label(status):
+            return {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                    "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(status, "状态更新中")
+
         # t_cs_leave 双状态列并行(P0 §4.2 集成①)：13A 新提交只挂 student_id(cs_student_id=0)，
         # 老 campus-service 提交只挂 cs_student_id。按 cs.id 单一条件查会漏掉新提交的请假，
         # 这里补上 student_id 分支，两条线都要查，不能只认其中一条。
@@ -1917,7 +1939,7 @@ def my_applications(user: dict) -> dict:
                                  ).order_by(CsWorkOrder.id.desc())).all():
                 apps.append({"id": "wo-" + str(wo.id), "no": wo.code or ("WO" + str(wo.id)),
                              "name": wo.title, "group": _grp(wo.status), "status": wo.status,
-                             "statusText": wo.status, "applyTime": None, "dept": "服务中心",
+                             "statusText": _work_order_status_label(wo.status), "applyTime": None, "dept": "服务中心",
                              "handler": wo.handler or "待分配", "lastOpinion": "",
                              "hasResult": _grp(wo.status) != "processing", "sourceType": "WORKORDER"})
         return {"hasData": bool(apps), "tabs": tabs, "applications": apps}
@@ -1963,6 +1985,8 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
     is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
     if is_leave:
+        if _attachment_ids(body):
+            raise AppException("VALIDATION_ERROR", "请从我的请假办理，并在证明与补交材料中提交附件")
         # 请假必须走正式审批工作流（辅导员/学院/学工处多级节点），不能只落一条脱离
         # WorkflowInstance/affairs_status 的简化记录——否则学生自己的"我的请假"列表
         # 和老师端"待审批"队列都读不到这条申请（两条真相数据断层，分角色测试发现）。

@@ -9,10 +9,12 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
 test('scheduling opens on one end-to-end workbench instead of isolated feature tabs', () => {
   const source = read('src/modules/academicAffairs/views/AaSchedulingConsoleView.vue')
+  const stageRail = read('src/modules/academicAffairs/components/AaScheduleStageRail.vue')
 
   assert.match(source, /tab: 'workbench'/)
-  for (const label of ['数据准备', '教师偏好', '自动初排', '人工微调', '冲突与漏排', '预发布', '正式发布']) {
-    assert.ok(source.includes(label), `missing workflow stage: ${label}`)
+  assert.match(source, /<AaScheduleStageRail mode="scheduling" :active-index="pageMeta\.stage"/)
+  for (const label of ['就绪任务', '约束条件', '试排编排', '冲突处理', '正式发布']) {
+    assert.ok(stageRail.includes(label), `missing workflow stage: ${label}`)
   }
   assert.ok(source.includes('当前阻断原因'))
   assert.ok(source.includes('下一步：'))
@@ -22,8 +24,9 @@ test('task queue routes with internal context and never asks the registrar for I
   const consoleSource = read('src/modules/academicAffairs/views/AaSchedulingConsoleView.vue')
   const maintainSource = read('src/modules/academicAffairs/views/AaScheduleMaintainView.vue')
 
-  assert.match(consoleSource, /query: \{ classId: row\.classId, className: row\.className \|\| '', taskId: row\.taskId \}/)
-  assert.match(maintainSource, /this\.(preferredTaskId|classId) = String\(this\.\$route\?\.query\?/)
+  assert.match(consoleSource, /query: \{ classId: row\.classId, className: row\.className \|\| '', taskId: row\.taskId, \.\.\.this\.returnQuery\(\) \}/)
+  assert.match(maintainSource, /this\.preferredTaskId = state\.taskId/)
+  assert.match(maintainSource, /this\.classId = state\.classId/)
   assert.ok(maintainSource.includes('已从排课工作台定位任务'))
   assert.doesNotMatch(consoleSource, /请输入.*(?:班级|教学任务).*ID/)
 })
@@ -57,6 +60,6 @@ test('pre-publish and publish actions are gated by the canonical completeness ch
   for (const label of ['教学任务可排', '应排节次完整', '课位关联有效', '硬冲突清零']) {
     assert.ok(source.includes(label), `missing publish gate: ${label}`)
   }
-  assert.match(source, /if \(!this\.gate\.summary\?\.complete/)
+  assert.match(source, /if \(this\.writeBusy \|\| !this\.gate\.summary\?\.complete \|\| !this\.gate\.batch \|\| this\.gate\.intent === 'view'\) return/)
   assert.doesNotMatch(source, /\{ key: 'batchId', title: '批次ID' \}/)
 })

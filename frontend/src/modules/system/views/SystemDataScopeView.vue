@@ -32,7 +32,7 @@
               <p v-else class="ds-empty-line">尚未读取影响预览；未读取不等于 0 人。</p>
             </section>
             <section class="ds-section ds-section--deny"><div class="ds-section__head"><div><h3>显式禁止与特殊限制</h3><p>DENY 优先于 ALLOW。规则列表没有 DENY 记录，不代表某个具体业务对象一定允许访问。</p></div><button type="button" class="mp-link" @click="denyPanel.open = !denyPanel.open">{{ denyPanel.open ? '收起策略' : '展开策略' }}</button></div>
-              <template v-if="denyPanel.open"><LoadingState v-if="denyPanel.loading" /><ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" /><div v-else-if="denyPanel.items.length" class="ds-deny-list"><div v-for="policy in denyPanel.items" :key="policy.policyId" class="ds-deny-row"><span><b>{{ policy.roleCode }}</b><small>{{ policy.targetType }}:{{ policy.targetId }}</small></span><StatusTag :type="policy.effect === 'DENY' ? 'danger' : 'success'" :label="policy.effect" /><span>{{ policy.includeChildren ? '包含下级' : '仅当前节点' }}</span><span>{{ fmtTime(policy.effectiveAt) }} ~ {{ policy.expiresAt ? fmtTime(policy.expiresAt) : '长期' }}</span><span>{{ policy.reason || '—' }}</span></div></div><EmptyState v-else title="服务端未返回显式策略" description="这里只能说明本次读取没有记录，最终访问仍需结合具体对象由后端判定" /><p class="ds-footnote">判定顺序：DENY → 继承 DENY → 敏感专项 → 业务关系 → 直接 ALLOW → 继承 ALLOW → 默认拒绝。</p></template>
+              <template v-if="denyPanel.open"><LoadingState v-if="denyPanel.loading" /><ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" /><div v-else-if="denyPanel.items.length" class="ds-deny-list"><div v-for="policy in denyPanel.items" :key="policy.policyId" class="ds-deny-row"><span><b>{{ roleLabel(policy.roleCode) }}</b><small>{{ policy.targetType }}:{{ policy.targetId }}</small></span><StatusTag :type="policy.effect === 'DENY' ? 'danger' : 'success'" :label="policy.effect === 'DENY' ? '拒绝' : policy.effect === 'ALLOW' ? '允许' : '状态待核对'" /><span>{{ policy.includeChildren ? '包含下级' : '仅当前节点' }}</span><span>{{ fmtTime(policy.effectiveAt) }} ~ {{ policy.expiresAt ? fmtTime(policy.expiresAt) : '长期' }}</span><span>{{ policy.reason || '—' }}</span></div></div><EmptyState v-else title="服务端未返回显式策略" description="这里只能说明本次读取没有记录，最终访问仍需结合具体对象由后端判定" /><p class="ds-footnote">判定顺序：直接拒绝 → 继承拒绝 → 敏感专项 → 业务关系 → 直接允许 → 继承允许 → 默认拒绝。</p></template>
             </section>
             <p v-if="selectedRule.remark" class="ds-remark">规则说明：{{ selectedRule.remark }}</p>
           </div>
@@ -44,6 +44,7 @@
   </ModulePageShell>
 </template>
 <script>
+import { roleDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import { ModulePageShell,ModuleToolbar,AdvancedFilter,StatusTag,LoadingState,ErrorState,EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -62,7 +63,8 @@ export default{
   formFields(){return[{key:'name',label:'规则名称',required:true,placeholder:'如：本学院范围'},{key:'scopeCode',label:'范围类型',type:'select',required:true,options:this.ctx.statusOptions.scopeTypes},{key:'remark',label:'规则说明',type:'textarea',full:true,placeholder:'计算口径与边界'}]}
  },
  created(){this.fence=createRequestFence();this.load()},beforeUnmount(){this.fence.invalidate()},watch:{contextKey(){this.fence.invalidate();this.rows=[];this.selectedRuleId='';this.affected={loading:false,id:'',loadedFor:'',list:[],error:''};this.denyPanel={open:false,items:[],loading:false,error:''};this.load()}},
- methods:{
+ methods: {
+    roleLabel: roleDisplayLabel,
   can(key){const pa=this.ctx.permissionActions[key];return!!(pa&&pa.visible&&pa.allowed)},reason(key){const pa=this.ctx.permissionActions[key];return pa&&!pa.allowed?pa.reason:''},selectRule(row){this.selectedRuleId=row.id;this.affected={loading:false,id:'',loadedFor:'',list:[],error:''}},reset(){this.filters={keyword:'',status:''};this.load()},
   async onToolbar(key){if(key==='createScopeRule')this.openEdit(null);if(key==='exportScopeRules'){const res=await systemApi.exportScopeRules();res.code===0?toast.success('数据范围清单已下载：'+res.data.fileName+'（含水印），已留痕'):toast.error(res.message)}},
   openEdit(row){const key=row?'editScopeRule':'createScopeRule';if(!this.can(key))return;this.form={open:true,id:row?row.id:'',value:row?{name:row.name,scopeCode:row.scopeCode,remark:row.remark}:{name:'',scopeCode:'',remark:''},errors:{},submitting:false}},

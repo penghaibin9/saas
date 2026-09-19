@@ -13,6 +13,7 @@
  */
 import { ENV } from '@/config/env'
 import { markMobileViewsDirty } from '@/utils/viewFreshness'
+import { relaunch } from '@/utils/nav'
 import {
   advanceSessionGeneration, assertSessionSnapshot, captureSessionSnapshot,
   currentSessionGeneration, guardSessionPromise, isSessionSnapshotCurrent, sessionChangedError
@@ -74,7 +75,8 @@ export function clearTokens() {
 }
 
 export function shouldTryReal() {
-  return !ENV.useMock && Date.now() >= state.offlineUntil
+  // 仅演示回退使用冷却期；真实环境的重试必须重新访问服务端。
+  return !ENV.useMock && (!ENV.allowMockFallback || Date.now() >= state.offlineUntil)
 }
 
 function markOffline() {
@@ -96,16 +98,69 @@ export function isNetworkError(e) {
   return !!(e && (e.code === 'NETWORK' || e.code === 'BAD_RESPONSE'))
 }
 
+// 后端 message 仅能作为“可读业务提示”的候选值，绝不能把网关、堆栈、SQL、路径或令牌
+// 原样塞进 toast / 空状态。业务详情页中的退回原因是独立字段，不走这里。
+const UNSAFE_ERROR_TEXT = /(?:\r|\n|https?:\/\/|file:\/\/|[A-Za-z]:\\|\/(?:api|app|var|usr|home)\/|traceback|stack\s*trace|sql(?:alchemy|ite)?|mysql|postgres|exception|error\s*:|failed\s+to|econn|etimedout|<[^>]+>|token|authorization|bearer|password|secret)/i
+const CJK_TEXT = /[\u3400-\u9fff]/
+// 后端偶有把内部 reasonCode 与中文说明拼在同一 message；即使含中文，也不能让
+// EVIDENCE_INVALIDATED 这类实现编号出现在学生页面。
+const INTERNAL_ERROR_CODE_PREFIX = /(?:^|[\s（(])[A-Z][A-Z0-9_]{2,}\s*[:：]/
+
+function safeBusinessMessage(message, fallback) {
+  const text = String(message || '').trim().replace(/\s+/g, ' ')
+  if (!text || text.length > 120 || !CJK_TEXT.test(text) || UNSAFE_ERROR_TEXT.test(text) || INTERNAL_ERROR_CODE_PREFIX.test(text)) return fallback
+  return text
+}
+
+function safeMessageForCode(e, fallback) {
+  // 只有明确的业务拒绝才允许保留经过筛选的中文说明；网络和未知异常一律走固定文案。
+  return e?.biz ? safeBusinessMessage(e.message, fallback) : fallback
+}
+
+function isPasswordLoginRequest(path, auth) {
+  if (auth) return false
+  return /^\/auth\/(?:browser-)?login$/.test(String(path || '').split('?')[0])
+}
+
+function requestErrorMessage(code, bizCode, message, { auth = true, path = '' } = {}) {
+  const error = { code, bizCode, biz: true, message }
+  if (Number(code) === 400001 || Number(code) === 422001) return safeMessageForCode(error, '填写内容有误，请检查后重试')
+  if (Number(code) === 409001) return safeMessageForCode(error, '当前记录已被处理或状态已变化，请刷新后核对')
+  if (Number(code) === 404001) return '数据不存在或已变更'
+  if (Number(code) === 429001) return '操作过于频繁，请稍后再试'
+  // 登录请求本来就没有会话。它的 401 表示验证码、账号或密码被拒绝，不能误报为
+  // “登录已失效”；否则用户既不知道该输入验证码，也会误以为后端会话出了问题。
+  // 已登录业务请求仍保持统一的会话失效提示与刷新逻辑。
+  if (Number(code) === 401001) {
+    if (isPasswordLoginRequest(path, auth)) {
+      return safeBusinessMessage(message, '账号、学校编码或密码不正确，请检查后重试')
+    }
+    return '登录已失效，请重新登录'
+  }
+  if (Number(code) === 403001 || Number(code) === 403002) return '暂无访问权限，请联系学校管理员'
+  return '服务暂时不可用，请稍后重试'
+}
+
 export function normalizeError(e) {
-  const code = e && e.code
-  if (isNetworkError(e)) return { kind: 'network', text: '网络异常，请检查网络后重试' }
-  if (code === 401001) return { kind: 'auth', text: '登录已失效，请重新登录' }
-  if (code === 403001 || code === 403002) return { kind: 'forbidden', text: (e && e.message) || '没有权限执行该操作' }
-  if (code === 404001) return { kind: 'notfound', text: (e && e.message) || '数据不存在或已变更' }
-  if (code === 409001) return { kind: 'conflict', text: (e && e.message) || '重复提交或状态已变化，请刷新后再试' }
-  if (code === 422001 || code === 400001) return { kind: 'invalid', text: (e && e.message) || '填写内容有误，请检查后重试' }
-  if (code === 429001) return { kind: 'ratelimit', text: (e && e.message) || '操作过于频繁，请稍后再试' }
-  return { kind: 'unknown', text: (e && e.message) || '操作失败，请稍后重试' }
+  const code = Number(e && e.code)
+  const statuses = [e?.httpStatus, e?.status, e?.statusCode, e?.response?.status, code]
+    .map(Number).filter(Number.isFinite).map(value => value >= 100000 ? Math.trunc(value / 1000) : value)
+  if (statuses.some(value => value >= 500 && value < 600)) return { kind: 'unknown', pageState: 'error', text: '服务暂时不可用，请稍后重试' }
+  if (e?.code === 'HTTP_ERROR' && (statuses.includes(404) || statuses.includes(405))) return { kind: 'unknown', pageState: 'error', text: httpResponseError(statuses.find(status => status === 404 || status === 405)).message }
+  if (isNetworkError(e)) return { kind: 'network', pageState: 'offline', text: '网络异常，请检查网络后重试' }
+  if (e?.loginAttempt && (statuses.includes(401) || statuses.includes(419))) {
+    return { kind: 'invalid', pageState: 'error', text: safeBusinessMessage(e.message, '账号、学校编码或密码不正确，请检查后重试') }
+  }
+  if (statuses.includes(401) || statuses.includes(419)) return { kind: 'auth', pageState: 'unauthorized', text: '登录已失效，请重新登录' }
+  if (statuses.includes(403) || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(e?.bizCode || e?.code)) {
+    const noLicense = e?.bizCode === 'MODULE_NOT_AUTHORIZED' || e?.bizCode === 'MODULE_EXPIRED_READONLY' || /^模块未购买或未授权[：:]/.test(String(e?.message || ''))
+    return { kind: 'forbidden', pageState: noLicense ? 'noLicense' : 'forbidden', text: noLicense ? '本校未开通该模块，请联系学校管理员' : '暂无访问权限，请联系学校管理员' }
+  }
+  if (code === 404001) return { kind: 'notfound', text: '数据不存在或已变更' }
+  if (code === 409001) return { kind: 'conflict', text: safeMessageForCode(e, '重复提交或状态已变化，请刷新后再试') }
+  if (code === 422001 || code === 400001) return { kind: 'invalid', text: safeMessageForCode(e, '填写内容有误，请检查后重试') }
+  if (code === 429001) return { kind: 'ratelimit', text: '操作过于频繁，请稍后再试' }
+  return { kind: 'unknown', pageState: 'error', text: '操作失败，请稍后重试' }
 }
 
 /* ── 防刷屏 toast ── */
@@ -154,20 +209,32 @@ export function createSubmitLock(cooldownMs = 1200) {
 let _forceLogoutHandler = null
 export function registerForceLogoutHandler(fn) { _forceLogoutHandler = fn }
 
-let _redirecting = false
+let _redirecting = null
 export function requireAuthOrRedirect(message = '登录已失效，请重新登录') {
+  if (_redirecting && isSessionSnapshotCurrent(_redirecting, getToken(), getRefreshToken())) return
   if (_forceLogoutHandler) {
     try { _forceLogoutHandler() } catch (e) { clearTokens() }
   } else {
     clearTokens()
   }
-  if (_redirecting) return
-  _redirecting = true
+  const operation = captureSessionSnapshot(getToken(), getRefreshToken())
+  _redirecting = operation
   safeToast(message, 'none')
-  setTimeout(() => {
-    try { uni.reLaunch({ url: '/pages/login/index' }) } catch (e) { /* 忽略 */ }
-    _redirecting = false
-  }, 600)
+  const redirect = () => {
+    if (_redirecting !== operation) return
+    // 旧会话的延迟跳转不能销毁新登录正在打开的首页。
+    if (!isSessionSnapshotCurrent(operation, getToken(), getRefreshToken())) {
+      _redirecting = null
+      return
+    }
+    // 等当前页面切换结束；不能绕过路由锁，也不能丢失必要的登录跳转。
+    if (relaunch('/pages/login/index') === false) {
+      setTimeout(redirect, 100)
+      return
+    }
+    _redirecting = null
+  }
+  setTimeout(redirect, 600)
 }
 
 /** 模拟一次数据请求。fail=true 时用于演示 error 态。 */
@@ -190,7 +257,13 @@ function _refreshOnce(expectedGeneration = currentSessionGeneration()) {
   if (currentSessionGeneration() !== expectedGeneration) return Promise.reject(sessionChangedError())
   const snapshot = captureSessionSnapshot(getToken(), getRefreshToken())
   if (!snapshot.refreshToken) {
-    return Promise.reject({ code: 401001, biz: true, message: '未登录' })
+    // A restored H5 tab can retain its page route while its per-tab browser
+    // session (or refresh cookie) no longer exists. Do not leave that tab on a
+    // generic “加载失败” view: clear the stale identity and return to the app
+    // login surface just as a failed refresh would.
+    const error = { code: 401001, biz: true, message: '登录已失效，请重新登录' }
+    requireAuthOrRedirect(error.message)
+    return Promise.reject(error)
   }
   const pending = guardSessionPromise(
     realRequest('/auth/refresh', {
@@ -275,7 +348,8 @@ function withTeacherGraduationContext(path) {
   const pathname = value.split('?')[0]
   if (GD_TEACHER_PAGED_PATHS.has(pathname)) {
     value = appendQuery(value, 'page', 1)
-    value = appendQuery(value, 'pageSize', 100)
+    // 移动端队列始终由页面显式续页；请求层不能把默认 100 条伪装成完整列表。
+    value = appendQuery(value, 'pageSize', 20)
   }
   return value
 }
@@ -319,9 +393,24 @@ function stablePayload(value) {
   try { return JSON.stringify(out) } catch (e) { return '' }
 }
 
-function inflightKey(method, effectivePath, data, auth) {
+// uni.request 的 H5 适配层会把 GET data 中的 `undefined` 序列化成
+// `?key=`。对于 FastAPI 的可选整数参数，这不等于“未传”，而是一个非法
+// 空字符串（例如课表首次读取会变成 `?week=`）。只在查询参数层去掉
+// undefined/null；空字符串仍按调用方原意传给服务端校验，写请求 body 也
+// 不在这里改写。
+function omitAbsentGetParams(data, method) {
+  if (String(method || 'GET').toUpperCase() !== 'GET'
+    || !data || typeof data !== 'object' || Array.isArray(data)) return data
+  const normalized = {}
+  Object.entries(data).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) normalized[key] = value
+  })
+  return normalized
+}
+
+function inflightKey(method, effectivePath, data, auth, internshipBatchId) {
   const identity = auth ? `${currentSessionGeneration()}|${getToken()}` : 'public'
-  return `${method}|${effectivePath}|${stablePayload(data)}|${identity}`
+  return `${method}|${effectivePath}|${stablePayload(data)}|${identity}|${internshipBatchId}`
 }
 
 function normalizeJsonResponseBody(value) {
@@ -331,19 +420,27 @@ function normalizeJsonResponseBody(value) {
   try { return JSON.parse(text) } catch { return value }
 }
 
+function httpResponseError(status) {
+  const httpStatus = Number(status)
+  if (!Number.isFinite(httpStatus) || httpStatus < 300) return null
+  const message = httpStatus === 404 || httpStatus === 405
+    ? `接口暂不可用（HTTP ${httpStatus}），请联系管理员`
+    : '服务暂时不可用，请稍后重试'
+  return { code: 'HTTP_ERROR', message, httpStatus }
+}
+
 function executeRealRequest(path, effectivePath, {
-  method, data, auth, _retried, _rawPage, _expectedGeneration
+  method, data, auth, _retried, _rawPage, _expectedGeneration, _internshipBatchId, headers = {}
 }) {
   if (auth && _expectedGeneration != null && currentSessionGeneration() !== _expectedGeneration) {
     return Promise.reject(sessionChangedError())
   }
   const requestSnapshot = auth ? captureSessionSnapshot(getToken(), getRefreshToken()) : null
   return new Promise((resolve, reject) => {
-    const header = { 'Content-Type': 'application/json' }
+    const header = { 'Content-Type': 'application/json', ...headers }
     const token = requestSnapshot ? requestSnapshot.accessToken : ''
     if (token) header.Authorization = 'Bearer ' + token
-    const internshipBatchId = selectedInternshipBatchId(path)
-    if (internshipBatchId) header['X-Internship-Batch-Id'] = internshipBatchId
+    if (_internshipBatchId) header['X-Internship-Batch-Id'] = _internshipBatchId
     uni.request({
       url: ENV.apiBaseUrl + ENV.apiPrefix + effectivePath,
       method,
@@ -355,10 +452,10 @@ function executeRealRequest(path, effectivePath, {
         // native miniapp runtimes expose the parsed object. Normalize only
         // syntactically valid JSON; malformed/non-JSON bodies still fail closed.
         const body = normalizeJsonResponseBody(res.data)
-        if (body && body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
+        if (body && body.code === 401001 && auth && !_retried && path.split('?')[0] !== '/auth/refresh') {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {
-              method, data, auth, _retried: true, _rawPage,
+              method, data, auth, _retried: true, _rawPage, headers, _internshipBatchId,
               _expectedGeneration: requestSnapshot.generation
             }))
             .then(resolve)
@@ -367,6 +464,12 @@ function executeRealRequest(path, effectivePath, {
         }
         if (requestSnapshot && !isSessionSnapshotCurrent(requestSnapshot, getToken(), getRefreshToken())) {
           reject(sessionChangedError())
+          return
+        }
+        // 网关可能返回 HTML 或普通 JSON；保留 HTTP 错误，不误报断网或接受错误状态中的 code: 0。
+        const httpError = httpResponseError(res.statusCode)
+        if (httpError && (!body || typeof body.code !== 'number' || body.code === 0)) {
+          reject(httpError)
           return
         }
         if (!body || typeof body.code !== 'number') {
@@ -378,12 +481,14 @@ function executeRealRequest(path, effectivePath, {
           reject({
             code: body.code,
             biz: true,
-            message: body.message || '业务错误',
+            message: requestErrorMessage(body.code, body.bizCode, body.message, { auth, path }),
+            serverMessage: body.message || '',
             traceId: body.traceId,
             bizCode: body.bizCode,
             details: body.details,
             decisionTrace: body.decisionTrace,
-            httpStatus: res.statusCode
+            httpStatus: res.statusCode,
+            loginAttempt: isPasswordLoginRequest(path, auth)
           })
           return
         }
@@ -399,7 +504,7 @@ function executeRealRequest(path, effectivePath, {
           return
         }
         markOffline()
-        reject({ code: 'NETWORK', message: (err && err.errMsg) || '网络异常' })
+        reject({ code: 'NETWORK', message: '网络异常，请检查网络后重试' })
       }
     })
   })
@@ -407,17 +512,20 @@ function executeRealRequest(path, effectivePath, {
 
 /** 真实后端请求：返回统一响应的 data 字段；code!==0 抛业务错（e.biz=true） */
 export function realRequest(path, {
-  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null
+  method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null, headers = {},
+  _internshipBatchId = selectedInternshipBatchId(path)
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
+  const normalizedData = omitAbsentGetParams(data, normalizedMethod)
   // H5 access tokens intentionally live in memory only. After F5 the per-tab HttpOnly
   // refresh cookie is still valid, but there is no bearer token to attach to the first
   // business request. Restore the access token before that request instead of relying on
   // every runtime to surface a non-2xx response through uni.request's success callback.
-  if (auth && !_retried && !String(path || '').startsWith('/auth/') && !getToken() && getRefreshToken()) {
+  // /auth/me and role switching also need the restored identity after a direct F5.
+  if (auth && !_retried && String(path || '').split('?')[0] !== '/auth/refresh' && !getToken() && getRefreshToken()) {
     const expectedGeneration = currentSessionGeneration()
     return _refreshOnce(expectedGeneration).then(() => realRequest(path, {
-      method: normalizedMethod, data, auth, _retried: true, _rawPage,
+      method: normalizedMethod, data: normalizedData, auth, _retried: true, _rawPage, headers, _internshipBatchId,
       _expectedGeneration: expectedGeneration
     }))
   }
@@ -427,15 +535,17 @@ export function realRequest(path, {
   // 401 刷新后的重试和内部显式分页必须绕过原单飞槽位，避免等待自身 Promise。
   if (_retried || _rawPage) {
     return executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
     })
   }
 
-  const key = inflightKey(normalizedMethod, effectivePath, data, auth)
+  // Batch is request context: snapshot it before any async refresh and keep it in
+  // the single-flight key, so another batch cannot reuse this response or retry.
+  const key = inflightKey(normalizedMethod, effectivePath, normalizedData, auth, _internshipBatchId)
   if (normalizedMethod === 'GET') {
     if (_getInflight.has(key)) return _getInflight.get(key)
     const pending = executeRealRequest(path, effectivePath, {
-      method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+      method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
     }).finally(() => _getInflight.delete(key))
     _getInflight.set(key, pending)
     return pending
@@ -446,7 +556,7 @@ export function realRequest(path, {
   }
   _mutationInflight.add(key)
   return executeRealRequest(path, effectivePath, {
-    method: normalizedMethod, data, auth, _retried, _rawPage, _expectedGeneration
+    method: normalizedMethod, data: normalizedData, auth, _retried, _rawPage, _expectedGeneration, headers, _internshipBatchId
   }).finally(() => _mutationInflight.delete(key))
 }
 
@@ -489,12 +599,24 @@ export function realUpload(path, filePath, {
           reject(sessionChangedError())
           return
         }
+        const httpError = httpResponseError(res.statusCode)
+        if (httpError && (!body || typeof body.code !== 'number' || body.code === 0)) {
+          reject(httpError)
+          return
+        }
         if (!body || typeof body.code !== 'number') {
           reject({ code: 'BAD_RESPONSE', message: '上传响应结构异常' })
           return
         }
         if (body.code !== 0) {
-          reject({ code: body.code, biz: true, message: body.message || '上传失败', traceId: body.traceId })
+          reject({
+            code: body.code,
+            biz: true,
+            message: requestErrorMessage(body.code, body.bizCode, body.message),
+            serverMessage: body.message || '',
+            traceId: body.traceId,
+            bizCode: body.bizCode
+          })
           return
         }
         resolve(body.data)
@@ -505,7 +627,7 @@ export function realUpload(path, filePath, {
           return
         }
         markOffline()
-        reject({ code: 'NETWORK', message: (err && err.errMsg) || '上传失败' })
+        reject({ code: 'NETWORK', message: '网络异常，附件上传未完成，请检查网络后重试' })
       }
     })
   })
@@ -551,7 +673,12 @@ export function realDownload(path, { auth = true, _retried = false, _expectedGen
           return
         }
         markOffline()
-        reject({ code: 'NETWORK', message: (err && err.errMsg) || '下载失败' })
+        // errMsg 可能包含系统路径、域名或网关细节；用户只需要可执行的恢复指引。
+        reject({
+          code: 'NETWORK',
+          message: '附件下载失败，请检查网络后重试',
+          serverMessage: err && err.errMsg ? String(err.errMsg) : ''
+        })
       }
     })
   })

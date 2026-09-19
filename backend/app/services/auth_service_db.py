@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import secrets
 
 from sqlalchemy import and_, select
 
@@ -34,6 +35,29 @@ LEGACY_DEMO_ROLE_BY_LOGIN = {
     "counselor_demo": ("COUNSELOR", "辅导员", "COUNSELOR_CLASSES", "所带班级学生（演示租户）"),
     "student_demo": ("STUDENT", "学生", "SELF", "本人"),
 }
+
+
+def assert_mini_client_user_type(user, client_type: str | None) -> None:
+    """Reject a mobile surface that does not match the authenticated account plane.
+
+    This guard intentionally lives beside the canonical account/role resolver so
+    password, WeChat and role-switch paths cannot drift into separate mappings.
+    It is not a UI decision: a token issued for one mini-program surface must
+    never be usable as the other surface merely because the client changed a
+    request field.
+    """
+    client = str(client_type or "").strip().upper()
+    if client not in {"STUDENT_MINI", "TEACHER_MINI"}:
+        return
+    user_type = str(
+        getattr(user, "user_type", None)
+        or (user.get("userType") if isinstance(user, dict) else "")
+        or ""
+    ).strip().upper()
+    if client == "STUDENT_MINI" and user_type != "STUDENT":
+        raise AppException("NO_PERMISSION", "当前账号不能进入学生小程序，请从正确入口登录", http_status=403)
+    if client == "TEACHER_MINI" and user_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}:
+        raise AppException("NO_PERMISSION", "当前账号不能进入教师小程序，请从正确入口登录", http_status=403)
 
 
 def _subject_cache_key(user_ctx: dict) -> str:
@@ -405,6 +429,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
         "activeContextId": context["contextId"],
         "currentRoleCode": context["roleCode"],
         "permissionVersion": _permission_version(user, contexts),
+        "credentialVersion": int(getattr(user, "credential_version", 0) or 0),
         "clientType": client_type,
     }
     student_id, student_no = _student_identity(db, user)
@@ -419,6 +444,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
 
 def _login_result(db, user, context: dict, contexts: list[dict], client_type: str) -> dict:
     claims = _claims(db, user, context, contexts, client_type)
+    claims["authSessionId"] = secrets.token_urlsafe(24)
     access_token = create_access_token(claims)
     refresh_token = issue_refresh(dict(claims))
     return {
@@ -579,16 +605,46 @@ def _load_token_user(db, user_ctx: dict):
     return user
 
 
+def validate_credential_epoch(user, user_ctx: dict) -> None:
+    token_credential = user_ctx.get("credentialVersion")
+    current_credential = int(getattr(user, "credential_version", 0) or 0)
+    if token_credential is None:
+        valid = current_credential == 0
+    else:
+        valid = type(token_credential) is int and token_credential == current_credential
+    if not valid:
+        raise AppException("UNAUTHORIZED", "认证凭据已更新，请重新登录")
+
+
+def credential_change_receipt(user, user_ctx: dict) -> dict:
+    """Post-commit cleanup cannot turn a durable security change into a false failure."""
+    cache_ok = refresh_ok = True
+    try:
+        invalidate_subject_cache(f"db-{user.id}", user.tenant_id, user_ctx.get("activeContextId"))
+    except Exception:
+        cache_ok = False
+    try:
+        from app.core.token_store import revoke_refresh_by_user
+        revoke_refresh_by_user(f"db-{user.id}")
+    except Exception:
+        refresh_ok = False
+    return {"success": True, "reloginRequired": True, "runtimeMaterialized": True,
+        "credentialVersion": int(user.credential_version), "cacheInvalidated": cache_ok,
+        "cacheRecoveryRequired": not cache_ok, "refreshCleanupRequired": not refresh_ok,
+        "warning": "安全变更已生效，旧凭据已失效，缓存清理待重试" if not (cache_ok and refresh_ok) else ""}
+
+
 def validate_token_subject(user_ctx: dict) -> dict:
     """对真实账号逐请求复核账号、租户、当前角色和权限版本，角色回收立即生效。"""
     if not db_enabled() or not str((user_ctx or {}).get("userId") or "").startswith("db-"):
         return user_ctx
-    if _subject_cache_matches(user_ctx):
-        return user_ctx
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        validate_credential_epoch(user, user_ctx)
         _ensure_tenant_login_allowed(db, user)
+        if _subject_cache_matches(user_ctx):
+            return user_ctx
         contexts = _role_contexts(db, user)
         current = _pick_context(contexts,
                                 context_id=user_ctx.get("activeContextId"),
@@ -622,6 +678,7 @@ def get_me(user_ctx: dict) -> dict:
             "loginName": user.login_name,
             "realName": user.real_name,
             "userType": user.user_type,
+            "tenantId": str(user.tenant_id),
             "avatarFileId": None,
             "phoneMasked": None,
             "activeContextId": active["contextId"],
@@ -640,6 +697,7 @@ def switch_role(user_ctx: dict, context_id: str, client_type: str) -> dict:
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        assert_mini_client_user_type(user, client_type)
         contexts = _role_contexts(db, user)
         target = _pick_context(contexts, context_id=context_id)
         if target is None or target["contextId"] != context_id:
@@ -698,6 +756,10 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        db.refresh(user, with_for_update=True)
+        validate_credential_epoch(user, user_ctx)
+        if user.is_deleted or user.status != "ACTIVE":
+            raise AppException("UNAUTHORIZED", "账号已停用，请重新登录")
         if not verify_password(old_password or "", user.password_hash):
             count, locked = record_login_failure(lock_key)
             if locked:
@@ -707,16 +769,16 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
+        user.credential_version = int(user.credential_version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(db, "PASSWORD_CHANGE", f"user:{user.id}",
+            detail={"credentialVersion": user.credential_version}, tenant_id=user.tenant_id,
+            resource_id=str(user.id))
         # 安全版本提交前先设置强制回库标记；版本化旧 token 会在下一请求被 version mismatch 拒绝，
         # 历史无 permissionVersion token 则由 password_change_gate 保持 fail-closed，直到新 token
         # 完成实时校验后写入 JWT-lifetime legacy block。认证存储故障时生产环境直接拒绝本次改密。
         force_subject_revalidation(f"db-{user.id}", user.tenant_id)
         db.commit()
-        invalidate_subject_cache(f"db-{user.id}", user.tenant_id,
-                                 user_ctx.get("activeContextId"))
-        revoke_refresh_by_user(f"db-{user.id}")
-        from app.services import audit_log
-        audit_log.record("PASSWORD_CHANGE", user.login_name, detail={}, result="SUCCESS")
-        return {"success": True, "reloginRequired": True}
+        return credential_change_receipt(user, user_ctx)
     finally:
         db.close()

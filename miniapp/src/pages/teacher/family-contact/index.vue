@@ -94,6 +94,7 @@ export default {
     this.focusContactId = /^[1-9]\d*$/.test(rawId) ? rawId : ''
     this.applyPrefill(q || {})
     this.load()
+    if (q?.mode === 'create' && !this.prefillLocked && !this.focusContactId) this.onCreateTab()
   },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -132,7 +133,7 @@ export default {
           } else this.list = rows
           this.state = 'ready'
         })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
         .finally(() => { if (done) done() })
     },
     onCreateTab() {

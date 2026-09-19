@@ -6,10 +6,12 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="primary" @click="openCreate">新建设备</AppButton>
+      <AppButton v-if="can('create')" variant="primary" :disabled="saving || acting || Boolean(pendingResult)" @click="openCreate">新建设备</AppButton>
     </template>
 
     <div class="mp-stack">
+      <AaOperationReceipt :receipt="receipt" />
+      <AppButton v-if="pendingResult" :disabled="saving || acting" @click="queryResult">查询办理结果</AppButton>
       <div class="aaeq-filters">
         <AppTextInput v-model="filters.keyword" placeholder="资产编号 / 设备名称 / 规格型号" clearable @change="search" />
         <AppSelect v-model="filters.ownerKind" :options="ownerOptions" placeholder="全部位置类型" @change="search" />
@@ -32,12 +34,12 @@
           <StatusTag :type="statusType(row.status)" :label="row.statusLabel" dot />
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="openEdit(row)">编辑</button>
-          <button v-if="row.status !== 'IN_USE'" class="mp-link" @click="askStatus(row, 'IN_USE')">在用</button>
-          <button v-if="row.status !== 'IDLE'" class="mp-link" @click="askStatus(row, 'IDLE')">闲置</button>
-          <button v-if="row.status !== 'MAINTENANCE'" class="mp-link" @click="askStatus(row, 'MAINTENANCE')">报修</button>
-          <button v-if="row.status !== 'SCRAPPED'" class="mp-link is-danger" @click="askStatus(row, 'SCRAPPED')">报废</button>
-          <button class="mp-link is-danger" @click="askDelete(row)">删除</button>
+          <button v-if="can('update')" class="mp-link" :disabled="saving || acting || Boolean(pendingResult)" @click="openEdit(row)">编辑</button>
+          <button v-if="can('update') && row.status !== 'IN_USE'" class="mp-link" @click="askStatus(row, 'IN_USE')">在用</button>
+          <button v-if="can('update') && row.status !== 'IDLE'" class="mp-link" @click="askStatus(row, 'IDLE')">闲置</button>
+          <button v-if="can('update') && row.status !== 'MAINTENANCE'" class="mp-link" @click="askStatus(row, 'MAINTENANCE')">标记维修中</button>
+          <button v-if="can('update') && row.status !== 'SCRAPPED'" class="mp-link is-danger" @click="askStatus(row, 'SCRAPPED')">报废</button>
+          <button v-if="can('delete')" class="mp-link is-danger" :disabled="acting || saving || Boolean(pendingResult)" @click="askDelete(row)">删除</button>
         </template>
       </DataTable>
 
@@ -91,7 +93,7 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitForm">保存</AppButton>
+        <AppButton variant="primary" :loading="saving" :disabled="Boolean(pendingResult) || !can(editingId ? 'update' : 'create')" @click="submitForm">保存</AppButton>
       </template>
     </AppDrawer>
 
@@ -100,8 +102,9 @@
       :title="confirmTitle"
       :message="confirmMessage"
       :type="confirmType"
+      :submitting="acting"
       @confirm="onConfirm"
-    />
+    ><AppInlineAlert v-if="actionError" type="danger" :description="actionError" /></AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -110,22 +113,25 @@
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem, AppConfirmDialog, AppInlineAlert, AppDatePicker, AppClassroomPicker, AppLabPicker } from '@/components/common'
-import { academicAffairsApi, academicAffairsEquipmentApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { toast } from '@/utils/toast'
+import { academicAffairsEquipmentApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { matchPermission } from '@/config/navPlan'
+import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import { isDeniedResult, isConflictResult, isMissingResult } from '../components/parallel-a/resultState'
 
 const EMPTY_FILTERS = () => ({ keyword: '', ownerKind: '', status: '' })
 const EMPTY_FORM = () => ({ equipmentCode: '', equipmentName: '', specModel: '', quantity: 1, ownerKind: 'NONE', ownerId: '', responsibleName: '', purchaseDate: '', remark: '' })
 
 export default {
   name: 'AaEquipmentListView',
-  components: {
+  props: { ctx: { type: Object, required: true } },
+  components: { AaOperationReceipt,
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
     AppConfirmDialog, AppInlineAlert, AppDatePicker, AppClassroomPicker, AppLabPicker
   },
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
+      revision: 0, disposed: false, acting: false, actionError: '', receipt: null, pendingResult: null,
       loading: true,
       error: '',
       rows: [],
@@ -163,11 +169,9 @@ export default {
       pendingAction: null
     }
   },
-  async created() {
-    const c = await academicAffairsApi.getContext()
-    if (c.code === 0) this.ctx = c.data
-    this.load()
-  },
+  created() { this.load() },
+  watch: { ctx() { this.clearPrivate(); this.load() } },
+  beforeUnmount() { this.disposed = true; this.revision++ },
   methods: {
     statusType(s) {
       if (s === 'IN_USE') return 'success'
@@ -192,24 +196,27 @@ export default {
       this.load()
     },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await academicAffairsEquipmentApi.list({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) {
-        this.rows = res.data.items
-        this.pagination.total = res.data.total
-      } else {
-        this.error = res.message
-      }
-      this.loading = false
+      const revision = ++this.revision, context = this.ctx
+      const current = () => !this.disposed && revision === this.revision && context === this.ctx
+      this.loading = true; this.error = ''; this.rows = []; this.pagination.total = 0
+      try {
+        const res = await academicAffairsEquipmentApi.list({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+        if (!current()) return
+        if (res.code !== 0) throw res
+        if (!Array.isArray(res.data?.items)) throw new Error('资源列表未完整返回。')
+        this.rows = res.data.items; this.pagination.total = res.data.total
+      } catch (e) { if (current()) this.failure(e, 'error') }
+      finally { if (current()) this.loading = false }
     },
     openCreate() {
+      if (!this.can('create') || this.saving || this.acting || this.pendingResult) return
       this.editingId = ''
       this.form = EMPTY_FORM()
       this.formError = ''
       this.formVisible = true
     },
     openEdit(row) {
+      if (!this.can('update') || this.saving || this.acting || this.pendingResult) return
       this.editingId = row.equipmentId
       this.form = {
         equipmentCode: row.equipmentCode, equipmentName: row.equipmentName, specModel: row.specModel,
@@ -220,53 +227,84 @@ export default {
       this.formVisible = true
     },
     async submitForm() {
-      if (!this.form.equipmentCode || !this.form.equipmentName) {
-        this.formError = '资产编号、设备名称均必填'
-        return
-      }
-      this.saving = true
-      this.formError = ''
-      const res = this.editingId
-        ? await academicAffairsEquipmentApi.update(this.editingId, this.form)
-        : await academicAffairsEquipmentApi.create(this.form)
-      this.saving = false
-      if (res.code === 0) {
-        toast.success(this.editingId ? '已保存' : '已创建')
-        this.formVisible = false
-        this.load()
-      } else {
-        this.formError = res.message
-      }
+      if (this.saving || this.acting || this.pendingResult || !this.can(this.editingId ? 'update' : 'create')) return
+      if (!this.form.equipmentCode?.trim() || !this.form.equipmentName?.trim()) { this.formError = '编号和名称均必填'; return }
+      const body = Object.fromEntries(Object.entries(this.form).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]))
+      if (body.ownerKind === 'NONE') body.ownerId = ''
+      const context = this.ctx; this.saving = true; this.formError = ''
+      await this.execute(() => this.editingId ? academicAffairsEquipmentApi.update(this.editingId, body) : academicAffairsEquipmentApi.create(body), this.editingId, body, 'formError')
+      if (!this.disposed && context === this.ctx) this.saving = false
     },
     askStatus(row, target) {
-      const label = { IN_USE: '设为在用', IDLE: '设为闲置', MAINTENANCE: '报修', SCRAPPED: '报废' }[target]
+      if (!this.can('update') || this.saving || this.acting || this.pendingResult) return
+      const label = { IN_USE: '设为在用', IDLE: '设为闲置', MAINTENANCE: '标记为维修中', SCRAPPED: '报废' }[target]
       this.confirmTitle = `${label}`
-      this.confirmMessage = `确认将「${row.equipmentName}」${label}？`
+      this.confirmMessage = `确认将「${row.equipmentName}」${label}？` + (target === 'MAINTENANCE' ? '本操作只修改资源状态。需要登记故障和跟进维修时，请前往「资源维修」创建工单。' : '')
       this.confirmType = target === 'SCRAPPED' ? 'danger' : target === 'IN_USE' ? 'primary' : 'warning'
       this.pendingAction = { kind: 'status', id: row.equipmentId, target }
-      this.confirmVisible = true
+      this.actionError = ''; this.confirmVisible = true
     },
     askDelete(row) {
+      if (!this.can('delete') || this.saving || this.acting || this.pendingResult) return
       this.confirmTitle = '删除设备'
       this.confirmMessage = `确认删除「${row.equipmentName}」？删除为逻辑删除。`
       this.confirmType = 'danger'
       this.pendingAction = { kind: 'delete', id: row.equipmentId }
-      this.confirmVisible = true
+      this.actionError = ''; this.confirmVisible = true
     },
     async onConfirm() {
-      const a = this.pendingAction
-      if (!a) return
-      const res = a.kind === 'status'
-        ? await academicAffairsEquipmentApi.setStatus(a.id, a.target)
-        : await academicAffairsEquipmentApi.remove(a.id)
-      this.confirmVisible = false
-      this.pendingAction = null
-      if (res.code === 0) {
-        toast.success('操作成功')
-        this.load()
-      } else {
-        toast.error(res.message)
+      const action = this.pendingAction
+      if (!action || this.acting || this.saving || this.pendingResult || !this.can(action.kind === 'delete' ? 'delete' : 'update')) return
+      const context = this.ctx; this.acting = true; this.actionError = ''
+      await this.execute(() => action.kind === 'status' ? academicAffairsEquipmentApi.setStatus(action.id, action.target) : academicAffairsEquipmentApi.remove(action.id), action.id, action.kind === 'status' ? { status: action.target } : { deleted: true }, 'actionError')
+      if (!this.disposed && context === this.ctx) this.acting = false
+    },
+    can(action) { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.equipment.' + action) },
+    clearPrivate() { this.revision++; this.rows = []; this.pagination.total = 0; this.form = EMPTY_FORM(); this.formVisible = false; this.confirmVisible = false; this.pendingAction = null; this.pendingResult = null; this.receipt = null; this.saving = false; this.acting = false },
+    failure(e, field) {
+      if (isDeniedResult(e)) { this.clearPrivate(); this.loading = false; this.error = (e.message || '无权访问') + '；已清除旧资源内容。'; return }
+      this[field] = (isConflictResult(e) ? '事实已变化，保留填写内容，请重新核对。' : '') + (e?.message || '读取失败，请重试。')
+      if (isConflictResult(e)) this.receipt = { title: '办理回执', status: '事实已变化', pending: true, next: this[field] }
+    },
+    async execute(command, id, expected, field) {
+      const context = this.ctx, current = () => !this.disposed && context === this.ctx
+      try {
+        if (id) {
+          const before = await academicAffairsEquipmentApi.get(id); if (!current()) return
+          if (before.code !== 0) throw before
+          if (String(before.data?.equipmentId) !== String(id)) throw new Error('资源身份不一致，尚未提交。')
+        }
+        this.pendingResult = { id, expected, accepted: false }
+        this.receipt = { title: '办理回执', object: '设备 #' + (id || '待取得编号'), status: '结果待确认', pending: true, next: '正在读取正式资源资料，请勿重复提交。' }
+        const res = await command(); if (!current()) return
+        if (res.code !== 0) { if (isDeniedResult(res) || isConflictResult(res) || String(res.code || '').startsWith('400')) this.pendingResult = null; throw res }
+        this.pendingResult.id = res.data?.equipmentId || id
+        this.pendingResult.accepted = !expected.deleted || res.data?.deleted === true
+        this.formVisible = false; this.confirmVisible = false
+        await this.readResult(current)
+      } catch (e) {
+        if (!current()) return
+        this.failure(e, field)
+        if (this.pendingResult && !isDeniedResult(e) && !isConflictResult(e)) { try { await this.readResult(current) } catch (readError) { if (current()) this.failure(readError, field) } }
       }
+    },
+    async readResult(current) {
+      const pending = this.pendingResult
+      if (!pending?.id) { this.receipt = { ...this.receipt, next: '未取得正式资源编号，请查询目录核对本次结果，不会自动再次创建。' }; await this.load(); return }
+      const res = await academicAffairsEquipmentApi.get(pending.id); if (!current()) return
+      if (isDeniedResult(res)) throw res
+      const missing = isMissingResult(res)
+      const confirmed = pending.expected.deleted ? pending.accepted && missing : res.code === 0 && String(res.data?.equipmentId) === String(pending.id) && Object.entries(pending.expected).every(([key, value]) => String(res.data[key] ?? '') === String(value ?? ''))
+      if (!missing && res.code !== 0) throw res
+      this.receipt = { title: '办理回执', object: '设备 #' + pending.id, status: confirmed ? pending.expected.deleted ? '已从目录移除' : res.data.statusLabel || res.data.status : '结果待确认', pending: !confirmed, time: res.data?.updatedAt, next: confirmed ? '已重新读取正式目录。相关预约、设备与维修记录请在对应工作区核对。' : '尚未读到与本次操作一致的正式结果，请继续查询。' }
+      if (confirmed) { this.pendingResult = null; this.pendingAction = null }
+      await this.load()
+    },
+    async queryResult() {
+      if (!this.pendingResult || this.saving || this.acting) return
+      const context = this.ctx, current = () => !this.disposed && context === this.ctx
+      this.acting = true
+      try { await this.readResult(current) } catch (e) { if (current()) this.failure(e, 'error') } finally { if (current()) this.acting = false }
     }
   }
 }
