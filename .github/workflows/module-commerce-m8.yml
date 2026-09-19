@@ -165,7 +165,8 @@ jobs:
           assert '_CONFIG_TYPE = "COMMERCIAL_SLA_POLICY"' in sla_policy
           assert 'with_for_update' in sla_policy and 'expectedVersion' in sla_policy
           assert 'COMMERCIAL_SLA_POLICY_UPDATE' in sla_policy and 'COMMERCIAL_SLA_POLICY_RESET' in sla_policy
-          assert '系统不会补默认承诺' in operations_router
+          assert 'No default SLA hours are invented.' in operations_router
+          assert '没有系统默认承诺' in operations_router
           assert 'module_commerce_finance_projection_service' in finance_router
           assert 'module_commerce_operations_router' in installer
           assert 'intentionally separate from the frozen M1-M5 24-route contract' in finance_router
