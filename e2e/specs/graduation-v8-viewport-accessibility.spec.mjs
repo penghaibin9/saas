@@ -7,6 +7,7 @@ import { config } from '../lib/config.mjs'
 import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const VIEWPORTS = [
   { width: 1920, height: 1080 },
@@ -102,22 +103,7 @@ async function auditMobileFit(page, expectedViewport) {
 }
 
 async function loginMini(page, account, kind) {
-  await page.goto(`${MINI_BASE_URL}/#/pages/login/${kind}/index`)
-  const accountLabel = kind === 'teacher' ? '工号或统一账号' : '学号或统一账号'
-  await page.locator(`input[aria-label="${accountLabel}"]`).fill(account.username)
-  await page.locator('input[aria-label="密码"]').fill(account.password)
-  if (account.tenant) {
-    const tenantToggle = page.locator('button.tenant-box')
-    if ((await page.locator('input.field--tenant').count()) === 0) await tenantToggle.click()
-    await page.locator('input.field--tenant').fill(account.tenant)
-  }
-  await page.locator('button.agreement-toggle[aria-label="同意用户协议与隐私政策"]').click()
-  await expect(page.locator('.agreement__box')).toHaveClass(/agreement__box--checked/)
-  const action = kind === 'teacher' ? '进入教师工作台' : '进入学生首页'
-  const loginButton = page.locator('button.account-button').filter({ hasText: action })
-  await expect(loginButton).toBeEnabled()
-  await loginButton.click()
-  await expect(page).toHaveURL(kind === 'teacher' ? /pages\/teacher\/workbench\/index/ : /pages\/student\/home\/index/, { timeout: 20_000 })
+  await loginMiniH5(page, { baseUrl: MINI_BASE_URL, entry: kind, account })
   await expect(page.locator('body')).not.toContainText(/操作过于频繁|登录失败|验证码加载失败/)
   if (kind === 'teacher') await expect(page.getByText('当前身份：指导教师', { exact: false })).toBeVisible()
 }

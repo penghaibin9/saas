@@ -230,6 +230,10 @@ test('approved system UI: create role → permissions → additive members → d
   const addingPermission = (await addCandidate.count()) > 0
   const permissionInput = addingPermission ? addCandidate : removeCandidate
   const permissionRow = permissionInput.locator('xpath=ancestor::label[1]')
+  const permissionGroup = permissionRow.locator('xpath=ancestor::details[1]')
+  if (await permissionGroup.count() && await permissionGroup.getAttribute('open') === null) {
+    await permissionGroup.locator(':scope > summary').click()
+  }
   await expect(permissionRow).toBeVisible()
   const code = await permissionInput.evaluate((node) => node.closest('[data-permission]')?.getAttribute('data-permission') || '')
   expect(code).toBeTruthy()

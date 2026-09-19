@@ -656,7 +656,24 @@ def validate_school_master(db, tenant_id: int) -> dict:
         )) or 0)
 
     students = count(StudentProfile, StudentProfile.is_deleted.is_(False))
-    academic_facts = count(StudentAcademicFact)
+    # Historical transitions append facts; only the open version is current.
+    academic_facts = count(StudentAcademicFact, StudentAcademicFact.valid_to.is_(None))
+    active_fact_counts = select(
+        StudentAcademicFact.student_id,
+        func.count().label("fact_count"),
+    ).where(
+        StudentAcademicFact.tenant_id == tenant_id,
+        StudentAcademicFact.valid_to.is_(None),
+    ).group_by(StudentAcademicFact.student_id).subquery()
+    invalid_fact_students = int(db.scalar(
+        select(func.count()).select_from(StudentProfile).outerjoin(
+            active_fact_counts, active_fact_counts.c.student_id == StudentProfile.id,
+        ).where(
+            StudentProfile.tenant_id == tenant_id,
+            StudentProfile.is_deleted.is_(False),
+            func.coalesce(active_fact_counts.c.fact_count, 0) != 1,
+        )
+    ) or 0)
     colleges = count(College, College.is_deleted.is_(False))
     majors = count(Major, Major.is_deleted.is_(False))
     classes = count(SchoolClass, SchoolClass.is_deleted.is_(False))
@@ -671,6 +688,7 @@ def validate_school_master(db, tenant_id: int) -> dict:
     report = {
         "students": students,
         "studentAcademicFacts": academic_facts,
+        "studentsWithInvalidCurrentFact": invalid_fact_students,
         "colleges": colleges,
         "majors": majors,
         "classes": classes,
@@ -681,6 +699,7 @@ def validate_school_master(db, tenant_id: int) -> dict:
     expected = {
         "students": EXPECTED_STUDENT_COUNT,
         "studentAcademicFacts": EXPECTED_STUDENT_COUNT,
+        "studentsWithInvalidCurrentFact": 0,
         "colleges": EXPECTED_COLLEGE_COUNT,
         "majors": EXPECTED_MAJOR_COUNT,
         "classes": EXPECTED_CLASS_COUNT,
