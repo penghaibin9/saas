@@ -318,6 +318,40 @@ def _stable_judge_pending() -> list[dict]:
         return result
 
 
+def _stable_defense_score_entry(user: dict, gd_student_id: str, body: dict) -> dict:
+    """Mobile defense scoring uses only the authenticated stable judge seat."""
+    from app.modules.graduation.services import graduation_defense_score_service as svc
+    from app.modules.graduation.services import graduation_identity as gid
+
+    payload = body or {}
+    with session() as db:
+        mentor = gid.current_user_mentor(db)
+        expert_id = user.get("expertId")
+        if mentor is None and expert_id in (None, ""):
+            raise no_permission("当前账号未绑定稳定答辩评委身份")
+        student = _student(db, gd_student_id, user)
+        group = db.get(GraduationDefenseGroup, student.defense_group_id) if student.defense_group_id else None
+        seat = next((
+            item for item in gid.judge_panel_seats(group)
+            if gid.user_matches_judge_seat(item, mentor=mentor, expert_id=expert_id)
+        ), None)
+        if seat is None:
+            raise no_permission("当前账号不在该生答辩组评委名单中")
+        judge_name = (seat.get("name") or (mentor.teacher_name if mentor else "") or user.get("realName") or "").strip()
+        judge_mentor_id = int(mentor.id) if mentor is not None else None
+
+    return svc.enter_score(
+        gd_student_id,
+        judge_name,
+        score=payload.get("score"),
+        comment=payload.get("comment"),
+        absent=bool(payload.get("absent")),
+        absent_reason=payload.get("absentReason"),
+        expert_id=expert_id,
+        judge_mentor_id=judge_mentor_id,
+    )
+
+
 def _stable_topic_audit(db, biz_id, action, detail=""):
     user = get_current_user_ctx() or {}
     operator = user.get("realName") or user.get("loginName")
@@ -344,4 +378,5 @@ topic_change_review = _topic_change_review
 review_tasks = _review_tasks
 review_submit = _review_submit
 judge_pending = _stable_judge_pending
+defense_score_entry = _stable_defense_score_entry
 topic_audit = _stable_topic_audit

@@ -80,7 +80,8 @@ def _seed_students(db_mode, *, prefix="FE4"):
             ))
         return user
 
-    counselor = ensure_user("counselor01", "王莉", "COUNSELOR", "辅导员")
+    counselor_login = f"{prefix.lower()}_counselor"
+    counselor = ensure_user(counselor_login, "王莉", "COUNSELOR", "辅导员")
     college_reviewer = ensure_user("fe_college01", "学院受理人", "COLLEGE_ADMIN", "学院管理员")
     ensure_user("fe_sa01", "学工处受理人", "STUDENT_AFFAIRS_ADMIN", "学工处管理员")
     college = College(
@@ -119,7 +120,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
             effective_from=datetime.utcnow() - timedelta(days=1),
         ),
         TeacherStudentScope(
-            tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+            tenant_id=TID, teacher_key=counselor_login, teacher_name="王莉",
             role_code="COUNSELOR", scope_type="CLASS", ref_value=cls.class_name,
             status="ACTIVE",
         ),
@@ -132,6 +133,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
     ids = {
         "class": cls.id, "one": one.id, "two": two.id,
         "oneNo": one.student_no, "twoNo": two.student_no,
+        "counselorLogin": counselor_login,
     }
     db.commit()
     db.close()
@@ -149,7 +151,7 @@ def test_four_end_routes_registered(client, db_mode):
 def test_student_leave_and_teacher_mobile_share_version_contract(client, db_mode):
     ids = _seed_students(db_mode, prefix="FE41")
     admin = _hdr(client, "school_admin01")
-    counselor = _hdr(client, "counselor01", "TEACHER_MINI")
+    counselor = _hdr(client, ids["counselorLogin"], "TEACHER_MINI")
     leave = client.post(f"{BASE}/leave", headers=admin, json={
         "studentId": str(ids["one"]), "leaveType": "PERSONAL",
         "startTime": "2026-08-01", "endTime": "2026-08-02",

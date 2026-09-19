@@ -3527,6 +3527,8 @@ from app.modules.graduation.services.graduation_mobile_teacher_service import (
     require_student_scope as _require_gd_student_scope,
     review_submit as graduation_review_submit,
     review_tasks as graduation_my_reviews,
+    judge_pending as graduation_defense_score_pending,
+    defense_score_entry as graduation_defense_score_entry,
     topic_change_review as graduation_change_request_review,
     topic_change_rows as graduation_change_requests_pending,
 )
