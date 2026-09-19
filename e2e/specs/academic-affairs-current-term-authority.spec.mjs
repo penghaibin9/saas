@@ -228,7 +228,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await page.getByRole('button', { name: '前往学年学期与业务日历' }).click()
     await expect(page).toHaveURL(/\/admin\/system\/academic-calendar(?:\?|$)/)
-    await expect(page.getByText('学年学期与业务日历', { exact: false }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学年学期与业务日历', level: 1 })).toBeVisible()
   } finally {
     await restoreAcademicW1State(api, { originalCurrent, legacyBaseTerm, governanceTerm })
   }

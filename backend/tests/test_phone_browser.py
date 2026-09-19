@@ -209,8 +209,13 @@ def test_local_four_surface_phone_and_account_browser(phone_identity, phone_surf
         'PHONE_TEST_MINI_TEACHER_ACCOUNT': phone_surface_identities['teacher_account'],
         'PHONE_TEST_MINI_TEACHER_PHONE': phone_surface_identities['teacher_phone'],
         'PHONE_TEST_MINI_BASE_URL': 'http://localhost:5188'}
+    phone_log_dir = Path('/tmp/phone-browser')
+    phone_log_dir.mkdir(parents=True, exist_ok=True)
+    backend_log_path = phone_log_dir / 'backend.log'
+    backend_log = backend_log_path.open('w', encoding='utf-8')
     server = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1',
-        '--port', '18310', '--no-access-log'], cwd=root / 'backend', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        '--port', '18310', '--no-access-log'], cwd=root / 'backend', env=env,
+        stdout=backend_log, stderr=subprocess.STDOUT)
     try:
         ready = False
         deadline = time.monotonic() + 45
@@ -228,10 +233,18 @@ def test_local_four_surface_phone_and_account_browser(phone_identity, phone_surf
             command.extend(['--grep', os.environ['PHONE_E2E_GREP']])
         result = subprocess.run(command,
             cwd=root / 'e2e', env=env, timeout=240, capture_output=True, text=True, encoding='utf-8', errors='replace')
-        assert result.returncode == 0, result.stdout + result.stderr
+        if result.returncode != 0:
+            backend_log.flush()
+            backend_text = backend_log_path.read_text(encoding='utf-8', errors='replace')
+            raise AssertionError(
+                result.stdout + result.stderr
+                + '\n--- dedicated backend log ---\n'
+                + backend_text[-40000:]
+            )
     finally:
         server.terminate()
         server.wait(timeout=15)
+        backend_log.close()
 
 
 def test_real_xlsx_import_to_four_surface_phone_browser(

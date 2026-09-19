@@ -17,7 +17,7 @@ from types import SimpleNamespace
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.core.permissions import enforce_permission
+from app.core.permissions import enforce_permission, has_permission
 from app.services.db_service import _tid, session
 
 from . import mobile_academic_affairs_facade as _base
@@ -216,7 +216,11 @@ def teacher_schedule_my(user, week=None) -> dict:
     from . import academic_affairs_teacher_today_service as teacher_today
     from . import academic_affairs_teacher_today_work_service as teacher_work
 
-    enforce_permission(user, "academicAffairs.schedule.view")
+    if (
+        not has_permission(user, "academicAffairs.schedule.view")
+        and not teacher_today.has_formal_teacher_relation(user)
+    ):
+        enforce_permission(user, "academicAffairs.schedule.view")
     result = teacher_today.teacher_today_projection(user)
     selected_week = _base.resolve_mobile_schedule_week(
         week,

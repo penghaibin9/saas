@@ -144,7 +144,8 @@ test.describe('official website production closure', () => {
       phone: '13800138000',
       interest: '毕业设计',
       message: '官网上线收口自动化验证',
-      website: ''
+      website: '',
+      source_path: '/contact'
     })
   })
 

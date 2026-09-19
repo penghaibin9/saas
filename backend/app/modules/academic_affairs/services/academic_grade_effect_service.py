@@ -104,11 +104,17 @@ def finish_effect_in_scan(job, result):
     job.last_error = None
 
 
-def run_effect(job_id=None, user=None):
-    """Claim one due effect. Crashed workers are recoverable after their lease expires."""
-    from app.services.tenant_effective_state_service import background_execution_policy
-    if not background_execution_policy(_tid()).get('writable'):
-        return None
+def run_effect(job_id=None, user=None, *, enforce_background_policy=True):
+    """Claim one due effect. Crashed workers are recoverable after their lease expires.
+
+    Scheduled/background workers must obey the tenant lifecycle gate. A synchronous
+    post-commit continuation belongs to the request that already passed its write gate,
+    so it must be allowed to finish the durable effect it just created.
+    """
+    if enforce_background_policy:
+        from app.services.tenant_effective_state_service import background_execution_policy
+        if not background_execution_policy(_tid()).get('writable'):
+            return None
     now = datetime.utcnow()
     with session() as db:
         runnable = or_(
@@ -148,7 +154,7 @@ def run_effect(job_id=None, user=None):
 def try_run_effect(job_id, user):
     """An effect failure must never turn a committed publication into an error receipt."""
     try:
-        result = run_effect(job_id, user)
+        result = run_effect(job_id, user, enforce_background_policy=False)
         if result is not None:
             return result
     except Exception:

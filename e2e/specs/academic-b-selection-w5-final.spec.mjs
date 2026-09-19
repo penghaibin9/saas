@@ -63,9 +63,10 @@ async function miniappLogin(page) {
   const fields = authCard.getByRole('textbox')
   await fields.nth(0).fill(config.student.username)
   await fields.nth(1).fill(config.student.password)
-  const agreement = authCard.locator('.agreement__box').first()
+  const agreement = authCard.getByRole('checkbox', { name: '同意用户协议与隐私政策' })
+  await expect(agreement).toBeVisible()
   await agreement.click()
-  await expect(agreement).toHaveClass(/\bon\b/)
+  await expect(agreement).toHaveAttribute('aria-checked', 'true')
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
   )
@@ -99,7 +100,9 @@ async function openPcCourse(page, batchName, courseName, actionName) {
 }
 
 async function miniCard(page, batchName, courseName) {
-  const group = page.locator('.sl__group').filter({ hasText: batchName }).first()
+  const picker = page.locator('.sl__batch-picker')
+  await expect(picker).toContainText(batchName, { timeout: 20_000 })
+  const group = page.locator('.sl__group').first()
   await expect(group).toBeVisible({ timeout: 20_000 })
   const card = group.locator('.sl__course').filter({ hasText: courseName }).first()
   await expect(card).toBeVisible({ timeout: 20_000 })

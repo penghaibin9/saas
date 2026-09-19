@@ -2423,30 +2423,9 @@ def weekly_review(user: dict, report_id: str, action: str, comment: str | None =
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实批阅")
-    scope = resolve_teacher_scope(u)
-    if scope.get("mode") == "SCOPED":
-        detail = internship_service.get_weekly_report_detail(report_id)  # 不存在 → 404
-        if not scope_match_row(scope, class_name=detail.get("className"),
-                               advisor_name=detail.get("advisorName"),
-                               student_no=detail.get("studentNo")):
-            # 兜底：按实习记录导师姓名判定
-            allowed = False
-            try:
-                with _session() as db:
-                    from app.models import InternshipRecord, WeeklyReport
-                    w = db.get(WeeklyReport, int(report_id))
-                    rec = tenant_get(db, InternshipRecord, w.internship_id) if w else None
-                    if rec and (rec.advisor_name or "").strip() in scope["advisorNames"]:
-                        allowed = True
-                    if rec and rec.student_id:
-                        from app.models import StudentProfile
-                        stu = tenant_get(db, StudentProfile, rec.student_id)
-                        if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
-                            allowed = True
-            except Exception:  # noqa: BLE001
-                allowed = False
-            if not allowed:
-                raise AppException("NO_PERMISSION", "该周报不在你的负责范围内")
+    # Canonical internship service owns tenant + advisor/student scope checks,
+    # including stable advisor_user_id matching. Do not pre-deny with the legacy
+    # name-only mobile guard after advisor identity hardening.
     result = internship_service.review_weekly_report(
         report_id, action, comment or "", user=u, expected_version=expected_version)
     _audit_write("MOBILE_WEEKLY_REVIEW", f"internship/weekly:{report_id}",

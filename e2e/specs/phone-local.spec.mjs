@@ -118,7 +118,9 @@ test('teacher and student H5 entries authenticate with ACCOUNT and PHONE at mobi
     await page.getByRole('checkbox', { name: '同意用户协议与隐私政策' }).click()
     const response = page.waitForResponse(r => /\/auth\/browser-login(?:\?|$)/.test(r.url()) && r.request().method() === 'POST', { timeout: 20000 })
     await page.locator('uni-button.account-button, button.account-button').click()
-    expect((await response).status()).toBe(200)
+    const loginResponse = await response
+    const responseText = await loginResponse.text().catch(() => '')
+    expect(loginResponse.status(), `${item.side}/${item.type} browser-login: ${responseText}`).toBe(200)
     await expect(page).toHaveURL(new RegExp(item.home.replaceAll('/', '\\/')))
     await context.close()
   }
