@@ -1287,7 +1287,11 @@ def _correction_material_ids(db, field_key, material_file_ids):
     from app.models import FileObject
     ids = material_file_ids if isinstance(material_file_ids, list) else (
         [material_file_ids] if material_file_ids else [])
-    int_ids = [int(x) for x in ids if str(x).isdigit()]
+    if any(not str(x).isdigit() or int(x) <= 0 for x in ids):
+        raise AppException("VALIDATION_ERROR", "证明材料包含非法文件 ID")
+    int_ids = list(dict.fromkeys(int(x) for x in ids))
+    if len(int_ids) > 10:
+        raise AppException("VALIDATION_ERROR", "最多提交 10 份证明材料")
     if field_key in _CORRECTION_MATERIAL_REQUIRED and not int_ids:
         raise AppException(
             "VALIDATION_ERROR",
@@ -1338,6 +1342,17 @@ def create_roster_correction(user, student_id, field_key, new_value, reason,
                                 material_file_ids=material_json, status="PENDING")
         db.add(c)
         db.flush()
+        if material_json:
+            import json
+            from app.services.file_business_binding_service import bind_file_to_business
+            for file_id in json.loads(material_json):
+                bind_file_to_business(
+                    db, file_id=file_id, biz_type="AA_STUDENT_CORRECTION", biz_id=c.id,
+                    actor=user, subject_type="STUDENT", subject_id=s.id,
+                    relation_type="APPLICATION_MATERIAL", module_code="ACADEMIC_AFFAIRS",
+                    student_id=s.id, college_id=s.college_id, class_id=s.class_id,
+                    scope={"correctionId": str(c.id), "studentId": str(s.id)},
+                )
         _audit(db, "AA_STUDENT_CORRECTION", c.id, "APPLY",
               f"{s.real_name} · {_CORRECTION_FIELD_LABEL[field_key]}更正："
               f"{_correction_audit_value(field_key, current)} → "
