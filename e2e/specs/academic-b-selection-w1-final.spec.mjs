@@ -85,18 +85,18 @@ async function loginAcademicAdmin(page) {
 }
 
 async function selectBatch(page, name) {
-  const item = page.locator('.aasel-batches > .aasel-batch').filter({ hasText: name }).first()
+  const item = page.locator('.aa-selection-batches > .aa-selection-batch').filter({ hasText: name }).first()
   await expect(item).toBeVisible({ timeout: 20_000 })
   await item.click()
-  await expect(page.locator('.aasel-detail')).toContainText(name)
+  await expect(page.locator('.aa-selection-detail')).toContainText(name)
 }
 
 async function expectBatchStatus(page, label) {
-  await expect(page.locator('.aasel-hero-topline')).toContainText(label, { timeout: 20_000 })
+  await expect(page.locator('.aa-selection-hero-topline')).toContainText(label, { timeout: 20_000 })
 }
 
 async function expectNoStalePreflight(page) {
-  await expect(page.locator('.aasel-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
+  await expect(page.locator('.aa-selection-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
 }
 
 async function acknowledgeExpectedBlockedToast(page) {
@@ -203,7 +203,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const blockedBody = await blockedResponse.json()
     expect(blockedBody?.data?.allowed).toBeFalsy()
     expect((blockedBody?.data?.blockers || []).map((item) => item.code)).toContain('SELECTION_COURSE_EMPTY')
-    await expect(staff.locator('.aasel-preflight-alert')).toContainText('批次未配置有效可选课程')
+    await expect(staff.locator('.aa-selection-preflight-alert')).toContainText('批次未配置有效可选课程')
     await expect(staff.locator('.app-confirm-dialog')).toHaveCount(0)
     await screenshot(staff, testInfo, 'w1-admin-preflight-blocked-1440x900')
     await acknowledgeExpectedBlockedToast(staff)

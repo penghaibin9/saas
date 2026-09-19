@@ -940,10 +940,13 @@ def affairs_aid_review(user: dict, apply_id: str, action: str, reason: str = "",
     detail = svc.get_application(apply_id, u)
     expected = version if version is not None else (detail or {}).get("version")
     if (detail or {}).get("status") == "ADJUST_REVIEW":
-        if act == "RETURN":
+        if act not in {"APPROVE", "ADJUST_APPROVE", "REJECT", "ADJUST_REJECT"}:
             raise AppException("VALIDATION_ERROR", "困难等级调整不支持退回，请选择通过或驳回")
+        target = ((detail or {}).get("adjustment") or {}).get("targetLevel")
+        if level is not None and level != target:
+            raise AppException("DATA_CONFLICT", "调整目标等级已变化，请刷新后按申请等级办理")
         mapped = "APPROVE" if act in ("APPROVE", "ADJUST_APPROVE") else "REJECT"
-        result = svc.approve_adjust(apply_id, u, action=mapped, expected_version=expected)
+        result = svc.approve_adjust(apply_id, u, action=mapped, expected_version=expected, reason=reason or "")
     else:
         result = svc.review(apply_id, u, act, level=level, reason=reason or "",
                             expected_version=expected)
@@ -3532,4 +3535,3 @@ from app.modules.graduation.services.graduation_mobile_teacher_service import (
     topic_change_review as graduation_change_request_review,
     topic_change_rows as graduation_change_requests_pending,
 )
-

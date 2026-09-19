@@ -183,8 +183,8 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff)
-      await expect(handoff.getByText(/当前身份：\s*.*指导教师/).first()).toBeVisible()
-      await expect(handoff.getByText(/当前身份：\s*GD_MENTOR/)).toHaveCount(0)
+      await expect(handoff.locator('.teacher-hero__identity')).toContainText('指导教师')
+      await expect(handoff.locator('.teacher-hero__identity')).not.toContainText('GD_MENTOR')
       const screenshotC = await capture(handoff, 'GDJ-01', 'C-handoff')
       const students = await adminApi.get('/graduation/gd-students', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-01', { screenshotA, screenshotB, screenshotC, action: '打开批次详情/配置', serverTruth: { studentCount: items(students).length, teacherBatchId: teacherFixture.batchId } })
@@ -225,7 +225,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff)
-      await handoff.getByText('任务书', { exact: true }).first().click()
+      await handoff.locator('.common-service').filter({ hasText: /^任务书$/ }).click()
       await expect(handoff.getByText(/任务书列表/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-03', 'C-handoff')
       const taskbook = await adminApi.get(`/graduation/gd-taskbooks/${teacherFixture.gdStudentId}`, { batchId: fixture.batchId })
@@ -244,7 +244,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff)
-      await handoff.getByText('批阅中期', { exact: true }).click()
+      await handoff.locator('.common-service').filter({ hasText: /^批阅中期$/ }).click()
       await expect(handoff.getByText(/中期/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-04', 'C-handoff')
       const rows = await adminApi.get('/graduation/gd-guidances', { batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 30 })
@@ -282,7 +282,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
     const handoff = await context.newPage()
     try {
       await loginTeacherMini(handoff, graduationRoles.defenseExpert)
-      await handoff.getByText('答辩评分', { exact: true }).click()
+      await handoff.locator('.common-service').filter({ hasText: /^答辩评分$/ }).click()
       await expect(handoff.getByText(/答辩评分/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-06', 'C-handoff')
       const groups = await adminApi.get('/graduation/defense-groups', { batchId: fixture.batchId, page: 1, pageSize: 30 })

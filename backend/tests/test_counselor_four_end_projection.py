@@ -146,7 +146,7 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
     assert new_projection["studentId"] == str(student_id)
     assert new_projection["base"]["studentNo"] == "CA001"
     academic = next(section for section in new_projection["sections"] if section["key"] == "academic")
-    assert "GPA 3.30" in academic["summary"]
+    assert "平均绩点 3.30" in academic["summary"]
 
     after_pc = _data(client.get("/api/v1/portal/profile/enrollment", headers=student))
     after_mini = _data(client.get("/api/v1/mobile/me/profile", headers=student))

@@ -152,7 +152,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
-    const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
+    const versionRow = page.locator(`.rv__att[data-file-version-id="${fileVersionId}"]`)
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
     const pass = page.locator('.rv__foot .rv__pass')
     const reject = page.locator('.rv__foot .rv__return')

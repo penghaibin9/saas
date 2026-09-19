@@ -98,6 +98,170 @@
         "S158": "89ae5c05a7ab522e52bc8756cfdc7ec9ca061bc13ad87dea04250b7e4b3a15c0"
       },
       "reason": "Re-reviewed all five diff hunks of 605d1ef against parent 6810bd6. S158 old lines 174-190 are byte-identical to current lines 175-191: the import hunk adds one preceding line, while UTC input normalization and duplicate-campaign commit handling are wholly after this evidence. All change windows are retained, rather than pretending this was a single edit. Schema dispositions and all deletion/purge prohibitions are unchanged."
+    },
+    {
+      "path": "backend/app/models/academic_affairs.py",
+      "fromSha256": "71f1e57d20f0b65e428a0235b250d4d91c83c8e0cf9a80803cb494de2ec49d77",
+      "toSha256": "1c4a23b7495420b57612df0d1956a9cefa71e26c5314a8e4adecfc976caabba4",
+      "sourceChangeCommit": "72e3492e2167c7284612ac8dd3b979f8477568d2",
+      "lineOffset": 20,
+      "changeWindows": [
+        {
+          "oldStart": 654,
+          "oldEnd": 654,
+          "newStart": 654,
+          "newEnd": 666
+        },
+        {
+          "oldStart": 664,
+          "oldEnd": 664,
+          "newStart": 676,
+          "newEnd": 679
+        },
+        {
+          "oldStart": 670,
+          "oldEnd": 670,
+          "newStart": 685,
+          "newEnd": 688
+        },
+        {
+          "oldStart": 711,
+          "oldEnd": 711,
+          "newStart": 729,
+          "newEnd": 730
+        },
+        {
+          "oldStart": 754,
+          "oldEnd": 754,
+          "newStart": 773,
+          "newEnd": 774
+        },
+        {
+          "oldStart": 1312,
+          "oldEnd": 1312,
+          "newStart": 1332,
+          "newEnd": 1333
+        },
+        {
+          "oldStart": 1317,
+          "oldEnd": 1317,
+          "newStart": 1338,
+          "newEnd": 1340
+        },
+        {
+          "oldStart": 1739,
+          "oldEnd": 1739,
+          "newStart": 1762,
+          "newEnd": 1765
+        },
+        {
+          "oldStart": 1742,
+          "oldEnd": 1742,
+          "newStart": 1768,
+          "newEnd": 1769
+        }
+      ],
+      "evidenceIds": [
+        "S001",
+        "S003"
+      ],
+      "evidenceRangeSha256": {
+        "S001": "9129558ebc9d396eda60b2c90837bb2e80fc94754a5335617776dd1f10ce908c",
+        "S003": "1a43759a6fed5971fd6160f66e0c26c3abd194f11615912dd5b483c98bec85ab"
+      },
+      "reason": "Re-reviewed model changes through PR #270 commit 72e3492. These evidence ranges are byte-identical to the reviewed source; all intervening edit windows are recorded. Relocation only, with no schema remediation, deletion or purge approval."
+    },
+    {
+      "path": "backend/app/models/academic_affairs_effective_grade.py",
+      "fromSha256": "e57c2ae74392c35e8e766b416b20ed2f1ea83a07c3bb01a4149b16f54ab9871c",
+      "toSha256": "22e85759b1ce890f8650a35d4621840ce5fd55690ac6b261a505aaf58cb3df18",
+      "sourceChangeCommit": "72e3492e2167c7284612ac8dd3b979f8477568d2",
+      "lineOffset": 6,
+      "changeWindows": [
+        {
+          "oldStart": 96,
+          "oldEnd": 96,
+          "newStart": 96,
+          "newEnd": 102
+        }
+      ],
+      "evidenceIds": [
+        "S012"
+      ],
+      "evidenceRangeSha256": {
+        "S012": "efb8857c865699a8294d667415a38319e9c0e6e763a12c836ba1593f37551cca"
+      },
+      "reason": "Re-reviewed model changes through PR #270 commit 72e3492. These evidence ranges are byte-identical to the reviewed source; all intervening edit windows are recorded. Relocation only, with no schema remediation, deletion or purge approval."
+    },
+    {
+      "path": "backend/app/models/academic_affairs.py",
+      "fromSha256": "71f1e57d20f0b65e428a0235b250d4d91c83c8e0cf9a80803cb494de2ec49d77",
+      "toSha256": "1c4a23b7495420b57612df0d1956a9cefa71e26c5314a8e4adecfc976caabba4",
+      "sourceChangeCommit": "72e3492e2167c7284612ac8dd3b979f8477568d2",
+      "lineOffset": 0,
+      "changeWindows": [
+        {
+          "oldStart": 654,
+          "oldEnd": 654,
+          "newStart": 654,
+          "newEnd": 666
+        },
+        {
+          "oldStart": 664,
+          "oldEnd": 664,
+          "newStart": 676,
+          "newEnd": 679
+        },
+        {
+          "oldStart": 670,
+          "oldEnd": 670,
+          "newStart": 685,
+          "newEnd": 688
+        },
+        {
+          "oldStart": 711,
+          "oldEnd": 711,
+          "newStart": 729,
+          "newEnd": 730
+        },
+        {
+          "oldStart": 754,
+          "oldEnd": 754,
+          "newStart": 773,
+          "newEnd": 774
+        },
+        {
+          "oldStart": 1312,
+          "oldEnd": 1312,
+          "newStart": 1332,
+          "newEnd": 1333
+        },
+        {
+          "oldStart": 1317,
+          "oldEnd": 1317,
+          "newStart": 1338,
+          "newEnd": 1340
+        },
+        {
+          "oldStart": 1739,
+          "oldEnd": 1739,
+          "newStart": 1762,
+          "newEnd": 1765
+        },
+        {
+          "oldStart": 1742,
+          "oldEnd": 1742,
+          "newStart": 1768,
+          "newEnd": 1769
+        }
+      ],
+      "evidenceIds": [
+        "S016"
+      ],
+      "evidenceRangeSha256": {
+        "S016": "c68729d8aa6d6016878edac9f8339723693c610634c720a6edebcad4309ad5c6"
+      },
+      "reason": "Re-reviewed model changes through PR #270 commit 72e3492. These evidence ranges are byte-identical to the reviewed source; all intervening edit windows are recorded. Relocation only, with no schema remediation, deletion or purge approval."
     }
   ]
 }

@@ -64,6 +64,12 @@ def _seed_scope_case(_db_mode):
         db.add(counselor)
         db.flush()
         db.add(UserRole(tenant_id=MAIN, user_id=counselor.id, role_id=counselor_role.id, status="ACTIVE"))
+        mentor_role = _ensure_role_context(db, "INTERN_MENTOR", {"internship.report.review"})
+        mentor = User(tenant_id=MAIN, login_name="mentorB", real_name="孟导师",
+                      password_hash="test", user_type="TEACHER", status="ACTIVE")
+        db.add(mentor)
+        db.flush()
+        db.add(UserRole(tenant_id=MAIN, user_id=mentor.id, role_id=mentor_role.id, status="ACTIVE"))
         class_a = SchoolClass(tenant_id=MAIN, major_id=1, class_name="软件2301班", grade="2023",
                               counselor_id=counselor.id, status="ACTIVE")
         class_b = SchoolClass(tenant_id=MAIN, major_id=1, class_name="机电2301班", grade="2023",
@@ -91,6 +97,7 @@ def _seed_scope_case(_db_mode):
                              reason="乙二预警", status="PENDING_HANDLE", record_status="ACTIVE")
         db.add_all([wa, wb])
         rec = InternshipRecord(tenant_id=MAIN, student_id=sa.id, enterprise_name="范围测试企业",
+                               advisor_user_id=mentor.id,
                                position_name="实习生", advisor_name="孟导师", status="ONBOARD",
                                risk_level="LOW")
         db.add(rec)
@@ -111,6 +118,7 @@ def _seed_scope_case(_db_mode):
         db.commit()
         db.refresh(wa); db.refresh(wb); db.refresh(wr)
         return {"sa": sa.id, "sb": sb.id, "wa": wa.id, "wb": wb.id, "wr": wr.id,
+                "mentor": mentor.id, "mentorContext": f"role:{mentor_role.id}",
                 "counselor": counselor.id, "counselorContext": f"role:{counselor_role.id}"}
     finally:
         db.close()
@@ -151,7 +159,8 @@ def test_scoped_cross_tenant_404(client, db_mode):
 
 def test_mobile_weekly_review_scope_and_conflict(client, db_mode):
     ids = _seed_scope_case(db_mode)
-    mentor = _token("mentorB", "孟导师", "INTERN_MENTOR")
+    mentor = _token(f"db-{ids['mentor']}", "孟导师", "INTERN_MENTOR", login_name="mentorB",
+                    client_type="TEACHER_MINI", active_context_id=ids["mentorContext"])
     outsider = _token("counselorC", "外班辅导员", "COUNSELOR")
     # 外班 SCOPED 教师批阅 → 403
     from app.db.session import get_sessionmaker

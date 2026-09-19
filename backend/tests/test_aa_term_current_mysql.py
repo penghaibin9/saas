@@ -37,6 +37,8 @@ def _patch_writer_tenant(monkeypatch) -> None:
     """
     monkeypatch.setattr(svc, "_tid", lambda: TID)
     monkeypatch.setattr(archive_core, "_tid", lambda: TID)
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+    monkeypatch.setattr(resource_guard, "_tid", lambda: TID)
 
 
 def _tenant(tenant_id: int, code: str, name: str):

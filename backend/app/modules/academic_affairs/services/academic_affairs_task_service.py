@@ -546,8 +546,8 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50):
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                   page=1, page_size=50, task_id=None):
-    from app.models import AaTeachingTask
+                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None):
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
         conditions = [AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)]
@@ -555,6 +555,20 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             conditions.append(AaTeachingTask.batch_id == int(batch_id))
         if course_id:
             conditions.append(AaTeachingTask.course_id == int(course_id))
+        if term_id not in (None, ""):
+            conditions.append(AaTeachingTask.batch_id.in_(select(AaTeachingTaskBatch.id).where(
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+                AaTeachingTaskBatch.term_id == int(term_id),
+            )))
+        if str(keyword or "").strip():
+            from sqlalchemy import or_
+            value = str(keyword).strip()
+            conditions.append(or_(
+                AaTeachingTask.course_name.contains(value, autoescape=True),
+                AaTeachingTask.course_code.contains(value, autoescape=True),
+                AaTeachingTask.teacher_name.contains(value, autoescape=True),
+            ))
         if status:
             conditions.append(AaTeachingTask.status == status)
         if task_id not in (None, ""):

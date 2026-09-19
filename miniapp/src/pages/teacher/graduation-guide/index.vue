@@ -201,7 +201,7 @@
             <view v-if="detail.versions && detail.versions.length > 1" class="rv__block"><text class="rv__label">历史版本</text><text v-for="(v, i) in detail.versions" :key="i" class="rv__ver">· {{ v.title }}<text v-if="v.desc"> — {{ v.desc }}</text></text></view>
             <view v-if="detail.currentSafeVersions && detail.currentSafeVersions.length" class="rv__block">
               <text class="rv__label">当前安全版本（审核锁定）</text>
-              <view v-for="v in detail.currentSafeVersions" :key="v.versionId" class="rv__att" @click="openVersion(v)">
+              <view v-for="v in detail.currentSafeVersions" :key="v.versionId" class="rv__att" :data-file-version-id="v.fileVersionId || v.versionId" @click="openVersion(v)">
                 <view><text class="rv__att-name">📎 {{ v.fileName }}</text><text class="rv__text">第 {{ v.versionNo || '—' }} 版 · {{ fileScanLabel(v.scanStatus) }} · {{ fileReviewLabel(v.reviewStatus || v.versionStatus || v.status) }}</text></view>
                 <text class="rv__att-dl">安全预览</text>
               </view>

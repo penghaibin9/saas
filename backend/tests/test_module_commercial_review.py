@@ -319,7 +319,7 @@ class ReviewTests(unittest.TestCase):
             source_files[anchor['path']] = hashlib.sha256(path.read_bytes()).hexdigest()
         resolved = D.validate_review_evidence(ROOT, source_files, review, reanchors)
         self.assertEqual(set(resolved), set(review['evidence']))
-        self.assertEqual(sum(1 for item in resolved.values() if item['reanchored']), 17)
+        self.assertEqual(sum(1 for item in resolved.values() if item['reanchored']), 21)
         self.assertFalse(reanchors['deletionAuthorized'])
         self.assertFalse(reanchors['purgeAuthorized'])
         for anchor in resolved.values():

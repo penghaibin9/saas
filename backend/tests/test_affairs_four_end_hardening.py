@@ -48,6 +48,7 @@ def _clear_ctx():
 
 def _seed_students(db_mode, *, prefix="FE4"):
     from datetime import datetime, timedelta
+    from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import (
         AffairsCounselorAssignment, College, Major, Role, SchoolClass,
@@ -60,7 +61,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
         if user is None:
             user = User(
                 tenant_id=TID, login_name=login_name, real_name=real_name,
-                password_hash="test-hash", user_type="TEACHER", status="ACTIVE",
+                password_hash=hash_password("FourEndTest@2026"), user_type="TEACHER", status="ACTIVE",
             )
             db.add(user)
             db.flush()
@@ -151,7 +152,14 @@ def test_four_end_routes_registered(client, db_mode):
 def test_student_leave_and_teacher_mobile_share_version_contract(client, db_mode):
     ids = _seed_students(db_mode, prefix="FE41")
     admin = _hdr(client, "school_admin01")
-    counselor = _hdr(client, ids["counselorLogin"], "TEACHER_MINI")
+    # mock-login falls back to a demo identity for unknown names; workflow
+    # assignments require the actual seeded database user, not that fallback.
+    login = client.post("/api/v1/auth/login", json={
+        "loginName": ids["counselorLogin"], "password": "FourEndTest@2026",
+        "clientType": "TEACHER_MINI",
+    })
+    assert login.status_code == 200, login.text
+    counselor = {"Authorization": "Bearer " + login.json()["data"]["accessToken"]}
     leave = client.post(f"{BASE}/leave", headers=admin, json={
         "studentId": str(ids["one"]), "leaveType": "PERSONAL",
         "startTime": "2026-08-01", "endTime": "2026-08-02",

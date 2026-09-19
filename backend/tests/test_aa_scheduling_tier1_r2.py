@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime
 
 from openpyxl import Workbook
 
@@ -38,6 +39,8 @@ def _ensure_term():
             term_no=1,
             term_name="2026-2027第1学期",
             teaching_weeks=18,
+            start_date=datetime(2026, 9, 7),
+            end_date=datetime(2027, 1, 10),
             status="PUBLISHED",
             is_current=True,
         )

@@ -30,6 +30,7 @@ async function expectPanel(page, panel, batchId) {
   await expect(page.locator('.graduation-portal .tw-main .gd-student-workspace')).toBeVisible()
   await expect(page.locator('.gd-student-page .loading-state')).toBeHidden()
   await expect(page.locator('.gd-student-page .error-state')).toHaveCount(0)
+  await dismissGuide(page)
 }
 
 test.describe('Graduation original student workspace presentation', () => {

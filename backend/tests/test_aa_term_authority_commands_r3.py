@@ -34,6 +34,8 @@ def _patch_tenant(monkeypatch) -> None:
     monkeypatch.setattr(affairs_security, "_tid", lambda: TID)
     monkeypatch.setattr(archive_core, "_tid", lambda: TID)
     monkeypatch.setattr(db_service, "_tid", lambda: TID)
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+    monkeypatch.setattr(resource_guard, "_tid", lambda: TID)
 
 
 def _seed_terms():

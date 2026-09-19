@@ -147,7 +147,7 @@ def test_published_projection_batches_grade_read_without_business_writes(client,
     engine = get_engine()
     event.listen(engine, "before_cursor_execute", capture)
     try:
-        response = client.get(STUDENT_PATHS[0], headers=_stu_token("清甲", "QK2201"))
+        response = client.get(STUDENT_PATHS[0], headers=_stu_token("清甲", "QK2201"), params={"page": 1, "pageSize": 50})
         assert response.status_code == 200, response.text
         rows = response.json()["data"]["items"]
         assert len(rows) == 21 and all(row["score"] == 60 for row in rows)

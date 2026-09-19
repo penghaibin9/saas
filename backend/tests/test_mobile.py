@@ -98,7 +98,7 @@ def test_tenant_isolation(client, db_mode):
     # demo-school 租户的学生 token（realName 学生甲 但 tenant=demo）→ 看不到 main 的学生甲数据
     r = client.get("/api/v1/mobile/academic/my",
                    headers=_stu_token("学生甲", tenant_id=DEMO, tid="demo-school")).json()
-    assert r["code"] == 0 and r["data"]["hasData"] is False  # 跨租户查不到
+    assert r["code"] == 404001 and r["data"] is None  # 跨租户按不存在处理
 
 
 def test_home_aggregation_and_cross_tenant_isolation(client, db_mode):
@@ -266,7 +266,7 @@ def test_teacher_student_detail_cross_tenant_not_found(client, db_mode):
 def test_teacher_domain_pages_structure(client, db_mode):
     _seed_rich(db_mode)
     from app.db.session import get_sessionmaker
-    from app.models import GraduationBatch
+    from app.models import GraduationBatch, InternshipBatch
 
     db = get_sessionmaker()()
     try:
@@ -277,12 +277,18 @@ def test_teacher_domain_pages_structure(client, db_mode):
         db.add(batch)
         db.flush()
         batch_id = int(batch.id)
+        internship_batch = InternshipBatch(tenant_id=MAIN, batch_name="移动端实习结构测试",
+                                           batch_no="MOBILE-INTERN-STRUCTURE-001", status="RUNNING")
+        db.add(internship_batch)
+        db.flush()
+        internship_batch_id = int(internship_batch.id)
         db.commit()
     finally:
         db.close()
 
     admin_headers = _teacher_token(role="SCHOOL_ADMIN")
-    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers,
+                    params={"batchId": internship_batch_id}).json()
     assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
     gd = client.get(
         "/api/v1/mobile/teacher/graduation", headers=admin_headers, params={"batchId": batch_id}

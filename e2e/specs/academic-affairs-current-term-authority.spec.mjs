@@ -167,7 +167,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
 
     await openAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await expect(page.getByRole('heading', { name: '当前学期' }).first()).toBeVisible()
-    await expect(page.getByText('暂保留教务当前学期兼容切换', { exact: false })).toBeVisible()
+    await expect(page.getByText('校级教务可将已发布学期设为全校当前学期。', { exact: true })).toBeVisible()
     await expect(termRow(page, governanceTerm)).toBeVisible()
 
     const legacyRow = termRow(page, legacyCurrent)

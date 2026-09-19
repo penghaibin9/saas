@@ -228,15 +228,17 @@ test('approved system UI: create role → permissions → additive members → d
   const addCandidate = page.locator('[data-permission] input:not(:checked):not(:disabled)').first()
   const removeCandidate = page.locator('[data-permission] input:checked:not(:disabled)').first()
   const addingPermission = (await addCandidate.count()) > 0
-  const permissionInput = addingPermission ? addCandidate : removeCandidate
+  const permissionCandidate = addingPermission ? addCandidate : removeCandidate
+  const code = await permissionCandidate.evaluate((node) => node.closest('[data-permission]')?.getAttribute('data-permission') || '')
+  expect(code).toBeTruthy()
+  // Pin the permission identity: a :checked candidate changes after toggling.
+  const permissionInput = page.locator(`[data-permission=${JSON.stringify(code)}] input`)
   const permissionRow = permissionInput.locator('xpath=ancestor::label[1]')
   const permissionGroup = permissionRow.locator('xpath=ancestor::details[1]')
   if (await permissionGroup.count() && await permissionGroup.getAttribute('open') === null) {
     await permissionGroup.locator(':scope > summary').click()
   }
   await expect(permissionRow).toBeVisible()
-  const code = await permissionInput.evaluate((node) => node.closest('[data-permission]')?.getAttribute('data-permission') || '')
-  expect(code).toBeTruthy()
   await permissionRow.click()
   if (addingPermission) await expect(permissionInput).toBeChecked()
   else await expect(permissionInput).not.toBeChecked()

@@ -10,6 +10,11 @@ const session=read('../src/stores/session.js')
 const env=read('../src/config/env.js')
 const vite=read('../vite.config.js')
 
+test('production H5 preserves the intercepted runtime instead of rewriting APIs to bare imports',()=>{
+  const manifest=JSON.parse(read('../src/manifest.json'))
+  assert.equal(manifest.h5.optimization.treeShaking.enable,false)
+})
+
 test('H5 browser auth installer loads before App and request consumers',()=>{
   const installerAt=main.indexOf("import './services/h5BrowserAuthInstaller'")
   const appAt=main.indexOf("import App from './App.vue'")

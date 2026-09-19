@@ -55,7 +55,7 @@ test.describe('Graduation batch presentation in the unchanged shared workspace',
     await page.goto(url.toString())
     await dismissGuide(page)
     await expect(page.locator('.graduation-portal.bpl-workspace .tw-frame')).toHaveCount(1)
-    const strip = page.locator('.graduation-portal .gd-batch-context')
+    const strip = page.locator('.graduation-portal .gbs')
     await expect(strip).toHaveCount(1)
     const select = strip.getByRole('combobox', { name: '选择毕设批次', exact: true })
     await expect(select).toHaveValue(String(fixture.batchId))

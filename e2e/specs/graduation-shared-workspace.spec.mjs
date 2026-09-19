@@ -42,7 +42,7 @@ async function expectSharedShell(page, batchId) {
   await expect(shell.locator('.tw-frame')).toHaveCount(1)
   const businessView = shell.locator('.tw-main .gd-business-view')
   await expect(businessView).toBeVisible()
-  await expect(shell.locator('.gd-batch-context')).toHaveCount(1)
+  await expect(shell.locator('.gbs')).toHaveCount(1)
   await expect(shell.getByRole('combobox', { name: '选择毕设批次', exact: true })).toHaveValue(String(batchId))
   await expect(shell.locator(':scope > .bpl-body')).toHaveCount(0)
   await expect(shell.getByRole('navigation', { name: '二级菜单', exact: true })).toBeVisible()
