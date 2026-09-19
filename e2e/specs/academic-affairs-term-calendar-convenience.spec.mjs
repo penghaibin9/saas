@@ -128,8 +128,8 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await page.locator('.aa-copy-field select').selectOption(String(source.termId))
     await page.getByRole('button', { name: '预览复制结果' }).click()
 
-    await expect(page.getByText(holidayRemark)).toBeVisible()
-    await expect(page.getByText(examRemark)).toBeVisible()
+    await expect(page.getByText(holidayRemark, { exact: true })).toBeVisible()
+    await expect(page.getByText(examRemark, { exact: true })).toBeVisible()
     await expect(page.getByText('需人工复核', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('TEACHING_WEEK_RELATIVE_WITH_EXAM_WEEK_ALIGNMENT')).toHaveCount(0)
     await expect(page.getByText(mappedHoliday, { exact: false })).toBeVisible()
@@ -145,8 +145,8 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await confirm.click()
     await expect(confirm).toBeHidden({ timeout: 10000 })
 
-    await expect(page.getByText(holidayRemark)).toBeVisible()
-    await expect(page.getByText(examRemark)).toBeVisible()
+    await expect(page.getByText(holidayRemark, { exact: true })).toBeVisible()
+    await expect(page.getByText(examRemark, { exact: true })).toBeVisible()
 
     const targetEvents = await expectApiOk(
       await browserApi(page, token, 'GET', `/academic-affairs/terms/${target.termId}/calendar`),
