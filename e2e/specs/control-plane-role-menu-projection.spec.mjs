@@ -395,8 +395,10 @@ test('W12 real Browser Role/Menu Projection Seal covers every school role, platf
               await expect.poll(async () => {
                 const finalUrl = new URL(customPage.url())
                 const body = await customPage.locator('body').innerText().catch(() => '')
+                const routeDenied = await customPage.locator('.route-access-notice').isVisible().catch(() => false)
                 return finalUrl.pathname !== FIXTURE.customPermissionPath
-                  || /403|无权限|禁止访问|没有权限/.test(body)
+                  || routeDenied
+                  || /403|无权限|禁止访问|没有权限|暂不能办理此业务|缺少此页面所需权限/.test(body)
               }, { timeout: 30_000 }).toBe(true)
             } finally {
               await customContext.close()

@@ -113,9 +113,9 @@ test('teacher and student H5 entries authenticate with ACCOUNT and PHONE at mobi
     }
     await page.getByRole('textbox').nth(0).fill(item.identifier)
     await page.getByRole('textbox').nth(1).fill(item.password)
-    await page.getByText('学校编码', { exact: true }).click()
+    await page.locator('uni-button.tenant-box, button.tenant-box').click()
     await page.getByRole('textbox').nth(2).fill(tenant)
-    await page.getByText('我已阅读并同意学校提供的', { exact: true }).click()
+    await page.getByRole('checkbox', { name: '同意用户协议与隐私政策' }).click()
     const response = page.waitForResponse(r => /\/auth\/browser-login(?:\?|$)/.test(r.url()) && r.request().method() === 'POST', { timeout: 20000 })
     await page.locator('uni-button.account-button, button.account-button').click()
     expect((await response).status()).toBe(200)

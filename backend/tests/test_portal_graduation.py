@@ -127,7 +127,7 @@ def _seed_gd_ready_for_proposal(no, name, batch_id):
     db.add(User(tenant_id=TID, login_name=teacher_no, real_name="王导师",
                 password_hash="test", user_type="TEACHER", status="ACTIVE"))
     mentor = GraduationMentor(tenant_id=TID, teacher_no=teacher_no, teacher_name="王导师",
-                              status="QUALIFIED")
+                              qualification_status="QUALIFIED")
     db.add(mentor)
     db.flush()
     g = GraduationStudent(tenant_id=TID, batch_id=batch_id, student_no=no, name=name, advisor_name="王导师",

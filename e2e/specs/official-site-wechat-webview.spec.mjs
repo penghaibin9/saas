@@ -38,7 +38,7 @@ async function installWxMock(context) {
 }
 
 test.describe('official website WeChat micro-site closure', () => {
-  test('iOS WeChat SPA keeps entry URL for signature while sharing the current product page', async ({ browser }) => {
+  test('iOS WeChat signs each document entry URL while sharing the current product page', async ({ browser }) => {
     const context = await browser.newContext({ userAgent: WECHAT_IOS_UA, viewport: { width: 375, height: 812 } })
     await installWxMock(context)
     const signedUrls = []
@@ -82,9 +82,10 @@ test.describe('official website WeChat micro-site closure', () => {
     })).toContain('岗位实习')
 
     expect(signedUrls.length).toBeGreaterThanOrEqual(2)
-    const entryPath = new URL(signedUrls[0]).pathname
-    expect(entryPath).toBe('/')
-    for (const signedUrl of signedUrls) expect(new URL(signedUrl).pathname).toBe('/')
+    const signaturePaths = signedUrls.map((signedUrl) => new URL(signedUrl).pathname)
+    expect(signaturePaths[0]).toBe('/')
+    expect(signaturePaths).toEqual(expect.arrayContaining(['/', '/products/internship']))
+    expect(signaturePaths.every((path) => ['/', '/products/internship'].includes(path))).toBe(true)
 
     const share = await page.evaluate(() => {
       const friends = window.__wxCalls.filter((item) => item.type === 'friend')
@@ -114,7 +115,7 @@ test.describe('official website WeChat micro-site closure', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { accepted: true } })
+        body: JSON.stringify({ code: 0, data: { accepted: true } })
       })
     })
 

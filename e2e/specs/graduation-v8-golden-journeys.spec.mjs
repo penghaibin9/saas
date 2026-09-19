@@ -246,7 +246,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
       await loginTeacherMini(handoff)
       await handoff.getByText('服务大厅', { exact: true }).click()
       await expect(handoff).toHaveURL(/pages\/teacher\/services\/index/)
-      await handoff.getByText('批阅中期', { exact: true }).click()
+      await handoff.locator('uni-button.service-item').filter({ hasText: '批阅中期' }).click()
       await expect(handoff).toHaveURL(/pages\/teacher\/graduation-guide\/index\?tab=midterm/)
       await expect(handoff.getByText(/中期/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-04', 'C-handoff')

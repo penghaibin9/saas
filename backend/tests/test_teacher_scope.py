@@ -27,7 +27,7 @@ def _ensure_role_context(db, role_code, permission_codes):
     ))
     if role is None:
         role = Role(tenant_id=MAIN, role_code=role_code, role_name=f"测试{role_code}",
-                    role_type="SYSTEM", status="ACTIVE")
+                    role_type="CUSTOM", status="ACTIVE")
         db.add(role)
         db.flush()
     for code in permission_codes:

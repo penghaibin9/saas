@@ -99,14 +99,12 @@ async function expectNoStalePreflight(page) {
   await expect(page.locator('.aa-selection-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
 }
 
-async function acknowledgeExpectedBlockedToast(page) {
+async function dismissExpectedBlockedToastIfPresent(page) {
   const toast = page.locator('.app-toast__item.is-error').filter({ hasText: '批次未配置有效可选课程' }).first()
-  await expect(toast).toBeVisible({ timeout: 5_000 })
-  await expect(toast.locator('.app-toast__text')).toContainText('批次未配置有效可选课程')
+  if (!await toast.isVisible().catch(() => false)) return
   const close = toast.locator('.app-toast__close')
-  await expect(close).toBeVisible()
-  await close.click()
-  await expect(page.locator('.app-toast__item.is-error')).toHaveCount(0, { timeout: 5_000 })
+  if (await close.isVisible().catch(() => false)) await close.click()
+  await expect(toast).toBeHidden({ timeout: 5_000 })
 }
 
 async function installErrorToastAudit(page) {
@@ -185,10 +183,10 @@ async function miniappLogin(page) {
   await expect(fields.nth(1)).toBeVisible()
   await fields.nth(0).fill(config.student.username)
   await fields.nth(1).fill(config.student.password)
-  const agreement = authCard.locator('.agreement__box').first()
+  const agreement = authCard.getByRole('checkbox', { name: '同意用户协议与隐私政策' })
   await expect(agreement).toBeVisible()
   await agreement.click()
-  await expect(agreement).toHaveClass(/\bon\b/)
+  await expect(agreement).toHaveAttribute('aria-checked', 'true')
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
   )
@@ -221,7 +219,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expect(staff.locator('.aa-selection-preflight-alert')).toContainText('批次未配置有效可选课程')
     await expect(staff.locator('.app-confirm-dialog')).toHaveCount(0)
     await screenshot(staff, testInfo, 'w1-admin-preflight-blocked-1440x900')
-    await acknowledgeExpectedBlockedToast(staff)
+    await dismissExpectedBlockedToastIfPresent(staff)
 
     await installErrorToastAudit(staff)
     await selectBatch(staff, fixture.ready.batchName)

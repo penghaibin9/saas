@@ -16,6 +16,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from list_pytest_shard import shard_for
+from select_pytest_targets import DEDICATED_PHONE_TESTS
 
 
 def digest(files):
@@ -66,7 +67,10 @@ def main():
     sha=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
     if args.action=="plan":
         if args.full:
-            files=sorted(p.as_posix() for p in Path("tests").rglob("test_*.py"))
+            files=sorted(
+                p.as_posix() for p in Path("tests").rglob("test_*.py")
+                if p.as_posix() not in DEDICATED_PHONE_TESTS
+            )
         else:
             selector=Path(__file__).with_name("select_pytest_targets.py")
             files=subprocess.check_output([sys.executable,str(selector)],text=True).split()

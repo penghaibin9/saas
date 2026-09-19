@@ -164,7 +164,10 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/time-slots/)
     await dismissPageGuide(page)
 
-    await expect(page.getByText('标准作息模板', { exact: true })).toBeVisible()
+    const templateDetails = page.locator('details.aa-slot-template')
+    await expect(templateDetails).toBeVisible()
+    await templateDetails.locator('summary').click()
+    await expect(templateDetails.getByText('标准作息模板', { exact: true })).toBeVisible()
     await expect(page.getByText('新增节次', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '标准 10 节' }).click()
     await page.getByRole('button', { name: '检查当前作息' }).click()

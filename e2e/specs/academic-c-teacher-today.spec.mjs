@@ -69,7 +69,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     await loginTeacherMini(page, config.mentor)
 
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/index`)
-    const todayCard = page.locator('.ta__course').filter({ hasText: fixture.courseName }).first()
+    const todayCard = page.locator('.ta__next-course, .ta__course').filter({ hasText: fixture.courseName }).first()
     await expect(todayCard).toBeVisible({ timeout: 15_000 })
     await expect(todayCard).toContainText('已调课')
     await expect(todayCard).toContainText('去点名')
@@ -97,7 +97,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     await expect(page.getByText(fixture.courseName, { exact: true }).first()).toBeVisible({ timeout: 10_000 })
 
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/index`)
-    const reopenCard = page.locator('.ta__course').filter({ hasText: fixture.courseName }).first()
+    const reopenCard = page.locator('.ta__next-course, .ta__course').filter({ hasText: fixture.courseName }).first()
     await expect(reopenCard).toBeVisible({ timeout: 15_000 })
     await expect(reopenCard).toContainText('继续点名')
     await reopenCard.click()

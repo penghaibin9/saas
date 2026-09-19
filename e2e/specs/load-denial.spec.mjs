@@ -21,11 +21,13 @@ test('teacher PC: real denied navigation explains access rather than reporting l
   expect((await login).status()).toBe(200)
   await expect(page.getByTitle('查看账号与切换身份').first()).toBeVisible()
   await page.goto('/admin/academic-affairs')
-  await expect(page.getByText(/暂无访问权限|无权访问|本校未开通该模块/).first()).toBeVisible()
+  const deniedNotice = page.locator('.route-access-notice')
+  await expect(deniedNotice).toBeVisible()
+  await expect(deniedNotice).toContainText(/暂不能办理此业务|缺少此页面所需权限|暂无访问权限|无权访问|本校未开通该模块/)
   await expect(page.getByText(/教务中心加载失败|数据加载出现问题/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0)
   expect(pageErrors).toEqual([])
-  await expect(page).toHaveURL(/\/security\/403/)
+  await expect(page).toHaveURL(/\/admin\/academic-affairs(?:[/?#]|$)/)
   await page.screenshot({ path: 'test-results/denial/teacher-access-denied.png', fullPage: true })
 
   // Separate component integration: use the real browser session/client and actual

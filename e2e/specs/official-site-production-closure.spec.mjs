@@ -128,7 +128,7 @@ test.describe('official website production closure', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: { accepted: true } })
+        body: JSON.stringify({ code: 0, data: { accepted: true } })
       })
     })
 
