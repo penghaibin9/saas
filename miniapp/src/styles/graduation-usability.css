@@ -124,13 +124,8 @@
 /* 移动端毕业设计高频入口统一遵守现有 44px 触控令牌。
    !important 仅用于覆盖页面 scoped 样式中历史遗留的 34/38/40/42px，
    不改变 disabled、权限、提交锁或点击处理。 */
-.gg__tab,
-.gg__filter,
-.gg__hub-link,
 .gg__go,
 .gg__more,
-.gt__tab,
-.tb__tab,
 .tb__more,
 .rv__back,
 .rv__confirm,
@@ -138,13 +133,39 @@
 .rv__act,
 .ds__row,
 .ds__input,
-.gd__quick,
-.gd__att,
 .gd__att-add,
 .tp__topic,
-.tp__chip,
 .tp__search {
   min-height: var(--touch-target-min) !important;
+}
+
+/* 紧凑标签不靠增高盒子来凑触控面积：透明热区向上下扩展到 44px，
+   不改变原有排版高度，避免高频页被无意义撑高。 */
+.gg__tab,
+.gg__filter,
+.gg__hub-link,
+.gt__tab,
+.tb__tab,
+.gd__quick,
+.gd__att,
+.tp__chip {
+  position: relative;
+}
+.gg__tab::after,
+.gg__filter::after,
+.gg__hub-link::after,
+.gt__tab::after,
+.tb__tab::after,
+.gd__quick::after,
+.gd__att::after,
+.tp__chip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--touch-target-min);
+  transform: translateY(-50%);
 }
 
 .gg__tab,

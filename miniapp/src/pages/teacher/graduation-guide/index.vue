@@ -24,24 +24,22 @@
               <view class="row-between"><text class="t-md t-bold">开题待批阅</text><text class="gg__qc">{{ proposalTotal }} 条</text></view>
               <text class="gg__qh">逐条看背景/方案/成果，处理后自动下一条</text>
               <button class="gg__go" @click.stop="enterReview('proposal', reviewQueue, 0)">开始批阅开题</button>
-              <view class="gg__paging">
+              <view v-if="proposalHasMore" class="gg__paging">
                 <text>已加载 {{ reviewQueue.length }} / {{ proposalTotal }} 条</text>
-                <button v-if="proposalHasMore" class="gg__more" :disabled="proposalLoadingMore" @click.stop="loadMoreProposal">
+                <button class="gg__more" :disabled="proposalLoadingMore" @click.stop="loadMoreProposal">
                   {{ proposalLoadingMore ? '加载中…' : '加载更多' }}
                 </button>
-                <text v-else>已到最后</text>
               </view>
             </view>
             <view v-if="finalTotal > 0" class="gg__queue card" @click="enterReview('final', finalQueue, 0)">
               <view class="row-between"><text class="t-md t-bold">成果待批阅</text><text class="gg__qc">{{ finalTotal }} 条</text></view>
               <text class="gg__qh">逐条看论文类型/版本/查重/附件，查重超标不可通过</text>
               <button class="gg__go" @click.stop="enterReview('final', finalQueue, 0)">开始批阅成果</button>
-              <view class="gg__paging">
+              <view v-if="finalHasMore" class="gg__paging">
                 <text>已加载 {{ finalQueue.length }} / {{ finalTotal }} 条</text>
-                <button v-if="finalHasMore" class="gg__more" :disabled="finalLoadingMore" @click.stop="loadMoreFinal">
+                <button class="gg__more" :disabled="finalLoadingMore" @click.stop="loadMoreFinal">
                   {{ finalLoadingMore ? '加载中…' : '加载更多' }}
                 </button>
-                <text v-else>已到最后</text>
               </view>
             </view>
             <view class="gg__filters">
