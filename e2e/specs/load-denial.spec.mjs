@@ -32,7 +32,7 @@ test('teacher PC: real denied navigation explains access rather than reporting l
 
   // Separate component integration: use the real browser session/client and actual
   // protected API response. This does not bypass the production route guard.
-  await page.getByRole('button', { name: '返回首页', exact: true }).click()
+  await page.getByRole('button', { name: '返回工作台', exact: true }).click()
   await expect(page).toHaveURL(/\/workbench/)
   const result = await page.evaluate(async () => {
     const { createApp, h } = await import('/node_modules/.vite/deps/vue.js')
