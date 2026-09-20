@@ -26,7 +26,7 @@ test('W4 exposes one bounded command-owner IA and keeps compatibility routes hid
     'in-command-screen': ['实习中心大屏'],
     'in-workbench': ['待办与进度'],
     'in-batch-rules': ['批次管理', '学生名单', '资格认定'],
-    'in-enterprise-position': ['企业库', '岗位库', '企业准入'],
+    'in-enterprise-position': ['企业库', '岗位库', '招聘与邀请'],
     'in-match-assign': ['岗位确认', '申请审核', '岗位匹配', '三方协议', '保险核验', '上岗核验'],
     'in-attendance-leave': ['考勤与异常', '请假与返岗', '报告与任务', '指导与巡访'],
     'in-risk': ['风险预警', '风险处置', '调岗退岗', '事故与应急'],
@@ -39,7 +39,7 @@ test('W4 exposes one bounded command-owner IA and keeps compatibility routes hid
   }
 
   const compatibilityLabels = [
-    '招聘与邀请', '导师分配', '分配记录', '异常核验', '计划任务', '指导计划',
+    '企业准入', '导师分配', '分配记录', '异常核验', '计划任务', '指导计划',
     '手动匹配', '批量匹配', '匹配冲突', '岗位申请', '审核台账',
     '补卡申请台账', '补卡审批', '请假台账', '已批准请假', '超期未归',
     '日报台账', '周报台账', '月报台账', '周报退回', '报告问题',
