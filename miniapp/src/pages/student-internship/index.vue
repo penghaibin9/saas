@@ -12,7 +12,7 @@
             @click="selectCandidate(candidate)">
             <view class="flex-1">
               <text class="t-md t-bold">{{ candidate.batchName || `批次 ${candidate.batchId}` }}</text>
-              <text class="in__candidate-sub">实习状态 {{ candidateStatusLabel(candidate.status) }} · 记录 {{ candidate.recordId }}</text>
+              <text class="in__candidate-sub">实习状态 {{ candidateStatusLabel(candidate.status) }}</text>
             </view>
             <MobileStatusTag :label="String(candidate.batchId) === String(selectedBatchId) ? '已选择' : '选择'"
               :type="String(candidate.batchId) === String(selectedBatchId) ? 'success' : 'info'" />
@@ -55,10 +55,6 @@
         <MobileInlineAlert v-else-if="compliance.currentTask" :type="compliance.passed ? 'success' : 'warning'"
           :title="compliance.passed ? '上岗合规已通过' : `当前待办：${compliance.currentTask.label}`"
           :description="compliance.currentTask.reason || '请按学校要求完成当前任务'" />
-        <button v-if="compliance.nextAction && compliance.nextAction.route" class="btn btn-primary" @click="openSub(compliance.nextAction.route)">
-          {{ compliance.nextAction.label }}
-        </button>
-
         <view v-if="canShowDailyWork" class="in__today">
           <view class="in__today-card" @click="openSub('/pages/student-internship/checkin/index')">
             <text class="in__today-icon">📍</text><text class="in__today-title">今日打卡</text>
@@ -111,9 +107,8 @@
       </view>
     </MobileGlobalState>
 
-    <MobileSafeAreaBar v-if="canShowDailyWork">
-      <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
-      <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="openSub('/pages/student-internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
+    <MobileSafeAreaBar v-if="primaryAction">
+      <button class="btn btn-primary flex-1" :disabled="primaryAction.done" @click="runPrimaryAction">{{ primaryAction.label }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -159,6 +154,20 @@ export default {
     qualification() { return this.i?.eligibilityReview || { status: 'UNKNOWN', label: '暂未取得结果', reason: '' } },
     qualificationHint() { return ({ QUALIFIED: '学校已完成本批次实习资格认定。', PENDING: '学校正在核对实习资格。需要补充材料时，请联系校内指导教师。', UNQUALIFIED: '本次认定未通过。请联系指导教师了解原因及后续安排。' })[this.qualification.status] || '请刷新认定结果，或联系指导教师核对。' },
     canShowDailyWork() { return this.i?.hasBatch && !this.i.historyMode && this.i.statusText === 'ONBOARD' },
+    primaryAction() {
+      const next = this.compliance?.nextAction
+      if (!this.i?.historyMode && next?.route) {
+        return { label: next.label || '继续办理', route: next.route, kind: 'route', done: false }
+      }
+      if (!this.canShowDailyWork) return null
+      if (!this.i?.checkin?.done) {
+        return { label: '立即打卡', route: '/pages/student-internship/checkin/index', kind: 'route', done: false }
+      }
+      if (!this.i?.weekly?.submitted) {
+        return { label: `填写${this.i?.weekly?.week || '本周'}周报`, kind: 'weekly', done: false }
+      }
+      return { label: '今天的实习任务已完成', kind: 'done', done: true }
+    },
     needSelect() { return !!(this.i?.needSelect || this.compliance?.needSelect) && !this.selectedBatchId },
     candidateLabels() { return this.candidates.map((x) => `${x.batchName || `批次 ${x.batchId}`} · ${this.candidateStatusLabel(x.status)}`) },
     candidateIndex() { return Math.max(0, this.candidates.findIndex((x) => String(x.batchId) === String(this.selectedBatchId))) },
@@ -234,6 +243,12 @@ export default {
       this.state = 'ready'
     },
     complianceTone(status) { if (['VALID', 'EXEMPTED', 'NOT_APPLICABLE'].includes(status)) return 'success'; if (['REJECTED', 'CONFIG_ERROR'].includes(status)) return 'danger'; return 'warning' },
+    runPrimaryAction() {
+      const action = this.primaryAction
+      if (!action || action.done) return
+      if (action.kind === 'weekly') return this.weekly()
+      if (action.route) return this.openSub(action.route)
+    },
     weekly() {
       if (this.i?.historyMode) return toast('历史实习记录仅可查看')
       if (this.i?.weekly?.submitted) return toast('本周周报已提交')
