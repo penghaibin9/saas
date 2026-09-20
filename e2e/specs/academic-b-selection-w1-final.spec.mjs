@@ -310,7 +310,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     expect((await miniPreflight).ok()).toBeTruthy()
     expect((await miniEnroll).ok()).toBeTruthy()
     await expect(secondCard).toContainText('已取得名额', { timeout: 15_000 })
-    await expect(secondCard.locator('.sl__details-button')).toHaveText('查看退课条件')
+    await expect(secondCard.locator('.sl__primary-action')).toHaveText('申请退课')
     await screenshot(mini, testInfo, 'w1-miniapp-selected-390x844')
     await mini.reload()
     await expect(mini.locator('.sl__batch-picker')).toContainText(fixture.ready.batchName, { timeout: 20_000 })
