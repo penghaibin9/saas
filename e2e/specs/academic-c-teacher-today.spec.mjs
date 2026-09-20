@@ -66,6 +66,9 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
 
   test('APPLIED Today -> create/mark -> sessionId reopen -> refresh/relogin -> role/dataScope negatives', async ({ page, request }) => {
     await page.setViewportSize({ width: 390, height: 844 })
+    // Teacher Today intentionally hides occurrences whose class time has already ended.
+    // Pin only the page's wall clock so this real-browser seal is stable at any CI run time.
+    await page.clock.setFixedTime(new Date(`${fixture.targetDate}T08:00:00+08:00`))
     await loginTeacherMini(page, config.mentor)
 
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/index`)
