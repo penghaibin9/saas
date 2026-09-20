@@ -155,6 +155,7 @@ export default {
     qualificationHint() { return ({ QUALIFIED: '学校已完成本批次实习资格认定。', PENDING: '学校正在核对实习资格。需要补充材料时，请联系校内指导教师。', UNQUALIFIED: '本次认定未通过。请联系指导教师了解原因及后续安排。' })[this.qualification.status] || '请刷新认定结果，或联系指导教师核对。' },
     canShowDailyWork() { return this.i?.hasBatch && !this.i.historyMode && this.i.statusText === 'ONBOARD' },
     primaryAction() {
+      if (this.needSelect || !this.i?.hasBatch) return null
       const next = this.compliance?.nextAction
       if (!this.i?.historyMode && next?.route) {
         return { label: next.label || '继续办理', route: next.route, kind: 'route', done: false }
