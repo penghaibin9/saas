@@ -1,5 +1,6 @@
 <template>
   <view class="mobile-global-state">
+    <slot name="before" />
 
     <slot v-if="state === 'ready'" />
 

@@ -12,8 +12,10 @@
       </view>
     </view>
 
-    <MobileGraduationBatchContext />
     <MobileGlobalState :state="state" @retry="load">
+      <template #before>
+        <MobileGraduationBatchContext />
+      </template>
       <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无任务书"
