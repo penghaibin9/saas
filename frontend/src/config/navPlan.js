@@ -664,8 +664,8 @@ export const NAV_PLAN = [
     mod('in-enterprise-position', '企业与岗位', '/admin/internship/enterprises', [
       I('企业库', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view', 'WORKBENCH'),
       I('岗位库', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH'),
-      H('招聘与邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view', 'WORKBENCH'),
-      I('企业准入', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.manage', 'TASK_QUEUE'),
+      I('招聘与邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view', 'WORKBENCH'),
+      H('企业准入', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.manage', 'TASK_QUEUE'),
       H('企业详情', '/admin/internship/enterprises?panel=detail', 'internship.enterprise.view', 'DETAIL'),
       H('企业联系人', '/admin/internship/enterprises?panel=contacts', 'internship.enterprise.contact.view', 'WORKBENCH'),
       H('企业导师', '/admin/internship/enterprises?panel=mentor', 'internship.enterprise.mentor.view', 'WORKBENCH'),
