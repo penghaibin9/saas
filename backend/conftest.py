@@ -130,7 +130,21 @@ def _seed_authoritative_tenant_for_db_tests(request):
     yield
 
 
-def _stable_test_user_id(claims: dict) -> int | None:\n    raw = claims.get("userId")\n    raw_text = str(raw or "").strip()\n    # Real DB principals are already stable identities. Never replace db-<id>\n    # with a synthetic compatibility id: internship rows use the underlying numeric\n    # User.id as advisor_user_id, so rewriting the token manufactures a false scope denial.\n    numeric = raw_text[3:] if raw_text.startswith("db-") else raw_text\n    try:\n        parsed = int(numeric)\n    except (TypeError, ValueError):\n        parsed = 0\n    if parsed > 0:\n        return parsed\n\n    tenant_id = str(claims.get("tenantId") or "").strip()
+def _stable_test_user_id(claims: dict) -> int | None:
+    raw = claims.get("userId")
+    raw_text = str(raw or "").strip()
+    # Real DB principals are already stable identities. Never replace db-<id>
+    # with a synthetic compatibility id: internship rows use the underlying numeric
+    # User.id as advisor_user_id, so rewriting the token manufactures a false scope denial.
+    numeric = raw_text[3:] if raw_text.startswith("db-") else raw_text
+    try:
+        parsed = int(numeric)
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed > 0:
+        return parsed
+
+    tenant_id = str(claims.get("tenantId") or "").strip()
     real_name = str(claims.get("realName") or "").strip()
     principal = str(raw or claims.get("loginName") or real_name).strip()
     if not tenant_id or not principal:
