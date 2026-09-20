@@ -196,7 +196,7 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   expect((await miniEnroll).ok()).toBeTruthy()
   const miniSelected = await miniCard(mini, batch.batchName, miniCourse.courseName)
   await expect(miniSelected).toContainText('已取得名额')
-  await expect(miniSelected.locator('.sl__details-button')).toHaveText('查看退课条件')
+  await expect(miniSelected.locator('.sl__primary-action')).toHaveText('申请退课')
   await miniSelected.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-selected-server-actions-390x844')
 
@@ -220,7 +220,7 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   expect((await miniDrop).ok()).toBeTruthy()
   const miniDropped = await miniCard(mini, batch.batchName, pcCourse.courseName)
   await expect(miniDropped).toContainText('已退课')
-  await expect(miniDropped.locator('.sl__details-button')).toHaveText('查看并选择')
+  await expect(miniDropped.locator('.sl__primary-action')).toHaveText('提交选课')
   await miniDropped.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-drop-reprojected-390x844')
 
