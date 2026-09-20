@@ -4,7 +4,18 @@
     <MobileGlobalState v-if="state !== 'ready'" :state="state" @retry="retryLoad" />
     <view v-else-if="wb" class="ts-pad">
         <MobileInlineAlert v-if="internshipContextError" type="warning" :description="internshipContextError" />
-        <view v-if="selectedInternshipBatch" class="ts-panel wb-batch"><text class="ts-muted">当前岗位实习批次</text><text class="ts-row-title">{{ selectedInternshipBatch.name }}</text><text class="ts-muted">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ internshipBatchStatus(selectedInternshipBatch.status) }}</text></view>
+        <view v-if="selectedInternshipBatch" class="ts-panel wb-batch">
+          <view class="ts-heading">
+            <view class="ts-body">
+              <text class="ts-muted">当前岗位实习批次</text>
+              <text class="ts-row-title">{{ selectedInternshipBatch.name }}</text>
+              <text class="ts-muted">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ internshipBatchStatus(selectedInternshipBatch.status) }}</text>
+            </view>
+            <picker v-if="internshipBatches.length > 1" :range="internshipBatches" range-key="name" :value="selectedInternshipBatchIndex" @change="onInternshipBatchChange">
+              <view class="ts-link">切换批次 ›</view>
+            </picker>
+          </view>
+        </view>
         <view class="ts-panel">
           <view class="ts-heading"><view class="ts-title"><view class="ts-marker" /><text>待我处理</text><text class="ts-count">（{{ todoBadge }}）</text></view><button class="ts-link ts-plain" @click="go('/pages/teacher/todos/index')">全部待办<MobileShellIcon name="chevron-right" :size="16" /></button></view>
           <view v-if="wb.partialFailures && wb.partialFailures.todos" class="ts-error"><text>待办加载失败</text><button class="ts-link ts-plain" @click="retryLoad">重试</button></view>
@@ -95,6 +106,16 @@ export default {
       if (session.currentRole !== 'intern_mentor') return null
       return useInternshipContextStore().selectedBatch
     },
+    internshipBatches() {
+      const session = useSessionStore()
+      if (session.currentRole !== 'intern_mentor') return []
+      return useInternshipContextStore().batches || []
+    },
+    selectedInternshipBatchIndex() {
+      const id = String(this.selectedInternshipBatch?.id || '')
+      const index = this.internshipBatches.findIndex((batch) => String(batch.id) === id)
+      return index < 0 ? 0 : index
+    },
     currentRoleTitle() {
       const title = String(this.wb?.contextTitle || '').trim()
       return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
@@ -129,6 +150,20 @@ export default {
     internshipBatchStatus(value) { return ({ DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || '状态待确认') },
     riskTypeLabel(value) { return ({ ACADEMIC: '学业风险', ATTENDANCE: '考勤风险', DISCIPLINE: '纪律风险', MENTAL: '心理关注', FINANCIAL: '资助风险', INTERNSHIP: '实习风险', EMPLOYMENT: '就业风险', SAFETY: '安全风险' }[value] || '风险类型待确认') },
     go, deadlineText, isOverdue, fromNow, visual: teacherVisual, messageModuleLabel,
+    onInternshipBatchChange(event) {
+      const index = Number(event?.detail?.value)
+      const batch = this.internshipBatches[index]
+      if (!batch) return
+      const context = useInternshipContextStore()
+      if (!context.selectBatch(batch.id)) {
+        toast('批次切换失败，请刷新后重试')
+        return
+      }
+      this.wb = null
+      this.loadedContextKey = ''
+      this.lastLoadedAt = 0
+      this.load({ force: true }).catch(() => {})
+    },
     canOpen(t) { return canNavigate(t?.action, 'teacher') },
     blockedReason(t) { return disabledReasonOf(t?.action) || '该事项暂不可办理，请进入全部待办查看。' },
     async loadNotices(contextKey = this.contextKey(useSessionStore())) {
