@@ -202,6 +202,8 @@ def test_local_four_surface_phone_and_account_browser(phone_identity, phone_surf
         'CORS_ORIGINS': 'http://127.0.0.1:15310,http://127.0.0.1:15311,http://localhost:5188',
         'E2E_ALLOW_DESTRUCTIVE_TESTS': 'true', 'E2E_STAFF_BASE_URL': 'http://127.0.0.1:15310',
         'E2E_STUDENT_BASE_URL': 'http://127.0.0.1:15311/portal', 'E2E_API_BASE_URL': 'http://127.0.0.1:18310/api/v1',
+        # miniapp H5 proxies /api through Vite; point it at this test's dedicated backend.
+        'VITE_DEV_API_PROXY_TARGET': 'http://127.0.0.1:18310',
         'PHONE_TEST_TENANT': phone_identity['tenant'], 'PHONE_TEST_ACCOUNT': phone_identity['login'],
         'PHONE_TEST_STUDENT_ACCOUNT': phone_surface_identities['student_account'],
         'PHONE_TEST_STUDENT_PHONE': phone_surface_identities['student_phone'],
