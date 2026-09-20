@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" :title="active ? '本课次点名' : '课堂考勤'" :before-back="backToSessions" show-back />
+    <MobileNavBar variant="teacher" :title="active ? '考勤详情' : '课堂考勤'" :before-back="backToSessions" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="!active && loaded">
         <view class="section-head">
