@@ -117,8 +117,17 @@ def run_effect(job_id=None, user=None, *, enforce_background_policy=True):
             return None
     now = datetime.utcnow()
     with session() as db:
+        # Background workers must respect retry backoff. A synchronous post-commit
+        # continuation for one exact job has just committed that job and should claim
+        # PENDING/RETRY immediately; otherwise MySQL DATETIME precision can leave the
+        # final-approval receipt stuck at PENDING until a later worker happens to run.
+        pending_due = (
+            Job.state.in_(('PENDING', 'RETRY'))
+            if job_id is not None and not enforce_background_policy
+            else and_(Job.state.in_(('PENDING', 'RETRY')), Job.next_run_at <= now)
+        )
         runnable = or_(
-            and_(Job.state.in_(('PENDING', 'RETRY')), Job.next_run_at <= now),
+            pending_due,
             and_(Job.state == 'RUNNING', Job.lease_until <= now),
         )
         job = db.scalars(_query(job_id).where(runnable).order_by(Job.next_run_at, Job.id)
