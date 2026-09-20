@@ -2264,8 +2264,9 @@ def activity_transition(body: ActivityTransitionBody, activityId: int = Path(...
 
 @router.get("/activities/{activityId}/participants", summary="活动名单")
 def activity_participants(activityId: int = Path(...),
+                          page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
                           user=Depends(require_permission("studentAffairs.activity.view"))):
-    return success({"items": activity_svc.list_participants(activityId, user)})
+    return success(activity_svc.list_participants(activityId, user, page=page, page_size=pageSize))
 
 
 @router.post("/activities/{activityId}/confirm", summary="确认名单+生成学时/积分→进360")

@@ -6,6 +6,13 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+# The systemd unit supplies PYTHONPATH, but the release verifier also invokes
+# this script directly from ``backend/``.  Make both supported execution modes
+# resolve the same application package instead of failing before the ClamAV
+# probe runs.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
 from app.services.clamav_client import ClamAVClient

@@ -55,7 +55,7 @@ export default{
       } catch (e) {
         if (request !== this.requestSeq) return
         if (more) this.moreError = '加载失败，已加载记录仍保留，请重试'
-        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = 'error' }
+        else { this.listError = normalizeError(e).text || '列表加载失败，请重试'; this.state = normalizeError(e).pageState || 'error' }
       } finally { if (request === this.requestSeq) this.refreshing = false }
     }, search(){this.appliedKeyword=this.keyword.trim();return this.loadItems()},changeStatus(value){if(this.status===value)return;this.status=value;return this.loadItems()},openAction(item,action){this.actionTarget=item;this.actionType=action;this.actionError='';this.form={opinion:'',fulfillmentReference:''}},closeAction(){if(!this.busy)this.actionTarget=null},
     async submitAction(){if(this.busy)return;if(!this.actionTarget||!this.actionValid)return;const item=this.actionTarget;this.busy=`${this.actionType}-${item.feeId}`;this.actionError='';try{await teacherApi.actAffairsFeeReduction(item.feeId,{action:this.actionType,version:item.version,opinion:this.form.opinion||undefined,...(this.actionType==='FULFILL'?{fulfillmentChannel:item.itemType==='REDUCTION'?'TUITION_LEDGER':'BANK_TRANSFER',fulfillmentReference:this.form.fulfillmentReference||undefined}:{})});toast(this.confirmText+'成功');this.actionTarget=null;await this.loadItems()}catch(e){this.actionError=normalizeError(e).text||'处理失败，请刷新后重试'}finally{this.busy=''}},async openFile(file){if(!file?.fileId)return;this.busy=`file-${file.fileId}`;try{await fileSdk.open(file.fileId)}catch(e){toast(normalizeError(e).text||'材料读取失败')}finally{this.busy=''}}}

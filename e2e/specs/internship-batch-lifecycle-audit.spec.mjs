@@ -125,7 +125,7 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
 
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}`)
     await expect(page.getByRole('heading', { name: batchName, exact: true })).toBeVisible()
-    await expect(page.locator('main p').filter({ hasText: batchNo }).first()).toBeVisible()
+    await expect(page.locator('main')).toContainText(batchNo)
     await page.getByRole('link', { name: '阶段与规则', exact: true }).click()
     await expect(page.getByText('浏览器岗前准备').first()).toBeVisible()
     await expect(page.getByText(/电子围栏 650 米/).first()).toBeVisible()

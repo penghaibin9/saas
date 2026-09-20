@@ -16,15 +16,100 @@ from app.core.permissions import require_any_permission, require_module, require
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.modules.system_admin.routers import school_iam_router as _school_iam
+from app.modules.system_admin.routers import phone_governance_router as _phone_governance
+from app.modules.system_admin.routers import school_dictionary_router as _school_dictionary
 from app.modules.system_admin.routers import system_bundle as _bundle
 
 _replacements = APIRouter()
+_school_commands = APIRouter()
+
+
 _EFFECTIVE_ACCESS_KEYS = (
     "principalPlane", "principalType", "subjectId", "tenantId", "activeContextId",
     "permissionPatterns", "permissionDigest", "permissionVersion", "securityRevision",
     "securityRevisionHealthy", "securityRevisionError", "ctxKey", "moduleEntitlements",
     "moduleStates", "moduleAccessHealthy", "moduleAccessError", "dataScopeSummary",
 )
+
+
+def _tenant_safe_student_account_meta(db, account) -> dict:
+    """Harden the frozen bundle's student projection without changing frozen bytes."""
+    try:
+        from app.models import College, Major, SchoolClass, StudentAccountLink, StudentProfile
+
+        link = db.scalars(select(StudentAccountLink).where(
+            StudentAccountLink.tenant_id == account.tenant_id,
+            StudentAccountLink.user_id == account.id,
+            StudentAccountLink.link_status == "ACTIVE",
+            StudentAccountLink.is_deleted.is_(False),
+        )).first()
+        sp = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == link.student_id,
+            StudentProfile.tenant_id == int(account.tenant_id),
+            StudentProfile.is_deleted.is_(False),
+        )).first() if link is not None else None
+        if sp is None and link is None:
+            sp = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == account.tenant_id,
+                StudentProfile.is_deleted.is_(False),
+                StudentProfile.student_no == account.login_name,
+            )).first()
+        if sp is None:
+            return {
+                "studentId": "", "studentNo": account.login_name,
+                "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+                "classId": "", "className": "", "grade": "",
+                "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
+                "currentStage": "", "profileBound": False,
+            }
+
+        college = db.scalars(select(College).where(
+            College.id == sp.college_id,
+            College.tenant_id == int(account.tenant_id),
+            College.is_deleted.is_(False),
+        )).first() if sp.college_id else None
+        major = db.scalars(select(Major).where(
+            Major.id == sp.major_id,
+            Major.tenant_id == int(account.tenant_id),
+            Major.is_deleted.is_(False),
+        )).first() if sp.major_id else None
+        cls = db.scalars(select(SchoolClass).where(
+            SchoolClass.id == sp.class_id,
+            SchoolClass.tenant_id == int(account.tenant_id),
+            SchoolClass.is_deleted.is_(False),
+        )).first() if sp.class_id else None
+        student_status = str(sp.student_status or sp.status or "").upper()
+        return {
+            "studentId": str(sp.id), "studentNo": sp.student_no,
+            "collegeId": str(sp.college_id or ""),
+            "collegeName": college.college_name if college else "",
+            "majorId": str(sp.major_id or ""),
+            "majorName": major.major_name if major else "",
+            "classId": str(sp.class_id or ""),
+            "className": cls.class_name if cls else "",
+            "grade": sp.grade or (cls.grade if cls else "") or "",
+            "studentStatus": student_status,
+            "studentStatusLabel": {
+                "NORMAL": "正常在籍", "REGISTERED": "已注册", "SUSPENDED": "休学",
+                "GRADUATED": "已毕业", "WITHDRAWN": "已退学", "MERGED": "已合并",
+                "RECYCLED": "已作废",
+            }.get(student_status, student_status or "未设置"),
+            "currentStage": str(sp.current_stage or ""),
+            "profileBound": True,
+        }
+    except Exception:
+        return {
+            "studentId": "", "studentNo": account.login_name,
+            "collegeId": "", "collegeName": "", "majorId": "", "majorName": "",
+            "classId": "", "className": "", "grade": "",
+            "studentStatus": "UNBOUND", "studentStatusLabel": "主档读取失败",
+            "currentStage": "", "profileBound": False,
+        }
+
+
+# S0 keeps system_bundle byte-frozen. Any bundle route that calls its global
+# _student_account_meta now consumes this tenant-scoped adapter at runtime.
+_bundle._student_account_meta = _tenant_safe_student_account_meta
 
 
 def _assert_permission_rows_exist(codes: set[str]) -> None:
@@ -477,6 +562,9 @@ def get_system_role(
                 else "ROLE_PERMISSION_PINNED"
             ),
         })
+        from app.modules.system_admin.services.school_role_adoption_service import adoption_preview
+
+        data["localAdoption"] = adoption_preview(db, role)
         return payload
     finally:
         db.close()
@@ -627,7 +715,7 @@ def create_system_role(
     import secrets
 
     from app.core.exceptions import AppException
-    from app.models import CustomRoleSource, Role, RoleTemplate
+    from app.models import CustomRoleSource, Permission, Role, RolePermission, RoleTemplate
     from app.models.permission_governance import (
         TEMPLATE_CATEGORY_SYSTEM_ROLE,
         TEMPLATE_PLANE_TENANT,
@@ -640,6 +728,9 @@ def create_system_role(
     code = str(body.get("code") or "").strip().upper() or f"CUSTOM_{secrets.token_hex(4).upper()}"
     if not name or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,49}", code):
         raise AppException("VALIDATION_ERROR", "角色名称必填，编码须为 3-50 位大写字母、数字或下划线")
+    initial_permissions = body.get("initialPermissions", "EMPTY")
+    if initial_permissions not in ("EMPTY", "TEMPLATE"):
+        raise AppException("VALIDATION_ERROR", "请选择从模板带入权限或创建空角色", http_status=422)
 
     db = get_sessionmaker()()
     try:
@@ -667,6 +758,24 @@ def create_system_role(
                 http_status=409,
                 details={"sourceTemplateCode": source_template_code},
             )
+        permissions = {}
+        if initial_permissions == "TEMPLATE":
+            from app.core.permissions import assert_delegable_permission_codes
+            from app.modules.system_admin.services.school_iam_authority_projection_service import _template_permissions
+
+            # Pin exactly what the operator reviewed; never silently adopt a newer release.
+            if (str(body.get("expectedTemplateVersion")) != str(source_template.template_version)
+                    or not body.get("expectedTemplateDigest")
+                    or body["expectedTemplateDigest"] != source_template.permission_digest):
+                raise AppException("DATA_CONFLICT", "来源模板已变化，请重新读取模板并核对权限", http_status=409)
+            codes = set(_template_permissions(db, source_template))
+            assert_delegable_permission_codes(user, codes)
+            _assert_custom_role_catalog_policy(codes)
+            permissions = {row.permission_code: row for row in db.scalars(select(Permission).where(
+                Permission.permission_code.in_(sorted(codes))
+            )).all()} if codes else {}
+            if codes - permissions.keys():
+                raise AppException("PERMISSION_CATALOG_DRIFT", "模板权限目录未完成对账，请联系系统维护人员", http_status=409)
         role = Role(
             tenant_id=tenant_id,
             role_code=code,
@@ -695,10 +804,15 @@ def create_system_role(
             role_code=code,
             source_template_code=source_template_code,
             source_template_version=int(source_template.template_version or 1),
-            permission_codes_json={"items": []},
+            permission_codes_json={"items": sorted(permissions)},
             drift_json={"policy": "PINNED", "automaticUpgrade": False},
             status="ACTIVE",
         ))
+        for permission in permissions.values():
+            db.add(RolePermission(
+                tenant_id=tenant_id, role_id=int(role.id),
+                permission_id=int(permission.id), status="ACTIVE",
+            ))
 
         from app.services import audit_log
 
@@ -711,13 +825,19 @@ def create_system_role(
                 "roleName": name,
                 "moduleCode": "systemAdmin",
                 "authoritySource": "ROLE_PERMISSION_PINNED",
+                "sourceTemplateCode": source_template_code,
+                "sourceTemplateVersion": int(source_template.template_version),
+                "initialPermissions": initial_permissions,
+                "permissionCount": len(permissions),
             },
             tenant_id=tenant_id,
             resource_id=str(role.id),
         )
         db.commit()
         db.refresh(role)
-        return success(_bundle._role_row(role, 0), message="自定义角色已创建；请继续配置权限")
+        result = _bundle._role_row(role, 0)
+        result["initialPermissionCount"] = len(permissions)
+        return success(result, message="本校角色已创建；成员未自动加入")
     except Exception:
         db.rollback()
         raise
@@ -877,6 +997,43 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
         db.close()
 
 
+@_school_commands.post("/system/roles/{role_id}/adopt", summary="将预设业务角色转为本校维护")
+def adopt_system_role(
+    role_id: int, body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.role.config")),
+):
+    from app.core.exceptions import AppException
+    from app.modules.system_admin.services.school_role_adoption_service import adopt_in_session
+    from app.services.auth_service_db import invalidate_tenant_subject_caches
+
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "转换原因至少 5 个字符", http_status=422)
+    try:
+        uuid.UUID(str(body.get("requestId") or ""))
+    except (ValueError, TypeError, AttributeError):
+        raise AppException("VALIDATION_ERROR", "requestId 必须是 UUID", http_status=422)
+    tenant_id = int(current_tenant_id() or 0)
+    if tenant_id <= 0:
+        raise AppException("NO_PERMISSION", "请在本校身份下操作", http_status=403)
+    db = get_sessionmaker()()
+    try:
+        result = adopt_in_session(db, tenant_id=tenant_id, role_id=role_id,
+                                  body={**body, "reason": reason}, actor=user)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    try:
+        invalidate_tenant_subject_caches(tenant_id)
+        result["cacheInvalidated"] = True
+    except Exception:
+        result["cacheInvalidated"] = False
+    return success(result, message="已转为本校维护；原成员、权限和业务关系保留")
+
+
 @_replacements.put("/system/roles/{role_id}/permissions", summary="保存自定义角色权限与默认范围")
 def save_system_role_permissions(
     role_id: int,
@@ -1025,6 +1182,7 @@ def save_system_role_permissions(
             db,
             role,
             body.get("scopeCode"),
+            preserve_unchanged=True,
             target_json=(
                 body["scopeTarget"]
                 if "scopeTarget" in body
@@ -1185,12 +1343,18 @@ def _compose_router() -> APIRouter:
     if replacement_by_key:
         missing = sorted(replacement_by_key)
         raise RuntimeError(f"Control Plane replacement route has no legacy target: {missing}")
-    school_keys = {_route_key(route) for route in _school_iam.router.routes}
+    school_routes = [
+        *_school_commands.routes,
+        *_school_iam.router.routes,
+        *_phone_governance.router.routes,
+        *_school_dictionary.router.routes,
+    ]
+    school_keys = {_route_key(route) for route in school_routes}
     existing_keys = {_route_key(route) for route in routes}
     collisions = sorted(school_keys & existing_keys)
     if collisions:
         raise RuntimeError(f"School IAM route collision: {collisions}")
-    routes.extend(_school_iam.router.routes)
+    routes.extend(school_routes)
     composed.routes = routes
     return composed
 

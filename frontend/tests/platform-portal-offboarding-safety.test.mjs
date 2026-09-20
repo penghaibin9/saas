@@ -10,7 +10,7 @@ const ui = { normalizeUiError: (e, o) => ({ userMessage: e?.message || o.fallbac
 const portal = api => optionsInstance('../src/modules/platform/components/StudentPortalConfigPanel.vue', { tenantId: ID }, { ...ui, studentPortalConfigApi: api, URL })
 const preview = () => ({ tenantId: ID, effectiveState: { version: 4 }, counts: { legalHoldFileCount: 0, activeFileJobCount: 0 }, registry: { complete: true }, blockers: [], activeJobId: null })
 const job = () => ({ tenantId: ID, jobId: '11', state: 'RETENTION', cancellable: true, finalExportSha256: 'a'.repeat(64), retentionUntil: '2020-01-01T00:00:00Z' })
-const offboard = (api = {}) => optionsInstance('../src/modules/platform/components/TenantOffboardingPanel.vue', { tenantId: ID, tenant: {}, tenant360: {} }, { platformStatusLabel: x => x, platformSecurityOpsApi: { previewTenantOffboarding: async () => preview(), getTenantOffboarding: async () => null, getMfaStatus: async () => ({ enabled: false }), ...api }, clearTimeout, setTimeout, window: { confirm: () => true } })
+const offboard = (api = {}) => optionsInstance('../src/modules/platform/components/TenantOffboardingPanel.vue', { tenantId: ID, tenant: {}, tenant360: {} }, { platformStatusLabel: x => x, platformSecurityOpsApi: { previewTenantOffboarding: async () => preview(), getTenantOffboarding: async () => null, getMfaStatus: async () => ({ enabled: false }), ...api }, clearTimeout, setTimeout, systemConfirm: async () => true, window: {} })
 
 test('portal read failure blocks both saving and restoring defaults', async () => {
   let writes = 0
@@ -104,7 +104,7 @@ test('reversible offboarding request is single-shot and preserves expected versi
   const pending = deferred(); let writes = 0, body
   const { state } = offboard({ requestTenantOffboarding: (id, input) => { assert.equal(id, ID); writes++; body = input; return pending.promise } })
   await state.load(); state.requestForm.reason = '学校确认终止服务并进行数据交付'
-  const a = state.requestOffboarding(), b = state.requestOffboarding(); assert.equal(writes, 1); assert.equal(body.expectedVersion, 4)
+  const a = state.requestOffboarding(), b = state.requestOffboarding(); await new Promise(resolve => setImmediate(resolve)); assert.equal(writes, 1); assert.equal(body.expectedVersion, 4)
   pending.resolve({ ...job(), state: 'FROZEN_READONLY' }); await Promise.all([a, b]); assert.equal(state.working, false)
 })
 test('uncertain reversible offboarding request is blocked until readback', async () => {

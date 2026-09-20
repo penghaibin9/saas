@@ -6,9 +6,9 @@
 import { request } from '@/services/http/client'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
-function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
+function fail(message, code = 1, metadata = {}) { return Promise.resolve({ code, data: null, message, ...metadata }) }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return fail(e.message, e.code || 1, { bizCode: e.bizCode, details: e.details, traceId: e.traceId })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {

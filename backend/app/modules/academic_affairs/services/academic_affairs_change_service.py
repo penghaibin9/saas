@@ -261,7 +261,10 @@ def submit(body, user) -> dict:
         from app.models import AaStatusChange, StudentProfile
         from app.modules.academic_affairs.services.academic_affairs_archive_service import (
             guard_term_writable_current)
-        s = db.get(StudentProfile, student_id)
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == student_id, StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
         guard_term_writable_current(db)  # 归档11卡§6.2：已归档学期不应受理新异动申请（降级为当前学期判据）
@@ -274,6 +277,10 @@ def submit(body, user) -> dict:
         ctx = build_affairs_context(user, db)
         if ctx.scope_type not in ("TENANT_ALL", "SELF"):
             ctx.require_student(db, student_id)
+        expected = getattr(body, "expectedStudentVersion", None)
+        if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or expected != s.version):
+            raise AppException("DATA_CONFLICT", "学生主档已变化，请重新读取学籍并确认申请", http_status=409,
+                details={"expectedStudentVersion": expected, "currentStudentVersion": s.version})
         cur = s.student_status
         # 终态学生禁发起
         if cur in ("MERGED", "RECYCLED", "WITHDRAWN", "GRADUATED"):

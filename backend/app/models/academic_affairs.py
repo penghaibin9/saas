@@ -652,6 +652,18 @@ class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):
 # ═══════════ 教学资源组（13B-R4；教室字典最小闭环，方案A：字典独立，课表 classroom_text 保持自由文本快照）═══════════
 
 
+class AaTeachingBuilding(PKMixin, TenantMixin, CommonMixin, Base):
+    """Registered counterpart of the existing teaching-building migration."""
+    __tablename__ = "t_aa_teaching_building"
+
+    building_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    building_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    campus_code: Mapped[str | None] = mapped_column(String(50))
+    floor_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (UniqueConstraint("tenant_id", "building_code", name="uk_aa_teaching_building"),)
+
+
 class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     """教室字典（楼栋/教室/容量/类型/可用状态）。租户级基础数据；排课 UI 从本字典选择。
     唯一(tenant,building_code,room_code)。可用状态 AVAILABLE/DISABLED/MAINTENANCE。
@@ -662,12 +674,18 @@ class AaClassroom(PKMixin, TenantMixin, CommonMixin, Base):
     """
     __tablename__ = "t_aa_classroom"
 
+    building_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    floor_no: Mapped[int | None] = mapped_column(Integer)
+
     building_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="楼栋编码")
     building_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="楼栋名称")
     room_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="教室编号")
     room_name: Mapped[str | None] = mapped_column(String(100), comment="教室名称(可空,默认楼栋+编号)")
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="上课有效座位数(排课容量校验依据)")
-    exam_seats: Mapped[int | None] = mapped_column(Integer, comment="考试座位数(考务编排依据,需隔座故通常<capacity;空则回退 capacity)")
+    exam_seats: Mapped[int | None] = mapped_column(Integer, comment="实际可用考位数，不自动减半；历史空值回退 capacity，0 表示无可用考位")
+    allow_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", comment="允许排课")
+    allow_exam: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", comment="允许排考")
+    allow_borrow: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", comment="开放借用；旧资料保持原有可借行为，新建由命令明确设置")
     is_exclusive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
                                                comment="是否专用教室(True 则自动排课跳过,仅人工可指定)")
     room_type: Mapped[str] = mapped_column(String(30), nullable=False, default="LECTURE",
@@ -709,6 +727,7 @@ class AaLabResource(PKMixin, TenantMixin, CommonMixin, Base):
 
     lab_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="实训室编号")
     lab_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="实训室名称")
+    classroom_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="显式关联的正式排课场地；不按名称推断")
     building_name: Mapped[str | None] = mapped_column(String(100), comment="所在楼栋(可空)")
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="容量(工位数)")
     lab_type: Mapped[str] = mapped_column(String(30), nullable=False, default="SKILL",
@@ -752,6 +771,7 @@ class AaLabBooking(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_lab_booking"
 
     lab_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    classroom_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="审核通过时冻结的实际排课场地；历史未知不回填")
     lab_text: Mapped[str | None] = mapped_column(String(100))
     booking_date: Mapped[str] = mapped_column(String(20), nullable=False, comment="YYYY-MM-DD")
     slot_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="节次")
@@ -1310,11 +1330,14 @@ class AaRetakeApply(PKMixin, TenantMixin, CommonMixin, Base):
     """重修申请（SM-12.2，6 态，workflow_code=ACAD_RETAKE_APPLY，教务处单节点审批）。
     次数上限读规则 academicAffairs.retake.maxCount(默2)；APPROVED 后编入教学任务跟班重修。"""
     __tablename__ = "t_aa_retake_apply"
+    __table_args__ = (Index("ix_aa_retake_origin", "tenant_id", "origin_grade_id"),)
 
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_no: Mapped[str | None] = mapped_column(String(50))
     student_name: Mapped[str | None] = mapped_column(String(100))
     acad_student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_acad_student")
+    origin_grade_id: Mapped[int | None] = mapped_column(BigInteger, comment="申请时精确正式成绩ID；历史未证明来源不得猜配")
+    enrollment_roster_version_id: Mapped[int | None] = mapped_column(BigInteger, comment="编班事务实际采用的正式名单版本；不以当前名单回填")
     course_id: Mapped[int | None] = mapped_column(BigInteger)
     course_name: Mapped[str | None] = mapped_column(String(200))
     term_code: Mapped[str | None] = mapped_column(String(50))
@@ -1737,9 +1760,13 @@ class AaClassAdjustmentRequest(PKMixin, TenantMixin, CommonMixin, Base):
     adjust_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True,
                                               comment="MERGE/SPLIT/DISBAND/GRADUATE_CLEAR")
     from_class_ids: Mapped[str] = mapped_column(String(500), nullable=False, comment="JSON数组，来源行政班id列表")
+    # Expand/contract shadow columns: this release keeps legacy fields authoritative so N-1
+    # application bytes can still run after migration. A later release may switch writers.
+    from_class_ids_text: Mapped[str | None] = mapped_column(Text)
     to_class_id: Mapped[int | None] = mapped_column(BigInteger, comment="合班目标班级（MERGE专用）")
     reason: Mapped[str] = mapped_column(String(1000), nullable=False)
     check_result_json: Mapped[str | None] = mapped_column(String(2000))
+    check_result_text: Mapped[str | None] = mapped_column(Text)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/CHECKED/EXECUTED/CANCELLED")

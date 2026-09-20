@@ -77,21 +77,22 @@ def verify(root: Path) -> list[str]:
         for name in ('pc', 'portal', 'enterprise', 'miniapp'):
             static = folder / 'html' / name
             static.mkdir(parents=True)
-            (static / 'index.html').write_text('PORTAL:' + name)
-            (static / '.env').write_text('must-not-serve')
-            (static / 'backup.sql').write_text('must-not-serve')
+            (static / 'index.html').write_text('PORTAL:' + name, encoding='utf-8')
+            (static / '.env').write_text('must-not-serve', encoding='utf-8')
+            (static / 'backup.sql').write_text('must-not-serve', encoding='utf-8')
         certificate(folder)
         conf_dir = folder / 'conf'
         conf_dir.mkdir()
         for name in ('security-http.conf', 'security-server.conf', 'security-headers.conf'):
-            source = (root / 'deploy/nginx' / name).read_text()
-            (conf_dir / name).write_text(source.replace('/etc/nginx/conf.d', str(conf_dir)))
+            source = (root / 'deploy/nginx' / name).read_text(encoding='utf-8')
+            (conf_dir / name).write_text(source.replace('/etc/nginx/conf.d', str(conf_dir)), encoding='utf-8')
         echo = ThreadingHTTPServer(('127.0.0.1', 0), Echo)
         thread = Thread(target=echo.serve_forever, daemon=True)
         thread.start()
         http_port, https_port = port(), port()
         config = generator.nginx_config(HOST)
-        user_line = 'user root;' if os.geteuid() == 0 else ''
+        is_root = getattr(os, 'geteuid', lambda: -1)() == 0
+        user_line = 'user root;' if is_root else ''
         config = (config.replace('user nginx;', user_line).replace('worker_processes auto;', 'worker_processes 1;')
                   .replace('/etc/nginx/conf.d', str(conf_dir)).replace('/etc/nginx/tls', str(folder))
                   .replace('/usr/share/nginx/html', str(folder / 'html'))
@@ -102,7 +103,7 @@ def verify(root: Path) -> list[str]:
                   .replace('listen 80', f'listen 127.0.0.1:{http_port}')
                   .replace('listen 443', f'listen 127.0.0.1:{https_port}'))
         path = folder / 'nginx.conf'
-        path.write_text(config)
+        path.write_text(config, encoding='utf-8')
         process = None
         try:
             syntax = subprocess.run(['nginx', '-t', '-p', str(folder), '-c', str(path)], capture_output=True, timeout=10)
@@ -164,7 +165,7 @@ def verify(root: Path) -> list[str]:
                 assert request('/login')[0] == 200
                 checks.append(version.name)
             broken = folder / 'missing-cert.conf'
-            broken.write_text(config.replace('fullchain.pem', 'absent-certificate.pem'))
+            broken.write_text(config.replace('fullchain.pem', 'absent-certificate.pem'), encoding='utf-8')
             result = subprocess.run(['nginx', '-t', '-p', str(folder), '-c', str(broken)], capture_output=True, timeout=10)
             assert result.returncode != 0
             checks.append('missing-certificate-refuses-start')

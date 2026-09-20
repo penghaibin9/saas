@@ -63,6 +63,7 @@
       <div class="workspace-account-summary"><span class="workspace-avatar">{{ initial }}</span><div><strong>{{ user?.realName || '同学' }}</strong><p>{{ brand.schoolName || cfg.portalName }}</p><small>学生 · 数据范围仅限本人</small></div></div>
       <button class="workspace-setting-row" @click="accountDialog.close(); openDialog(appearanceDialog)"><span>外观设置</span><small>{{ themeName }} →</small></button>
       <button class="workspace-setting-row" @click="accountDialog.close(); openShortcutEditor()"><span>编辑我的快捷栏</span><small>{{ shortcuts.length }} 个入口 →</small></button>
+      <button class="workspace-setting-row" @click="accountDialog.close(); navigate('/account-security')"><span>手机号与账号安全</span><small>本人绑定 / 换号 / 解绑 →</small></button>
       <button class="workspace-setting-row workspace-danger" :disabled="loggingOut" @click="logout">{{ loggingOut ? '正在退出…' : '退出登录' }}</button>
     </dialog>
     <dialog ref="appearanceDialog" class="workspace-dialog" aria-labelledby="workspace-appearance-title" @click="dismissBackdrop($event)">

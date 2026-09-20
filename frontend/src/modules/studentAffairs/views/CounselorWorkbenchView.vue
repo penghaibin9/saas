@@ -77,6 +77,7 @@ export default {
       riskColumns: RISK_COLUMNS,
       talkColumns: TALK_COLUMNS,
       loading: true, errorMessage: '', risks: [], talks: [],
+      riskTotal: 0, highRiskTotal: 0, talkTotal: 0,
       quickLinks: [
         { label: '请假审批', route: '/admin/student-affairs/leave' },
         { label: '风险预警', route: '/admin/student-affairs/risk' },
@@ -92,11 +93,13 @@ export default {
     activeRisks() { return this.risks.filter((r) => ACTIVE_RISK.includes(r.status)) },
     actionTalks() { return this.talks.filter((t) => ACTION_TALK.includes(t.status)) },
     metricCards() {
-      const critical = this.activeRisks.filter((r) => ['HIGH', 'CRITICAL'].includes(r.riskLevel)).length
+      const riskTotal = this.riskTotal || this.activeRisks.length
+      const critical = this.highRiskTotal || this.activeRisks.filter((r) => ['HIGH', 'CRITICAL'].includes(r.riskLevel)).length
+      const talkTotal = this.talkTotal || this.actionTalks.length
       return [
-        { key: 'r', label: '待处理风险', value: this.activeRisks.length, accent: this.activeRisks.length ? 'warning' : 'success' },
+        { key: 'r', label: '待处理风险', value: riskTotal, accent: riskTotal ? 'warning' : 'success' },
         { key: 'c', label: '高/紧急风险', value: critical, accent: critical ? 'risk' : 'success' },
-        { key: 't', label: '待跟进谈话', value: this.actionTalks.length, accent: this.actionTalks.length ? 'warning' : 'success' }
+        { key: 't', label: '待跟进谈话', value: talkTotal, accent: talkTotal ? 'warning' : 'success' }
       ]
     }
   },
@@ -105,12 +108,22 @@ export default {
     async load() {
       this.loading = true; this.errorMessage = ''
       const [rk, tk] = await Promise.all([
-        studentAffairsApi.getRisks({ pageSize: 200 }),
-        studentAffairsApi.getTalks({ pageSize: 200 })
+        studentAffairsApi.getRisks({ status: 'ACTIVE', pageSize: 10 }),
+        studentAffairsApi.getTalks({ status: ACTION_TALK.join(','), pageSize: 10 })
       ])
-      if (rk.code === 0 && rk.data) this.risks = rk.data.items || []
+      if (rk.code === 0 && rk.data) {
+        this.risks = rk.data.items || []
+        this.riskTotal = Number(rk.data.total) || 0
+        this.highRiskTotal = Number(rk.data.stats?.highCritical) || 0
+      }
       else this.errorMessage = rk.message || '工作台加载失败'
-      this.talks = (tk.code === 0 && tk.data) ? (tk.data.items || tk.data.list || []) : []
+      if (tk.code === 0 && tk.data) {
+        this.talks = tk.data.items || tk.data.list || []
+        this.talkTotal = Number(tk.data.total) || 0
+      } else {
+        this.talks = []
+        this.talkTotal = 0
+      }
       this.loading = false
     },
     sourceLabel(s) { return SRC[s] || (s ? '状态待确认' : '—') },

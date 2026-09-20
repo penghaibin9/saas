@@ -191,6 +191,17 @@ def test_same_permission_non_assignee_gets_403_and_no_side_effects(db_mode, monk
     assert _decision_audits(ids["change"]) == 0
 
 
+def test_pending_queue_returns_only_current_task_assignee_with_pagination(db_mode, monkeypatch):
+    _patch(monkeypatch); ids = _seed()
+    mine = svc.pending_for_assignee(COLLEGE_USER, {"COLLEGE_REVIEW"}, page=1, page_size=1)
+    assert mine["total"] == 1
+    assert mine["page"] == 1 and mine["pageSize"] == 1 and mine["hasMore"] is False
+    assert [row["changeId"] for row in mine["list"]] == [str(ids["change"])]
+
+    other = svc.pending_for_assignee(OTHER_USER, {"COLLEGE_REVIEW"}, page=1, page_size=20)
+    assert other["total"] == 0 and other["list"] == []
+
+
 def test_previous_node_assignee_cannot_approve_next_node(db_mode, monkeypatch):
     _patch(monkeypatch); ids = _seed()
     svc.review(ids["change"], COLLEGE_USER, "APPROVE", expected_version=0)

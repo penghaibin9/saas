@@ -6,6 +6,7 @@ import {
   GUARDED_MODULES,
   getPermissionPatterns,
   getRbacLoadFailed,
+  routeAccessNotice,
 } from '@/security/permissionGate'
 import {
   ensurePlatformAccessContext,
@@ -66,7 +67,7 @@ const moduleRoutes = projectNavigationRoutePermissions([
 const projectedCoreControlRoutes = projectNavigationRoutePermissions(coreControlRoutes, [...NAV_PLAN, PLATFORM_PLAN])
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       /* PORTAL-ROOT：主域名根路径 = 对外统一门户首页（公开，不需登录）。
@@ -224,6 +225,12 @@ router.beforeEach(async (to, from, next) => {
     await ensurePermissionPatterns(request)
   }
   if (!canEnterRoute(to.meta)) {
+    if (!isPlatform) {
+      // App renders only the denial workspace, never the denied route component.
+      to.meta.accessNotice = routeAccessNotice(to.meta)
+      next()
+      return
+    }
     const svcErr = getRbacLoadFailed()
     next({
       path: '/security/403',
@@ -234,6 +241,7 @@ router.beforeEach(async (to, from, next) => {
     })
     return
   }
+  delete to.meta.accessNotice
   next()
 })
 

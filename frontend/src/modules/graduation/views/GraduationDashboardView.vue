@@ -1,10 +1,18 @@
 <template>
   <ModulePageShell
+    class="gdb-shell"
     title="毕设总览"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <template #summary>
+      <div class="gdb-kpis" aria-label="当前批次关键指标">
+        <div v-for="s in keyStats" :key="s.label" class="gdb-kpi" :title="s.trend || s.label">
+          <span>{{ s.label }}</span><strong>{{ s.value }}</strong>
+        </div>
+      </div>
+    </template>
     <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar" /></template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -51,13 +59,9 @@
           <span class="gdb-focus__ok">✓</span>
           <div><strong>{{ priorityConclusion }}</strong><p>{{ priorityDetail }}</p></div>
         </div>
-
-        <div class="gdb-kpis" aria-label="当前批次关键指标">
-          <div v-for="s in keyStats" :key="s.label" class="gdb-kpi">
-            <span>{{ s.label }}</span><strong>{{ s.value }}</strong><small v-if="s.trend">{{ s.trend }}</small>
-          </div>
-        </div>
       </section>
+
+
 
       <section v-if="remainingWorkItems.length" class="mp-card gdb-queue">
         <div class="mp-card__head">
@@ -103,7 +107,7 @@
             <div v-else class="gdb-risks">
               <button v-for="r in visibleRiskAlerts" :key="r.id" class="gdb-risk-row" :class="r.level === 'HIGH' ? 'is-danger' : 'is-warning'" type="button" @click="goRisk(r)">
                 <span><strong>{{ r.code }} · {{ r.title }}</strong><small>{{ r.detail }}</small></span>
-                <RiskTag :level="r.level" /><i>处置 →</i>
+                <RiskTag :level="r.level" /><i>{{ r.actionLabel || '查看' }} →</i>
               </button>
             </div>
           </div>
@@ -113,7 +117,7 @@
       <section class="mp-card gdb-progress-card">
         <div class="mp-card__head">
           <span class="mp-card__title">批次进度</span>
-          <span class="gdb-progress-card__meta">{{ hero.batchName || batchStore.selectedBatchName }} · {{ hero.batchStatus || batchStore.batchStatus || '—' }}</span>
+          <span class="gdb-progress-card__meta">{{ hero.batchName || batchStore.selectedBatchName }} · {{ batchStatusLabel(hero.batchStatus || batchStore.batchStatus) }}</span>
         </div>
         <div class="mp-card__body gdb-flow">
           <div v-for="f in hero.flow" :key="f.label" class="gdb-flow__item" :class="{ 'is-active': f.active }">
@@ -122,13 +126,16 @@
         </div>
       </section>
 
-      <details v-if="hero.moduleStats?.length" class="gdb-more">
+      <details v-if="hasBatch" class="gdb-more" @toggle="onModuleStatsToggle">
         <summary>跨模块统计</summary>
-        <div class="gdb-modstats">
-          <button v-for="s in hero.moduleStats" :key="s.label" class="gdb-modstat" type="button" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">
+        <p v-if="moduleStatsLoading" class="mp-note">正在读取跨模块统计…</p>
+        <p v-else-if="moduleStatsError" class="mp-note">{{ moduleStatsError }}</p>
+        <div v-else-if="moduleStats.length" class="gdb-modstats">
+          <button v-for="s in moduleStats" :key="s.label" class="gdb-modstat" type="button" @click="goWithBatch('/admin/graduation/risk-archive', { panel: 'stats' })">
             <strong>{{ s.value }}</strong><span>{{ s.label }}</span><small>{{ s.hint }}</small>
           </button>
         </div>
+        <p v-else class="mp-note">暂无可展示的跨模块统计。</p>
       </details>
     </div>
   </ModulePageShell>
@@ -137,10 +144,11 @@
 <script>
 import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
+import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const EMPTY_HERO = () => ({
-  stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [],
+  stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], actionableRiskCount: 0,
   batchName: '', batchRange: '', batchStatus: ''
 })
 const TODO_TARGETS = {
@@ -150,13 +158,33 @@ const TODO_TARGETS = {
   t4: { path: '/admin/graduation/defense', query: {} },
   t5: { path: '/admin/graduation/risk-archive', query: { panel: 'risk' } }
 }
+function moduleStatsFromOverview(overview = {}) {
+  const mentor = overview.mentor || {}
+  const guidance = overview.guidance || {}
+  const midterm = overview.midterm || {}
+  const review = overview.review || {}
+  const grade = overview.grade || {}
+  const archive = overview.archive || {}
+  const done = (stat, key) => (stat.byStatus || []).find((item) => item.status === key)?.count || 0
+  return [
+    { label: '导师已合格', value: String(mentor.qualifiedCount || 0), hint: `未分配学生 ${mentor.unassignedStudents || 0} · 满员 ${mentor.fullCapacityCount || 0}` },
+    { label: '指导平均次数', value: String(guidance.avgCount || 0), hint: `频次不足 ${guidance.insufficientCount || 0} 人` },
+    { label: '中期检查', value: String(midterm.total || 0), hint: `待检 ${done(midterm, 'PENDING')}` },
+    { label: '教师评阅', value: String(review.total || 0), hint: `已完成 ${done(review, 'COMPLETED')}` },
+    { label: '成绩已发布均分', value: String(grade.publishedAvg || '—'), hint: `优秀 ${grade.excellentCount || 0} 人` },
+    { label: '归档率', value: `${archive.archiveRate || 0}%`, hint: `已备案 ${archive.filedCount || 0}/${archive.studentTotal || 0}` }
+  ]
+}
 
 export default {
   name: 'GraduationDashboardView',
   components: { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO() }
+    return {
+      batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO(),
+      moduleStats: [], moduleStatsLoading: false, moduleStatsError: '', moduleStatsBatchId: '', moduleStatsLoadToken: 0
+    }
   },
   computed: {
     hasBatch() { return !!this.batchStore.selectedBatchId },
@@ -164,7 +192,7 @@ export default {
       if (!this.hasBatch) return '请先选择或创建毕设批次'
       const name = this.hero.batchName || this.batchStore.selectedBatchName || '当前批次'
       const status = this.hero.batchStatus || this.batchStore.batchStatus || ''
-      return status ? `${name} · ${status}` : name
+      return status ? `${name} · ${this.batchStatusLabel(status)}` : name
     },
     toolbarActions() {
       const pa = this.ctx.permissionActions || {}
@@ -188,12 +216,15 @@ export default {
       const stat = (this.hero.stats || []).find((item) => item.label === '高风险学生')
       return Math.max(0, Number(stat?.value) || 0)
     },
+    actionableRiskCount() { return Math.max(0, Number(this.hero.actionableRiskCount) || 0) },
     priorityTodo() {
       return (this.hero.todos || []).filter((item) => Number(item.count) > 0).slice().sort((a, b) => Number(b.count) - Number(a.count))[0] || null
     },
     priorityConclusion() {
-      if (!this.todoLoad && !this.highRiskCount) return '当前批次暂无待处理事项'
-      if (this.highRiskCount) return `今日待办 ${this.todoLoad} 项，高风险 ${this.highRiskCount} 条`
+      if (!this.todoLoad && !this.actionableRiskCount) {
+        return this.highRiskCount ? `当前范围有 ${this.highRiskCount} 条风险提醒` : '当前批次暂无待处理事项'
+      }
+      if (this.actionableRiskCount) return `今日待办 ${this.todoLoad} 项，高风险 ${this.highRiskCount} 条`
       return this.priorityTodo ? `先处理「${this.priorityTodo.label}」` : `今日待办 ${this.todoLoad} 项`
     },
     priorityDetail() { return '继续关注队列、风险和阶段进度。' },
@@ -210,7 +241,13 @@ export default {
   created() { this.load() },
   watch: { 'batchStore.selectedBatchId'() { this.load() } },
   methods: {
+    batchStatusLabel(value) { return ({ DRAFT: '草稿', PREPARING: '准备中', RUNNING: '进行中', OPEN: '办理中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || (value ? `状态待确认（${value}）` : '—')) },
     async load() {
+      this.moduleStatsLoadToken += 1
+      this.moduleStats = []
+      this.moduleStatsLoading = false
+      this.moduleStatsError = ''
+      this.moduleStatsBatchId = ''
       if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); return }
       this.loading = true
       this.error = ''
@@ -220,6 +257,31 @@ export default {
         else this.error = res.message || '毕业设计总览加载失败，请稍后重试。'
       } catch (error) { this.error = error?.message || '毕业设计总览加载失败，请检查网络后重试。' }
       finally { this.loading = false }
+    },
+    onModuleStatsToggle(event) {
+      if (event?.target?.open) this.loadModuleStats()
+    },
+    async loadModuleStats() {
+      const batchId = String(this.batchStore.selectedBatchId || '')
+      if (!batchId || this.moduleStatsLoading || this.moduleStatsBatchId === batchId) return
+      const token = this.moduleStatsLoadToken + 1
+      this.moduleStatsLoadToken = token
+      this.moduleStatsLoading = true
+      this.moduleStatsError = ''
+      try {
+        const res = await graduationRiskArchiveApi.getOverviewStats({ batchId })
+        if (token !== this.moduleStatsLoadToken || batchId !== String(this.batchStore.selectedBatchId || '')) return
+        if (res.code !== 0) {
+          this.moduleStatsError = res.message || '跨模块统计加载失败，请重新展开后重试。'
+          return
+        }
+        this.moduleStats = moduleStatsFromOverview(res.data)
+        this.moduleStatsBatchId = batchId
+      } catch (error) {
+        if (token === this.moduleStatsLoadToken) this.moduleStatsError = error?.message || '跨模块统计加载失败，请重新展开后重试。'
+      } finally {
+        if (token === this.moduleStatsLoadToken) this.moduleStatsLoading = false
+      }
     },
     routeWithBatch(path, query = {}) {
       const [pathname, rawQuery = ''] = String(path || '').split('?')
@@ -260,6 +322,108 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gdb-page{gap:10px}.gdb-overview{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(420px,.8fr);gap:12px;align-items:stretch;padding:10px 12px;border:1px solid var(--primary-100);border-radius:11px;background:linear-gradient(110deg,#fff,var(--primary-50));box-shadow:0 10px 24px -24px rgba(37,99,235,.6)}.gdb-focus{display:grid;grid-template-columns:76px minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}.gdb-focus--empty{grid-template-columns:34px minmax(0,1fr)}.gdb-focus__ok{display:grid;width:32px;height:32px;place-items:center;border-radius:50%;background:var(--success-50);color:var(--success-700);font-weight:700}.gdb-focus__priority{display:grid;justify-items:start;gap:2px}.gdb-focus__priority span,.gdb-work-row__priority{padding:3px 6px;border-radius:999px;background:var(--gray-100);color:var(--text-secondary);font-size:9px;font-weight:700;white-space:nowrap}.gdb-focus__priority small{color:var(--primary-600);font-size:8px}.gdb-focus__priority.is-critical span,.gdb-focus__priority.is-high span,.gdb-work-row__priority.is-critical,.gdb-work-row__priority.is-high{background:var(--danger-100);color:var(--danger-700)}.gdb-focus__priority.is-overdue span,.gdb-focus__priority.is-due_24h span,.gdb-focus__priority.is-release_blocker span,.gdb-work-row__priority.is-overdue,.gdb-work-row__priority.is-due_24h,.gdb-work-row__priority.is-release_blocker{background:var(--warning-100);color:var(--warning-800)}.gdb-focus__main{min-width:0}.gdb-focus__identity{display:flex;align-items:baseline;flex-wrap:wrap;gap:3px 7px}.gdb-focus__identity strong{font-size:13px}.gdb-focus__identity span{color:var(--primary-700);font-size:10px;font-weight:700}.gdb-focus__identity small{color:var(--text-tertiary);font-size:9px}.gdb-focus__main>p,.gdb-focus--empty p{margin:2px 0 4px;color:var(--text-secondary);font-size:10px;line-height:1.4}.gdb-focus__facts{display:flex;gap:3px 10px;overflow:hidden;color:var(--text-tertiary);font-size:8px;white-space:nowrap}.gdb-focus__facts span{display:flex;gap:3px;min-width:0;overflow:hidden;text-overflow:ellipsis}.gdb-focus__facts b{flex:none;color:var(--text-secondary)}.gdb-focus__action{white-space:nowrap}.gdb-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}.gdb-kpi{display:grid;align-content:center;min-width:0;padding:3px 8px;border-left:1px solid var(--primary-100)}.gdb-kpi span,.gdb-kpi small{overflow:hidden;color:var(--text-tertiary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-kpi strong{font-size:17px}.gdb-queue .mp-card__head small{margin-left:auto;color:var(--text-tertiary);font-size:9px}.gdb-queue__rows{display:grid;gap:3px}.gdb-work-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:8px;padding:5px 7px;border-bottom:1px solid var(--border-light)}.gdb-work-row:last-child{border-bottom:0}.gdb-work-row>div{min-width:0}.gdb-work-row strong,.gdb-work-row p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gdb-work-row strong{display:block;font-size:10px}.gdb-work-row p{margin:1px 0 0;color:var(--text-tertiary);font-size:9px}.gdb-action-grid{gap:10px;align-items:stretch}.gdb-todos,.gdb-risks{display:grid;gap:3px}.gdb-todo,.gdb-risk-row{display:grid;align-items:center;gap:7px;width:100%;padding:6px 7px;border:1px solid transparent;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer}.gdb-todo{grid-template-columns:30px minmax(0,1fr) auto}.gdb-todo:hover,.gdb-risk-row:hover{border-color:var(--border-light);background:var(--gray-50)}.gdb-todo>b{display:grid;width:28px;height:28px;place-items:center;border-radius:50%;background:var(--primary-50);color:var(--primary-700);font-size:10px}.gdb-todo>span,.gdb-risk-row>span{display:grid;min-width:0;gap:1px}.gdb-todo strong,.gdb-risk-row strong{font-size:10px}.gdb-todo small,.gdb-risk-row small{overflow:hidden;color:var(--text-tertiary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-todo i,.gdb-risk-row i{color:var(--primary-600);font-size:9px;font-style:normal;white-space:nowrap}.gdb-risk-row{grid-template-columns:minmax(0,1fr) auto auto;border-left:3px solid var(--warning-400);background:var(--gray-50)}.gdb-risk-row.is-danger{border-left-color:var(--danger-400)}.gdb-risk-empty{display:flex;align-items:center;gap:9px;min-height:82px}.gdb-risk-empty>span{display:grid;width:30px;height:30px;place-items:center;border-radius:50%;background:var(--success-50);color:var(--success-700)}.gdb-risk-empty strong{font-size:10px}.gdb-risk-empty p{margin:2px 0 0;color:var(--text-tertiary);font-size:8px}.gdb-progress-card__meta{margin-left:auto;color:var(--text-tertiary);font-size:9px;font-weight:400}.gdb-flow{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}.gdb-flow__item{display:grid;justify-items:center;gap:1px;padding:6px 3px;border-radius:7px;background:var(--gray-50)}.gdb-flow__item.is-active{background:var(--primary-50)}.gdb-flow__item strong{color:var(--primary-700);font-size:14px}.gdb-flow__item span{overflow:hidden;max-width:100%;color:var(--text-secondary);font-size:8px;text-overflow:ellipsis;white-space:nowrap}.gdb-more{padding:9px 11px;border:1px solid var(--border-light);border-radius:9px;background:#fff}.gdb-more summary{cursor:pointer;font-size:10px;font-weight:700}.gdb-modstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}.gdb-modstat{display:grid;gap:1px;padding:7px;border:1px solid var(--border-light);border-radius:7px;background:var(--gray-50);text-align:left}.gdb-modstat strong{color:var(--primary-700);font-size:14px}.gdb-modstat span{font-size:9px}.gdb-modstat small{color:var(--text-tertiary);font-size:8px}.mp-btn{padding:7px 13px;border:1px solid var(--border-base);border-radius:8px;background:#fff;font-size:11px}.mp-btn--primary{border-color:var(--primary-600);background:var(--primary-600);color:#fff}.mp-link{border:0;background:transparent;color:var(--primary-600);font-size:9px;cursor:pointer}
-@media(max-width:1180px){.gdb-overview{grid-template-columns:1fr}.gdb-kpis{border-top:1px solid var(--primary-100);padding-top:7px}.gdb-kpi:first-child{border-left:0}.gdb-flow{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:850px){.gdb-focus{grid-template-columns:1fr}.gdb-focus__action{justify-self:start}.gdb-focus__facts{flex-wrap:wrap;white-space:normal}.gdb-action-grid{grid-template-columns:1fr}.gdb-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.gdb-kpi:nth-child(odd){border-left:0}.gdb-work-row{grid-template-columns:1fr}.gdb-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.gdb-modstats{grid-template-columns:1fr}}
+/* Content-only adaptation: the shared shell and all dashboard data stay upstream. */
+.gdb-shell { container: gd-dashboard / inline-size; min-width: 0; }
+.gdb-shell :deep(.mps__title) { font-size: 22px; line-height: 1.35; }
+.gdb-shell :deep(.mps__subtitle) { font-size: 13px; }
+.gdb-page { gap: 16px; font-size: 13px; line-height: 1.5; }
+.gdb-overview {
+  padding: 14px 16px;
+  border: 1px solid var(--primary-100, #dbeafe);
+  border-left: 3px solid var(--pri, #2563eb);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--text-primary, #10233f);
+}
+.gdb-focus { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+.gdb-focus--empty { grid-template-columns: 36px minmax(0, 1fr); }
+.gdb-focus__ok, .gdb-risk-empty > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--success-50, #f0fdf4); color: var(--success-700, #15803d); font-weight: 700; }
+.gdb-focus__priority { display: grid; justify-items: start; gap: 6px; }
+.gdb-focus__priority span, .gdb-work-row__priority { padding: 4px 8px; border-radius: 8px; background: var(--bg-hover, #eef3f9); color: var(--text-secondary, #3f5878); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.gdb-focus__priority small { color: var(--pri, #2563eb); font-size: 11px; }
+.gdb-focus__priority.is-critical span, .gdb-focus__priority.is-high span, .gdb-work-row__priority.is-critical, .gdb-work-row__priority.is-high { background: var(--danger-100, #fee2e2); color: var(--danger-700, #b91c1c); }
+.gdb-focus__priority.is-overdue span, .gdb-focus__priority.is-due_24h span, .gdb-focus__priority.is-release_blocker span,
+.gdb-work-row__priority.is-overdue, .gdb-work-row__priority.is-due_24h, .gdb-work-row__priority.is-release_blocker { background: var(--warning-100, #fef3c7); color: var(--warning-800, #92400e); }
+.gdb-focus__main { min-width: 0; }
+.gdb-focus__identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.gdb-focus__identity strong, .gdb-focus--empty strong { font-size: 16px; font-weight: 700; }
+.gdb-focus__identity span { color: var(--pri, #2563eb); font-size: 13px; font-weight: 600; }
+.gdb-focus__identity small { color: var(--text-tertiary, #75879d); font-size: 12px; }
+.gdb-focus__main > p, .gdb-focus--empty p { margin: 4px 0 6px; color: var(--text-secondary, #3f5878); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.gdb-focus__facts { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-secondary, #3f5878); font-size: 12px; }
+.gdb-focus__facts span { min-width: 0; overflow-wrap: anywhere; }
+.gdb-focus__facts b { margin-right: 6px; color: var(--text-tertiary, #75879d); font-weight: 500; }
+.gdb-focus__action { white-space: nowrap; }
+.gdb-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.gdb-kpi { display: grid; align-content: start; gap: 4px; min-width: 0; padding: 10px 14px; border: 1px solid var(--border-light, #dce6f1); border-radius: 10px; background: var(--card, #fff); }
+.gdb-kpi span, .gdb-kpi small { color: var(--text-tertiary, #75879d); font-size: 12px; overflow-wrap: anywhere; }
+.gdb-kpi strong { font-size: 24px; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text-primary, #10233f); }
+.gdb-page .mp-card { border: 1px solid var(--border-light, #dce6f1); border-radius: 12px; background: var(--card, #fff); box-shadow: none; }
+.gdb-page .mp-card__head { flex-wrap: wrap; gap: 8px; min-height: 48px; padding: 10px 14px; }
+.gdb-page .mp-card__title { font-size: 16px; font-weight: 650; }
+.gdb-page .mp-card__body { padding: 12px 14px; }
+.gdb-queue .mp-card__head small { margin-left: auto; color: var(--text-tertiary, #75879d); font-size: 12px; }
+.gdb-queue__rows { display: grid; }
+.gdb-work-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-light, #dce6f1); }
+.gdb-work-row:first-child { padding-top: 0; }
+.gdb-work-row:last-child { padding-bottom: 0; border-bottom: 0; }
+.gdb-work-row > div { min-width: 0; }
+.gdb-work-row__priority { justify-self: start; }
+.gdb-work-row strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.gdb-work-row p { margin: 4px 0 0; color: var(--text-tertiary, #75879d); font-size: 12px; overflow-wrap: anywhere; }
+.gdb-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.gdb-todos, .gdb-risks { display: grid; gap: 8px; }
+.gdb-todo, .gdb-risk-row { display: grid; align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 10px; border: 1px solid var(--border-light, #dce6f1); border-radius: 10px; background: var(--bg-subtle, #f8fafc); color: inherit; text-align: left; cursor: pointer; }
+.gdb-todo { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.gdb-todo:hover, .gdb-risk-row:hover { border-color: var(--pri, #2563eb); background: var(--bg-hover, #eff6ff); }
+.gdb-todo > b { display: grid; min-width: 36px; min-height: 36px; padding: 2px; place-items: center; border-radius: 10px; background: var(--pri-bg, #eff6ff); color: var(--pri, #2563eb); font-size: 18px; font-variant-numeric: tabular-nums; }
+.gdb-todo > span, .gdb-risk-row > span { display: grid; min-width: 0; gap: 4px; }
+.gdb-todo strong, .gdb-risk-row strong { font-size: 13px; overflow-wrap: anywhere; }
+.gdb-todo small, .gdb-risk-row small { color: var(--text-tertiary, #75879d); font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.gdb-todo i, .gdb-risk-row i { color: var(--pri, #2563eb); font-size: 13px; font-style: normal; white-space: nowrap; }
+.gdb-risk-row { grid-template-columns: minmax(0, 1fr) auto auto; border-left: 3px solid var(--warning-400, #fbbf24); }
+.gdb-risk-row.is-danger { border-left-color: var(--danger-400, #f87171); }
+.gdb-risk-empty { display: flex; align-items: center; gap: 12px; min-height: 82px; }
+.gdb-risk-empty > span { flex-shrink: 0; }
+.gdb-risk-empty strong { font-size: 14px; }
+.gdb-risk-empty p { margin: 4px 0 0; color: var(--text-tertiary, #75879d); font-size: 12px; }
+.gdb-progress-card__meta { margin-left: auto; color: var(--text-tertiary, #75879d); font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
+.gdb-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 10px; }
+.gdb-flow__item { display: grid; justify-items: center; gap: 6px; padding: 12px 8px; border: 1px solid var(--border-light, #dce6f1); border-radius: 10px; background: var(--bg-subtle, #f8fafc); }
+.gdb-flow__item.is-active { border-color: var(--pri, #2563eb); background: var(--pri-bg, #eff6ff); }
+.gdb-flow__item strong { color: var(--pri, #2563eb); font-size: 20px; font-variant-numeric: tabular-nums; }
+.gdb-flow__item span { max-width: 100%; color: var(--text-secondary, #3f5878); font-size: 12px; overflow-wrap: anywhere; }
+.gdb-more { padding: 10px 14px; border: 1px solid var(--border-light, #dce6f1); border-radius: 10px; background: var(--card, #fff); }
+.gdb-more summary { min-height: 34px; align-content: center; cursor: pointer; font-size: 13px; font-weight: 600; }
+.gdb-modstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.gdb-modstat { display: grid; gap: 4px; min-width: 0; padding: 12px; border: 1px solid var(--border-light, #dce6f1); border-radius: 10px; background: var(--bg-subtle, #f8fafc); color: var(--text-primary, #10233f); text-align: left; }
+.gdb-modstat strong { color: var(--pri, #2563eb); font-size: 20px; }
+.gdb-modstat span { font-size: 13px; }
+.gdb-modstat small { color: var(--text-tertiary, #75879d); font-size: 12px; overflow-wrap: anywhere; }
+.mp-btn { min-height: 36px; padding: 7px 13px; border: 1px solid var(--border-base, #cbd8e8); border-radius: 8px; background: var(--card, #fff); color: var(--text-primary, #10233f); font-size: 13px; cursor: pointer; }
+.mp-btn--primary { border-color: var(--pri, #2563eb); background: var(--pri, #2563eb); color: var(--pri-on, #fff); }
+.mp-link { min-height: 34px; padding: 6px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--pri, #2563eb); font-size: 13px; cursor: pointer; }
+.gdb-page button:focus-visible, .gdb-page summary:focus-visible { outline: 2px solid var(--pri, #2563eb); outline-offset: 2px; }
+@container gd-dashboard (max-width: 900px) {
+  .gdb-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gdb-action-grid { grid-template-columns: 1fr; }
+}
+@container gd-dashboard (max-width: 600px) {
+  .gdb-focus { grid-template-columns: 1fr; }
+  .gdb-focus__priority { display: flex; align-items: center; gap: 8px; }
+  .gdb-focus__action { grid-column: 1; }
+  .gdb-focus--empty { grid-template-columns: 36px minmax(0, 1fr); }
+  .gdb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gdb-work-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .gdb-work-row__priority { grid-column: 1 / -1; }
+  .gdb-modstats { grid-template-columns: 1fr; }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 1100px) {
+    .gdb-focus { grid-template-columns: 1fr; }
+    .gdb-focus__action { justify-self: start; }
+    .gdb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gdb-action-grid, .gdb-modstats { grid-template-columns: 1fr; }
+  }
+}
 </style>

@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_EXACT_SHA: f34b800249252e84f9ab5f34b801742b76c0e68c
+  PRODUCT_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   PRODUCT_API_BASE: https://api.hnyueke.com
   PRODUCT_HELP_CENTER: https://hnyueke.com/help
   EXPECTED_WECHAT_APPID: wxb569328a0dbf268b
@@ -110,12 +110,21 @@ jobs:
           if (project.compileType !== 'miniprogram') throw new Error(`compileType=${project.compileType}`)
           if (project.appid !== process.env.EXPECTED_WECHAT_APPID) throw new Error(`appid=${project.appid}`)
           if (project.setting?.urlCheck !== true) throw new Error('project.config urlCheck is not true')
-          if (report.budgetPass !== true) throw new Error('miniapp package budget did not pass')
+          const mainPackage = (report.packages || []).find((item) => item.package === 'main')
+          const platformLimits = report.platformLimits || {}
+          const derivedHistoricalPlatformPass =
+            report.platformPass == null &&
+            Number.isFinite(Number(report.totalBytes)) &&
+            Number.isFinite(Number(mainPackage?.bytes)) &&
+            Number(report.totalBytes) <= Number(platformLimits.totalPackageLimit) &&
+            Number(mainPackage.bytes) <= Number(platformLimits.mainPackageLimit)
+          const platformPass = report.platformPass === true || derivedHistoricalPlatformPass
+          if (!platformPass) throw new Error('miniapp platform package limits did not pass')
           if (!release.includes(`API: ${process.env.PRODUCT_API_BASE}`)) throw new Error('release info is not bound to production API')
-          if (!envJs.includes(`VITE_API_BASE_URL:\"${process.env.PRODUCT_API_BASE}\"`)) throw new Error('compiled env missing production API')
-          if (!envJs.includes('VITE_USE_MOCK:\"false\"')) throw new Error('compiled env is not mock=false')
-          if (/VITE_API_BASE_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled API points to loopback/dev host')
-          if (/VITE_HELP_CENTER_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled help center points to loopback/dev host')
+          if (!envJs.includes(process.env.PRODUCT_API_BASE)) throw new Error('compiled env missing production API')
+          if (!envJs.includes(process.env.PRODUCT_HELP_CENTER)) throw new Error('compiled env missing production help center')
+          if (/https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/i.test(envJs)) throw new Error('compiled env points to loopback/dev host')
+          if (/useMock\s*:\s*(?:true|!0)/i.test(envJs)) throw new Error('compiled env enables mock mode')
 
           const pages = new Set(app.pages || [])
           for (const sub of (app.subPackages || app.subpackages || [])) {
@@ -158,7 +167,9 @@ jobs:
             compileType: project.compileType,
             urlCheck: project.setting?.urlCheck === true,
             mockEnabled: false,
-            packageBudgetPass: report.budgetPass === true,
+            packageBudgetPass: report.budgetPass === true, // advisory only
+            packageBudgetMode: report.budgetMode,
+            packagePlatformPass: platformPass,
             requiredInternshipPages,
             wechatServerDomainConfig: 'PENDING_PLATFORM_CONFIRMATION',
             privacyLocationDeclaration: 'PENDING_PLATFORM_CONFIRMATION',

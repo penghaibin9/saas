@@ -96,6 +96,7 @@ import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, St
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformServiceLabel, platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 export default {
   name: 'PlatformChangeView',
@@ -167,7 +168,7 @@ export default {
       if (res.code === 0) { toast.success('已评估'); await this.refreshSelected() } else toast.error(res.message)
     },
     async doApprove() {
-      const reason = window.prompt('审批意见（至少5字）')
+      const reason = await systemPrompt({ title:'填写变更审批意见', message:'审批意见将写入审计记录。', minLength:5, confirmText:'确认审批' })
       if (!reason) return
       const res = await platformControlApi.approveChange(this.selected.changeId, reason)
       if (res.code === 0) { toast.success('已审批'); await this.refreshSelected() } else toast.error(res.message)
@@ -178,14 +179,15 @@ export default {
     },
     async doStartWave() {
       const waveNo = (this.selected.waves?.length || 0) + 1
-      const tenantIdsText = window.prompt('本批次租户编号，逗号分隔')
+      const tenantIdsText = await systemPrompt({ title:'填写灰度租户编号', message:'多个租户编号请用逗号分隔。', minLength:1, confirmText:'开始灰度批次' })
       if (!tenantIdsText) return
       const tenantIds = tenantIdsText.split(',').map((s) => s.trim()).filter(Boolean)
       const res = await platformControlApi.startChangeWave(this.selected.changeId, waveNo, tenantIds)
       if (res.code === 0) { toast.success('灰度批次已开始'); await this.refreshSelected() } else toast.error(res.message)
     },
     async reportWave(wave, status) {
-      const error = status === 'FAILED' ? window.prompt('失败原因') : undefined
+      const error = status === 'FAILED' ? await systemPrompt({ title:'填写灰度失败原因', message:'失败原因将写入本批次记录。', minLength:1, confirmText:'记录失败' }) : undefined
+      if (status === 'FAILED' && error === null) return
       const res = await platformControlApi.reportChangeWave(this.selected.changeId, wave.waveNo, status, error)
       if (res.code === 0) { toast.success('已记录'); await this.refreshSelected() } else toast.error(res.message)
     },
@@ -194,7 +196,7 @@ export default {
       if (res.code === 0) { toast.success('已验证通过'); await this.refreshSelected() } else toast.error(res.message)
     },
     async doRollback() {
-      const reason = window.prompt('回滚原因（至少5字）')
+      const reason = await systemPrompt({ title:'填写回滚原因', message:'回滚原因将写入审计记录。', minLength:5, confirmText:'确认回滚' })
       if (!reason) return
       const res = await platformControlApi.rollbackChange(this.selected.changeId, reason)
       if (res.code === 0) { toast.success('已回滚'); await this.refreshSelected() } else toast.error(res.message)

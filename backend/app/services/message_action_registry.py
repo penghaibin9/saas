@@ -36,6 +36,19 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
         "label": "原志愿办理结果",
     },
+    "student.internship.weekly-report": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["reportId", "batchId", "internshipId", "weekNo"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": "/pages/student/weekly-report/index",
+        "teacherMini": None,
+        # 周报页读取 reportId / weekNo，并在拿到正式列表后切到对应周；不是
+        # 仅跳到一个泛化实习大厅，故可以声明对象级 list focus。
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "focusParam": "reportId",
+        "label": "实习周报",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],
@@ -214,6 +227,18 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "studentMini": "/pages/student/my-work/index",
         "teacherMini": None,
         "label": "我的办理",
+    },
+    "student.campus-service.work-order": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["caseId"],
+        "pc": None,
+        "studentPc": None,
+        # 服务工单的真实学生回读页是“我的办理”；caseId 为 source:bizId 复合键，
+        # 页面已按该键精确聚焦，不能再指向泛化服务大厅。
+        "studentMini": "/pages/student/my-work/index",
+        "teacherMini": None,
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "服务申请办理结果",
     },
     "student.warning.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],

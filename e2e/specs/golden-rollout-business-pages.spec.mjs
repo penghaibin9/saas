@@ -116,7 +116,7 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/dashboard`)
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/dashboard/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '今日优先处理', exact: true })).toBeVisible()
     await expect(page.locator('.sa-grid--priority')).toBeVisible()
     await expect(page.locator('.sa-dashboard-metrics')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('正在加载学工看板真实数据…')

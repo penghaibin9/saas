@@ -35,7 +35,10 @@ def test_grade_transaction_adapter_contains_no_second_grade_state_machine():
     ).read_text(encoding="utf-8")
 
     assert "return _grade.enter_score(task_id, user, body)" in source
-    assert "return _grade.submit_task(task_id, user)" in source
+    assert (
+        "return _grade.submit_task(task_id, user, expected=expected, command_key=command_key)"
+        in source
+    )
     assert "object_session(task)" in source
     assert "_exec._require_live_teacher(db, task, actor, lock_owner=True)" in source
 

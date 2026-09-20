@@ -107,28 +107,31 @@ def test_non_school_dashboard_aggregates_are_fail_closed():
 
 
 def test_dashboard_page_matches_v2_first_screen_and_removes_construction_labels():
-    source = (
+    wrapper = (
         ROOT / "frontend/src/modules/academicAffairs/views/AaDashboardView.vue"
     ).read_text(encoding="utf-8")
+    overview = (
+        ROOT / "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue"
+    ).read_text(encoding="utf-8")
+    source = wrapper + "\n" + overview
 
     for text in (
-        "当前阶段",
-        "阻断项",
-        "风险项",
-        "当前最需要处理",
-        "我的教务待办",
-        "今日教学运行",
+        "AaOverviewWorkspace",
+        "运行总览",
+        "待我办理",
         "即将到期",
-        "分派责任人",
-        "去处理",
-        "导出准备清单",
-        "成绩、考务和预警运行明细",
+        "学期运行检查",
+        "本学期业务接力",
+        "查看责任对象",
+        "导出运行检查",
+        "按当前身份呈现责任",
     ):
         assert text in source
-    assert "readiness.topItems" in source
-    assert "item.ownerRole" in source
-    assert "item.deadlineLabel" in source
-    assert "item.assignRoute" in source
+    assert "readinessItems" in overview
+    assert "item.ownerRole" in overview
+    assert "item.deadlineLabel" in overview
+    assert "getDashboardRoleQueue" in overview
+    assert "typedRouteTarget" in overview
     assert "LIVE=已上线" not in source
     assert "建设中=后续波次交付" not in source
     assert "moduleCards" not in source

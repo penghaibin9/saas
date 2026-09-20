@@ -50,6 +50,13 @@ def test_changed_backend_test_is_selected_exactly():
     assert "tests/test_aa_prerequisite_api_real.py" in targets
 
 
+def test_dedicated_phone_tests_never_enter_generic_ci_database():
+    mod = _load()
+    for target in sorted(mod.DEDICATED_PHONE_TESTS):
+        targets = mod.select([f"backend/{target}"])
+        assert target not in targets
+
+
 def test_academic_change_runs_stable_gate_and_changed_regression_only():
     mod = _load()
     targets = mod.select([
@@ -172,11 +179,12 @@ def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     ).read_text(encoding="utf-8")
 
     assert 'push:\n    branches: [ "main" ]' in ci_workflow
-    assert 'github.event_name }}" = "schedule"' in ci_workflow
-    assert "timeout 80m pytest -q" in ci_workflow
-    assert "select_pytest_targets.py" in ci_workflow
-    # 40m 已在 PR #191 的真实变更感知回归中误杀完成测试；60m 仍低于 90m job ceiling，保留快速门禁属性。
-    assert "timeout 60m pytest $TARGETS" in ci_workflow
+    assert 'EVENT_NAME: ${{ github.event_name }}' in ci_workflow
+    assert 'if [ "$EVENT_NAME" = "schedule" ]; then flags+=(--full); count=12; fi' in ci_workflow
+    assert "selected_pytest_shards.py plan" in ci_workflow
+    assert "selected_pytest_shards.py run" in ci_workflow
+    # 每个 PR 分片有 3300 秒执行预算；全量权威仍由 Main 的 12 分片承担。
+    assert "--budget 3300" in ci_workflow
     assert "CHANGED_COUNT" not in ci_workflow
     assert "compare-pytest-junit-baseline.py" not in ci_workflow
 
@@ -184,6 +192,10 @@ def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     # sharded deterministically so repository size cannot turn CI into a
     # single-runner timeout. CI remains the fast change-aware signal.
     assert "backend-full-regression:" in main_workflow
+    assert "phone-mysql-contract:" in main_workflow
+    assert "phone-browser-contract:" in main_workflow
+    assert "codex_phone_test_main" in main_workflow
+    assert "codex_phone_test_browser" in main_workflow
     assert "shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]" in main_workflow
     assert 'SHARD_TOTAL: "12"' in main_workflow
     assert "Run every backend test in this shard" in main_workflow

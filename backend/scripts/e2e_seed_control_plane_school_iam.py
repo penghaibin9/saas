@@ -48,6 +48,7 @@ IAM_DENIED_TENANT = {
 }
 DEMO_TARGET_LOGIN = "iam_teacher_demo"
 IAM_TARGET_LOGIN = "iam_teacher"
+IAM_DENIED_TEACHER_LOGIN = "iam_denied_teacher"
 TARGET_PERMISSION = "internship.recruitment.view"
 
 
@@ -121,9 +122,10 @@ def _ensure_teacher(db, *, tenant_id: int, login_name: str, real_name: str) -> U
     return target
 
 
-def _package_payload(code: str, name: str, *, internship: bool) -> dict:
+def _package_payload(code: str, name: str, *, internship: bool, academic_affairs: bool = True) -> dict:
     features = dict(platform_defaults.DEFAULT_FEATURES)
     features["internship"] = bool(internship)
+    features["academicAffairs"] = bool(academic_affairs)
     return {
         "packageCode": code,
         "packageName": name,
@@ -211,7 +213,12 @@ def main() -> int:
     )
     platform_service.put_config_json(
         0, "PACKAGE", IAM_DENIED_PACKAGE,
-        _package_payload(IAM_DENIED_PACKAGE, "E2E IAM无实习套餐", internship=False),
+        _package_payload(
+            IAM_DENIED_PACKAGE,
+            "E2E IAM拒绝场景套餐",
+            internship=False,
+            academic_affairs=False,
+        ),
     )
 
     commercial_orders = {
@@ -258,6 +265,12 @@ def main() -> int:
             login_name=IAM_TARGET_LOGIN,
             real_name="IAM权限变更验证教师",
         )
+        denied_teacher = _ensure_teacher(
+            db,
+            tenant_id=IAM_DENIED_TID,
+            login_name=IAM_DENIED_TEACHER_LOGIN,
+            real_name="E2E 未开通教务教师",
+        )
 
         demo_admin = db.scalars(select(User).where(
             User.tenant_id == DEMO_TID,
@@ -285,6 +298,7 @@ def main() -> int:
 
         demo_target_id = int(demo_target.id)
         iam_target_id = int(iam_target.id)
+        denied_teacher_id = int(denied_teacher.id)
         demo_admin_id = int(demo_admin.id)
         sandbox_admin_id = int(sandbox_admin.id)
         iam_admin_id = int(iam_admin.id)
@@ -306,6 +320,8 @@ def main() -> int:
         "iamDeniedTenantCode": IAM_DENIED_TENANT["code"],
         "iamDeniedAdminLogin": IAM_DENIED_TENANT["login"],
         "iamDeniedAdminUserId": str(denied_admin_id),
+        "iamDeniedTeacherLogin": IAM_DENIED_TEACHER_LOGIN,
+        "iamDeniedTeacherUserId": str(denied_teacher_id),
         "demoAdminUserId": str(demo_admin_id),
         "sandboxAdminUserId": str(sandbox_admin_id),
         "iamAdminUserId": str(iam_admin_id),
@@ -320,6 +336,7 @@ def main() -> int:
         "sandboxInternshipEntitled": entitlement_checks[SANDBOX_TID],
         "iamInternshipEntitled": entitlement_checks[IAM_E2E_TID],
         "iamDeniedInternshipEntitled": entitlement_checks[IAM_DENIED_TID],
+        "iamDeniedAcademicAffairsEntitled": commercial.feature_enabled(IAM_DENIED_TID, "academicAffairs"),
         "commercialOrders": commercial_orders,
         "tenantPermissionUniverseCount": len(universe),
         "permissionCatalogReconciliation": catalog_reconciliation,

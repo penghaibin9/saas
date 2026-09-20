@@ -3,6 +3,7 @@
     :title="portalTitle"
     subtitle="学工中心 · 数字迎新"
     :ctx="context"
+    :workspace-navigate="resolveOrientationDestination"
     @menu-select="onMenuSelect"
   >
     <router-view :key="viewKey" />
@@ -16,6 +17,7 @@
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { getOrientationContext } from '@/modules/orientation/api/orientation.api'
+import { orientationDestination } from '@/modules/orientation/routeContext'
 
 export default {
   name: 'AdminOrientationLayout',
@@ -37,6 +39,7 @@ export default {
     await this.loadContext()
   },
   methods: {
+    resolveOrientationDestination(path) { return orientationDestination(path, this.$route) },
     async loadContext() {
       const res = await getOrientationContext()
       if (res.code === 0) this.applyContext(res.data)
@@ -49,7 +52,7 @@ export default {
       this.dataScopeName = ctx.dataScope?.name || ''
     },
     onMenuSelect(item) {
-      if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
+      if (item.path && item.path !== this.$route.path) this.$router.push(this.resolveOrientationDestination(item.path))
     }
   }
 }

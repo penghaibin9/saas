@@ -519,16 +519,26 @@ def batch_generate_submit(batch_id=None) -> dict:
 
 def archive_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationArchiveRecord.tenant_id == _tid(), GraduationArchiveRecord.is_deleted.is_(False),
-                GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(*base)) or 0)
-        by_status = [{"status": s, "label": STATUS_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(
-                          *base, GraduationArchiveRecord.status == s)) or 0)} for s in STATUS_LABEL]
-        filed = int(db.scalar(select(func.count()).select_from(GraduationArchiveRecord).where(
-            *base, GraduationArchiveRecord.status == "FILED")) or 0)
-        student_total = len(scope_ids)
+                GraduationArchiveRecord.gd_student_id.in_(scope)]
+        status_counts = {
+            str(status or ""): int(count)
+            for status, count in db.execute(
+                select(GraduationArchiveRecord.status, func.count(GraduationArchiveRecord.id))
+                .where(*base)
+                .group_by(GraduationArchiveRecord.status)
+            ).all()
+        }
+        total = sum(status_counts.values())
+        by_status = [{"status": status, "label": STATUS_LABEL[status],
+                      "count": status_counts.get(status, 0)} for status in STATUS_LABEL]
+        filed = status_counts.get("FILED", 0)
+        student_total = int(db.scalar(
+            select(func.count()).select_from(GraduationStudent).where(GraduationStudent.id.in_(scope))
+        ) or 0)
         rate = round(filed / student_total * 100, 1) if student_total else 0
         return {"total": total, "byStatus": by_status, "filedCount": filed, "studentTotal": student_total,
                 "archiveRate": rate, "batchId": str(batch_id) if batch_id else None}

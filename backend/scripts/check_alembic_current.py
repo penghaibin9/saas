@@ -5,10 +5,17 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+
+# The systemd units supply PYTHONPATH, but this verifier is also executed
+# directly by the release installer from ``backend/``.  Keep both paths
+# equivalent so an already-applied migration is checked rather than failing
+# before the application package can be imported.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db.session import db_enabled, get_engine
 

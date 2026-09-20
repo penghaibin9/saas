@@ -9,6 +9,18 @@ function pagePath(path, page = 1, pageSize = PAGE_SIZE) {
 }
 
 export const graduationTeacherPagingApi = {
+  choices: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/choices/pending', page, pageSize)),
+  changes: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/change-requests/pending', page, pageSize)),
+  students: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/my-students', page, pageSize)),
+  reviews: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/reviews/my', page, pageSize)),
+  defenses: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/defense/arrangements', page, pageSize)),
+  defenseScores: (page = 1, pageSize = PAGE_SIZE) =>
+    realRequest(pagePath('/mobile/teacher/graduation/defense/pending', page, pageSize)),
   midtermQueue: (page = 1, pageSize = PAGE_SIZE) =>
     realRequest(pagePath('/mobile/teacher/graduation/midterm/queue', page, pageSize)),
   gradeQueue: (page = 1, pageSize = PAGE_SIZE) =>

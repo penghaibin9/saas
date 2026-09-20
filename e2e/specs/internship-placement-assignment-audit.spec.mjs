@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 import {
   internshipApiPath as apiPath,
   internshipPayloadOf as payloadOf,
@@ -28,17 +29,7 @@ async function pickRemote(field, searchText, optionText) {
 }
 
 async function loginStudentMini(page) {
-  await page.goto(`${miniBaseUrl}/#/pages/login/student/index`)
-  // Uni H5 renders the visible placeholder in a sibling div, not as a native input
-  // placeholder attribute. Drive the same visible fields a student sees instead of
-  // assuming MP-WEIXIN template attributes survive the H5 renderer.
-  const accountField = page.locator('uni-input.field').filter({ hasText: '学号 / 手机号' }).first()
-  const passwordField = page.locator('uni-input.field').filter({ hasText: '密码' }).first()
-  await accountField.locator('input').fill(config.student.username)
-  await passwordField.locator('input').fill(config.student.password)
-  await page.locator('.agreement__box').click()
-  await page.locator('uni-button.account-button').click()
-  await expect(page).toHaveURL(/#\/pages\/student\/home\/index/)
+  await loginMiniH5(page, { baseUrl: miniBaseUrl, entry: 'student', account: config.student })
 }
 
 async function selectStudentBatch(page, fixture) {

@@ -6,24 +6,38 @@ import { parse } from '@vue/compiler-sfc'
 import { baseParse } from '@vue/compiler-dom'
 import postcss from 'postcss'
 
+const readSource = url => fs.readFileSync(url, 'utf8').replace(/\r\n/g, '\n')
 // This pass intentionally changes presentation only. Update these anchors only after
 // separately reviewing any subsequent business change, never to hide a failing check.
+// 2026-09-10: reviewed system-dialog migration removes browser-native confirms and unload prompts.
+// 2026-09-12: reviewed e475bea2f localization adds only roleDisplayLabel/permissionDisplayLabel
+// imports and method bindings in these two scripts; guards and action bindings stay unchanged.
+// Their display behavior is covered by system-permission-labels.test.mjs.
+// 2026-09-13: reviewed template-based local-role creation adds the initial-permission
+// choice and reviewed version/digest. Existing busy/authority/context guards remain;
+// system-role-template-creation.behavior.test.mjs covers the new write contract.
+// 2026-09-13: reviewed explicit adoption keeps the existing edit guards; the new
+// snapshot, conflict, protected-role and context-fence behavior is independently
+// exercised by system-role-adoption.behavior.test.mjs.
+// 2026-09-13: reviewed member validation now focuses invalid fields and moves the
+// form beside submit. Authority guards and payload remain unchanged; behavioral
+// coverage lives in system-role-members-validation.behavior.test.mjs.
 const anchors = {
   "views/SystemRoleListView.vue": {
-    "script": "9df552f7a2bfb49340bb4e5d53f3ea317d063a903ffcaad231ad930cf885a01e",
-    "directives": "7f928e376dd575762c46e9ac5cdde32d48c3cb9c46ea52759c207475050daaa2"
+    "script": "f9e24ed3ed90bba5d35ade8ec79cadb4cdadbf3d3c6d74cfd85230ac83abeabc",
+    "directives": "3626f13d743f5004215cf2a366ebdf40b9340a3093a8b33b135c9c941cfea8d3"
   },
   "views/SystemModuleFeatureView.vue": {
     "script": "c52bcc0c16bd80265d346f098a9886693f486d39eb175e09462747c55d923ed8",
     "directives": "3f141158e08d2f08c3353830dc4f7da1eb5236b893f180fce62baba613bd29b8"
   },
   "components/workspace/RolePermissionPanel.vue": {
-    "script": "9ac36c4e4c6a5ab80a1b6f6c2ec73ac920b48700a3e0812002f32cf3db429d28",
-    "directives": "7b7dc58d4587eb0c443271eaa5fe3dd08745934f5de6db2a7b9a60a59455158e"
+    "script": "5e5c4318f4ac3fdff6714fae62db8a163965e8cdb78beabc4965c54521b4e5f9",
+    "directives": "0c63c5c99399e30843ecb669f5cf694ca7f4bf128cc093f1867bf5ca4cc8e61b"
   },
   "components/workspace/RoleMembersPanel.vue": {
-    "script": "9a23544075a4f09b314856ef2e264ef759fd573f47f6ae89e544bbad2073a6db",
-    "directives": "6cd2d740ab637ff7072cadf9d57e3e26e027445fa177a5ec4085271bd0402118"
+    "script": "89ef0eb69c08992b01da11b2c08ec0aedc59ad6e26a73ec1785bb014c7aa36c2",
+    "directives": "35f4a171d4a3a72df04be5e55164e94990b59ce0ed1ea94c0377169f847b776e"
   }
 }
 const root = new URL('../src/modules/system/', import.meta.url)
@@ -53,7 +67,7 @@ function behaviorDirectives(source) {
   return JSON.stringify(result.sort())
 }
 for (const [path, expected] of Object.entries(anchors)) {
-  const source = fs.readFileSync(new URL(path, root), 'utf8')
+  const source = readSource(new URL(path, root))
   test(`visual refinement preserves business script: ${path}`, () => {
     assert.equal(digest(businessScript(source)), expected.script)
   })
@@ -61,7 +75,7 @@ for (const [path, expected] of Object.entries(anchors)) {
     assert.equal(digest(behaviorDirectives(source)), expected.directives)
   })
 }
-const css = fs.readFileSync(new URL('components/workspace/workspace.css', root), 'utf8')
+const css = readSource(new URL('components/workspace/workspace.css', root))
 test('all visual rules stay inside the system workspace, never the shared portal', () => {
   postcss.parse(css).walkRules(rule => {
     for (const selector of rule.selectors) assert.ok(selector.startsWith('.system-workspace'), selector)
@@ -76,7 +90,7 @@ test('responsive matrix uses available content width and keeps the menu preview 
   assert.match(css, /forced-colors/)
 })
 test('role creation has explicit native labels, including the previously ambiguous template select', () => {
-  const source = fs.readFileSync(new URL('views/SystemRoleListView.vue', root), 'utf8')
+  const source = readSource(new URL('views/SystemRoleListView.vue', root))
   for (const [id, label, tag] of [
     ['system-role-name', '角色名称', 'input'],
     ['system-role-code', '角色编码', 'input'],

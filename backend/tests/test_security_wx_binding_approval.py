@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from app.core.exceptions import AppException
+from app.core.security import require_mobile_staff
 from app.services import auth_service_db as auth
 from app.services import control_plane_auth_service as p0
 from app.services import wx_binding_approval_service as approval
@@ -25,6 +27,21 @@ def user(**values):
                 is_deleted=False, login_name="teacher", password_hash="stored-hash", wx_openid=None)
     data.update(values)
     return SimpleNamespace(**data)
+
+
+def test_teacher_mobile_guard_requires_a_teacher_mini_token_and_school_staff_identity():
+    accepted = {"userId": "db-7", "userType": "TEACHER", "clientType": "TEACHER_MINI"}
+    assert require_mobile_staff(accepted) is accepted
+    for rejected in (
+        {"userId": "db-7", "userType": "STUDENT", "clientType": "STUDENT_MINI"},
+        {"userId": "db-7", "userType": "TEACHER", "clientType": "STUDENT_MINI"},
+        {"userId": "db-7", "userType": "TEACHER", "clientType": "PC"},
+        {"userId": "db-7", "userType": "PLATFORM_SUPER_ADMIN", "clientType": "TEACHER_MINI"},
+        {"userId": "", "userType": "TEACHER", "clientType": "TEACHER_MINI"},
+    ):
+        with pytest.raises(AppException) as exc:
+            require_mobile_staff(rejected)
+        assert exc.value.code == "NO_PERMISSION"
 
 
 class DB:
@@ -236,7 +253,9 @@ def runtime(monkeypatch, strict):
     calls = []
     monkeypatch.setattr(p0, "db_enabled", lambda: True)
     monkeypatch.setattr(p0, "get_sessionmaker", lambda: lambda: db)
-    monkeypatch.setattr(p0, "decode_token", lambda token: {"purpose": "wx_bind", "wxOpenid": "verified-openid"})
+    monkeypatch.setattr(p0, "decode_token", lambda token: {
+        "purpose": "wx_bind", "wxOpenid": "verified-openid", "clientType": "TEACHER_MINI"
+    })
     monkeypatch.setattr(auth, "_find_login_user", lambda *a: u)
     monkeypatch.setattr(p0, "resolve_login_policy", lambda **kw: {"loginFailLockMinutes": 15, "captchaAfterFailures": 3})
     monkeypatch.setattr(p0, "_remaining_lock", lambda *a, **kw: 0)
@@ -253,7 +272,7 @@ def runtime(monkeypatch, strict):
 def test_actual_runtime_new_binding_rejects_password_only(runtime):
     _, db, calls = runtime
     with pytest.raises(AppException) as exc:
-        p0.wx_bind("wx-token", "teacher", "password", "school")
+        p0.wx_bind("wx-token", "teacher", "password", "school", client_type="TEACHER_MINI")
     assert exc.value.code == "WX_BIND_APPROVAL_REQUIRED"
     assert "lock-user" in db.calls and "rollback" in db.calls
     assert not calls and "commit" not in db.calls
@@ -266,7 +285,8 @@ def test_actual_runtime_consumes_in_its_own_session(runtime, monkeypatch):
         calls.append("consume")
         return "wxap-test"
     monkeypatch.setattr(approval, "consume_in_session", consume)
-    assert p0.wx_bind("wx-token", "teacher", "password", "school", binding_approval_token="a" * 43)["userId"] == "db-7"
+    assert p0.wx_bind("wx-token", "teacher", "password", "school", binding_approval_token="a" * 43,
+                      client_type="TEACHER_MINI")["userId"] == "db-7"
     assert calls == ["consume", "bind", "audit"] and db.calls.count("commit") == 1
 
 
@@ -278,7 +298,7 @@ def test_existing_active_identity_does_not_require_new_approval(runtime, legacy,
     else:
         db.result = SimpleNamespace(user_id=u.id, status="ACTIVE", is_deleted=False)
     monkeypatch.setattr(approval, "consume_in_session", lambda *a: pytest.fail("existing identity must not require a new grant"))
-    assert p0.wx_bind("wx-token", "teacher", "password")["userId"] == "db-7"
+    assert p0.wx_bind("wx-token", "teacher", "password", client_type="TEACHER_MINI")["userId"] == "db-7"
     assert calls == ["bind", "audit"]
 
 
@@ -287,7 +307,7 @@ def test_revoked_binding_cannot_reactivate_without_approval(runtime):
     db.result = SimpleNamespace(user_id=u.id, status="DISABLED", is_deleted=False)
     u.wx_openid = "verified-openid"
     with pytest.raises(AppException) as exc:
-        p0.wx_bind("wx-token", "teacher", "password")
+        p0.wx_bind("wx-token", "teacher", "password", client_type="TEACHER_MINI")
     assert exc.value.code == "WX_BIND_APPROVAL_REQUIRED" and not calls
 
 
@@ -295,7 +315,7 @@ def test_deleted_binding_is_not_silently_resurrected(runtime):
     u, db, calls = runtime
     db.result = SimpleNamespace(user_id=u.id, status="ACTIVE", is_deleted=True)
     with pytest.raises(AppException) as exc:
-        p0.wx_bind("wx-token", "teacher", "password")
+        p0.wx_bind("wx-token", "teacher", "password", client_type="TEACHER_MINI")
     assert exc.value.code == "DATA_CONFLICT" and not calls
 
 
@@ -305,7 +325,8 @@ def test_actual_runtime_audit_failure_rolls_back(runtime, monkeypatch):
     monkeypatch.setattr(approval, "consume_in_session", lambda *a: "wxap-test")
     monkeypatch.setattr(audit_log, "record_critical_in_session", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("audit")))
     with pytest.raises(RuntimeError):
-        p0.wx_bind("wx-token", "teacher", "password", binding_approval_token="a" * 43)
+        p0.wx_bind("wx-token", "teacher", "password", binding_approval_token="a" * 43,
+                   client_type="TEACHER_MINI")
     assert calls == ["bind"] and "rollback" in db.calls and "commit" not in db.calls
 
 
@@ -347,6 +368,10 @@ def test_cli_delivers_only_after_commit_and_does_not_log_code(monkeypatch, tmp_p
     from app.core import config
     from app.db import session
     cli = _cli()
+    # Windows CI/local development cannot safely deliver a real private ticket,
+    # but this source-unit test must still exercise the commit-before-delivery
+    # ordering through the explicit POSIX-only seam.
+    monkeypatch.setattr(cli, "_private_ticket_platform_supported", lambda: True)
     db = DB(SimpleNamespace(id=11))
     code = "S" * 43
     destination = tmp_path / "ticket.json"
@@ -380,7 +405,10 @@ def test_cli_delivers_only_after_commit_and_does_not_log_code(monkeypatch, tmp_p
     assert "applicant-wx-token" not in output.out + output.err
     if failure is None:
         assert result == 0 and json.loads(destination.read_text())["bindingApprovalToken"] == code
-        assert destination.stat().st_mode & 0o777 == 0o600
+        # 真实命令在 Windows 一律拒绝；此处仅以 seam 模拟其事务顺序，NTFS
+        # 不承诺 POSIX mode bits。Linux 交付环境仍必须实际验证 0600。
+        if os.name == "posix":
+            assert destination.stat().st_mode & 0o777 == 0o600
     else:
         assert result == 1 and destination.read_text() == ""
         receipt = json.loads(output.err)

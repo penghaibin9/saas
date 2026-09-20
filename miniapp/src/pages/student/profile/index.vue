@@ -52,7 +52,7 @@
           <view class="pf__row"><text class="pf__k">班级 / 辅导员</text><text class="pf__v">{{ p.org.className || '待分班' }} · {{ p.org.counselorName || '待分配' }}</text></view>
           <view class="pf__row"><text class="pf__k">年级 / 学制</text><text class="pf__v">{{ p.org.grade }} · {{ p.org.system }}</text></view>
           <view class="pf__row"><text class="pf__k">入学时间</text><text class="pf__v">{{ p.org.enrollDate }}</text></view>
-          <view class="pf__row"><text class="pf__k">注册状态</text><text class="pf__v">{{ p.status.enrollStatus }}</text></view>
+          <view class="pf__row"><text class="pf__k">注册状态</text><text class="pf__v">{{ enrollStatusLabel(p.status.enrollStatus) }}</text></view>
         </view>
 
         <!-- 材料证照 -->
@@ -91,6 +91,9 @@ export default {
   data() { return { p: null, state: 'loading' } },
   onLoad() { this.load() },
   methods: {
+    enrollStatusLabel(value) {
+      return ({ ENROLLING: '在招', STOPPED: '停招', ENROLLED: '已注册', REGISTERED: '已注册', PENDING: '待注册', SUSPENDED: '暂缓注册', CANCELLED: '已取消' })[value] || (value ? `状态待确认（${value}）` : '状态待确认')
+    },
     load() {
       this.state = 'loading'
       studentApi.getProfile().then((d) => { this.p = d; this.state = 'ready' }).catch(() => { this.state = 'error' })

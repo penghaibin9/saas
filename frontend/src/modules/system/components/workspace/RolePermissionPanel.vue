@@ -13,7 +13,8 @@
     <template v-else-if="draft && detail">
       <p v-if="error && !outcomeUnknown" class="sw-alert sw-alert--error" role="alert">{{ error }}</p>
       <div v-if="!editable" class="sw-alert" data-testid="permission-readonly">
-        {{ detail.type === 'BUILTIN' ? '预设角色由已发布模板维护，请复制为自定义角色后再调整。' : '当前身份只可查看此角色，不能修改权限与数据范围。' }}
+        {{ canAdopt ? '转为本校维护后，可直接调整此角色，原成员和业务关系保留。' : detail.type === 'BUILTIN' ? '此预设角色保留基础身份保护。' : '当前身份只可查看此角色。' }}
+        <button v-if="canAdopt" type="button" class="sw-btn sw-space" :disabled="saving || outcomeUnknown" @click="adoptOpen = true">转为本校维护</button>
       </div>
       <div v-if="outcomeUnknown" class="sw-alert sw-alert--warning" role="alert" data-testid="permission-result-unknown">
         <b>请先重新读取，不要重复提交</b><p>{{ error }}</p>
@@ -41,8 +42,8 @@
         </div>
         <div class="sw-permission-layout">
           <div>
-            <section v-for="group in filteredGroups" :key="group.key" class="sw-permission-group">
-              <header class="sw-permission-head"><b>{{ group.label }}</b><span class="sw-muted">{{ group.rows.length }} 项</span></header>
+            <details v-for="group in filteredGroups" :key="group.key" class="sw-permission-group">
+              <summary class="sw-permission-head"><b>{{ group.label }}</b><span class="sw-muted">{{ group.rows.length }} 项 · 点击展开</span></summary>
               <div class="sw-permission-grid">
                 <label v-for="node in group.rows" :key="node.key" class="sw-permission-row" :data-permission="node.key">
                   <input class="sw-check" type="checkbox" :checked="selection.includes(node.key)"
@@ -54,24 +55,22 @@
                   <small class="sw-tag" :class="highRisk(node) ? 'sw-tag--orange' : ''">{{ highRisk(node) ? '高风险操作' : node.advanced ? '后台能力' : node.selectionType === 'menu' ? '入口' : '操作' }}</small>
                 </label>
               </div>
-            </section>
+            </details>
             <div v-if="!filteredGroups.length" class="sw-state"><b>没有匹配的权限</b><p class="sw-muted">搜索只影响显示，不改变已选权限。</p></div>
           </div>
           <aside class="sw-preview" aria-label="角色菜单样式预览">
-            <h3 class="sw-preview-title"><AppIcon name="overview" :size="17" />老师将看到的入口</h3>
-            <p>此处只预览选中的导航入口；实际可用性仍由服务端授权与业务范围决定。</p>
+            <h3 class="sw-preview-title"><AppIcon name="overview" :size="17" />角色菜单预览</h3>
             <div class="sw-preview-menus" tabindex="0" role="region" aria-label="选中角色的菜单入口">
               <div v-for="node in previewMenus" :key="node.key" class="sw-preview-menu">{{ node.label }}</div>
               <div v-if="!previewMenus.length" class="sw-preview-menu">未选择常规菜单入口</div>
             </div>
-            <p>隐藏入口不等于撤销接口权限；后台能力不会伪装成菜单。</p>
           </aside>
         </div>
       </template>
       <details v-if="preserved.length" class="sw-card sw-pad sw-preserved" data-testid="readonly-preserved-permissions">
         <summary>只读保留 {{ preserved.length }} 项权限</summary>
         <div v-for="item in preserved" :key="item.permissionCode" class="sw-space">
-          <b>{{ item.label || item.permissionCode }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
+          <b>{{ displayLabel(item.permissionCode, item.label) }}</b><p class="sw-code">{{ item.permissionCode }}</p><p class="sw-muted">{{ item.reason }}</p>
         </div>
       </details>
       <div class="sw-savebar">
@@ -84,6 +83,12 @@
         </div>
       </div>
     </template>
+    <AppConfirmDialog :visible="adoptOpen" title="转为本校维护" type="warning"
+      confirm-text="确认转为本校维护" require-reason reason-label="转换原因" :submitting="saving"
+      :confirm-disabled="!canAdopt || outcomeUnknown" @update:visible="closeAdopt" @confirm="adopt">
+      <p>{{ detail?.name }} · {{ countLabel(detail?.memberCount) }} 名成员 · {{ detail?.localAdoption?.permissionCount }} 项权限。</p>
+      <p>现有权限、成员和负责学生保持不变。以后由本校调整，模板升级不自动覆盖。</p>
+    </AppConfirmDialog>
     <AppConfirmDialog :visible="reviewOpen" title="核对角色权限变更" type="warning" size="wide"
       confirm-text="确认保存权限" require-reason reason-label="调整原因" :submitting="saving" :confirm-disabled="!canReview" :initial-reason="lastReason"
       @update:visible="closeReview" @confirm="save">
@@ -105,6 +110,7 @@ import AppIcon from '@/components/ui/AppIcon.vue'
 import AppConfirmDialog from './WorkspaceConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import * as wc from '@/modules/system/utils/workspaceContract'
+import { permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 
 export default {
   name: 'RolePermissionPanel',
@@ -113,7 +119,7 @@ export default {
   emits: ['loaded', 'saved', 'dirty', 'busy'],
   data() {
     return { state: 'loading', error: '', detail: null, draft: null, base: null, fence: null,
-      saving: false, reviewOpen: false, outcomeUnknown: false, receipt: null, keyword: '', reconcileNote: '', lastReason: '' }
+      saving: false, reviewOpen: false, adoptOpen: false, outcomeUnknown: false, receipt: null, keyword: '', reconcileNote: '', lastReason: '' }
   },
   computed: {
     contextKey() { return wc.contextFingerprint(this.ctx) },
@@ -122,6 +128,7 @@ export default {
     scopeChanged() { return !!this.base && this.base.scopeCode !== this.draft?.scopeCode },
     isDirty() { return !!(this.scopeChanged || this.delta.added.length || this.delta.removed.length) },
     editable() { return this.state === 'ready' && this.detail?.type === 'CUSTOM' && wc.actionAllowed(this.ctx, 'configRolePermission') && !this.locked },
+    canAdopt() { return this.state === 'ready' && this.detail?.type === 'BUILTIN' && this.detail?.localAdoption?.eligible === true && wc.actionAllowed(this.ctx, 'configRolePermission') && !this.locked },
     canReview() { return this.editable && this.isDirty && !this.saving && !this.outcomeUnknown },
     preserved() { return Array.isArray(this.detail?.readOnlyPreservedPermissions) ? this.detail.readOnlyPreservedPermissions : [] },
     scopeOptions() { return this.ctx.statusOptions?.scopeTypes || [] },
@@ -139,11 +146,12 @@ export default {
   created() { this.fence = wc.createRequestFence(); this.load() },
   beforeUnmount() { this.fence.invalidate() },
   methods: {
+    displayLabel: permissionDisplayLabel,
     countLabel: wc.countLabel,
     scopeLabel(code) { return this.scopeOptions.find(option => option.value === code)?.label || '范围待核对' },
     highRisk(node) { return ['HIGH', 'CRITICAL'].includes(String(node.riskLevel || '').toUpperCase()) },
     permissionLabel(code) { return this.draft?.groups.flatMap(group => group.rows).find(node => node.key === code)?.label || '权限名称未取得' },
-    clear() { this.saving = false; this.$emit('busy', false); this.detail = null; this.draft = null; this.base = null; this.receipt = null; this.outcomeUnknown = false; this.reviewOpen = false; this.reconcileNote = ''; this.lastReason = ''; this.$emit('dirty', false) },
+    clear() { this.saving = false; this.$emit('busy', false); this.detail = null; this.draft = null; this.base = null; this.receipt = null; this.outcomeUnknown = false; this.reviewOpen = false; this.adoptOpen = false; this.reconcileNote = ''; this.lastReason = ''; this.$emit('dirty', false) },
     async load(preserve = false) {
       if (this.saving) return
       const current = this.fence.start('read')
@@ -181,6 +189,28 @@ export default {
     },
     resetDraft() { if (this.canReview) { this.draft = JSON.parse(JSON.stringify(this.base)); this.reconcileNote = '' } },
     closeReview(visible) { if (!this.saving) this.reviewOpen = visible },
+    closeAdopt(visible) { if (!this.saving) this.adoptOpen = visible },
+    async adopt({ reason }) {
+      if (!this.canAdopt || this.saving || this.outcomeUnknown) return
+      const current = this.fence.start('write')
+      const requestId = wc.newRequestId()
+      const { expectedVersion, expectedTemplateVersion, expectedTemplateDigest } = this.detail.localAdoption
+      this.saving = true; this.$emit('busy', true); this.error = ''
+      let saved = false
+      try {
+        const result = wc.unwrap(await systemApi.adoptRole(this.roleId, { expectedVersion, expectedTemplateVersion, expectedTemplateDigest, reason, requestId }))
+        if (!current()) return
+        if (String(result?.id) !== this.roleId || result?.type !== 'CUSTOM' || !Number.isInteger(result?.version)) throw new Error('回执不完整，请重新读取角色确认结果')
+        this.receipt = { kind: result.cacheInvalidated === true ? 'success' : 'warning', title: '已转为本校维护',
+          message: result.cacheInvalidated === true ? '原权限和成员已保留，现在可以调整本校配置。' : '转换已提交，缓存刷新需核对；请勿重复转换。', requestId, version: result.version }
+        this.$emit('saved', result); saved = true
+      } catch (error) {
+        if (current()) { this.error = error.message || '转换结果尚未确认'; this.outcomeUnknown = true }
+      } finally {
+        if (current()) { this.saving = false; this.adoptOpen = false; this.$emit('busy', false) }
+      }
+      if (saved && current()) await this.load(false)
+    },
     async save({ reason }) {
       if (!this.canReview || this.saving) return
       let args

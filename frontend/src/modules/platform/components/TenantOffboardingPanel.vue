@@ -158,6 +158,7 @@ import { platformSecurityOpsApi } from '@/modules/platform/api/platformSecurityO
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 import { wholeNumber } from '@/modules/platform/utils/tenantWorkspace.mjs'
+import { systemConfirm } from '@/services/systemDialog'
 
 const STATE_LABELS = {
   REQUESTED: '已发起', PRECHECK: '预检查', FROZEN_READONLY: '已冻结只读', FINAL_EXPORT_READY: '待确认最终导出',
@@ -323,15 +324,14 @@ export default {
       if (!this.canMutate() || !this.canStartNew) return
       if (wholeNumber(this.requestForm.retentionDays) === null) return toast.error('保留期必须是非负整数')
       if (this.requestForm.reason.length < 10) return toast.error('退租原因至少 10 个字符')
-      if (!window.confirm('发起后该学校将立即冻结为只读，普通登录与业务写入会被拒绝。确认继续？')) return
-      const id = String(this.tenantId), epoch = ++this.epoch
+      const id = String(this.tenantId), dialogEpoch = this.epoch
+      const input = { reason: this.requestForm.reason, retentionDays: Number(this.requestForm.retentionDays || 0), expectedVersion: this.expectedTenantVersion }
+      if (!await systemConfirm({ title: '确认发起退租', message: '发起后该学校将立即冻结为只读，普通登录与业务写入会被拒绝。确认继续？', confirmText: '冻结并继续', type: 'danger' })) return
+      if (!this.current(dialogEpoch, id) || !this.canMutate() || !this.canStartNew) return
+      const epoch = ++this.epoch
       this.working = true
       try {
-        await platformSecurityOpsApi.requestTenantOffboarding(this.tenantId, {
-          reason: this.requestForm.reason,
-          retentionDays: Number(this.requestForm.retentionDays || 0),
-          expectedVersion: this.expectedTenantVersion
-        })
+        await platformSecurityOpsApi.requestTenantOffboarding(id, input)
         if (!this.current(epoch, id)) return
         this.requestForm.reason = ''
         await this.refreshAfterChange('退租任务已创建，租户已冻结为只读')
@@ -346,11 +346,13 @@ export default {
     async confirmFinalExport() {
       if (!this.canMutate() || !['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(this.job?.state)) return
       if (!this.validSha) return toast.error('请输入 64 位 SHA-256')
-      if (!window.confirm('确认该 SHA-256 对应已经交付并封存的最终数据导出物？确认后进入数据保留期。')) return
-      const id = String(this.tenantId), epoch = ++this.epoch
+      const id = String(this.tenantId), dialogEpoch = this.epoch, jobId = this.job.jobId, sha = this.finalExportSha.toLowerCase()
+      if (!await systemConfirm({ title: '确认最终导出物', message: '确认该 SHA-256 对应已经交付并封存的最终数据导出物？确认后进入数据保留期。', confirmText: '确认并进入保留期', type: 'danger' })) return
+      if (!this.current(dialogEpoch, id) || !this.canMutate() || !['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(this.job?.state) || this.job.jobId !== jobId || this.finalExportSha.toLowerCase() !== sha) return
+      const epoch = ++this.epoch
       this.working = true
       try {
-        await platformSecurityOpsApi.confirmTenantFinalExport(this.job.jobId, this.finalExportSha.toLowerCase())
+        await platformSecurityOpsApi.confirmTenantFinalExport(jobId, sha)
         if (!this.current(epoch, id)) return
         await this.refreshAfterChange('最终导出已确认，租户已进入数据保留期')
       } catch (error) {
@@ -364,11 +366,13 @@ export default {
     async cancelOffboarding() {
       if (!this.canMutate() || this.job?.cancellable !== true) return
       if (this.cancelReason.length < 5) return toast.error('取消原因至少 5 个字符')
-      if (!window.confirm('确认取消当前退租任务并恢复冻结前租户状态？')) return
-      const id = String(this.tenantId), epoch = ++this.epoch
+      const id = String(this.tenantId), dialogEpoch = this.epoch, jobId = this.job.jobId, reason = this.cancelReason
+      if (!await systemConfirm({ title: '确认取消退租', message: '确认取消当前退租任务并恢复冻结前租户状态？', confirmText: '取消退租并恢复', type: 'danger' })) return
+      if (!this.current(dialogEpoch, id) || !this.canMutate() || this.job?.cancellable !== true || this.job.jobId !== jobId || this.cancelReason !== reason) return
+      const epoch = ++this.epoch
       this.working = true
       try {
-        await platformSecurityOpsApi.cancelTenantOffboarding(this.job.jobId, this.cancelReason)
+        await platformSecurityOpsApi.cancelTenantOffboarding(jobId, reason)
         if (!this.current(epoch, id)) return
         this.cancelReason = ''
         await this.refreshAfterChange('退租任务已取消')
@@ -410,14 +414,16 @@ export default {
     async approvePurge() {
       if (!this.canMutate()) return
       if (!this.canExecutePurge) return toast.error('销毁门禁尚未全部满足')
-      if (!window.confirm(`最后确认：将永久销毁“${this.preview?.tenantName || this.tenant?.tenantName || this.tenantId}”的数据。该操作不可撤销。`)) return
-      const id = String(this.tenantId), epoch = ++this.epoch
+      const id = String(this.tenantId), dialogEpoch = this.epoch, jobId = this.job.jobId, token = this.mfaGrant.accessToken
+      const expectedVersion = Number(this.job.tenantVersion ?? this.expectedTenantVersion), confirmText = this.confirmText
+      if (!await systemConfirm({ title: '永久销毁最终确认', message: `将永久销毁“${this.preview?.tenantName || this.tenant?.tenantName || this.tenantId}”的数据。该操作不可撤销。`, confirmText: '确认永久销毁', type: 'danger' })) return
+      if (!this.current(dialogEpoch, id) || !this.canMutate() || !this.canExecutePurge || this.job.jobId !== jobId || this.mfaGrant.accessToken !== token || this.confirmText !== confirmText) return
+      const epoch = ++this.epoch
       this.working = true
-      const token = this.mfaGrant.accessToken
       try {
-        await platformSecurityOpsApi.approveTenantPurge(this.job.jobId, {
-          expectedVersion: Number(this.job.tenantVersion ?? this.expectedTenantVersion),
-          confirmText: this.confirmText
+        await platformSecurityOpsApi.approveTenantPurge(jobId, {
+          expectedVersion,
+          confirmText
         }, token)
         if (!this.current(epoch, id)) return
         this.confirmText = ''

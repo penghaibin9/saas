@@ -6,6 +6,15 @@ import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import { IMPORT_TYPES, identityJob, importCounts, countText, importStatusLabel,
   confirmableJob, reviewFingerprint, importReceiptCounts, createImportState,
   createImportController, validJobId } from '../src/modules/system/utils/identityImportWorkspace.js'
+import * as importViews from '../src/modules/system/utils/identityImportWorkspace.js'
+
+test('phone preview never treats missing counters as zero or exposes raw values', () => {
+  const rows = importViews.importPhoneCounts({ phoneSummary: { phonePending: 2, phoneConflict: '0', rawPhone: 'PRIVATE_SENTINEL' } })
+  assert.equal(rows.find(r => r.key === 'phonePending').value, 2)
+  assert.equal(rows.find(r => r.key === 'phoneConflict').value, null)
+  assert.ok(!JSON.stringify(rows).includes('PRIVATE_SENTINEL'))
+  assert.deepEqual(importViews.importPhoneCounts({}), [])
+})
 
 const job = (patch = {}) => ({ id: '42', jobType: 'IMPORT', moduleCode: 'SYSTEM',
   importType: 'IDENTITY_TEACHER', status: 'VALIDATED', version: 0,

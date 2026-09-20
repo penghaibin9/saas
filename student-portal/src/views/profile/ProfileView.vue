@@ -1,5 +1,6 @@
 <template>
   <div class="sp-page">
+    <RouterLink class="linkbtn" to="/account-security">办理本人手机号登录 / 换号 / 解绑</RouterLink>
     <StateBlock v-if="loading" type="loading" text="正在加载学籍信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
     <div v-else class="grid">

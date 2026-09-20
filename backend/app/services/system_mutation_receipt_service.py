@@ -164,6 +164,7 @@ def set_user_status(
         if not idempotent:
             account.status = target
             account.version = version_before + 1
+            account.credential_version = int(account.credential_version or 0) + 1
             action_code = {"DISABLE": "USER_DISABLE", "ENABLE": "USER_ENABLE", "UNLOCK": "USER_UNLOCK"}[normalized]
             audit_log.record_critical_in_session(
                 db,
@@ -234,6 +235,7 @@ def reset_user_password(
         account.password_hash = hash_password(temp_password)
         account.must_change_password = True
         account.version = version_before + 1
+        account.credential_version = int(account.credential_version or 0) + 1
         audit_log.record_critical_in_session(
             db,
             "RESET_PASSWORD",
@@ -464,6 +466,7 @@ def batch_set_user_status(body: dict, *, user: dict | None = None) -> dict:
                 continue
             account.status = target
             account.version = int(account.version or 0) + 1
+            account.credential_version = int(account.credential_version or 0) + 1
             changed_ids.append(uid)
             results.append({"id": str(uid), "status": "OK", "message": "已停用" if target == "DISABLED" else "已启用"})
 

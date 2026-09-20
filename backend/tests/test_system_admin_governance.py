@@ -259,15 +259,20 @@ def test_org_bypass_allowlist_documented():
     assert "academic_affairs_major_split_service" in ORG_WRITE_BYPASS_ALLOWLIST
 
 
-def test_system_catalog_nine_workspaces():
-    # 通过读取前端目录源文件统计二级工作区
+def test_system_catalog_eight_workspaces():
+    # 学校系统管理已收口为 8 个二级工作区；实施能力并入“系统概览”，不再单独造第九组。
     text = (ROOT / "frontend" / "src" / "modules" / "system" / "systemManagementCatalog.js").read_text(encoding="utf-8")
-    assert "系统总览" in text
-    assert "实施与验收" in text
-    assert "身份与账号" in text
-    assert "组织与任职" in text
-    assert "角色权限与数据范围" in text
-    assert "模块与学校配置" in text
-    assert "流程配置与运行" in text
-    assert "安全与审计" in text
-    assert "接口同步与数据迁移" in text
+    for label in (
+        "系统概览",
+        "身份与账号",
+        "组织主数据",
+        "角色与权限",
+        "学校配置",
+        "流程配置",
+        "安全与审计",
+        "接口与同步",
+    ):
+        assert label in text
+    assert "实施总览" in text
+    assert "上线检查与验收" in text
+    assert "收口为 8 个二级工作区" in text

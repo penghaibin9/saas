@@ -142,6 +142,10 @@ export const ROLE_CODE = Object.freeze({
 export const ROLE_LABELS = Object.freeze({
   PLATFORM_OPERATOR: '平台运营',
   SCHOOL_ADMIN: '学校管理员',
+  ACADEMIC_ADMIN: '教务管理员',
+  STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  INTERN_MENTOR: '实习指导教师',
+  GRADUATION_ADMIN: '毕业设计管理员',
   COLLEGE_ADMIN: '二级学院管理员',
   TEACHER: '指导教师',
   COUNSELOR: '辅导员',

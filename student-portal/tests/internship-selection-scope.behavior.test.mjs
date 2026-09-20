@@ -3,13 +3,14 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import * as scopeModel from '../../shared/internshipSelectionScope.mjs'
 import { normalizeCatalogQuery } from '../src/modules/internshipRecruitment/selectionContract.js'
+import { latestRead as latestProjectionRead } from '../../miniapp/src/services/latestRead.js'
 
 const scope = { batchId: '10', campaignId: '20', recordId: '30' }
 function apiFor(mobile, request) {
   const path = mobile ? '../../miniapp/src/services/internshipSelectionApi.js' : '../src/services/internshipSelectionApi.js'
   const source = fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/^import[^\n]+\n/gm, '')
     .replace(/export default internshipSelectionApi\s*/g, '').replace(/export /g, '')
-  const deps = { ...scopeModel, baseRequest: request, normalizeCatalogQuery }
+  const deps = { ...scopeModel, baseRequest: request, normalizeCatalogQuery, latestProjectionRead }
   return new Function(...Object.keys(deps), source+'\nreturn internshipSelectionApi')(...Object.values(deps))
 }
 for (const mobile of [false, true]) {

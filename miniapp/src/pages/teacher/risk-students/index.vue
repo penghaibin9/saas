@@ -65,7 +65,7 @@
 </template>
 
 <script>
-import { realRequest } from '@/services/request'
+import { normalizeError, realRequest } from '@/services/request'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { teacherApi } from '@/services/teacherApi'
 import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
@@ -123,7 +123,7 @@ export default {
         if (epoch !== this.focusEpoch || !this._pageActive) return
         if (!row || String(row.riskId) !== this.recordId) throw new Error('风险记录不存在或不在当前权限范围内')
         this.risk = row; this.state = 'ready'
-      } catch (e) { if (epoch !== this.focusEpoch) return; this.risk = null; this.state = 'error'; this.loadError = e.message || '风险记录加载失败' }
+      } catch (e) { if (epoch !== this.focusEpoch) return; this.risk = null; this.state = normalizeError(e).pageState || 'error'; this.loadError = e.message || '风险记录加载失败' }
     },
     confirmClose() {
       if (this.acting || !this.can('CLOSE')) return
@@ -169,7 +169,7 @@ export default {
           return result
         })
         .catch((error) => {
-          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = 'error'
+          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = normalizeError(error).pageState || 'error'
           throw error
         })
         .finally(() => {

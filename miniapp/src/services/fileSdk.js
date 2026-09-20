@@ -95,7 +95,8 @@ function openDownloaded(downloaded, fileName = '', { strictNative = false } = {}
     uni.openDocument({
       filePath: downloaded.tempFilePath, fileType: ext || undefined, showMenu: true,
       success: resolve,
-      fail: (error) => reject({ code: 'PREVIEW_FAILED', biz: true, message: error?.errMsg || '当前文件无法预览，请在 PC 端查看' })
+      // 原生 errMsg 常含设备实现、路径或英文错误码，不得直接展示给学生/教师。
+      fail: () => reject({ code: 'PREVIEW_FAILED', biz: true, message: '当前文件无法预览，请在 PC 端查看' })
     })
   })
 }

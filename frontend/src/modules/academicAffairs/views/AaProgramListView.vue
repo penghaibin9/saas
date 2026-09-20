@@ -1,14 +1,15 @@
 <template>
   <ModulePageShell
-    title="培养方案治理"
-    subtitle="按专业年级检查方案完整性、结构阻断与开课准备情况"
+    title="方案列表"
+    subtitle="一行是一份专业年级方案，不是一门课程"
+    show-subtitle-in-concise
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="importChooserVisible = !importChooserVisible">Excel导入</AppButton>
+      <AppButton v-if="hasPermission('academicAffairs.program.manage')" @click="importChooserVisible = !importChooserVisible">Excel导入</AppButton>
       <AppButton @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
-      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
+      <AppButton v-if="hasPermission('academicAffairs.program.manage')" variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -21,10 +22,10 @@
         </div>
       </AppSectionCard>
       <div v-if="summary" class="aa-summary-grid">
-        <div class="aa-summary-card"><strong>{{ summary.totalPrograms }}</strong><span>方案总数</span></div>
-        <div class="aa-summary-card is-ok"><strong>{{ summary.readyPrograms }}</strong><span>校验可提交</span></div>
-        <div class="aa-summary-card is-danger"><strong>{{ summary.blockedPrograms }}</strong><span>存在阻断</span></div>
-        <div class="aa-summary-card is-warning"><strong>{{ summary.missingMajor + summary.missingGrade }}</strong><span>缺专业/年级</span></div>
+        <div class="aa-summary-card"><span>本次范围</span><strong>{{ stageSummary.total }}</strong><small>专业年级方案</small></div>
+        <div class="aa-summary-card"><span>编制中</span><strong>{{ stageSummary.authoring }}</strong><small>可继续完善</small></div>
+        <div class="aa-summary-card is-warning"><span>待审核</span><strong>{{ stageSummary.review }}</strong><small>不提前生成正式任务</small></div>
+        <div class="aa-summary-card is-ok"><span>已发布</span><strong>{{ stageSummary.published }}</strong><small>修改须建立新版本</small></div>
       </div>
 
       <AppInlineAlert
@@ -46,33 +47,38 @@
         </div>
       </AppSectionCard>
 
+      <div class="aa-list-card">
+        <div class="aa-list-card__head">
+          <strong>方案与适用年级</strong>
+          <span>共 {{ pagination.total }} 份正式来源记录</span>
+        </div>
+        <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="pagination.page = 1; applyPage()"><input v-model="keyword" class="aa-input" aria-label="搜索人才培养方案" placeholder="搜索人才培养方案" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; pagination.page = 1; applyPage()">清空</AppButton></form>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="还没有培养方案" description="点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="programId" :pagination="pagination" @page-change="onPageChange">
-        <template #cell-program="{ row }">
+        <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.programName }}</div>
-          <div class="mp-cell-sub">{{ row.gradeYear ? `${row.gradeYear}级` : '未设置年级' }} · v{{ row.version }} · {{ row.courseCount ?? '—' }}门课程</div>
+          <div class="mp-cell-sub">{{ row.courseCount ?? '—' }} 门课程 · 正式方案 #{{ row.programId }}</div>
         </template>
+        <template #cell-majorGrade="{ row }">
+          <div class="mp-cell-main">{{ row.majorName || '专业待核验' }}</div>
+          <div class="mp-cell-sub">{{ row.gradeYear ? `${row.gradeYear}级` : '年级待核验' }}</div>
+        </template>
+        <template #cell-version="{ row }">v{{ row.version }}</template>
         <template #cell-credits="{ row }">
-          <div class="mp-cell-main">{{ row.creditSum ?? '—' }} / {{ row.totalCredits ?? '—' }}</div>
-          <div class="mp-cell-sub">已排 / 毕业要求</div>
-        </template>
-        <template #cell-quality="{ row }">
-          <AppStatusTag
-            :type="row.canSubmit ? 'success' : 'danger'"
-            :label="row.canSubmit ? '校验通过' : `${row.blockerCount || 0}项阻断`"
-            dot
-          />
-          <div v-if="row.warningCount" class="mp-cell-sub">{{ row.warningCount }}项提醒</div>
+          <div class="mp-cell-main">{{ row.totalCredits ?? '—' }} 学分</div>
+          <div class="mp-cell-sub">已编 {{ row.creditSum ?? '—' }}</div>
         </template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="reviewStatusColor(row.status)" :label="statusLabel(row.status)" dot />
+          <div v-if="row.blockerCount" class="mp-cell-sub is-danger-text">{{ row.blockerCount }} 项阻断</div>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">编制 / 校验</button>
+          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">打开方案</button>
         </template>
       </DataTable>
+      </div>
     </div>
 
     <AaAuthoritativeImportDrawer
@@ -97,6 +103,7 @@ import { programQualityApi } from '@/modules/academicAffairs/api/program-quality
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -105,7 +112,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
+      keyword: '', requestRevision: 0, loading: true,
       error: '',
       rows: [],
       allRows: [],
@@ -117,23 +124,35 @@ export default {
       draft: { programName: '', majorId: '', gradeYear: '', totalCredits: null },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
-        { key: 'program', title: '方案' },
-        { key: 'credits', title: '学分结构', width: '150px' },
-        { key: 'quality', title: '质量结论', width: '150px' },
-        { key: 'status', title: '流程状态', width: '130px' },
-        { key: 'actions', title: '操作', width: '120px' }
+        { key: 'name', title: '方案名称' },
+        { key: 'majorGrade', title: '专业年级', width: '190px' },
+        { key: 'version', title: '版本', width: '88px' },
+        { key: 'credits', title: '毕业学分', width: '140px' },
+        { key: 'status', title: '当前阶段', width: '160px' },
+        { key: 'actions', title: '办理入口', width: '110px' }
       ]
     }
   },
   computed: {
+    stageSummary() {
+      const statuses = this.allRows.map((row) => row.status)
+      return {
+        total: this.allRows.length,
+        authoring: statuses.filter((status) => ['DRAFT', 'RETURNED'].includes(status)).length,
+        review: statuses.filter((status) => ['COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(status)).length,
+        published: statuses.filter((status) => ['PUBLISHED', 'ENABLED'].includes(status)).length
+      }
+    },
     canCreate() {
       return Boolean(
-        this.draft.programName && this.draft.majorId && /^\d{4}$/.test(this.draft.gradeYear) && Number(this.draft.totalCredits) > 0
+        this.hasPermission('academicAffairs.program.manage') && this.draft.programName && this.draft.majorId && /^\d{4}$/.test(this.draft.gradeYear) && Number(this.draft.totalCredits) > 0
       )
     }
   },
+  beforeUnmount() { this.requestRevision++ },
   created() { this.load() },
   methods: {
+    hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor,
     statusLabel(value) { return REVIEW_STATUS[value] || (value ? '待确认' : '') },
     openProgramImport(phase) {
@@ -155,8 +174,10 @@ export default {
     async onProgramImported() { toast.success('培养方案权威导入已完成'); this.importVisible = false; await this.load() },
     applyPage() {
       const start = (this.pagination.page - 1) * this.pagination.pageSize
-      this.rows = this.allRows.slice(start, start + this.pagination.pageSize)
-      this.pagination.total = this.allRows.length
+      const keyword = this.keyword.trim().toLowerCase()
+      const visible = this.allRows.filter(row => !keyword || [row.programName,row.gradeYear,row.majorName].some(value => String(value || '').toLowerCase().includes(keyword)))
+      this.rows = visible.slice(start, start + this.pagination.pageSize)
+      this.pagination.total = visible.length
     },
     onPageChange(page) { this.pagination.page = page; this.applyPage() },
     async createProgram() {
@@ -176,22 +197,15 @@ export default {
       } else toast.error(res.message || '创建失败')
     },
     async load() {
-      this.loading = true
-      this.error = ''
-      const qualityRes = await programQualityApi.governanceSummary()
-      if (qualityRes.code === 0) {
-        this.summary = qualityRes.data
-        this.allRows = qualityRes.data.items || []
-        this.applyPage()
-      } else {
-        const fallback = await academicAffairsApi.getPrograms({ page: 1, pageSize: 200 })
-        if (fallback.code === 0) {
-          this.summary = null
-          this.allRows = fallback.data.list || []
-          this.applyPage()
-        } else this.error = qualityRes.message || fallback.message || '加载培养方案失败'
-      }
-      this.loading = false
+      const revision = ++this.requestRevision
+      this.loading = true; this.error = ''; this.rows = []; this.allRows = []; this.summary = null
+      try {
+        const res = await programQualityApi.governanceSummary()
+        if (revision !== this.requestRevision) return
+        if (res.code === 0) { this.summary = res.data; this.allRows = res.data.items || []; this.applyPage() }
+        else this.error = res.message || '方案及质量数据读取失败，请重试'
+      } catch(error) { if (revision === this.requestRevision) this.error = error?.message || '方案读取失败，请重试' }
+      finally { if (revision === this.requestRevision) this.loading = false }
     }
   }
 }
@@ -201,9 +215,10 @@ export default {
 @import '@/styles/module-page.css';
 .aa-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .aa-summary-card { padding: 14px 16px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--bg-white, #fff); }
-.aa-summary-card strong, .aa-summary-card span { display: block; }
+.aa-summary-card strong, .aa-summary-card span, .aa-summary-card small { display: block; }
 .aa-summary-card strong { font-size: 24px; color: var(--text-900, #1f2937); }
-.aa-summary-card span { margin-top: 4px; font-size: 12px; color: var(--text-500, #64748b); }
+.aa-summary-card span { margin-bottom: 6px; font-size: 13px; color: var(--text-500, #64748b); }
+.aa-summary-card small { margin-top: 6px; font-size: 12px; color: var(--text-500, #64748b); }
 .aa-summary-card.is-ok { border-color: var(--success-200, #a7f3d0); }
 .aa-summary-card.is-warning { border-color: var(--warning-200, #fde68a); }
 .aa-summary-card.is-danger { border-color: var(--danger-200, #fecaca); }
@@ -213,5 +228,12 @@ export default {
 .aa-cal-form__item--grow { flex: 1; min-width: 240px; }
 .aa-input { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-input--sm { width: 120px; }
+.aa-list-card { overflow: hidden; border: 1px solid var(--border-200, #e5e7eb); border-radius: 10px; background: var(--bg-white, #fff); }
+.aa-list-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--border-200, #e5e7eb); }
+.aa-list-card__head strong { color: var(--text-900, #1f2937); }
+.aa-list-card__head span { font-size: 12px; color: var(--text-500, #64748b); }
+.aa-list-card__filters { margin: 0; padding: 12px 16px; }
+.aa-list-card :deep(.data-table) { border: 0; border-radius: 0; }
+.is-danger-text { color: var(--danger-600, #dc2626); }
 @media (max-width: 900px) { .aa-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

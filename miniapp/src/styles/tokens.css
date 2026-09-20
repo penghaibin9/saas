@@ -4,8 +4,11 @@
  * uni-app 用法：在 App.vue 的 <style> 中 @import './shared/styles/tokens.css';
  * 规则：移动端组件与页面禁止硬编码颜色/字号/间距，必须引用本文件变量。
  */
-page,
-:root {
+/* 浏览器根选择器不能进入微信 WXSS，否则整组令牌可能无法应用。 */
+/* #ifdef H5 */
+:root,
+/* #endif */
+page {
   /* 主色 */
   --primary-50: #EFF6FF;
   --primary-100: #DBEAFE;
@@ -105,8 +108,10 @@ page,
 }
 
 /* ---- 小程序端补充令牌（品牌可覆盖 / 渐变 / 教育科技感） ---- */
-page,
-:root {
+/* #ifdef H5 */
+:root,
+/* #endif */
+page {
   /* 品牌主色（由 tenantBrandConfig 运行时覆盖，默认取 primary） */
   --brand-primary: var(--primary-600);
   --brand-primary-strong: var(--primary-700);

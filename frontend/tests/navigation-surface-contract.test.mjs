@@ -47,6 +47,6 @@ test('产品身份与权限与学校身份与权限都是明确的生产界面',
   const byPath = new Map(contract.surfaces.map((item) => [item.path, item]))
   assert.equal(byPath.get('/admin/platform/product-iam')?.permissionKey, 'platform.productIam.view')
   assert.equal(byPath.get('/admin/system/iam')?.permissionKey, 'systemAdmin.role.view')
-  assert.equal(byPath.get('/admin/system/iam?surface=templates')?.permissionKey, 'systemAdmin.role.template.view')
-  assert.equal(byPath.get('/admin/system/iam?surface=permissions')?.permissionKey, 'systemAdmin.role.permission.manage')
+  assert.equal(byPath.get('/admin/system/iam?surface=templates')?.permissionKey, 'systemAdmin.role.view')
+  assert.equal(byPath.get('/admin/system/iam?surface=permissions')?.permissionKey, 'systemAdmin.role.view')
 })

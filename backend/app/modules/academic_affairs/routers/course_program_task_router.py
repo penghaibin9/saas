@@ -411,6 +411,8 @@ def task_batch_review(
 def task_all_list(
     batchId: Optional[int] = None,
     courseId: Optional[int] = None,
+    termId: Optional[int] = None,
+    keyword: Optional[str] = None,
     status: Optional[str] = None,
     mergeable: bool = False,
     mine: bool = False,
@@ -427,6 +429,8 @@ def task_all_list(
         mine,
         page,
         pageSize,
+        term_id=termId,
+        keyword=keyword,
     )
     return success(paginate(items, total, page, pageSize))
 

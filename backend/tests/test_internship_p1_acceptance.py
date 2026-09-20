@@ -135,10 +135,19 @@ def test_weekly_batch_review_requires_expected_version(client, auth_headers, db_
 
 
 def test_mobile_my_students_requires_batch_id(client, auth_headers, db_mode):
-    miss = client.get("/api/v1/mobile/teacher/internship/my-students", headers=auth_headers).json()
+    from app.core.security import create_access_token, decode_token
+
+    admin_token = auth_headers["Authorization"].removeprefix("Bearer ")
+    mobile_claims = decode_token(admin_token)
+    mobile_claims["clientType"] = "TEACHER_MINI"
+    mobile_headers = {
+        "Authorization": "Bearer " + create_access_token(mobile_claims),
+    }
+
+    miss = client.get("/api/v1/mobile/teacher/internship/my-students", headers=mobile_headers).json()
     assert miss["code"] != 0
     bid = _mk_running_batch(client, auth_headers)
-    ok = client.get("/api/v1/mobile/teacher/internship/my-students", headers=auth_headers,
+    ok = client.get("/api/v1/mobile/teacher/internship/my-students", headers=mobile_headers,
                     params={"batchId": bid}).json()
     assert ok["code"] == 0, ok
 

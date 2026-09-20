@@ -6,28 +6,33 @@
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍异常处置"
   >
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载宿舍异常..." @retry="load"
-                    @back="$router.push('/admin/student-affairs/dashboard')">
+    <div>
 
 
+      <AppGlobalState :state="providerLoading ? 'loading' : providerError ? 'error' : 'ready'" :description="providerError" loading-text="正在加载归寝数据来源…" @retry="loadProvider">
       <section class="presence-provider" :class="{ 'is-disabled': !provider.configured }">
         <div><span>门禁 Provider</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
         <div><span>最后同步</span><strong>{{ provider.lastSyncAt ? provider.lastSyncAt.slice(0, 16).replace('T', ' ') : '—' }}</strong></div>
         <div><span>健康状态</span><strong>{{ providerHealthLabel(provider.healthStatus) }}</strong></div>
         <p>{{ provider.notice || '未接入归寝数据' }}。“归寝未知”表示缺少可靠事实，不等同于未归。</p>
       </section>
+      </AppGlobalState>
 
       <AppSectionCard title="今日归寝状态">
+        <AppGlobalState :state="presenceLoading ? 'loading' : presenceError ? 'error' : 'ready'" :description="presenceError" loading-text="正在加载归寝状态…" @retry="loadPresence">
         <p class="dorm-exception-hint">仅依据批准请假和已标准化的 Provider 事件研判；无数据时保持“未知”，不会生成“未归”结论。</p>
-        <DataTable v-if="presenceItems.length" :columns="presenceColumns" :rows="presenceItems" row-key="studentId">
+        <p v-if="!providerLoading && !provider.configured" class="sa-empty">门禁 Provider 未配置，暂不加载全量在住名单。</p>
+        <DataTable v-else-if="presenceItems.length || presencePagination.total" :columns="presenceColumns" :rows="presenceItems" row-key="studentId" :pagination="presencePagination" @page-change="onPresencePageChange">
           <template #cell-student="{ row }"><strong>{{ row.studentName }}</strong><br><span class="sa-muted">{{ row.studentNo }}</span></template>
           <template #cell-room="{ row }">{{ row.buildingName }} · {{ row.roomNo }}室 · {{ row.bedNo }}床</template>
           <template #cell-presenceStatus="{ row }"><AppStatusTag :type="presenceTone(row.status)" :label="row.statusLabel" /></template>
           <template #cell-lastEventAt="{ row }">{{ row.lastEventAt ? row.lastEventAt.slice(0, 16).replace('T', ' ') : '—' }}</template>
         </DataTable>
         <p v-else class="sa-empty">当前范围暂无在住学生。</p>
+        </AppGlobalState>
       </AppSectionCard>
       <AppSectionCard title="异常列表与处置">
+        <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载宿舍异常…" @retry="loadExceptions" @back="$router.push('/admin/student-affairs/dashboard')">
         <p class="dorm-exception-hint">默认按当前数据范围展示。切换到“待处置”集中处理未闭环记录；长异常说明会自动换行，不再挤压操作列。</p>
         <div v-if="statusFilterLabel" class="sa-student-filter">
           <span>{{ statusFilterLabel }}</span>
@@ -52,8 +57,9 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前范围内暂无宿舍异常。可调整状态筛选，或返回宿舍检查页查看检查记录。</p>
+        </AppGlobalState>
       </AppSectionCard>
-    </AppGlobalState>
+    </div>
 
     <AppConfirmDialog
       v-model:visible="dlg.visible" :title="`处置宿舍异常 · ${typeLabel(dlg.excType)}`" type="primary"
@@ -109,6 +115,9 @@ export default {
       STATUS_OPTIONS,
       loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null, filterStatus: '',
       provider: { providerLabel: '未配置', healthStatus: 'DISABLED', configured: false },
+      providerLoading: true, providerError: '', presenceLoading: true, presenceError: '',
+      requestEpochs: { exceptions: 0, provider: 0, presence: 0 },
+      presencePagination: { page: 1, pageSize: 50, total: 0 },
       presenceItems: [], presenceCounts: {},
       pagination: { page: 1, pageSize: 20, total: 0 },
       dlg: { visible: false, exceptionId: '', excType: '', detail: '' }
@@ -134,8 +143,15 @@ export default {
     this.load()
   },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.load() }
+    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadExceptions() },
+    'ctx.ctxKey'() {
+      this.items = []; this.statusCounts = null; this.pagination.page = 1; this.pagination.total = 0
+      this.presenceItems = []; this.presenceCounts = {}; this.presencePagination.page = 1; this.presencePagination.total = 0
+      this.provider = {}; this.dlg.visible = false
+      this.load()
+    }
   },
+  beforeUnmount() { for (const key of Object.keys(this.requestEpochs)) this.requestEpochs[key]++ },
   methods: {
     riskLevelLabel(value) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '紧急风险' })[value] || (value ? '等级待确认' : '—') },
     riskStatusLabel(status, providedLabel = '') { return providedLabel || ({ PENDING_HANDLE: '待处理', PROCESSING: '处理中', CLOSED: '已关闭', RESOLVED: '已解决' })[status] || (status ? '状态待确认' : '—') },
@@ -145,7 +161,7 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}
-      if (!q.status) return
+      if (!q.status) { this.filterStatus = ''; return }
       const resolved = resolveTodoStatus('dormException', q.status)
       this.filterStatus = resolved.activeKey === 'HANDLED' ? 'HANDLED' : 'PENDING_HANDLE'
     },
@@ -161,30 +177,63 @@ export default {
       if (!this.filterStatus) delete q.status
       else q.status = this.filterStatus
       this.$router.replace({ query: q }).catch(() => {})
-      this.load()
     },
     async load() {
+      await Promise.all([this.loadExceptions(), this.loadProvider()])
+      if (this.provider.configured) {
+        await this.loadPresence()
+        return
+      }
+      this.requestEpochs.presence++
+      this.presenceLoading = false
+      this.presenceError = ''
+      this.presenceItems = []
+      this.presenceCounts = {}
+      this.presencePagination.total = 0
+    },
+    async loadExceptions() {
+      const epoch = ++this.requestEpochs.exceptions
       this.loading = true; this.errorMessage = ''
       try {
         const status = this.filterStatus === 'PENDING_HANDLE' ? 'PENDING_HANDLE' : (this.filterStatus || undefined)
-        const [res, providerRes, presenceRes] = await Promise.all([
-          studentAffairsApi.listDormExceptions({ status, page: this.pagination.page, pageSize: this.pagination.pageSize }),
-          studentAffairsApi.getDormPresenceProvider(),
-          studentAffairsApi.listDormPresence({ page: 1, pageSize: 50 })
-        ])
+        const res = await studentAffairsApi.listDormExceptions({ status, page: this.pagination.page, pageSize: this.pagination.pageSize })
+        if (epoch !== this.requestEpochs.exceptions) return
         this.items = res.data.items || []
         this.pagination.total = res.data.total != null ? res.data.total : this.items.length
         this.statusCounts = res.data.statusCounts || null
-        this.provider = providerRes.data || this.provider
-        this.presenceItems = presenceRes.data.items || []
-        this.presenceCounts = presenceRes.data.statusCounts || {}
       }
-      catch (e) { this.errorMessage = e.message || '异常加载失败' } finally { this.loading = false }
+      catch (e) { if (epoch === this.requestEpochs.exceptions) this.errorMessage = e.message || '异常加载失败' }
+      finally { if (epoch === this.requestEpochs.exceptions) this.loading = false }
+    },
+    async loadProvider() {
+      const epoch = ++this.requestEpochs.provider
+      this.providerLoading = true; this.providerError = ''
+      try {
+        const res = await studentAffairsApi.getDormPresenceProvider()
+        if (epoch === this.requestEpochs.provider) this.provider = res.data || {}
+      } catch (e) { if (epoch === this.requestEpochs.provider) this.providerError = e.message || '归寝数据来源加载失败' }
+      finally { if (epoch === this.requestEpochs.provider) this.providerLoading = false }
+    },
+    async loadPresence() {
+      const epoch = ++this.requestEpochs.presence
+      this.presenceLoading = true; this.presenceError = ''
+      try {
+        const res = await studentAffairsApi.listDormPresence({ page: this.presencePagination.page, pageSize: this.presencePagination.pageSize })
+        if (epoch !== this.requestEpochs.presence) return
+        this.presenceItems = res.data.items || []
+        this.presenceCounts = res.data.statusCounts || {}
+        this.presencePagination.total = res.data.total ?? this.presenceItems.length
+      } catch (e) { if (epoch === this.requestEpochs.presence) this.presenceError = e.message || '归寝状态加载失败' }
+      finally { if (epoch === this.requestEpochs.presence) this.presenceLoading = false }
+    },
+    onPresencePageChange(page) {
+      this.presencePagination.page = page
+      this.loadPresence()
     },
     presenceTone(status) { return ({ IN_DORM: 'success', ON_LEAVE: 'info', LATE_RETURN: 'warning', NOT_RETURNED: 'danger', OUT: 'default', UNKNOWN: 'default' })[status] || 'default' },
     onPageChange(page) {
       this.pagination.page = page
-      this.load()
+      this.loadExceptions()
     },
     goRisk(row) {
       const riskId = row.relatedRisk?.riskId
@@ -204,7 +253,7 @@ export default {
       this.actioning = true; this.errorMessage = ''
       try {
         await studentAffairsApi.handleDormException(this.dlg.exceptionId, reason.trim(), this.dlg.version)
-        await this.load()
+        await this.loadExceptions()
         this.dlg.visible = false
       } catch (e) { this.errorMessage = e.message || '处置失败' } finally { this.actioning = false }
     },

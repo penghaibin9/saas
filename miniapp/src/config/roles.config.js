@@ -90,7 +90,7 @@ export const roleConfigs = {
       { key: 'contact', label: '联系学生', icon: '☎' },
       { key: 'record', label: '记录联系', icon: '✎' },
       { key: 'risk', label: '风险学生', icon: '⚠' },
-      { key: 'care', label: '创建关怀', icon: '♥' },
+      { key: 'care', label: '谈心谈话', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
       { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
@@ -235,7 +235,7 @@ export const roleConfigs = {
     quickActions: [
       { key: 'overview', label: '学院数据', icon: '▦' },
       { key: 'risk', label: '风险概览', icon: '⚠' },
-      { key: 'urge', label: '移动催办', icon: '☎' },
+      { key: 'urge', label: '发布通知', icon: '☎' },
       { key: 'approval', label: '待审批', icon: '✓' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' },
       { key: 'orientationDashboard', label: '迎新看板', icon: '🎒' }

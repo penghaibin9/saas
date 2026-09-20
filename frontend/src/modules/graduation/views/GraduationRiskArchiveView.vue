@@ -85,7 +85,7 @@
           <aside class="rk-list" aria-label="风险处置队列">
             <div class="rk-list__head">
               <div><strong>风险队列</strong><small>第 {{ riskPage }} 页 · {{ riskTotal }} 条</small></div>
-              <span>{{ riskFilters.status || '全部状态' }}</span>
+              <span>{{ riskStatusFilterLabel(riskFilters.status) }}</span>
             </div>
             <ul class="rk-rows">
               <li
@@ -202,7 +202,7 @@
           <aside class="rk-list" aria-label="归档办理队列">
             <div class="rk-list__head">
               <div><strong>归档队列</strong><small>第 {{ archivePage }} 页 · {{ archiveTotal }} 条</small></div>
-              <span>{{ archiveFilters.status || '全部状态' }}</span>
+              <span>{{ archiveStatusFilterLabel(archiveFilters.status) }}</span>
             </div>
             <ul class="rk-rows">
               <li
@@ -530,6 +530,12 @@ export default {
   },
   methods: {
     formatDateTime,
+    riskStatusFilterLabel(value) {
+      return ({ OPEN: '待受理', PROCESSING: '处理中', CLOSED: '已关闭' })[value] || '全部状态'
+    },
+    archiveStatusFilterLabel(value) {
+      return ({ NOT_GENERATED: '待生成', PENDING_SUBMIT: '待提交', SUBMITTED: '已提交', FILED: '已备案', REJECTED: '已驳回' })[value] || '全部状态'
+    },
     routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
     routePage(value) {
       const page = Number.parseInt(this.routeText(value), 10)

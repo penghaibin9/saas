@@ -9,7 +9,7 @@ import { workspaceCurrentPage, workspacePages } from '../src/components/workspac
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/ScoreView.vue', import.meta.url), 'utf8'))
 const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[\s\S]*?AppTextarea, ActionReceipt, AppPagination, ScoreAppealWorkspace \},/, '').replace('export default', 'return')
 function setup(api = {}, permission = () => true, files = {}) {
-  const def = new Function('scoreApi', 'canCode', 'toast', 'isConflict', 'fileSdk', 'window', script)(api, permission, { success() {}, error() {}, info() {} }, isConflict, files, { addEventListener() {}, removeEventListener() {}, confirm: () => false })
+  const def = new Function('scoreApi', 'canCode', 'toast', 'isConflict', 'fileSdk', 'systemConfirm', 'window', script)(api, permission, { success() {}, error() {}, info() {} }, isConflict, files, () => Promise.resolve(false), { addEventListener() {}, removeEventListener() {} })
   const targets = []
   const vm = { ...def.data(), ctx: {}, batchStore: { selectedBatchId: '1', batchStatus: 'DRAFT', withBatchQuery: q => ({ ...q, batchId: '1' }) }, $route: { query: {} }, $router: { replace: t => targets.push(t), push: t => targets.push(t) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
@@ -195,10 +195,10 @@ test('old decision cannot produce a receipt after context switch', async () => {
   const old = vm.onConfirm({ reason: '' }); vm.resetPanel(); finish({ code: 0, data: { id: scoreRecord().id, version: 3 } }); await old; assert.equal(vm.lastReceipt, null)
 })
 
-test('score form navigation blocks unsaved adjustments and active uploads', () => {
+test('score form navigation blocks unsaved adjustments and active uploads', async () => {
   const { vm, def } = setup(); let guard; vm.$router.beforeEach = fn => { guard = fn; return () => {} }; def.mounted.call(vm); selectScore(vm, 'edit')
   const from = { path: '/scores', fullPath: '/scores?id=8&mode=compute', query: { id: '8', mode: 'compute', batchId: '1' } }, to = { path: '/scores', fullPath: '/scores', query: {} }
-  vm.cForm.manualAdjustments.weekly = 2; assert.equal(guard(to, from), false)
-  vm.computeInitial = vm.computeSnapshot(); assert.equal(guard(to, from), true)
-  vm.cForm.uploading = true; assert.equal(guard(to, from), false)
+  vm.cForm.manualAdjustments.weekly = 2; assert.equal(await guard(to, from), false)
+  vm.computeInitial = vm.computeSnapshot(); assert.equal(await guard(to, from), true)
+  vm.cForm.uploading = true; assert.equal(await guard(to, from), false)
 })

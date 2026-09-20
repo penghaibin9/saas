@@ -13,6 +13,7 @@
       </div>
 
       <div class="imd__body">
+        <p v-if="batchName">导入到：{{ batchName }}。文件批次编号可留空自动沿用，填写其他批次将被拒绝。</p>
         <AccountImportBoundaryNotice class="imd__boundary" />
 
         <!-- Step 0：模板与上传 -->
@@ -103,6 +104,7 @@ export default {
   name: 'ImportDialog',
   components: { AppButton, AccountImportBoundaryNotice },
   props: {
+    batchName: { type: String, default: '' },
     visible: { type: Boolean, default: false },
     template: { type: Object, default: null },
     downloadTemplateFn: { type: Function, default: null },

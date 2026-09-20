@@ -140,6 +140,9 @@ def _record_map(db, task_id: int):
 
 
 def _quality_report_in_session(db, task, roster: dict) -> dict:
+    from . import academic_affairs_dynamic_grade_service as dynamic
+    if dynamic.uses_components(db, task):
+        return dynamic.quality_in_session(db, task, roster)
     roster_items = list(roster.get("items") or [])
     records = _record_map(db, int(task.id))
     roster_ids = {
@@ -257,7 +260,8 @@ def teacher_grade_quality_report(task_id: int, user) -> dict:
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id))
         _require_live_teacher(db, task, user)
-        roster = _grade._require_ready_roster(db, task)
+        from . import academic_affairs_dynamic_grade_service as dynamic
+        roster = dynamic.formal_roster(db, task) if dynamic.uses_components(db, task) else _grade._require_ready_roster(db, task)
         return _quality_report_in_session(db, task, roster)
 
 
@@ -376,10 +380,10 @@ def teacher_enter_score(task_id: int, user, body) -> dict:
         return _grade.enter_score(task_id, delegated_user, body)
 
 
-def teacher_submit_task(task_id: int, user) -> dict:
+def teacher_submit_task(task_id: int, user, *, expected=None, command_key=None) -> dict:
     """Canonical submit guarded by the live teaching-task owner."""
     with _canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
-        return _grade.submit_task(task_id, delegated_user)
+        return _grade.submit_task(task_id, delegated_user, expected=expected, command_key=command_key)
 
 
 def teacher_roster(task_id: int, user) -> dict:

@@ -142,7 +142,10 @@ export default {
         provider: 'weixin',
         success: ({ code }) => {
           if (!code) { this.wxPreparing = false; return }
-          realRequest('/auth/wx-login', { method: 'POST', auth: false, data: { code, bindAnother: true } })
+          realRequest('/auth/wx-login', {
+            method: 'POST', auth: false,
+            data: { code, bindAnother: true, clientType: 'STUDENT_MINI' }
+          })
             .then((data) => { this.wxToken = data.wxToken || ''; this.wxReady = !!this.wxToken })
             .catch((e) => toast(e?.message || '微信身份获取失败，请重试'))
             .finally(() => { this.wxPreparing = false })

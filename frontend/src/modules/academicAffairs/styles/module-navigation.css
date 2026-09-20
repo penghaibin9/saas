@@ -1,0 +1,56 @@
+/* Academic-only presentation of the existing shared navigation. */
+.aa-workspace-ui .tw-frame .tw-rail nav {
+  padding: 6px 7px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-gutter: stable;
+}
+.aa-workspace-ui .tw-frame .tw-rail nav button {
+  min-height: 40px;
+  padding: 9px 10px;
+  margin: 2px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--t2);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.aa-workspace-ui .tw-frame .tw-rail.full nav .full-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.aa-workspace-ui .tw-frame .tw-rail nav button.selected {
+  background: var(--pri-50);
+  color: var(--pri);
+  box-shadow: inset 3px 0 var(--pri);
+  font-weight: 650;
+}
+.aa-workspace-ui .tw-frame .tw-rail nav button:hover:not(:disabled) {
+  background: var(--pri-50);
+  color: var(--pri);
+}
+.aa-workspace-ui .tw-frame .tw-rail nav button:disabled { opacity: .55; cursor: not-allowed; }
+.aa-workspace-ui .tw-frame .tw-expand { padding-inline: 16px; gap: 10px; color: var(--t1); }
+.aa-workspace-ui .tw-frame .tw-expand strong { font-size: 14px; }
+.aa-workspace-ui .tw-frame :is(.tw-rail button, .tw-tab button, .tw-tab-actions button, .tw-menu-toggle):focus-visible {
+  outline: 2px solid var(--pri);
+  outline-offset: -2px;
+}
+.aa-workspace-ui .tw-frame .tw-tabbar { min-height: 42px; }
+.aa-workspace-ui .tw-frame .tw-tab { min-width: 118px; max-width: 190px; }
+.aa-workspace-ui .tw-frame .tw-tab button[role=tab] { font-size: 13px; }
+.aa-workspace-ui .tw-frame .tw-tab.selected { background: var(--pri-50); font-weight: 600; }
+@media (hover: hover) {
+  .aa-workspace-ui .tw-frame .tw-rail.auto .tw-rail-body:is(:hover, :focus-within) nav .full-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 900px) {
+  .aa-workspace-ui .tw-frame .tw-rail nav button { min-height: 44px; }
+  .aa-workspace-ui .tw-frame.mobile-open .tw-rails { max-width: calc(100vw - 20px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aa-workspace-ui .tw-frame .tw-rail nav button { transition: none; }
+}

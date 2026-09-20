@@ -101,7 +101,7 @@ export default {
   data() {
     return {
       list: null, state: 'loading', actingId: '', previewingId: '', batches: [],
-      batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false
+      batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false, loadSeq: 0
     }
   },
   computed: {
@@ -116,6 +116,7 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onUnload() { this.loadSeq++ },
   onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -124,22 +125,27 @@ export default {
   methods: {
     fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
     async load(done) {
+      const sequence = ++this.loadSeq
       this.state = 'loading'
+      this.list = []; this.loadingMore = false
       this.page = 1
       this.hasMore = false
       try {
         const context = useInternshipContextStore()
         context.restore()
         await context.load(true)
+        if (sequence !== this.loadSeq) return
         this.batches = context.batches || []
         this.batchId = context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
         const data = await teacherInternshipPlanTasks(this.batchId, 1, 20)
+        if (sequence !== this.loadSeq) return
         this.list = (data && (data.items || data.list)) || []
         this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
+        if (sequence !== this.loadSeq) return
         this.list = []
         this.state = 'error'
         toast((e && e.message) || '计划任务加载失败')
@@ -158,15 +164,17 @@ export default {
     async loadMore() {
       if (!this.batchId || !this.hasMore || this.loadingMore || this.state !== 'ready') return
       const selectedBatch = this.batchId
+      const sequence = this.loadSeq
       this.loadingMore = true
       try {
         const nextPage = this.page + 1
         const data = await teacherInternshipPlanTasks(selectedBatch, nextPage, 20)
-        if (selectedBatch !== this.batchId) return
+        if (sequence !== this.loadSeq || selectedBatch !== this.batchId) return
         this.list = [...(this.list || []), ...(data?.items || [])]
         this.page = nextPage
         this.hasMore = !!data?.hasMore
-      } finally { this.loadingMore = false }
+      } catch (e) { if (sequence === this.loadSeq) toast(e?.message || '计划任务加载失败，请重试') }
+      finally { if (sequence === this.loadSeq) this.loadingMore = false }
     },
     async previewEvidence(item) {
       if (!item.evidenceFileId || this.previewingId) return
@@ -177,6 +185,8 @@ export default {
     },
     review(p, action) {
       if (!this.canReview || this.actingId || this.state !== 'ready') return
+      const sequence = this.loadSeq
+      const batchId = this.batchId
       const reject = action === 'REJECT'
       uni.showModal({
         title: reject ? '退回任务' : '确认完成',
@@ -184,13 +194,13 @@ export default {
         placeholderText: reject ? '请填写具体退回原因（至少5字）' : '可填写确认意见',
         content: '',
         success: async (r) => {
-          if (!r.confirm) return
+          if (!r.confirm || this.actingId || sequence !== this.loadSeq) return
           const comment = (r.content || '').trim()
           if (reject && comment.length < 5) { toast('退回原因至少5个字'); return }
           this.actingId = p.id
           try {
-            await teacherInternshipPlanTaskReview(p.id, this.batchId, {
-              action, comment, expectedVersion: p.version, batchId: this.batchId
+            await teacherInternshipPlanTaskReview(p.id, batchId, {
+              action, comment, expectedVersion: p.version, batchId
             })
             toast(reject ? '已退回学生修改' : '已确认任务完成')
             await this.load()

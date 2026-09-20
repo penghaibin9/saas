@@ -46,16 +46,24 @@ def test_dynamic_grade_source_defaults_optional_component_to_zero_and_revives_so
     ).read_text(encoding="utf-8")
 
     assert "动态成绩项须为1-12项" in source
-    assert 'value = _score(submitted[component["code"]], component["name"]) if supplied else 0.0' in source
+    from app.modules.academic_affairs.services.academic_affairs_dynamic_grade_service import prepare_component_row
+    prepared = prepare_component_row([
+        {"code": "PROJECT", "name": "项目", "weight": 70, "required": True},
+        {"code": "LAB", "name": "实训", "weight": 30, "required": False},
+    ], {"PROJECT": 80})
+    assert prepared["totalScore"] == 56
+    assert prepared["components"][1]["score"] == 0
+    assert prepared["components"][1]["defaultedToZero"] is True
     assert '"defaultedToZero": not supplied' in source
     assert "resolve_versioned_roster" in source
     assert "AaGradeRecord" in source
-    assert 'scheme.status = "LOCKED"' in source
+    assert 'scheme.status, scheme.locked_at, scheme.locked_by = "LOCKED"' in source
     assert "academic_affairs_grade_service as grade_service" in source
     assert "academic_affairs_grade_identity_facade" not in source
     assert "row.is_deleted = False" in source
-    assert "AaGradeComponentScore.component_code == component[\"code\"]" in source
-    assert ").with_for_update()).first()" in source
+    assert "by_code = {row.component_code: row for row in existing}" in source
+    assert "row = by_code.get(code)" in source
+    assert ".with_for_update().execution_options(populate_existing=True)" in source
 
 
 def test_graduation_evidence_hash_is_stable_and_contains_drill_identity():

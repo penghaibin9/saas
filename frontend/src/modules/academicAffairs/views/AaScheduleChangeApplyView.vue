@@ -1,11 +1,21 @@
 <template>
   <ModulePageShell
-    title="发起调停课"
-    subtitle="教师就本人已发布课位发起调课/停课/补课；提交即做目标课位三重冲突预检（冲突则不予受理）"
+    title="调停课申请"
+    subtitle="教师从本人正式课位发起，不直接修改课表"
     :role-name="roleName"
     :data-scope-name="scopeName"
   >
+    <template #actions>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule-change')">返回调停课台账</AppButton>
+      <AppButton variant="primary" :disabled="submitting || Boolean(unconfirmed)" @click="origin ? onSubmit() : openMySchedule()">{{ origin ? '预检后提交申请' : '从正式课位选择' }}</AppButton>
+    </template>
     <div class="mp-stack">
+      <section v-if="unconfirmed && !submitting" class="sc-unconfirmed" role="alert">
+        <strong>提交结果未确认，已暂停此课位的重复提交</strong>
+        <p>原课位 {{ unconfirmed.originItemId }} · 提交时间 {{ new Date(unconfirmed.startedAt).toLocaleString() }}。请到调停课台账核对；列表暂未查到也不能证明提交失败。</p>
+        <p v-if="unconfirmedDraft">本次提交原因：{{ unconfirmedDraft.reason }}</p>
+        <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/schedule-change')">查看调停课台账</AppButton>
+      </section>
       <section v-if="receipt" class="sc-receipt" role="status">
         <div><strong>✓ 调停课申请已提交</strong><span>{{ receipt.courseName }} · 单据 {{ receipt.changeId }}</span></div>
         <div><small>当前结果</small><b>{{ receipt.statusLabel }}</b></div>
@@ -15,7 +25,15 @@
           <AppButton size="small" @click="openMySchedule">继续从课表选择</AppButton>
         </div>
       </section>
-      <AppSectionCard title="原安排" class="sc-origin-card">
+      <section v-if="origin" class="sc-object-context" aria-label="当前调停课对象">
+        <div><strong>{{ origin.courseName || '课程待确认' }} · {{ origin.className || '教学班待确认' }}</strong><p>调停课申请 · {{ origin.batchName || '正式课表' }} · 原课表项 {{ origin.itemId || form.originItemId }}</p><p>来源：从本人正式课表选择 · 当前状态：{{ receipt ? receipt.statusLabel : '申请编辑中' }}</p></div>
+        <dl><div><dt>当前责任</dt><dd>{{ receipt ? '学院教务审核人' : '任课教师 / 当前审核岗' }}</dd></div><div><dt>下一责任</dt><dd>{{ receipt ? '教务审核岗 → 课表生效 → 师生通知' : '学院教务审核人' }}</dd></div></dl>
+      </section>
+      <ol class="sc-flow-rail" aria-label="调停课申请流程">
+        <li v-for="(stage, index) in stages" :key="stage" :class="flowClass(index + 1)"><b>{{ index + 1 }}</b><span>{{ stage }}</span><small>{{ flowNote(index + 1) }}</small></li>
+      </ol>
+      <div class="sc-compare">
+      <AppSectionCard title="原正式课位" class="sc-origin-card">
         <LoadingState v-if="originLoading" />
         <ErrorState v-else-if="originError" :description="originError" @retry="loadOrigin" />
         <EmptyState
@@ -42,6 +60,7 @@
       </AppSectionCard>
 
       <form v-if="origin" class="sc-form" @submit.prevent="onSubmit">
+        <h2 class="sc-form__title">拟调整课位</h2>
         <div class="sc-fld sc-fld--full">
           <label class="sc-lbl">变更类型 <i>*</i></label>
           <div class="sc-radio">
@@ -53,7 +72,7 @@
 
         <div class="sc-fld sc-fld--full">
           <label class="sc-lbl">原因 <i>*</i>（≥5 字）</label>
-          <input ref="reasonInput" class="sc-in" v-model.trim="form.reason" placeholder="如：教师因公出差需调整" />
+          <textarea ref="reasonInput" class="sc-in" v-model.trim="form.reason" rows="3" placeholder="请说明本次调整原因" />
           <AppQuickPhrases scene-key="aa.schedchg.reason" @pick="onPickReason" />
         </div>
 
@@ -87,8 +106,9 @@
             <AppButton :disabled="!canCheckConflict" :loading="checkingConflict" @click="checkConflict">
               检测冲突
             </AppButton>
-            <p v-if="conflictResult === undefined" class="sc-conflict__hint">
-              先检测目标课位是否冲突，提交时仍会做同一算法的强制校验（预检失败不阻止提交）
+            <p v-if="conflictError" class="sc-conflict__bad" role="alert">{{ conflictError }}</p>
+            <p v-else-if="conflictResult === undefined" class="sc-conflict__hint">
+              检测教师、班级和教室冲突；提交时仍由服务端复核。
             </p>
             <p v-else-if="conflictResult === null" class="sc-conflict__ok">✓ 目标课位暂无冲突</p>
             <p v-else-if="conflictResult" class="sc-conflict__bad">
@@ -107,9 +127,10 @@
         <p v-if="err" class="sc-err">{{ err }}</p>
         <div class="sc-btns">
           <AppButton @click="$router.back()">取消</AppButton>
-          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting">提交申请</button>
+          <button type="submit" class="mp-btn mp-btn--primary" :disabled="submitting || !!unconfirmed">{{ unconfirmed ? '结果待核对' : '提交申请' }}</button>
         </div>
       </form>
+      </div>
     </div>
   </ModulePageShell>
 </template>
@@ -122,6 +143,9 @@ import { AppQuickPhrases, AppSelect, AppSectionCard } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { scheduleChangeApi, CHANGE_TYPES } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { systemConfirm } from '@/services/systemDialog'
+import { readUnconfirmedWrite, markUnconfirmedWrite, clearUnconfirmedWrite, isDefiniteWriteRejection } from '../components/parallel-b/unconfirmedWrite'
 
 const EMPTY = () => ({
   changeType: 'ADJUST', originItemId: '', reason: '',
@@ -137,7 +161,8 @@ export default {
     return {
       CHANGE_TYPES, form: EMPTY(), submitting: false, err: '',
       checkingConflict: false, origin: null, originLoading: false, originError: '',
-      receipt: null,
+      receipt: null, unconfirmed: null, unconfirmedDraft: null,
+      originSeq: 0, conflictSeq: 0, submitSeq: 0, conflictError: '',
       // undefined=未检测；null=检测通过无冲突；对象={type,conflictWith,detail}=有冲突
       conflictResult: undefined
     }
@@ -147,9 +172,29 @@ export default {
     this.form.originItemId = String(query.originItemId || '').trim()
     const requestedType = String(query.changeType || '').toUpperCase()
     if (CHANGE_TYPES.some((item) => item.value === requestedType)) this.form.changeType = requestedType
+    this.restoreUnconfirmed()
     if (this.form.originItemId) this.loadOrigin()
   },
+  beforeUnmount() { this.originSeq++; this.conflictSeq++; this.submitSeq++ },
+  async beforeRouteLeave() {
+    if (this.submitting) return false
+    return !this.form.reason && !this.form.makeupPlan || await systemConfirm({ title:'确认离开调课申请', message:'当前调整内容尚未提交，离开后填写内容会丢失。', confirmText:'放弃并离开', type:'danger' })
+  },
+  async beforeRouteUpdate(to, from) {
+    if (to.query.originItemId === from.query.originItemId) return true
+    if (this.submitting) return false
+    return !this.form.reason && !this.form.makeupPlan || await systemConfirm({ title:'确认切换课位', message:'切换课位将放弃尚未提交的调整内容。', confirmText:'放弃并切换', type:'danger' })
+  },
   computed: {
+    submissionKey() {
+      const user = currentUserFromToken() || {}
+      return JSON.stringify([user.tenantId, user.userId, user.activeContextId, user.currentRoleCode || this.ctx?.currentRole?.roleCode, this.form.originItemId, 'schedule-change.submit'])
+    },
+    identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx?.currentRole, this.ctx?.dataScope]) },
+    conflictKey() {
+      const f = this.form
+      return JSON.stringify([this.identityKey, f.originItemId, f.changeType, f.targetWeekday, f.targetSlotNo, f.targetStartWeek, f.targetEndWeek, f.targetWeekParity, f.targetClassroom])
+    },
     weekdayOptions() { return Array.from({ length: 7 }, (_, i) => ({ value: i + 1, label: `周${i + 1}` })) },
     weekParityOptions() {
       return [
@@ -160,11 +205,34 @@ export default {
     },
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' },
+    stages() { return ['正式课位', '发起申请', '冲突预检', '审批生效', '通知回执'] },
+    flowIndex() {
+      if (this.receipt) return 4
+      if (this.origin && this.conflictResult !== undefined) return 3
+      if (this.origin) return 2
+      return 1
+    },
     canCheckConflict() {
       return !!(this.form.originItemId && this.form.targetWeekday && this.form.targetSlotNo)
     }
   },
   watch: {
+    '$route.query.originItemId'(value) {
+      this.originSeq++; this.conflictSeq++
+      this.form = EMPTY(); this.origin = null; this.originError = ''; this.err = ''; this.receipt = null
+      this.form.originItemId = String(value || '').trim()
+      this.originLoading = false
+      this.restoreUnconfirmed()
+      if (this.form.originItemId) this.loadOrigin()
+    },
+    identityKey() {
+      this.originSeq++; this.conflictSeq++; this.submitSeq++
+      this.form = EMPTY(); this.origin = null; this.receipt = null
+      this.unconfirmed = null; this.unconfirmedDraft = null
+      this.originLoading = false; this.checkingConflict = false; this.submitting = false
+      this.originError = ''; this.err = ''; this.conflictError = ''; this.conflictResult = undefined
+    },
+    conflictKey() { this.conflictSeq++; this.checkingConflict = false; this.conflictError = ''; this.conflictResult = undefined },
     // 目标字段变化后旧的预检结果失效，避免用户误以为仍然有效
     'form.originItemId'() { this.conflictResult = undefined },
     'form.targetWeekday'() { this.conflictResult = undefined },
@@ -175,16 +243,33 @@ export default {
     'form.targetClassroom'() { this.conflictResult = undefined }
   },
   methods: {
+    restoreUnconfirmed() {
+      this.unconfirmedDraft = null
+      try { this.unconfirmed = readUnconfirmedWrite(this.submissionKey) }
+      catch { this.err = '无法读取提交核对记录，暂不能提交，请恢复浏览器存储后重试' }
+    },
     conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || (t ? '类型待确认' : '—') },
     weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || (value ? '待确认' : '')}` },
     parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
+    flowClass(index) { return { 'is-done': index < this.flowIndex, 'is-active': index === this.flowIndex } },
+    flowNote(index) {
+      if (index < this.flowIndex) return '已核对'
+      if (index > this.flowIndex) return '等待前序完成'
+      return ['请从本人课表选择', '当前设计与填写', '按真实课位校验', '等待当前岗位审核', '按真实状态解锁'][index - 1]
+    },
     openMySchedule() { this.$router.push('/admin/academic-affairs/schedule/teacher') },
     async loadOrigin() {
       if (!this.form.originItemId) return
+      const seq = ++this.originSeq
+      const id = this.form.originItemId
+      const identity = this.identityKey
+      const current = () => seq === this.originSeq && id === this.form.originItemId && identity === this.identityKey
       this.originLoading = true
       this.originError = ''
+      this.origin = null
+      try {
       const res = await scheduleChangeApi.originItem(this.form.originItemId)
-      this.originLoading = false
+      if (!current()) return
       if (res.code !== 0) {
         this.origin = null
         this.originError = res.message || '原课位已发生变化，请返回本人课表重新选择'
@@ -195,6 +280,9 @@ export default {
       this.form.targetEndWeek = res.data.endWeek || null
       this.form.targetWeekParity = res.data.weekParity || 'ALL'
       this.form.targetClassroom = res.data.classroom || ''
+      } catch (e) {
+        if (current()) this.originError = e?.message || '原课位加载失败，请重试'
+      } finally { if (current()) this.originLoading = false }
     },
     onPickReason(text) {
       const el = this.$refs.reasonInput
@@ -210,7 +298,12 @@ export default {
     },
     async checkConflict() {
       if (!this.canCheckConflict) return
+      const seq = ++this.conflictSeq
+      const key = this.conflictKey
+      const current = () => seq === this.conflictSeq && key === this.conflictKey
       this.checkingConflict = true
+      this.conflictError = ''
+      this.conflictResult = undefined
       try {
         const res = await scheduleChangeApi.conflictCheck({
           originItemId: this.form.originItemId,
@@ -221,9 +314,12 @@ export default {
           targetWeekParity: this.form.targetWeekParity || undefined,
           targetClassroom: this.form.targetClassroom || undefined
         })
-        // 预检失败（含越权/网络异常）不阻断表单：静默保持"未检测"，仍可正常提交由后端把关（卡07 §5.2）
+        if (!current()) return
         this.conflictResult = res.code === 0 ? (res.data.conflict || null) : undefined
-      } finally { this.checkingConflict = false }
+        if (res.code !== 0) this.conflictError = res.message || '冲突检测失败，请重试'
+      } catch (e) {
+        if (current()) this.conflictError = e?.message || '冲突检测失败，请重试'
+      } finally { if (seq === this.conflictSeq) this.checkingConflict = false }
     },
     validate() {
       if (!this.form.originItemId || !this.origin) return '请从本人课表重新选择要变更的课位'
@@ -233,10 +329,25 @@ export default {
       return ''
     },
     async onSubmit() {
+      if (this.submitting) return
+      try { this.unconfirmed = readUnconfirmedWrite(this.submissionKey) || this.unconfirmed }
+      catch { this.err = '无法读取提交核对记录，暂不能提交，请恢复浏览器存储后重试'; return }
+      if (this.unconfirmed) { this.err = '提交结果未确认，请先核对原申请，不能重复提交'; return }
       this.err = this.validate()
       if (this.err) return
+      const seq = ++this.submitSeq
+      const identity = this.identityKey
+      const submittedForm = JSON.stringify(this.form)
+      const courseName = this.origin.courseName
+      const originId = this.form.originItemId
+      const operationKey = this.submissionKey
+      const marker = { originItemId: originId, startedAt: Date.now() }
+      const current = () => seq === this.submitSeq && identity === this.identityKey && originId === this.form.originItemId
       this.submitting = true
       try {
+        // Persist before sending so reload/back navigation cannot silently enable another POST.
+        try { markUnconfirmedWrite(operationKey, marker) }
+        catch { this.err = '无法保存提交核对记录，本次尚未发送，请恢复浏览器存储后重试'; return }
         const body = { ...this.form }
         if (body.changeType === 'STOP') {
           delete body.targetWeekday; delete body.targetSlotNo; delete body.targetStartWeek
@@ -244,25 +355,44 @@ export default {
         }
         if (!body.targetWeekParity) delete body.targetWeekParity
         const res = await scheduleChangeApi.submit(body)
-        if (res.code === 0) {
+        const confirmed = res?.code === 0 && !!res.data?.changeId
+        const rejected = isDefiniteWriteRejection(res)
+        if (confirmed || rejected) clearUnconfirmedWrite(operationKey)
+        if (!current()) return
+        if (confirmed) {
           this.receipt = {
             changeId: res.data.changeId,
-            courseName: res.data.courseName || this.origin.courseName || '课程',
+            status: res.data.status,
+            courseName: res.data.courseName || courseName || '课程',
             statusLabel: '待学院审核'
           }
           toast.success('调停课已提交，进入学院审核')
-          this.form = EMPTY()
-          this.origin = null
-          this.conflictResult = undefined
-        } else {
+          if (JSON.stringify(this.form) === submittedForm) {
+            this.form = EMPTY()
+            this.origin = null
+            this.conflictResult = undefined
+          }
+        } else if (rejected) {
           this.err = res.message || '提交失败'
           toast.error(this.err)
+        } else {
+          this.unconfirmed = marker
+          this.unconfirmedDraft = JSON.parse(submittedForm)
+          this.err = '提交结果未确认，请到台账核对原申请，不能重复提交'
         }
-      } finally { this.submitting = false }
+      } catch {
+        if (current()) {
+          this.unconfirmed = marker
+          this.unconfirmedDraft = JSON.parse(submittedForm)
+          this.err = '提交结果未确认，请先到台账核对，不能重复提交'
+        }
+      } finally { if (seq === this.submitSeq) this.submitting = false }
     },
     goReceipt() {
       if (!this.receipt?.changeId) return
-      this.$router.push(`/admin/academic-affairs/print/schedule-change/${this.receipt.changeId}/notice`)
+      this.$router.push(this.receipt.status === 'APPLIED'
+        ? `/admin/academic-affairs/print/schedule-change/${this.receipt.changeId}/notice`
+        : `/admin/academic-affairs/schedule-change?changeId=${encodeURIComponent(this.receipt.changeId)}`)
     }
   }
 }
@@ -270,7 +400,14 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.sc-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); max-width: 900px; }
+.sc-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.sc-object-context { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .7fr); gap: 24px; align-items: center; padding: 15px 18px; border: 1px solid var(--line, #d9dee8); border-left: 3px solid var(--pri, #2563eb); border-radius: 12px; background: var(--bg-card, #fff); }.sc-object-context strong { font-size: 16px; }.sc-object-context p { margin: 5px 0 0; color: var(--t2, #52647a); font-size: 12px; }.sc-object-context dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0; }.sc-object-context dt { color: var(--t3, #94a3b8); font-size: 12px; }.sc-object-context dd { margin: 5px 0 0; font-size: 13px; font-weight: 600; }
+.sc-flow-rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); list-style: none; margin: 0; padding: 15px 10px; background: var(--bg-card, #fff); border: 1px solid var(--line, #d9dee8); border-radius: 12px; }.sc-flow-rail li { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; color: var(--t2, #52647a); font-size: 12px; }.sc-flow-rail li::after { content: ''; position: absolute; top: 12px; left: calc(50% + 18px); width: calc(100% - 36px); height: 1px; background: var(--line, #d9dee8); }.sc-flow-rail li:last-child::after { display: none; }.sc-flow-rail b { position: relative; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line, #d9dee8); background: #f7f9fc; }.sc-flow-rail .is-done b { color: #16803c; border-color: #b7dfc2; background: #f0f9f2; }.sc-flow-rail .is-active b { color: #fff; border-color: var(--pri, #2563eb); background: var(--pri, #2563eb); }.sc-flow-rail small { color: var(--t3, #94a3b8); }
+.sc-unconfirmed { padding: 16px; border: 1px solid #e7b95d; border-radius: 12px; background: #fffbeb; }
+.sc-unconfirmed p { margin: 8px 0; font-size: 13px; }
+.sc-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 18px; border: 1px solid var(--line, #d9dee8); border-radius: 12px; background: var(--bg-card, #fff); }
+.sc-form__title { grid-column: 1 / -1; font-size: 16px; margin: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line, #d9dee8); }
+.sc-in { min-height: 36px; }
 .sc-fld { display: flex; flex-direction: column; gap: 4px; }
 .sc-fld--full { grid-column: 1 / -1; }
 .sc-lbl { font-size: 12px; color: var(--t2, #475569); }
@@ -285,7 +422,7 @@ export default {
 .sc-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
 .sc-btns { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); }
 .sc-origin-card { max-width: 900px; }
-.sc-origin { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.sc-origin { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
 .sc-origin strong { font-size: 17px; color: var(--text-900, #1f2329); }
 .sc-origin p { margin: 5px 0 0; color: var(--text-500, #86909c); font-size: 13px; }
 .sc-origin dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 0; }
@@ -298,6 +435,8 @@ export default {
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 760px) {
+  .sc-object-context { grid-template-columns: 1fr; }.sc-object-context dl { grid-template-columns: 1fr; }.sc-flow-rail { grid-template-columns: 1fr; gap: 10px; }.sc-flow-rail li { justify-items: start; grid-template-columns: 26px auto; text-align: left; }.sc-flow-rail li::after { display: none; }.sc-flow-rail li small { grid-column: 2; }
+  .sc-compare { grid-template-columns: 1fr; }
   .sc-form { grid-template-columns: 1fr; }
   .sc-fld--full, .sc-err, .sc-btns { grid-column: 1; }
   .sc-origin { grid-template-columns: 1fr; }

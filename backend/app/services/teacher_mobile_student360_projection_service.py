@@ -24,10 +24,20 @@ from sqlalchemy.orm import aliased
 from app.core.exceptions import AppException
 from app.services import mobile_teacher_service as teacher_guard
 from app.services.db_service import _iso, _tid, session
-from app.services.teacher_student_visibility_service import compile_teacher_student_visibility
+from app.services.teacher_student_visibility_service import compile_teacher_mobile_student_visibility
 
 _STUDENT360_PROJECTIONS = ("todo", "internship", "graduation", "case")
 _ACTIVE_WARNING_STATUSES = ("PENDING_HANDLE", "PROCESSING", "ESCALATED")
+
+
+def _affairs_summary(affairs) -> str:
+    if affairs is None:
+        return "暂无学工摘要"
+    care = {"NORMAL": "常规", "FOCUS": "重点关注", "KEY_CARE": "重点关怀"}
+    risk = {"LOW": "低", "MEDIUM": "中", "HIGH": "高", "URGENT": "紧急", "CRITICAL": "严重"}
+    care_label = care.get(str(affairs.care_level or "NORMAL").upper(), "待确认")
+    risk_label = risk.get(str(affairs.risk_level or "LOW").upper(), "待确认")
+    return f"关怀：{care_label} · 风险：{risk_label}"
 
 
 def _projection_version(user: dict, student_id: int) -> str:
@@ -83,6 +93,28 @@ def _section(key: str, title: str, *, has_data: bool, status: str = "",
     }
 
 
+def _stable_student_domain_link(model, student):
+    """Use the stable profile relation first; only unlinked legacy rows may fall back by number.
+
+    A record already tied to some other ``StudentProfile.id`` is never a
+    historical fallback for a matching student number.  This prevents a later
+    transfer/correction row from being displayed under the wrong student's
+    Student360 projection.
+    """
+    return or_(
+        model.student_id == student.id,
+        and_(
+            model.student_id.is_(None),
+            model.student_no == student.student_no,
+        ),
+    )
+
+
+def _stable_student_domain_order(model):
+    """Prefer a correctly linked row over an otherwise matching legacy snapshot."""
+    return (model.student_id.is_not(None).desc(), model.id.desc())
+
+
 def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
     """Build one authorised Student360 projection with object-action context."""
     teacher_guard._require_teacher(user)
@@ -102,7 +134,8 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
 
     student = aliased(StudentProfile, name="student360_student")
     school_class = aliased(SchoolClass, name="student360_class")
-    visibility = compile_teacher_student_visibility(user, student.id)
+    scope = teacher_guard.resolve_teacher_scope(user)
+    visibility = compile_teacher_mobile_student_visibility(user, student.id, scope=scope)
     as_of = datetime.utcnow()
 
     with session() as db:
@@ -133,8 +166,8 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
             AcademicStudent.tenant_id == _tid(),
             AcademicStudent.is_deleted.is_(False),
             AcademicStudent.record_status == "ACTIVE",
-            AcademicStudent.student_no == stu.student_no,
-        ).order_by(AcademicStudent.id.desc()).limit(1)).first()
+            _stable_student_domain_link(AcademicStudent, stu),
+        ).order_by(*_stable_student_domain_order(AcademicStudent)).limit(1)).first()
         warning_count = 0
         if academic:
             warning_count = int(db.scalar(
@@ -157,22 +190,22 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
             GraduationStudent.tenant_id == _tid(),
             GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.student_no == stu.student_no,
-        ).order_by(GraduationStudent.id.desc()).limit(1)).first()
+            _stable_student_domain_link(GraduationStudent, stu),
+        ).order_by(*_stable_student_domain_order(GraduationStudent)).limit(1)).first()
 
         employment = db.scalars(select(EmpStudent).where(
             EmpStudent.tenant_id == _tid(),
             EmpStudent.is_deleted.is_(False),
             EmpStudent.record_status == "ACTIVE",
-            or_(EmpStudent.student_id == stu.id, EmpStudent.student_no == stu.student_no),
-        ).order_by(EmpStudent.id.desc()).limit(1)).first()
+            _stable_student_domain_link(EmpStudent, stu),
+        ).order_by(*_stable_student_domain_order(EmpStudent)).limit(1)).first()
 
         affairs = db.scalars(select(CsServiceStudent).where(
             CsServiceStudent.tenant_id == _tid(),
             CsServiceStudent.is_deleted.is_(False),
             CsServiceStudent.record_status == "ACTIVE",
-            or_(CsServiceStudent.student_id == stu.id, CsServiceStudent.student_no == stu.student_no),
-        ).order_by(CsServiceStudent.id.desc()).limit(1)).first()
+            _stable_student_domain_link(CsServiceStudent, stu),
+        ).order_by(*_stable_student_domain_order(CsServiceStudent)).limit(1)).first()
 
         discipline = None
         if affairs:
@@ -211,7 +244,7 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
         _section(
             "academic", "学业",
             has_data=bool(academic), status=academic_status,
-            summary=(f"GPA {float(academic.gpa or 0):.2f} · {warning_count} 条在办预警" if academic else "暂无学业摘要"),
+            summary=(f"平均绩点 {float(academic.gpa or 0):.2f} · {warning_count} 条在办预警" if academic else "暂无学业摘要"),
             abnormal=warning_count > 0,
             action_key="ACADEMIC_WARNING" if warning_count else None,
             record_id=str(academic.id) if academic else None,
@@ -243,7 +276,7 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
         _section(
             "affairs", "学工",
             has_data=bool(affairs), status=affairs_status,
-            summary=(f"关怀 {affairs.care_level or 'NORMAL'} · 风险 {affairs.risk_level or 'LOW'}" if affairs else "暂无学工摘要"),
+            summary=_affairs_summary(affairs),
             abnormal=str(getattr(affairs, "risk_level", "") or "").upper() in {"MEDIUM", "HIGH", "URGENT", "CRITICAL"},
             action_key="STUDENT_AFFAIRS" if affairs else None,
             record_id=str(affairs.id) if affairs else None,

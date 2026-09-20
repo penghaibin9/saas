@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 /**
  * 手册 §13 测试矩阵 · Real Task 行的真实点击回放。
@@ -90,15 +91,7 @@ async function serverTruth(request, pathname) {
 }
 
 async function loginStudentMini(page) {
-  await page.goto(`${miniBase}/#/pages/login/student/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(config.student.username)
-  await fields.nth(1).fill(config.student.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(config.student.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入学生首页', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/student\/home\/index/, { timeout: 20_000 })
+  await loginMiniH5(page, { baseUrl: miniBase, entry: 'student', account: config.student, timeout: 20_000 })
 }
 
 test.describe.serial('Student V3 · Real Task 真实点击回放', () => {

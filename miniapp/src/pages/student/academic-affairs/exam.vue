@@ -1,17 +1,19 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="brand" title="我的考试 / 缓考" back />
-    <MobileGlobalState :state="state" @retry="load">
+    <AcademicPageNav variant="default" title="我的考试 / 缓考" show-back />
+    <AcademicPageState :state="state" @retry="load">
       <view class="page-pad stack" v-if="d">
+        <view v-if="applicationNotice" class="ed__notice"><text>{{ applicationNotice }}</text><button v-if="pendingApplication" class="btn" @click="load">核对本人记录</button></view>
+        <view v-if="partialErrors.length" class="ed__partial"><text>{{ partialErrors.join('、') }}暂时无法更新，其它内容仍可查看。</text><text @click="load()">重试</text></view>
         <view class="section-head">
           <text class="section-head__title">我的考试安排</text>
           <text
             v-if="d.schedule && d.schedule.length"
             class="section-head__more"
             @click="printTicket"
-          >打印准考证</text>
+          >复制准考证摘要</text>
         </view>
-        <MobileGlobalState v-if="!(d.schedule && d.schedule.length)" state="empty" title="暂无已发布考试安排"
+        <AcademicPageState v-if="!partialErrors.includes('考试安排') && !(d.schedule && d.schedule.length)" state="empty" title="暂无已发布考试安排"
           description="教务发布考场座位后，准考证与考场信息会出现在此。" />
         <view class="list-group" v-else>
           <view v-for="it in d.schedule" :key="it.examCourseId" class="list-row">
@@ -22,11 +24,16 @@
             </view>
           </view>
         </view>
+        <view v-if="d.scheduleTotal > 0 || schedulePage > 1" class="ed__pager">
+          <button class="btn ed__pager-button" :disabled="!hasPreviousSchedulePage || state === 'loading'" @click="previousSchedulePage">上一页</button>
+          <text>第 {{ schedulePage }} / {{ schedulePageCount }} 页</text>
+          <button class="btn ed__pager-button" :disabled="!hasNextSchedulePage || state === 'loading'" @click="nextSchedulePage">下一页</button>
+        </view>
 
         <view class="section-head">
           <text class="section-head__title">可申请缓考的考试</text>
         </view>
-        <MobileGlobalState v-if="!d.options.length" state="empty" title="暂无可申请的考试"
+        <AcademicPageState v-if="!partialErrors.includes('可申请考试') && !d.options.length" state="empty" title="暂无可申请的考试"
           description="已排考且未开考的课程会在此显示，发布后即可申请缓考。" />
         <view class="list-group" v-else>
           <view v-for="c in d.options" :key="c.examCourseId" class="list-row">
@@ -45,17 +52,18 @@
           <picker mode="selector" :range="reasonOptions" range-key="label" @change="onReasonPick">
             <view class="ed__input ed__picker">{{ reasonLabel(form.reasonType) }}</view>
           </picker>
-          <textarea class="ed__textarea" v-model="form.reason" :maxlength="500" placeholder="缓考原因说明（选填，如病假需附材料请线下提交辅导员）" placeholder-class="ed__ph" />
+          <textarea class="ed__textarea" :disabled="submitting || !!pendingApplication" v-model="form.reason" :maxlength="500" placeholder="缓考原因说明（选填，材料要求请向学校核对）" placeholder-class="ed__ph" />
           <view class="ed__form-actions">
             <button class="btn btn-ghost" @click="showForm = false">取消</button>
-            <button class="btn btn-primary" :disabled="submitting" @click="submit">
+            <button class="btn btn-primary" :disabled="submitting || !!pendingApplication" @click="submit">
               {{ submitting ? '提交中…' : '提交申请' }}
             </button>
           </view>
         </view>
 
         <view class="section-head"><text class="section-head__title">我的缓考申请</text></view>
-        <MobileGlobalState v-if="!d.deferrals.length" state="empty" title="暂无缓考申请" description="选择上方可申请的考试发起缓考。" />
+        <view v-if="targetId" class="ed__notice"><text>当前定位到指定缓考申请</text><button class="btn" :disabled="state === 'loading'" @click="showAllDeferrals">查看全部申请</button></view>
+        <AcademicPageState v-if="!partialErrors.includes('缓考记录') && !d.deferrals.length" state="empty" title="暂无缓考申请" description="选择上方可申请的考试发起缓考。" />
         <view class="list-group" v-else>
           <view v-for="r in d.deferrals" :key="r.deferId" class="list-row" :class="{ 'is-target': String(r.deferId) === targetId }">
             <view class="flex-1">
@@ -69,104 +77,175 @@
             </view>
           </view>
         </view>
+        <view v-if="d.deferralsTotal > 0 || deferPage > 1" class="ed__pager">
+          <button class="btn ed__pager-button" :disabled="!hasPreviousDeferPage || state === 'loading'" @click="previousDeferPage">上一页</button>
+          <text>第 {{ deferPage }} / {{ deferPageCount }} 页</text>
+          <button class="btn ed__pager-button" :disabled="!hasNextDeferPage || state === 'loading'" @click="nextDeferPage">下一页</button>
+        </view>
       </view>
-    </MobileGlobalState>
+    </AcademicPageState>
+    <MobileTabBar side="student" active="" />
   </view>
 </template>
 
 <script>
+import AcademicPageNav from './AcademicPageNav.vue'
+import AcademicPageState from './AcademicPageState.vue'
 import { academicStudentApi as studentApi } from '@/services/academicStudentApi'
-import { createSubmitLock, normalizeError } from '@/services/request'
+import { academicApplicationPage } from './application-page'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { toast } from '@/utils/nav'
+import { savePending } from './pending-ledger'
+const isForbidden = error => Number(error?.httpStatus || error?.statusCode) === 403 || /^403/.test(String(error?.code || '')) || error?.code === 'NO_PERMISSION'
+const REASON_OPTIONS = [{ label: '疾病', value: 'ILLNESS' }, { label: '公务或学校安排', value: 'OFFICIAL' }, { label: '家庭重大事项', value: 'FAMILY' }, { label: '其他', value: 'OTHER' }]
+const REASON_LABELS = { ILLNESS: '疾病', SICK: '疾病', MEDICAL: '疾病', OFFICIAL: '公务或学校安排', EMERGENCY: '突发事件', FAMILY: '家庭重大事项', OTHER: '其他' }
+const EXAM_PAGE_SIZE = 20
+const DEFER_PAGE_SIZE = 20
 
-const submitLock = createSubmitLock(1500)
-const REASON_OPTIONS = [
-  { label: '病假', value: 'SICK' },
-  { label: '突发事件', value: 'EMERGENCY' },
-  { label: '其他', value: 'OTHER' }
-]
-const REASON_MAP = REASON_OPTIONS.reduce((m, o) => ({ ...m, [o.value]: o.label }), {})
+function normalizeExamSchedulePage(result, requestedPage) {
+  const items = result?.items
+  const page = result?.page
+  const pageSize = result?.pageSize
+  const total = result?.total
+  const hasMore = result?.hasMore
+  if (!Array.isArray(items) || !Number.isSafeInteger(page) || page !== requestedPage || page < 1
+    || pageSize !== EXAM_PAGE_SIZE || !Number.isSafeInteger(total) || total < 0
+    || typeof hasMore !== 'boolean' || items.length > pageSize
+    || (items.length > 0 && total < ((page - 1) * pageSize) + items.length)) {
+    throw new Error('考试安排分页信息无法核对')
+  }
+  if (hasMore !== page * pageSize < total) throw new Error('考试安排分页状态无法核对')
+  return { items, page, pageSize, total, hasMore }
+}
+
+function normalizeDeferPage(result, requestedPage) {
+  const items = result?.items
+  const page = result?.page
+  const pageSize = result?.pageSize
+  const total = result?.total
+  const hasMore = result?.hasMore
+  if (!Array.isArray(items) || !Number.isSafeInteger(page) || page !== requestedPage || page < 1
+    || pageSize !== DEFER_PAGE_SIZE || !Number.isSafeInteger(total) || total < 0
+    || typeof hasMore !== 'boolean' || items.length > pageSize
+    || (items.length > 0 && total < ((page - 1) * pageSize) + items.length)) {
+    throw new Error('缓考记录分页信息无法核对')
+  }
+  if (hasMore !== page * pageSize < total) throw new Error('缓考记录分页状态无法核对')
+  return { items, page, pageSize, total, hasMore }
+}
 
 export default {
-  data() {
-    return {
-      d: null, state: 'loading', showForm: false, submitting: false,
-      selectedCourse: null, form: { reasonType: 'SICK', reason: '' },
-      reasonOptions: REASON_OPTIONS, targetId: ''
-    }
+  components: { AcademicPageNav, AcademicPageState },
+  mixins: [academicApplicationPage],
+  created() { this.applicationScope = 'exam' },
+  data() { return { d: null, state: 'loading', showForm: false, selectedCourse: null, form: { reasonType: 'ILLNESS', reason: '' }, reasonOptions: REASON_OPTIONS, targetId: '', partialErrors: [], printing: false, schedulePage: 1, deferPage: 1, academicDraftFields: ['selectedCourse', 'form', 'showForm'] } },
+  onLoad(options = {}) { this.targetId = String(options.id || options.deferId || options.recordId || ''); this.load() },
+  computed: {
+    schedulePageCount() { return this.d?.scheduleTotal ? Math.ceil(this.d.scheduleTotal / EXAM_PAGE_SIZE) : 1 },
+    hasPreviousSchedulePage() { return this.schedulePage > 1 },
+    hasNextSchedulePage() { return this.d?.scheduleHasMore === true },
+    deferPageCount() { return this.d?.deferralsTotal ? Math.ceil(this.d.deferralsTotal / DEFER_PAGE_SIZE) : 1 },
+    hasPreviousDeferPage() { return this.deferPage > 1 },
+    hasNextDeferPage() { return this.d?.deferralsHasMore === true }
   },
-  onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
   methods: {
-    load() {
-      this.state = 'loading'
-      Promise.all([
-        studentApi.getMyExamSchedule(),
-        studentApi.getMyDeferOptions(),
-        studentApi.getMyDeferrals()
-      ]).then(([sched, opts, defers]) => {
-        this.d = {
-          schedule: (sched && sched.items) || [],
-          options: (opts && opts.items) || [],
-          deferrals: (defers && defers.items) || []
+    resetAcademicContext() { this.clearApplicationContext(); this.targetId = ''; this.partialErrors = []; this.printing = false; this.schedulePage = 1; this.deferPage = 1; this.finishApplication() },
+    clearForbiddenExam() {
+      const hadPending = this.protectPendingReference()
+      this.d = null; this.targetId = ''; this.partialErrors = []; this.printing = false; this.schedulePage = 1; this.deferPage = 1; this.finishApplication(); this.submitting = false
+      this.applicationNotice = hadPending ? '当前无权核对考试与缓考记录；本次办理仍待核实。' : ''
+      savePending('draft:' + this.applicationScope, null)
+    },
+    finishApplication() { this.showForm = false; this.selectedCourse = null; this.form = { reasonType: 'ILLNESS', reason: '' } },
+    previousSchedulePage() { return this.hasPreviousSchedulePage ? this.load(this.schedulePage - 1) : Promise.resolve(null) },
+    nextSchedulePage() { return this.hasNextSchedulePage ? this.load(this.schedulePage + 1) : Promise.resolve(null) },
+    previousDeferPage() { return this.hasPreviousDeferPage ? this.load(this.schedulePage, this.deferPage - 1) : Promise.resolve(null) },
+    nextDeferPage() { return this.hasNextDeferPage ? this.load(this.schedulePage, this.deferPage + 1) : Promise.resolve(null) },
+    showAllDeferrals() { this.targetId = ''; return this.load(this.schedulePage, 1) },
+    load(requestedSchedulePage = this.schedulePage, requestedDeferPage = this.deferPage) {
+      const resetForIdentity = this.readIdentity !== currentSessionGeneration()
+      const page = resetForIdentity ? 1 : Number(requestedSchedulePage)
+      const deferPage = resetForIdentity ? 1 : Number(requestedDeferPage)
+      if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(deferPage) || deferPage < 1) return Promise.resolve(null)
+      return this.readAcademic(async () => {
+        const identity = currentSessionGeneration(); const epoch = this.readEpoch
+        const results = await Promise.allSettled([studentApi.getMyExamSchedule({ page, pageSize: EXAM_PAGE_SIZE }), studentApi.getMyDeferOptions(), studentApi.getMyDeferrals({ page: deferPage, pageSize: DEFER_PAGE_SIZE, deferId: this.targetId || undefined })])
+        const denied = results.find(result => result.status === 'rejected' && isForbidden(result.reason))
+        if (denied) { if (epoch === this.readEpoch && identity === currentSessionGeneration() && !this.readHidden) this.clearForbiddenExam(); throw denied.reason }
+        return results
+      }, results => {
+        const previous = this.d || { schedule: [], options: [], deferrals: [] }
+        const valid = i => results[i].status === 'fulfilled' && Array.isArray(results[i].value?.items)
+        const names = ['考试安排', '可申请考试', '缓考记录']
+        this.partialErrors = names.filter((_, i) => !valid(i))
+        if (this.partialErrors.length === 3) throw results.find(result => result.status === 'rejected')?.reason || new Error('考试信息无法核对')
+        const schedule = valid(0) ? normalizeExamSchedulePage(results[0].value, page) : {
+          items: previous.schedule || [], page: previous.schedulePage || this.schedulePage,
+          total: previous.scheduleTotal || 0, hasMore: !!previous.scheduleHasMore,
         }
-        this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+        const deferrals = valid(2) ? normalizeDeferPage(results[2].value, deferPage) : {
+          items: previous.deferrals || [], page: previous.deferPage || this.deferPage,
+          total: previous.deferralsTotal || 0, hasMore: !!previous.deferralsHasMore,
+        }
+        this.d = {
+          schedule: schedule.items, schedulePage: schedule.page, scheduleTotal: schedule.total,
+          scheduleHasMore: schedule.hasMore, options: valid(1) ? results[1].value.items : previous.options,
+          deferrals: deferrals.items, deferPage: deferrals.page, deferralsTotal: deferrals.total,
+          deferralsHasMore: deferrals.hasMore,
+        }
+        if (valid(0)) this.schedulePage = schedule.page
+        if (valid(2)) this.deferPage = deferrals.page
+        if (this.selectedCourse) this.selectedCourse = this.d.options.find(row => String(row.examCourseId) === String(this.selectedCourse.examCourseId)) || { ...this.selectedCourse, canApply: false }
+        if (valid(2)) this.acceptApplication(this.d.deferrals, 'deferId', (row, body, kind) => kind === 'resubmit'
+          ? String(this.pendingApplication?.returnedId || '') === String(body.deferId) && !['RETURNED', 'REJECTED', 'CANCELLED'].includes(row.status) && !!row.status
+          : !!this.pendingApplication?.returnedId && String(row.examCourseId) === String(body.examCourseId) && row.reasonType === body.reasonType && (row.reason || '') === body.reason)
+      })
     },
-    reasonLabel(v) { return REASON_MAP[v] || v || '未说明' },
-    printTicket() {
-      if (!(this.d && this.d.schedule && this.d.schedule.length)) return
-      studentApi.printExamTicket('个人准考证').then((res) => {
-        const doc = (res && res.document) || {}
-        const rows = doc.schedule || doc.items || this.d.schedule || []
-        const lines = rows.map((it) =>
-          `${it.courseName || '—'} ${it.examDate || ''} ${it.classroom || '—'} 座${it.seatNo ?? '—'} 准考证${it.admissionNo || '—'}`
-        ).join('\n')
-        const text = [
-          '准考证摘要',
-          `姓名：${doc.realName || '—'}`,
-          `学号：${doc.studentNo || '—'}`,
-          `留痕：${(res && res.loggedAt) || ''}`,
-          '',
-          lines || '暂无考试安排'
-        ].join('\n')
-        uni.setClipboardData({
-          data: text,
-          success: () => uni.showToast({ title: '已留痕并复制准考证摘要', icon: 'success' }),
-          fail: () => uni.showToast({ title: '已留痕，可截屏保存', icon: 'success' })
-        })
-      }).catch((e) => toast((e && e.message) || '打印留痕失败'))
-    },
-    onReasonPick(e) { this.form.reasonType = this.reasonOptions[e.detail.value].value },
+    reasonLabel(v) { return REASON_LABELS[String(v || '').toUpperCase()] || '未说明' },
+    onReasonPick(e) { if (!this.submitting && !this.pendingApplication) this.form.reasonType = this.reasonOptions[Number(e.detail.value)]?.value || 'OTHER' },
     openForm(c) {
       if (!c || c.hasActiveDefer || c.canApply !== true) return
-      this.selectedCourse = c
-      this.form = { reasonType: 'SICK', reason: '' }
-      this.showForm = true
+      if (this.submitting || this.pendingApplication || this.partialErrors.includes('可申请考试')) return
+      if (String(this.selectedCourse?.examCourseId) !== String(c.examCourseId)) this.form = { reasonType: 'ILLNESS', reason: '' }
+      this.selectedCourse = c; this.showForm = true
+      // A new application must be read back from its own history, not an older deep-link filter.
+      if (this.targetId) this.showAllDeferrals()
     },
     submit() {
       if (!this.selectedCourse || this.selectedCourse.canApply !== true || this.submitting) return
-      this.submitting = true
-      submitLock.run(() => studentApi.applyDefer(this.selectedCourse.examCourseId, this.form.reasonType, this.form.reason.trim()))
-        .then(() => {
-          uni.showToast({ title: '缓考申请已提交', icon: 'success' })
-          this.showForm = false
-          this.load()
-        }).catch((e) => {
-          if (e && e.code === 'LOCKED') return
-          toast(e && e.biz ? normalizeError(e).text : '提交失败，请稍后重试')
-        }).finally(() => { this.submitting = false })
+      if (this.partialErrors.includes('可申请考试') || this.partialErrors.includes('缓考记录')) return
+      const body = { examCourseId: this.selectedCourse.examCourseId, reasonType: this.form.reasonType, reason: this.form.reason.trim() }
+      return this.sendApplication({ title: '确认申请缓考：' + this.selectedCourse.courseName, body,
+        send: frozen => studentApi.applyDefer(frozen.examCourseId, frozen.reasonType, frozen.reason), rows: this.d.deferrals, idKey: 'deferId' })
     },
     resubmit(r) {
-      studentApi.resubmitDefer(r.deferId).then(() => {
-        uni.showToast({ title: '已重提', icon: 'success' })
-        this.load()
-      }).catch((e) => toast(e && e.biz ? normalizeError(e).text : '重提失败，请稍后重试'))
+      if (r.status !== 'RETURNED' || this.partialErrors.includes('缓考记录')) return
+      return this.sendApplication({ title: '确认已处理退回要求并重提', kind: 'resubmit', body: { deferId: r.deferId, expectedVersion: r.version }, existingId: r.deferId,
+        recovery: { field: 'status', excludes: ['RETURNED', 'REJECTED', 'CANCELLED'] }, send: body => studentApi.resubmitDefer(body.deferId, body.expectedVersion), rows: this.d.deferrals, idKey: 'deferId' })
+    },
+    async printTicket() {
+      if (!(this.d && this.d.schedule && this.d.schedule.length)) return
+      if (this.printing || this.partialErrors.includes('考试安排')) return
+      const identity = currentSessionGeneration(); const epoch = this.readEpoch
+      const current = () => identity === currentSessionGeneration() && epoch === this.readEpoch && !this.readHidden
+      this.printing = true
+      try {
+        const res = await studentApi.printExamTicket('个人准考证')
+        if (!current()) return
+        if (!res?.loggedAt) throw new Error('用途登记结果待核实')
+        const rows = res.document?.schedule || res.document?.items || this.d.schedule
+        const text = rows.map(it => [it.courseName, it.examDate, it.classroom, '座位 ' + (it.seatNo ?? '—')].filter(Boolean).join(' · ')).join('\n')
+        uni.setClipboardData({ data: text, success: () => { if (current()) toast('已复制准考证摘要') }, fail: () => { if (current()) toast('复制未完成，请重试') } })
+      } catch (_) { if (current()) toast('准考证摘要暂未完成，请稍后核对') }
+      finally { if (identity === currentSessionGeneration()) this.printing = false }
     }
   }
 }
 </script>
 
 <style scoped>
+.page-wrap { font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+button, input, textarea { font-family: inherit; }
 .ed__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .ed__reason { display: block; font-size: var(--font-size-xs); color: var(--danger-600); margin-top: 4px; }
 .is-target { border: 1px solid var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-50); }
@@ -179,4 +258,10 @@ export default {
 .flex-col-end { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .btn-tag { font-size: var(--font-size-xs); color: var(--primary-600); background: var(--primary-50); border: none; border-radius: var(--radius-full); padding: 4px 12px; }
 .btn-tag.is-disabled { color: var(--text-tertiary); background: var(--fill-light, #f1f5f9); }
+.ed__notice, .ed__partial { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 12px; }
+.ed__pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--text-secondary); font-size: var(--font-size-sm); }
+.ed__pager-button { flex: 1; margin: 0; }
+.ed__notice { flex-direction: column; background: var(--success-50); color: var(--success-700); }
+.ed__notice.is-warning, .ed__partial { background: var(--warning-50); color: var(--warning-700); }
+.ed__notice text:first-child { font-size: 14px; font-weight: 700; }
 </style>

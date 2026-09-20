@@ -86,6 +86,15 @@ def grade_tasks(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/grade-tasks/{taskId}/publication-effect", summary="成绩发布后扫描状态（只读，不重放发布）")
+def grade_publication_effect(
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.grade.view")),
+):
+    from app.modules.academic_affairs.services.academic_grade_effect_service import publication_effect
+    return success(publication_effect(user, taskId))
+
+
 @router.post("/grade-tasks/{taskId}/remind", summary="成绩催录（刷新当前正式任课教师待录待办）")
 def grade_remind(
     body: GradeRemindBody,
@@ -199,6 +208,15 @@ def grade_submit(
     return success(grade_deadline_svc.teacher_submit_task(taskId, user), message="已提交")
 
 
+@router.get("/grade-tasks/{taskId}/review-evidence", summary="学院成绩审核证据（精确任务，只读）")
+def grade_review_evidence(
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.grade.collegeReview")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_grade_review_evidence_service import get_evidence
+    return success(get_evidence(taskId, user))
+
+
 @router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
 def grade_college_review(
     body: GradeReviewBody,
@@ -206,7 +224,7 @@ def grade_college_review(
     user=Depends(require_permission("academicAffairs.grade.collegeReview")),
 ):
     return success(
-        grade_svc.college_review(taskId, user, body.action, body.reason or ""),
+        grade_svc.college_review(taskId, user, body.action, body.reason or "", body.expectedEvidenceHash),
         message="已处理",
     )
 

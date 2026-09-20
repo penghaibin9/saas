@@ -114,6 +114,7 @@ import { ModulePageShell } from '@/components/business'
 import { fileStorageGovernanceApi } from '@/modules/system/api/fileStorageGovernance.api'
 import { toast } from '@/utils/toast'
 import { safeLocalizedText } from '@/utils/presentationSafety'
+import { systemConfirm } from '@/services/systemDialog'
 
 const GIB = 1024 ** 3
 const MODULE_LABELS = { PLATFORM: '平台管理', SYSTEM: '系统管理', STUDENT: '学生管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '实习管理', EMPLOYMENT: '就业管理', ORIENTATION: '迎新管理', GRADUATION: '毕业设计' }
@@ -216,7 +217,7 @@ export default {
       finally { this.busy = '' }
     },
     async runCleanup(dryRun) {
-      if (!dryRun && !window.confirm('只会删除预演中无有效引用、已过保留期且未法律保留的文件。确认执行？')) return
+      if (!dryRun && !await systemConfirm({ title:'确认执行文件清理', message:'只会删除预演中无有效引用、已过保留期且未法律保留的文件。', confirmText:'确认执行清理', type:'danger' })) return
       this.busy = dryRun ? 'preview' : 'cleanup'
       try {
         const data = await fileStorageGovernanceApi.cleanup({

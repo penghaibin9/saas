@@ -142,13 +142,13 @@ export default {
       return '短期事假可按学校要求选传证明。'
     }
   },
-  onLoad() { this.loadList() },
+  onLoad(options = {}) { this.requestedBatchId = String(options.batchId || ''); this.loadList() },
   onPullDownRefresh() { this.loadList(() => uni.stopPullDownRefresh()) },
   methods: {
     async loadList(done) {
       this.pageState = 'loading'
       try {
-        const dashboard = await studentApi.getInternship()
+        const dashboard = await studentApi.getInternship(this.requestedBatchId)
         const rows = await studentInternshipLeaves(dashboard?.batchId, dashboard?.recordId)
         this.list = Array.isArray(rows) ? rows : (rows?.items || [])
         this.context = {

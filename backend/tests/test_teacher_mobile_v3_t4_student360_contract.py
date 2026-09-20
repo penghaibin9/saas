@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,9 +11,15 @@ from app.models import StudentProfile
 from app.services import teacher_mobile_student360_projection_service as projection
 
 
+def test_t4_affairs_summary_does_not_leak_machine_status_values():
+    assert projection._affairs_summary(None) == "暂无学工摘要"
+    assert projection._affairs_summary(SimpleNamespace(care_level="KEY_CARE", risk_level="HIGH")) == "关怀：重点关怀 · 风险：高"
+    assert projection._affairs_summary(SimpleNamespace(care_level="NEW_CODE", risk_level="UNKNOWN")) == "关怀：待确认 · 风险：待确认"
+
+
 def test_t4_student360_projection_is_sql_scoped_and_read_only_composition():
     source = inspect.getsource(projection)
-    assert "compile_teacher_student_visibility" in source
+    assert "compile_teacher_mobile_student_visibility" in source
     assert "StudentProfile.phone" not in source
     assert "phone_encrypted" not in source
     assert "id_card" not in source.lower()
@@ -51,6 +58,24 @@ def test_t4_domain_projection_reads_only_active_business_records():
         'CsServiceStudent.record_status == "ACTIVE"',
     ):
         assert clause in source
+
+
+def test_t4_domain_projection_uses_stable_profile_id_before_legacy_student_number():
+    source = inspect.getsource(projection.get_projection)
+    for model_name in ("AcademicStudent", "GraduationStudent", "EmpStudent", "CsServiceStudent"):
+        assert f"_stable_student_domain_link({model_name}, stu)" in source
+        assert f"*_stable_student_domain_order({model_name})" in source
+
+    helper = inspect.getsource(projection._stable_student_domain_link)
+    assert "model.student_id == student.id" in helper
+    assert "model.student_id.is_(None)" in helper
+    assert "model.student_no == student.student_no" in helper
+
+
+def test_t4_projection_and_my_students_share_the_same_mobile_visibility_compiler():
+    source = inspect.getsource(projection.get_projection)
+    assert "scope = teacher_guard.resolve_teacher_scope(user)" in source
+    assert "compile_teacher_mobile_student_visibility(user, student.id, scope=scope)" in source
 
 
 def test_t4_only_open_workflow_warnings_count_as_active_risk():

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../..')
@@ -30,16 +31,21 @@ function readFixture() {
 }
 
 async function loginTeacherMini(page, account) {
-  await page.goto(`${miniBase}/#/pages/login/teacher/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(account.username)
-  await fields.nth(1).fill(account.password)
-  if ((await fields.count()) < 3) {
-    await page.getByText('填写', { exact: true }).click()
-  }
-  await fields.nth(2).fill(account.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入教师工作台', { exact: true }).click()
+  await loginMiniH5(page, { baseUrl: miniBase, entry: 'teacher', account, timeout: 15_000 })
+}
+
+async function switchTeacherMiniToAcademic(page) {
+  await page.goto(`${miniBase}/#/pages/role-switch/index`)
+  const role = page.locator('.rs__item').filter({ hasText: '教务老师' }).first()
+  await expect(role).toBeVisible({ timeout: 15_000 })
+  const switched = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/auth/browser-switch-role'
+      && response.request().method() === 'POST'
+  )
+  await role.click()
+  const response = await switched
+  const payload = await response.json()
+  expect(payload?.code, JSON.stringify(payload)).toBe(0)
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
 }
 
@@ -75,10 +81,14 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
 
   test('APPLIED Today -> create/mark -> sessionId reopen -> refresh/relogin -> role/dataScope negatives', async ({ page, request }) => {
     await page.setViewportSize({ width: 390, height: 844 })
+    // Teacher Today intentionally hides occurrences whose class time has already ended.
+    // Pin only the page's wall clock so this real-browser seal is stable at any CI run time.
+    await page.clock.setFixedTime(new Date(`${fixture.targetDate}T08:00:00+08:00`))
     await loginTeacherMini(page, config.mentor)
+    await switchTeacherMiniToAcademic(page)
 
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/index`)
-    const todayCard = page.locator('.ta__course').filter({ hasText: fixture.courseName }).first()
+    const todayCard = page.locator('.ta__next-course, .ta__course').filter({ hasText: fixture.courseName }).first()
     await expect(todayCard).toBeVisible({ timeout: 15_000 })
     await expect(todayCard).toContainText('已调课')
     await expect(todayCard).toContainText('去点名')
@@ -106,7 +116,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     await expect(page.getByText(fixture.courseName, { exact: true }).first()).toBeVisible({ timeout: 10_000 })
 
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/index`)
-    const reopenCard = page.locator('.ta__course').filter({ hasText: fixture.courseName }).first()
+    const reopenCard = page.locator('.ta__next-course, .ta__course').filter({ hasText: fixture.courseName }).first()
     await expect(reopenCard).toBeVisible({ timeout: 15_000 })
     await expect(reopenCard).toContainText('继续点名')
     await reopenCard.click()
@@ -135,6 +145,7 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
 
     await clearMiniSession(page)
     await loginTeacherMini(page, config.mentor)
+    await switchTeacherMiniToAcademic(page)
     await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/attendance?sessionId=${sessionId}`)
     await expect(page.getByText(fixture.courseName, { exact: true }).first()).toBeVisible({ timeout: 15_000 })
     const reloginRow = page.locator('.at__row').filter({ hasText: fixture.studentName }).first()
@@ -152,7 +163,17 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     })
     const otherTeacherAuth = await otherTeacherLogin.json()
     expect(otherTeacherAuth.code, JSON.stringify(otherTeacherAuth)).toBe(0)
-    const otherTeacherToken = otherTeacherAuth?.data?.accessToken
+    const otherTeacherContext = (otherTeacherAuth?.data?.contexts || []).find(
+      (item) => String(item?.roleCode || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    )
+    expect(otherTeacherContext?.contextId, JSON.stringify(otherTeacherAuth)).toBeTruthy()
+    const otherTeacherSwitch = await request.post(`${config.apiBaseUrl}/auth/switch-role`, {
+      headers: { Authorization: `Bearer ${otherTeacherAuth?.data?.accessToken}` },
+      data: { contextId: otherTeacherContext.contextId, clientType: 'TEACHER_MINI' }
+    })
+    const otherTeacherSwitched = await otherTeacherSwitch.json()
+    expect(otherTeacherSwitched.code, JSON.stringify(otherTeacherSwitched)).toBe(0)
+    const otherTeacherToken = otherTeacherSwitched?.data?.accessToken
     expect(otherTeacherToken).toBeTruthy()
     const blockedResponse = await request.get(
       `${config.apiBaseUrl}/mobile/teacher/academic/attendance/sessions/${sessionId}`,

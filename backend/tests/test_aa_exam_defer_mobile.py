@@ -11,9 +11,9 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, client_type="TEACHER_MINI"):
     data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -22,7 +22,7 @@ def _stu_token(real_name, student_no):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _seed(db_mode):
@@ -157,3 +157,69 @@ def test_cross_node_review_403_via_mobile(client, db_mode):
     r = client.post(f"{MOB}/teacher/academic/defer/{did}/review", headers=_hdr(client, "teacher01"),
                     json={"action": "APPROVE"})
     assert r.status_code == 403
+
+
+def test_defer_mobile_requires_teacher_mini_and_serializes_stale_commands(client, db_mode):
+    """同一正式缓考单：PC/学生令牌不能进入教师端；退回、重提各只成功一次。
+
+    这里走 HTTP + MySQL，不直接改状态。它同时覆盖真实行锁、expectedVersion、状态机和
+    审计，避免双击/网络重试把一张单推进两次。
+    """
+    from app.db.session import get_sessionmaker
+    from app.models import AaExamAuditTrail
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
+    did = _apply_defer(client, ids, cid)
+
+    pc_teacher = _hdr(client, "counselor01", "PC")
+    assert client.get(f"{MOB}/teacher/academic/defer/pending", headers=pc_teacher).status_code == 403
+    assert client.get(f"{MOB}/teacher/academic/defer/pending", headers=_stu_token("缓考甲", ids["studentNo"])).status_code == 403
+
+    teacher = _hdr(client, "counselor01")
+    pending = client.get(f"{MOB}/teacher/academic/defer/pending", headers=teacher)
+    assert pending.status_code == 200, pending.text
+    row = next(item for item in pending.json()["data"]["list"] if item["deferId"] == did)
+    assert row["version"] == 0
+
+    returned = client.post(
+        f"{MOB}/teacher/academic/defer/{did}/review", headers=teacher,
+        json={"action": "RETURN", "reason": "请补充可核验的病假材料", "expectedVersion": row["version"]},
+    )
+    assert returned.status_code == 200, returned.text
+    assert returned.json()["data"]["status"] == "RETURNED"
+    assert returned.json()["data"]["currentNode"] == "STUDENT_RESUBMIT"
+    assert returned.json()["data"]["version"] == 1
+
+    stale_review = client.post(
+        f"{MOB}/teacher/academic/defer/{did}/review", headers=teacher,
+        json={"action": "APPROVE", "expectedVersion": row["version"]},
+    )
+    assert stale_review.status_code == 409, stale_review.text
+
+    student = _stu_token("缓考甲", ids["studentNo"])
+    resubmitted = client.post(
+        f"{MOB}/academic/exam/defer/{did}/resubmit", headers=student,
+        json={"expectedVersion": 1},
+    )
+    assert resubmitted.status_code == 200, resubmitted.text
+    assert resubmitted.json()["data"]["status"] == "COUNSELOR_REVIEW"
+    assert resubmitted.json()["data"]["version"] == 2
+
+    stale_resubmit = client.post(
+        f"{MOB}/academic/exam/defer/{did}/resubmit", headers=student,
+        json={"expectedVersion": 1},
+    )
+    assert stale_resubmit.status_code == 409, stale_resubmit.text
+
+    db = get_sessionmaker()()
+    try:
+        audit_actions = [row.action for row in db.query(AaExamAuditTrail).filter(
+            AaExamAuditTrail.biz_type == "DEFERRED_EXAM",
+            AaExamAuditTrail.biz_id == int(did),
+        ).all()]
+    finally:
+        db.close()
+    assert audit_actions.count("DEFER_REVIEW_ACT") == 1
+    assert audit_actions.count("DEFER_RESUBMIT") == 1

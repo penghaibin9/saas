@@ -467,6 +467,8 @@ def submit(body, user) -> dict:
 def review(cid, user, action, comment="") -> dict:
     action = (action or "").upper()
     with session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
         from app.models import WorkflowInstance, WorkflowTask
         x = _load(db, cid)
         if x.status not in _ACTIVE:
@@ -549,9 +551,22 @@ def _apply_schedule(db, x) -> dict:
         db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()
     ) if origin and origin.batch_id else None
     _require_current_published_origin(db, batch, origin, lock_scope=True)
+    from . import academic_affairs_schedule_resource_guard as resource_guard
+    term = resource_guard.lock_term(db, batch.term_id)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None
+    target_classroom_id = None
     if x.change_type in ("ADJUST", "MAKEUP"):
+        from .academic_affairs_schedule_service import _resolve_classroom_id
+        from .academic_affairs_resource_service import _load as load_classroom
+        target_classroom_id = (origin.classroom_id if origin and x.target_classroom == origin.classroom_text
+                               else _resolve_classroom_id(db, x.target_classroom))
+        if not target_classroom_id and str(x.target_classroom or "").strip():
+            raise AppException("DATA_CONFLICT", "目标课位尚未关联正式教室 ID，不能生效", http_status=409)
+        if target_classroom_id:
+            classroom = load_classroom(db, target_classroom_id)
+            if classroom.status != "AVAILABLE" or not classroom.allow_schedule:
+                raise AppException("DATA_CONFLICT", "目标教室当前不可用或未允许排课", http_status=409)
         conflict = _detect_conflict(db, x.batch_id, x.target_weekday, x.target_slot_no,
                                     x.target_start_week, x.target_end_week, x.target_week_parity or "ALL",
                                     x.teacher_key, x.class_id, x.target_classroom,
@@ -573,9 +588,10 @@ def _apply_schedule(db, x) -> dict:
             start_week=x.target_start_week or origin.start_week,
             end_week=x.target_end_week or origin.end_week,
             week_parity=x.target_week_parity or "ALL",
-            classroom_id=(origin.classroom_id if x.target_classroom == origin.classroom_text else None),
+            classroom_id=target_classroom_id,
             classroom_text=x.target_classroom, source=origin.source,
             change_id=x.id, status="EFFECTIVE")
+        resource_guard.require_no_booking_conflict(db, term, [ni])
         db.add(ni)
         db.flush()
         new_item_id = ni.id

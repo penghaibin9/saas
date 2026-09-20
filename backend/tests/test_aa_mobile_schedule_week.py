@@ -3,6 +3,19 @@ from datetime import date, datetime
 from pathlib import Path
 
 
+def test_schedule_metadata_exposes_the_same_term_start_as_the_week_authority(monkeypatch):
+    from types import SimpleNamespace
+    from app.modules.academic_affairs.services import mobile_academic_affairs_facade as facade
+    monkeypatch.setattr(facade, "_current_teaching_week", lambda db, term: (2, "Asia/Shanghai"))
+    monkeypatch.setattr(facade, "_schedule_time_bands", lambda db: [])
+    term = SimpleNamespace(id=52, year_code="2026-2027", term_no=1,
+                           start_date=datetime(2026, 9, 1), teaching_weeks=18)
+    result = facade._schedule_meta(None, term, SimpleNamespace(id=40))
+    assert result["termStartDate"] == "2026-09-01"
+    assert result["currentWeek"] == 2
+    assert facade._schedule_meta(None, None, None)["termStartDate"] is None
+
+
 def test_before_term_start_is_week_zero():
     from app.modules.academic_affairs.services.mobile_academic_affairs_facade import (
         teaching_week_from_dates,

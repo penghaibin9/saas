@@ -99,6 +99,7 @@ const WORK_FIELDS = ['pagination.page']
 const PANEL_STATUS = {
   all: '',
   review: 'PENDING_REVIEW',
+  approved: 'APPROVED',
   returned: 'RETURNED',
   overdue: 'OVERDUE'
 }

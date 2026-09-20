@@ -140,6 +140,29 @@ def test_m4_transfer_executes(client, db_mode):
     transfer = client.post(f"{BASE}/dorm/transfers", headers=counselor, json={
         "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "学生申请调整宿舍床位"}).json()["data"]
     tid = transfer["transferId"]
+    # Same authoritative records appear across PC and teacher mini pages; no silent 100-row cap.
+    checkin_other = client.post(f"{BASE}/dorm/beds/{beds1[1]['bedId']}/checkin", headers=admin,
+                               json={"studentId": str(ids["sm2"])})
+    assert checkin_other.status_code == 200, checkin_other.text
+    second_transfer = client.post(f"{BASE}/dorm/transfers", headers=counselor, json={
+        "studentId": str(ids["sm2"]), "toBedId": beds2[1]["bedId"], "reason": "另一个学生申请调整住宿床位"})
+    assert second_transfer.status_code == 200, second_transfer.text
+    second_id = second_transfer.json()["data"]["transferId"]
+    queue_path = "/api/v1/mobile/teacher/affairs/dorm/pending"
+    page_ids = []
+    for page in (1, 2):
+        response = client.get(queue_path, headers=counselor, params={"page": page, "pageSize": 1})
+        assert response.status_code == 200, response.text
+        queue = response.json()["data"]
+        assert queue["transferTotal"] == 2 and queue["page"] == page and queue["pageSize"] == 1
+        assert len(queue["transfers"]) == 1
+        page_ids.append(queue["transfers"][0]["transferId"])
+    assert set(page_ids) == {str(tid), str(second_id)}
+    assert client.get(queue_path, headers=counselor, params={"pageSize": 101}).status_code == 400
+    assert client.get(queue_path, headers=student_mini).status_code == 403
+    other_manager = role_headers("DORM_MANAGER", login_name="other", real_name="宿管·王")
+    other_queue = client.get(queue_path, headers=other_manager).json()["data"]
+    assert other_queue["transferTotal"] == 0 and other_queue["transfers"] == []
     def assert_self_readback(status):
         for headers in (student_pc, student_mini):
             response = client.get('/api/v1/mobile/affairs/dorm/transfers/my', headers=headers)
@@ -154,7 +177,8 @@ def test_m4_transfer_executes(client, db_mode):
         # Supplying another student's ID never broadens the authenticated self scope.
         response = client.get('/api/v1/mobile/affairs/dorm/transfers/my', headers=other,
                               params={'studentId': ids['sm']})
-        assert response.json()['data']['items'] == []
+        assert [row['transferId'] for row in response.json()['data']['items']] == [str(second_id)]
+        assert all(row['studentId'] == str(ids['sm2']) for row in response.json()['data']['items'])
     assert_self_readback('COUNSELOR_REVIEW')
     focused = client.get(f"{BASE}/dorm/transfers", headers=counselor, params={"recordId": tid})
     assert focused.status_code == 200, focused.text
@@ -168,6 +192,9 @@ def test_m4_transfer_executes(client, db_mode):
         "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
     assert r["data"]["status"] == "EXECUTED"
     assert_self_readback('EXECUTED')
+    remaining = client.get(queue_path, headers=counselor).json()["data"]
+    assert remaining["transferTotal"] == 1
+    assert [row["transferId"] for row in remaining["transfers"]] == [str(second_id)]
     focused = client.get(f"{BASE}/dorm/transfers", headers=admin, params={"recordId": tid})
     assert focused.status_code == 200, focused.text
     assert focused.json()['data']['items'][0]['status'] == 'EXECUTED'

@@ -4,18 +4,16 @@
  * 本文件是门户所有可部署配置的唯一来源，禁止把入口地址/二维码散落到组件里。
  *
  * 取值优先级：构建期环境变量（VITE_PORTAL_*）→ 本文件内置默认值。
- * 默认值只使用**同源相对路径**，因此生产构建产物中不会出现 localhost / 内网 IP：
- *   - 教师端与门户同属 frontend 应用，登录页固定为 /login
- *   - 学生端为独立 student-portal 应用，默认部署在 /portal/（见 deploy/nginx/nginx.portal.conf.example
- *     与 student-portal/vite.config.js 的 VITE_BASE 默认值），登录页即 /portal/login
- *   - 企业协同端为独立 enterprise-portal 应用，默认部署在 /enterprise/，登录页即 /enterprise/login
- * 若学校把学生端或企业端部署到独立子域名，只需构建时提供对应 VITE_PORTAL_*_LOGIN_URL 覆盖。
+ * 面向用户的官网与学生 SaaS 页面统一在 www.hnyueke.com，并以各自的路径隔离；
+ * api.hnyueke.com 仅承载系统接口。默认值使用完整 HTTPS 地址，避免官网相对路径
+ * 被错误解析。构建期仍可用 VITE_PORTAL_* 覆盖。
  *
  * 安全：所有对外地址在使用前都会经 sanitizeEntryUrl() 校验，只放行同源相对路径与
  * http(s) 绝对地址，杜绝 javascript:/data: 等协议注入与开放重定向。
  */
 
 const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
+const STUDENT_PORTAL_ORIGIN = 'https://www.hnyueke.com'
 
 function readEnv(key) {
   const raw = env[key]
@@ -37,19 +35,35 @@ export function sanitizeEntryUrl(value) {
   return ''
 }
 
-/** 教师 / 管理人员登录页：与门户同属 frontend 应用，真实路由见 router/index.js 的 /login */
+/** 教师 / 管理人员登录页：学生 SaaS 的学校 PC 登录。 */
 export const TEACHER_LOGIN_URL = sanitizeEntryUrl(
-  readEnv('VITE_PORTAL_TEACHER_LOGIN_URL') || '/login'
+  readEnv('VITE_PORTAL_TEACHER_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/teacher/login`
 )
 
-/** 学生登录页：student-portal 应用，默认子路径部署 /portal/ + 其路由 /login */
+/** 学生登录页：学生 SaaS 中独立 student-portal 的登录页。 */
 export const STUDENT_LOGIN_URL = sanitizeEntryUrl(
-  readEnv('VITE_PORTAL_STUDENT_LOGIN_URL') || '/portal/login'
+  readEnv('VITE_PORTAL_STUDENT_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/portal/login`
 )
 
-/** 企业协同登录页：enterprise-portal 默认 base=/enterprise/，真实公开登录路由为 /login */
+/** 企业协同登录页：学生 SaaS 中 enterprise-portal 的登录页。 */
 export const ENTERPRISE_LOGIN_URL = sanitizeEntryUrl(
-  readEnv('VITE_PORTAL_ENTERPRISE_LOGIN_URL') || '/enterprise/login'
+  readEnv('VITE_PORTAL_ENTERPRISE_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/enterprise/login`
+)
+
+/**
+ * 高校人事系统登录页：系统尚未部署，默认留空并在门户保留“待部署”入口位。
+ * 后续部署完成后通过构建环境变量填写真实地址，无需再次修改页面代码。
+ */
+export const HR_LOGIN_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_HR_LOGIN_URL'))
+
+/** 教师 H5：与微信小程序共用 miniapp 工程，直接进入教师身份登录页。 */
+export const TEACHER_H5_LOGIN_URL = sanitizeEntryUrl(
+  readEnv('VITE_PORTAL_TEACHER_H5_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/miniapp/#/pages/login/teacher/index`
+)
+
+/** 学生 H5：与微信小程序共用 miniapp 工程，直接进入学生身份登录页。 */
+export const STUDENT_H5_LOGIN_URL = sanitizeEntryUrl(
+  readEnv('VITE_PORTAL_STUDENT_H5_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/miniapp/#/pages/login/student/index`
 )
 
 /** 教师端微信小程序码地址；未配置时门户显示「即将接入」占位，绝不展示伪造二维码 */

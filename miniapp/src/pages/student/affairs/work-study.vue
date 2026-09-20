@@ -94,9 +94,9 @@ export default {
     search() { this.appliedKeyword = this.keyword.trim(); return this.loadPosts() },
     openApply(post) { this.applyTarget = post; this.form = { statement: '', availability: '', confirmed: false }; this.formError = '' },
     closeApply() { if (!this.busy) this.applyTarget = null },
-    async submitApply() { if (!this.formValid || !this.applyTarget) { this.formError = '请完整填写申请说明、可工作时段并确认'; return } this.busy = 'apply'; try { await studentApi.applyWorkStudy(this.applyTarget.postId, { statement: this.form.statement, availability: this.form.availability, confirm: true }); toast('申请已提交'); this.applyTarget = null; this.tab = 'mine'; await Promise.all([this.loadPosts(), this.loadRecords()]) } catch (e) { this.formError = normalizeError(e).text || '申请失败，请重试' } finally { this.busy = '' } },
+    async submitApply() { if (this.busy) return; if (!this.formValid || !this.applyTarget) { this.formError = '请完整填写申请说明、可工作时段并确认'; return } this.busy = 'apply'; try { await studentApi.applyWorkStudy(this.applyTarget.postId, { statement: this.form.statement, availability: this.form.availability, confirm: true }); toast('申请已提交'); this.applyTarget = null; this.tab = 'mine'; await Promise.all([this.loadPosts(), this.loadRecords()]) } catch (e) { this.formError = normalizeError(e).text || '申请失败，请重试' } finally { this.busy = '' } },
     confirmWithdraw(record) { uni.showModal({ title: '确认撤回申请？', content: `撤回“${record.post?.postName || '勤工岗位'}”申请后，本次流程结束。`, confirmText: '确认撤回', success: (res) => { if (res.confirm) this.withdraw(record) } }) },
-    async withdraw(record) { this.busy = 'withdraw'; try { await studentApi.withdrawWorkStudy(record.recordId, record.version); toast('申请已撤回'); await Promise.all([this.loadPosts(), this.loadRecords()]) } catch (e) { toast(normalizeError(e).text || '撤回失败') } finally { this.busy = '' } }
+    async withdraw(record) { if (this.busy) return; this.busy = 'withdraw'; try { await studentApi.withdrawWorkStudy(record.recordId, record.version); toast('申请已撤回'); await Promise.all([this.loadPosts(), this.loadRecords()]) } catch (e) { toast(normalizeError(e).text || '撤回失败') } finally { this.busy = '' } }
   }
 }
 </script>

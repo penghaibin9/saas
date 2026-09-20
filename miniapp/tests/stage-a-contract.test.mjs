@@ -61,11 +61,15 @@ test('ordinary GETs are single-flight and writes are rejected rather than dedupl
   assert.match(request, /export function realDownload/)
 })
 
-test('production session skeleton contains no fixed student or teacher identity', () => {
+test('formal session skeleton never imports or restores a demo identity', () => {
   const session = read('src/stores/session.js')
-  assert.match(session, /import\.meta\.env && import\.meta\.env\.PROD/)
   assert.match(session, /neutralUser/)
   assert.match(session, /name: '', studentNo: '', className: ''/)
+  assert.match(session, /function initialUser\(side\) \{ return neutralUser\(side\) \}/)
+  assert.doesNotMatch(session, /@\/mock\/user/)
+  assert.match(session, /this\.clearBusinessContexts\(\)\n\s*\/\/ 先清投影，后写入新身份[\s\S]*?this\.resetAuthenticatedProjection\(\)/)
+  assert.match(session, /const token = getToken\(\)\s*\n\s*const refresh = getRefreshToken\(\)[\s\S]*?if \(!token && !refresh\)[\s\S]*?uni\.removeStorageSync\(STORAGE_KEY\)/)
+  assert.match(session, /h5UnverifiedBrowserSession[\s\S]*?this\.mockUser = skeleton/)
 })
 
 test('teacher login accepts the backend academic role codes', () => {
@@ -87,11 +91,15 @@ test('teacher login accepts dorm managers and preserves the building data scope'
 test('real teacher contexts drive identity switching with canonical role keys', () => {
   const roles = read('src/config/roles.config.js')
   const session = read('src/stores/session.js')
+  const realApi = read('src/services/realApi.js')
   assert.match(roles, /INTERN_MENTOR: ROLE\.INTERN_MENTOR/)
   assert.match(roles, /roleKeyFromBackendRole\(roleCode\)/)
   assert.match(session, /this\.availableRoles = \[\.\.\.new Set\(this\.availableContexts/)
   assert.match(session, /roleKeyFromBackendRole\(item\.roleCode \|\| item\.contextType\) === roleKey/)
   assert.doesNotMatch(session, /item\.roleCode === roleKey/)
+  assert.match(session, /side === 'teacher' \? 'TEACHER_MINI' : 'STUDENT_MINI'/)
+  assert.match(realApi, /MINI_CLIENT_TYPES = new Set\(\['STUDENT_MINI', 'TEACHER_MINI'\]\)/)
+  assert.doesNotMatch(realApi, /clientType = 'MP'/)
 })
 
 test('high-frequency message, todo and risk pages use final database pagination endpoints', () => {
@@ -116,7 +124,7 @@ test('high-frequency message, todo and risk pages use final database pagination 
   assert.match(todos, /createNetworkPager/)
   assert.match(todos, /teacherTodoT8Api\.list/)
   assert.match(todos, /pagerState\.hasMore/)
-  assert.match(todos, /this\._pager\.loadMore\(\)/)
+  assert.match(todos, /pager\.loadMore\(\)/)
   assert.doesNotMatch(todos, /pagedSlice|getTodosPage/)
   assert.match(todoApi, /\/teacher-mobile\/todos\/grouped-continuous/)
   assert.match(todoApi, /cursor=/)
@@ -155,7 +163,7 @@ test('read state is only ever set locally for messages that can actually persist
   assert.match(teacher, /m\.kind !== 'UNIFIED_MESSAGE'/, 'Teacher T9 只允许 UnifiedMessage 乐观已读')
   assert.ok(teacher.includes("if (!/^\\d+$/.test(raw)) return"), 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
   assert.match(teacher, /markTeacherMessageRead\(raw\)/)
-  assert.match(teacher, /\.catch\(\(\) => \{ m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
+  assert.match(teacher, /\.catch\(\(\) => \{[\s\S]*?m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
   const teacherAssignments = teacher.match(/m\.read = true/g) || []
   assert.equal(teacherAssignments.length, 1, 'Teacher T9 只允许 markRead() 内部一处乐观写 read=true')
 })
@@ -211,16 +219,17 @@ test('release build rejects leaked local build paths', () => {
   assert.match(release, /构建产物泄露本机绝对路径/)
 })
 
-test('release build fails at the proactive 1.80 MiB split threshold', () => {
+test('release build warns, not fails, at the internal 1.80 MiB threshold', () => {
   const release = read('scripts/finalize-mp-weixin-release.mjs')
   // V3 S1.5：main.js 不再全局安装高频适配（那会把两端 API 与 mock 图重新提升进主包），
-  // 改由各自分包页面显式安装；主包体积门禁本身不变。
+  // 改由各自分包页面显式安装；保留优化，但内部 1.80 MiB 线不阻止发布。
   assert.doesNotMatch(read('src/main.js'), /mobilePerformanceInstaller/)
   assert.match(read('src/pages/student/messages/index.vue'), /ensureStudentPerformanceApi\(\)/)
   assert.match(read('src/pages/teacher/workbench/index.vue'), /ensureTeacherPerformanceApi\(\)/)
   assert.match(release, /MAIN_PACKAGE_SPLIT_TRIGGER/)
   assert.match(release, /1\.8 \* 1024 \* 1024/)
-  assert.match(release, /达到 1\.80 MiB 主动分包线/)
+  assert.match(release, /达到 1\.80 MiB 性能提醒线/)
+  assert.match(release, /if \(mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER\) \{\s*console\.warn\(/)
 })
 
 test('teacher weekly review carries the CAS version from list to mutation', () => {

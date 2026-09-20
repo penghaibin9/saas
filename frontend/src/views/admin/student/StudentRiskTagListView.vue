@@ -52,7 +52,7 @@
           <RiskTag :level="row.level" />
         </template>
         <template #cell-status="{ row }">
-          <AppStatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
+          <AppStatusTag :type="statusTone(row.status)" :label="row.statusLabel || statusLabel(row.status)" dot />
         </template>
         <template #cell-follow="{ row }">
           <template v-if="row.followUps.length">
@@ -79,7 +79,7 @@
             编辑
           </button>
           <button
-            v-if="ctx.permissionActions.voidRiskTag.visible"
+            v-if="ctx.permissionActions.voidRiskTag?.visible"
             class="mp-link rt-gap"
             :class="{ 'is-disabled': !can('voidRiskTag') || row.status === 'VOIDED' }"
             :title="row.status === 'VOIDED' ? '该标签已作废' : reason('voidRiskTag')"
@@ -303,8 +303,8 @@ export default {
       return row.status === 'RESOLVED' || row.status === 'VOIDED'
     },
     statusLabel(v) {
-      const hit = this.ctx.statusOptions.riskTagStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      const hit = this.ctx.statusOptions.riskTagStatus?.find((o) => o.value === v)
+      return hit ? hit.label : '状态待确认'
     },
     statusTone(v) {
       return { ACTIVE: 'warning', FOLLOWING: 'processing', RESOLVED: 'success', VOIDED: 'default' }[v] || 'default'

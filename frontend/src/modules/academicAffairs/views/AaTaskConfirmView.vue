@@ -1,109 +1,63 @@
 <template>
-  <ModulePageShell
-    title="教学任务确认"
-    subtitle="学院核对确认（要求批内任务均已分配教师）→ 教务终审通过（进入排课资源池）或退回"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <div class="mp-stack">
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无教学任务批次" description="请先在「教学任务生成」按学期生成" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
-        <template #cell-status="{ row }"><AppStatusTag :type="taskBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></template>
-        <template #cell-actions="{ row }">
-          <button v-if="row.status === 'DRAFT' || row.status === 'RETURNED'" class="mp-link"
-                 :disabled="acting === row.batchId" @click="doCollegeConfirm(row)">学院核对确认</button>
-          <template v-if="row.status === 'COLLEGE_CONFIRMED'">
-            <button class="mp-link" :disabled="acting === row.batchId" @click="doReview(row, 'APPROVE')">教务终审通过</button>
-            <button class="mp-link is-danger" :disabled="acting === row.batchId" @click="openReturn(row)">退回</button>
-          </template>
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/teaching-tasks/${row.batchId}`)">查看明细</button>
-        </template>
-      </DataTable>
+  <ModulePageShell title="教学任务确认" subtitle="学院核对与教务确认仍按原节点" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
+    <ErrorState v-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
+    <EmptyState v-else-if="!rows.length" title="当前范围暂无教学任务批次" description="从已发布培养方案生成后进入核对队列。" />
+    <div v-else class="task-confirm-stack">
+      <AaTeachingTaskStageRail :current="4" current-note="当前学院教务核对" />
+      <div class="task-confirm-layout">
+      <section class="task-confirm-queue" aria-label="责任队列">
+        <h3>责任队列</h3>
+        <button v-for="row in rows" :key="row.batchId" type="button" :class="{ active: selectedBatchId === String(row.batchId) }" @click="selectBatch(row)">
+          <strong>{{ row.batchName }}</strong>
+          <span>{{ row.termLabel || '学期名称未提供' }} · 批次 #{{ row.batchId }}</span>
+          <AppStatusTag :type="taskBatchColor(row.status)" :label="statusLabel(row.status)" />
+          <small>{{ row.nextAction?.label || '打开核对正式状态与阻断' }}</small>
+        </button>
+        <div class="task-confirm-pages">
+          <button class="mp-link" :disabled="page === 1" @click="changePage(-1)">上一页</button>
+          <span>{{ page }} / {{ Math.max(1, Math.ceil(total / 20)) }}</span>
+          <button class="mp-link" :disabled="page * 20 >= total" @click="changePage(1)">下一页</button>
+        </div>
+      </section>
+      <AaTaskDetailView v-if="selectedBatchId" :ctx="ctx" :selected-batch-id="selectedBatchId" />
+      <EmptyState v-else title="选择需要核对的批次" description="先查看来源、教师确认状态和阻断证据，再办理当前节点。" />
+      </div>
     </div>
-
-    <AppConfirmDialog
-      v-model:visible="returnDialog.visible" title="退回学院重新核对" type="danger"
-      confirm-text="确认退回" :submitting="acting === returnDialog.batchId" @confirm="doReturn"
-    >
-      <label class="aa-note-label">退回原因（必填，≥5 字）
-        <textarea ref="returnReasonInput" v-model.trim="returnDialog.reason" class="aa-textarea" rows="3" placeholder="如：教师工作量超限需重新安排" />
-      </label>
-      <AppQuickPhrases scene-key="aa.task.return" @pick="onPickReturnReason" />
-    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 教学任务确认（/admin/academic-affairs/teaching-tasks/confirm）：教务两级确认链。
- * POST .../college-confirm（学院核对确认）+ POST .../review（教务终审 APPROVE/RETURN）。
- * 与既有 /submit（单步直提）并存，本页只展示两级链路的操作入口。
- */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
-import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
-import { toast } from '@/utils/toast'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { AppStatusTag } from '@/components/common'
+import { academicAffairsApi } from '../api/academic-affairs.api'
+import { TASK_BATCH_STATUS, taskBatchColor } from '../constants/teaching'
+import AaTaskDetailView from './AaTaskDetailView.vue'
+import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
 
 export default {
   name: 'AaTaskConfirmView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppStatusTag, AaTaskDetailView, AaTeachingTaskStageRail },
   props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true, error: '', rows: [], acting: '',
-      pagination: { page: 1, pageSize: 20, total: 0 },
-      returnDialog: { visible: false, batchId: '', reason: '' },
-      columns: [
-        { key: 'batchName', title: '批次名称' }, { key: 'termId', title: '学期 ID' },
-        { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '260px' }
-      ]
-    }
-  },
+  data() { return { loading: true, error: '', rows: [], revision: 0, page: 1, total: 0 } },
+  computed: { selectedBatchId() { return String(this.$route.query.batchId || '') } },
   created() { this.load() },
+  beforeUnmount() { this.revision++ },
   methods: {
     taskBatchColor,
-    statusLabel(s) { return TASK_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
-    onPageChange(p) { this.pagination.page = p; this.load() },
+    statusLabel(value) { return TASK_BATCH_STATUS[value] || '状态待确认' },
+    selectBatch(row) { this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: String(row.batchId) } }) },
+    changePage(delta) { this.page += delta; this.load() },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await academicAffairsApi.getTaskBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else { this.error = res.message }
-      this.loading = false
-    },
-    async doCollegeConfirm(row) {
-      this.acting = row.batchId
-      const res = await academicAffairsApi.collegeConfirmTaskBatch(row.batchId)
-      this.acting = ''
-      if (res.code === 0) { toast.success('已核对确认，待教务终审'); this.load() }
-      else { toast.error(res.message || '确认失败（需批内任务均已分配教师）') }
-    },
-    async doReview(row, action) {
-      this.acting = row.batchId
-      const res = await academicAffairsApi.reviewTaskBatch(row.batchId, action, '')
-      this.acting = ''
-      if (res.code === 0) { toast.success('教务终审通过，任务进入排课资源池'); this.load() }
-      else { toast.error(res.message || '操作失败') }
-    },
-    openReturn(row) { this.returnDialog = { visible: true, batchId: row.batchId, reason: '' } },
-    onPickReturnReason(text) {
-      const el = this.$refs.returnReasonInput
-      const { value, selStart, selEnd } = insertAtCursor(el, this.returnDialog.reason, text)
-      this.returnDialog.reason = value
-      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
-    },
-    async doReturn() {
-      if (!this.returnDialog.reason || this.returnDialog.reason.length < 5) { toast.error('退回原因必填且不少于 5 字'); return }
-      this.acting = this.returnDialog.batchId
-      const res = await academicAffairsApi.reviewTaskBatch(this.returnDialog.batchId, 'RETURN', this.returnDialog.reason)
-      this.acting = ''
-      if (res.code === 0) { this.returnDialog.visible = false; toast.success('已退回学院'); this.load() }
-      else { toast.error(res.message || '退回失败') }
+      const revision = ++this.revision
+      this.loading = true; this.error = ''; this.rows = []; this.total = 0
+      try {
+        const result = await academicAffairsApi.getTaskBatches({ page: this.page, pageSize: 20 })
+        if (revision !== this.revision) return
+        if (result.code !== 0) { this.error = result.message || '核对队列读取失败，请重试。'; return }
+        this.rows = result.data?.list || []; this.total = Number(result.data?.total || 0)
+      } catch (error) { if (revision === this.revision) this.error = error.message || '网络连接失败，请重试。' }
+      finally { if (revision === this.revision) this.loading = false }
     }
   }
 }
@@ -111,6 +65,13 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-note-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
-.aa-textarea { padding: 10px 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; width: 100%; resize: vertical; font-family: inherit; }
+.task-confirm-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.task-confirm-stack { display: grid; gap: 16px; }
+.task-confirm-queue { border: 1px solid var(--gray-200); border-radius: 10px; overflow: hidden; background: var(--bg-card); }
+.task-confirm-queue h3 { margin: 0; padding: 16px; font-size: 15px; }
+.task-confirm-queue > button { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; width: 100%; padding: 16px 13px; border: 0; border-top: 1px solid var(--gray-200); border-left: 3px solid transparent; background: transparent; color: var(--gray-800); text-align: left; cursor: pointer; }
+.task-confirm-queue > button.active { border-left-color: var(--primary-600); background: var(--primary-50); }
+.task-confirm-queue span, .task-confirm-queue small { font-size: 12px; color: var(--gray-500); }
+.task-confirm-pages { display: flex; justify-content: space-between; gap: 8px; padding: 12px; }
+@media (max-width: 1050px) { .task-confirm-layout { grid-template-columns: 1fr; } }
 </style>

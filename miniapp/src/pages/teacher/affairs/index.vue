@@ -118,7 +118,7 @@
         <view v-if="activeBatch" class="card ta__batch-detail">
           <text class="ta__label">{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || activeBatch.status }}</text>
           <view v-for="detail in (activeBatch.items || [])" :key="detail.itemId" class="ta__batch-item">
-            <view class="flex-1"><text class="ta__title">{{ detail.itemKey }}</text><text class="ta__sub">{{ detail.status }} · 尝试 {{ detail.attemptCount }} 次</text><text v-if="detail.errorMessage" class="ta__error">{{ detail.errorMessage }}</text></view>
+            <view class="flex-1"><text class="ta__title">任务项编号 {{ detail.itemKey }}</text><text class="ta__sub">{{ batchItemStatusLabel(detail.status) }} · 尝试 {{ detail.attemptCount }} 次</text><text v-if="detail.errorMessage" class="ta__error">{{ detail.errorMessage }}</text></view>
           </view>
         </view>
 
@@ -208,6 +208,7 @@ export default {
   },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
+    batchItemStatusLabel(value) { return ({ PENDING: '待处理', RUNNING: '处理中', SUCCEEDED: '处理成功', SUCCESS: '处理成功', FAILED: '处理失败', RETRY: '等待重试', RETRYING: '正在重试', DEAD: '重试失败', SKIPPED: '已跳过', CANCELLED: '已取消' }[value] || (value ? `状态待确认（${value}）` : '状态未知')) },
     returnToApplication() { const context = this.materialReturnContext || this.leaveContext; if (!context.bizType) return; if (context.bizType === 'PROFILE') return uni.navigateTo({ url: '/pages/teacher/student-detail/index?id=' + encodeURIComponent(context.bizId) }); uni.navigateTo({ url: context.bizType === 'FUNDING' ? '/pages/teacher/affairs-review/index?type=FUNDING_APPROVAL&recordId=' + encodeURIComponent(context.bizId) : context.bizType === 'AID' ? '/pages/teacher/affairs-review/index?type=AID_APPROVAL&recordId=' + encodeURIComponent(context.bizId) : '/pages/teacher/affairs-leave/index?recordId=' + encodeURIComponent(context.bizId) }) },
     formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '' },
     priorityClass(item) {
@@ -239,7 +240,7 @@ export default {
         this.todoHasMore = Boolean(d && d.hasMore)
         this.state = 'ready'
         this.scrollToMaterial()
-      }).catch((e) => { this.state = 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
+      }).catch((e) => { this.state = normalizeError(e).pageState || 'error'; toast(normalizeError(e).text || '学工待办加载失败') })
       return task
     },
     loadMaterials(showToast = true, reset = true) {

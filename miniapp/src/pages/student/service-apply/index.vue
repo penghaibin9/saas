@@ -65,7 +65,6 @@
 </template>
 
 <script>
-import { useSubmissionsStore } from '@/stores/submissions'
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { decodeQueryText, toast } from '@/utils/nav'
@@ -99,6 +98,10 @@ export default {
   },
   onLoad(q) {
     if (q && q.name) this.svcName = decodeQueryText(q.name)
+    if (this.svcName.includes('请假') || ['LEAVE', 'SV1'].includes(String(q?.serviceKey || q?.serviceType || '').toUpperCase())) {
+      uni.redirectTo({ url: '/pages/student/affairs/leave' })
+      return
+    }
     if (q && q.dept) this.dept = decodeQueryText(q.dept)
     if (q) this.needApprove = q.approve !== '0'
     this.typeOptions = TYPE_MAP[this.svcName] || TYPE_MAP.default
@@ -111,7 +114,7 @@ export default {
     onType(e) { this.typeIndex = Number(e.detail.value) },
     onStart(e) { this.startDate = e.detail.value },
     onEnd(e) { this.endDate = e.detail.value },
-    // 后端服务申请暂无附件存储字段，选完文件也无法真实提交，禁止假装"已选择"误导用户
+    // 附件先是 TEMP_PRIVATE；正式业务绑定由服务端在提交事务中完成，不能在客户端补造申请记录。
     onAttachmentError(error) {
       toast((error && error.message) || '附件处理失败，请重试')
     },
@@ -122,6 +125,7 @@ export default {
     },
     submit() {
       if (this.submitting) return
+      if (this.svcName.includes('请假')) { uni.redirectTo({ url: '/pages/student/affairs/leave' }); return }
       if (this.reason.trim().length < 5) {
         toast('申请事由至少 5 个字')
         return
@@ -133,10 +137,6 @@ export default {
       }
       const content = this.typeOptions[this.typeIndex] + ' · ' + this.startDate + '~' + this.endDate + ' · ' + this.reason.trim()
       const isLeave = this.svcName.indexOf('请假') >= 0
-      const localAdd = () => useSubmissionsStore().addApplication({
-        name: this.svcName + '（' + this.typeOptions[this.typeIndex] + '）',
-        dept: this.dept, needApprove: this.needApprove, detail: content
-      })
       this.submitting = true
       // 真实提交（提交锁防连点）；业务错误（403/409/422）绝不假装成功
       submitLock.run(() => studentApi.submitServiceApply({
@@ -144,10 +144,9 @@ export default {
         reason: content, startTime: this.startDate, endTime: this.endDate,
         fileIds: this.fileIds,
         ...(isLeave ? { leaveType: LEAVE_TYPE_CODE[this.typeOptions[this.typeIndex]] || 'OTHER' } : {})
-      })).then(() => {
-        localAdd()
+      })).then((result) => {
         this.fileIds = []
-        uni.showToast({ title: '提交成功', icon: 'success' })
+        uni.showToast({ title: result?.message || '已提交，等待处理', icon: 'success' })
         setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-work/index' }) }, 700)
       }).catch((e) => {
         if (e && e.code === 'LOCKED') return

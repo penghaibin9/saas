@@ -571,6 +571,7 @@ import { internshipCoreApi } from '../../services/internshipCoreApi'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
+import { systemPrompt } from '../../services/systemDialog'
 
 const ui = useUiStore()
 const cfg = usePortalConfigStore()
@@ -1286,13 +1287,10 @@ async function confirmReturnLeave() {
 }
 async function confirmAgreement(action) {
   if (!activeAgreement.value?.id) return ui.notify('暂无可操作协议')
+  const reason = action === 'REJECT' ? (await systemPrompt({ title: '填写驳回原因', message: '驳回原因将反馈给协议办理人员。', placeholder: '不少于 5 个字', minLength: 5, confirmText: '确认驳回' }) || '') : ''
+  if (action === 'REJECT' && reason.trim().length < 5) return
   busy.value = true
   try {
-    const reason = action === 'REJECT' ? (window.prompt('请填写驳回原因') || '') : ''
-    if (action === 'REJECT' && reason.trim().length < 5) {
-      busy.value = false
-      return ui.notify('驳回原因不少于 5 字')
-    }
     const detail = await internshipCoreApi.agreement(activeAgreement.value.id)
     await internshipCoreApi.confirmAgreement(activeAgreement.value.id, {
       ...currentInternshipContext(),

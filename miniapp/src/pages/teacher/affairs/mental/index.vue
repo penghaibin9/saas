@@ -123,7 +123,7 @@ export default {
         this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready'
         if (this.focusReferralId) this.openDetail({ referralId: this.focusReferralId })
       })
-        .catch((e) => { this.state = 'error'; this.showError(e, '心理关注加载失败') })
+        .catch((e) => { this.state = normalizeError(e).pageState || 'error'; this.showError(e, '心理关注加载失败') })
     },
     createReferral() {
       if (this.creating || !this.canCreate) return

@@ -28,6 +28,8 @@ class StudentLeaveApplyBody(BaseModel):
     startTime: str = Field(..., min_length=10, max_length=30)
     endTime: str = Field(..., min_length=10, max_length=30)
     reason: str = Field(..., min_length=5, max_length=300)
+    # 上传阶段只产生 TEMP_PRIVATE 文件；请假命令在同一事务中完成正式绑定。
+    fileIds: list[str] = Field(default_factory=list, max_length=3)
 
 
 def _apply_for_current_student(body: StudentLeaveApplyBody, user: dict) -> dict:
@@ -50,6 +52,7 @@ def _apply_for_current_student(body: StudentLeaveApplyBody, user: dict) -> dict:
         startTime=body.startTime,
         endTime=body.endTime,
         reason=body.reason.strip(),
+        fileIds=list(body.fileIds or []),
     )
     return leave_svc.apply_leave(command, current, skip_scope_check=True)
 

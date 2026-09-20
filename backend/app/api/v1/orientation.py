@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.domain_request_permissions import require_orientation_request_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
+from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchFlowRefreshBody, BatchUpdate, BlockedBody,
                                       CommentBody, DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
                                       GreenApproveBody, GreenReasonBody, IdsBody, NoteBody,
                                       NoticeCreate, PaymentSyncBody, PointCreate, PointUpdate,
@@ -61,13 +61,15 @@ def student_void(sid: str, body: ReasonBody, user=Depends(require_staff)):
 
 @router.post("/students/{sid}/verify", summary="新生信息核验（通过/不通过；不通过原因≥5字）")
 def student_verify(sid: str, body: VerifyBody, user=Depends(require_staff)):
-    return success(svc.verify_student(sid, body.passed, body.reason), message="已核验")
+    return success(svc.verify_student(sid, body.passed, body.reason, body.expectedVersion), message="已核验")
 
 
 @router.get("/progress", summary="报到进度")
 def progress(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, blockedOnly: str = "NO", user=Depends(require_staff)):
-    items, total = svc.list_progress(page, pageSize, keyword=keyword, blocked_only=blockedOnly)
+             keyword: Optional[str] = None, blockedOnly: str = "NO",
+             batchId: Optional[int] = Query(default=None, gt=0), user=Depends(require_staff)):
+    items, total = svc.list_progress(page, pageSize, keyword=keyword, blocked_only=blockedOnly,
+                                     batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -336,6 +338,16 @@ def flow_config(user=Depends(require_staff)):
 @router.put("/flow-config/{fid}", summary="调整流程环节（启用/必办）")
 def flow_config_update(fid: str, body: FlowUpdate, user=Depends(require_staff)):
     return success(svc.update_flow_config(fid, body.model_dump()), message="已更新")
+
+
+@router.post("/flow-config/complete-standard", summary="补齐供后续批次采用的标准报到环节")
+def flow_config_complete_standard(user=Depends(require_staff)):
+    return success(svc.complete_standard_flow_config(), message="标准环节已核对并补齐")
+
+
+@router.post("/batches/{bid}/refresh-flow-version", summary="空批次采用最新报到流程版本")
+def batch_refresh_flow_version(bid: str, body: BatchFlowRefreshBody, user=Depends(require_staff)):
+    return success(svc.refresh_empty_batch_flow_version(bid, body.expectedVersion), message="批次已采用最新流程")
 
 
 # ═══ 迎新通知 ═══

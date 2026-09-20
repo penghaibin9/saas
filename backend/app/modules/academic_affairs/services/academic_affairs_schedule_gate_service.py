@@ -9,7 +9,7 @@ from . import academic_affairs_scheduling_final_service as scheduling_service
 
 
 def evaluate(db, batch) -> dict:
-    from app.models import AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
 
     _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
     task_batch_query = db.query(AaTeachingTaskBatch).filter(
@@ -38,6 +38,16 @@ def evaluate(db, batch) -> dict:
     ).all()
 
     task_map = {int(task.id): task for task in tasks}
+    classroom_ids = sorted({int(item.classroom_id) for item in items if item.classroom_id})
+    classrooms = {int(room.id): room for room in db.query(AaClassroom).filter(
+        AaClassroom.tenant_id == _tid(), AaClassroom.id.in_(classroom_ids or [-1]),
+        AaClassroom.is_deleted.is_(False),
+    ).order_by(AaClassroom.id).populate_existing().with_for_update().all()}
+    invalid_classroom_items = [item for item in items if item.classroom_id and (
+        int(item.classroom_id) not in classrooms
+        or classrooms[int(item.classroom_id)].status != "AVAILABLE"
+        or not classrooms[int(item.classroom_id)].allow_schedule
+    )]
     counts: dict[int, int] = {}
     orphan_items = []
     invalid_coordinate_items = []
@@ -96,6 +106,7 @@ def evaluate(db, batch) -> dict:
         over,
         orphan_items,
         invalid_coordinate_items,
+        invalid_classroom_items,
         conflicts["hardCount"],
     ))
     return {
@@ -114,6 +125,8 @@ def evaluate(db, batch) -> dict:
         "overScheduledTaskCount": len(over),
         "orphanItemCount": len(orphan_items),
         "invalidCoordinateItemCount": len(invalid_coordinate_items),
+        "invalidClassroomItemCount": len(invalid_classroom_items),
+        "invalidClassroomItemIds": [str(item.id) for item in invalid_classroom_items],
         "hardConflicts": conflicts["hardCount"],
         "softConflicts": conflicts["softCount"],
         "invalidTasks": invalid_tasks,
@@ -146,6 +159,8 @@ def require_publishable(db, batch) -> dict:
         reasons.append(f"未关联正式教学任务的课表行 {result['orphanItemCount']} 条")
     if result["invalidCoordinateItemCount"]:
         reasons.append(f"周次坐标异常课表行 {result['invalidCoordinateItemCount']} 条")
+    if result["invalidClassroomItemCount"]:
+        reasons.append(f"教室已停用、删除或未允许排课 {result['invalidClassroomItemCount']} 条")
     if result["hardConflicts"]:
         reasons.append(f"硬冲突 {result['hardConflicts']} 条")
     raise AppException(

@@ -53,6 +53,14 @@ export function importReceiptCounts(job, kind) {
   return rows.map(([label, value]) => ({ label, value: validNumber(value) ? value : null }))
 }
 
+export function importPhoneCounts(job) {
+  if (!job?.phoneSummary || !Object.keys(job.phoneSummary).length) return []
+  return Object.entries({ phoneEmpty: '未提供号码', phonePending: '新增待本人验证',
+    phoneVerifiedUnchanged: '已验证号码保持不变', phoneCandidateUnchanged: '原候选保持不变',
+    phoneConflict: '号码冲突需处理', contactPhoneOnly: '仅作联系方式' })
+    .map(([key, label]) => ({ key, label, value: validNumber(job.phoneSummary[key]) ? job.phoneSummary[key] : null }))
+}
+
 export function createImportState() {
   return { file: null, job: null, busy: '', error: '', note: '', review: null,
     acknowledged: false, uncertain: false, uploadUncertain: false, readback: false,

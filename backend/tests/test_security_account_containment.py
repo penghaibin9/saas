@@ -15,8 +15,9 @@ import pytest
 
 
 def _subject(**changes):
-    fields = dict(id=7, tenant_id=11, version=3, user_type="TEACHER", status="ACTIVE",
-                  is_deleted=False, wx_openid="test-old-binding", must_change_password=False)
+    fields = dict(id=7, tenant_id=11, version=3, credential_version=0,
+                  user_type="TEACHER", status="ACTIVE", is_deleted=False,
+                  wx_openid="test-old-binding", must_change_password=False)
     fields.update(changes)
     return SimpleNamespace(**fields)
 

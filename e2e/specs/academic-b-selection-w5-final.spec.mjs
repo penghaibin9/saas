@@ -63,9 +63,10 @@ async function miniappLogin(page) {
   const fields = authCard.getByRole('textbox')
   await fields.nth(0).fill(config.student.username)
   await fields.nth(1).fill(config.student.password)
-  const agreement = authCard.locator('.agreement__box').first()
+  const agreement = authCard.getByRole('checkbox', { name: '同意用户协议与隐私政策' })
+  await expect(agreement).toBeVisible()
   await agreement.click()
-  await expect(agreement).toHaveClass(/\bon\b/)
+  await expect(agreement).toHaveAttribute('aria-checked', 'true')
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
   )
@@ -75,15 +76,33 @@ async function miniappLogin(page) {
 }
 
 async function pcRow(page, batchName, courseName) {
-  const batch = page.locator('.batch-card').filter({ hasText: batchName }).first()
-  await expect(batch).toBeVisible({ timeout: 20_000 })
-  const row = batch.locator('tr').filter({ hasText: courseName }).first()
+  const picker = page.getByLabel('选课批次')
+  await expect(picker).toBeVisible({ timeout: 20_000 })
+  const option = picker.locator('option').filter({ hasText: batchName })
+  await expect(option).toHaveCount(1)
+  const current = await picker.inputValue()
+  const target = await option.getAttribute('value')
+  if (current !== target) {
+    await picker.selectOption(target)
+    await expect(picker).toHaveValue(target)
+  }
+  const row = page.locator('.course-table tbody tr').filter({ hasText: courseName }).first()
   await expect(row).toBeVisible({ timeout: 20_000 })
   return row
 }
 
+async function openPcCourse(page, batchName, courseName, actionName) {
+  const row = await pcRow(page, batchName, courseName)
+  const action = row.getByRole('button', { name: actionName, exact: true })
+  await expect(action).toBeVisible()
+  await action.click()
+  await expect(page.getByRole('heading', { name: courseName, level: 2 })).toBeVisible()
+}
+
 async function miniCard(page, batchName, courseName) {
-  const group = page.locator('.sl__group').filter({ hasText: batchName }).first()
+  const picker = page.locator('.sl__batch-picker')
+  await expect(picker).toContainText(batchName, { timeout: 20_000 })
+  const group = page.locator('.sl__group').first()
   await expect(group).toBeVisible({ timeout: 20_000 })
   const card = group.locator('.sl__course').filter({ hasText: courseName }).first()
   await expect(card).toBeVisible({ timeout: 20_000 })
@@ -99,13 +118,12 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await pcLogin.login(config.student)
   await pc.goto(`${config.studentBaseUrl}/academic/selection`)
 
-  const blocked = await pcRow(pc, batch.batchName, blockerCourse.courseName)
-  await expect(blocked).toContainText('不可选')
-  await expect(blocked).toContainText('课程容量已满')
-  await expect(blocked).toContainText('下一步：')
-  await expect(blocked.getByRole('button')).toHaveCount(0)
-  const pcEligible = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcEligible.getByRole('button', { name: '立即选课', exact: true })).toBeVisible()
+  await openPcCourse(pc, batch.batchName, blockerCourse.courseName, '查看原因')
+  await expect(pc.locator('body')).toContainText('课程容量已满')
+  await expect(pc.getByRole('button', { name: '当前不可办理', exact: true })).toBeDisabled()
+  await pc.getByRole('button', { name: '返回可办理课程', exact: true }).click()
+
+  await openPcCourse(pc, batch.batchName, pcCourse.courseName, '查看与办理')
   await screenshot(pc, testInfo, 'w5-pc-server-actions-before-1440x900')
 
   const pcPreflight = pc.waitForResponse((response) =>
@@ -114,18 +132,19 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   const pcEnroll = pc.waitForResponse((response) =>
     response.url().includes('/portal/academic/course-selection/enroll') && response.request().method() === 'POST'
   )
-  await pcEligible.getByRole('button', { name: '立即选课', exact: true }).click()
+  await pc.getByRole('button', { name: '核对并提交', exact: true }).click()
   expect((await pcPreflight).ok()).toBeTruthy()
   expect((await pcEnroll).ok()).toBeTruthy()
-  const pcSelected = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcSelected).toContainText('已选')
-  await expect(pcSelected.getByRole('button', { name: '退课', exact: true })).toBeVisible()
-  await expect(pcSelected.getByRole('button', { name: '立即选课', exact: true })).toHaveCount(0)
+  await expect(pc.getByRole('heading', { name: '选课已确认' })).toBeVisible({ timeout: 15_000 })
+  await pc.getByRole('button', { name: '查看我的选课与报名', exact: true }).click()
+  const pcSelectedRecord = pc.locator('.selection-record').filter({ hasText: pcCourse.courseName }).first()
+  await expect(pcSelectedRecord).toContainText('已取得名额')
+  await expect(pcSelectedRecord.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   await screenshot(pc, testInfo, 'w5-pc-selected-drop-action-1440x900')
 
   await pc.reload()
   const pcAfterRefresh = await pcRow(pc, batch.batchName, pcCourse.courseName)
-  await expect(pcAfterRefresh.getByRole('button', { name: '退课', exact: true })).toBeVisible()
+  await expect(pcAfterRefresh.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   await pcContext.close()
 
   const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
@@ -134,18 +153,14 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
 
   const crossEnd = await miniCard(mini, batch.batchName, pcCourse.courseName)
-  await expect(crossEnd).toContainText('已选')
-  await expect(crossEnd.locator('.sl__btn')).toHaveText('退课')
+  await expect(crossEnd).toContainText('已取得名额')
+  await expect(crossEnd.locator('.sl__details-button')).toHaveText('查看退课条件')
   await crossEnd.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-cross-end-selected-390x844')
 
   const miniBlocked = await miniCard(mini, batch.batchName, blockerCourse.courseName)
-  await expect(miniBlocked).toContainText('不可选')
-  await expect(miniBlocked).toContainText('课程容量已满')
-  await expect(miniBlocked).toContainText('下一步：')
-  const miniBlockedButton = miniBlocked.locator('.sl__btn')
-  await expect(miniBlockedButton).toHaveText('不可选')
-  await expect(miniBlockedButton).toHaveAttribute('disabled', /^(true|disabled)$/)
+  const miniBlockedDetails = miniBlocked.locator('.sl__details-button')
+  await expect(miniBlockedDetails).toHaveText('查看办理条件')
   let blockedEnrollRequests = 0
   const countBlockedEnroll = (request) => {
     if (request.url().includes('/api/v1/mobile/academic/selection/enroll') && request.method() === 'POST') {
@@ -153,43 +168,64 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
     }
   }
   mini.on('request', countBlockedEnroll)
-  await miniBlockedButton.click({ force: true })
+  await miniBlockedDetails.click()
+  await expect(miniBlocked).toContainText('课程容量已满')
+  await expect(miniBlocked).toContainText('下一步：')
+  await expect(miniBlocked.locator('.sl__primary-action')).toHaveCount(0)
   await mini.waitForTimeout(300)
   mini.off('request', countBlockedEnroll)
   expect(blockedEnrollRequests).toBe(0)
 
   const miniEligible = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniEligible.locator('.sl__btn')).toHaveText('选课')
+  const miniEligibleDetails = miniEligible.locator('.sl__details-button')
+  await expect(miniEligibleDetails).toHaveText('查看并选择')
+  await miniEligibleDetails.click()
+  const miniEligiblePrimary = miniEligible.locator('.sl__primary-action')
+  await expect(miniEligiblePrimary).toHaveText('提交选课')
   const miniPreflight = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
   )
   const miniEnroll = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
   )
-  await miniEligible.locator('.sl__btn').click()
+  await miniEligiblePrimary.click()
+  const miniEnrollConfirm = mini.getByRole('dialog')
+  await expect(miniEnrollConfirm).toBeVisible()
+  await miniEnrollConfirm.getByRole('button', { name: '确认提交', exact: true }).click()
   expect((await miniPreflight).ok()).toBeTruthy()
   expect((await miniEnroll).ok()).toBeTruthy()
-  const miniSelected = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniSelected).toContainText('已选')
-  await expect(miniSelected.locator('.sl__btn')).toHaveText('退课')
-  await miniSelected.scrollIntoViewIfNeeded()
+  const miniSelectedRecord = mini.locator('.sl__record').filter({ hasText: miniCourse.courseName }).first()
+  await expect(miniSelectedRecord).toContainText('已取得名额', { timeout: 20_000 })
+  await expect(miniSelectedRecord.locator('.sl__record-action')).toHaveText('申请退课')
+  await miniSelectedRecord.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-selected-server-actions-390x844')
 
-  const miniDropCard = await miniCard(mini, batch.batchName, pcCourse.courseName)
+  const miniDropRecord = mini.locator('.sl__record').filter({ hasText: pcCourse.courseName }).first()
+  await expect(miniDropRecord).toContainText('已取得名额')
+  const miniDropAction = miniDropRecord.locator('.sl__record-action')
+  await expect(miniDropAction).toHaveText('申请退课')
+  const miniDropPreflight = mini.waitForResponse((response) =>
+    response.url().includes('/api/v1/mobile/academic/selection/drop-preflight') && response.request().method() === 'POST'
+  )
   const miniDrop = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/drop') && response.request().method() === 'POST'
   )
-  await miniDropCard.locator('.sl__btn').click()
+  await miniDropAction.click()
+  const miniDropConfirm = mini.getByRole('dialog')
+  await expect(miniDropConfirm).toBeVisible()
+  await miniDropConfirm.getByRole('button', { name: '确认退课', exact: true }).click()
+  expect((await miniDropPreflight).ok()).toBeTruthy()
   expect((await miniDrop).ok()).toBeTruthy()
-  const miniDropped = await miniCard(mini, batch.batchName, pcCourse.courseName)
-  await expect(miniDropped).toContainText('已退课')
-  await expect(miniDropped.locator('.sl__btn')).toHaveText('选课')
-  await miniDropped.scrollIntoViewIfNeeded()
+  const miniDroppedRecord = mini.locator('.sl__record').filter({ hasText: pcCourse.courseName }).first()
+  await expect(miniDroppedRecord).toContainText('已退课', { timeout: 20_000 })
+  await expect(miniDroppedRecord.locator('.sl__record-action')).toHaveCount(0)
+  await miniDroppedRecord.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-drop-reprojected-390x844')
 
   await mini.reload()
   const miniPersisted = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniPersisted.locator('.sl__btn')).toHaveText('退课')
+  await expect(miniPersisted).toContainText('已取得名额')
+  await expect(miniPersisted.locator('.sl__details-button')).toHaveText('查看退课条件')
   await miniContext.close()
 
   const reloginContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
@@ -198,11 +234,9 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await reloginPage.login(config.student)
   await relogin.goto(`${config.studentBaseUrl}/academic/selection`)
   const miniCourseOnPc = await pcRow(relogin, batch.batchName, miniCourse.courseName)
-  await expect(miniCourseOnPc).toContainText('已选')
-  await expect(miniCourseOnPc.getByRole('button', { name: '退课', exact: true })).toBeVisible()
+  await expect(miniCourseOnPc.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
   const droppedOnPc = await pcRow(relogin, batch.batchName, pcCourse.courseName)
-  await expect(droppedOnPc).toContainText('已退课')
-  await expect(droppedOnPc.getByRole('button', { name: '立即选课', exact: true })).toBeVisible()
+  await expect(droppedOnPc.getByRole('button', { name: '查看与办理', exact: true })).toBeVisible()
   await miniCourseOnPc.scrollIntoViewIfNeeded()
   await screenshot(relogin, testInfo, 'w5-pc-cross-end-relogin-1280x720')
   await reloginContext.close()

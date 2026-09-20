@@ -249,6 +249,21 @@ def test_returned_leave_message_reaches_the_leave_object():
     assert action["disabledReason"] is None
 
 
+def test_returned_internship_weekly_message_reaches_the_exact_weekly_report():
+    action = adapter.build_message_action(
+        "student.internship.weekly-report",
+        {"reportId": "23", "batchId": "7", "internshipId": "19", "weekNo": 4},
+        client=adapter.CLIENT_STUDENT_MINI,
+    )
+    target = action["target"]
+    assert target["path"] == "/pages/student/weekly-report/index"
+    assert target["query"]["reportId"] == "23"
+    assert target["query"]["weekNo"] == 4
+    assert target["focusMode"] == FOCUS_LIST_FOCUS
+    assert target["routeExact"] is True
+    assert action["disabledReason"] is None
+
+
 def test_affairs_keys_claiming_list_focus_have_a_focus_ready_page():
     for key in sorted(_canonical_affairs_action_keys() & set(messages.ACTION_REGISTRY)):
         spec = messages.ACTION_REGISTRY[key]

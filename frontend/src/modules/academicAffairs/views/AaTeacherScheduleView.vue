@@ -10,6 +10,14 @@
     </template>
 
     <div class="mp-stack">
+      <AaScheduleObjectBar
+        :name="teacherName || (teacherKey ? `教师 ${teacherKey}` : '教师课表')"
+        :identity="teacherKey ? `教师账号 ${teacherKey} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教师或进入本人课表'"
+        source="来源：真实授课关系与当前正式课表"
+        :status="teacherKey ? '只读正式课表' : '对象待选择'"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="任课教师；调整须进入调停课审批"
+      />
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           教师
@@ -93,10 +101,11 @@ import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 export default {
   name: 'AaTeacherScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppTeacherPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppTeacherPicker, AppTermEntityPicker, AaScheduleGrid, AaScheduleObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -105,7 +114,7 @@ export default {
       selfKey: String(u.loginName || u.userId || ''),
       termId: '', week: null,
       slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: '',
-      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', selectedItem: null
+      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '', selectedItem: null
     }
   },
   created() {
@@ -164,12 +173,16 @@ export default {
       if (!this.teacherKey) return
       this.loading = true
       this.error = ''
+      this.todayError = ''
       const [res, todayRes] = await Promise.all([
         academicAffairsApi.getTeacherSchedule(this.teacherKey, {
           termId: this.termId || undefined, week: this.week || undefined
         }),
         this.isSameTeacherKey(this.teacherKey)
-          ? academicAffairsApi.getMyTeacherToday()
+          ? academicAffairsApi.getMyTeacherToday().catch((error) => {
+              this.todayError = error?.message || '今日课表暂不可用'
+              return null
+            })
           : Promise.resolve(null)
       ])
       this.loading = false

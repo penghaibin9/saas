@@ -59,8 +59,8 @@
             v-model="fnQuery"
             class="bpl-cmdk__input"
             type="text"
-            :placeholder="useWorkspace ? '搜索学生、功能或帮助' : '搜功能、帮助文档、流程图'"
-            :aria-label="useWorkspace ? '搜索学生、功能或帮助' : '搜索功能与帮助'"
+            :placeholder="workspaceSearchPlaceholder"
+            :aria-label="workspaceSearchAriaLabel"
             @focus="fnOpen = true"
             @keydown.enter.prevent="pickFirstFn"
             @keydown.down.prevent="moveFn(1)"
@@ -88,7 +88,8 @@
                 </a>
               </template>
             </template>
-            <div v-else class="bpl-cmdk__empty">{{ fnQuery ? `未找到「${fnQuery}」相关结果` : '输入学生姓名、学号或功能名称' }}</div>
+            <div v-else class="bpl-cmdk__empty">{{ helpLoading ? '正在加载帮助索引…' : fnQuery ? `未找到「${fnQuery}」相关结果` : '输入学生姓名、学号或功能名称' }}</div>
+            <button v-if="helpError" type="button" @click="loadHelp">帮助索引加载失败，点击重试</button>
             <div v-if="useWorkspace && stuSearching" class="bpl-cmdk__loading">正在搜索学生…</div>
             <div v-else-if="useWorkspace && stuError" class="bpl-cmdk__empty" role="status">{{ stuError }}</div>
           </div>
@@ -135,9 +136,10 @@
             @blur="closeHelpSoon"
           >?</button>
           <div v-if="helpOpen" class="bpl-help__panel" @mousedown.prevent>
+            <button v-if="helpError" type="button" @click="loadHelp">帮助加载失败，点击重试</button>
             <a class="bpl-help__opt" href="javascript:void(0)" @click="goPageHelp">
               <span class="bpl-help__opt-lb">本页帮助</span>
-              <span class="bpl-help__opt-sub">{{ pageHelp ? pageHelp.title : '这一页暂无专属帮助，去帮助中心找' }}</span>
+              <span class="bpl-help__opt-sub">{{ helpLoading ? '正在加载本页帮助…' : pageHelp ? pageHelp.title : '这一页暂无专属帮助，去帮助中心找' }}</span>
             </a>
             <a
               class="bpl-help__opt"
@@ -189,6 +191,7 @@
       :identity-key="workspaceIdentityKey"
       :legacy-identity-key="ctx.ctxKey || ''"
       :scope-name="scopeName"
+      :horizontal-module="horizontalModule"
       :resolve-destination="workspaceNavigate"
       @tokens="workspaceColors = $event"
       @theme-label="workspaceThemeLabel = $event"
@@ -197,6 +200,13 @@
       <div v-if="$slots.menu" class="bpl-workspace-custom"><aside><slot name="menu" /></aside><div><slot /></div></div>
       <slot v-else />
     </TeacherWorkspaceFrame>
+    <!-- A workspace awaiting identity stays in workspace chrome, never the legacy navigation. -->
+    <div v-if="useWorkspace && !ctx" class="bpl-workspace-pending">
+      <div class="bpl-workspace-pending__bar" aria-hidden="true"></div>
+      <main class="bpl-workspace-pending__content" aria-label="工作区加载状态">
+        <slot />
+      </main>
+    </div>
     <div v-if="!useWorkspace && railItems.length" class="bpl-mobilehint" role="note">
       <svg class="bpl-mobilehint__ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -205,7 +215,7 @@
       <span class="bpl-mobilehint__tx"><strong>建议在电脑上使用管理控制台。</strong>当前屏幕较窄，左侧导航已隐藏；请使用电脑或将浏览器窗口调宽，以获得完整菜单与导航。</span>
     </div>
 
-    <div v-if="!useWorkspace || !ctx" class="bpl-body">
+    <div v-if="!useWorkspace" class="bpl-body">
       <!-- 左一级 82px 深蓝渐变图标轨（菜单数据消费 config/adminMenu.js，本组件不写死业务菜单） -->
       <aside v-if="railItems.length" class="bpl-rail">
         <div
@@ -302,17 +312,19 @@
 </template>
 
 <script>
+import { computed, markRaw } from 'vue'
+import '@/styles/compact-business-workspace.css'
 import { AppIcon } from '@/components/ui'
 import AppUserChip from '@/components/common/AppUserChip.vue'
 import { usesStudentAffairsWorkspace, workspaceIdentity, workspaceRouteOwner } from '@/components/workspace/workspaceRouting'
 import { currentUserFromToken } from '@/services/http/client'
 import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
+import { workspaceTokens } from '@/components/workspace/teacherWorkspace'
 import WorkbenchPageTabs from '@/components/workspace/WorkbenchPageTabs.vue'
 import { WORKBENCH_PAGE_TABS } from '@/modules/workbench/config/workbenchNavigation'
 import WorkspaceDeskUtilities from '@/components/workspace/WorkspaceDeskUtilities.vue'
 import { OfficeBuilding } from '@element-plus/icons-vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
-import { searchHelp, findHelpForRoute } from '@/config/helpContent'
 import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, searchNavPlan, navRefMatches, navRefExactMatch, matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
@@ -379,6 +391,7 @@ function readThemePreference() {
 }
 
 export default {
+  provide() { return { compactWorkspace: computed(() => this.useWorkspace && ['graduation', 'internship', 'academic-affairs', 'student-affairs', 'system'].includes(this.railActiveKey)) } },
   name: 'BasePortalLayout',
   components: { AppIcon, AppUserChip, TeacherWorkspaceFrame, WorkspaceDeskUtilities, OfficeBuilding, WorkbenchPageTabs },
   props: {
@@ -388,6 +401,7 @@ export default {
     activeKey: { type: String, default: '' },
     hideAside: { type: Boolean, default: false },
     workspace: { type: Boolean, default: false },
+    horizontalModule: { type: String, default: '' },
     hideGlobalWorkbench: { type: Boolean, default: false },
     workspaceNavigate: { type: Function, default: (path) => path },
     /* v2 新增（可选）：角色上下文，注入后启用统一壳的一级图标轨与身份区 */
@@ -398,7 +412,9 @@ export default {
   emits: ['menu-select', 'menu-disabled'],
   data() {
     return {
-      workspaceColors: {},
+      // Keep the first paint in the same workspace shell while role/context loads.
+      // TeacherWorkspaceFrame replaces this with the user's saved theme after mount.
+      workspaceColors: workspaceTokens('blue'),
       workspaceThemeLabel: '',
       theme: readThemePreference(),
       themeOptions: THEME_OPTIONS,
@@ -421,6 +437,9 @@ export default {
       fnBlurTimer: null,
       /* ③ 常驻帮助入口（本页帮助 / 重看引导 / 帮助中心） */
       helpOpen: false,
+      helpApi: null,
+      helpLoading: false,
+      helpError: false,
       helpBlurTimer: null,
       /* 侧栏树：各二级模块的展开状态 { modKey: true/false }（未记录时默认展开当前路由所属二级） */
       expandedMods: {},
@@ -432,7 +451,17 @@ export default {
   },
   computed: {
     useWorkspace() {
-      return !this.isPlatformMode && (this.workspace || usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path))
+      // 平台控制面不会自动套用学校工作区；只有所属布局显式传入 workspace 才启用，
+      // 既允许统一公共壳，也避免登录页或其他平台入口被意外改版。
+      return this.workspace || (!this.isPlatformMode && (usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path)))
+    },
+    workspaceSearchPlaceholder() {
+      if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
+      return this.isPlatformMode ? '搜索平台功能或帮助' : '搜索学生、功能或帮助'
+    },
+    workspaceSearchAriaLabel() {
+      if (!this.useWorkspace) return '搜索功能与帮助'
+      return this.isPlatformMode ? '搜索平台功能与帮助' : '搜索学生、功能或帮助'
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)
@@ -449,7 +478,7 @@ export default {
     },
     /** 当前路由对应的帮助任务卡（找不到为 null，此时「本页帮助」退回帮助中心首页） */
     pageHelp() {
-      return findHelpForRoute(this.$route.fullPath)
+      return this.helpApi?.findHelpForRoute(this.$route.fullPath) || null
     },
     /** 当前页是否登记了新手引导（未登记时把「重看本页引导」置灰，不给死按钮） */
     pageGuideAvailable() {
@@ -476,7 +505,7 @@ export default {
         }
       }
       // 帮助任务卡 / 帮助文档 / 业务流程图
-      searchHelp(q).forEach((h) => out.push({ kind: h.kind, label: h.title, sub: h.sub || '', to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
+      ;(this.helpApi?.searchHelp(q) || []).forEach((h) => out.push({ kind: h.kind, label: h.title, sub: h.sub || '', to: '/admin/help?topic=' + h.id, disabled: false, badge: '' }))
       // 去重（label+to）后截断
       const seen = new Set()
       const dedup = out.filter((r) => {
@@ -562,7 +591,9 @@ export default {
       return getVisibleAdminMenu(this.ctx)
         .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
         .map((group) => {
-          const first = group.children[0]
+          // 顶部中心入口保留日常办理导航；独立大屏仍由原菜单进入。
+          // 只从已通过权限过滤的菜单选择，受限身份继续使用其首个可用入口。
+          const first = group.children.find((item) => item.path === '/admin/academic-affairs') || group.children[0]
           return {
             key: group.key,
             label: group.label,
@@ -734,18 +765,28 @@ export default {
     isHelpRoute(to) {
       return String(to || '').split('?')[0] === '/admin/help'
     },
-    /**
-     * 帮助中心始终独立打开，避免老师丢失当前业务页面。
-     * 当前认证令牌保存在 sessionStorage：新标签必须在有 opener 的创建瞬间继承会话，
-     * 随后立即断开 opener，兼顾免重复登录与反向标签页劫持防护。
-     */
+    /** 帮助在现有应用页签中打开，避免浏览器新窗口或远程弹窗。 */
     openHelpWindow(to = '/admin/help') {
-      const href = this.$router.resolve(to).href
-      const helpWindow = window.open(href, '_blank')
-      if (helpWindow) helpWindow.opener = null
+      this.$router.push(to)
     },
     /** 本页帮助：能匹配到任务卡就直达该卡，匹配不到退回帮助中心首页（不乱跳）。 */
-    goPageHelp() {
+    async loadHelp() {
+      if (this.helpApi) return this.helpApi
+      if (this.helpLoading) return this.helpRequest
+      this.helpLoading = true
+      this.helpError = false
+      // Runtime 先完成已验证内容过滤，再供搜索和本页帮助消费。
+      this.helpRequest = import('@/config/helpCenterRuntime').then(api => {
+        this.helpApi = markRaw(api)
+        return api
+      }).catch(() => {
+        this.helpError = true
+        return null
+      }).finally(() => { this.helpLoading = false })
+      return this.helpRequest
+    },
+    async goPageHelp() {
+      if (!await this.loadHelp()) return
       this.helpOpen = false
       const to = this.pageHelp ? `/admin/help?topic=${this.pageHelp.id}` : '/admin/help'
       this.openHelpWindow(to)
@@ -878,6 +919,8 @@ export default {
     }
   },
   watch: {
+    fnOpen(open) { if (open) this.loadHelp() },
+    helpOpen(open) { if (open) this.loadHelp() },
     fnQuery(q) {
       if (this.useWorkspace && !this.isPlatformMode) this.queueStuSearch(q)
       this.fnActive = 0
@@ -927,6 +970,9 @@ export default {
 .bpl-workspace .bpl-cmdk{background:var(--surface);border-color:var(--line);box-shadow:none}
 .bpl-workspace .bpl-scope{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t3);border-color:var(--line);background:var(--surface)}
 .bpl-workspace-custom{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.bpl-workspace-custom>aside{max-height:70vh;overflow:auto}@media(max-width:1000px){.bpl-workspace-custom{grid-template-columns:1fr}}
+.bpl-workspace-pending{flex:1;min-height:0;background:var(--bg-page)}
+.bpl-workspace-pending__bar{height:44px;border-bottom:1px solid var(--line, #e2e8f0);background:var(--surface, #fff)}
+.bpl-workspace-pending__content{padding:24px;min-width:0;overflow:auto}
 .bpl-workspace .bpl-search{margin:0 10px;max-width:600px}
 .bpl-workspace .bpl-cmdk--fn{width:100%;max-width:none;flex:1}
 .bpl-workspace .bpl-logo svg{width:25px;height:25px}

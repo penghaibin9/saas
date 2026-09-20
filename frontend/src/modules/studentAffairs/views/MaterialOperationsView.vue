@@ -163,6 +163,7 @@ import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { affairsOperationsApi } from '@/modules/studentAffairs/api/operations.api'
 import { toast } from '@/utils/toast'
 import { safeLocalizedText } from '@/utils/presentationSafety'
+import { systemConfirm } from '@/services/systemDialog'
 
 const OPERATION_STATUS_LABELS = { MISSING: '待补交', RETURNED: '退回重补', PENDING_REVIEW: '待审核', ACCEPTED: '已验收', WAIVED: '已免交', CREATED: '等待处理', RUNNING: '处理中', SUCCEEDED: '已完成', FAILED: '失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销', ACTIVE: '生效中', FROZEN: '已冻结' }
 const SCAN_RESULT_LABELS = { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' }
@@ -363,9 +364,9 @@ export default {
       this.acting = row.requirementId
       try { await affairsOperationsApi.reviewRequirement(row.requirementId, action, reason, row.version); toast.success('材料状态已更新'); this.$refs.reviewDialog.close(); this.reviewTarget = null; await this.loadRequirements(); if (this.activeRequirement?.requirementId === row.requirementId) this.activeRequirement = this.requirements.find((x) => x.requirementId === row.requirementId) || null } catch (e) { this.reviewError = e?.message || '材料审核失败，办理说明已保留，请重试' } finally { this.acting = '' }
     },
-    async backfillLegacy() { if (!window.confirm('确认幂等回填当前学校尚未接入公共版本链的旧材料？')) return; this.acting = 'backfill'; try { const result = await affairsOperationsApi.backfill(500); toast.success(`回填完成：补交版本 ${result.convertedSubmissions}，旧附件 ${result.convertedAttachments}`); await this.loadRequirements() } catch (e) { toast.error(e?.message || '旧材料回填失败') } finally { this.acting = '' } },
+    async backfillLegacy() { if (!await systemConfirm({ title: '确认回填旧材料', message: '将幂等回填当前学校尚未接入公共版本链的旧材料。', confirmText: '确认回填', type: 'danger' })) return; this.acting = 'backfill'; try { const result = await affairsOperationsApi.backfill(500); toast.success(`回填完成：补交版本 ${result.convertedSubmissions}，旧附件 ${result.convertedAttachments}`); await this.loadRequirements() } catch (e) { toast.error(e?.message || '旧材料回填失败') } finally { this.acting = '' } },
     async createReminderBatch() {
-      if (!this.selectedRows.length || !window.confirm(`确认向 ${this.selectedRows.length} 项缺失材料发送提醒？`)) return
+      if (!this.selectedRows.length || !await systemConfirm({ title: '确认发送材料提醒', message: `将向 ${this.selectedRows.length} 项缺失材料发送提醒。`, confirmText: '确认发送' })) return
       this.acting = 'batch'; try { const result = await affairsOperationsApi.createBatchJob({ jobType: 'MATERIAL_REMIND', idempotencyKey: `material-remind:${Date.now()}`, items: this.selectedRows.map((row) => ({ requirementId: Number(row.requirementId), version: Number(row.version) })) }); toast.success(`批次完成：成功 ${result.successCount}，失败 ${result.failureCount}`); this.selected = new Set(); await Promise.all([this.loadRequirements(), this.loadBatches()]) } catch (e) { toast.error(e?.message || '批量提醒失败') } finally { this.acting = '' }
     },
     async openBatch(job) { try { this.activeBatch = await affairsOperationsApi.getBatchJob(job.batchJobId) } catch (e) { toast.error(e?.message || '批次详情加载失败') } },

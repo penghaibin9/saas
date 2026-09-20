@@ -122,13 +122,14 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await dismissPageGuide(page)
     await chooseTerm(page, targetYearCode)
 
+    await page.locator('.aa-calendar-copy > summary').click()
     const copyPanel = page.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
     await expect(page.getByText('快速复制上一学期校历', { exact: true })).toBeVisible()
     await page.locator('.aa-copy-field select').selectOption(String(source.termId))
     await page.getByRole('button', { name: '预览复制结果' }).click()
 
-    await expect(page.getByText(holidayRemark)).toBeVisible()
-    await expect(page.getByText(examRemark)).toBeVisible()
+    await expect(page.getByText(holidayRemark, { exact: true })).toBeVisible()
+    await expect(page.getByText(examRemark, { exact: true })).toBeVisible()
     await expect(page.getByText('需人工复核', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('TEACHING_WEEK_RELATIVE_WITH_EXAM_WEEK_ALIGNMENT')).toHaveCount(0)
     await expect(page.getByText(mappedHoliday, { exact: false })).toBeVisible()
@@ -144,8 +145,8 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await confirm.click()
     await expect(confirm).toBeHidden({ timeout: 10000 })
 
-    await expect(page.getByText(holidayRemark)).toBeVisible()
-    await expect(page.getByText(examRemark)).toBeVisible()
+    await expect(page.getByText(holidayRemark, { exact: true })).toBeVisible()
+    await expect(page.getByText(examRemark, { exact: true })).toBeVisible()
 
     const targetEvents = await expectApiOk(
       await browserApi(page, token, 'GET', `/academic-affairs/terms/${target.termId}/calendar`),
@@ -163,7 +164,10 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/time-slots/)
     await dismissPageGuide(page)
 
-    await expect(page.getByText('标准作息模板', { exact: true })).toBeVisible()
+    const templateDetails = page.locator('details.aa-slot-template')
+    await expect(templateDetails).toBeVisible()
+    await templateDetails.locator('summary').click()
+    await expect(templateDetails.getByText('标准作息模板', { exact: true })).toBeVisible()
     await expect(page.getByText('新增节次', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '标准 10 节' }).click()
     await page.getByRole('button', { name: '检查当前作息' }).click()

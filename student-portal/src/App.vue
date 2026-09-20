@@ -13,6 +13,7 @@
     <router-view />
     <!-- 低频扩展事项放在主流程之后，避免遮挡选题、任务书、开题等首屏主线。 -->
     <GraduationExtensionPanel v-if="showGraduationPanel" />
+    <SystemDialogHost />
     <div v-if="ui.toast" class="sp-toast">{{ ui.toast }}</div>
   </div>
 </template>
@@ -21,6 +22,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GraduationExtensionPanel from './components/graduation/GraduationExtensionPanel.vue'
+import SystemDialogHost from './components/SystemDialogHost.vue'
 import { useUiStore } from './stores/ui'
 import { useGraduationHealth } from './stores/graduationHealth'
 import './styles/graduation-usability.css'

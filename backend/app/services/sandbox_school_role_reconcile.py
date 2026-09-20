@@ -134,6 +134,12 @@ def _ensure_roles(db, tenant_id: int) -> dict[str, int]:
             db.flush()
             existing[code] = role
         else:
+            if role.role_type == "CUSTOM":
+                from app.modules.system_admin.services.school_role_adoption_service import has_local_adoption
+
+                if not has_local_adoption(db, role, tenant_id):
+                    raise RuntimeError(f"学校角色来源未核验，停止重建：{code}")
+                continue
             role.role_name = template["roleName"]
             role.role_type = "SYSTEM"
             role.status = "ACTIVE"

@@ -1,0 +1,31 @@
+# Add to the existing MySQL compose command after running Alembic migrations.
+services:
+  website-news-worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.website_news_worker"]
+    restart: unless-stopped
+    profiles: ["website-news"]
+    env_file:
+      - ../env/backend.mysql.env
+    environment:
+      APP_ENV: "production"
+      DEPLOYMENT_MODE: "production"
+      DB_ENABLED: "true"
+      DB_DRIVER: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-saas_lifecycle}
+      DB_USER: ${DB_USER:-saas_user}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      DATABASE_URL: ""
+      WEBSITE_NEWS_WORKER_ENABLED: "true"
+      WEBSITE_NEWS_ORIGIN: "https://hnyueke.com"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+    networks:
+      - school-lifecycle

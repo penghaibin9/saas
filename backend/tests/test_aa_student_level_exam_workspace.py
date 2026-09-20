@@ -23,8 +23,8 @@ def test_level_exam_workspace_uses_real_registration_contracts():
     assert "portalApi.academicLevelRegister(id)" in source
     assert "portalApi.academicLevelCancel(id)" in source
     assert "await load()" in source
-    assert "报名成功不等同于缴费完成或准考资格确认" in source
-    assert "允许代替他人报名" in source
+    assert "报名、缴费、成绩和证书分别记录" in source
+    assert "studentId:" not in source
     assert "window.prompt" not in source
 
 

@@ -2,6 +2,7 @@
 import { createApp, h, ref } from 'vue'
 import StudentPortalConfigPanel from '../../src/modules/platform/components/StudentPortalConfigPanel.vue'
 import TenantOffboardingPanel from '../../src/modules/platform/components/TenantOffboardingPanel.vue'
+import SystemDialogHost from '../../src/components/common/SystemDialogHost.vue'
 import { studentPortalConfigApi } from '../../src/modules/platform/api/studentPortalConfig.api'
 import { platformSecurityOpsApi } from '../../src/modules/platform/api/platformSecurityOps.api'
 import '../../src/styles/tokens.css'
@@ -54,7 +55,7 @@ platformSecurityOpsApi.approveTenantPurge = async () => { throw new Error('This 
 const css = document.createElement('style')
 css.textContent = '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t1);font:14px/1.6 "Noto Sans CJK SC","Microsoft YaHei",sans-serif}.test-note{padding:12px;background:var(--bg-card);font-size:12px}.test-content{max-width:1200px;padding:24px;margin:auto;background:var(--bg-card)}button,input,select{font:inherit}@media(max-width:600px){.test-content{padding:12px}}'
 document.head.append(css)
-createApp({ setup() { return () => [h('p', { class: 'test-note' }, '实际 Vue 组件 · 无网络隔离验证 · 合成测试数据，不是生产后端'),
+createApp({ setup() { return () => [h(SystemDialogHost), h('p', { class: 'test-note' }, '实际 Vue 组件 · 无网络隔离验证 · 合成测试数据，不是生产后端'),
   h('button', { type: 'button', onClick: () => { tenantId.value = '7' } }, '测试切换学校'),
   h('main', { class: 'test-content' }, params.get('panel') === 'exit'
     ? h(TenantOffboardingPanel, { key: `${tenantId.value}-${generation.value}`, tenantId: tenantId.value, onChanged: () => generation.value++ })

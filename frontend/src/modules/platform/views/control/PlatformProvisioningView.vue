@@ -83,6 +83,7 @@ import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, St
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 const ROOT_ROLES = new Set(['PLATFORM_OWNER', 'PLATFORM_SUPER_ADMIN'])
 
@@ -144,19 +145,19 @@ export default {
     async retryStep(row) { const res = await platformControlApi.retryProvisioningStep(this.selected.jobId, row.stepCode); if (res.code === 0) { toast.success('已重试'); this.selected = res.data; await this.load() } else toast.error(res.message) },
     async compensateStep(row) {
       if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可执行补偿')
-      const reason = window.prompt('补偿原因（至少5字）'); if (!reason) return
+      const reason = await systemPrompt({ title: '填写补偿原因', message: '补偿原因将写入审计记录。', placeholder: '至少 5 个字', minLength: 5, confirmText: '执行补偿' }); if (!reason) return
       const res = await platformControlApi.compensateProvisioningStep(this.selected.jobId, row.stepCode, reason)
       if (res.code === 0) { toast.success('补偿已执行'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },
     async flagManual(row) {
       if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可转人工')
-      const reason = window.prompt('转人工原因（至少5字）'); if (!reason) return
+      const reason = await systemPrompt({ title: '填写转人工原因', message: '转人工原因将写入审计记录。', placeholder: '至少 5 个字', minLength: 5, confirmText: '转人工处理' }); if (!reason) return
       const res = await platformControlApi.flagProvisioningManualReview(this.selected.jobId, row.stepCode, reason)
       if (res.code === 0) { toast.success('已转人工队列'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },
     async cancelJob() {
       if (!this.isRoot) return toast.error('仅平台负责人/超级管理员可取消开通任务')
-      const reason = window.prompt('取消原因（至少5字）'); if (!reason) return
+      const reason = await systemPrompt({ title: '填写取消原因', message: '取消原因将写入审计记录。', placeholder: '至少 5 个字', minLength: 5, confirmText: '确认取消' }); if (!reason) return
       const res = await platformControlApi.cancelProvisioningJob(this.selected.jobId, reason)
       if (res.code === 0) { toast.success('已取消'); this.selected = res.data; await this.load() } else toast.error(res.message)
     },

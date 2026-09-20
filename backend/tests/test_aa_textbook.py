@@ -140,11 +140,11 @@ def test_t6_partial_fee_and_stock(client, db_mode):
     rid = client.get(f"{BASE}/textbooks/distribution-batches/{dbid}/records", headers=admin).json()["data"]["items"][0]["recordId"]
     client.post(f"{BASE}/textbooks/distribution-records/{rid}/sign", headers=admin)
     fid = client.get(f"{BASE}/textbooks/fee-ledger", headers=admin).json()["data"]["items"][0]["feeId"]
-    r1 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 20}).json()
+    r1 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 20, "expectedPaidAmount": 0}).json()
     assert r1["data"]["status"] == "PARTIAL" and r1["data"]["paidAmount"] == 20.0
-    r2 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 30}).json()
+    r2 = client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 30, "expectedPaidAmount": 20}).json()
     assert r2["data"]["status"] == "PAID"
-    assert client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 10}).status_code == 409
+    assert client.post(f"{BASE}/textbooks/fee-ledger/{fid}/mark", headers=admin, json={"action": "PARTIAL", "amount": 10, "expectedPaidAmount": 50}).status_code == 409
     stock = client.get(f"{BASE}/textbooks/stock", headers=admin).json()["data"]["items"]
     row = next(x for x in stock if x["textbookId"] == str(tbid))
     assert row["arrivedQty"] == 10 and row["distributedQty"] == 1 and row["stockQty"] == 9

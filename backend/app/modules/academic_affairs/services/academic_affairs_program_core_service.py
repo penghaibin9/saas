@@ -100,7 +100,7 @@ def add_course(program_id, user, body) -> dict:
 
 def get_program(program_id, user) -> dict:
     with session() as db:
-        from app.models import (AaProgram, AaProgramCourse, NationalStandardDocument,
+        from app.models import (AaCourse, AaProgram, AaProgramCourse, NationalStandardDocument,
                                 NationalStandardSection, SchoolMajorStandardBinding)
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
@@ -108,11 +108,27 @@ def get_program(program_id, user) -> dict:
         courses = db.scalars(select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == p.id,
             AaProgramCourse.is_deleted.is_(False)).order_by(AaProgramCourse.open_term_no)).all()
+        # course_id identifies a specific version; never infer it from the name or latest code.
+        course_ids = {c.course_id for c in courses if c.course_id is not None}
+        catalog = db.scalars(select(AaCourse).where(
+            AaCourse.tenant_id == _tid(), AaCourse.id.in_(course_ids),
+            AaCourse.is_deleted.is_(False))).all() if course_ids else []
+        catalog_by_id = {c.id: c for c in catalog}
         d = _row(p)
         d["requirement"] = json.loads(p.requirement_json) if p.requirement_json else {}
-        d["courses"] = [{"programCourseId": str(c.id), "courseName": c.course_name or "",
-                         "openTermNo": c.open_term_no, "module": c.module or "",
-                         "credit": c.credit_snapshot} for c in courses]
+        d["courses"] = []
+        for c in courses:
+            linked = catalog_by_id.get(c.course_id)
+            d["courses"].append({
+                "programCourseId": str(c.id), "courseName": c.course_name or "",
+                "openTermNo": c.open_term_no, "module": c.module or "",
+                "credit": c.credit_snapshot,
+                "courseId": str(linked.id) if linked else None,
+                "courseCode": linked.course_code if linked else None,
+                "courseVersion": linked.version if linked else None,
+                "nature": linked.nature if linked else None,
+                "hoursTotal": linked.hours_total if linked else None,
+            })
         # 编制期学分校验提示（真实：课程学分合计 vs 毕业总学分）
         course_sum = sum(float(c.credit_snapshot or 0) for c in courses)
         d["creditSum"] = course_sum

@@ -188,6 +188,9 @@ def list_guidances(page, page_size, keyword=None, batch_id=None, user=None) -> t
 
 def _guidance_limits(batch) -> tuple[int, int]:
     rules = (batch.rules_config or {}).get("guidance", {}) if batch else {}
+    # Earlier batch rules used a boolean enable flag, with default quantities.
+    if not isinstance(rules, dict):
+        rules = {}
     try:
         month = max(0, int(rules.get("minCommunicationsPerMonth", 2)))
     except (TypeError, ValueError):

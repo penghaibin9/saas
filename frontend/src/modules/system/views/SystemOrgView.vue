@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="组织结构管理"
-    subtitle="院系 / 专业 / 班级 / 职能部门 · 数据范围计算的组织基座"
+    title="组织与任职"
+    subtitle="选择组织，查看下级、维护归属与检查变更影响"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,50 +10,14 @@
     </template>
 
     <div class="mp-stack">
-      <div class="mp-tabs">
-        <button class="mp-tab" :class="{ 'is-active': tab === 'tree' }" @click="tab = 'tree'">组织树</button>
-        <button class="mp-tab" :class="{ 'is-active': tab === 'positions' }" @click="tab = 'positions'">岗位管理</button>
-        <button class="mp-tab" :class="{ 'is-active': tab === 'versions' }" @click="switchToVersions">变更版本</button>
-      </div>
-
       <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
+      <LoadingState v-else-if="loading && !initialized" />
 
-      <template v-else-if="tab === 'tree'">
-        <EmptyState v-if="!tree.length" title="暂无组织数据" description="请前往实施中心「数据导入与智能匹配」初始化院系 / 专业 / 班级结构" />
-        <section v-else class="mp-card">
-          <div class="mp-card__body" style="padding-top: var(--space-2)">
-            <table class="og-table">
-              <thead>
-                <tr><th>组织</th><th style="width: 110px">类型</th><th style="width: 110px">编码</th><th style="width: 90px">成员数</th><th style="width: 210px">操作</th></tr>
-              </thead>
-              <tbody>
-                <template v-for="node in flatTree" :key="node.id">
-                  <tr>
-                    <td :style="{ paddingLeft: 12 + node.depth * 24 + 'px' }">
-                      <span v-if="node.depth" class="og-branch">├</span>
-                      <b v-if="node.depth === 0">{{ node.name }}</b>
-                      <span v-else>{{ node.name }}</span>
-                    </td>
-                    <td><StatusTag :type="node.depth === 0 ? 'info' : node.type === 'CLASS' ? 'processing' : 'default'" :label="node.typeLabel" /></td>
-                    <td class="mp-cell-sub">{{ node.code }}</td>
-                    <td class="mp-cell-sub">{{ node.memberCount }}</td>
-                    <td>
-                      <button class="mp-link" :class="{ 'is-disabled': !can('createOrg') }" :title="reason('createOrg')" @click="openEdit(null, node)">＋ 下级</button>
-                      <button class="mp-link" :class="{ 'is-disabled': !can('editOrg') }" :title="reason('editOrg')" @click="openEdit(node, null)">编辑</button>
-                      <button class="mp-link og-danger" :class="{ 'is-disabled': !can('deprecateOrg') }" :title="reason('deprecateOrg')" @click="askDeprecate(node)">作废</button>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <p class="mp-note">组织节点作废为逻辑删除：历史归属关系保留；如节点下仍有在册成员，需先转移成员再作废。</p>
-      </template>
+      <SystemOrgWorkspace v-else-if="tab === 'tree'" :tree="tree" :ctx="ctx" :refreshing="loading" @edit="openEdit" @refresh="load" />
 
       <template v-else-if="tab === 'positions'">
-        <EmptyState v-if="!positions.length" title="暂无岗位" description="岗位用于批量绑定角色与数据范围" />
+        <ErrorState v-if="positionsError" :description="positionsError" @retry="load" />
+        <EmptyState v-else-if="!positions.length" title="暂无岗位" description="岗位用于批量绑定角色与数据范围" />
         <DataTable v-else :columns="posColumns" :rows="positions" row-key="id">
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'ENABLED' ? 'success' : 'default'" :label="row.statusLabel" dot />
@@ -208,7 +172,7 @@
     </AppDrawer>
 
     <!-- 新增 / 编辑组织节点 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑组织节点' : '新增下级组织'" mode="modal" size="medium">
+    <AppDrawer v-model:visible="form.open" :title="(form.id ? '编辑' : '新增') + (ORG_TYPE_LABELS[form.value.type] || '组织')" mode="modal" size="medium">
       <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
       <p v-if="form.parentName" class="mp-note" style="margin-top: var(--space-2)">上级组织：{{ form.parentName }}</p>
       <template #footer>
@@ -217,19 +181,6 @@
       </template>
     </AppDrawer>
 
-    <AppConfirmDialog
-      v-model:visible="confirmDeprecate"
-      type="danger"
-      :title="'作废组织「' + (deprecateRow ? deprecateRow.name : '') + '」？'"
-      :message="deprecateRow && deprecateRow.memberCount > 0
-        ? '该组织下仍有 ' + deprecateRow.memberCount + ' 名成员；后端会校验在籍学生和下级组织，存在引用时将拒绝停用。'
-        : '作废为逻辑删除，历史归属关系保留可追溯。'"
-      confirm-text="确认作废并留痕"
-      require-reason
-      reason-label="作废原因"
-      :submitting="deprecateSubmitting"
-      @confirm="doDeprecate"
-    />
   </ModulePageShell>
 </template>
 
@@ -242,7 +193,7 @@
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
-import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import SystemOrgWorkspace from '@/modules/system/components/SystemOrgWorkspace.vue'
 import FormFields from '@/modules/system/components/FormFields.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
@@ -257,14 +208,18 @@ export default {
   name: 'SystemOrgView',
   components: {
     ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppConfirmDialog, FormFields
+    AppButton, AppDrawer, SystemOrgWorkspace, FormFields
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       api: systemApi,
+      ORG_TYPE_LABELS: Object.fromEntries(ORG_TYPES.map(item => [item.value, item.label])),
       tab: 'tree',
       loading: true,
+      initialized: false,
+      loadSequence: 0,
+      positionsError: '',
       error: '',
       tree: [],
       positions: [],
@@ -276,9 +231,6 @@ export default {
         { key: 'status', title: '状态' }
       ],
       form: { open: false, id: '', parentName: '', value: {}, errors: {}, submitting: false },
-      confirmDeprecate: false,
-      deprecateRow: null,
-      deprecateSubmitting: false,
       // ── SYS-04 组织变更版本 ──
       versions: [],
       versionForm: { open: false, versionName: '', reason: '', error: '', submitting: false },
@@ -307,7 +259,6 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
-        { key: 'createOrg', label: '＋ 新增学院/部门', variant: 'primary' },
         { key: 'importOrg', label: '⇪ 数据导入与匹配' },
         { key: 'exportOrg', label: '⇩ 导出组织结构' }
       ]
@@ -318,7 +269,7 @@ export default {
       return [
         { key: 'name', label: '组织名称', required: true },
         { key: 'code', label: '组织编码', required: true, disabled: !!this.form.id, lockNote: this.form.id ? '（不可修改）' : '' },
-        { key: 'type', label: '组织类型', type: 'select', required: true, options: ORG_TYPES }
+        { key: 'type', label: '组织类型', type: 'select', required: true, options: ORG_TYPES, disabled: true }
       ]
     },
     /** 变更版本里可选的组织（扁平化组织树） */
@@ -342,7 +293,14 @@ export default {
     this.syncTabFromRoute()
     this.load()
   },
+  beforeUnmount() { this.loadSequence += 1 },
   watch: {
+    ctx() {
+      this.loadSequence += 1
+      this.tree = []; this.positions = []; this.versions = []; this.initialized = false
+      this.form.open = false; this.versionForm.open = false; this.versionDetail.open = false; this.versionAction.open = false
+      this.load()
+    },
     '$route.query.tab'() {
       this.syncTabFromRoute()
     }
@@ -351,8 +309,8 @@ export default {
     syncTabFromRoute() {
       const q = String(this.$route.query.tab || '')
       if (q === 'positions') this.tab = 'positions'
-      else if (q === 'versions') this.tab = 'versions'
-      else if (q === 'college' || q === 'major' || q === 'class' || q === 'tree') this.tab = 'tree'
+      else if (q === 'versions') { this.tab = 'versions'; this.loadVersions() }
+      else this.tab = 'tree'
     },
 
     // ── SYS-04 组织变更版本 ────────────────────────────────────────────
@@ -559,31 +517,23 @@ export default {
         toast.error(res.message)
       }
     },
-    askDeprecate(node) {
-      if (!this.can('deprecateOrg')) return
-      this.deprecateRow = node
-      this.confirmDeprecate = true
-    },
-    async doDeprecate({ reason }) {
-      this.deprecateSubmitting = true
-      const res = await systemApi.deprecateOrgNode(this.deprecateRow.id, { type: this.deprecateRow.type, reason })
-      this.deprecateSubmitting = false
-      if (res.code === 0) {
-        toast.success('组织节点已停用（逻辑操作，可恢复），原因已留痕')
-        this.confirmDeprecate = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
     async load() {
+      const sequence = ++this.loadSequence
       this.loading = true
       this.error = ''
-      const [treeRes, posRes] = await Promise.all([systemApi.getDepartmentTree(), systemApi.getPositions()])
-      if (treeRes.code === 0) this.tree = treeRes.data
-      else this.error = treeRes.message
-      if (posRes.code === 0) this.positions = posRes.data
-      this.loading = false
+      this.positionsError = ''
+      try {
+        const [treeRes, posRes] = await Promise.all([systemApi.getDepartmentTree(), systemApi.getPositions()])
+        if (sequence !== this.loadSequence) return
+        if (treeRes.code !== 0) throw new Error(treeRes.message)
+        this.tree = treeRes.data
+        if (posRes.code === 0) this.positions = posRes.data
+        else { this.positions = []; this.positionsError = posRes.message || '岗位加载失败' }
+      } catch (error) {
+        if (sequence === this.loadSequence) { this.error = error.message || '组织数据加载失败'; this.tree = [] }
+      } finally {
+        if (sequence === this.loadSequence) { this.loading = false; this.initialized = true }
+      }
     }
   }
 }

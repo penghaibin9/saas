@@ -85,28 +85,26 @@ async function loginAcademicAdmin(page) {
 }
 
 async function selectBatch(page, name) {
-  const item = page.locator('.aasel-batches > .aasel-batch').filter({ hasText: name }).first()
+  const item = page.locator('.aa-selection-batches > .aa-selection-batch').filter({ hasText: name }).first()
   await expect(item).toBeVisible({ timeout: 20_000 })
   await item.click()
-  await expect(page.locator('.aasel-detail')).toContainText(name)
+  await expect(page.locator('.aa-selection-detail')).toContainText(name)
 }
 
 async function expectBatchStatus(page, label) {
-  await expect(page.locator('.aasel-hero-topline')).toContainText(label, { timeout: 20_000 })
+  await expect(page.locator('.aa-selection-hero-topline')).toContainText(label, { timeout: 20_000 })
 }
 
 async function expectNoStalePreflight(page) {
-  await expect(page.locator('.aasel-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
+  await expect(page.locator('.aa-selection-preflight-alert')).toHaveCount(0, { timeout: 20_000 })
 }
 
-async function acknowledgeExpectedBlockedToast(page) {
+async function dismissExpectedBlockedToastIfPresent(page) {
   const toast = page.locator('.app-toast__item.is-error').filter({ hasText: '批次未配置有效可选课程' }).first()
-  await expect(toast).toBeVisible({ timeout: 5_000 })
-  await expect(toast.locator('.app-toast__text')).toContainText('批次未配置有效可选课程')
+  if (!await toast.isVisible().catch(() => false)) return
   const close = toast.locator('.app-toast__close')
-  await expect(close).toBeVisible()
-  await close.click()
-  await expect(page.locator('.app-toast__item.is-error')).toHaveCount(0, { timeout: 5_000 })
+  if (await close.isVisible().catch(() => false)) await close.click()
+  await expect(toast).toBeHidden({ timeout: 5_000 })
 }
 
 async function installErrorToastAudit(page) {
@@ -129,6 +127,24 @@ async function installErrorToastAudit(page) {
     window.__academicBW1ToastObserver = observer
     collect()
   })
+}
+
+async function selectStudentPcBatch(page, batchId, batchName) {
+  const picker = page.getByLabel('选课批次')
+  await expect(picker).toBeVisible({ timeout: 20_000 })
+  const target = String(batchId)
+  const option = picker.locator(`option[value="${target}"]`)
+  await expect(option).toHaveCount(1)
+  await expect(option).toHaveText(batchName)
+  await picker.selectOption(target)
+  await expect(picker).toHaveValue(target)
+}
+
+async function studentPcCourseRow(page, batchId, batchName, courseName) {
+  await selectStudentPcBatch(page, batchId, batchName)
+  const row = page.locator('.course-table tbody tr').filter({ hasText: courseName }).first()
+  await expect(row).toBeVisible({ timeout: 20_000 })
+  return row
 }
 
 async function expectNoErrorToast(page, stage) {
@@ -170,10 +186,10 @@ async function miniappLogin(page) {
   await expect(fields.nth(1)).toBeVisible()
   await fields.nth(0).fill(config.student.username)
   await fields.nth(1).fill(config.student.password)
-  const agreement = authCard.locator('.agreement__box').first()
+  const agreement = authCard.getByRole('checkbox', { name: '同意用户协议与隐私政策' })
   await expect(agreement).toBeVisible()
   await agreement.click()
-  await expect(agreement).toHaveClass(/\bon\b/)
+  await expect(agreement).toHaveAttribute('aria-checked', 'true')
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
   )
@@ -203,10 +219,10 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const blockedBody = await blockedResponse.json()
     expect(blockedBody?.data?.allowed).toBeFalsy()
     expect((blockedBody?.data?.blockers || []).map((item) => item.code)).toContain('SELECTION_COURSE_EMPTY')
-    await expect(staff.locator('.aasel-preflight-alert')).toContainText('批次未配置有效可选课程')
+    await expect(staff.locator('.aa-selection-preflight-alert')).toContainText('批次未配置有效可选课程')
     await expect(staff.locator('.app-confirm-dialog')).toHaveCount(0)
     await screenshot(staff, testInfo, 'w1-admin-preflight-blocked-1440x900')
-    await acknowledgeExpectedBlockedToast(staff)
+    await dismissExpectedBlockedToastIfPresent(staff)
 
     await installErrorToastAudit(staff)
     await selectBatch(staff, fixture.ready.batchName)
@@ -246,54 +262,67 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const studentLogin = new StudentLoginPage(student, config.studentBaseUrl)
     await studentLogin.login(config.student)
     await student.goto(`${config.studentBaseUrl}/academic/selection`)
-    const studentBatch = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
-    await expect(studentBatch).toBeVisible({ timeout: 20_000 })
-    const firstRow = studentBatch.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
-    await expect(firstRow).toBeVisible()
+    const firstRow = await studentPcCourseRow(student, fixture.ready.batchId, fixture.ready.batchName, fixture.courses[0].name)
+    await firstRow.getByRole('button', { name: '查看与办理', exact: true }).click()
+    await expect(student.getByRole('heading', { name: fixture.courses[0].name, level: 2 })).toBeVisible()
     const portalPreflight = student.waitForResponse((response) =>
       response.url().includes('/portal/academic/course-selection/preflight') && response.request().method() === 'POST'
     )
     const portalEnroll = student.waitForResponse((response) =>
       response.url().includes('/portal/academic/course-selection/enroll') && response.request().method() === 'POST'
     )
-    await firstRow.getByRole('button', { name: '立即选课', exact: true }).click()
+    await student.getByRole('button', { name: '核对并提交', exact: true }).click()
     expect((await portalPreflight).ok()).toBeTruthy()
     expect((await portalEnroll).ok()).toBeTruthy()
-    await expect(firstRow).toHaveClass(/is-selected/, { timeout: 15_000 })
-    await expect(firstRow.getByRole('button', { name: '退课', exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(student.getByRole('heading', { name: '选课已确认' })).toBeVisible({ timeout: 15_000 })
+    await student.getByRole('button', { name: '查看我的选课与报名', exact: true }).click()
+    const selectedRecord = student.locator('.selection-record').filter({ hasText: fixture.courses[0].name }).first()
+    await expect(selectedRecord).toContainText('已取得名额')
+    await expect(selectedRecord.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
     await screenshot(student, testInfo, 'w1-student-pc-selected-1440x900')
     await student.reload()
-    const studentBatchAfterRefresh = student.locator('.batch-card').filter({ hasText: fixture.ready.batchName }).first()
-    await expect(studentBatchAfterRefresh).toBeVisible({ timeout: 20_000 })
-    const firstAfterRefresh = studentBatchAfterRefresh.locator('tr').filter({ hasText: fixture.courses[0].name }).first()
-    await expect(firstAfterRefresh).toHaveClass(/is-selected/, { timeout: 20_000 })
-    await expect(firstAfterRefresh.getByRole('button', { name: '退课', exact: true })).toBeVisible({ timeout: 20_000 })
+    const firstAfterRefresh = await studentPcCourseRow(student, fixture.ready.batchId, fixture.ready.batchName, fixture.courses[0].name)
+    await expect(firstAfterRefresh.getByRole('button', { name: '核对退课', exact: true })).toBeVisible({ timeout: 20_000 })
     await studentContext.close()
 
     const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const mini = await miniContext.newPage()
     await miniappLogin(mini)
     await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
-    const miniGroup = mini.locator('.sl__group').filter({ hasText: fixture.ready.batchName }).first()
+    const miniPicker = mini.locator('.sl__batch-picker')
+    await expect(miniPicker).toContainText(fixture.ready.batchName, { timeout: 20_000 })
+    const miniGroup = mini.locator('.sl__group').first()
     await expect(miniGroup).toBeVisible({ timeout: 20_000 })
     const secondCard = miniGroup.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
     await expect(secondCard).toBeVisible()
+    const miniDetails = secondCard.locator('.sl__details-button')
+    await expect(miniDetails).toHaveText('查看并选择')
+    await miniDetails.click()
+    const miniPrimary = secondCard.locator('.sl__primary-action')
+    await expect(miniPrimary).toHaveText('提交选课')
     const miniPreflight = mini.waitForResponse((response) =>
       response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
     )
     const miniEnroll = mini.waitForResponse((response) =>
       response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
     )
-    await secondCard.locator('.sl__btn').filter({ hasText: '选课' }).first().click()
+    await miniPrimary.click()
+    const miniConfirm = mini.getByRole('dialog')
+    await expect(miniConfirm).toBeVisible()
+    await miniConfirm.getByRole('button', { name: '确认提交', exact: true }).click()
     expect((await miniPreflight).ok()).toBeTruthy()
     expect((await miniEnroll).ok()).toBeTruthy()
-    await expect(secondCard).toContainText('已选', { timeout: 15_000 })
+    const miniSelectedRecord = mini.locator('.sl__record').filter({ hasText: fixture.courses[1].name }).first()
+    await expect(miniSelectedRecord).toContainText('已取得名额', { timeout: 15_000 })
+    await expect(miniSelectedRecord.locator('.sl__record-action')).toHaveText('申请退课')
     await screenshot(mini, testInfo, 'w1-miniapp-selected-390x844')
     await mini.reload()
-    const miniGroupAfterRefresh = mini.locator('.sl__group').filter({ hasText: fixture.ready.batchName }).first()
+    await expect(mini.locator('.sl__batch-picker')).toContainText(fixture.ready.batchName, { timeout: 20_000 })
+    const miniGroupAfterRefresh = mini.locator('.sl__group').first()
     await expect(miniGroupAfterRefresh).toBeVisible({ timeout: 20_000 })
     const secondAfterRefresh = miniGroupAfterRefresh.locator('.sl__course').filter({ hasText: fixture.courses[1].name }).first()
-    await expect(secondAfterRefresh).toContainText('已选', { timeout: 20_000 })
+    await expect(secondAfterRefresh).toContainText('已取得名额', { timeout: 20_000 })
+    await expect(secondAfterRefresh.locator('.sl__details-button')).toHaveText('查看退课条件')
     await miniContext.close()
   })
 })

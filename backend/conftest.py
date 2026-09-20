@@ -132,8 +132,13 @@ def _seed_authoritative_tenant_for_db_tests(request):
 
 def _stable_test_user_id(claims: dict) -> int | None:
     raw = claims.get("userId")
+    raw_text = str(raw or "").strip()
+    # Real DB principals are already stable identities. Never replace db-<id>
+    # with a synthetic compatibility id: internship rows use the underlying numeric
+    # User.id as advisor_user_id, so rewriting the token manufactures a false scope denial.
+    numeric = raw_text[3:] if raw_text.startswith("db-") else raw_text
     try:
-        parsed = int(raw)
+        parsed = int(numeric)
     except (TypeError, ValueError):
         parsed = 0
     if parsed > 0:

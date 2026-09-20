@@ -8,7 +8,7 @@ import uuid
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, Header
+from fastapi import APIRouter, Body, Depends, Header, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.file_contract import validated_local_file_response
@@ -175,6 +175,7 @@ def import_domain_template(domain: str, user=Depends(require_staff)):
 async def import_domain_validate_file(
     domain: str,
     file: UploadFile = File(...),
+    orientationBatchId: int | None = Query(default=None, gt=0),
     user=Depends(require_staff),
 ):
     from app.services import domain_import_service, xlsx_util
@@ -187,6 +188,7 @@ async def import_domain_validate_file(
         rows,
         namespace=auth.import_namespace,
         user=user,
+        orientation_batch_id=orientationBatchId,
     )
     audit_log.record(
         "IMPORT",

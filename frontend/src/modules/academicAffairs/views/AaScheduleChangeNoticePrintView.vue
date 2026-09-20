@@ -33,7 +33,7 @@
         <div>教务处（签章）：____________</div>
         <div>日期：____________</div>
       </div>
-      <p class="scn-foot">本通知单由系统依审批结果生成，原课位已在课表中留痕，学生端课表即时反映变更。</p>
+      <p class="scn-foot">本单据展示正式审批记录。{{ canPrint ? '课表变更已生效；师生送达情况须以正式通知回执核对。' : '申请尚未生效，不作为课表变更或通知送达凭证。' }}</p>
     </div>
   </div>
 </template>
@@ -47,28 +47,40 @@ import { AppButton } from '@/components/ui'
 import { AppPrintButton } from '@/components/common'
 import { scheduleChangeApi, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { currentUserFromToken } from '@/services/http/client'
 
 export default {
   name: 'AaScheduleChangeNoticePrintView',
   components: { LoadingState, ErrorState, AppButton, AppPrintButton },
-  data() { return { loading: true, error: '', data: null, schoolName: '职业院校' } },
+  data() { return { loading: true, error: '', data: null, schoolName: '', loadSeq: 0 } },
   computed: {
-    canPrint() { return !!this.data && this.data.status === 'APPLIED' }
+    identityKey() { return JSON.stringify(currentUserFromToken()) },
+    canPrint() { return !this.loading && !this.error && !!this.data && this.data.status === 'APPLIED' && String(this.data.changeId) === String(this.$route.params.id) }
   },
+  watch: { '$route.params.id'() { this.load() }, identityKey() { this.load() } },
   created() { this.load() },
+  beforeUnmount() { this.loadSeq++ },
   methods: {
     statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     parity(p) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[p] || (p || '') },
     async load() {
-      this.loading = true; this.error = ''
-      const [ctxRes, res] = await Promise.all([
-        academicAffairsApi.getContext(),
-        scheduleChangeApi.detail(this.$route.params.id)
-      ])
-      if (ctxRes.code === 0) this.schoolName = ctxRes.data.tenantBrandConfig.schoolName || '职业院校'
-      if (res.code === 0) this.data = res.data
-      else this.error = res.message
-      this.loading = false
+      const seq = ++this.loadSeq
+      const id = String(this.$route.params.id || '')
+      const identity = this.identityKey
+      const current = () => seq === this.loadSeq && identity === this.identityKey && id === String(this.$route.params.id || '')
+      this.loading = true; this.error = ''; this.data = null; this.schoolName = ''
+      try {
+        const [ctxRes, res] = await Promise.all([
+          academicAffairsApi.getContext(), scheduleChangeApi.detail(id)
+        ])
+        if (!current()) return
+        if (ctxRes.code !== 0) { this.error = ctxRes.message || '学校信息加载失败'; return }
+        this.schoolName = ctxRes.data?.tenantBrandConfig?.schoolName || '学校名称未提供'
+        if (res.code !== 0) this.error = res.message || '通知单加载失败'
+        else if (String(res.data?.changeId) !== id) this.error = '单据身份不一致，请重新加载'
+        else this.data = res.data
+      } catch (error) { if (current()) this.error = error?.message || '通知单加载失败' }
+      finally { if (current()) this.loading = false }
     },
     printNotice() {
       if (!this.canPrint) return

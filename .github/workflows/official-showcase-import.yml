@@ -1,0 +1,72 @@
+name: Import approved official-site release
+on:
+  push:
+    branches: [feat/yueke-official-site-60-gallery-20260909]
+    paths: ['.github/official-showcase-release.json']
+permissions:
+  contents: write
+concurrency:
+  group: yueke-approved-official-site-import
+  cancel-in-progress: false
+jobs:
+  verified-import:
+    if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/feat/yueke-official-site-60-gallery-20260909'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Refuse concurrent branch movement
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Download the owner-approved file from its public share
+        timeout-minutes: 5
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+          python .github/resolve-firestorage-release.py
+      - name: Verify the approved archive
+        id: archive
+        run: python .github/download-showcase-release.py
+      - name: Apply only the official-site files
+        if: steps.archive.outputs.ready == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.archive.outputs.sha256 }}
+        run: python .github/apply-showcase-release.py "$RUNNER_TEMP/showcase-release.zip" --sha256 "$RELEASE_SHA" --paths-output "$RUNNER_TEMP/showcase-paths.txt"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: steps.archive.outputs.ready == 'true'
+        with:
+          node-version: 22
+      - name: Verify all approved images and focused contracts
+        if: steps.archive.outputs.ready == 'true'
+        run: |
+          node frontend/scripts/check-showcase-assets.mjs --required
+          node --test frontend/tests/official-showcase.test.mjs frontend/tests/portal-enterprise-entry-contract.test.mjs frontend/tests/official-site-story-contract.test.mjs
+      - name: Build the real frontend and prerender public routes
+        if: steps.archive.outputs.ready == 'true'
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          npm ci
+          npm run build
+      - name: Commit the verified tree to this branch only
+        if: steps.archive.outputs.ready == 'true'
+        env:
+          BRANCH: feat/yueke-official-site-60-gallery-20260909
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os,subprocess
+          paths=Path(os.environ['RUNNER_TEMP'],'showcase-paths.txt').read_text().splitlines()
+          subprocess.run(['git','add','--',*paths],check=True)
+          PY
+          if git diff --cached --quiet; then echo 'Already imported; no new commit.'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "feat(official-site): integrate approved PC/H5 galleries and campus soundtrack"
+          git push origin "HEAD:$BRANCH"
+          echo "Imported commit: $(git rev-parse HEAD)"

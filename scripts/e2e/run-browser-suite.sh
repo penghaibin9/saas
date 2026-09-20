@@ -230,10 +230,12 @@ case "$SUITE" in
         ! -name 'graduation*.spec.mjs' \
         ! -name '*-visual.spec.mjs' \
         ! -name 'control-plane-role-menu-projection.spec.mjs' \
+        ! -name 'academic-scheduling-optimizer.spec.mjs' \
         ! -name 'internship-s1-production-runtime.spec.mjs' \
         ! -name 'internship-leave-lifecycle.spec.mjs' \
         ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \
         ! -name 'internship-placement-assignment-audit.spec.mjs' \
+        ! -name 'phone-local.spec.mjs' \
         -print | sort
     )
     if [[ "${#SPECS[@]}" -eq 0 ]]; then

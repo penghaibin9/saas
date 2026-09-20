@@ -1,17 +1,34 @@
 <template>
   <ModulePageShell
-    title="课表管理"
-    subtitle="按学期建立课表批次 → 手工/导入排课（三重冲突检测）→ 预发布 → 发布通知师生"
+    class="aa-schedule-workspace"
+    :title="onlyArchived ? '排课归档' : '课表批次'"
+    :subtitle="onlyArchived ? '查看已经封存的正式课表版本与原始发布事实。' : '从正式教学任务编排，区分草稿、候选版本与当前正式课表。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <label class="aa-archive-toggle"><input type="checkbox" v-model="onlyArchived" @change="load" /> 只看已归档</label>
-      <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建课表批次</AppButton>
+      <AppButton v-if="onlyArchived" @click="$router.push('/admin/academic-affairs/schedule')">返回课表批次</AppButton>
+      <AppButton v-else variant="primary" @click="showCreate = !showCreate">＋ 创建排课批次</AppButton>
     </template>
 
     <div class="mp-stack">
-      <AppSectionCard v-if="showCreate" title="新建课表批次">
+      <AaScheduleStageRail :active-index="onlyArchived ? 4 : 2" />
+
+      <AppInlineAlert
+        v-if="onlyArchived"
+        type="info"
+        title="已归档事实只读"
+        description="归档后保留原批次、学期、发布时间和正式版本；更正必须另建受控版本，不能改写封存记录。"
+      />
+
+      <div v-else class="aa-batch-metrics" aria-label="课表批次状态概览">
+        <article><span>当前范围批次</span><strong>{{ pagination.total }}</strong><small>服务端分页总数</small></article>
+        <article><span>待启动</span><strong>{{ statusCount('DRAFT') }}</strong><small>可继续安排课位</small></article>
+        <article><span>待正式发布</span><strong>{{ statusCount('PRE_PUBLISHED') }}</strong><small>已经通过预发布</small></article>
+        <article><span>正式 / 已归档</span><strong>{{ statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong><small>师生读取或历史封存</small></article>
+      </div>
+
+      <AppSectionCard compact v-if="showCreate" title="新建课表批次">
         <div class="aa-cal-form">
           <label class="aa-cal-form__item">
             学期
@@ -27,7 +44,17 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="还没有课表批次" :description="onlyArchived ? '暂无已归档批次' : '新建一个课表批次开始排课'" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
+      <AppSectionCard v-else-if="rows.length" compact :title="onlyArchived ? '排课归档投影 · 原记录与正式凭证' : '课表批次 · 批次列表'">
+      <DataTable :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
+        <template #cell-batchName="{ row }">
+          <div class="mp-cell-main">{{ row.batchName }}</div>
+          <div class="mp-cell-sub">批次 #{{ row.batchId }}</div>
+        </template>
+        <template #cell-termId="{ row }">学期 #{{ row.termId }}</template>
+        <template #cell-scope="{ row }">
+          {{ Object.prototype.hasOwnProperty.call(row, 'collegeId') ? (row.collegeId ? `学院 #${row.collegeId}` : '全校范围') : '范围随批次详情确认' }}
+        </template>
+        <template #cell-version="{ row }">{{ row.activeTruth?.headVersion != null ? `V${row.activeTruth.headVersion}` : '随正式头确认' }}</template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
@@ -43,6 +70,7 @@
           </div>
         </template>
       </DataTable>
+      </AppSectionCard>
       <p class="mp-note">发布后课表不可直接修改。日常单课位调课、停课、补课走「调停课」审批；只有整批重大错误才作废重发。学期正常结束请走「归档」，归档后数据只读。</p>
     </div>
 
@@ -73,14 +101,15 @@
 /** 课表批次列表（/admin/academic-affairs/schedule）：GET/POST /academic-affairs/schedule-batches + 发布/作废。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { SCHEDULE_BATCH_STATUS, scheduleBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
+import AaScheduleStageRail from '@/modules/academicAffairs/components/AaScheduleStageRail.vue'
 
 export default {
   name: 'AaScheduleBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppInlineAlert, AaScheduleStageRail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -92,9 +121,23 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'batchName', title: '批次名称' },
-        { key: 'status', title: '状态' },
+        { key: 'termId', title: '学期' },
+        { key: 'scope', title: '适用范围' },
+        { key: 'version', title: '版本' },
+        { key: 'status', title: '当前状态' },
         { key: 'actions', title: '操作', width: '360px' }
       ]
+    }
+  },
+  watch: {
+    '$route.fullPath'() {
+      const archive = this.$route?.query?.panel === 'archive'
+      if (archive !== this.onlyArchived) {
+        this.onlyArchived = archive
+        this.showCreate = false
+        this.pagination.page = 1
+        this.load()
+      }
     }
   },
   created() {
@@ -105,6 +148,7 @@ export default {
   methods: {
     scheduleBatchColor,
     statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
+    statusCount(status) { return this.rows.filter((row) => row.status === status).length },
     onPageChange(p) { this.pagination.page = p; this.load() },
     openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },
     async createBatch() {
@@ -143,10 +187,14 @@ export default {
       this.error = ''
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       if (this.onlyArchived) params.status = 'ARCHIVED'
-      const res = await academicAffairsApi.getScheduleBatches(params)
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else { this.error = res.message }
-      this.loading = false
+      try {
+        const res = await academicAffairsApi.getScheduleBatches(params)
+        if (res.code === 0) { this.rows = res.data?.list || []; this.pagination.total = res.data?.total || 0 }
+        else { this.error = res.message || '课表批次读取失败'; this.rows = [] }
+      } catch (error) {
+        this.error = error?.message || '网络连接中断，未能读取课表批次'
+        this.rows = []
+      } finally { this.loading = false }
     }
   }
 }
@@ -154,6 +202,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
@@ -161,4 +210,10 @@ export default {
 .aa-danger { color: var(--danger-600, #f53f3f); }
 .aa-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 .aa-archive-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-right: 12px; }
+.aa-batch-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.aa-batch-metrics article { display: grid; gap: 7px; padding: 17px 18px; border: 1px solid var(--border-200, #dbe3ed); border-radius: 12px; background: var(--bg-white, #fff); }
+.aa-batch-metrics span { color: var(--text-500, #68788c); font-size: 12px; }
+.aa-batch-metrics strong { color: var(--text-900, #193252); font-size: 26px; line-height: 1; }
+.aa-batch-metrics small { color: var(--text-400, #8794aa); font-size: 11px; }
+@media (max-width: 900px) { .aa-batch-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>

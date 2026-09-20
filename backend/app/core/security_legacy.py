@@ -138,11 +138,15 @@ def get_current_user(request: Request, authorization: Optional[str] = Header(def
         "loginName": claims.get("loginName") or claims.get("username"),
         "realName": claims.get("realName"),
         "userType": claims.get("userType"),
+        # 客户端面由签名令牌携带，不能相信请求体或前端路由。教师移动端据此拒绝
+        # 学生端、PC 和平台端令牌，避免同一账号误把跨端接口当作可用入口。
+        "clientType": claims.get("clientType"),
         "tenantCode": claims.get("tid"),
         "tenantId": claims.get("tenantId"),
         "activeContextId": claims.get("activeContextId"),
         "currentRoleCode": claims.get("currentRoleCode"),
         "permissionVersion": claims.get("permissionVersion"),
+        "credentialVersion": claims.get("credentialVersion"),
         "studentId": _optional_positive_int_claim(claims, "studentId"),
         "studentNo": claims.get("studentNo"),
         "collegeId": claims.get("collegeId"),
@@ -187,6 +191,7 @@ STAFF_USER_TYPES = frozenset({
 })
 
 MOBILE_STAFF_USER_TYPES = frozenset({"TEACHER", "ADMIN", "STAFF", "SCHOOL_ADMIN"})
+MOBILE_STUDENT_CLIENT_TYPES = frozenset({"STUDENT_MINI", "STUDENT_PC"})
 
 
 def require_staff(user: dict = Depends(get_current_user)) -> dict:
@@ -197,9 +202,24 @@ def require_staff(user: dict = Depends(get_current_user)) -> dict:
 
 
 def require_mobile_staff(user: dict = Depends(get_current_user)) -> dict:
-    """FastAPI 依赖：学校移动教师端严格教职工白名单，空值/未知类型一律拒绝。"""
-    if not user.get("userId") or (user.get("userType") or "").strip().upper() not in MOBILE_STAFF_USER_TYPES:
+    """学校教师小程序端：签名端类型与学校教职工身份必须同时成立。"""
+    if (not user.get("userId")
+            or (user.get("userType") or "").strip().upper() not in MOBILE_STAFF_USER_TYPES
+            or (user.get("clientType") or "").strip().upper() != "TEACHER_MINI"):
         raise no_permission("该接口仅学校教职工移动端可用")
+    return user
+
+
+def require_mobile_student(user: dict = Depends(get_current_user)) -> dict:
+    """学生移动入口：学生主体与已签发的学生小程序/H5 会话必须同时成立。
+
+    H5 调试由浏览器会话适配层签发 ``STUDENT_PC``，但仍是同一学生小程序的
+    移动业务面；教师小程序、通用旧 MP 令牌和普通 PC 学生令牌均不能借此进入。
+    """
+    if (not user.get("userId")
+            or (user.get("userType") or "").strip().upper() != "STUDENT"
+            or (user.get("clientType") or "").strip().upper() not in MOBILE_STUDENT_CLIENT_TYPES):
+        raise no_permission("该接口仅学生移动端可用")
     return user
 
 

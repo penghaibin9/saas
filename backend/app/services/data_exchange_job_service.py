@@ -248,6 +248,8 @@ def _effective_export_status(row) -> str:
 def _import_row(row) -> dict[str, Any]:
     status = _effective_import_status(row)
     result = dict(row.result_json or {})
+    snapshot = dict(row.source_snapshot_json or {})
+    phone_summary = snapshot.get('phoneSummary') or result.get('phoneSummary') or {}
     return {
         "id": str(row.id),
         "jobType": "IMPORT",
@@ -268,6 +270,11 @@ def _import_row(row) -> dict[str, Any]:
         "confirmedAt": row.confirmed_at.isoformat(timespec="seconds") if row.confirmed_at else None,
         "operatorName": row.operator_name or "",
         "result": result,
+        "phoneSummary": {key: phone_summary[key] for key in ('phoneEmpty', 'phonePending',
+            'phoneVerifiedUnchanged', 'phoneCandidateUnchanged', 'phoneConflict', 'contactPhoneOnly')
+            if type(phone_summary.get(key)) is int and phone_summary[key] >= 0},
+        "phoneWarnings": [{key: warning.get(key) for key in ('row', 'field', 'warning')}
+            for warning in (snapshot.get('warnings') or [])[:200] if isinstance(warning, dict)],
         "errorMessage": row.error_message or "",
         "version": int(row.version or 0),
         "createdAt": row.created_at.isoformat(timespec="seconds") if row.created_at else None,
@@ -365,6 +372,9 @@ def _owned_export(
     row = db.scalars(stmt).first()
     if not row:
         raise not_found("导出任务不存在")
+    if row.export_type == 'PHONE_MASKED_LEDGER':
+        from app.modules.system_admin.services.phone_governance_service import assert_export_scope
+        assert_export_scope(db, user, row)
     _assert_row_visible(row, user, visibility=visibility, module_code=module_code)
     return row
 
@@ -376,6 +386,7 @@ def _write_generated_file(
     biz_id: str,
     user: dict,
     security_level: str = "SENSITIVE",
+    session=None,
 ) -> int:
     """系统生成 XLSX/PDF/ZIP 直接登记为 CLEAN/AVAILABLE，不经过用户上传扫描链。"""
     from app.core.config import settings
@@ -396,7 +407,8 @@ def _write_generated_file(
         staged.unlink(missing_ok=True)
         raise
 
-    db = get_sessionmaker()()
+    owns_session = session is None
+    db = session if session is not None else get_sessionmaker()()
     try:
         now = _now()
         row = FileObject(
@@ -427,7 +439,10 @@ def _write_generated_file(
             available_at=now,
         )
         db.add(row)
-        db.commit()
+        if owns_session:
+            db.commit()
+        else:
+            db.flush()
         db.refresh(row)
         return int(row.id)
     except Exception:
@@ -438,7 +453,8 @@ def _write_generated_file(
             pass
         raise
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def _create_export_job(
@@ -451,10 +467,12 @@ def _create_export_job(
     adapter_type: str | None = None,
     adapter_ref: str | None = None,
     expires_at: datetime | None = None,
+    session=None,
 ) -> dict:
     from app.models.data_exchange import ExportJob
 
-    db = get_sessionmaker()()
+    owns_session = session is None
+    db = session if session is not None else get_sessionmaker()()
     try:
         row = ExportJob(
             tenant_id=_tenant_id(),
@@ -474,11 +492,15 @@ def _create_export_job(
             result_json={"fileObjectId": str(file_object_id)},
         )
         db.add(row)
-        db.commit()
+        if owns_session:
+            db.commit()
+        else:
+            db.flush()
         db.refresh(row)
         return _export_row(row)
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def create_identity_import_job(
@@ -535,6 +557,8 @@ def create_identity_import_job(
                 "fileSha256": parsed.get("fileSha256"),
                 "kind": kind_up,
                 "roleTemplateVersion": batch_result.get("roleTemplateVersion"),
+                "phoneSummary": batch_result.get('phoneSummary') or {},
+                "warnings": batch_result.get('warnings') or [],
             },
             created_by=actor_id,
         )
@@ -581,7 +605,7 @@ def create_identity_import_job(
         )
         db = get_sessionmaker()()
         try:
-            current = db.get(ImportJob, row.id)
+            current = db.query(ImportJob).filter(ImportJob.id == row.id, ImportJob.tenant_id == _tenant_id()).first()
             current.error_receipt_file_id = file_id
             current.version = int(current.version or 0) + 1
             db.commit()
@@ -722,13 +746,41 @@ def confirm_identity_import_job(
             public_result = dict(batch_entry.get("publicResult") or {})
             credential = None
         else:
-            report = run_identity_import(user, batch_entry["payload"], dry_run=False)
-            credential = build_credential_receipt(batch_entry, report)
-            public_result = {
-                key: value for key, value in report.items()
-                if key not in {"studentCredentials", "teacherCredentials"}
-            }
-            mark_confirmed(user, _tenant_id(), batch_no, batch_claim, public_result)
+            def finish_in_writer_transaction(writer_db, report):
+                # The original writer, batch, job and controlled receipt references
+                # commit together. A retry cannot create users but lose their receipt.
+                current = _owned_import(writer_db, job_id, user, lock=True)
+                if current.lease_token != lease or current.status != 'CONFIRMING':
+                    raise AppException('DATA_CONFLICT', '导入任务确认租约已失效')
+                receipt = build_credential_receipt(batch_entry, report)
+                file_id, export_job = None, None
+                if receipt:
+                    file_id = _write_generated_file(base64.b64decode(receipt['contentBase64']),
+                        receipt['filename'], biz_id=f'IMPORT:{job_id}:CREDENTIALS', user=user,
+                        security_level='HIGHLY_SENSITIVE', session=writer_db)
+                    export_job = _create_export_job(export_type='INITIAL_CREDENTIAL_RECEIPT',
+                        purpose='初始账号凭据一次性安全回执', file_object_id=file_id,
+                        row_count=int(receipt.get('rowCount') or 0), user=user,
+                        adapter_type='IMPORT_JOB', adapter_ref=str(job_id), session=writer_db)
+                public = {key: value for key, value in report.items()
+                    if key not in {'studentCredentials', 'teacherCredentials'}}
+                public.update(credentialReceiptFileId=str(file_id or ''),
+                    credentialExportJobId=str((export_job or {}).get('id') or ''))
+                mark_confirmed(user, _tenant_id(), batch_no, batch_claim, public, session=writer_db)
+                current.status = 'SUCCEEDED'
+                current.confirmed_rows = int(current.valid_rows or 0)
+                current.confirmed_at = _now()
+                current.credential_receipt_file_id = file_id
+                current.result_json = public
+                current.lease_token = None
+                current.lease_started_at = None
+                current.error_message = None
+                current.version = int(current.version or 0) + 1
+
+            run_identity_import(user, batch_entry['payload'], dry_run=False,
+                before_commit=finish_in_writer_transaction)
+            with get_sessionmaker()() as result_db:
+                return _import_row(_owned_import(result_db, job_id, user))
 
         credential_file_id = None
         credential_export_job = None
@@ -1418,7 +1470,7 @@ def cleanup_expired_jobs(*, limit: int = 200) -> dict:
             row.status = "EXPIRED"
             row.version = int(row.version or 0) + 1
             if row.file_object_id:
-                file_row = db.get(FileObject, row.file_object_id)
+                file_row = db.query(FileObject).filter(FileObject.id == row.file_object_id, FileObject.tenant_id == int(row.tenant_id)).first()
                 if file_row and not file_row.is_deleted:
                     try:
                         get_backend().delete(file_row.file_key)

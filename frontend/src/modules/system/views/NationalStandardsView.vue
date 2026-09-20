@@ -29,7 +29,7 @@
           </div>
         </section>
         <section v-if="detail" class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">{{ detail.title }}</span><a :href="detail.sourceUrl" target="_blank" rel="noopener noreferrer">教育部原始来源</a></header>
+          <header class="mp-card__head"><span class="mp-card__title">{{ detail.title }}</span><a :href="detail.sourceUrl" rel="noopener noreferrer">教育部原始来源</a></header>
           <div class="mp-card__body">
             <div class="standard-meta">{{ typeLabel(detail.documentType) }} · {{ detail.majorCode }} · {{ detail.versionLabel }} · {{ detail.pageCount }}页 · {{ detail.charCount }}字</div>
             <div class="bind-bar"><select v-model="binding.schoolMajorId"><option value="">选择本校专业（可选绑定）</option><option v-for="m in schoolMajors" :key="m.id" :value="m.id">{{ m.code || '无代码' }} · {{ m.name }}</option></select><input v-model.trim="binding.confirmText" placeholder="代码不一致时输入：确认跨专业绑定" /><button class="mp-btn mp-btn--primary" :disabled="!binding.schoolMajorId" @click="bindStandard">绑定为本校执行依据</button></div>

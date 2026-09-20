@@ -4,7 +4,7 @@
       <button v-if="wlHasQueue" type="button" class="ori-back" :disabled="!prevId" @click="goSibling(prevId)">← 上一个</button>
       <span v-if="wlHasQueue" class="ori-wl-pos">待办 {{ wlIndex + 1 }} / {{ wlTotal }}</span>
       <button v-if="wlHasQueue" type="button" class="ori-back" :disabled="!nextId" @click="goSibling(nextId)">下一个 →</button>
-      <button type="button" class="ori-back" @click="$router.back()">返回列表</button>
+      <button type="button" class="ori-back" @click="returnToList">返回列表</button>
     </template>
 
     <LoadingState v-if="loading" />
@@ -327,6 +327,11 @@ export default {
     this.load()
   },
   methods: {
+    returnToList() {
+      if (this.$route.query.from === 'batch' && this.$route.query.batchId) {
+        this.$router.push({ path: '/admin/orientation/batches', query: { batchId: String(this.$route.query.batchId), panel: 'students' } })
+      } else this.$router.back()
+    },
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
@@ -418,7 +423,7 @@ export default {
     },
     /* ---------------- 就地动作：信息核验 / 卡点 ---------------- */
     verifyPass() {
-      this.runApi(() => api.verifyOrientationStudent(this.detail.student.id, { passed: true }), '信息核验已通过')
+      this.runApi(() => api.verifyOrientationStudent(this.detail.student.id, { passed: true, expectedVersion: this.detail.student.version }), '信息核验已通过')
     },
     verifyReturn() {
       const id = this.detail.student.id
@@ -426,7 +431,7 @@ export default {
         title: '信息核验退回',
         submitText: '确认退回',
         fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需重新核对的内容（不少于5字）' }],
-        handler: (f) => this.runApi(() => api.verifyOrientationStudent(id, { passed: false, reason: f.reason }), '已退回，学生需重新核对信息')
+        handler: (f) => this.runApi(() => api.verifyOrientationStudent(id, { passed: false, reason: f.reason, expectedVersion: this.detail.student.version }), '已退回，学生需重新核对信息')
       })
     },
     markBlock() {

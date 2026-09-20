@@ -52,6 +52,62 @@ def is_advisor_scope(scope: dict | None) -> bool:
     return role in teacher_scope_impl._ADVISOR_ROLES
 
 
+def teacher_user_id(user: dict | None) -> int:
+    """Return the persisted staff id used by direct class responsibility rows.
+
+    Teacher mini tokens normally use the production ``db-<id>`` form, while a
+    small set of compatibility clients still use ``u_<id>``.  Anything else
+    fails closed instead of trying to infer an id from a login name.
+    """
+    raw = str((user or {}).get("userId") or "").strip()
+    if raw.startswith("db-"):
+        raw = raw[3:]
+    elif raw.startswith("u_"):
+        raw = raw[2:]
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
+
+
+def _class_owner_visibility(user: dict, student_id_column):
+    """Compile direct counselor/head-teacher ownership without materialising students.
+
+    ``SchoolClass.counselor_id`` and ``head_teacher_id`` are an existing
+    authoritative responsibility relation.  It supplements canonical scoped
+    roles only for non-advisor requests; advisor roles remain relation-exclusive
+    in :func:`compile_teacher_mobile_student_visibility` below.
+    """
+    from app.models import SchoolClass, StudentProfile
+
+    user_id = teacher_user_id(user)
+    if not user_id:
+        return false()
+    tenant_id = _tid()
+    return exists(
+        select(1)
+        .select_from(StudentProfile)
+        .join(
+            SchoolClass,
+            and_(
+                SchoolClass.id == StudentProfile.class_id,
+                SchoolClass.tenant_id == tenant_id,
+                SchoolClass.is_deleted.is_(False),
+            ),
+        )
+        .where(
+            StudentProfile.tenant_id == tenant_id,
+            StudentProfile.is_deleted.is_(False),
+            StudentProfile.id == student_id_column,
+            or_(
+                SchoolClass.counselor_id == user_id,
+                SchoolClass.head_teacher_id == user_id,
+            ),
+        )
+    )
+
+
 def _scope_dimensions(scope: dict) -> dict:
     """Normalize only the small authorization dimensions before any tenant DB context is needed."""
     advisor_role = is_advisor_scope(scope)
@@ -234,3 +290,22 @@ def compile_teacher_student_visibility(user: dict, student_id_column, *, scope: 
             or_(*student_scope),
         )
     )
+
+
+def compile_teacher_mobile_student_visibility(user: dict, student_id_column, *, scope: dict | None = None):
+    """Compile the one visibility contract shared by MyStudents and Student360.
+
+    The historical direct class-responsibility relation used by the MyClasses
+    entry is valid for counselors and head teachers.  Keeping it in the list
+    only made a student selectable but then produced a false 404 in Student360.
+    Both reads must use the same SQL predicate.  Advisor roles deliberately do
+    not borrow this class relation: their canonical business assignment remains
+    the exclusive boundary.
+    """
+    resolved_scope = scope or teacher_scope_authority.resolve_teacher_scope(user or {})
+    canonical = compile_teacher_student_visibility(
+        user, student_id_column, scope=resolved_scope,
+    )
+    if is_advisor_scope(resolved_scope):
+        return canonical
+    return or_(canonical, _class_owner_visibility(user, student_id_column))

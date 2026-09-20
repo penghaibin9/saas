@@ -10,20 +10,11 @@ _PLATFORM_SERVICE_MODULE = "platform_service"
 
 
 def _install_platform_service_guards():
-    """Install platform invariants before any caller can bind legacy functions.
-
-    Python initializes this package before resolving ``app.services.platform_service``.
-    The order scheduler, commercial entitlement authority and tenant-brand authority
-    must therefore all be installed here, not only when the HTTP platform router is
-    imported. Workers, CLI commands and background scripts routinely import service
-    functions directly and must observe the same production truth as FastAPI.
-    """
+    """Install platform invariants before any caller can bind legacy functions."""
     module = importlib.import_module(f"{__name__}.{_PLATFORM_SERVICE_MODULE}")
     from app.services.platform_order_schedule_guard import install as install_order_schedule_guard
 
     module = install_order_schedule_guard(module)
-    # Publish the fully imported module first so the authority installers can use
-    # ``from app.services import platform_service`` without depending on __getattr__.
     globals()[_PLATFORM_SERVICE_MODULE] = module
 
     from app.services.commercial_entitlement_authority_service import (
@@ -65,4 +56,54 @@ def __getattr__(name: str):
     return module
 
 
-_install_platform_service_guards()
+_platform_service = _install_platform_service_guards()
+
+# M1/M2: shared commercial reader/order facade for HTTP, CLI and workers.
+from app.services.module_commerce_runtime_guard import install as _install_module_commerce_guard
+_install_module_commerce_guard(_platform_service)
+
+# M4: install the module generation/data-state fence on the canonical access
+# service before routers/workers can cache an unfenced function reference.
+_module_access_service = importlib.import_module(f"{__name__}.module_access_service")
+from app.services.module_commerce_access_guard import install as _install_module_access_guard
+_install_module_access_guard(_module_access_service)
+
+# M3: contract storage quota is an upper bound; the existing school-governance
+# quota remains a stricter lower layer. Install before any storage caller can bind
+# reserve_quota directly from the submodule.
+_file_storage_quota_service = importlib.import_module(
+    f"{__name__}.file_storage_quota_reservation_service"
+)
+from app.services.module_commerce_quota_guard import install as _install_module_commerce_quota_guard
+_install_module_commerce_quota_guard(_file_storage_quota_service)
+
+# M3-M5 hardening: keep delivery acceptance tied to the current paid-source set,
+# serialize tenant-wide vs module-only exit requests across MySQL workers, and
+# strengthen final export evidence before retention can begin.
+_module_commerce_lifecycle_service = importlib.import_module(
+    f"{__name__}.module_commerce_lifecycle_service"
+)
+_tenant_offboarding_service = importlib.import_module(
+    f"{__name__}.tenant_offboarding_service"
+)
+from app.services.module_commerce_m345_hardening import install as _install_m345_hardening
+_install_m345_hardening(
+    _module_commerce_lifecycle_service,
+    _tenant_offboarding_service,
+)
+
+# M4/M5 object closure is installed strictly after the existing M3-M5 hardening.
+# It does not replace the lifecycle state machine: it inventories only explicitly
+# module-owned approval/todo/message/file objects and formal domain facts, seals that
+# digest when final export evidence is bound, and rejects school acceptance if those
+# consumers drift before acceptance. Physical purge remains unavailable.
+from app.services.module_commerce_m45_consumer_closure import install as _install_m45_consumer_closure
+_install_m45_consumer_closure(_module_commerce_lifecycle_service)
+
+# M4 recurring module-owned writers are intentionally NOT imported/installed from
+# this broad package initializer. Doing so makes ordinary service imports pull the
+# entire internship/student-affairs/academic graph while Python still considers
+# ``app.services`` partially initialized, which creates circular-import failures.
+# Web bootstrap installs them from ``app.middleware.context``; the standalone
+# scheduler installs them explicitly in ``scripts.run_scheduled_jobs.main`` before
+# its first tick. Both call the same idempotent fail-closed guard.

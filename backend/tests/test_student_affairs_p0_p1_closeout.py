@@ -248,7 +248,10 @@ def test_second_review_pagination_actions_and_reconfirm_are_fail_closed():
     assert ".offset((page - 1) * page_size).limit(page_size)" in risk
     assert "pageSize: int = Query(50, ge=1, le=100)" in risk_api
     assert '"hasMore": page * pageSize < total' in dorm_api
-    assert "loadAllTransferPages" in mini and "loadAllTransferPages" in portal
+    # Mini now consumes bounded pages on demand; the portal remains a separate consumer.
+    assert "loadAllTransferPages" not in mini
+    assert "getDormTransferRooms: (buildingId, { page = 1, pageSize = 20 } = {})" in mini
+    assert "loadAllTransferPages" in portal
     assert "Array.isArray(row.allowedActions) && row.allowedActions.includes(action)" in dorm_view
     assert "Array.isArray(row.allowedActions) ? row.allowedActions : []" in mental_view
     assert "FALLBACK_ACTIONS" not in mental_view

@@ -10,7 +10,7 @@
         <p v-else-if="actors.error" class="sw-alert sw-alert--error" role="alert">{{ actors.error }}</p>
         <div v-else-if="actors.searched && !actor" class="sw-stack"><div class="sw-picker-list"><button v-for="row in actors.rows" :key="row.id" type="button" class="sw-choice" @click="actor = row"><b>{{ row.name }}</b><small>{{ row.loginName || row.userNo }} · {{ row.statusLabel }}</small></button><p v-if="!actors.rows.length" class="sw-muted">没有符合条件的教职工。</p></div>
           <div class="sw-pager"><span>共 {{ actors.total }} 位 · 第 {{ actors.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="actors.page <= 1" @click="searchActors(actors.page - 1)">上一页</button><button type="button" class="sw-btn" :disabled="actors.page * actors.pageSize >= actors.total" @click="searchActors(actors.page + 1)">下一页</button></div></div></div>
-        <label class="sw-field">排查功能<select v-model="permissionCode" class="sw-input" aria-label="排查功能" :disabled="catalogLoading"><option value="">{{ catalogLoading ? '正在读取权限目录…' : '请选择学校权限' }}</option><option v-for="item in permissions" :key="item.permissionCode" :value="item.permissionCode">{{ item.label || item.permissionCode }}</option></select><small class="sw-code">{{ permissionCode }}</small></label>
+        <label class="sw-field">排查功能<select v-model="permissionCode" class="sw-input" aria-label="排查功能" :disabled="catalogLoading"><option value="">{{ catalogLoading ? '正在读取权限目录…' : '请选择学校权限' }}</option><option v-for="item in permissions" :key="item.permissionCode" :value="item.permissionCode">{{ permissionLabel(item.permissionCode, item.label) }}</option></select><small class="sw-code">{{ permissionCode }}</small></label>
         <p v-if="catalogError" class="sw-alert sw-alert--error" role="alert">{{ catalogError }}<button type="button" class="sw-btn" @click="loadCatalog">重新读取权限</button></p>
         <label class="sw-field">具体业务对象类型<select v-model="resourceType" class="sw-input" aria-label="业务对象类型"><option value="STUDENT">学生主档</option><option value="INTERN_STUDENT">实习学生</option><option value="GRADUATION_STUDENT">毕设学生</option><option value="USER">教职工账号</option><option value="CLASS">班级</option><option value="MAJOR">专业</option><option value="COLLEGE">学院</option></select></label>
         <template v-if="isAccountResource">
@@ -20,7 +20,7 @@
             <div class="sw-pager"><span>共 {{ resources.total }} 项 · 第 {{ resources.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="resources.page <= 1" @click="searchResources(resources.page - 1)">上一页</button><button type="button" class="sw-btn" :disabled="resources.page * resources.pageSize >= resources.total" @click="searchResources(resources.page + 1)">下一页</button></div></div></div>
         </template>
         <label v-else class="sw-field">选择组织对象<select class="sw-input" aria-label="组织业务对象" :value="resource?.id || ''" @change="chooseOrgResource($event.target.value)"><option value="">请选择具体组织</option><option v-for="row in organizations.filter(item => item.type === resourceType)" :key="row.id" :value="row.id">{{ row.name }}</option></select></label>
-        <div v-if="resource" class="sw-alert" data-testid="selected-access-resource"><b>{{ resource.label }}</b><small class="sw-code"> · {{ resource.type }} / {{ resource.id }}</small></div>
+        <div v-if="resource" class="sw-alert" data-testid="selected-access-resource"><b>{{ resource.label }}</b><small class="sw-code"> · {{ typeLabel(resource.type) }}（{{ resource.type }} / {{ resource.id }}）</small></div>
         <label class="sw-field">核对数据范围目标<select v-model="targetKey" class="sw-input" aria-label="数据范围目标"><option value="">请选择具体范围</option><option v-for="row in targets" :key="`${row.type}:${row.id}`" :value="`${row.type}:${row.id}`">{{ typeLabel(row.type) }} · {{ row.name }}</option></select></label>
         <p v-if="orgError" class="sw-alert">{{ orgError }}<button type="button" class="sw-link" @click="loadOrganizations">重新读取组织</button></p>
         <p class="sw-muted">选人和组织读取沿用各自权限。没有查询权时不会自动授予权限，也不把显示名称当作编号。</p>
@@ -34,7 +34,7 @@
         <div v-else-if="!result" class="sw-state"><h3>{{ stale ? '选择已变更，请重新查询' : '选择对象后开始排查' }}</h3><p class="sw-muted">身份权限通过，不代表可以访问任意业务对象。</p></div>
         <template v-else>
           <div class="sw-alert" :class="result.allowed === true && result.finalDecision === 'ALLOW' ? 'sw-alert--success' : 'sw-alert--warning'" data-testid="access-decision"><b>{{ result.allowed === true && result.finalDecision === 'ALLOW' ? '此对象访问通过' : '此对象访问未通过' }}</b><p>{{ result.message || '请核对下方角色与数据范围判定。' }}</p><small class="sw-code">{{ result.reasonCode }}</small></div>
-          <p class="sw-muted">{{ result.subject?.realName || result.subject?.loginName }} · {{ permission?.label || permissionCode }}</p>
+          <p class="sw-muted">{{ result.subject?.realName || result.subject?.loginName }} · {{ permissionLabel(permissionCode, permission?.label) }}</p>
           <div v-for="role in result.roles || []" :key="role.roleId" class="sw-card sw-pad sw-stack">
             <div class="sw-between"><b>{{ role.roleName }}</b><span class="sw-tag" :class="role.decision?.allowed === true ? 'sw-tag--green' : 'sw-tag--orange'">{{ role.decision?.allowed === true ? '通过' : '未通过' }}</span></div>
             <p>身份权限：{{ role.decision?.iamAllowed === true ? '通过' : '未通过' }} · 数据范围：{{ role.decision?.dataScope || '未取得' }}</p>
@@ -48,6 +48,7 @@
   </SystemWorkspaceFrame>
 </template>
 <script>
+import { permissionDisplayLabel } from '@/modules/system/utils/permissionLabels'
 import SystemWorkspaceFrame from './SystemWorkspaceFrame.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
@@ -81,6 +82,7 @@ export default {
   },
   created() { this.fence = wc.createRequestFence(); this.loadCatalog(); this.loadOrganizations(); this.loadInitialActor() }, beforeUnmount() { this.fence.invalidate() },
   methods: {
+    permissionLabel: permissionDisplayLabel,
     typeLabel(type) { return { CLASS: '班级', MAJOR: '专业', COLLEGE: '学院' }[type] || '类型待核对' },
     evidence(value) { return JSON.stringify(value || {}, null, 2) },
     invalidateResult() { if (this.result || this.querying) this.stale = true; this.fence.start('explain'); this.result = null; this.querying = false; this.queryError = ''; this.validationError = '' },

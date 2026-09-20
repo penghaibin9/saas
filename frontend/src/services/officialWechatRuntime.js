@@ -71,10 +71,10 @@ function shareMetaForPath(path) {
   }
 
   return {
-    title: '跃科｜职业院校学生全生命周期数字化平台',
-    desc: '面向职业院校，把教务、学工、毕业设计与岗位实习连接为可执行、可追踪、可审计的业务闭环。',
+    title: '跃科｜学生、教师与教培机构数字化服务',
+    desc: '学生全生命周期管理、高校人事管理与跃科教培三条产品线，服务学生成长、教师发展和培训机构日常管理。',
     link: OFFICIAL_SITE_CONTACT.canonicalOrigin,
-    imgUrl: absoluteUrl(FALLBACK_SHARE_IMAGE)
+    imgUrl: absoluteUrl(document.querySelector('#ykw-site') ? '/official-site/showcase-20260909/scenes/overview.webp' : FALLBACK_SHARE_IMAGE)
   }
 }
 
@@ -122,7 +122,7 @@ export async function configureOfficialWechatShare(path = window.location.pathna
   }
 
   const signatureUrl = resolveWechatSignatureUrl()
-  const shareKey = `${signatureUrl}|${path}`
+  const shareKey = `${signatureUrl}|${path}|${document.querySelector('#ykw-site') ? 'showcase' : 'legacy'}`
   if (shareKey === lastConfiguredShareKey) return { status: 'already-configured' }
 
   try {
@@ -238,4 +238,11 @@ export function installOfficialWechatRuntime(router) {
   installed = true
   router.afterEach((to) => window.setTimeout(() => syncRoute(router, to.path), 0))
   router.isReady().then(() => syncRoute(router, router.currentRoute.value.path))
+}
+
+
+// Refresh through the existing serialized share queue after the approved homepage is mounted.
+export function refreshOfficialHomeShare() {
+  shareQueue = shareQueue.then(() => typeof window !== 'undefined' && window.location.pathname === '/' ? configureOfficialWechatShare('/') : { status: 'not-applicable' }).catch(() => ({ status: 'unavailable' }))
+  return shareQueue
 }

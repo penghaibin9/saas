@@ -1,0 +1,189 @@
+diff --git a/backend/app/modules/internship/routers/internship_enterprise_collaboration.py b/backend/app/modules/internship/routers/internship_enterprise_collaboration.py
+--- a/backend/app/modules/internship/routers/internship_enterprise_collaboration.py
++++ b/backend/app/modules/internship/routers/internship_enterprise_collaboration.py
+@@ -23,0 +24 @@
++    expectedPlacementSnapshotId: str = Field(pattern=r"^[1-9][0-9]{0,18}$", strict=True)
+diff --git a/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py b/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py
+--- a/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py
++++ b/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py
+@@ -16 +16,4 @@
+-from app.models import InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile
++from app.models import (
++    InternshipArchive, InternshipAuditTrail, InternshipEnterpriseEval,
++    InternshipFinalScore, InternshipRecord, StudentProfile,
++)
+@@ -37,0 +41,2 @@
++            InternshipEnterpriseMember.user_id == context.user_id,
++            InternshipEnterpriseMember.member_role == context.member_role,
+@@ -242,0 +248 @@
++        "placementSnapshotId": str(record.current_placement_snapshot_id),
+@@ -328,0 +335,42 @@
++def _assert_evaluation_writable(db, *, record, tenant_id: int) -> None:
++    """Record is already locked; preserve Record -> Score -> Archive lock order.
++
++    This command must not change facts underlying a published score/frozen archive.
++    Read current rows with locking reads (not a stale repeatable-read snapshot).
++    No monkey-patch or second lifecycle authority is introduced.
++    """
++    from app.modules.internship.services.internship_audit_service import (
++        assert_high_risk_write_available,
++    )
++
++    assert_high_risk_write_available(db)
++    if record.status not in _ACTIVE_RECORD_STATUSES:
++        raise AppException("DATA_CONFLICT", "实习记录已结束或归档，不能直接提交企业评价")
++    score = db.scalar(select(InternshipFinalScore).where(
++        InternshipFinalScore.tenant_id == tenant_id,
++        InternshipFinalScore.internship_id == record.id,
++        InternshipFinalScore.is_deleted.is_(False),
++    ).order_by(InternshipFinalScore.id.desc()).with_for_update())
++    archive = db.scalar(select(InternshipArchive).where(
++        InternshipArchive.tenant_id == tenant_id,
++        InternshipArchive.internship_id == record.id,
++        InternshipArchive.is_deleted.is_(False),
++    ).order_by(InternshipArchive.id.desc()).with_for_update())
++    if (score and score.status in {"PUBLISHED", "ARCHIVED"}) or (
++        archive and archive.status == "ARCHIVED"
++    ):
++        raise AppException(
++            "DATA_CONFLICT", "成绩已发布或总档案已归档，请先通过学校正式更正流程处理",
++        )
++
++
++def _assert_expected_placement(payload: dict[str, Any], placement_id: int) -> None:
++    expected = payload.get("expectedPlacementSnapshotId")
++    # IDs are decimal strings end-to-end: never round a Snowflake ID through JS Number.
++    if not isinstance(expected, str) or not expected.isascii() or not expected.isdecimal() \
++            or expected.startswith("0") or not 1 <= len(expected) <= 19:
++        raise AppException("VALIDATION_ERROR", "请刷新评价任务后提交有效的预期安置快照")
++    if int(expected) != int(placement_id):
++        raise AppException("DATA_CONFLICT", "实习安置已变化，请刷新后针对当前岗位重新评价")
++
++
+@@ -339,0 +388,2 @@
++    _assert_expected_placement(payload, placement.id)
++    _assert_evaluation_writable(db, record=record, tenant_id=context.tenant_id)
+diff --git a/enterprise-portal/src/services/enterpriseInternshipApi.js b/enterprise-portal/src/services/enterpriseInternshipApi.js
+--- a/enterprise-portal/src/services/enterpriseInternshipApi.js
++++ b/enterprise-portal/src/services/enterpriseInternshipApi.js
+@@ -2,0 +3 @@
++import { requireDecimalId } from './evaluationContext.js'
+@@ -54,0 +56 @@
++  result.expectedPlacementSnapshotId=requireDecimalId(payload.expectedPlacementSnapshotId,'安置快照')
+diff --git a/enterprise-portal/src/services/evaluationContext.js b/enterprise-portal/src/services/evaluationContext.js
+new file mode 100644
+--- /dev/null
++++ b/enterprise-portal/src/services/evaluationContext.js
+@@ -0,0 +1,49 @@
++/** Client-side concurrency only. Backend remains the permission/state authority. */
++export function requireDecimalId(value, label = '业务对象') {
++  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
++    throw new Error(`${label}编号精度已丢失，请刷新后重试`)
++  }
++  const text = String(value ?? '')
++  if (!/^[1-9][0-9]{0,18}$/.test(text)) throw new Error(`${label}编号缺失，请刷新后重试`)
++  return text
++}
++
++export function evaluationContextKey(context) {
++  return JSON.stringify([
++    context.contextReady === true, context.contextMode || '', context.scopeKey || '',
++    context.contextEpoch || 0, context.memberRole || '', String(context.campaign?.batchId || ''),
++  ])
++}
++
++export function freezeEvaluationTarget(item, context) {
++  if (!context.internshipCollabReady || !context.scopeKey) throw new Error('企业协同上下文已失效，请刷新')
++  const version = item.evaluationVersion
++  if (version != null && (!Number.isSafeInteger(version) || version < 0)) {
++    throw new Error('企业评价版本无效，请刷新后重试')
++  }
++  return Object.freeze({
++    internshipId: requireDecimalId(item.internshipId || item.id || item.taskId || item.task_id, '实习记录'),
++    batchId: requireDecimalId(context.campaign?.batchId, '批次'),
++    expectedPlacementSnapshotId: requireDecimalId(item.placementSnapshotId, '安置快照'),
++    expectedVersion: version == null ? undefined : version,
++    contextKey: evaluationContextKey(context),
++  })
++}
++
++export function assertEvaluationContext(target, context) {
++  if (!target || !context.internshipCollabReady || target.contextKey !== evaluationContextKey(context)) {
++    throw new Error('企业、批次或登录上下文已变化，请重新打开评价任务')
++  }
++  return target
++}
++
++/** A stale success, rejection or finally block cannot publish into a newer request. */
++export function createRequestFence() {
++  let generation = 0
++  let disposed = false
++  return {
++    start() { const ticket = ++generation; return () => !disposed && generation === ticket },
++    invalidate() { generation += 1 },
++    dispose() { disposed = true; generation += 1 },
++  }
++}
+diff --git a/enterprise-portal/src/stores/enterpriseContext.js b/enterprise-portal/src/stores/enterpriseContext.js
+--- a/enterprise-portal/src/stores/enterpriseContext.js
++++ b/enterprise-portal/src/stores/enterpriseContext.js
+@@ -19,0 +20 @@
++let nextContextEpoch=0
+@@ -22 +23 @@
+-  state:()=>({schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},unreadMessages:0,contextReady:false,loading:false,error:''}),
++  state:()=>({scopeKey:'',contextEpoch:0,schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},unreadMessages:0,contextReady:false,loading:false,error:''}),
+@@ -37,0 +39,2 @@
++      this.contextEpoch=++nextContextEpoch
++      this.scopeKey=''
+@@ -53,0 +57 @@
++        this.scopeKey=JSON.stringify([authContext.tenantId,authContext.companyId,authContext.memberId,authContext.grantId].map(value=>String(value||'')))
+diff --git a/enterprise-portal/src/views/EvaluationTaskListView.vue b/enterprise-portal/src/views/EvaluationTaskListView.vue
+--- a/enterprise-portal/src/views/EvaluationTaskListView.vue
++++ b/enterprise-portal/src/views/EvaluationTaskListView.vue
+@@ -2 +2,2 @@
+-import { computed,onMounted,reactive,ref,watch } from 'vue'
++import { computed,onBeforeUnmount,reactive,ref,watch } from 'vue'
++import { assertEvaluationContext,createRequestFence,evaluationContextKey,freezeEvaluationTarget } from '../services/evaluationContext.js'
+@@ -14 +15,3 @@
+-const batchId=computed(()=>Number(context.campaign?.batchId||0))
++const batchId=computed(()=>String(context.campaign?.batchId||''))
++const contextKey=computed(()=>evaluationContextKey(context))
++const listFence=createRequestFence(),submitFence=createRequestFence()
+@@ -27,0 +31 @@
++  const current=listFence.start()
+@@ -31,0 +36 @@
++    if(!current())return
+@@ -35 +40 @@
+-  }catch(e){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}finally{loading.value=false}
++  }catch(e){if(current()){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}}finally{if(current())loading.value=false}
+@@ -38 +43,2 @@
+-  selected.value=item;error.value='';resetForm()
++  try{selected.value={...item,submissionTarget:freezeEvaluationTarget(item,context)}}catch(e){error.value=e.message;return}
++  error.value='';resetForm()
+@@ -45,0 +52 @@
++  if(submitting.value)return
+@@ -46,0 +54,3 @@
++  let target
++  try{target=assertEvaluationContext(selected.value?.submissionTarget,context)}catch(e){error.value=e.message;return}
++  const current=submitFence.start()
+@@ -52,2 +62,4 @@
+-    if(selected.value?.evaluationVersion!==null&&selected.value?.evaluationVersion!==undefined)payload.expectedVersion=selected.value.evaluationVersion
+-    const result=await enterpriseInternshipApi.submitEvaluation(id,payload,batchId.value)
++    payload.expectedPlacementSnapshotId=target.expectedPlacementSnapshotId
++    if(target.expectedVersion!==undefined)payload.expectedVersion=target.expectedVersion
++    const result=await enterpriseInternshipApi.submitEvaluation(target.internshipId,payload,target.batchId)
++    if(!current()||target.contextKey!==contextKey.value)return
+@@ -56 +68 @@
+-  }catch(e){error.value=e.message||'企业评价提交失败'}finally{submitting.value=false}
++  }catch(e){if(current())error.value=e.message||'企业评价提交失败'}finally{if(current())submitting.value=false}
+@@ -60 +72,9 @@
+-watch(tab,()=>{page.value=1;load()});onMounted(load)
++watch([tab,contextKey],([,newContext],[,oldContext]=[])=>{
++  page.value=1
++  if(newContext!==oldContext){
++    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;resetForm()
++    items.value=[];total.value=null;hasNext.value=false
++  }
++  load()
++},{immediate:true})
++onBeforeUnmount(()=>{listFence.dispose();submitFence.dispose()})

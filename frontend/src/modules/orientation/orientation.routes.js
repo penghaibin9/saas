@@ -21,7 +21,7 @@ export const orientationRoutes = {
       path: 'batches',
       name: 'orientation-batches',
       component: () => import('@/views/admin/orientation/OrientationBatchListView.vue'),
-      meta: { moduleCode: 'ORIENTATION', title: '迎新批次', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
+      meta: { moduleCode: 'ORIENTATION', title: '迎新批次与新生名单', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
     },
     {
       path: 'green-channels',
@@ -93,7 +93,7 @@ export const orientationRoutes = {
       path: 'students',
       name: 'orientation-students',
       component: () => import('@/views/admin/orientation/OrientationStudentListView.vue'),
-      meta: { moduleCode: 'ORIENTATION', title: '新生报到学生列表', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
+      meta: { moduleCode: 'ORIENTATION', title: '新生名单管理', requiresAuth: true, permissionKey: 'studentAffairs.orientation.view' }
     },
     {
       path: 'students/:studentId',

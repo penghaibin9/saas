@@ -548,6 +548,7 @@ import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
 import { portalApi } from '../../services/portalApi'
+import { systemPrompt } from '../../services/systemDialog'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
@@ -1117,7 +1118,7 @@ async function doRegister(b) {
 }
 async function doDeferReg(b) {
   if (!b?.canDefer || busy.value) return
-  const reason = window.prompt('请填写暂缓原因（至少2字）') || ''
+  const reason = await systemPrompt({ title: '填写暂缓注册原因', message: '请说明需要暂缓注册的原因。', placeholder: '至少 2 个字', minLength: 2, confirmText: '提交原因' }) || ''
   if (reason.trim().length < 2) { ui.notify('原因至少2字'); return }
   busy.value = true
   try { await portalApi.academicRegistrationDefer(b.batchId, { reason: reason.trim() }); ui.notify('暂缓已提交'); loadAll() }

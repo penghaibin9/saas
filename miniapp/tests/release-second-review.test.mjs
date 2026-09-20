@@ -25,7 +25,9 @@ test('Vue 3 source contains no removed this.$set / this.$delete calls', () => {
 })
 test('production role switching fails closed while real API is offline', () => {
   const session = read('src/stores/session.js')
-  assert.match(session, /else if \(ENV\.allowMockFallback\)\s*\{\s*this\.currentRole = roleKey/)
+  // A permitted development fallback must still discard the previous account's
+  // business projection before accepting the replacement identity.
+  assert.match(session, /else if \(ENV\.allowMockFallback\)\s*\{\s*this\.clearBusinessContexts\(\)\s*this\.currentRole = roleKey/)
   assert.match(session, /throw \{ code: 'NETWORK', message: '网络不可用，无法安全切换身份' \}/)
 })
 
@@ -47,7 +49,7 @@ test('privacy gate registers one runtime listener and chooses one current UI own
 })
 
 test('graduation delay timeline keeps all four rows on the same visual contract', () => {
-  const panel = read('src/components/MobileGraduationExtensionPanel.vue')
+  const panel = read('src/pages/student/components/MobileGraduationExtensionPanel.vue')
   assert.equal((panel.match(/class="gdex__timeline-item"/g) || []).length, 4)
   assert.doesNotMatch(panel, /:class="\{ done:/)
 })

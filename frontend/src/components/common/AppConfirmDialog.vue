@@ -102,6 +102,7 @@ export default {
     },
     cancelText: { type: String, default: '取消' },
     requireReason: { type: Boolean, default: false },
+    initialReason: { type: String, default: '' },
     reasonLabel: { type: String, default: '处理原因' },
     reasonPlaceholder: { type: String, default: '请填写具体原因，便于对方理解和修改' },
     reasonMinLength: { type: Number, default: 5 },
@@ -135,7 +136,7 @@ export default {
   watch: {
     visible(v) {
       if (v) {
-        this.reason = ''
+        this.reason = this.initialReason
         this.notify = true
         this.reasonError = ''
       }

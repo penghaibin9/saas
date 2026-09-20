@@ -41,9 +41,10 @@ def two_tenants(db_mode):
     return db_mode
 
 
-def _login(client, login_name, password="123456"):
+def _login(client, login_name, password="123456", client_type="PC"):
     return client.post("/api/v1/auth/login",
-                       json={"loginName": login_name, "password": password}).json()
+                       json={"loginName": login_name, "password": password,
+                             "clientType": client_type}).json()
 
 
 def _h(data):
@@ -153,8 +154,8 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
 
 
 def test_tenant_isolation_both_ways(client, two_tenants):
-    demo_t = _h(_login(client, "teacher"))
-    sbx_t = _h(_login(client, "teacher2"))
+    demo_t = _h(_login(client, "teacher", client_type="TEACHER_MINI"))
+    sbx_t = _h(_login(client, "teacher2", client_type="TEACHER_MINI"))
     r1 = client.get("/api/v1/mobile/teacher/student/2026S0001", headers=demo_t).json()
     assert r1["code"] == 404001
     r2 = client.get("/api/v1/mobile/teacher/student/2026D0006", headers=sbx_t).json()
@@ -172,18 +173,18 @@ def test_student_stats_403(client, two_tenants):
 
 
 def test_teacher_scope_visibility(client, two_tenants):
-    demo_t = _h(_login(client, "teacher"))
+    demo_t = _h(_login(client, "teacher", client_type="TEACHER_MINI"))
     rk = client.get("/api/v1/mobile/teacher/risk-students", headers=demo_t).json()
     assert rk["code"] == 0 and rk["data"]["scopeMode"] == "SCOPED"
     ok = client.get("/api/v1/mobile/teacher/student/2026D0006", headers=demo_t).json()
     assert ok["code"] == 0 and ok["data"]["hasData"] is True
-    sbx_t = _h(_login(client, "teacher2"))
+    sbx_t = _h(_login(client, "teacher2", client_type="TEACHER_MINI"))
     ok2 = client.get("/api/v1/mobile/teacher/student/2026S0001", headers=sbx_t).json()
     assert ok2["code"] == 0
 
 
 def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
-    counselor_h = _h(_login(client, "teacher2"))
+    counselor_h = _h(_login(client, "teacher2", client_type="TEACHER_MINI"))
     counselor_batch = _default_internship_batch(client, counselor_h)
     counselor_view = client.get(
         "/api/v1/mobile/teacher/internship",
@@ -206,7 +207,7 @@ def test_teacher_can_process_visible_items_in_sandbox(client, two_tenants):
     assert denied.status_code == 403
     assert denied.json()["code"] == 403001
 
-    admin_h = _h(_login(client, "admin2"))
+    admin_h = _h(_login(client, "admin2", client_type="TEACHER_MINI"))
     admin_batch = _default_internship_batch(client, admin_h)
     admin_view = client.get(
         "/api/v1/mobile/teacher/internship",

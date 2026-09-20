@@ -249,7 +249,6 @@
               class="help-visual-card"
               :class="{ 'is-primary': image.primary, 'is-mobile': image.mobile }"
               :href="image.src"
-              target="_blank"
               rel="noopener noreferrer"
             >
               <img :src="image.src" :alt="image.title" loading="lazy" />
@@ -265,7 +264,6 @@
                 :key="image.src"
                 class="help-visual-card"
                 :href="image.src"
-                target="_blank"
                 rel="noopener noreferrer"
               >
                 <img :src="image.src" :alt="image.title" loading="lazy" />

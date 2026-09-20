@@ -12,6 +12,11 @@ const platformRoutes = {
   meta: { moduleCode: 'PLATFORM' },
   children: [
     {
+      path: 'website-news', name: 'platform-website-news',
+      component: () => import('@/modules/platform/views/control/PlatformWebsiteNewsView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '新闻资源包发布', requiresAuth: true, permissionKey: 'platform.websiteNews.manage' }
+    },
+    {
       path: '',
       name: 'platform-dashboard',
       component: () => import('@/modules/platform/views/PlatformDashboardView.vue'),

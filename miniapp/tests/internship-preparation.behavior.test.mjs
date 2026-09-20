@@ -31,7 +31,7 @@ test('a refreshed deep link returns to its parent and still respects the passwor
   const calls = []
   let forced = false
   const back = new Function('uni', 'getCurrentPages', 'forcePasswordChangeRequired', 'FORCE_PASSWORD_CHANGE_ROUTE', 'isForcePasswordChangeRoute', nav + '\nreturn back')(
-    { reLaunch: ({ url }) => calls.push(url), navigateBack: () => calls.push('back') },
+    { reLaunch: ({ url, complete }) => { calls.push(url); complete() }, navigateBack: ({ complete }) => { calls.push('back'); complete() } },
     () => [{}], () => forced, '/required-password', () => false)
   back('/pages/teacher-internship/internship-students/index?batchId=22')
   assert.equal(calls.pop(), '/pages/teacher-internship/internship-students/index?batchId=22')

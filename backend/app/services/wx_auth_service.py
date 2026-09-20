@@ -20,6 +20,30 @@ from app.services.auth_challenge_service import login_guard_key
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.auth_service_db import _find_login_user, build_login_result
 
+
+MINI_CLIENT_TYPES = frozenset({"STUDENT_MINI", "TEACHER_MINI"})
+
+
+def normalize_mini_client_type(client_type: str | None) -> str:
+    normalized = str(client_type or "").strip().upper()
+    if normalized not in MINI_CLIENT_TYPES:
+        raise AppException("VALIDATION_ERROR", "微信登录入口无效，请从学生或教师小程序重新进入")
+    return normalized
+
+
+def _can_use_mini_client(user, client_type: str) -> bool:
+    from app.services.auth_service_db import assert_mini_client_user_type
+    try:
+        assert_mini_client_user_type(user, client_type)
+        return True
+    except AppException:
+        return False
+
+
+def _require_mini_client(user, client_type: str) -> None:
+    from app.services.auth_service_db import assert_mini_client_user_type
+    assert_mini_client_user_type(user, client_type)
+
 WX_CODE2SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session"
 
 
@@ -71,8 +95,12 @@ def _active_bindings(db, openid: str, tenant_code: str | None = None):
     return db.execute(stmt.order_by(Tenant.id)).all()
 
 
-def _temporary_wx_token(openid: str, purpose: str) -> str:
-    return create_access_token({"wxOpenid": openid, "purpose": purpose}, expires_in=10 * 60)
+def _temporary_wx_token(openid: str, purpose: str, client_type: str = "STUDENT_MINI") -> str:
+    return create_access_token({
+        "wxOpenid": openid,
+        "purpose": purpose,
+        "clientType": normalize_mini_client_type(client_type),
+    }, expires_in=10 * 60)
 
 
 def openid_from_bind_token(wx_token: str) -> str:
@@ -116,40 +144,45 @@ def bind_openid_in_session(db, openid: str, user) -> None:
         user.wx_openid = openid
 
 
-def wx_login(js_code: str, *, bind_another: bool = False) -> dict:
+def wx_login(js_code: str, *, bind_another: bool = False, client_type: str = "STUDENT_MINI") -> dict:
     """一键登录：code→openid→查绑定。已绑定返回完整登录结果；未绑定返回 {needBind, wxToken}。"""
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
+    client_type = normalize_mini_client_type(client_type)
     openid = code2session(js_code)
     db = get_sessionmaker()()
     try:
         bindings = _active_bindings(db, openid)
+        eligible_bindings = [row for row in bindings if _can_use_mini_client(row.User, client_type)]
         if bind_another:
-            return {"needBind": True, "wxToken": _temporary_wx_token(openid, "wx_bind"),
-                    "existingTenants": [row.Tenant.tenant_code for row in bindings]}
-        if len(bindings) == 1:
-            return build_login_result(db, bindings[0].User, client_type="MP")
-        if len(bindings) > 1:
+            return {"needBind": True, "wxToken": _temporary_wx_token(openid, "wx_bind", client_type),
+                    "existingTenants": [row.Tenant.tenant_code for row in eligible_bindings]}
+        if len(eligible_bindings) == 1:
+            return build_login_result(db, eligible_bindings[0].User, client_type=client_type)
+        if len(eligible_bindings) > 1:
             return {
                 "needSelectTenant": True,
-                "wxToken": _temporary_wx_token(openid, "wx_select"),
+                "wxToken": _temporary_wx_token(openid, "wx_select", client_type),
                 "accounts": [{"tenantCode": row.Tenant.tenant_code,
                               "tenantName": row.Tenant.school_name,
                               "displayName": row.User.real_name,
-                              "userType": row.User.user_type} for row in bindings],
+                              "userType": row.User.user_type} for row in eligible_bindings],
             }
+        if bindings:
+            raise AppException("NO_PERMISSION", "当前微信账号不能进入此小程序，请从正确入口登录", http_status=403)
         # 迁移过渡兼容：若旧列存在但迁移回填遗漏，仍可登录；上线迁移会正常回填新表。
         legacy_user = _find_legacy_user_by_openid(db, openid)
         if legacy_user:
-            return build_login_result(db, legacy_user, client_type="MP")
+            _require_mini_client(legacy_user, client_type)
+            return build_login_result(db, legacy_user, client_type=client_type)
     finally:
         db.close()
     # 未绑定：签发短时 wxToken 携带 openid（purpose=wx_bind），前端拿去做首次绑定
-    wx_token = _temporary_wx_token(openid, "wx_bind")
+    wx_token = _temporary_wx_token(openid, "wx_bind", client_type)
     return {"needBind": True, "wxToken": wx_token}
 
 
-def wx_select(wx_token: str, tenant_code: str) -> dict:
+def wx_select(wx_token: str, tenant_code: str, *, client_type: str = "STUDENT_MINI") -> dict:
     """多学校微信身份选择：短时令牌 + 学校编码换取该校登录态。"""
     try:
         claims = decode_token(wx_token)
@@ -157,22 +190,34 @@ def wx_select(wx_token: str, tenant_code: str) -> dict:
         raise AppException("UNAUTHORIZED", "微信学校选择令牌无效或已过期，请重新发起微信登录")
     if claims.get("purpose") != "wx_select" or not claims.get("wxOpenid"):
         raise AppException("UNAUTHORIZED", "微信学校选择令牌无效")
+    client_type = normalize_mini_client_type(client_type)
+    if str(claims.get("clientType") or "").upper() != client_type:
+        raise AppException("UNAUTHORIZED", "微信学校选择凭证与当前入口不匹配，请重新发起微信登录")
     db = get_sessionmaker()()
     try:
         bindings = _active_bindings(db, claims["wxOpenid"], (tenant_code or "").strip())
         if len(bindings) != 1:
             raise AppException("DATA_NOT_FOUND", "该微信未绑定所选学校账号")
-        return build_login_result(db, bindings[0].User, client_type="MP")
+        _require_mini_client(bindings[0].User, client_type)
+        return build_login_result(db, bindings[0].User, client_type=client_type)
     finally:
         db.close()
 
 
 def wx_bind(wx_token: str, login_name: str, password: str,
-            tenant_code: str | None = None) -> dict:
+            tenant_code: str | None = None, *, client_type: str = "STUDENT_MINI") -> dict:
     """首次绑定：用 wx_login 返回的 wxToken(携带 openid) + 学号/工号+密码，校验后绑定 openid 并登录。"""
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
-    openid = openid_from_bind_token(wx_token)
+    try:
+        claims = decode_token(wx_token)
+    except Exception:  # noqa: BLE001
+        raise AppException("UNAUTHORIZED", "微信绑定凭证无效或已过期，请重新扫码进入")
+    client_type = normalize_mini_client_type(client_type)
+    if (claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid")
+            or str(claims.get("clientType") or "").upper() != client_type):
+        raise AppException("UNAUTHORIZED", "微信绑定凭证与当前入口不匹配，请重新发起微信登录")
+    openid = str(claims["wxOpenid"])
     login_name = (login_name or "").strip()
     if not login_name or not password:
         raise AppException("VALIDATION_ERROR", "请输入学号/工号与密码")
@@ -195,10 +240,11 @@ def wx_bind(wx_token: str, login_name: str, password: str,
                 raise AppException('CAPTCHA_REQUIRED', '账号、学校编码或密码不正确，请输入验证码后继续',
                                    details={'captchaRequired': True, 'scene': 'WX_BIND'}, http_status=401)
             raise AppException('UNAUTHORIZED', '账号、学校编码或密码不正确')
+        _require_mini_client(user, client_type)
         bind_openid_in_session(db, openid, user)
         db.commit()
         db.refresh(user)
         reset_login_failures(lock_key)
-        return build_login_result(db, user, client_type="MP")
+        return build_login_result(db, user, client_type=client_type)
     finally:
         db.close()

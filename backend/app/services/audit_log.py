@@ -4,6 +4,14 @@ from __future__ import annotations
 from app.services import audit_log_legacy as _legacy
 
 _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
+    "PASSWORD_CHANGE",
+    "PHONE_CANDIDATE_CHANGE",
+    "PHONE_BINDING_CHANGE",
+    "PHONE_POLICY_CHANGE",
+    "PHONE_BINDING_LOOKUP",
+    "PHONE_LEDGER_EXPORT",
+    "PHONE_VERIFY_REMINDER",
+    "ONBOARD_IMPORT",
     "WX_BIND_APPROVAL_AUTHORIZED",
     "WX_BINDING_ACTIVATED",
     "SECURITY_CHANGE_ACTIVATE",
@@ -14,10 +22,10 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_ACCESS_REVIEW_CHANGE",
     "ROLE_TEMPLATE_PUBLISH",
     "ROLE_CREATE",
+    "ROLE_ADOPT",
+    "ROLE_ASSIGNMENT_REGISTER",
     "PLATFORM_PRODUCT_IAM_PUBLISH",
     "CUSTOM_ROLE_BINDING_RECONCILE",
-    # School mutations use these exact actions in the caller's transaction.
-    # Register both directions and brand reset, not only the first failing cases.
     "USER_DISABLE",
     "USER_ENABLE",
     "USER_UNLOCK",
@@ -25,12 +33,8 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "ROLE_ENABLE",
     "BRAND_CONFIG",
     "BRAND_CONFIG_RESET",
-    # The batch status service commits its summary audit in that same transaction.
     "USER_BATCH_DISABLE",
     "USER_BATCH_ENABLE",
-    # Seven P1 closure writes that are deliberately committed in the same DB transaction
-    # as their audit row. Keeping them in the canonical critical registry prevents a
-    # deployment from accepting the business fact when its evidence cannot be persisted.
     "CONFIG_OVERRIDE_RESTORE_INHERITANCE",
     "ORG_NODE_DISABLE",
     "ORG_NODE_ENABLE",
@@ -49,6 +53,30 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_ORDER_PAID",
     "PLATFORM_ORDER_CANCEL",
     "PLATFORM_ORDER_ACTIVATION_REPAIRED",
+    "COMMERCIAL_SKU_PUBLISH",
+    "COMMERCIAL_ITEMIZED_ORDER_CREATE",
+    "COMMERCIAL_SALES_LEDGER_EXPORT",
+    "COMMERCIAL_MODULE_SOURCE_ACTIVATE",
+    "COMMERCIAL_MODULE_SOURCE_CANCEL",
+    "COMMERCIAL_MODULE_SOURCE_CANCEL_SCHEDULE",
+    "COMMERCIAL_MODULE_SOURCE_CANCEL_UNDO",
+    "COMMERCIAL_MODULE_DELIVERY_ACCEPT",
+    "COMMERCIAL_MODULE_OFFBOARD_FREEZE",
+    "COMMERCIAL_MODULE_OFFBOARD_CANCEL",
+    "COMMERCIAL_MODULE_EXPORT_BIND",
+    "COMMERCIAL_MODULE_EXPORT_ACCEPT",
+    "COMMERCIAL_READER_CUTOVER",
+    "COMMERCIAL_REFUND_REQUEST",
+    "COMMERCIAL_REFUND_APPROVE",
+    "COMMERCIAL_REFUND_REJECT",
+    "COMMERCIAL_REFUND_SETTLE",
+    "COMMERCIAL_INVOICE_REQUEST",
+    "COMMERCIAL_INVOICE_ISSUE",
+    "COMMERCIAL_INVOICE_VOID",
+    "COMMERCIAL_REFUND_AFTERSALES_LINK",
+    "COMMERCIAL_SERVICE_COST_RECORD",
+    "COMMERCIAL_SLA_POLICY_UPDATE",
+    "COMMERCIAL_SLA_POLICY_RESET",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402

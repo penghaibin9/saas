@@ -7,10 +7,39 @@ from __future__ import annotations
 
 from sqlalchemy import and_, func, or_, select
 
+from app.core.exceptions import AppException
+
 from . import academic_affairs_evaluation_public_service as _service
 
 
-def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
+def _page_arguments(page, page_size) -> tuple[int, int]:
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise AppException("VALIDATION_ERROR", "评教任务页码格式不正确")
+    try:
+        page_number = int(page)
+        size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "评教任务页码格式不正确") from exc
+    if page_number < 1 or page_number > 100000 or size < 1 or size > 50:
+        raise AppException("VALIDATION_ERROR", "评教任务每页最多50条")
+    return page_number, size
+
+
+def my_student_tasks(
+    user,
+    batch_id=None,
+    include_closed=True,
+    *,
+    page=None,
+    page_size=20,
+    task_id=None,
+    pending_summary=False,
+):
+    """读取本人评教任务。
+
+    保留未传 ``page`` 的旧调用返回列表；移动端传页码时由数据库完成
+    COUNT/OFFSET/LIMIT，避免把全校学期内的可评课程塞入小程序后再切片。
+    """
     from app.models import (
         AaEvaluationBatch,
         AaEvaluationRecord,
@@ -56,12 +85,66 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
         )
         if batch_id:
             query = query.filter(AaEvaluationBatch.id == int(batch_id))
+        if task_id:
+            query = query.filter(AaEvaluationTask.id == int(task_id))
         if not include_closed:
             query = query.filter(AaEvaluationBatch.status == legacy._B_OPEN)
-        rows = query.distinct().order_by(
-            AaEvaluationBatch.id.desc(),
-            AaEvaluationTask.id.desc(),
-        ).all()
+
+        pending = {"count": 0, "nextTaskId": None}
+        if pending_summary:
+            # 首页只读一页任务，但待办数字必须代表所有仍可办理的本人任务。
+            # 匿名去重凭证由 taskId+稳定 studentId HMAC 派生，不能用一条固定
+            # SQL 字段比较；这里用两次批量查询完成，不做逐任务 N+1，也不把候选
+            # 交给手机本地统计。
+            open_task_ids = [
+                int(task_value)
+                for task_value, _batch_value in query.filter(
+                    AaEvaluationBatch.status == legacy._B_OPEN,
+                ).with_entities(
+                    AaEvaluationTask.id,
+                    AaEvaluationBatch.id,
+                ).distinct().order_by(
+                    AaEvaluationBatch.id.desc(),
+                    AaEvaluationTask.id.desc(),
+                ).all()
+            ]
+            submitted_open_ids: set[int] = set()
+            if open_task_ids:
+                token_rows = db.execute(select(
+                    AaEvaluationRecord.task_id,
+                    AaEvaluationRecord.answers_json,
+                ).where(
+                    AaEvaluationRecord.tenant_id == _service._tid(),
+                    AaEvaluationRecord.task_id.in_(open_task_ids),
+                    AaEvaluationRecord.evaluator_type == "STUDENT",
+                    AaEvaluationRecord.is_deleted.is_(False),
+                )).all()
+                for recorded_task_id, answers_json in token_rows:
+                    task_value = int(recorded_task_id)
+                    marker = _service._token_pattern(task_value, profile.id)[1:-1]
+                    if marker in str(answers_json or ""):
+                        submitted_open_ids.add(task_value)
+            pending_task_ids = [task_value for task_value in open_task_ids if task_value not in submitted_open_ids]
+            pending = {
+                "count": len(pending_task_ids),
+                "nextTaskId": str(pending_task_ids[0]) if pending_task_ids else None,
+            }
+
+        if page is None:
+            rows = query.distinct().order_by(
+                AaEvaluationBatch.id.desc(),
+                AaEvaluationTask.id.desc(),
+            ).all()
+            total = len(rows)
+        else:
+            page, page_size = _page_arguments(page, page_size)
+            total = int(query.with_entities(
+                func.count(func.distinct(AaEvaluationTask.id))
+            ).scalar() or 0)
+            rows = query.distinct().order_by(
+                AaEvaluationBatch.id.desc(),
+                AaEvaluationTask.id.desc(),
+            ).offset((page - 1) * page_size).limit(page_size).all()
 
         task_ids = [int(task.id) for task, _batch in rows]
         submitted_ids: set[int] = set()
@@ -100,7 +183,7 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
                 )).all()
             }
 
-        return [{
+        output = [{
             "taskId": str(task.id),
             "batchId": str(batch.id),
             "batchName": batch.batch_name,
@@ -113,3 +196,6 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
             "submitted": int(task.id) in submitted_ids,
             "canSubmit": batch.status == legacy._B_OPEN and int(task.id) not in submitted_ids,
         } for task, batch in rows]
+        if pending_summary:
+            return output, total, pending
+        return (output, total) if page is not None else output

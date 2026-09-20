@@ -209,7 +209,8 @@ def test_approve_rejects_when_evidence_replaced_after_submission(recog, db_mode)
                       "realName": "教务处", "activeContextId": "ctx"})
     with pytest.raises(AppException) as exc:
         recog.review(admin, rid, "APPROVE")
-    assert exc.value.http_status == 409 and "EVIDENCE_INVALIDATED" in exc.value.message
+    assert exc.value.http_status == 409
+    assert exc.value.details["reasonCode"] == "EVIDENCE_INVALIDATED"
 
     db = _session()
     assert db.query(AcademicGrade).filter(

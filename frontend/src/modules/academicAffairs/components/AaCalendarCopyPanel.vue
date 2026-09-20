@@ -89,7 +89,8 @@ export default {
       loading: false,
       applying: false,
       reviewConfirmed: false,
-      error: ''
+      error: '',
+      previewSeq: 0
     }
   },
   computed: {
@@ -108,9 +109,18 @@ export default {
     }
   },
   watch: {
+    sourceTermId() {
+      this.previewSeq += 1
+      this.loading = false
+      this.preview = null
+      this.reviewConfirmed = false
+      this.error = ''
+    },
     targetTermId: {
       immediate: true,
       handler() {
+        this.previewSeq += 1
+        this.loading = false
         this.preview = null
         this.reviewConfirmed = false
         this.error = ''
@@ -126,10 +136,14 @@ export default {
     statusTone(status) { return { READY: 'success', REVIEW: 'warning', BLOCKED: 'danger' }[status] || 'default' },
     async loadPreview() {
       if (!this.targetTermId || !this.sourceTermId || this.loading) return
+      const targetTermId = String(this.targetTermId)
+      const sourceTermId = String(this.sourceTermId)
+      const seq = ++this.previewSeq
       this.loading = true
       this.error = ''
       this.reviewConfirmed = false
-      const res = await termCalendarConvenienceApi.previewCalendarCopy(this.targetTermId, this.sourceTermId)
+      const res = await termCalendarConvenienceApi.previewCalendarCopy(targetTermId, sourceTermId)
+      if (seq !== this.previewSeq || targetTermId !== String(this.targetTermId) || sourceTermId !== String(this.sourceTermId)) return
       this.loading = false
       if (res.code === 0) {
         this.preview = res.data
@@ -140,10 +154,12 @@ export default {
     },
     async applyCopy() {
       if (!this.canApply) return
+      const targetTermId = this.targetTermId
+      const rows = [...this.preview.items]
       this.applying = true
       this.error = ''
       let applied = 0
-      for (const row of this.preview.items) {
+      for (const row of rows) {
         if (!['READY', 'REVIEW'].includes(row.status)) continue
         const body = {
           eventType: row.eventType,
@@ -152,9 +168,12 @@ export default {
           swapToDate: row.eventType === 'SWAP' ? row.swapToDate : undefined,
           remark: row.remark || undefined
         }
-        const res = await academicAffairsApi.addCalendarEvent(this.targetTermId, body)
+        const res = await academicAffairsApi.addCalendarEvent(targetTermId, body)
         if (res.code !== 0) {
-          this.error = `已成功复制 ${applied} 项；第 ${applied + 1} 项被服务端拒绝：${res.message || '发生冲突'}。已保留本次预览，请刷新权威事实后再处理。`
+          this.previewSeq += 1
+          this.preview = null
+          this.reviewConfirmed = false
+          this.error = `已复制 ${applied} 项；第 ${applied + 1} 项被服务端拒绝：${res.message || '发生冲突'}。请刷新权威预览后再处理。`
           this.applying = false
           this.$emit('applied', { applied, partial: true })
           return

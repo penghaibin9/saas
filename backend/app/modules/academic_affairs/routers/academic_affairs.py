@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import io
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -73,15 +73,57 @@ def dashboard_reminders(user=Depends(require_permission(_DASHBOARD_VIEW))):
     return success(svc.dashboard_reminders(user))
 
 
+@router.get("/dashboard/role-queue", summary="当前岗位教务待办（正式责任、服务端分页）")
+def dashboard_role_queue(
+    status: Literal["PENDING", "DONE"] = Query(default="PENDING"),
+    keyword: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    user=Depends(require_permission(_DASHBOARD_VIEW)),
+):
+    from app.modules.academic_affairs.services.academic_affairs_role_queue_service import role_queue
+    return success(role_queue(user, status=status, keyword=keyword, page=page, page_size=pageSize))
+
+
 # ── 学年学期 ──
+@router.get("/dashboard/academic-progress", summary="学生学业事实（正式成绩、培养方案、范围与分页）")
+def academic_progress(
+    page: int = Query(default=1, ge=1, le=100000),
+    pageSize: int = Query(default=5, ge=1, le=20),
+    keyword: str = Query(default="", max_length=100),
+    user=Depends(require_permission("academicAffairs.process.view")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_progress_read_service import academic_progress
+    return success(academic_progress(user, page=page, page_size=pageSize, keyword=keyword))
+
+
 class TermCreate(BaseModel):
-    yearCode: str = Field(..., min_length=1, description="学年 如 2026-2027")
-    termNo: int = Field(..., ge=1, le=2)
-    termName: Optional[str] = None
+    yearCode: str = Field(..., pattern=r"^[0-9]{4}-[0-9]{4}$", description="学年 如 2026-2027")
+    termNo: int = Field(..., ge=1, le=2, strict=True)
+    termName: Optional[str] = Field(None, max_length=100)
     startDate: Optional[str] = None
     endDate: Optional[str] = None
-    teachingWeeks: Optional[int] = None
-    examWeekStart: Optional[int] = None
+    teachingWeeks: Optional[int] = Field(None, ge=1, le=30, strict=True)
+    examWeekStart: Optional[int] = Field(None, ge=1, le=30, strict=True)
+
+    @model_validator(mode="after")
+    def validate_calendar_fields(self):
+        from datetime import datetime
+
+        first, last = (int(year) for year in self.yearCode.split("-"))
+        if last != first + 1:
+            raise ValueError("学年必须是连续两年，例如 2026-2027")
+        dates = []
+        for value in (self.startDate, self.endDate):
+            try:
+                dates.append(datetime.fromisoformat(value.replace("Z", "+00:00")).date() if value else None)
+            except ValueError as exc:
+                raise ValueError("请填写有效的学期日期") from exc
+        if all(dates) and dates[0] > dates[1]:
+            raise ValueError("开学日期不能晚于结束日期")
+        if self.teachingWeeks and self.examWeekStart and self.examWeekStart > self.teachingWeeks:
+            raise ValueError("考试开始周不能超过教学周数")
+        return self
 
 
 @router.post("/terms", summary="新建学年学期")
@@ -120,8 +162,8 @@ def term_weeks(termId: int = Path(...), user=Depends(require_permission(_TERM_VI
 
 
 class TeachingWeeksBody(BaseModel):
-    teachingWeeks: Optional[int] = Field(None, ge=1, le=30)
-    examWeekStart: Optional[int] = Field(None, ge=1, le=30)
+    teachingWeeks: Optional[int] = Field(None, ge=1, le=30, strict=True)
+    examWeekStart: Optional[int] = Field(None, ge=1, le=30, strict=True)
 
 
 @router.put("/terms/{termId}/teaching-weeks", summary="教学周配置（仅 DRAFT 学期可调整结构）")
@@ -180,7 +222,7 @@ def term_detail(termId: int = Path(...), user=Depends(require_permission(_TERM_V
 
 
 class CalendarEventBody(BaseModel):
-    eventType: str = Field("TEACHING", description="TEACHING/EXAM/INTERNSHIP/HOLIDAY/SWAP")
+    eventType: Literal['TEACHING', 'EXAM', 'INTERNSHIP', 'HOLIDAY', 'SWAP'] = 'TEACHING'
     startDate: Optional[str] = None
     endDate: Optional[str] = None
     swapToDate: Optional[str] = None
@@ -188,7 +230,7 @@ class CalendarEventBody(BaseModel):
 
 
 class CalendarEventUpdate(BaseModel):
-    eventType: Optional[str] = None
+    eventType: Optional[Literal['TEACHING', 'EXAM', 'INTERNSHIP', 'HOLIDAY', 'SWAP']] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
     swapToDate: Optional[str] = None
@@ -231,15 +273,15 @@ def calendar_publish(termId: int = Path(...), user=Depends(require_permission("a
 
 # ── 作息节次（节次管理，全校统一，不随学期锁定）──
 class TimeSlotCreate(BaseModel):
-    slotNo: int = Field(..., ge=1)
-    slotName: Optional[str] = None
+    slotNo: int = Field(..., ge=1, strict=True)
+    slotName: Optional[str] = Field(None, max_length=50)
     startTime: Optional[str] = Field(None, description="HH:MM")
     endTime: Optional[str] = None
 
 
 class TimeSlotUpdate(BaseModel):
-    slotNo: Optional[int] = Field(None, ge=1)
-    slotName: Optional[str] = None
+    slotNo: Optional[int] = Field(None, ge=1, strict=True)
+    slotName: Optional[str] = Field(None, max_length=50)
     startTime: Optional[str] = None
     endTime: Optional[str] = None
     enabled: Optional[bool] = None
@@ -268,8 +310,8 @@ def time_slot_delete(slotId: int = Path(...), user=Depends(require_permission("a
 
 # ── 上课时间段（节次的实际钟点，支持按校区/生效日期区间配置多套作息）──
 class TimeBandCreate(BaseModel):
-    bandName: Optional[str] = None
-    campusCode: Optional[str] = None
+    bandName: Optional[str] = Field(None, max_length=50)
+    campusCode: Optional[str] = Field(None, max_length=50)
     effectiveStart: Optional[str] = None
     effectiveEnd: Optional[str] = None
     startTime: str = Field(..., min_length=1, description="HH:MM")
@@ -277,8 +319,8 @@ class TimeBandCreate(BaseModel):
 
 
 class TimeBandUpdate(BaseModel):
-    bandName: Optional[str] = None
-    campusCode: Optional[str] = None
+    bandName: Optional[str] = Field(None, max_length=50)
+    campusCode: Optional[str] = Field(None, max_length=50)
     effectiveStart: Optional[str] = None
     effectiveEnd: Optional[str] = None
     startTime: Optional[str] = None
@@ -670,6 +712,7 @@ _SC_REVIEW_ANY = require_any_permission(_SC_COUNSELOR, _SC_COLLEGE, _SC_OFFICE)
 
 
 class StatusChangeSubmit(BaseModel):
+    expectedStudentVersion: Optional[int] = Field(None, ge=0, strict=True, description="确认申请时的学生主档版本；与正式事务不一致返回409")
     studentId: str = Field(..., min_length=1)
     changeType: str = Field(..., description="SUSPEND/RESUME/WITHDRAW/RETAIN/TRANSFER_MAJOR/TRANSFER_CLASS")
     reason: Optional[str] = Field("", max_length=500)
@@ -1455,6 +1498,7 @@ class TranscriptExportBody(BaseModel):
 class GradeReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/RETURN")
     reason: Optional[str] = Field("", max_length=500)
+    expectedEvidenceHash: Optional[str] = Field(None, pattern=r"^[0-9a-f]{64}$", description="学院通过必需的审核证据摘要")
 
 
 class GradeReturnBody(BaseModel):
@@ -1462,16 +1506,25 @@ class GradeReturnBody(BaseModel):
 
 
 class GradeChangeRequestBody(BaseModel):
+    expectedAuthorityHash: str = Field(..., min_length=64, max_length=64)
+    expectedComponentHash: Optional[str] = Field(None, min_length=64, max_length=64)
+    newComponentScores: Optional[dict[str, float]] = None
     newUsualScore: Optional[int] = Field(None, ge=0, le=100)
     newMidtermScore: Optional[int] = Field(None, ge=0, le=100)
     newFinalScore: Optional[int] = Field(None, ge=0, le=100)
     reason: str = Field(..., min_length=5, max_length=500)
     attachmentIds: Optional[list] = Field(default_factory=list)
+    expectedGradeVersion: int = Field(..., ge=1)
+    expectedCurrentGradeId: int = Field(..., gt=0)
 
 
 class GradeChangeReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    changeRequestId: int = Field(..., gt=0)
+    expectedRequestVersion: int = Field(..., ge=0)
+    currentTaskId: int = Field(..., gt=0)
+    expectedTaskVersion: int = Field(..., ge=0)
 
 
 @router.post("/grade-tasks", summary="新建成绩录入任务（配平时/期末占比）")
@@ -1554,7 +1607,7 @@ def grade_submit(taskId: int = Path(...), user=Depends(require_permission("acade
 @router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
 def grade_college_review(body: GradeReviewBody, taskId: int = Path(...),
                          user=Depends(require_permission("academicAffairs.grade.collegeReview"))):
-    return success(grade_svc.college_review(taskId, user, body.action, body.reason or ""), message="已处理")
+    return success(grade_svc.college_review(taskId, user, body.action, body.reason or "", body.expectedEvidenceHash), message="已处理")
 
 
 @router.post("/grade-tasks/{taskId}/publish", summary="教务处终审发布（原子回写+台账刷新+预警）")
@@ -1625,20 +1678,25 @@ def grade_archive(taskId: int = Path(...), user=Depends(require_permission("acad
 
 @router.post("/grade-tasks/{taskId}/records/{recordId}/change-request", summary="教师发起成绩更正")
 def grade_change_request(body: GradeChangeRequestBody, taskId: int = Path(...), recordId: int = Path(...),
+                         command_key: Optional[str] = Header(None, alias="Idempotency-Key", min_length=8, max_length=128),
                          user=Depends(require_permission("academicAffairs.gradeChange.apply"))):
-    return success(grade_svc.change_request(taskId, recordId, user, body), message="更正申请已提交")
+    return success(grade_svc.change_request(taskId, recordId, user, body, command_key=command_key), message="更正申请已提交")
 
 
 @router.post("/grade-change/{recordId}/college-review", summary="成绩更正学院初审")
 def grade_change_college_review(body: GradeChangeReviewBody, recordId: int = Path(...),
+                                command_key: Optional[str] = Header(None, alias="Idempotency-Key", min_length=8, max_length=128),
                                 user=Depends(require_permission("academicAffairs.gradeChange.review"))):
-    return success(grade_svc.change_college_review(recordId, user, body.action, body.reason or ""), message="已处理")
+    identity = {key: getattr(body, key) for key in ("changeRequestId", "expectedRequestVersion", "currentTaskId", "expectedTaskVersion")}
+    return success(grade_svc.change_college_review(recordId, user, body.action, body.reason or "", identity=identity, command_key=command_key), message="已处理")
 
 
 @router.post("/grade-change/{recordId}/academic-review", summary="成绩更正教务处终审")
 def grade_change_academic_review(body: GradeChangeReviewBody, recordId: int = Path(...),
+                                 command_key: Optional[str] = Header(None, alias="Idempotency-Key", min_length=8, max_length=128),
                                  user=Depends(require_permission("academicAffairs.gradeChange.review"))):
-    return success(grade_svc.change_academic_review(recordId, user, body.action, body.reason or ""), message="已处理")
+    identity = {key: getattr(body, key) for key in ("changeRequestId", "expectedRequestVersion", "currentTaskId", "expectedTaskVersion")}
+    return success(grade_svc.change_academic_review(recordId, user, body.action, body.reason or "", identity=identity, command_key=command_key), message="已处理")
 
 
 # ── 成绩认定/课程替代（转专业/转学：原修课程替代现计划课程，审核通过写 source=RECOGNIZED）──
@@ -1754,8 +1812,11 @@ def attendance_session_detail(sessionId: int = Path(...), user=Depends(require_p
 
 @router.get("/attendance/stats", summary="跨堂次考勤统计（按学生汇总出勤/迟到/旷课/请假+缺勤率，正方4.19对标）")
 def attendance_stats_view(classId: Optional[str] = None, termCode: Optional[str] = None,
-                          sessionType: Optional[str] = None, user=Depends(require_permission("academicAffairs.attendance.view"))):
-    return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType))
+                          sessionType: Optional[str] = None,
+                          page: Optional[int] = Query(None, ge=1),
+                          pageSize: Optional[int] = Query(None, ge=1, le=200),
+                          user=Depends(require_permission("academicAffairs.attendance.view"))):
+    return success(attendance_svc.attendance_stats(user, classId, termCode, sessionType, page, pageSize))
 
 
 # ═══════════ 成绩复查（学生发起在移动端；教务处复审在 PC，正方 学生端3.12/教师端3.11 对标）═══════════
@@ -2332,17 +2393,18 @@ _ORG_MANAGE = require_permission("academicAffairs.org.manage")
 
 
 class CollegeBody(BaseModel):
-    collegeName: Optional[str] = None
-    code: Optional[str] = None
-    shortName: Optional[str] = None
-    sortOrder: Optional[int] = None
+    collegeName: Optional[str] = Field(None, max_length=200)
+    code: Optional[str] = Field(None, max_length=50)
+    shortName: Optional[str] = Field(None, max_length=100)
+    sortOrder: Optional[int] = Field(None, ge=-2147483648, le=2147483647)
     status: Optional[str] = None
-    remark: Optional[str] = None
-    expectedVersion: Optional[int] = None
+    remark: Optional[str] = Field(None, max_length=500)
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class SecretaryBindBody(BaseModel):
-    secretaryId: Optional[str] = None
+    secretaryId: Optional[str] = Field(None, max_length=30)
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class MajorBody(BaseModel):
@@ -2356,6 +2418,7 @@ class MajorBody(BaseModel):
     status: Optional[str] = None
     remark: Optional[str] = None
     expectedVersion: Optional[int] = None
+    reason: Optional[str] = Field(None, max_length=500)
 
 
 class ClassBody(BaseModel):
@@ -2371,27 +2434,39 @@ class ClassBody(BaseModel):
     status: Optional[str] = None
     remark: Optional[str] = None
     expectedVersion: Optional[int] = None
+    expectedStateSnapshotHash: Optional[str] = Field(None, min_length=64, max_length=64, pattern=r'^[0-9a-f]+$')
+    reason: Optional[str] = Field(None, max_length=500)
 
 
 class ClassAdjustBody(BaseModel):
     studentId: str = Field(..., min_length=1)
     targetClassId: str = Field(..., min_length=1)
+    expectedVersion: Optional[int] = Field(None, ge=0)
+    expectedTargetVersion: Optional[int] = Field(None, ge=0)
+    expectedSnapshotHash: Optional[str] = Field(None, min_length=64, max_length=64, pattern=r'^[0-9a-f]+$')
+    reason: Optional[str] = Field(None, min_length=5, max_length=500)
 
 
 class MajorDirectionToggleBody(BaseModel):
     enabled: bool = False
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class DirectionBody(BaseModel):
-    directionName: Optional[str] = None
-    code: Optional[str] = None
+    directionName: Optional[str] = Field(None, max_length=200)
+    code: Optional[str] = Field(None, max_length=50)
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class ClassAdjustmentCreateBody(BaseModel):
     adjustType: str = Field(..., min_length=1)
-    fromClassIds: List[str] = Field(default_factory=list)
+    fromClassIds: List[str] = Field(..., min_length=1, max_length=500)
     toClassId: Optional[str] = None
-    reason: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class OrgAdjustmentActionBody(BaseModel):
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 # ── 学院 ──
@@ -2415,6 +2490,15 @@ def org_college_update(body: CollegeBody, collegeId: int = Path(...), user=Depen
 @router.post("/orgs/colleges/{collegeId}/secretary", summary="教学秘书绑定/解绑")
 def org_college_secretary(body: SecretaryBindBody, collegeId: int = Path(...), user=Depends(_ORG_MANAGE)):
     return success(org_svc.bind_secretary(user, collegeId, body), message="已保存")
+
+
+@router.get("/orgs/colleges/{collegeId}/secretary-candidates", summary="学院教学秘书候选与姓名回显")
+def org_secretary_candidates(collegeId: int = Path(...), keyword: Optional[str] = Query(None, max_length=100),
+                             userId: Optional[int] = Query(None, ge=1), page: int = Query(1, ge=1),
+                             pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_MANAGE)):
+    items, total = org_svc.list_secretary_candidates(user, collegeId, keyword=keyword, user_id=userId,
+                                                    page=page, page_size=pageSize)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.delete("/orgs/colleges/{collegeId}", summary="删除学院（软删，须无在册专业）")
@@ -2464,6 +2548,11 @@ def org_class_update(body: ClassBody, classId: int = Path(...), user=Depends(_OR
     return success(org_svc.update_class(user, classId, body), message="已保存")
 
 
+@router.post("/orgs/classes/{classId}/state-preview", summary="核对行政班状态变更影响（只读）")
+def org_class_state_preview(body: ClassBody, classId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.preview_class_state(user, classId, body))
+
+
 @router.delete("/orgs/classes/{classId}", summary="删除行政班（软删，须无在册学生）")
 def org_class_delete(classId: int = Path(...), user=Depends(_ORG_MANAGE)):
     return success(org_svc.delete_class(user, classId), message="已删除")
@@ -2477,8 +2566,9 @@ def org_grades(collegeId: Optional[str] = None, majorId: Optional[str] = None, u
 
 @router.get("/orgs/teaching-classes", summary="教学班只读汇总（派生自教学任务）")
 def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] = None,
-                         page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
-    items, total = org_svc.list_teaching_classes(user, termCode, batchId, page, pageSize)
+                         termId: Optional[int] = Query(None, ge=1), keyword: Optional[str] = None,
+                         page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_VIEW)):
+    items, total = org_svc.list_teaching_classes(user, termCode, batchId, page, pageSize, term_id=termId, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -2494,6 +2584,11 @@ def org_class_adjust(body: ClassAdjustBody, user=Depends(_ORG_MANAGE)):
     return success(org_svc.adjust_student_class(user, body), message="已调整")
 
 
+@router.post("/orgs/class-adjustments/preview", summary="转班前核对归属与班级人数（只读）")
+def org_class_adjust_preview(body: ClassAdjustBody, user=Depends(_ORG_MANAGE)):
+    return success(org_svc.preview_student_class_adjustment(user, body))
+
+
 # ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后学院教务在专业下维护方向）──
 @router.get("/orgs/major-direction-toggle", summary="专业方向总开关状态")
 def org_direction_toggle_get(user=Depends(_ORG_VIEW)):
@@ -2502,11 +2597,11 @@ def org_direction_toggle_get(user=Depends(_ORG_VIEW)):
 
 @router.post("/orgs/major-direction-toggle", summary="设置专业方向总开关（仅教务处/校管）")
 def org_direction_toggle_set(body: MajorDirectionToggleBody, user=Depends(_ORG_MANAGE)):
-    return success(org_svc.set_major_direction_toggle(user, body.enabled), message="已保存")
+    return success(org_svc.set_major_direction_toggle(user, body.enabled, body.expectedVersion), message="已保存")
 
 
 @router.get("/orgs/majors/{majorId}/directions", summary="专业方向列表")
-def org_directions(majorId: int = Path(...), page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+def org_directions(majorId: int = Path(...), page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_VIEW)):
     items, total = org_svc.list_directions(user, majorId, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -2523,8 +2618,8 @@ def org_direction_update(body: DirectionBody, majorId: int = Path(...), directio
 
 
 @router.post("/orgs/majors/{majorId}/directions/{directionId}/disable", summary="停用专业方向")
-def org_direction_disable(majorId: int = Path(...), directionId: int = Path(...), user=Depends(_ORG_MANAGE)):
-    return success(org_svc.disable_direction(user, majorId, directionId), message="已停用")
+def org_direction_disable(body: Optional[DirectionBody] = None, majorId: int = Path(...), directionId: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.disable_direction(user, majorId, directionId, body.expectedVersion if body else None), message="已停用")
 
 
 # ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班，区别于上方个体学生转班）──
@@ -2541,21 +2636,36 @@ def org_adjustment_create(body: ClassAdjustmentCreateBody, user=Depends(_ORG_MAN
 
 
 @router.post("/orgs/class-adjustment-requests/{id}/precheck", summary="前置核对")
-def org_adjustment_precheck(id: int = Path(...), user=Depends(_ORG_MANAGE)):
-    return success(org_svc.precheck_class_adjustment(user, id))
+def org_adjustment_precheck(body: Optional[OrgAdjustmentActionBody] = None, id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.precheck_class_adjustment(user, id, body.expectedVersion if body else None))
 
 
 @router.post("/orgs/class-adjustment-requests/{id}/execute", summary="确认执行")
-def org_adjustment_execute(id: int = Path(...), user=Depends(_ORG_MANAGE)):
-    return success(org_svc.execute_class_adjustment(user, id), message="已执行")
+def org_adjustment_execute(body: Optional[OrgAdjustmentActionBody] = None, id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.execute_class_adjustment(user, id, body.expectedVersion if body else None), message="已执行")
 
 
 @router.post("/orgs/class-adjustment-requests/{id}/cancel", summary="撤销")
-def org_adjustment_cancel(id: int = Path(...), user=Depends(_ORG_MANAGE)):
-    return success(org_svc.cancel_class_adjustment(user, id), message="已撤销")
+def org_adjustment_cancel(body: Optional[OrgAdjustmentActionBody] = None, id: int = Path(...), user=Depends(_ORG_MANAGE)):
+    return success(org_svc.cancel_class_adjustment(user, id, body.expectedVersion if body else None), message="已撤销")
 
 
 # ── 组织树 / 统计 / 变更审计 ──
+@router.get('/orgs/sync-check', summary='组织引用核对总览')
+def org_reference_checks(targetType: Optional[str] = None, collegeId: Optional[str] = None,
+                         keyword: Optional[str] = Query(None, max_length=100),
+                         page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(_ORG_VIEW)):
+    if collegeId and (not collegeId.isdigit() or int(collegeId) <= 0):
+        raise AppException('VALIDATION_ERROR', '请选择有效学院')
+    items, total = org_svc.list_org_reference_checks(user, targetType, int(collegeId) if collegeId else None, keyword, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get('/orgs/sync-check/{targetType}/{targetId}', summary='组织引用核对详情')
+def org_reference_check(targetType: str, targetId: int = Path(..., ge=1), user=Depends(_ORG_VIEW)):
+    return success(org_svc.get_org_reference_check(user, targetType, targetId))
+
+
 @router.get("/orgs/tree", summary="组织结构（学院→专业→班级）")
 def org_tree(user=Depends(_ORG_VIEW)):
     return success(org_svc.org_tree(user))
@@ -2577,25 +2687,41 @@ def org_audit(bizType: Optional[str] = None, page: int = 1, pageSize: int = 50, 
 
 
 class ClassroomCreate(BaseModel):
+    allowSchedule: bool = True
+    allowExam: bool = True
+    allowBorrow: bool = False
     buildingCode: str = Field(..., min_length=1, description="楼栋编码")
     buildingName: str = Field(..., min_length=1, description="楼栋名称")
     roomCode: str = Field(..., min_length=1, description="教室编号")
-    roomName: Optional[str] = None
+    roomName: Optional[str] = Field(None, max_length=100)
     capacity: Optional[int] = Field(0, ge=0, description="容量(座位数)")
     roomType: Optional[str] = Field("LECTURE", description="LECTURE/MULTIMEDIA/COMPUTER/LAB/OTHER")
     campusCode: Optional[str] = None
-    remark: Optional[str] = None
+    remark: Optional[str] = Field(None, max_length=500)
+    buildingId: Optional[str] = Field(None, pattern=r"^[0-9]+$")
+    floorNo: Optional[int] = Field(None, ge=1, le=100)
+    examSeats: Optional[int] = Field(None, ge=0, le=1000)
+    isExclusive: Optional[bool] = None
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class ClassroomUpdate(BaseModel):
+    allowSchedule: Optional[bool] = None
+    allowExam: Optional[bool] = None
+    allowBorrow: Optional[bool] = None
     buildingCode: Optional[str] = None
     buildingName: Optional[str] = None
     roomCode: Optional[str] = None
-    roomName: Optional[str] = None
+    roomName: Optional[str] = Field(None, max_length=100)
     capacity: Optional[int] = Field(None, ge=0)
     roomType: Optional[str] = None
     campusCode: Optional[str] = None
-    remark: Optional[str] = None
+    remark: Optional[str] = Field(None, max_length=500)
+    buildingId: Optional[str] = Field(None, pattern=r"^[0-9]+$")
+    floorNo: Optional[int] = Field(None, ge=1, le=100)
+    examSeats: Optional[int] = Field(None, ge=0, le=1000)
+    isExclusive: Optional[bool] = None
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 class ClassroomStatusBody(BaseModel):
@@ -2651,13 +2777,15 @@ class ClassroomBookBody(BaseModel):
 
 
 class BookingReviewBody(BaseModel):
+    expectedLabVersion: Optional[int] = Field(None, ge=0)
+    expectedClassroomId: Optional[int] = Field(None, gt=0)
     action: str = Field(..., description="APPROVE/REJECT")
     reason: Optional[str] = Field("", max_length=300)
 
 
 @router.post("/classrooms/bookings", summary="申请教室预约（同教室同时段占用409）")
-def classroom_book(body: ClassroomBookBody, user=Depends(require_permission("academicAffairs.classroom.view"))):
-    return success(resource_svc.book_classroom(user, body), message="已提交预约")
+def classroom_book(body: ClassroomBookBody, command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission("academicAffairs.classroom.view"))):
+    return success(resource_svc.book_classroom(user, body, command_key=command_key), message="已提交预约")
 
 
 @router.get("/classrooms/bookings", summary="教室预约列表")
@@ -2680,8 +2808,9 @@ def classroom_detail(classroomId: int = Path(...),
 
 @router.post("/classrooms/bookings/{bookingId}/review", summary="审核教室预约")
 def classroom_booking_review(body: BookingReviewBody, bookingId: int = Path(...),
-                             user=Depends(require_permission("academicAffairs.classroom.update"))):
-    return success(resource_svc.review_booking(user, bookingId, body.action, body.reason), message="已处理")
+                             command_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user=Depends(require_permission("academicAffairs.classroom.update"))):
+    return success(resource_svc.review_booking(user, bookingId, body.action, body.reason, command_key=command_key), message="已处理")
 
 
 # ═══════════ 教学资源续卡：实训室资源 / 设备资源 / 实训室预约 / 资源占用 / 资源冲突 / 资源维修 / 资源统计
@@ -2758,8 +2887,8 @@ class LabBookBody(BaseModel):
 
 
 @router.post("/labs/bookings", summary="申请实训室预约（同实训室同时段占用409）")
-def lab_book(body: LabBookBody, user=Depends(require_permission("academicAffairs.lab.view"))):
-    return success(resource_svc.book_lab(user, body), message="已提交预约")
+def lab_book(body: LabBookBody, command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission("academicAffairs.lab.view"))):
+    return success(resource_svc.book_lab(user, body, command_key=command_key), message="已提交预约")
 
 
 @router.get("/labs/bookings", summary="实训室预约列表")
@@ -2772,8 +2901,9 @@ def lab_bookings(labId: Optional[str] = None, date: Optional[str] = None, status
 
 @router.post("/labs/bookings/{bookingId}/review", summary="审核实训室预约")
 def lab_booking_review(body: BookingReviewBody, bookingId: int = Path(...),
-                       user=Depends(require_permission("academicAffairs.lab.update"))):
-    return success(resource_svc.review_lab_booking(user, bookingId, body.action, body.reason), message="已处理")
+                       command_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user=Depends(require_permission("academicAffairs.lab.update"))):
+    return success(resource_svc.review_lab_booking(user, bookingId, body.action, body.reason, identity=body, command_key=command_key), message="已处理")
 
 
 @router.get("/labs/{labId}", summary="实训室详情")
@@ -3523,6 +3653,7 @@ class DeferApplyBody(BaseModel):
 class DeferReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/RETURN/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    expectedVersion: Optional[int] = Field(None, ge=0)
 
 
 # batch
@@ -3737,8 +3868,8 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
-def defer_resubmit(deferId: int = Path(...), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId), message="已重提")
+def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
@@ -3751,13 +3882,13 @@ def defer_list(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
 @router.post("/deferred-exams/{deferId}/counselor-review", summary="缓考辅导员首级审批")
 def defer_counselor_review(body: DeferReviewBody, deferId: int = Path(...),
                            user=Depends(require_permission(_DEFER_COUNSELOR))):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 @router.post("/deferred-exams/{deferId}/review", summary="缓考教师/学院/教务处审批")
 def defer_review(body: DeferReviewBody, deferId: int = Path(...),
                  user=Depends(require_permission(_DEFER_REVIEW))):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 # ══════════════ 补考重修缓考免修（13B-SM-12，/academic-affairs/makeup|retake|exemption/*） ══════════════
@@ -3794,10 +3925,14 @@ class RetakeApplyBody(BaseModel):
 class RetakeReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    expectedVersion: int = Field(..., ge=0)
+    expectedSourceEvidenceHash: Optional[str] = Field(None, min_length=64, max_length=64)
 
 
 class RetakeEnrollBody(BaseModel):
     teachingTaskRef: Optional[str] = None
+    expectedVersion: int = Field(..., ge=0)
+    expectedSourceEvidenceHash: str = Field(..., min_length=64, max_length=64)
 
 
 class ExemptionApplyBody(BaseModel):
@@ -3806,9 +3941,17 @@ class ExemptionApplyBody(BaseModel):
     materialFileIds: Optional[list] = None
 
 
+class ExemptionResubmitBody(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500)
+    materialFileIds: Optional[list] = None
+
+
 class ExemptionReviewBody(BaseModel):
     action: str = Field(..., description="APPROVE/RETURN/REJECT")
     reason: Optional[str] = Field("", max_length=500)
+    expectedVersion: int = Field(..., ge=0)
+    expectedStatus: str = Field(..., min_length=1)
+    expectedEvidenceManifestHash: Optional[str] = Field(..., min_length=64, max_length=64)
 
 
 class MergeDeferredBody(BaseModel):
@@ -3858,18 +4001,26 @@ def clearance_scan(bid: int = Path(...), dryRun: bool = False,
 
 @router.get("/makeup/clearance/batches/{bid}/records", summary="清考批次名单")
 def clearance_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
-                      user=Depends(require_permission(_MK_VIEW))):
-    items, total = makeup_svc.clearance_records(user, bid, page, pageSize)
+                      makeupId: Optional[int] = Query(None, gt=0),
+                         originGradeId: Optional[int] = Query(None, gt=0),
+                         acadStudentId: Optional[int] = Query(None, gt=0),
+                         user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.clearance_records(user, bid, page, pageSize, makeup_id=makeupId,
+                                               origin_grade_id=originGradeId, acad_student_id=acadStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/makeup/batches/{bid}/records", summary="补考/清考批次名单（含成绩录入状态）")
 def makeup_batch_records(bid: int = Path(...), page: int = 1, pageSize: int = 100,
+                         makeupId: Optional[int] = Query(None, gt=0),
+                         originGradeId: Optional[int] = Query(None, gt=0),
+                         acadStudentId: Optional[int] = Query(None, gt=0),
                          user=Depends(require_permission(_MK_VIEW))):
     """补考批次此前只有清考那条 records 路由，补考批次自己没有查名单的入口，
     教务在页面上看不到已纳入了谁、也无从录分。service 侧本来就是按 batch_id 查、与
     kind 无关，这里补一条语义正确的通用路由，不另写一套查询。"""
-    items, total = makeup_svc.clearance_records(user, bid, page, pageSize)
+    items, total = makeup_svc.clearance_records(user, bid, page, pageSize, makeup_id=makeupId,
+                                               origin_grade_id=originGradeId, acad_student_id=acadStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -3924,19 +4075,22 @@ def retake_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 @router.get("/retake/applies", summary="重修申请审批列表")
 def retake_applies(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                   applyId: Optional[int] = Query(None, gt=0),
                    user=Depends(require_permission(_RT_REVIEW))):
-    items, total = makeup_svc.retake_list(user, status, student_only=False, page=page, page_size=pageSize)
+    items, total = makeup_svc.retake_list(user, status, student_only=False, page=page, page_size=pageSize, apply_id=applyId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/retake/applies/{aid}/review", summary="重修教务处审批")
-def retake_review(body: RetakeReviewBody, aid: int = Path(...), user=Depends(require_permission(_RT_REVIEW))):
-    return success(makeup_svc.retake_review(user, aid, body.action, body.reason), message="已处理")
+def retake_review(body: RetakeReviewBody, aid: int = Path(...), command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission(_RT_REVIEW))):
+    identity = {"expectedVersion": body.expectedVersion, "expectedSourceEvidenceHash": body.expectedSourceEvidenceHash}
+    return success(makeup_svc.retake_review(user, aid, body.action, body.reason, identity=identity, command_key=command_key), message="已处理")
 
 
 @router.post("/retake/applies/{aid}/enroll", summary="重修编入跟班")
-def retake_enroll(body: RetakeEnrollBody, aid: int = Path(...), user=Depends(require_permission(_RT_REVIEW))):
-    return success(makeup_svc.retake_enroll(user, aid, body.teachingTaskRef), message="已编入")
+def retake_enroll(body: RetakeEnrollBody, aid: int = Path(...), command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission(_RT_REVIEW))):
+    identity = {"expectedVersion": body.expectedVersion, "expectedSourceEvidenceHash": body.expectedSourceEvidenceHash}
+    return success(makeup_svc.retake_enroll(user, aid, body.teachingTaskRef, identity=identity, command_key=command_key), message="已编入")
 
 
 # ── 免修（三级审批） ──
@@ -3951,16 +4105,24 @@ def exemption_my(status: Optional[str] = None, user=Depends(_require_student)):
     return success(paginate(items, total, 1, len(items) or 1))
 
 
+@router.post("/exemption/applies/{eid}/resubmit", summary="学生修改退回的原免修申请并重新提交")
+def exemption_resubmit(body: ExemptionResubmitBody, eid: int = Path(..., gt=0), user=Depends(_require_student)):
+    return success(makeup_svc.exemption_resubmit(user, eid, body), message="免修申请已重新提交")
+
+
 @router.get("/exemption/applies", summary="免修审批列表（教师/学院/教务处）")
 def exemption_applies(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                      exemptionId: Optional[int] = Query(None, gt=0),
                       user=Depends(require_permission(_EX_REVIEW))):
-    items, total = makeup_svc.exemption_list(user, status, student_only=False, page=page, page_size=pageSize)
+    items, total = makeup_svc.exemption_list(user, status, student_only=False, page=page, page_size=pageSize, exemption_id=exemptionId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/exemption/applies/{eid}/review", summary="免修三级审批")
-def exemption_review(body: ExemptionReviewBody, eid: int = Path(...), user=Depends(require_permission(_EX_REVIEW))):
-    return success(makeup_svc.exemption_review(user, eid, body.action, body.reason), message="已处理")
+def exemption_review(body: ExemptionReviewBody, eid: int = Path(...), command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission(_EX_REVIEW))):
+    identity = {"expectedVersion": body.expectedVersion, "expectedStatus": body.expectedStatus,
+                "expectedEvidenceManifestHash": body.expectedEvidenceManifestHash}
+    return success(makeup_svc.exemption_review(user, eid, body.action, body.reason, identity=identity, command_key=command_key), message="已处理")
 
 
 # ── 缓考合流 ──
@@ -4013,15 +4175,22 @@ def makeup_print_data(bid: int = Path(...), user=Depends(require_permission(_MK_
     return success(makeup_svc.print_data(user, bid))
 
 
+class ExemptionArchiveIdentity(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    expectedStatus: str
+    expectedEvidenceManifestHash: Optional[str] = Field(..., min_length=64, max_length=64)
+
+
 @router.post("/exemption/{eid}/archive", summary="标记免修材料已归档")
-def exemption_archive(eid: int = Path(...), user=Depends(require_permission(_MK_ARCHIVE))):
-    return success(makeup_svc.mark_archived(user, eid), message="已标记归档")
+def exemption_archive(body: ExemptionArchiveIdentity, eid: int = Path(...), command_key: Optional[str] = Header(None, alias="Idempotency-Key"), user=Depends(require_permission(_MK_ARCHIVE))):
+    return success(makeup_svc.mark_archived(user, eid, body, command_key=command_key), message="已标记归档")
 
 
 @router.get("/exemption/archive-list", summary="免修材料归档列表")
 def exemption_archive_list(term: Optional[str] = None, status: Optional[str] = None,
-                           page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_ARCHIVE))):
-    items, total = makeup_svc.archive_list(user, term, status, page, pageSize)
+                           page: int = 1, pageSize: int = 50, exemptionId: Optional[int] = Query(None, gt=0),
+                           user=Depends(require_permission(_MK_ARCHIVE))):
+    items, total = makeup_svc.archive_list(user, term, status, page, pageSize, exemption_id=exemptionId)
     return success(paginate(items, total, page, pageSize))
 
 

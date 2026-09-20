@@ -10,6 +10,10 @@
  *   - /auth/login|refresh|switch-role are transported through the existing per-tab HttpOnly
  *     browser endpoints;
  *   - explicit local token clearing revokes the browser cookie best-effort.
+ *
+ * manifest.h5.optimization.treeShaking.enable must remain false: uni's API
+ * rewriting otherwise bypasses this runtime adapter and leaves window.uni empty
+ * (also breaking dynamic navigation). This does not disable Vite tree shaking.
  */
 
 // #ifdef H5

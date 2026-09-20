@@ -27,7 +27,10 @@ def _install_grade_policy_hardening() -> None:
         return result
 
     def _score_policy_changed(batch_row, proposed_rules):
-        old = dict((batch_row.rules_config or {}).get("score") or {})
+        old_score = (batch_row.rules_config or {}).get("score")
+        # Historical seed rows sometimes stored an enable switch instead of weights.
+        # Treat repair as a policy change, retaining the existing grade-evidence guard.
+        old = dict(old_score) if isinstance(old_score, dict) else {}
         new = dict((proposed_rules or {}).get("score") or {})
         return old != new
 

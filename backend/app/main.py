@@ -434,6 +434,10 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    from app.api.v1.website_news import router as news_admin, public_api as news_api, public_pages as news_pages
+    app.include_router(news_admin, prefix=settings.API_V1_PREFIX)
+    app.include_router(news_api, prefix=settings.API_V1_PREFIX)
+    app.include_router(news_pages)
 
     @app.get("/health", tags=["00·基础"], summary="健康检查")
     def health():

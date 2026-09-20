@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import not_found
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, require_any_permission
 from app.core.response import paginate, success
 from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
@@ -155,7 +155,9 @@ def role_audit(
         role = _load_role(db, tenant_id, role_id)
         predicate = or_(
             SecurityAuditLog.resource == f"role:{role.id}",
-            SecurityAuditLog.resource_id == str(role.id),
+            # Numeric IDs are shared across resource types. Match the role
+            # namespace, including role:<id>:members, never an ID alone.
+            SecurityAuditLog.resource.startswith(f"role:{role.id}:"),
         )
         total = int(db.scalar(select(func.count(SecurityAuditLog.id)).where(
             SecurityAuditLog.tenant_id == tenant_id,
@@ -201,9 +203,40 @@ def role_detail(role_id: int, user=Depends(require_permission("systemAdmin.role.
     return payload
 
 
+@_extra.post('/system/role-assignments/legacy/{user_role_id}/register', summary='补登记现有历史授权，不改变角色权限')
+def register_legacy_role_assignment(user_role_id: int, body: dict = Body(...),
+                                    user=Depends(require_any_permission('systemAdmin.user.assign', 'systemAdmin.role.config'))):
+    from app.services.role_assignment_p1_guard_service import register_legacy_assignment
+    return success(register_legacy_assignment(
+        user_role_id, reason=body.get('reason') or '', expected_version=body.get('expectedVersion'), user=user),
+        message='已补登记，原有权限保持不变；现在可复核、转交或回收')
+
+
 def _key(route) -> tuple[str, str]:
     methods = tuple(sorted(getattr(route, "methods", set()) or set()))
     return (",".join(methods), getattr(route, "path", ""))
+
+
+_P1_LATE_REPLACEMENTS = {
+    ("GET", "/system/context"),
+    ("GET", "/system/effective-config"),
+    ("PUT", "/system/config-overrides"),
+    ("GET", "/system/config-history/{config_key}"),
+    ("GET", "/system/accounts/{user_id}/effective-identity"),
+    ("POST", "/system/accounts/{user_id}/repair-binding"),
+    ("POST", "/system/accounts/{user_id}/unbind"),
+    ("POST", "/system/role-assignments"),
+    ("POST", "/system/role-assignments/{assignment_id}/revoke"),
+    ("POST", "/system/role-assignments/{assignment_id}/transfer"),
+    ("GET", "/system/org-nodes/{org_type}/{node_id}/impact"),
+    ("PUT", "/system/org-nodes/{node_id}/status"),
+}
+
+
+def _is_late_p1_replacement(route) -> bool:
+    methods = {str(value).upper() for value in (getattr(route, "methods", None) or set())}
+    path = str(getattr(route, "path", "") or "")
+    return any((method, path) in _P1_LATE_REPLACEMENTS for method in methods)
 
 
 def _compose() -> APIRouter:
@@ -211,6 +244,8 @@ def _compose() -> APIRouter:
     composed = APIRouter()
     routes = []
     for route in _base.router.routes:
+        if _is_late_p1_replacement(route):
+            continue
         routes.append(replacement.pop(_key(route), route))
     routes.extend(replacement.values())
     composed.routes = routes

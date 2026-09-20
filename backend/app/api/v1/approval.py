@@ -21,6 +21,7 @@ from app.schemas.approval import (
     ApprovalReturnRequest,
     ApprovalTemplateCreateRequest,
     ApprovalTemplateUpdateRequest,
+    ApprovalTemplateVersionRequest,
     ApprovalTemplateVoidRequest,
     ApprovalTransferRequest,
 )
@@ -160,6 +161,35 @@ def templates(
 @router.post("/templates", summary="新增审批模板")
 def create_template(body: ApprovalTemplateCreateRequest, user=Depends(require_staff)):
     return success(adminsvc.create_template(body.model_dump(), user=user), message="模板已新增")
+
+
+@router.get("/templates/{template_id}", summary="审批模板详情（真实流程定义）")
+def get_template(template_id: str, user=Depends(require_staff)):
+    return success(adminsvc.get_template(template_id, user=user))
+
+
+@router.post("/templates/{template_id}/draft", summary="从已发布模板创建下一版草稿")
+def create_template_draft(
+    template_id: str,
+    body: ApprovalTemplateVersionRequest,
+    user=Depends(require_staff),
+):
+    return success(
+        adminsvc.create_draft(template_id, user=user, expected_version=body.version),
+        message="已创建新版本草稿",
+    )
+
+
+@router.post("/templates/{template_id}/publish", summary="发布流程草稿，仅用于后续新单据")
+def publish_template_draft(
+    template_id: str,
+    body: ApprovalTemplateVersionRequest,
+    user=Depends(require_staff),
+):
+    return success(
+        adminsvc.publish_draft(template_id, user=user, expected_version=body.version),
+        message="新版本已发布，后续新单据将使用新版本",
+    )
 
 
 @router.put("/templates/{template_id}", summary="更新审批模板（乐观锁）")

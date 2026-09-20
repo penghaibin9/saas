@@ -120,7 +120,7 @@ export default {
     async load() {
       this.loading = true; this.error = ''
       try {
-        const res = await api.getOrientationDashboard()
+        const res = await api.getOrientationDashboard({ batchId: this.$route.query.batchId || undefined })
         if (res.code === 0) {
           this.data = {
             batchId: res.data.batchId || '',

@@ -126,6 +126,58 @@ def _emit_student_rejected_notice(
         content=reason,
         receiver_as="student",
         action_key=message_guard.ACTION_STUDENT_REVIEW_FEEDBACK,
+        action_params={
+            "recordId": str(int(source_record_id)),
+            "stage": str(stage).upper(),
+        },
+        dedup_extra=f"fv:{int(file_version_id)}:round:{int(round_no)}",
+    )
+
+
+def _emit_student_approved_notice(
+    db, *, gd_student_id: int, stage: str, source_record_id: int, file_version_id: int,
+    round_no: int, summary: str, visible_to_student: bool,
+) -> None:
+    """Deliver the terminal approval result through the same transactional outbox.
+
+    A successful review must not rely on a later manual refresh of the graduation page.
+    The message target is still a student-owned read page; the record id is metadata only
+    and never grants a client-selected read scope.
+    """
+    if not visible_to_student:
+        return
+    student_profile_id = db.execute(text(
+        "SELECT student_id FROM t_gd_student "
+        "WHERE tenant_id=:tenant_id AND id=:gd_student_id AND is_deleted=0 LIMIT 1"
+    ), {"tenant_id": int(_tid()), "gd_student_id": int(gd_student_id)}).scalar()
+    try:
+        receiver_id = int(student_profile_id or 0)
+    except (TypeError, ValueError):
+        receiver_id = 0
+    if receiver_id <= 0:
+        return
+
+    from app.modules.graduation.services import graduation_review_message_event_guard as message_guard
+    from app.services.message_event_outbox_service import emit_receiver_notice
+
+    message_guard.install()
+    label = _STAGE_LABELS.get(str(stage).upper(), "毕业设计材料")
+    content = str(summary or "").strip() or f"指导教师已通过你的{label}。"
+    emit_receiver_notice(
+        db,
+        event_code=message_guard.EVENT_REVIEW_APPROVED,
+        source_module="graduation",
+        source_biz_type=f"GD_{str(stage).upper()}_REVIEW",
+        source_biz_id=int(source_record_id),
+        receiver_id=receiver_id,
+        title=f"{label}已通过",
+        content=content,
+        receiver_as="student",
+        action_key=message_guard.ACTION_STUDENT_REVIEW_FEEDBACK,
+        action_params={
+            "recordId": str(int(source_record_id)),
+            "stage": str(stage).upper(),
+        },
         dedup_extra=f"fv:{int(file_version_id)}:round:{int(round_no)}",
     )
 
@@ -174,6 +226,17 @@ def append_feedback_in_session(
     })
     if result == "REJECTED":
         _emit_student_rejected_notice(
+            db,
+            gd_student_id=int(gd_student_id),
+            stage=stage,
+            source_record_id=int(source_record_id),
+            file_version_id=int(file_version_id),
+            round_no=round_no,
+            summary=str(summary or ""),
+            visible_to_student=bool(visible_to_student),
+        )
+    elif result == "APPROVED":
+        _emit_student_approved_notice(
             db,
             gd_student_id=int(gd_student_id),
             stage=stage,

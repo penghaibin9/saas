@@ -6,7 +6,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from app.core.config import settings
 from app.core.response import success
 from app.core.security import get_current_user
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
 
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
 from app.services import auth_service_db
@@ -43,10 +44,50 @@ def mock_login(body: MockLoginRequest):
     return success(result, message="登录成功")
 
 
-class PasswordLoginRequest(BaseModel):
+class IdentityIdentifierRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
     tenantCode: str | None = Field(None, description="学校编码；同一工号存在于多校时必填")
-    loginName: str = Field(..., description="工号/学号/登录名")
-    password: str = Field(..., min_length=1, description="密码（仅 hash 入库，接口不回显）")
+    loginName: str | None = Field(None, max_length=100, description="兼容字段：工号/学号/登录名")
+    identifierType: Literal["ACCOUNT", "PHONE"] | None = None
+    identifier: str | None = Field(None, max_length=100, description="新格式登录标识；PHONE 只查已验证绑定")
+
+    @model_validator(mode="after")
+    def validate_identifier_fields(self):
+        modern_fields = self.model_fields_set & {"identifierType", "identifier"}
+        if modern_fields:
+            if modern_fields != {"identifierType", "identifier"} or "loginName" in self.model_fields_set:
+                raise ValueError("登录标识格式不能混用")
+            if not self.identifierType or not (self.identifier or "").strip():
+                raise ValueError("请输入完整登录标识")
+            if self.identifierType == "PHONE":
+                if not (self.tenantCode or "").strip():
+                    raise ValueError("手机号登录前请选择学校")
+                from app.services.phone_login_service import normalize_login_phone
+                self.identifier = normalize_login_phone(self.identifier)
+        elif not (self.loginName or "").strip():
+            raise ValueError("请输入原账号")
+        return self
+
+    def login_identifier(self) -> tuple[str, str]:
+        typed = str(self.identifierType or "").strip().upper()
+        legacy = str(self.loginName or "").strip()
+        modern = str(self.identifier or "").strip()
+        if typed or modern:
+            if not typed or not modern or legacy:
+                raise AppException("VALIDATION_ERROR", "identifierType 与 identifier 必须同时提供，且不能与 loginName 混用", http_status=422)
+            if typed == "PHONE":
+                from app.services.phone_login_service import require_phone_identifier
+                return typed, require_phone_identifier(self.tenantCode, modern)
+            if typed == "ACCOUNT":
+                return typed, modern
+            raise AppException("VALIDATION_ERROR", "identifierType 仅支持 ACCOUNT 或 PHONE", http_status=422)
+        if not legacy:
+            raise AppException("VALIDATION_ERROR", "请输入账号或手机号", http_status=422)
+        return "ACCOUNT", legacy
+
+
+class PasswordLoginRequest(IdentityIdentifierRequest):
+    password: str = Field(..., min_length=1, max_length=128, description="密码（仅 hash 入库，接口不回显）")
     clientType: str = Field("PC", description="PC / PLATFORM_PC / STUDENT_MINI / TEACHER_MINI / MP")
     captchaId: str | None = Field(None, max_length=100)
     captchaCode: str | None = Field(None, min_length=4, max_length=12)
@@ -54,22 +95,38 @@ class PasswordLoginRequest(BaseModel):
 
 
 class CaptchaRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
     scene: str = Field(..., min_length=1, max_length=40)
     tenantCode: str | None = Field(None, max_length=100)
     loginName: str | None = Field(None, max_length=100)
+    identifierType: Literal["ACCOUNT", "PHONE"] | None = None
+    identifier: str | None = Field(None, max_length=100)
     clientNonce: str | None = Field(None, max_length=128)
     clientType: str | None = Field(None, max_length=40)
+
+    @model_validator(mode="after")
+    def validate_identifier(self):
+        modern = self.model_fields_set & {"identifierType", "identifier"}
+        if modern:
+            if modern != {"identifierType", "identifier"} or "loginName" in self.model_fields_set:
+                raise ValueError("登录标识格式不能混用")
+            if not self.identifierType or not (self.identifier or "").strip():
+                raise ValueError("请输入完整登录标识")
+            if self.identifierType == "PHONE":
+                if self.scene not in {"PASSWORD_LOGIN", "PASSWORD_RESET"} or not (self.tenantCode or "").strip():
+                    raise ValueError("请先选择学校及手机号登录方式")
+                from app.services.phone_login_service import normalize_login_phone
+                self.identifier = normalize_login_phone(self.identifier)
+        return self
 
 
 @router.post('/captcha', summary='获取登录图形验证码（短时、单次、生产 Redis 原子消费）')
 def captcha(body: CaptchaRequest):
-    return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.loginName,
-                                             body.clientNonce, body.clientType))
+    return success(captcha_svc.issue_captcha(body.scene, body.tenantCode, body.identifier or body.loginName,
+                                             body.clientNonce, body.clientType, identifier_type=body.identifierType or "ACCOUNT"))
 
 
-class PasswordResetRequest(BaseModel):
-    tenantCode: str | None = Field(None, max_length=100)
-    loginName: str = Field(..., min_length=1, max_length=100)
+class PasswordResetRequest(IdentityIdentifierRequest):
     captchaId: str = Field(..., min_length=1, max_length=100)
     captchaCode: str = Field(..., min_length=4, max_length=12)
     clientNonce: str = Field(..., min_length=8, max_length=128)
@@ -77,27 +134,42 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
     requestId: str = Field(..., min_length=10, max_length=100)
-    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
     clientNonce: str = Field(..., min_length=8, max_length=128)
     clientType: str = Field("PC", max_length=40)
 
 
 class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
     resetToken: str = Field(..., min_length=20, max_length=200)
     newPassword: str = Field(..., min_length=8, max_length=128)
     confirmPassword: str = Field(..., min_length=8, max_length=128)
 
 
+class PasswordResetStatusRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    resetToken: str = Field(..., min_length=20, max_length=200)
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post('/password-reset/operation-status', summary='只读查询本次重置结果，不重放密码变更')
+def password_reset_operation_status(body: PasswordResetStatusRequest):
+    from app.services import password_reset_service
+    return success(password_reset_service.reset_operation_status(body.resetToken, body.clientNonce))
+
+
 @router.post("/password-reset/request", summary="学生/教师短信找回密码：发送验证码（统一响应，避免账号枚举）")
 def request_password_reset(body: PasswordResetRequest, background_tasks: BackgroundTasks):
+    identifier_type, identifier = body.login_identifier()
     captcha_svc.verify_captcha(
         body.captchaId, body.captchaCode, captcha_svc.PASSWORD_RESET,
-        body.tenantCode, body.loginName, body.clientNonce, body.clientType,
+        body.tenantCode, identifier, body.clientNonce, body.clientType, identifier_type=identifier_type,
     )
     from app.services import password_reset_service
     result, delivery = password_reset_service.begin_reset(
-        body.loginName, body.tenantCode, body.clientNonce, body.clientType,
+        identifier, body.tenantCode, body.clientNonce, body.clientType, identifier_type=identifier_type,
     )
     if delivery is not None:
         background_tasks.add_task(password_reset_service.dispatch_code, delivery)
@@ -124,11 +196,16 @@ def confirm_password_reset(body: PasswordResetConfirmRequest):
 @router.post("/login", summary="账号密码登录（真实校验：t_user + pbkdf2 哈希；demo 账号仅访问 demo-school 租户）")
 def login(body: PasswordLoginRequest):
     _login_rate_guard()
+    identifier_type, identifier = body.login_identifier()
     scene = captcha_svc.PLATFORM_LOGIN if body.clientType.strip().upper() == 'PLATFORM_PC' else captcha_svc.PASSWORD_LOGIN
-    captcha_svc.enforce_login_captcha(scene, body.tenantCode, body.loginName, body.captchaId,
-                                      body.captchaCode, body.clientNonce, body.clientType)
-    result = auth_service_db.login_with_password(
-        body.loginName.strip(), body.password, body.tenantCode, body.clientType)
+    captcha_svc.enforce_login_captcha(scene, body.tenantCode, identifier, body.captchaId,
+                                      body.captchaCode, body.clientNonce, body.clientType, identifier_type=identifier_type)
+    # Browser authentication delegates here.  Keep it on the same authority as
+    # the replacement /auth/login route: the legacy DB service predates typed
+    # identifiers and would reject the PHONE contract with a runtime TypeError.
+    from app.services import control_plane_auth_service as control_plane_auth
+    result = control_plane_auth.login_with_password(
+        identifier, body.password, body.tenantCode, body.clientType, identifier_type=identifier_type)
     audit.record("登录", method="POST", path="/api/v1/auth/login",
                  status_code=200, target_type="auth", target_id=result["userId"])
     return success(result, message="登录成功")
@@ -137,13 +214,14 @@ def login(body: PasswordLoginRequest):
 class WxLoginRequest(BaseModel):
     code: str = Field(..., min_length=1, description="wx.login 返回的临时登录凭证 code")
     bindAnother: bool = Field(False, description="已绑定微信继续绑定另一所学校")
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="当前微信小程序入口")
 
 
 @router.post("/wx-login", summary="微信一键登录（code→openid；已绑定则登录，未绑定返回 needBind+wxToken）")
 def wx_login(body: WxLoginRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_login(body.code, bind_another=body.bindAnother)
+    result = wx_auth_service.wx_login(body.code, bind_another=body.bindAnother, client_type=body.clientType)
     if result.get("needBind"):
         audit.record("微信登录-待绑定", method="POST", path="/api/v1/auth/wx-login",
                      status_code=200, target_type="auth", target_id="-")
@@ -160,13 +238,14 @@ def wx_login(body: WxLoginRequest):
 class WxSelectRequest(BaseModel):
     wxToken: str = Field(..., min_length=10)
     tenantCode: str = Field(..., min_length=1)
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="发起微信登录的原入口")
 
 
 @router.post("/wx-select", summary="微信绑定多所学校时选择本次登录学校")
 def wx_select(body: WxSelectRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
-    result = wx_auth_service.wx_select(body.wxToken, body.tenantCode)
+    result = wx_auth_service.wx_select(body.wxToken, body.tenantCode, client_type=body.clientType)
     audit.record("微信登录-选择学校", method="POST", path="/api/v1/auth/wx-select",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="登录成功")
@@ -182,7 +261,7 @@ class WxBindRequest(BaseModel):
     captchaId: str | None = Field(None, max_length=100)
     captchaCode: str | None = Field(None, min_length=4, max_length=12)
     clientNonce: str | None = Field(None, max_length=128)
-    clientType: str = Field("MP", max_length=40, description="STUDENT_MINI / TEACHER_MINI / MP")
+    clientType: Literal["STUDENT_MINI", "TEACHER_MINI"] = Field("STUDENT_MINI", description="STUDENT_MINI / TEACHER_MINI")
 
 
 @router.post("/wx-bind", summary="微信绑定校园账号（首次；绑定后 openid 免密登录）")
@@ -193,7 +272,7 @@ def wx_bind(body: WxBindRequest):
     from app.services import control_plane_auth_service as p0_auth
     result = p0_auth.wx_bind(
         body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
-        binding_approval_token=body.bindingApprovalToken)
+        binding_approval_token=body.bindingApprovalToken, client_type=body.clientType)
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")
@@ -291,6 +370,9 @@ def refresh(body: RefreshRequest):
     claims = consume_refresh(body.refreshToken)
     if not claims:
         raise unauthorized("refreshToken 无效或已使用，请重新登录")
+    from app.services.browser_auth_session_blocklist import auth_session_blocked
+    if auth_session_blocked(claims.get("authSessionId")):
+        raise unauthorized("当前会话已退出，请重新登录")
     # 真实账号刷新前重新校验账号、租户、当前岗位与权限版本，防止已回收角色被旧 refresh 恢复。
     auth_service_db.validate_token_subject(claims)
     token = create_access_token(dict(claims))
@@ -302,14 +384,20 @@ def refresh(body: RefreshRequest):
 
 from typing import Optional as _Optional  # noqa: E402
 
-from fastapi import Header  # noqa: E402
+from fastapi import Header, Query  # noqa: E402
 
 
-@router.post("/logout", summary="登出（access 令牌 jti 进入黑名单即刻失效；吊销该用户全部 refreshToken）")
-def logout(user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None)):
+class LogoutRequest(BaseModel):
+    refreshToken: str | None = Field(default=None, max_length=512)
+
+
+@router.post("/logout", summary="登出（scope=current 仅撤销当前会话；默认保持账号全部 refresh 撤销合同）")
+def logout(body: LogoutRequest | None = None, user=Depends(get_current_user), authorization: _Optional[str] = Header(default=None),
+           scope: Literal["all", "current"] = Query(default="all")):
     from app.core.exceptions import AppException
     from app.core.token_store import revoke_refresh_by_user
-    jti_ok = True
+    claims = {}
+    jti_ok = False
     refresh_ok = False
     errors = []
     try:
@@ -325,7 +413,18 @@ def logout(user=Depends(get_current_user), authorization: _Optional[str] = Heade
         jti_ok = False
         errors.append("access令牌拉黑失败")
     try:
-        revoke_refresh_by_user(str(user.get("userId", "")))
+        if scope == "current":
+            from app.core.token_store import revoke_refresh_by_session
+            from app.services.browser_auth_session_blocklist import block_auth_session
+            session_id = str(user.get("authSessionId") or "")
+            if session_id:
+                if not block_auth_session(session_id):
+                    raise AppException("AUTH_STORE_UNAVAILABLE", "当前会话撤销失败，请重试", http_status=503)
+                revoke_refresh_by_session(str(user.get("userId", "")), session_id)
+            elif not body or not body.refreshToken or not consume_refresh(body.refreshToken, expected_claims=claims):
+                raise AppException("AUTH_SESSION_REQUIRED", "旧会话刷新凭证不匹配或已失效，请重新登录", http_status=409)
+        else:
+            revoke_refresh_by_user(str(user.get("userId", "")))
         refresh_ok = True
     except AppException as e:
         errors.append(e.message)

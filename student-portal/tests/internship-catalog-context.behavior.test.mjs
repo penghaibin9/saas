@@ -10,6 +10,7 @@ import * as materialModel from '../src/modules/internshipRecruitment/materialPre
 import * as positionModel from '../src/modules/internshipRecruitment/positionModel.js'
 import * as mobileContext from '../../miniapp/src/modules/internshipSelectionModel.js'
 import * as mobileVolunteer from '../../miniapp/src/modules/internshipVolunteerModel.js'
+import { latestRead as latestProjectionRead } from '../../miniapp/src/services/latestRead.js'
 
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
 const stripImports = (source) => source.replace(/^import[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
@@ -81,7 +82,7 @@ test('both API adapters preserve rejection instead of fabricating UNAVAILABLE', 
   for (const path of ['../src/services/internshipSelectionApi.js', '../../miniapp/src/services/internshipSelectionApi.js']) {
     const source = stripImports(read(path)).replace(/export default internshipSelectionApi\s*/g, '').replace(/export /g, '')
     const fail = async () => { throw new Error('连接失败') }
-    const deps = { ...scopeModel, baseRequest: fail, normalizeCatalogQuery: queryModel.normalizeCatalogQuery }
+    const deps = { ...scopeModel, baseRequest: fail, normalizeCatalogQuery: queryModel.normalizeCatalogQuery, latestProjectionRead }
     const api = new Function(...Object.keys(deps), source + '\nreturn internshipSelectionApi')(...Object.values(deps))
     await assert.rejects(api.context(), /连接失败/)
   }

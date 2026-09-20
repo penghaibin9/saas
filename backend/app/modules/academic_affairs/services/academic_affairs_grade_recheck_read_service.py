@@ -11,6 +11,22 @@ from sqlalchemy import func, select
 from . import academic_affairs_grade_recheck_service as _base
 
 
+def get_detail(user, recheck_id):
+    """Exact request identity with the same school scope and DTO as the queue."""
+    from app.core.exceptions import not_found
+    from app.models import AaGradeRecheck
+
+    with _base.session() as db:
+        _base._require_school(user, db)
+        row = db.scalar(select(AaGradeRecheck).where(
+            AaGradeRecheck.id == int(recheck_id), AaGradeRecheck.tenant_id == _base._tid(),
+            AaGradeRecheck.is_deleted.is_(False),
+        ))
+        if row is None:
+            raise not_found("成绩复查申请不存在")
+        return _base._dto(row)
+
+
 def list_all(user, status=None, page=1, page_size=50):
     """返回教务处可见的成绩复查台账页；只 materialize 当前页。"""
     from app.models import AaGradeRecheck

@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from test_affairs_leave import TID, _seed, _hdr, _apply, _leave_action
+from test_affairs_leave import TID, _seed, _hdr, _real_hdr, _apply, _leave_action
 from test_affairs_four_end_hardening import _stu_token
 
 
@@ -42,7 +42,7 @@ def test_student_detail_and_four_end_return_extension_cancel_flow(client, db_mod
     ids = _seed(db_mode)
     student = _stu_token('甲一', 'A001')
     other = _stu_token('乙一', 'B001')
-    teacher = _hdr(client, 'counselor01')
+    teacher = _real_hdr(client, 'counselor01', client_type='TEACHER_MINI')
     applied = client.post('/api/v1/portal/affairs/leave', headers=student, json={
         'leaveType': 'PERSONAL', 'startTime': '2026-10-01', 'endTime': '2026-10-01', 'reason': '回家处理家庭事务',
     })
@@ -127,7 +127,7 @@ def test_same_name_legacy_leave_never_grants_ownership(client, db_mode):
 
 def test_date_filter_includes_last_local_day_and_material_link_keeps_scope(client, db_mode):
     ids = _seed(db_mode)
-    teacher = _hdr(client, 'counselor01')
+    teacher = _real_hdr(client, 'counselor01', client_type='TEACHER_MINI')
     lid = _apply(client, teacher, ids['sa'], '2026-10-01T16:00:00+08:00', '2026-10-01T23:00:00+08:00').json()['data']['id']
     listed = client.get('/api/v1/student-affairs/leave', headers=teacher,
                         params={'dateStart': '2026-10-01', 'dateEnd': '2026-10-01'}).json()['data']

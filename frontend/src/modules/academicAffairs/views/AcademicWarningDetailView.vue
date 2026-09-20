@@ -8,6 +8,7 @@
     <template #actions>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
+    <p v-if="actionNotice" class="awd-notice" role="status">{{ actionNotice }}</p>
 
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
@@ -165,6 +166,8 @@ import { FormDrawer } from '@/modules/academicAffairs/components'
 import { getWarningDetail, createIntervention, closeWarning, escalateWarning, remindWarnings } from '@/modules/academicAffairs/api/academic.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
 
 export default {
   name: 'AcademicWarningDetailView',
@@ -172,15 +175,19 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      alive: true, scope: 0, readSeq: 0,
       loading: true,
       error: '',
       detail: null,
+      pendingWrite: null,
+      actionNotice: '',
       followForm: { visible: false, submitting: false, model: {} },
       closeDialog: { visible: false, submitting: false },
       escalateDialog: { visible: false, submitting: false }
     }
   },
   computed: {
+    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope])},
     closedOrVoided() {
       return !this.detail || ['CLOSED'].includes(this.detail.warning.status) || this.detail.warning.recordStatus === 'VOIDED'
     },
@@ -194,7 +201,7 @@ export default {
         .filter((a) => pa[a.permission] && pa[a.permission].visible)
         .map((a) => ({
           ...a,
-          disabled: !pa[a.permission].allowed || this.closedOrVoided,
+          disabled: !pa[a.permission].allowed || this.closedOrVoided || !!this.pendingWrite,
           disabledReason: !pa[a.permission].allowed ? pa[a.permission].reason : '预警已关闭或已作废'
         }))
     },
@@ -219,8 +226,8 @@ export default {
       return [
         { label: '学生', value: s.name + ' · ' + this.maskNo(s.studentNo) },
         { label: '班级', value: s.className + '（' + s.collegeName + '）' },
-        { label: 'GPA / 挂科', value: s.gpa.toFixed(1) + ' / ' + s.failedCount + ' 门' },
-        { label: '学分进度', value: s.obtainedCredits + ' / ' + s.requiredCredits },
+        { label: 'GPA / 挂科', value: (Number.isFinite(Number(s.gpa)) ? Number(s.gpa).toFixed(1) : '待核对') + ' / ' + (s.failedCount == null ? '待核对' : s.failedCount + ' 门') },
+        { label: '学分进度', value: s.obtainedCredits == null || s.requiredCredits == null ? '待核对' : s.obtainedCredits + ' / ' + s.requiredCredits },
         { label: '辅导员', value: s.counselor },
         { label: '联系电话', value: s.phone || '未登记' }
       ]
@@ -245,10 +252,16 @@ export default {
       ]
     }
   },
+  watch:{identity(){this.clearPrivate()},'$route.params.id'(){this.clearPrivate();this.load()}},
   created() {
     this.load()
   },
+  beforeUnmount(){this.alive=false;this.clearPrivate()},
   methods: {
+    current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.id===String(this.$route.params.id)},
+    clearPrivate(){this.scope++;this.readSeq++;this.loading=false;this.detail=null;this.error='';this.followForm={visible:false,submitting:false,model:{}};this.closeDialog={visible:false,submitting:false};this.escalateDialog={visible:false,submitting:false};this.pendingWrite=null;this.actionNotice=''},
+    denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
+    fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     interventionResultLabel(value) { return safeLocalizedText({ value, dictionary: { EFFECTIVE: '有效', INEFFECTIVE: '效果不明显', COMPLETED: '已完成', FOLLOWING: '持续跟进', CLOSED: '已关闭' }, unknownLabel: '结果待确认' }) },
     can(key) {
@@ -273,22 +286,26 @@ export default {
       return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await getWarningDetail(this.$route.params.id)
-      if (res.code === 0) this.detail = res.data
-      else this.error = res.message
-      this.loading = false
+      const c={scope:this.scope,identity:this.identity,id:String(this.$route.params.id),seq:++this.readSeq};this.loading=true;this.error=''
+      try{const res=await getWarningDetail(c.id);if(!this.current(c)||c.seq!==this.readSeq)return;if(res.code!==0)throw res;if(String(res.data?.warning?.id)!==c.id||!Array.isArray(res.data?.interventions)||!Array.isArray(res.data?.auditLogs))throw {code:503};this.detail=res.data}
+      catch(err){if(this.current(c)&&c.seq===this.readSeq)this.error=this.fail(err,'预警详情读取失败，请重试。')}
+      finally{if(this.current(c)&&c.seq===this.readSeq)this.loading=false}
+    },
+    async writeAction(kind,send,verify,success){
+      if(this.pendingWrite||!this.detail)return false
+      const id=String(this.detail.warning.id),c={scope:this.scope,identity:this.identity,id};this.pendingWrite={kind,id};this.actionNotice='结果待核实，请勿重复操作。'
+      let res;try{res=await send()}catch(err){res=err}
+      if(!this.current(c))return false
+      if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;this.actionNotice='';toast.error(this.fail(res,'本次操作未受理。'));return false}
+      let fresh;try{fresh=await getWarningDetail(id)}catch(err){fresh=err}
+      if(!this.current(c))return false
+      if(res?.code===0&&fresh?.code===0&&String(fresh.data?.warning?.id)===id&&verify(fresh.data,res)){this.detail=fresh.data;this.pendingWrite=null;this.actionNotice=success;toast.success(success);return true}
+      this.actionNotice='结果待核实：已读取当前预警，但不能确认本次操作是否落库。请勿重复操作。';return false
     },
     async onToolbar(key) {
       if (key === 'remind') {
-        const res = await remindWarnings([this.detail.warning.id])
-        if (res.code === 0) {
-          toast.success('提醒已发送给学生与跟进人，已留痕')
-          this.load()
-        } else {
-          toast.error(res.message)
-        }
+        const before=Number(this.detail.warning.remindCount)
+        await this.writeAction('remind',()=>remindWarnings([this.detail.warning.id]),fresh=>Number.isFinite(before)&&Number(fresh.warning.remindCount)>before,'已核对提醒计数更新；通知送达和阅读状态请查看通知台账。')
       } else if (key === 'close') {
         this.closeDialog = { visible: true, submitting: false }
       } else if (key === 'escalate') {
@@ -300,40 +317,20 @@ export default {
       this.followForm = { visible: true, submitting: false, model: { way: 'TALK' } }
     },
     async submitFollowup() {
-      this.followForm.submitting = true
-      const res = await createIntervention(this.detail.warning.id, this.followForm.model)
-      this.followForm.submitting = false
-      if (res.code === 0) {
-        toast.success('跟进记录已提交，已同步学生360并留痕')
-        this.followForm.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      if(!this.followForm.model.content||this.followForm.model.content.trim().length<5)return
+      const frozen={...this.followForm.model,content:this.followForm.model.content.trim()};let returnedId='';this.followForm.submitting=true
+      const ok=await this.writeAction('followup',async()=>{const res=await createIntervention(this.detail.warning.id,frozen);returnedId=String(res?.data?.id||'');return res},fresh=>!!returnedId&&fresh.interventions.some(item=>String(item.id)===returnedId&&item.content===frozen.content),'已核对正式跟进记录。')
+      this.followForm.submitting=false;if(ok)this.followForm.visible=false
     },
     async submitClose({ reason }) {
-      this.closeDialog.submitting = true
-      const res = await closeWarning(this.detail.warning.id, { result: reason })
-      this.closeDialog.submitting = false
-      if (res.code === 0) {
-        toast.success('预警已关闭，结果已同步学生端并留痕')
-        this.closeDialog.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const frozen=String(reason||'').trim();this.closeDialog.submitting=true
+      const ok=await this.writeAction('close',()=>closeWarning(this.detail.warning.id,{result:frozen}),fresh=>fresh.warning.status==='CLOSED'&&String(fresh.warning.closeResult||'')===frozen,'已核对正式关闭状态和关闭说明。')
+      this.closeDialog.submitting=false;if(ok)this.closeDialog.visible=false
     },
     async submitEscalate({ reason }) {
-      this.escalateDialog.submitting = true
-      const res = await escalateWarning(this.detail.warning.id, { reason })
-      this.escalateDialog.submitting = false
-      if (res.code === 0) {
-        toast.success('预警已升级为高风险，并转交学院学业帮扶专班（已留痕）')
-        this.escalateDialog.visible = false
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
+      const frozen=String(reason||'').trim();this.escalateDialog.submitting=true
+      const ok=await this.writeAction('escalate',()=>escalateWarning(this.detail.warning.id,{reason:frozen}),fresh=>fresh.warning.status==='ESCALATED'&&fresh.warning.level==='HIGH','已核对当前预警为高风险升级状态；升级原因以审计记录为准。')
+      this.escalateDialog.submitting=false;if(ok)this.escalateDialog.visible=false
     }
   }
 }
@@ -344,6 +341,7 @@ export default {
 .awd-block {
   margin-bottom: var(--space-3);
 }
+.awd-notice { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-base); background: var(--warning-50, #fff7e8); color: var(--warning-700, #9a5200); }
 .awd-block__title {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);

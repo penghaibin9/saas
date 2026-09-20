@@ -175,6 +175,7 @@ class OrientationEnrollmentFinalizeService:
                     "mustChangePassword": True,
                 }
         elif initial_password is not None:
+            db.refresh(account, with_for_update=True)
             # Self-activation promises the reserved student number as the durable login name.
             # A legacy pre-account may still use the admission number; normalize it here.
             collision = db.scalars(select(User.id).where(
@@ -187,6 +188,7 @@ class OrientationEnrollmentFinalizeService:
                 raise AppException("DATA_CONFLICT", "该学号已被其他登录账号占用，请联系学校管理员")
             account.login_name = profile.student_no
             account.password_hash = hash_password(initial_password)
+            account.credential_version = int(account.credential_version or 0) + 1
             account.must_change_password = False
             account.version = int(account.version or 0) + 1
         links.bind_in_session(

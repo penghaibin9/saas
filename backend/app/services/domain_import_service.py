@@ -208,7 +208,8 @@ def _master_student_nos(domain: str) -> set[str] | None:
         db.close()
 
 
-def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user: dict | None = None) -> dict:
+def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user: dict | None = None,
+            orientation_batch_id: int | None = None) -> dict:
     if domain not in DOMAINS:
         raise AppException("VALIDATION_ERROR", f"未知导入域：{domain}（支持 {'/'.join(DOMAINS)}）")
     if not _tid():
@@ -227,6 +228,16 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
     existing = _existing_keys(domain, list_path, key_field)
     known_master = _master_student_nos(domain)
     orientation_catalog = _orientation_authority_catalog() if domain == "orientation" else None
+    target_batch = None
+    if orientation_batch_id is not None:
+        if domain != "orientation":
+            raise AppException("VALIDATION_ERROR", "迎新批次仅适用于新生名单导入")
+        target_batch = next((batch for group in orientation_catalog["batches"].values()
+                             for batch in group if batch.id == orientation_batch_id), None)
+        if target_batch is None:
+            raise AppException("DATA_NOT_FOUND", "迎新批次不存在或不属于本校")
+        if target_batch.status == "CLOSED":
+            raise AppException("INVALID_STATE", "该迎新批次已结束，不可导入新生")
     ok_rows, errors, seen, seen_sources = [], [], set(), set()
     for i, row in enumerate(rows, start=2):
         name = str(row.get("name") or row.get("姓名") or "").strip()
@@ -250,6 +261,13 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
                                       "请先在「教务中心 → 学籍导入/补录」或「系统管理 → 学生导入与账号开通」建档"})
             continue
         if domain == "orientation":
+            if target_batch is not None:
+                supplied_batch = str(row.get("batchNo") or row.get("迎新批次编号") or "").strip()
+                if supplied_batch and supplied_batch != target_batch.batch_no:
+                    errors.append({"rowIndex": i, "field": "batchNo", "rawValue": supplied_batch,
+                                   "message": "文件中的批次与当前迎新批次不一致，请修正后重新上传"})
+                    continue
+                row = {**row, "batchNo": target_batch.batch_no}
             normalized, error = _prepare_orientation_row(row, orientation_catalog)
             if error:
                 errors.append({"rowIndex": i, **error})

@@ -16,9 +16,7 @@
     <div class="mp-stack pr-page">
       <section v-if="hasBatch" class="pr-hero" aria-label="开题批阅结论">
         <div class="pr-hero__copy">
-          <span class="pr-hero__eyebrow">当前工作队列</span>
           <strong>{{ queueConclusion }}</strong>
-          <p>左侧选人，右侧核验当前版本并提交结论；提交期间系统会锁定当前对象，避免意见写错学生。</p>
         </div>
         <div class="pr-hero__metrics" aria-label="开题关键数量">
           <div><span>{{ pendingCount }}</span><small>待审阅</small></div>

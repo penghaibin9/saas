@@ -6,7 +6,9 @@ const view = readFileSync(new URL('../src/views/EvaluationTaskListView.vue', imp
 const service = readFileSync(new URL('../../backend/app/modules/internship/services/internship_enterprise_collaboration_service.py', import.meta.url), 'utf8')
 
 test('Enterprise evaluation submit uses server identity, CAS on resubmit and placement receipt', () => {
-  assert.match(view, /payload\.expectedVersion=selected\.value\.evaluationVersion/)
+  assert.match(view, /payload\.expectedVersion=target\.expectedVersion/)
+  assert.match(view, /freezeEvaluationTarget/)
+  assert.match(view, /payload\.expectedPlacementSnapshotId=target\.expectedPlacementSnapshotId/)
   assert.match(view, /placementSnapshotId:result\?\.placementSnapshotId/)
   assert.match(view, /安置快照/)
   assert.match(view, /系统自动留痕/)

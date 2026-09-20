@@ -29,3 +29,13 @@ test('report detail link and queue retain type, batch and current page', () => {
   assert.equal(target.query.type, 'monthly'); assert.equal(target.query.batchId, '9'); assert.equal(target.query.page, '3')
   assert.deepEqual(queue.listQuery, target.query)
 })
+
+test('approved report tab keeps the approved status filter in the URL', () => {
+  let target
+  const def = new Function(script)()
+  const vm = { ...def.data(), $route: { query: { batchId: '47', panel: 'all', page: '1' } },
+    $router: { replace: value => { target = value } } }
+  def.methods.switchTab.call(vm, 'APPROVED')
+  assert.equal(target.query.panel, 'approved')
+  assert.equal(target.query.page, '1')
+})
