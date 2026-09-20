@@ -153,18 +153,14 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
 
   const crossEnd = await miniCard(mini, batch.batchName, pcCourse.courseName)
-  await expect(crossEnd).toContainText('已选')
-  await expect(crossEnd.locator('.sl__btn')).toHaveText('退课')
+  await expect(crossEnd).toContainText('已取得名额')
+  await expect(crossEnd.locator('.sl__details-button')).toHaveText('查看退课条件')
   await crossEnd.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-cross-end-selected-390x844')
 
   const miniBlocked = await miniCard(mini, batch.batchName, blockerCourse.courseName)
-  await expect(miniBlocked).toContainText('不可选')
-  await expect(miniBlocked).toContainText('课程容量已满')
-  await expect(miniBlocked).toContainText('下一步：')
-  const miniBlockedButton = miniBlocked.locator('.sl__btn')
-  await expect(miniBlockedButton).toHaveText('不可选')
-  await expect(miniBlockedButton).toHaveAttribute('disabled', /^(true|disabled)$/)
+  const miniBlockedDetails = miniBlocked.locator('.sl__details-button')
+  await expect(miniBlockedDetails).toHaveText('查看办理条件')
   let blockedEnrollRequests = 0
   const countBlockedEnroll = (request) => {
     if (request.url().includes('/api/v1/mobile/academic/selection/enroll') && request.method() === 'POST') {
@@ -172,43 +168,66 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
     }
   }
   mini.on('request', countBlockedEnroll)
-  await miniBlockedButton.click({ force: true })
+  await miniBlockedDetails.click()
+  await expect(miniBlocked).toContainText('课程容量已满')
+  await expect(miniBlocked).toContainText('下一步：')
+  await expect(miniBlocked.locator('.sl__primary-action')).toHaveCount(0)
   await mini.waitForTimeout(300)
   mini.off('request', countBlockedEnroll)
   expect(blockedEnrollRequests).toBe(0)
 
   const miniEligible = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniEligible.locator('.sl__btn')).toHaveText('选课')
+  const miniEligibleDetails = miniEligible.locator('.sl__details-button')
+  await expect(miniEligibleDetails).toHaveText('查看并选择')
+  await miniEligibleDetails.click()
+  const miniEligiblePrimary = miniEligible.locator('.sl__primary-action')
+  await expect(miniEligiblePrimary).toHaveText('提交选课')
   const miniPreflight = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
   )
   const miniEnroll = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
   )
-  await miniEligible.locator('.sl__btn').click()
+  await miniEligiblePrimary.click()
+  const miniEnrollConfirm = mini.getByRole('dialog')
+  await expect(miniEnrollConfirm).toBeVisible()
+  await miniEnrollConfirm.getByRole('button', { name: '确认提交', exact: true }).click()
   expect((await miniPreflight).ok()).toBeTruthy()
   expect((await miniEnroll).ok()).toBeTruthy()
   const miniSelected = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniSelected).toContainText('已选')
-  await expect(miniSelected.locator('.sl__btn')).toHaveText('退课')
+  await expect(miniSelected).toContainText('已取得名额')
+  await expect(miniSelected.locator('.sl__details-button')).toHaveText('查看退课条件')
   await miniSelected.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-selected-server-actions-390x844')
 
   const miniDropCard = await miniCard(mini, batch.batchName, pcCourse.courseName)
+  const miniDropDetails = miniDropCard.locator('.sl__details-button')
+  await expect(miniDropDetails).toHaveText('查看退课条件')
+  await miniDropDetails.click()
+  const miniDropPrimary = miniDropCard.locator('.sl__primary-action')
+  await expect(miniDropPrimary).toHaveText('申请退课')
+  const miniDropPreflight = mini.waitForResponse((response) =>
+    response.url().includes('/api/v1/mobile/academic/selection/drop-preflight') && response.request().method() === 'POST'
+  )
   const miniDrop = mini.waitForResponse((response) =>
     response.url().includes('/api/v1/mobile/academic/selection/drop') && response.request().method() === 'POST'
   )
-  await miniDropCard.locator('.sl__btn').click()
+  await miniDropPrimary.click()
+  const miniDropConfirm = mini.getByRole('dialog')
+  await expect(miniDropConfirm).toBeVisible()
+  await miniDropConfirm.getByRole('button', { name: '确认退课', exact: true }).click()
+  expect((await miniDropPreflight).ok()).toBeTruthy()
   expect((await miniDrop).ok()).toBeTruthy()
   const miniDropped = await miniCard(mini, batch.batchName, pcCourse.courseName)
   await expect(miniDropped).toContainText('已退课')
-  await expect(miniDropped.locator('.sl__btn')).toHaveText('选课')
+  await expect(miniDropped.locator('.sl__details-button')).toHaveText('查看并选择')
   await miniDropped.scrollIntoViewIfNeeded()
   await screenshot(mini, testInfo, 'w5-mini-drop-reprojected-390x844')
 
   await mini.reload()
   const miniPersisted = await miniCard(mini, batch.batchName, miniCourse.courseName)
-  await expect(miniPersisted.locator('.sl__btn')).toHaveText('退课')
+  await expect(miniPersisted).toContainText('已取得名额')
+  await expect(miniPersisted.locator('.sl__details-button')).toHaveText('查看退课条件')
   await miniContext.close()
 
   const reloginContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
