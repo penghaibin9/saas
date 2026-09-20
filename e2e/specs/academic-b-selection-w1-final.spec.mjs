@@ -129,16 +129,19 @@ async function installErrorToastAudit(page) {
   })
 }
 
-async function selectStudentPcBatch(page, batchName) {
+async function selectStudentPcBatch(page, batchId, batchName) {
   const picker = page.getByLabel('选课批次')
   await expect(picker).toBeVisible({ timeout: 20_000 })
-  await expect(picker.locator('option').filter({ hasText: batchName })).toHaveCount(1)
-  await picker.selectOption({ label: batchName })
-  await expect(picker).toHaveValue(/\d+/)
+  const target = String(batchId)
+  const option = picker.locator(`option[value="${target}"]`)
+  await expect(option).toHaveCount(1)
+  await expect(option).toHaveText(batchName)
+  await picker.selectOption(target)
+  await expect(picker).toHaveValue(target)
 }
 
-async function studentPcCourseRow(page, batchName, courseName) {
-  await selectStudentPcBatch(page, batchName)
+async function studentPcCourseRow(page, batchId, batchName, courseName) {
+  await selectStudentPcBatch(page, batchId, batchName)
   const row = page.locator('.course-table tbody tr').filter({ hasText: courseName }).first()
   await expect(row).toBeVisible({ timeout: 20_000 })
   return row
@@ -259,7 +262,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     const studentLogin = new StudentLoginPage(student, config.studentBaseUrl)
     await studentLogin.login(config.student)
     await student.goto(`${config.studentBaseUrl}/academic/selection`)
-    const firstRow = await studentPcCourseRow(student, fixture.ready.batchName, fixture.courses[0].name)
+    const firstRow = await studentPcCourseRow(student, fixture.ready.batchId, fixture.ready.batchName, fixture.courses[0].name)
     await firstRow.getByRole('button', { name: '查看与办理', exact: true }).click()
     await expect(student.getByRole('heading', { name: fixture.courses[0].name, level: 2 })).toBeVisible()
     const portalPreflight = student.waitForResponse((response) =>
@@ -278,7 +281,7 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await expect(selectedRecord.getByRole('button', { name: '核对退课', exact: true })).toBeVisible()
     await screenshot(student, testInfo, 'w1-student-pc-selected-1440x900')
     await student.reload()
-    const firstAfterRefresh = await studentPcCourseRow(student, fixture.ready.batchName, fixture.courses[0].name)
+    const firstAfterRefresh = await studentPcCourseRow(student, fixture.ready.batchId, fixture.ready.batchName, fixture.courses[0].name)
     await expect(firstAfterRefresh.getByRole('button', { name: '核对退课', exact: true })).toBeVisible({ timeout: 20_000 })
     await studentContext.close()
 
@@ -309,8 +312,9 @@ test.describe.serial('Academic B W1 exact-head final seal', () => {
     await miniConfirm.getByRole('button', { name: '确认提交', exact: true }).click()
     expect((await miniPreflight).ok()).toBeTruthy()
     expect((await miniEnroll).ok()).toBeTruthy()
-    await expect(secondCard).toContainText('已取得名额', { timeout: 15_000 })
-    await expect(secondCard.locator('.sl__primary-action')).toHaveText('申请退课')
+    const miniSelectedRecord = mini.locator('.sl__record').filter({ hasText: fixture.courses[1].name }).first()
+    await expect(miniSelectedRecord).toContainText('已取得名额', { timeout: 15_000 })
+    await expect(miniSelectedRecord.locator('.sl__record-action')).toHaveText('申请退课')
     await screenshot(mini, testInfo, 'w1-miniapp-selected-390x844')
     await mini.reload()
     await expect(mini.locator('.sl__batch-picker')).toContainText(fixture.ready.batchName, { timeout: 20_000 })
