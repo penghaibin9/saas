@@ -27,9 +27,11 @@ SCHOOL_USER = {
 def _patch(monkeypatch):
     from app.core import affairs_security
     from app.models import AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
 
     monkeypatch.setattr(svc._base, "_tid", lambda: TID)
     monkeypatch.setattr(affairs_security, "_tid", lambda: TID)
+    monkeypatch.setattr(resource_guard, "_tid", lambda: TID)
 
     def fake_scope(db, term_id=None, batch_id=None, writable=True):
         term = db.get(AaTerm, int(term_id))
