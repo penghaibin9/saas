@@ -23,14 +23,14 @@
       <section v-if="!isAcademicTeacher || workspaceTab === 'find'" class="booking-card">
         <header><h2>{{ label }} · 日期与节次占用</h2><span>{{ date }} · 共 {{ resourceTotal }} 项资源</span></header>
         <p class="booking-note">{{ occupancyNote }}</p>
-        <div v-if="resources.length" class="booking-matrix"><table><thead><tr><th>资源 / 容量</th><th v-for="slot in 12" :key="slot">第{{ slot }}节</th></tr></thead><tbody><tr v-for="resource in resources" :key="resource[idKey]"><th>{{ resource.roomName || resource.labName || resource.roomCode }}<small>{{ resource.capacity ?? '未提供' }} 座 · #{{ resource[idKey] }}</small></th><td v-for="slot in 12" :key="slot"><button :class="{ occupied: cell(resource, slot).occupied }" @click="selectSlot(resource, slot)">{{ cell(resource, slot).label }}</button></td></tr></tbody></table></div>
+        <div v-if="resources.length" class="booking-matrix"><table><thead><tr><th>资源 / 容量</th><th v-for="slot in 12" :key="slot">第{{ slot }}节</th></tr></thead><tbody><tr v-for="resource in resources" :key="resource[idKey]"><th>{{ resource.roomName || resource.labName || resource.roomCode }}<small>{{ resource.capacity ?? '未提供' }} 座<template v-if="!isAcademicTeacher"> · #{{ resource[idKey] }}</template></small></th><td v-for="slot in 12" :key="slot"><button :class="{ occupied: cell(resource, slot).occupied }" @click="selectSlot(resource, slot)">{{ cell(resource, slot).label }}</button></td></tr></tbody></table></div>
         <EmptyState v-else :title="`当前没有可读取的${label}资源`" />
         <div class="booking-pager"><AppButton :disabled="resourcePage <= 1" @click="turnPage('resourcePage', -1)">上一页资源</AppButton><span>第 {{ resourcePage }} 页 · 每页5项</span><AppButton :disabled="resourcePage * 5 >= resourceTotal" @click="turnPage('resourcePage', 1)">下一页资源</AppButton></div>
       </section>
       <section class="booking-card">
         <header><h2>{{ isAcademicTeacher ? (workspaceTab === 'mine' ? '我的预约' : '我的当日预约') : '当日预约记录' }}</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
         <DataTable v-if="rows.length" :columns="columns" :rows="rows" row-key="bookingId">
-          <template #cell-resource="{ row }">{{ row[textKey] }}<small>#{{ row.bookingId }}</small></template>
+          <template #cell-resource="{ row }">{{ row[textKey] }}<small v-if="!isAcademicTeacher">预约 #{{ row.bookingId }}</small></template>
           <template #cell-slot="{ row }">{{ row.bookingDate }} 第{{ row.slotNo }}节</template>
           <template #cell-status="{ row }"><StatusTag :label="statusLabel(row.status)" :type="row.status === 'APPROVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'warning'" /></template>
           <template #cell-actions="{ row }"><template v-if="canReview && row.status === 'PENDING'"><AppButton :disabled="saving || Boolean(pending) || Boolean(approvalBlockReason(row))" :title="approvalBlockReason(row)" @click="openReview(row, 'APPROVE')">审核通过</AppButton><AppButton :disabled="saving || Boolean(pending)" @click="openReview(row, 'REJECT')">驳回</AppButton></template><span v-else-if="!canReview">{{ teacherBookingNext(row) }}</span></template>
@@ -748,7 +748,7 @@ export default {
       if (confirmed) {
         status = this.statusLabel(row.status)
         next = row.status === 'PENDING'
-          ? '由资源管理员审核，请在当日预约记录中查看进度。'
+          ? '由资源管理员审核，请在“我的预约”中查看进度。'
           : '请按正式审核结果安排使用，并继续遵守教室开放规则。'
         if (advanced) next = '原申请命令已确认；预约随后已进入' + this.statusLabel(row.status) + '，后续审核不归属于本次申请。'
       } else if (row && readMatches && operation.postState !== 'SUCCESS') {

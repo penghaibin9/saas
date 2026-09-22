@@ -17,7 +17,7 @@
         <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/schedule-change')">查看调停课台账</AppButton>
       </section>
       <section v-if="receipt" class="sc-receipt" role="status">
-        <div><strong>✓ 调停课申请已提交</strong><span>{{ receipt.courseName }} · 单据 {{ receipt.changeId }}</span></div>
+        <div><strong>✓ 调停课申请已提交</strong><span>{{ receipt.courseName }}<template v-if="!isAcademicTeacher"> · 单据 {{ receipt.changeId }}</template></span></div>
         <div><small>当前结果</small><b>{{ receipt.statusLabel }}</b></div>
         <div><small>下一责任</small><b>学院教务审核人</b></div>
         <div class="sc-receipt__actions">
@@ -27,7 +27,7 @@
         </div>
       </section>
       <section v-if="origin" class="sc-object-context" aria-label="当前调停课对象">
-        <div><strong>{{ origin.courseName || '课程待确认' }} · {{ origin.className || '教学班待确认' }}</strong><p>调停课申请 · {{ origin.batchName || '正式课表' }} · 原课表项 {{ origin.itemId || form.originItemId }}</p><p>来源：从本人正式课表选择 · 当前状态：{{ receipt ? receipt.statusLabel : '申请编辑中' }}</p></div>
+        <div><strong>{{ origin.courseName || '课程待确认' }} · {{ origin.className || '教学班待确认' }}</strong><p>调停课申请 · {{ origin.batchName || '正式课表' }}<template v-if="!isAcademicTeacher"> · 原课表项 {{ origin.itemId || form.originItemId }}</template></p><p>来源：从本人正式课表选择 · 当前状态：{{ receipt ? receipt.statusLabel : '申请编辑中' }}</p></div>
         <dl><div><dt>当前责任</dt><dd>{{ receipt ? '学院教务审核人' : '任课教师 / 当前审核岗' }}</dd></div><div><dt>下一责任</dt><dd>{{ receipt ? '教务审核岗 → 课表生效 → 师生通知' : '学院教务审核人' }}</dd></div></dl>
       </section>
       <ol class="sc-flow-rail" aria-label="调停课申请流程">
@@ -233,6 +233,7 @@ export default {
         { value: 'EVEN', label: '双周' }
       ]
     },
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
     lockedOccurrenceWeek() {
       if (this.form.changeType !== 'ADJUST' || !this.origin) return null

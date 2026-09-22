@@ -306,3 +306,14 @@ test('teacher V3 stop and makeup cannot start before a concrete teaching week is
   assert.match(source, /请先选择具体教学周，再申请停课或补课/)
   assert.match(source, /occurrenceWeek: String\(this\.selectedOccurrenceWeek \|\| ''\)/)
 })
+
+
+test('teacher V3 hides technical resource and schedule-change ids from ordinary teacher UI', () => {
+  const booking = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  const change = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  assert.match(booking, /v-if="!isAcademicTeacher"> · #\{\{ resource\[idKey\] \}\}/)
+  assert.match(booking, /<small v-if="!isAcademicTeacher">预约 #\{\{ row\.bookingId \}\}<\/small>/)
+  assert.match(booking, /请在“我的预约”中查看进度/)
+  assert.match(change, /v-if="!isAcademicTeacher"> · 单据 \{\{ receipt\.changeId \}\}/)
+  assert.match(change, /v-if="!isAcademicTeacher"> · 原课表项 \{\{ origin\.itemId \|\| form\.originItemId \}\}/)
+})
