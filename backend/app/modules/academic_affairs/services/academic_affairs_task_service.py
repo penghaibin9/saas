@@ -546,7 +546,8 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50):
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None):
+                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None,
+                   formal_mine=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
@@ -582,7 +583,13 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
                 AaTeachingTask.is_merged.is_(False),
                 AaTeachingTask.merged_into_id.is_(None),
             ])
-        if mine:
+        if mine and formal_mine:
+            raise AppException("VALIDATION_ERROR", "mine 与 formalMine 不可同时使用")
+        if formal_mine:
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            formal_scope = teacher_authority.relation_scope(db, user, term_id=term_id)
+            conditions.append(AaTeachingTask.id.in_(sorted(formal_scope.get("taskIds") or []) or [-1]))
+        elif mine:
             keys = _core._user_keys(user)
             conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys) or ["__none__"]))
         else:

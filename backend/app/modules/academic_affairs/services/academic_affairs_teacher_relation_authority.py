@@ -29,14 +29,14 @@ def user_keys(user) -> set[str]:
     return {str(value).strip() for value in (_derive_keys(user or {}) or set()) if str(value).strip()}
 
 
-def relation_scope(db, user, *, term_id: int | None = None, active_week_only: bool = True) -> dict:
+def relation_scope(db, user, *, term_id: int | None = None) -> dict:
     """Return formal read-side teaching scope for an ACADEMIC_TEACHER.
 
     TeachingClassTeacher is the authority when a formal TeachingClass exists.
-    active_week_only=True is for occurrence execution such as today's class/attendance.
-    Non-occurrence term responsibilities such as grade/textbook/workbench must pass False,
-    so a teacher does not lose the course merely because its teaching weeks have ended.
-    Legacy AaTeachingTask.teacher_key is allowed only before that projection exists.
+    Non-occurrence work uses the current/final term week clamped into each TeachingTask
+    window, so a finished course can still be graded without reviving an unrelated
+    split-week teacher relation. Legacy AaTeachingTask.teacher_key is allowed only
+    before that projection exists.
     """
     from app.models import AaTeachingClass, AaTeachingClassTeacher, AaTeachingTask, AaTeachingTaskBatch
 
@@ -69,17 +69,12 @@ def relation_scope(db, user, *, term_id: int | None = None, active_week_only: bo
         formal = formal.filter(AaTeachingClass.term_id == int(term_id))
 
     formal_rows = formal.all()
-    authority_weeks = (
-        class_authority_weeks(
-            db, [teaching_class for _relation, teaching_class, _task in formal_rows]
-        )
-        if active_week_only else {}
+    authority_weeks = class_authority_weeks(
+        db, [teaching_class for _relation, teaching_class, _task in formal_rows]
     )
     task_ids, class_ids, teaching_class_ids, teaching_class_codes = set(), set(), set(), set()
     for relation, teaching_class, task in formal_rows:
-        if active_week_only and not relation_covers_week(
-            relation, authority_weeks.get(int(teaching_class.id))
-        ):
+        if not relation_covers_week(relation, authority_weeks.get(int(teaching_class.id))):
             continue
         task_ids.add(int(task.id))
         if task.class_id:

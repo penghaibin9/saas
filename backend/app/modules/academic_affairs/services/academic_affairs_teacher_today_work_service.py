@@ -154,9 +154,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         return {"actionItems": [], "waitingItems": [], "counts": {"actions": 0, "waiting": 0}, "termId": None}
 
     keys = sorted(_user_keys(user))
-    relation = teacher_authority.relation_scope(
-        db, user, term_id=int(term_id), active_week_only=False
-    )
+    relation = teacher_authority.relation_scope(db, user, term_id=int(term_id))
     formal_task_ids = sorted(int(value) for value in relation.get("taskIds") or [])
     batches = db.scalars(select(AaTeachingTaskBatch).where(
         AaTeachingTaskBatch.tenant_id == _tid(),
@@ -178,7 +176,12 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "READY"]),
         AaTeachingTask.is_deleted.is_(False),
     ).order_by(AaTeachingTask.id)).all()
-    task_by_id = {int(row.id): row for row in teacher_tasks}
+    formal_tasks = db.scalars(select(AaTeachingTask).where(
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.id.in_(formal_task_ids or [-1]),
+        AaTeachingTask.is_deleted.is_(False),
+    )).all()
+    formal_task_by_id = {int(row.id): row for row in formal_tasks}
 
     for row in teacher_tasks:
         if row.status == "ASSIGNED":
@@ -243,7 +246,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
             waiting.append(item)
 
     for task_id in formal_task_ids:
-        task = task_by_id.get(int(task_id))
+        task = formal_task_by_id.get(int(task_id))
         if not task or str(task.status or "").upper() != "READY" or int(task_id) in grade_by_teaching_task:
             continue
         actions.append({

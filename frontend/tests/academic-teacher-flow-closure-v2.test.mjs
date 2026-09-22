@@ -50,8 +50,8 @@ test('teacher program and course pages are presented as formal read-only referen
 test('grade and textbook teacher task pickers request mine scope', () => {
   const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
   const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
-  assert.match(grade, /:query="\{ mine: !isAdminRole \}"/)
-  assert.match(textbook, /mine: isAcademicTeacher/)
+  assert.match(grade, /formalMine: !isAdminRole/)
+  assert.match(textbook, /formalMine: isAcademicTeacher/)
   assert.match(textbook, /resolveTab\(value\)/)
 })
 
@@ -148,7 +148,7 @@ test('teacher V3 grade landing is current-term and exact-teaching-task aware', (
   assert.match(source, /ensureCurrentTerm/)
   assert.match(source, /params\.termId = this\.currentTermId/)
   assert.match(source, /prepareCreateFromTeachingTask/)
-  assert.match(source, /mine: true, termId: this\.currentTermId, taskId: id/)
+  assert.match(source, /formalMine: true, termId: this\.currentTermId, taskId: id/)
   assert.match(source, /row\.status \|\| ''\)\.toUpperCase\(\) !== 'READY'/)
   assert.match(source, /showHistory/)
 })
@@ -158,7 +158,7 @@ test('teacher V3 textbook landing defaults current term and revalidates exact ta
   assert.match(source, /历史选用记录/)
   assert.match(source, /termId: this\.currentTermId/)
   assert.match(source, /openSelectionFromRoute/)
-  assert.match(source, /mine: true, termId: this\.currentTermId, taskId/)
+  assert.match(source, /formalMine: true, termId: this\.currentTermId, taskId/)
   assert.match(source, /this\.selectionForm\.taskId = taskId/)
 })
 
@@ -316,4 +316,14 @@ test('teacher V3 hides technical resource and schedule-change ids from ordinary 
   assert.match(booking, /请在“我的预约”中查看进度/)
   assert.match(change, /v-if="!isAcademicTeacher"> · 单据 \{\{ receipt\.changeId \}\}/)
   assert.match(change, /v-if="!isAcademicTeacher"> · 原课表项 \{\{ origin\.itemId \|\| form\.originItemId \}\}/)
+})
+
+
+test('teacher V3 separates assignment ownership from formal execution ownership', () => {
+  const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  assert.match(grade, /formalMine: !isAdminRole/)
+  assert.match(grade, /formalMine: true, termId: this\.currentTermId/)
+  assert.match(textbook, /formalMine: isAcademicTeacher/)
+  assert.match(textbook, /formalMine: true, termId: this\.currentTermId/)
 })

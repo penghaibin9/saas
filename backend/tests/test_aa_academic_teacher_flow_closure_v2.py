@@ -73,8 +73,8 @@ def test_teacher_resource_booking_ledger_is_self_only():
 def test_teacher_task_pickers_explicitly_request_mine_only():
     grade = _read("../frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue")
     textbook = _read("../frontend/src/modules/academicAffairs/views/AaTextbookConsoleView.vue")
-    assert ':query="{ mine: !isAdminRole }"' in grade
-    assert 'mine: isAcademicTeacher' in textbook
+    assert 'formalMine: !isAdminRole' in grade
+    assert 'formalMine: isAcademicTeacher' in textbook
     assert textbook_svc.__name__.endswith("academic_affairs_textbook_final_facade")
 
 
@@ -180,14 +180,16 @@ def test_teacher_v3_textbook_term_filter_imports_its_join_models():
     assert "AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection" in source
 
 
-def test_teacher_v3_term_responsibilities_are_not_clipped_by_current_teaching_week():
+def test_teacher_v3_non_occurrence_scope_uses_clamped_formal_teacher_authority():
     authority = _read("app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py")
     work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
     grade = _read("app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py")
-    assert "active_week_only: bool = True" in authority
-    assert "if active_week_only and not relation_covers_week" in authority
-    assert "active_week_only=False" in work
-    assert "active_week_only=False" in grade
-    projection = grade[grade.index("def _formal_teacher_projection"):grade.index("def _allowed_actions")]
-    assert "class_authority_weeks" not in projection
-    assert '"authorityWeek": None' in projection
+    task_service = _read("app/modules/academic_affairs/services/academic_affairs_task_service.py")
+    assert "active_week_only" not in authority
+    assert "class_authority_weeks" in authority
+    assert "relation_covers_week(relation, authority_weeks.get" in authority
+    assert "relation_scope(db, user, term_id=int(term_id))" in work
+    assert "class_authority_weeks" in grade
+    assert '"authorityWeek": week' in grade
+    assert "formal_mine=False" in task_service
+    assert 'mine 与 formalMine 不可同时使用' in task_service

@@ -70,7 +70,7 @@
             <AppTeachingTaskPicker
               v-else
               v-model="form.teachingTaskId"
-              :query="{ mine: !isAdminRole, termId: !isAdminRole ? (currentTermId || undefined) : undefined }"
+              :query="{ formalMine: !isAdminRole, termId: !isAdminRole ? (currentTermId || undefined) : undefined }"
               :clearable="isAdminRole"
               :disabled="creating"
               @change="onTeachingTaskChange"
@@ -645,7 +645,7 @@ export default {
       if (this.setupTeachingTaskId === id && this.showCreate && this.form.teachingTaskId === id) return
       if (!(await this.ensureCurrentTerm()) || !valid()) return
       const res = await academicAffairsApi.listAllTasks({
-        mine: true, termId: this.currentTermId, taskId: id, page: 1, pageSize: 1
+        formalMine: true, termId: this.currentTermId, taskId: id, page: 1, pageSize: 1
       })
       if (!valid()) return
       if (res?.code !== 0) throw res

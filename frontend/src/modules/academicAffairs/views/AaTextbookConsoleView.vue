@@ -178,7 +178,7 @@
     <AppDrawer :visible="selectionVisible" :title="editingSelectionId ? '修改教材选用申报' : '教材选用正式申报'" mode="modal" size="large" @close="closeSelection">
       <AppInlineAlert type="info" title="第四级对象视角" description="从正式教学任务开始，教材版本和需求人数提交后进入教材选用审核岗。" />
       <div class="aatb-form-grid">
-        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, mine: isAcademicTeacher }" :disabled="saving || Boolean(editingSelectionId)" /></AppFormItem>
+        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, formalMine: isAcademicTeacher }" :disabled="saving || Boolean(editingSelectionId)" /></AppFormItem>
         <AppFormItem label="教材版本" required><AppSelect v-model="selectionForm.textbookId" :options="textbookOptions" placeholder="选择正式教材目录" :disabled="saving || selectionCatalogLoading" /></AppFormItem>
         <AppFormItem label="需求人数" required><AppNumberInput v-model="selectionForm.expectedQty" :min="1" :disabled="saving" /></AppFormItem>
         <AppFormItem class="aatb-form-wide" label="选用原因" required><AppTextarea v-model="selectionForm.remark" :disabled="saving" placeholder="说明课程、版本和实际需求依据" /></AppFormItem>
@@ -445,7 +445,7 @@ export default {
       if (this.openedSetupTaskId === taskId && this.selectionVisible) return
       if (!this.currentTermId) { this.error = '当前学期尚未设置，无法从教学任务登记教材选用'; return }
       const identity = this.identityKey
-      const result = await academicAffairsApi.listAllTasks({ mine: true, termId: this.currentTermId, taskId, page: 1, pageSize: 1 })
+      const result = await academicAffairsApi.listAllTasks({ formalMine: true, termId: this.currentTermId, taskId, page: 1, pageSize: 1 })
       if (identity !== this.identityKey) return
       if (result?.code !== 0) { this.error = result?.message || '教学任务读取失败'; return }
       const task = (result.data?.list || []).find(row => String(row.taskId) === taskId)
