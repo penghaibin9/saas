@@ -2533,8 +2533,11 @@ def org_major_delete(majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
 @router.get("/orgs/classes", summary="行政班列表（范围内）")
 def org_classes(majorId: Optional[str] = None, grade: Optional[str] = None,
                 classStatus: Optional[str] = None, keyword: Optional[str] = None,
+                termId: Optional[int] = Query(None, ge=1),
                 page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
-    items, total = org_svc.list_classes(user, majorId, grade, classStatus, keyword, page, pageSize)
+    items, total = org_svc.list_classes(
+        user, majorId, grade, classStatus, keyword, page, pageSize, term_id=termId
+    )
     return success(paginate(items, total, page, pageSize))
 
 
