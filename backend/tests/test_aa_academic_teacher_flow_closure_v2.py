@@ -24,18 +24,22 @@ def test_teacher_relation_scope_is_formal_relation_first_with_legacy_only_when_u
     assert "AaTeachingClass.teaching_task_id == AaTeachingTask.id" in source
 
 
-def test_teacher_schedule_and_schedule_query_use_relation_scope_not_student_affairs_scope():
+def test_teacher_schedule_and_schedule_query_use_formal_teacher_authority():
     class_source = inspect.getsource(schedule_svc.class_schedule)
     teaching_class_source = inspect.getsource(schedule_svc.teaching_class_schedule)
     teacher_source = inspect.getsource(schedule_svc.teacher_schedule)
+
     assert 'role == "ACADEMIC_TEACHER"' in class_source
     assert "teacher_authority.relation_scope" in class_source
     assert "正式任课关系涉及的班级课表" in class_source
     assert 'role == "ACADEMIC_TEACHER"' in teaching_class_source
     assert "本人正式任课关系中的教学班课表" in teaching_class_source
-    assert 'role == "ACADEMIC_TEACHER"' in teacher_source
-    assert "relation_scope" in teacher_source
-    assert "teacher_authority.user_keys(user)" in teacher_source
+
+    # Public teacher_schedule is intentionally replaced by the repository's
+    # canonical week-clipped TeachingClassTeacher guard during service init.
+    assert getattr(schedule_svc.teacher_schedule, "_schedule_teacher_relation_guard", False) is True
+    assert "TEACHING_CLASS_TEACHER_BY_WEEK" in teacher_source
+    assert "_teacher_items" in teacher_source
 
 
 def test_teacher_class_and_teaching_class_pickers_are_relation_scoped():
@@ -48,6 +52,11 @@ def test_teacher_class_and_teaching_class_pickers_are_relation_scoped():
     router = _read("app/modules/academic_affairs/routers/academic_affairs.py")
     assert 'termId: Optional[int] = Query(None, ge=1)' in router
     assert 'term_id=termId' in router
+    assert '_ORG_PICKER_VIEW = require_any_permission("academicAffairs.org.view", "academicAffairs.schedule.view")' in router
+
+    # Picker access must not widen the role to the whole organization directory.
+    from app.core.permissions import ROLE_PERMISSIONS
+    assert "academicAffairs.org.view" not in ROLE_PERMISSIONS["ACADEMIC_TEACHER"]
 
 
 def test_teacher_resource_booking_ledger_is_self_only():
