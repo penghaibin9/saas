@@ -206,7 +206,7 @@ export default {
         this.calendarSource = todayRes?.code === 0 ? (todayRes.data.calendarSource || '') : ''
         this.$router.replace({
           path: `/admin/academic-affairs/schedule/teacher/${this.teacherKey}`,
-          query: { ...this.$route.query }
+          query: { ...(this.$route?.query || {}) }
         }).catch(() => {})
       } else {
         this.error = res.message
