@@ -78,7 +78,7 @@ import {
 import { scheduleChangeApi } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 
 const ACTIVE_CHANGE = new Set(['SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW', 'APPROVED'])
-const ACTION_GRADE = new Set(['DRAFT', 'INPUTTING', 'RETURNED', 'COLLEGE_RETURNED'])
+const ACTION_GRADE = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
 const ACTION_TEXTBOOK = new Set(['DRAFT', 'RETURNED'])
 
 function list(res) { return res?.code === 0 ? (res.data?.list || res.data?.items || []) : [] }
