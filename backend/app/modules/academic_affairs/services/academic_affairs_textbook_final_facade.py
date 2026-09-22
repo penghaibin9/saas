@@ -13,6 +13,7 @@ from sqlalchemy import func
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_textbook_service as _legacy
+from . import academic_affairs_teacher_relation_authority as teacher_authority
 
 _ACTIVE_ALLOCATION_STATUSES = ("PENDING", "RECEIVED", "EXCHANGED")
 _ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
@@ -103,6 +104,13 @@ def _task_term(db, task_id):
 def _selection_term(db, selection):
     _task, batch = _task_term(db, selection.task_id)
     return batch
+
+
+def _require_teacher_selection_scope(db, task, user, *, lock=False):
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "ACADEMIC_TEACHER":
+        return None
+    return teacher_authority.require_teacher(db, task, user, lock=lock)
 
 
 def _get_selection(db, selection_id, *, lock=False):
@@ -262,6 +270,7 @@ def create_selection(user, body):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         task, task_batch = _task_term(db, int(body.taskId))
+        _require_teacher_selection_scope(db, task, user)
         textbook = db.query(AaTextbook).filter(
             AaTextbook.id == int(body.textbookId),
             AaTextbook.tenant_id == _legacy._tid(),
@@ -301,7 +310,8 @@ def submit_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status not in ("DRAFT", "RETURNED"):
             raise _legacy._invalid("仅草稿/退回选用可提交")
         row.status = "SUBMITTED"
@@ -314,7 +324,8 @@ def withdraw_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status != "DRAFT":
             raise _legacy._invalid("仅草稿可撤回")
         row.is_deleted = True
