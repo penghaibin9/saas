@@ -77,7 +77,9 @@ def test_base_portal_has_exactly_two_real_header_search_inputs_and_current_conca
     assert 'placeholder="搜学生（姓名 / 学号）"' in search_block
     assert ':placeholder="workspaceSearchPlaceholder"' in search_block
     assert "if (!this.useWorkspace) return '搜功能、帮助文档、流程图'" in source
-    assert "return this.isPlatformMode ? '搜索平台功能或帮助' : '搜索学生、功能或帮助'" in source
+    assert "workspaceStudentSearchEnabled()" in source
+    assert "!isAcademicTeacherContext(this.ctx)" in source
+    assert "this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能或帮助'" in source
 
     # C1 builds the private typed target first.  This shared seam remains an
     # explicit integration blocker until the Header owner is released.

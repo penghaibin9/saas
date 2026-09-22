@@ -651,7 +651,7 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
   },
   getMyTeacherToday() {
-    return call(() => request('/mobile/academic/teacher-schedule/my'))
+    return call(() => request(`${BASE}/teacher/today`))
   },
   getRoomSchedule(classroomId, params = {}) {
     return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))

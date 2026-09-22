@@ -181,7 +181,8 @@ def program_governance_summary(user) -> dict:
     )
 
     with session() as db:
-        role = str((user or {}).get("currentRoleCode") or "").upper()
+        role_value = user.get("currentRoleCode") if isinstance(user, dict) else getattr(user, "currentRoleCode", None)
+        role = str(role_value or "").upper()
         teacher_read = role == "ACADEMIC_TEACHER"
         if teacher_read:
             tenant_all = True

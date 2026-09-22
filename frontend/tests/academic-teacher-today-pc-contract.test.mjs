@@ -14,7 +14,8 @@ const publishPage = fs.readFileSync(path.join(root, 'src/modules/academicAffairs
 const batchPage = fs.readFileSync(path.join(root, 'src/modules/academicAffairs/views/AaScheduleBatchListView.vue'), 'utf8')
 
 test('teacher PC consumes the same server-projected Teacher Today truth as the miniapp', () => {
-  assert.match(api, /mobile\/academic\/teacher-schedule\/my/)
+  assert.match(api, /academic-affairs\/teacher\/today/)
+  assert.doesNotMatch(api, /request\('\/mobile\/academic\/teacher-schedule\/my'\)/)
   assert.match(page, /todayRes\.data\.todayItems/)
   assert.match(page, /calendarSource === 'HOLIDAY'/)
   assert.match(page, /calendarSource === 'SWAP_SOURCE'/)
@@ -43,7 +44,9 @@ test('teacher timetable hands a selected published item into change application 
   assert.match(page, /申请调课/)
   assert.match(page, /申请停课/)
   assert.match(page, /申请补课/)
-  assert.match(page, /query: \{ originItemId: String\(originItemId\), changeType \}/)
+  assert.match(page, /originItemId: String\(originItemId\)/)
+  assert.match(page, /changeType/)
+  assert.match(page, /occurrenceWeek: String\(this\.week \|\| this\.todayWeek \|\| this\.selectedItem\?\.weekNo \|\| ''\)/)
   assert.match(changeApi, /origin-items\/\$\{itemId\}/)
   assert.match(changePage, /scheduleChangeApi\.originItem\(this\.form\.originItemId\)/)
   assert.match(changePage, /系统会自动带入正式课位，不需要复制或填写任何内部 ID/)

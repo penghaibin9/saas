@@ -67,6 +67,12 @@ def dashboard(user=Depends(require_permission(_DASHBOARD_VIEW))):
     return success(svc.dashboard(user))
 
 
+@router.get("/teacher/today", summary="普通任课教师·今日教学（PC；与教师移动端同一事实源）")
+def teacher_today_pc(user=Depends(require_permission("academicAffairs.schedule.view"))):
+    from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
+    return success(mobile_public.teacher_schedule_my(user))
+
+
 @router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办"
                                              "/今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势）")
 def dashboard_reminders(user=Depends(require_permission(_DASHBOARD_VIEW))):

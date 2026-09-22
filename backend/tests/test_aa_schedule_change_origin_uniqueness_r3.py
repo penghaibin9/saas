@@ -134,7 +134,7 @@ def _body(origin_id, change_type="STOP"):
         "makeupPlan": "后续补课安排已确认" if change_type == "STOP" else "",
         "targetWeekday": None,
         "targetSlotNo": None,
-        "targetStartWeek": None,
+        "targetStartWeek": 6 if change_type in {"STOP", "MAKEUP"} else None,
         "targetEndWeek": None,
         "targetWeekParity": None,
         "targetClassroom": None,
