@@ -118,6 +118,7 @@ test('T08 teacher conflict preserves rejection reason',async()=>{
 test('T08 old teacher list response never replaces current read',async()=>{
   const first=deferred();let n=0
   const vm=instance('AaTeacherTaskConfirmView',{academicAffairsApi:{listAllTasks:()=>++n===1?first.promise:Promise.resolve(page([{taskId:'new'}]))}})
+  vm.currentTermId='a';vm.currentTermName='当前学期'
   const request=vm.load();await vm.load();first.resolve(page([{taskId:'old'}]));await request;assert.equal(vm.rows[0].taskId,'new')
 })
 
