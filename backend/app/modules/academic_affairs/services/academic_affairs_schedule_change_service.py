@@ -306,6 +306,34 @@ def _uses_college_change_scope(ctx, user) -> bool:
     return ctx.scope_type == "COLLEGE" and role in _COLLEGE_OPERATOR_ROLES
 
 
+def _teacher_key_for_origin(db, origin, user, *, lock=False):
+    """Use current formal teacher relation; schedule snapshot is legacy fallback only."""
+    ctx = build_affairs_context(user, db)
+    if _can_manage_all(ctx):
+        return str(origin.teacher_key or "")
+    if origin.task_id:
+        from app.models import AaTeachingTask
+        from . import academic_affairs_teacher_relation_authority as teacher_authority
+        query = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(origin.task_id),
+            AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        )
+        if lock:
+            query = query.with_for_update()
+        task = query.first()
+        if not task:
+            raise AppException("DATA_CONFLICT", "原课位关联教学任务已失效，请刷新本人课表", http_status=409)
+        authority = teacher_authority.require_teacher(db, task, user, lock=lock)
+        matched = [str(value).strip() for value in authority.get("matchedTeacherKeys", []) if str(value).strip()]
+        if matched:
+            return matched[0]
+    keys = _derive_keys(user)
+    if not origin.teacher_key or origin.teacher_key not in keys:
+        raise no_data_scope("仅可对本人当前任课课位办理调停课")
+    return str(origin.teacher_key)
+
+
 def get_origin_item(item_id, user) -> dict:
     """Return the display summary used by the teacher change-application handoff.
 
@@ -329,11 +357,7 @@ def get_origin_item(item_id, user) -> dict:
             )
         _require_current_published_origin(db, batch, origin)
 
-        ctx = build_affairs_context(user, db)
-        if not _can_manage_all(ctx):
-            keys = _derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise no_data_scope("仅可查看并变更本人任课课位")
+        _teacher_key_for_origin(db, origin, user)
 
         return {
             "itemId": str(origin.id),
@@ -370,17 +394,13 @@ def conflict_check(body, user) -> dict:
             raise not_found("原课表项不存在")
         batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, batch, origin)
-        ctx = build_affairs_context(user, db)
-        if not _can_manage_all(ctx):
-            keys = _derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise no_data_scope("仅可对本人任课课位做冲突预检")
+        actor_teacher_key = _teacher_key_for_origin(db, origin, user)
         tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
         tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
         tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
         tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
         conflict = _detect_conflict(db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
-                                    origin.teacher_key, origin.class_id, tcr, exclude_id=origin.id)
+                                    actor_teacher_key, origin.class_id, tcr, exclude_id=origin.id)
         return {"conflict": conflict}
 
 
@@ -405,11 +425,8 @@ def submit(body, user) -> dict:
             raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
         b = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, b, origin)
-        # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
-        if not _can_manage_all(ctx):
-            keys = _derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise no_data_scope("仅可对本人任课课位发起调停课")
+        # 数据范围(COURSE)：以当前正式任课关系裁决。
+        actor_teacher_key = _teacher_key_for_origin(db, origin, user)
         # 停课需给出后续安排（真实业务：不填补课安排且课程仍有周学时缺口 → 422 警示）
         if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
@@ -429,7 +446,7 @@ def submit(body, user) -> dict:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
             # 提交即三重冲突预检（同批次；排除原课位自身）
             conflict = _detect_conflict(db, origin.batch_id, tw, ts, tsw, tew, tp,
-                                        origin.teacher_key, origin.class_id, tcr,
+                                        actor_teacher_key, origin.class_id, tcr,
                                         exclude_id=origin.id)
             if conflict:
                 raise AppException("DATA_CONFLICT",
@@ -439,7 +456,8 @@ def submit(body, user) -> dict:
             tenant_id=_tid(), term_id=b.term_id, batch_id=origin.batch_id, origin_item_id=origin.id,
             task_id=origin.task_id, change_type=ct,
             course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
-            teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+            teacher_key=actor_teacher_key,
+            teacher_name=(user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name,
             origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
             origin_start_week=origin.start_week, origin_end_week=origin.end_week,
             origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
