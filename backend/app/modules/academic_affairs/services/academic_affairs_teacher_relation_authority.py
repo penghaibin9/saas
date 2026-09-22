@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, exists, select
 
 from app.core.affairs_security import _derive_keys
 from app.core.exceptions import AppException
@@ -27,6 +27,85 @@ from app.services.db_service import _tid
 
 def user_keys(user) -> set[str]:
     return {str(value).strip() for value in (_derive_keys(user or {}) or set()) if str(value).strip()}
+
+
+def relation_scope(db, user, *, term_id: int | None = None) -> dict:
+    """Return formal read-side teaching scope for an ACADEMIC_TEACHER.
+
+    TeachingClassTeacher is the authority when a formal TeachingClass exists.
+    Legacy AaTeachingTask.teacher_key is allowed only before that projection exists.
+    """
+    from app.models import AaTeachingClass, AaTeachingClassTeacher, AaTeachingTask, AaTeachingTaskBatch
+
+    keys = user_keys(user)
+    empty = {"taskIds": set(), "classIds": set(), "teachingClassIds": set(), "teachingClassCodes": set()}
+    if not keys:
+        return empty
+
+    formal = (
+        db.query(AaTeachingClassTeacher, AaTeachingClass, AaTeachingTask)
+        .join(AaTeachingClass, and_(
+            AaTeachingClass.id == AaTeachingClassTeacher.teaching_class_id,
+            AaTeachingClass.tenant_id == AaTeachingClassTeacher.tenant_id,
+        ))
+        .join(AaTeachingTask, and_(
+            AaTeachingTask.id == AaTeachingClass.teaching_task_id,
+            AaTeachingTask.tenant_id == AaTeachingClass.tenant_id,
+        ))
+        .filter(
+            AaTeachingClassTeacher.tenant_id == _tid(),
+            AaTeachingClassTeacher.teacher_key.in_(sorted(keys)),
+            AaTeachingClassTeacher.status == "ACTIVE",
+            AaTeachingClassTeacher.is_deleted.is_(False),
+            AaTeachingClass.status == "ACTIVE",
+            AaTeachingClass.is_deleted.is_(False),
+            AaTeachingTask.is_deleted.is_(False),
+        )
+    )
+    if term_id not in (None, ""):
+        formal = formal.filter(AaTeachingClass.term_id == int(term_id))
+
+    task_ids, class_ids, teaching_class_ids, teaching_class_codes = set(), set(), set(), set()
+    for _relation, teaching_class, task in formal.all():
+        task_ids.add(int(task.id))
+        if task.class_id:
+            class_ids.add(int(task.class_id))
+        teaching_class_ids.add(int(teaching_class.id))
+        code = teaching_class.class_code or task.teaching_class_code
+        if code:
+            teaching_class_codes.add(str(code))
+
+    fallback = db.query(AaTeachingTask).filter(
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.teacher_key.in_(sorted(keys)),
+        AaTeachingTask.is_deleted.is_(False),
+        ~exists().where(and_(
+            AaTeachingClass.tenant_id == _tid(),
+            AaTeachingClass.teaching_task_id == AaTeachingTask.id,
+            AaTeachingClass.is_deleted.is_(False),
+        )),
+    )
+    if term_id not in (None, ""):
+        fallback = fallback.join(AaTeachingTaskBatch, and_(
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+            AaTeachingTaskBatch.tenant_id == AaTeachingTask.tenant_id,
+        )).filter(
+            AaTeachingTaskBatch.term_id == int(term_id),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        )
+    for task in fallback.all():
+        task_ids.add(int(task.id))
+        if task.class_id:
+            class_ids.add(int(task.class_id))
+        if task.teaching_class_code:
+            teaching_class_codes.add(str(task.teaching_class_code))
+
+    return {
+        "taskIds": task_ids,
+        "classIds": class_ids,
+        "teachingClassIds": teaching_class_ids,
+        "teachingClassCodes": teaching_class_codes,
+    }
 
 
 def _term(db, term_id: int):
