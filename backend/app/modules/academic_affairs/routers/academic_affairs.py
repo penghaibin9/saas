@@ -3128,6 +3128,9 @@ class ScheduleChangeCancelBody(BaseModel):
 
 class ScheduleChangeConflictCheckBody(BaseModel):
     originItemId: str = Field(..., min_length=1, description="原课表项 id（须为已发布课表本人课位）")
+    changeType: Literal["ADJUST", "MAKEUP"] = Field(
+        "ADJUST", description="预检类型；兼容旧调用默认按调课，补课必须显式传 MAKEUP"
+    )
     targetWeekday: int = Field(..., ge=1, le=7, description="目标星期")
     targetSlotNo: int = Field(..., ge=1, description="目标节次")
     targetStartWeek: Optional[int] = Field(None, ge=1)

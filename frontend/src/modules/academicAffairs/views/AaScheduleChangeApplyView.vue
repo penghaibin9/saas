@@ -248,10 +248,12 @@ export default {
     },
     canCheckConflict() {
       if (!this.form.originItemId || !this.form.targetWeekday || !this.form.targetSlotNo) return false
-      if (this.form.changeType !== 'ADJUST') return true
+      const startWeek = Number(this.form.targetStartWeek || 0)
+      const endWeek = Number(this.form.targetEndWeek || 0)
+      if (this.form.changeType === 'MAKEUP') return startWeek > 0 && endWeek === startWeek
+      if (this.form.changeType !== 'ADJUST') return false
       if (!this.adjustScope && !this.lockedOccurrenceWeek) return false
-      return Number(this.form.targetStartWeek || 0) > 0 &&
-        Number(this.form.targetEndWeek || 0) >= Number(this.form.targetStartWeek || 0)
+      return startWeek > 0 && endWeek >= startWeek
     }
   },
   watch: {

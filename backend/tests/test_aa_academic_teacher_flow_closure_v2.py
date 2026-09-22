@@ -92,6 +92,7 @@ def test_teacher_reference_pages_only_expose_formal_programs_and_enabled_courses
 def test_schedule_change_stop_and_makeup_are_single_occurrence_contracts():
     r3 = _read("app/modules/academic_affairs/services/academic_affairs_schedule_change_r3_service.py")
     legacy = _read("app/modules/academic_affairs/services/academic_affairs_schedule_change_service.py")
+    router = _read("app/modules/academic_affairs/routers/academic_affairs.py")
     assert '停课必须明确选择具体教学周' in r3
     assert '补课必须明确选择具体教学周' in r3
     assert '调课必须明确选择具体教学周或周期范围' in r3
@@ -100,6 +101,9 @@ def test_schedule_change_stop_and_makeup_are_single_occurrence_contracts():
     assert 'tsw = tew = int(raw_week)' in r3
     assert 'exclude_id=(origin.id if ct == "ADJUST" else None)' in r3
     assert '冲突预检必须明确目标教学周范围' in legacy
+    assert 'exclude_id=(origin.id if ct == "ADJUST" else None)' in legacy
+    assert '补课冲突预检一次只能选择一个具体教学周' in legacy
+    assert 'changeType: Literal["ADJUST", "MAKEUP"]' in router
     assert 'change.change_type not in {"ADJUST", "STOP"}' in legacy
 
 

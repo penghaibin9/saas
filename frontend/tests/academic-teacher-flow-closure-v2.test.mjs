@@ -178,6 +178,8 @@ test('teacher V3 resource booking keeps one page but separates availability from
 test('teacher V3 schedule conflict preflight keeps the requested change type', () => {
   const source = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
   assert.match(source, /changeType: this\.form\.changeType/)
+  assert.match(source, /this\.form\.changeType === 'MAKEUP'/)
+  assert.match(source, /endWeek === startWeek/)
 })
 
 test('teacher V3 booking route can clear an exact booking focus back to my full ledger', () => {

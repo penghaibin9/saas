@@ -390,6 +390,9 @@ def conflict_check(body, user) -> dict:
     origin_id = getattr(body, "originItemId", None)
     if not origin_id:
         raise AppException("VALIDATION_ERROR", "originItemId 必填")
+    ct = str(getattr(body, "changeType", "ADJUST") or "ADJUST").upper()
+    if ct not in {"ADJUST", "MAKEUP"}:
+        raise AppException("VALIDATION_ERROR", "冲突预检类型仅支持 ADJUST/MAKEUP")
     tw, ts = getattr(body, "targetWeekday", None), getattr(body, "targetSlotNo", None)
     if tw is None or ts is None:
         raise AppException("VALIDATION_ERROR", "目标星期/节次必填")
@@ -406,10 +409,21 @@ def conflict_check(body, user) -> dict:
             raise AppException("VALIDATION_ERROR", "冲突预检必须明确目标教学周范围")
         tsw = int(raw_start_week)
         tew = int(raw_end_week)
-        tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
+        if tsw < 1 or tew < tsw:
+            raise AppException("VALIDATION_ERROR", "目标教学周非法")
+        if ct == "MAKEUP":
+            if tsw != tew:
+                raise AppException("VALIDATION_ERROR", "补课冲突预检一次只能选择一个具体教学周")
+            tp = "ALL"
+        else:
+            tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
+            _validate_adjust_window(origin, tsw, tew, tp)
         tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
-        conflict = _detect_conflict(db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
-                                    actor_teacher_key, origin.class_id, tcr, exclude_id=origin.id)
+        conflict = _detect_conflict(
+            db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
+            actor_teacher_key, origin.class_id, tcr,
+            exclude_id=(origin.id if ct == "ADJUST" else None),
+        )
         return {"conflict": conflict}
 
 
