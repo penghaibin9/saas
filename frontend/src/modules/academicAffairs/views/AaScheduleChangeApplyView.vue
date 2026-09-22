@@ -408,6 +408,7 @@ export default {
       try {
         const res = await scheduleChangeApi.conflictCheck({
           originItemId: this.form.originItemId,
+          changeType: this.form.changeType,
           targetWeekday: this.form.targetWeekday,
           targetSlotNo: this.form.targetSlotNo,
           targetStartWeek: this.form.targetStartWeek || undefined,

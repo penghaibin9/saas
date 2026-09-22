@@ -165,3 +165,8 @@ def test_teacher_v3_exact_setup_links_revalidate_teacher_task():
     router = _read("app/modules/academic_affairs/routers/course_program_task_router.py")
     assert "taskId: Optional[int] = None" in router
     assert "task_id=taskId" in router
+
+
+def test_teacher_v3_textbook_term_filter_imports_its_join_models():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_textbook_service.py")
+    assert "AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection" in source

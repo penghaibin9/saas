@@ -128,6 +128,7 @@ export default {
       if (this.page > 1) query.page = String(this.page); else delete query.page
       if (this.resourcePage > 1) query.resourcePage = String(this.resourcePage); else delete query.resourcePage
       if (this.filterStatus) query.status = this.filterStatus; else delete query.status
+      if (this.bookingId) query.bookingId = this.bookingId; else delete query.bookingId
       const sequence = ++this.routeWriteSeq
       this.routeWriting = true
       this.$router.replace({ query }).catch(() => {}).finally(() => {

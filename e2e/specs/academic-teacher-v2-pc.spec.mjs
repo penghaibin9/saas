@@ -81,14 +81,14 @@ test.describe.serial('Academic teacher V2 · real PC flow', () => {
     await expect(page.getByRole('heading', { name: '今日教学' })).toBeVisible({ timeout: 20_000 })
     const course = page.locator('.aat-course').filter({ hasText: fixture.courseName }).first()
     await expect(course).toBeVisible({ timeout: 20_000 })
-    await expect(course.getByRole('button', { name: '开始/继续点名' })).toBeEnabled()
+    await expect(course.getByRole('button', { name: '考勤', exact: true })).toBeEnabled()
 
     const openResponsePromise = page.waitForResponse((response) => {
       const url = new URL(response.url())
       return response.request().method() === 'POST'
         && url.pathname.endsWith('/api/v1/academic-affairs/attendance/sessions/open')
     }, { timeout: 20_000 })
-    await course.getByRole('button', { name: '开始/继续点名' }).click()
+    await course.getByRole('button', { name: '考勤', exact: true }).click()
     const openResponse = await openResponsePromise
     const openPayload = await openResponse.json()
     expect(openPayload.code, JSON.stringify(openPayload)).toBe(0)

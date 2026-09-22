@@ -173,3 +173,14 @@ test('teacher V3 resource booking keeps one page but separates availability from
   assert.match(source, /等待资源管理员审核/)
   assert.match(source, /已通过，可按预约时间使用/)
 })
+
+
+test('teacher V3 schedule conflict preflight keeps the requested change type', () => {
+  const source = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  assert.match(source, /changeType: this\.form\.changeType/)
+})
+
+test('teacher V3 booking route can clear an exact booking focus back to my full ledger', () => {
+  const source = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  assert.match(source, /if \(this\.bookingId\) query\.bookingId = this\.bookingId; else delete query\.bookingId/)
+})

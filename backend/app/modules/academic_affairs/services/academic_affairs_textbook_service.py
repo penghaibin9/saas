@@ -205,7 +205,7 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
     原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
     过滤、按页码切片——学院管理员只该看到自己学院的记录，却要为此让数据库把
     全校记录先搬进应用内存一遍。"""
-    from app.models import AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
     from app.core.affairs_security import _derive_keys
     with session() as db:
         ctx = _ctx(user, db)
