@@ -341,3 +341,16 @@ for (const mode of ['fixed', 'dynamic']) {
     assert.match(vm.taskError, /无权/)
   })
 }
+
+
+test('精确成绩任务深链不依赖当前学期列表上下文', async () => {
+  const vm = mount({
+    getCurrentTerm: async () => ({ code: 404001, message: '当前学期未设置' }),
+    getGradeTasks: async p => p.taskId ? result(task(p.taskId)) : result(),
+    getGradeRecords: async () => ({ code: 0, data: { items: [] } })
+  })
+  vm.$route.query.taskId = 'exact-task'
+  await vm.loadTasks()
+  assert.equal(vm.task?.gradeTaskId, 'exact-task')
+  assert.equal(vm.taskError, '')
+})

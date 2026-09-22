@@ -650,6 +650,11 @@ export default {
       const valid = () => this.alive && seq === this.listSeq && identity === this.identityKey
       this.taskLoading = true; this.taskError = ''
       try {
+        const taskId = String(this.$route.query.taskId || '').trim()
+        if (taskId && !this.task) {
+          await this.openTask({ gradeTaskId: taskId })
+          return
+        }
         if (!(await this.ensureCurrentTerm()) || !valid()) return
         const params = { page: this.taskPage, pageSize: 20 }
         if (this.isAcademicTeacher && !this.showHistory) params.termId = this.currentTermId
@@ -657,11 +662,6 @@ export default {
         if (!valid()) return
         if (res?.code !== 0) throw res
         this.myTasks = res.data?.list || []; this.taskTotal = res.data?.total || 0
-        const taskId = this.$route.query.taskId
-        if (taskId && !this.task) {
-          await this.openTask({ gradeTaskId: taskId })
-          return
-        }
         const teachingTaskId = this.$route.query.teachingTaskId
         if (this.$route.query.action === 'create' && teachingTaskId && !this.task) {
           await this.prepareCreateFromTeachingTask(teachingTaskId, valid)
