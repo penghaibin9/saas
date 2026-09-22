@@ -415,7 +415,6 @@ def submit(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "调停课原因必填且不少于 5 字")
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleChange, AaScheduleItem
-        ctx = build_affairs_context(user, db)
         origin = tenant_get(
             db, AaScheduleItem, int(body.originItemId), tenant_id=_tid()
         ) if getattr(body, "originItemId", None) else None
