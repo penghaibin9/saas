@@ -76,13 +76,17 @@ function leafIndex(modules) {
 }
 function projectedLeaf(source, spec, groupKey) {
   if (!source) return null
+  const sourceLeafId = source.leafId
+  const teacherProjectionId = `teacher.${groupKey}.${sourceLeafId}.${String(spec.label || source.label).replace(/\s+/g, '-')}`
   return {
     ...source,
+    leafId: teacherProjectionId,
     label: spec.label || source.label,
     path: spec.path || source.path,
     ...(spec.permissionKey ? { permissionKey: spec.permissionKey } : {}),
-    teacherProjectionId: `${groupKey}:${spec.leafId}:${spec.label || source.label}`,
-    sourceLeafId: source.leafId,
+    teacherProjectionId,
+    sourceLeafId,
+    legacyWorkspaceIds: [...new Set([...(source.legacyWorkspaceIds || []), sourceLeafId])],
     searchAliases: [...new Set([spec.label || source.label, ...(source.searchAliases || [])])]
   }
 }
@@ -123,7 +127,7 @@ export function filterAcademicTeacherSearchResults(results, ctx, modules) {
     const academic = target.path === '/admin/academic' || target.path.startsWith('/admin/academic/') ||
       target.path === '/admin/academic-affairs' || target.path.startsWith('/admin/academic-affairs/')
     if (!academic) return true
-    return allowed.some(row => target.path === row.path || target.path.startsWith(`${row.path}/`))
+    return allowed.some(row => target.path === row.path && querySubset(row.query, target.query))
   })
 }
 export const ACADEMIC_TEACHER_MENU_SPEC = GROUPS
