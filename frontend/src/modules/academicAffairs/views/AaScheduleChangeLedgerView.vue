@@ -8,6 +8,7 @@
     <template #actions>
       <div class="sc-actions">
         <AppButton variant="primary" @click="goApply">{{ isAcademicTeacher ? '从个人课表选择课程' : '＋ 发起调停课' }}</AppButton>
+        <AppButton v-if="isAcademicTeacher && !selectedId" @click="toggleHistory">{{ showHistory ? '返回当前学期' : '历史记录' }}</AppButton>
         <AppButton v-if="canReview" @click="goApproval">审批工作台</AppButton>
       </div>
     </template>
@@ -15,7 +16,8 @@
     <ScheduleChangeEvidence v-if="selectedId" :change-id="selectedId" :ctx="ctx" @close="closeDetail" @notice="goNotice" />
     <div v-else class="mp-stack">
       <section class="sc-ledger-head"><div><h2>调停课申请 · 台账</h2><p>申请课程、原课位、目标课位、影响周次和办理状态保持同一行核对。</p></div><span>共 {{ total }} 条 · 正式服务端分页</span></section>
-      <label class="sc-term">学期<AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" /></label>
+      <div v-if="isAcademicTeacher && !showHistory" class="sc-term-current">当前学期：<strong>{{ currentTermName || currentTermId || '待确认' }}</strong></div>
+      <label v-else class="sc-term">学期<AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" /></label>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -60,6 +62,7 @@ import { AppButton } from '@/components/ui'
 import { AppTermEntityPicker } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { scheduleChangeApi, CHANGE_TYPES, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api'
+import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import ScheduleChangeEvidence from '../components/parallel-b/ScheduleChangeEvidence.vue'
 import { currentUserFromToken } from '@/services/http/client'
@@ -75,6 +78,7 @@ export default {
     return {
       loading: true, error: '', submitting: false,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY(),
+      currentTermId: '', currentTermName: '', showHistory: false,
       loadSeq: 0, actionSeq: 0,
       confirm: { visible: false, title: '', message: '', type: 'danger', confirmText: '确认', requireReason: true, row: null },
       columns: [
@@ -108,16 +112,46 @@ export default {
     identityKey() {
       this.loadSeq++; this.actionSeq++
       this.confirm.visible = false; this.submitting = false; this.rows = []; this.total = 0
-      this.closeDetail(); this.load()
+      this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false
+      this.closeDetail(); this.initializeTeacherTerm().then(() => this.load())
     }
   },
-  created() { this.load() },
+  async created() {
+    await this.initializeTeacherTerm()
+    this.load()
+  },
   beforeUnmount() { this.loadSeq++; this.actionSeq++ },
   methods: {
     typeTone(t) { return { ADJUST: 'processing', STOP: 'warning', MAKEUP: 'info' }[t] || 'default' },
     statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     statusTone(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).tone || 'default' },
     cancellable(row) { return ['SUBMITTED', 'COLLEGE_REVIEW'].includes(row.status) },
+    async initializeTeacherTerm() {
+      if (!this.isAcademicTeacher || this.showHistory || this.currentTermId || this.selectedId) return
+      try {
+        const res = await academicAffairsApi.getCurrentTerm()
+        if (res?.code === 0 && res.data?.termId) {
+          this.currentTermId = String(res.data.termId)
+          this.currentTermName = res.data.termName || res.data.name || res.data.termCode || this.currentTermId
+          this.filters.termId = this.currentTermId
+        } else {
+          this.error = res?.message || '当前学期尚未设置'
+        }
+      } catch (error) {
+        this.error = error?.message || '当前学期读取失败'
+      }
+    },
+    async toggleHistory() {
+      if (!this.isAcademicTeacher || this.loading || this.selectedId) return
+      this.showHistory = !this.showHistory
+      this.filters = EMPTY()
+      this.page = 1
+      if (!this.showHistory) {
+        await this.initializeTeacherTerm()
+        if (this.currentTermId) this.filters.termId = this.currentTermId
+      }
+      this.load()
+    },
     async load() {
       const seq = ++this.loadSeq
       const identity = this.identityKey
@@ -132,7 +166,12 @@ export default {
       finally { if (current()) this.loading = false }
     },
     search() { this.page = 1; this.load() },
-    reset() { this.filters = EMPTY(); this.page = 1; this.load() },
+    reset() {
+      this.filters = EMPTY()
+      if (this.isAcademicTeacher && !this.showHistory && this.currentTermId) this.filters.termId = this.currentTermId
+      this.page = 1
+      this.load()
+    },
     turnPage(p) { this.page = p; this.load() },
     goApply() { this.$router.push(this.isAcademicTeacher ? '/admin/academic-affairs/schedule/teacher' : '/admin/academic-affairs/schedule-change/apply') },
     goApproval() { this.$router.push('/admin/academic-affairs/schedule-change/approval') },
@@ -165,6 +204,7 @@ export default {
 @import '@/styles/module-page.css';
 .sc-actions { display: flex; gap: var(--space-2); }
 .sc-term { display: grid; gap: 6px; width: 240px; max-width: 100%; font-size: 13px; }
+.sc-term-current { width:max-content; max-width:100%; padding:8px 12px; border-radius:8px; background:var(--pri-bg,#eef5ff); color:var(--t2,#52647a); font-size:12px; }
 .sc-ledger-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; background: var(--bg-card, #fff); }.sc-ledger-head h2 { margin: 0; font-size: 16px; }.sc-ledger-head p { margin: 5px 0 0; color: var(--t2, #52647a); font-size: 12px; }.sc-ledger-head > span { color: var(--t2, #52647a); font-size: 12px; white-space: nowrap; }
 .sc-slot { font-size: 12px; color: var(--t2, #475569); }
 .sc-slot--to { color: var(--pri, #2563eb); font-weight: 600; }

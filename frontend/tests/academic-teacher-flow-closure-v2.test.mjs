@@ -267,3 +267,13 @@ test('teacher V3 successful handoffs return directly to Today waiting tab', () =
     assert.match(source, /\/admin\/academic-affairs\/teacher\/today\?work=waiting/)
   }
 })
+
+
+test('teacher V3 schedule-change ledger defaults current term and keeps history separate', () => {
+  const source = src('modules/academicAffairs/views/AaScheduleChangeLedgerView.vue')
+  assert.match(source, /initializeTeacherTerm/)
+  assert.match(source, /filters\.termId = this\.currentTermId/)
+  assert.match(source, /历史记录/)
+  assert.match(source, /返回当前学期/)
+  assert.match(source, /selectedId/)
+})
