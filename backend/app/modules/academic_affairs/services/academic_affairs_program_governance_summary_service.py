@@ -181,14 +181,22 @@ def program_governance_summary(user) -> dict:
     )
 
     with session() as db:
-        scope = governance._scope(user, db)
-        tenant_all = str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL"
-        allowed_major_ids = governance._allowed_major_ids(db, scope)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        teacher_read = role == "ACADEMIC_TEACHER"
+        if teacher_read:
+            tenant_all = True
+            allowed_major_ids = set()
+        else:
+            scope = governance._scope(user, db)
+            tenant_all = str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL"
+            allowed_major_ids = governance._allowed_major_ids(db, scope)
 
         program_query = db.query(AaProgram).filter(
             AaProgram.tenant_id == _tid(),
             AaProgram.is_deleted.is_(False),
         )
+        if teacher_read:
+            program_query = program_query.filter(AaProgram.status.in_(sorted(governance._ACTIVE_PROGRAM_STATUSES)))
         if not tenant_all:
             if not allowed_major_ids:
                 return _empty_summary()
