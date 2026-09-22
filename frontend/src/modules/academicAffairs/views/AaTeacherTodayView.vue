@@ -134,7 +134,7 @@ export default {
       const textbook = this.attentionTextbookRows[0]
       if (textbook) rows.push({ key: `textbook-${textbook.selectionId}`, title: `教材选用${textbook.status === 'RETURNED' ? '被退回' : '待提交'}`, note: textbook.courseName || `申报 ${textbook.selectionId}`, action: '去处理', path: '/admin/academic-affairs/textbooks?tab=selection' })
       const booking = this.pendingBookings[0]
-      if (booking) rows.push({ key: `booking-${booking.bookingId}`, title: '教学资源预约待审核', note: [booking.classroomText || booking.labText, booking.bookingDate, booking.slotNo ? `第${booking.slotNo}节` : ''].filter(Boolean).join(' · '), action: '查看', path: booking.labText ? '/admin/academic-affairs/resources/labs/bookings' : '/admin/academic-affairs/classrooms/bookings' })
+      if (booking) rows.push({ key: `booking-${booking.bookingId}`, title: '教学资源预约待审核', note: [booking.classroomText || booking.labText, booking.bookingDate, booking.slotNo ? `第${booking.slotNo}节` : ''].filter(Boolean).join(' · '), action: '查看', path: booking.labText ? '/admin/academic-affairs/resources/lab-bookings' : '/admin/academic-affairs/classroom-bookings' })
       const change = this.pendingChangeRows[0]
       if (change && rows.length < 5) rows.push({ key: `change-${change.changeId}`, title: `调停课申请：${change.courseName || '课程'}`, note: change.statusLabel || change.status || '审核中', action: '查看进度', path: '/admin/academic-affairs/schedule-change' })
       return rows.slice(0, 5)
