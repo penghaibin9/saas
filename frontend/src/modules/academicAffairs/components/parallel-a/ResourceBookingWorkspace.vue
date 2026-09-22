@@ -1,5 +1,8 @@
 <template>
-  <ModulePageShell :title="`${label}预约`" subtitle="核对日期、资源与占用来源后申请，办理后查询正式预约记录。">
+  <ModulePageShell
+    :title="`${isAcademicTeacher ? '我的' : ''}${label}预约`"
+    :subtitle="isAcademicTeacher ? '核对空闲资源后提交申请；下方台账只显示本人预约及正式审核状态。' : '核对日期、资源与占用来源后申请，办理后查询正式预约记录。'"
+  >
     <template #actions><AppButton v-if="$route.query.returnToken" :disabled="saving" @click="goBack">返回原位置</AppButton><AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton></template>
     <AaOperationReceipt :receipt="receipt" />
     <AppButton v-if="pending" :disabled="saving" @click="queryPending">查询办理结果</AppButton>
@@ -16,7 +19,7 @@
         <div class="booking-pager"><AppButton :disabled="resourcePage <= 1" @click="turnPage('resourcePage', -1)">上一页资源</AppButton><span>第 {{ resourcePage }} 页 · 每页5项</span><AppButton :disabled="resourcePage * 5 >= resourceTotal" @click="turnPage('resourcePage', 1)">下一页资源</AppButton></div>
       </section>
       <section class="booking-card">
-        <header><h2>当日预约记录</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
+        <header><h2>{{ isAcademicTeacher ? '我的当日预约' : '当日预约记录' }}</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
         <DataTable v-if="rows.length" :columns="columns" :rows="rows" row-key="bookingId">
           <template #cell-resource="{ row }">{{ row[textKey] }}<small>#{{ row.bookingId }}</small></template>
           <template #cell-slot="{ row }">{{ row.bookingDate }} 第{{ row.slotNo }}节</template>
@@ -60,6 +63,7 @@ export default {
   data() { return { date: today(), loading: true, error: '', rows: [], resources: [], occupancy: [], occupancyNote: '', page: 1, total: 0, resourcePage: 1, resourceTotal: 0, filterStatus: '', disposed: false, saving: false, bookVisible: false, form: {}, formError: '', review: { visible: false, row: null, action: '', reason: '', error: '', token: 0 }, evidence: { visible: false, items: [], note: '' }, receipt: null, pending: null, loadGate: null, activeIdentity: '', operationSerial: 0, routeWriting: false, routeWriteSeq: 0, recoveryError: '',
     statusOptions: [{ label: '全部状态', value: '' }, ...Object.entries(labels).map(([value, label]) => ({ value, label }))], columns: [{ key: 'resource', title: '资源 / 预约编号' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'actions', title: '办理' }] } },
   computed: {
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
     label() { return this.kind === 'CLASSROOM' ? '教室' : '实训室' }, idKey() { return this.kind === 'CLASSROOM' ? 'classroomId' : 'labId' }, textKey() { return this.kind === 'CLASSROOM' ? 'classroomText' : 'labText' },
     api() { return this.kind === 'CLASSROOM' ? academicAffairsClassroomBookingApi : academicAffairsLabBookingApi },
     canReview() { return matchPermission(this.ctx.permissionPatterns || [], `academicAffairs.${this.kind === 'CLASSROOM' ? 'classroom' : 'lab'}.update`) },
