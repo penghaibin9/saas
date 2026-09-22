@@ -17,7 +17,7 @@ const layoutRoute = {
   meta: { moduleCode: MOD },
   children: [
     // ── W1 骨架与时间轴 ──
-    { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: meta('academicAffairs.dashboard.view', '教务看板') },
+    { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: { ...meta(null, '教务看板'), permissionAny: ['academicAffairs.dashboard.view', 'academicAffairs.schedule.view'] } },
     // 普通任课教师日常首屏：沿用公共壳，仅使用本人正式教学事实，不复用全校 dashboard 权限。
     { path: 'teacher/today', name: 'aa-teacher-today', component: () => import('@/modules/academicAffairs/views/AaTeacherTodayView.vue'), meta: meta('academicAffairs.schedule.view', '今日教学') },
     { path: 'terms', name: 'aa-terms', component: () => import('@/modules/academicAffairs/views/AaTermListView.vue'), meta: meta('academicAffairs.term.view', '学年学期') },
