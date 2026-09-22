@@ -281,11 +281,11 @@ def create_selection(user, body):
         active = db.query(AaTextbookSelection).filter(
             AaTextbookSelection.tenant_id == _legacy._tid(),
             AaTextbookSelection.task_id == task.id,
-            AaTextbookSelection.status.notin_(["RETURNED", "ORDERED"]),
+            AaTextbookSelection.status.notin_(["ORDERED"]),
             AaTextbookSelection.is_deleted.is_(False),
         ).first()
         if active:
-            raise _legacy._conflict("该教学任务已有未终结的教材选用")
+            raise _legacy._conflict("该教学任务已有教材选用，请修改原申报或等待当前流程结束")
         keys = _derive_keys(user)
         row = AaTextbookSelection(
             tenant_id=_legacy._tid(),

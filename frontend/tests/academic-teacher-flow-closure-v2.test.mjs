@@ -242,3 +242,13 @@ test('teacher V3 returned textbook selection can be revised and resubmitted', ()
   assert.match(view, /保存修改草稿/)
   assert.match(view, /action === 'edit'/)
 })
+
+
+test('teacher V3 task confirmation defaults current term and keeps exact deep links exact', () => {
+  const source = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  assert.match(source, /ensureCurrentTerm/)
+  assert.match(source, /termId: this\.currentTermId/)
+  assert.match(source, /历史任务/)
+  assert.match(source, /taskId: this\.focusTaskId, page: 1, pageSize: 1/)
+  assert.match(source, /当前学期教学任务/)
+})

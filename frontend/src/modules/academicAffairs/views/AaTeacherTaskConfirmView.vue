@@ -8,6 +8,7 @@
   >
     <template #actions>
       <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</button>
+      <button class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(focusTaskId)" @click="toggleHistory">{{ showHistory ? '返回当前学期' : '历史任务' }}</button>
       <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="load">刷新</button>
     </template>
 
@@ -53,8 +54,8 @@
       </section>
 
       <section class="teacher-task__notice">
-        <strong>确认前请核对</strong>
-        <span>课程、教学班、周学时、授课周次和预计人数。管理端不能代替教师确认。</span>
+        <strong>{{ showHistory ? '历史教学任务' : '当前学期教学任务' }}</strong>
+        <span>{{ showHistory ? '历史任务仅供查询；默认工作队列只显示当前学期。' : `当前学期：${currentTermName || currentTermId || '待确认'}。确认前请核对课程、教学班、周学时、授课周次和预计人数。` }}</span>
       </section>
 
       <section class="teacher-task__filters">
@@ -165,6 +166,7 @@ export default {
       acting: '',
       statusFilter: 'ASSIGNED',
       keyword: '',
+      currentTermId: '', currentTermName: '', showHistory: false,
       confirmDialog: { visible: false, taskId: '', row: null },
       rejectDialog: { visible: false, taskId: '', reason: '' },
       columns: [
@@ -210,19 +212,58 @@ export default {
   },
   created() { this.load() },
   watch: {
-    ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.load() },
+    ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.load() },
     '$route.query.taskId'() { this.keyword = ''; this.load() }
   },
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,
+    async ensureCurrentTerm() {
+      if (this.showHistory || this.currentTermId) return true
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res?.code !== 0 || !res.data?.termId) {
+        this.error = res?.message || '当前学期尚未设置，无法建立教师当前任务队列'
+        return false
+      }
+      this.currentTermId = String(res.data.termId)
+      this.currentTermName = res.data.termName || res.data.name || res.data.termCode || this.currentTermId
+      return true
+    },
+    async toggleHistory() {
+      if (this.loading || this.focusTaskId) return
+      this.showHistory = !this.showHistory
+      this.statusFilter = this.showHistory ? '' : 'ASSIGNED'
+      this.keyword = ''
+      await this.load()
+    },
     async load() {
       const revision = ++this.revision, context = this.ctx
       this.loading = true
       this.error = ''
       this.rows = []
       try {
-        const res = await readTaskPages(page => academicAffairsApi.listAllTasks({ mine: true, ...page }), () => revision === this.revision && context === this.ctx && !this.disposed)
+        if (this.focusTaskId) {
+          const exact = await academicAffairsApi.listAllTasks({
+            mine: true, taskId: this.focusTaskId, page: 1, pageSize: 1
+          })
+          if (revision !== this.revision || context !== this.ctx || this.disposed) return false
+          if (exact?.code === 0) {
+            this.rows = exact.data?.list || []
+            if (!this.rows.length) this.error = '该教学任务不存在或已不在本人数据范围内'
+            return !this.error
+          }
+          this.handleFailure(exact, '教学任务读取失败')
+          return false
+        }
+        if (!(await this.ensureCurrentTerm())) return false
+        const res = await readTaskPages(
+          page => academicAffairsApi.listAllTasks({
+            mine: true,
+            ...(this.showHistory ? {} : { termId: this.currentTermId }),
+            ...page
+          }),
+          () => revision === this.revision && context === this.ctx && !this.disposed
+        )
         if (revision !== this.revision || context !== this.ctx || this.disposed) return false
         if (res?.code === 0) { this.rows = res.data.list; return true }
         this.handleFailure(res, '我的教学任务加载失败')

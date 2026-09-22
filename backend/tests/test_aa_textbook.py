@@ -176,6 +176,11 @@ def test_t4b_returned_selection_can_be_revised_and_resubmitted(client, db_mode):
         json={"action": "RETURN", "reason": "教材版次过旧需更新"}
     )
     assert returned.status_code == 200, returned.text
+    duplicate = client.post(
+        f"{BASE}/textbooks/selections", headers=admin,
+        json={"taskId": str(ids["task"]), "textbookId": str(new_book), "expectedQty": 32, "remark": "不应另起新单"}
+    )
+    assert duplicate.status_code == 409
 
     revised = client.put(
         f"{BASE}/textbooks/selections/{sid}", headers=admin,

@@ -147,10 +147,10 @@ def create_selection(user, body):
             raise not_found("教材不存在")
         active = db.query(AaTextbookSelection).filter(
             AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.task_id == task_id,
-            AaTextbookSelection.status.notin_(["RETURNED", "ORDERED"]),
+            AaTextbookSelection.status.notin_(["ORDERED"]),
             AaTextbookSelection.is_deleted.is_(False)).first()
         if active:
-            raise _conflict("该教学任务已有未终结的教材选用")
+            raise _conflict("该教学任务已有教材选用，请修改原申报或等待当前流程结束")
         ttb = db.query(AaTeachingTaskBatch).filter(AaTeachingTaskBatch.id == tt.batch_id,
                                                    AaTeachingTaskBatch.tenant_id == _tid()).first()
         from app.core.affairs_security import _derive_keys
