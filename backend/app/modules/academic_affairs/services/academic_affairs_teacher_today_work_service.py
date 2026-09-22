@@ -154,7 +154,9 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         return {"actionItems": [], "waitingItems": [], "counts": {"actions": 0, "waiting": 0}, "termId": None}
 
     keys = sorted(_user_keys(user))
-    relation = teacher_authority.relation_scope(db, user, term_id=int(term_id))
+    relation = teacher_authority.relation_scope(
+        db, user, term_id=int(term_id), active_week_only=False
+    )
     formal_task_ids = sorted(int(value) for value in relation.get("taskIds") or [])
     batches = db.scalars(select(AaTeachingTaskBatch).where(
         AaTeachingTaskBatch.tenant_id == _tid(),

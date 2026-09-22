@@ -27,36 +27,16 @@ _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 
 
-def _user_relation_task_ids(db, user) -> set[int]:
-    """Resolve this teacher's formal task IDs with one batch authority-week projection."""
-    from app.models import AaTeachingClass, AaTeachingClassTeacher
+def _user_relation_task_ids(db, user, *, term_id=None) -> set[int]:
+    """Resolve term-wide formal task IDs for grade responsibility.
 
-    keys = sorted(_teacher_authority.user_keys(user))
-    if not keys:
-        return set()
-    rows = db.execute(
-        select(AaTeachingClassTeacher, AaTeachingClass)
-        .join(AaTeachingClass, AaTeachingClass.id == AaTeachingClassTeacher.teaching_class_id)
-        .where(
-            AaTeachingClassTeacher.tenant_id == _core._tid(),
-            AaTeachingClassTeacher.teacher_key.in_(keys),
-            AaTeachingClassTeacher.status == "ACTIVE",
-            AaTeachingClassTeacher.is_deleted.is_(False),
-            AaTeachingClass.tenant_id == _core._tid(),
-            AaTeachingClass.status == "ACTIVE",
-            AaTeachingClass.is_deleted.is_(False),
-        )
-    ).all()
-    class_by_id = {int(teaching_class.id): teaching_class for _relation, teaching_class in rows}
-    week_by_class = _teacher_authority.class_authority_weeks(db, class_by_id.values())
-    task_ids: set[int] = set()
-    for relation, teaching_class in rows:
-        week = week_by_class.get(int(teaching_class.id))
-        if (relation.start_week is not None or relation.end_week is not None) and week is None:
-            continue
-        if _teacher_authority.relation_covers_week(relation, week):
-            task_ids.add(int(teaching_class.teaching_task_id))
-    return task_ids
+    Grade entry/review is not an occurrence action. A teacher remains responsible for a
+    course after its last teaching week, so this scope must not be clipped by today's week.
+    """
+    scope = _teacher_authority.relation_scope(
+        db, user, term_id=term_id, active_week_only=False
+    )
+    return {int(value) for value in scope.get("taskIds") or []}
 
 
 def _scope_conditions(db, user, status=None, task_id=None, term_id=None):
@@ -87,7 +67,7 @@ def _scope_conditions(db, user, status=None, task_id=None, term_id=None):
         return conditions
 
     keys = list(_teacher_authority.user_keys(user)) or ["__none__"]
-    formal_task_ids = sorted(_user_relation_task_ids(db, user))
+    formal_task_ids = sorted(_user_relation_task_ids(db, user, term_id=term_id))
     projected_class_exists = exists(
         select(AaTeachingClass.id).where(
             AaTeachingClass.tenant_id == _core._tid(),
@@ -129,7 +109,7 @@ def _base_query():
 
 
 def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
-    """Batch-project current formal teachers and authority weeks for one page."""
+    """Batch-project term-wide formal teachers for grade responsibility."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     ids = sorted({int(value) for value in teaching_task_ids if value})
@@ -152,31 +132,21 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
     relations_by_class = defaultdict(list)
     for relation in relation_rows:
         relations_by_class[int(relation.teaching_class_id)].append(relation)
-    week_by_class = _teacher_authority.class_authority_weeks(db, classes)
 
     result: dict[int, dict] = {}
     for teaching_class in classes:
-        week = week_by_class.get(int(teaching_class.id))
-        candidates = []
-        relation_error = False
-        for relation in relations_by_class.get(int(teaching_class.id), []):
-            if relation.start_week is not None or relation.end_week is not None:
-                if week is None:
-                    relation_error = True
-                    continue
-            if _teacher_authority.relation_covers_week(relation, week):
-                candidates.append(relation)
+        candidates = list(relations_by_class.get(int(teaching_class.id), []))
         candidates.sort(key=lambda row: (0 if str(row.role_type or "").upper() == "PRIMARY" else 1, int(row.id)))
         result[int(teaching_class.teaching_task_id)] = {
             "source": "TEACHING_CLASS_TEACHER",
             "teachingClassId": str(teaching_class.id),
             "teachingClassName": teaching_class.class_name,
             "teachingClassStatus": teaching_class.status,
-            "authorityWeek": week,
+            "authorityWeek": None,
             "teacherKeys": [str(row.teacher_key) for row in candidates if row.teacher_key],
             "teacherNames": [str(row.teacher_name or "") for row in candidates],
-            "authorityReady": str(teaching_class.status or "").upper() == "ACTIVE" and bool(candidates) and not relation_error,
-            "authorityError": "TASK_WEEK_UNRESOLVED" if relation_error else "",
+            "authorityReady": str(teaching_class.status or "").upper() == "ACTIVE" and bool(candidates),
+            "authorityError": "",
         }
     return result
 

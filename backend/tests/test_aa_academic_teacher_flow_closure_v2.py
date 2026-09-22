@@ -178,3 +178,16 @@ def test_teacher_v3_exact_setup_links_revalidate_teacher_task():
 def test_teacher_v3_textbook_term_filter_imports_its_join_models():
     source = _read("app/modules/academic_affairs/services/academic_affairs_textbook_service.py")
     assert "AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection" in source
+
+
+def test_teacher_v3_term_responsibilities_are_not_clipped_by_current_teaching_week():
+    authority = _read("app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py")
+    work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    grade = _read("app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py")
+    assert "active_week_only: bool = True" in authority
+    assert "if active_week_only and not relation_covers_week" in authority
+    assert "active_week_only=False" in work
+    assert "active_week_only=False" in grade
+    projection = grade[grade.index("def _formal_teacher_projection"):grade.index("def _allowed_actions")]
+    assert "class_authority_weeks" not in projection
+    assert '"authorityWeek": None' in projection
