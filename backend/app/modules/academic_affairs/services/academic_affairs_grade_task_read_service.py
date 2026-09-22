@@ -59,7 +59,7 @@ def _user_relation_task_ids(db, user) -> set[int]:
     return task_ids
 
 
-def _scope_conditions(db, user, status=None, task_id=None):
+def _scope_conditions(db, user, status=None, task_id=None, term_id=None):
     """Build canonical grade-task scope with relation-first teacher authority."""
     from app.models import AaGradeTask, AaTeachingClass, AaTeachingTask
 
@@ -71,6 +71,8 @@ def _scope_conditions(db, user, status=None, task_id=None):
         conditions.append(AaGradeTask.status == str(status).upper())
     if task_id is not None:
         conditions.append(AaGradeTask.id == int(task_id))
+    if term_id is not None:
+        conditions.append(AaGradeTask.term_id == int(term_id))
 
     role = str((user or {}).get("currentRoleCode") or "").upper()
     if role in _core._REVIEW_ROLES or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN":
@@ -215,14 +217,14 @@ def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: boo
     return actions
 
 
-def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None):
+def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None, term_id=None):
     """Return a bounded SQL page and batch-project teacher/deadline truth."""
     from app.models import AaGradeTask, AaTeachingTask
 
     page_no = max(1, int(page or 1))
     size = max(1, min(int(page_size or 20), _MAX_PAGE_SIZE))
     with _core.session() as db:
-        conditions = _scope_conditions(db, user, status, task_id)
+        conditions = _scope_conditions(db, user, status, task_id, term_id)
         total = int(
             db.scalar(
                 select(func.count(AaGradeTask.id))

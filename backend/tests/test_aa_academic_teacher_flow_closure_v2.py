@@ -133,3 +133,35 @@ def test_teacher_today_confirmation_queue_uses_assignment_owner_not_occurrence_w
     assert 'AaTeachingTask.status == "ASSIGNED"' in block
     assert 'AaTeachingTask.teacher_key.in_(keys or ["__none__"])' in block
     assert "formal_task_ids" not in block
+
+
+def test_teacher_v3_today_projects_action_and_waiting_from_current_term_facts():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    assert '"TEACHING_TASK_WAITING"' in source
+    assert '"GRADE_SETUP"' in source
+    assert '"TEXTBOOK_SETUP"' in source
+    assert 'status in {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"}' in source
+    assert '"CURRENT_TERM_FORMAL_TEACHER_FACTS"' in source
+    assert '/grade-entry?teachingTaskId=' in source
+    assert '/textbooks?tab=selection&action=create&taskId=' in source
+
+
+def test_teacher_v3_grade_and_textbook_lists_accept_current_term_filter():
+    grade = _read("app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py")
+    grade_router = _read("app/modules/academic_affairs/routers/grade_core_router.py")
+    textbook = _read("app/modules/academic_affairs/services/academic_affairs_textbook_service.py")
+    textbook_router = _read("app/modules/academic_affairs/routers/textbook_core_router.py")
+    assert "term_id=None" in grade
+    assert "AaGradeTask.term_id == int(term_id)" in grade
+    assert "termId: Optional[int] = None" in grade_router
+    assert "term_id=termId" in grade_router
+    assert "term_id=None" in textbook
+    assert "AaTeachingTaskBatch.term_id == int(term_id)" in textbook
+    assert "termId: Optional[int] = None" in textbook_router
+    assert "term_id=termId" in textbook_router
+
+
+def test_teacher_v3_exact_setup_links_revalidate_teacher_task():
+    router = _read("app/modules/academic_affairs/routers/course_program_task_router.py")
+    assert "taskId: Optional[int] = None" in router
+    assert "task_id=taskId" in router

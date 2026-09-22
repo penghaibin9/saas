@@ -13,7 +13,8 @@ test('dedicated teacher today page uses one current-term authoritative workbench
   assert.match(source, /getMyTeacherToday/)
   assert.match(source, /data\.workbench/)
   assert.match(source, /openAttendanceSession/)
-  assert.match(source, /开始\/继续点名/)
+  assert.match(source, />考勤<\/AppButton>/)
+  assert.match(source, />调课<\/AppButton>/)
   assert.doesNotMatch(source, /pageSize:\s*100/)
   assert.doesNotMatch(source, /scheduleChangeApi\.list/)
   assert.doesNotMatch(source, /mock/i)
@@ -127,4 +128,36 @@ test('teacher V3 P0 schedule ledger removes teacher review dead-end', () => {
   assert.match(ledger, /从个人课表选择课程/)
   assert.match(ledger, /academicAffairs\.scheduleChange\.academicReview/)
   assert.match(ledger, /academicAffairs\.scheduleChange\.collegeReview/)
+})
+
+
+test('teacher V3 Today preserves designed five-card layout and splits todo state inside the same card', () => {
+  const source = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
+  for (const label of ['今日课程', '待确认任务', '待录成绩', '调停课审核中', '教材/预约']) {
+    assert.match(source, new RegExp(label))
+  }
+  assert.match(source, /title="我的待办"/)
+  assert.match(source, /待我处理/)
+  assert.match(source, /办理中/)
+  assert.match(source, /workTab/)
+  assert.match(source, /firstPath/)
+})
+
+test('teacher V3 grade landing is current-term and exact-teaching-task aware', () => {
+  const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  assert.match(source, /ensureCurrentTerm/)
+  assert.match(source, /params\.termId = this\.currentTermId/)
+  assert.match(source, /prepareCreateFromTeachingTask/)
+  assert.match(source, /mine: true, termId: this\.currentTermId, taskId: id/)
+  assert.match(source, /row\.status \|\| ''\)\.toUpperCase\(\) !== 'READY'/)
+  assert.match(source, /showHistory/)
+})
+
+test('teacher V3 textbook landing defaults current term and revalidates exact task before opening drawer', () => {
+  const source = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  assert.match(source, /历史选用记录/)
+  assert.match(source, /termId: this\.currentTermId/)
+  assert.match(source, /openSelectionFromRoute/)
+  assert.match(source, /mine: true, termId: this\.currentTermId, taskId/)
+  assert.match(source, /this\.selectionForm\.taskId = taskId/)
 })

@@ -25,6 +25,10 @@
       <ErrorState v-if="taskError" :description="taskError" @retry="retryTask" />
       <LoadingState v-if="taskLoading" />
       <AppSectionCard v-if="!task" :title="importMode ? '选择成绩导入任务' : isAdminRole ? '成绩任务责任队列' : '我的录入任务'">
+        <div v-if="isAcademicTeacher" class="aa-current-term-bar">
+          <span>{{ showHistory ? '历史成绩任务' : `当前学期：${currentTermName || currentTermId || '待确认'}` }}</span>
+          <AppButton size="small" variant="ghost" :disabled="taskLoading || writeBusy" @click="toggleTaskHistory">{{ showHistory ? '返回当前学期' : '查看历史任务' }}</AppButton>
+        </div>
         <div class="aa-my-tasks">
           <ul>
             <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
@@ -358,6 +362,7 @@ export default {
         passLine: 60, adminSupplementReason: ''
       },
       creating: false, task: null, myTasks: [], showCreate: false, taskLoading: false, taskError: '',
+      currentTermId: '', currentTermName: '', showHistory: false, setupTeachingTaskId: '',
       taskSeq: 0, listSeq: 0, recordsSeq: 0, dynamicSeq: 0, alive: true, savingRowId: '',
       taskPage: 1, taskTotal: 0, rosterInfo: null, submitDialog: false, submitCommand: null, submitPending: false,
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
@@ -444,7 +449,11 @@ export default {
     schemeTotal() { return Number(this.schemeDraft.reduce((sum, item) => sum + Number(item.weight || 0), 0).toFixed(4)) }
   },
   watch: {
-    identityKey() { this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false; this.loadTasks() },
+    identityKey() {
+      this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false
+      this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.setupTeachingTaskId = ''
+      this.loadTasks()
+    },
     '$route.fullPath'() { this.invalidateTask(); this.loadTasks() }
   },
   created() { this.loadTasks() },
@@ -559,8 +568,8 @@ export default {
       if (this.writeBusy || this.submitPending) return
       this.invalidateTask(); this.dynamicMode = false; this.showCreate = false
       this.deadlineForm = { deadlineLocal: '', reason: '' }
-      if (this.$route.query.taskId) {
-        const query = { ...this.$route.query }; delete query.taskId; delete query.action; delete query.mode
+      if (this.$route.query.taskId || this.$route.query.teachingTaskId || this.$route.query.action) {
+        const query = { ...this.$route.query }; delete query.taskId; delete query.teachingTaskId; delete query.action; delete query.mode
         this.$router.replace({ path: this.$route.path, query })
       } else this.loadTasks()
     },
@@ -596,17 +605,67 @@ export default {
       this.addRow(item.raw || item)
       this.candidateStudentId = ''
     },
+    async ensureCurrentTerm() {
+      if (!this.isAcademicTeacher || this.showHistory) return true
+      if (this.currentTermId) return true
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res?.code !== 0 || !res.data?.termId) {
+        this.taskError = res?.message || '当前学期尚未设置，无法建立教师当前学期成绩队列'
+        return false
+      }
+      this.currentTermId = String(res.data.termId)
+      this.currentTermName = res.data.termName || res.data.name || res.data.termCode || this.currentTermId
+      return true
+    },
+    async toggleTaskHistory() {
+      if (this.taskLoading || this.writeBusy || !this.isAcademicTeacher) return
+      this.showHistory = !this.showHistory
+      this.taskPage = 1
+      this.myTasks = []
+      this.taskTotal = 0
+      await this.loadTasks()
+    },
+    async prepareCreateFromTeachingTask(taskId, valid) {
+      const id = String(taskId || '').trim()
+      if (!this.isAcademicTeacher || !/^[1-9]\d*$/.test(id)) return
+      if (this.setupTeachingTaskId === id && this.showCreate && this.form.teachingTaskId === id) return
+      if (!(await this.ensureCurrentTerm()) || !valid()) return
+      const res = await academicAffairsApi.listAllTasks({
+        mine: true, termId: this.currentTermId, taskId: id, page: 1, pageSize: 1
+      })
+      if (!valid()) return
+      if (res?.code !== 0) throw res
+      const row = (res.data?.list || []).find(item => String(item.taskId) === id)
+      if (!row) throw { code: 404, message: '当前学期本人教学任务不存在或已失去办理权限' }
+      if (String(row.status || '').toUpperCase() !== 'READY') {
+        throw { code: 409, message: '该教学任务尚未完成教务终审，暂不能建立成绩任务' }
+      }
+      this.setupTeachingTaskId = id
+      this.showCreate = true
+      this.form.teachingTaskId = id
+      this.onTeachingTaskChange(id, [{ raw: row }])
+    },
     async loadTasks() {
       const seq = ++this.listSeq, identity = this.identityKey
       const valid = () => this.alive && seq === this.listSeq && identity === this.identityKey
       this.taskLoading = true; this.taskError = ''
       try {
-        const res = await academicAffairsApi.getGradeTasks({ page: this.taskPage, pageSize: 20 })
+        if (!(await this.ensureCurrentTerm()) || !valid()) return
+        const params = { page: this.taskPage, pageSize: 20 }
+        if (this.isAcademicTeacher && !this.showHistory) params.termId = this.currentTermId
+        const res = await academicAffairsApi.getGradeTasks(params)
         if (!valid()) return
         if (res?.code !== 0) throw res
         this.myTasks = res.data?.list || []; this.taskTotal = res.data?.total || 0
         const taskId = this.$route.query.taskId
-        if (taskId && !this.task) await this.openTask({ gradeTaskId: taskId })
+        if (taskId && !this.task) {
+          await this.openTask({ gradeTaskId: taskId })
+          return
+        }
+        const teachingTaskId = this.$route.query.teachingTaskId
+        if (this.$route.query.action === 'create' && teachingTaskId && !this.task) {
+          await this.prepareCreateFromTeachingTask(teachingTaskId, valid)
+        }
       } catch (err) { if (valid()) this.showTaskError(err) }
       finally { if (valid()) this.taskLoading = false }
     },
@@ -998,6 +1057,7 @@ export default {
 </script>
 
 <style scoped>
+.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 @import '@/styles/module-page.css';
 .aa-task-settings { border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .aa-task-settings summary { padding: 12px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-primary); }

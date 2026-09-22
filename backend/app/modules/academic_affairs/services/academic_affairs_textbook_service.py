@@ -168,7 +168,7 @@ def create_selection(user, body):
 
 
 def _get_sel(db, sid):
-    from app.models import AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
     s = db.query(AaTextbookSelection).filter(AaTextbookSelection.id == sid, AaTextbookSelection.tenant_id == _tid()).first()
     if not s:
         raise not_found("选用记录不存在")
@@ -199,7 +199,7 @@ def withdraw_selection(user, sid):
         return {"selectionId": str(s.id), "withdrawn": True}
 
 
-def list_selections(user, status=None, page=1, page_size=50, *, selection_id=None):
+def list_selections(user, status=None, page=1, page_size=50, *, selection_id=None, term_id=None):
     """教材选用列表——数据范围下推到 SQL WHERE，不再整租户拉回内存再按学院过滤+切片。
 
     原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
@@ -214,6 +214,19 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
             conds.append(AaTextbookSelection.status == status)
         if selection_id is not None:
             conds.append(AaTextbookSelection.id == int(selection_id))
+        task_ids_for_term = None
+        if term_id is not None:
+            task_ids_for_term = db.query(AaTeachingTask.id).join(
+                AaTeachingTaskBatch,
+                AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+            ).filter(
+                AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.term_id == int(term_id),
+                AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            )
+            conds.append(AaTextbookSelection.task_id.in_(task_ids_for_term))
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role == "ACADEMIC_TEACHER":
             keys = _derive_keys(user)

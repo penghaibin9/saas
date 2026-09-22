@@ -145,8 +145,8 @@ def pending_grade_todos(db, user, *, term_id=None) -> list[dict]:
 def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_date="") -> dict:
     """One authoritative PC/miniapp work projection for the current teaching term."""
     from app.models import (
-        AaClassroomBooking, AaLabBooking, AaScheduleChange, AaTeachingTask,
-        AaTeachingTaskBatch, AaTextbookSelection,
+        AaClassroomBooking, AaGradeTask, AaLabBooking, AaScheduleChange,
+        AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection,
     )
     from . import academic_affairs_teacher_relation_authority as teacher_authority
 
@@ -164,51 +164,129 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
     batch_ids = sorted(int(row.id) for row in batches)
 
     actions, waiting = [], []
-    # Confirmation is a pre-execution responsibility owned by the assigned teacher_key.
-    # Do not clip it by the current TeachingClassTeacher occurrence week: schools commonly
-    # ask teachers to confirm future-week assignments before those relations are executable.
-    task_conditions = [
+    batch_by_id = {int(row.id): row for row in batches}
+
+    # Teaching-task confirmation and its post-confirm waiting state live in one projection.
+    # Assignment ownership is teacher_key based because confirmation happens before the
+    # occurrence-week authority becomes executable.
+    teacher_tasks = db.scalars(select(AaTeachingTask).where(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [-1]),
-        AaTeachingTask.status == "ASSIGNED",
         AaTeachingTask.teacher_key.in_(keys or ["__none__"]),
+        AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "READY"]),
         AaTeachingTask.is_deleted.is_(False),
-    ]
-    teaching_tasks = db.scalars(select(AaTeachingTask).where(*task_conditions).order_by(AaTeachingTask.id)).all()
-    for row in teaching_tasks:
-        actions.append({
-            "kind": "TEACHING_TASK", "id": str(row.id),
-            "title": f"确认《{row.course_name or '教学任务'}》",
-            "note": " · ".join(value for value in (row.class_name, row.teaching_class_name, "学院已分配") if value),
-            "action": "去确认", "primary": True,
-            "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
-        })
+    ).order_by(AaTeachingTask.id)).all()
+    task_by_id = {int(row.id): row for row in teacher_tasks}
 
-    grade_todos = pending_grade_todos(db, user, term_id=int(term_id))
-    for row in grade_todos:
+    for row in teacher_tasks:
+        if row.status == "ASSIGNED":
+            actions.append({
+                "kind": "TEACHING_TASK", "id": str(row.id),
+                "title": f"确认《{row.course_name or '教学任务'}》",
+                "note": " · ".join(value for value in (row.class_name, row.teaching_class_name, "学院已分配") if value),
+                "action": "去确认", "primary": True,
+                "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
+            })
+        elif row.status == "TEACHER_CONFIRMED":
+            batch_status = str(getattr(batch_by_id.get(int(row.batch_id)), "status", "") or "").upper()
+            note = {
+                "COLLEGE_CONFIRMED": "学院已核对 · 等待教务终审",
+                "RETURNED": "教务已退回学院 · 等待重新核对",
+            }.get(batch_status, "本人已确认 · 等待学院核对")
+            waiting.append({
+                "kind": "TEACHING_TASK_WAITING", "id": str(row.id),
+                "title": f"《{row.course_name or '教学任务'}》已确认",
+                "note": note, "action": "查看进度",
+                "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
+            })
+
+    # Grade responsibility is projected directly from the current-term formal tasks.
+    # UnifiedTodo remains a notification mechanism, not the sole source of UI truth.
+    grade_rows = db.scalars(select(AaGradeTask).where(
+        AaGradeTask.tenant_id == _tid(),
+        AaGradeTask.term_id == int(term_id),
+        AaGradeTask.teaching_task_id.in_(formal_task_ids or [-1]),
+        AaGradeTask.is_deleted.is_(False),
+    ).order_by(AaGradeTask.id.desc())).all()
+    grade_by_teaching_task = {
+        int(row.teaching_task_id): row
+        for row in grade_rows if row.teaching_task_id
+    }
+    for row in grade_rows:
+        status = str(row.status or "").upper()
+        item = {
+            "kind": "GRADE", "id": str(row.id),
+            "title": f"录入《{row.course_name or '课程'}》成绩",
+            "path": f"/admin/academic-affairs/grade-entry?taskId={row.id}",
+        }
+        if status in {"NOT_STARTED", "INPUTTING", "RETURNED"}:
+            item.update({
+                "note": (
+                    f"已退回：{row.return_reason}" if status == "RETURNED" and row.return_reason
+                    else "录入中，请完成正式名单成绩" if status == "INPUTTING"
+                    else "成绩任务已建立，等待开始录入"
+                ),
+                "action": "继续" if status != "NOT_STARTED" else "开始录入",
+            })
+            actions.append(item)
+        elif status in {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"}:
+            item.update({
+                "note": {
+                    "SUBMITTED": "已提交 · 等待学院审核",
+                    "COLLEGE_REVIEW": "学院审核中",
+                    "ACADEMIC_REVIEW": "学院已通过 · 等待教务终审",
+                }.get(status, "审核中"),
+                "action": "查看进度",
+            })
+            waiting.append(item)
+
+    for task_id in formal_task_ids:
+        task = task_by_id.get(int(task_id))
+        if not task or str(task.status or "").upper() != "READY" or int(task_id) in grade_by_teaching_task:
+            continue
         actions.append({
-            "kind": "GRADE", "id": row["gradeTaskId"], "title": row["title"],
-            "note": "当前学期成绩任务", "action": "继续录入", "path": row["pcRoute"],
+            "kind": "GRADE_SETUP", "id": str(task.id),
+            "title": f"开始《{task.course_name or '课程'}》成绩录入",
+            "note": f"{task.teaching_class_name or task.class_name or '正式教学班'} · 尚未建立成绩任务",
+            "action": "开始录入",
+            "path": f"/admin/academic-affairs/grade-entry?teachingTaskId={task.id}&action=create",
         })
 
     if formal_task_ids:
         selections = db.scalars(select(AaTextbookSelection).where(
             AaTextbookSelection.tenant_id == _tid(),
             AaTextbookSelection.task_id.in_(formal_task_ids),
-            AaTextbookSelection.status.in_(["DRAFT", "RETURNED", "SUBMITTED", "REVIEWING"]),
             AaTextbookSelection.is_deleted.is_(False),
         ).order_by(AaTextbookSelection.id.desc())).all()
+        selection_task_ids = {int(row.task_id) for row in selections if row.task_id}
         for row in selections:
+            status = str(row.status or "").upper()
+            if status not in {"DRAFT", "RETURNED", "SUBMITTED", "REVIEWING"}:
+                continue
             item = {
                 "kind": "TEXTBOOK", "id": str(row.id),
                 "title": f"教材选用：{row.course_name or '课程'}",
-                "note": "已退回，请修订后重提" if row.status == "RETURNED" else (
-                    "草稿待提交" if row.status == "DRAFT" else "已提交，等待审核"
+                "note": "已退回，请修订后重提" if status == "RETURNED" else (
+                    "草稿待提交" if status == "DRAFT" else "已提交，等待审核"
                 ),
-                "action": "去处理" if row.status in {"DRAFT", "RETURNED"} else "查看进度",
+                "action": "去处理" if status in {"DRAFT", "RETURNED"} else "查看进度",
                 "path": f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}",
             }
-            (actions if row.status in {"DRAFT", "RETURNED"} else waiting).append(item)
+            (actions if status in {"DRAFT", "RETURNED"} else waiting).append(item)
+
+        # The textbook domain has no explicit NO_TEXTBOOK decision state yet. Surface the
+        # missing decision as a neutral "登记" action rather than pretending it is an error.
+        for task_id in formal_task_ids:
+            task = task_by_id.get(int(task_id))
+            if not task or str(task.status or "").upper() != "READY" or int(task_id) in selection_task_ids:
+                continue
+            actions.append({
+                "kind": "TEXTBOOK_SETUP", "id": str(task.id),
+                "title": f"登记《{task.course_name or '课程'}》教材选用",
+                "note": "当前学期尚无教材选用记录",
+                "action": "去登记",
+                "path": f"/admin/academic-affairs/textbooks?tab=selection&action=create&taskId={task.id}",
+            })
 
     if keys:
         changes = db.scalars(select(AaScheduleChange).where(
@@ -256,8 +334,8 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
     counts = {
         "actions": len(actions), "waiting": len(waiting),
         "teachingTasks": sum(1 for row in actions if row["kind"] == "TEACHING_TASK"),
-        "grades": sum(1 for row in actions if row["kind"] == "GRADE"),
-        "textbooks": sum(1 for row in actions if row["kind"] == "TEXTBOOK"),
+        "grades": sum(1 for row in actions if row["kind"] in {"GRADE", "GRADE_SETUP"}),
+        "textbooks": sum(1 for row in actions + waiting if row["kind"] in {"TEXTBOOK", "TEXTBOOK_SETUP"}),
         "scheduleChanges": sum(1 for row in waiting if row["kind"] == "SCHEDULE_CHANGE"),
         "bookings": sum(1 for row in waiting if row["kind"] in {"CLASSROOM_BOOKING", "LAB_BOOKING"}),
     }

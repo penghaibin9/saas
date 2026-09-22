@@ -42,9 +42,9 @@
               <span>{{ item.className || item.teachingClassName || '教学班待核对' }} · {{ item.classroom || '教室待定' }}</span>
             </div>
             <div class="aat-course-actions">
-              <AppButton v-if="item.attendanceExecutable" size="small" :loading="attendanceOpeningId === String(item.scheduleItemId)" @click="openAttendance(item)">开始/继续点名</AppButton>
+              <AppButton v-if="item.attendanceExecutable" size="small" :loading="attendanceOpeningId === String(item.scheduleItemId)" @click="openAttendance(item)">考勤</AppButton>
               <AppButton v-else size="small" @click="go('/admin/academic-affairs/attendance-stats?panel=sessions')">考勤查询</AppButton>
-              <AppButton size="small" variant="primary" @click="applyChange(item)">调停课</AppButton>
+              <AppButton size="small" variant="primary" @click="applyChange(item)">调课</AppButton>
             </div>
           </article>
         </div>
@@ -52,26 +52,31 @@
         <p class="aat-footnote">PC 与教师移动端共用同一课堂考勤场次、正式名单、提交状态和预警写链，不再存在第二套点名事实。</p>
       </AppSectionCard>
 
-      <AppSectionCard title="我的教学工作">
+      <AppSectionCard title="我的待办">
         <LoadingState v-if="loading && !loadedOnce" />
         <template v-else>
-          <div class="aat-card-head"><strong>我需要处理</strong><small>{{ actionItems.length }} 项</small></div>
-          <template v-if="actionItems.length">
-            <div v-for="item in actionItems.slice(0, 6)" :key="`action-${item.kind}-${item.id}`" class="aat-todo">
-              <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
-              <AppButton size="small" :variant="item.primary ? 'primary' : 'default'" @click="go(item.path)">{{ item.action || '去处理' }}</AppButton>
-            </div>
+          <div class="aat-work-tabs" role="tablist" aria-label="我的待办状态">
+            <button type="button" :class="{ active: workTab === 'actions' }" @click="workTab = 'actions'">待我处理 <b>{{ actionItems.length }}</b></button>
+            <button type="button" :class="{ active: workTab === 'waiting' }" @click="workTab = 'waiting'">办理中 <b>{{ waitingItems.length }}</b></button>
+          </div>
+          <template v-if="workTab === 'actions'">
+            <template v-if="actionItems.length">
+              <div v-for="item in actionItems.slice(0, 7)" :key="`action-${item.kind}-${item.id}`" class="aat-todo">
+                <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
+                <AppButton size="small" :variant="item.primary ? 'primary' : 'default'" @click="go(item.path)">{{ item.action || '去处理' }}</AppButton>
+              </div>
+            </template>
+            <EmptyState v-else title="当前没有需要本人处理的事项" description="当前学期需要您本人办理的任务已经处理完。" />
           </template>
-          <EmptyState v-else title="当前没有需要本人处理的事项" description="教学任务、成绩和教材办理均已核对当前学期与本人正式任课关系。" />
-
-          <div class="aat-card-head aat-waiting-head"><strong>办理中 / 等待他人</strong><small>{{ waitingItems.length }} 项</small></div>
-          <template v-if="waitingItems.length">
-            <div v-for="item in waitingItems.slice(0, 5)" :key="`waiting-${item.kind}-${item.id}`" class="aat-todo">
-              <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
-              <AppButton size="small" @click="go(item.path)">{{ item.action || '查看进度' }}</AppButton>
-            </div>
+          <template v-else>
+            <template v-if="waitingItems.length">
+              <div v-for="item in waitingItems.slice(0, 7)" :key="`waiting-${item.kind}-${item.id}`" class="aat-todo">
+                <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
+                <AppButton size="small" @click="go(item.path)">{{ item.action || '查看进度' }}</AppButton>
+              </div>
+            </template>
+            <EmptyState v-else title="当前没有办理中事项" description="提交学院、教务或资源管理员的事项会在这里持续显示进度。" />
           </template>
-          <p v-else class="aat-footnote">当前没有等待学院、教务或资源管理员办理的事项。</p>
         </template>
       </AppSectionCard>
     </div>
@@ -97,7 +102,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '',
+      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '', workTab: 'actions',
       todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '',
       workbench: EMPTY_WORKBENCH()
     }
@@ -114,12 +119,13 @@ export default {
     },
     metrics() {
       const c = this.workbench?.counts || {}
+      const firstPath = kinds => [...this.actionItems, ...this.waitingItems].find(item => kinds.includes(item.kind))?.path
       return [
         { key: 'today', label: '今日课程', value: this.todayError ? null : this.todayItems.length, unit: '节', path: '/admin/academic-affairs/schedule/teacher' },
-        { key: 'action', label: '需要我处理', value: Number(c.actions || 0), unit: '项', path: '/admin/academic-affairs/teacher/today' },
-        { key: 'task', label: '待确认任务', value: Number(c.teachingTasks || 0), unit: '项', path: '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
-        { key: 'grade', label: '待录成绩', value: Number(c.grades || 0), unit: '门', path: '/admin/academic-affairs/grade-entry' },
-        { key: 'waiting', label: '办理中', value: Number(c.waiting || 0), unit: '项', path: '/admin/academic-affairs/teacher/today' }
+        { key: 'task', label: '待确认任务', value: Number(c.teachingTasks || 0), unit: '项', path: firstPath(['TEACHING_TASK']) || '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
+        { key: 'grade', label: '待录成绩', value: Number(c.grades || 0), unit: '门', path: firstPath(['GRADE', 'GRADE_SETUP']) || '/admin/academic-affairs/grade-entry' },
+        { key: 'change', label: '调停课审核中', value: Number(c.scheduleChanges || 0), unit: '条', path: firstPath(['SCHEDULE_CHANGE']) || '/admin/academic-affairs/schedule-change' },
+        { key: 'materials', label: '教材/预约', value: Number(c.textbooks || 0) + Number(c.bookings || 0), unit: '项', path: firstPath(['TEXTBOOK', 'TEXTBOOK_SETUP', 'CLASSROOM_BOOKING', 'LAB_BOOKING']) || '/admin/academic-affairs/textbooks?tab=selection' }
       ]
     }
   },
@@ -200,6 +206,10 @@ export default {
 .aat-todo strong,.aat-todo span { display:block; }
 .aat-todo strong { color:var(--text-primary); font-size:12px; }
 .aat-todo span { margin-top:3px; color:var(--text-secondary); font-size:11px; }
+.aat-work-tabs { display:flex; gap:6px; padding:0 0 10px; border-bottom:1px solid var(--border-base); margin-bottom:4px; }
+.aat-work-tabs button { border:0; border-radius:7px; padding:7px 10px; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:12px; }
+.aat-work-tabs button.active { background:var(--pri-bg); color:var(--pri); font-weight:600; }
+.aat-work-tabs b { margin-left:4px; font-size:11px; }
 .aat-waiting-head { margin-top:16px; padding-top:14px; border-top:1px solid var(--border-base); }
 .aat-footnote { margin:12px 0 0; color:var(--text-tertiary); font-size:11px; line-height:1.6; }
 @container academic-body (max-width:1000px) { .aat-metrics{grid-template-columns:repeat(3,minmax(120px,1fr))}.aat-grid{grid-template-columns:1fr} }

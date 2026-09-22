@@ -78,11 +78,12 @@ class GradeDeadlineBody(BaseModel):
 def grade_tasks(
     status: Optional[str] = None,
     taskId: Optional[int] = None,
+    termId: Optional[int] = None,
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
 ):
-    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize, task_id=taskId)
+    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize, task_id=taskId, term_id=termId)
     return success(paginate(items, total, page, pageSize))
 
 
