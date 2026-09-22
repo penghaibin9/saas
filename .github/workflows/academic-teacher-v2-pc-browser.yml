@@ -120,6 +120,9 @@ jobs:
         working-directory: backend
         run: |
           python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
 
       - name: Start staff PC
         run: |
