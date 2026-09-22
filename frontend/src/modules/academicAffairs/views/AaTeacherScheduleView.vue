@@ -170,7 +170,11 @@ export default {
       }
       this.$router.push({
         path: '/admin/academic-affairs/schedule-change/apply',
-        query: { originItemId: String(originItemId), changeType }
+        query: {
+          originItemId: String(originItemId),
+          changeType,
+          occurrenceWeek: String(this.week || this.todayWeek || this.selectedItem?.weekNo || '')
+        }
       })
     },
     async loadSlots() {

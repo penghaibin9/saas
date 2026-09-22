@@ -76,6 +76,12 @@
           <AppQuickPhrases scene-key="aa.schedchg.reason" @pick="onPickReason" />
         </div>
 
+        <div v-if="form.changeType === 'STOP'" class="sc-fld sc-fld--full">
+          <label class="sc-lbl">停课教学周 <i>*</i></label>
+          <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="请选择只停哪一周" />
+          <small>只停这一周的该课次；其余周次仍保留在正式课表。</small>
+        </div>
+
         <template v-if="form.changeType !== 'STOP'">
           <div class="sc-fld">
             <label class="sc-lbl">目标星期 <i>*</i></label>
@@ -85,18 +91,24 @@
             <label class="sc-lbl">目标节次 <i>*</i></label>
             <input class="sc-in" type="number" min="1" v-model.number="form.targetSlotNo" />
           </div>
-          <div class="sc-fld">
-            <label class="sc-lbl">起始周</label>
-            <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="默认沿用原课位" />
+          <div v-if="form.changeType === 'MAKEUP'" class="sc-fld sc-fld--full">
+            <label class="sc-lbl">补课教学周 <i>*</i></label>
+            <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="补课只新增这一周的一次课" />
           </div>
-          <div class="sc-fld">
-            <label class="sc-lbl">结束周</label>
-            <input class="sc-in" type="number" min="1" v-model.number="form.targetEndWeek" placeholder="默认沿用原课位" />
-          </div>
-          <div class="sc-fld">
-            <label class="sc-lbl">单双周</label>
-            <AppSelect v-model="form.targetWeekParity" :options="weekParityOptions" placeholder="沿用原课位" />
-          </div>
+          <template v-else>
+            <div class="sc-fld">
+              <label class="sc-lbl">起始周</label>
+              <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="默认沿用原课位" />
+            </div>
+            <div class="sc-fld">
+              <label class="sc-lbl">结束周</label>
+              <input class="sc-in" type="number" min="1" v-model.number="form.targetEndWeek" placeholder="默认沿用原课位" />
+            </div>
+            <div class="sc-fld">
+              <label class="sc-lbl">单双周</label>
+              <AppSelect v-model="form.targetWeekParity" :options="weekParityOptions" placeholder="沿用原课位" />
+            </div>
+          </template>
           <div class="sc-fld">
             <label class="sc-lbl">目标教室</label>
             <input class="sc-in" v-model.trim="form.targetClassroom" placeholder="默认沿用原教室" />
@@ -276,9 +288,19 @@ export default {
         return
       }
       this.origin = res.data
-      this.form.targetStartWeek = res.data.startWeek || null
-      this.form.targetEndWeek = res.data.endWeek || null
-      this.form.targetWeekParity = res.data.weekParity || 'ALL'
+      const requestedWeek = Number(this.$route?.query?.occurrenceWeek || 0)
+      const singleWeek = requestedWeek >= Number(res.data.startWeek || 0) && requestedWeek <= Number(res.data.endWeek || 0)
+        ? requestedWeek
+        : (Number(res.data.startWeek) === Number(res.data.endWeek) ? Number(res.data.startWeek) : null)
+      if (this.form.changeType === 'ADJUST') {
+        this.form.targetStartWeek = res.data.startWeek || null
+        this.form.targetEndWeek = res.data.endWeek || null
+        this.form.targetWeekParity = res.data.weekParity || 'ALL'
+      } else {
+        this.form.targetStartWeek = singleWeek
+        this.form.targetEndWeek = singleWeek
+        this.form.targetWeekParity = this.form.changeType === 'MAKEUP' ? 'ALL' : (res.data.weekParity || 'ALL')
+      }
       this.form.targetClassroom = res.data.classroom || ''
       } catch (e) {
         if (current()) this.originError = e?.message || '原课位加载失败，请重试'
@@ -296,7 +318,14 @@ export default {
       this.form.makeupPlan = value
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
+    normalizeOccurrenceFields() {
+      if (!['STOP', 'MAKEUP'].includes(this.form.changeType)) return
+      const week = Number(this.form.targetStartWeek || 0)
+      this.form.targetEndWeek = week > 0 ? week : null
+      this.form.targetWeekParity = this.form.changeType === 'MAKEUP' ? 'ALL' : (this.origin?.weekParity || 'ALL')
+    },
     async checkConflict() {
+      this.normalizeOccurrenceFields()
       if (!this.canCheckConflict) return
       const seq = ++this.conflictSeq
       const key = this.conflictKey
@@ -322,9 +351,11 @@ export default {
       } finally { if (seq === this.conflictSeq) this.checkingConflict = false }
     },
     validate() {
+      this.normalizeOccurrenceFields()
       if (!this.form.originItemId || !this.origin) return '请从本人课表重新选择要变更的课位'
       if (!this.form.reason || this.form.reason.length < 5) return '原因必填且不少于 5 字'
       if (this.form.changeType !== 'STOP' && (!this.form.targetWeekday || !this.form.targetSlotNo)) return '调课/补课须填写目标星期与节次'
+      if (['STOP', 'MAKEUP'].includes(this.form.changeType) && !Number(this.form.targetStartWeek || 0)) return this.form.changeType === 'STOP' ? '请选择具体停课教学周' : '请选择具体补课教学周'
       if (this.form.changeType === 'STOP' && !this.form.makeupPlan) return '停课须填写补课/后续安排'
       return ''
     },
@@ -348,10 +379,10 @@ export default {
         // Persist before sending so reload/back navigation cannot silently enable another POST.
         try { markUnconfirmedWrite(operationKey, marker) }
         catch { this.err = '无法保存提交核对记录，本次尚未发送，请恢复浏览器存储后重试'; return }
+        this.normalizeOccurrenceFields()
         const body = { ...this.form }
         if (body.changeType === 'STOP') {
-          delete body.targetWeekday; delete body.targetSlotNo; delete body.targetStartWeek
-          delete body.targetEndWeek; delete body.targetWeekParity; delete body.targetClassroom
+          delete body.targetWeekday; delete body.targetSlotNo; delete body.targetClassroom
         }
         if (!body.targetWeekParity) delete body.targetWeekParity
         const res = await scheduleChangeApi.submit(body)
