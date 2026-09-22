@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
-    title="教师课表"
-    subtitle="按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师"
+:title="isAcademicTeacher ? '个人课表' : '教师课表'"
+    :subtitle="isAcademicTeacher ? '进入即显示本人正式课表；调课、停课、补课从具体课位发起' : '按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -19,11 +19,12 @@
         next-owner="任课教师；调整须进入调停课审批"
       />
       <div class="aa-filter">
-        <label class="aa-filter__item aa-filter__item--grow">
+        <label v-if="!isAcademicTeacher" class="aa-filter__item aa-filter__item--grow">
           教师
           <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
         </label>
-        <AppButton v-if="selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
+        <span v-else class="mp-note">当前对象：本人正式任课关系</span>
+        <AppButton v-if="!isAcademicTeacher && selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
         <label class="aa-filter__item">
           学期
           <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
@@ -119,9 +120,16 @@ export default {
   },
   created() {
     this.loadSlots()
-    if (this.teacherKey) this.load()
+    if (this.isAcademicTeacher && this.selfKey) {
+      this.teacherKey = this.selfKey
+      this.teacherName = '本人'
+      this.load()
+    } else if (this.teacherKey) this.load()
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     isSelfView() { return this.isSameTeacherKey(this.teacherKey) },
     todayNote() {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
@@ -196,7 +204,10 @@ export default {
         this.todayDate = todayRes?.code === 0 ? (todayRes.data.todayDate || '') : ''
         this.todayWeek = todayRes?.code === 0 ? (todayRes.data.currentWeek ?? null) : null
         this.calendarSource = todayRes?.code === 0 ? (todayRes.data.calendarSource || '') : ''
-        this.$router.replace(`/admin/academic-affairs/schedule/teacher/${this.teacherKey}`).catch(() => {})
+        this.$router.replace({
+          path: `/admin/academic-affairs/schedule/teacher/${this.teacherKey}`,
+          query: { ...this.$route.query }
+        }).catch(() => {})
       } else {
         this.error = res.message
         this.items = []
