@@ -99,7 +99,7 @@ test('teacher workbench deep-links exact business objects', () => {
 test('teacher V3 P0 keeps schedule changes occurrence-first', () => {
   const schedule = src('modules/academicAffairs/views/AaTeacherScheduleView.vue')
   const apply = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
-  assert.match(schedule, /occurrenceWeek: String\(this\.week \|\| this\.selectedItem\?\.weekNo \|\| ''\)/)
+  assert.match(schedule, /occurrenceWeek: String\(this\.selectedOccurrenceWeek \|\| ''\)/)
   assert.doesNotMatch(schedule, /this\.week \|\| this\.todayWeek \|\| this\.selectedItem/)
   assert.match(apply, /调整范围/)
   assert.match(apply, /只调整一次课/)

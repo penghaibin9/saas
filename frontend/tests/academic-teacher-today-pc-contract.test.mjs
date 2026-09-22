@@ -46,7 +46,7 @@ test('teacher timetable hands a selected published item into change application 
   assert.match(page, /申请补课/)
   assert.match(page, /originItemId: String\(originItemId\)/)
   assert.match(page, /changeType/)
-  assert.match(page, /occurrenceWeek: String\(this\.week \|\| this\.selectedItem\?\.weekNo \|\| ''\)/)
+  assert.match(page, /occurrenceWeek: String\(this\.selectedOccurrenceWeek \|\| ''\)/)
   assert.doesNotMatch(page, /occurrenceWeek: String\(this\.week \|\| this\.todayWeek/)
   assert.match(changeApi, /origin-items\/\$\{itemId\}/)
   assert.match(changePage, /scheduleChangeApi\.originItem\(this\.form\.originItemId\)/)

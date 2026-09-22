@@ -139,7 +139,7 @@ def test_teacher_today_confirmation_queue_uses_assignment_owner_not_occurrence_w
     end = work.index("# Grade responsibility", start)
     block = work[start:end]
     assert 'AaTeachingTask.teacher_key.in_(keys or ["__none__"])' in block
-    assert 'AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "READY"])' in block
+    assert 'AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "REJECTED_BY_TEACHER", "READY"])' in block
     assert "formal_task_ids" not in block
 
 
