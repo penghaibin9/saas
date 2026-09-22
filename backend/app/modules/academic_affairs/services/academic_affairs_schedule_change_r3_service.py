@@ -91,11 +91,7 @@ def submit(body, user) -> dict:
                 http_status=409,
             )
 
-        ctx = _legacy.build_affairs_context(user, db)
-        if not _legacy._can_manage_all(ctx):
-            keys = _legacy._derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise _legacy.no_data_scope("仅可对本人任课课位发起调停课")
+        actor_teacher_key = _legacy._teacher_key_for_origin(db, origin, user, lock=True)
         if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
 
@@ -114,7 +110,7 @@ def submit(body, user) -> dict:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
             conflict = _legacy._detect_conflict(
                 db, origin.batch_id, tw, ts, tsw, tew, tp,
-                origin.teacher_key, origin.class_id, tcr, exclude_id=origin.id,
+                actor_teacher_key, origin.class_id, tcr, exclude_id=origin.id,
             )
             if conflict:
                 raise AppException(
@@ -128,7 +124,8 @@ def submit(body, user) -> dict:
             tenant_id=_legacy._tid(), term_id=batch.term_id, batch_id=origin.batch_id,
             origin_item_id=origin.id, task_id=origin.task_id, change_type=ct,
             course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
-            teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+            teacher_key=actor_teacher_key,
+            teacher_name=(user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name,
             origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
             origin_start_week=origin.start_week, origin_end_week=origin.end_week,
             origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
