@@ -218,3 +218,14 @@ test('teacher V3 textbook receipt is cleared when identity changes', () => {
   const source = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
   assert.match(source, /this\.selectionReceipt = null/)
 })
+
+
+test('teacher V3 textbook flow uses honest draft then submit semantics', () => {
+  const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  const today = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
+  assert.match(textbook, /保存申报草稿/)
+  assert.match(textbook, /申报草稿已保存，请确认后提交审核/)
+  assert.match(textbook, /selectionDraftReceipt/)
+  assert.match(textbook, /提交审核/)
+  assert.doesNotMatch(today, /TEXTBOOK_SETUP/)
+})

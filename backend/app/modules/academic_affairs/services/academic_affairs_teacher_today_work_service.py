@@ -274,20 +274,6 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
             }
             (actions if status in {"DRAFT", "RETURNED"} else waiting).append(item)
 
-        # The textbook domain has no explicit NO_TEXTBOOK decision state yet. Surface the
-        # missing decision as a neutral "登记" action rather than pretending it is an error.
-        for task_id in formal_task_ids:
-            task = task_by_id.get(int(task_id))
-            if not task or str(task.status or "").upper() != "READY" or int(task_id) in selection_task_ids:
-                continue
-            actions.append({
-                "kind": "TEXTBOOK_SETUP", "id": str(task.id),
-                "title": f"登记《{task.course_name or '课程'}》教材选用",
-                "note": "当前学期尚无教材选用记录",
-                "action": "去登记",
-                "path": f"/admin/academic-affairs/textbooks?tab=selection&action=create&taskId={task.id}",
-            })
-
     if keys:
         changes = db.scalars(select(AaScheduleChange).where(
             AaScheduleChange.tenant_id == _tid(),
@@ -335,7 +321,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         "actions": len(actions), "waiting": len(waiting),
         "teachingTasks": sum(1 for row in actions if row["kind"] == "TEACHING_TASK"),
         "grades": sum(1 for row in actions if row["kind"] in {"GRADE", "GRADE_SETUP"}),
-        "textbooks": sum(1 for row in actions + waiting if row["kind"] in {"TEXTBOOK", "TEXTBOOK_SETUP"}),
+        "textbooks": sum(1 for row in actions + waiting if row["kind"] == "TEXTBOOK"),
         "scheduleChanges": sum(1 for row in waiting if row["kind"] == "SCHEDULE_CHANGE"),
         "bookings": sum(1 for row in waiting if row["kind"] in {"CLASSROOM_BOOKING", "LAB_BOOKING"}),
     }

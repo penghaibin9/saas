@@ -147,11 +147,11 @@ def test_teacher_v3_today_projects_action_and_waiting_from_current_term_facts():
     source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
     assert '"TEACHING_TASK_WAITING"' in source
     assert '"GRADE_SETUP"' in source
-    assert '"TEXTBOOK_SETUP"' in source
+    assert '"TEXTBOOK_SETUP"' not in source
     assert 'status in {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"}' in source
     assert '"CURRENT_TERM_FORMAL_TEACHER_FACTS"' in source
     assert '/grade-entry?teachingTaskId=' in source
-    assert '/textbooks?tab=selection&action=create&taskId=' in source
+    assert '/textbooks?tab=selection&action=create&taskId=' not in source
 
 
 def test_teacher_v3_grade_and_textbook_lists_accept_current_term_filter():

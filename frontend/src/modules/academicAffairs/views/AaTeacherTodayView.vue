@@ -125,7 +125,7 @@ export default {
         { key: 'task', label: '待确认任务', value: Number(c.teachingTasks || 0), unit: '项', path: firstPath(['TEACHING_TASK']) || '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
         { key: 'grade', label: '待录成绩', value: Number(c.grades || 0), unit: '门', path: firstPath(['GRADE', 'GRADE_SETUP']) || '/admin/academic-affairs/grade-entry' },
         { key: 'change', label: '调停课审核中', value: Number(c.scheduleChanges || 0), unit: '条', path: firstPath(['SCHEDULE_CHANGE']) || '/admin/academic-affairs/schedule-change' },
-        { key: 'materials', label: '教材/预约', value: Number(c.textbooks || 0) + Number(c.bookings || 0), unit: '项', path: firstPath(['TEXTBOOK', 'TEXTBOOK_SETUP', 'CLASSROOM_BOOKING', 'LAB_BOOKING']) || '/admin/academic-affairs/textbooks?tab=selection' }
+        { key: 'materials', label: '教材/预约', value: Number(c.textbooks || 0) + Number(c.bookings || 0), unit: '项', path: firstPath(['TEXTBOOK', 'CLASSROOM_BOOKING', 'LAB_BOOKING']) || '/admin/academic-affairs/textbooks?tab=selection' }
       ]
     }
   },

@@ -20,6 +20,14 @@
     </template>
 
     <AppInlineAlert v-if="showSource" type="info" :description="pageSpec.sourceNote" />
+    <section v-if="selectionDraftReceipt && isAcademicTeacher" class="aatb-teacher-receipt is-draft" role="status">
+      <div>
+        <strong>教材选用草稿已保存</strong>
+        <span>{{ selectionDraftReceipt.name }} · 申报 {{ selectionDraftReceipt.id }}</span>
+        <small>下一步：确认无误后提交教材选用审核。</small>
+      </div>
+      <AppButton size="small" variant="primary" :disabled="saving" @click="confirmSelectionSubmit({ selectionId: selectionDraftReceipt.id, courseName: selectionDraftReceipt.name })">提交审核</AppButton>
+    </section>
     <section v-if="selectionReceipt && isAcademicTeacher" class="aatb-teacher-receipt" role="status">
       <div>
         <strong>教材选用已提交审核</strong>
@@ -172,7 +180,7 @@
         <AppFormItem class="aatb-form-wide" label="选用原因" required><AppTextarea v-model="selectionForm.remark" :disabled="saving" placeholder="说明课程、版本和实际需求依据" /></AppFormItem>
         <AppInlineAlert v-if="selectionError" class="aatb-form-wide" type="danger" :description="selectionError" />
       </div>
-      <template #footer><AppButton variant="ghost" :disabled="saving" @click="closeSelection">返回来源工作区</AppButton><AppButton variant="primary" :loading="saving" :disabled="!selectionCanSubmit" @click="submitSelection">提交教材选用申报</AppButton></template>
+      <template #footer><AppButton variant="ghost" :disabled="saving" @click="closeSelection">返回来源工作区</AppButton><AppButton variant="primary" :loading="saving" :disabled="!selectionCanSubmit" @click="submitSelection">保存申报草稿</AppButton></template>
     </AppDrawer>
 
     <AppDrawer :visible="arrivalVisible" title="登记到货验收" mode="modal" size="medium" @close="arrivalVisible = false">
@@ -235,7 +243,7 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } }, currentTermId: '', currentTermName: '',
       tab: 'catalog', loading: true, error: '', rows: [], stats: {}, page: 1, pageSize: 20, total: 0, keyword: '', appliedKeyword: '',
-      showHistory: false, openedSetupTaskId: '', selectionReceipt: null,
+      showHistory: false, openedSetupTaskId: '', selectionReceipt: null, selectionDraftReceipt: null,
       loadSeq: 0, arrivalSeq: 0, actionSeq: 0, initialized: false, saving: false, showSource: false, activeRowKey: '',
       tbVisible: false, editingTextbookId: '', tbForm: { name: '', isbn: '', edition: '', publisher: '', subject: '', unitPrice: 0 }, formError: '',
       selectionVisible: false, selectionCatalogLoading: false, selectionCatalog: [], selectionError: '', selectionForm: { taskId: '', textbookId: '', expectedQty: 1, remark: '' },
@@ -307,7 +315,7 @@ export default {
     '$route.query.action'() { if (this.initialized) this.openSelectionFromRoute() },
     identityKey() {
       if (this.initialized) {
-        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null
+        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null; this.selectionDraftReceipt = null
         this.resetView(); this.page = textbookQueuePage(this.$route.query.page); this.rows = []; this.stats = {}; this.total = 0
         this.reload(); this.openSelectionFromRoute()
       }
@@ -395,7 +403,7 @@ export default {
     onConfirm() { const pending = this.pendingAction; this.pendingAction = null; this.confirmVisible = false; if (!pending) return; if (typeof pending === 'function') return pending(); if (pending.identity === this.identityKey && pending.tab === this.tab) pending.action() },
     openTextbook(row) { this.editingTextbookId = row?.textbookId || ''; this.tbForm = { name: row?.name || '', isbn: row?.isbn || '', edition: row?.edition || '', publisher: row?.publisher || '', subject: row?.subject || '', unitPrice: Number(row?.unitPrice || 0) }; this.formError = ''; this.tbVisible = true },
     async submitTextbook() { if (!this.tbForm.name.trim()) { this.formError = '教材名称必填'; return } const body = { ...this.tbForm, name: this.tbForm.name.trim() }; await this.write(() => this.editingTextbookId ? api.updateTextbook(this.editingTextbookId, body) : api.createTextbook(body), () => { toast.success(this.editingTextbookId ? '教材目录已保存' : '教材目录已创建'); this.tbVisible = false; this.reload() }) },
-    async openSelection() { this.selectionReceipt = null; this.selectionForm = { taskId: '', textbookId: '', expectedQty: 1, remark: '' }; this.selectionError = ''; this.selectionVisible = true; this.selectionCatalogLoading = true; const identity = this.identityKey; try { const result = await api.listTextbooks({ status: 'ENABLED', page: 1, pageSize: 200 }); if (identity !== this.identityKey || !this.selectionVisible) return; if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return } this.selectionCatalog = result.data?.list || [] } catch (exception) { if (identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败' } finally { if (identity === this.identityKey) this.selectionCatalogLoading = false } },
+    async openSelection() { this.selectionReceipt = null; this.selectionDraftReceipt = null; this.selectionForm = { taskId: '', textbookId: '', expectedQty: 1, remark: '' }; this.selectionError = ''; this.selectionVisible = true; this.selectionCatalogLoading = true; const identity = this.identityKey; try { const result = await api.listTextbooks({ status: 'ENABLED', page: 1, pageSize: 200 }); if (identity !== this.identityKey || !this.selectionVisible) return; if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return } this.selectionCatalog = result.data?.list || [] } catch (exception) { if (identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败' } finally { if (identity === this.identityKey) this.selectionCatalogLoading = false } },
     async openSelectionFromRoute() {
       const taskId = String(this.$route?.query?.taskId || '').trim()
       if (!this.isAcademicTeacher || this.$route?.query?.action !== 'create' || !/^[1-9]\d*$/.test(taskId)) return
@@ -426,10 +434,13 @@ export default {
       if (!this.selectionCanSubmit) { this.selectionError = '请完整选择教学任务、教材版本、需求人数并填写选用原因'; return }
       const body = { taskId: String(this.selectionForm.taskId), textbookId: String(this.selectionForm.textbookId), expectedQty: Number(this.selectionForm.expectedQty), remark: this.selectionForm.remark.trim() }
       await this.write(() => api.createSelection(body), async result => {
-        toast.success('教材选用申报已建立，请在列表确认后提交审核')
+        const id = String(result.data?.selectionId || '')
+        const name = result.data?.courseName || '教材选用申报'
+        this.selectionDraftReceipt = id ? { id, name } : null
+        toast.success('申报草稿已保存，请确认后提交审核')
         this.selectionVisible = false
         const query = { ...this.$route.query, tab: 'selection' }; delete query.action; delete query.taskId
-        if (result.data?.selectionId) query.selectionId = String(result.data.selectionId)
+        if (id) query.selectionId = id
         await this.$router.replace({ path: this.$route.path, query }).catch(() => {})
         await this.reload()
       })
@@ -440,6 +451,7 @@ export default {
         '提交教材选用申报',
         `确认提交“${frozen.name}”（申报 ${frozen.id}）？提交后由教材选用审核岗处理。`,
         () => this.write(() => api.submitSelection(frozen.id), async () => {
+          this.selectionDraftReceipt = null
           this.selectionReceipt = { ...frozen }
           toast.success('已提交审核')
           await this.reload()
@@ -477,6 +489,7 @@ export default {
 
 <style scoped>
 .aatb-teacher-receipt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; margin-bottom:12px; border:1px solid #b7dfc2; border-radius:10px; background:#f0f9f2; }
+.aatb-teacher-receipt.is-draft { border-color:#ecd09c; background:#fff8ea; }
 .aatb-teacher-receipt div { flex:1 1 280px; }
 .aatb-teacher-receipt strong,.aatb-teacher-receipt span,.aatb-teacher-receipt small { display:block; }
 .aatb-teacher-receipt span { margin-top:3px; color:#52647a; font-size:12px; }
