@@ -204,28 +204,62 @@ export default {
     async markAttendance(row, status) {
       if (!this.sessionDetail || this.sessionDetail.status !== 'DRAFT' || this.markingStudentId || this.submittingSession) return
       const studentId = String(row.studentId || '')
-      if (!studentId) return
+      const sessionId = String(this.sessionDetail.sessionId || '')
+      const identity = this.identityKey
+      if (!studentId || !sessionId) return
       this.markingStudentId = studentId
       try {
-        const res = await academicAffairsApi.markAttendanceSession(this.sessionDetail.sessionId, Number(studentId), status)
+        const res = await academicAffairsApi.markAttendanceSession(sessionId, Number(studentId), status)
+        if (String(this.selectedSessionId) !== sessionId || this.identityKey !== identity) return
         if (res.code !== 0) { toast.error(res.message || '点名未保存'); return }
-        await this.loadSession()
-      } catch (error) { toast.error(error?.message || '点名未保存，请刷新正式名单核对') }
-      finally { this.markingStudentId = '' }
+        const receipt = res.data || {}
+        if (String(receipt.sessionId || '') !== sessionId) {
+          this.detailError = '点名回执场次身份不一致，请刷新当前场次核对'
+          return
+        }
+        if (Array.isArray(receipt.items)) {
+          // PC 点名写接口返回刚提交后的完整正式名单。直接采用权威写回执，
+          // 避免 POST 成功后再依赖一次 GET 才能刷新“未点名人数”。
+          this.sessionDetail = { ...this.sessionDetail, ...receipt }
+        } else {
+          await this.loadSession()
+        }
+      } catch (error) {
+        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) {
+          toast.error(error?.message || '点名未保存，请刷新正式名单核对')
+        }
+      } finally {
+        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) this.markingStudentId = ''
+      }
     },
     async submitAttendance() {
       if (!this.sessionDetail || this.sessionDetail.status !== 'DRAFT' || this.submittingSession || this.markingStudentId) return
       const unmarked = (this.sessionDetail.items || []).filter(row => row.status === 'UNMARKED').length
       if (unmarked) { toast.error(`还有 ${unmarked} 人未完成点名`); return }
+      const sessionId = String(this.sessionDetail.sessionId || '')
+      const identity = this.identityKey
+      if (!sessionId) return
       this.submittingSession = true
       try {
-        const res = await academicAffairsApi.submitAttendanceSession(this.sessionDetail.sessionId)
+        const res = await academicAffairsApi.submitAttendanceSession(sessionId)
+        if (String(this.selectedSessionId) !== sessionId || this.identityKey !== identity) return
         if (res.code !== 0) { toast.error(res.message || '考勤提交失败'); return }
-        toast.success(res.data?.warningScanOk === false ? (res.data.warningScanError || '考勤已提交，预警扫描待核对') : '本场考勤已提交')
-        await this.loadSession()
+        const receipt = res.data || {}
+        if (String(receipt.sessionId || '') !== sessionId) {
+          this.detailError = '考勤提交回执场次身份不一致，请到场次台账核对'
+          return
+        }
+        // 提交写回执先落 UI，防止“服务端已提交、补读失败、页面仍显示草稿”导致重复操作。
+        this.sessionDetail = { ...this.sessionDetail, ...receipt, items: this.sessionDetail.items || [] }
+        toast.success(receipt.warningScanOk === false ? (receipt.warningScanError || '考勤已提交，预警扫描待核对') : '本场考勤已提交')
         await this.load()
-      } catch (error) { toast.error(error?.message || '提交结果未确认，请刷新场次核对') }
-      finally { this.submittingSession = false }
+      } catch (error) {
+        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) {
+          toast.error(error?.message || '提交结果未确认，请刷新场次核对')
+        }
+      } finally {
+        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) this.submittingSession = false
+      }
     },
     pct(v) { return Math.round((v || 0) * 100) },
     rowClass(row) { return row.absent >= 3 ? 'aa-row-danger' : '' },
