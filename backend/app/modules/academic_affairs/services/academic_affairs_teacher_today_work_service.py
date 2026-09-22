@@ -174,7 +174,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [-1]),
         AaTeachingTask.teacher_key.in_(keys or ["__none__"]),
-        AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "READY"]),
+        AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "REJECTED_BY_TEACHER", "READY"]),
         AaTeachingTask.is_deleted.is_(False),
     ).order_by(AaTeachingTask.id)).all()
     formal_tasks = db.scalars(select(AaTeachingTask).where(
@@ -203,6 +203,14 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
                 "kind": "TEACHING_TASK_WAITING", "id": str(row.id),
                 "title": f"《{row.course_name or '教学任务'}》已确认",
                 "note": note, "action": "查看进度",
+                "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
+            })
+        elif row.status == "REJECTED_BY_TEACHER":
+            waiting.append({
+                "kind": "TEACHING_TASK_REJECTED_WAITING", "id": str(row.id),
+                "title": f"《{row.course_name or '教学任务'}》已提出异议",
+                "note": "本人已退回 · 等待学院调整并重新分配",
+                "action": "查看进度",
                 "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
             })
 

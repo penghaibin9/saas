@@ -202,3 +202,10 @@ def test_teacher_v3_grade_today_surfaces_deadline_blockers_instead_of_hiding_the
     assert "已超过提交截止时间；可继续完善，提交需学院或教务延长截止时间" in source
     assert '"blocked": bool(overdue)' in source
     assert '"action": action' in source
+
+
+def test_teacher_v3_rejected_teaching_task_stays_visible_until_college_reassigns():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    assert '"REJECTED_BY_TEACHER"' in source
+    assert '"TEACHING_TASK_REJECTED_WAITING"' in source
+    assert "等待学院调整并重新分配" in source
