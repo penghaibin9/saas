@@ -161,3 +161,15 @@ test('teacher V3 textbook landing defaults current term and revalidates exact ta
   assert.match(source, /mine: true, termId: this\.currentTermId, taskId/)
   assert.match(source, /this\.selectionForm\.taskId = taskId/)
 })
+
+
+test('teacher V3 resource booking keeps one page but separates availability from cross-date my ledger', () => {
+  const source = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  assert.match(source, /找空闲并预约/)
+  assert.match(source, /我的预约/)
+  assert.match(source, /workspaceTab === 'mine'/)
+  assert.match(source, /date: browseResources \? date : undefined/)
+  assert.match(source, /teacherBookingNext/)
+  assert.match(source, /等待资源管理员审核/)
+  assert.match(source, /已通过，可按预约时间使用/)
+})

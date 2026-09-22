@@ -33,12 +33,12 @@ test('ACADEMIC_TEACHER gets the bounded six-workspace daily teaching IA', () => 
   ])
   const labels = modules.flatMap(row => row.children.map(leaf => leaf.label))
   for (const expected of [
-    '今日教学', '教学任务确认', '个人课表', '调停课申请', '我的调停课记录',
+    '今日教学', '教学任务确认', '个人课表', '我的调停课记录',
     '班级课表', '教室课表', '教学班课表', '周课表', '学期课表',
-    '成绩录入与提交', '成绩更正申请', '课堂考勤统计', '考勤场次查询',
-    '教材选用', '教室预约', '实训室预约', '资源占用查询', '培养方案', '课程库'
+    '成绩录入与提交', '成绩更正申请', '课堂考勤',
+    '教材选用', '教室预约', '实训室预约', '培养方案', '课程库'
   ]) assert.ok(labels.includes(expected), expected)
-  for (const forbidden of ['排课规则', '自动排课', '教务发布（发布/退回/归档）', '费用台账', '教材库存']) {
+  for (const forbidden of ['调停课申请', '考勤场次查询', '资源占用查询', '排课规则', '自动排课', '教务发布（发布/退回/归档）', '费用台账', '教材库存']) {
     assert.equal(labels.includes(forbidden), false, forbidden)
   }
 })
@@ -67,4 +67,14 @@ test('teacher global search cannot re-expose administrator academic pages or stu
   ]
   const result = filterAcademicTeacherSearchResults(source, ctx, modules)
   assert.deepEqual(result.map(row => row.label), ['个人课表', '帮助'])
+})
+
+
+test('teacher navigation keeps the screenshot six groups but removes action-only dead ends', () => {
+  const modules = projectAcademicTeacherModules(sourceModules(), ctx)
+  const leaves = modules.flatMap(row => row.children)
+  assert.equal(leaves.find(row => row.label === '课堂考勤')?.path, '/admin/academic-affairs/attendance-stats?panel=sessions')
+  assert.equal(leaves.some(row => row.label === '调停课申请'), false)
+  assert.equal(leaves.some(row => row.label === '考勤场次查询'), false)
+  assert.equal(leaves.some(row => row.label === '资源占用查询'), false)
 })

@@ -16,7 +16,6 @@ const GROUPS = [
   {
     key: 'aa-teacher-my-schedule', label: '我的课表', entries: [
       { leafId: 'aa.schedule.schedule.teacher', label: '个人课表', path: '/admin/academic-affairs/schedule/teacher' },
-      { leafId: 'aa.schedule-change.schedule.change.apply', label: '调停课申请' },
       { leafId: 'aa.schedule-change.schedule.change', label: '我的调停课记录' }
     ]
   },
@@ -33,16 +32,14 @@ const GROUPS = [
     key: 'aa-teacher-grade-attendance', label: '成绩与考勤', entries: [
       { leafId: 'aa.grades.grade.entry', label: '成绩录入与提交' },
       { leafId: 'aa.grade-review.grade.change', label: '成绩更正申请' },
-      { leafId: 'aa.attendance.attendance.stats', label: '课堂考勤统计' },
-      { leafId: 'aa.attendance.attendance.stats.panel.sessions', label: '考勤场次查询' }
+      { leafId: 'aa.attendance.attendance.stats', label: '课堂考勤', path: '/admin/academic-affairs/attendance-stats?panel=sessions' }
     ]
   },
   {
     key: 'aa-teacher-textbook-resource', label: '教材与资源', entries: [
       { leafId: 'aa.textbooks.textbooks.tab.selection', label: '教材选用', permissionKey: 'academicAffairs.textbook.selection.manage' },
       { leafId: 'aa.resources.classroom.bookings', label: '教室预约' },
-      { leafId: 'aa.resources.resources.lab.bookings', label: '实训室预约' },
-      { leafId: 'aa.resources.resources.occupancy', label: '资源占用查询' }
+      { leafId: 'aa.resources.resources.lab.bookings', label: '实训室预约' }
     ]
   },
   {
