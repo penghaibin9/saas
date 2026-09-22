@@ -51,7 +51,13 @@
         <div class="aa-grid2">
           <label class="aa-field">
             <span :class="{ req: !isAdminRole }">教学任务</span>
-            <AppTeachingTaskPicker v-model="form.teachingTaskId" clearable @change="onTeachingTaskChange" placeholder="普通教师必选；管理员可留空做特殊补录" />
+            <AppTeachingTaskPicker
+              v-model="form.teachingTaskId"
+              :query="{ mine: !isAdminRole }"
+              clearable
+              @change="onTeachingTaskChange"
+              placeholder="普通教师仅选择本人正式教学任务；管理员可留空做特殊补录"
+            />
           </label>
           <label v-if="isAdminRole && !form.teachingTaskId" class="aa-field">
             <span class="req">课程具体版本</span>
