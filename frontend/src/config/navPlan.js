@@ -519,16 +519,16 @@ export const NAV_PLAN = [
       academicEntry('aa.grade-review.grade.audit', I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view'))
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
-      academicEntry('aa.warning.warnings', I('预警扫描与列表', '/admin/academic-affairs/warnings', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.dashboard', I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.credit', I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.fail', I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.gpa', I('绩点预警', '/admin/academic-affairs/warnings/console?tab=gpa', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.retake', I('补考重修预警', '/admin/academic-affairs/warnings/console?tab=retake', 'academicAffairs.attendance.view')),
-      academicEntry('aa.warning.warnings.console.tab.graduation', I('毕业风险预警', '/admin/academic-affairs/warnings/console?tab=graduation', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings', I('预警扫描与列表', '/admin/academic-affairs/warnings', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.dashboard', I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.credit', I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.fail', I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.gpa', I('绩点预警', '/admin/academic-affairs/warnings/console?tab=gpa', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.retake', I('补考重修预警', '/admin/academic-affairs/warnings/console?tab=retake', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.graduation', I('毕业风险预警', '/admin/academic-affairs/warnings/console?tab=graduation', 'academicAffairs.warning.view')),
       academicEntry('aa.warning.warnings.console.tab.rules', I('预警规则', '/admin/academic-affairs/warnings/console?tab=rules', 'academicAffairs.warning.rule.manage')),
       academicEntry('aa.warning.warnings.console.tab.followup', I('预警跟进', '/admin/academic-affairs/warnings/console?tab=followup', 'academicAffairs.warning.handle')),
-      academicEntry('aa.warning.warnings.console.tab.stats', I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.stats', I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.warning.view')),
       academicEntry('aa.warning.warnings.console.tab.notify', I('预警通知', '/admin/academic-affairs/warnings/console?tab=notify', 'academicAffairs.warning.view'))
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
