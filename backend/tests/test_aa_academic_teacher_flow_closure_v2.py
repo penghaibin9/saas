@@ -215,3 +215,9 @@ def test_teacher_v3_duplicate_grade_task_conflict_exposes_recoverable_existing_i
     source = _read("app/modules/academic_affairs/services/academic_affairs_grade_core_service.py")
     assert '"existingGradeTaskId": str(exist.id)' in source
     assert '"existingStatus": str(exist.status or "")' in source
+
+
+def test_teacher_v3_textbook_action_links_open_the_exact_draft_or_returned_object():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    assert 'if status in {"DRAFT", "RETURNED"}' in source
+    assert 'selectionId={row.id}&action=edit' in source

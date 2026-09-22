@@ -301,7 +301,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
                 "action": "去处理" if status in {"DRAFT", "RETURNED"} else "查看进度",
                 "path": (
                     f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}&action=edit"
-                    if status == "RETURNED"
+                    if status in {"DRAFT", "RETURNED"}
                     else f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}"
                 ),
             }
