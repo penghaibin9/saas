@@ -2520,6 +2520,22 @@ def dashboard(user) -> dict:
         cur = db.scalars(select(AaTerm).where(
             AaTerm.tenant_id == _tid(), AaTerm.is_current.is_(True),
             AaTerm.is_deleted.is_(False))).first()
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            # 兼容旧 /dashboard API，但绝不把学校级学生/注册聚合暴露给普通任课教师。
+            # 教师日常首屏由 /teacher/today 承担；这里仅返回安全的导航级兼容结构。
+            return {
+                "currentTerm": (_term_row(cur) if cur else None),
+                "summaryCards": [],
+                "moduleCards": [
+                    {"key": "teachingTask", "label": "教学任务确认", "status": "LIVE"},
+                    {"key": "schedule", "label": "我的课表", "status": "LIVE"},
+                    {"key": "grade", "label": "成绩录入", "status": "LIVE"},
+                    {"key": "attendance", "label": "课堂考勤", "status": "LIVE"},
+                    {"key": "textbook", "label": "教材选用", "status": "LIVE"},
+                ],
+                "teacherSafeView": True,
+            }
         stu_total = db.scalar(select(func.count()).select_from(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))) or 0
         registered = db.scalar(select(func.count()).select_from(AaRegistration).where(
