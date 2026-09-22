@@ -338,3 +338,11 @@ test('teacher V3 task confirmation shows real current and next responsibility', 
   assert.match(source, /教务终审通过，教学任务已就绪/)
   assert.doesNotMatch(source, /next-owner="学院任务核对岗"/)
 })
+
+
+test('teacher V3 duplicate grade setup recovers into the existing task', () => {
+  const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  assert.match(source, /err\?\.details\?\.existingGradeTaskId/)
+  assert.match(source, /该课程成绩任务已存在，已为您打开原任务/)
+  assert.match(source, /await this\.openTask\(\{ gradeTaskId: existingGradeTaskId \}\)/)
+})

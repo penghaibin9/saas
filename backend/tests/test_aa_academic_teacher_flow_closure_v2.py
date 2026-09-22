@@ -209,3 +209,9 @@ def test_teacher_v3_rejected_teaching_task_stays_visible_until_college_reassigns
     assert '"REJECTED_BY_TEACHER"' in source
     assert '"TEACHING_TASK_REJECTED_WAITING"' in source
     assert "等待学院调整并重新分配" in source
+
+
+def test_teacher_v3_duplicate_grade_task_conflict_exposes_recoverable_existing_id():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_grade_core_service.py")
+    assert '"existingGradeTaskId": str(exist.id)' in source
+    assert '"existingStatus": str(exist.status or "")' in source

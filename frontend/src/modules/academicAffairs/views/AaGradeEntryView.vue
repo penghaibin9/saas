@@ -942,7 +942,17 @@ export default {
         toast.success('任务已创建，正在载入正式名单')
         await this.openTask({ gradeTaskId })
       } else toast.error(res.message || '创建失败')
-      } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
+      } catch (err) {
+        if (!this.currentTask(context)) return
+        const existingGradeTaskId = String(err?.details?.existingGradeTaskId || '')
+        if (err?.bizCode === 'DATA_CONFLICT' && /^[1-9]\d*$/.test(existingGradeTaskId)) {
+          this.showCreate = false
+          toast.info('该课程成绩任务已存在，已为您打开原任务')
+          await this.openTask({ gradeTaskId: existingGradeTaskId })
+          return
+        }
+        this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。')
+      }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.creating = false }
     },
     async loadRoster({ quiet = false } = {}) {

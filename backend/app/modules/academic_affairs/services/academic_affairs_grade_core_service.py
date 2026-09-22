@@ -263,6 +263,11 @@ def _raise_grade_task_tt_conflict(exist) -> None:
             "成绩错误请走成绩更正/复查/补考/重修，不得通过重建成绩任务解决。"
         ),
         http_status=409,
+        details={
+            "existingGradeTaskId": str(exist.id),
+            "existingStatus": str(exist.status or ""),
+            "teachingTaskId": str(exist.teaching_task_id or ""),
+        },
     )
 
 
