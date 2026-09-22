@@ -2389,6 +2389,9 @@ def stats_resource_detail(page: int = 1, pageSize: int = 20,
 # ═══════════════════════════════════════════════════════════════════════════
 
 _ORG_VIEW = require_permission("academicAffairs.org.view")
+# 班级/教学班是课表查询对象；普通任课教师只通过这两个列表选择本人正式任课对象。
+# 不授予 academicAffairs.org.view，避免扩大到学院/专业/组织树等管理目录。
+_ORG_PICKER_VIEW = require_any_permission("academicAffairs.org.view", "academicAffairs.schedule.view")
 _ORG_MANAGE = require_permission("academicAffairs.org.manage")
 
 
@@ -2534,7 +2537,7 @@ def org_major_delete(majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
 def org_classes(majorId: Optional[str] = None, grade: Optional[str] = None,
                 classStatus: Optional[str] = None, keyword: Optional[str] = None,
                 termId: Optional[int] = Query(None, ge=1),
-                page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
+                page: int = 1, pageSize: int = 50, user=Depends(_ORG_PICKER_VIEW)):
     items, total = org_svc.list_classes(
         user, majorId, grade, classStatus, keyword, page, pageSize, term_id=termId
     )
@@ -2570,7 +2573,7 @@ def org_grades(collegeId: Optional[str] = None, majorId: Optional[str] = None, u
 @router.get("/orgs/teaching-classes", summary="教学班只读汇总（派生自教学任务）")
 def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] = None,
                          termId: Optional[int] = Query(None, ge=1), keyword: Optional[str] = None,
-                         page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_VIEW)):
+                         page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_PICKER_VIEW)):
     items, total = org_svc.list_teaching_classes(user, termCode, batchId, page, pageSize, term_id=termId, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
