@@ -206,12 +206,19 @@ def list_selections(user, status=None, page=1, page_size=50):
     过滤、按页码切片——学院管理员只该看到自己学院的记录，却要为此让数据库把
     全校记录先搬进应用内存一遍。"""
     from app.models import AaTextbookSelection
+    from app.core.affairs_security import _derive_keys
     with session() as db:
         ctx = _ctx(user, db)
         conds = [AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.is_deleted.is_(False)]
         if status:
             conds.append(AaTextbookSelection.status == status)
-        if not _is_school(ctx):
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            keys = _derive_keys(user)
+            if not keys:
+                return [], 0
+            conds.append(AaTextbookSelection.officer_key.in_(sorted(keys)))
+        elif not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
             conds.append(AaTextbookSelection.college_id.in_(allowed or [-1]))
         total = int(db.query(AaTextbookSelection).filter(*conds).count())
