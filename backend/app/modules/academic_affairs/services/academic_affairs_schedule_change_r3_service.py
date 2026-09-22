@@ -103,6 +103,8 @@ def submit(body, user) -> dict:
             tsw = tew = int(raw_week)
             tp = str(origin.week_parity or "ALL").upper()
             _legacy._validate_adjust_window(origin, tsw, tew, tp)
+            if (tp == "ODD" and tsw % 2 == 0) or (tp == "EVEN" and tsw % 2 == 1):
+                raise AppException("VALIDATION_ERROR", "所选教学周不是原课位实际发生周")
         elif ct in ("ADJUST", "MAKEUP"):
             if getattr(body, "targetWeekday", None) is None or getattr(body, "targetSlotNo", None) is None:
                 raise AppException("VALIDATION_ERROR", "调课/补课须填写目标星期与节次")

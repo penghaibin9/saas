@@ -246,6 +246,22 @@ export default {
     },
     conflictKey() { this.conflictSeq++; this.checkingConflict = false; this.conflictError = ''; this.conflictResult = undefined },
     // 目标字段变化后旧的预检结果失效，避免用户误以为仍然有效
+    'form.changeType'(value) {
+      this.conflictResult = undefined
+      if (!this.origin) return
+      if (value === 'ADJUST') {
+        this.form.targetStartWeek = this.origin.startWeek || null
+        this.form.targetEndWeek = this.origin.endWeek || null
+        this.form.targetWeekParity = this.origin.weekParity || 'ALL'
+        return
+      }
+      const requestedWeek = Number(this.$route?.query?.occurrenceWeek || 0)
+      const inside = requestedWeek >= Number(this.origin.startWeek || 0) && requestedWeek <= Number(this.origin.endWeek || 0)
+      const single = inside ? requestedWeek : (Number(this.origin.startWeek) === Number(this.origin.endWeek) ? Number(this.origin.startWeek) : null)
+      this.form.targetStartWeek = single
+      this.form.targetEndWeek = single
+      this.form.targetWeekParity = value === 'MAKEUP' ? 'ALL' : (this.origin.weekParity || 'ALL')
+    },
     'form.originItemId'() { this.conflictResult = undefined },
     'form.targetWeekday'() { this.conflictResult = undefined },
     'form.targetSlotNo'() { this.conflictResult = undefined },
