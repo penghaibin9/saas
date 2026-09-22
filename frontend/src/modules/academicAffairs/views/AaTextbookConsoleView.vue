@@ -34,7 +34,7 @@
         <span>{{ selectionReceipt.name }} · 申报 {{ selectionReceipt.id }}</span>
         <small>下一责任：教材选用审核岗；进度会回到“今日教学 → 办理中”。</small>
       </div>
-      <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
+      <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</AppButton>
     </section>
     <AppInlineAlert v-if="isAcademicTeacher && tab === 'selection' && currentTermId" type="info" :description="showHistory ? '当前正在查看本人历史教材选用记录。' : `当前学期：${currentTermName || currentTermId}；默认只显示本学期本人教材选用。`" />
     <AppInlineAlert

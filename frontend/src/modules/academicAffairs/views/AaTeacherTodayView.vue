@@ -102,7 +102,8 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '', workTab: 'actions',
+      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '',
+      workTab: this.$route?.query?.work === 'waiting' ? 'waiting' : 'actions',
       todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '',
       workbench: EMPTY_WORKBENCH()
     }
@@ -130,6 +131,11 @@ export default {
     }
   },
   created() { this.load() },
+  watch: {
+    '$route.query.work'(value) {
+      this.workTab = value === 'waiting' ? 'waiting' : 'actions'
+    }
+  },
   beforeUnmount() { this.generation++ },
   methods: {
     go(path) { if (path) this.$router.push(path).catch(() => {}) },

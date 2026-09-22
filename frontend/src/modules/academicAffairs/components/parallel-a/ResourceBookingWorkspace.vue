@@ -9,6 +9,7 @@
       <AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton>
     </template>
     <AaOperationReceipt :receipt="receipt" />
+    <AppButton v-if="isAcademicTeacher && receipt && receipt.pending === false" variant="ghost" :disabled="saving" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学 · 查看办理中</AppButton>
     <AppButton v-if="pending" :disabled="saving" @click="queryPending">查询办理结果</AppButton>
     <div v-if="isAcademicTeacher" class="booking-view-tabs" role="tablist" aria-label="预约工作区">
       <button type="button" :class="{ active: workspaceTab === 'find' }" @click="changeWorkspaceTab('find')">找空闲并预约</button>

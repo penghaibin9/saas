@@ -16,7 +16,7 @@
       <AaOperationReceipt :receipt="receipt" />
       <div v-if="receipt && receipt.pending === false" class="teacher-task__next">
         <span>本次办理已形成正式状态；后续进度会回到“今日教学”的办理中。</span>
-        <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</button>
+        <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</button>
         <button v-if="primaryRow?.status === 'READY'" class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/schedule/teacher')">查看个人课表</button>
       </div>
       <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重提）</button>

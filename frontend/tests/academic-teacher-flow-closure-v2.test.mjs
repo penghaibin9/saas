@@ -252,3 +252,18 @@ test('teacher V3 task confirmation defaults current term and keeps exact deep li
   assert.match(source, /taskId: this\.focusTaskId, page: 1, pageSize: 1/)
   assert.match(source, /当前学期教学任务/)
 })
+
+
+test('teacher V3 successful handoffs return directly to Today waiting tab', () => {
+  const today = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
+  const task = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  const change = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  const booking = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  assert.match(today, /query\?\.work === 'waiting'/)
+  assert.match(today, /\$route\.query\.work/)
+  for (const source of [task, change, grade, textbook, booking]) {
+    assert.match(source, /\/admin\/academic-affairs\/teacher\/today\?work=waiting/)
+  }
+})
