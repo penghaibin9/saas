@@ -1,13 +1,13 @@
 <template>
   <ModulePageShell
     class="aa-schedule-workspace"
-    title="教学班课表"
-    subtitle="选择教学班，查看已发布的课程安排。"
+:title="isAcademicTeacher ? '我的教学班课表' : '教学班课表'"
+    :subtitle="isAcademicTeacher ? '只提供本人正式任课关系中的教学班，选择后查看已发布课程安排' : '选择教学班，查看已发布的课程安排。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -20,7 +20,7 @@
         next-owner="任课教师与教学班学生读取"
       />
       <div class="aa-reg-search">
-        <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
+        <AppTeachingClassPicker v-model="teachingClassCode" :query="{ termId: termId || undefined }" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
       </div>
 
       <EmptyState v-if="!teachingClassCode" title="请先选择教学班" description="搜索教学班名称或课程名称，选择后查看已发布课表。" />
@@ -29,7 +29,7 @@
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
             学期
-            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="onTermChange" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -78,11 +78,30 @@ export default {
       slots: [], items: [], note: '', loading: false, error: ''
     }
   },
-  created() {
+  computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    }
+  },
+  async created() {
     this.loadSlots()
-    if (this.teachingClassCode) this.load()
+    if (this.isAcademicTeacher) await this.initializeTeacherTerm()
+    else if (this.teachingClassCode) this.load()
   },
   methods: {
+    async initializeTeacherTerm() {
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0 && res.data?.termId) this.termId = String(res.data.termId)
+      if (this.teachingClassCode) await this.load()
+    },
+    onTermChange() {
+      if (this.isAcademicTeacher) {
+        this.teachingClassCode = ''; this.teachingClassName = ''; this.items = []; this.note = ''; this.error = ''
+        this.$router.replace('/admin/academic-affairs/schedule/teaching-class').catch(() => {})
+        return
+      }
+      if (this.teachingClassCode) this.load()
+    },
     onTeachingClassChange(value, items) {
       const item = items?.[0]
       const row = item?.raw || item || {}
