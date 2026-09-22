@@ -97,6 +97,8 @@ jobs:
 
       - name: Seed School IAM authority and isolated tenants
         working-directory: backend
+        env:
+          PYTHONPATH: .
         run: |
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
