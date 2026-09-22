@@ -33,8 +33,8 @@
             </template>
           </DataTable>
           <div v-if="sessionDetail.status === 'DRAFT' && sessionDetail.items?.length" class="aa-submit-row">
-            <span>未点名 {{ sessionDetail.items.filter(row => row.status === 'UNMARKED').length }} 人</span>
-            <AppButton variant="primary" :loading="submittingSession" :disabled="Boolean(markingStudentId)" @click="submitAttendance">提交本场考勤</AppButton>
+            <span>未点名 {{ unmarkedCount }} 人<template v-if="unmarkedCount"> · 请全部点名后再提交</template></span>
+            <AppButton variant="primary" :loading="submittingSession" :disabled="Boolean(markingStudentId) || unmarkedCount > 0" @click="submitAttendance">提交本场考勤</AppButton>
           </div>
         </template>
       </AppSectionCard>
@@ -143,7 +143,8 @@ export default {
     visibleRoster() { return (this.sessionDetail?.items || []).slice((this.rosterPage - 1) * 20, this.rosterPage * 20).map(this.normalizeStudent) },
     visibleStudents() { return (this.data.students || []).map(this.normalizeStudent) },
     studentTotal() { return Number.isFinite(Number(this.data.studentTotal)) ? Number(this.data.studentTotal) : (this.data.students || []).length },
-    absentStudentCount() { return Number.isFinite(Number(this.data.absentStudentCount)) ? Number(this.data.absentStudentCount) : (this.data.students || []).filter((s) => s.absent > 0).length }
+    absentStudentCount() { return Number.isFinite(Number(this.data.absentStudentCount)) ? Number(this.data.absentStudentCount) : (this.data.students || []).filter((s) => s.absent > 0).length },
+    unmarkedCount() { return (this.sessionDetail?.items || []).filter(row => row.status === 'UNMARKED').length }
   },
   watch: {
     identityKey() {

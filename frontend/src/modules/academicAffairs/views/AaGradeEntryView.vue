@@ -158,10 +158,11 @@
         </details>
 
         <template v-if="!dynamicMode">
-          <AppSectionCard v-if="fixedEditable" title="添加学生">
+          <AppSectionCard v-if="fixedEditable" :title="isAcademicTeacher ? '正式教学名单' : '添加学生'">
             <div class="aa-reg-search">
-              <AppStudentPicker v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
-              <AppButton :loading="loadingRoster" @click="loadRoster">按正式名单圈定</AppButton>
+              <AppStudentPicker v-if="!isAcademicTeacher" v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
+              <span v-else class="mp-note">任课教师只按正式教学班名单录入；不能手工添加名单外学生。</span>
+              <AppButton :loading="loadingRoster" @click="loadRoster">{{ isAcademicTeacher ? '重新读取正式名单' : '按正式名单圈定' }}</AppButton>
               <AppButton @click="openImport">导入成绩（Excel）</AppButton>
             </div>
           </AppSectionCard>
@@ -413,6 +414,9 @@ export default {
       if (!this.dynamicMode) return this.rows.length ? '逐行核对' : '名单待载入'
       return '读取中'
     },
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     isAdminRole() {
       const code = (this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase()
       return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
@@ -625,7 +629,11 @@ export default {
           if (this.formalSchemeMode === 'unknown') throw { code: 503 }
         }
         this.dynamicMode = this.formalSchemeMode === 'dynamic' || String(this.$route.query.mode || '') === 'dynamic'
-        if (this.dynamicMode) await this.loadDynamic(); else await this.refreshRecords()
+        if (this.dynamicMode) await this.loadDynamic()
+        else {
+          await this.refreshRecords()
+          if (valid() && this.fixedEditable && this.isAcademicTeacher) await this.loadRoster({ quiet: true })
+        }
         if (valid() && this.$route.query.action === 'import' && this.fixedEditable) this.openImport()
       } catch (err) { if (valid()) this.showTaskError(err) }
       finally { if (valid()) this.taskLoading = false }
@@ -858,7 +866,7 @@ export default {
       } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.creating = false }
     },
-    async loadRoster() {
+    async loadRoster({ quiet = false } = {}) {
       if (!this.fixedEditable || this.loadingRoster || this.writeBusy) return
       const context = this.captureTask()
       try {
@@ -870,9 +878,9 @@ export default {
       if (res.code === 0) {
         this.rosterInfo = res.data
         const items = res.data.items || []
-        if (!items.length) { toast.error(res.data.note || '未圈定到正式名单'); return }
+        if (!items.length) { if (!quiet) toast.error(res.data.note || '未圈定到正式名单'); return }
         items.forEach((student) => this.addRow(student))
-        toast.success(`已加入 ${items.length} 人`)
+        if (!quiet) toast.success(`已读取正式名单 ${items.length} 人`)
       } else toast.error(res.message || '加载名单失败')
       } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.loadingRoster = false }

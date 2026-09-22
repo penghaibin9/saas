@@ -93,3 +93,38 @@ test('teacher workbench deep-links exact business objects', () => {
   assert.match(textbook, /query\?\.selectionId/)
   assert.match(booking, /query\?\.bookingId/)
 })
+
+
+test('teacher V3 P0 keeps schedule changes occurrence-first', () => {
+  const schedule = src('modules/academicAffairs/views/AaTeacherScheduleView.vue')
+  const apply = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  assert.match(schedule, /occurrenceWeek: String\(this\.week \|\| this\.selectedItem\?\.weekNo \|\| ''\)/)
+  assert.doesNotMatch(schedule, /this\.week \|\| this\.todayWeek \|\| this\.selectedItem/)
+  assert.match(apply, /调整范围/)
+  assert.match(apply, /只调整一次课/)
+  assert.match(apply, /lockedOccurrenceWeek/)
+  assert.match(apply, /this\.form\.targetStartWeek = singleWeek/)
+  assert.match(apply, /this\.form\.targetEndWeek = singleWeek/)
+  assert.match(apply, /请选择“只调整一次课”或“调整周期课表”/)
+})
+
+test('teacher V3 P0 grade entry is formal-roster first', () => {
+  const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  assert.match(grade, /v-if="!isAcademicTeacher" v-model="candidateStudentId"/)
+  assert.match(grade, /任课教师只按正式教学班名单录入/)
+  assert.match(grade, /await this\.loadRoster\(\{ quiet: true \}\)/)
+})
+
+test('teacher V3 P0 attendance cannot submit with unmarked students', () => {
+  const attendance = src('modules/academicAffairs/views/AaAttendanceStatsView.vue')
+  assert.match(attendance, /unmarkedCount > 0/)
+  assert.match(attendance, /请全部点名后再提交/)
+})
+
+test('teacher V3 P0 schedule ledger removes teacher review dead-end', () => {
+  const ledger = src('modules/academicAffairs/views/AaScheduleChangeLedgerView.vue')
+  assert.match(ledger, /v-if="canReview".*审批工作台/)
+  assert.match(ledger, /从个人课表选择课程/)
+  assert.match(ledger, /academicAffairs\.scheduleChange\.academicReview/)
+  assert.match(ledger, /academicAffairs\.scheduleChange\.collegeReview/)
+})

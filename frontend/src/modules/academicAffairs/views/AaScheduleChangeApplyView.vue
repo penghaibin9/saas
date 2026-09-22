@@ -83,6 +83,16 @@
         </div>
 
         <template v-if="form.changeType !== 'STOP'">
+          <div v-if="form.changeType === 'ADJUST'" class="sc-fld sc-fld--full">
+            <label class="sc-lbl">调整范围 <i>*</i></label>
+            <div v-if="lockedOccurrenceWeek" class="sc-occurrence-lock">
+              本次从具体课次发起，仅调整第 {{ lockedOccurrenceWeek }} 教学周；如需调整连续周次，请返回个人课表重新选择。
+            </div>
+            <div v-else class="sc-radio">
+              <label><input type="radio" value="OCCURRENCE" v-model="adjustScope" /> 只调整一次课</label>
+              <label><input type="radio" value="RANGE" v-model="adjustScope" /> 调整周期课表</label>
+            </div>
+          </div>
           <div class="sc-fld">
             <label class="sc-lbl">目标星期 <i>*</i></label>
             <AppSelect v-model="form.targetWeekday" :options="weekdayOptions" />
@@ -96,18 +106,25 @@
             <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="补课只新增这一周的一次课" />
           </div>
           <template v-else>
-            <div class="sc-fld">
-              <label class="sc-lbl">起始周</label>
-              <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" placeholder="默认沿用原课位" />
+            <div v-if="adjustScope === 'OCCURRENCE' || lockedOccurrenceWeek" class="sc-fld sc-fld--full">
+              <label class="sc-lbl">调整教学周 <i>*</i></label>
+              <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" :disabled="Boolean(lockedOccurrenceWeek)" placeholder="请选择只调整哪一周" />
+              <small>本次只调整这一周的该课次，其余周次保持原课表不变。</small>
             </div>
-            <div class="sc-fld">
-              <label class="sc-lbl">结束周</label>
-              <input class="sc-in" type="number" min="1" v-model.number="form.targetEndWeek" placeholder="默认沿用原课位" />
-            </div>
-            <div class="sc-fld">
-              <label class="sc-lbl">单双周</label>
-              <AppSelect v-model="form.targetWeekParity" :options="weekParityOptions" placeholder="沿用原课位" />
-            </div>
+            <template v-else-if="adjustScope === 'RANGE'">
+              <div class="sc-fld">
+                <label class="sc-lbl">起始周 <i>*</i></label>
+                <input class="sc-in" type="number" min="1" v-model.number="form.targetStartWeek" />
+              </div>
+              <div class="sc-fld">
+                <label class="sc-lbl">结束周 <i>*</i></label>
+                <input class="sc-in" type="number" min="1" v-model.number="form.targetEndWeek" />
+              </div>
+              <div class="sc-fld">
+                <label class="sc-lbl">单双周</label>
+                <AppSelect v-model="form.targetWeekParity" :options="weekParityOptions" placeholder="沿用原课位" />
+              </div>
+            </template>
           </template>
           <div class="sc-fld">
             <label class="sc-lbl">目标教室</label>
@@ -171,7 +188,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
-      CHANGE_TYPES, form: EMPTY(), submitting: false, err: '',
+      CHANGE_TYPES, form: EMPTY(), adjustScope: '', submitting: false, err: '',
       checkingConflict: false, origin: null, originLoading: false, originError: '',
       receipt: null, unconfirmed: null, unconfirmedDraft: null,
       originSeq: 0, conflictSeq: 0, submitSeq: 0, conflictError: '',
@@ -216,6 +233,11 @@ export default {
       ]
     },
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
+    lockedOccurrenceWeek() {
+      if (this.form.changeType !== 'ADJUST' || !this.origin) return null
+      const week = Number(this.$route?.query?.occurrenceWeek || 0)
+      return week >= Number(this.origin.startWeek || 0) && week <= Number(this.origin.endWeek || 0) ? week : null
+    },
     scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' },
     stages() { return ['正式课位', '发起申请', '冲突预检', '审批生效', '通知回执'] },
     flowIndex() {
@@ -225,7 +247,11 @@ export default {
       return 1
     },
     canCheckConflict() {
-      return !!(this.form.originItemId && this.form.targetWeekday && this.form.targetSlotNo)
+      if (!this.form.originItemId || !this.form.targetWeekday || !this.form.targetSlotNo) return false
+      if (this.form.changeType !== 'ADJUST') return true
+      if (!this.adjustScope && !this.lockedOccurrenceWeek) return false
+      return Number(this.form.targetStartWeek || 0) > 0 &&
+        Number(this.form.targetEndWeek || 0) >= Number(this.form.targetStartWeek || 0)
     }
   },
   watch: {
@@ -239,7 +265,7 @@ export default {
     },
     identityKey() {
       this.originSeq++; this.conflictSeq++; this.submitSeq++
-      this.form = EMPTY(); this.origin = null; this.receipt = null
+      this.form = EMPTY(); this.adjustScope = ''; this.origin = null; this.receipt = null
       this.unconfirmed = null; this.unconfirmedDraft = null
       this.originLoading = false; this.checkingConflict = false; this.submitting = false
       this.originError = ''; this.err = ''; this.conflictError = ''; this.conflictResult = undefined
@@ -250,8 +276,18 @@ export default {
       this.conflictResult = undefined
       if (!this.origin) return
       if (value === 'ADJUST') {
-        this.form.targetStartWeek = this.origin.startWeek || null
-        this.form.targetEndWeek = this.origin.endWeek || null
+        const requestedWeek = Number(this.$route?.query?.occurrenceWeek || 0)
+        const inside = requestedWeek >= Number(this.origin.startWeek || 0) && requestedWeek <= Number(this.origin.endWeek || 0)
+        if (inside || Number(this.origin.startWeek) === Number(this.origin.endWeek)) {
+          const single = inside ? requestedWeek : Number(this.origin.startWeek)
+          this.adjustScope = 'OCCURRENCE'
+          this.form.targetStartWeek = single
+          this.form.targetEndWeek = single
+        } else {
+          this.adjustScope = ''
+          this.form.targetStartWeek = null
+          this.form.targetEndWeek = null
+        }
         this.form.targetWeekParity = this.origin.weekParity || 'ALL'
         return
       }
@@ -268,7 +304,20 @@ export default {
     'form.targetStartWeek'() { this.conflictResult = undefined },
     'form.targetEndWeek'() { this.conflictResult = undefined },
     'form.targetWeekParity'() { this.conflictResult = undefined },
-    'form.targetClassroom'() { this.conflictResult = undefined }
+    'form.targetClassroom'() { this.conflictResult = undefined },
+    adjustScope(value) {
+      this.conflictResult = undefined
+      if (!this.origin || this.form.changeType !== 'ADJUST' || this.lockedOccurrenceWeek) return
+      if (value === 'OCCURRENCE') {
+        this.form.targetStartWeek = null
+        this.form.targetEndWeek = null
+        this.form.targetWeekParity = this.origin.weekParity || 'ALL'
+      } else if (value === 'RANGE') {
+        this.form.targetStartWeek = this.origin.startWeek || null
+        this.form.targetEndWeek = this.origin.endWeek || null
+        this.form.targetWeekParity = this.origin.weekParity || 'ALL'
+      }
+    }
   },
   methods: {
     restoreUnconfirmed() {
@@ -309,8 +358,15 @@ export default {
         ? requestedWeek
         : (Number(res.data.startWeek) === Number(res.data.endWeek) ? Number(res.data.startWeek) : null)
       if (this.form.changeType === 'ADJUST') {
-        this.form.targetStartWeek = res.data.startWeek || null
-        this.form.targetEndWeek = res.data.endWeek || null
+        if (singleWeek != null) {
+          this.adjustScope = 'OCCURRENCE'
+          this.form.targetStartWeek = singleWeek
+          this.form.targetEndWeek = singleWeek
+        } else {
+          this.adjustScope = ''
+          this.form.targetStartWeek = null
+          this.form.targetEndWeek = null
+        }
         this.form.targetWeekParity = res.data.weekParity || 'ALL'
       } else {
         this.form.targetStartWeek = singleWeek
@@ -371,6 +427,8 @@ export default {
       if (!this.form.originItemId || !this.origin) return '请从本人课表重新选择要变更的课位'
       if (!this.form.reason || this.form.reason.length < 5) return '原因必填且不少于 5 字'
       if (this.form.changeType !== 'STOP' && (!this.form.targetWeekday || !this.form.targetSlotNo)) return '调课/补课须填写目标星期与节次'
+      if (this.form.changeType === 'ADJUST' && !this.adjustScope && !this.lockedOccurrenceWeek) return '请选择“只调整一次课”或“调整周期课表”'
+      if (this.form.changeType === 'ADJUST' && this.adjustScope === 'OCCURRENCE' && !Number(this.form.targetStartWeek || 0)) return '请选择具体调整教学周'
       if (['STOP', 'MAKEUP'].includes(this.form.changeType) && !Number(this.form.targetStartWeek || 0)) return this.form.changeType === 'STOP' ? '请选择具体停课教学周' : '请选择具体补课教学周'
       if (this.form.changeType === 'STOP' && !this.form.makeupPlan) return '停课须填写补课/后续安排'
       return ''
@@ -461,6 +519,7 @@ export default {
 .sc-lbl i { color: var(--danger, #dc2626); font-style: normal; }
 .sc-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
 .sc-hint { font-size: 11px; color: var(--t3, #94a3b8); margin: 2px 0 0; }
+.sc-occurrence-lock { padding: 10px 12px; border: 1px solid var(--pri, #2563eb); border-radius: 8px; background: var(--pri-bg, #eef5ff); color: var(--t2, #52647a); font-size: 12px; line-height: 1.6; }
 .sc-radio { display: flex; gap: var(--space-4); font-size: 13px; padding-top: 4px; }
 .sc-conflict { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .sc-conflict__hint { margin: 0; font-size: 12px; color: var(--t3, #94a3b8); }

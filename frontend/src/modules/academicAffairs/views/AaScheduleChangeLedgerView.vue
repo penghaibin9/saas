@@ -7,8 +7,8 @@
   >
     <template #actions>
       <div class="sc-actions">
-        <AppButton variant="primary" @click="goApply">＋ 发起调停课</AppButton>
-        <AppButton @click="goApproval">审批工作台</AppButton>
+        <AppButton variant="primary" @click="goApply">{{ isAcademicTeacher ? '从个人课表选择课程' : '＋ 发起调停课' }}</AppButton>
+        <AppButton v-if="canReview" @click="goApproval">审批工作台</AppButton>
       </div>
     </template>
 
@@ -63,6 +63,7 @@ import { scheduleChangeApi, CHANGE_TYPES, CHANGE_STATUS } from '@/modules/academ
 import { toast } from '@/utils/toast'
 import ScheduleChangeEvidence from '../components/parallel-b/ScheduleChangeEvidence.vue'
 import { currentUserFromToken } from '@/services/http/client'
+import { matchPermission } from '@/config/navPlan'
 
 const EMPTY = () => ({ changeType: '', status: '', termId: '' })
 
@@ -90,6 +91,12 @@ export default {
     selectedId() { return String(this.$route.query.changeId || '') },
     roleName() { return this.ctx?.currentRole?.roleName || '教务' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '按授权范围' },
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
+    canReview() {
+      const patterns = this.ctx?.permissionPatterns || []
+      return matchPermission(patterns, 'academicAffairs.scheduleChange.collegeReview') ||
+        matchPermission(patterns, 'academicAffairs.scheduleChange.academicReview')
+    },
     filterFields() {
       return [
         { key: 'changeType', label: '类型', type: 'select', options: CHANGE_TYPES.map((t) => ({ value: t.value, label: t.label })) },
@@ -127,7 +134,7 @@ export default {
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
-    goApply() { this.$router.push('/admin/academic-affairs/schedule-change/apply') },
+    goApply() { this.$router.push(this.isAcademicTeacher ? '/admin/academic-affairs/schedule/teacher' : '/admin/academic-affairs/schedule-change/apply') },
     goApproval() { this.$router.push('/admin/academic-affairs/schedule-change/approval') },
     goDetail(row) { this.$router.push({ path: this.$route.path, query: { ...this.$route.query, changeId: row.changeId } }) },
     closeDetail() { const query = { ...this.$route.query }; delete query.changeId; this.$router.replace({ path: this.$route.path, query }) },

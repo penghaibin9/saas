@@ -173,7 +173,7 @@ export default {
         query: {
           originItemId: String(originItemId),
           changeType,
-          occurrenceWeek: String(this.week || this.todayWeek || this.selectedItem?.weekNo || '')
+          occurrenceWeek: String(this.week || this.selectedItem?.weekNo || '')
         }
       })
     },
