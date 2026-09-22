@@ -78,9 +78,10 @@
           </div>
           <div v-if="isSelfView" class="aa-item-detail__actions">
             <AppButton variant="primary" @click="applyChange('ADJUST')">申请调课</AppButton>
-            <AppButton @click="applyChange('STOP')">申请停课</AppButton>
-            <AppButton @click="applyChange('MAKEUP')">申请补课</AppButton>
+            <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('STOP')">申请停课</AppButton>
+            <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('MAKEUP')">申请补课</AppButton>
           </div>
+          <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课/补课必须先在上方“周次”选择具体教学周；调课可在下一步选择“只调一次”或“调整周期课表”。</p>
           <p v-else class="mp-note">当前为管理查询视图；只有任课教师本人可从课位发起调停课。</p>
         </AppSectionCard>
       </template>
@@ -153,6 +154,10 @@ export default {
     isSameTeacherKey(value) {
       return String(value || '').trim() === String(this.selfKey || '').trim()
     },
+    selectedOccurrenceWeek() {
+      const week = Number(this.week || this.selectedItem?.weekNo || 0)
+      return Number.isInteger(week) && week > 0 ? week : null
+    },
     openTodayItem(item) {
       this.selectedItem = { ...item, itemId: item.itemId || item.scheduleItemId }
       this.$nextTick(() => document.querySelector('.aa-item-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))
@@ -168,12 +173,16 @@ export default {
         toast.error('该课位缺少正式课表标识，请刷新本人课表后重试')
         return
       }
+      if (['STOP', 'MAKEUP'].includes(changeType) && !this.selectedOccurrenceWeek) {
+        toast.error('请先选择具体教学周，再申请停课或补课')
+        return
+      }
       this.$router.push({
         path: '/admin/academic-affairs/schedule-change/apply',
         query: {
           originItemId: String(originItemId),
           changeType,
-          occurrenceWeek: String(this.week || this.selectedItem?.weekNo || '')
+          occurrenceWeek: String(this.selectedOccurrenceWeek || '')
         }
       })
     },

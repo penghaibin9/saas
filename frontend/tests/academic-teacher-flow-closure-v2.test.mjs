@@ -297,3 +297,12 @@ test('teacher V3 grade setup locks the Today-selected task and hides internal id
   assert.match(source, /v-if="isAdminRole && t\.courseId"/)
   assert.match(source, /本人正式教学任务/)
 })
+
+
+test('teacher V3 stop and makeup cannot start before a concrete teaching week is selected', () => {
+  const source = src('modules/academicAffairs/views/AaTeacherScheduleView.vue')
+  assert.match(source, /selectedOccurrenceWeek/)
+  assert.match(source, /:disabled="!selectedOccurrenceWeek"/)
+  assert.match(source, /请先选择具体教学周，再申请停课或补课/)
+  assert.match(source, /occurrenceWeek: String\(this\.selectedOccurrenceWeek \|\| ''\)/)
+})
