@@ -469,9 +469,9 @@ export const NAV_PLAN = [
       academicEntry('aa.schedule-change.schedule.change.archive', I('调停课归档', '/admin/academic-affairs/schedule-change/archive', 'academicAffairs.scheduleChange.view'))
     ]),
     mod('aa-attendance', '课堂考勤', '/admin/academic-affairs/attendance-stats', [
-      academicEntry('aa.attendance.attendance.stats', I('课堂考勤统计（出勤/迟到/旷课/请假汇总）', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view')),
-      academicEntry('aa.attendance.attendance.stats.panel.sessions', I('考勤场次查询', '/admin/academic-affairs/attendance-stats?panel=sessions', 'academicAffairs.warning.view')),
-      academicEntry('aa.attendance.attendance.stats.alias1', I('按点名类别统计', '/admin/academic-affairs/attendance-stats', 'academicAffairs.warning.view')),
+      academicEntry('aa.attendance.attendance.stats', I('课堂考勤统计（出勤/迟到/旷课/请假汇总）', '/admin/academic-affairs/attendance-stats', 'academicAffairs.attendance.view')),
+      academicEntry('aa.attendance.attendance.stats.panel.sessions', I('考勤场次查询', '/admin/academic-affairs/attendance-stats?panel=sessions', 'academicAffairs.attendance.view')),
+      academicEntry('aa.attendance.attendance.stats.alias1', I('按点名类别统计', '/admin/academic-affairs/attendance-stats', 'academicAffairs.attendance.view')),
       academicEntry('aa.attendance.warnings.console.tab.dashboard', I('旷课预警联动', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.rule.manage'))
     ]),
     mod('aa-course-selection', '选课管理', '/admin/academic-affairs/selection', [
@@ -519,16 +519,16 @@ export const NAV_PLAN = [
       academicEntry('aa.grade-review.grade.audit', I('成绩操作审计', '/admin/academic-affairs/grade-audit', 'academicAffairs.grade.view'))
     ]),
     mod('aa-warning', '学业预警', '/admin/academic-affairs/warnings', [
-      academicEntry('aa.warning.warnings', I('预警扫描与列表', '/admin/academic-affairs/warnings', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.dashboard', I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.credit', I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.fail', I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.gpa', I('绩点预警', '/admin/academic-affairs/warnings/console?tab=gpa', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.retake', I('补考重修预警', '/admin/academic-affairs/warnings/console?tab=retake', 'academicAffairs.warning.view')),
-      academicEntry('aa.warning.warnings.console.tab.graduation', I('毕业风险预警', '/admin/academic-affairs/warnings/console?tab=graduation', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings', I('预警扫描与列表', '/admin/academic-affairs/warnings', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.dashboard', I('预警看板', '/admin/academic-affairs/warnings/console?tab=dashboard', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.credit', I('学分预警', '/admin/academic-affairs/warnings/console?tab=credit', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.fail', I('挂科预警', '/admin/academic-affairs/warnings/console?tab=fail', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.gpa', I('绩点预警', '/admin/academic-affairs/warnings/console?tab=gpa', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.retake', I('补考重修预警', '/admin/academic-affairs/warnings/console?tab=retake', 'academicAffairs.attendance.view')),
+      academicEntry('aa.warning.warnings.console.tab.graduation', I('毕业风险预警', '/admin/academic-affairs/warnings/console?tab=graduation', 'academicAffairs.attendance.view')),
       academicEntry('aa.warning.warnings.console.tab.rules', I('预警规则', '/admin/academic-affairs/warnings/console?tab=rules', 'academicAffairs.warning.rule.manage')),
       academicEntry('aa.warning.warnings.console.tab.followup', I('预警跟进', '/admin/academic-affairs/warnings/console?tab=followup', 'academicAffairs.warning.handle')),
-      academicEntry('aa.warning.warnings.console.tab.stats', I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.warning.view')),
+      academicEntry('aa.warning.warnings.console.tab.stats', I('预警统计', '/admin/academic-affairs/warnings/console?tab=stats', 'academicAffairs.attendance.view')),
       academicEntry('aa.warning.warnings.console.tab.notify', I('预警通知', '/admin/academic-affairs/warnings/console?tab=notify', 'academicAffairs.warning.view'))
     ]),
     mod('aa-graduation-qual', '毕业资格审核', '/admin/academic-affairs/graduation', [
@@ -557,12 +557,12 @@ export const NAV_PLAN = [
     ]),
     mod('aa-textbooks', '教材管理', '/admin/academic-affairs/textbooks', [
       academicEntry('aa.textbooks.textbooks.tab.catalog', I('教材目录', '/admin/academic-affairs/textbooks?tab=catalog', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.selection', I('教材选用', '/admin/academic-affairs/textbooks?tab=selection', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.review', I('审核备案', '/admin/academic-affairs/textbooks?tab=review', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.order', I('征订到货', '/admin/academic-affairs/textbooks?tab=order', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.fee', I('费用台账', '/admin/academic-affairs/textbooks?tab=fee', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.stock', I('教材库存', '/admin/academic-affairs/textbooks?tab=stock', 'academicAffairs.textbook.view')),
-      academicEntry('aa.textbooks.textbooks.tab.stats', I('教材统计', '/admin/academic-affairs/textbooks?tab=stats', 'academicAffairs.textbook.view'))
+      academicEntry('aa.textbooks.textbooks.tab.selection', I('教材选用', '/admin/academic-affairs/textbooks?tab=selection', 'academicAffairs.textbook.selection.manage')),
+      academicEntry('aa.textbooks.textbooks.tab.review', I('审核备案', '/admin/academic-affairs/textbooks?tab=review', 'academicAffairs.textbook.review.manage')),
+      academicEntry('aa.textbooks.textbooks.tab.order', I('征订到货', '/admin/academic-affairs/textbooks?tab=order', 'academicAffairs.textbook.order.manage')),
+      academicEntry('aa.textbooks.textbooks.tab.fee', I('费用台账', '/admin/academic-affairs/textbooks?tab=fee', 'academicAffairs.textbook.fee.manage')),
+      academicEntry('aa.textbooks.textbooks.tab.stock', I('教材库存', '/admin/academic-affairs/textbooks?tab=stock', 'academicAffairs.textbook.order.manage')),
+      academicEntry('aa.textbooks.textbooks.tab.stats', I('教材统计', '/admin/academic-affairs/textbooks?tab=stats', 'academicAffairs.textbook.order.manage'))
     ]),
     mod('aa-resources', '教学资源', '/admin/academic-affairs/classrooms', [
       academicEntry('aa.resources.classrooms', I('教室资源', '/admin/academic-affairs/classrooms', 'academicAffairs.classroom.view')),
