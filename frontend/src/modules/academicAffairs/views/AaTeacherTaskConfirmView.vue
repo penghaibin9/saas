@@ -7,11 +7,17 @@
     show-subtitle-in-concise
   >
     <template #actions>
+      <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</button>
       <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="load">刷新</button>
     </template>
 
     <div class="teacher-task mp-stack">
       <AaOperationReceipt :receipt="receipt" />
+      <div v-if="receipt && receipt.pending === false" class="teacher-task__next">
+        <span>本次办理已形成正式状态；后续进度会回到“今日教学”的办理中。</span>
+        <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</button>
+        <button v-if="primaryRow?.status === 'READY'" class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/schedule/teacher')">查看个人课表</button>
+      </div>
       <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重提）</button>
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
@@ -319,6 +325,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.teacher-task__next { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--primary-100); border-radius:10px; background:var(--primary-50); color:var(--gray-600); font-size:12px; }
+.teacher-task__next span { flex:1 1 280px; }
 .teacher-task__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .teacher-task__summary article { padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
 .teacher-task__summary span, .teacher-task__summary small { display: block; color: var(--gray-500); font-size: 12px; }

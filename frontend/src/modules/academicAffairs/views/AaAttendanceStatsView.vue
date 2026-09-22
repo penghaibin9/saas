@@ -36,6 +36,11 @@
             <span>未点名 {{ unmarkedCount }} 人<template v-if="unmarkedCount"> · 请全部点名后再提交</template></span>
             <AppButton variant="primary" :loading="submittingSession" :disabled="Boolean(markingStudentId) || unmarkedCount > 0" @click="submitAttendance">提交本场考勤</AppButton>
           </div>
+          <div v-else-if="sessionDetail.status === 'SUBMITTED'" class="aa-submit-receipt">
+            <div><strong>本场考勤已提交</strong><span>正式状态已回读；后续统计与预警继续使用同一考勤事实。</span></div>
+            <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
+            <AppButton @click="$router.push('/admin/academic-affairs/attendance-stats')">查看考勤统计</AppButton>
+          </div>
         </template>
       </AppSectionCard>
 
@@ -340,5 +345,9 @@ export default {
 .aa-cell-danger { color: var(--danger-600, #f53f3f); font-weight: 600; }
 .aa-mark-actions { display:inline-flex; gap:8px; margin-left:10px; flex-wrap:wrap; }
 .aa-submit-row { display:flex; align-items:center; justify-content:flex-end; gap:14px; margin-top:12px; }
+.aa-submit-receipt { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; padding:12px 14px; border:1px solid var(--success-200,#b7dfc2); border-radius:9px; background:var(--success-50,#f0f9f2); }
+.aa-submit-receipt div { flex:1 1 280px; }
+.aa-submit-receipt strong,.aa-submit-receipt span { display:block; }
+.aa-submit-receipt span { margin-top:3px; color:var(--text-600,#64748b); font-size:12px; }
 :deep(.aa-row-danger) { background: var(--danger-50, #fff1f0); }
 </style>

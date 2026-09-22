@@ -20,7 +20,11 @@
         <div><strong>{{ submitReceipt.verified ? '已回读正式任务' : '结果待核实' }}</strong><span>{{ submitReceipt.courseName }} · 任务 {{ submitReceipt.taskId }}</span></div>
         <div><small>当前状态</small><b>{{ statusLabel(submitReceipt.status) }}</b></div>
         <div><small>下一责任</small><b>{{ submitReceipt.verified ? (['SUBMITTED', 'COLLEGE_REVIEW'].includes(submitReceipt.status) ? '学院成绩审核人' : submitReceipt.status === 'ACADEMIC_REVIEW' ? '教务成绩发布岗' : '查看正式成绩') : '请先核对正式状态' }}</b></div>
-        <AppButton v-if="submitReceipt.verified" size="small" variant="ghost" @click="closeTask">继续下一门</AppButton><AppButton v-else :disabled="submitting" @click="verifySubmit">核对正式状态</AppButton>
+        <template v-if="submitReceipt.verified">
+          <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
+          <AppButton size="small" variant="ghost" @click="closeTask">继续下一门</AppButton>
+        </template>
+        <AppButton v-else :disabled="submitting" @click="verifySubmit">核对正式状态</AppButton>
       </section>
       <ErrorState v-if="taskError" :description="taskError" @retry="retryTask" />
       <LoadingState v-if="taskLoading" />

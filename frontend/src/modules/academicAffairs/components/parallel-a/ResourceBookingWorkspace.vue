@@ -3,7 +3,11 @@
     :title="`${isAcademicTeacher ? '我的' : ''}${label}预约`"
     :subtitle="isAcademicTeacher ? '核对空闲资源后提交申请；下方台账只显示本人预约及正式审核状态。' : '核对日期、资源与占用来源后申请，办理后查询正式预约记录。'"
   >
-    <template #actions><AppButton v-if="$route.query.returnToken" :disabled="saving" @click="goBack">返回原位置</AppButton><AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton></template>
+    <template #actions>
+      <AppButton v-if="isAcademicTeacher" variant="ghost" :disabled="saving" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
+      <AppButton v-if="$route.query.returnToken" :disabled="saving" @click="goBack">返回原位置</AppButton>
+      <AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton>
+    </template>
     <AaOperationReceipt :receipt="receipt" />
     <AppButton v-if="pending" :disabled="saving" @click="queryPending">查询办理结果</AppButton>
     <div v-if="isAcademicTeacher" class="booking-view-tabs" role="tablist" aria-label="预约工作区">

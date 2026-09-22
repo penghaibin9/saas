@@ -21,6 +21,7 @@
         <div><small>当前结果</small><b>{{ receipt.statusLabel }}</b></div>
         <div><small>下一责任</small><b>学院教务审核人</b></div>
         <div class="sc-receipt__actions">
+          <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
           <AppButton size="small" variant="ghost" @click="goReceipt">查看申请详情</AppButton>
           <AppButton size="small" @click="openMySchedule">继续从课表选择</AppButton>
         </div>

@@ -186,3 +186,21 @@ test('teacher V3 booking route can clear an exact booking focus back to my full 
   const source = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
   assert.match(source, /if \(this\.bookingId\) query\.bookingId = this\.bookingId; else delete query\.bookingId/)
 })
+
+
+test('teacher V3 completed flows return to the existing Today page instead of dead-ending', () => {
+  const task = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  const change = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  const attendance = src('modules/academicAffairs/views/AaAttendanceStatsView.vue')
+  const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  const booking = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  for (const source of [task, change, attendance, grade, textbook, booking]) {
+    assert.match(source, /\/admin\/academic-affairs\/teacher\/today/)
+  }
+  assert.match(task, /本次办理已形成正式状态/)
+  assert.match(attendance, /本场考勤已提交/)
+  assert.match(grade, /返回今日教学/)
+  assert.match(textbook, /教材选用已提交审核/)
+  assert.match(booking, /返回今日教学/)
+})
