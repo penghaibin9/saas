@@ -134,7 +134,8 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
             "backend/Dockerfile\\.security|backend/requirements\\.txt|scripts/check/check-security-image-audit\\.py",
             text,
         )
-        self.assertIn("PYTHON_BASE_TAG|RUNTIME_BASE_TAG|trivy image", text)
+        self.assertIn("^[+-][[:space:]]+(export (PYTHON_BASE_TAG|RUNTIME_BASE_TAG)=", text)
+        self.assertIn("|trivy image ", text)
         self.assertIn("steps.vulnerability_surface.outputs.scan_required == 'true'", text)
         self.assertIn("NO_PACKAGE_OR_IMAGE_SURFACE_CHANGE", text)
         self.assertIn("SCHEDULED_DAILY", text)
