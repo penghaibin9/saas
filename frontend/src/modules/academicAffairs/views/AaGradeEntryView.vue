@@ -37,7 +37,7 @@
           <ul>
             <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
               <span>
-                {{ t.courseName }}<small v-if="t.courseId"> · 课程ID {{ t.courseId }}</small>
+                {{ t.courseName }}<small v-if="isAdminRole && t.courseId"> · 课程ID {{ t.courseId }}</small>
                 <small v-if="t.deadline"> · 截止 {{ formatDeadline(t.deadline) }}<strong v-if="t.isOverdue" class="aa-overdue-text"> · 已逾期</strong></small>
               </span>
               <AppStatusTag :type="statusColor(t.status)" dot>{{ statusLabel(t.status) }}</AppStatusTag>
@@ -59,12 +59,22 @@
         <div class="aa-grid2">
           <label class="aa-field">
             <span :class="{ req: !isAdminRole }">教学任务</span>
+            <input
+              v-if="isAcademicTeacher && setupTeachingTaskId"
+              :value="setupTeachingTaskLabel"
+              type="text"
+              class="aa-input"
+              disabled
+              aria-label="已锁定教学任务"
+            />
             <AppTeachingTaskPicker
+              v-else
               v-model="form.teachingTaskId"
-              :query="{ mine: !isAdminRole }"
-              clearable
+              :query="{ mine: !isAdminRole, termId: !isAdminRole ? (currentTermId || undefined) : undefined }"
+              :clearable="isAdminRole"
+              :disabled="creating"
               @change="onTeachingTaskChange"
-              placeholder="普通教师仅选择本人正式教学任务；管理员可留空做特殊补录"
+              placeholder="普通教师仅选择当前学期本人正式教学任务；管理员可留空做特殊补录"
             />
           </label>
           <label v-if="isAdminRole && !form.teachingTaskId" class="aa-field">
@@ -96,8 +106,8 @@
             <div>
               <span class="aa-task-context__eyebrow">当前正式成绩任务</span>
               <h2>{{ task.courseName }}<span v-if="task.teachingClassName"> · {{ task.teachingClassName }}</span></h2>
-              <p>{{ task.termCode || '学期待核对' }} · 任务 {{ task.gradeTaskId }} · 课程 {{ task.courseId || '待治理' }}</p>
-              <p class="aa-task-source">来源：{{ task.teachingTaskId ? `正式教学任务 ${task.teachingTaskId}` : '历史任务或管理员特殊补录' }}</p>
+              <p>{{ task.termCode || '学期待核对' }}<template v-if="isAdminRole"> · 任务 {{ task.gradeTaskId }} · 课程 {{ task.courseId || '待治理' }}</template></p>
+              <p class="aa-task-source">来源：{{ task.teachingTaskId ? (isAdminRole ? '正式教学任务 ' + task.teachingTaskId : '本人正式教学任务') : '历史任务或管理员特殊补录' }}</p>
             </div>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
           </div>
@@ -126,7 +136,7 @@
         <AppSectionCard :title="`录入任务：${task.courseName}`">
           <template #header-extra><AppButton size="small" variant="ghost" @click="closeTask">返回</AppButton></template>
           <div class="aa-task-head">
-            <span>课程ID {{ task.courseId || '待治理' }} · 及格线 {{ task.passLine }}</span>
+            <span><template v-if="isAdminRole">课程ID {{ task.courseId || '待治理' }} · </template>及格线 {{ task.passLine }}</span>
             <span v-if="task.deadlineReady">截止 {{ formatDeadline(task.deadline) }}</span>
             <span v-else>未设置提交截止时间</span>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
@@ -366,7 +376,7 @@ export default {
         passLine: 60, adminSupplementReason: ''
       },
       creating: false, task: null, myTasks: [], showCreate: false, taskLoading: false, taskError: '',
-      currentTermId: '', currentTermName: '', showHistory: false, setupTeachingTaskId: '',
+      currentTermId: '', currentTermName: '', showHistory: false, setupTeachingTaskId: '', setupTeachingTaskLabel: '',
       taskSeq: 0, listSeq: 0, recordsSeq: 0, dynamicSeq: 0, alive: true, savingRowId: '',
       taskPage: 1, taskTotal: 0, rosterInfo: null, submitDialog: false, submitCommand: null, submitPending: false,
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
@@ -455,7 +465,7 @@ export default {
   watch: {
     identityKey() {
       this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false
-      this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.setupTeachingTaskId = ''
+      this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.setupTeachingTaskId = ''; this.setupTeachingTaskLabel = ''
       this.loadTasks()
     },
     '$route.fullPath'() { this.invalidateTask(); this.loadTasks() }
@@ -645,6 +655,7 @@ export default {
         throw { code: 409, message: '该教学任务尚未完成教务终审，暂不能建立成绩任务' }
       }
       this.setupTeachingTaskId = id
+      this.setupTeachingTaskLabel = [row.courseName, row.teachingClassName || row.className].filter(Boolean).join(' · ') || '本人正式教学任务'
       this.showCreate = true
       this.form.teachingTaskId = id
       this.onTeachingTaskChange(id, [{ raw: row }])

@@ -287,3 +287,13 @@ test('teacher V3 attendance uses one classroom page and defaults teacher to curr
   assert.match(source, /查看学生汇总/)
   assert.doesNotMatch(source, /pageTitle\(\) \{ return this\.panel === 'sessions' \? '考勤场次查询'/)
 })
+
+
+test('teacher V3 grade setup locks the Today-selected task and hides internal ids from teacher UI', () => {
+  const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  assert.match(source, /setupTeachingTaskLabel/)
+  assert.match(source, /aria-label="已锁定教学任务"/)
+  assert.match(source, /termId: !isAdminRole \? \(currentTermId \|\| undefined\) : undefined/)
+  assert.match(source, /v-if="isAdminRole && t\.courseId"/)
+  assert.match(source, /本人正式教学任务/)
+})
