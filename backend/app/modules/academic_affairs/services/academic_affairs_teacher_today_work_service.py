@@ -315,11 +315,20 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
             AaScheduleChange.status.in_(["SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW", "APPROVED"]),
             AaScheduleChange.is_deleted.is_(False),
         ).order_by(AaScheduleChange.id.desc())).all()
+        schedule_change_status_text = {
+            "SUBMITTED": "已提交 · 等待学院受理",
+            "COLLEGE_REVIEW": "学院审核中",
+            "ACADEMIC_REVIEW": "学院已通过 · 等待教务终审",
+            "APPROVED": "终审通过 · 等待课表生效",
+        }
         for row in changes:
             waiting.append({
                 "kind": "SCHEDULE_CHANGE", "id": str(row.id),
                 "title": f"调停课申请：{row.course_name or '课程'}",
-                "note": str(row.status or "审核中"), "action": "查看进度",
+                "note": schedule_change_status_text.get(
+                    str(row.status or "").upper(), "审核状态待核对"
+                ),
+                "action": "查看进度",
                 "path": f"/admin/academic-affairs/schedule-change?changeId={row.id}",
             })
 

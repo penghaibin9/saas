@@ -231,3 +231,11 @@ def test_teacher_v3_pending_bookings_do_not_disappear_after_the_booking_date():
     assert "预约日期已过，仍待审核，请联系资源管理员" in work
     assert '"blocked": overdue_booking' in work
     assert 'term_start_date=str(result.get("termStartDate") or "")' in mobile
+
+
+def test_teacher_v3_schedule_change_waiting_uses_teacher_language_not_raw_codes():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    assert '"SUBMITTED": "已提交 · 等待学院受理"' in source
+    assert '"COLLEGE_REVIEW": "学院审核中"' in source
+    assert '"ACADEMIC_REVIEW": "学院已通过 · 等待教务终审"' in source
+    assert '"APPROVED": "终审通过 · 等待课表生效"' in source
