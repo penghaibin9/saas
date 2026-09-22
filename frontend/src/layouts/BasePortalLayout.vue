@@ -327,6 +327,13 @@ import { OfficeBuilding } from '@element-plus/icons-vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
 import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, searchNavPlan, navRefMatches, navRefExactMatch, matchPermission } from '@/config/navPlan'
+import {
+  academicTeacherActiveModule,
+  academicTeacherDefaultPath,
+  filterAcademicTeacherSearchResults,
+  isAcademicTeacherContext,
+  projectAcademicTeacherModules
+} from '@/modules/academicAffairs/config/academicTeacherNavigation'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -468,7 +475,10 @@ export default {
     },
     workspaceModules() {
       const permissions = this.ctx?.permissionPatterns || []
-      const modules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      const sourceModules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      const modules = this.railActiveKey === 'academic-affairs'
+        ? projectAcademicTeacherModules(sourceModules, this.ctx)
+        : sourceModules
       return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },
     /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
@@ -514,7 +524,8 @@ export default {
         seen.add(k)
         return true
       })
-      return dedup.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
+      const projected = filterAcademicTeacherSearchResults(dedup, this.ctx, this.workspaceModules)
+      return projected.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
@@ -591,6 +602,9 @@ export default {
       return getVisibleAdminMenu(this.ctx)
         .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
         .map((group) => {
+          if (group.key === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
+            return { key: group.key, label: group.label, path: academicTeacherDefaultPath(this.ctx), badge: group.badge }
+          }
           // 顶部中心入口保留日常办理导航；独立大屏仍由原菜单进入。
           // 只从已通过权限过滤的菜单选择，受限身份继续使用其首个可用入口。
           const first = group.children.find((item) => item.path === '/admin/academic-affairs') || group.children[0]
@@ -648,6 +662,10 @@ export default {
       return this.planGroup ? this.planGroup.children : []
     },
     planActiveModKey() {
+      if (this.railActiveKey === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
+        return academicTeacherActiveModule(this.workspaceModules, this.currentNavRef, this.ctx) ||
+          (this.workspaceModules[0] && this.workspaceModules[0].key) || ''
+      }
       return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
     },
     /* 按当前路由定位应高亮的唯一三级叶子（复用 findActiveInPlan 拍平索引，避免遍历 planMods 全部叶子） */
