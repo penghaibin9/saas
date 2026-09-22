@@ -277,3 +277,13 @@ test('teacher V3 schedule-change ledger defaults current term and keeps history 
   assert.match(source, /返回当前学期/)
   assert.match(source, /selectedId/)
 })
+
+
+test('teacher V3 attendance uses one classroom page and defaults teacher to current term', () => {
+  const source = src('modules/academicAffairs/views/AaAttendanceStatsView.vue')
+  assert.match(source, /pageTitle\(\) \{ return '课堂考勤' \}/)
+  assert.match(source, /initializeCurrentTerm/)
+  assert.match(source, /String\(res\.data\.yearCode\) \+ '-' \+ String\(res\.data\.termNo\)/)
+  assert.match(source, /查看学生汇总/)
+  assert.doesNotMatch(source, /pageTitle\(\) \{ return this\.panel === 'sessions' \? '考勤场次查询'/)
+})

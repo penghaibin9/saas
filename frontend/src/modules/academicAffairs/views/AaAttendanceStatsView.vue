@@ -5,7 +5,7 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <template #actions><AppButton variant="primary" @click="togglePanel">{{ panel === 'sessions' ? '返回课堂考勤' : '查看考勤场次' }}</AppButton></template>
+    <template #actions><AppButton variant="primary" @click="togglePanel">{{ panel === 'sessions' ? '查看学生汇总' : '查看考勤场次' }}</AppButton></template>
     <div class="mp-stack">
       <div class="aa-filter">
         <label class="aa-filter-field"><span>视图</span><AppSelect v-model="panel" :options="panelOptions" @change="onPanelChange" /></label>
@@ -104,7 +104,7 @@ export default {
     return {
       loading: true, error: '', scanning: false,
       panel: q.panel === 'sessions' ? 'sessions' : 'stats',
-      classId: '', termCode: '', sessionType: '',
+      classId: '', termCode: '', sessionType: '', currentTermName: '', initializingTerm: false,
       page: 1, pageSize: 20, sessionTotal: 0, studentPage: 1, loadSeq: 0, scanSeq: 0,
       sessionDetail: null, detailLoading: false, detailError: '', detailSeq: 0, rosterPage: 1,
       markingStudentId: '', submittingSession: false,
@@ -139,10 +139,11 @@ export default {
     }
   },
   computed: {
-    pageTitle() { return this.panel === 'sessions' ? '考勤场次查询' : '课堂考勤' },
+    pageTitle() { return '课堂考勤' },
     pageSubtitle() { return this.panel === 'sessions' ? '场次回到对应正式课次，核对课程、教师、应到人数与提交状态' : '从正式课次与授课关系核对考勤；提交后进入正式统计和授权预警' },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     filterKey() { return JSON.stringify([this.classId, this.termCode, this.sessionType]) },
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || '').toUpperCase() === 'ACADEMIC_TEACHER' },
     canScan() { return matchPermission(this.ctx.permissionPatterns, 'academicAffairs.warning.rule.manage') },
     selectedSessionId() { return String(this.$route.query.sessionId || '') },
     visibleRoster() { return (this.sessionDetail?.items || []).slice((this.rosterPage - 1) * 20, this.rosterPage * 20).map(this.normalizeStudent) },
@@ -152,12 +153,15 @@ export default {
     unmarkedCount() { return (this.sessionDetail?.items || []).filter(row => row.status === 'UNMARKED').length }
   },
   watch: {
-    identityKey() {
+    async identityKey() {
       this.loadSeq++; this.detailSeq++; this.scanSeq++
       this.data = { students: [], sessionCount: 0 }; this.sessions = []; this.sessionDetail = null; this.scanning = false
-      this.closeSession(); this.search()
+      this.termCode = ''; this.currentTermName = ''
+      this.closeSession()
+      await this.initializeCurrentTerm()
+      this.search()
     },
-    filterKey() { this.closeSession(); this.search() },
+    filterKey() { if (!this.initializingTerm) { this.closeSession(); this.search() } },
     selectedSessionId() { this.loadSession() },
     '$route.query.panel'(v) {
       if (this.panel === (v === 'sessions' ? 'sessions' : 'stats')) return
@@ -165,9 +169,26 @@ export default {
       this.load()
     }
   },
-  created() { this.load(); if (this.selectedSessionId) this.loadSession() },
+  async created() {
+    await this.initializeCurrentTerm()
+    this.load()
+    if (this.selectedSessionId) this.loadSession()
+  },
   beforeUnmount() { this.loadSeq++; this.detailSeq++; this.scanSeq++ },
   methods: {
+    async initializeCurrentTerm() {
+      if (!this.isAcademicTeacher || this.termCode || this.selectedSessionId) return
+      this.initializingTerm = true
+      try {
+        const res = await academicAffairsApi.getCurrentTerm()
+        if (res?.code === 0 && res.data?.yearCode && res.data?.termNo) {
+          this.termCode = String(res.data.yearCode) + '-' + String(res.data.termNo)
+          this.currentTermName = res.data.termName || this.termCode
+        }
+      } finally {
+        this.initializingTerm = false
+      }
+    },
     sessionStatus(value) { return { DRAFT: '草稿', SUBMITTED: '已提交' }[value] || '状态待确认' },
     attendanceStatus(value) { return { UNMARKED: '未点名', PRESENT: '出勤', LATE: '迟到', ABSENT: '旷课', LEAVE: '请假' }[value] || '状态待确认' },
     normalizeStudent(row = {}) {
