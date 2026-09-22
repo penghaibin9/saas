@@ -125,6 +125,20 @@ class SecurityProductionImageSurfaceContracts(unittest.TestCase):
         self.assertIn("--vex ''", text)
         self.assertIn('Require fresh matching image evidence and zero blocking findings', text)
 
+    def test_pr_scan_separates_runtime_smoke_from_vulnerability_drift(self):
+        text = WORKFLOW.read_text()
+        self.assertIn('schedule:', text)
+        self.assertIn('Classify immutable vulnerability surface', text)
+        self.assertIn('if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then', text)
+        self.assertIn(
+            "backend/Dockerfile\\.security|backend/requirements\\.txt|scripts/check/check-security-image-audit\\.py",
+            text,
+        )
+        self.assertIn("PYTHON_BASE_TAG|RUNTIME_BASE_TAG|trivy image", text)
+        self.assertIn("steps.vulnerability_surface.outputs.scan_required == 'true'", text)
+        self.assertIn("NO_PACKAGE_OR_IMAGE_SURFACE_CHANGE", text)
+        self.assertIn("SCHEDULED_DAILY", text)
+
     def test_probe_rejects_disallowed_regular_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
