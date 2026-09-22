@@ -467,13 +467,13 @@ export default {
     },
     workspaceSearchPlaceholder() {
       if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
-      if (this.isPlatformMode) return '搜索平台功能或帮助'
-      return this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能或帮助'
+      return this.isPlatformMode ? '搜索平台功能或帮助'
+        : (this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能或帮助')
     },
     workspaceSearchAriaLabel() {
       if (!this.useWorkspace) return '搜索功能与帮助'
-      if (this.isPlatformMode) return '搜索平台功能与帮助'
-      return this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能与帮助'
+      return this.isPlatformMode ? '搜索平台功能与帮助'
+        : (this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能与帮助')
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)
