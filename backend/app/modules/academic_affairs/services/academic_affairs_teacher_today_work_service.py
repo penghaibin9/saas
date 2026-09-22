@@ -142,7 +142,7 @@ def pending_grade_todos(db, user, *, term_id=None) -> list[dict]:
     } for row in rows if int(row.source_biz_id or 0) in allowed_ids]
 
 
-def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_date="") -> dict:
+def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_date="", term_end_date="") -> dict:
     """One authoritative PC/miniapp work projection for the current teaching term."""
     from app.models import (
         AaClassroomBooking, AaGradeTask, AaLabBooking, AaScheduleChange,
@@ -332,19 +332,25 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
                 model.tenant_id == _tid(), model.applicant_key.in_(keys),
                 model.status == "PENDING", model.is_deleted.is_(False),
             ]
-            if today_date:
-                conditions.append(model.booking_date >= str(today_date))
+            if term_start_date:
+                conditions.append(model.booking_date >= str(term_start_date))
             if term_end_date:
                 conditions.append(model.booking_date <= str(term_end_date))
             rows = db.scalars(select(model).where(*conditions).order_by(model.id.desc())).all()
             for row in rows:
+                overdue_booking = bool(today_date and str(row.booking_date or "") < str(today_date))
                 waiting.append({
                     "kind": kind, "id": str(row.id), "title": "教学资源预约待审核",
-                    "note": " · ".join(value for value in (
-                        getattr(row, text_field, "") or "", row.booking_date,
-                        f"第{row.slot_no}节" if row.slot_no else "",
-                    ) if value),
-                    "action": "查看进度",
+                    "note": (
+                        "预约日期已过，仍待审核，请联系资源管理员"
+                        if overdue_booking else
+                        " · ".join(value for value in (
+                            getattr(row, text_field, "") or "", row.booking_date,
+                            f"第{row.slot_no}节" if row.slot_no else "",
+                        ) if value)
+                    ),
+                    "action": "查看异常" if overdue_booking else "查看进度",
+                    "blocked": overdue_booking,
                     "path": f"{path}?bookingId={row.id}&date={row.booking_date}",
                 })
 
@@ -364,9 +370,10 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
     }
 
 
-def teacher_work_cues(db, user, *, exam_date: str, term_id=None, term_end_date="") -> dict:
+def teacher_work_cues(db, user, *, exam_date: str, term_id=None, term_start_date="", term_end_date="") -> dict:
     workbench = current_term_workbench(
-        db, user, term_id=term_id, today_date=exam_date, term_end_date=term_end_date,
+        db, user, term_id=term_id, today_date=exam_date,
+        term_start_date=term_start_date, term_end_date=term_end_date,
     )
     return {
         "invigilations": today_invigilations(db, user, exam_date=exam_date),

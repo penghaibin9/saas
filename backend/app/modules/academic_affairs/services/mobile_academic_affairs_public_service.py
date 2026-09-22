@@ -243,6 +243,7 @@ def teacher_schedule_my(user, week=None) -> dict:
             user,
             exam_date=str(result.get("todayDate") or ""),
             term_id=result.get("termId"),
+            term_start_date=str(result.get("termStartDate") or ""),
             term_end_date=str(result.get("termEndDate") or ""),
         )
         enriched.update(work_cues)

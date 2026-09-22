@@ -221,3 +221,13 @@ def test_teacher_v3_textbook_action_links_open_the_exact_draft_or_returned_objec
     source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
     assert 'if status in {"DRAFT", "RETURNED"}' in source
     assert 'selectionId={row.id}&action=edit' in source
+
+
+def test_teacher_v3_pending_bookings_do_not_disappear_after_the_booking_date():
+    work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    mobile = _read("app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py")
+    assert "term_start_date" in work
+    assert "model.booking_date >= str(term_start_date)" in work
+    assert "预约日期已过，仍待审核，请联系资源管理员" in work
+    assert '"blocked": overdue_booking' in work
+    assert 'term_start_date=str(result.get("termStartDate") or "")' in mobile
