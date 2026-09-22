@@ -229,7 +229,7 @@ export default {
           toast.error(error?.message || '点名未保存，请刷新正式名单核对')
         }
       } finally {
-        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) this.markingStudentId = ''
+        if (this.markingStudentId === studentId) this.markingStudentId = ''
       }
     },
     async submitAttendance() {
@@ -250,7 +250,11 @@ export default {
           return
         }
         // 提交写回执先落 UI，防止“服务端已提交、补读失败、页面仍显示草稿”导致重复操作。
-        this.sessionDetail = { ...this.sessionDetail, ...receipt, items: this.sessionDetail.items || [] }
+        this.sessionDetail = {
+          ...this.sessionDetail,
+          ...receipt,
+          items: Array.isArray(receipt.items) ? receipt.items : (this.sessionDetail.items || [])
+        }
         toast.success(receipt.warningScanOk === false ? (receipt.warningScanError || '考勤已提交，预警扫描待核对') : '本场考勤已提交')
         await this.load()
       } catch (error) {
@@ -258,7 +262,7 @@ export default {
           toast.error(error?.message || '提交结果未确认，请刷新场次核对')
         }
       } finally {
-        if (String(this.selectedSessionId) === sessionId && this.identityKey === identity) this.submittingSession = false
+        this.submittingSession = false
       }
     },
     pct(v) { return Math.round((v || 0) * 100) },
