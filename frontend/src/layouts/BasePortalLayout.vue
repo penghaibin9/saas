@@ -462,13 +462,18 @@ export default {
       // 既允许统一公共壳，也避免登录页或其他平台入口被意外改版。
       return this.workspace || (!this.isPlatformMode && (usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path)))
     },
+    workspaceStudentSearchEnabled() {
+      return this.useWorkspace && !this.isPlatformMode && !isAcademicTeacherContext(this.ctx)
+    },
     workspaceSearchPlaceholder() {
       if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
-      return this.isPlatformMode ? '搜索平台功能或帮助' : '搜索学生、功能或帮助'
+      if (this.isPlatformMode) return '搜索平台功能或帮助'
+      return this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能或帮助'
     },
     workspaceSearchAriaLabel() {
       if (!this.useWorkspace) return '搜索功能与帮助'
-      return this.isPlatformMode ? '搜索平台功能与帮助' : '搜索学生、功能或帮助'
+      if (this.isPlatformMode) return '搜索平台功能与帮助'
+      return this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能与帮助'
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)
@@ -497,7 +502,9 @@ export default {
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
     fnResults() {
       const q = this.fnQueryDebounced.trim().toLowerCase()
-      const out = this.useWorkspace ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' })) : []
+      const out = this.workspaceStudentSearchEnabled
+        ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' }))
+        : []
       searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys }).forEach((a) => {
         out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' })
       })
@@ -833,7 +840,7 @@ export default {
       this.stuError = ''
       this.stuResults = []
       const kw = (q || '').trim()
-      if (!this.ctx || kw.length < 2) {
+      if (!this.workspaceStudentSearchEnabled || !this.ctx || kw.length < 2) {
         this.stuResults = []
         this.stuSearching = false
         return
@@ -940,7 +947,14 @@ export default {
     fnOpen(open) { if (open) this.loadHelp() },
     helpOpen(open) { if (open) this.loadHelp() },
     fnQuery(q) {
-      if (this.useWorkspace && !this.isPlatformMode) this.queueStuSearch(q)
+      if (this.workspaceStudentSearchEnabled) this.queueStuSearch(q)
+      else {
+        clearTimeout(this.stuTimer)
+        ++this.stuSeq
+        this.stuResults = []
+        this.stuSearching = false
+        this.stuError = ''
+      }
       this.fnActive = 0
       clearTimeout(this.fnSearchTimer)
       const text = String(q || '').trim()
