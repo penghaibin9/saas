@@ -65,8 +65,14 @@ def relation_scope(db, user, *, term_id: int | None = None) -> dict:
     if term_id not in (None, ""):
         formal = formal.filter(AaTeachingClass.term_id == int(term_id))
 
+    formal_rows = formal.all()
+    authority_weeks = class_authority_weeks(
+        db, [teaching_class for _relation, teaching_class, _task in formal_rows]
+    )
     task_ids, class_ids, teaching_class_ids, teaching_class_codes = set(), set(), set(), set()
-    for _relation, teaching_class, task in formal.all():
+    for relation, teaching_class, task in formal_rows:
+        if not relation_covers_week(relation, authority_weeks.get(int(teaching_class.id))):
+            continue
         task_ids.add(int(task.id))
         if task.class_id:
             class_ids.add(int(task.class_id))
