@@ -203,10 +203,20 @@ export default {
       const revision = ++this.requestRevision
       this.loading = true; this.error = ''; this.rows = []; this.allRows = []; this.summary = null
       try {
-        const res = await programQualityApi.governanceSummary()
+        const res = this.isAcademicTeacher
+          ? await academicAffairsApi.getPrograms({ page: 1, pageSize: 500 })
+          : await programQualityApi.governanceSummary()
         if (revision !== this.requestRevision) return
-        if (res.code === 0) { this.summary = res.data; this.allRows = res.data.items || []; this.applyPage() }
-        else this.error = res.message || '方案及质量数据读取失败，请重试'
+        if (res.code === 0) {
+          if (this.isAcademicTeacher) {
+            this.summary = null
+            this.allRows = res.data?.list || []
+          } else {
+            this.summary = res.data
+            this.allRows = res.data.items || []
+          }
+          this.applyPage()
+        } else this.error = res.message || (this.isAcademicTeacher ? '正式培养方案读取失败，请重试' : '方案及质量数据读取失败，请重试')
       } catch(error) { if (revision === this.requestRevision) this.error = error?.message || '方案读取失败，请重试' }
       finally { if (revision === this.requestRevision) this.loading = false }
     }
