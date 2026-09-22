@@ -237,6 +237,11 @@ def _validate_adjust_window(origin, start_week: int, end_week: int, parity: str)
     target_parity = str(parity or "ALL").upper()
     if origin_parity != "ALL" and target_parity != origin_parity:
         raise AppException("VALIDATION_ERROR", "调课单双周必须属于原课位有效周次")
+    effective_parity = origin_parity if origin_parity != "ALL" else target_parity
+    if effective_parity == "ODD" and not any(week % 2 == 1 for week in range(start_week, end_week + 1)):
+        raise AppException("VALIDATION_ERROR", "所选教学周不存在单周课次")
+    if effective_parity == "EVEN" and not any(week % 2 == 0 for week in range(start_week, end_week + 1)):
+        raise AppException("VALIDATION_ERROR", "所选教学周不存在双周课次")
 
 
 def _clone_residual_item(db, origin, change_id: int, start_week: int, end_week: int, parity: str):
