@@ -193,3 +193,12 @@ def test_teacher_v3_non_occurrence_scope_uses_clamped_formal_teacher_authority()
     assert '"authorityWeek": week' in grade
     assert "formal_mine=False" in task_service
     assert 'mine 与 formalMine 不可同时使用' in task_service
+
+
+def test_teacher_v3_grade_today_surfaces_deadline_blockers_instead_of_hiding_them():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    assert "deadline_projection_map" in source
+    assert 'overdue = deadline.get("isOverdue") is True' in source
+    assert "已超过提交截止时间；可继续完善，提交需学院或教务延长截止时间" in source
+    assert '"blocked": bool(overdue)' in source
+    assert '"action": action' in source

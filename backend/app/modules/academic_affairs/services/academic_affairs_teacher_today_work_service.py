@@ -149,6 +149,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection,
     )
     from . import academic_affairs_teacher_relation_authority as teacher_authority
+    from . import academic_affairs_grade_deadline_service as grade_deadline
 
     if not term_id:
         return {"actionItems": [], "waitingItems": [], "counts": {"actions": 0, "waiting": 0}, "termId": None}
@@ -217,21 +218,36 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
         int(row.teaching_task_id): row
         for row in grade_rows if row.teaching_task_id
     }
+    deadline_by_task = grade_deadline.deadline_projection_map(
+        db, [(int(row.id), str(row.status or "")) for row in grade_rows]
+    )
     for row in grade_rows:
         status = str(row.status or "").upper()
+        deadline = deadline_by_task.get(int(row.id), {})
+        overdue = deadline.get("isOverdue") is True
         item = {
             "kind": "GRADE", "id": str(row.id),
             "title": f"录入《{row.course_name or '课程'}》成绩",
             "path": f"/admin/academic-affairs/grade-entry?taskId={row.id}",
         }
         if status in {"NOT_STARTED", "INPUTTING", "RETURNED"}:
+            if overdue:
+                note = "已超过提交截止时间；可继续完善，提交需学院或教务延长截止时间"
+                action = "继续完善"
+            elif status == "RETURNED" and row.return_reason:
+                note = f"已退回：{row.return_reason}"
+                action = "继续修改"
+            elif status == "INPUTTING":
+                note = "录入中，请完成正式名单成绩"
+                action = "继续录入"
+            else:
+                note = "成绩任务已建立，等待开始录入"
+                action = "开始录入"
             item.update({
-                "note": (
-                    f"已退回：{row.return_reason}" if status == "RETURNED" and row.return_reason
-                    else "录入中，请完成正式名单成绩" if status == "INPUTTING"
-                    else "成绩任务已建立，等待开始录入"
-                ),
-                "action": "继续" if status != "NOT_STARTED" else "开始录入",
+                "note": note,
+                "action": action,
+                "blocked": bool(overdue),
+                "deadline": deadline.get("deadline"),
             })
             actions.append(item)
         elif status in {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"}:
