@@ -45,6 +45,8 @@ TEACHER_KEPT_CODES = (
 
 # ── 必须拒绝的管理/审批/发布/资产/敏感动作（代表性样本，覆盖每个子域） ──
 TEACHER_DENIED_CODES = (
+    # 学校级教务首页聚合不属于普通任课教师 SELF/ASSIGNED 职责
+    "academicAffairs.dashboard.view",
     # Bug#3 原始三件套 + 批次统计
     "academicAffairs.teachingTask.confirm", "academicAffairs.teachingTask.merge",
     "academicAffairs.teachingTask.adjust", "academicAffairs.teachingTask.stats",
