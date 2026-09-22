@@ -272,6 +272,9 @@ def get_course_references(course_id, user) -> list[dict]:
         c = db.get(AaCourse, int(course_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("课程不存在")
+        teacher_read = str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+        if teacher_read and str(c.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         rows = db.scalars(select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(), AaProgramCourse.course_id == c.id,
             AaProgramCourse.is_deleted.is_(False))).all()
@@ -281,7 +284,9 @@ def get_course_references(course_id, user) -> list[dict]:
                 continue
             seen.add(r.program_id)
             p = db.get(AaProgram, r.program_id)
-            if p and not p.is_deleted:
+            if p and not p.is_deleted and (
+                not teacher_read or str(p.status or "").upper() in {"PUBLISHED", "ENABLED", "FROZEN"}
+            ):
                 out.append({"programId": str(p.id), "programName": p.program_name, "status": p.status})
         return out
 
@@ -404,7 +409,9 @@ def list_course_materials(course_id, user, material_type=None, page=1, page_size
     """课程材料/大纲列表（Tab=material 显示全部类型；Tab=outline 传 materialType=SYLLABUS 收窄）。"""
     from app.models import AaCourseMaterial
     with session() as db:
-        _get_course_or_404(db, course_id)
+        course = _get_course_or_404(db, course_id)
+        if str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER" and str(course.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         conds = [
             AaCourseMaterial.tenant_id == _tid(), AaCourseMaterial.course_id == int(course_id),
             AaCourseMaterial.status == "ACTIVE", AaCourseMaterial.is_deleted.is_(False),
