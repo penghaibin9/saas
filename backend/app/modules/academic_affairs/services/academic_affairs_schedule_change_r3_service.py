@@ -96,21 +96,44 @@ def submit(body, user) -> dict:
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
 
         tw = ts = tsw = tew = tp = tcr = None
-        if ct in ("ADJUST", "MAKEUP"):
+        if ct == "STOP":
+            raw_week = getattr(body, "targetStartWeek", None)
+            if raw_week is None:
+                raise AppException("VALIDATION_ERROR", "停课必须明确选择具体教学周")
+            tsw = tew = int(raw_week)
+            tp = str(origin.week_parity or "ALL").upper()
+            _legacy._validate_adjust_window(origin, tsw, tew, tp)
+        elif ct in ("ADJUST", "MAKEUP"):
             if getattr(body, "targetWeekday", None) is None or getattr(body, "targetSlotNo", None) is None:
                 raise AppException("VALIDATION_ERROR", "调课/补课须填写目标星期与节次")
             tw, ts = int(body.targetWeekday), int(body.targetSlotNo)
-            tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
-            tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
-            tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
-            tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
-            if ct == "ADJUST":
+            if ct == "MAKEUP":
+                raw_week = getattr(body, "targetStartWeek", None)
+                if raw_week is None:
+                    raise AppException("VALIDATION_ERROR", "补课必须明确选择具体教学周")
+                tsw = tew = int(raw_week)
+                tp = "ALL"
+            else:
+                tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
+                tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
+                tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
                 _legacy._validate_adjust_window(origin, tsw, tew, tp)
             if tw < 1 or tw > 7:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
+            if tsw < 1 or tew < tsw:
+                raise AppException("VALIDATION_ERROR", "目标教学周非法")
+            from app.models import AaTerm
+            term = db.query(AaTerm).filter(
+                AaTerm.id == int(batch.term_id),
+                AaTerm.tenant_id == _legacy._tid(),
+                AaTerm.is_deleted.is_(False),
+            ).first() if batch.term_id else None
+            if term and term.teaching_weeks and tew > int(term.teaching_weeks):
+                raise AppException("VALIDATION_ERROR", "目标教学周超出当前学期教学周范围")
             conflict = _legacy._detect_conflict(
                 db, origin.batch_id, tw, ts, tsw, tew, tp,
-                actor_teacher_key, origin.class_id, tcr, exclude_id=origin.id,
+                actor_teacher_key, origin.class_id, tcr,
+                exclude_id=(origin.id if ct == "ADJUST" else None),
             )
             if conflict:
                 raise AppException(

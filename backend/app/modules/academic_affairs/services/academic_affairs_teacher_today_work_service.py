@@ -107,7 +107,7 @@ def today_invigilations(db, user, *, exam_date: str) -> list[dict]:
     return output
 
 
-def pending_grade_todos(db, user) -> list[dict]:
+def pending_grade_todos(db, user, *, term_id=None) -> list[dict]:
     from app.models import UnifiedTodo
 
     user_id = _resolve_user_id(db, user)
@@ -122,17 +122,157 @@ def pending_grade_todos(db, user) -> list[dict]:
         UnifiedTodo.status == "PENDING",
         UnifiedTodo.is_deleted.is_(False),
     ).order_by(UnifiedTodo.id)).all()
+    task_ids = sorted({int(row.source_biz_id) for row in rows if row.source_biz_id})
+    allowed_ids = set(task_ids)
+    if term_id is not None and task_ids:
+        from app.models import AaGradeTask
+        allowed_ids = set(db.scalars(select(AaGradeTask.id).where(
+            AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.id.in_(task_ids),
+            AaGradeTask.term_id == int(term_id),
+            AaGradeTask.is_deleted.is_(False),
+        )).all())
     return [{
         "todoId": str(row.id),
         "todoType": _GRADE_TODO,
         "gradeTaskId": str(row.source_biz_id or ""),
         "title": row.title or "待录成绩",
         "route": f"{_GRADE_ROUTE}?id={int(row.source_biz_id)}" if row.source_biz_id else _GRADE_ROUTE,
-    } for row in rows]
+        "pcRoute": f"/admin/academic-affairs/grade-entry?taskId={int(row.source_biz_id)}" if row.source_biz_id else "/admin/academic-affairs/grade-entry",
+    } for row in rows if int(row.source_biz_id or 0) in allowed_ids]
 
 
-def teacher_work_cues(db, user, *, exam_date: str) -> dict:
+def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_date="") -> dict:
+    """One authoritative PC/miniapp work projection for the current teaching term."""
+    from app.models import (
+        AaClassroomBooking, AaLabBooking, AaScheduleChange, AaTeachingTask,
+        AaTeachingTaskBatch, AaTextbookSelection,
+    )
+    from . import academic_affairs_teacher_relation_authority as teacher_authority
+
+    if not term_id:
+        return {"actionItems": [], "waitingItems": [], "counts": {"actions": 0, "waiting": 0}, "termId": None}
+
+    keys = sorted(_user_keys(user))
+    relation = teacher_authority.relation_scope(db, user, term_id=int(term_id))
+    formal_task_ids = sorted(int(value) for value in relation.get("taskIds") or [])
+    batches = db.scalars(select(AaTeachingTaskBatch).where(
+        AaTeachingTaskBatch.tenant_id == _tid(),
+        AaTeachingTaskBatch.term_id == int(term_id),
+        AaTeachingTaskBatch.is_deleted.is_(False),
+    )).all()
+    batch_ids = sorted(int(row.id) for row in batches)
+
+    actions, waiting = [], []
+    task_conditions = [
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.batch_id.in_(batch_ids or [-1]),
+        AaTeachingTask.status == "ASSIGNED",
+        AaTeachingTask.is_deleted.is_(False),
+    ]
+    if formal_task_ids:
+        task_conditions.append(AaTeachingTask.id.in_(formal_task_ids))
+    else:
+        task_conditions.append(AaTeachingTask.teacher_key.in_(keys or ["__none__"]))
+    teaching_tasks = db.scalars(select(AaTeachingTask).where(*task_conditions).order_by(AaTeachingTask.id)).all()
+    for row in teaching_tasks:
+        actions.append({
+            "kind": "TEACHING_TASK", "id": str(row.id),
+            "title": f"确认《{row.course_name or '教学任务'}》",
+            "note": " · ".join(value for value in (row.class_name, row.teaching_class_name, "学院已分配") if value),
+            "action": "去确认", "primary": True,
+            "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
+        })
+
+    grade_todos = pending_grade_todos(db, user, term_id=int(term_id))
+    for row in grade_todos:
+        actions.append({
+            "kind": "GRADE", "id": row["gradeTaskId"], "title": row["title"],
+            "note": "当前学期成绩任务", "action": "继续录入", "path": row["pcRoute"],
+        })
+
+    if formal_task_ids:
+        selections = db.scalars(select(AaTextbookSelection).where(
+            AaTextbookSelection.tenant_id == _tid(),
+            AaTextbookSelection.task_id.in_(formal_task_ids),
+            AaTextbookSelection.status.in_(["DRAFT", "RETURNED", "SUBMITTED", "REVIEWING"]),
+            AaTextbookSelection.is_deleted.is_(False),
+        ).order_by(AaTextbookSelection.id.desc())).all()
+        for row in selections:
+            item = {
+                "kind": "TEXTBOOK", "id": str(row.id),
+                "title": f"教材选用：{row.course_name or '课程'}",
+                "note": "已退回，请修订后重提" if row.status == "RETURNED" else (
+                    "草稿待提交" if row.status == "DRAFT" else "已提交，等待审核"
+                ),
+                "action": "去处理" if row.status in {"DRAFT", "RETURNED"} else "查看进度",
+                "path": f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}",
+            }
+            (actions if row.status in {"DRAFT", "RETURNED"} else waiting).append(item)
+
+    if keys:
+        changes = db.scalars(select(AaScheduleChange).where(
+            AaScheduleChange.tenant_id == _tid(),
+            AaScheduleChange.term_id == int(term_id),
+            AaScheduleChange.teacher_key.in_(keys),
+            AaScheduleChange.status.in_(["SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW", "APPROVED"]),
+            AaScheduleChange.is_deleted.is_(False),
+        ).order_by(AaScheduleChange.id.desc())).all()
+        for row in changes:
+            waiting.append({
+                "kind": "SCHEDULE_CHANGE", "id": str(row.id),
+                "title": f"调停课申请：{row.course_name or '课程'}",
+                "note": str(row.status or "审核中"), "action": "查看进度",
+                "path": f"/admin/academic-affairs/schedule-change?changeId={row.id}",
+            })
+
+        booking_filters = [today_date] if today_date else []
+        for model, kind, path, text_field in (
+            (AaClassroomBooking, "CLASSROOM_BOOKING", "/admin/academic-affairs/classroom-bookings", "classroom_text"),
+            (AaLabBooking, "LAB_BOOKING", "/admin/academic-affairs/resources/lab-bookings", "lab_text"),
+        ):
+            conditions = [
+                model.tenant_id == _tid(), model.applicant_key.in_(keys),
+                model.status == "PENDING", model.is_deleted.is_(False),
+            ]
+            if today_date:
+                conditions.append(model.booking_date >= str(today_date))
+            if term_end_date:
+                conditions.append(model.booking_date <= str(term_end_date))
+            rows = db.scalars(select(model).where(*conditions).order_by(model.id.desc())).all()
+            for row in rows:
+                waiting.append({
+                    "kind": kind, "id": str(row.id), "title": "教学资源预约待审核",
+                    "note": " · ".join(value for value in (
+                        getattr(row, text_field, "") or "", row.booking_date,
+                        f"第{row.slot_no}节" if row.slot_no else "",
+                    ) if value),
+                    "action": "查看进度",
+                    "path": f"{path}?bookingId={row.id}&date={row.booking_date}",
+                })
+
+    actions.sort(key=lambda row: (0 if row.get("primary") else 1, row["kind"], int(row["id"]) if row["id"].isdigit() else row["id"]))
+    waiting.sort(key=lambda row: (row["kind"], -(int(row["id"])) if row["id"].isdigit() else 0))
+    counts = {
+        "actions": len(actions), "waiting": len(waiting),
+        "teachingTasks": sum(1 for row in actions if row["kind"] == "TEACHING_TASK"),
+        "grades": sum(1 for row in actions if row["kind"] == "GRADE"),
+        "textbooks": sum(1 for row in actions if row["kind"] == "TEXTBOOK"),
+        "scheduleChanges": sum(1 for row in waiting if row["kind"] == "SCHEDULE_CHANGE"),
+        "bookings": sum(1 for row in waiting if row["kind"] in {"CLASSROOM_BOOKING", "LAB_BOOKING"}),
+    }
+    return {
+        "termId": str(term_id), "actionItems": actions, "waitingItems": waiting,
+        "counts": counts, "source": "CURRENT_TERM_FORMAL_TEACHER_FACTS",
+    }
+
+
+def teacher_work_cues(db, user, *, exam_date: str, term_id=None, term_end_date="") -> dict:
+    workbench = current_term_workbench(
+        db, user, term_id=term_id, today_date=exam_date, term_end_date=term_end_date,
+    )
     return {
         "invigilations": today_invigilations(db, user, exam_date=exam_date),
-        "gradeTodos": pending_grade_todos(db, user),
+        "gradeTodos": pending_grade_todos(db, user, term_id=term_id),
+        "workbench": workbench,
     }

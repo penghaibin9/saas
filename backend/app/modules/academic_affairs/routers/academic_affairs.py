@@ -1796,7 +1796,47 @@ def grade_analysis_export(body: GradeAnalysisExportBody,
         headers={"Content-Disposition": "attachment; filename=grade_analysis.xlsx"})
 
 
-# ═══════════ 课堂考勤（PC 只读查询/统计；教师逐生录入在移动端，正方 教学点名 2.4/查询 4.19 对标）═══════════
+# ═══════════ 课堂考勤（PC 与教师移动端复用同一正式 create/mark/submit owner）═══════════
+class AttendanceSessionCreateBody(BaseModel):
+    teachingTaskId: int = Field(..., gt=0)
+    classId: Optional[int] = Field(None, gt=0)
+    sessionDate: str = Field(..., min_length=10, max_length=10)
+    slotNo: int = Field(..., ge=1)
+    scheduleItemId: Optional[int] = Field(None, gt=0)
+    sessionType: Optional[str] = Field(None, max_length=50)
+
+
+class AttendanceMarkBody(BaseModel):
+    studentId: int = Field(..., gt=0)
+    status: Literal["PRESENT", "LATE", "ABSENT", "LEAVE"]
+
+
+@router.post("/attendance/sessions/open", summary="课堂考勤·按正式课次打开或创建场次（PC/移动端同一事实）")
+def attendance_session_open(body: AttendanceSessionCreateBody,
+                            user=Depends(require_permission("academicAffairs.attendance.view"))):
+    payload = body.model_dump(exclude_none=True)
+    try:
+        return success(attendance_svc.create_session(user, payload))
+    except AppException as exc:
+        details = getattr(exc, "details", None) or {}
+        existing = details.get("existingSessionId") if isinstance(details, dict) else None
+        if str(existing or "").isdigit():
+            return success(attendance_svc.get_session(int(existing), user))
+        raise
+
+
+@router.post("/attendance/sessions/{sessionId}/mark", summary="课堂考勤·教师逐生点名（复用正式写链）")
+def attendance_session_mark(body: AttendanceMarkBody, sessionId: int = Path(..., gt=0),
+                            user=Depends(require_permission("academicAffairs.attendance.view"))):
+    return success(attendance_svc.mark_attendance(sessionId, user, body.model_dump()))
+
+
+@router.post("/attendance/sessions/{sessionId}/submit", summary="课堂考勤·提交正式场次（提交后不可直接修改）")
+def attendance_session_submit(sessionId: int = Path(..., gt=0),
+                              user=Depends(require_permission("academicAffairs.attendance.view"))):
+    return success(attendance_svc.submit_session(sessionId, user), message="考勤已提交")
+
+
 @router.get("/attendance/sessions", summary="课堂考勤场次列表（PC 查询，按行政班/学期/类别筛选，数据范围收敛）")
 def attendance_sessions_list(classId: Optional[str] = None, termCode: Optional[str] = None,
                              sessionType: Optional[str] = None, page: int = 1, pageSize: int = 20,

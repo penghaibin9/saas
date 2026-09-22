@@ -264,11 +264,12 @@ def _clone_residual_item(db, origin, change_id: int, start_week: int, end_week: 
 
 def _create_adjust_residuals(db, change, origin) -> list[int]:
     """Preserve all origin occurrences outside a partial ADJUST window."""
-    if change.change_type != "ADJUST":
+    if change.change_type not in {"ADJUST", "STOP"}:
         return []
     start_week = int(change.target_start_week or origin.start_week)
     end_week = int(change.target_end_week or origin.end_week)
-    target_parity = str(change.target_week_parity or "ALL").upper()
+    origin_parity = str(origin.week_parity or "ALL").upper()
+    target_parity = origin_parity if change.change_type == "STOP" else str(change.target_week_parity or "ALL").upper()
     _validate_adjust_window(origin, start_week, end_week, target_parity)
     residuals = []
     if int(origin.start_week) < start_week:
@@ -281,8 +282,7 @@ def _create_adjust_residuals(db, change, origin) -> list[int]:
             db, origin, change.id, end_week + 1, int(origin.end_week),
             str(origin.week_parity or "ALL").upper(),
         ).id)
-    origin_parity = str(origin.week_parity or "ALL").upper()
-    if origin_parity == "ALL" and target_parity in {"ODD", "EVEN"}:
+    if change.change_type == "ADJUST" and origin_parity == "ALL" and target_parity in {"ODD", "EVEN"}:
         complement = "EVEN" if target_parity == "ODD" else "ODD"
         residuals.append(_clone_residual_item(
             db, origin, change.id, start_week, end_week, complement,

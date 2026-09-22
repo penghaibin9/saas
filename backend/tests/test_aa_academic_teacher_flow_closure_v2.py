@@ -87,3 +87,30 @@ def test_teacher_reference_pages_only_expose_formal_programs_and_enabled_courses
     assert "governance._ACTIVE_PROGRAM_STATUSES" in program_summary
     assert 'AaCourse.status == "ENABLED"' in course
     assert "ACADEMIC_TEACHER" in inspect.getsource(program_governance.validate_program)
+
+
+def test_schedule_change_stop_and_makeup_are_single_occurrence_contracts():
+    r3 = _read("app/modules/academic_affairs/services/academic_affairs_schedule_change_r3_service.py")
+    legacy = _read("app/modules/academic_affairs/services/academic_affairs_schedule_change_service.py")
+    assert '停课必须明确选择具体教学周' in r3
+    assert '补课必须明确选择具体教学周' in r3
+    assert 'tsw = tew = int(raw_week)' in r3
+    assert 'exclude_id=(origin.id if ct == "ADJUST" else None)' in r3
+    assert 'change.change_type not in {"ADJUST", "STOP"}' in legacy
+
+
+def test_teacher_today_uses_one_current_term_authoritative_workbench():
+    work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
+    mobile = _read("app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py")
+    assert "def current_term_workbench" in work
+    assert '"source": "CURRENT_TERM_FORMAL_TEACHER_FACTS"' in work
+    assert 'term_id=result.get("termId")' in mobile
+    assert 'term_end_date=str(result.get("termEndDate") or "")' in mobile
+
+
+def test_pc_attendance_reuses_canonical_attendance_owner():
+    router = _read("app/modules/academic_affairs/routers/academic_affairs.py")
+    assert '@router.post("/attendance/sessions/open"' in router
+    assert "attendance_svc.create_session(user, payload)" in router
+    assert "attendance_svc.mark_attendance(sessionId, user, body.model_dump())" in router
+    assert "attendance_svc.submit_session(sessionId, user)" in router
