@@ -630,6 +630,7 @@ export default {
       // 否则点「班级列表/班级画像/辅导员考评」这类叶子会把侧栏错误地整组切到工作台（内容页是对的，只是目录栏跳走）。
       const path = this.$route ? this.$route.path : ''
       if (this.isPlatformMode) return 'platform'
+      if (isAcademicTeacherContext(this.ctx) && /^\/admin\/academic-affairs(?:\/|$)/.test(path)) return 'academic-affairs'
       if (path === '/admin/student-affairs/material-operations') return 'student-affairs'
       return findActiveMenu(path).groupKey || this.planActive.groupKey || 'student-affairs'
     },
