@@ -15,7 +15,7 @@
         <AppButton variant="ghost" @click="search">查询</AppButton>
         <AppButton v-if="canScan && sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
       </div>
-      <AppInlineAlert type="info" :title="panel === 'sessions' ? '只处理当前岗位和当前范围内的正式课次' : '点名必须属于正式课次和当前授课关系'" :description="panel === 'sessions' ? '每个场次可回到对应正式课次，名单和提交状态以服务端结果为准。' : '特殊补录与正式课堂分口径统计；本页只读核对，不手工创建课次或学生名单。'" />
+      <AppInlineAlert type="info" :title="panel === 'sessions' ? 'PC 与移动端共用正式考勤场次' : '点名必须属于正式课次和当前授课关系'" :description="panel === 'sessions' ? '普通任课教师可在 PC 继续逐生点名并提交；所有写入仍走与移动端相同的正式名单、任课关系和提交门禁。' : '特殊补录与正式课堂分口径统计；正式课堂提交后自动进入统计和授权预警。'" />
 
       <AppSectionCard v-if="selectedSessionId" title="课次名单与考勤记录">
         <AppButton variant="ghost" @click="closeSession">返回场次列表</AppButton>
@@ -25,8 +25,17 @@
           <p class="aa-object">{{ sessionDetail.courseName || '课程未提供' }} · {{ sessionDetail.sessionDate }} · 第 {{ sessionDetail.slotNo ?? '—' }} 节<br>场次 {{ sessionDetail.sessionId }} · {{ sessionStatus(sessionDetail.status) }} · {{ sessionDetail.sourceLabel || '来源待确认' }}</p>
           <EmptyState v-if="!sessionDetail.items?.length" title="本场次未提供名单" />
           <DataTable v-else :columns="rosterColumns" :rows="visibleRoster" row-key="studentId" :pagination="{ page: rosterPage, pageSize: 20, total: sessionDetail.items.length }" @page-change="rosterPage = $event">
-            <template #cell-status="{ row }">{{ attendanceStatus(row.status) }}</template>
+            <template #cell-status="{ row }">
+              <span>{{ attendanceStatus(row.status) }}</span>
+              <span v-if="sessionDetail.status === 'DRAFT'" class="aa-mark-actions">
+                <button v-for="status in ['PRESENT','LATE','ABSENT','LEAVE']" :key="status" class="mp-link" :disabled="markingStudentId === String(row.studentId) || submittingSession" @click="markAttendance(row, status)">{{ attendanceStatus(status) }}</button>
+              </span>
+            </template>
           </DataTable>
+          <div v-if="sessionDetail.status === 'DRAFT' && sessionDetail.items?.length" class="aa-submit-row">
+            <span>未点名 {{ sessionDetail.items.filter(row => row.status === 'UNMARKED').length }} 人</span>
+            <AppButton variant="primary" :loading="submittingSession" :disabled="Boolean(markingStudentId)" @click="submitAttendance">提交本场考勤</AppButton>
+          </div>
         </template>
       </AppSectionCard>
 
@@ -41,7 +50,7 @@
       <template v-else>
         <template v-if="panel === 'sessions'">
           <AppSectionCard title="考勤场次台账">
-            <EmptyState v-if="!sessions.length" title="暂无考勤场次" description="教师在移动端完成并提交课堂点名后，场次出现在此；特殊补录请切换类别单独查看" />
+            <EmptyState v-if="!sessions.length" title="暂无考勤场次" description="请从“今日教学”选择正式课次开始点名；PC 与移动端会读取同一场次" />
             <DataTable v-else :columns="sessionColumns" :rows="sessions" row-key="sessionId" :pagination="{ page, pageSize, total: sessionTotal }" @page-change="turnPage">
               <template #cell-status="{ row }">{{ sessionStatus(row.status) }}</template>
               <template #cell-actions="{ row }"><button class="mp-link" @click="openSession(row)">查看课次名单</button></template>
@@ -56,7 +65,7 @@
           </div>
 
           <AppSectionCard :title="`${data.sourceScopeLabel || '正式课堂'}学生考勤汇总（按旷课次数降序）`">
-            <EmptyState v-if="!data.students.length" title="暂无考勤统计" description="教师在移动端完成并提交课堂点名后，这里出现跨堂次汇总" />
+            <EmptyState v-if="!data.students.length" title="暂无考勤统计" description="教师在 PC 或移动端提交正式课堂点名后，这里出现跨堂次汇总" />
             <DataTable v-else :columns="columns" :rows="visibleStudents" row-key="studentId" :row-class="rowClass" :pagination="{ page: studentPage, pageSize: 20, total: studentTotal }" @page-change="turnStudentPage">
               <template #cell-absent="{ row }"><span :class="{ 'aa-cell-danger': row.absent > 0 }">{{ row.absent }}</span></template>
               <template #cell-absentRate="{ row }">{{ pct(row.absentRate) }}%</template>
@@ -93,6 +102,7 @@ export default {
       classId: '', termCode: '', sessionType: '',
       page: 1, pageSize: 20, sessionTotal: 0, studentPage: 1, loadSeq: 0, scanSeq: 0,
       sessionDetail: null, detailLoading: false, detailError: '', detailSeq: 0, rosterPage: 1,
+      markingStudentId: '', submittingSession: false,
       rosterColumns: [{ key: 'realName', title: '学生' }, { key: 'studentNo', title: '学号' }, { key: 'status', title: '出勤状态' }],
       data: { sessionCount: 0, studentTotal: 0, absentStudentCount: 0, students: [], sourceScopeLabel: '正式课堂' },
       sessions: [],
@@ -190,6 +200,32 @@ export default {
       } catch (error) { if (current()) this.detailError = error?.message || '课次名单加载失败' }
       finally { if (current()) this.detailLoading = false }
     },
+    async markAttendance(row, status) {
+      if (!this.sessionDetail || this.sessionDetail.status !== 'DRAFT' || this.markingStudentId || this.submittingSession) return
+      const studentId = String(row.studentId || '')
+      if (!studentId) return
+      this.markingStudentId = studentId
+      try {
+        const res = await academicAffairsApi.markAttendanceSession(this.sessionDetail.sessionId, Number(studentId), status)
+        if (res.code !== 0) { toast.error(res.message || '点名未保存'); return }
+        await this.loadSession()
+      } catch (error) { toast.error(error?.message || '点名未保存，请刷新正式名单核对') }
+      finally { this.markingStudentId = '' }
+    },
+    async submitAttendance() {
+      if (!this.sessionDetail || this.sessionDetail.status !== 'DRAFT' || this.submittingSession || this.markingStudentId) return
+      const unmarked = (this.sessionDetail.items || []).filter(row => row.status === 'UNMARKED').length
+      if (unmarked) { toast.error(`还有 ${unmarked} 人未完成点名`); return }
+      this.submittingSession = true
+      try {
+        const res = await academicAffairsApi.submitAttendanceSession(this.sessionDetail.sessionId)
+        if (res.code !== 0) { toast.error(res.message || '考勤提交失败'); return }
+        toast.success(res.data?.warningScanOk === false ? (res.data.warningScanError || '考勤已提交，预警扫描待核对') : '本场考勤已提交')
+        await this.loadSession()
+        await this.load()
+      } catch (error) { toast.error(error?.message || '提交结果未确认，请刷新场次核对') }
+      finally { this.submittingSession = false }
+    },
     pct(v) { return Math.round((v || 0) * 100) },
     rowClass(row) { return row.absent >= 3 ? 'aa-row-danger' : '' },
     onPanelChange() {
@@ -263,5 +299,7 @@ export default {
 .aa-scope-note { padding: 10px 12px; border-radius: 8px; background: var(--fill-2, #f7f8fa); color: var(--text-700, #4e5969); font-size: 13px; line-height: 1.6; }
 .aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .aa-cell-danger { color: var(--danger-600, #f53f3f); font-weight: 600; }
+.aa-mark-actions { display:inline-flex; gap:8px; margin-left:10px; flex-wrap:wrap; }
+.aa-submit-row { display:flex; align-items:center; justify-content:flex-end; gap:14px; margin-top:12px; }
 :deep(.aa-row-danger) { background: var(--danger-50, #fff1f0); }
 </style>

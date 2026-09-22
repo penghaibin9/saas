@@ -171,6 +171,7 @@ export default {
     }
   },
   computed: {
+    focusTaskId() { return String(this.$route?.query?.taskId || '') },
     primaryRow() { return this.filteredRows[0] || this.rows[0] || null },
     counts() {
       const count = (status) => this.rows.filter((row) => row.status === status).length
@@ -191,6 +192,7 @@ export default {
       ]
     },
     filteredRows() {
+      if (this.focusTaskId) return this.rows.filter(row => String(row.taskId) === this.focusTaskId)
       const keyword = this.keyword.toLowerCase()
       return this.rows.filter((row) => {
         if (this.statusFilter && row.status !== this.statusFilter) return false
@@ -201,7 +203,10 @@ export default {
     }
   },
   created() { this.load() },
-  watch: { ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.load() } },
+  watch: {
+    ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.load() },
+    '$route.query.taskId'() { this.keyword = ''; this.load() }
+  },
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,

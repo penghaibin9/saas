@@ -7,15 +7,15 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const src = (...parts) => fs.readFileSync(path.resolve(here, '..', 'src', ...parts), 'utf8')
 
-test('dedicated teacher today page uses shared ModulePageShell and real teacher facts', () => {
+test('dedicated teacher today page uses one current-term authoritative workbench', () => {
   const source = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
   assert.match(source, /<ModulePageShell/)
   assert.match(source, /getMyTeacherToday/)
-  assert.match(source, /listAllTasks\(\{ mine: true/)
-  assert.match(source, /scheduleChangeApi\.list/)
-  assert.match(source, /academicAffairsTextbookApi\.listSelections/)
-  assert.match(source, /academicAffairsClassroomBookingApi\.list/)
-  assert.match(source, /academicAffairsLabBookingApi\.list/)
+  assert.match(source, /data\.workbench/)
+  assert.match(source, /openAttendanceSession/)
+  assert.match(source, /开始\/继续点名/)
+  assert.doesNotMatch(source, /pageSize:\s*100/)
+  assert.doesNotMatch(source, /scheduleChangeApi\.list/)
   assert.doesNotMatch(source, /mock/i)
 })
 
@@ -64,4 +64,32 @@ test('teacher schedule pickers stay term-aware so visible objects should be open
   }
   assert.match(klass, /initializeTeacherTerm/)
   assert.match(teachingClass, /initializeTeacherTerm/)
+})
+
+
+test('schedule change STOP and MAKEUP require one concrete teaching week', () => {
+  const source = src('modules/academicAffairs/views/AaScheduleChangeApplyView.vue')
+  assert.match(source, /停课教学周/)
+  assert.match(source, /补课教学周/)
+  assert.match(source, /normalizeOccurrenceFields/)
+  assert.match(source, /targetEndWeek = week > 0 \? week : null/)
+  assert.doesNotMatch(source, /delete body\.targetStartWeek/)
+})
+
+test('PC attendance exposes canonical mark and submit interactions', () => {
+  const source = src('modules/academicAffairs/views/AaAttendanceStatsView.vue')
+  const api = src('modules/academicAffairs/api/academic-affairs.api.js')
+  assert.match(source, /markAttendanceSession/)
+  assert.match(source, /submitAttendanceSession/)
+  assert.match(api, /attendance\/sessions\/open/)
+  assert.match(api, /attendance\/sessions\/\$\{sessionId\}\/mark/)
+})
+
+test('teacher workbench deep-links exact business objects', () => {
+  const task = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  const textbook = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  const booking = src('modules/academicAffairs/components/parallel-a/ResourceBookingWorkspace.vue')
+  assert.match(task, /query\?\.taskId/)
+  assert.match(textbook, /query\?\.selectionId/)
+  assert.match(booking, /query\?\.bookingId/)
 })

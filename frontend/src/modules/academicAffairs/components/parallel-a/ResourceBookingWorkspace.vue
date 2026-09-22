@@ -60,7 +60,7 @@ export default {
   components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppDatePicker, AppSelect, AppClassroomPicker, AppLabPicker, AppFormItem, AppNumberInput, AppTextInput, AppTextarea, AppInlineAlert, AaOperationReceipt },
   props: { kind: { type: String, required: true }, ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
-  data() { return { date: today(), loading: true, error: '', rows: [], resources: [], occupancy: [], occupancyNote: '', page: 1, total: 0, resourcePage: 1, resourceTotal: 0, filterStatus: '', disposed: false, saving: false, bookVisible: false, form: {}, formError: '', review: { visible: false, row: null, action: '', reason: '', error: '', token: 0 }, evidence: { visible: false, items: [], note: '' }, receipt: null, pending: null, loadGate: null, activeIdentity: '', operationSerial: 0, routeWriting: false, routeWriteSeq: 0, recoveryError: '',
+  data() { return { date: today(), loading: true, error: '', rows: [], resources: [], occupancy: [], occupancyNote: '', page: 1, total: 0, resourcePage: 1, resourceTotal: 0, filterStatus: '', bookingId: '', disposed: false, saving: false, bookVisible: false, form: {}, formError: '', review: { visible: false, row: null, action: '', reason: '', error: '', token: 0 }, evidence: { visible: false, items: [], note: '' }, receipt: null, pending: null, loadGate: null, activeIdentity: '', operationSerial: 0, routeWriting: false, routeWriteSeq: 0, recoveryError: '',
     statusOptions: [{ label: '全部状态', value: '' }, ...Object.entries(labels).map(([value, label]) => ({ value, label }))], columns: [{ key: 'resource', title: '资源 / 预约编号' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'actions', title: '办理' }] } },
   computed: {
     isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
@@ -88,7 +88,7 @@ export default {
       return JSON.stringify([String(user.tenantId), String(user.userId), user.currentRoleCode, user.activeContextId || '', this.kind])
     },
     viewKey() {
-      return JSON.stringify([this.identityKey(), this.date, this.page, this.resourcePage, this.filterStatus])
+      return JSON.stringify([this.identityKey(), this.date, this.page, this.resourcePage, this.filterStatus, this.bookingId])
     },
     applyRouteState() {
       const state = academicRouteState(this.$route)
@@ -97,12 +97,14 @@ export default {
       const rawStatus = routeScalar(this.$route.query?.status).toUpperCase()
       const nextStatus = Object.prototype.hasOwnProperty.call(labels, rawStatus) ? rawStatus : ''
       const nextResourcePage = pageValue(routeScalar(this.$route.query?.resourcePage))
+      const nextBookingId = /^[1-9]\d*$/.test(routeScalar(this.$route.query?.bookingId)) ? routeScalar(this.$route.query?.bookingId) : ''
       const changed = this.date !== nextDate || this.page !== state.page ||
-        this.resourcePage !== nextResourcePage || this.filterStatus !== nextStatus
+        this.resourcePage !== nextResourcePage || this.filterStatus !== nextStatus || this.bookingId !== nextBookingId
       this.date = nextDate
       this.page = state.page
       this.resourcePage = nextResourcePage
       this.filterStatus = nextStatus
+      this.bookingId = nextBookingId
       return changed
     },
     syncRoute() {
@@ -264,6 +266,7 @@ export default {
       const page = this.page
       const resourcePage = this.resourcePage
       const status = this.filterStatus
+      const bookingId = this.bookingId
       this.loading = true
       this.error = this.recoveryError
       this.rows = []
@@ -274,7 +277,7 @@ export default {
       if (!date) { this.error = '请选择预约日期。'; this.loading = false; return }
       try {
         const [records, resources, occupancy] = await Promise.all([
-          api.list({ date, status: status || undefined, page, pageSize: 20 }),
+          api.list({ bookingId: bookingId || undefined, date, status: status || undefined, page, pageSize: 20 }),
           kind === 'CLASSROOM'
             ? academicAffairsApi.listClassrooms({ page: resourcePage, pageSize: 5 })
             : academicAffairsLabApi.list({ page: resourcePage, pageSize: 5 }),
