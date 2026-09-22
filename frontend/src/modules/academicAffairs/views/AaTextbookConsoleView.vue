@@ -156,7 +156,7 @@
     <AppDrawer :visible="selectionVisible" title="教材选用正式申报" mode="modal" size="large" @close="selectionVisible = false">
       <AppInlineAlert type="info" title="第四级对象视角" description="从正式教学任务开始，教材版本和需求人数提交后进入教材选用审核岗。" />
       <div class="aatb-form-grid">
-        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined }" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, mine: isAcademicTeacher }" :disabled="saving" /></AppFormItem>
         <AppFormItem label="教材版本" required><AppSelect v-model="selectionForm.textbookId" :options="textbookOptions" placeholder="选择正式教材目录" :disabled="saving || selectionCatalogLoading" /></AppFormItem>
         <AppFormItem label="需求人数" required><AppNumberInput v-model="selectionForm.expectedQty" :min="1" :disabled="saving" /></AppFormItem>
         <AppFormItem class="aatb-form-wide" label="选用原因" required><AppTextarea v-model="selectionForm.remark" :disabled="saving" placeholder="说明课程、版本和实际需求依据" /></AppFormItem>
@@ -235,6 +235,9 @@ export default {
     }
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     pageSpec() { return PAGE_SPEC[this.tab] || PAGE_SPEC.catalog },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     showObjectBar() { return ['selection', 'review'].includes(this.tab) },
@@ -287,14 +290,18 @@ export default {
     emptyHint() { return { catalog: '可由教材目录管理岗新建正式目录', selection: '请从正式教学任务发起教材选用', review: '当前学期没有已提交选用可建审核批次', order: '当前学期没有已备案选用可生成征订', distribution: '请从已到货征订批次生成班级发放名单', fee: '学生签收后按征订价格快照生成费用', stock: '征订到货并签收后形成库存口径' }[this.tab] || '' }
   },
   watch: {
-    '$route.query.tab'(value) { const next = PAGE_SPEC[value] ? value : 'catalog'; if (this.tab !== next) { this.tab = next; this.resetView(); if (this.initialized) this.reload() } },
+    '$route.query.tab'(value) { const next = this.resolveTab(value); if (this.tab !== next) { this.tab = next; this.resetView(); if (this.initialized) this.reload() } },
     identityKey() { if (this.initialized) { this.loadSeq++; this.actionSeq++; this.saving = false; this.resetView(); this.page = textbookQueuePage(this.$route.query.page); this.rows = []; this.stats = {}; this.total = 0; this.reload() } }
   },
-  async created() { const [contextRes, termRes] = await Promise.all([academicAffairsApi.getContext(), academicAffairsApi.getCurrentTerm()]); if (contextRes.code === 0) this.ctx = contextRes.data; if (termRes.code === 0 && termRes.data) { this.currentTermId = String(termRes.data.termId || termRes.data.id || ''); this.currentTermName = termRes.data.termName || termRes.data.name || termRes.data.termCode || '' } const queryTab = this.$route?.query?.tab; this.tab = PAGE_SPEC[queryTab] ? queryTab : 'catalog'; this.page = textbookQueuePage(this.$route.query.page); this.initialized = true; this.reload() },
+  async created() { const [contextRes, termRes] = await Promise.all([academicAffairsApi.getContext(), academicAffairsApi.getCurrentTerm()]); if (contextRes.code === 0) this.ctx = contextRes.data; if (termRes.code === 0 && termRes.data) { this.currentTermId = String(termRes.data.termId || termRes.data.id || ''); this.currentTermName = termRes.data.termName || termRes.data.name || termRes.data.termCode || '' } const queryTab = this.$route?.query?.tab; this.tab = this.resolveTab(queryTab); if (this.isAcademicTeacher && queryTab !== 'selection') this.$router.replace({ query: { ...this.$route.query, tab: 'selection' } }).catch(() => {}); this.page = textbookQueuePage(this.$route.query.page); this.initialized = true; this.reload() },
   beforeUnmount() { this.loadSeq++; this.arrivalSeq++; this.actionSeq++ },
   beforeRouteLeave() { return !this.saving },
   beforeRouteUpdate() { return !this.saving },
   methods: {
+    resolveTab(value) {
+      if (this.isAcademicTeacher) return 'selection'
+      return PAGE_SPEC[value] ? value : 'catalog'
+    },
     money(value) { return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
     statusLabel(status) { return LABELS[status] || (status ? '状态待确认' : '—') },
     statusType(status) { if (['ENABLED', 'PAID', 'APPROVED', 'PUBLISHED', 'ARRIVED', 'ARCHIVED', 'COMPLETED'].includes(status)) return 'success'; if (['CANCELLED', 'RETURNED', 'WAIVED', 'DISABLED'].includes(status)) return 'info'; if (['DRAFT', 'PARTIAL', 'PARTIALLY_ARRIVED', 'REVIEWING', 'COLLEGE_REVIEWING', 'COLLEGE_APPROVED', 'ACADEMIC_APPROVED', 'DISTRIBUTING'].includes(status)) return 'warning'; return 'primary' },
@@ -306,7 +313,7 @@ export default {
     clearSearch() { this.keyword = ''; this.appliedKeyword = ''; this.page = 1; if (this.tab === 'catalog') this.reload() },
     turnPage(value) { this.page = value; this.activeRowKey = ''; this.reload() },
     runPrimaryAction() { if (this.tab === 'catalog') this.openTextbook(); else if (this.tab === 'selection') this.openSelection(); else if (this.tab === 'review') this.createReview(); else if (this.tab === 'order') this.createOrder(); else if (['fee', 'stock'].includes(this.tab)) this.reload(); else if (this.tab === 'stats') this.switchTab('order') },
-    switchTab(key) { if (this.saving || key === this.tab) return; this.$router.replace({ query: { ...this.$route.query, tab: key } }) },
+    switchTab(key) { const target = this.resolveTab(key); if (this.saving || target === this.tab) return; this.$router.replace({ query: { ...this.$route.query, tab: target } }) },
     async reload() { const seq = ++this.loadSeq, identity = this.identityKey, tab = this.tab, page = this.page; const current = () => seq === this.loadSeq && identity === this.identityKey && tab === this.tab && page === this.page; this.loading = true; this.error = ''; try { const params = { page, pageSize: this.pageSize, ...(tab === 'catalog' && this.appliedKeyword ? { keyword: this.appliedKeyword } : {}) }; let result; if (tab === 'stats') result = await api.stats(); else if (tab === 'stock') result = await api.stock(); else if (tab === 'catalog') result = await api.listTextbooks(params); else if (tab === 'selection') result = await api.listSelections(params); else if (tab === 'review') result = await api.listReviewBatches(params); else if (tab === 'order') result = await api.listOrderBatches(params); else if (tab === 'distribution') result = await textbookP0Api.listDistributionBatches({ termId: this.currentTermId || undefined, ...params }); else result = await api.feeLedger(params); if (!current()) return; if (result.code !== 0) { this.error = result.message || '教材数据加载失败'; return } if (tab === 'stats') this.stats = result.data || {}; else if (tab === 'stock') { this.rows = result.data?.items || []; this.total = this.rows.length } else { this.rows = result.data?.list || []; this.total = Number(result.data?.total || 0) } } catch (exception) { if (current()) this.error = exception?.message || '教材数据加载失败' } finally { if (current()) this.loading = false } },
     async write(call, success) { if (this.saving) return null; const seq = ++this.actionSeq, identity = this.identityKey, tab = this.tab; const current = () => seq === this.actionSeq && identity === this.identityKey && tab === this.tab; this.saving = true; try { const result = await call(); if (!current()) return null; if (result.code !== 0) { toast.error(result.message || '办理结果未确认，请核对正式记录'); return null } if (success) await success(result); return result } catch (exception) { if (current()) toast.error(exception?.message || '办理结果未确认，请核对正式记录'); return null } finally { if (current()) this.saving = false } },
     prepareConfirm(title, message, action) { this.confirmTitle = title; this.confirmMessage = message; this.pendingAction = { identity: this.identityKey, tab: this.tab, action }; this.confirmVisible = true },
