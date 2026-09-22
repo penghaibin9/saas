@@ -114,3 +114,12 @@ def test_pc_attendance_reuses_canonical_attendance_owner():
     assert "attendance_svc.create_session(user, payload)" in router
     assert "attendance_svc.mark_attendance(sessionId, user, body.model_dump())" in router
     assert "attendance_svc.submit_session(sessionId, user)" in router
+
+
+def test_textbook_selection_deep_link_has_exact_server_filter():
+    router = _read("app/modules/academic_affairs/routers/textbook_core_router.py")
+    service = _read("app/modules/academic_affairs/services/academic_affairs_textbook_service.py")
+    assert "selectionId: Optional[int] = None" in router
+    assert "selection_id=selectionId" in router
+    assert "selection_id=None" in service
+    assert "AaTextbookSelection.id == int(selection_id)" in service

@@ -104,9 +104,10 @@ def selection_create(body: SelectionBody, user=Depends(require_permission(_TB_SE
 
 
 @router.get("/textbooks/selections", summary="选用列表")
-def selections(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+def selections(status: Optional[str] = None, selectionId: Optional[int] = None,
+               page: int = 1, pageSize: int = 50,
                user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_selections(user, status, page, pageSize)
+    items, total = textbook_svc.list_selections(user, status, page, pageSize, selection_id=selectionId)
     return success(paginate(items, total, page, pageSize))
 
 

@@ -199,7 +199,7 @@ def withdraw_selection(user, sid):
         return {"selectionId": str(s.id), "withdrawn": True}
 
 
-def list_selections(user, status=None, page=1, page_size=50):
+def list_selections(user, status=None, page=1, page_size=50, *, selection_id=None):
     """教材选用列表——数据范围下推到 SQL WHERE，不再整租户拉回内存再按学院过滤+切片。
 
     原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
@@ -212,6 +212,8 @@ def list_selections(user, status=None, page=1, page_size=50):
         conds = [AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.is_deleted.is_(False)]
         if status:
             conds.append(AaTextbookSelection.status == status)
+        if selection_id is not None:
+            conds.append(AaTextbookSelection.id == int(selection_id))
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role == "ACADEMIC_TEACHER":
             keys = _derive_keys(user)
