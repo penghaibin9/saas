@@ -307,7 +307,7 @@ export default {
     '$route.query.action'() { if (this.initialized) this.openSelectionFromRoute() },
     identityKey() {
       if (this.initialized) {
-        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''
+        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null
         this.resetView(); this.page = textbookQueuePage(this.$route.query.page); this.rows = []; this.stats = {}; this.total = 0
         this.reload(); this.openSelectionFromRoute()
       }

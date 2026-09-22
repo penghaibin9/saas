@@ -924,8 +924,13 @@ export default {
         : await gradeIdentityApi.createGradeTask(payload)
       if (!this.currentTask(context)) return
       this.creating = false
-      if (res.code === 0) { this.task = res.data; this.prepareDeadlineForm(); toast.success('任务已创建，开始录入'); this.loadTasks() }
-      else toast.error(res.message || '创建失败')
+      if (res.code === 0) {
+        const gradeTaskId = String(res.data?.gradeTaskId || '')
+        if (!/^[1-9]\d*$/.test(gradeTaskId)) throw { code: 503, message: '成绩任务已创建但未返回正式任务编号，请重新读取任务列表核对' }
+        this.showCreate = false
+        toast.success('任务已创建，正在载入正式名单')
+        await this.openTask({ gradeTaskId })
+      } else toast.error(res.message || '创建失败')
       } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.creating = false }
     },

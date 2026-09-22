@@ -204,3 +204,17 @@ test('teacher V3 completed flows return to the existing Today page instead of de
   assert.match(textbook, /教材选用已提交审核/)
   assert.match(booking, /返回今日教学/)
 })
+
+
+test('teacher V3 grade setup enters the real recording workspace immediately after creation', () => {
+  const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  assert.match(source, /const gradeTaskId = String\(res\.data\?\.gradeTaskId \|\| ''\)/)
+  assert.match(source, /await this\.openTask\(\{ gradeTaskId \}\)/)
+  assert.match(source, /正在载入正式名单/)
+  assert.doesNotMatch(source, /this\.task = res\.data; this\.prepareDeadlineForm\(\); toast\.success\('任务已创建，开始录入'\)/)
+})
+
+test('teacher V3 textbook receipt is cleared when identity changes', () => {
+  const source = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  assert.match(source, /this\.selectionReceipt = null/)
+})
