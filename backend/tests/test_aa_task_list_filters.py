@@ -42,3 +42,13 @@ def test_task_list_term_and_literal_keyword_filter_both_queries():
     assert "LIMIT" not in str(statements[0])
     assert statements[1]._limit_clause.value == 10
     assert statements[1]._offset_clause.value == 10
+
+
+def test_task_list_projects_batch_status_without_n_plus_one():
+    import inspect
+    from app.modules.academic_affairs.services import academic_affairs_task_service as service
+
+    source = inspect.getsource(service.list_all_tasks)
+    assert 'batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})' in source
+    assert 'AaTeachingTaskBatch.id.in_(batch_ids)' in source
+    assert 'item["batchStatus"] = batch_status.get' in source

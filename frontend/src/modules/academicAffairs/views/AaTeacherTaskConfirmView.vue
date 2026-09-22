@@ -26,10 +26,10 @@
         :identity="`本人教学任务 #${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
         source="来源：学院已分配至当前登录教师的稳定工号；本入口不能代办他人任务。"
         :status="statusLabel(primaryRow.status)"
-        owner="当前正式任课教师"
-        next-owner="学院任务核对岗"
+        :owner="currentOwner(primaryRow)"
+        :next-owner="nextOwner(primaryRow)"
       />
-      <AaTeachingTaskStageRail :current="3" current-note="当前教师本人确认" />
+      <AaTeachingTaskStageRail :current="taskStage(primaryRow)" :current-note="stageNote(primaryRow)" />
       <section v-if="!loading && !error" class="teacher-task__summary">
         <article>
           <span>等待本人确认</span>
@@ -98,7 +98,7 @@
             <button class="mp-link" :disabled="Boolean(acting || pendingCommand)" @click="openConfirm(row)">确认接受</button>
             <button class="mp-link is-danger" :disabled="Boolean(acting || pendingCommand)" @click="openReject(row)">提出异议</button>
           </template>
-          <span v-else class="mp-cell-sub">已处理</span>
+          <span v-else class="mp-cell-sub">{{ rowProgress(row) }}</span>
         </template>
       </DataTable>
     </div>
@@ -218,6 +218,53 @@ export default {
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,
+    currentOwner(row) {
+      const status = String(row?.status || '').toUpperCase()
+      const batch = String(row?.batchStatus || '').toUpperCase()
+      if (status === 'ASSIGNED') return '当前正式任课教师'
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '学校教务终审岗'
+      if (status === 'TEACHER_CONFIRMED') return '学院教学任务核对岗'
+      if (status === 'READY') return '教学任务确认链已完成'
+      if (status === 'REJECTED_BY_TEACHER') return '学院重新分配岗'
+      return '状态待核对'
+    },
+    nextOwner(row) {
+      const status = String(row?.status || '').toUpperCase()
+      const batch = String(row?.batchStatus || '').toUpperCase()
+      if (status === 'ASSIGNED') return '学院教学任务核对岗'
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '终审通过后进入个人课表'
+      if (status === 'TEACHER_CONFIRMED') return '学院确认后转学校教务终审'
+      if (status === 'READY') return '进入个人课表与后续教学执行'
+      if (status === 'REJECTED_BY_TEACHER') return '学院调整后重新分配教师'
+      return '请核对最新状态'
+    },
+    taskStage(row) {
+      const status = String(row?.status || '').toUpperCase()
+      const batch = String(row?.batchStatus || '').toUpperCase()
+      if (status === 'READY') return 5
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return 4
+      if (status === 'TEACHER_CONFIRMED') return 3
+      return 3
+    },
+    stageNote(row) {
+      const status = String(row?.status || '').toUpperCase()
+      const batch = String(row?.batchStatus || '').toUpperCase()
+      if (status === 'ASSIGNED') return '等待教师本人确认'
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '学院已核对，等待教务终审'
+      if (status === 'TEACHER_CONFIRMED') return '本人已确认，等待学院核对'
+      if (status === 'READY') return '教务终审通过，教学任务已就绪'
+      if (status === 'REJECTED_BY_TEACHER') return '本人已提出异议，等待学院处理'
+      return '当前任务状态待核对'
+    },
+    rowProgress(row) {
+      const status = String(row?.status || '').toUpperCase()
+      const batch = String(row?.batchStatus || '').toUpperCase()
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '等待教务终审'
+      if (status === 'TEACHER_CONFIRMED') return '等待学院核对'
+      if (status === 'READY') return '已就绪'
+      if (status === 'REJECTED_BY_TEACHER') return '等待学院调整'
+      return '已处理'
+    },
     async ensureCurrentTerm() {
       if (this.showHistory || this.currentTermId) return true
       const res = await academicAffairsApi.getCurrentTerm()

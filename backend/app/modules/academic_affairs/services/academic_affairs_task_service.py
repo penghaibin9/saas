@@ -603,7 +603,23 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
         ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
-        return [_core._task_row(task) for task in rows], total
+        batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})
+        batch_status = {}
+        if batch_ids:
+            batch_status = {
+                int(batch.id): str(batch.status or "")
+                for batch in db.scalars(select(AaTeachingTaskBatch).where(
+                    AaTeachingTaskBatch.tenant_id == _tid(),
+                    AaTeachingTaskBatch.id.in_(batch_ids),
+                    AaTeachingTaskBatch.is_deleted.is_(False),
+                )).all()
+            }
+        items = []
+        for task in rows:
+            item = _core._task_row(task)
+            item["batchStatus"] = batch_status.get(int(task.batch_id or 0), "")
+            items.append(item)
+        return items, total
 
 
 def get_batch_workbench(batch_id, user) -> dict:

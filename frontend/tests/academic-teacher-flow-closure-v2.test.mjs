@@ -327,3 +327,14 @@ test('teacher V3 separates assignment ownership from formal execution ownership'
   assert.match(textbook, /formalMine: isAcademicTeacher/)
   assert.match(textbook, /formalMine: true, termId: this\.currentTermId/)
 })
+
+
+test('teacher V3 task confirmation shows real current and next responsibility', () => {
+  const source = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  assert.match(source, /:owner="currentOwner\(primaryRow\)"/)
+  assert.match(source, /:next-owner="nextOwner\(primaryRow\)"/)
+  assert.match(source, /rowProgress\(row\)/)
+  assert.match(source, /学院已核对，等待教务终审/)
+  assert.match(source, /教务终审通过，教学任务已就绪/)
+  assert.doesNotMatch(source, /next-owner="学院任务核对岗"/)
+})
