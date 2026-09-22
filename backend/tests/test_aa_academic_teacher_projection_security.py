@@ -13,9 +13,15 @@ def _read(relative):
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
-def test_academic_teacher_does_not_receive_school_dashboard_permission():
+def test_academic_teacher_dashboard_permission_is_legacy_compatible_but_service_is_safe():
     granted = ROLE_PERMISSIONS["ACADEMIC_TEACHER"]
-    assert "academicAffairs.dashboard.view" not in granted
+    assert "academicAffairs.dashboard.view" in granted
+    service = _read("app/modules/academic_affairs/services/academic_affairs_service.py")
+    teacher_branch = service[service.index('if role == "ACADEMIC_TEACHER"'):service.index('stu_total =', service.index('if role == "ACADEMIC_TEACHER"'))]
+    assert '"summaryCards": []' in teacher_branch
+    assert '"teacherSafeView": True' in teacher_branch
+    assert "StudentProfile" not in teacher_branch
+    assert "AaRegistration" not in teacher_branch
 
 
 def test_attendance_frontend_permission_matches_backend_contract():
