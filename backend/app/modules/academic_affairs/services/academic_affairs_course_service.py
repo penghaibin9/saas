@@ -321,6 +321,8 @@ def get_course(course_id, user) -> dict:
         c = db.get(AaCourse, int(course_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("课程不存在")
+        if str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER" and str(c.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         return _row(c)
 
 
@@ -335,11 +337,14 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
     from app.models import AaCourse
     with session() as db:
         conds = [AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False)]
+        teacher_read = str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+        if teacher_read:
+            conds.append(AaCourse.status == "ENABLED")
         if category:
             conds.append(AaCourse.category == category)
         if nature:
             conds.append(AaCourse.nature == nature)
-        if status:
+        if status and not teacher_read:
             conds.append(AaCourse.status == status)
         if owner_teacher_id:
             conds.append(AaCourse.owner_teacher_id == int(owner_teacher_id))
