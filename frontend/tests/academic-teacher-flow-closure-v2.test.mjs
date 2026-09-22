@@ -229,3 +229,16 @@ test('teacher V3 textbook flow uses honest draft then submit semantics', () => {
   assert.match(textbook, /提交审核/)
   assert.doesNotMatch(today, /TEXTBOOK_SETUP/)
 })
+
+
+test('teacher V3 returned textbook selection can be revised and resubmitted', () => {
+  const api = src('modules/academicAffairs/api/academic-affairs.api.js')
+  const view = src('modules/academicAffairs/views/AaTextbookConsoleView.vue')
+  assert.match(api, /updateSelection\(id, body\)/)
+  assert.match(view, /\['DRAFT','RETURNED'\]\.includes\(row\.status\)/)
+  assert.match(view, /退回：\{\{ row\.rejectReason \}\}/)
+  assert.match(view, /editingSelectionId/)
+  assert.match(view, /api\.updateSelection\(editingId, body\)/)
+  assert.match(view, /保存修改草稿/)
+  assert.match(view, /action === 'edit'/)
+})

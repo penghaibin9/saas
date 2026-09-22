@@ -130,7 +130,7 @@ def update_textbook(user, tid, body):
 def _sel_dto(s):
     return {"selectionId": str(s.id), "taskId": str(s.task_id), "textbookId": str(s.textbook_id),
             "textbookName": s.textbook_name, "courseName": s.course_name, "expectedQty": s.expected_qty,
-            "officerKey": s.officer_key, "rejectReason": s.reject_reason, "status": s.status}
+            "officerKey": s.officer_key, "remark": s.remark or "", "rejectReason": s.reject_reason, "status": s.status}
 
 
 def create_selection(user, body):

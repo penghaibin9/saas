@@ -270,7 +270,11 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
                     "草稿待提交" if status == "DRAFT" else "已提交，等待审核"
                 ),
                 "action": "去处理" if status in {"DRAFT", "RETURNED"} else "查看进度",
-                "path": f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}",
+                "path": (
+                    f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}&action=edit"
+                    if status == "RETURNED"
+                    else f"/admin/academic-affairs/textbooks?tab=selection&selectionId={row.id}"
+                ),
             }
             (actions if status in {"DRAFT", "RETURNED"} else waiting).append(item)
 

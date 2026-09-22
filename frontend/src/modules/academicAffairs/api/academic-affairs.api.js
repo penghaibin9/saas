@@ -1243,6 +1243,7 @@ export const academicAffairsTextbookApi = {
   // 选用
   listSelections(params = {}) { return callList(`${BASE}/textbooks/selections`, params) },
   createSelection(body) { return call(() => request(`${BASE}/textbooks/selections`, { method: 'POST', body })) },
+  updateSelection(id, body) { return call(() => request(`${BASE}/textbooks/selections/${id}`, { method: 'PUT', body })) },
   submitSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/submit`, { method: 'POST' })) },
   withdrawSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/withdraw`, { method: 'POST' })) },
   // 审核

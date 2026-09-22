@@ -120,7 +120,10 @@
           @page-change="turnPage"
         >
           <template #cell-primary="{ row }"><button class="aatb-object-link" @click="selectRow(row)">{{ row.primary }}</button><small>{{ row.secondary }}</small></template>
-          <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot /></template>
+          <template #cell-status="{ row }">
+            <StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot />
+            <small v-if="tab === 'selection' && row.status === 'RETURNED' && row.rejectReason" class="aatb-return-reason">退回：{{ row.rejectReason }}</small>
+          </template>
           <template #cell-price="{ row }">{{ row.unitPrice == null ? '—' : `¥${money(row.unitPrice)}` }}</template>
           <template #cell-amount="{ row }">¥{{ money(row.amount) }}</template>
           <template #cell-paid="{ row }">¥{{ money(row.paidAmount) }} / ¥{{ money(row.amount) }}</template>
@@ -129,6 +132,7 @@
             <button v-if="tab === 'catalog'" class="mp-link" @click="openTextbook(row)">打开</button>
             <template v-else-if="tab === 'selection'">
               <button class="mp-link" @click="selectRow(row)">查看来源</button>
+              <button v-if="['DRAFT','RETURNED'].includes(row.status)" class="mp-link" @click="openSelection(row)">修改</button>
               <button v-if="row.status === 'DRAFT'" class="mp-link" @click="confirmSelectionSubmit(row)">提交</button>
               <button v-if="row.status === 'DRAFT'" class="mp-link is-danger" @click="confirmSelectionWithdraw(row)">撤回</button>
             </template>
@@ -171,16 +175,16 @@
       <template #footer><AppButton variant="ghost" :disabled="saving" @click="tbVisible = false">取消</AppButton><AppButton variant="primary" :loading="saving" @click="submitTextbook">保存目录</AppButton></template>
     </AppDrawer>
 
-    <AppDrawer :visible="selectionVisible" title="教材选用正式申报" mode="modal" size="large" @close="closeSelection">
+    <AppDrawer :visible="selectionVisible" :title="editingSelectionId ? '修改教材选用申报' : '教材选用正式申报'" mode="modal" size="large" @close="closeSelection">
       <AppInlineAlert type="info" title="第四级对象视角" description="从正式教学任务开始，教材版本和需求人数提交后进入教材选用审核岗。" />
       <div class="aatb-form-grid">
-        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, mine: isAcademicTeacher }" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, mine: isAcademicTeacher }" :disabled="saving || Boolean(editingSelectionId)" /></AppFormItem>
         <AppFormItem label="教材版本" required><AppSelect v-model="selectionForm.textbookId" :options="textbookOptions" placeholder="选择正式教材目录" :disabled="saving || selectionCatalogLoading" /></AppFormItem>
         <AppFormItem label="需求人数" required><AppNumberInput v-model="selectionForm.expectedQty" :min="1" :disabled="saving" /></AppFormItem>
         <AppFormItem class="aatb-form-wide" label="选用原因" required><AppTextarea v-model="selectionForm.remark" :disabled="saving" placeholder="说明课程、版本和实际需求依据" /></AppFormItem>
         <AppInlineAlert v-if="selectionError" class="aatb-form-wide" type="danger" :description="selectionError" />
       </div>
-      <template #footer><AppButton variant="ghost" :disabled="saving" @click="closeSelection">返回来源工作区</AppButton><AppButton variant="primary" :loading="saving" :disabled="!selectionCanSubmit" @click="submitSelection">保存申报草稿</AppButton></template>
+      <template #footer><AppButton variant="ghost" :disabled="saving" @click="closeSelection">返回来源工作区</AppButton><AppButton variant="primary" :loading="saving" :disabled="!selectionCanSubmit" @click="submitSelection">{{ editingSelectionId ? '保存修改草稿' : '保存申报草稿' }}</AppButton></template>
     </AppDrawer>
 
     <AppDrawer :visible="arrivalVisible" title="登记到货验收" mode="modal" size="medium" @close="arrivalVisible = false">
@@ -246,7 +250,7 @@ export default {
       showHistory: false, openedSetupTaskId: '', selectionReceipt: null, selectionDraftReceipt: null,
       loadSeq: 0, arrivalSeq: 0, actionSeq: 0, initialized: false, saving: false, showSource: false, activeRowKey: '',
       tbVisible: false, editingTextbookId: '', tbForm: { name: '', isbn: '', edition: '', publisher: '', subject: '', unitPrice: 0 }, formError: '',
-      selectionVisible: false, selectionCatalogLoading: false, selectionCatalog: [], selectionError: '', selectionForm: { taskId: '', textbookId: '', expectedQty: 1, remark: '' },
+      selectionVisible: false, editingSelectionId: '', selectionCatalogLoading: false, selectionCatalog: [], selectionError: '', selectionForm: { taskId: '', textbookId: '', expectedQty: 1, remark: '' },
       arrivalVisible: false, arrivalRow: null, arrivalItems: [], arrivalQty: {}, arrivalError: '', arrivalLoading: false,
       partialVisible: false, partialRow: null, partialAmount: 0,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
@@ -312,10 +316,10 @@ export default {
     '$route.query.tab'(value) { const next = this.resolveTab(value); if (this.tab !== next) { this.tab = next; this.resetView(); if (this.initialized) this.reload() } },
     '$route.query.selectionId'() { if (this.initialized && this.tab === 'selection') this.reload() },
     '$route.query.taskId'() { if (this.initialized) this.openSelectionFromRoute() },
-    '$route.query.action'() { if (this.initialized) this.openSelectionFromRoute() },
+    '$route.query.action'(value) { if (this.initialized) { if (value === 'edit') this.reload(); else this.openSelectionFromRoute() } },
     identityKey() {
       if (this.initialized) {
-        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null; this.selectionDraftReceipt = null
+        this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null; this.selectionDraftReceipt = null; this.editingSelectionId = ''
         this.resetView(); this.page = textbookQueuePage(this.$route.query.page); this.rows = []; this.stats = {}; this.total = 0
         this.reload(); this.openSelectionFromRoute()
       }
@@ -393,7 +397,12 @@ export default {
         else {
           this.rows = result.data?.list || []; this.total = Number(result.data?.total || 0)
           const focus = String(this.$route?.query?.selectionId || '')
-          if (tab === 'selection' && focus && this.rows.some(row => String(row.selectionId) === focus)) this.activeRowKey = focus
+          const focusRow = tab === 'selection' && focus ? this.rows.find(row => String(row.selectionId) === focus) : null
+          if (focusRow) this.activeRowKey = focus
+          if (focusRow && this.isAcademicTeacher && this.$route?.query?.action === 'edit' &&
+              ['DRAFT', 'RETURNED'].includes(String(focusRow.status || '').toUpperCase()) && !this.selectionVisible) {
+            await this.openSelection(focusRow)
+          }
         }
       } catch (exception) { if (current()) this.error = exception?.message || '教材数据加载失败' }
       finally { if (current()) this.loading = false }
@@ -403,7 +412,33 @@ export default {
     onConfirm() { const pending = this.pendingAction; this.pendingAction = null; this.confirmVisible = false; if (!pending) return; if (typeof pending === 'function') return pending(); if (pending.identity === this.identityKey && pending.tab === this.tab) pending.action() },
     openTextbook(row) { this.editingTextbookId = row?.textbookId || ''; this.tbForm = { name: row?.name || '', isbn: row?.isbn || '', edition: row?.edition || '', publisher: row?.publisher || '', subject: row?.subject || '', unitPrice: Number(row?.unitPrice || 0) }; this.formError = ''; this.tbVisible = true },
     async submitTextbook() { if (!this.tbForm.name.trim()) { this.formError = '教材名称必填'; return } const body = { ...this.tbForm, name: this.tbForm.name.trim() }; await this.write(() => this.editingTextbookId ? api.updateTextbook(this.editingTextbookId, body) : api.createTextbook(body), () => { toast.success(this.editingTextbookId ? '教材目录已保存' : '教材目录已创建'); this.tbVisible = false; this.reload() }) },
-    async openSelection() { this.selectionReceipt = null; this.selectionDraftReceipt = null; this.selectionForm = { taskId: '', textbookId: '', expectedQty: 1, remark: '' }; this.selectionError = ''; this.selectionVisible = true; this.selectionCatalogLoading = true; const identity = this.identityKey; try { const result = await api.listTextbooks({ status: 'ENABLED', page: 1, pageSize: 200 }); if (identity !== this.identityKey || !this.selectionVisible) return; if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return } this.selectionCatalog = result.data?.list || [] } catch (exception) { if (identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败' } finally { if (identity === this.identityKey) this.selectionCatalogLoading = false } },
+    async openSelection(row = null) {
+      this.selectionReceipt = null
+      this.selectionDraftReceipt = null
+      this.editingSelectionId = row?.selectionId ? String(row.selectionId) : ''
+      this.selectionForm = row
+        ? {
+            taskId: String(row.taskId || ''),
+            textbookId: String(row.textbookId || ''),
+            expectedQty: Number(row.expectedQty || 1),
+            remark: String(row.remark || '')
+          }
+        : { taskId: '', textbookId: '', expectedQty: 1, remark: '' }
+      this.selectionError = ''
+      this.selectionVisible = true
+      this.selectionCatalogLoading = true
+      const identity = this.identityKey
+      try {
+        const result = await api.listTextbooks({ status: 'ENABLED', page: 1, pageSize: 200 })
+        if (identity !== this.identityKey || !this.selectionVisible) return
+        if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return }
+        this.selectionCatalog = result.data?.list || []
+      } catch (exception) {
+        if (identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败'
+      } finally {
+        if (identity === this.identityKey) this.selectionCatalogLoading = false
+      }
+    },
     async openSelectionFromRoute() {
       const taskId = String(this.$route?.query?.taskId || '').trim()
       if (!this.isAcademicTeacher || this.$route?.query?.action !== 'create' || !/^[1-9]\d*$/.test(taskId)) return
@@ -425,25 +460,36 @@ export default {
     },
     closeSelection() {
       this.selectionVisible = false
-      if (this.$route?.query?.action === 'create' || this.$route?.query?.taskId) {
+      this.editingSelectionId = ''
+      if (this.$route?.query?.action || this.$route?.query?.taskId) {
         const query = { ...this.$route.query }; delete query.action; delete query.taskId
         this.$router.replace({ path: this.$route.path, query }).catch(() => {})
       }
     },
     async submitSelection() {
       if (!this.selectionCanSubmit) { this.selectionError = '请完整选择教学任务、教材版本、需求人数并填写选用原因'; return }
-      const body = { taskId: String(this.selectionForm.taskId), textbookId: String(this.selectionForm.textbookId), expectedQty: Number(this.selectionForm.expectedQty), remark: this.selectionForm.remark.trim() }
-      await this.write(() => api.createSelection(body), async result => {
-        const id = String(result.data?.selectionId || '')
-        const name = result.data?.courseName || '教材选用申报'
-        this.selectionDraftReceipt = id ? { id, name } : null
-        toast.success('申报草稿已保存，请确认后提交审核')
-        this.selectionVisible = false
-        const query = { ...this.$route.query, tab: 'selection' }; delete query.action; delete query.taskId
-        if (id) query.selectionId = id
-        await this.$router.replace({ path: this.$route.path, query }).catch(() => {})
-        await this.reload()
-      })
+      const editingId = String(this.editingSelectionId || '')
+      const body = {
+        textbookId: String(this.selectionForm.textbookId),
+        expectedQty: Number(this.selectionForm.expectedQty),
+        remark: this.selectionForm.remark.trim()
+      }
+      const createBody = { ...body, taskId: String(this.selectionForm.taskId) }
+      await this.write(
+        () => editingId ? api.updateSelection(editingId, body) : api.createSelection(createBody),
+        async result => {
+          const id = String(result.data?.selectionId || editingId || '')
+          const name = result.data?.courseName || '教材选用申报'
+          this.selectionDraftReceipt = id ? { id, name } : null
+          this.editingSelectionId = ''
+          toast.success(editingId ? '修改已保存，请确认后重新提交审核' : '申报草稿已保存，请确认后提交审核')
+          this.selectionVisible = false
+          const query = { ...this.$route.query, tab: 'selection' }; delete query.action; delete query.taskId
+          if (id) query.selectionId = id
+          await this.$router.replace({ path: this.$route.path, query }).catch(() => {})
+          await this.reload()
+        }
+      )
     },
     confirmSelectionSubmit(row) {
       const frozen = { id: row.selectionId, name: row.courseName || row.selectionId }
@@ -489,6 +535,7 @@ export default {
 
 <style scoped>
 .aatb-teacher-receipt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 14px; margin-bottom:12px; border:1px solid #b7dfc2; border-radius:10px; background:#f0f9f2; }
+.aatb-return-reason { margin-top:4px; color:#b45309; font-size:11px; line-height:1.5; }
 .aatb-teacher-receipt.is-draft { border-color:#ecd09c; background:#fff8ea; }
 .aatb-teacher-receipt div { flex:1 1 280px; }
 .aatb-teacher-receipt strong,.aatb-teacher-receipt span,.aatb-teacher-receipt small { display:block; }

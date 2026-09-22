@@ -306,6 +306,52 @@ def create_selection(user, body):
         return _legacy._sel_dto(row)
 
 
+def update_selection(user, selection_id, body):
+    from app.models import AaTextbook
+
+    with _legacy.session() as db:
+        _legacy._ctx(user, db)
+        row = _get_selection(db, selection_id, lock=True)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
+        status = str(row.status or "").upper()
+        if status not in {"DRAFT", "RETURNED"}:
+            raise _legacy._conflict("仅草稿或已退回的教材选用可以修改")
+
+        textbook = db.query(AaTextbook).filter(
+            AaTextbook.id == int(body.textbookId),
+            AaTextbook.tenant_id == _legacy._tid(),
+            AaTextbook.is_deleted.is_(False),
+        ).first()
+        if not textbook:
+            raise not_found("教材不存在")
+
+        expected_qty = int(body.expectedQty)
+        remark = str(body.remark or "").strip()
+        if expected_qty <= 0:
+            raise AppException("VALIDATION_ERROR", "需求人数必须大于0")
+        if not remark:
+            raise AppException("VALIDATION_ERROR", "选用原因不能为空")
+
+        before = f"textbook={row.textbook_id};qty={row.expected_qty};status={row.status}"
+        row.textbook_id = textbook.id
+        row.textbook_name = textbook.name
+        row.expected_qty = expected_qty
+        row.remark = remark
+        if status == "RETURNED":
+            row.status = "DRAFT"
+            row.reject_reason = None
+        _legacy._audit(
+            db,
+            "AA_TEXTBOOK_SELECTION",
+            row.id,
+            "TEXTBOOK_SELECTION_UPDATE",
+            f"{before}->textbook={row.textbook_id};qty={row.expected_qty};status={row.status}",
+        )
+        db.commit()
+        return _legacy._sel_dto(row)
+
+
 def submit_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)

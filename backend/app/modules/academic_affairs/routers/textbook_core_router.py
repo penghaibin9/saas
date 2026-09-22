@@ -47,6 +47,12 @@ class SelectionBody(BaseModel):
     remark: Optional[str] = None
 
 
+class SelectionUpdateBody(BaseModel):
+    textbookId: str = Field(..., pattern=r"^[1-9]\d*$")
+    expectedQty: int = Field(..., ge=1)
+    remark: str = Field(..., min_length=1, max_length=1000)
+
+
 class ReviewBatchBody(BaseModel):
     batchName: Optional[str] = None
     termId: Optional[str] = None
@@ -110,6 +116,11 @@ def selections(status: Optional[str] = None, selectionId: Optional[int] = None,
                user=Depends(require_permission(_TB_VIEW))):
     items, total = textbook_svc.list_selections(user, status, page, pageSize, selection_id=selectionId, term_id=termId)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/textbooks/selections/{sid}", summary="修改教材选用草稿/退回申报")
+def selection_update(body: SelectionUpdateBody, sid: int = Path(...), user=Depends(require_permission(_TB_SELECTION))):
+    return success(textbook_svc.update_selection(user, sid, body), message="已保存")
 
 
 @router.post("/textbooks/selections/{sid}/submit", summary="提交选用")
