@@ -13,6 +13,12 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
 
+_TEACHER_VISIBLE_PROGRAM_STATUSES = {"PUBLISHED", "ENABLED", "FROZEN"}
+
+
+def _is_academic_teacher(user) -> bool:
+    return str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+
 
 def _op():
     u = get_current_user_ctx() or {}
@@ -105,6 +111,8 @@ def get_program(program_id, user) -> dict:
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        if _is_academic_teacher(user) and str(p.status or "").upper() not in _TEACHER_VISIBLE_PROGRAM_STATUSES:
+            raise not_found("培养方案不存在")
         courses = db.scalars(select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == p.id,
             AaProgramCourse.is_deleted.is_(False)).order_by(AaProgramCourse.open_term_no)).all()
@@ -175,13 +183,17 @@ def list_programs(user, major_id=None, status=None, page=1, page_size=20, status
     from app.models import AaProgram
     with session() as db:
         conds = [AaProgram.tenant_id == _tid(), AaProgram.is_deleted.is_(False)]
+        teacher_read = _is_academic_teacher(user)
+        if teacher_read:
+            conds.append(AaProgram.status.in_(sorted(_TEACHER_VISIBLE_PROGRAM_STATUSES)))
         if major_id:
             conds.append(AaProgram.major_id == int(major_id))
-        statuses = [s.strip() for s in status_in.split(",") if s.strip()] if status_in else None
-        if statuses:
-            conds.append(AaProgram.status.in_(statuses))
-        elif status:
-            conds.append(AaProgram.status == status)
+        if not teacher_read:
+            statuses = [s.strip() for s in status_in.split(",") if s.strip()] if status_in else None
+            if statuses:
+                conds.append(AaProgram.status.in_(statuses))
+            elif status:
+                conds.append(AaProgram.status == status)
         rows = db.scalars(select(AaProgram).where(*conds).order_by(AaProgram.id.desc())).all()
         out = [_row(p) for p in rows]
         total = len(out)
