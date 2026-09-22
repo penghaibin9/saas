@@ -283,7 +283,8 @@ def get_course_references(course_id, user) -> list[dict]:
             if r.program_id in seen:
                 continue
             seen.add(r.program_id)
-            p = db.get(AaProgram, r.program_id)
+            from app.core.tenant_scoped import tenant_get
+            p = tenant_get(db, AaProgram, r.program_id, tenant_id=_tid())
             if p and not p.is_deleted and (
                 not teacher_read or str(p.status or "").upper() in {"PUBLISHED", "ENABLED", "FROZEN"}
             ):
