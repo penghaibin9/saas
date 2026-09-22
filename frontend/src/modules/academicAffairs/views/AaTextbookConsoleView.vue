@@ -23,7 +23,7 @@
       v-if="!currentTermId"
       type="warning"
       title="尚未设置当前学期"
-      description="教材目录和库存仍可查看；审核、征订、发放和费用写操作必须先在学年学期中设置当前学期。"
+      :description="isAcademicTeacher ? '教材选用必须关联当前学期的本人正式教学任务，请联系教务人员先设置当前学期。' : '教材目录和库存仍可查看；审核、征订、发放和费用写操作必须先在学年学期中设置当前学期。'"
     />
 
     <AaTextbookObjectBar
@@ -241,7 +241,7 @@ export default {
     pageSpec() { return PAGE_SPEC[this.tab] || PAGE_SPEC.catalog },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     showObjectBar() { return ['selection', 'review'].includes(this.tab) },
-    showStageRail() { return ['selection', 'review'].includes(this.tab) },
+    showStageRail() { return !this.isAcademicTeacher && ['selection', 'review'].includes(this.tab) },
     primaryDisabled() { return this.saving || (['review', 'order'].includes(this.tab) && !this.currentTermId) },
     visibleRows() { return this.tab === 'stock' ? this.rows.slice((this.page - 1) * this.pageSize, this.page * this.pageSize) : this.rows },
     normalizedRows() {
