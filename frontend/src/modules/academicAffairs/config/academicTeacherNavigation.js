@@ -118,7 +118,10 @@ export function academicTeacherActiveModule(modules, navRef, ctx) {
 }
 export function filterAcademicTeacherSearchResults(results, ctx, modules) {
   if (!isAcademicTeacherContext(ctx)) return results || []
-  const projected = projectAcademicTeacherModules(modules || [], ctx)
+  const source = modules || []
+  const projected = source.some(mod => String(mod?.key || '').startsWith('aa-teacher-'))
+    ? source
+    : projectAcademicTeacherModules(source, ctx)
   const allowed = projected.flatMap(mod => mod.children || []).map(leaf => refParts(leaf.path))
   return (results || []).filter(item => {
     if (item.kind === '学生') return false
