@@ -127,11 +127,11 @@ def test_textbook_selection_deep_link_has_exact_server_filter():
 
 def test_teacher_today_confirmation_queue_uses_assignment_owner_not_occurrence_week():
     work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
-    start = work.index("task_conditions = [")
-    end = work.index("teaching_tasks =", start)
+    start = work.index("# Teaching-task confirmation")
+    end = work.index("# Grade responsibility", start)
     block = work[start:end]
-    assert 'AaTeachingTask.status == "ASSIGNED"' in block
     assert 'AaTeachingTask.teacher_key.in_(keys or ["__none__"])' in block
+    assert 'AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "READY"])' in block
     assert "formal_task_ids" not in block
 
 

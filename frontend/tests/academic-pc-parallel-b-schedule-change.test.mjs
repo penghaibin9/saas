@@ -22,8 +22,11 @@ function setup(api, name = 'AaScheduleChangeApplyView', markers = new Map()) {
     ctx: { currentRole: { roleCode: 'TEACHER' }, dataScope: {} }, $route: { query: {}, params: {} }, $router: { replace() {}, push() {} }
   })
   for (const [key, getter] of Object.entries(definition.computed || {})) Object.defineProperty(state, key, { get: () => getter.call(state) })
-  if (state.form) Object.assign(state.form, { originItemId: 'slot-a', targetWeekday: 2, targetSlotNo: 1, reason: '测试调课申请原因' })
-  state.origin = { itemId: 'slot-a', courseName: '课程甲' }
+  if (state.form) {
+    Object.assign(state.form, { originItemId: 'slot-a', targetWeekday: 2, targetSlotNo: 1, targetStartWeek: 3, targetEndWeek: 3, targetWeekParity: 'ALL', reason: '测试调课申请原因' })
+    state.adjustScope = 'OCCURRENCE'
+  }
+  state.origin = { itemId: 'slot-a', courseName: '课程甲', startWeek: 1, endWeek: 16, weekParity: 'ALL' }
   return { state, definition }
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }

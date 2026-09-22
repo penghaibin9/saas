@@ -133,6 +133,7 @@ test('第二页保存及刷新恢复都携带原名单版本，原回执回读�
   assert.equal(reloaded.dynamicCommand, null); assert.equal(reloaded.dynamicRows[0].rowVersion, 4)
 })
 function mount(api = {}, dynamic = {}, notices = []) {
+  api = { getCurrentTerm: async () => ({ code: 0, data: { termId: '2026', termName: '当前学期' } }), ...api }
   if (dynamic.saveDynamicGrade) {
     const old = dynamic.saveDynamicGrade
     dynamic.saveDynamicGradeBatch = async (id, body, key) => {
