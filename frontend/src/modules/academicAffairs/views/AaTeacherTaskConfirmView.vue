@@ -265,9 +265,10 @@ export default {
       if (status === 'REJECTED_BY_TEACHER') return '等待学院调整'
       return '已处理'
     },
-    async ensureCurrentTerm() {
+    async ensureCurrentTerm(revision = this.revision, context = this.ctx) {
       if (this.showHistory || this.currentTermId) return true
       const res = await academicAffairsApi.getCurrentTerm()
+      if (revision !== this.revision || context !== this.ctx || this.disposed) return false
       if (res?.code !== 0 || !res.data?.termId) {
         this.error = res?.message || '当前学期尚未设置，无法建立教师当前任务队列'
         return false
@@ -302,7 +303,10 @@ export default {
           this.handleFailure(exact, '教学任务读取失败')
           return false
         }
-        if (!(await this.ensureCurrentTerm())) return false
+        if (!this.showHistory && !this.currentTermId) {
+          if (!(await this.ensureCurrentTerm(revision, context))) return false
+        }
+        if (revision !== this.revision || context !== this.ctx || this.disposed) return false
         const res = await readTaskPages(
           page => academicAffairsApi.listAllTasks({
             mine: true,
