@@ -400,8 +400,12 @@ def conflict_check(body, user) -> dict:
         batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, batch, origin)
         actor_teacher_key = _teacher_key_for_origin(db, origin, user)
-        tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
-        tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
+        raw_start_week = getattr(body, "targetStartWeek", None)
+        raw_end_week = getattr(body, "targetEndWeek", None)
+        if raw_start_week is None or raw_end_week is None:
+            raise AppException("VALIDATION_ERROR", "冲突预检必须明确目标教学周范围")
+        tsw = int(raw_start_week)
+        tew = int(raw_end_week)
         tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
         tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
         conflict = _detect_conflict(db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,

@@ -98,8 +98,11 @@ def submit(body, user) -> dict:
         tw = ts = tsw = tew = tp = tcr = None
         if ct == "STOP":
             raw_week = getattr(body, "targetStartWeek", None)
+            raw_end_week = getattr(body, "targetEndWeek", None)
             if raw_week is None:
                 raise AppException("VALIDATION_ERROR", "停课必须明确选择具体教学周")
+            if raw_end_week is not None and int(raw_end_week) != int(raw_week):
+                raise AppException("VALIDATION_ERROR", "停课一次只能选择一个具体教学周")
             tsw = tew = int(raw_week)
             tp = str(origin.week_parity or "ALL").upper()
             _legacy._validate_adjust_window(origin, tsw, tew, tp)
@@ -111,13 +114,20 @@ def submit(body, user) -> dict:
             tw, ts = int(body.targetWeekday), int(body.targetSlotNo)
             if ct == "MAKEUP":
                 raw_week = getattr(body, "targetStartWeek", None)
+                raw_end_week = getattr(body, "targetEndWeek", None)
                 if raw_week is None:
                     raise AppException("VALIDATION_ERROR", "补课必须明确选择具体教学周")
+                if raw_end_week is not None and int(raw_end_week) != int(raw_week):
+                    raise AppException("VALIDATION_ERROR", "补课一次只能选择一个具体教学周")
                 tsw = tew = int(raw_week)
                 tp = "ALL"
             else:
-                tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
-                tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
+                raw_start_week = getattr(body, "targetStartWeek", None)
+                raw_end_week = getattr(body, "targetEndWeek", None)
+                if raw_start_week is None or raw_end_week is None:
+                    raise AppException("VALIDATION_ERROR", "调课必须明确选择具体教学周或周期范围")
+                tsw = int(raw_start_week)
+                tew = int(raw_end_week)
                 tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
                 _legacy._validate_adjust_window(origin, tsw, tew, tp)
             if tw < 1 or tw > 7:
