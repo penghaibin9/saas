@@ -164,16 +164,16 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_end_da
     batch_ids = sorted(int(row.id) for row in batches)
 
     actions, waiting = [], []
+    # Confirmation is a pre-execution responsibility owned by the assigned teacher_key.
+    # Do not clip it by the current TeachingClassTeacher occurrence week: schools commonly
+    # ask teachers to confirm future-week assignments before those relations are executable.
     task_conditions = [
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [-1]),
         AaTeachingTask.status == "ASSIGNED",
+        AaTeachingTask.teacher_key.in_(keys or ["__none__"]),
         AaTeachingTask.is_deleted.is_(False),
     ]
-    if formal_task_ids:
-        task_conditions.append(AaTeachingTask.id.in_(formal_task_ids))
-    else:
-        task_conditions.append(AaTeachingTask.teacher_key.in_(keys or ["__none__"]))
     teaching_tasks = db.scalars(select(AaTeachingTask).where(*task_conditions).order_by(AaTeachingTask.id)).all()
     for row in teaching_tasks:
         actions.append({

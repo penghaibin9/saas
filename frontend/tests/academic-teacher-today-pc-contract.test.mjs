@@ -14,7 +14,7 @@ const publishPage = fs.readFileSync(path.join(root, 'src/modules/academicAffairs
 const batchPage = fs.readFileSync(path.join(root, 'src/modules/academicAffairs/views/AaScheduleBatchListView.vue'), 'utf8')
 
 test('teacher PC consumes the same server-projected Teacher Today truth as the miniapp', () => {
-  assert.match(api, /academic-affairs\/teacher\/today/)
+  assert.match(api, /\$\{BASE\}\/teacher\/today/)
   assert.doesNotMatch(api, /request\('\/mobile\/academic\/teacher-schedule\/my'\)/)
   assert.match(page, /todayRes\.data\.todayItems/)
   assert.match(page, /calendarSource === 'HOLIDAY'/)
