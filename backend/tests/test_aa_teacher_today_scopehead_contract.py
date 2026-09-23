@@ -336,3 +336,18 @@ def test_teacher_today_reuses_c_c1_batched_occurrence_projection():
     assert "resolve_formal_occurrence" not in source
     assert "AaScheduleScopeHead" not in source
     assert "status == \"PUBLISHED\"" not in source
+
+
+def test_pc_teacher_today_reads_same_formal_scope_without_mobile_login(db_mode, monkeypatch):
+    from app.modules.academic_affairs.routers.schedule_core_router import schedule_my_today
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
+
+    _ctx()
+    with _session() as db:
+        _term, _task, _batch, active_item, _rogue_batch, _rogue_item = _seed(db)
+        active_id = str(active_item.id)
+        db.commit()
+    monkeypatch.setattr(today, "_today_value", lambda db, value: date(2026, 3, 2))
+    result = schedule_my_today(_user())
+    assert result["code"] == 0
+    assert [item["scheduleItemId"] for item in result["data"]["todayItems"]] == [active_id]

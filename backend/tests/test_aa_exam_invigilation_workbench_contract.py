@@ -213,3 +213,13 @@ def test_invigilation_workbench_rejects_student_role_even_if_login_matches_assig
             from_date="2029-01-01",
         )
     assert exc.value.code == "NO_PERMISSION"
+
+
+def test_pc_invigilation_entry_reuses_self_projection_without_other_assignments(db_mode):
+    from app.modules.academic_affairs.routers.exam_core_router import exam_my_invigilation
+    own = _seed_assignment(db_mode, "pc_self_invigilator")
+    _seed_assignment(db_mode, "pc_other_invigilator")
+    user = _set_context(_user("pc_self_invigilator"))
+    result = exam_my_invigilation(user)
+    assert result["code"] == 0
+    assert [row["invigilatorId"] for row in result["data"]["items"]] == [str(own["invigilatorId"])]

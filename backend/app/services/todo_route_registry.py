@@ -63,6 +63,8 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
 # exact=True 的证据由 frontend/tests/student-affairs-todo-pc-focus.contract.test.mjs 逐页约束；
 # 不允许只改本表、页面不消费 recordId。
 _PC_LIST_FOCUS = frozenset({
+    "AA_SCHEDULE_CHANGE_APPROVAL",
+    "AA_GRADE_ENTRY",
     "DORM_TRANSFER",
     "WORK_STUDY_REVIEW", "WORK_STUDY_ONBOARD",
     "STUDENT_LOAN_REVIEW", "STUDENT_LOAN_CONFIRM",

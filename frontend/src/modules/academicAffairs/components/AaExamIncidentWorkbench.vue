@@ -3,7 +3,7 @@
     <div class="aeiw-head">
       <div>
         <div class="aeiw-title">异常处置</div>
-        <div class="aeiw-subtitle">原始异常事实保留；HANDOFF / CLOSE / VOID 形成正式处置证据，成功后重新读取服务端。</div>
+        <div class="aeiw-subtitle">移交、关闭或作废均保留原始异常和正式处置记录，办理后重新核对结果。</div>
       </div>
       <AppButton size="small" variant="ghost" :loading="loading" @click="load">刷新服务端状态</AppButton>
     </div>
@@ -55,7 +55,7 @@
     <AppInlineAlert
       v-else-if="batch.status === 'ARCHIVED'"
       type="info"
-      description="该考试批次已归档，异常历史永久只读，不允许再 HANDOFF / CLOSE / VOID。"
+      description="该考试批次已归档，异常历史只读，不能再移交、关闭或作废。"
     />
 
     <LoadingState v-if="loading && !loadedOnce" />
@@ -147,10 +147,10 @@
           <AppInlineAlert
             v-if="detail.incidentType === 'ABSENT' && detail.riskAlertSent"
             type="info"
-            description="风险通知已送达，但这不等于考务正式关闭；仍需有权限的第二步 CLOSE 形成处置事实。"
+            description="风险通知已送达，请由有权限的考务人员继续办理正式关闭。"
           />
           <label v-if="detail.incidentType !== 'ABSENT' && canWriteCurrent" class="aeiw-field handoff-ref">
-            <span>处分 / 后续处理线索编号（HANDOFF 必填）</span>
+            <span>处分 / 后续处理线索编号（移交时必填）</span>
             <input v-model.trim="disciplineCaseRef" :disabled="busy" maxlength="100" placeholder="如 DISC-2026-000123" />
           </label>
         </template>
@@ -271,8 +271,8 @@ export default {
     },
     decisionMessage() {
       if (this.pendingAction === 'HANDOFF') return `线索编号 ${this.disciplineCaseRef || '未填写'} 将与该异常正式关联；学工处分状态机仍由学工中心负责。`
-      if (this.pendingAction === 'CLOSE') return '仅在缺考风险联动已经成功后关闭；关闭后不能改成 HANDOFF 或 VOID。'
-      return '作废只追加 VOID 处置事实并保留原异常记录，不会物理删除历史。'
+      if (this.pendingAction === 'CLOSE') return '仅在缺考风险联动已经成功后关闭；关闭后不能再移交或作废。'
+      return '作废后保留原异常和处置记录，可继续查阅历史。'
     }
   },
   watch: {

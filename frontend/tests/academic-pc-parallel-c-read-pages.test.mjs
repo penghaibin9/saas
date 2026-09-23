@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { parse, compileTemplate } from '@vue/compiler-sfc'
-import { gradeError, gradeStatusLabel } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
+import { gradeError, gradeStatusLabel, gradeQueueState, gradeTaskDestination } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
 const names = ['AaTranscriptView', 'AaGradeOverviewView', 'AaGradeFailListView', 'AaGradeExceptionView', 'AaGradeAuditView']
 const sources = Object.fromEntries(names.map(name => [name, readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`, import.meta.url), 'utf8')]))
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b }); return {promise,resolve,reject} }
@@ -12,7 +12,7 @@ const exceptionRow = (recordId, gradeTaskId) => ({ recordId: String(recordId), g
 const auditRow = id => ({ id: String(id), bizType: 'AA_GRADE_TASK' })
 function mount(name, api = {}, notices = []) {
   const script = sources[name].match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import [\s\S]*? from ['"][^'"\n]+['"]\s*\n/g,'').replace(/ {2}components: \{[\s\S]*?\},/,'').replace('export default','return')
-  const options = new Function('academicAffairsApi','toast','currentUserFromToken','gradeError','gradeStatusLabel','EXCEPTION_FLAG_LABEL','exceptionFlagColor',script)(api,{success: m=>notices.push(m),error:m=>notices.push(m)},()=>({}),gradeError,gradeStatusLabel,{ABSENT:'缺考'},()=> 'warning')
+  const options = new Function('academicAffairsApi','toast','currentUserFromToken','gradeError','gradeStatusLabel','EXCEPTION_FLAG_LABEL','exceptionFlagColor','gradeQueueState','gradeTaskDestination',script)(api,{success: m=>notices.push(m),error:m=>notices.push(m)},()=>({}),gradeError,gradeStatusLabel,{ABSENT:'缺考'},()=> 'warning',gradeQueueState,gradeTaskDestination)
   const vm = { $route:{path:'/test',fullPath:'/test',query:{}}, ctx:{currentRole:{},dataScope:{}}, identityKey:'identity-A' }
   Object.assign(vm,options.data.call(vm))
   for (const [key,method] of Object.entries(options.methods)) vm[key]=method.bind(vm)
@@ -71,6 +71,31 @@ test('成绩总览首屏只读取一页正式任务，分析点击后才加载',
  const calls=[];const vm=mount('AaGradeOverviewView',{getGradeTasks:async p=>{calls.push(p);return {code:0,data:{list:[],total:0}}},getGradeAnalysis:async()=>{calls.push('analysis');return {code:0,data:{rows:[]}}}})
  await vm.$options.created.call(vm);assert.equal(calls.length,1);assert.equal(calls[0].pageSize,20);assert.equal(vm.showAnalysis,false)
  vm.toggleAnalysis();await Promise.resolve();assert.equal(calls[1],'analysis');assert.equal(vm.pct(null),'待核对')
+})
+
+test('成绩队列刷新恢复学期、状态、课程和页码，查询条件传给服务端', async () => {
+ const calls=[]; const vm=mount('AaGradeOverviewView',{getGradeTasks:async p=>{calls.push(p);return {code:0,data:{list:[],total:0}}}})
+ vm.$route.query={term:'2026-2027-1',status:'RETURNED',keyword:'实践',page:'3'}
+ await vm.restoreTaskQuery()
+ assert.deepEqual(calls,[{term:'2026-2027-1',status:'RETURNED',keyword:'实践',page:3,pageSize:20}])
+ assert.equal(vm.taskStatus,'RETURNED');assert.equal(vm.taskPage,3);assert.equal(vm.taskKeyword,'实践')
+})
+
+test('任务入口使用服务端动作并保留大整数对象和来源队列', () => {
+ const routes=[];const vm=mount('AaGradeOverviewView',{},routes);vm.academicFlow={captureReturn:()=> 'saved-position'}
+ vm.openTask({gradeTaskId:'90071992547409937',status:'ACADEMIC_REVIEW',allowedActions:['VIEW','PUBLISH']})
+ assert.equal(routes[0].path,'/admin/academic-affairs/grade-publish');assert.equal(routes[0].query.taskId,'90071992547409937');assert.equal(routes[0].query.returnToken,'saved-position')
+ assert.equal(gradeTaskDestination({status:'SUBMITTED',allowedActions:['VIEW','COLLEGE_REVIEW']}).page,'grade-college-review')
+ assert.equal(gradeTaskDestination({status:'PUBLISHED',allowedActions:['VIEW','ARCHIVE']}).label,'查看正式成绩')
+ assert.equal(gradeTaskDestination({status:'RETURNED',allowedActions:['VIEW','INPUT']}).label,'修改并重交')
+ assert.equal(gradeTaskDestination({status:'ACADEMIC_REVIEW',allowedActions:['VIEW']}).page,'grade-entry')
+})
+
+test('非法成绩查询不请求后端，旧请求不能覆盖新筛选', async () => {
+ const pending=deferred();let calls=0;const vm=mount('AaGradeOverviewView',{getGradeTasks:()=>{calls++;return pending.promise}})
+ const first=vm.restoreTaskQuery();vm.$route.query={status:['INPUTTING','PUBLISHED']};await vm.restoreTaskQuery()
+ pending.resolve({code:0,data:{list:[{gradeTaskId:'old'}],total:1}});await first
+ assert.equal(calls,1);assert.deepEqual(vm.tasks,[]);assert.match(vm.taskError,/查询条件无效/)
 })
 test('总览分析筛选变化作废旧读取与导出上下文',async()=>{
  const q=deferred();const vm=mount('AaGradeOverviewView',{getGradeAnalysis:()=>q.promise});const first=vm.load();vm.term='new';vm.clearAnalysis();q.resolve({code:0,data:{total:999}});await first;assert.equal(vm.data.total,undefined);assert.equal(vm.loading,false)

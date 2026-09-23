@@ -145,6 +145,47 @@ def test_course_selection_stats_and_detail_ok(client, db_mode):
     assert det["data"]["items"][0]["selectedCount"] == 2
 
 
+def test_overview_college_filter_limits_selection_and_schedule_changes(client, db_mode):
+    """全校账号选择学院后，总览与专题必须使用同一学院口径。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaSelectionBatch, AaSelectionCourse, AaScheduleChange, Major, SchoolClass
+
+    ids = _seed_r3(db_mode)
+    with get_sessionmaker()() as db:
+        major = Major(tenant_id=TID, college_id=ids["other"], major_name="机械统计专业", status="ACTIVE")
+        db.add(major)
+        db.flush()
+        cls = SchoolClass(tenant_id=TID, major_id=major.id, class_name="机械统计班", status="ACTIVE")
+        course = AaCourse(tenant_id=TID, course_code="SC002", course_name="机械选修",
+                          category="MAJOR_CORE", nature="ELECTIVE", credit=2,
+                          owner_college_id=ids["other"], status="ENABLED")
+        db.add_all([cls, course])
+        db.flush()
+        batch_id = db.scalar(select(AaSelectionBatch.id).where(AaSelectionBatch.tenant_id == TID,
+                                                               AaSelectionBatch.term_id == ids["term"]))
+        db.add(AaSelectionCourse(tenant_id=TID, batch_id=batch_id, course_id=course.id,
+                                course_name=course.course_name, capacity=20, min_capacity=1,
+                                selected_count=4, status="OPEN"))
+        db.add(AaScheduleChange(tenant_id=TID, term_id=ids["term"], class_id=cls.id,
+                               class_name=cls.class_name, change_type="ADJUST", reason="统计范围验证", status="APPLIED"))
+        db.commit()
+
+    hdr = _hdr(client, "school_admin01")
+    for college, selected, capacity, changes in [(ids["soft"], 3, 51, 2), (ids["other"], 4, 20, 1)]:
+        params = {"collegeId": college, "termId": ids["term"]}
+        result = client.get(f"{BASE}/stats/overview", headers=hdr, params=params).json()
+        assert result["code"] == 0
+        indicators = {item["key"]: item for item in result["data"]["indicators"]}
+        assert indicators["courseSelection"]["numerator"] == selected
+        assert indicators["courseSelection"]["denominator"] == capacity
+        assert indicators["courseSelection"]["value"] == 1
+        assert indicators["scheduleChange"]["value"] == changes
+        detail = client.get(f"{BASE}/stats/course-selection", headers=hdr, params=params).json()["data"]
+        assert detail["totalSelected"] == selected
+        assert detail["totalCapacity"] == capacity
+
+
 def test_exam_stats_and_detail_ok(client, db_mode):
     _seed_r3(db_mode)
     hdr = _hdr(client, "school_admin01")

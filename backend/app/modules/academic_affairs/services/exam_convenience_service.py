@@ -409,8 +409,8 @@ def batch_readiness(batch_id, user) -> dict:
         missed_count = max(0, len(confirmed) - arranged_count)
         invigilator_gap_count = sum(1 for room in rooms if int(inv_counts.get(int(room.id), 0) or 0) <= 0)
         blockers = []
-        if pending_candidate_count:
-            blockers.append(f"仍有 {pending_candidate_count} 门已终审应考课程尚未圈定")
+        # Unselected term candidates are available supply, not obligations of this
+        # batch. Match the publish authority, which validates the circled courses.
         if pending_confirm:
             blockers.append(f"仍有 {len(pending_confirm)} 门考试课程待学院确认")
         if missed_count:

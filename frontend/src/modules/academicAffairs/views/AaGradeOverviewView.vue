@@ -11,35 +11,30 @@
     </template>
 
     <div class="mp-stack">
+      <form class="aa-filter aa-queue-filter" aria-label="成绩任务查询" @submit.prevent="searchTasks">
+        <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="taskTerm" placeholder="全部学期" /></label>
+        <label class="aa-filter-field"><span>任务状态</span><AppSelect v-model="taskStatus" :options="taskStatusOptions" placeholder="全部任务" /></label>
+        <label class="aa-filter-field"><span>课程名称</span><AppTextInput v-model="taskKeyword" placeholder="输入课程名称" /></label>
+        <AppButton variant="primary" @click="searchTasks">查询任务</AppButton>
+        <AppButton variant="ghost" @click="clearTaskFilters">清除筛选</AppButton>
+      </form>
       <section class="aa-overview-summary" aria-label="当前成绩任务范围">
         <article><small>当前查询</small><strong>{{ tasksLoading || taskError ? '—' : taskTotal }}</strong><span>服务端分页任务总数</span></article>
         <article><small>本页已发布 / 归档</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.finished }}</strong><span>以正式任务状态为准</span></article>
         <article><small>本页可办理</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.actionable }}</strong><span>按当前身份允许动作</span></article>
         <article><small>本页来源待核对</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.unresolved }}</strong><span>课程或任课关系未就绪</span></article>
       </section>
-      <AppSectionCard title="成绩提交与发布进度 · 进度与责任">
-        <LoadingState v-if="tasksLoading" />
-        <p v-else-if="taskError" class="mp-note">任务读取失败，请在下方重试。</p>
-        <EmptyState v-else-if="!tasks.length" title="当前没有成绩任务" description="任务建立后显示正式办理阶段" />
-        <div v-else class="aa-task-progress-list">
-          <div v-for="row in tasks.slice(0, 4)" :key="row.gradeTaskId" class="aa-task-progress-row">
-            <div><strong>{{ row.courseName }}<template v-if="row.teachingClassName"> · {{ row.teachingClassName }}</template></strong><small>{{ row.teacherAuthorityReady && row.teacherNames?.length ? row.teacherNames.join('、') : '正式任课人待核对' }}</small></div>
-            <div class="aa-task-stage"><div class="aa-task-stage__track" :aria-label="gradeStatusLabel(row.status)"><i v-for="step in 5" :key="step" :class="{complete: step <= taskStage(row.status)}" /></div><small>{{ gradeStatusLabel(row.status) }} · 正式流程阶段</small></div>
-            <AppButton variant="ghost" @click="openTask(row)">{{ row.allowedActions?.length ? '继续办理' : '查看任务' }}</AppButton>
-          </div>
-        </div>
-      </AppSectionCard>
       <AppSectionCard title="办理队列">
-        <div class="aa-filter"><label class="aa-filter-field"><span>任务状态</span><AppSelect v-model="taskStatus" :options="taskStatusOptions" @change="searchTasks" /></label><AppButton variant="ghost" @click="loadTasks">刷新任务</AppButton></div>
+        <template #header-extra><AppButton variant="ghost" @click="loadTasks">刷新任务</AppButton></template>
         <ErrorState v-if="taskError" :description="taskError" @retry="loadTasks" />
         <LoadingState v-else-if="tasksLoading" />
-        <EmptyState v-else-if="!tasks.length" title="当前范围没有此类任务" description="可切换任务状态查询" />
+        <EmptyState v-else-if="!tasks.length" title="当前查询条件下没有成绩任务" description="可清除筛选查看当前身份能够访问的其他任务；这里不代表全校没有成绩任务。" />
         <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="gradeTaskId">
           <template #cell-teachingClassName="{ row }">{{ row.teachingClassName || '正式教学班待核对' }}</template>
           <template #cell-teacher="{ row }">{{ row.teacherAuthorityReady && row.teacherNames?.length ? row.teacherNames.join('、') : '正式任课人待核对' }}</template>
           <template #cell-status="{ row }">{{ gradeStatusLabel(row.status) }}</template>
           <template #cell-deadline="{ row }">{{ row.deadline || '尚未设置' }}</template>
-          <template #cell-actions="{ row }"><button class="mp-link" @click="openTask(row)">{{ row.allowedActions?.includes('COLLEGE_REVIEW') ? '核对审核任务' : '查看成绩任务' }}</button></template>
+          <template #cell-actions="{ row }"><button class="mp-link" @click="openTask(row)">{{ gradeTaskDestination(row).label }}</button></template>
         </DataTable>
         <div class="aa-task-pages"><AppButton variant="ghost" :disabled="taskPage <= 1" @click="changeTaskPage(taskPage - 1)">上一页</AppButton><span>第 {{ taskPage }} 页 · 共 {{ taskTotal }} 项</span><AppButton variant="ghost" :disabled="taskPage * 20 >= taskTotal" @click="changeTaskPage(taskPage + 1)">下一页</AppButton></div>
         <p class="mp-note">状态来自正式任务；名单完成率与审核证据请进入具体任务核对。</p>
@@ -105,7 +100,7 @@ import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, App
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
-import { gradeError, gradeStatusLabel } from './parallel-c/grade-review'
+import { gradeError, gradeStatusLabel, gradeQueueState, gradeTaskDestination } from './parallel-c/grade-review'
 
 export default {
   name: 'AaGradeOverviewView',
@@ -114,9 +109,10 @@ export default {
       AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
-      alive: true, readSeq: 0, taskSeq: 0, exportSeq: 0, showAnalysis: false, tasks: [], tasksLoading: false, taskError: '', taskPage: 1, taskTotal: 0, taskStatus: 'INPUTTING',
+      alive: true, readSeq: 0, taskSeq: 0, exportSeq: 0, showAnalysis: false, tasks: [], tasksLoading: false, taskError: '', taskPage: 1, taskTotal: 0, taskStatus: '', taskTerm: '', taskKeyword: '',
       taskStatusOptions: [{ value: '', label: '全部任务' }, ...['NOT_STARTED', 'INPUTTING', 'RETURNED', 'SUBMITTED', 'ACADEMIC_REVIEW', 'PUBLISHED', 'ARCHIVED'].map(value => ({ value, label: gradeStatusLabel(value) }))],
       taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'termCode', title: '学期' }, { key: 'teachingClassName', title: '正式教学班' }, { key: 'teacher', title: '正式任课教师' }, { key: 'status', title: '录入 / 审核状态' }, { key: 'deadline', title: '提交截止' }, { key: 'actions', title: '下一步' }],
       loading: false, error: '', term: '', dimension: '',
@@ -155,24 +151,42 @@ export default {
       ]
     }
   },
-  created() { this.loadTasks() },
-  watch: { identityKey() { this.invalidate(); this.loadTasks() }, term: { flush: 'sync', handler() { this.clearAnalysis() } }, dimension: { flush: 'sync', handler() { this.clearAnalysis() } } },
+  created() { this.restoreTaskQuery() },
+  watch: { '$route.fullPath'() { this.restoreTaskQuery() }, identityKey() { this.invalidate(); this.restoreTaskQuery() }, term: { flush: 'sync', handler() { this.clearAnalysis() } }, dimension: { flush: 'sync', handler() { this.clearAnalysis() } } },
   beforeUnmount() { this.alive = false; this.invalidate() },
   methods: {
     gradeStatusLabel,
+    gradeTaskDestination,
     taskStage(status) { return ({ NOT_STARTED: 1, INPUTTING: 2, RETURNED: 2, SUBMITTED: 3, COLLEGE_REVIEW: 3, ACADEMIC_REVIEW: 4, PUBLISHED: 5, ARCHIVED: 5 })[status] || 0 },
     clearAnalysis() { this.readSeq++; this.exportSeq++; this.loading = false; this.downloading = false; this.error = ''; this.data = { distribution: [], rows: [] } },
     invalidate() { this.readSeq++; this.taskSeq++; this.exportSeq++; this.tasks = []; this.taskTotal = 0; this.taskPage = 1; this.data = { distribution: [], rows: [] }; this.showAnalysis = false; this.exportPurpose = ''; this.downloading = false; this.loading = false; this.tasksLoading = false; this.error = ''; this.taskError = '' },
     toggleAnalysis() { this.showAnalysis = !this.showAnalysis; if (this.showAnalysis) this.load() },
-    searchTasks() { this.taskPage = 1; this.loadTasks() },
-    changeTaskPage(page) { this.taskPage = page; this.loadTasks() },
-    openTask(row) { this.$router.push({ path: `/admin/academic-affairs/${row.allowedActions?.includes('COLLEGE_REVIEW') ? 'grade-college-review' : 'grade-entry'}`, query: { taskId: String(row.gradeTaskId) } }) },
+    restoreTaskQuery() {
+      const state = gradeQueueState(this.$route?.query)
+      this.taskStatus = state.status; this.taskTerm = state.term; this.taskKeyword = state.keyword; this.taskPage = state.page
+      return this.loadTasks()
+    },
+    async navigateTaskQuery(page) {
+      const before = this.$route.fullPath
+      await this.$router.push({ path: this.$route.path, query: { ...this.$route.query, status: this.taskStatus || undefined, term: this.taskTerm || undefined, keyword: this.taskKeyword.trim() || undefined, page: String(page) } })
+      // A query on the same URL still refreshes the authoritative queue.
+      if (before === this.$route.fullPath) return this.restoreTaskQuery()
+    },
+    searchTasks() { return this.navigateTaskQuery(1) },
+    clearTaskFilters() { this.taskStatus = ''; this.taskTerm = ''; this.taskKeyword = ''; return this.searchTasks() },
+    changeTaskPage(page) { return this.navigateTaskQuery(page) },
+    openTask(row) {
+      const destination = gradeTaskDestination(row), returnToken = this.academicFlow?.captureReturn?.()
+      this.$router.push({ path: `/admin/academic-affairs/${destination.page}`, query: { taskId: String(row.gradeTaskId), ...(destination.tab ? { tab: destination.tab } : {}), ...(returnToken ? { returnToken } : {}) } })
+    },
     async loadTasks() {
       const seq = ++this.taskSeq, identity = this.identityKey
       const valid = () => this.alive && seq === this.taskSeq && identity === this.identityKey
       this.tasksLoading = true; this.taskError = ''; this.tasks = []; this.taskTotal = 0
+      const state = gradeQueueState(this.$route?.query)
+      if (state.error) { this.taskError = state.error; this.tasksLoading = false; return }
       try {
-        const res = await academicAffairsApi.getGradeTasks({ status: this.taskStatus || undefined, page: this.taskPage, pageSize: 20 })
+        const res = await academicAffairsApi.getGradeTasks({ status: state.status || undefined, term: state.term || undefined, keyword: state.keyword || undefined, page: state.page, pageSize: 20 })
         if (!valid()) return
         if (res.code !== 0) throw res
         this.tasks = res.data?.list || []; this.taskTotal = res.data?.total ?? this.tasks.length
@@ -232,7 +246,9 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .aa-overview-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
-.aa-overview-summary article { padding: 16px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-overview-summary article { padding: 10px 14px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-queue-filter { align-items: end; }
+.aa-filter-field { display: grid; gap: 6px; min-width: 150px; flex: 1; }
 .aa-overview-summary small, .aa-overview-summary strong, .aa-overview-summary span { display: block; }
 .aa-overview-summary small, .aa-overview-summary span { color: var(--text-secondary); font-size: 12px; }
 .aa-overview-summary strong { margin: 10px 0; font-size: 26px; color: var(--text-primary); }

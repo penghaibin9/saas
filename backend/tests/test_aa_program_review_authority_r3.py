@@ -29,6 +29,7 @@ def _patch_tenant(monkeypatch) -> None:
 
     monkeypatch.setattr(svc, "_tid", lambda: TID)
     monkeypatch.setattr(svc._core, "_tid", lambda: TID)
+    monkeypatch.setattr(svc.governance, "_tid", lambda: TID)
     monkeypatch.setattr(affairs_security, "_tid", lambda: TID)
 
 
@@ -107,6 +108,30 @@ def _program(program_id):
         db.close()
 
 
+def test_program_course_formation_survives_formal_write_and_read(db_mode, monkeypatch):
+    from types import SimpleNamespace
+
+    ids = _seed(status="DRAFT")
+    _patch_tenant(monkeypatch)
+    body = SimpleNamespace(courseName="编班来源验收课程", openTermNo=1, module="专业选修", credit=2, formationMode="SELECTABLE")
+    created = svc._core.add_course(ids["own"], SCHOOL_USER, body)
+    assert created["formationMode"] == "SELECTABLE"
+    row = svc._core.get_program(ids["own"], SCHOOL_USER)["courses"][0]
+    assert row["formationMode"] == "SELECTABLE"
+    svc._core.update_course(created["programCourseId"], SCHOOL_USER, SimpleNamespace(credit=3))
+    assert svc._core.get_program(ids["own"], SCHOOL_USER)["courses"][0]["formationMode"] == "SELECTABLE"
+    svc._core.update_course(created["programCourseId"], SCHOOL_USER, SimpleNamespace(formationMode="ADMIN_FIXED"))
+    assert svc._core.get_program(ids["own"], SCHOOL_USER)["courses"][0]["formationMode"] == "ADMIN_FIXED"
+    with pytest.raises(AppException) as invalid:
+        svc._core.update_course(created["programCourseId"], SCHOOL_USER, SimpleNamespace(formationMode="UNKNOWN"))
+    assert invalid.value.code == "VALIDATION_ERROR"
+    assert svc._core.get_program(ids["own"], SCHOOL_USER)["courses"][0]["formationMode"] == "ADMIN_FIXED"
+    published = _seed(status="ACTIVE")
+    with pytest.raises(AppException) as locked:
+        svc._core.add_course(published["own"], SCHOOL_USER, body)
+    assert locked.value.code == "DATA_CONFLICT"
+
+
 def _audit_count(program_id, action):
     from app.db.session import get_sessionmaker
     from app.models import AffairsAuditTrail
@@ -132,6 +157,23 @@ def test_college_approves_own_program_one_node_only(db_mode, monkeypatch):
     assert row["status"] == "ACADEMIC_REVIEW"
     assert _program(ids["own"]) == ("ACADEMIC_REVIEW", 7)
     assert _audit_count(ids["own"], "APPROVE") == 1
+
+
+def test_detail_review_node_matches_locked_command_authority(db_mode, monkeypatch):
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+    assert svc.get_program(ids["own"], COLLEGE_USER)["reviewNode"]["canReview"] is True
+    school_node = svc.get_program(ids["own"], SCHOOL_USER)["reviewNode"]
+    assert school_node["canReview"] is False
+    assert "学院审核" in school_node["reason"]
+    with pytest.raises(AppException) as denied:
+        svc.get_program(ids["other"], COLLEGE_USER)
+    assert denied.value.code == "NO_DATA_SCOPE"
+    svc.review_program(ids["own"], COLLEGE_USER, "APPROVE")
+    college_node = svc.get_program(ids["own"], COLLEGE_USER)["reviewNode"]
+    assert college_node["canReview"] is False
+    assert "校级教务" in college_node["reason"]
+    assert svc.get_program(ids["own"], SCHOOL_USER)["reviewNode"]["canReview"] is True
 
 
 def test_college_return_requires_reason_and_goes_returned(db_mode, monkeypatch):

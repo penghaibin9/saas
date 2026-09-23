@@ -58,10 +58,10 @@ export default {
     stages() { return ['正式课位', '发起申请', '冲突预检', '审批生效', '通知回执'] },
     stageIndex() { return this.detail?.status === 'APPLIED' ? 5 : 4 },
     ownerLabel() {
-      return { SUBMITTED: '学院教务审核岗', COLLEGE_REVIEW: '教务审核岗', ACADEMIC_REVIEW: '教务终审岗', APPROVED: '课表生效服务', APPLIED: '申请人与通知核对岗', REJECTED: '任课教师', CANCELLED: '任课教师' }[this.detail?.status] || '当前受理岗待确认'
+      return { SUBMITTED: '学院教务审核岗', COLLEGE_REVIEW: '教务终审岗', ACADEMIC_REVIEW: '教务终审岗', APPROVED: '课表生效服务', APPLIED: '申请人与通知核对岗', REJECTED: '任课教师', CANCELLED: '任课教师' }[this.detail?.status] || '当前受理岗待确认'
     },
     nextOwnerLabel() {
-      return { SUBMITTED: '教务审核岗', COLLEGE_REVIEW: '教务终审岗', ACADEMIC_REVIEW: '课表生效服务', APPROVED: '师生通知', APPLIED: '流程结束', REJECTED: '修正后重新发起', CANCELLED: '流程结束' }[this.detail?.status] || '按正式状态继续'
+      return { SUBMITTED: '教务终审岗', COLLEGE_REVIEW: '课表生效与通知核对', ACADEMIC_REVIEW: '课表生效与通知核对', APPROVED: '师生通知', APPLIED: '核对通知回执', REJECTED: '修正后重新发起', CANCELLED: '流程结束' }[this.detail?.status] || '按正式状态继续'
     },
     evidenceCards() {
       const detail = this.detail || {}
@@ -70,12 +70,12 @@ export default {
       const materialReady = String(detail.reason || '').trim().length >= 5
       const appliedReady = detail.status === 'APPLIED' && Boolean(detail.appliedAt)
       return [
-        { title: '来源对象与身份', status: detail.originItemId && detail.changeId ? '已核对 · PASS' : '待核对 · WARNING', tone: detail.originItemId && detail.changeId ? 'success' : 'warning', description: `申请 ${detail.changeId || '未提供'} 来源于正式课表项 ${detail.originItemId || '未提供'}。`, source: `批次 ${detail.batchId || '未提供'} · 课程 ${detail.courseName || '未提供'}` },
-        { title: '原正式课位', status: detail.origin?.weekday && detail.origin?.slotNo ? '已核对 · PASS' : '待核对 · WARNING', tone: detail.origin?.weekday && detail.origin?.slotNo ? 'success' : 'warning', description: detail.origin?.weekday && detail.origin?.slotNo ? `${this.weekday(detail.origin.weekday)}第 ${detail.origin.slotNo} 节 · ${detail.origin.classroom || '教室未提供'}` : '原课位字段不完整。', source: '来源：正式课表快照' },
-        { title: '目标课位与冲突', status: targetReady ? (targetRequired ? '已预检 · PASS' : '不适用 · N/A') : '待核对 · WARNING', tone: targetReady ? 'success' : 'warning', description: targetRequired ? (targetReady ? `${this.weekday(detail.target.weekday)}第 ${detail.target.slotNo} 节 · ${detail.target.classroom || '教室未提供'}` : '目标课位字段不完整。') : '停课不生成目标课位。', source: '提交服务在建单时执行正式冲突预检' },
-        { title: '材料与事实依据', status: materialReady ? '已核对 · PASS' : '待核对 · WARNING', tone: materialReady ? 'success' : 'warning', description: detail.reason || '未提供申请原因。', source: `后续安排：${detail.makeupPlan || '未提供'}` },
-        { title: '当前节点与版本', status: detail.status && detail.version != null ? '已核对 · PASS' : '待核对 · WARNING', tone: detail.status && detail.version != null ? 'success' : 'warning', description: `${this.statusLabel} · ${this.ownerLabel}`, source: `当前节点 ${detail.currentNode || '未提供'} · 版本 ${detail.version ?? '未提供'}` },
-        { title: '生效与通知回执', status: appliedReady ? '课表已生效 · WARNING' : '等待办理 · WAITING', tone: appliedReady ? 'warning' : 'info', description: appliedReady ? `生效时间 ${detail.appliedAt}；通知送达数量未随详情返回。` : '尚未到达正式生效与通知回执阶段。', source: appliedReady ? `新课表项 ${detail.newItemId || '停课无新项'}` : `申请时间 ${detail.createdAt || '未提供'}` }
+        { title: '来源对象与身份', status: detail.originItemId && detail.changeId ? '已提供' : '待核对', tone: detail.originItemId && detail.changeId ? 'success' : 'warning', description: `申请 ${detail.changeId || '未提供'} 来源于正式课表项 ${detail.originItemId || '未提供'}。`, source: `批次 ${detail.batchId || '未提供'} · 课程 ${detail.courseName || '未提供'}` },
+        { title: '原正式课位', status: detail.origin?.weekday && detail.origin?.slotNo ? '已提供' : '待核对', tone: detail.origin?.weekday && detail.origin?.slotNo ? 'success' : 'warning', description: detail.origin?.weekday && detail.origin?.slotNo ? `${this.weekday(detail.origin.weekday)}第 ${detail.origin.slotNo} 节 · ${detail.origin.classroom || '教室未提供'}` : '原课位字段不完整。', source: '来源：正式课表快照' },
+        { title: '目标课位与冲突', status: targetReady ? (targetRequired ? '课位已提供' : '不适用') : '待核对', tone: targetReady ? 'info' : 'warning', description: targetRequired ? (targetReady ? `${this.weekday(detail.target.weekday)}第 ${detail.target.slotNo} 节 · ${detail.target.classroom || '教室未提供'}` : '目标课位字段不完整。') : '停课不生成目标课位。', source: '建单时已执行冲突预检；终审仍须核验最新课表，字段齐全不代表当前无冲突' },
+        { title: '材料与事实依据', status: materialReady ? '原因已提供' : '待补充', tone: materialReady ? 'info' : 'warning', description: detail.reason || '未提供申请原因。', source: `后续安排：${detail.makeupPlan || '未提供'}` },
+        { title: '当前节点与版本', status: detail.status && detail.version != null ? '已读取' : '待核对', tone: detail.status && detail.version != null ? 'success' : 'warning', description: `${this.statusLabel} · ${this.ownerLabel}`, source: `当前节点 ${{ COLLEGE_REVIEW: '学院审核', ACADEMIC_REVIEW: '教务审核' }[detail.currentNode] || '以当前状态为准'} · 版本 ${detail.version ?? '未提供'}` },
+        { title: '生效与通知回执', status: appliedReady ? '课表已生效，送达待核对' : '等待办理', tone: appliedReady ? 'warning' : 'info', description: appliedReady ? `生效时间 ${detail.appliedAt}；通知送达数量未随详情返回。` : '尚未到达正式生效与通知回执阶段。', source: appliedReady ? `新课表项 ${detail.newItemId || '停课无新项'}` : `申请时间 ${detail.createdAt || '未提供'}` }
       ]
     }
   },

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="activeTab === 'batch'" variant="ghost" @click="runTimeTick">按时间批量开选/截止</AppButton>
+      <AppButton v-if="activeTab === 'batch'" variant="ghost" :loading="tickBusy" :disabled="saving || tickBusy" @click="runTimeTick">按时间批量开选/截止</AppButton>
       <AppButton v-if="activeTab === 'batch'" variant="primary" @click="openCreate">新建批次</AppButton>
     </template>
 
@@ -34,7 +34,7 @@
           >
             <div class="aa-selection-batch-top">
               <strong>{{ b.batchName }}</strong>
-              <StatusTag :type="statusType(b.status)" :label="statusLabel(b.status)" dot />
+              <StatusTag :type="b.windowNotice ? 'warning' : statusType(b.status)" :label="batchStatusLabel(b)" dot />
             </div>
             <p>{{ batchWindowText(b, true) }}</p>
             <div class="aa-selection-batch-next">
@@ -60,7 +60,7 @@
             <div class="aa-selection-hero-main">
               <div class="aa-selection-hero-topline">
                 <span class="aa-selection-eyebrow">当前批次运行态 · 当前办理对象</span>
-                <StatusTag :type="statusType(current.status)" :label="statusLabel(current.status)" dot />
+                <StatusTag :type="current.windowNotice ? 'warning' : statusType(current.status)" :label="batchStatusLabel(current)" dot />
               </div>
               <h2>{{ current.batchName }}</h2>
               <p>选课批次 · {{ current.batchCode || `SEL-${current.batchId}` }} · {{ current.termName || '当前学期' }}</p>
@@ -92,6 +92,8 @@
               <div><strong>{{ step.label }}</strong><small>{{ step.note }}</small></div>
             </article>
           </section>
+          <AppInlineAlert v-if="current.windowNotice" type="warning" :description="current.windowNotice" />
+          <AppInlineAlert v-if="tickReceipt" :type="tickReceipt.partial ? 'warning' : 'success'" :description="tickReceipt.message" />
 
           <AaSelectionSpecialWorkspace
             v-if="activeTab !== 'batch'"
@@ -153,7 +155,7 @@
             </div>
             <div v-else class="aa-selection-inline-empty">
               <span aria-hidden="true">轮</span>
-              <div><strong>未配置独立轮次</strong><p>学生按批次 OPEN/CLOSED 状态执行先到先得；如需预选、正选或补退选，再建立轮次。</p></div>
+              <div><strong>未配置独立轮次</strong><p>学生在已开选且时间窗有效时按先到先得选课；如需预选、正选或补退选，再建立轮次。</p></div>
             </div>
 
             <AppInlineAlert
@@ -213,6 +215,12 @@
         </AppFormItem>
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem label="适用范围" required>
+          <AppSelect v-model="form.scopeType" :options="[{ label: '指定行政班', value: 'CLASS' }, { label: '全校学生', value: 'SCHOOL' }]" :disabled="saving" />
+        </AppFormItem>
+        <AppFormItem v-if="form.scopeType === 'CLASS'" label="适用班级" required>
+          <AppClassPicker v-model="form.classIds" multiple placeholder="选择允许参加本批次的行政班" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="备注">
           <AppTextarea v-model="form.remark" placeholder="选填" :disabled="saving" />
@@ -280,6 +288,7 @@
       <EmptyState v-else-if="!rosterRows.length" title="暂无学生" description="该课程尚无有效选课记录" />
       <DataTable v-else :columns="rosterColumns" :rows="rosterRows" row-key="recordId">
         <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>
+        <template #cell-status="{ row }">{{ selectionRecordLabel(row.status) }}</template>
       </DataTable>
       <AppPagination v-if="rosterPagination.total" :total="rosterPagination.total" :page="rosterPagination.page" :page-size="rosterPagination.pageSize" :show-size-changer="false" @change="onRosterPage" />
     </AppDrawer>
@@ -292,7 +301,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { academicIdentity, createAcademicRequestGate } from '../academicFlowContext.js'
@@ -316,7 +325,7 @@ export default {
   inject: { academicFlow: { default: null } },
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AaSelectionSpecialWorkspace, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination
+    AaSelectionSpecialWorkspace, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker
   },
   data() {
     return {
@@ -325,12 +334,12 @@ export default {
       pagination: { page: 1, pageSize: 50, total: 0 },
       coursePagination: { page: 1, pageSize: 20, total: 0 },
       current: null, courses: [], stats: null, detailLoading: false, detailError: '', disposed: false, selectionVersion: 0, writeSeq: 0,
-      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '' }, formError: '',
+      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }, formError: '',
       courseVisible: false,
       courseForm: { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 },
       courseError: '',
       rosterVisible: false, rosterCourse: null, rosterRows: [], rosterLoading: false, rosterError: '', rosterPagination: { page: 1, pageSize: 20, total: 0 },
-      saving: false,
+      saving: false, tickBusy: false, tickReceipt: null,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null, confirmContext: '',
       preflight: null, preflightLoading: false, preflightRequestSeq: 0,
       rounds: [], drawResult: null,
@@ -374,11 +383,12 @@ export default {
       const f = this.courseForm
       if (!f.teachingTaskId) return ''
       const course = [f.courseCode, f.courseName].filter(Boolean).join(' · ') || '课程信息缺失'
-      return `课程：${course}；教师：${f.teacherName || '未提供'}；教学班：${f.teachingClassName || '未提供'}。这些身份由 TeachingTask 只读带出，提交时不允许手工改写。`
+      return `课程：${course}；教师：${f.teacherName || '未提供'}；教学班：${f.teachingClassName || '未提供'}。这些信息从正式教学任务带出，提交时不允许手工改写。`
     },
     healthLabel() {
       if (this.detailError) return '批次详情待核对'
       if (this.detailLoading) return '正在读取批次'
+      if (this.current?.windowNotice) return this.batchStatusLabel(this.current)
       const status = this.current?.status
       if (status === 'ARCHIVED') return '已归档'
       if (status === 'LOCKED') return '名单已锁定'
@@ -391,6 +401,7 @@ export default {
     },
     healthTone() {
       if (this.detailError) return 'is-warning'
+      if (this.current?.windowNotice) return 'is-warning'
       if (this.current?.status === 'ARCHIVED') return 'is-neutral'
       if (this.current?.status === 'LOCKED') return 'is-success'
       if (this.stats && Number(this.stats.courseCount || 0) === 0) return 'is-warning'
@@ -400,6 +411,7 @@ export default {
     },
     healthDescription() {
       if (this.detailError) return '当前详情读取失败，请重试后核对课程、容量与轮次。'
+      if (this.current?.windowNotice) return this.current.windowNotice
       if (!this.stats) return '正在读取课程供给、容量与选课统计。'
       if (this.current?.status === 'ARCHIVED') return '批次已经归档，当前页面仅用于查阅事实。'
       if (this.current?.status === 'LOCKED') return '正式名单已经锁定；后续只进行复核与归档。'
@@ -471,16 +483,31 @@ export default {
     resetContext() {
       if (!this.listGate || this.disposed) return
       this.invalidateSelection(); this.current = null; this.rows = []; this.courses = []; this.rounds = []; this.stats = null
-      this.createVisible = false; this.load()
+      this.createVisible = false; this.tickReceipt = null; this.load()
     },
     async runTimeTick() {
-      const res = await api.timeTick()
-      if (res.code === 0) {
-        const d = res.data || {}
-        toast.success(`已按时间处理：开选 ${d.opened != null ? d.opened : 0} / 截止 ${d.closed != null ? d.closed : 0}`)
+      if (this.tickBusy || this.saving) return
+      const context = this.pageContext()
+      this.tickBusy = true; this.tickReceipt = null
+      try {
+        const res = await api.timeTick()
+        if (this.disposed || context !== this.pageContext()) return
+        if (res.code !== 0) { toast.error(res.message || '时间处理失败'); return }
+        const d = res.data || {}, problems = [...(d.blocked || []), ...(d.deferred || [])]
+        this.tickReceipt = {
+          partial: problems.length > 0 || !!d.scanLimitReached,
+          message: `已开选 ${d.opened ?? 0} 个，已截止 ${d.closed ?? 0} 个。${problems.map(item => `批次 ${item.batchId}：${item.message}`).join('；')}${d.scanLimitReached ? '本次已达处理上限，请再次执行以处理剩余批次。' : ''}`
+        }
         await this.load()
-        if (this.current) await this.select(this.current)
-      } else toast.error(res.message)
+        if (!this.disposed && context === this.pageContext() && this.current) await this.select(this.current)
+      } catch (error) {
+        if (!this.disposed && context === this.pageContext()) toast.error(error?.message || '处理结果待核实，请刷新批次后核对')
+      } finally { this.tickBusy = false }
+    },
+    batchStatusLabel(batch) {
+      if (batch.status === 'OPEN' && batch.windowState === 'ENDED') return '窗口已截止，待收口'
+      if (batch.status === 'OPEN' && batch.windowState === 'NOT_STARTED') return '窗口未开始'
+      return this.statusLabel(batch.status)
     },
     statusLabel(s) { return _LABEL[s] || (s ? '状态待确认' : '—') },
     statusType(s) {
@@ -575,6 +602,9 @@ export default {
     onBatchPage({ page }) { this.pagination.page = page; this.current = null; this.load() },
     async select(b) {
       this.invalidateSelection()
+      this.courses = []; this.stats = null; this.rounds = []; this.coursePagination.total = 0
+      this.rosterRows = []; this.rosterCourse = null; this.rosterPagination.total = 0
+      this.detailLoading = true
       this.current = b
       this.coursePagination.page = 1
       this.detailError = ''
@@ -583,6 +613,7 @@ export default {
       const formal = await api.getBatch(b.batchId)
       if (this.disposed || selectedPageContext !== this.pageContext() || selectedVersion !== this.selectionVersion || String(this.current?.batchId) !== String(b.batchId)) return
       if (formal.code !== 0) {
+        this.detailLoading = false
         if (isDeniedResult(formal)) {
           this.clearSensitiveSelectionData()
           this.error = formal.message || '无权读取当前批次，已清除先前显示内容'
@@ -590,7 +621,7 @@ export default {
         return
       }
       this.current = formal.data
-      if (!['batch', 'rule'].includes(this.activeTab)) return
+      if (!['batch', 'rule'].includes(this.activeTab)) { this.detailLoading = false; return }
       const context = this.commandContext()
       await this.refreshDetail()
       if (!this.isCurrent(context) || this.detailError) return
@@ -622,6 +653,7 @@ export default {
       this.rounds = rd.code === 0 ? (rd.data.items || []) : []
     },
     onCoursePage({ page }) { this.coursePagination.page = page; this.refreshDetail() },
+    selectionRecordLabel(s) { return { SELECTED: '已取得名额', PENDING: '待抽签', PENDING_LOTTERY: '待抽签', LOST: '未中签', LOTTERY_LOST: '未中签', DROPPED: '已退课', COURSE_CANCELLED: '课程已取消', LOCKED: '名单已锁定' }[s] || '状态待核对' },
     roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || (s ? '状态待确认' : '—') },
     roundStatusType(s) {
       if (s === 'OPEN') return 'success'
@@ -661,20 +693,28 @@ export default {
       }
       this.confirmContext = context; this.confirmVisible = true
     },
-    openCreate() { this.form = { batchName: '', termId: '', maxCredits: 0, remark: '' }; this.formError = ''; this.createVisible = true },
+    openCreate() { this.form = { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
       if (this.saving) return
       const context = this.pageContext()
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
       if (!this.form.termId) { this.formError = '学期必选'; return }
+      if (this.form.scopeType !== 'SCHOOL' && !this.form.classIds?.length) { this.formError = '请选择适用班级'; return }
       this.saving = true
       const body = { batchName: this.form.batchName, termId: this.form.termId, remark: this.form.remark }
+      if (this.form.scopeType !== 'SCHOOL') body.applyScope = { classIds: this.form.classIds.map(String) }
       if (this.form.maxCredits > 0) body.rule = { maxCredits: this.form.maxCredits }
-      const res = await api.createBatch(body)
-      if (context !== this.pageContext()) return
-      this.saving = false
-      if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.load() }
-      else this.formError = res.message
+      try {
+        const res = await api.createBatch(body)
+        if (context !== this.pageContext() || this.disposed) return
+        if (res.code === 0) {
+          toast.success('已创建'); this.createVisible = false
+          await this.select(res.data)
+          await this.load()
+        } else this.formError = res.message
+      } catch (error) {
+        if (context === this.pageContext() && !this.disposed) this.formError = error?.message || '创建结果待核对，请先刷新批次列表'
+      } finally { this.saving = false }
     },
     async lifecycle(fn, label) {
       if (!this.current || this.saving || this.detailLoading || this.detailError) return

@@ -3,6 +3,8 @@ import { safeEnumLabel } from '../../../utils/presentationSafety.js'
 /** 教务业务枚举仅作为接口值传输；学校端统一展示中文。 */
 export const ACADEMIC_STATUS_LABELS = Object.freeze({
   CREATED: '已创建',
+  NOT_STARTED: '未开始',
+  INPUTTING: '录入中',
   DRAFT: '草稿',
   PENDING: '待处理',
   RUNNING: '处理中',
@@ -39,6 +41,11 @@ export const ACADEMIC_STATUS_LABELS = Object.freeze({
   FROZEN: '已冻结',
   ARCHIVED: '已归档',
   READY: '已就绪',
+  GENERATED: '已圈定学生',
+  WAIT_PRECHECK: '待系统预审',
+  PRECHECKED: '已预审',
+  SYSTEM_PASSED: '系统预审通过',
+  SYSTEM_ABNORMAL: '系统预审异常',
   PENDING_EXAM: '待补考',
   PASSED: '已通过',
   ABSENT: '缺考',

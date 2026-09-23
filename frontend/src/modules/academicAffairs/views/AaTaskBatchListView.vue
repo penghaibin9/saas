@@ -16,8 +16,8 @@
     </template>
 
     <div class="mp-stack">
-      <AaOperationReceipt :receipt="receipt" />
-      <AaTeachingTaskStageRail :current="1" current-note="当前批次范围" />
+      <AaOperationReceipt :receipt="receipt && { title: '任务生成回执', ...receipt }" />
+      <AaTeachingTaskStageRail v-if="showGen" :current="1" current-note="生成新批次" />
       <section v-if="!loading && !error" class="task-batch-overview">
         <article v-for="metric in metrics" :key="metric.label" class="task-batch-metric">
           <span>{{ metric.label }}</span>
@@ -52,8 +52,9 @@
           </select>
         </label>
         <label class="task-batch-filters__search">快速搜索
-          <input v-model.trim="keyword" class="aa-input" placeholder="批次名称、下一步或阻断原因" />
+          <input v-model.trim="keyword" class="aa-input" placeholder="输入批次名称" @keyup.enter="applyFilters" />
         </label>
+        <AppButton @click="applyFilters">查询批次</AppButton>
       </section>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -62,7 +63,7 @@
       <DataTable v-else :columns="columns" :rows="filteredRows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-batch="{ row }">
           <div class="mp-cell-main">{{ row.batchName || `批次 ${row.batchId}` }}</div>
-          <div class="mp-cell-sub">学期ID {{ row.termId }} · 共 {{ row.taskTotal ?? 0 }} 条任务</div>
+          <div class="mp-cell-sub">{{ row.termLabel || '学期待核对' }} · 共 {{ row.taskTotal ?? 0 }} 条任务</div>
         </template>
         <template #cell-progress="{ row }">
           <div class="task-progress-line"><span>分配</span><strong>{{ row.assignedRate ?? 0 }}%</strong></div>
@@ -146,28 +147,21 @@ export default {
       const completed = rows.filter(row => ['APPROVED', 'ARCHIVED'].includes(row.status)).length
       return [
         { label: '当前范围批次', value: this.pagination.total, note: '按正式学期与权限范围读取' },
-        { label: '待启动', value: pending, note: '需确认来源方案与生成责任' },
-        { label: '进行中', value: processing, note: '逐批核对派师与确认节点' },
-        { label: '已完成', value: completed, note: '可回查原批次及正式任务' }
+        { label: '本页待启动', value: pending, note: '需确认来源方案与生成责任' },
+        { label: '本页进行中', value: processing, note: '逐批核对派师与确认节点' },
+        { label: '本页已完成', value: completed, note: '可回查原批次及正式任务' }
       ]
     },
-    filteredRows() {
-      const keyword = this.keyword.toLowerCase()
-      if (!keyword) return this.rows
-      return this.rows.filter((row) => {
-        const blockerText = (row.blockers || []).map((item) => item.message).join(' ')
-        return [row.batchName, row.status, row.nextAction?.label, blockerText]
-          .some((value) => String(value || '').toLowerCase().includes(keyword))
-      })
-    }
+    filteredRows() { return this.rows }
   },
   created() {
-    this.filters.termId = String(this.$route.query.termId || '')
+    this.restoreFilters()
     if (this.$route?.query?.open === 'generate') this.showGen = true
     if (this.workspaceMode === 'tasks') this.load()
   },
   watch: {
-    '$route.query.termId'(value) { this.filters.termId = String(value || ''); this.pagination.page = 1; this.load() },
+    '$route.fullPath'() { this.restoreFilters(); if (this.workspaceMode === 'tasks') this.load() },
+    ctx() { this.revision++; this.rows = []; this.receipt = null; this.showGen = false; this.gen = { termId: '', batchName: '' }; if (this.workspaceMode === 'tasks') this.load() },
     '$route.query.open'(value) { this.showGen = value === 'generate' },
     workspaceMode(value) {
       if (value === 'tasks' && !this.rows.length) this.load()
@@ -177,14 +171,18 @@ export default {
   methods: {
     statusColor: taskBatchColor,
     openTeachingClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
-    applyFilters() {
-      this.pagination.page = 1
-      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined } })
-      this.load()
+    restoreFilters() {
+      const q = this.$route.query
+      this.filters.termId = typeof q.termId === 'string' ? q.termId : ''
+      this.filters.status = typeof q.status === 'string' ? q.status : ''
+      this.keyword = typeof q.keyword === 'string' ? q.keyword : ''
+      const page = Number(q.page); this.pagination.page = Number.isInteger(page) && page > 0 && page <= 1000000 ? page : 1
     },
-    onPageChange(page) {
-      this.pagination.page = page
-      this.load()
+    applyFilters() { return this.onPageChange(1) },
+    async onPageChange(page) {
+      const before = this.$route.fullPath
+      await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined, status: this.filters.status || undefined, keyword: this.keyword || undefined, page: String(page) } })
+      if (before === this.$route.fullPath) { this.restoreFilters(); return this.load() }
     },
     openBatch(row) {
       this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`, query: { returnTo: this.$route.fullPath } })
@@ -224,6 +222,7 @@ export default {
       const res = await academicAffairsApi.getTaskBatches({
         termId: this.filters.termId || undefined,
         status: this.filters.status || undefined,
+        keyword: this.keyword || undefined,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
       })

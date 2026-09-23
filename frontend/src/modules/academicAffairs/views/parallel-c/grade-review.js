@@ -3,6 +3,26 @@ export function gradeStatusLabel(status) {
     ACADEMIC_REVIEW: '待教务终审', PUBLISHED: '已正式发布', RETURNED: '已退回', ARCHIVED: '已归档' })[status] || '状态待确认'
 }
 
+export function gradeQueueState(query = {}) {
+  const states = ['', 'NOT_STARTED', 'INPUTTING', 'RETURNED', 'SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW', 'PUBLISHED', 'ARCHIVED']
+  const scalar = key => typeof query[key] === 'string' ? query[key].trim() : ''
+  const status = scalar('status'), term = scalar('term'), keyword = scalar('keyword')
+  const page = Number(scalar('page'))
+  const invalid = ['status', 'term', 'keyword', 'page'].some(key => query[key] != null && typeof query[key] !== 'string')
+  return { status, term, keyword, page: Number.isInteger(page) && page > 0 && page <= 1000000 ? page : 1,
+    error: invalid || !states.includes(status) || term.length > 50 || keyword.length > 100 ? '查询条件无效，请清除筛选后重新查询。' : '' }
+}
+
+// The server owns allowedActions. Navigation does not grant permission or change state.
+export function gradeTaskDestination(row = {}) {
+  const actions = row.allowedActions || []
+  if (row.status === 'ACADEMIC_REVIEW' && actions.includes('PUBLISH')) return { page: 'grade-publish', tab: 'ACADEMIC_REVIEW', label: '终审并发布' }
+  if (row.status === 'SUBMITTED' && actions.includes('COLLEGE_REVIEW')) return { page: 'grade-college-review', label: '审核成绩' }
+  if (['PUBLISHED', 'ARCHIVED'].includes(row.status)) return { page: 'grade-entry', label: '查看正式成绩' }
+  if (actions.includes('INPUT')) return { page: 'grade-entry', label: row.status === 'RETURNED' ? '修改并重交' : '录入成绩' }
+  return { page: 'grade-entry', label: '查看任务进度' }
+}
+
 export function gradeError(result, fallback = '读取失败，请重试') {
   if (result?.bizCode === 'TERM_ARCHIVED') return '该学期已归档封存，本次未调整成绩；请按学校受控纠错流程办理。'
   const code = [result?.httpStatus, result?.code, result?.bizCode].join(' ')

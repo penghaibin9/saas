@@ -14,6 +14,7 @@ import {
   academicAffairsMakeupApi,
   academicAffairsArchiveApi
 } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from './constants/academic-display.constants.js'
 
 function assertOk(res) {
   if (!res || res.code !== 0) throw new Error(res?.message || '选择器数据加载失败')
@@ -119,7 +120,7 @@ const termEntity = searchable(
   {
     value: ['termId', 'id'],
     label: (x) => x.termName || `${x.yearCode || ''} 第${x.termNo || ''}学期`,
-    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 
@@ -128,7 +129,7 @@ const termCode = searchable(
   {
     value: (x) => x.termCode || (x.yearCode && x.termNo ? `${x.yearCode}-${x.termNo}` : ''),
     label: (x) => x.termName || `${x.yearCode || ''} 第${x.termNo || ''}学期`,
-    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 
@@ -218,7 +219,7 @@ const gradeTask = searchable(
   (keyword, query) => academicAffairsApi.getGradeTasks({ ...query, resolveValue: undefined, keyword, page: 1, pageSize: 100 }),
   {
     value: ['taskId', 'gradeTaskId', 'id'], label: (x) => firstDefined(x, ['courseName', 'taskName'], '成绩任务'),
-    desc: (x) => [x.className, x.termCode, x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.className, x.termCode, x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 

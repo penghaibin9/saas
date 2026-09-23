@@ -8,6 +8,49 @@ import { isDeniedResult } from '../src/modules/academicAffairs/components/parall
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 const batch = id => ({ batchId: id, batchName: `批次${id}`, status: 'DRAFT' })
 const ok = data => ({ code: 0, data })
+
+test('switching batches clears previous courses before the new formal header returns', async () => {
+  const response = deferred()
+  const { state } = mount(undefined, { getBatch: () => response.promise })
+  state.current=batch('old');state.courses=[{selectionCourseId:'old-course'}];state.stats={selectedCount:4};state.rounds=[{roundId:'old-round'}]
+  const loading=state.select(batch('new'))
+  assert.equal(state.courses.length,0);assert.equal(state.rounds.length,0);assert.equal(state.stats,null);assert.equal(state.detailLoading,true)
+  response.resolve({code:503,message:'新批次读取失败'});await loading
+  assert.equal(state.detailLoading,false);assert.equal(state.courses.length,0)
+  assert.equal(state.detailError,'新批次读取失败')
+})
+
+test('batch creation requires explicit scope and opens its formal result instead of the old batch', async () => {
+  const writes = []
+  const { state } = mount(undefined, { createBatch: async body => { writes.push(body); return ok(batch('new')) } })
+  state.current = batch('old')
+  state.form.batchName = '限定班级选课'; state.form.termId = '52'
+  await state.submitCreate()
+  assert.equal(writes.length, 0)
+  assert.equal(state.formError, '请选择适用班级')
+  state.form.classIds = ['9007199254740993']
+  await state.submitCreate()
+  assert.equal(writes[0].applyScope.classIds[0], '9007199254740993')
+  assert.equal(state.current.batchId, 'new')
+  assert.equal(state.saving, false)
+})
+
+test('explicit school scope does not retain previously selected classes', async () => {
+  const writes = []
+  const { state } = mount(undefined, { createBatch: async body => { writes.push(body); return ok(batch('new')) } })
+  Object.assign(state.form, { batchName: '全校选课', termId: '52', scopeType: 'SCHOOL', classIds: ['1'] })
+  await state.submitCreate()
+  assert.equal(writes[0].applyScope, undefined)
+})
+
+test('uncertain create result preserves the form and releases submitting', async () => {
+  const { state } = mount(undefined, { createBatch: async () => { throw Error('连接中断，请核对批次') } })
+  Object.assign(state.form, { batchName: '保留输入', termId: '52', classIds: ['1'] })
+  await state.submitCreate()
+  assert.equal(state.form.batchName, '保留输入')
+  assert.equal(state.saving, false)
+  assert.match(state.formError, /核对批次/)
+})
 function mount(file = 'AaSelectionConsoleView', overrides = {}) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${file}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import (.*?) from .*$/gm,
@@ -24,6 +67,32 @@ function mount(file = 'AaSelectionConsoleView', overrides = {}) {
   for (const key of ['listGate', 'detailGate', 'rosterGate']) state[key] = flow.createAcademicRequestGate(() => key === 'listGate' ? state.pageContext() : state.commandContext())
   return { state, component, api }
 }
+
+test('time tick prevents duplicate commands and reports deferred and blocked batches', async () => {
+  const response = deferred(); let writes = 0
+  const { state } = mount(undefined, { timeTick: () => { writes++; return response.promise } })
+  state.load = async () => {}
+  const first = state.runTimeTick(); await state.runTimeTick()
+  assert.equal(writes, 1)
+  response.resolve(ok({ opened: 2, closed: 1, blocked: [{ batchId: '11', message: '学期已归档' }], deferred: [{ batchId: '12', message: '其他命令处理中' }] }))
+  await first
+  assert.equal(state.tickReceipt.partial, true)
+  assert.match(state.tickReceipt.message, /已开选 2 个，已截止 1 个/)
+  assert.match(state.tickReceipt.message, /批次 11：学期已归档/)
+  assert.match(state.tickReceipt.message, /批次 12：其他命令处理中/)
+  assert.equal(state.tickBusy, false)
+  assert.equal(state.batchStatusLabel({ status: 'OPEN', windowState: 'ENDED' }), '窗口已截止，待收口')
+})
+
+test('time tick receipt from a previous identity is discarded', async () => {
+  const response = deferred()
+  const { state } = mount(undefined, { timeTick: () => response.promise })
+  const action = state.runTimeTick()
+  state.academicFlow.identity = () => 'another-school'
+  response.resolve(ok({ opened: 5, closed: 8 }))
+  await action
+  assert.equal(state.tickReceipt, null)
+})
 
 test('selection A arriving after B cannot replace B courses, statistics or rounds', async () => {
   const slow = deferred()

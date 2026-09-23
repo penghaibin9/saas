@@ -19,7 +19,60 @@ function instance(file, deps = {}, options = {}) {
   return vm
 }
 const ok = data=>({code:0,data})
+
+test('方案课程必须显式确认编班方式并写入正式请求',async()=>{
+  const writes=[]
+  const vm=instance('AaProgramEditorView',{academicAffairsApi:{addProgramCourse:async(id,body)=>{writes.push({id,body});return ok({})},getProgram:async()=>ok({programId:'a',status:'DRAFT'})},programQualityApi:{validate:async()=>ok({issues:[]})}})
+  vm.program={status:'DRAFT'}
+  vm.addForm={courseId:'9007199254740993',courseName:'选修实践',credit:2,openTermNo:1,module:'专业选修',formationMode:''}
+  await vm.addCourse();assert.equal(writes.length,0)
+  vm.addForm.formationMode='SELECTABLE';await vm.addCourse()
+  assert.equal(writes[0].body.formationMode,'SELECTABLE')
+  assert.equal(writes[0].body.courseId,'9007199254740993')
+  assert.equal(vm.addForm.formationMode,'')
+  assert.equal(vm.formationLabel('SELECTABLE'),'学生自主选课')
+  assert.equal(vm.formationLabel(null),'尚未确认')
+})
+
+test('方案绑定后回执更新为同一方案的正式启用状态',async()=>{
+  const vm=instance('AaProgramEditorView',{academicAffairsApi:{bindProgramGrade:async()=>ok({}),getProgram:async()=>ok({programId:'a',programName:'验收方案',status:'ACTIVE'})},programQualityApi:{validate:async()=>ok({issues:[]})}})
+  vm.program={programId:'a',status:'PUBLISHED'};vm.bindForm={gradeYear:'2026',classId:'4666'}
+  vm.receipt={title:'审核请求已处理',status:'已发布'}
+  await vm.doBind()
+  assert.equal(vm.receipt.title,'方案绑定已处理')
+  assert.equal(vm.receipt.status,vm.statusLabel('ACTIVE'))
+  assert.equal(vm.receipt.pending,false)
+})
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
+
+test('方案审核按钮和确认命令只接受服务端当前节点授权',async()=>{
+  let writes=0
+  const vm=instance('AaProgramEditorView',{academicAffairsApi:{reviewProgram:async()=>{writes++;return ok({})}}})
+  vm.program={status:'ACADEMIC_REVIEW',reviewNode:{canReview:false,reason:'仅校级教务可执行培养方案终审'}}
+  assert.equal(vm.reviewable,false)
+  vm.openReview('APPROVE');assert.equal(vm.dlg.visible,false)
+  await vm.doReview({});assert.equal(writes,0)
+  vm.program.reviewNode={canReview:true,reason:''}
+  assert.equal(vm.reviewable,true)
+  vm.openReview('APPROVE');assert.equal(vm.dlg.visible,true)
+  vm.program.reviewNode=undefined
+  assert.equal(vm.reviewable,false)
+})
+
+test('方案审核工作区按当前对象节点授权，旧对象授权不能用于新对象',async()=>{
+  let writes=0
+  const vm=instance('AaProgramConsoleView',{academicAffairsApi:{reviewProgram:async()=>{writes++;return ok({})}}})
+  const row={programId:'989',status:'ACADEMIC_REVIEW',programName:'验收方案'}
+  vm.workflowProgram={...row,reviewNode:{canReview:false}}
+  assert.equal(vm.canReviewProgram(row),false)
+  vm.openReview(row,'APPROVE');assert.equal(vm.reviewDlg.visible,false)
+  vm.workflowProgram.reviewNode.canReview=true
+  vm.openReview(row,'APPROVE');assert.equal(vm.reviewDlg.visible,true)
+  vm.workflowProgram={...row,programId:'990',reviewNode:{canReview:true}}
+  await vm.doReview({});assert.equal(writes,0)
+  vm.workflowProgram={...row,reviewNode:{canReview:true}};vm.workflowEvidenceLoading=true
+  assert.equal(vm.canReviewProgram(row),false)
+})
 
 test('T07 old program and validation responses cannot replace the selected identity',async()=>{
   const a=deferred(),b=deferred()

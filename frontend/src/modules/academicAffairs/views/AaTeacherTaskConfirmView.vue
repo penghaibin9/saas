@@ -205,6 +205,7 @@ export default {
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,
+    statusLabel(status) { return TASK_STATUS[status] || '状态待核对' },
     async load() {
       const revision = ++this.revision, context = this.ctx
       this.loading = true

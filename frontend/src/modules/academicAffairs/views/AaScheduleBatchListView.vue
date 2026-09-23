@@ -8,11 +8,15 @@
   >
     <template #actions>
       <AppButton v-if="onlyArchived" @click="$router.push('/admin/academic-affairs/schedule')">返回课表批次</AppButton>
-      <AppButton v-else variant="primary" @click="showCreate = !showCreate">＋ 创建排课批次</AppButton>
+      <AppButton v-if="$route.query.returnToken" @click="academicFlow?.back($route.query.returnToken, '/admin/academic-affairs/teaching-tasks')">返回教学任务</AppButton>
+      <AppButton v-if="!onlyArchived" variant="primary" @click="showCreate = !showCreate">＋ 创建排课批次</AppButton>
     </template>
 
     <div class="mp-stack">
-      <AaScheduleStageRail :active-index="onlyArchived ? 4 : 2" />
+      <div class="aa-cal-form" aria-label="课表批次查询">
+        <label class="aa-cal-form__item">学期<AppTermEntityPicker v-model="termId" clearable placeholder="全部学期" @change="searchBatches" /></label>
+        <AppButton :disabled="loading" @click="load">刷新批次</AppButton>
+      </div>
 
       <AppInlineAlert
         v-if="onlyArchived"
@@ -23,9 +27,9 @@
 
       <div v-else class="aa-batch-metrics" aria-label="课表批次状态概览">
         <article><span>当前范围批次</span><strong>{{ pagination.total }}</strong><small>服务端分页总数</small></article>
-        <article><span>待启动</span><strong>{{ statusCount('DRAFT') }}</strong><small>可继续安排课位</small></article>
-        <article><span>待正式发布</span><strong>{{ statusCount('PRE_PUBLISHED') }}</strong><small>已经通过预发布</small></article>
-        <article><span>正式 / 已归档</span><strong>{{ statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong><small>师生读取或历史封存</small></article>
+        <article><span>本页待启动</span><strong>{{ statusCount('DRAFT') }}</strong><small>可继续安排课位</small></article>
+        <article><span>本页待正式发布</span><strong>{{ statusCount('PRE_PUBLISHED') }}</strong><small>已经通过预发布</small></article>
+        <article><span>本页正式 / 已归档</span><strong>{{ statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong><small>师生读取或历史封存</small></article>
       </div>
 
       <AppSectionCard compact v-if="showCreate" title="新建课表批次">
@@ -37,8 +41,18 @@
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="选填" maxlength="50" />
           </label>
-          <AppButton variant="primary" :disabled="!draft.termId" :loading="creating" @click="createBatch">创建</AppButton>
+          <label class="aa-cal-form__item">排课范围
+            <select v-model="draft.scopeType" class="aa-input" aria-label="排课范围" :disabled="creating">
+              <option value="COLLEGE">指定学院</option>
+              <option value="SCHOOL">全校</option>
+            </select>
+          </label>
+          <label v-if="draft.scopeType === 'COLLEGE'" class="aa-cal-form__item">学院
+            <AppCollegePicker v-model="draft.collegeId" placeholder="选择排课学院" :disabled="creating" />
+          </label>
+          <AppButton variant="primary" :disabled="!draft.termId || (draft.scopeType === 'COLLEGE' && !draft.collegeId)" :loading="creating" @click="createBatch">创建</AppButton>
         </div>
+        <p class="mp-note">本批次须排齐所选范围的正式任务。已有正式课表时，请从该批次的“核对进度与补排”创建保留原课位的纠错草稿；新建空批次不会自动复制旧课位。</p>
       </AppSectionCard>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -50,7 +64,7 @@
           <div class="mp-cell-main">{{ row.batchName }}</div>
           <div class="mp-cell-sub">批次 #{{ row.batchId }}</div>
         </template>
-        <template #cell-termId="{ row }">学期 #{{ row.termId }}</template>
+        <template #cell-termId="{ row }">{{ row.termLabel || '学期待核对' }}</template>
         <template #cell-scope="{ row }">
           {{ Object.prototype.hasOwnProperty.call(row, 'collegeId') ? (row.collegeId ? `学院 #${row.collegeId}` : '全校范围') : '范围随批次详情确认' }}
         </template>
@@ -60,10 +74,11 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="aa-actions">
-            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/edit`)">排课</button>
-            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/views`)">三视图</button>
-            <button v-if="row.status === 'DRAFT'" class="mp-link" @click="act(row, 'pre')">预发布</button>
-            <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" @click="act(row, 'pub')">发布</button>
+            <button class="mp-link" @click="openBatch(row)">{{ ['PUBLISHED', 'ARCHIVED'].includes(row.status) ? '查看已发布课表' : '继续排课' }}</button>
+            <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openWorkbench(row)">核对进度与补排</button>
+            <button v-if="!['PUBLISHED', 'ARCHIVED'].includes(row.status)" class="mp-link" @click="openBatch(row, 'views')">查看班级、教师与教室课表</button>
+            <button v-if="row.status === 'DRAFT'" class="mp-link" :disabled="!!writingId" @click="act(row, 'pre')">预发布</button>
+            <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" :disabled="!!writingId" @click="act(row, 'pub')">发布</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openChangeLedger(row)">调停课台账</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" @click="openVoid(row)">作废重发（重大纠错）</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openArchive(row)">归档</button>
@@ -101,20 +116,20 @@
 /** 课表批次列表（/admin/academic-affairs/schedule）：GET/POST /academic-affairs/schedule-batches + 发布/作废。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { SCHEDULE_BATCH_STATUS, scheduleBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
-import AaScheduleStageRail from '@/modules/academicAffairs/components/AaScheduleStageRail.vue'
 
 export default {
   name: 'AaScheduleBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppInlineAlert, AaScheduleStageRail },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker, AppInlineAlert },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
-      loading: true, error: '', rows: [],
-      showCreate: false, creating: false, draft: { termId: '', batchName: '' },
+      loading: true, error: '', rows: [], termId: '', revision: 0, disposed: false, writingId: '',
+      showCreate: false, creating: false, draft: { termId: '', batchName: '', scopeType: 'COLLEGE', collegeId: '' },
       voidDlg: { visible: false, submitting: false, batchId: '' },
       archiveDlg: { visible: false, submitting: false, batchId: '' },
       onlyArchived: false,
@@ -130,40 +145,70 @@ export default {
     }
   },
   watch: {
-    '$route.fullPath'() {
-      const archive = this.$route?.query?.panel === 'archive'
-      if (archive !== this.onlyArchived) {
-        this.onlyArchived = archive
-        this.showCreate = false
-        this.pagination.page = 1
-        this.load()
-      }
-    }
+    '$route.fullPath'() { this.restoreQuery(); this.load() },
+    ctx() { this.revision++; this.rows = []; this.showCreate = false; this.voidDlg.visible = false; this.archiveDlg.visible = false; this.load() }
   },
   created() {
     // ?panel=archive 深链接（排课归档三级菜单入口）：直接打开「只看已归档」视图
-    if (this.$route && this.$route.query && this.$route.query.panel === 'archive') this.onlyArchived = true
+    this.restoreQuery()
     this.load()
   },
+  beforeUnmount() { this.disposed = true; this.revision++ },
   methods: {
     scheduleBatchColor,
     statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
     statusCount(status) { return this.rows.filter((row) => row.status === status).length },
-    onPageChange(p) { this.pagination.page = p; this.load() },
+    restoreQuery() {
+      const q = this.$route?.query || {}
+      this.onlyArchived = q.panel === 'archive'; this.termId = typeof q.termId === 'string' ? q.termId : ''
+      const page = Number(q.page); this.pagination.page = Number.isInteger(page) && page > 0 && page <= 1000000 ? page : 1
+      this.draft.termId = this.termId
+    },
+    searchBatches() { return this.onPageChange(1) },
+    async onPageChange(p) {
+      const before = this.$route.fullPath
+      await this.$router.push({ path: this.$route.path, query: { ...this.$route.query, termId: this.termId || undefined, page: String(p) } })
+      if (before === this.$route.fullPath) return this.load()
+    },
+    openBatch(row, view) {
+      const returnToken = this.academicFlow?.captureReturn?.()
+      const page = view || (['PUBLISHED', 'ARCHIVED'].includes(row.status) ? 'views' : 'edit')
+      this.$router.push({ path: `/admin/academic-affairs/schedule/${row.batchId}/${page}`, query: { ...(returnToken ? { returnToken } : {}) } })
+    },
     openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },
+    openWorkbench(row) { this.$router.push({ path: '/admin/academic-affairs/scheduling', query: { batchId: String(row.batchId), tab: 'workbench' } }) },
     async createBatch() {
-      if (this.creating || !this.draft.termId) return
+      if (this.creating || !this.draft.termId || !['COLLEGE', 'SCHOOL'].includes(this.draft.scopeType) || (this.draft.scopeType === 'COLLEGE' && !this.draft.collegeId)) return
       this.creating = true
-      const res = await academicAffairsApi.createScheduleBatch({ termId: this.draft.termId, batchName: this.draft.batchName || undefined })
-      this.creating = false
-      if (res.code === 0) { toast.success('课表批次已创建'); this.showCreate = false; this.draft = { termId: '', batchName: '' }; this.load() }
-      else { toast.error(res.message || '创建失败') }
+      const context = this.ctx
+      try {
+        const res = await academicAffairsApi.createScheduleBatch({ termId: this.draft.termId, batchName: this.draft.batchName || undefined, collegeId: this.draft.scopeType === 'COLLEGE' ? this.draft.collegeId : undefined })
+        if (this.disposed || context !== this.ctx) return
+        if (res.code === 0) { toast.success('课表批次已创建'); this.showCreate = false; this.draft = { termId: this.termId, batchName: '', scopeType: 'COLLEGE', collegeId: '' }; await this.load() }
+        else { toast.error(res.message || '创建失败，请核对批次列表') }
+      } catch { if (!this.disposed && context === this.ctx) toast.error('创建结果待核对，请先刷新批次列表') }
+      finally { this.creating = false }
     },
     async act(row, kind) {
-      const fn = kind === 'pre' ? academicAffairsApi.prePublishSchedule : academicAffairsApi.publishSchedule
-      const res = await fn(row.batchId)
-      if (res.code === 0) { toast.success(kind === 'pre' ? '已预发布' : '已发布，已通知师生'); this.load() }
-      else { toast.error(res.message || '操作失败') }
+      if (this.writingId) return
+      const context = this.ctx, id = String(row.batchId)
+      const current = () => !this.disposed && context === this.ctx
+      this.writingId = id
+      try {
+        const fn = kind === 'pre' ? academicAffairsApi.prePublishSchedule : academicAffairsApi.publishSchedule
+        const res = await fn(id)
+        if (!current()) return
+        if (res.code !== 0) { toast.error(res.message || '操作失败，请回读批次核对'); return }
+        const fresh = await academicAffairsApi.getScheduleBatch(id)
+        if (!current()) return
+        const expected = kind === 'pre' ? 'PRE_PUBLISHED' : 'PUBLISHED'
+        if (fresh.code !== 0 || String(fresh.data?.batchId) !== id || fresh.data?.status !== expected) {
+          toast.error('操作已受理，但正式状态未核实；请刷新批次核对'); return
+        }
+        toast.success(kind === 'pre' ? '已核对预发布状态，可继续正式发布' : '已核对正式课表；请在发布记录中核对通知情况')
+        await this.load()
+      } catch (error) { if (current()) toast.error(error?.message || '操作结果待核实，请刷新后核对') }
+      finally { this.writingId = '' }
     },
     openVoid(row) { this.voidDlg = { visible: true, submitting: false, batchId: row.batchId } },
     async doVoid(payload) {
@@ -183,18 +228,23 @@ export default {
       else { toast.error(res.message || '归档失败') }
     },
     async load() {
+      const revision = ++this.revision, context = this.ctx
+      const current = () => !this.disposed && revision === this.revision && context === this.ctx
       this.loading = true
-      this.error = ''
+      this.error = ''; this.rows = []; this.pagination.total = 0
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+      if (this.termId) params.termId = this.termId
       if (this.onlyArchived) params.status = 'ARCHIVED'
       try {
         const res = await academicAffairsApi.getScheduleBatches(params)
+        if (!current()) return
         if (res.code === 0) { this.rows = res.data?.list || []; this.pagination.total = res.data?.total || 0 }
         else { this.error = res.message || '课表批次读取失败'; this.rows = [] }
       } catch (error) {
+        if (!current()) return
         this.error = error?.message || '网络连接中断，未能读取课表批次'
         this.rows = []
-      } finally { this.loading = false }
+      } finally { if (current()) this.loading = false }
     }
   }
 }

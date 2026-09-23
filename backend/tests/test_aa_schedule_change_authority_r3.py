@@ -171,6 +171,21 @@ def _decision_audits(change_id):
         db.close()
 
 
+def test_detail_review_node_requires_actual_pending_assignee(db_mode, monkeypatch):
+    from app.core import permissions
+
+    _patch(monkeypatch)
+    monkeypatch.setattr(permissions, "has_permission", lambda *_args: True)
+    ids = _seed()
+    own = svc.get_change(ids["change"], COLLEGE_USER)
+    other = svc.get_change(ids["change"], OTHER_USER)
+    assert own["reviewNode"]["canReview"] is True
+    assert other["reviewNode"]["canReview"] is False
+    assert "指定受理人" in other["reviewNode"]["reason"]
+    monkeypatch.setattr(permissions, "has_permission", lambda *_args: False)
+    assert svc.get_change(ids["change"], COLLEGE_USER)["reviewNode"]["canReview"] is False
+
+
 def test_assignee_can_approve_current_node_with_matching_version(db_mode, monkeypatch):
     _patch(monkeypatch); ids = _seed()
     row = svc.review(ids["change"], COLLEGE_USER, "APPROVE", expected_version=0)

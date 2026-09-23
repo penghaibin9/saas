@@ -8,7 +8,7 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/programs')">方案列表</AppButton>
-      <AppButton v-if="tab === 'review' && activeProgram && hasPermission('academicAffairs.program.review')" variant="primary" @click="openReview(activeProgram, 'APPROVE')">审核方案</AppButton>
+      <AppButton v-if="tab === 'review' && canReviewProgram(activeProgram)" variant="primary" @click="openReview(activeProgram, 'APPROVE')">审核方案</AppButton>
       <AppButton v-if="tab === 'publish' && activeProgram && hasPermission('academicAffairs.program.publish')" variant="primary" @click="openBind(activeProgram)">核验并发布</AppButton>
       <AppButton v-if="tab === 'changeStatus' && activeProgram && hasPermission('academicAffairs.program.changeStatus')" variant="primary" @click="openChange(activeProgram)">发起版本变更</AppButton>
     </template>
@@ -79,10 +79,11 @@
         <section class="aapc-duty-card">
           <div><strong>本岗位办理</strong><p>{{ dutyExplanation }}</p></div>
           <div class="aapc-duty-card__actions">
-            <template v-if="tab === 'review' && hasPermission('academicAffairs.program.review')">
+            <template v-if="tab === 'review' && canReviewProgram(activeProgram)">
               <AppButton variant="primary" @click="openReview(activeProgram, 'APPROVE')">{{ activeProgram.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
               <AppButton @click="openReview(activeProgram, 'RETURN')">退回补充</AppButton>
             </template>
+            <p v-else-if="tab === 'review'" class="mp-note">{{ workflowProgram?.reviewNode?.reason || '请等待当前审核节点核验；仅对应审核岗位可以办理。' }}</p>
             <template v-else-if="tab === 'publish'">
               <AppButton v-if="hasPermission('academicAffairs.program.publish')" variant="primary" @click="openBind(activeProgram)">绑定适用年级</AppButton>
               <AppButton @click="viewBindings(activeProgram)">查看绑定记录</AppButton>
@@ -192,7 +193,7 @@
             </template>
           </template>
           <!-- 方案审核 -->
-          <template v-if="tab === 'review'"><button class="mp-link" @click="$router.push({ path: '/admin/academic-affairs/programs/' + row.programId, query: { returnTo: $route.fullPath } })">查看方案证据</button><template v-if="hasPermission('academicAffairs.program.review')">
+          <template v-if="tab === 'review'"><button class="mp-link" @click="$router.push({ path: '/admin/academic-affairs/programs/' + row.programId, query: { returnTo: $route.fullPath } })">查看方案证据</button><template v-if="canReviewProgram(row)">
             <button class="mp-link" @click="openReview(row, 'APPROVE')">{{ row.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</button>
             <button class="mp-link is-danger" @click="openReview(row, 'RETURN')">退回</button>
           </template>
@@ -419,7 +420,7 @@ export default {
   data() {
     return {
       tab: 'authoring', loading: true, error: '', rows: [],
-      activeProgramId: '', workflowEvidence: null, workflowEvidenceLoading: false,
+      activeProgramId: '', workflowProgram: null, workflowEvidence: null, workflowEvidenceLoading: false,
       workflowEvidenceError: '', workflowChangeLog: [], workflowRequestRevision: 0,
       pagination: null,
       tabs: [
@@ -647,6 +648,7 @@ export default {
       await this.selectWorkflowRow(selected, String(routeId || '') !== String(selected.programId))
     },
     async loadWorkflowEvidence() {
+      this.workflowProgram = null
       const programId = this.activeProgram?.programId
       if (!programId) return
       const revision = ++this.workflowRequestRevision
@@ -655,11 +657,14 @@ export default {
       this.workflowEvidence = null
       this.workflowChangeLog = []
       try {
-        const [validationRes, logRes] = await Promise.all([
+        const [validationRes, logRes, programRes] = await Promise.all([
           programQualityApi.validate(programId),
-          this.tab === 'changeStatus' ? academicAffairsApi.getProgramChangeLog(programId) : Promise.resolve({ code: 0, data: { items: [] } })
+          this.tab === 'changeStatus' ? academicAffairsApi.getProgramChangeLog(programId) : Promise.resolve({ code: 0, data: { items: [] } }),
+          this.tab === 'review' ? academicAffairsApi.getProgram(programId) : Promise.resolve({ code: 0, data: null })
         ])
         if (revision !== this.workflowRequestRevision) return
+        if (programRes.code === 0 && String(programRes.data?.programId) === String(programId)) this.workflowProgram = programRes.data
+        else if (this.tab === 'review') this.workflowEvidenceError = programRes.message || '审核节点未能读取，请重试'
         if (validationRes.code === 0) this.workflowEvidence = validationRes.data
         else this.workflowEvidenceError = validationRes.message || '方案校验读取失败，请重试'
         if (logRes.code === 0) this.workflowChangeLog = logRes.data?.items || []
@@ -960,7 +965,13 @@ export default {
     },
 
     // ── 方案审核 ──
+    canReviewProgram(row) {
+      return !!row && !this.workflowEvidenceLoading && !this.workflowEvidenceError &&
+        String(row.programId) === String(this.workflowProgram?.programId) && row.status === this.workflowProgram?.status &&
+        this.workflowProgram?.reviewNode?.canReview === true && this.hasPermission('academicAffairs.program.review')
+    },
     openReview(row, action) {
+      if (!this.canReviewProgram(row)) return
       this.reviewDlg = {
         visible: true, action, row,
         title: action === 'APPROVE' ? `审核通过「${row.programName}」` : `退回「${row.programName}」`,
@@ -970,6 +981,7 @@ export default {
       }
     },
     async doReview(payload) {
+      if (this.reviewDlg.submitting || !this.canReviewProgram(this.reviewDlg.row)) return
       const reason = (payload && payload.reason) || ''
       this.reviewDlg.submitting = true
       const res = await academicAffairsApi.reviewProgram(this.reviewDlg.row.programId, this.reviewDlg.action, reason)

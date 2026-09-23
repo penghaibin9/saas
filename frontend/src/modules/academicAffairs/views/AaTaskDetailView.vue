@@ -9,6 +9,7 @@
     <template #actions>
       <AppButton @click="returnToSource">返回来源</AppButton>
       <AppButton :disabled="loading" @click="load">刷新</AppButton>
+      <AppButton v-if="workbench.nextAction?.code === 'READY' && canViewSchedule" variant="primary" @click="openSchedule">进入本学期排课</AppButton>
       <AppButton
         v-if="canManage && workbench.actions?.canAssign"
         @click="$router.push({ path: '/admin/academic-affairs/teaching-tasks/assign', query: { batchId, returnTo: $route.fullPath } })"
@@ -36,7 +37,7 @@
     </template>
 
     <div class="task-workbench mp-stack">
-      <AaOperationReceipt :receipt="receipt" />
+      <AaOperationReceipt :receipt="receipt && { title: '任务办理回执', ...receipt }" />
       <AaTeachingTaskObjectBar
         v-if="workbench.batchId"
         :name="workbench.batchName || '教学任务批次'"
@@ -103,12 +104,13 @@
         <section class="task-workbench__filters">
           <span v-if="$route.query.teachingTaskId">形成时来源任务 #{{ $route.query.teachingTaskId }}</span>
           <button v-if="$route.query.teachingTaskId" class="mp-link" @click="showWholeBatch">查看整个批次</button>
-          <input v-model.trim="keyword" class="mp-input" placeholder="搜索课程、教学班、教师或工号" />
-          <select v-model="statusFilter" class="mp-input task-workbench__select">
+          <input v-model.trim="keyword" class="mp-input" aria-label="教学任务搜索" placeholder="搜索课程、教学班、教师或工号" @keyup.enter="searchTasks" />
+          <select v-model="statusFilter" class="mp-input task-workbench__select" aria-label="教学任务状态" @change="searchTasks">
             <option value="">全部状态</option>
             <option v-for="(label, key) in taskStatuses" :key="key" :value="key">{{ label }}</option>
           </select>
-          <span class="task-workbench__result">当前显示 {{ filteredRows.length }} / {{ rows.length }} 条</span>
+          <AppButton :disabled="acting || !!pendingResult" @click="searchTasks">查询任务</AppButton>
+          <span class="task-workbench__result">当前查询共 {{ pagination.total }} 条</span>
         </section>
 
         <EmptyState
@@ -116,7 +118,7 @@
           title="没有符合条件的教学任务"
           description="调整搜索条件，或返回批次列表确认是否已生成任务"
         />
-        <DataTable v-else :columns="columns" :rows="filteredRows" row-key="taskId">
+        <DataTable v-else :columns="columns" :rows="filteredRows" row-key="taskId" :pagination="pagination" @page-change="changeTaskPage">
           <template #cell-course="{ row }">
             <div class="mp-cell-main">{{ row.courseName || '未命名课程' }}</div>
             <div class="mp-cell-sub">{{ row.courseCode || '无课程代码' }}</div>
@@ -201,13 +203,13 @@ import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
 import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
-import { readTaskPages } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 export default {
   name: 'AaTaskDetailView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppTeacherPicker, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
   props: { ctx: { type: Object, required: true }, selectedBatchId: { type: String, default: '' } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
       loading: true,
@@ -215,6 +217,7 @@ export default {
       error: '',
       workbench: {},
       rows: [],
+      pagination: { page: 1, pageSize: 50, total: 0 },
       revision: 0, lifecycle: 0, receipt: null, pendingResult: null, pendingByBatch: {},
       keyword: '', teacherKeyQuery: { valueField: 'loginName' },
       statusFilter: '',
@@ -235,11 +238,17 @@ export default {
     batchId() { return this.selectedBatchId || this.$route.params.batchId },
     batchStatusLabel() { return TASK_BATCH_STATUS[this.workbench.status] || '状态待核对' },
     currentStage() {
+      if (['DRAFT', 'GENERATED', 'RETURNED'].includes(this.workbench.status) && this.workbench.taskTotal > 0) {
+        if (this.workbench.unassignedCount > 0 || this.workbench.teacherRejectedCount > 0) return 2
+        if (this.workbench.waitingTeacherCount > 0) return 3
+        if (this.workbench.teacherConfirmRate === 100) return 4
+      }
       const stage = { DRAFT: 1, GENERATED: 1, ASSIGNING: 2, TEACHER_CONFIRMING: 3, COLLEGE_CONFIRMED: 4, APPROVED: 5, ARCHIVED: 5 }
       return stage[this.workbench.status] || 1
     },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
     canConfirm() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.confirm') },
+    canViewSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.view') },
     metrics() {
       return [
         { label: '任务总数', value: this.workbench.taskTotal ?? 0, note: '不含已并入合班任务' },
@@ -250,24 +259,33 @@ export default {
       ]
     },
     filteredRows() {
-      const keyword = this.keyword.toLowerCase()
       return this.rows.filter((row) => {
         if (this.$route.query.teachingTaskId && String(row.taskId) !== String(this.$route.query.teachingTaskId)) return false
-        if (this.statusFilter && row.status !== this.statusFilter) return false
-        if (!keyword) return true
-        return [row.courseName, row.courseCode, row.teachingClassName, row.teachingClassCode, row.teacherName, row.teacherKey]
-          .some((value) => String(value || '').toLowerCase().includes(keyword))
+        return true
       })
     }
   },
   created() { this.load() },
   watch: {
+    '$route.fullPath'() { this.load() },
     batchId: { flush: 'sync', handler() { this.changeBatch() } },
     ctx() { this.lifecycle++; this.assign = { visible: false, submitting: false }; this.review = { visible: false, reason: '', action: '' }; this.receipt = null; this.pendingResult = null; this.pendingByBatch = {}; this.acting = false; this.load() }
   },
   beforeUnmount() { this.revision++; this.lifecycle++; this.disposed = true },
   methods: {
     taskColor,
+    openSchedule() {
+      if (!this.canViewSchedule || this.workbench.nextAction?.code !== 'READY' || !this.workbench.termId) return
+      const returnToken = this.academicFlow?.captureReturn?.()
+      this.$router.push({ path: '/admin/academic-affairs/schedule', query: { termId: String(this.workbench.termId), ...(returnToken ? { returnToken } : {}) } })
+    },
+    searchTasks() { return this.changeTaskPage(1) },
+    async changeTaskPage(page) {
+      if (this.acting || this.pendingResult || this.assign.visible || this.review.visible) return
+      const before = this.$route.fullPath
+      await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, page: String(page), keyword: this.keyword || undefined, status: this.statusFilter || undefined } })
+      if (before === this.$route.fullPath) return this.load()
+    },
     showWholeBatch() { const query = { ...this.$route.query }; delete query.teachingTaskId; this.$router.replace({ path: this.$route.path, query }) },
     changeBatch() {
       this.lifecycle++; this.assign.visible = false; this.review.visible = false; this.acting = false
@@ -321,10 +339,15 @@ export default {
         return
       }
       this.assign.submitting = true
-      const form = this.assign, taskId = form.taskId
+      const form = this.assign, taskId = form.taskId, batchId = this.batchId
       const body = Object.freeze({ teacherName: form.teacherName, teacherKey: form.teacherKey, weeklyHours: form.weeklyHours ?? undefined, expectedStudents: form.expectedStudents ?? undefined })
-      await this.runAction('canAssign', () => academicAffairsApi.assignTeacher(taskId, body), () => {
-        const row = this.rows.find(item => String(item.taskId) === String(taskId))
+      await this.runAction('canAssign', () => academicAffairsApi.assignTeacher(taskId, body), async () => {
+        let row = this.rows.find(item => String(item.taskId) === String(taskId))
+        if (!row) {
+          const response = await academicAffairsApi.getBatchTasks(batchId, { taskId: String(taskId), page: 1, pageSize: 1 })
+          if (response.code !== 0) throw response
+          row = response.data?.list?.find(item => String(item.taskId) === String(taskId))
+        }
         const matches = row && Object.entries(body).every(([key, value]) => value === undefined || String(row[key]) === String(value))
         return matches && ['ASSIGNED', 'TEACHER_CONFIRMED', 'READY'].includes(row.status) ? TASK_STATUS[row.status] : ''
       }, '交任课教师本人确认，再由学院和教务核对。', form)
@@ -410,7 +433,8 @@ export default {
       if (!pending) return
       const loaded = await this.load()
       if (!current() || !loaded || this.pendingResult !== pending) return
-      const status = pending.confirmedStatus()
+      const status = await pending.confirmedStatus()
+      if (!current() || this.pendingResult !== pending) return
       const confirmed = Boolean(pending.acknowledged && status)
       this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? pending.next : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
       if (confirmed) this.clearPending()
@@ -427,18 +451,24 @@ export default {
       const current = () => !this.disposed && revision === this.revision && id === this.batchId && context === this.ctx
       this.loading = true
       this.error = ''
-      this.workbench = {}; this.rows = []
+      this.workbench = {}; this.rows = []; this.pagination.total = 0
+      const query = this.$route.query || {}
+      this.keyword = typeof query.keyword === 'string' ? query.keyword : ''
+      this.statusFilter = typeof query.status === 'string' ? query.status : ''
+      const page = Number(query.page)
+      this.pagination.page = Number.isInteger(page) && page > 0 && page <= 1000000 ? page : 1
       if (!id) { this.error = '请先选择教学任务批次。'; this.loading = false; return false }
       try {
         const [workbenchRes, taskRes] = await Promise.all([
           teachingTaskWorkbenchApi.getBatch(id),
-          readTaskPages(page => academicAffairsApi.getBatchTasks(id, page), current)
+          academicAffairsApi.getBatchTasks(id, { page: this.pagination.page, pageSize: this.pagination.pageSize, status: this.statusFilter || undefined, keyword: this.keyword || undefined, taskId: query.teachingTaskId || undefined })
         ])
         if (!current()) return false
         if (workbenchRes.code !== 0) { this.handleFailure(workbenchRes, '工作台加载失败'); return false }
         if (String(workbenchRes.data?.batchId || '') !== String(id)) { this.handleFailure({ code: 409001, message: '批次读取返回了不同对象，请重新核对。' }); return false }
         if (taskRes?.code !== 0) { this.handleFailure(taskRes, '任务明细加载失败'); return false }
-        this.workbench = workbenchRes.data || {}; this.rows = taskRes.data.list
+        if (!Array.isArray(taskRes.data?.list) || !Number.isInteger(taskRes.data?.total)) { this.handleFailure({ message: '任务列表未完整返回，请刷新核对。' }); return false }
+        this.workbench = workbenchRes.data || {}; this.rows = taskRes.data.list; this.pagination.total = taskRes.data.total
         return true
       } catch (error) { if (current()) this.handleFailure(error, '网络连接失败，请重试。'); return false }
       finally { if (current()) this.loading = false }

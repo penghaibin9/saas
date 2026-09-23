@@ -65,8 +65,8 @@
       @confirm="doReview"
     >
       <p>{{ dlg.courseName }} · 任务 {{ dlg.taskId }}</p>
-      <p>确认对象、动作、证据摘要、身份与返回位置已固定。提交前会重新读取正式事实并校验证据摘要。</p>
-      <p v-if="dlg.action === 'APPROVE'" class="aa-review-hash">证据摘要：{{ dlg.evidenceHash || '未提供' }}</p>
+      <p>正在办理上述成绩任务；提交前将再次核对正式名单和成绩是否变化。</p>
+      <details v-if="dlg.action === 'APPROVE'" class="aa-review-hash"><summary>实施人员使用：证据校验摘要</summary>{{ dlg.evidenceHash || '未提供' }}</details>
       <label class="aa-review-reason">审核意见{{ dlg.action === 'RETURN' ? '（至少 5 字）' : '（可选）' }}<textarea v-model="reviewReason" :disabled="busy" rows="4" :placeholder="dlg.action === 'RETURN' ? '请填写需修改的具体事项' : '可填写审核说明'" /></label>
       <p v-if="reviewMessage" role="alert">{{ reviewMessage }}</p>
       <button v-if="reviewConflict" class="mp-btn" :disabled="busy || checking" @click="refreshReview">重新核对当前任务</button>
@@ -86,6 +86,7 @@ export default {
   name: 'AaGradeCollegeReviewView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, GradeReviewEvidence },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
     return { loading: true, error: '', rows: [], focusTaskId: '', current: null, evidence: null, evidenceLoading: false, evidenceError: '', selectedId: '', detailLoading: false, detailError: '',
       listSeq: 0, detailSeq: 0, alive: true, busy: false, checking: false, pending: null, receipt: null, reviewReason: '', reviewDraftTaskId: '', reviewConflict: false, reviewMessage: '',
@@ -142,7 +143,11 @@ export default {
   methods: {
     statusLabel: gradeStatusLabel,
     fact(value) { return value === null || value === undefined || value === '' ? '待核对' : value },
-    returnQueue() { if (this.busy) return; const query = { ...this.$route.query }; delete query.taskId; this.$router.replace({ path: this.$route.path, query }) },
+    returnQueue() {
+      if (this.busy) return
+      if (this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/grade-overview')
+      const query = { ...this.$route.query }; delete query.taskId; this.$router.replace({ path: this.$route.path, query })
+    },
     invalidate() { this.listSeq++; this.detailSeq++; this.current = null; this.evidence = null; this.evidenceLoading = false; this.evidenceError = ''; this.rows = []; this.selectedId = ''; this.dlg.visible = false; this.busy = false; this.detailLoading = false; this.detailError = ''; this.checking = false; this.reviewReason = ''; this.reviewDraftTaskId = ''; this.reviewConflict = false; this.reviewMessage = '' },
     isDenied(result) { return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([result?.status, result?.statusCode, result?.bizCode, result?.code].join(' ')) },
     clearDenied(result) {

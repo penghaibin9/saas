@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/graduation')">返回审核批次</AppButton>
+      <AppButton @click="returnToBatchQueue">返回审核批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -65,7 +65,7 @@
             <div v-for="item in focusedItems" :key="item.item" class="agc-focus__item">
               <span>{{ itemLabel(item.item) }}</span>
               <AppStatusTag :type="gradItemColor(item.result)" dot>{{ itemResultLabel(item.result) }}</AppStatusTag>
-              <p>{{ item.evidence || '当前正式证据未提供' }}</p>
+              <p>{{ evidenceText(item.evidence) }}</p>
               <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
             </div>
           </div>
@@ -101,7 +101,7 @@
             <AppStatusTag :type="gradItemColor(itemOf(row).result)" dot>{{ itemResultLabel(itemOf(row).result) }}</AppStatusTag>
           </template>
           <template #cell-evidence="{ row }">
-            <span class="agc-evidence">{{ itemOf(row).evidence || '—' }}</span>
+            <span class="agc-evidence">{{ evidenceText(itemOf(row).evidence) }}</span>
           </template>
           <template #cell-ops="{ row }">
             <template v-if="tab === 'fee'">
@@ -132,7 +132,7 @@
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_REQUIRED').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_REQUIRED').result) }}</AppStatusTag>
               </template>
               <template #cell-evidence="{ row }">
-                <span class="agc-evidence">{{ itemOf(row, 'COURSE_REQUIRED').evidence || '—' }}</span>
+                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_REQUIRED').evidence) }}</span>
               </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
@@ -151,7 +151,7 @@
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_ELECTIVE').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_ELECTIVE').result) }}</AppStatusTag>
               </template>
               <template #cell-evidence="{ row }">
-                <span class="agc-evidence">{{ itemOf(row, 'COURSE_ELECTIVE').evidence || '—' }}</span>
+                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_ELECTIVE').evidence) }}</span>
               </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
@@ -258,7 +258,7 @@
           <div v-for="it in detail.row.items" :key="it.item" class="agc-item">
             <span class="agc-item__label">{{ itemLabel(it.item) }}</span>
             <AppStatusTag :type="gradItemColor(it.result)" dot>{{ itemResultLabel(it.result) }}</AppStatusTag>
-            <span class="agc-item__ev">{{ it.evidence }}</span>
+            <span class="agc-item__ev">{{ evidenceText(it.evidence) }}</span>
           </div>
         </div>
         <AppInlineAlert v-if="detail.row.reviewNote" type="info" :description="`最近处理意见：${detail.row.reviewNote}`" />
@@ -337,6 +337,7 @@ import { gradeError } from './parallel-c/grade-review'
 import { matchPermission } from '@/config/navPlan'
 import { systemConfirm } from '@/services/systemDialog'
 import GraduationStageRail from '@/modules/academicAffairs/components/graduation/GraduationStageRail.vue'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 const TAB_CONFIG = {
   credit: { label: '学分达成审核', item: 'CREDIT' },
@@ -399,20 +400,20 @@ export default {
       archiving: false,
       feeBusy: false,
       itemColumns: [
-        { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' },
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
         { key: 'result', title: '结果' }, { key: 'evidence', title: '证据' }, { key: 'ops', title: '操作', width: '160px' }
       ],
       finalColumns: [
-        { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' },
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
         { key: 'overall', title: '系统预审' }, { key: 'ops', title: '操作', width: '120px' }
       ],
       resultColumns: [
-        { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' },
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
         { key: 'overall', title: '系统预审' }, { key: 'status', title: '当前状态' },
         { key: 'conclusion', title: '终审结论' }, { key: 'ops', title: '操作', width: '120px' }
       ],
       archiveColumns: [
-        { key: 'studentId', title: '学号' }, { key: 'realName', title: '姓名' }, { key: 'conclusion', title: '终审结论' }
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' }, { key: 'conclusion', title: '终审结论' }
       ],
       rosterColumns: [
         { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
@@ -448,13 +449,20 @@ export default {
       }
       return copy[this.tab] || '毕业资格审核工作区'
     },
-    stageIndex(){return ['roster'].includes(this.tab)?1:['credit','course','practice','thesis','internship','fee','discipline','reason'].includes(this.tab)?2:this.tab==='final'?4:['results','archive'].includes(this.tab)?5:0},
+    stageIndex(){
+      if(!this.currentBatch||!this.batchTotal)return 0
+      if(this.currentBatch.status==='ARCHIVED')return 6
+      if(this.batchConcluded===this.batchTotal)return 5
+      if(this.currentBatch.status==='GENERATED')return 1
+      if(this.batchAbnormal||this.batchPassed!==this.batchTotal)return 2
+      return 3
+    },
     queueRows(){return this.tab==='course'?[...this.courseRequiredRows,...this.courseElectiveRows].filter((row,index,all)=>all.findIndex(item=>String(item.resultId)===String(row.resultId))===index):this.rows},
     focusedRow(){return this.queueRows.find(row=>String(row.resultId)===String(this.focusedResultId))||this.queueRows[0]||null},
     focusedItems(){if(!this.focusedRow)return[];if(this.tab==='final')return this.focusedRow.items||[];if(this.tab==='course')return (this.focusedRow.items||[]).filter(item=>['COURSE_REQUIRED','COURSE_ELECTIVE'].includes(item.item));const item=this.itemOf(this.focusedRow);return item?.item?[item]:[]},
     showEvidenceBoard(){return ['credit','course','practice','thesis','internship','discipline','fee','final'].includes(this.tab)},
     currentOwner(){if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
-    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.tab==='final')return'学院初审通过且系统预审通过，轮到教务终审';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;return'当前阶段需要核对正式证据与责任来源'},
+    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
     nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
@@ -501,7 +509,7 @@ export default {
     batchOptions() {
       return this.batches.map((b) => ({
         value: String(b.batchId),
-        label: `${b.batchName}（${b.status}，应审 ${b.total}）`
+        label: `${b.batchName}（${academicStatusLabel(b.status)}，应审 ${b.total}）`
       }))
     },
     rosterGroups() {
@@ -540,7 +548,9 @@ export default {
     }
   },
   beforeUnmount(){this.alive=false;this.invalidatePrivate()},
+  inject: { academicFlow: { default: null } },
   methods: {
+    returnToBatchQueue() { if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); return this.$router.push('/admin/academic-affairs/graduation') },
     token(kind){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,route:this.$route.fullPath,batchId:String(this.batchId),tab:this.tab}},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
@@ -552,6 +562,7 @@ export default {
     itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
+    evidenceText(value) { return String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`) },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
     ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERNSHIP_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
     focusResult(row){if(!row||this.pendingWrite)return;this.focusedResultId=String(row.resultId||'')},
@@ -639,9 +650,9 @@ export default {
       }
     },
     async readGradBatch(batchId){
-      let page=1
-      while(page<=3){const res=await academicAffairsApi.listGradBatches({page,pageSize:20});if(res?.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};const found=res.data.list.find(row=>String(row.batchId)===String(batchId));if(found)return found;if(res.data.list.length<20||page*20>=Number(res.data.total))break;page++}
-      return null
+      const res=await academicAffairsApi.listGradBatches({batchId:String(batchId),page:1,pageSize:1})
+      if(res?.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503}
+      return res.data.list.find(row=>String(row.batchId)===String(batchId))||null
     },
     async loadTab() {
       if (this.tab === 'course') { await this.loadCourseTab(); return }
@@ -762,7 +773,7 @@ export default {
       const parts = []
       if (row.reviewNote) parts.push(`学院意见：${row.reviewNote}`)
       const fails = (row.items || []).filter((it) => it.result === 'FAIL')
-        .map((it) => `${this.itemLabel(it.item)}：${it.evidence || '未通过'}`)
+        .map((it) => `${this.itemLabel(it.item)}：${this.evidenceText(it.evidence)}`)
       if (fails.length) parts.push(fails.join('；'))
       return parts.join('；') || '暂无明细，请点右侧「十一项详情」核对'
     },

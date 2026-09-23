@@ -1,5 +1,5 @@
 <template>
-  <AaOverviewPageFrame class="academic-overview" :title="mode === 'todos' ? '教务待办' : '运行总览'" :subtitle="mode === 'todos' ? '区分待我启动、待我办理、我发起和已办' : '把今天应启动和应办理的工作放在一起'">
+  <AaOverviewPageFrame class="academic-overview" :title="mode === 'todos' ? '教务待办' : '运行总览'" :subtitle="mode === 'todos' ? '继续办理正式待办，查询本人已办记录' : '先办理岗位待办，再核对学期运行条件'">
     <template #actions><AppButton v-if="mode === 'overview'" @click="openWall">查看运行大屏</AppButton><AppButton v-else @click="$router.push('/admin/academic-affairs')">返回运行总览</AppButton><AppButton variant="primary" :loading="loading" @click="loadQueue">更新责任队列</AppButton></template>
     <p v-if="message" class="overview-message" role="status">{{ message }}</p>
     <div class="overview-metrics">
@@ -9,11 +9,10 @@
     <div class="overview-columns">
       <section class="overview-queue">
         <header><h2>{{ currentTab.label }}</h2><span>{{ queue.sourceTime ? sourceTimeLabel(queue.sourceTime) + '更新' : '等待读取正式待办' }}</span></header>
-        <form class="overview-search" @submit.prevent="search"><input v-model="keyword" maxlength="100" aria-label="搜索教务事项" :placeholder="mode === 'todos' ? '搜索岗位待办' : '搜索本学期教务任务'" :disabled="unsupported" /><AppButton :disabled="unsupported" @click="search">查询</AppButton><AppButton variant="ghost" :disabled="unsupported" @click="clearSearch">清空</AppButton><small>{{ unsupported ? '当前分类暂未接入' : `共 ${queue.total ?? '—'} 条 · 按当前身份查询` }}</small></form>
+        <form class="overview-search" @submit.prevent="search"><input v-model="keyword" maxlength="100" aria-label="搜索教务事项" placeholder="搜索当前岗位的正式待办" /><AppButton @click="search">查询</AppButton><AppButton variant="ghost" @click="clearSearch">清空</AppButton><small>{{ `共 ${queue.total ?? '—'} 条 · 按当前身份查询` }}</small></form>
         <LoadingState v-if="loading" />
         <ErrorState v-else-if="error" :description="error" @retry="loadQueue" />
         <EmptyState v-else-if="queue.scopeBlocked" title="当前身份尚未确认" description="请重新确认当前账号和角色后读取正式责任队列。" />
-        <EmptyState v-else-if="unsupported" :title="currentTab.label + '暂未接入'" description="此分类暂无正式统计来源，请进入右侧责任工作区核对。" />
         <EmptyState v-else-if="!rows.length" :title="currentTab.label + '暂无记录'" description="当前身份及查询条件下暂无正式待办，可调整查询条件。" />
         <template v-else>
           <DataTable :columns="columns" :rows="rows" row-key="todoId" :pagination="pagination" @page-change="changePage">
@@ -61,8 +60,8 @@ import { safeBusinessMessage } from '@/utils/presentationSafety'
 
 import AaOverviewPageFrame from './AaOverviewPageFrame.vue'
 
-const TABS = [{ key: 'pending', label: '待我办理' }, { key: 'toStart', label: '待我启动' }, { key: 'initiated', label: '我发起的' }, { key: 'done', label: '我的已办' }]
-const METRICS = [{ key: 'toStart', label: '待我启动', note: '须由正式启动条件认定' }, { key: 'pending', label: '待我办理', note: '本人指派及授权责任池' }, { key: 'initiated', label: '我发起的', note: '须有正式发起人记录' }, { key: 'nearDeadline', label: '即将到期', note: '未来24小时内到期的待办' }]
+const TABS = [{ key: 'pending', label: '待我办理' }, { key: 'done', label: '我的已办' }]
+const METRICS = [{ key: 'pending', label: '待我办理', note: '本人指派及授权责任池' }, { key: 'done', label: '我的已办', note: '本人完成的正式待办' }, { key: 'nearDeadline', label: '即将到期', note: '未来24小时内到期的待办' }]
 export default {
   name: 'AaOverviewWorkspace',
   components: { AaOverviewPageFrame, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTermEntityPicker },
@@ -78,7 +77,6 @@ export default {
     columns() { return this.mode === 'todos' ? [{ key: 'title', title: '任务' }, { key: 'object', title: '来源对象' }, { key: 'responsibility', title: '责任岗位' }, { key: 'deadline', title: '截止时间' }, { key: 'blocker', title: '下一步' }, { key: 'action', title: '办理入口' }] : this.overviewColumns },
     tab() { return TABS.some(item => item.key === this.$route.query.tab) ? this.$route.query.tab : 'pending' },
     currentTab() { return TABS.find(item => item.key === this.tab) },
-    unsupported() { return ['toStart', 'initiated'].includes(this.tab) },
     page() { const value = Number(this.$route.query.page); return Number.isSafeInteger(value) && value > 0 && value <= 1000000 ? value : 1 },
     pageSize() { const value = Number(this.$route.query.pageSize); return [5, 10, 20, 50, 100].includes(value) ? value : 5 },
     rows() { return Array.isArray(this.queue.items) ? this.queue.items : [] },
@@ -183,7 +181,7 @@ export default {
 </script>
 
 <style scoped>
-.overview-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }.overview-metrics article { padding:16px; display:grid; gap:10px; background:var(--bg-card); border:1px solid var(--border-base); border-radius:11px; }.overview-metrics span,.overview-metrics small { color:var(--text-secondary); font-size:12px; line-height:1.6; }.overview-metrics strong { font-size:27px; font-variant-numeric:tabular-nums; }.overview-metrics .is-due { background:var(--warning-bg,#fff6e5); border-color:var(--warning-border,#e7d8b9); }.is-due strong { color:var(--warning-text,#97600c); }
+.overview-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }.overview-metrics article { padding:16px; display:grid; gap:10px; background:var(--bg-card); border:1px solid var(--border-base); border-radius:11px; }.overview-metrics span,.overview-metrics small { color:var(--text-secondary); font-size:12px; line-height:1.6; }.overview-metrics strong { font-size:27px; font-variant-numeric:tabular-nums; }.overview-metrics .is-due { background:var(--warning-bg,#fff6e5); border-color:var(--warning-border,#e7d8b9); }.is-due strong { color:var(--warning-text,#97600c); }
 .overview-tabs { display:flex; gap:5px; flex-wrap:wrap; }.overview-tabs button { padding:9px 12px; border:0; border-radius:7px; color:var(--text-secondary); background:transparent; font:inherit; font-size:13px; cursor:pointer; }.overview-tabs button[aria-pressed=true] { background:var(--pri-bg,#e6edff); color:var(--pri,#2c5ca8); font-weight:650; }
 .overview-columns { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:16px; align-items:start; }.overview-queue,.overview-relay,.overview-readiness { border:1px solid var(--border-base); border-radius:11px; background:var(--bg-card); overflow:hidden; }.overview-queue > header,.overview-readiness > header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:16px; border-bottom:1px solid var(--border-base); }.overview-queue h2,.overview-relay h2,.overview-readiness h2 { margin:0; font-size:15px; }.overview-queue header > span { color:var(--text-secondary); font-size:11px; }.overview-search,.readiness-export { display:flex; align-items:center; gap:8px; padding:14px 16px; flex-wrap:wrap; }.overview-search input,.readiness-export input { min-width:160px; max-width:300px; flex:1; height:36px; padding:0 10px; border:1px solid var(--border-base); border-radius:7px; font:inherit; font-size:13px; background:var(--bg-card); color:var(--text-primary); }.overview-scope { padding:0 16px; font-size:12px; color:var(--text-secondary); line-height:1.7; }.overview-title { color:var(--pri,#2c5ca8); font-size:13px; }.overview-secondary { display:block; font-size:11px; line-height:1.7; color:var(--text-secondary); margin-top:4px; }
 .overview-relay h2 { padding:16px; border-bottom:1px solid var(--border-base); }.overview-relay ol { list-style:none; margin:0 16px; padding:0 0 0 11px; border-left:1px solid var(--border-base); }.overview-relay li { position:relative; padding:14px 0 8px; }.overview-relay li::before { content:''; position:absolute; left:-15px; top:21px; width:7px; height:7px; border-radius:50%; background:var(--pri,#2c5ca8); }.overview-relay h3 { font-size:13px; margin:0 0 6px; }.overview-relay p,.overview-relay li > span { color:var(--text-secondary); font-size:12px; line-height:1.6; margin:0; }.overview-relay button { padding:2px 0 0; border:0; color:var(--pri,#2c5ca8); background:transparent; cursor:pointer; font:inherit; font-size:13px; }.overview-scope-card { padding:16px; border-radius:10px; background:var(--pri-bg,#e7edfc); color:var(--pri,#2c5ca8); line-height:1.7; font-size:12px; }.overview-scope-card strong { display:block; margin-bottom:5px; }

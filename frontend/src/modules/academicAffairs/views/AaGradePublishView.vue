@@ -228,6 +228,7 @@ export default {
         if (response.code !== 0 || rows.length !== 1 || String(rows[0].gradeTaskId) !== String(receipt.taskId)) throw new Error('任务状态暂时无法核对，请稍后查询或联系教务负责人。')
         const status = rows[0].status
         receipt.status = status
+        this.rows = this.rows.map(row => String(row.gradeTaskId) === String(receipt.taskId) ? rows[0] : row)
         if (receipt.observingOnly) receipt.title = `任务正式状态：${this.statusLabel(status)}`
         const sameEffect = effect?.code === 0 && String(effect.data?.gradeTaskId) === String(receipt.taskId)
         if (sameEffect) {
