@@ -339,7 +339,7 @@ def test_teacher_today_reuses_c_c1_batched_occurrence_projection():
 
 
 def test_pc_teacher_today_reads_same_formal_scope_without_mobile_login(db_mode, monkeypatch):
-    from app.modules.academic_affairs.routers.schedule_core_router import schedule_my_today
+    from app.modules.academic_affairs.routers.academic_affairs import teacher_today_pc
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
 
     _ctx()
@@ -348,6 +348,6 @@ def test_pc_teacher_today_reads_same_formal_scope_without_mobile_login(db_mode, 
         active_id = str(active_item.id)
         db.commit()
     monkeypatch.setattr(today, "_today_value", lambda db, value: date(2026, 3, 2))
-    result = schedule_my_today(_user())
+    result = teacher_today_pc(_user())
     assert result["code"] == 0
     assert [item["scheduleItemId"] for item in result["data"]["todayItems"]] == [active_id]

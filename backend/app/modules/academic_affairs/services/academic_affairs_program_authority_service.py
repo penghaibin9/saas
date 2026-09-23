@@ -294,6 +294,7 @@ def list_program_versions(program_id, user):
         )).first()
         if not current:
             raise not_found("培养方案不存在")
+        _core._require_teacher_program_visible(current, user)
 
         root = current
         seen = {root.id}
@@ -338,12 +339,17 @@ def list_program_versions(program_id, user):
             seen.add(nxt.id)
             cursor = nxt
 
-        tip_id = chain[-1].id
+        teacher_read = _core._is_academic_teacher(user)
+        visible_chain = [
+            program for program in chain
+            if not teacher_read or str(program.status or "").upper() in _core._TEACHER_VISIBLE_PROGRAM_STATUSES
+        ]
+        tip_id = visible_chain[-1].id if visible_chain else None
         return [
             dict(
                 _core._row(program),
-                canNewVersion=(program.id == tip_id and program.status in _VERSIONABLE_STATUSES),
+                canNewVersion=(False if teacher_read else program.id == tip_id and program.status in _VERSIONABLE_STATUSES),
                 isCurrent=program.id == current.id,
             )
-            for program in chain
+            for program in visible_chain
         ]

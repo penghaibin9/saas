@@ -76,8 +76,8 @@
           <div v-if="readiness" class="aaexam-readiness" aria-label="考务发布就绪摘要">
             <div class="aaexam-readiness__item">
               <span>应考课程</span>
-              <strong>{{ readiness.circledCourseCount }}</strong>
-              <small>本批次已圈定 · 同学期另有 {{ readiness.pendingCandidateCount }} 门候选</small>
+              <strong>{{ readiness.eligibleCourseCount }}</strong>
+              <small>本批次已圈定 {{ readiness.circledCourseCount }} 门 · 同学期另有 {{ readiness.pendingCandidateCount }} 门候选</small>
             </div>
             <div class="aaexam-readiness__item">
               <span>已排</span>
@@ -102,7 +102,7 @@
             <div class="aaexam-readiness__item is-conclusion" :class="readiness.canPublish ? 'is-ready' : 'is-risk'">
               <span>就绪提示</span>
               <strong>{{ readiness.canPublish ? '就绪检查通过' : '存在待处理提示' }}</strong>
-              <small>{{ readiness.canPublish ? '仍以正式发布校验为准' : '可点击发布，由正式门禁最终判定' }}</small>
+              <small>{{ readiness.canPublish ? '仍以正式发布校验为准' : '仍可尝试发布，由正式门禁最终判定' }}</small>
             </div>
           </div>
 

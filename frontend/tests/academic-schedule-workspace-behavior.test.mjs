@@ -130,3 +130,44 @@ test('student print preserves student query type and calls the student view endp
   assert.equal(studentCalls, 1)
   assert.equal(state.error, '')
 })
+
+test('teacher change actions carry a concrete teaching week instead of a method object', () => {
+  const component = page('AaTeacherScheduleView', {
+    currentUserFromToken: () => ({ loginName: 'teacher-1' }),
+    toast: { error() {}, success() {} }
+  })
+  let destination
+  const scope = { $route: { params: {} } }
+  const state = Object.assign(component.data.call(scope), component.methods, {
+    teacherKey: 'teacher-1', selfKey: 'teacher-1',
+    selectedItem: { itemId: '123', startWeek: 1, endWeek: 16 },
+    $router: { push: value => { destination = value } }
+  })
+  Object.defineProperty(state, 'selectedOccurrenceWeek', {
+    get: () => component.computed.selectedOccurrenceWeek.call(state)
+  })
+  state.week = null
+  state.applyChange('STOP')
+  assert.equal(destination, undefined)
+  state.week = 8
+  state.applyChange('ADJUST')
+  assert.equal(destination.query.occurrenceWeek, '8')
+})
+
+test('teacher week and semester views reload when switching back to self', () => {
+  for (const name of ['AaWeekScheduleView', 'AaSemesterScheduleView']) {
+    const component = page(name)
+    let loads = 0
+    const state = {
+      visibleDims: [{ key: 'teacher' }], isAcademicTeacher: true,
+      termId: '52', selfKey: 'teacher-1', teacherKey: '',
+      items: [{ itemId: 'old' }], note: 'old', error: 'old',
+      batchId: 'old-batch', batchIds: ['old-batch'],
+      load: () => { loads += 1 }
+    }
+    component.methods.switchDim.call(state, 'teacher')
+    assert.equal(state.teacherKey, 'teacher-1')
+    assert.equal(loads, 1)
+    assert.equal(state.items.length, 0)
+  }
+})

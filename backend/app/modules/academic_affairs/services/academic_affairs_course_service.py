@@ -272,6 +272,9 @@ def get_course_references(course_id, user) -> list[dict]:
         c = db.get(AaCourse, int(course_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("课程不存在")
+        teacher_read = str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+        if teacher_read and str(c.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         rows = db.scalars(select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(), AaProgramCourse.course_id == c.id,
             AaProgramCourse.is_deleted.is_(False))).all()
@@ -280,8 +283,11 @@ def get_course_references(course_id, user) -> list[dict]:
             if r.program_id in seen:
                 continue
             seen.add(r.program_id)
-            p = db.get(AaProgram, r.program_id)
-            if p and not p.is_deleted:
+            from app.core.tenant_scoped import tenant_get
+            p = tenant_get(db, AaProgram, r.program_id, tenant_id=_tid())
+            if p and not p.is_deleted and (
+                not teacher_read or str(p.status or "").upper() in {"PUBLISHED", "ENABLED", "FROZEN"}
+            ):
                 out.append({"programId": str(p.id), "programName": p.program_name, "status": p.status})
         return out
 
@@ -321,6 +327,8 @@ def get_course(course_id, user) -> dict:
         c = db.get(AaCourse, int(course_id))
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("课程不存在")
+        if str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER" and str(c.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         return _row(c)
 
 
@@ -335,11 +343,14 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
     from app.models import AaCourse
     with session() as db:
         conds = [AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False)]
+        teacher_read = str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+        if teacher_read:
+            conds.append(AaCourse.status == "ENABLED")
         if category:
             conds.append(AaCourse.category == category)
         if nature:
             conds.append(AaCourse.nature == nature)
-        if status:
+        if status and not teacher_read:
             conds.append(AaCourse.status == status)
         if owner_teacher_id:
             conds.append(AaCourse.owner_teacher_id == int(owner_teacher_id))
@@ -399,7 +410,9 @@ def list_course_materials(course_id, user, material_type=None, page=1, page_size
     """课程材料/大纲列表（Tab=material 显示全部类型；Tab=outline 传 materialType=SYLLABUS 收窄）。"""
     from app.models import AaCourseMaterial
     with session() as db:
-        _get_course_or_404(db, course_id)
+        course = _get_course_or_404(db, course_id)
+        if str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER" and str(course.status or "").upper() != "ENABLED":
+            raise not_found("课程不存在")
         conds = [
             AaCourseMaterial.tenant_id == _tid(), AaCourseMaterial.course_id == int(course_id),
             AaCourseMaterial.status == "ACTIVE", AaCourseMaterial.is_deleted.is_(False),

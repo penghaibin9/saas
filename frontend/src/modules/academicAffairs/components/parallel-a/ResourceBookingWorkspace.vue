@@ -1,29 +1,41 @@
 <template>
-  <ModulePageShell :title="`${label}预约`" subtitle="核对日期、资源与占用来源后申请，办理后查询正式预约记录。">
-    <template #actions><AppButton v-if="$route.query.returnToken" :disabled="saving" @click="goBack">返回原位置</AppButton><AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton></template>
+  <ModulePageShell
+    :title="`${isAcademicTeacher ? '我的' : ''}${label}预约`"
+    :subtitle="isAcademicTeacher ? '核对空闲资源后提交申请；下方台账只显示本人预约及正式审核状态。' : '核对日期、资源与占用来源后申请，办理后查询正式预约记录。'"
+  >
+    <template #actions>
+      <AppButton v-if="isAcademicTeacher" variant="ghost" :disabled="saving" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
+      <AppButton v-if="$route.query.returnToken" :disabled="saving" @click="goBack">返回原位置</AppButton>
+      <AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="openBook()">申请预约</AppButton>
+    </template>
     <AaOperationReceipt :receipt="receipt" />
+    <AppButton v-if="isAcademicTeacher && receipt && receipt.pending === false" variant="ghost" :disabled="saving" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学 · 查看办理中</AppButton>
     <AppButton v-if="pending" :disabled="saving" @click="queryPending">查询办理结果</AppButton>
-    <div class="booking-toolbar"><label>预约日期<AppDatePicker v-model="date" @change="changeDate" /></label><span>单节预约按正式节次保存；未发现占用不代表已取得使用资格。</span></div>
+    <div v-if="isAcademicTeacher" class="booking-view-tabs" role="tablist" aria-label="预约工作区">
+      <button type="button" :class="{ active: workspaceTab === 'find' }" @click="changeWorkspaceTab('find')">找空闲并预约</button>
+      <button type="button" :class="{ active: workspaceTab === 'mine' }" @click="changeWorkspaceTab('mine')">我的预约</button>
+    </div>
+    <div v-if="!isAcademicTeacher || workspaceTab === 'find'" class="booking-toolbar"><label>预约日期<AppDatePicker v-model="date" @change="changeDate" /></label><span>单节预约按正式节次保存；未发现占用不代表已取得使用资格。</span></div>
     <AppInlineAlert v-if="canReview && kind === 'LAB'" type="warning" title="审核通过待核验" description="未关联正式排课场地的实训室不能通过预约；请先到实训室资源核对关联，再返回原队列。" />
     <AppInlineAlert v-else-if="canReview" type="info" title="以服务端最终判定为准" description="审核通过时，服务端将在同一事务内重新核对教室状态、开放借用规则、维修、已批准预约和正式课表。" />
     <ErrorState v-if="error" :description="error" @retry="load" /><LoadingState v-else-if="loading" />
     <div v-else class="booking-stack">
-      <section class="booking-card">
+      <section v-if="!isAcademicTeacher || workspaceTab === 'find'" class="booking-card">
         <header><h2>{{ label }} · 日期与节次占用</h2><span>{{ date }} · 共 {{ resourceTotal }} 项资源</span></header>
         <p class="booking-note">{{ occupancyNote }}</p>
-        <div v-if="resources.length" class="booking-matrix"><table><thead><tr><th>资源 / 容量</th><th v-for="slot in 12" :key="slot">第{{ slot }}节</th></tr></thead><tbody><tr v-for="resource in resources" :key="resource[idKey]"><th>{{ resource.roomName || resource.labName || resource.roomCode }}<small>{{ resource.capacity ?? '未提供' }} 座 · #{{ resource[idKey] }}</small></th><td v-for="slot in 12" :key="slot"><button :class="{ occupied: cell(resource, slot).occupied }" @click="selectSlot(resource, slot)">{{ cell(resource, slot).label }}</button></td></tr></tbody></table></div>
+        <div v-if="resources.length" class="booking-matrix"><table><thead><tr><th>资源 / 容量</th><th v-for="slot in 12" :key="slot">第{{ slot }}节</th></tr></thead><tbody><tr v-for="resource in resources" :key="resource[idKey]"><th>{{ resource.roomName || resource.labName || resource.roomCode }}<small>{{ resource.capacity ?? '未提供' }} 座<template v-if="!isAcademicTeacher"> · #{{ resource[idKey] }}</template></small></th><td v-for="slot in 12" :key="slot"><button :class="{ occupied: cell(resource, slot).occupied }" @click="selectSlot(resource, slot)">{{ cell(resource, slot).label }}</button></td></tr></tbody></table></div>
         <EmptyState v-else :title="`当前没有可读取的${label}资源`" />
         <div class="booking-pager"><AppButton :disabled="resourcePage <= 1" @click="turnPage('resourcePage', -1)">上一页资源</AppButton><span>第 {{ resourcePage }} 页 · 每页5项</span><AppButton :disabled="resourcePage * 5 >= resourceTotal" @click="turnPage('resourcePage', 1)">下一页资源</AppButton></div>
       </section>
       <section class="booking-card">
-        <header><h2>当日预约记录</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
+        <header><h2>{{ isAcademicTeacher ? (workspaceTab === 'mine' ? '我的预约' : '我的当日预约') : '当日预约记录' }}</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
         <DataTable v-if="rows.length" :columns="columns" :rows="rows" row-key="bookingId">
-          <template #cell-resource="{ row }">{{ row[textKey] }}<small>#{{ row.bookingId }}</small></template>
+          <template #cell-resource="{ row }">{{ row[textKey] }}<small v-if="!isAcademicTeacher">预约 #{{ row.bookingId }}</small></template>
           <template #cell-slot="{ row }">{{ row.bookingDate }} 第{{ row.slotNo }}节</template>
           <template #cell-status="{ row }"><StatusTag :label="statusLabel(row.status)" :type="row.status === 'APPROVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'warning'" /></template>
-          <template #cell-actions="{ row }"><template v-if="canReview && row.status === 'PENDING'"><AppButton :disabled="saving || Boolean(pending) || Boolean(approvalBlockReason(row))" :title="approvalBlockReason(row)" @click="openReview(row, 'APPROVE')">审核通过</AppButton><AppButton :disabled="saving || Boolean(pending)" @click="openReview(row, 'REJECT')">驳回</AppButton></template><span v-else-if="!canReview">由资源管理员审核</span></template>
+          <template #cell-actions="{ row }"><template v-if="canReview && row.status === 'PENDING'"><AppButton :disabled="saving || Boolean(pending) || Boolean(approvalBlockReason(row))" :title="approvalBlockReason(row)" @click="openReview(row, 'APPROVE')">审核通过</AppButton><AppButton :disabled="saving || Boolean(pending)" @click="openReview(row, 'REJECT')">驳回</AppButton></template><span v-else-if="!canReview">{{ teacherBookingNext(row) }}</span></template>
         </DataTable>
-        <EmptyState v-else title="所选日期与状态下暂无预约" description="已成功读取所选日期的预约记录。" />
+        <EmptyState v-else :title="workspaceTab === 'mine' && isAcademicTeacher ? '当前没有本人预约记录' : '所选日期与状态下暂无预约'" :description="workspaceTab === 'mine' && isAcademicTeacher ? '这里跨日期显示您提交的预约；可用状态筛选待审核、已通过或已驳回。' : '已成功读取所选日期的预约记录。'" />
         <div class="booking-pager"><AppButton :disabled="page <= 1" @click="turnPage('page', -1)">上一页</AppButton><span>第 {{ page }} 页 · 共 {{ total }} 条</span><AppButton :disabled="page * 20 >= total" @click="turnPage('page', 1)">下一页</AppButton></div>
       </section>
     </div>
@@ -57,9 +69,10 @@ export default {
   components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppDatePicker, AppSelect, AppClassroomPicker, AppLabPicker, AppFormItem, AppNumberInput, AppTextInput, AppTextarea, AppInlineAlert, AaOperationReceipt },
   props: { kind: { type: String, required: true }, ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
-  data() { return { date: today(), loading: true, error: '', rows: [], resources: [], occupancy: [], occupancyNote: '', page: 1, total: 0, resourcePage: 1, resourceTotal: 0, filterStatus: '', disposed: false, saving: false, bookVisible: false, form: {}, formError: '', review: { visible: false, row: null, action: '', reason: '', error: '', token: 0 }, evidence: { visible: false, items: [], note: '' }, receipt: null, pending: null, loadGate: null, activeIdentity: '', operationSerial: 0, routeWriting: false, routeWriteSeq: 0, recoveryError: '',
+  data() { return { date: today(), workspaceTab: 'find', loading: true, error: '', rows: [], resources: [], occupancy: [], occupancyNote: '', page: 1, total: 0, resourcePage: 1, resourceTotal: 0, filterStatus: '', bookingId: '', disposed: false, saving: false, bookVisible: false, form: {}, formError: '', review: { visible: false, row: null, action: '', reason: '', error: '', token: 0 }, evidence: { visible: false, items: [], note: '' }, receipt: null, pending: null, loadGate: null, activeIdentity: '', operationSerial: 0, routeWriting: false, routeWriteSeq: 0, recoveryError: '',
     statusOptions: [{ label: '全部状态', value: '' }, ...Object.entries(labels).map(([value, label]) => ({ value, label }))], columns: [{ key: 'resource', title: '资源 / 预约编号' }, { key: 'slot', title: '时段' }, { key: 'purpose', title: '用途' }, { key: 'applicantName', title: '申请人' }, { key: 'status', title: '状态' }, { key: 'actions', title: '办理' }] } },
   computed: {
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
     label() { return this.kind === 'CLASSROOM' ? '教室' : '实训室' }, idKey() { return this.kind === 'CLASSROOM' ? 'classroomId' : 'labId' }, textKey() { return this.kind === 'CLASSROOM' ? 'classroomText' : 'labText' },
     api() { return this.kind === 'CLASSROOM' ? academicAffairsClassroomBookingApi : academicAffairsLabBookingApi },
     canReview() { return matchPermission(this.ctx.permissionPatterns || [], `academicAffairs.${this.kind === 'CLASSROOM' ? 'classroom' : 'lab'}.update`) },
@@ -74,6 +87,14 @@ export default {
   beforeUnmount() { this.disposed = true; this.loadGate?.invalidate(); this.persistPending() },
   methods: {
     statusLabel(status) { return labels[status] || '状态待确认' },
+    teacherBookingNext(row) {
+      const status = String(row?.status || '').toUpperCase()
+      if (status === 'PENDING') return '等待资源管理员审核'
+      if (status === 'APPROVED') return '已通过，可按预约时间使用'
+      if (status === 'REJECTED') return row?.reviewReason ? `已驳回：${row.reviewReason}` : '已驳回'
+      if (status === 'CANCELLED') return '已取消'
+      return '查看正式状态'
+    },
     identityKey() {
       const identity = this.academicFlow?.identity?.() || academicIdentity(currentUserFromToken(), this.ctx)
       return identity ? JSON.stringify([identity, this.kind]) : ''
@@ -84,7 +105,7 @@ export default {
       return JSON.stringify([String(user.tenantId), String(user.userId), user.currentRoleCode, user.activeContextId || '', this.kind])
     },
     viewKey() {
-      return JSON.stringify([this.identityKey(), this.date, this.page, this.resourcePage, this.filterStatus])
+      return JSON.stringify([this.identityKey(), this.workspaceTab, this.date, this.page, this.resourcePage, this.filterStatus, this.bookingId])
     },
     applyRouteState() {
       const state = academicRouteState(this.$route)
@@ -93,19 +114,26 @@ export default {
       const rawStatus = routeScalar(this.$route.query?.status).toUpperCase()
       const nextStatus = Object.prototype.hasOwnProperty.call(labels, rawStatus) ? rawStatus : ''
       const nextResourcePage = pageValue(routeScalar(this.$route.query?.resourcePage))
-      const changed = this.date !== nextDate || this.page !== state.page ||
-        this.resourcePage !== nextResourcePage || this.filterStatus !== nextStatus
+      const nextBookingId = /^[1-9]\d*$/.test(routeScalar(this.$route.query?.bookingId)) ? routeScalar(this.$route.query?.bookingId) : ''
+      const requestedView = routeScalar(this.$route.query?.view)
+      const nextWorkspaceTab = this.isAcademicTeacher && (requestedView === 'mine' || nextBookingId) ? 'mine' : 'find'
+      const changed = this.date !== nextDate || this.workspaceTab !== nextWorkspaceTab || this.page !== state.page ||
+        this.resourcePage !== nextResourcePage || this.filterStatus !== nextStatus || this.bookingId !== nextBookingId
       this.date = nextDate
+      this.workspaceTab = nextWorkspaceTab
       this.page = state.page
       this.resourcePage = nextResourcePage
       this.filterStatus = nextStatus
+      this.bookingId = nextBookingId
       return changed
     },
     syncRoute() {
       const query = { ...this.$route.query, date: this.date }
+      if (this.isAcademicTeacher && this.workspaceTab === 'mine') query.view = 'mine'; else delete query.view
       if (this.page > 1) query.page = String(this.page); else delete query.page
       if (this.resourcePage > 1) query.resourcePage = String(this.resourcePage); else delete query.resourcePage
       if (this.filterStatus) query.status = this.filterStatus; else delete query.status
+      if (this.bookingId) query.bookingId = this.bookingId; else delete query.bookingId
       const sequence = ++this.routeWriteSeq
       this.routeWriting = true
       this.$router.replace({ query }).catch(() => {}).finally(() => {
@@ -113,6 +141,16 @@ export default {
         this.routeWriting = false
         if (this.applyRouteState()) { this.loadGate?.invalidate(); this.load() }
       })
+    },
+    changeWorkspaceTab(value) {
+      if (!this.isAcademicTeacher || !['find', 'mine'].includes(value)) return
+      if (value === this.workspaceTab && !this.bookingId) return
+      this.workspaceTab = value
+      this.page = 1
+      this.bookingId = ''
+      this.syncRoute()
+      this.loadGate?.invalidate()
+      this.load()
     },
     changeDate() { this.page = 1; this.syncRoute(); this.load() },
     changeStatus() { this.page = 1; this.syncRoute(); this.load() },
@@ -260,6 +298,7 @@ export default {
       const page = this.page
       const resourcePage = this.resourcePage
       const status = this.filterStatus
+      const bookingId = this.bookingId
       this.loading = true
       this.error = this.recoveryError
       this.rows = []
@@ -269,12 +308,15 @@ export default {
       this.resourceTotal = 0
       if (!date) { this.error = '请选择预约日期。'; this.loading = false; return }
       try {
+        const browseResources = !this.isAcademicTeacher || this.workspaceTab === 'find'
         const [records, resources, occupancy] = await Promise.all([
-          api.list({ date, status: status || undefined, page, pageSize: 20 }),
-          kind === 'CLASSROOM'
-            ? academicAffairsApi.listClassrooms({ page: resourcePage, pageSize: 5 })
-            : academicAffairsLabApi.list({ page: resourcePage, pageSize: 5 }),
-          this.canReadOccupancy ? academicAffairsResourceApi.occupancy(date, kind) : Promise.resolve(null)
+          api.list({ bookingId: bookingId || undefined, date: browseResources ? date : undefined, status: status || undefined, page, pageSize: 20 }),
+          browseResources
+            ? (kind === 'CLASSROOM'
+              ? academicAffairsApi.listClassrooms({ page: resourcePage, pageSize: 5 })
+              : academicAffairsLabApi.list({ page: resourcePage, pageSize: 5 }))
+            : Promise.resolve({ code: 0, data: { items: [], total: 0 } }),
+          browseResources && this.canReadOccupancy ? academicAffairsResourceApi.occupancy(date, kind) : Promise.resolve(null)
         ])
         if (!current()) return
         for (const response of [records, resources, occupancy]) {
@@ -296,7 +338,7 @@ export default {
         this.occupancy = occupancy?.data?.items || []
         this.occupancyNote = occupancy
           ? '仅按稳定资源编号匹配占用。课表缺资源编号的记录须另行核对，未匹配时显示待核对。'
-          : '当前账号没有跨源占用读取权限，请由资源管理员核对课表及维修情况。'
+          : (browseResources ? '当前账号没有跨源占用读取权限，请由资源管理员核对课表及维修情况。' : '')
       } catch (e) {
         if (current()) this.failure(e)
       } finally {
@@ -706,7 +748,7 @@ export default {
       if (confirmed) {
         status = this.statusLabel(row.status)
         next = row.status === 'PENDING'
-          ? '由资源管理员审核，请在当日预约记录中查看进度。'
+          ? '由资源管理员审核，请在“我的预约”中查看进度。'
           : '请按正式审核结果安排使用，并继续遵守教室开放规则。'
         if (advanced) next = '原申请命令已确认；预约随后已进入' + this.statusLabel(row.status) + '，后续审核不归属于本次申请。'
       } else if (row && readMatches && operation.postState !== 'SUCCESS') {
@@ -726,8 +768,17 @@ export default {
         time: row?.reviewedAt || row?.createdAt,
         next
       }
-      if (confirmed) this.clearPending(operation)
-      else this.persistPending()
+      if (confirmed) {
+        this.clearPending(operation)
+        if (operation.action === 'BOOK' && this.isAcademicTeacher) {
+          this.workspaceTab = 'mine'
+          this.page = 1
+          this.bookingId = ''
+          this.syncRoute()
+          await this.load()
+          return
+        }
+      } else this.persistPending()
       await this.load()
     },
     async queryPending() {
@@ -750,5 +801,5 @@ export default {
 }
 </script>
 <style scoped>
-.booking-stack{display:grid;gap:18px}.booking-toolbar,.booking-card header,.booking-pager{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.booking-toolbar{margin:18px 0}.booking-toolbar label{display:flex;align-items:center;gap:10px}.booking-toolbar>span,.booking-note,.booking-card header>span,.booking-pager span{font-size:12px;color:var(--text-secondary)}.booking-card{border:1px solid var(--border-base);border-radius:12px;padding:18px;background:var(--bg-card);min-width:0}.booking-card header{margin-bottom:16px}.booking-card h2{font-size:16px;margin:0}.booking-matrix{overflow:auto}.booking-matrix table{border-collapse:collapse;min-width:1250px;width:100%;font-size:12px}.booking-matrix th,.booking-matrix td{padding:12px 8px;border:1px solid var(--border-base);text-align:center}.booking-matrix th{background:var(--pri-bg);font-weight:500}.booking-matrix th:first-child{min-width:150px;text-align:left}.booking-card small{display:block;color:var(--text-secondary);font-size:11px;margin-top:5px}.booking-matrix button{border:1px solid var(--primary-200);border-radius:5px;background:var(--bg-card);padding:8px 5px;color:var(--pri);font:inherit;cursor:pointer}.booking-matrix button.occupied{background:var(--pri-bg);color:var(--text-secondary)}.booking-pager{justify-content:flex-end;margin-top:14px}.booking-form{display:grid;gap:16px}.booking-form p{line-height:1.7;color:var(--text-secondary)}
+.booking-view-tabs{display:flex;gap:6px;margin:14px 0 2px;padding:4px;border:1px solid var(--border-base);border-radius:9px;background:var(--bg-card);width:max-content;max-width:100%}.booking-view-tabs button{border:0;border-radius:6px;padding:7px 12px;background:transparent;color:var(--text-secondary);cursor:pointer}.booking-view-tabs button.active{background:var(--pri-bg);color:var(--pri);font-weight:600}.booking-stack{display:grid;gap:18px}.booking-toolbar,.booking-card header,.booking-pager{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.booking-toolbar{margin:18px 0}.booking-toolbar label{display:flex;align-items:center;gap:10px}.booking-toolbar>span,.booking-note,.booking-card header>span,.booking-pager span{font-size:12px;color:var(--text-secondary)}.booking-card{border:1px solid var(--border-base);border-radius:12px;padding:18px;background:var(--bg-card);min-width:0}.booking-card header{margin-bottom:16px}.booking-card h2{font-size:16px;margin:0}.booking-matrix{overflow:auto}.booking-matrix table{border-collapse:collapse;min-width:1250px;width:100%;font-size:12px}.booking-matrix th,.booking-matrix td{padding:12px 8px;border:1px solid var(--border-base);text-align:center}.booking-matrix th{background:var(--pri-bg);font-weight:500}.booking-matrix th:first-child{min-width:150px;text-align:left}.booking-card small{display:block;color:var(--text-secondary);font-size:11px;margin-top:5px}.booking-matrix button{border:1px solid var(--primary-200);border-radius:5px;background:var(--bg-card);padding:8px 5px;color:var(--pri);font:inherit;cursor:pointer}.booking-matrix button.occupied{background:var(--pri-bg);color:var(--text-secondary)}.booking-pager{justify-content:flex-end;margin-top:14px}.booking-form{display:grid;gap:16px}.booking-form p{line-height:1.7;color:var(--text-secondary)}
 </style>

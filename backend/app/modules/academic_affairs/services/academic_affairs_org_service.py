@@ -530,11 +530,16 @@ def _class_college_id(db, class_id) -> int | None:
     return m.college_id if m else None
 
 
-def list_classes(user, major_id=None, grade=None, class_status=None, keyword=None, page=1, page_size=50):
+def list_classes(user, major_id=None, grade=None, class_status=None, keyword=None, page=1, page_size=50, *, term_id=None):
     from app.models import Major, SchoolClass, StudentProfile, User
     with session() as db:
-        ctx = _ctx(user, db)
-        allowed = _allowed_class_ids(ctx, db)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            allowed = teacher_authority.relation_scope(db, user, term_id=term_id)["classIds"]
+        else:
+            ctx = _ctx(user, db)
+            allowed = _allowed_class_ids(ctx, db)
         conds = [SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)]
         if allowed is not None:
             if not allowed:
@@ -857,14 +862,25 @@ def list_teaching_classes(user, term_code=None, batch_id=None, page=1, page_size
     """Read the existing formal projection, with legacy task fields as migration fallback."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher, AaTeachingTask, AaTeachingTaskBatch, AaTerm
     with session() as db:
-        allowed = _allowed_class_ids(_ctx(user, db), db)
-        if allowed is not None and not allowed:
-            return [], 0
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        teacher_task_ids = None
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            teacher_task_ids = teacher_authority.relation_scope(db, user, term_id=term_id)["taskIds"]
+            if not teacher_task_ids:
+                return [], 0
+            allowed = None
+        else:
+            allowed = _allowed_class_ids(_ctx(user, db), db)
+            if allowed is not None and not allowed:
+                return [], 0
         conds = [AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
                  AaTeachingTask.status != "MERGED",
                  AaTeachingTaskBatch.is_deleted.is_(False), AaTerm.is_deleted.is_(False),
                  func.coalesce(AaTeachingClass.class_code, AaTeachingTask.teaching_class_code).is_not(None)]
-        if allowed is not None:
+        if teacher_task_ids is not None:
+            conds.append(AaTeachingTask.id.in_(sorted(teacher_task_ids)))
+        elif allowed is not None:
             conds.append(AaTeachingTask.class_id.in_(list(allowed)))
         if batch_id:
             conds.append(AaTeachingTask.batch_id == int(batch_id))

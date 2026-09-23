@@ -63,7 +63,7 @@ def test_detail_uses_exact_version_and_preserves_program_snapshot(client, db_mod
     rows = {row["programCourseId"]: row for row in detail["courses"]}
     assert rows[str(first_id)] == {
         "programCourseId": str(first_id), "courseName": "方案原课程名",
-        "openTermNo": 1, "module": "专业", "credit": 2.5,
+        "openTermNo": 1, "module": "专业", "credit": 2.5, "formationMode": None,
         "courseId": str(old_id), "courseCode": "SOURCE-A", "courseVersion": 1,
         "nature": "ELECTIVE", "hoursTotal": 32,
     }

@@ -10,7 +10,7 @@ function instance(file, deps = {}, options = {}) {
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   const imports = [...script.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)]
   const names = imports.flatMap(([,binding]) => binding.trim().startsWith('{') ? binding.replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean) : [binding.trim()])
-  const defaults = { ...status, ...results, ...tasks, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps }
+  const defaults = { ...status, ...results, ...tasks, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps, academicAffairsApi: { getCurrentTerm: async()=>({ code:0, data:{ termId:'a', termName:'当前学期' } }), ...(deps.academicAffairsApi || {}) } }
   const clean = script.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return')
   const component = new Function(...names, clean)(...names.map(name=>defaults[name] ?? {}))
   const vm = { ...component.data(), selectedBatchId:'', ctx:{permissionPatterns:['*']}, $route:{params:{batchId:'a'},query:{teachingClassId:'a'},fullPath:'/admin/academic-affairs/teaching-tasks/a'}, $router:{push(){},replace:async()=>{}}, ...options }
@@ -134,6 +134,7 @@ test('T08 teacher conflict preserves rejection reason',async()=>{
 test('T08 old teacher list response never replaces current read',async()=>{
   const first=deferred();let n=0
   const vm=instance('AaTeacherTaskConfirmView',{academicAffairsApi:{listAllTasks:()=>++n===1?first.promise:Promise.resolve(page([{taskId:'new'}]))}})
+  vm.currentTermId='a';vm.currentTermName='当前学期'
   const request=vm.load();await vm.load();first.resolve(page([{taskId:'old'}]));await request;assert.equal(vm.rows[0].taskId,'new')
 })
 

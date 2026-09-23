@@ -415,10 +415,12 @@ def task_all_list(
     batchId: Optional[int] = None,
     courseId: Optional[int] = None,
     termId: Optional[int] = None,
+    taskId: Optional[int] = None,
     keyword: Optional[str] = None,
     status: Optional[str] = None,
     mergeable: bool = False,
     mine: bool = False,
+    formalMine: bool = False,
     page: int = 1,
     pageSize: int = 50,
     user=Depends(require_permission("academicAffairs.teachingTask.view")),
@@ -432,8 +434,10 @@ def task_all_list(
         mine,
         page,
         pageSize,
+        task_id=taskId,
         term_id=termId,
         keyword=keyword,
+        formal_mine=formalMine,
     )
     return success(paginate(items, total, page, pageSize))
 

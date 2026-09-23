@@ -149,7 +149,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 课表异议/教材选用）逐条核对过端点 summary 与既有测试后保留。
     "ACADEMIC_TEACHER": {
         *_WORKBENCH_SELF,
-        # 基础只读：看板/学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
+        # 基础只读：dashboard 仅用于兼容旧 API；service 对普通教师返回本人安全视图，不返回全校聚合。
+        # 教师 PC 默认仍进入 /teacher/today，不展示管理员教务看板。
         "academicAffairs.dashboard.view",
         "academicAffairs.term.view", "academicAffairs.calendar.view",
         "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view",

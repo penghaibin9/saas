@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "cf3a448214041636e9adefa9e46d51939f9e628125788dd6b1e67686aa03a040",
+  "digest": "04a506047b107f59ddbd2b708105387cfb4a5e8a18e4101e0d30c133ea9568ec",
   "counts": {
     "total": 584,
     "production": 584,
@@ -7318,11 +7318,11 @@
       ],
       "label": "课堂考勤",
       "path": "/admin/academic-affairs/attendance-stats",
-      "permissionKey": "academicAffairs.warning.view",
+      "permissionKey": "academicAffairs.attendance.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.warning.view"
+        "academicAffairs.attendance.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -7348,11 +7348,11 @@
       ],
       "label": "考勤场次查询",
       "path": "/admin/academic-affairs/attendance-stats?panel=sessions",
-      "permissionKey": "academicAffairs.warning.view",
+      "permissionKey": "academicAffairs.attendance.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.warning.view"
+        "academicAffairs.attendance.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -7378,11 +7378,11 @@
       ],
       "label": "按点名类别统计",
       "path": "/admin/academic-affairs/attendance-stats",
-      "permissionKey": "academicAffairs.warning.view",
+      "permissionKey": "academicAffairs.attendance.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.warning.view"
+        "academicAffairs.attendance.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8736,11 +8736,11 @@
       ],
       "label": "教材选用",
       "path": "/admin/academic-affairs/textbooks?tab=selection",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.selection.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.selection.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8765,11 +8765,11 @@
       ],
       "label": "审核备案",
       "path": "/admin/academic-affairs/textbooks?tab=review",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.review.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.review.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8794,11 +8794,11 @@
       ],
       "label": "征订到货",
       "path": "/admin/academic-affairs/textbooks?tab=order",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.order.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.order.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8823,11 +8823,11 @@
       ],
       "label": "费用台账",
       "path": "/admin/academic-affairs/textbooks?tab=fee",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.fee.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.fee.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8852,11 +8852,11 @@
       ],
       "label": "教材库存",
       "path": "/admin/academic-affairs/textbooks?tab=stock",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.order.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.order.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -8881,11 +8881,11 @@
       ],
       "label": "教材统计",
       "path": "/admin/academic-affairs/textbooks?tab=stats",
-      "permissionKey": "academicAffairs.textbook.view",
+      "permissionKey": "academicAffairs.textbook.order.manage",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.textbook.view"
+        "academicAffairs.textbook.order.manage"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",

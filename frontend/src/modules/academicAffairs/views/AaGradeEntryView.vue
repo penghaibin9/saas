@@ -20,16 +20,24 @@
         <div><strong>{{ submitReceipt.verified ? '已回读正式任务' : '结果待核实' }}</strong><span>{{ submitReceipt.courseName }} · 任务 {{ submitReceipt.taskId }}</span></div>
         <div><small>当前状态</small><b>{{ statusLabel(submitReceipt.status) }}</b></div>
         <div><small>下一责任</small><b>{{ submitReceipt.verified ? (['SUBMITTED', 'COLLEGE_REVIEW'].includes(submitReceipt.status) ? '学院成绩审核人' : submitReceipt.status === 'ACADEMIC_REVIEW' ? '教务成绩发布岗' : '查看正式成绩') : '请先核对正式状态' }}</b></div>
-        <AppButton v-if="submitReceipt.verified" size="small" variant="ghost" @click="closeTask">继续下一门</AppButton><AppButton v-else :disabled="submitting" @click="verifySubmit">核对正式状态</AppButton>
+        <template v-if="submitReceipt.verified">
+          <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</AppButton>
+          <AppButton size="small" variant="ghost" @click="closeTask">继续下一门</AppButton>
+        </template>
+        <AppButton v-else :disabled="submitting" @click="verifySubmit">核对正式状态</AppButton>
       </section>
       <ErrorState v-if="taskError" :description="taskError" @retry="retryTask" />
       <LoadingState v-if="taskLoading" />
       <AppSectionCard v-if="!task" :title="importMode ? '选择成绩导入任务' : isAdminRole ? '成绩任务责任队列' : '我的录入任务'">
+        <div v-if="isAcademicTeacher" class="aa-current-term-bar">
+          <span>{{ showHistory ? '历史成绩任务' : `当前学期：${currentTermName || currentTermId || '待确认'}` }}</span>
+          <AppButton size="small" variant="ghost" :disabled="taskLoading || writeBusy" @click="toggleTaskHistory">{{ showHistory ? '返回当前学期' : '查看历史任务' }}</AppButton>
+        </div>
         <div class="aa-my-tasks">
           <ul>
             <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
               <span>
-                {{ t.courseName }}<small v-if="t.courseId"> · 课程ID {{ t.courseId }}</small>
+                {{ t.courseName }}<small v-if="isAdminRole && t.courseId"> · 课程ID {{ t.courseId }}</small>
                 <small v-if="t.deadline"> · 截止 {{ formatDeadline(t.deadline) }}<strong v-if="t.isOverdue" class="aa-overdue-text"> · 已逾期</strong></small>
               </span>
               <AppStatusTag :type="statusColor(t.status)" dot>{{ statusLabel(t.status) }}</AppStatusTag>
@@ -51,7 +59,23 @@
         <div class="aa-grid2">
           <label class="aa-field">
             <span :class="{ req: !isAdminRole }">教学任务</span>
-            <AppTeachingTaskPicker v-model="form.teachingTaskId" clearable @change="onTeachingTaskChange" placeholder="普通教师必选；管理员可留空做特殊补录" />
+            <input
+              v-if="isAcademicTeacher && setupTeachingTaskId"
+              :value="setupTeachingTaskLabel"
+              type="text"
+              class="aa-input"
+              disabled
+              aria-label="已锁定教学任务"
+            />
+            <AppTeachingTaskPicker
+              v-else
+              v-model="form.teachingTaskId"
+              :query="{ formalMine: !isAdminRole, termId: !isAdminRole ? (currentTermId || undefined) : undefined }"
+              :clearable="isAdminRole"
+              :disabled="creating"
+              @change="onTeachingTaskChange"
+              placeholder="普通教师仅选择当前学期本人正式教学任务；管理员可留空做特殊补录"
+            />
           </label>
           <label v-if="isAdminRole && !form.teachingTaskId" class="aa-field">
             <span class="req">课程具体版本</span>
@@ -82,8 +106,8 @@
             <div>
               <span class="aa-task-context__eyebrow">当前正式成绩任务</span>
               <h2>{{ task.courseName }}<span v-if="task.teachingClassName"> · {{ task.teachingClassName }}</span></h2>
-              <p>{{ task.termCode || '学期待核对' }} · 任务 {{ task.gradeTaskId }} · 课程 {{ task.courseId || '待治理' }}</p>
-              <p class="aa-task-source">来源：{{ task.teachingTaskId ? `正式教学任务 ${task.teachingTaskId}` : '历史任务或管理员特殊补录' }}</p>
+              <p>{{ task.termCode || '学期待核对' }}<template v-if="isAdminRole"> · 任务 {{ task.gradeTaskId }} · 课程 {{ task.courseId || '待治理' }}</template></p>
+              <p class="aa-task-source">来源：{{ task.teachingTaskId ? (isAdminRole ? '正式教学任务 ' + task.teachingTaskId : '本人正式教学任务') : '历史任务或管理员特殊补录' }}</p>
             </div>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
           </div>
@@ -113,7 +137,7 @@
         <AppSectionCard :title="`${readOnlyResult ? '成绩结果' : '录入任务'}：${task.courseName}`">
           <template #header-extra><AppButton size="small" variant="ghost" @click="closeTask">返回</AppButton></template>
           <div class="aa-task-head">
-            <span>课程ID {{ task.courseId || '待治理' }} · 及格线 {{ task.passLine }}</span>
+            <span><template v-if="isAdminRole">课程ID {{ task.courseId || '待治理' }} · </template>及格线 {{ task.passLine }}</span>
             <span v-if="task.deadlineReady">截止 {{ formatDeadline(task.deadline) }}</span>
             <span v-else>未设置提交截止时间</span>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
@@ -153,10 +177,11 @@
         </details>
 
         <template v-if="!dynamicMode">
-          <AppSectionCard v-if="fixedEditable" title="添加学生">
+          <AppSectionCard v-if="fixedEditable" :title="isAcademicTeacher ? '正式教学名单' : '添加学生'">
             <div class="aa-reg-search">
-              <AppStudentPicker v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
-              <AppButton :loading="loadingRoster" @click="loadRoster">按正式名单圈定</AppButton>
+              <AppStudentPicker v-if="!isAcademicTeacher" v-model="candidateStudentId" class="aa-input--grow" placeholder="按姓名/学号检索并添加学生" @change="onStudentPicked" />
+              <span v-else class="mp-note">任课教师只按正式教学班名单录入；不能手工添加名单外学生。</span>
+              <AppButton :loading="loadingRoster" @click="loadRoster">{{ isAcademicTeacher ? '重新读取正式名单' : '按正式名单圈定' }}</AppButton>
               <AppButton @click="openImport">导入成绩（Excel）</AppButton>
             </div>
           </AppSectionCard>
@@ -354,6 +379,7 @@ export default {
         passLine: 60, adminSupplementReason: ''
       },
       creating: false, task: null, myTasks: [], showCreate: false, taskLoading: false, taskError: '',
+      currentTermId: '', currentTermName: '', showHistory: false, setupTeachingTaskId: '', setupTeachingTaskLabel: '',
       taskSeq: 0, listSeq: 0, recordsSeq: 0, dynamicSeq: 0, alive: true, savingRowId: '',
       taskPage: 1, taskTotal: 0, rosterInfo: null, submitDialog: false, submitCommand: null, submitPending: false,
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
@@ -411,6 +437,9 @@ export default {
       if (!this.dynamicMode) return this.rows.length ? '逐行核对' : '名单待载入'
       return '读取中'
     },
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     isAdminRole() {
       const code = (this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase()
       return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
@@ -439,7 +468,11 @@ export default {
     schemeTotal() { return Number(this.schemeDraft.reduce((sum, item) => sum + Number(item.weight || 0), 0).toFixed(4)) }
   },
   watch: {
-    identityKey() { this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false; this.loadTasks() },
+    identityKey() {
+      this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false
+      this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.setupTeachingTaskId = ''; this.setupTeachingTaskLabel = ''
+      this.loadTasks()
+    },
     '$route.fullPath'() { this.invalidateTask(); this.loadTasks() }
   },
   beforeRouteLeave() { return this.confirmLeaveTask() },
@@ -557,8 +590,8 @@ export default {
       if (!await this.confirmLeaveTask()) return
       this.invalidateTask(); this.dynamicMode = false; this.showCreate = false
       this.deadlineForm = { deadlineLocal: '', reason: '' }
-      if (this.$route.query.taskId || this.$route.query.recordId) {
-        const query = { ...this.$route.query }; delete query.taskId; delete query.recordId; delete query.action; delete query.mode
+      if (this.$route.query.taskId || this.$route.query.recordId || this.$route.query.teachingTaskId || this.$route.query.action) {
+        const query = { ...this.$route.query }; delete query.taskId; delete query.recordId; delete query.teachingTaskId; delete query.action; delete query.mode
         this.$router.replace({ path: this.$route.path, query })
       } else this.loadTasks()
     },
@@ -604,18 +637,70 @@ export default {
       this.addRow(item.raw || item)
       this.candidateStudentId = ''
     },
+    async ensureCurrentTerm() {
+      if (!this.isAcademicTeacher || this.showHistory) return true
+      if (this.currentTermId) return true
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res?.code !== 0 || !res.data?.termId) {
+        this.taskError = res?.message || '当前学期尚未设置，无法建立教师当前学期成绩队列'
+        return false
+      }
+      this.currentTermId = String(res.data.termId)
+      this.currentTermName = res.data.termName || res.data.name || res.data.termCode || this.currentTermId
+      return true
+    },
+    async toggleTaskHistory() {
+      if (this.taskLoading || this.writeBusy || !this.isAcademicTeacher) return
+      this.showHistory = !this.showHistory
+      this.taskPage = 1
+      this.myTasks = []
+      this.taskTotal = 0
+      await this.loadTasks()
+    },
+    async prepareCreateFromTeachingTask(taskId, valid) {
+      const id = String(taskId || '').trim()
+      if (!this.isAcademicTeacher || !/^[1-9]\d*$/.test(id)) return
+      if (this.setupTeachingTaskId === id && this.showCreate && this.form.teachingTaskId === id) return
+      if (!(await this.ensureCurrentTerm()) || !valid()) return
+      const res = await academicAffairsApi.listAllTasks({
+        formalMine: true, termId: this.currentTermId, taskId: id, page: 1, pageSize: 1
+      })
+      if (!valid()) return
+      if (res?.code !== 0) throw res
+      const row = (res.data?.list || []).find(item => String(item.taskId) === id)
+      if (!row) throw { code: 404, message: '当前学期本人教学任务不存在或已失去办理权限' }
+      if (String(row.status || '').toUpperCase() !== 'READY') {
+        throw { code: 409, message: '该教学任务尚未完成教务终审，暂不能建立成绩任务' }
+      }
+      this.setupTeachingTaskId = id
+      this.setupTeachingTaskLabel = [row.courseName, row.teachingClassName || row.className].filter(Boolean).join(' · ') || '本人正式教学任务'
+      this.showCreate = true
+      this.form.teachingTaskId = id
+      this.onTeachingTaskChange(id, [{ raw: row }])
+    },
     async loadTasks() {
       const seq = ++this.listSeq, identity = this.identityKey
       const valid = () => this.alive && seq === this.listSeq && identity === this.identityKey
       this.taskLoading = true; this.taskError = ''
       try {
-        const res = await academicAffairsApi.getGradeTasks({ page: this.taskPage, pageSize: 20 })
+        const recordId = this.$route.query.recordId
+        const recordTaskId = typeof recordId === 'string' && /^[1-9]\d*$/.test(recordId) ? recordId : ''
+        const taskId = String(this.$route.query.taskId || recordTaskId || '').trim()
+        if (taskId && !this.task) {
+          await this.openTask({ gradeTaskId: taskId })
+          return
+        }
+        if (!(await this.ensureCurrentTerm()) || !valid()) return
+        const params = { page: this.taskPage, pageSize: 20 }
+        if (this.isAcademicTeacher && !this.showHistory) params.termId = this.currentTermId
+        const res = await academicAffairsApi.getGradeTasks(params)
         if (!valid()) return
         if (res?.code !== 0) throw res
         this.myTasks = res.data?.list || []; this.taskTotal = res.data?.total || 0
-        const recordId = this.$route.query.recordId
-        const taskId = this.$route.query.taskId || (typeof recordId === 'string' && /^[1-9]\d*$/.test(recordId) ? recordId : '')
-        if (taskId && !this.task) await this.openTask({ gradeTaskId: taskId })
+        const teachingTaskId = this.$route.query.teachingTaskId
+        if (this.$route.query.action === 'create' && teachingTaskId && !this.task) {
+          await this.prepareCreateFromTeachingTask(teachingTaskId, valid)
+        }
       } catch (err) { if (valid()) this.showTaskError(err) }
       finally { if (valid()) this.taskLoading = false }
     },
@@ -640,7 +725,11 @@ export default {
         this.formalSchemeMode = scheme.data?.schemeId ? 'dynamic' : scheme.data?.status === 'DEFAULT' ? 'fixed' : 'unknown'
         if (this.formalSchemeMode === 'unknown') throw { code: 503 }
         this.dynamicMode = this.formalSchemeMode === 'dynamic' || String(this.$route.query.mode || '') === 'dynamic'
-        if (this.dynamicMode) await this.loadDynamic(); else await this.refreshRecords()
+        if (this.dynamicMode) await this.loadDynamic()
+        else {
+          await this.refreshRecords()
+          if (valid() && this.fixedEditable && this.isAcademicTeacher) await this.loadRoster({ quiet: true })
+        }
         if (valid() && this.$route.query.action === 'import' && this.fixedEditable) this.openImport()
       } catch (err) { if (valid()) this.showTaskError(err) }
       finally { if (valid()) this.taskLoading = false }
@@ -870,17 +959,27 @@ export default {
       if (!this.currentTask(context)) return
       this.creating = false
       if (res.code === 0) {
-        await this.openTask({ gradeTaskId: res.data.gradeTaskId })
-        if (this.alive && context.identity === this.identityKey) {
-          toast.success('任务已创建，请核对正式名单后录入')
-          this.loadTasks()
+        const gradeTaskId = String(res.data?.gradeTaskId || '')
+        if (!/^[1-9]\d*$/.test(gradeTaskId)) throw { code: 503, message: '成绩任务已创建但未返回正式任务编号，请重新读取任务列表核对' }
+        this.showCreate = false
+        toast.success('任务已创建，正在载入正式名单；载入后请核对再录入')
+        await this.openTask({ gradeTaskId })
+        if (this.alive && context.identity === this.identityKey) this.loadTasks()
+      } else toast.error(res.message || '创建失败')
+      } catch (err) {
+        if (!this.currentTask(context)) return
+        const existingGradeTaskId = String(err?.details?.existingGradeTaskId || '')
+        if (err?.bizCode === 'DATA_CONFLICT' && /^[1-9]\d*$/.test(existingGradeTaskId)) {
+          this.showCreate = false
+          toast.info('该课程成绩任务已存在，已为您打开原任务')
+          await this.openTask({ gradeTaskId: existingGradeTaskId })
+          return
         }
+        this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。')
       }
-      else toast.error(res.message || '创建失败')
-      } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.creating = false }
     },
-    async loadRoster() {
+    async loadRoster({ quiet = false } = {}) {
       if (!this.fixedEditable || this.loadingRoster || this.writeBusy) return
       const context = this.captureTask()
       try {
@@ -892,9 +991,9 @@ export default {
       if (res.code === 0) {
         this.rosterInfo = res.data
         const items = res.data.items || []
-        if (!items.length) { toast.error(res.data.note || '未圈定到正式名单'); return }
+        if (!items.length) { if (!quiet) toast.error(res.data.note || '未圈定到正式名单'); return }
         items.forEach((student) => this.addRow(student))
-        toast.success(`已加入 ${items.length} 人`)
+        if (!quiet) toast.success(`已读取正式名单 ${items.length} 人`)
       } else toast.error(res.message || '加载名单失败')
       } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '操作结果待核实，请先读取正式记录；不要重复操作。') }
       finally { if (this.alive && context.seq === this.taskSeq && context.identity === this.identityKey) this.loadingRoster = false }
@@ -1013,6 +1112,7 @@ export default {
 </script>
 
 <style scoped>
+.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 @import '@/styles/module-page.css';
 .aa-task-settings { border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .aa-task-settings summary { padding: 12px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-primary); }

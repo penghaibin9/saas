@@ -651,7 +651,7 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
   },
   getMyTeacherToday() {
-    return call(() => request(`${BASE}/schedule/my/today`))
+    return call(() => request(`${BASE}/teacher/today`))
   },
   getRoomSchedule(classroomId, params = {}) {
     return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))
@@ -812,7 +812,7 @@ export const academicAffairsApi = {
     }
   },
 
-  /* ── 课堂考勤（PC 只读统计/查询；教师逐生录入在移动端） ── */
+  /* ── 课堂考勤（PC/移动端复用同一正式场次写链） ── */
   getAttendanceStats(params = {}) {
     return call(() => request(`${BASE}/attendance/stats`, { params }))
   },
@@ -821,6 +821,15 @@ export const academicAffairsApi = {
   },
   getAttendanceSession(sessionId) {
     return call(() => request(`${BASE}/attendance/sessions/${sessionId}`))
+  },
+  openAttendanceSession(body) {
+    return call(() => request(`${BASE}/attendance/sessions/open`, { method: 'POST', body }))
+  },
+  markAttendanceSession(sessionId, studentId, status) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}/mark`, { method: 'POST', body: { studentId, status } }))
+  },
+  submitAttendanceSession(sessionId) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}/submit`, { method: 'POST' }))
   },
 
   /* ── 成绩复查（学生发起在小程序；教务处复审在 PC：维持/调整/不予受理） ── */
@@ -1236,6 +1245,7 @@ export const academicAffairsTextbookApi = {
   // 选用
   listSelections(params = {}) { return callList(`${BASE}/textbooks/selections`, params) },
   createSelection(body) { return call(() => request(`${BASE}/textbooks/selections`, { method: 'POST', body })) },
+  updateSelection(id, body) { return call(() => request(`${BASE}/textbooks/selections/${id}`, { method: 'PUT', body })) },
   submitSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/submit`, { method: 'POST' })) },
   withdrawSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/withdraw`, { method: 'POST' })) },
   // 审核

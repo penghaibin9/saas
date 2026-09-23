@@ -1,14 +1,14 @@
 <template>
   <ModulePageShell
-    title="方案列表"
-    subtitle="一行是一份专业年级方案，不是一门课程"
+:title="isAcademicTeacher ? '培养方案' : '方案列表'"
+    :subtitle="isAcademicTeacher ? '仅查看学校已经正式发布、生效或冻结留存的培养方案' : '一行是一份专业年级方案，不是一门课程'"
     show-subtitle-in-concise
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
       <AppButton v-if="hasPermission('academicAffairs.program.manage')" @click="importChooserVisible = !importChooserVisible">Excel导入</AppButton>
-      <AppButton @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
       <AppButton v-if="hasPermission('academicAffairs.program.manage')" variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
     </template>
 
@@ -21,7 +21,7 @@
           <AppButton variant="ghost" @click="downloadProgramTemplate">下载六工作表模板</AppButton>
         </div>
       </AppSectionCard>
-      <div v-if="summary" class="aa-summary-grid">
+      <div v-if="summary && !isAcademicTeacher" class="aa-summary-grid">
         <div class="aa-summary-card"><span>本次范围</span><strong>{{ stageSummary.total }}</strong><small>专业年级方案</small></div>
         <div class="aa-summary-card"><span>编制中</span><strong>{{ stageSummary.authoring }}</strong><small>可继续完善</small></div>
         <div class="aa-summary-card is-warning"><span>待审核</span><strong>{{ stageSummary.review }}</strong><small>不提前生成正式任务</small></div>
@@ -29,7 +29,7 @@
       </div>
 
       <AppInlineAlert
-        v-if="summary?.blockedPrograms"
+        v-if="!isAcademicTeacher && summary?.blockedPrograms"
         type="warning"
         title="先处理方案阻断，再生成教学任务"
         :description="`当前有 ${summary.blockedPrograms} 个方案不能提交审核。进入方案详情可查看具体规则、定位字段和处理建议。`"
@@ -55,7 +55,7 @@
         <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="pagination.page = 1; applyPage()"><input v-model="keyword" class="aa-input" aria-label="搜索人才培养方案" placeholder="搜索人才培养方案" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; pagination.page = 1; applyPage()">清空</AppButton></form>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="还没有培养方案" description="点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节" />
+      <EmptyState v-else-if="!rows.length" :title="isAcademicTeacher ? '暂无正式培养方案' : '还没有培养方案'" :description="isAcademicTeacher ? '当前没有已正式发布或生效的培养方案，请联系教务管理人员。' : '点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节'" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="programId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.programName }}</div>
@@ -134,6 +134,9 @@ export default {
     }
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     stageSummary() {
       const statuses = this.allRows.map((row) => row.status)
       return {
@@ -200,10 +203,20 @@ export default {
       const revision = ++this.requestRevision
       this.loading = true; this.error = ''; this.rows = []; this.allRows = []; this.summary = null
       try {
-        const res = await programQualityApi.governanceSummary()
+        const res = this.isAcademicTeacher
+          ? await academicAffairsApi.getPrograms({ page: 1, pageSize: 500 })
+          : await programQualityApi.governanceSummary()
         if (revision !== this.requestRevision) return
-        if (res.code === 0) { this.summary = res.data; this.allRows = res.data.items || []; this.applyPage() }
-        else this.error = res.message || '方案及质量数据读取失败，请重试'
+        if (res.code === 0) {
+          if (this.isAcademicTeacher) {
+            this.summary = null
+            this.allRows = res.data?.list || []
+          } else {
+            this.summary = res.data
+            this.allRows = res.data.items || []
+          }
+          this.applyPage()
+        } else this.error = res.message || (this.isAcademicTeacher ? '正式培养方案读取失败，请重试' : '方案及质量数据读取失败，请重试')
       } catch(error) { if (revision === this.requestRevision) this.error = error?.message || '方案读取失败，请重试' }
       finally { if (revision === this.requestRevision) this.loading = false }
     }

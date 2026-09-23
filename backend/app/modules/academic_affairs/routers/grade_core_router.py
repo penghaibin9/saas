@@ -78,13 +78,16 @@ class GradeDeadlineBody(BaseModel):
 def grade_tasks(
     status: Optional[str] = None,
     taskId: Optional[int] = None,
+    termId: Optional[int] = None,
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
     term: Optional[str] = Query(None, max_length=50),
     keyword: Optional[str] = Query(None, max_length=100),
 ):
-    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize, task_id=taskId, term=term, keyword=keyword)
+    items, total = grade_task_read_svc.list_tasks(
+        user, status, page, pageSize, task_id=taskId, term_id=termId, term=term, keyword=keyword,
+    )
     return success(paginate(items, total, page, pageSize))
 
 

@@ -155,3 +155,46 @@ def test_t5_student_cannot_manage_403(client, db_mode):
     stu = _stu_token("书甲", "TB2401")
     assert client.post(f"{BASE}/textbooks", headers=stu, json={"name": "越权"}).status_code == 403
     assert client.get(f"{BASE}/textbooks", headers=stu).status_code == 403
+
+
+def test_t4b_returned_selection_can_be_revised_and_resubmitted(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    old_book = client.post(f"{BASE}/textbooks", headers=admin, json={"name": "旧版教材"}).json()["data"]["textbookId"]
+    new_book = client.post(f"{BASE}/textbooks", headers=admin, json={"name": "新版教材"}).json()["data"]["textbookId"]
+    sid = client.post(
+        f"{BASE}/textbooks/selections", headers=admin,
+        json={"taskId": str(ids["task"]), "textbookId": str(old_book), "expectedQty": 30, "remark": "原申报版本"}
+    ).json()["data"]["selectionId"]
+    assert client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin).status_code == 200
+    rbid = client.post(
+        f"{BASE}/textbooks/review-batches", headers=admin,
+        json={"termId": str(ids["term"]), "selectionIds": [str(sid)]}
+    ).json()["data"]["reviewBatchId"]
+    returned = client.post(
+        f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin,
+        json={"action": "RETURN", "reason": "教材版次过旧需更新"}
+    )
+    assert returned.status_code == 200, returned.text
+    duplicate = client.post(
+        f"{BASE}/textbooks/selections", headers=admin,
+        json={"taskId": str(ids["task"]), "textbookId": str(new_book), "expectedQty": 32, "remark": "不应另起新单"}
+    )
+    assert duplicate.status_code == 409
+
+    revised = client.put(
+        f"{BASE}/textbooks/selections/{sid}", headers=admin,
+        json={"textbookId": str(new_book), "expectedQty": 32, "remark": "按本学期课程内容改用新版教材"}
+    )
+    assert revised.status_code == 200, revised.text
+    data = revised.json()["data"]
+    assert data["selectionId"] == str(sid)
+    assert data["textbookId"] == str(new_book)
+    assert data["expectedQty"] == 32
+    assert data["remark"] == "按本学期课程内容改用新版教材"
+    assert data["status"] == "DRAFT"
+    assert not data["rejectReason"]
+
+    resubmitted = client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin)
+    assert resubmitted.status_code == 200, resubmitted.text
+    assert resubmitted.json()["data"]["status"] == "SUBMITTED"

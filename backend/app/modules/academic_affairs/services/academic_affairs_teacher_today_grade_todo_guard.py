@@ -19,10 +19,10 @@ from . import academic_affairs_grade_execution_service as grade_execution
 from . import academic_affairs_teacher_today_work_service as today_work
 
 
-def pending_grade_todos(db, user) -> list[dict]:
+def pending_grade_todos(db, user, *, term_id=None) -> list[dict]:
     from app.models import AaGradeTask
 
-    rows = _ORIGINAL_PENDING(db, user)
+    rows = _ORIGINAL_PENDING(db, user, term_id=term_id)
     if not rows:
         return []
     task_ids = sorted({

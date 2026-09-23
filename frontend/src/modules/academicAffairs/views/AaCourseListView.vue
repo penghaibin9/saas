@@ -1,13 +1,13 @@
 <template>
   <ModulePageShell
-    title="课程列表"
-    subtitle="课程身份按代码与版本确定，不按名称猜"
+:title="isAcademicTeacher ? '课程库' : '课程列表'"
+    :subtitle="isAcademicTeacher ? '仅查看已经正式启用的课程版本、学分与学时信息' : '课程身份按代码与版本确定，不按名称猜'"
     show-subtitle-in-concise
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="downloadCourseTemplate">下载导入模板</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="downloadCourseTemplate">下载导入模板</AppButton>
       <AppButton v-if="hasPermission('academicAffairs.course.manage')" @click="importVisible = true">批量导入</AppButton>
       <AppButton v-if="hasPermission('academicAffairs.course.manage')" variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
     </template>
@@ -25,7 +25,7 @@
         </form>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="课程库为空" description="点击「新建课程」录入第一门课程，提交两级审核后启用" />
+        <EmptyState v-else-if="!rows.length" title="课程库为空" :description="isAcademicTeacher ? '当前没有已正式启用的课程，请联系教务管理人员。' : '点击「新建课程」录入第一门课程，提交两级审核后启用'" />
         <DataTable v-else :columns="columns" :rows="rows" row-key="courseId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-code="{ row }">
           <div class="mp-cell-main">{{ row.courseCode }}</div>
@@ -95,6 +95,11 @@ export default {
         { key: 'status', title: '启用状态', width: '130px' },
         { key: 'actions', title: '办理入口', width: '100px' }
       ]
+    }
+  },
+  computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
     }
   },
   beforeUnmount() { this.requestRevision++ },

@@ -18,7 +18,10 @@ ACADEMIC_USER = {"userId": f"db-{ACADEMIC_UID}", "loginName": "aa-r3-origin-fina
 
 
 def _patch(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+
     monkeypatch.setattr(svc._legacy, "_tid", lambda: TID)
+    monkeypatch.setattr(resource_guard, "_tid", lambda: TID)
     monkeypatch.setattr(svc._legacy, "build_affairs_context", lambda *_a, **_k: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(svc._legacy, "_detect_conflict", lambda *_a, **_k: None)
     monkeypatch.setattr(svc._legacy, "_todo_upsert", lambda *_a, **_k: None)
@@ -131,7 +134,7 @@ def _body(origin_id, change_type="STOP"):
         "makeupPlan": "后续补课安排已确认" if change_type == "STOP" else "",
         "targetWeekday": None,
         "targetSlotNo": None,
-        "targetStartWeek": None,
+        "targetStartWeek": 6 if change_type in {"STOP", "MAKEUP"} else None,
         "targetEndWeek": None,
         "targetWeekParity": None,
         "targetClassroom": None,

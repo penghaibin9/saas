@@ -577,7 +577,8 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50, *, keyword=Non
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None):
+                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None,
+                   formal_mine=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
@@ -613,7 +614,13 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
                 AaTeachingTask.is_merged.is_(False),
                 AaTeachingTask.merged_into_id.is_(None),
             ])
-        if mine:
+        if mine and formal_mine:
+            raise AppException("VALIDATION_ERROR", "mine 与 formalMine 不可同时使用")
+        if formal_mine:
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            formal_scope = teacher_authority.relation_scope(db, user, term_id=term_id)
+            conditions.append(AaTeachingTask.id.in_(sorted(formal_scope.get("taskIds") or []) or [-1]))
+        elif mine:
             keys = _core._user_keys(user)
             conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys) or ["__none__"]))
         else:
@@ -627,7 +634,23 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
         ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
-        return [_core._task_row(task) for task in rows], total
+        batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})
+        batch_status = {}
+        if batch_ids:
+            batch_status = {
+                int(batch.id): str(batch.status or "")
+                for batch in db.scalars(select(AaTeachingTaskBatch).where(
+                    AaTeachingTaskBatch.tenant_id == _tid(),
+                    AaTeachingTaskBatch.id.in_(batch_ids),
+                    AaTeachingTaskBatch.is_deleted.is_(False),
+                )).all()
+            }
+        items = []
+        for task in rows:
+            item = _core._task_row(task)
+            item["batchStatus"] = batch_status.get(int(task.batch_id or 0), "")
+            items.append(item)
+        return items, total
 
 
 def get_batch_workbench(batch_id, user) -> dict:

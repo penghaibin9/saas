@@ -21,7 +21,8 @@ test('attendance routes expose the exact business page title and preserve stable
   const state = mount('views/AaAttendanceStatsView.vue', { matchPermission: () => false })
   assert.equal(state.pageTitle, '课堂考勤')
   state.panel = 'sessions'
-  assert.equal(state.pageTitle, '考勤场次查询')
+  assert.equal(state.pageTitle, '课堂考勤')
+  assert.match(state.pageSubtitle, /场次/)
   const student = state.normalizeStudent({ studentId: '991', sessions: 3 })
   assert.equal(student.studentId, '991')
   assert.equal(student.sessions, 3)

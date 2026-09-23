@@ -13,6 +13,7 @@ from sqlalchemy import func
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_textbook_service as _legacy
+from . import academic_affairs_teacher_relation_authority as teacher_authority
 
 _ACTIVE_ALLOCATION_STATUSES = ("PENDING", "RECEIVED", "EXCHANGED")
 _ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
@@ -103,6 +104,13 @@ def _task_term(db, task_id):
 def _selection_term(db, selection):
     _task, batch = _task_term(db, selection.task_id)
     return batch
+
+
+def _require_teacher_selection_scope(db, task, user, *, lock=False):
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "ACADEMIC_TEACHER":
+        return None
+    return teacher_authority.require_teacher(db, task, user, lock=lock)
 
 
 def _get_selection(db, selection_id, *, lock=False):
@@ -262,6 +270,7 @@ def create_selection(user, body):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         task, task_batch = _task_term(db, int(body.taskId))
+        _require_teacher_selection_scope(db, task, user)
         textbook = db.query(AaTextbook).filter(
             AaTextbook.id == int(body.textbookId),
             AaTextbook.tenant_id == _legacy._tid(),
@@ -272,11 +281,11 @@ def create_selection(user, body):
         active = db.query(AaTextbookSelection).filter(
             AaTextbookSelection.tenant_id == _legacy._tid(),
             AaTextbookSelection.task_id == task.id,
-            AaTextbookSelection.status.notin_(["RETURNED", "ORDERED"]),
+            AaTextbookSelection.status.notin_(["ORDERED"]),
             AaTextbookSelection.is_deleted.is_(False),
         ).first()
         if active:
-            raise _legacy._conflict("该教学任务已有未终结的教材选用")
+            raise _legacy._conflict("该教学任务已有教材选用，请修改原申报或等待当前流程结束")
         keys = _derive_keys(user)
         row = AaTextbookSelection(
             tenant_id=_legacy._tid(),
@@ -297,11 +306,58 @@ def create_selection(user, body):
         return _legacy._sel_dto(row)
 
 
+def update_selection(user, selection_id, body):
+    from app.models import AaTextbook
+
+    with _legacy.session() as db:
+        _legacy._ctx(user, db)
+        row = _get_selection(db, selection_id, lock=True)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
+        status = str(row.status or "").upper()
+        if status not in {"DRAFT", "RETURNED"}:
+            raise _legacy._conflict("仅草稿或已退回的教材选用可以修改")
+
+        textbook = db.query(AaTextbook).filter(
+            AaTextbook.id == int(body.textbookId),
+            AaTextbook.tenant_id == _legacy._tid(),
+            AaTextbook.is_deleted.is_(False),
+        ).first()
+        if not textbook:
+            raise not_found("教材不存在")
+
+        expected_qty = int(body.expectedQty)
+        remark = str(body.remark or "").strip()
+        if expected_qty <= 0:
+            raise AppException("VALIDATION_ERROR", "需求人数必须大于0")
+        if not remark:
+            raise AppException("VALIDATION_ERROR", "选用原因不能为空")
+
+        before = f"textbook={row.textbook_id};qty={row.expected_qty};status={row.status}"
+        row.textbook_id = textbook.id
+        row.textbook_name = textbook.name
+        row.expected_qty = expected_qty
+        row.remark = remark
+        if status == "RETURNED":
+            row.status = "DRAFT"
+            row.reject_reason = None
+        _legacy._audit(
+            db,
+            "AA_TEXTBOOK_SELECTION",
+            row.id,
+            "TEXTBOOK_SELECTION_UPDATE",
+            f"{before}->textbook={row.textbook_id};qty={row.expected_qty};status={row.status}",
+        )
+        db.commit()
+        return _legacy._sel_dto(row)
+
+
 def submit_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status not in ("DRAFT", "RETURNED"):
             raise _legacy._invalid("仅草稿/退回选用可提交")
         row.status = "SUBMITTED"
@@ -314,7 +370,8 @@ def withdraw_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status != "DRAFT":
             raise _legacy._invalid("仅草稿可撤回")
         row.is_deleted = True

@@ -1,13 +1,13 @@
 <template>
   <ModulePageShell
     class="aa-schedule-workspace"
-    title="学期课表"
-    subtitle="查看整学期课程安排，保留各门课程的起止周与单双周。"
+:title="isAcademicTeacher ? '我的学期课表' : '学期课表'"
+    :subtitle="isAcademicTeacher ? '默认查看本人整学期正式课程；可切换本人授课班级、教学班和教室' : '查看整学期课程安排，保留各门课程的起止周与单双周。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -22,13 +22,13 @@
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           学期
-          <AppTermEntityPicker v-model="termId" placeholder="选择学期" @change="load" />
+          <AppTermEntityPicker v-model="termId" placeholder="选择学期" @change="onTermChange" />
         </label>
         <AppPrintButton v-if="canPrint" :handler="goPrint" label="打印本页课表" />
       </div>
 
       <nav class="aa-tabs">
-        <button v-for="t in DIMS" :key="t.key" class="aa-tab" :class="{ 'is-active': dim === t.key }" @click="switchDim(t.key)">{{ t.label }}</button>
+        <button v-for="t in visibleDims" :key="t.key" class="aa-tab" :class="{ 'is-active': dim === t.key }" @click="switchDim(t.key)">{{ t.label }}</button>
       </nav>
 
       <!-- 班级 -->
@@ -36,19 +36,20 @@
         <div class="aa-filter">
           <label class="aa-filter__item aa-filter__item--grow">
             班级
-            <AppClassPicker v-model="classId" placeholder="搜索班级名称" @change="onClassChange" />
+            <AppClassPicker v-model="classId" :query="{ termId: termId || undefined }" placeholder="搜索班级名称" @change="onClassChange" />
           </label>
         </div>
       </div>
       <!-- 教师 -->
       <div v-else-if="dim === 'teacher'" class="aa-dim-body">
         <div class="aa-filter">
-          <label class="aa-filter__item">
+          <label v-if="!isAcademicTeacher" class="aa-filter__item">
             教师
             <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="load" />
           </label>
-          <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
-          <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
+          <span v-if="isAcademicTeacher" class="mp-note">当前对象：本人正式任课关系</span>
+          <AppButton v-if="!isAcademicTeacher && selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
+          <AppButton v-if="!isAcademicTeacher" variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
       <!-- 教室 -->
@@ -69,7 +70,7 @@
       <!-- 教学班 -->
       <div v-else-if="dim === 'teachingClass'" class="aa-dim-body">
         <div class="aa-reg-search">
-          <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
+          <AppTeachingClassPicker v-model="teachingClassCode" :query="{ termId: termId || undefined }" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
         </div>
       </div>
 
@@ -160,6 +161,14 @@ export default {
     }
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
+    visibleDims() {
+      return this.isAcademicTeacher
+        ? this.DIMS.filter(item => ['teacher', 'class', 'room', 'teachingClass'].includes(item.key))
+        : this.DIMS
+    },
     currentDim() { return this.DIMS.find((item) => item.key === this.dim) || this.DIMS[0] },
     scheduleObjectName() {
       return ({ class: this.className, teacher: this.teacherKey ? `教师 ${this.teacherKey}` : '', room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '学期课表'
@@ -223,6 +232,10 @@ export default {
   },
   created() {
     this.loadSlots()
+    if (this.isAcademicTeacher && this.selfKey) {
+      this.dim = 'teacher'
+      this.teacherKey = this.selfKey
+    }
     this.initializeCurrentTerm()
   },
   methods: {
@@ -235,16 +248,33 @@ export default {
       return ''
     },
     switchDim(key) {
+      if (!this.visibleDims.some(item => item.key === key)) return
       this.dim = key
       this.items = []; this.note = ''; this.error = ''; this.batchId = ''; this.batchIds = []
+      if (this.isAcademicTeacher && key === 'teacher') {
+        this.teacherKey = this.selfKey
+        if (this.termId) this.load()
+      }
     },
     async initializeCurrentTerm() {
       try {
         const current = await loadCurrentAcademicTerm()
         if (current && current.termId) this.termId = String(current.termId)
+        if (this.isAcademicTeacher && this.teacherKey) await this.load()
       } catch (error) {
         this.error = error.message || '当前学期加载失败'
       }
+    },
+    onTermChange() {
+      if (this.isAcademicTeacher && this.dim === 'class') {
+        this.classId = ''; this.className = ''; this.items = []; this.note = ''; this.batchId = ''; this.batchIds = []
+        return
+      }
+      if (this.isAcademicTeacher && this.dim === 'teachingClass') {
+        this.teachingClassCode = ''; this.teachingClassName = ''; this.items = []; this.note = ''; this.batchId = ''; this.batchIds = []
+        return
+      }
+      if (this.hasSelection) this.load()
     },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()
@@ -284,6 +314,7 @@ export default {
       })
     },
     async load() {
+      if (this.isAcademicTeacher && this.dim === 'teacher') this.teacherKey = this.selfKey
       if (!this.hasSelection) return
       this.loading = true
       this.error = ''

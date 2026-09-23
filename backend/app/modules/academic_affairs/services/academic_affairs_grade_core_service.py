@@ -263,6 +263,11 @@ def _raise_grade_task_tt_conflict(exist) -> None:
             "成绩错误请走成绩更正/复查/补考/重修，不得通过重建成绩任务解决。"
         ),
         http_status=409,
+        details={
+            "existingGradeTaskId": str(exist.id),
+            "existingStatus": str(exist.status or ""),
+            "teachingTaskId": str(exist.teaching_task_id or ""),
+        },
     )
 
 
@@ -396,8 +401,8 @@ def create_grade_task_in_session(db, body, user) -> dict:
             if allowed is not None and tt.class_id and tt.class_id not in allowed:
                 raise AppException("NO_DATA_SCOPE", "该教学任务不在您的学院范围内")
         if not can_with_task:
-            if not tt.teacher_key or tt.teacher_key not in _user_keys(user):
-                raise AppException("NO_DATA_SCOPE", "只能为自己负责的教学任务创建成绩任务")
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            teacher_authority.require_teacher(db, tt, user, lock=True)
 
         # 权威学期：先解析教学任务/批次学期，再归档校验（禁止用请求 termId 抢先校验）
         term_id, term_code = _resolve_grade_task_term(

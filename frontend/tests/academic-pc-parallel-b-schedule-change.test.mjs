@@ -29,8 +29,11 @@ function setup(api, name = 'AaScheduleChangeApplyView', markers = new Map()) {
     ctx: { currentRole: { roleCode: 'TEACHER' }, dataScope: {} }, $route: { query: {}, params: {} }, $router: { replace() {}, push() {} }
   })
   for (const [key, getter] of Object.entries(definition.computed || {})) Object.defineProperty(state, key, { get: () => getter.call(state) })
-  if (state.form) Object.assign(state.form, { originItemId: 'slot-a', targetWeekday: 2, targetSlotNo: 1, reason: '测试调课申请原因' })
-  state.origin = { itemId: 'slot-a', courseName: '课程甲' }
+  if (state.form) {
+    Object.assign(state.form, { originItemId: 'slot-a', targetWeekday: 2, targetSlotNo: 1, targetStartWeek: 3, targetEndWeek: 3, targetWeekParity: 'ALL', reason: '测试调课申请原因' })
+    state.adjustScope = 'OCCURRENCE'
+  }
+  state.origin = { itemId: 'slot-a', courseName: '课程甲', startWeek: 1, endWeek: 16, weekParity: 'ALL' }
   return { state, definition }
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
@@ -223,4 +226,23 @@ test('submitted receipt goes to the formal ledger detail, not an unprintable not
     state.goReceipt()
     assert.equal(target, '/admin/academic-affairs/schedule-change?changeId=a')
   }
+})
+
+test('single-occurrence adjust and makeup synchronize the end week before preflight', () => {
+  const { state: adjust, definition: adjustDefinition } = setup({})
+  adjust.form.changeType = 'ADJUST'
+  adjust.adjustScope = 'OCCURRENCE'
+  adjust.form.targetStartWeek = 8
+  adjust.form.targetEndWeek = null
+  adjustDefinition.watch['form.targetStartWeek'].call(adjust)
+  assert.equal(adjust.form.targetEndWeek, 8)
+  assert.equal(adjust.canCheckConflict, true)
+
+  const { state: makeup, definition } = setup({})
+  makeup.form.changeType = 'MAKEUP'
+  makeup.form.targetStartWeek = 9
+  makeup.form.targetEndWeek = null
+  definition.watch['form.targetStartWeek'].call(makeup)
+  assert.equal(makeup.form.targetEndWeek, 9)
+  assert.equal(makeup.canCheckConflict, true)
 })

@@ -13,6 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
+from app.core.affairs_security import _derive_keys
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
@@ -28,6 +29,14 @@ MAX_CAPACITY = 1000
 def _op():
     u = get_current_user_ctx() or {}
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or ""), str(u.get("userId") or "")
+
+
+def _teacher_booking_keys(user) -> set[str] | None:
+    """ACADEMIC_TEACHER booking ledgers are self-only."""
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "ACADEMIC_TEACHER":
+        return None
+    return {str(value).strip() for value in (_derive_keys(user) or set()) if str(value).strip()}
 
 
 def _audit(db, biz_id, action, detail="", biz_type="AA_CLASSROOM"):
@@ -325,6 +334,11 @@ def list_bookings(user, classroom_id=None, date=None, status=None, page=1, page_
     with session() as db:
         q = db.query(AaClassroomBooking).filter(AaClassroomBooking.tenant_id == _tid(),
                                                 AaClassroomBooking.is_deleted.is_(False))
+        applicant_keys = _teacher_booking_keys(user)
+        if applicant_keys is not None:
+            if not applicant_keys:
+                return [], 0
+            q = q.filter(AaClassroomBooking.applicant_key.in_(sorted(applicant_keys)))
         if classroom_id:
             q = q.filter(AaClassroomBooking.classroom_id == int(classroom_id))
         if date:
@@ -856,6 +870,11 @@ def list_lab_bookings(user, lab_id=None, date=None, status=None, page=1, page_si
     from app.models import AaLabBooking
     with session() as db:
         q = db.query(AaLabBooking).filter(AaLabBooking.tenant_id == _tid(), AaLabBooking.is_deleted.is_(False))
+        applicant_keys = _teacher_booking_keys(user)
+        if applicant_keys is not None:
+            if not applicant_keys:
+                return [], 0
+            q = q.filter(AaLabBooking.applicant_key.in_(sorted(applicant_keys)))
         if lab_id:
             q = q.filter(AaLabBooking.lab_id == int(lab_id))
         if date:
