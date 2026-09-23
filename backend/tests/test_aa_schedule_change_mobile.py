@@ -181,7 +181,7 @@ def test_conflict_check_and_submit_flow_via_mobile(client, db_mode):
     hdr = _hdr(client, "academic01")
 
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     chk = client.post(f"{MOB}/teacher/academic/schedule-changes/conflict-check", headers=hdr, json=body).json()
     assert chk["code"] == 0 and chk["data"]["conflict"] is None
 
@@ -199,7 +199,7 @@ def test_cancel_flow_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"])
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     change_id = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body).json()["data"]["changeId"]
 
     r = client.post(f"{MOB}/teacher/academic/schedule-changes/{change_id}/cancel", headers=hdr,
@@ -213,7 +213,7 @@ def test_cross_scope_submit_403_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"], teacher_key="other_teacher", teacher_name="他人")
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     r = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body)
     assert r.status_code == 403
 
@@ -246,7 +246,7 @@ def test_detail_ownership_guard_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"])
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     change_id = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body).json()["data"]["changeId"]
 
     ok = client.get(f"{MOB}/teacher/academic/schedule-changes/{change_id}", headers=hdr)

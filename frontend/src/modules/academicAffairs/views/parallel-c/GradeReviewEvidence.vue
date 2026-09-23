@@ -26,23 +26,24 @@
         <tbody>
           <tr><th>课程与任务</th><td>{{ task.courseId || '未关联课程' }} · {{ evidence.gradeTaskId || '未提供任务 ID' }}</td><td>{{ statusLabel(evidence.status) }}</td></tr>
           <tr><th>正式教学班</th><td>{{ task.teachingClassId || '未提供' }}</td><td>{{ task.teacherNames?.filter(Boolean).join('、') || '任课教师姓名未提供' }}</td></tr>
-          <tr><th>提交冻结名单</th><td>快照 {{ fact(roster.snapshotId) }} / V{{ fact(roster.snapshotVersion) }}</td><td>{{ roster.source || '来源未提供' }} · {{ roster.current === true ? '当前有效' : roster.current === false ? '已不是当前版本' : '有效性待核验' }}</td></tr>
-          <tr><th>正式名单版本</th><td>{{ fact(roster.rosterVersionId) }} / V{{ fact(roster.rosterVersionNo) }} · {{ fact(roster.memberCount) }} 人</td><td class="mono">{{ roster.rosterHash || '摘要未提供' }}</td></tr>
+          <tr><th>提交冻结名单</th><td>第 {{ fact(roster.snapshotVersion) }} 版快照</td><td>{{ businessLabel(roster.source) }} · {{ roster.current === true ? '当前有效' : roster.current === false ? '已不是当前版本' : '有效性待核验' }}</td></tr>
+          <tr><th>正式名单版本</th><td>第 {{ fact(roster.rosterVersionNo) }} 版 · {{ fact(roster.memberCount) }} 人</td><td>{{ roster.rosterHash ? '已取得正式名单校验摘要' : '校验摘要未提供' }}</td></tr>
           <tr><th>异常标记</th><td colspan="2"><span v-for="item in exceptionItems" :key="item.key" class="grade-evidence__chip">{{ item.label }} {{ fact(item.value) }}</span></td></tr>
-          <tr><th>计分方案</th><td>{{ schemeLabel }} · V{{ fact(scheme.version) }}</td><td>{{ scheme.status || '状态未提供' }}</td></tr>
+          <tr><th>计分方案</th><td>{{ schemeLabel }}<span v-if="scheme.version"> · 第 {{ scheme.version }} 版</span></td><td>{{ businessLabel(scheme.status) }}</td></tr>
           <tr><th>方案分项</th><td colspan="2"><span v-if="!schemeComponents.length">分项未提供</span><span v-for="item in schemeComponents" :key="item.code" class="grade-evidence__chip">{{ item.name || item.code || '未命名分项' }} {{ fact(item.weight) }}%</span></td></tr>
-          <tr><th>成绩策略</th><td>{{ policy.policyCode || '策略未提供' }} · V{{ fact(policy.policyVersion) }}</td><td>{{ policy.attemptStrategy || '修读次数策略未提供' }}</td></tr>
-          <tr><th>审核责任节点</th><td>{{ workflow.currentNode || '节点未提供' }}</td><td>责任人 {{ fact(workflow.assigneeId) }}</td></tr>
-          <tr><th>证据摘要</th><td class="mono">{{ evidence.evidenceHash || '摘要未提供' }}</td><td>{{ evidence.checkedAt || '检查时间未提供' }}</td></tr>
+          <tr><th>成绩策略</th><td>{{ businessLabel(policy.policyCode) }} · 第 {{ fact(policy.policyVersion) }} 版</td><td>{{ businessLabel(policy.attemptStrategy) }}</td></tr>
+          <tr><th>审核责任节点</th><td>{{ businessLabel(workflow.currentNode) }}</td><td>{{ workflow.assigneeId ? '已指派办理人，身份由服务端核验' : '具体办理人未提供' }}</td></tr>
+          <tr><th>证据检查</th><td>{{ evidence.evidenceHash ? '已取得正式校验摘要' : '校验摘要未提供' }}</td><td>{{ evidence.checkedAt ? '检查于 ' + evidence.checkedAt.replace('T', ' ') : '检查时间未提供' }}</td></tr>
         </tbody>
       </table>
       <section class="grade-evidence__blockers" aria-label="审核阻断项">
         <h4>审核阻断</h4>
         <p v-if="!blockersProvided" class="note--danger">阻断清单未提供</p>
         <p v-else-if="!blockers.length" class="grade-evidence__pass">未发现阻断项</p>
-        <ul v-else><li v-for="(item, index) in blockers" :key="`${item.code || 'BLOCKER'}-${index}`"><strong>{{ item.code || '待核验' }}</strong><span>{{ item.message || '服务端未提供具体说明' }}</span></li></ul>
+        <ul v-else><li v-for="(item, index) in blockers" :key="`${item.code || 'BLOCKER'}-${index}`"><strong>需处理 {{ index + 1 }}</strong><span>{{ item.message || '服务端未提供具体说明' }}</span></li></ul>
       </section>
-      <p class="note">允许动作：{{ allowedActions.length ? allowedActions.join('、') : '未提供' }}。证据摘要由正式事实生成；检查时间不参与版本一致性判断。</p>
+      <p class="note">当前可办理：{{ allowedActions.length ? allowedActions.map(businessLabel).join('、') : '暂无可用动作' }}。提交时再次核验正式事实。</p>
+      <details class="note"><summary>实施人员使用：校验编号与摘要</summary><p>名单快照 {{ fact(roster.snapshotId) }} · 名单版本 {{ fact(roster.rosterVersionId) }}</p><p class="mono">名单摘要：{{ roster.rosterHash || '未提供' }}</p><p class="mono">证据摘要：{{ evidence.evidenceHash || '未提供' }}</p></details>
     </template>
     <p v-else class="note note--danger">正式审核证据未返回，不能执行通过；仍可按原权限退回教师修改。</p>
     <p v-if="task.returnReason" class="note">退回意见：{{ task.returnReason }}</p>
@@ -88,6 +89,9 @@ export default {
   },
   methods: {
     statusLabel: gradeStatusLabel,
+    businessLabel(value) {
+      return ({ ADMIN_CLASS: '行政班正式名单', TEACHING_CLASS: '教学班正式名单', SELECTION: '选课正式名单', TASK_RATIOS: '按任务固定比例计分', DEFAULT: '默认方案', DRAFT: '草稿', LOCKED: '已锁定', ACTIVE: '已启用', LATEST_FORMAL_SOURCE_V1: '最新正式成绩来源', LEGACY_LATEST_ATTEMPT_V1: '历史最近修读规则', LATEST_ATTEMPT: '采用最近一次修读', HIGHEST_SCORE: '采用最高成绩', HIGHEST_PASSED: '采用最高及格成绩', LATEST_PASSED: '采用最近一次及格成绩', COLLEGE_REVIEW: '学院成绩审核', ACADEMIC_REVIEW: '教务成绩审核', RETURN: '退回教师修改', APPROVE: '审核通过', PUBLISH: '正式发布' })[value] || '具体规则待核对'
+    },
     fact(value) { return value === null || value === undefined || value === '' ? '未提供' : value }
   }
 }

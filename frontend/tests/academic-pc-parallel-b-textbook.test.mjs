@@ -206,3 +206,29 @@ test('selection confirmation stays locked to its original identity and tab', asy
   await Promise.resolve()
   assert.equal(submits, 0)
 })
+
+test('teacher textbook edit normalizes the route only after the write guard is released', async () => {
+  const record = { selectionId: '301', taskId: '19', textbookId: '21', expectedQty: 30, remark: '教学使用教材', courseName: '课程甲', status: 'DRAFT' }
+  const { state, definition } = page('AaTextbookConsoleView', {
+    academicAffairsTextbookApi: {
+      updateSelection: async () => ({ code: 0, data: record }),
+      listSelections: async () => ({ code: 0, data: { list: [record], total: 1 } })
+    }
+  }, {
+    $route: { path: '/admin/academic-affairs/textbooks', query: { tab: 'selection', selectionId: '301', action: 'edit' }, params: {} }
+  })
+  state.ctx = { currentRole: { roleCode: 'ACADEMIC_TEACHER' } }
+  state.tab = 'selection'; state.editingSelectionId = '301'; state.selectionVisible = true
+  state.selectionForm = { taskId: '19', textbookId: '21', expectedQty: 30, remark: '教学使用教材' }
+  const savingStates = []
+  state.$router.replace = async target => {
+    savingStates.push(state.saving)
+    assert.equal(definition.beforeRouteUpdate.call(state), true)
+    state.$route.query = target.query
+  }
+  await state.submitSelection()
+  assert.deepEqual(savingStates, [false])
+  assert.equal(state.$route.query.action, undefined)
+  assert.equal(state.selectionVisible, false)
+  assert.equal(state.selectionDraftReceipt.id, '301')
+})

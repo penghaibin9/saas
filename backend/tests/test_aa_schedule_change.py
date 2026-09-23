@@ -179,8 +179,10 @@ def _published_item(client, hdr, cid, **extra_items):
 
 
 def _submit(client, hdr, origin, **kw):
-    body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2, **kw}
+    body = {
+        "originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
+        "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 1, "targetEndWeek": 18, **kw,
+    }
     return client.post(f"{BASE}/schedule-change", headers=hdr, json=body)
 
 
@@ -226,6 +228,15 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
                     headers=admin).json()["data"]["items"]
     slots = {(i["weekday"], i["slotNo"]) for i in cv}
     assert (3, 2) in slots and (1, 1) not in slots
+
+
+def test_c1b_adjust_submit_preserves_target_classroom(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    response = _submit(client, admin, origin, targetClassroom="B202")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["target"]["classroom"] == "B202"
 
 
 def test_c1_partial_week_adjust_preserves_unmoved_origin_weeks(client, db_mode):
@@ -283,7 +294,8 @@ def test_c3_stop_requires_makeup(client, db_mode):
     assert r.status_code == 400
     r2 = client.post(f"{BASE}/schedule-change", headers=admin,
                      json={"originItemId": str(origin), "changeType": "STOP",
-                           "reason": "教室设备故障停课", "makeupPlan": "顺延至第10周补齐"})
+                           "reason": "教室设备故障停课", "makeupPlan": "顺延至第10周补齐",
+                           "targetStartWeek": 1, "targetEndWeek": 1})
     assert r2.status_code == 200 and r2.json()["data"]["changeType"] == "STOP"
 
 
@@ -368,6 +380,8 @@ def test_teacher_with_incidental_college_scope_still_reads_own_change(client, db
     detail = client.get(f"{BASE}/schedule-change/{change_id}", headers=teacher)
     assert detail.status_code == 200, detail.text
     assert detail.json()["data"]["teacherKey"] == "academic01"
+    assert detail.json()["data"]["reviewNode"]["canReview"] is False
+    assert detail.json()["data"]["reviewNode"]["reason"] == "无法确认当前审批人的真实账号身份"
 
 
 def test_c7_reject_requires_reason(client, db_mode):
@@ -393,7 +407,10 @@ def test_c7_reject_requires_reason(client, db_mode):
 
 
 def _conflict_check(client, hdr, origin, **kw):
-    body = {"originItemId": str(origin), "targetWeekday": 3, "targetSlotNo": 2, **kw}
+    body = {
+        "originItemId": str(origin), "changeType": "ADJUST",
+        "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 1, "targetEndWeek": 18, **kw,
+    }
     return client.post(f"{BASE}/schedule-change/conflict-check", headers=hdr, json=body)
 
 
@@ -426,6 +443,20 @@ def test_c8c_conflict_check_not_own_task_403(client, db_mode):
     teacher = _hdr(client, "academic01")
     r = _conflict_check(client, teacher, origin)
     assert r.status_code == 403
+
+
+def test_c8d_makeup_preflight_does_not_exclude_original_occurrence(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    r = _conflict_check(
+        client, admin, origin,
+        changeType="MAKEUP", targetWeekday=1, targetSlotNo=1,
+        targetStartWeek=3, targetEndWeek=3,
+    )
+    assert r.status_code == 200, r.text
+    conflict = r.json()["data"]["conflict"]
+    assert conflict and conflict["type"] in ("TEACHER", "CLASS", "CLASSROOM")
 
 
 def test_c9_stats_extended_aggregation(client, db_mode):

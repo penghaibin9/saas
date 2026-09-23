@@ -7,11 +7,22 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid, session
+
+_TEACHER_VISIBLE_PROGRAM_STATUSES = {"PUBLISHED", "ENABLED", "FROZEN"}
+
+
+def _is_academic_teacher(user) -> bool:
+    return str((user or {}).get("currentRoleCode") or "").upper() == "ACADEMIC_TEACHER"
+
+
+def _require_teacher_program_visible(program, user) -> None:
+    if _is_academic_teacher(user) and str(getattr(program, "status", "") or "").upper() not in _TEACHER_VISIBLE_PROGRAM_STATUSES:
+        raise not_found("培养方案不存在")
 
 
 def _op():
@@ -89,22 +100,32 @@ def add_course(program_id, user, body) -> dict:
                             course_name=getattr(body, "courseName", None),
                             open_term_no=getattr(body, "openTermNo", None),
                             module=getattr(body, "module", None),
-                            credit_snapshot=getattr(body, "credit", None))
+                            credit_snapshot=getattr(body, "credit", None),
+                            formation_mode=_editable_formation(body))
         db.add(c)
         db.flush()
         _audit(db, p.id, "ADD_COURSE", getattr(body, "courseName", "") or "")
         db.commit()
         return {"programCourseId": str(c.id), "programId": str(program_id),
-                "courseName": c.course_name or ""}
+                "courseName": c.course_name or "", "formationMode": c.formation_mode}
 
 
-def get_program(program_id, user) -> dict:
+def _editable_formation(body):
+    value = getattr(body, "formationMode", None)
+    if value is not None and value not in {"ADMIN_FIXED", "SELECTABLE"}:
+        raise AppException("VALIDATION_ERROR", "请选择固定行政班或自主选课的编班方式")
+    return value
+
+
+def get_program(program_id, user, *, review_node_reader=None) -> dict:
     with session() as db:
         from app.models import (AaCourse, AaProgram, AaProgramCourse, NationalStandardDocument,
                                 NationalStandardSection, SchoolMajorStandardBinding)
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
+        review_node = review_node_reader(db, p, user) if review_node_reader else None
         courses = db.scalars(select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(), AaProgramCourse.program_id == p.id,
             AaProgramCourse.is_deleted.is_(False)).order_by(AaProgramCourse.open_term_no)).all()
@@ -115,6 +136,8 @@ def get_program(program_id, user) -> dict:
             AaCourse.is_deleted.is_(False))).all() if course_ids else []
         catalog_by_id = {c.id: c for c in catalog}
         d = _row(p)
+        if review_node is not None:
+            d["reviewNode"] = review_node
         d["requirement"] = json.loads(p.requirement_json) if p.requirement_json else {}
         d["courses"] = []
         for c in courses:
@@ -122,7 +145,7 @@ def get_program(program_id, user) -> dict:
             d["courses"].append({
                 "programCourseId": str(c.id), "courseName": c.course_name or "",
                 "openTermNo": c.open_term_no, "module": c.module or "",
-                "credit": c.credit_snapshot,
+                "credit": c.credit_snapshot, "formationMode": c.formation_mode,
                 "courseId": str(linked.id) if linked else None,
                 "courseCode": linked.course_code if linked else None,
                 "courseVersion": linked.version if linked else None,
@@ -172,21 +195,30 @@ def get_program(program_id, user) -> dict:
 def list_programs(user, major_id=None, status=None, page=1, page_size=20, status_in=None):
     """方案列表。status_in：逗号分隔多状态（供「方案审核」「方案发布」工作台按状态集筛选），
     与单值 status 二选一，同时传入以 status_in 优先。"""
-    from app.models import AaProgram
+    from app.models import AaProgram, Major
     with session() as db:
         conds = [AaProgram.tenant_id == _tid(), AaProgram.is_deleted.is_(False)]
+        teacher_read = _is_academic_teacher(user)
+        if teacher_read:
+            conds.append(AaProgram.status.in_(sorted(_TEACHER_VISIBLE_PROGRAM_STATUSES)))
         if major_id:
             conds.append(AaProgram.major_id == int(major_id))
-        statuses = [s.strip() for s in status_in.split(",") if s.strip()] if status_in else None
-        if statuses:
-            conds.append(AaProgram.status.in_(statuses))
-        elif status:
-            conds.append(AaProgram.status == status)
-        rows = db.scalars(select(AaProgram).where(*conds).order_by(AaProgram.id.desc())).all()
-        out = [_row(p) for p in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        if not teacher_read:
+            statuses = [s.strip() for s in status_in.split(",") if s.strip()] if status_in else None
+            if statuses:
+                conds.append(AaProgram.status.in_(statuses))
+            elif status:
+                conds.append(AaProgram.status == status)
+        size = max(1, min(int(page_size), 200))
+        total = int(db.scalar(select(func.count(AaProgram.id)).where(*conds)) or 0)
+        rows = db.scalars(select(AaProgram).where(*conds).order_by(AaProgram.id.desc())
+                          .offset((max(1, page) - 1) * size).limit(size)).all()
+        major_ids = {p.major_id for p in rows if p.major_id}
+        names = dict(db.execute(select(Major.id, Major.major_name).where(
+            Major.tenant_id == _tid(), Major.is_deleted.is_(False),
+            Major.id.in_(major_ids),
+        )).all()) if major_ids else {}
+        return [{**_row(p), "majorName": names.get(p.major_id, "")} for p in rows], total
 
 
 # ═══════════ 方案两审发布 + 绑定年级（13B-P3）═══════════
@@ -289,6 +321,7 @@ def list_program_bindings(program_id, user):
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
         rows = db.scalars(select(AaProgramBinding).where(
             AaProgramBinding.tenant_id == _tid(), AaProgramBinding.program_id == p.id,
             AaProgramBinding.is_deleted.is_(False)).order_by(AaProgramBinding.id.desc())).all()
@@ -318,10 +351,12 @@ def update_course(program_course_id, user, body) -> dict:
             c.module = body.module
         if getattr(body, "credit", None) is not None:
             c.credit_snapshot = body.credit
+        if getattr(body, "formationMode", None) is not None:
+            c.formation_mode = _editable_formation(body)
         _audit(db, p.id, "UPDATE_COURSE", c.course_name or "")
         db.commit()
         return {"programCourseId": str(c.id), "programId": str(c.program_id), "courseName": c.course_name or "",
-                "openTermNo": c.open_term_no, "module": c.module or "", "credit": c.credit_snapshot}
+                "openTermNo": c.open_term_no, "module": c.module or "", "credit": c.credit_snapshot, "formationMode": c.formation_mode}
 
 
 def delete_course(program_course_id, user) -> dict:
@@ -349,6 +384,7 @@ def get_credit_requirements(program_id, user) -> dict:
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
         req = json.loads(p.requirement_json) if p.requirement_json else {}
         items = req.get("creditStructure") or []
         target_sum = sum(float(i.get("creditTarget") or 0) for i in items)
@@ -405,6 +441,7 @@ def list_graduation_requirements(program_id, user):
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
         rows = db.scalars(select(Req).where(
             Req.tenant_id == _tid(), Req.program_id == p.id, Req.is_deleted.is_(False),
             Req.status == "ACTIVE").order_by(Req.sort_order, Req.id)).all()
@@ -572,6 +609,7 @@ def list_practice_segments(program_id, user):
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
         rows = db.scalars(select(Seg).where(
             Seg.tenant_id == _tid(), Seg.program_id == p.id, Seg.is_deleted.is_(False),
             Seg.status == "ACTIVE").order_by(Seg.open_term_no, Seg.sort_order, Seg.id)).all()
@@ -717,6 +755,7 @@ def list_program_lifecycle_log(program_id, user):
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("培养方案不存在")
+        _require_teacher_program_visible(p, user)
         rows = db.scalars(select(AffairsAuditTrail).where(
             AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_PROGRAM",
             AffairsAuditTrail.biz_id == p.id,
@@ -732,6 +771,8 @@ def list_program_lifecycle_log(program_id, user):
 
 def list_archived_programs(user, page=1, page_size=20):
     from app.models import AaProgram
+    if _is_academic_teacher(user):
+        return [], 0
     with session() as db:
         all_rows = db.scalars(select(AaProgram).where(
             AaProgram.tenant_id == _tid(), AaProgram.is_deleted.is_(False))).all()

@@ -92,9 +92,11 @@ test('timeout followed by an observed published state does not claim this reques
     getGradeTasks: async query => { reads++; assert.equal(query.taskId, '42'); return { code: 0, data: { list: [{ gradeTaskId: '42', status: 'PUBLISHED' }] } } } })
   s.openPublish({ gradeTaskId: '42', courseName: '测试课程' }); await s.doAction()
   assert.equal(s.receipt.primary, 'UNKNOWN'); assert.equal(notices[0].tone, 'warning')
+  s.rows=[{gradeTaskId:'42',status:'ACADEMIC_REVIEW'}]
   await s.checkReceiptStatus(); s.openPublish({ gradeTaskId: '42' }); await s.doAction()
   assert.equal(writes, 1); assert.equal(reads, 1); assert.equal(s.receipt.primary, 'UNKNOWN')
   assert.match(s.receipt.observedText, /不能据此认定上次发布请求成功/)
+  assert.equal(s.rows[0].status,'PUBLISHED')
 })
 test('an uncertain publish locks only the same task in the same authenticated identity', async () => {
   let identity = 'school-a:user:role', writes = 0

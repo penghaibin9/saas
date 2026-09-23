@@ -18,6 +18,7 @@
     <div v-else-if="program">
       <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="program.currentAssigneeName || program.ownerName || ''" source="当前方案的课程、绑定与版本以正式记录为准" />
       <AaOperationReceipt :receipt="receipt" />
+      <AppInlineAlert v-if="['ENABLED', 'PUBLISHED'].includes(program.status) && validation && !validation.canSubmit" type="warning" description="该版本已有生效记录，但按当前规则校验仍有待治理项。现行方案不会因此自动停用；请在版本与变更中按受控流程补齐要求，并核对受影响的开课与毕业审核。" />
       <div class="aa-program-layout">
       <aside class="aa-program-nav">
         <div class="aa-nav-title">编制步骤</div>
@@ -74,18 +75,24 @@
             <AppCoursePicker v-model="addForm.courseId" :remote-search="searchProgramCourses" placeholder="选择已启用课程（显示版本）" @change="onPickCourse" />
             <input v-model.number="addForm.openTermNo" type="number" min="1" max="12" class="aa-input aa-input--sm" placeholder="开课学期" />
             <input v-model.trim="addForm.module" class="aa-input aa-input--sm" placeholder="课程模块" />
+            <select v-model="addForm.formationMode" class="aa-input aa-input--sm" aria-label="编班方式">
+              <option value="" disabled>选择编班方式</option>
+              <option value="ADMIN_FIXED">固定行政班</option>
+              <option value="SELECTABLE">学生自主选课</option>
+            </select>
             <AppButton variant="primary" :disabled="!canAddCourse" :loading="adding" @click="addCourse">添加</AppButton>
           </div>
           <EmptyState v-if="!program.courses.length" title="方案内暂无课程" description="从课程库添加课程并设置开课学期、模块和学分快照" />
           <div class="aa-table-scroll" role="region" aria-label="数据表格，可横向滚动" tabindex="0" v-else>
 <table  class="aa-course-table">
-            <thead><tr><th>学期</th><th>模块</th><th>课程</th><th>学分</th><th>校验</th><th>来源</th></tr></thead>
+            <thead><tr><th>学期</th><th>模块</th><th>课程</th><th>学分</th><th>编班方式</th><th>校验</th><th>来源</th></tr></thead>
             <tbody>
               <tr v-for="course in program.courses" :key="course.programCourseId" :id="`course-${course.programCourseId}`">
                 <td>第 {{ course.openTermNo || '?' }} 学期</td>
                 <td>{{ course.module || '未归类' }}</td>
                 <td>{{ course.courseName || '未命名课程' }}<small class="aa-course-identity">{{ course.courseCode || '课程代码未提供' }} · {{ course.courseVersion != null ? 'v' + course.courseVersion : '版本未提供' }}</small></td>
                 <td>{{ course.credit ?? '未设置' }}</td>
+                <td>{{ formationLabel(course.formationMode) }}</td>
                 <td><AppStatusTag :type="!validation ? 'default' : courseIssueCount(course) ? 'danger' : 'success'" :label="!validation ? '未校验' : courseIssueCount(course) ? `${courseIssueCount(course)}项` : '正常'" /></td>
                 <td><button v-if="course.courseId" class="mp-link" @click="$router.push({ path: '/admin/academic-affairs/courses/' + course.courseId, query: { returnTo: $route.fullPath } })">课程档案</button><span v-else>来源未提供</span></td>
               </tr>
@@ -114,10 +121,11 @@
         <AppSectionCard v-show="activeStep === 'review'" title="④ 审核、发布与绑定">
           <div class="aa-review-btns">
             <AppButton v-if="canSubmit(program.status) && hasPermission('academicAffairs.program.submit')" variant="primary" :disabled="!validation?.canSubmit" :loading="acting" @click="doSubmit">提交审核</AppButton>
-            <template v-if="inReview(program.status) && hasPermission('academicAffairs.program.review')">
+            <template v-if="reviewable">
               <AppButton variant="primary" @click="openReview('APPROVE')">{{ program.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
               <AppButton @click="openReview('RETURN')">退回</AppButton>
             </template>
+            <p v-else-if="inReview(program.status)" class="mp-note">{{ program.reviewNode?.reason || '当前身份不能办理此审核节点，请由对应审核岗位接手。' }}</p>
             <template v-if="bindable">
               <input v-model.trim="bindForm.gradeYear" class="aa-input aa-input--sm" placeholder="绑定年级 如2026" maxlength="4" @input="bindForm.classId = ''" />
               <AppClassPicker
@@ -196,7 +204,7 @@ export default {
       loading: true, error: '', program: null, acting: false,
       validation: null, validationLoading: false, validationError: '',
       activeStep: 'courses', requestRevision: 0, receipt: null, showAdd: false, adding: false,
-      addForm: { courseId: '', courseName: '', credit: null, openTermNo: null, module: '' },
+      addForm: { courseId: '', courseName: '', credit: null, openTermNo: null, module: '', formationMode: '' },
       bindForm: { gradeYear: '', classId: '' },
       showEdit: false, savingEdit: false, editForm: { programName: '', totalCredits: null },
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' },
@@ -212,9 +220,10 @@ export default {
     programId() { return this.$route.params.id },
     isOpeningPlan() { return String(this.programId) === 'opening-plan' },
     editable() { return this.program && canSubmit(this.program.status) && this.hasPermission('academicAffairs.program.manage') },
+    reviewable() { return !!this.program && inReview(this.program.status) && this.program.reviewNode?.canReview === true && this.hasPermission('academicAffairs.program.review') },
     bindable() { return this.program && ['PUBLISHED', 'ENABLED'].includes(this.program.status) && this.hasPermission('academicAffairs.program.publish') },
     qualityClass() { return this.validation?.canSubmit ? 'is-ok' : 'is-warn' },
-    canAddCourse() { return Boolean(this.addForm.courseId && this.addForm.openTermNo && this.addForm.module) }
+    canAddCourse() { return Boolean(this.addForm.courseId && this.addForm.openTermNo && this.addForm.module && this.addForm.formationMode) }
   },
   watch: { programId() { this.requestRevision++; this.program = null; this.validation = null; this.receipt = null; this.showAdd = false; this.showEdit = false; if (!this.isOpeningPlan) this.load() } },
   beforeUnmount() { this.requestRevision++ },
@@ -271,12 +280,13 @@ export default {
         courseName: this.addForm.courseName,
         credit: this.addForm.credit != null ? this.addForm.credit : undefined,
         openTermNo: this.addForm.openTermNo,
-        module: this.addForm.module
+        module: this.addForm.module,
+        formationMode: this.addForm.formationMode
       })
       this.adding = false
       if (res.code === 0) {
         toast.success('已添加课程')
-        this.addForm = { courseId: '', courseName: '', credit: null, openTermNo: null, module: '' }
+        this.addForm = { courseId: '', courseName: '', credit: null, openTermNo: null, module: '', formationMode: '' }
         await this.load()
         this.activeStep = 'courses'
       } else this.handleActionError(res, '添加失败')
@@ -285,6 +295,7 @@ export default {
       this.editForm = { programName: this.program.programName, totalCredits: this.program.totalCredits }
       this.showEdit = true
     },
+    formationLabel(value) { return ({ ADMIN_FIXED: '固定行政班', SELECTABLE: '学生自主选课', MERGED: '合班', RETAKE: '重修', LAYERED: '分层' })[value] || '尚未确认' },
     async saveEdit() {
       if (this.savingEdit || !this.editForm.programName || !this.editable) return
       this.savingEdit = true
@@ -321,11 +332,11 @@ export default {
       else { this.handleActionError(res, '提交失败'); await this.loadValidation() }
     },
     openReview(action) {
-      if (!this.program || !inReview(this.program.status) || !this.hasPermission('academicAffairs.program.review')) return
+      if (!this.reviewable) return
       this.dlg = { visible: true, action, title: action === 'APPROVE' ? '审核通过' : '退回方案', type: action === 'APPROVE' ? 'primary' : 'warning', confirmText: action === 'APPROVE' ? '确认通过' : '确认退回', requireReason: action === 'RETURN', submitting: false }
     },
     async doReview(payload) {
-      if (this.dlg.submitting || !this.program || !inReview(this.program.status) || !this.hasPermission('academicAffairs.program.review')) return
+      if (this.dlg.submitting || !this.reviewable) return
       const reason = payload?.reason || ''
       this.dlg.submitting = true
       const res = await academicAffairsApi.reviewProgram(this.programId, this.dlg.action, reason)
@@ -343,6 +354,7 @@ export default {
         toast.success(classId ? `已绑定 ${this.bindForm.gradeYear} 级班级特例` : `已绑定 ${this.bindForm.gradeYear} 级通用方案`)
         this.bindForm = { gradeYear: '', classId: '' }
         await this.load()
+        this.setReceipt('方案绑定已处理', '请核对有效绑定；由学院按已启用方案生成本学期教学任务。')
       } else this.handleActionError(res, '绑定失败')
     },
     async load() {

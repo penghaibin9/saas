@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
-    title="班级课表"
-    subtitle="按班级查看当前已发布课表（自动取最近一次发布批次，周次可选过滤）"
+:title="isAcademicTeacher ? '我的授课班级课表' : '班级课表'"
+    :subtitle="isAcademicTeacher ? '只提供本人正式任课关系涉及的行政班；选择后查看该班正式课表' : '按班级查看当前已发布课表（自动取最近一次发布批次，周次可选过滤）'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -21,11 +21,11 @@
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           班级
-          <AppClassPicker v-model="classId" placeholder="搜索班级名称" @change="onClassChange" />
+          <AppClassPicker v-model="classId" :query="{ termId: termId || undefined }" placeholder="搜索班级名称" @change="onClassChange" />
         </label>
         <label class="aa-filter__item">
           学期
-          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
+          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="onTermChange" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -73,11 +73,30 @@ export default {
       slots: [], items: [], note: '', loading: false, error: ''
     }
   },
-  created() {
+  computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    }
+  },
+  async created() {
     this.loadSlots()
-    if (this.classId) this.load()
+    if (this.isAcademicTeacher) await this.initializeTeacherTerm()
+    else if (this.classId) this.load()
   },
   methods: {
+    async initializeTeacherTerm() {
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0 && res.data?.termId) this.termId = String(res.data.termId)
+      if (this.classId) await this.load()
+    },
+    onTermChange() {
+      if (this.isAcademicTeacher) {
+        this.classId = ''; this.className = ''; this.items = []; this.note = ''; this.error = ''
+        this.$router.replace('/admin/academic-affairs/schedule/class').catch(() => {})
+        return
+      }
+      if (this.classId) this.load()
+    },
     onClassChange(_v, items) {
       this.className = (items && items[0] && items[0].label) || ''
       this.$router.replace(`/admin/academic-affairs/schedule/class/${this.classId}`).catch(() => {})

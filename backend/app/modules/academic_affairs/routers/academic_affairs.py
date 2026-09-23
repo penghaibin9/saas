@@ -67,6 +67,12 @@ def dashboard(user=Depends(require_permission(_DASHBOARD_VIEW))):
     return success(svc.dashboard(user))
 
 
+@router.get("/teacher/today", summary="普通任课教师·今日教学（PC；与教师移动端同一事实源）")
+def teacher_today_pc(user=Depends(require_permission("academicAffairs.schedule.view"))):
+    from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
+    return success(mobile_public.teacher_schedule_my(user))
+
+
 @router.get("/dashboard/reminders", summary="教务看板提醒聚合（成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办"
                                              "/今日教学运行/今日课程/调停课提醒/教学资源占用/教务数据趋势）")
 def dashboard_reminders(user=Depends(require_permission(_DASHBOARD_VIEW))):
@@ -781,6 +787,7 @@ class ProgramUpdate(BaseModel):
 
 
 class ProgramCourseBody(BaseModel):
+    formationMode: Optional[str] = Field(None, pattern="^(ADMIN_FIXED|SELECTABLE)$")
     courseId: Optional[str] = None
     courseName: str = Field(..., min_length=1)
     openTermNo: Optional[int] = None
@@ -1796,7 +1803,47 @@ def grade_analysis_export(body: GradeAnalysisExportBody,
         headers={"Content-Disposition": "attachment; filename=grade_analysis.xlsx"})
 
 
-# ═══════════ 课堂考勤（PC 只读查询/统计；教师逐生录入在移动端，正方 教学点名 2.4/查询 4.19 对标）═══════════
+# ═══════════ 课堂考勤（PC 与教师移动端复用同一正式 create/mark/submit owner）═══════════
+class AttendanceSessionCreateBody(BaseModel):
+    teachingTaskId: int = Field(..., gt=0)
+    classId: Optional[int] = Field(None, gt=0)
+    sessionDate: str = Field(..., min_length=10, max_length=10)
+    slotNo: int = Field(..., ge=1)
+    scheduleItemId: Optional[int] = Field(None, gt=0)
+    sessionType: Optional[str] = Field(None, max_length=50)
+
+
+class AttendanceMarkBody(BaseModel):
+    studentId: int = Field(..., gt=0)
+    status: Literal["PRESENT", "LATE", "ABSENT", "LEAVE"]
+
+
+@router.post("/attendance/sessions/open", summary="课堂考勤·按正式课次打开或创建场次（PC/移动端同一事实）")
+def attendance_session_open(body: AttendanceSessionCreateBody,
+                            user=Depends(require_permission("academicAffairs.attendance.view"))):
+    payload = body.model_dump(exclude_none=True)
+    try:
+        return success(attendance_svc.create_session(user, payload))
+    except AppException as exc:
+        details = getattr(exc, "details", None) or {}
+        existing = details.get("existingSessionId") if isinstance(details, dict) else None
+        if str(existing or "").isdigit():
+            return success(attendance_svc.get_session(int(existing), user))
+        raise
+
+
+@router.post("/attendance/sessions/{sessionId}/mark", summary="课堂考勤·教师逐生点名（复用正式写链）")
+def attendance_session_mark(body: AttendanceMarkBody, sessionId: int = Path(..., gt=0),
+                            user=Depends(require_permission("academicAffairs.attendance.view"))):
+    return success(attendance_svc.mark_attendance(sessionId, user, body.model_dump()))
+
+
+@router.post("/attendance/sessions/{sessionId}/submit", summary="课堂考勤·提交正式场次（提交后不可直接修改）")
+def attendance_session_submit(sessionId: int = Path(..., gt=0),
+                              user=Depends(require_permission("academicAffairs.attendance.view"))):
+    return success(attendance_svc.submit_session(sessionId, user), message="考勤已提交")
+
+
 @router.get("/attendance/sessions", summary="课堂考勤场次列表（PC 查询，按行政班/学期/类别筛选，数据范围收敛）")
 def attendance_sessions_list(classId: Optional[str] = None, termCode: Optional[str] = None,
                              sessionType: Optional[str] = None, page: int = 1, pageSize: int = 20,
@@ -2389,6 +2436,9 @@ def stats_resource_detail(page: int = 1, pageSize: int = 20,
 # ═══════════════════════════════════════════════════════════════════════════
 
 _ORG_VIEW = require_permission("academicAffairs.org.view")
+# 班级/教学班是课表查询对象；普通任课教师只通过这两个列表选择本人正式任课对象。
+# 不授予 academicAffairs.org.view，避免扩大到学院/专业/组织树等管理目录。
+_ORG_PICKER_VIEW = require_any_permission("academicAffairs.org.view", "academicAffairs.schedule.view")
 _ORG_MANAGE = require_permission("academicAffairs.org.manage")
 
 
@@ -2533,8 +2583,11 @@ def org_major_delete(majorId: int = Path(...), user=Depends(_ORG_MANAGE)):
 @router.get("/orgs/classes", summary="行政班列表（范围内）")
 def org_classes(majorId: Optional[str] = None, grade: Optional[str] = None,
                 classStatus: Optional[str] = None, keyword: Optional[str] = None,
-                page: int = 1, pageSize: int = 50, user=Depends(_ORG_VIEW)):
-    items, total = org_svc.list_classes(user, majorId, grade, classStatus, keyword, page, pageSize)
+                termId: Optional[int] = Query(None, ge=1),
+                page: int = 1, pageSize: int = 50, user=Depends(_ORG_PICKER_VIEW)):
+    items, total = org_svc.list_classes(
+        user, majorId, grade, classStatus, keyword, page, pageSize, term_id=termId
+    )
     return success(paginate(items, total, page, pageSize))
 
 
@@ -2567,7 +2620,7 @@ def org_grades(collegeId: Optional[str] = None, majorId: Optional[str] = None, u
 @router.get("/orgs/teaching-classes", summary="教学班只读汇总（派生自教学任务）")
 def org_teaching_classes(termCode: Optional[str] = None, batchId: Optional[str] = None,
                          termId: Optional[int] = Query(None, ge=1), keyword: Optional[str] = None,
-                         page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_VIEW)):
+                         page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200), user=Depends(_ORG_PICKER_VIEW)):
     items, total = org_svc.list_teaching_classes(user, termCode, batchId, page, pageSize, term_id=termId, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
@@ -3076,6 +3129,9 @@ class ScheduleChangeCancelBody(BaseModel):
 
 class ScheduleChangeConflictCheckBody(BaseModel):
     originItemId: str = Field(..., min_length=1, description="原课表项 id（须为已发布课表本人课位）")
+    changeType: Literal["ADJUST", "MAKEUP"] = Field(
+        "ADJUST", description="预检类型；兼容旧调用默认按调课，补课必须显式传 MAKEUP"
+    )
     targetWeekday: int = Field(..., ge=1, le=7, description="目标星期")
     targetSlotNo: int = Field(..., ge=1, description="目标节次")
     targetStartWeek: Optional[int] = Field(None, ge=1)

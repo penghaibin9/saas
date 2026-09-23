@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import or_
+
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -130,7 +132,7 @@ def update_textbook(user, tid, body):
 def _sel_dto(s):
     return {"selectionId": str(s.id), "taskId": str(s.task_id), "textbookId": str(s.textbook_id),
             "textbookName": s.textbook_name, "courseName": s.course_name, "expectedQty": s.expected_qty,
-            "officerKey": s.officer_key, "rejectReason": s.reject_reason, "status": s.status}
+            "officerKey": s.officer_key, "remark": s.remark or "", "rejectReason": s.reject_reason, "status": s.status}
 
 
 def create_selection(user, body):
@@ -147,10 +149,10 @@ def create_selection(user, body):
             raise not_found("教材不存在")
         active = db.query(AaTextbookSelection).filter(
             AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.task_id == task_id,
-            AaTextbookSelection.status.notin_(["RETURNED", "ORDERED"]),
+            AaTextbookSelection.status.notin_(["ORDERED"]),
             AaTextbookSelection.is_deleted.is_(False)).first()
         if active:
-            raise _conflict("该教学任务已有未终结的教材选用")
+            raise _conflict("该教学任务已有教材选用，请修改原申报或等待当前流程结束")
         ttb = db.query(AaTeachingTaskBatch).filter(AaTeachingTaskBatch.id == tt.batch_id,
                                                    AaTeachingTaskBatch.tenant_id == _tid()).first()
         from app.core.affairs_security import _derive_keys
@@ -168,7 +170,7 @@ def create_selection(user, body):
 
 
 def _get_sel(db, sid):
-    from app.models import AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
     s = db.query(AaTextbookSelection).filter(AaTextbookSelection.id == sid, AaTextbookSelection.tenant_id == _tid()).first()
     if not s:
         raise not_found("选用记录不存在")
@@ -199,19 +201,48 @@ def withdraw_selection(user, sid):
         return {"selectionId": str(s.id), "withdrawn": True}
 
 
-def list_selections(user, status=None, page=1, page_size=50):
+def list_selections(user, status=None, page=1, page_size=50, *, selection_id=None, term_id=None):
     """教材选用列表——数据范围下推到 SQL WHERE，不再整租户拉回内存再按学院过滤+切片。
 
     原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
     过滤、按页码切片——学院管理员只该看到自己学院的记录，却要为此让数据库把
     全校记录先搬进应用内存一遍。"""
-    from app.models import AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
+    from app.core.affairs_security import _derive_keys
     with session() as db:
         ctx = _ctx(user, db)
         conds = [AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.is_deleted.is_(False)]
         if status:
             conds.append(AaTextbookSelection.status == status)
-        if not _is_school(ctx):
+        if selection_id is not None:
+            conds.append(AaTextbookSelection.id == int(selection_id))
+        task_ids_for_term = None
+        if term_id is not None:
+            task_ids_for_term = db.query(AaTeachingTask.id).join(
+                AaTeachingTaskBatch,
+                AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+            ).filter(
+                AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.term_id == int(term_id),
+                AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+            )
+            conds.append(AaTextbookSelection.task_id.in_(task_ids_for_term))
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            keys = _derive_keys(user)
+            formal_task_ids = teacher_authority.relation_scope(
+                db, user, term_id=term_id
+            ).get("taskIds") or set()
+            if not keys and not formal_task_ids:
+                return [], 0
+            conds.append(or_(
+                AaTextbookSelection.officer_key.in_(sorted(keys) or ["__none__"]),
+                AaTextbookSelection.task_id.in_(sorted(formal_task_ids) or [-1]),
+            ))
+        elif not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
             conds.append(AaTextbookSelection.college_id.in_(allowed or [-1]))
         total = int(db.query(AaTextbookSelection).filter(*conds).count())

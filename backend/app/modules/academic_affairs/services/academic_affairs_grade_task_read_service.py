@@ -27,39 +27,13 @@ _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 
 
-def _user_relation_task_ids(db, user) -> set[int]:
-    """Resolve this teacher's formal task IDs with one batch authority-week projection."""
-    from app.models import AaTeachingClass, AaTeachingClassTeacher
-
-    keys = sorted(_teacher_authority.user_keys(user))
-    if not keys:
-        return set()
-    rows = db.execute(
-        select(AaTeachingClassTeacher, AaTeachingClass)
-        .join(AaTeachingClass, AaTeachingClass.id == AaTeachingClassTeacher.teaching_class_id)
-        .where(
-            AaTeachingClassTeacher.tenant_id == _core._tid(),
-            AaTeachingClassTeacher.teacher_key.in_(keys),
-            AaTeachingClassTeacher.status == "ACTIVE",
-            AaTeachingClassTeacher.is_deleted.is_(False),
-            AaTeachingClass.tenant_id == _core._tid(),
-            AaTeachingClass.status == "ACTIVE",
-            AaTeachingClass.is_deleted.is_(False),
-        )
-    ).all()
-    class_by_id = {int(teaching_class.id): teaching_class for _relation, teaching_class in rows}
-    week_by_class = _teacher_authority.class_authority_weeks(db, class_by_id.values())
-    task_ids: set[int] = set()
-    for relation, teaching_class in rows:
-        week = week_by_class.get(int(teaching_class.id))
-        if (relation.start_week is not None or relation.end_week is not None) and week is None:
-            continue
-        if _teacher_authority.relation_covers_week(relation, week):
-            task_ids.add(int(teaching_class.teaching_task_id))
-    return task_ids
+def _user_relation_task_ids(db, user, *, term_id=None) -> set[int]:
+    """Resolve grade responsibility with the canonical clamped non-occurrence week."""
+    scope = _teacher_authority.relation_scope(db, user, term_id=term_id)
+    return {int(value) for value in scope.get("taskIds") or []}
 
 
-def _scope_conditions(db, user, status=None, task_id=None):
+def _scope_conditions(db, user, status=None, task_id=None, term_id=None):
     """Build canonical grade-task scope with relation-first teacher authority."""
     from app.models import AaGradeTask, AaTeachingClass, AaTeachingTask
 
@@ -71,6 +45,8 @@ def _scope_conditions(db, user, status=None, task_id=None):
         conditions.append(AaGradeTask.status == str(status).upper())
     if task_id is not None:
         conditions.append(AaGradeTask.id == int(task_id))
+    if term_id is not None:
+        conditions.append(AaGradeTask.term_id == int(term_id))
 
     role = str((user or {}).get("currentRoleCode") or "").upper()
     if role in _core._REVIEW_ROLES or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN":
@@ -85,7 +61,7 @@ def _scope_conditions(db, user, status=None, task_id=None):
         return conditions
 
     keys = list(_teacher_authority.user_keys(user)) or ["__none__"]
-    formal_task_ids = sorted(_user_relation_task_ids(db, user))
+    formal_task_ids = sorted(_user_relation_task_ids(db, user, term_id=term_id))
     projected_class_exists = exists(
         select(AaTeachingClass.id).where(
             AaTeachingClass.tenant_id == _core._tid(),
@@ -127,7 +103,7 @@ def _base_query():
 
 
 def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
-    """Batch-project current formal teachers and authority weeks for one page."""
+    """Batch-project current formal teachers and clamped authority weeks for one page."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     ids = sorted({int(value) for value in teaching_task_ids if value})
@@ -215,14 +191,18 @@ def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: boo
     return actions
 
 
-def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None):
+def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None, term_id=None, term=None, keyword=None):
     """Return a bounded SQL page and batch-project teacher/deadline truth."""
     from app.models import AaGradeTask, AaTeachingTask
 
     page_no = max(1, int(page or 1))
     size = max(1, min(int(page_size or 20), _MAX_PAGE_SIZE))
     with _core.session() as db:
-        conditions = _scope_conditions(db, user, status, task_id)
+        conditions = _scope_conditions(db, user, status, task_id, term_id)
+        if term:
+            conditions.append(AaGradeTask.term_code == str(term).strip())
+        if keyword and str(keyword).strip():
+            conditions.append(AaGradeTask.course_name.contains(str(keyword).strip(), autoescape=True))
         total = int(
             db.scalar(
                 select(func.count(AaGradeTask.id))

@@ -69,6 +69,12 @@ def test_adjust_window_cannot_move_weeks_outside_origin():
         _validate_adjust_window(_origin(), 0, 3, "ALL")
     with pytest.raises(AppException):
         _validate_adjust_window(_origin(week_parity="ODD"), 1, 3, "EVEN")
+    with pytest.raises(AppException):
+        _validate_adjust_window(_origin(week_parity="ODD"), 6, 6, "ODD")
+    with pytest.raises(AppException):
+        _validate_adjust_window(_origin(week_parity="ALL"), 6, 6, "ODD")
+    _validate_adjust_window(_origin(week_parity="ODD"), 5, 5, "ODD")
+    _validate_adjust_window(_origin(week_parity="ALL"), 6, 7, "ODD")
 
 
 def test_final_apply_serializes_with_scope_head_publication():

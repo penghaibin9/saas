@@ -14,6 +14,29 @@ function page(name, dependencies = {}, globals = {}) {
   return context.component
 }
 
+test('新建课表须明确学院或全校范围，学院编号按字符串传递', async () => {
+  const writes = []
+  const component = page('AaScheduleBatchListView', { academicAffairsApi: { createScheduleBatch: async body => { writes.push(body); return { code: 0 } } }, toast: { success() {}, error() {} } })
+  const state = Object.assign(component.data(), component.methods, { ctx: {}, load: async () => {} })
+  state.draft.termId = '52'
+  await state.createBatch()
+  assert.equal(writes.length, 0)
+  state.draft.collegeId = '1000000000000000128'
+  await state.createBatch()
+  assert.equal(writes[0].collegeId, '1000000000000000128')
+  state.draft = { termId: '52', scopeType: 'SCHOOL', collegeId: '128' }
+  await state.createBatch()
+  assert.equal(writes[1].collegeId, undefined)
+})
+
+test('已发布课表的补排入口精确携带原批次', () => {
+  const component = page('AaScheduleBatchListView')
+  let destination
+  component.methods.openWorkbench.call({ $router: { push: route => { destination = route } } }, { batchId: '41' })
+  assert.equal(destination.path, '/admin/academic-affairs/scheduling')
+  assert.equal(destination.query.batchId, '41')
+})
+
 test('publication record failure remains an error; retry clears it after success', async () => {
   let response = { code: 403, message: '无查看发布记录权限' }
   const component = page('AaSchedulePublishView', {
@@ -47,6 +70,22 @@ test('today transport failure keeps the weekly schedule usable without claiming 
   assert.equal(state.items[0].itemId, 'lesson-1')
   assert.equal(state.todayError, '今日课表暂不可用')
   assert.equal(state.loading, false)
+})
+
+test('今日课表权限拒绝不得伪装今天无课，正式周课表继续可用', async () => {
+  const component = page('AaTeacherScheduleView', {
+    currentUserFromToken: () => ({ loginName: 'teacher-1' }),
+    academicAffairsApi: {
+      getTeacherSchedule: async () => ({ code: 0, data: { items: [{ itemId: 'lesson-1' }] } }),
+      getMyTeacherToday: async () => ({ code: 403, message: '无今日课表访问权限' })
+    }
+  })
+  const state = Object.assign(component.data.call({ $route: { params: {} } }), component.methods, {
+    teacherKey: 'teacher-1', isSelfView: true, $router: { replace: async () => {} }
+  })
+  await state.load()
+  assert.equal(state.todayError, '无今日课表访问权限')
+  assert.equal(state.items[0].itemId, 'lesson-1')
 })
 
 test('switching query while a response is pending cannot display the previous object', async () => {
@@ -90,4 +129,45 @@ test('student print preserves student query type and calls the student view endp
   await print.methods.load.call(state)
   assert.equal(studentCalls, 1)
   assert.equal(state.error, '')
+})
+
+test('teacher change actions carry a concrete teaching week instead of a method object', () => {
+  const component = page('AaTeacherScheduleView', {
+    currentUserFromToken: () => ({ loginName: 'teacher-1' }),
+    toast: { error() {}, success() {} }
+  })
+  let destination
+  const scope = { $route: { params: {} } }
+  const state = Object.assign(component.data.call(scope), component.methods, {
+    teacherKey: 'teacher-1', selfKey: 'teacher-1',
+    selectedItem: { itemId: '123', startWeek: 1, endWeek: 16 },
+    $router: { push: value => { destination = value } }
+  })
+  Object.defineProperty(state, 'selectedOccurrenceWeek', {
+    get: () => component.computed.selectedOccurrenceWeek.call(state)
+  })
+  state.week = null
+  state.applyChange('STOP')
+  assert.equal(destination, undefined)
+  state.week = 8
+  state.applyChange('ADJUST')
+  assert.equal(destination.query.occurrenceWeek, '8')
+})
+
+test('teacher week and semester views reload when switching back to self', () => {
+  for (const name of ['AaWeekScheduleView', 'AaSemesterScheduleView']) {
+    const component = page(name)
+    let loads = 0
+    const state = {
+      visibleDims: [{ key: 'teacher' }], isAcademicTeacher: true,
+      termId: '52', selfKey: 'teacher-1', teacherKey: '',
+      items: [{ itemId: 'old' }], note: 'old', error: 'old',
+      batchId: 'old-batch', batchIds: ['old-batch'],
+      load: () => { loads += 1 }
+    }
+    component.methods.switchDim.call(state, 'teacher')
+    assert.equal(state.teacherKey, 'teacher-1')
+    assert.equal(loads, 1)
+    assert.equal(state.items.length, 0)
+  }
 })

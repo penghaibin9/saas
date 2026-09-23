@@ -6,11 +6,12 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton v-if="!batch && canManage" variant="primary" @click="showCreate = !showCreate">{{ showCreate ? '收起新建' : '新建审核批次' }}</AppButton>
       <AppButton v-if="batch" variant="ghost" :disabled="busy || !!pendingCommand" @click="resetBatch">返回批次队列</AppButton>
       <AppButton v-if="batch" variant="primary" :disabled="busy" @click="enterAudit(batch, 'results')">进入审核工作台</AppButton>
     </template>
     <div class="mp-stack">
-      <GraduationStageRail :active="batch ? 2 : 0" />
+      <GraduationStageRail v-if="batch" :active="batch.status === 'ARCHIVED' ? 5 : (batch.status === 'PRECHECKED' ? 2 : 1)" />
 
       <section v-if="batch" class="grad-object" aria-label="当前毕业审核对象">
         <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>来源：毕业审核批次 #{{ batch.batchId }}</small></div>
@@ -19,7 +20,7 @@
         <div><span>下一岗位</span><strong>{{ Number(batch.abnormal || 0) ? '学院审核岗' : '教务终审岗' }}</strong><small>完成当前阶段后自动进入下一队列</small></div>
       </section>
 
-      <AppSectionCard v-if="!batch" title="新建审核批次">
+      <AppSectionCard v-if="!batch && showCreate" title="新建审核批次">
         <div class="aa-cal-form">
           <label class="aa-cal-form__item aa-cal-form__item--grow">批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="如 2026届毕业资格审核" maxlength="60" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2023" /></label>
@@ -28,7 +29,7 @@
         </div>
       </AppSectionCard>
 
-      <template v-else>
+      <template v-if="batch">
         <AppSectionCard :title="`批次：${batch.batchName}`">
           <div class="aa-batch-actions">
             <AppStatusTag type="primary">{{ academicStatusLabel(batch.status) }}</AppStatusTag>
@@ -51,7 +52,8 @@
       </section>
 
       <AppSectionCard :title="isBatchList ? '审核批次队列' : '毕业预审批次'">
-        <LoadingState v-if="loadingList" />
+        <ErrorState v-if="listError" :description="listError" @retry="loadBatches" />
+        <LoadingState v-else-if="loadingList" />
         <EmptyState v-else-if="!batches.length" title="暂无历史批次" description="新建的审核批次会持久保存在此，刷新页面不丢失" />
         <DataTable
           v-else
@@ -64,8 +66,8 @@
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ academicStatusLabel(row.status) }}</AppStatusTag></template>
           <template #cell-precheck="{ row }"><span>{{ row.total ? `通过 ${row.passed || 0} · 异常 ${row.abnormal || 0}` : '尚未预审' }}</span></template>
           <template #cell-ops="{ row }">
-            <button v-if="!isBatchList" class="mp-link" @click="chooseBatch(row)">进入预审</button>
-            <button class="mp-link" @click="enterAudit(row, isBatchList ? 'results' : 'credit')">进入审核工作台</button>
+            <button v-if="!isBatchList && row.status !== 'ARCHIVED'" class="mp-link" @click="chooseBatch(row)">继续预审</button>
+            <button class="mp-link" @click="enterAudit(row, row.status === 'ARCHIVED' ? 'archive' : 'results')">{{ row.status === 'ARCHIVED' ? '查看归档结果' : '查看结果与办理' }}</button>
           </template>
         </DataTable>
       </AppSectionCard>
@@ -76,7 +78,7 @@
 <script>
 // 后端门禁：只有最新完整正式 Run 为 SYSTEM_PASSED 才能学院通过并进入教务终审。
 /** 审核批次（/admin/academic-affairs/graduation）：建批次 + 圈定 + 预审 + 历史批次列表（进审核工作台）。 */
-import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, EmptyState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
@@ -93,14 +95,15 @@ const exactId = (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value)
 
 export default {
   name: 'AaGraduationBatchView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker, GraduationStageRail },
+  components: { ModulePageShell, DataTable, LoadingState, EmptyState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker, GraduationStageRail },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
-      alive: true, scope: 0, listSeq: 0, pendingCommand: null,
+      alive: true, scope: 0, listSeq: 0, pendingCommand: null, showCreate: false,
       draft: { batchName: '', gradeYear: '', majorId: '' },
       creating: false, batch: null, busy: false, genInfo: '', preInfo: '',
-      batches: [], loadingList: true,
+      batches: [], loadingList: true, listError: '',
       batchPagination: { page: 1, pageSize: 20, total: 0 },
       listColumns: [
         { key: 'batchName', title: '批次名称' }, { key: 'gradeYear', title: '年级' },
@@ -118,18 +121,18 @@ export default {
     pageTotals(){return this.batches.reduce((sum,row)=>({total:sum.total+Number(row.total||0),abnormal:sum.abnormal+Number(row.abnormal||0),concluded:sum.concluded+Number(row.concluded||0)}),{total:0,abnormal:0,concluded:0})}
   },
   watch:{identity(){this.scope++;this.listSeq++;this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo='';this.loadBatches()}},
-  created() { this.loadBatches() },
+  created() { const page=Number(this.$route.query.page);this.batchPagination.page=Number.isSafeInteger(page)&&page>0&&page<=1000000?page:1;this.loadBatches() },
   beforeUnmount(){this.alive=false;this.scope++;this.listSeq++},
   methods: {
     academicStatusLabel,
     chooseBatch(row){if(this.busy||this.pendingCommand)return;this.batch={...row};this.genInfo='';this.preInfo=''},
-    enterAudit(row,tab){const id=exactId(row?.batchId);if(!id)return;this.$router.push({path:'/admin/academic-affairs/graduation/audit-console',query:{batchId:id,tab}})},
+    enterAudit(row,tab){const id=exactId(row?.batchId);if(!id)return;const returnToken=this.academicFlow?.captureReturn?.();this.$router.push({path:'/admin/academic-affairs/graduation/audit-console',query:{batchId:id,tab,...(returnToken?{returnToken}:{})}})},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
     clearPrivate(){this.scope++;this.listSeq++;this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo=''},
     fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     async loadBatches() {
-      const c={scope:this.scope,identity:this.identity,seq:++this.listSeq,page:this.batchPagination.page};this.loadingList = true
+      const c={scope:this.scope,identity:this.identity,seq:++this.listSeq,page:this.batchPagination.page};this.loadingList = true;this.listError='';this.batches=[]
       try {
         const res = await academicAffairsApi.listGradBatches({
           page: this.batchPagination.page,
@@ -139,14 +142,15 @@ export default {
         if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503}
         this.batches=res.data.list;this.batchPagination.total = res.data.total
       } catch (e) {
-        if(this.current(c))toast.error(this.fail(e,'审核批次加载失败'))
+        if(this.current(c)){this.listError=this.fail(e,'审核批次加载失败');this.batches=[]}
       } finally {
         if(this.current(c)&&c.seq===this.listSeq)this.loadingList=false
       }
     },
-    async readBatch(batchId){const id=exactId(batchId);if(!id)return null;for(let page=1;page<=3;page++){const res=await academicAffairsApi.listGradBatches({page,pageSize:20});if(res?.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};const row=res.data.list.find(item=>exactId(item.batchId)===id);if(row)return row;if(res.data.list.length<20||page*20>=Number(res.data.total))break}return null},
+    async readBatch(batchId){const id=exactId(batchId);if(!id)return null;const res=await academicAffairsApi.listGradBatches({batchId:id,page:1,pageSize:1});if(res?.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};return res.data.list.find(item=>exactId(item.batchId)===id)||null},
     onBatchPageChange(page) {
       this.batchPagination.page = page
+      this.$router.replace({path:this.$route.path,query:{...this.$route.query,page:String(page)}})
       this.loadBatches()
     },
     async createBatch() {

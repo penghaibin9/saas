@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
@@ -580,19 +580,24 @@ def student_view(batch_id, user, student_id):
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):
-    from app.models import AaScheduleBatch
+    from app.models import AaScheduleBatch, AaTerm
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
         if term_id:
             conds.append(AaScheduleBatch.term_id == int(term_id))
         if status:
             conds.append(AaScheduleBatch.status == status)
-        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc())).all()
+        size = max(1, min(int(page_size), 200))
+        start = (max(1, int(page)) - 1) * size
+        total = int(db.scalar(select(func.count()).select_from(AaScheduleBatch).where(*conds)) or 0)
+        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc()).offset(start).limit(size)).all()
+        terms = {int(t.id): f"{t.year_code} 第{t.term_no}学期" for t in db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
+        )).all()}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 # ═══════════ Tier1 R2：班级/教师/教室独立课表入口 + 发布记录 + 导出 ═══════════
@@ -690,12 +695,27 @@ def class_schedule(user, class_id, term_id=None, week=None) -> dict:
         cls = db.get(SchoolClass, int(class_id))
         if not cls or cls.is_deleted or cls.tenant_id != _tid():
             raise not_found("班级不存在")
-        ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
-            allowed = ctx.allowed_class_ids(db)
-            if not allowed or int(class_id) not in allowed:
-                raise no_data_scope("该班级不在您的数据范围内")
         batches = _current_published_batches(db, term_id)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            allowed = set()
+            term_ids = {int(batch.term_id) for batch in batches if batch.term_id}
+            if not term_ids and term_id not in (None, ""):
+                term_ids = {int(term_id)}
+            if not term_ids:
+                allowed |= teacher_authority.relation_scope(db, user)["classIds"]
+            else:
+                for current_term_id in term_ids:
+                    allowed |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["classIds"]
+            if int(class_id) not in allowed:
+                raise no_data_scope("仅可查看本人正式任课关系涉及的班级课表")
+        else:
+            ctx = build_affairs_context(user, db)
+            if ctx.scope_type != "TENANT_ALL":
+                allowed = ctx.allowed_class_ids(db)
+                if not allowed or int(class_id) not in allowed:
+                    raise no_data_scope("该班级不在您的数据范围内")
         if not batches:
             return {"items": [], "batchId": None, "batchIds": [], "className": cls.class_name,
                     "note": "该班级本学期暂无已发布课表"}
@@ -710,19 +730,39 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
     （teacherKey 与本人 _user_keys 不命中 → 403002）。weeklyHours 为 V1 近似口径：按已排课表项计数，
     单双周场景未按实际周折算（精确工作量口径以「教学任务.weeklyHours」为准，此处仅课表侧粗略参考）。"""
     role = ((user or {}).get("currentRoleCode") or "").upper()
-    if role not in _REVIEW_ROLES and teacher_key not in _user_keys(user):
+    if role == "ACADEMIC_TEACHER":
+        from . import academic_affairs_teacher_relation_authority as teacher_authority
+        if teacher_key not in teacher_authority.user_keys(user):
+            raise no_data_scope("仅能查看本人课表")
+    elif role not in _REVIEW_ROLES and teacher_key not in _user_keys(user):
         raise no_data_scope("仅能查看本人课表")
     from app.models import AaScheduleItem
     with session() as db:
         batches = _current_published_batches(db, term_id)
         if not batches:
             return {"items": [], "batchId": None, "batchIds": [], "weeklyHours": 0,
+                    "teacherName": (user or {}).get("realName") if role == "ACADEMIC_TEACHER" else "",
                     "note": "本学期暂无授课安排"}
         identity = _batch_identity(batches)
-        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.teacher_key == teacher_key])
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            task_ids = set()
+            for current_term_id in {int(batch.term_id) for batch in batches if batch.term_id}:
+                task_ids |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["taskIds"]
+            keys = teacher_authority.user_keys(user)
+            filters = []
+            if task_ids:
+                filters.append(AaScheduleItem.task_id.in_(sorted(task_ids)))
+            if keys:
+                filters.append(and_(AaScheduleItem.task_id.is_(None), AaScheduleItem.teacher_key.in_(sorted(keys))))
+            rows = _view(db, [batch.id for batch in batches], [or_(*filters)]) if filters else []
+        else:
+            rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.teacher_key == teacher_key])
         weekly_hours = len(rows)
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, **identity, "weeklyHours": weekly_hours, "note": ""}
+        return {"items": rows, **identity, "weeklyHours": weekly_hours,
+                "teacherName": (user or {}).get("realName") if role == "ACADEMIC_TEACHER" else "",
+                "note": ""}
 
 
 def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
@@ -793,16 +833,32 @@ def teaching_class_schedule(user, teaching_class_code, term_id=None, week=None) 
             AaTeachingTask.teaching_class_code == teaching_class_code)).all()
         if not tasks:
             raise not_found("教学班不存在")
-        ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
-            allowed = ctx.allowed_class_ids(db) or set()
-            class_ids = {t.class_id for t in tasks if t.class_id}
-            if not (class_ids & allowed):
-                raise no_data_scope("该教学班不在您的数据范围内")
+        batches = _current_published_batches(db, term_id)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            allowed_task_ids = set()
+            term_ids = {int(batch.term_id) for batch in batches if batch.term_id}
+            if not term_ids and term_id not in (None, ""):
+                term_ids = {int(term_id)}
+            if not term_ids:
+                allowed_task_ids |= teacher_authority.relation_scope(db, user)["taskIds"]
+            else:
+                for current_term_id in term_ids:
+                    allowed_task_ids |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["taskIds"]
+            tasks = [task for task in tasks if int(task.id) in allowed_task_ids]
+            if not tasks:
+                raise no_data_scope("仅可查看本人正式任课关系中的教学班课表")
+        else:
+            ctx = build_affairs_context(user, db)
+            if ctx.scope_type != "TENANT_ALL":
+                allowed = ctx.allowed_class_ids(db) or set()
+                class_ids = {t.class_id for t in tasks if t.class_id}
+                if not (class_ids & allowed):
+                    raise no_data_scope("该教学班不在您的数据范围内")
         task_ids = [t.id for t in tasks]
         teaching_class_name = next((t.teaching_class_name for t in tasks if t.teaching_class_name),
                                    teaching_class_code)
-        batches = _current_published_batches(db, term_id)
         if not batches:
             return {"items": [], "batchId": None, "batchIds": [],
                     "teachingClassName": teaching_class_name,

@@ -102,7 +102,7 @@ def _selection_scope_course_query(query, scoped):
 def _roster_sql(user, keyword=None, status=None, page=1, page_size=20):
     """Keep the roster contract while pushing scope, search, count and paging into SQL."""
     from app.core.field_crypto import mask_id_card_encrypted
-    from app.models import StudentProfile
+    from app.models import SchoolClass, StudentProfile
     from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
     from . import academic_affairs_service as roster_read
 
@@ -139,12 +139,18 @@ def _roster_sql(user, keyword=None, status=None, page=1, page_size=20):
             .offset((page_no - 1) * size)
             .limit(size)
         ).all()
+        class_ids = {student.class_id for student in rows if student.class_id}
+        class_names = dict(db.execute(select(SchoolClass.id, SchoolClass.class_name).where(
+            SchoolClass.tenant_id == roster_read._tid(), SchoolClass.is_deleted.is_(False),
+            SchoolClass.id.in_(class_ids),
+        )).all()) if class_ids else {}
         return [
             {
                 "studentId": str(student.id),
                 "studentNo": student.student_no,
                 "realName": student.real_name,
-                "className": str(student.class_id or ""),
+                "classId": str(student.class_id) if student.class_id else None,
+                "className": class_names.get(student.class_id, ""),
                 "studentStatus": student.student_status,
                 "enrolled": is_enrolled(student.student_status),
                 "idCardMasked": mask_id_card_encrypted(student.id_card_encrypted),

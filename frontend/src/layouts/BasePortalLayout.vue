@@ -327,6 +327,13 @@ import { OfficeBuilding } from '@element-plus/icons-vue'
 import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/config/adminMenu'
 import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, searchNavPlan, navRefMatches, navRefExactMatch, matchPermission } from '@/config/navPlan'
+import {
+  academicTeacherActiveModule,
+  academicTeacherDefaultPath,
+  filterAcademicTeacherSearchResults,
+  isAcademicTeacherContext,
+  projectAcademicTeacherModules
+} from '@/modules/academicAffairs/config/academicTeacherNavigation'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -455,20 +462,28 @@ export default {
       // 既允许统一公共壳，也避免登录页或其他平台入口被意外改版。
       return this.workspace || (!this.isPlatformMode && (usesStudentAffairsWorkspace(this.$route.path, this.$route.fullPath) || this.$route.path === '/workbench' || /^\/admin\/(approval|messages|data-center|help)(?:\/|$)/.test(this.$route.path)))
     },
+    workspaceStudentSearchEnabled() {
+      return this.useWorkspace && !this.isPlatformMode && !isAcademicTeacherContext(this.ctx)
+    },
     workspaceSearchPlaceholder() {
       if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
-      return this.isPlatformMode ? '搜索平台功能或帮助' : '搜索学生、功能或帮助'
+      return this.isPlatformMode ? '搜索平台功能或帮助'
+        : (this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能或帮助')
     },
     workspaceSearchAriaLabel() {
       if (!this.useWorkspace) return '搜索功能与帮助'
-      return this.isPlatformMode ? '搜索平台功能与帮助' : '搜索学生、功能或帮助'
+      return this.isPlatformMode ? '搜索平台功能与帮助'
+        : (this.workspaceStudentSearchEnabled ? '搜索学生、功能或帮助' : '搜索功能与帮助')
     },
     workspaceIdentityKey() {
       return workspaceIdentity(currentUserFromToken(), this.ctx)
     },
     workspaceModules() {
       const permissions = this.ctx?.permissionPatterns || []
-      const modules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      const sourceModules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
+      const modules = this.railActiveKey === 'academic-affairs'
+        ? projectAcademicTeacherModules(sourceModules, this.ctx)
+        : sourceModules
       return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },
     /** 当前角色可见的一级模块 key 集合（用于把搜索结果限制在有权限的范围内） */
@@ -487,7 +502,9 @@ export default {
     /** 功能/帮助搜索结果：旧名兼容 + 完整目录(navPlan) + 帮助文档/流程图；planned 显示「待施工」不跳转 */
     fnResults() {
       const q = this.fnQueryDebounced.trim().toLowerCase()
-      const out = this.useWorkspace ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' })) : []
+      const out = this.workspaceStudentSearchEnabled
+        ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' }))
+        : []
       searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys }).forEach((a) => {
         out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' })
       })
@@ -514,7 +531,8 @@ export default {
         seen.add(k)
         return true
       })
-      return dedup.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
+      const projected = filterAcademicTeacherSearchResults(dedup, this.ctx, this.workspaceModules)
+      return projected.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
@@ -591,6 +609,9 @@ export default {
       return getVisibleAdminMenu(this.ctx)
         .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
         .map((group) => {
+          if (group.key === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
+            return { key: group.key, label: group.label, path: academicTeacherDefaultPath(this.ctx), badge: group.badge }
+          }
           // 顶部中心入口保留日常办理导航；独立大屏仍由原菜单进入。
           // 只从已通过权限过滤的菜单选择，受限身份继续使用其首个可用入口。
           const first = group.children.find((item) => item.path === '/admin/academic-affairs') || group.children[0]
@@ -609,6 +630,7 @@ export default {
       // 否则点「班级列表/班级画像/辅导员考评」这类叶子会把侧栏错误地整组切到工作台（内容页是对的，只是目录栏跳走）。
       const path = this.$route ? this.$route.path : ''
       if (this.isPlatformMode) return 'platform'
+      if (isAcademicTeacherContext(this.ctx) && /^\/admin\/academic-affairs(?:\/|$)/.test(path)) return 'academic-affairs'
       if (path === '/admin/student-affairs/material-operations') return 'student-affairs'
       return findActiveMenu(path).groupKey || this.planActive.groupKey || 'student-affairs'
     },
@@ -648,6 +670,10 @@ export default {
       return this.planGroup ? this.planGroup.children : []
     },
     planActiveModKey() {
+      if (this.railActiveKey === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
+        return academicTeacherActiveModule(this.workspaceModules, this.currentNavRef, this.ctx) ||
+          (this.workspaceModules[0] && this.workspaceModules[0].key) || ''
+      }
       return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
     },
     /* 按当前路由定位应高亮的唯一三级叶子（复用 findActiveInPlan 拍平索引，避免遍历 planMods 全部叶子） */
@@ -815,7 +841,7 @@ export default {
       this.stuError = ''
       this.stuResults = []
       const kw = (q || '').trim()
-      if (!this.ctx || kw.length < 2) {
+      if (!this.workspaceStudentSearchEnabled || !this.ctx || kw.length < 2) {
         this.stuResults = []
         this.stuSearching = false
         return
@@ -922,7 +948,14 @@ export default {
     fnOpen(open) { if (open) this.loadHelp() },
     helpOpen(open) { if (open) this.loadHelp() },
     fnQuery(q) {
-      if (this.useWorkspace && !this.isPlatformMode) this.queueStuSearch(q)
+      if (this.workspaceStudentSearchEnabled) this.queueStuSearch(q)
+      else {
+        clearTimeout(this.stuTimer)
+        ++this.stuSeq
+        this.stuResults = []
+        this.stuSearching = false
+        this.stuError = ''
+      }
       this.fnActive = 0
       clearTimeout(this.fnSearchTimer)
       const text = String(q || '').trim()

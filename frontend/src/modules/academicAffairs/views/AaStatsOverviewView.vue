@@ -87,7 +87,7 @@
               <template #cell-scope><span>{{ appliedScopeLabel }}</span></template>
               <template #cell-time>{{ sourceAsOf || '尚未提供' }}</template>
               <template #cell-status="{ row }"><span>{{ row.status === 'MODULE_NOT_ENABLED' ? '未启用' : row.message || '已返回统计结果' }}</span></template>
-              <template #cell-action="{ row }"><AppButton v-if="drillable(row)" size="small" variant="ghost" @click="onCardClick(row)">{{ activeDrill === row.key ? '收起明细' : '查看明细' }}</AppButton><span v-else class="stats-cell-note">暂不提供下钻</span></template>
+              <template #cell-action="{ row }"><AppButton v-if="drillable(row)" size="small" variant="ghost" @click="onCardClick(row)">{{ activeDrill === row.key ? '收起明细' : '查看明细' }}</AppButton><AppButton v-else-if="indicatorTopic(row)" size="small" variant="ghost" @click="openIndicatorTopic(row)">查看专题与异常</AppButton><span v-else class="stats-cell-note">当前仅汇总统计</span></template>
             </DataTable>
           </section>
           <div v-if="activeDrill" class="aa-drill">
@@ -227,6 +227,7 @@ import AaStatsSnapshotWorkspace from '@/modules/academicAffairs/components/AaSta
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { academicIdentity } from '../academicFlowContext'
+import { statsGroupLabel, STATS_INDICATOR_TOPICS } from './parallel-c/stats-presentation.js'
 
 const TABS = [
   { key: 'overview', label: '教务总览' },
@@ -586,8 +587,7 @@ export default {
     distributionOptions() { return this.indicators.filter(item => item.status !== 'MODULE_NOT_ENABLED' && Array.isArray(item.groups) && item.groups.some(group => typeof group.count === 'number' && Number.isFinite(group.count))) },
     distributionMetric() { return this.distributionOptions.find(item => item.key === this.overviewMetricKey) || this.distributionOptions[0] || null },
     overviewDistributionSpec() {
-      const names = { makeup: '补考', retake: '重修', conflict: '冲突', HIGH: '高风险', MEDIUM: '中风险', LOW: '低风险', UNKNOWN: '未分类' }
-      return { type: 'interval', data: (this.distributionMetric?.groups || []).filter(group => typeof group.count === 'number' && Number.isFinite(group.count)).map(group => ({ name: names[group.key] || group.label || group.key, value: group.count })), encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { y: { title: null }, x: { title: null } } }
+      return { type: 'interval', data: (this.distributionMetric?.groups || []).filter(group => typeof group.count === 'number' && Number.isFinite(group.count)).map(group => ({ name: statsGroupLabel(group), value: group.count })), encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { y: { title: null }, x: { title: null } } }
     },
     appliedScopeLabel() { return [this.appliedFilters.termId ? `学期 #${this.appliedFilters.termId}` : '各指标原有学期范围', this.appliedFilters.collegeId ? `学院 #${this.appliedFilters.collegeId}` : '当前授权范围', this.appliedFilters.majorId ? `专业 #${this.appliedFilters.majorId}` : ''].filter(Boolean).join(' · ') },
     filtersDirty() { return JSON.stringify(this.filters) !== JSON.stringify(this.appliedFilters) },
@@ -686,19 +686,25 @@ export default {
     drillable(ind) {
       return !!DRILL_META[ind.key] && ind.status !== 'MODULE_NOT_ENABLED'
     },
+    indicatorTopic(ind) { return ind.status !== 'MODULE_NOT_ENABLED' ? STATS_INDICATOR_TOPICS[ind.key] : '' },
+    openIndicatorTopic(ind) {
+      const tab = this.indicatorTopic(ind)
+      if (!tab) return
+      this.filters = { ...this.appliedFilters }
+      this.switchTab(tab)
+    },
     // 仅用于展示：把既有分布数组 [{key,count}] 映射为柱状图 spec，不改动任何数据来源
     distSpec(arr, prefix = '') {
       return {
         type: 'interval',
-        data: (arr || []).map((g) => ({ name: `${prefix}${g.key}`, value: g.count })),
+        data: (arr || []).map((g) => ({ name: `${prefix}${statsGroupLabel(g)}`, value: g.count })),
         encode: { x: 'name', y: 'value' },
         axis: { y: { title: null } },
         style: { radiusTopLeft: 4, radiusTopRight: 4 }
       }
     },
     groupSummary(ind) {
-      const names = { makeup: '补考', retake: '重修' }
-      return (ind.groups || []).map((g) => `${names[g.key] || g.key} ${g.count}`).join(' · ')
+      return (ind.groups || []).map((g) => `${statsGroupLabel(g)} ${g.count}`).join(' · ')
     },
     switchTab(k) {
       if (!TABS.some(item => item.key === k)) return

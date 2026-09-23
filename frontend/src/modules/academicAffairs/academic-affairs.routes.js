@@ -17,7 +17,9 @@ const layoutRoute = {
   meta: { moduleCode: MOD },
   children: [
     // ── W1 骨架与时间轴 ──
-    { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: meta('academicAffairs.dashboard.view', '教务看板') },
+    { path: '', name: 'aa-dashboard', component: () => import('@/modules/academicAffairs/views/AaDashboardView.vue'), meta: { ...meta(null, '教务看板'), permissionAny: ['academicAffairs.dashboard.view', 'academicAffairs.schedule.view'] } },
+    // 普通任课教师日常首屏：沿用公共壳，仅使用本人正式教学事实，不复用全校 dashboard 权限。
+    { path: 'teacher/today', name: 'aa-teacher-today', component: () => import('@/modules/academicAffairs/views/AaTeacherTodayView.vue'), meta: meta('academicAffairs.schedule.view', '今日教学') },
     { path: 'terms', name: 'aa-terms', component: () => import('@/modules/academicAffairs/views/AaTermListView.vue'), meta: meta('academicAffairs.term.view', '学年学期') },
     { path: 'terms/new', name: 'aa-term-new', component: () => import('@/modules/academicAffairs/views/AaTermFormView.vue'), meta: meta('academicAffairs.term.manage', '新建学期') },
     // ── Tier1-R2：当前学期设置 / 学期周次 / 教学周配置 / 学期状态 / 学期归档（续工，只加叶子不改既有4端点语义） ──
@@ -119,7 +121,7 @@ const layoutRoute = {
     // ── 成绩复查复审（aa-qz 新版）/ 成绩操作审计（读 AA_GRADE_* 审计流水，master）/ 课堂考勤统计（aa-qz）──
     { path: 'grade-recheck', name: 'aa-grade-recheck', component: () => import('@/modules/academicAffairs/views/AaGradeRecheckView.vue'), meta: meta('academicAffairs.grade.view', '成绩复查复审') },
     { path: 'grade-audit', name: 'aa-grade-audit', component: () => import('@/modules/academicAffairs/views/AaGradeAuditView.vue'), meta: meta('academicAffairs.grade.view', '成绩操作审计') },
-    { path: 'attendance-stats', name: 'aa-attendance-stats', component: () => import('@/modules/academicAffairs/views/AaAttendanceStatsView.vue'), meta: meta('academicAffairs.warning.view', '课堂考勤统计') },
+    { path: 'attendance-stats', name: 'aa-attendance-stats', component: () => import('@/modules/academicAffairs/views/AaAttendanceStatsView.vue'), meta: meta('academicAffairs.attendance.view', '课堂考勤统计') },
     { path: 'warnings', name: 'aa-warnings', component: () => import('@/modules/academicAffairs/views/AaWarningView.vue'), meta: meta('academicAffairs.warning.view', '学业预警') },
     // ── 学业预警二级模块 Tier1：看板/多维分类(学分·挂科·绩点·补考重修·毕业风险)/规则/跟进/统计，单控制台按 ?tab= 切换 ──
     { path: 'warnings/console', name: 'aa-warnings-console', component: () => import('@/modules/academicAffairs/views/AaWarningConsoleView.vue'), meta: meta('academicAffairs.warning.view', '学业预警控制台') },

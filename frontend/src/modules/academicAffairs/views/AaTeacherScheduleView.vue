@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
-    title="教师课表"
-    subtitle="按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师"
+:title="isAcademicTeacher ? '个人课表' : '教师课表'"
+    :subtitle="isAcademicTeacher ? '进入即显示本人正式课表；调课、停课、补课从具体课位发起' : '按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -19,11 +19,12 @@
         next-owner="任课教师；调整须进入调停课审批"
       />
       <div class="aa-filter">
-        <label class="aa-filter__item aa-filter__item--grow">
+        <label v-if="!isAcademicTeacher" class="aa-filter__item aa-filter__item--grow">
           教师
           <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
         </label>
-        <AppButton v-if="selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
+        <span v-else class="mp-note">当前对象：本人正式任课关系</span>
+        <AppButton v-if="!isAcademicTeacher && selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
         <label class="aa-filter__item">
           学期
           <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
@@ -40,25 +41,26 @@
       <EmptyState v-else-if="!teacherKey" title="请先输入教师工号" description="或点击「查看本人课表」" />
       <template v-else>
         <AppSectionCard v-if="isSelfView" title="今天的授课安排" class="aa-today-card">
-          <div class="aa-today-head">
+          <ErrorState v-if="todayError" :description="todayError" @retry="load" />
+          <div v-else class="aa-today-head">
             <div>
               <strong>{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</strong>
               <p>{{ todayNote }}</p>
             </div>
             <span v-if="todayDate">{{ todayDate }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
           </div>
-          <div v-if="todayItems.length" class="aa-today-list">
+          <div v-if="!todayError && todayItems.length" class="aa-today-list">
             <button v-for="item in todayItems" :key="item.scheduleItemId" type="button" class="aa-today-item" @click="openTodayItem(item)">
               <b>第{{ item.slotNo }}节</b>
               <span><strong>{{ item.courseName }}</strong><small>{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</small></span>
               <em>查看课位与调停课 ›</em>
             </button>
           </div>
-          <EmptyState v-else title="今天无课" :description="todayNote" />
+          <EmptyState v-else-if="!todayError" title="今天无课" :description="todayNote" />
         </AppSectionCard>
         <div class="aa-summary">
           <span v-if="weeklyHours" class="aa-summary__item">本学期周学时合计（近似）：<b>{{ weeklyHours }}</b></span>
-          <p v-if="note" class="mp-note">{{ note }}</p>
+          <p v-if="note" class="mp-note">课表按正式授课关系及有效周次展示；周学时仅供教学安排参考。</p>
         </div>
         <AppSectionCard :title="`${teacherName || '本人'} · 周课表`">
           <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
@@ -77,9 +79,10 @@
           </div>
           <div v-if="isSelfView" class="aa-item-detail__actions">
             <AppButton variant="primary" @click="applyChange('ADJUST')">申请调课</AppButton>
-            <AppButton @click="applyChange('STOP')">申请停课</AppButton>
-            <AppButton @click="applyChange('MAKEUP')">申请补课</AppButton>
+            <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('STOP')">申请停课</AppButton>
+            <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('MAKEUP')">申请补课</AppButton>
           </div>
+          <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课/补课必须先在上方“周次”选择具体教学周；调课可在下一步选择“只调一次”或“调整周期课表”。</p>
           <p v-else class="mp-note">当前为管理查询视图；只有任课教师本人可从课位发起调停课。</p>
         </AppSectionCard>
       </template>
@@ -119,10 +122,21 @@ export default {
   },
   created() {
     this.loadSlots()
-    if (this.teacherKey) this.load()
+    if (this.isAcademicTeacher && this.selfKey) {
+      this.teacherKey = this.selfKey
+      this.teacherName = '本人'
+      this.load()
+    } else if (this.teacherKey) this.load()
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
     isSelfView() { return this.isSameTeacherKey(this.teacherKey) },
+    selectedOccurrenceWeek() {
+      const week = Number(this.week || this.selectedItem?.weekNo || 0)
+      return Number.isInteger(week) && week > 0 ? week : null
+    },
     todayNote() {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
@@ -160,9 +174,17 @@ export default {
         toast.error('该课位缺少正式课表标识，请刷新本人课表后重试')
         return
       }
+      if (['STOP', 'MAKEUP'].includes(changeType) && !this.selectedOccurrenceWeek) {
+        toast.error('请先选择具体教学周，再申请停课或补课')
+        return
+      }
       this.$router.push({
         path: '/admin/academic-affairs/schedule-change/apply',
-        query: { originItemId: String(originItemId), changeType }
+        query: {
+          originItemId: String(originItemId),
+          changeType,
+          occurrenceWeek: String(this.selectedOccurrenceWeek || '')
+        }
       })
     },
     async loadSlots() {
@@ -192,11 +214,15 @@ export default {
         this.selectedItem = null
         this.weeklyHours = res.data.weeklyHours || 0
         this.note = res.data.note || ''
+        if (this.isSelfView && todayRes?.code !== 0 && !this.todayError) this.todayError = todayRes?.message || '今日课表读取失败，请重试；下方周课表仍可查看。'
         this.todayItems = todayRes?.code === 0 ? (todayRes.data.todayItems || []) : []
         this.todayDate = todayRes?.code === 0 ? (todayRes.data.todayDate || '') : ''
         this.todayWeek = todayRes?.code === 0 ? (todayRes.data.currentWeek ?? null) : null
         this.calendarSource = todayRes?.code === 0 ? (todayRes.data.calendarSource || '') : ''
-        this.$router.replace(`/admin/academic-affairs/schedule/teacher/${this.teacherKey}`).catch(() => {})
+        this.$router.replace({
+          path: `/admin/academic-affairs/schedule/teacher/${this.teacherKey}`,
+          query: { ...(this.$route?.query || {}) }
+        }).catch(() => {})
       } else {
         this.error = res.message
         this.items = []

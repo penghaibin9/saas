@@ -236,7 +236,18 @@ def validate_program_db(db, program_id: int) -> dict:
 
 def validate_program(user, program_id: int) -> dict:
     with session() as db:
-        _ensure_program_scope(db, user, program_id)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from app.models import AaProgram
+            program = db.query(AaProgram).filter(
+                AaProgram.id == int(program_id),
+                AaProgram.tenant_id == _tid(),
+                AaProgram.is_deleted.is_(False),
+            ).first()
+            if not program or str(program.status or "").upper() not in _ACTIVE_PROGRAM_STATUSES:
+                raise not_found("培养方案不存在")
+        else:
+            _ensure_program_scope(db, user, program_id)
         return validate_program_db(db, program_id)
 
 
