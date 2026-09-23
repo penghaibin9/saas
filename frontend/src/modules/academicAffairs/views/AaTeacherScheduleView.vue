@@ -133,6 +133,10 @@ export default {
       return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
     },
     isSelfView() { return this.isSameTeacherKey(this.teacherKey) },
+    selectedOccurrenceWeek() {
+      const week = Number(this.week || this.selectedItem?.weekNo || 0)
+      return Number.isInteger(week) && week > 0 ? week : null
+    },
     todayNote() {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
@@ -154,10 +158,6 @@ export default {
     },
     isSameTeacherKey(value) {
       return String(value || '').trim() === String(this.selfKey || '').trim()
-    },
-    selectedOccurrenceWeek() {
-      const week = Number(this.week || this.selectedItem?.weekNo || 0)
-      return Number.isInteger(week) && week > 0 ? week : null
     },
     openTodayItem(item) {
       this.selectedItem = { ...item, itemId: item.itemId || item.scheduleItemId }

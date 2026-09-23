@@ -147,7 +147,7 @@
           <AppInlineAlert
             v-if="detail.incidentType === 'ABSENT' && detail.riskAlertSent"
             type="info"
-            description="风险通知已送达，请由有权限的考务人员继续办理正式关闭。"
+            description="风险通知已送达，但这不等于考务正式关闭；仍需有权限的第二步 CLOSE 形成处置事实。"
           />
           <label v-if="detail.incidentType !== 'ABSENT' && canWriteCurrent" class="aeiw-field handoff-ref">
             <span>处分 / 后续处理线索编号（移交时必填）</span>

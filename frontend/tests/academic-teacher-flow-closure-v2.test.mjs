@@ -346,3 +346,11 @@ test('teacher V3 duplicate grade setup recovers into the existing task', () => {
   assert.match(source, /该课程成绩任务已存在，已为您打开原任务/)
   assert.match(source, /await this\.openTask\(\{ gradeTaskId: existingGradeTaskId \}\)/)
 })
+
+test('teacher Today never turns transport failure into zero or a fake empty-success queue', () => {
+  const source = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
+  assert.match(source, /<ErrorState v-else-if="todayError"/)
+  assert.match(source, /value: this\.todayError \? null : Number\(c\.grades/)
+  assert.doesNotMatch(source, /actionItems\.slice\(0, 7\)/)
+  assert.doesNotMatch(source, /waitingItems\.slice\(0, 7\)/)
+})

@@ -227,3 +227,22 @@ test('submitted receipt goes to the formal ledger detail, not an unprintable not
     assert.equal(target, '/admin/academic-affairs/schedule-change?changeId=a')
   }
 })
+
+test('single-occurrence adjust and makeup synchronize the end week before preflight', () => {
+  const { state: adjust, definition: adjustDefinition } = setup({})
+  adjust.form.changeType = 'ADJUST'
+  adjust.adjustScope = 'OCCURRENCE'
+  adjust.form.targetStartWeek = 8
+  adjust.form.targetEndWeek = null
+  adjustDefinition.watch['form.targetStartWeek'].call(adjust)
+  assert.equal(adjust.form.targetEndWeek, 8)
+  assert.equal(adjust.canCheckConflict, true)
+
+  const { state: makeup, definition } = setup({})
+  makeup.form.changeType = 'MAKEUP'
+  makeup.form.targetStartWeek = 9
+  makeup.form.targetEndWeek = null
+  definition.watch['form.targetStartWeek'].call(makeup)
+  assert.equal(makeup.form.targetEndWeek, 9)
+  assert.equal(makeup.canCheckConflict, true)
+})

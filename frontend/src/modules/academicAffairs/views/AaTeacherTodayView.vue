@@ -54,6 +54,7 @@
 
       <AppSectionCard title="我的待办">
         <LoadingState v-if="loading && !loadedOnce" />
+        <ErrorState v-else-if="todayError" :description="todayError" @retry="load" />
         <template v-else>
           <div class="aat-work-tabs" role="tablist" aria-label="我的待办状态">
             <button type="button" :class="{ active: workTab === 'actions' }" @click="workTab = 'actions'">待我处理 <b>{{ actionItems.length }}</b></button>
@@ -61,7 +62,7 @@
           </div>
           <template v-if="workTab === 'actions'">
             <template v-if="actionItems.length">
-              <div v-for="item in actionItems.slice(0, 7)" :key="`action-${item.kind}-${item.id}`" class="aat-todo">
+              <div v-for="item in actionItems" :key="`action-${item.kind}-${item.id}`" class="aat-todo">
                 <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
                 <AppButton size="small" :variant="item.primary ? 'primary' : 'default'" @click="go(item.path)">{{ item.action || '去处理' }}</AppButton>
               </div>
@@ -70,7 +71,7 @@
           </template>
           <template v-else>
             <template v-if="waitingItems.length">
-              <div v-for="item in waitingItems.slice(0, 7)" :key="`waiting-${item.kind}-${item.id}`" class="aat-todo">
+              <div v-for="item in waitingItems" :key="`waiting-${item.kind}-${item.id}`" class="aat-todo">
                 <div><strong>{{ item.title }}</strong><span>{{ item.note }}</span></div>
                 <AppButton size="small" @click="go(item.path)">{{ item.action || '查看进度' }}</AppButton>
               </div>
@@ -123,10 +124,10 @@ export default {
       const firstPath = kinds => [...this.actionItems, ...this.waitingItems].find(item => kinds.includes(item.kind))?.path
       return [
         { key: 'today', label: '今日课程', value: this.todayError ? null : this.todayItems.length, unit: '节', path: '/admin/academic-affairs/schedule/teacher' },
-        { key: 'task', label: '待确认任务', value: Number(c.teachingTasks || 0), unit: '项', path: firstPath(['TEACHING_TASK']) || '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
-        { key: 'grade', label: '待录成绩', value: Number(c.grades || 0), unit: '门', path: firstPath(['GRADE', 'GRADE_SETUP']) || '/admin/academic-affairs/grade-entry' },
-        { key: 'change', label: '调停课审核中', value: Number(c.scheduleChanges || 0), unit: '条', path: firstPath(['SCHEDULE_CHANGE']) || '/admin/academic-affairs/schedule-change' },
-        { key: 'materials', label: '教材/预约', value: Number(c.textbooks || 0) + Number(c.bookings || 0), unit: '项', path: firstPath(['TEXTBOOK', 'CLASSROOM_BOOKING', 'LAB_BOOKING']) || '/admin/academic-affairs/textbooks?tab=selection' }
+        { key: 'task', label: '待确认任务', value: this.todayError ? null : Number(c.teachingTasks || 0), unit: '项', path: firstPath(['TEACHING_TASK']) || '/admin/academic-affairs/teaching-tasks/teacher-confirm' },
+        { key: 'grade', label: '待录成绩', value: this.todayError ? null : Number(c.grades || 0), unit: '门', path: firstPath(['GRADE', 'GRADE_SETUP']) || '/admin/academic-affairs/grade-entry' },
+        { key: 'change', label: '调停课审核中', value: this.todayError ? null : Number(c.scheduleChanges || 0), unit: '条', path: firstPath(['SCHEDULE_CHANGE']) || '/admin/academic-affairs/schedule-change' },
+        { key: 'materials', label: '教材/预约', value: this.todayError ? null : Number(c.textbooks || 0) + Number(c.bookings || 0), unit: '项', path: firstPath(['TEXTBOOK', 'CLASSROOM_BOOKING', 'LAB_BOOKING']) || '/admin/academic-affairs/textbooks?tab=selection' }
       ]
     }
   },

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import or_
+
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -229,10 +231,17 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
             conds.append(AaTextbookSelection.task_id.in_(task_ids_for_term))
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
             keys = _derive_keys(user)
-            if not keys:
+            formal_task_ids = teacher_authority.relation_scope(
+                db, user, term_id=term_id
+            ).get("taskIds") or set()
+            if not keys and not formal_task_ids:
                 return [], 0
-            conds.append(AaTextbookSelection.officer_key.in_(sorted(keys)))
+            conds.append(or_(
+                AaTextbookSelection.officer_key.in_(sorted(keys) or ["__none__"]),
+                AaTextbookSelection.task_id.in_(sorted(formal_task_ids) or [-1]),
+            ))
         elif not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
             conds.append(AaTextbookSelection.college_id.in_(allowed or [-1]))

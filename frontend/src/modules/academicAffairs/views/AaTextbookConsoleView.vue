@@ -475,22 +475,26 @@ export default {
         remark: this.selectionForm.remark.trim()
       }
       const createBody = { ...body, taskId: String(this.selectionForm.taskId) }
-      await this.write(
+      let saved = null
+      const result = await this.write(
         () => editingId ? api.updateSelection(editingId, body) : api.createSelection(createBody),
-        async result => {
-          const id = String(result.data?.selectionId || editingId || '')
-          const name = result.data?.courseName || '教材选用申报'
-          this.selectionDraftReceipt = id ? { id, name } : null
+        response => {
+          const id = String(response.data?.selectionId || editingId || '')
+          const name = response.data?.courseName || '教材选用申报'
+          saved = id ? { id, name } : null
+          this.selectionDraftReceipt = saved
           this.editingSelectionId = ''
           toast.success(editingId ? '修改已保存，请确认后重新提交审核' : '申报草稿已保存，请确认后提交审核')
           this.selectionVisible = false
-          const query = { ...this.$route.query, tab: 'selection' }; delete query.action; delete query.taskId
-          if (id) query.selectionId = id
-          await this.$router.replace({ path: this.$route.path, query }).catch(() => {})
-          await this.reload()
         }
       )
+      if (!result || !saved) return
+      const query = { ...this.$route.query, tab: 'selection', selectionId: saved.id }
+      delete query.action; delete query.taskId
+      await this.$router.replace({ path: this.$route.path, query }).catch(() => {})
+      await this.reload()
     },
+
     confirmSelectionSubmit(row) {
       const frozen = { id: row.selectionId, name: row.courseName || row.selectionId }
       this.prepareConfirm(

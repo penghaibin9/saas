@@ -112,6 +112,7 @@ def submit(body, user) -> dict:
             if getattr(body, "targetWeekday", None) is None or getattr(body, "targetSlotNo", None) is None:
                 raise AppException("VALIDATION_ERROR", "调课/补课须填写目标星期与节次")
             tw, ts = int(body.targetWeekday), int(body.targetSlotNo)
+            tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
             if ct == "MAKEUP":
                 raw_week = getattr(body, "targetStartWeek", None)
                 raw_end_week = getattr(body, "targetEndWeek", None)

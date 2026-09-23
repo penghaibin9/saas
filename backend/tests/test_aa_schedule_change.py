@@ -230,6 +230,15 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     assert (3, 2) in slots and (1, 1) not in slots
 
 
+def test_c1b_adjust_submit_preserves_target_classroom(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    response = _submit(client, admin, origin, targetClassroom="B202")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["target"]["classroom"] == "B202"
+
+
 def test_c1_partial_week_adjust_preserves_unmoved_origin_weeks(client, db_mode):
     """A one-week adjustment must not erase the other 17 weeks from four-end timetables."""
     from app.db.session import get_sessionmaker

@@ -251,6 +251,10 @@ export default {
       if (!this.visibleDims.some(item => item.key === key)) return
       this.dim = key
       this.items = []; this.note = ''; this.error = ''; this.batchId = ''; this.batchIds = []
+      if (this.isAcademicTeacher && key === 'teacher') {
+        this.teacherKey = this.selfKey
+        if (this.termId) this.load()
+      }
     },
     async initializeCurrentTerm() {
       try {

@@ -62,3 +62,13 @@ def test_schedule_change_submit_uses_live_teacher_authority_not_schedule_snapsho
     assert "_teacher_key_for_origin" in final_source
     legacy = _read("app/modules/academic_affairs/services/academic_affairs_schedule_change_service.py")
     assert "teacher_authority.require_teacher" in legacy
+
+def test_textbook_teacher_list_scope_follows_formal_handoff_or_original_applicant():
+    source = _read("app/modules/academic_affairs/services/academic_affairs_textbook_service.py")
+    start = source.index("def list_selections")
+    end = source.index("\ndef _is_school", start)
+    block = source[start:end]
+    assert "teacher_authority.relation_scope" in block
+    assert 'AaTextbookSelection.task_id.in_(sorted(formal_task_ids)' in block
+    assert "AaTextbookSelection.officer_key.in_" in block
+    assert "or_(" in block

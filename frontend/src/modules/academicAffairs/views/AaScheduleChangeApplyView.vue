@@ -305,7 +305,10 @@ export default {
     'form.originItemId'() { this.conflictResult = undefined },
     'form.targetWeekday'() { this.conflictResult = undefined },
     'form.targetSlotNo'() { this.conflictResult = undefined },
-    'form.targetStartWeek'() { this.conflictResult = undefined },
+    'form.targetStartWeek'() {
+      this.conflictResult = undefined
+      this.normalizeOccurrenceFields()
+    },
     'form.targetEndWeek'() { this.conflictResult = undefined },
     'form.targetWeekParity'() { this.conflictResult = undefined },
     'form.targetClassroom'() { this.conflictResult = undefined },
@@ -395,7 +398,9 @@ export default {
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
     normalizeOccurrenceFields() {
-      if (!['STOP', 'MAKEUP'].includes(this.form.changeType)) return
+      const singleOccurrence = ['STOP', 'MAKEUP'].includes(this.form.changeType) ||
+        (this.form.changeType === 'ADJUST' && (this.adjustScope === 'OCCURRENCE' || this.lockedOccurrenceWeek))
+      if (!singleOccurrence) return
       const week = Number(this.form.targetStartWeek || 0)
       this.form.targetEndWeek = week > 0 ? week : null
       this.form.targetWeekParity = this.form.changeType === 'MAKEUP' ? 'ALL' : (this.origin?.weekParity || 'ALL')

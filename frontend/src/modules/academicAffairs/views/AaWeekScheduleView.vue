@@ -178,6 +178,10 @@ export default {
       if (!this.visibleDims.some(item => item.key === key)) return
       this.dim = key
       this.items = []; this.note = ''; this.error = ''
+      if (this.isAcademicTeacher && key === 'teacher') {
+        this.teacherKey = this.selfKey
+        if (this.termId) this.load()
+      }
     },
     async init() {
       const curRes = await academicAffairsApi.getCurrentTerm()
