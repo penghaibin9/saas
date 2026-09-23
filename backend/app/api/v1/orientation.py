@@ -9,8 +9,9 @@ from app.core.domain_request_permissions import require_orientation_request_perm
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchFlowRefreshBody, BatchUpdate, BlockedBody,
-                                      CommentBody, DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
+                                      DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
                                       GreenApproveBody, GreenReasonBody, IdsBody, NoteBody,
+                                      MaterialApproveBody, MaterialReturnBody,
                                       NoticeCreate, PaymentSyncBody, PointCreate, PointUpdate,
                                       ReasonBody, RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
 from app.services import orientation_service as svc
@@ -86,9 +87,10 @@ def progress_resolve(sid: str, body: NoteBody = Body(default=NoteBody()), user=D
 @router.get("/payments", summary="缴费列表")
 def payments(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              keyword: Optional[str] = None, paymentStatus: Optional[str] = None,
+             batchId: Optional[int] = Query(None, ge=1), orientationStudentId: Optional[int] = Query(None, ge=1),
              user=Depends(require_staff)):
     items, total = svc.list_payments(page, pageSize, keyword=keyword,
-                                     payment_status=paymentStatus, user=user)
+                                     payment_status=paymentStatus, user=user, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -100,9 +102,9 @@ def payment_sync(sid: str, body: PaymentSyncBody, user=Depends(require_staff)):
 
 @router.get("/green-channels", summary="绿色通道列表")
 def green_channels(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = None,
-                   user=Depends(require_staff)):
-    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user, batch_id=batchId)
+                   keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = Query(None, ge=1),
+                   orientationStudentId: Optional[int] = Query(None, ge=1), user=Depends(require_staff)):
+    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -130,11 +132,13 @@ def gc_return(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
 @router.get("/qualifications", summary="服务端报到资格列表")
 def qualifications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    keyword: Optional[str] = None, verdict: Optional[str] = None,
+                   batchId: Optional[int] = Query(None, ge=1), orientationStudentId: Optional[int] = Query(None, ge=1),
                    queue: Optional[str] = Query(None, pattern="^(ready|blocked)$"),
                    user=Depends(require_staff)):
     from app.services.orientation_qualification_service import list_qualifications
     items, total = list_qualifications(
         page, pageSize, keyword=keyword, verdict=verdict, queue=queue, user=user,
+        batch_id=batchId, orientation_student_id=orientationStudentId,
     )
     return success(paginate(items, total, page, pageSize))
 
@@ -175,22 +179,25 @@ def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
 
 
 @router.post("/materials/{mid}/approve", summary="材料通过")
-def mat_approve(mid: str, body: CommentBody = Body(default=CommentBody()), user=Depends(require_staff)):
-    return success(svc.approve_material(mid, body.comment, user=user), message="已通过")
+def mat_approve(mid: str, body: MaterialApproveBody, user=Depends(require_staff)):
+    return success(svc.approve_material(mid, body.comment, user=user,
+                                        expected_version=body.expectedVersion), message="已通过")
 
 
 @router.post("/materials/{mid}/return", summary="材料退回（原因≥5字）")
-def mat_return(mid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.return_material(mid, body.reason, user=user), message="已退回")
+def mat_return(mid: str, body: MaterialReturnBody, user=Depends(require_staff)):
+    return success(svc.return_material(mid, body.reason, user=user,
+                                       expected_version=body.expectedVersion), message="已退回")
 
 
 @router.get("/dorms", summary="宿舍入住列表")
 def dorms(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
           batchId: Optional[int] = Query(None, ge=1),
+          orientationStudentId: Optional[int] = Query(None, ge=1),
           keyword: Optional[str] = None, dormStatus: Optional[str] = None,
           building: Optional[str] = None, user=Depends(require_staff)):
     items, total = svc.list_dorms(page, pageSize, keyword=keyword, dorm_status=dormStatus,
-                                  building=building, batch_id=batchId)
+                                  building=building, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -374,9 +381,9 @@ def notice_send(nid: str, user=Depends(require_staff)):
 
 @router.get("/archives", summary="迎新归档列表")
 def archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, status: Optional[str] = None,
+             keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[str] = None,
              user=Depends(require_staff)):
-    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

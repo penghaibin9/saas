@@ -212,7 +212,7 @@ class OrientationEnrollmentFinalizeService:
         """
         from app.services import student_account_link_service as links
         from app.services.orientation_flow_service import set_student_step_status
-        from app.services.orientation_service import _audit, assert_orientation_student_scope
+        from app.services.orientation_service import _audit, _get_batch, assert_orientation_student_scope
 
         actor = user or get_current_user_ctx() or {}
         _actor_id(actor)
@@ -228,6 +228,12 @@ class OrientationEnrollmentFinalizeService:
             if not student:
                 raise not_found("新生记录不存在")
             assert_orientation_student_scope(db, student, actor)
+
+            if student.record_status == "VOIDED" or student.stage in {"NO_SHOW", "CANCELLED", "DEFERRED"}:
+                raise AppException("INVALID_STATE", "当前迎新记录已停止或暂停办理，请先恢复报到再激活账号")
+            # Serialize with batch closing; a closed batch cannot gain a new account.
+            if _get_batch(db, student.batch_id, lock=True).status == "CLOSED":
+                raise AppException("INVALID_STATE", "迎新批次已结束，不能继续激活账号")
 
             profile = db.get(StudentProfile, int(student.student_id)) if student.student_id else None
             existing_uid = (

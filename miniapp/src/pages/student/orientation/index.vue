@@ -27,6 +27,24 @@
           <button plain @click="go('/pages/student/affairs/dorm')">查看住宿</button>
         </view>
 
+        <view v-if="!finalConfirmed" class="or__next card">
+          <view class="row-between"><text class="or__eyebrow">你现在只需要做</text><text class="or__next-tag">{{ nextAction.owner }}</text></view>
+          <text class="or__next-title">{{ nextAction.title }}</text>
+          <text class="or__next-desc">{{ nextAction.description }}</text>
+          <button v-if="nextAction.path" class="btn btn-primary" @click="go(nextAction.path)">{{ nextAction.button }}</button>
+        </view>
+        <view v-if="o.hasData !== false" class="card or__checklist">
+          <view class="row-between"><text class="or__fold-title">我的迎新清单</text><text class="or__fold-sub">{{ completedStepCount }}/{{ o.steps.length }} 项已完成</text></view>
+          <view v-for="task in taskList" :key="task.key" class="or__task">
+            <view class="flex-1"><text class="or__task-title">{{ task.title }}</text><text class="or__task-state">{{ task.statusText }}</text><text v-if="task.reason" class="or__task-reason">{{ task.reason }}</text></view>
+            <button v-if="task.path" plain @click="go(task.path)">{{ task.action }}</button>
+          </view>
+          <view v-if="!arrivalHold && !finalConfirmed && o.selfService?.available" class="or__task">
+            <view class="flex-1"><text class="or__task-title">到校计划</text><text class="or__task-state">{{ o.selfService.arrivalPlan ? '已登记，可修改' : '便民登记，不影响领取报到码' }}</text></view>
+            <button plain @click="go('/pages/student/orientation/arrival/index')">{{ o.selfService.arrivalPlan ? '查看' : '登记' }}</button>
+          </view>
+        </view>
+
         <template v-if="reportDone">
           <view v-if="!finalConfirmed && o.selfService?.canSubmitMaterials" class="or__after-item" @click="go('/pages/student/orientation/materials/index')"><text>查看待补材料与审核结果</text><text> →</text></view>
           <view class="or__result card">
@@ -82,16 +100,6 @@
         </template>
 
         <template v-else>
-          <view class="or__next card">
-            <view class="row-between">
-              <text class="or__eyebrow">你现在只需要做</text>
-              <text class="or__next-tag" :class="{ 'is-school': nextAction.owner === '学校处理中' }">{{ nextAction.owner }}</text>
-            </view>
-            <text class="or__next-title">{{ nextAction.title }}</text>
-            <text class="or__next-desc">{{ nextAction.description }}</text>
-            <button v-if="nextAction.path" class="btn btn-primary" @click="go(nextAction.path)">{{ nextAction.button }}</button>
-          </view>
-
           <view v-if="!arrivalHold && schoolItems.length" class="or__fold card" @click="showSchool = !showSchool">
             <view class="row-between">
               <view>
@@ -153,14 +161,16 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { go, toast } from '@/utils/nav'
+import { formatDateTime } from '@/utils/format'
 
 const DONE = ['DONE', 'WAIVED', 'NOT_REQUIRED']
 
 export default {
   data() {
-    return { o: null, state: 'loading', showSchool: false, showSubmitted: false, showProgress: false }
+    return { o: null, state: 'loading', showSchool: true, showSubmitted: false, showProgress: false, requestSerial: 0 }
   },
   onShow() { this.load() },
+  onUnload() { ++this.requestSerial },
   computed: {
     arrivalHold() {
       return ({
@@ -185,21 +195,69 @@ export default {
       return this.o?.qualification?.facts?.materials?.required || []
     },
     materialsWaitingReview() {
-      return this.requiredMaterialFacts.length > 0 && this.requiredMaterialFacts.every((item) => item.status === 'UPLOADED')
+      return this.requiredMaterialFacts.length > 0 && this.requiredMaterialFacts.every((item) => ['UPLOADED', 'APPROVED'].includes(item.status)) && this.requiredMaterialFacts.some((item) => item.status === 'UPLOADED')
     },
     nextAction() {
       if (this.arrivalHold) return { owner: '报到安排有调整', ...this.arrivalHold, button: '', path: '' }
-      const done = (key) => DONE.includes(this.stepMap[key])
-      if (!done('INFO')) return { owner: '需要你完成', title: '确认个人信息', description: '学校已有的信息已经带出，你只需确认联系方式和紧急联系人。', button: '确认个人信息', path: '/pages/student/orientation/collect/index' }
-      if (!this.o?.selfService?.arrivalPlan) return { owner: '需要你完成', title: '告诉学校何时到校', description: '选择到校时间和交通方式，需要接站时顺手登记。', button: '填写到校计划', path: '/pages/student/orientation/arrival/index' }
-      if (!done('MATERIAL') && !this.materialsWaitingReview) return { owner: '需要你完成', title: '补齐必交材料', description: '只上传学校尚未掌握的材料；提交后由学校审核，不需要反复刷新。', button: '上传迎新材料', path: '/pages/student/orientation/materials/index' }
-      if (this.o?.reportCode?.canIssue) return { owner: '到校时使用', title: '出示你的报到二维码', description: '二维码在你的手机里，现场由辅导员或临时核验人员扫码确认。', button: '打开报到二维码', path: '/pages/student/orientation/code/index' }
-      return { owner: '学校处理中', title: '你暂时不用操作', description: '线上信息已经提交。学校正在处理剩余事项，结果会自动更新。', button: '', path: '' }
+      if (this.finalConfirmed) return { owner: '办理完成', title: '迎新手续已完成', description: '学院已确认入学，可在下方查看办理结果与住宿信息。', path: '' }
+      if (this.o?.hasData === false) return { owner: '待学校安排', title: '暂无可办理的迎新记录', description: this.o.overallText || '请联系学校核对录取与账号关联。', path: '' }
+      const actionable = this.taskList.filter(task => task.path && task.needsAction)
+      const correction = actionable.find(task => task.returned)
+      const task = correction || actionable[0]
+      if (task) return { owner: '需要你完成', title: task.title, description: task.reason || task.statusText, button: task.action, path: task.path }
+      if (this.o?.reportCode?.canIssue && !this.reportDone) return { owner: '到校时使用', title: '出示你的报到二维码', description: '到校后由辅导员或现场核验人员扫码。清单中的未办事项仍需继续办理。', button: '打开报到二维码', path: '/pages/student/orientation/code/index' }
+      if (this.reportDone) return { owner: '学校处理中', title: '查看待办，等待学院确认', description: this.o?.selfService?.reason || '现场核验已完成。请查看下方未办事项，全部手续齐全后由学院确认入学。', path: '' }
+      return { owner: '查看办理情况', title: '请查看下方清单', description: this.o?.selfService?.reason || this.o?.reportCode?.note || '学校正在核验办理条件。如有退回意见，请按要求补充。', path: '' }
+    },
+    taskList() {
+      const stopped = !!this.arrivalHold || this.finalConfirmed
+      const service = this.o?.selfService || {}
+      const prefix = '/pages/student/orientation/'
+      return (this.o?.steps || []).map(step => {
+        const done = DONE.includes(step.status)
+        const task = { ...step, statusText: ({ DONE: '已完成', WAIVED: '已减免', NOT_REQUIRED: '无需办理', DOING: '办理中', BLOCKED: '需处理', TODO: '待办理' })[step.status] || '待核实', reason: '', path: '', action: '查看', needsAction: false, returned: false }
+        if (step.key === 'INFO') {
+          task.returned = this.o?.blocked?.step === 'INFO'
+          task.reason = task.returned ? this.o.blocked.reason : '学生确认信息，学校核验身份'
+          if (!stopped && service.available) task.path = prefix + 'collect/index'
+          task.needsAction = !!task.path && (!done || task.returned)
+          if (step.status === 'DOING' && service.information?.complete && !task.returned) {
+            task.needsAction = false
+            task.path = ''
+            task.statusText = '补充已提交，等待老师复核'
+          }
+          task.action = task.returned ? '补充信息' : '确认信息'
+        }
+        if (step.key === 'MATERIAL') {
+          const returned = (service.materials || []).filter(item => item.isCurrent && ['RETURNED', 'REJECTED'].includes(item.status))
+          task.returned = returned.length > 0
+          task.reason = returned.map(item => item.returnReason).filter(Boolean).join('；')
+          if (this.materialsWaitingReview) task.statusText = '已提交，等待老师审核'
+          if (!stopped && service.canSubmitMaterials) task.path = prefix + 'materials/index'
+          task.needsAction = !!task.path && !done && !this.materialsWaitingReview
+          task.action = task.returned ? '补充材料' : done || this.materialsWaitingReview ? '查看材料' : '上传材料'
+        }
+        if (step.key === 'PAYMENT') {
+          const green = this.o?.greenChannelStatus
+          task.statusText = ({ PAID: '已缴清', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道已通过', PARTIAL: '部分缴费，需继续办理', UNPAID: '待缴费', MISSING: '学校尚未登记缴费事实', UNAVAILABLE: '缴费结果待核实' })[this.o?.payStatus] || task.statusText
+          if (['SUBMITTED', 'REVIEWING'].includes(green)) task.statusText = '绿色通道待审核'
+          task.returned = green === 'RETURNED'
+          task.reason = this.o?.greenChannel?.rejectReason || (!done ? '按学校通知缴费；有困难可申请绿色通道。缴费到账后由学校核验。' : '')
+          if (!stopped && this.showGreenChannel) task.path = prefix + 'green-channel/index'
+          task.action = task.returned ? '补充申请' : green === 'NOT_APPLIED' ? '申请缓缴' : '查看申请'
+          task.needsAction = !!task.path && task.returned
+        }
+        if (step.key === 'DORM') { task.reason = this.dormArrangement; if (!this.arrivalHold) task.path = '/pages/student/affairs/dorm'; task.action = '查看住宿' }
+        if (step.key === 'CHECKIN') { task.statusText = this.reportDone ? '已现场报到' : this.o?.reportCode?.canIssue ? '可出示报到码' : '报到码暂不可用'; task.reason = this.reportDone ? this.checkinSummary : this.o?.reportCode?.note || ''; if (!stopped && !this.reportDone && this.o?.reportCode?.canIssue) { task.path = prefix + 'code/index'; task.action = '报到码' } }
+        if (step.key === 'CONFIRM' && !done) task.reason = '全部手续齐全后，由学院确认入学'
+        return task
+      })
     },
     heroSub() {
       if (this.arrivalHold) return '报到安排已更新'
       if (this.finalConfirmed) return '欢迎入学，下面是你的入学安排'
-      if (this.reportDone) return this.schoolItems.length ? '请关注待补办事项，办结后由学院确认入学' : '等待学院确认入学'
+      if (this.reportDone && this.nextAction.owner === '需要你完成') return '请继续完成待办事项，办齐后由学院确认入学'
+      if (this.reportDone) return this.qualificationBlockers.length ? '请关注审核进度与待补办事项' : '等待学院确认入学'
       return this.nextAction.owner === '学校处理中' ? '你的线上事项已提交' : this.nextAction.title
     },
     qualificationBlockers() {
@@ -217,7 +275,7 @@ export default {
       return [...new Set(messages)]
     },
     showGreenChannel() {
-      return this.o?.greenChannelStatus === 'NOT_APPLIED' && ['UNPAID', 'PARTIAL', 'MISSING', 'UNAVAILABLE'].includes(this.o?.payStatus)
+      return (this.o?.greenChannelStatus && this.o.greenChannelStatus !== 'NOT_APPLIED') || (['UNPAID', 'PARTIAL', 'MISSING', 'UNAVAILABLE'].includes(this.o?.payStatus) && this.o?.selfService?.canSubmitMaterials)
     },
     hasDormArrangement() {
       const status = this.o?.dorm?.status
@@ -232,7 +290,7 @@ export default {
     checkinSummary() {
       const parts = []
       if (this.o?.checkin?.pointName) parts.push(this.o.checkin.pointName)
-      if (this.o?.checkin?.completedAt) parts.push(this.o.checkin.completedAt.replace('T', ' ').slice(0, 16))
+      if (this.o?.checkin?.completedAt) parts.push(formatDateTime(this.o.checkin.completedAt))
       return parts.join(' · ')
     }
   },
@@ -256,7 +314,9 @@ export default {
     },
     load() {
       this.state = 'loading'
-      studentApi.getOrientation().then((d) => { this.o = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
+      const serial = ++this.requestSerial
+      this.o = null
+      studentApi.getOrientation().then((d) => { if (serial === this.requestSerial) { this.o = d; this.state = 'ready' } }).catch(() => { if (serial === this.requestSerial) this.state = 'error' })
     },
     call(c) {
       uni.makePhoneCall({ phoneNumber: c.phone, fail: () => toast('拨号未成功，可手动拨打：' + (c.phone || '')) })
@@ -266,6 +326,10 @@ export default {
 </script>
 
 <style scoped>
+.or__task{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border-light)}
+.or__task:last-child{border-bottom:0}.or__task-title,.or__task-state,.or__task-reason{display:block;line-height:1.6}.or__task-title{font-weight:600}.or__task-state{color:var(--text-secondary);font-size:13px}.or__task-reason{color:var(--text-tertiary);font-size:12px;overflow-wrap:anywhere}
+.or__task button{flex-shrink:0;margin:0;padding:7px 10px;min-height:42px;font-size:13px;color:var(--brand-primary);border:1px solid var(--border-light);border-radius:8px}
+
 .or__housing-summary { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border-light); }
 .or__housing-summary button { margin: 0; padding: 6px 12px; min-height: 40px; font-size: 14px; color: var(--brand-primary); border: 1px solid var(--border-light); border-radius: 6px; }
 .or__hero { padding: 20px; border-radius: 20px; color: #fff; background: linear-gradient(135deg, #1859d8, #2f74ed); box-shadow: 0 12px 30px rgba(31, 95, 219, .18); }

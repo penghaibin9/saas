@@ -171,7 +171,7 @@ def _orientation_payload(o, db=None) -> dict:
         return _empty("你暂无迎新报到记录")
     if db is None:
         raise RuntimeError("orientation payload requires canonical step session")
-    from app.services.orientation_flow_service import student_step_projection
+    from app.services.orientation_flow_service import student_flow_steps, student_step_projection
     from app.services.orientation_qualification_service import evaluate
     steps = student_step_projection(db, o)
     qualification = evaluate(db, o)
@@ -210,16 +210,27 @@ def _orientation_payload(o, db=None) -> dict:
         OrientationCheckinRecord.is_deleted.is_(False),
     ).order_by(OrientationCheckinRecord.id.desc())).first()
     checkin_point = tenant_get(db, OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
+    from app.models import GreenChannelApplication
+    latest_green = db.scalars(select(GreenChannelApplication).where(
+        GreenChannelApplication.tenant_id == o.tenant_id,
+        GreenChannelApplication.ori_student_id == o.id,
+        GreenChannelApplication.is_deleted.is_(False),
+    ).order_by(GreenChannelApplication.id.desc())).first()
+    green_channel = None if latest_green is None else {
+        "id": str(latest_green.id), "status": latest_green.status,
+        "applyType": latest_green.apply_type, "applyAmount": float(latest_green.apply_amount or 0),
+        "remark": latest_green.remark or "", "rejectReason": latest_green.reject_reason or "",
+    }
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")
-    return {"hasData": True, "stage": o.stage, "batchName": batch.batch_name if batch else "",
+    return {"hasData": True, "orientationStudentId": str(o.id), "stage": o.stage, "batchName": batch.batch_name if batch else "",
             "reportStatus": o.report_status, "paymentStatus": payment_status,
             "materialStatus": o.material_status, "dormStatus": dorm["dormStatus"],
-            "greenChannelStatus": o.green_channel_status,
+            "greenChannelStatus": o.green_channel_status, "greenChannel": green_channel,
             "building": dorm["building"], "room": dorm["room"], "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-            "steps": [{"key": k, "status": v} for k, v in steps.items()],
+            "steps": [{**step, "status": steps[step["key"]]} for step in student_flow_steps(db, o)],
             "admissionNo": o.admission_no, "name": o.name,
             "qualification": qualification,
             "payment": payment_fact,
@@ -252,7 +263,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
                     "messageSummary": {"unreadCount": 0, "emergencyPendingCount": 0,
                                        "latestEmergency": None}, **_empty()}
         from app.models import (AcademicStudent, AcademicWarning, EmpStudent, InternshipRecord,
-                                OrientationStudent, UnifiedMessage, UnifiedTodo)
+                                UnifiedMessage, UnifiedTodo)
         sid, name = stu.id, stu.real_name
         # 我的待办（assignee 或与我相关，简化：按 student_id 关联）
         todos = db.scalars(select(UnifiedTodo).where(
@@ -309,7 +320,9 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         _ictx = resolve_student_internship_context(db, student=stu, for_write=False)
         intern = _ictx.record if _ictx.mode in ("active", "history") else None
         class_name, _ = resolve_student_class_college_names(db, stu)
-        ori = _resolve_domain_student(db, OrientationStudent, stu)
+        from app.services.orientation_self_service import read_student_context
+        orientation_context = read_student_context(db, stu)
+        ori = orientation_context[0] if orientation_context else None
         acad = _resolve_domain_student(db, AcademicStudent, stu)
         warn = 0
         if acad:
@@ -813,17 +826,18 @@ def orientation_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import OrientationStudent
-        result = _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu), db)
+        from app.services.orientation_self_service import read_student_context
+        context = read_student_context(db, stu)
+        result = _orientation_payload(context[0] if context else None, db)
     if not result.get("hasData"):
         return result
     try:
         from app.services.orientation_self_service import snapshot
-        result["selfService"] = {"available": True, **snapshot(u)}
+        result["selfService"] = snapshot(u, orientation_student_id=int(result["orientationStudentId"]))
     except AppException as exc:
         if exc.code not in {"NO_PERMISSION", "DATA_NOT_FOUND", "DATA_CONFLICT"}:
             raise
-        result["selfService"] = {"available": False, "reason": exc.message}
+        result["selfService"] = {"available": False, "canSubmitMaterials": False, "reason": exc.message}
     return result
 
 

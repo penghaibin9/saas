@@ -18,6 +18,7 @@ from app.models import (
     FileObject,
     OrientationArrivalPlan,
     OrientationBatch,
+    OrientationException,
     OrientationMaterial,
     OrientationStudent,
     StudentContact,
@@ -98,6 +99,37 @@ def _own_context(db, user: dict, *, lock: bool = False, allow_materials: bool = 
     return profile, orientation, batch
 
 
+def read_student_context(db, profile, *, orientation_student_id: int | None = None):
+    """Read the student's current or latest closed record without granting writes."""
+    if profile is None or int(profile.tenant_id) != _tid():
+        return None
+    stmt = (
+        select(OrientationStudent, OrientationBatch)
+        .join(
+            OrientationBatch,
+            (OrientationBatch.id == OrientationStudent.batch_id)
+            & (OrientationBatch.tenant_id == OrientationStudent.tenant_id),
+        )
+        .where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.student_id == int(profile.id),
+            OrientationStudent.identity_status == "LINKED",
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.is_deleted.is_(False),
+            OrientationBatch.status.in_(["ACTIVE", "CLOSED"]),
+            OrientationBatch.is_deleted.is_(False),
+        )
+        .order_by((OrientationBatch.status == "ACTIVE").desc(), OrientationStudent.id.desc())
+        .limit(2)
+    )
+    if orientation_student_id is not None:
+        stmt = stmt.where(OrientationStudent.id == int(orientation_student_id))
+    rows = db.execute(stmt).all()
+    if len(rows) > 1 and rows[0][1].status == rows[1][1].status == "ACTIVE":
+        raise AppException("DATA_CONFLICT", "本人同时存在多个开放迎新批次，请联系学校处理")
+    return rows[0] if rows else None
+
+
 def _contact(db, student_id: int, contact_type: str):
     return db.scalars(
         select(StudentContact)
@@ -170,9 +202,34 @@ def _material_payload(db, row: OrientationMaterial) -> dict:
     }
 
 
-def snapshot(user: dict) -> dict:
+def snapshot(user: dict, *, orientation_student_id: int | None = None) -> dict:
     with session() as db:
-        profile, orientation, batch = _own_context(db, user, allow_materials=True)
+        from app.services.mobile_student_service import resolve_student
+
+        profile = resolve_student(db, user or {})
+        if not profile:
+            raise AppException("NO_PERMISSION", "当前账号未绑定稳定学生身份，请联系学校处理")
+        context = read_student_context(db, profile, orientation_student_id=orientation_student_id)
+        if context is None:
+            raise AppException("DATA_NOT_FOUND", "未找到已绑定的本人迎新记录，请联系学校处理")
+        orientation, batch = context
+        can_submit_materials = False
+        reason = ""
+        try:
+            _profile, writable_orientation, _batch = _own_context(db, user, allow_materials=True)
+            can_submit_materials = writable_orientation.id == orientation.id
+            if not can_submit_materials:
+                reason = "历史迎新记录仅供查看，请前往当前批次办理"
+        except AppException as exc:
+            if exc.code not in {"NO_PERMISSION", "DATA_NOT_FOUND", "DATA_CONFLICT"}:
+                raise
+            reason = exc.message
+        if batch.status == "CLOSED":
+            reason = "迎新批次已关闭，可查看已提交信息和材料"
+        elif orientation.stage == "ENROLLED" or orientation.report_status == "COLLEGE_CONFIRMED":
+            reason = "迎新已办结，可查看已提交信息和材料"
+        elif can_submit_materials and orientation.report_status == "CHECKED_IN":
+            reason = "已完成现场报到，仍可补交待办材料"
         phone = _contact(db, profile.id, "PHONE")
         emergency = _contact(db, profile.id, "EMERGENCY_PHONE")
         arrival = db.scalars(select(OrientationArrivalPlan).where(
@@ -188,9 +245,9 @@ def snapshot(user: dict) -> dict:
             OrientationMaterial.is_deleted.is_(False),
         ).order_by(OrientationMaterial.material_type, OrientationMaterial.submission_no.desc())).all())
         return {
-            "available": orientation.report_status != "CHECKED_IN",
-            "canSubmitMaterials": True,
-            "reason": "已完成现场报到，仍可补交待办材料" if orientation.report_status == "CHECKED_IN" else "",
+            "available": can_submit_materials and orientation.report_status != "CHECKED_IN",
+            "canSubmitMaterials": can_submit_materials,
+            "reason": reason,
             "orientationStudentId": str(orientation.id), "studentId": str(profile.id),
             "batch": {
                 "id": str(batch.id), "name": batch.batch_name,
@@ -259,8 +316,15 @@ def submit_information(user: dict, body: dict) -> dict:
             raise AppException("VALIDATION_ERROR", "紧急联系人电话格式不正确")
         orientation.phone_encrypted = encrypt_field(phone)  # 兼容教师端只读投影
         orientation.origin = origin
+        awaiting_review = db.scalar(select(OrientationException.id).where(
+            OrientationException.tenant_id == _tid(),
+            OrientationException.ori_student_id == orientation.id,
+            OrientationException.exception_type == "IDENTITY",
+            OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
+            OrientationException.is_deleted.is_(False),
+        ).limit(1)) is not None
         set_student_step_status(
-            db, orientation, "INFO", "DONE", status_source="PROCESS_FACT",
+            db, orientation, "INFO", "IN_PROGRESS" if awaiting_review else "DONE", status_source="PROCESS_FACT",
             source_biz_id=f"student:{profile.id}:orientation-info",
         )
         if orientation.blocked_step == "INFO":

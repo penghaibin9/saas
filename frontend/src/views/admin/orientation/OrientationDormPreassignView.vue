@@ -2,7 +2,7 @@
   <ModulePageShell flat title="新生宿舍安排" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="宿舍预分配">
     <template #actions>
       <AppButton variant="secondary" @click="$router.push('/admin/student-affairs/dorm/resource')">查看房态</AppButton>
-      <AppButton @click="openAllocation">自动分配 / 分配计划</AppButton>
+      <AppButton @click="openAllocation($route.query.batchId)">自动分配 / 分配计划</AppButton>
     </template>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
@@ -49,11 +49,11 @@ export default {
     tableColumns() { return [{ key: 'name', title: '姓名' }, { key: 'className', title: '班级' }, { key: 'room', title: '楼栋/房间' }, { key: 'dormStatus', title: '宿舍状态' }, { key: 'actions', title: '操作' }] },
     editFields() { return [{ key: 'building', label: '楼栋', type: 'text', required: true, placeholder: '如：梧桐苑 1 号楼' }, { key: 'room', label: '房间/床位', type: 'text', required: true, placeholder: '如：1-301-1' }] }
   },
-  async created() { const c = await api.getOrientationContext(); if (c.code === 0) this.ctx = c.data; await this.load() },
+  async created() { if (this.$route.query.orientationStudentId) this.filters.dormStatus = ''; const c = await api.getOrientationContext(); if (c.code === 0) this.ctx = c.data; await this.load() },
   methods: {
     async load() {
       this.loading = true; this.error = ''
-      try { const res = await api.getDormitoryCheckinList({ ...this.filters, page: this.page, pageSize: this.pageSize }); if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
+      try { const res = await api.getDormitoryCheckinList({ ...this.filters, batchId: this.$route.query.batchId || undefined, orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize }); if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },

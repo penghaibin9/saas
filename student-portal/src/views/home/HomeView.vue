@@ -50,7 +50,7 @@
             <span>{{ todos.length }} 项待办</span>
           </div>
           <StateBlock v-if="todoState === 'ERROR'" type="error" text="待办加载失败，请稍后重试" />
-          <StateBlock v-else-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
+          <StateBlock v-else-if="!todos.length" type="empty" text="暂未收到待办，请结合下方办理进度核对各项手续" />
           <div v-else class="home-todo-list">
             <!-- SP-H03/H06：只消费 t.action，未落地的类型 disabled + 给出原因，不猜路由。 -->
             <button v-for="(t, index) in todos" :key="t.id || `${t.title}-${index}`" type="button" class="home-todo"
@@ -228,7 +228,7 @@ const metrics = computed(() => {
   ]
 })
 
-const ctaText = computed(() => (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
+const ctaText = computed(() => nextAction.value?.label || (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
 // SP-H05：可见性与落点由服务端 quickServices 决定（已按本租户模块开通过滤）；
 // 本地 MODULES 只提供 icon/theme，不再自行 filter 出入口，避免租户禁用模块后仍展示。
 const quick = computed(() => (home.value.quickServices || []).map((entry) => {
@@ -236,7 +236,7 @@ const quick = computed(() => (home.value.quickServices || []).map((entry) => {
   return { ...entry, d1: mod.d1, d2: mod.d2 }
 }))
 
-const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
+const STATUS_LABELS = { CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '入学手续已完成', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
 // SP-H04：跨域生命周期由服务端归一，前端只认这 6 个统一值，不再本地维护
 // DONE_STATES 把 DONE/APPROVED/VERIFIED/CHECKED_IN/SIGNED 一刀切当"已完成"——
 // SIGNED 只是就业去向类型，不能推出毕业或离校完成。

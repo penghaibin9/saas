@@ -405,7 +405,10 @@ def disposition_student(sid, body):
             raise AppException("VERSION_CONFLICT", "记录已变化，请刷新后重试", http_status=409)
         if student.stage == "ENROLLED" or student.report_status in {"CHECKED_IN", "COLLEGE_CONFIRMED"}:
             raise AppException("INVALID_STATE", "已报到学生请通过学籍及住宿正式流程办理")
-        batch = _get_batch(db, student.batch_id)
+        # Keep the existing profile/student lock order. Closing only locks the
+        # batch, so this current read either precedes closing or rejects it after
+        # waiting; a closed cohort cannot gain a resumed pending student.
+        batch = _get_batch(db, student.batch_id, lock=True)
         if batch.status != "ACTIVE":
             raise AppException("INVALID_STATE", "仅开放中的迎新批次可办理")
         stays = db.scalars(select(DormStay).where(DormStay.tenant_id == _tid(),
@@ -513,7 +516,7 @@ def verify_student(sid, passed: bool = True, reason: str = "", expected_version:
                 OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
                 OrientationException.is_deleted.is_(False),
             )).all()
-            if was_info_blocked and s.risk_level == "HIGH" and not active_other:
+            if (was_info_blocked or identity_exceptions) and s.risk_level == "HIGH" and not active_other:
                 s.risk_level = "LOW"
             set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
                                     source_biz_id=f"student:{s.id}:verify")
@@ -655,7 +658,7 @@ def resolve_blocked(sid, note="") -> dict:
 
 # ═══ 缴费 ═══
 
-def list_payments(page, page_size, keyword=None, payment_status=None, user=None):
+def list_payments(page, page_size, keyword=None, payment_status=None, user=None, batch_id=None, orientation_student_id=None):
     with session() as db:
         q = (select(OrientationPaymentAccount, OrientationStudent)
              .join(OrientationStudent, (
@@ -681,6 +684,10 @@ def list_payments(page, page_size, keyword=None, payment_status=None, user=None)
                     StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
                     StudentProfile.class_id.in_(class_ids),
                 )))
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
+        if orientation_student_id is not None:
+            q = q.where(OrientationStudent.id == int(orientation_student_id))
         if payment_status:
             if payment_status == "GREEN_CHANNEL":
                 q = q.where(OrientationStudent.green_channel_status == "APPROVED")
@@ -693,7 +700,7 @@ def list_payments(page, page_size, keyword=None, payment_status=None, user=None)
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.execute(q.order_by(OrientationStudent.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [{"id": str(r.id), "paymentAccountId": str(account.id),
+        items = [{"id": str(r.id), "batchId": str(r.batch_id), "paymentAccountId": str(account.id),
                   "paymentVersion": int(account.version or 0),
                   "name": r.name, "admissionNo": r.admission_no,
                   "className": r.class_name or "",
@@ -721,7 +728,7 @@ def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None,
             "remark": g.remark or "", "attachments": list(attachments or [])}
 
 
-def list_green_channels(page, page_size, keyword=None, status=None, user=None, batch_id=None):
+def list_green_channels(page, page_size, keyword=None, status=None, user=None, batch_id=None, orientation_student_id=None, pending_review=False):
     with session() as db:
         # P1-4：join 学生表消 N+1（此前每行一次 db.get），keyword/分页全部下沉 DB
         q = (select(GreenChannelApplication, OrientationStudent)
@@ -747,6 +754,10 @@ def list_green_channels(page, page_size, keyword=None, status=None, user=None, b
                 )))
         if batch_id is not None:
             q = q.where(OrientationStudent.batch_id == int(batch_id))
+        if orientation_student_id is not None:
+            q = q.where(OrientationStudent.id == int(orientation_student_id))
+        if pending_review:
+            q = q.where(GreenChannelApplication.status.in_(["SUBMITTED", "REVIEWING"]))
         if status:
             q = q.where(GreenChannelApplication.status == status)
         if keyword:
@@ -786,8 +797,8 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         ).with_for_update()).first()
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("绿色通道申请不存在")
-        if g.status in ("APPROVED", "REJECTED"):
-            raise AppException("DATA_CONFLICT", "该申请已终审，请刷新")
+        if g.status not in ("SUBMITTED", "REVIEWING"):
+            raise AppException("DATA_CONFLICT", "该申请当前不可审核，请刷新并处理最新提交的申请")
         if expected_version is None or int(expected_version) != int(g.version or 0):
             raise AppException("APPROVAL_VERSION_CONFLICT", "申请状态已变化，请刷新后重试")
         before = g.status
@@ -797,8 +808,8 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         g.review_time = datetime.utcnow()
         if reason_field == "reject":
             g.reject_reason = (reason or "").strip()
-        elif reason_field == "remark":
-            g.remark = (reason or "").strip()
+        # Approval comments belong to the audit below; retain the student's
+        # application statement so both sides can still review what was submitted.
         g.version += 1
         stu = tenant_get(db, OrientationStudent, g.ori_student_id)
         audit_detail = reason or ""
@@ -812,11 +823,12 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
                 if stu.blocked_step == "PAYMENT" or steps.get("PAYMENT") == "BLOCKED":
                     stu.blocked_step = None
                     stu.blocked_reason = None
+                    audit_detail = (audit_detail + "；绿色通道通过，缴费卡点自动解除").lstrip("；")
+                if "PAYMENT" in steps:
                     set_student_step_status(
                         db, stu, "PAYMENT", "DONE", status_source="PROCESS_FACT",
                         source_biz_id=f"green-channel:{g.id}",
                     )
-                    audit_detail = (audit_detail + "；绿色通道通过，缴费卡点自动解除").lstrip("；")
             elif target_status == "REJECTED":
                 stu.green_channel_status = "REJECTED"
             elif target_status == "RETURNED":
@@ -907,6 +919,12 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
                     and (prior.remark or "") == (remark or "").strip()):
                 return _gc_row(prior, s)
             raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于其他绿色通道申请")
+        # Continue using the same authenticated student/window rules as material correction.
+        # A completed or paused admission cannot be reopened by posting directly to this endpoint.
+        from app.services.orientation_self_service import _own_context
+        _, own_orientation, _ = _own_context(db, actor or {}, lock=True, allow_materials=True)
+        if own_orientation.id != s.id:
+            raise AppException("NO_PERMISSION", "只能提交本人当前迎新记录的绿色通道申请")
         if s.green_channel_status in ("SUBMITTED", "REVIEWING", "APPROVED"):
             raise AppException("DATA_CONFLICT", "已有申请正在处理或已通过，无需重复提交")
         g = GreenChannelApplication(
@@ -958,7 +976,8 @@ def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") 
 
 def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None,
              file_data: dict | None = None) -> dict:
-    return {"id": str(m.id), "studentId": str(m.ori_student_id),
+    return {**(file_data or {}), "fileStatus": (file_data or {}).get("status", ""),
+            "id": str(m.id), "studentId": str(m.ori_student_id),
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "materialType": m.material_type, "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type),
             "fileName": m.file_name or "", "submitTime": _iso(m.submit_time) or "",
@@ -966,7 +985,8 @@ def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None,
             "assetId": str(m.asset_id or ""), "fileVersionId": str(m.file_version_id or ""),
             "status": m.status, "statusLabel": L_MAT.get(m.status, m.status),
             "reviewer": m.reviewer or "", "reviewTime": _iso(m.review_time) or "",
-            "returnReason": m.return_reason or "", **(file_data or {})}
+            "returnReason": m.return_reason or "",
+            "version": int(m.version or 0)}
 
 
 def list_materials(page, page_size, keyword=None, status=None, material_type=None, user=None,
@@ -1062,74 +1082,97 @@ def _refresh_material_status(db, stu):
             )
 
 
-def approve_material(mid, comment="", user=None):
+def _review_material(mid, *, status, detail, expected_version, user=None):
+    from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
+
+    expected_version = require_expected_version(expected_version)
+    # Resolve the parent without taking a material lock first. End this read-only
+    # transaction so MySQL cannot reuse a snapshot from before the parent lock.
+    with session() as lookup:
+        student_id = lookup.scalar(select(OrientationMaterial.ori_student_id).where(
+            OrientationMaterial.id == int(mid),
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.is_deleted.is_(False),
+        ))
+        if student_id is None:
+            raise not_found("材料不存在")
+
     with session() as db:
-        m = db.get(OrientationMaterial, int(mid))
-        if not m or m.is_deleted or m.tenant_id != _tid():
+        # Student submissions also lock the parent/batch before current material;
+        # enrollment finalization locks this same parent before its qualification.
+        context = db.execute(select(OrientationStudent, OrientationBatch).join(
+            OrientationBatch,
+            (OrientationBatch.id == OrientationStudent.batch_id)
+            & (OrientationBatch.tenant_id == OrientationStudent.tenant_id),
+        ).where(
+            OrientationStudent.id == student_id,
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.is_deleted.is_(False),
+            OrientationBatch.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not context:
+            raise not_found("材料所属迎新记录不存在")
+        stu, batch = context
+        assert_orientation_student_scope(db, stu, user)
+        if batch.status != "ACTIVE":
+            raise AppException("DATA_CONFLICT", "迎新批次已关闭或尚未开放，材料不可审核")
+        if (stu.record_status != "ACTIVE"
+                or stu.stage in {"ENROLLED", "NO_SHOW", "CANCELLED", "DEFERRED"}
+                or stu.report_status == "COLLEGE_CONFIRMED"):
+            raise AppException("DATA_CONFLICT", "该新生迎新记录已结束或暂停，材料不可审核")
+        m = db.scalars(select(OrientationMaterial).where(
+            OrientationMaterial.id == int(mid),
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.ori_student_id == stu.id,
+            OrientationMaterial.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not m:
             raise not_found("材料不存在")
         if not m.is_current:
-            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if not stu:
-            raise not_found("材料所属迎新记录不存在")
-        assert_orientation_student_scope(db, stu, user)
-        if m.status == "APPROVED":
-            raise AppException("DATA_CONFLICT", "该材料已通过")
-        before = m.status
+            raise AppException("DATA_CONFLICT", "历史材料版本不可审核，请刷新后查看最新提交")
+        if m.status != "UPLOADED":
+            raise AppException("DATA_CONFLICT", "仅待审核材料可办理，请刷新后查看最新状态")
         name, _ = _op()
-        m.status = "APPROVED"
-        m.reviewer = name
-        m.review_time = datetime.utcnow()
-        m.version += 1
+        next_version = atomic_versioned_update(
+            db, OrientationMaterial, entity_id=m.id, tenant_id=_tid(),
+            expected_version=expected_version, expected_status="UPLOADED",
+            extra_where=(OrientationMaterial.is_current.is_(True),),
+            values={"status": status, "reviewer": name, "review_time": datetime.utcnow(),
+                    "return_reason": detail if status == "RETURNED" else None},
+        )
         if m.file_version_id:
             from app.models.file import FileVersion
             version = tenant_get(db, FileVersion, m.file_version_id)
             if version:
-                version.status = "APPROVED"
-        _refresh_material_status(db, stu)
+                version.status = "APPROVED" if status == "APPROVED" else "REJECTED"
+        if status == "APPROVED":
+            _refresh_material_status(db, stu)
+        else:
+            stu.material_status = "RETURNED"
+        stu.version = int(stu.version or 0) + 1
         from app.services.orientation_qualification_service import evaluate
         evaluate(db, stu, persist=True, actor_id=None)
-        _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
+        _audit(db, "MATERIAL", m.id, "审核通过" if status == "APPROVED" else "退回材料",
+               detail, "UPLOADED", status)
         db.commit()
-        return {"id": str(m.id), "status": "APPROVED"}
+        return {"id": str(m.id), "status": status, "version": next_version}
 
 
-def return_material(mid, reason, user=None):
+def approve_material(mid, comment="", user=None, *, expected_version=None):
+    return _review_material(mid, status="APPROVED", detail=comment,
+                            expected_version=expected_version, user=user)
+
+
+def return_material(mid, reason, user=None, *, expected_version=None):
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
-    with session() as db:
-        m = db.get(OrientationMaterial, int(mid))
-        if not m or m.is_deleted or m.tenant_id != _tid():
-            raise not_found("材料不存在")
-        if not m.is_current:
-            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if not stu:
-            raise not_found("材料所属迎新记录不存在")
-        assert_orientation_student_scope(db, stu, user)
-        before = m.status
-        name, _ = _op()
-        m.status = "RETURNED"
-        m.reviewer = name
-        m.review_time = datetime.utcnow()
-        m.return_reason = reason.strip()
-        m.version += 1
-        if m.file_version_id:
-            from app.models.file import FileVersion
-            version = tenant_get(db, FileVersion, m.file_version_id)
-            if version:
-                version.status = "REJECTED"
-        stu.material_status = "RETURNED"
-        from app.services.orientation_qualification_service import evaluate
-        evaluate(db, stu, persist=True, actor_id=None)
-        _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
-        db.commit()
-        return {"id": str(m.id), "status": "RETURNED"}
+    return _review_material(mid, status="RETURNED", detail=reason.strip(),
+                            expected_version=expected_version, user=user)
 
 
 # ═══ 宿舍 ═══
 
-def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None, batch_id=None):
+def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None, batch_id=None, orientation_student_id=None):
     from app.models import SchoolClass
     from app.services.dorm_housing_projection import housing_query, housing_fields
     from app.core.affairs_security import student_directory_scope
@@ -1141,6 +1184,8 @@ def list_dorms(page, page_size, keyword=None, dorm_status=None, building=None, b
             OrientationStudent.record_status == "ACTIVE")
         if batch_id is not None:
             q = q.where(OrientationStudent.batch_id == int(batch_id))
+        if orientation_student_id is not None:
+            q = q.where(OrientationStudent.id == int(orientation_student_id))
         class_ids, student_ids = student_directory_scope(get_current_user_ctx() or {})
         if student_ids is not None:
             q = q.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
@@ -1474,7 +1519,7 @@ def get_dashboard(user=None, batch_id=None) -> dict:
             "batchId": str(batch.id) if batch else "",
             "batchName": batch.batch_name if batch else "当前无迎新批次",
             "batchPeriod": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}" if start and end else "未配置报到周期",
-            "updateTime": _iso(datetime.now()),
+            "updateTime": _iso(datetime.utcnow()),
             "kpis": [
                 {"key": "total", "label": "新生总数", "value": str(total), "trend": "", "trendQuality": "neutral"},
                 {"key": "prepared", "label": "预报到完成", "value": str(prepared),
@@ -1530,8 +1575,14 @@ def _batch_row(b: OrientationBatch) -> dict:
     }
 
 
-def _get_batch(db, bid) -> OrientationBatch:
-    b = db.get(OrientationBatch, int(bid))
+def _get_batch(db, bid, *, lock=False) -> OrientationBatch:
+    if lock:
+        b = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.id == int(bid), OrientationBatch.tenant_id == _tid(),
+            OrientationBatch.is_deleted.is_(False),
+        ).execution_options(populate_existing=True).with_for_update()).first()
+    else:
+        b = db.get(OrientationBatch, int(bid))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("迎新批次不存在或不在当前数据范围内")
     return b
@@ -1722,7 +1773,10 @@ def assign_batch_student_numbers(bid, body: dict) -> dict:
 
 def close_batch(bid) -> dict:
     with session() as db:
-        b = _get_batch(db, bid)
+        # This must be the first database read: after waiting for a concurrent
+        # roster write, subsequent consistent reads see its committed students.
+        b = _get_batch(db, bid, lock=True)
+        _archive_scope(db)
         if b.status != "ACTIVE":
             raise AppException("INVALID_STATE", "仅进行中批次可结束")
         pending = db.scalar(select(func.count()).select_from(OrientationStudent).where(
@@ -2051,25 +2105,31 @@ def _archive_row(a):
             "archivedAt": _iso(a.archived_at) or "", "remark": a.remark or "", "updateTime": _iso(a.updated_at)}
 
 
-def list_archives(page, page_size, keyword=None, status=None):
+def list_archives(page, page_size, keyword=None, status=None, batch_id=None):
     with session() as db:
-        q = select(OrientationArchive).where(OrientationArchive.tenant_id == _tid(),
-                                             OrientationArchive.is_deleted.is_(False))
+        q = select(OrientationArchive, OrientationBatch).outerjoin(OrientationBatch, and_(
+            OrientationBatch.tenant_id == OrientationArchive.tenant_id,
+            OrientationBatch.batch_no == OrientationArchive.batch_no,
+            OrientationBatch.is_deleted.is_(False),
+        )).where(OrientationArchive.tenant_id == _tid(), OrientationArchive.is_deleted.is_(False))
         if status:
             q = q.where(OrientationArchive.status == status)
-        rows = db.scalars(q.order_by(OrientationArchive.id.desc())).all()
+        if batch_id:
+            q = q.where(OrientationBatch.id == int(batch_id))
         if keyword:
-            kw = keyword.strip()
-            rows = [r for r in rows if kw in (r.archive_name or "")]
-        items, total = _page([_archive_row(r) for r in rows], page, page_size)
-        return items, total
+            q = q.where(OrientationArchive.archive_name.contains(keyword.strip(), autoescape=True))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(q.order_by(OrientationArchive.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+        return [{**_archive_row(archive), "batchId": str(batch.id) if batch else "",
+                 "batchName": batch.batch_name if batch else "",
+                 "batchStatus": batch.status if batch else ""} for archive, batch in rows], total
 
 
 def _archive_scope(db):
     from app.core.affairs_security import build_affairs_context, no_data_scope
     ctx = build_affairs_context(get_current_user_ctx() or {}, db)
     if ctx.scope_type != "TENANT_ALL":
-        raise no_data_scope("批次归档需由学校迎新管理人员办理")
+        raise no_data_scope("批次关闭、报到安排与归档需由学校迎新管理人员办理")
 
 
 def _archive_batch(db, batch_no):

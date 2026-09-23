@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.exceptions import AppException
 from app.core.response import success
@@ -21,13 +21,18 @@ router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
 
 
 @router.get("/teacher/orientation/green-channels", summary="教师·迎新绿色通道审核队列（本校）")
-def teacher_gc_list(status: str | None = None, user=Depends(get_current_user)):
+def teacher_gc_list(status: str | None = None, page: int = Query(1, ge=1),
+                    pageSize: int = Query(30, ge=1, le=100),
+                    batchId: int | None = Query(None, ge=1),
+                    queue: str = Query("pending", pattern="^(pending|all)$"),
+                    user=Depends(get_current_user)):
     tea._require_teacher(user)
-    items, total = ori.list_green_channels(1, 50, status=status, user=user)
-    if not status:
-        items = [x for x in items if x.get("status") in ("SUBMITTED", "REVIEWING")]
-        total = len(items)
-    return success({"hasData": total > 0, "list": items, "total": total})
+    items, total = ori.list_green_channels(
+        page, pageSize, status=status, user=user, batch_id=batchId,
+        pending_review=not status and queue == "pending",
+    )
+    return success({"hasData": total > 0, "list": items, "total": total,
+                    "page": page, "pageSize": pageSize})
 
 
 @router.post("/teacher/orientation/green-channels/{gid}/review",

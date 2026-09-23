@@ -5,7 +5,7 @@
       <AppButton @click="openBatchCheckin">按名单批量入住</AppButton>
       <AppButton variant="secondary" @click="$router.push('/admin/student-affairs/dorm/resource')">选床办理入住</AppButton>
     </template>
-    <div v-if="batchId" class="ori-inline-note">当前迎新批次 · {{ batchId }}</div>
+    <div v-if="batchId" class="ori-inline-note">仅显示当前迎新批次的住宿记录</div>
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
       <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名新生 · 预留与实际入住分别核对`" @action="onToolbar">
@@ -219,7 +219,7 @@ export default {
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getDormitoryCheckinList({ ...this.filters, ...(this.batchId ? {batchId:this.batchId} : {}), page: this.page, pageSize: this.pageSize })
+        const res = await api.getDormitoryCheckinList({ ...this.filters, ...(this.batchId ? {batchId:this.batchId} : {}), orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
         if (sequence !== this.requestSequence) return
         if (res.code === 0) {
           this.rows = res.data.list
@@ -294,7 +294,7 @@ export default {
       }
     },
     exportFn(payload) {
-      return api.createExport('dormList', payload)
+      return api.createExport('dormList', { ...payload, batchId: this.$route.query.batchId })
     }
   }
 }

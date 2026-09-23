@@ -5,7 +5,7 @@
   >
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
-      <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 名待跟进新生`" @action="onToolbar" />
+      <ModuleToolbar :hint="`共 ${total} 名待跟进新生 · 点击学生详情继续核对，报到安排处理延期与未到校`" />
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
@@ -32,11 +32,10 @@
 </template>
 
 <script>
-/** /admin/orientation/no-show 未报到学生跟进（提醒 / 批量提醒 / 进学生详情；真实走 /orientation/students）。 */
+/** 未报到学生跟进，接续同一批次、同一学生的正式办理入口。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { TableActionColumn, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
-import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', reportStatus: '' })
 const REPORT_OPTIONS = [
@@ -65,7 +64,7 @@ export default {
     dataScopeName() { return this.ctx?.dataScope?.name || '' },
     perms() { return this.ctx?.permissionActions || {} },
     noPermission() { const p = this.perms['orientation.student.view']; return p ? !p.allowed : false },
-    toolbarActions() { return [{ key: 'remindAll', label: '批量提醒本页' }] },
+    canArrange() { return !!this.perms['orientation.enrollment.finalize']?.allowed },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
@@ -89,14 +88,15 @@ export default {
     if (ctx.code === 0) this.ctx = ctx.data
     await this.load()
   },
+  beforeUnmount() { this.requestSerial++ },
   methods: {
     async load() {
       const serial = ++this.requestSerial
-      this.loading = true; this.error = ''
+      this.loading = true; this.error = ''; this.rows = []; this.total = 0
       try {
         const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize, pendingArrival: true, batchId: this.$route?.query?.batchId || undefined })
         if (serial !== this.requestSerial) return
-        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
+        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message || '未报到名单读取失败，请重试'
       } catch (e) { if (serial === this.requestSerial) this.error = e.message || '加载失败' } finally { if (serial === this.requestSerial) this.loading = false }
     },
     search() { this.page = 1; this.load() },
@@ -104,26 +104,15 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     rowActions() {
       return [
-        { key: 'remind', label: '提醒' },
-        { key: 'disposition', label: '报到安排' },
+        ...(this.canArrange ? [{ key: 'disposition', label: '报到安排' }] : []),
         { key: 'detail', label: '学生详情' }
       ]
     },
-    async onRowAction(key, row) {
-      if (key === 'disposition') return this.$router.push({ path: '/admin/orientation/qualification', query: { keyword: row.admissionNo || row.name } })
-      if (key === 'detail') return this.$router.push(`/admin/orientation/students/${row.id}`)
-      if (key === 'remind') {
-        const res = await api.batchRemindStudents([row.id], '报到提醒')
-        if (res.code === 0) toast.success(`已向「${row.name}」发送报到提醒`)
-        else toast.error(res.message || '提醒失败')
-      }
-    },
-    async onToolbar(key) {
-      if (key !== 'remindAll') return
-      if (!this.rows.length) return
-      const res = await api.batchRemindStudents(this.rows.map((r) => r.id), '报到提醒')
-      if (res.code === 0) toast.success(`已向本页 ${this.rows.length} 名新生发送报到提醒`)
-      else toast.error(res.message || '批量提醒失败')
+    onRowAction(key, row) {
+      if (this.loading || this.error) return
+      const query = { batchId: row.batchId || this.$route.query.batchId }
+      if (key === 'disposition' && this.canArrange) return this.$router.push({ path: '/admin/orientation/qualification', query: { ...query, orientationStudentId: String(row.id) } })
+      if (key === 'detail') return this.$router.push({ path: `/admin/orientation/students/${row.id}`, query })
     }
   }
 }

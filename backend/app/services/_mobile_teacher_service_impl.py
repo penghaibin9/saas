@@ -2105,10 +2105,16 @@ def orientation_dashboard(user: dict) -> dict:
     _require_teacher(user)
     if not db_enabled():
         return {"hasData": False, "kpis": [], "notReported": []}
-    d = orientation_service.get_dashboard()
-    items, total = orientation_service.list_students(1, 30, report_status="NOT_REPORTED")
-    return {"hasData": True, "batchName": d.get("batchName"), "batchPeriod": d.get("batchPeriod"),
-            "kpis": d.get("kpis", []), "notReported": items, "notReportedTotal": total}
+    d = orientation_service.get_dashboard(user=user)
+    batch_id = d.get("batchId")
+    if not batch_id:
+        return {"hasData": False, "batchId": "", "kpis": [], "notReported": [], "notReportedTotal": 0}
+    items, total = orientation_service.list_students(
+        1, 30, batch_id=batch_id, pending_arrival=True, user=user,
+    )
+    return {"hasData": True, "batchId": str(batch_id), "batchName": d.get("batchName"),
+            "batchPeriod": d.get("batchPeriod"), "kpis": d.get("kpis", []),
+            "notReported": items, "notReportedTotal": total}
 
 
 def orientation_today_checkins(user: dict) -> dict:

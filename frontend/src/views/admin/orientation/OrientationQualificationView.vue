@@ -20,8 +20,11 @@
         :pagination="{ page, pageSize, total }"
         @page-change="turnPage"
       >
+        <template #cell-checkinEligibility="{ row }">
+          <StatusTag :type="row.checkinEligibility?.eligible ? 'success' : 'warning'" :label="row.checkinEligibility?.eligible ? '可到校核验' : '暂不能现场核验'" />
+        </template>
         <template #cell-qualification="{ row }">
-          <StatusTag :type="qualificationType(row.verdict)" :label="row.verdictLabel" dot />
+          <StatusTag :type="qualificationType(row.verdict, row.stage)" :label="qualificationText(row.verdict, row.stage)" dot />
         </template>
         <template #cell-blockedReason="{ row }">
           <span :class="{ 'oq-muted': !row.blockers?.length }">{{ blockerText(row) }}</span>
@@ -57,7 +60,7 @@
         <div class="oq-finalize-field">
           <label>正式学号</label>
           <AppTextInput v-model="activateStudentNo" placeholder="请输入学校正式学号" />
-          <small>激活后学生可登录 PC 或小程序办理迎新。</small>
+          <small>激活后学生可登录 电脑端或小程序办理迎新。</small>
         </div>
       </AppConfirmDialog>
 
@@ -132,8 +135,8 @@ export default {
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
         { key: 'queue', label: '办理队列', type: 'select', options: [{ value: 'ready', label: '可确认入学' }, { value: 'blocked', label: '待补办' }] },
         { key: 'verdict', label: '资格结论', type: 'select', options: [
-          { value: 'QUALIFIED', label: '具备报到资格' },
-          { value: 'NOT_QUALIFIED', label: '暂不具备报到资格' },
+          { value: 'QUALIFIED', label: '手续齐全' },
+          { value: 'NOT_QUALIFIED', label: '仍需补办' },
           { value: 'MANUAL_REVIEW', label: '需人工核查' }
         ] }
       ]
@@ -142,7 +145,8 @@ export default {
       return [
         { key: 'name', title: '姓名' },
         { key: 'className', title: '班级' },
-        { key: 'qualification', title: '报到资格' },
+        { key: 'checkinEligibility', title: '现场核验条件' },
+        { key: 'qualification', title: '全部手续' },
         { key: 'reportStatus', title: '现场报到' },
         { key: 'blockedReason', title: '受阻原因' },
         { key: 'actions', title: '操作' }
@@ -152,6 +156,7 @@ export default {
   async created() {
     const ctx = await api.getOrientationContext()
     if (ctx.code === 0) this.ctx = ctx.data
+    if (this.$route.query.queue) this.filters.queue = String(this.$route.query.queue)
     if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
     await this.load()
   },
@@ -160,14 +165,16 @@ export default {
     async load() {
       this.loading = true; this.error = ''
       try {
-        const res = await api.getOrientationQualifications({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getOrientationQualifications({ ...this.filters, batchId: this.$route.query.batchId || undefined, orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
-    qualificationType(verdict) {
+    qualificationText(verdict, stage) { return ({ CANCELLED: '已停止办理', NO_SHOW: '已登记未到校', DEFERRED: '等待恢复报到' })[stage] || ({ QUALIFIED: '手续齐全', NOT_QUALIFIED: '仍需补办', MANUAL_REVIEW: '需人工核查' })[verdict] || '待核实' },
+    qualificationType(verdict, stage) {
+      if (['CANCELLED', 'NO_SHOW', 'DEFERRED'].includes(stage)) return 'default'
       return ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warning' })[verdict] || 'default'
     },
     reportText(status, stage) {
@@ -178,6 +185,9 @@ export default {
       return ({ CHECKED_IN: 'warning', COLLEGE_CONFIRMED: 'success' })[status] || 'default'
     },
     blockerText(row) {
+      if (row.stage === 'CANCELLED') return '已取消入学，后续手续已停止；如需继续请先恢复报到。'
+      if (row.stage === 'NO_SHOW') return '已登记未到校；确认继续入学后，请先恢复报到。'
+      if (row.stage === 'DEFERRED') return '已延期报到，已有预留床位保留；确认到校计划后恢复办理。'
       return row.blockers?.length ? row.blockers.map((item) => item.message).join('；') : '—'
     },
     rowActions(row) {
@@ -186,16 +196,18 @@ export default {
         { key: 'recalculate', label: '刷新资格' }
       ]
       const identityBlocked = !row.profileStudentId || row.blockers?.some((item) => ['IDENTITY_NOT_LINKED', 'ACCOUNT_NOT_LINKED'].includes(item.code))
-      if (identityBlocked && this.perms['orientation.identity.activate']?.allowed) actions.push({ key: 'activate', label: '激活学生账号' })
+      const paused = ['NO_SHOW', 'CANCELLED', 'DEFERRED'].includes(row.stage)
+      if (!paused && identityBlocked && this.perms['orientation.identity.activate']?.allowed) actions.push({ key: 'activate', label: '激活学生账号' })
       if (row.canFinalize && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'finalize', label: '学院确认入学' })
-      if (!['CHECKED_IN', 'COLLEGE_CONFIRMED'].includes(row.reportStatus) && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'disposition', label: '报到安排' })
+      if (!['CHECKED_IN', 'COLLEGE_CONFIRMED'].includes(row.reportStatus) && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'disposition', label: paused ? '恢复或调整报到' : '报到安排' })
       return actions
     },
     onRowAction(key, row) {
       if (key === 'disposition') { this.dispositionRow = row; this.dispositionReason = ''; this.dispositionStatus = ['NO_SHOW', 'CANCELLED', 'DEFERRED'].includes(row.stage) ? 'RESUME' : 'NO_SHOW'; this.dispositionVisible = true }
-      if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
+      if (key === 'student') this.$router.push({ path: `/admin/orientation/students/${row.id}`, query: { batchId: row.batchId || this.$route.query.batchId } })
       if (key === 'recalculate') { this.confirmRow = row; this.confirmVisible = true }
       if (key === 'activate') {
+        if (['NO_SHOW', 'CANCELLED', 'DEFERRED'].includes(row.stage)) return
         this.activateRequestId = globalThis.crypto?.randomUUID?.() || `orientation-activate-${Date.now()}`
         this.activateRow = row
         this.activateStudentNo = row.studentNo || ''
@@ -212,7 +224,7 @@ export default {
     async onConfirm() {
       const row = this.confirmRow; if (!row) return
       const res = await api.recalculateOrientationQualification(row.id)
-      if (res && res.code === 0) { toast.success(`资格已重算：${res.data.verdictLabel}`); this.confirmVisible = false; await this.load() }
+      if (res && res.code === 0) { toast.success(`办理情况已更新：${this.qualificationText(res.data.verdict)}`); this.confirmVisible = false; await this.load() }
       else toast.error((res && res.message) || '资格重算失败')
     },
     async onActivateConfirm() {

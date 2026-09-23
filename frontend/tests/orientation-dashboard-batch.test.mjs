@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { formatDateTime } from '../src/utils/dateUtils.js'
 const source=fs.readFileSync(new URL('../src/views/admin/orientation/OrientationDashboardView.vue',import.meta.url),'utf8')
 const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm,'').replace('export default','return')
 function setup(api){
- const names=['BusinessMetrics','ModulePageShell','LoadingState','ErrorState','RiskTag','getOrientationContext','getOrientationDashboard','getOrientationBatches']
- const component=new Function(...names,script)(...names.map(k=>api[k]||{}))
+ const names=['BusinessMetrics','ModulePageShell','LoadingState','ErrorState','RiskTag','getOrientationContext','getOrientationDashboard','getOrientationBatches','formatDateTime']
+ const component=new Function(...names,script)(...names.map(k=>k==='formatDateTime'?formatDateTime:api[k]||{}))
  const vm={...component.data(),$router:{push(v){vm.destination=v}}}
  for(const [k,fn] of Object.entries(component.methods))vm[k]=fn.bind(vm)
  for(const [k,fn] of Object.entries(component.computed))Object.defineProperty(vm,k,{get:()=>fn.call(vm)})

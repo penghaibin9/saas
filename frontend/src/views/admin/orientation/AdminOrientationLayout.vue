@@ -6,6 +6,7 @@
     :workspace-navigate="resolveOrientationDestination"
     @menu-select="onMenuSelect"
   >
+    <OrientationWorkspaceNav />
     <router-view :key="viewKey" />
   </BasePortalLayout>
 </template>
@@ -16,12 +17,13 @@
  * P6：已移除「当前角色」假切换；切身份须走真实 /auth/switch-role。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
+import OrientationWorkspaceNav from '@/modules/orientation/components/OrientationWorkspaceNav.vue'
 import { getOrientationContext } from '@/modules/orientation/api/orientation.api'
 import { orientationDestination } from '@/modules/orientation/routeContext'
 
 export default {
   name: 'AdminOrientationLayout',
-  components: { BasePortalLayout },
+  components: { BasePortalLayout, OrientationWorkspaceNav },
   provide() { return { affairsWorkspace: true, conciseBusinessHeader: true } },
   data() {
     return { context: null, brand: null, roles: [], currentRoleId: '', dataScopeName: '' }

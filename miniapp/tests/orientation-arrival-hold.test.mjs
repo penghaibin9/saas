@@ -5,7 +5,7 @@ const source = fs.readFileSync(new URL('../src/pages/student/orientation/index.v
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default','return')
 const component = new Function('go', script)(() => {})
 function view(stage) {
- const vm={...component.data(),o:{stage,steps:[],selfService:{},identity:{}}}
+ const vm={...component.data(),o:{stage,steps:[{key:'INFO',status:'TODO',title:'信息核对'}],selfService:{available:true},identity:{}}}
  for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(vm,key,{get:fn.bind(vm)})
  return vm
 }

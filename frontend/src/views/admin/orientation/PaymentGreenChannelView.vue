@@ -104,7 +104,7 @@
       <ExportDialog
         v-model:visible="exportVisible"
         title="导出缴费 / 绿色通道数据"
-        :options="exportOpts"
+        :options="{ ...exportOpts, fieldGroups: (exportOpts.fieldGroups || []).filter(g => g.key === (tab === 'payment' ? 'payment' : 'green')) }"
         :selected-count="0"
         :data-scope-name="dataScopeName"
         :export-fn="exportFn"
@@ -151,7 +151,7 @@ export default {
   data() {
     return {
       ctx: null,
-      tab: 'payment',
+      tab: this.$route.query.tab === 'green' ? 'green' : 'payment',
       loading: true,
       error: '',
       submitting: false,
@@ -265,7 +265,7 @@ export default {
       this.error = ''
       try {
         const fn = this.tab === 'payment' ? api.getPaymentStatusList : api.getGreenChannelApplications
-        const res = await fn({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await fn({ ...this.filters, batchId: this.$route.query.batchId || undefined, orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
@@ -304,7 +304,7 @@ export default {
       ]
     },
     onRowAction(key, row) {
-      if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
+      if (key === 'student') this.$router.push({ path: `/admin/orientation/students/${row.id}`, query: { batchId: row.batchId || this.$route.query.batchId } })
       if (key === 'payment') {
         const amount = (value) => Number(String(value || '0').replace(/[^\d.-]/g, '')) || 0
         this.paymentTarget = row
@@ -405,7 +405,7 @@ export default {
       } finally { this.submitting = false }
     },
     exportFn(payload) {
-      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'greenChannelList', payload)
+      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'greenChannelList', { ...payload, batchId: this.$route.query.batchId })
     }
   }
 }

@@ -166,6 +166,7 @@ export default {
     return {
       ctx: null,
       loading: true,
+      requestSerial: 0,
       error: '',
       submitting: false,
       rows: [],
@@ -252,7 +253,7 @@ export default {
         { key: 'name', label: '姓名', type: 'text', required: true, disabled: !!this.editing },
         { key: 'admissionNo', label: '录取编号', type: 'text', required: true, disabled: !!this.editing },
         { key: 'batchId', label: '迎新批次', type: 'select', options: this.batchOptions, required: true, disabled: !!this.editing || !!this.fixedBatch },
-        { key: 'classId', label: '录取班级（自动确定学院/专业）', type: 'select', options: this.filterOptions.classes || [], required: true },
+        { key: 'classId', label: '录取班级（自动确定学院/专业）', type: 'remote', placeholder: '输入班级名称，如软件技术2601', remoteSearch: api.searchOrientationClasses, options: [...(this.filterOptions.classes || []), ...(this.editing?.classId ? [{ value: String(this.editing.classId), label: this.editing.className }] : [])], required: true },
         { key: 'admissionType', label: '录取类型', type: 'text' },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text', placeholder: '敏感字段，列表脱敏展示' },
@@ -267,7 +268,8 @@ export default {
       }))
     }
   },
-  watch: { '$route.query.batchId'(value) { if (value !== undefined && String(value) !== this.filters.batchId) { this.filters.batchId = String(value); this.search() } } },
+  watch: { '$route.query.batchId'(value) { if (!this.fixedBatch && String(value || '') !== this.filters.batchId) { this.filters.batchId = String(value || ''); this.page = 1; this.load() } } },
+  beforeUnmount() { ++this.requestSerial },
   async created() {
     if (this.fixedBatch) this.filters.batchId = String(this.fixedBatch.id)
     else if (this.$route.query.batchId) this.filters.batchId = String(this.$route.query.batchId)
@@ -305,37 +307,41 @@ export default {
       if (tpl.code === 0) this.importTemplate = tpl.data
       if (exp.code === 0) this.exportOpts = exp.data
       if (batches.code === 0) this.batches = batches.data.list || []
-      if (!this.filters.batchId) {
+      if (!this.filters.batchId && this.$route.query.batchId === undefined) {
         const activeBatch = this.batches.find((row) => row.status !== 'CLOSED')
         if (activeBatch) this.filters.batchId = String(activeBatch.id)
       }
-      await this.load()
+      await this.search()
     },
     async load() {
+      const serial = ++this.requestSerial
       if (this.fixedBatch) this.filters.batchId = String(this.fixedBatch.id)
       this.loading = true
       this.error = ''
       this.selected = []
       try {
         const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        if (serial !== this.requestSerial) return
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
         } else this.error = res.message
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (serial === this.requestSerial) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (serial === this.requestSerial) this.loading = false
       }
     },
-    search() {
+    async search() {
       this.page = 1
-      this.load()
+      if (!this.fixedBatch && String(this.$route.query.batchId ?? '') !== this.filters.batchId) {
+        await this.$router.replace({ query: { ...this.$route.query, batchId: this.filters.batchId } })
+      }
+      return this.load()
     },
     reset() {
-      this.filters = EMPTY_FILTERS()
-      const activeBatch = this.fixedBatch || this.batches.find((row) => row.status !== 'CLOSED')
-      if (activeBatch) this.filters.batchId = String(activeBatch.id)
+      const batchId = this.fixedBatch ? String(this.fixedBatch.id) : String(this.$route.query.batchId ?? this.filters.batchId)
+      this.filters = { ...EMPTY_FILTERS(), batchId }
       this.page = 1
       this.load()
     },

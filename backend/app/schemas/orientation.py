@@ -60,6 +60,16 @@ class CommentBody(BaseModel):
     comment: Optional[str] = Field(default="")
 
 
+class MaterialApproveBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    comment: Optional[str] = Field(default="")
+
+
+class MaterialReturnBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    reason: str = Field(..., min_length=5)
+
+
 class GreenApproveBody(BaseModel):
     expectedVersion: int = Field(..., ge=0)
     remark: Optional[str] = Field(default="")
