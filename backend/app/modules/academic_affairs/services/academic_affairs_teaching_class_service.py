@@ -178,6 +178,25 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
         AaTeachingClass.is_deleted.is_(False),
     ).first()
     if conflict:
+        legacy_code = f"TC{batch.term_id}-{task.course_code or 'X'}-{task.class_id}"
+        if (
+            not teaching_class and task.source_program_course_id
+            and task.status in {"PENDING_ASSIGN", "ASSIGNED"}
+            and code == legacy_code
+        ):
+            # A new offering in another batch needs its own identity. Never rename an
+            # existing projected class or reuse the older offering's roster.
+            code = f"TC-{batch.term_id}-{task.id}"
+            conflict = db.query(AaTeachingClass).filter(
+                AaTeachingClass.tenant_id == _tid(),
+                AaTeachingClass.term_id == int(batch.term_id),
+                AaTeachingClass.class_code == code,
+                AaTeachingClass.teaching_task_id != task.id,
+                AaTeachingClass.is_deleted.is_(False),
+            ).first()
+            if not conflict:
+                task.teaching_class_code = code
+    if conflict:
         raise AppException(
             "DATA_CONFLICT", f"教学班编号 {code} 已被其它教学任务占用",
             details={"conflictTeachingClassId": str(conflict.id)}, http_status=409,

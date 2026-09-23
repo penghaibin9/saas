@@ -5,6 +5,7 @@
     :role-name="roleName"
     :data-scope-name="scopeName"
   >
+    <template #actions><AppButton v-if="$route.query.returnToken" @click="academicFlow?.back($route.query.returnToken, '/admin/academic-affairs/overview')">返回原工作队列</AppButton></template>
     <div class="mp-stack">
       <p v-if="reviewNotice" class="sc-review-notice" role="alert">{{ reviewNotice }}<span v-if="reviewDraft?.reason"> 保留意见：{{ reviewDraft.reason }}</span></p>
       <section v-if="receipt" class="sc-receipt" role="status">
@@ -27,6 +28,7 @@
             <AppButton :disabled="submitting" @click="askReject(evidence)">驳回</AppButton>
             <AppButton variant="primary" :disabled="submitting" @click="askApprove(evidence)">审核通过</AppButton>
           </section>
+          <p v-else-if="evidence" class="sc-review-notice" role="status">{{ evidence.reviewNode?.reason || '尚未核实当前办理权限，请刷新单据后核对。' }}<span v-if="evidence.reviewNode?.assigneeName"> 当前受理人：{{ evidence.reviewNode.assigneeName }}。</span></p>
         </div>
       </div>
       <template v-else>
@@ -88,6 +90,7 @@ export default {
   name: 'AaScheduleChangeApprovalView',
   components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppQuickPhrases, AppButton, ScheduleChangeEvidence },
   props: { ctx: { type: Object, default: () => ({}) } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
       loading: true, error: '', submitting: false,
@@ -106,7 +109,11 @@ export default {
     }
   },
   computed: {
-    selectedId() { return String(this.$route.query.changeId || '') },
+    selectedId() {
+      // 待办以 recordId 定位；业务台账以 changeId 定位。两者都是现行消费者。
+      const value = this.$route.query.recordId ?? this.$route.query.changeId
+      return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? value : ''
+    },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     roleName() { return this.ctx?.currentRole?.roleName || '学院/教务处' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '按授权范围' },
@@ -130,7 +137,7 @@ export default {
   created() { this.load() },
   beforeUnmount() { this.loadSeq++; this.actionSeq++ },
   methods: {
-    canReview(row) { return this.isPending(row.status) && !this.blockedReviews.some(item => item.id === String(row.changeId) && item.version === row.version) },
+    canReview(row) { return row.reviewNode?.canReview === true && this.isPending(row.status) && !this.blockedReviews.some(item => item.id === String(row.changeId) && item.version === row.version) },
     revokeRead() {
       this.loadSeq++; this.actionSeq++; this.evidenceRevision++
       this.rows = []; this.total = 0; this.receipt = null; this.reviewDraft = null; this.reviewReason = ''
@@ -145,8 +152,8 @@ export default {
       this.confirm.visible = false; this.confirm.row = null; this.evidence = null; this.evidenceRevision++
     },
     isPending(status) { return PENDING.includes(status) },
-    openEvidence(row) { this.evidence = null; this.$router.push({ query: { ...this.$route.query, changeId: String(row.changeId) } }) },
-    closeEvidence() { this.evidence = null; const query = { ...this.$route.query }; delete query.changeId; this.$router.replace({ query }) },
+    openEvidence(row) { this.evidence = null; this.$router.push({ query: { ...this.$route.query, recordId: undefined, changeId: String(row.changeId) } }) },
+    closeEvidence() { this.evidence = null; const query = { ...this.$route.query }; delete query.changeId; delete query.recordId; this.$router.replace({ query }) },
     typeTone(t) { return { ADJUST: 'processing', STOP: 'warning', MAKEUP: 'info' }[t] || 'default' },
     statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     statusTone(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).tone || 'default' },

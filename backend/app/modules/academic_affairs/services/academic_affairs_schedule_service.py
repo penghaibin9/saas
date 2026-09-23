@@ -580,19 +580,24 @@ def student_view(batch_id, user, student_id):
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):
-    from app.models import AaScheduleBatch
+    from app.models import AaScheduleBatch, AaTerm
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
         if term_id:
             conds.append(AaScheduleBatch.term_id == int(term_id))
         if status:
             conds.append(AaScheduleBatch.status == status)
-        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc())).all()
+        size = max(1, min(int(page_size), 200))
+        start = (max(1, int(page)) - 1) * size
+        total = int(db.scalar(select(func.count()).select_from(AaScheduleBatch).where(*conds)) or 0)
+        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc()).offset(start).limit(size)).all()
+        terms = {int(t.id): f"{t.year_code} 第{t.term_no}学期" for t in db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
+        )).all()}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 # ═══════════ Tier1 R2：班级/教师/教室独立课表入口 + 发布记录 + 导出 ═══════════

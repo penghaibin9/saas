@@ -742,7 +742,46 @@ def get_change(cid, user) -> dict:
                 keys = _derive_keys(user)
                 if not x.teacher_key or x.teacher_key not in keys:
                     raise no_data_scope("仅可查看本人发起的调停课单")
-        return _row(x)
+        result = _row(x)
+        result["reviewNode"] = _review_node(db, x, user)
+        return result
+
+
+def _review_node(db, change, user) -> dict:
+    from app.core.permissions import has_permission
+    from app.models import User, WorkflowTask
+    from .academic_affairs_schedule_change_r3_service import _actor_numeric_id
+
+    result = {"canReview": False, "assigneeName": None, "reason": "当前单据不在待审阶段"}
+    if change.status not in _ACTIVE or not change.workflow_instance_id:
+        return result
+    tasks = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == change.workflow_instance_id,
+        WorkflowTask.node_code == change.current_node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False),
+    ).limit(2)).all()
+    if len(tasks) != 1:
+        result["reason"] = "当前审批任务不唯一或未生成，请联系流程管理员核对"
+        return result
+    task = tasks[0]
+    actor = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.id == task.assignee_id, User.is_deleted.is_(False),
+    )).first()
+    result["assigneeName"] = actor.real_name if actor else None
+    actor_id = _actor_numeric_id(user, required=False)
+    if actor_id is None:
+        result["reason"] = "无法确认当前审批人的真实账号身份"
+        return result
+    if int(task.assignee_id or 0) != actor_id:
+        result["reason"] = "本单由指定受理人办理，当前账号可查看但不能审批"
+        return result
+    if not any(has_permission(user, code) for code in (
+        "academicAffairs.scheduleChange.collegeReview", "academicAffairs.scheduleChange.academicReview",
+    )):
+        result["reason"] = "当前身份没有调停课审核权限"
+        return result
+    result.update(canReview=True, reason="")
+    return result
 
 
 def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=None,

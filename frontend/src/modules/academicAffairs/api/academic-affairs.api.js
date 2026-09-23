@@ -753,7 +753,8 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/college-review`, { method: 'POST', body: { action, reason, expectedEvidenceHash } }))
   },
   publishGrades(taskId) {
-    return call(() => request(`${BASE}/grade-tasks/${taskId}/publish`, { method: 'POST' }))
+    // 当前发布合同包含提交后的预警扫描；为该单次命令保留回执等待时间，不重试写入。
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/publish`, { method: 'POST', timeoutMs: 60000 }))
   },
   returnGradeTask(taskId, reason) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/return`, { method: 'POST', body: { reason } }))
@@ -1158,6 +1159,7 @@ export const academicAffairsExamApi = {
   publishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/publish`, { method: 'POST' })) },
   finishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/finish`, { method: 'POST' })) },
   archiveBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/archive`, { method: 'POST' })) },
+  getMyInvigilation() { return call(() => request(`${BASE}/exam/my-invigilation`)) },
   // 考场 / 座位 / 监考
   addRoom(cid, body) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`, { method: 'POST', body })) },
   listRooms(cid) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`)) },

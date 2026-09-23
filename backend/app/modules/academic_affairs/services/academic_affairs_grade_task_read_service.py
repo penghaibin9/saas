@@ -191,7 +191,7 @@ def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: boo
     return actions
 
 
-def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None, term_id=None):
+def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None, term_id=None, term=None, keyword=None):
     """Return a bounded SQL page and batch-project teacher/deadline truth."""
     from app.models import AaGradeTask, AaTeachingTask
 
@@ -199,6 +199,10 @@ def list_tasks(user, status=None, page=1, page_size=20, *, task_id=None, term_id
     size = max(1, min(int(page_size or 20), _MAX_PAGE_SIZE))
     with _core.session() as db:
         conditions = _scope_conditions(db, user, status, task_id, term_id)
+        if term:
+            conditions.append(AaGradeTask.term_code == str(term).strip())
+        if keyword and str(keyword).strip():
+            conditions.append(AaGradeTask.course_name.contains(str(keyword).strip(), autoescape=True))
         total = int(
             db.scalar(
                 select(func.count(AaGradeTask.id))

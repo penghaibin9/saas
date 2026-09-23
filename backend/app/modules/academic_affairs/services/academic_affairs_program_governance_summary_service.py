@@ -176,6 +176,7 @@ def program_governance_summary(user) -> dict:
         AaProgramGraduationRequirement,
         AaProgramPracticeSegment,
         NationalStandardDocument,
+        Major,
         SchoolClass,
         SchoolMajorStandardBinding,
     )
@@ -207,6 +208,10 @@ def program_governance_summary(user) -> dict:
             return _empty_summary()
 
         program_ids = [int(row.id) for row in programs]
+        major_ids = {row.major_id for row in programs if row.major_id}
+        major_names = {row.id: row.major_name for row in db.query(Major).filter(
+            Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.id.in_(major_ids),
+        ).all()} if major_ids else {}
         courses = db.query(AaProgramCourse).filter(
             AaProgramCourse.tenant_id == _tid(),
             AaProgramCourse.program_id.in_(program_ids),
@@ -315,6 +320,7 @@ def program_governance_summary(user) -> dict:
                 "programId": str(row.id),
                 "programName": row.program_name,
                 "majorId": str(row.major_id or ""),
+                "majorName": major_names.get(row.major_id, ""),
                 "gradeYear": row.grade_year or "",
                 "version": row.version,
                 "status": row.status,

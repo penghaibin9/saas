@@ -112,12 +112,24 @@ def _require_manage_scope(ctx):
 # ══════════════ 批次 ══════════════
 
 def _batch_dto(b) -> dict:
+    evaluated_at = datetime.utcnow()
+    window = "WITHIN_WINDOW"
+    if b.select_end_at is not None and evaluated_at >= b.select_end_at:
+        window = "ENDED"
+    elif b.select_start_at is not None and evaluated_at < b.select_start_at:
+        window = "NOT_STARTED"
+    window_notice = ""
+    if b.status == _BATCH_OPEN and window == "ENDED":
+        window_notice = "选课窗口已截止，学生不能继续选课；批次尚待执行截止，再核对名单。"
+    elif b.status == _BATCH_OPEN and window == "NOT_STARTED":
+        window_notice = "选课窗口尚未开始，学生暂不能选课；请核对开选安排。"
     return {"batchId": str(b.id), "termId": str(b.term_id) if b.term_id else None,
             "batchName": b.batch_name, "selectStartAt": _iso(b.select_start_at),
             "selectEndAt": _iso(b.select_end_at), "status": b.status,
             "applyScope": json.loads(b.apply_scope_json) if b.apply_scope_json else None,
             "rule": json.loads(b.rule_json) if b.rule_json else None,
-            "remark": b.remark, "lockedAt": _iso(b.locked_at)}
+            "remark": b.remark, "lockedAt": _iso(b.locked_at),
+            "windowState": window, "windowNotice": window_notice, "evaluatedAt": _iso(evaluated_at)}
 
 
 def _get_batch(db, batch_id):

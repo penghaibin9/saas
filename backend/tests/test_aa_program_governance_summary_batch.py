@@ -18,10 +18,12 @@ class _SourceQuery:
         return self
 
     def all(self):
-        from app.models import AaProgram
+        from app.models import AaProgram, Major
 
         if len(self.models) == 1 and self.models[0] is AaProgram:
             return list(self.db.programs)
+        if len(self.models) == 1 and self.models[0] is Major:
+            return [SimpleNamespace(id=10, major_name="软件技术")]
         return []
 
 
@@ -89,6 +91,7 @@ def test_governance_summary_source_query_count_does_not_scale_with_program_count
     assert one_result["totalPrograms"] == 1
     assert many_result["totalPrograms"] == 50
     assert many_result["readyPrograms"] == 50
+    assert {row["majorName"] for row in many_result["items"]} == {"软件技术"}
 
 
 def test_validation_snapshot_filters_class_and_cross_program_conflicts():

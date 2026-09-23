@@ -386,53 +386,14 @@ def _i_graduation(db, scope, sids) -> dict:
                 unit="%", drill="graduation")
 
 
-def _i_schedule_change(db, scope, term_id) -> dict:
-    """调停课统计：总单数 + 批准生效率（按班级范围收敛；受限角色只见本范围班级的单）。
-    分组按 change_type（ADJUST/STOP 等调课类型）而非 status，供总览卡按类型分布展示；
-    生效率统计仍按 status 计（APPROVED/APPLIED 视为生效）。"""
-    from app.models import AaScheduleChange
-    q = select(AaScheduleChange.status, AaScheduleChange.change_type).where(
-        AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False))
-    if term_id:
-        q = q.where(AaScheduleChange.term_id == int(term_id))
-    if not scope.all:
-        q = q.where(AaScheduleChange.class_id.in_(list(scope.class_ids) or [-1]))
-    rows = db.execute(q).all()
-    den = len(rows)
-    num = sum(1 for s, _ in rows if s in ("APPROVED", "APPLIED"))
-    by = {}
-    for _s, ct in rows:
-        key = ct or "OTHER"
-        by[key] = by.get(key, 0) + 1
-    return _ind("scheduleChange", "调停课统计", value=den, numerator=num, denominator=den,
-                rate=(round(num / den * 100, 2) if den else None), unit="%", drill="schedule-change",
-                groups=[{"key": k, "count": v} for k, v in sorted(by.items())])
+def _i_schedule_change(db, scope, term_id, college_id=None) -> dict:
+    from .academic_affairs_stats_scale_guard import _i_schedule_change as aggregate
+    return aggregate(db, scope, term_id, college_id)
 
 
-def _i_selection(db, scope, term_id) -> dict:
-    """选课统计：批次数 + 容量利用率（Σ已选/Σ容量）。选课批次为全校口径，
-    受限角色 fail-closed 置零并说明，不给全校数冒充本院数。"""
-    from app.models import AaSelectionBatch, AaSelectionCourse
-    if not scope.all:
-        return _ind("courseSelection", "选课统计", value=0, numerator=0, denominator=0, unit="%",
-                    drill="selection", message="选课为全校口径，受数据范围限制不展示（仅教务处可见）")
-    bq = select(AaSelectionBatch.id, AaSelectionBatch.status).where(
-        AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False))
-    if term_id:
-        bq = bq.where(AaSelectionBatch.term_id == int(term_id))
-    batches = db.execute(bq).all()
-    bids = [b[0] for b in batches] or [-1]
-    cap, sel = db.execute(select(
-        func.coalesce(func.sum(AaSelectionCourse.capacity), 0),
-        func.coalesce(func.sum(AaSelectionCourse.selected_count), 0)).where(
-        AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id.in_(bids),
-        AaSelectionCourse.is_deleted.is_(False))).one()
-    by = {}
-    for _bid, s in batches:
-        by[s] = by.get(s, 0) + 1
-    return _ind("courseSelection", "选课统计", value=len(batches), numerator=int(sel),
-                denominator=int(cap), rate=(round(sel / cap * 100, 2) if cap else None), unit="%",
-                drill="selection", groups=[{"key": k, "count": v} for k, v in sorted(by.items())])
+def _i_selection(db, scope, term_id, college_id=None) -> dict:
+    from .academic_affairs_stats_scale_guard import _i_selection as aggregate
+    return aggregate(db, scope, term_id, college_id)
 
 
 def _i_exam(db, scope, college_id, term_id) -> dict:
@@ -498,8 +459,8 @@ def overview(user: dict, term_id=None, college_id=None, major_id=None) -> dict:
             _i_makeup_retake(db, scope, acad_ids, term_id),
             _i_warning(db, scope, acad_ids),
             _i_graduation(db, scope, sids),
-            _i_schedule_change(db, scope, term_id),
-            _i_selection(db, scope, term_id),
+            _i_schedule_change(db, scope, term_id, college_id),
+            _i_selection(db, scope, term_id, college_id),
             _i_exam(db, scope, college_id, term_id),
             _i_resource(db, scope),
         ]

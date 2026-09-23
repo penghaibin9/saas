@@ -20,6 +20,22 @@ function instance(file, deps = {}, options = {}) {
 }
 const ok=data=>({code:0,data})
 const page=list=>ok({list,total:list.length})
+
+test('草稿批次的办理阶段跟随正式任务汇总，不停留在生成阶段',()=>{
+  const vm=instance('AaTaskDetailView')
+  vm.workbench={status:'DRAFT',taskTotal:1,unassignedCount:1};assert.equal(vm.currentStage,2)
+  vm.workbench={status:'DRAFT',taskTotal:1,unassignedCount:0,waitingTeacherCount:1};assert.equal(vm.currentStage,3)
+  vm.workbench={status:'DRAFT',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,4)
+  vm.workbench={status:'APPROVED',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,5)
+})
+
+test('教师确认页读取非空任务后提供可渲染的中文状态',async()=>{
+  const vm=instance('AaTeacherTaskConfirmView',{academicAffairsApi:{listAllTasks:async()=>page([{taskId:'14925',status:'ASSIGNED'}])}})
+  await vm.load()
+  assert.equal(vm.loading,false)
+  assert.equal(vm.statusLabel(vm.primaryRow.status),'已分配（待教师确认）')
+  assert.equal(vm.statusLabel('UNKNOWN'),'状态待核对')
+})
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
 
 test('T08 identity switch during batch precheck prevents command under the new identity',async()=>{
@@ -226,7 +242,33 @@ test('T08 a changed batch term cannot display an old task batch list',async()=>{
   const first=deferred()
   const vm=instance('AaTaskBatchListView',{academicAffairsApi:{getTaskBatches:p=>p.termId==='old'?first.promise:Promise.resolve(page([{batchId:'b'}]))}})
   vm.filters.termId='old';const request=vm.load();vm.filters.termId='new';await vm.load();first.resolve(page([{batchId:'a'}]));await request
-  assert.equal(vm.rows[0].batchId,'b');assert.equal(vm.metrics[1].label,'待启动')
+  assert.equal(vm.rows[0].batchId,'b');assert.equal(vm.metrics[1].label,'本页待启动')
+})
+
+test('分配后任务移出当前筛选页，仍按原任务精确回读', async () => {
+  const reads = []
+  const row = { taskId: '9007199254740993', teacherKey: 'teacher2', teacherName: '教师乙', status: 'ASSIGNED' }
+  const vm = instance('AaTaskDetailView', {
+    teachingTaskWorkbenchApi: { getBatch: async () => ok({ batchId: 'a', actions: { canAssign: true } }) },
+    academicAffairsApi: { assignTeacher: async () => ok({}), getBatchTasks: async (_id, query) => { reads.push(query); return page(query.taskId ? [row] : []) } }
+  })
+  vm.loading = false; vm.workbench = { batchId: 'a', actions: { canAssign: true } }
+  vm.assign = { taskId: row.taskId, teacherKey: row.teacherKey, teacherName: row.teacherName, visible: true }
+  await vm.doAssign()
+  assert.ok(reads.some(query => query.taskId === row.taskId && query.pageSize === 1))
+  assert.equal(vm.receipt.pending, false)
+  assert.equal(vm.rows.length, 0)
+})
+
+test('任务工作台只请求当前页，汇总来自独立工作台，不拉取整批任务', async () => {
+  const calls=[]
+  const vm=instance('AaTaskDetailView',{teachingTaskWorkbenchApi:{getBatch:async()=>ok({batchId:'a',termId:'2026',taskTotal:768,nextAction:{code:'READY'}})},academicAffairsApi:{getBatchTasks:async(id,p)=>{calls.push(p);return ok({list:[{taskId:'task-151'}],total:768})}}})
+  vm.$route.query={page:'4',keyword:'实践',status:'READY'}
+  await vm.load()
+  assert.deepEqual(calls,[{page:4,pageSize:50,keyword:'实践',status:'READY',taskId:undefined}])
+  assert.equal(vm.rows.length,1);assert.equal(vm.pagination.total,768);assert.equal(vm.workbench.taskTotal,768)
+  const routes=[];vm.$router.push=route=>routes.push(route);vm.academicFlow={captureReturn:()=> 'original-batch'};vm.openSchedule()
+  assert.equal(routes[0].query.termId,'2026');assert.equal(routes[0].query.returnToken,'original-batch')
 })
 test('T08 differently versioned same-name courses cannot merge',()=>{
   const vm=instance('AaTaskMergeSplitView');vm.loading=false;vm.all=[{taskId:'1',batchId:'b',courseId:'v1',courseName:'同名课程',status:'ASSIGNED'},{taskId:'2',batchId:'b',courseId:'v2',courseName:'同名课程',status:'ASSIGNED'}];vm.selected=['1','2']

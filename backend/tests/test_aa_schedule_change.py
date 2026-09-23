@@ -371,6 +371,8 @@ def test_teacher_with_incidental_college_scope_still_reads_own_change(client, db
     detail = client.get(f"{BASE}/schedule-change/{change_id}", headers=teacher)
     assert detail.status_code == 200, detail.text
     assert detail.json()["data"]["teacherKey"] == "academic01"
+    assert detail.json()["data"]["reviewNode"]["canReview"] is False
+    assert detail.json()["data"]["reviewNode"]["reason"] == "无法确认当前审批人的真实账号身份"
 
 
 def test_c7_reject_requires_reason(client, db_mode):

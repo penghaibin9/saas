@@ -5,6 +5,7 @@ import test from 'node:test'
 import { STATS_TOPICS, statsTopic } from '../src/modules/academicAffairs/config/academicNavigation.js'
 import { matchPermission } from '../src/config/navPlan.js'
 import { academicIdentity } from '../src/modules/academicAffairs/academicFlowContext.js'
+import { statsGroupLabel, STATS_INDICATOR_TOPICS } from '../src/modules/academicAffairs/views/parallel-c/stats-presentation.js'
 
 function page(api = {}, query = {}) {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaStatsOverviewView.vue', import.meta.url), 'utf8')
@@ -12,7 +13,7 @@ function page(api = {}, query = {}) {
     .replace(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm, (_, binding) => `const ${binding} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
   const messages = [], destinations = []
-  const sandbox = { dependencies: { STATS_TOPICS, statsTopic, matchPermission, academicIdentity, currentUserFromToken: () => ({ tenantId: 'test-school', userId: 'test-user', currentRoleCode: 'ACADEMIC_ADMIN' }), academicAffairsApi: api, toast: { error: message => messages.push(message), success() {} } } }
+  const sandbox = { dependencies: { statsGroupLabel, STATS_INDICATOR_TOPICS, STATS_TOPICS, statsTopic, matchPermission, academicIdentity, currentUserFromToken: () => ({ tenantId: 'test-school', userId: 'test-user', currentRoleCode: 'ACADEMIC_ADMIN' }), academicAffairsApi: api, toast: { error: message => messages.push(message), success() {} } } }
   vm.runInNewContext(script, sandbox)
   const component = sandbox.component
   const state = { ctx: { ctxKey: 'school-a', permissionPatterns: ['*'] }, $route: { path: '/admin/academic-affairs/stats', query }, $router: { push: to => destinations.push(to) } }
@@ -21,6 +22,26 @@ function page(api = {}, query = {}) {
   return { state, component, destinations, messages }
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
+
+test('indicator topic preserves the displayed scope rather than unsent edits', () => {
+  const { state, destinations } = page()
+  state.appliedFilters = { termId: '9007199254740993', collegeId: '12', majorId: '' }
+  state.filters.termId = 'different-unsent-term'
+  state.openIndicatorTopic({ key: 'failRate', status: 'OK' })
+  assert.equal(destinations[0].query.tab, 'grade')
+  assert.equal(destinations[0].query.termId, '9007199254740993')
+  assert.equal(destinations[0].query.collegeId, '12')
+  assert.equal(state.indicatorTopic({ key: 'exam', status: 'MODULE_NOT_ENABLED' }), '')
+})
+
+test('statistics renders business enums in Chinese without changing distribution values', () => {
+  const { state } = page()
+  const chart = state.distSpec([{ key: 'SUSPEND', count: 3 }, { key: 'TRANSFER_MAJOR', count: 2 }, { key: 'FUTURE_ENUM', count: 1 }])
+  assert.equal(chart.data[0].name, '休学')
+  assert.equal(chart.data[1].name, '转专业')
+  assert.equal(chart.data[2].name, '未分类')
+  assert.equal(chart.data.reduce((sum, row) => sum + row.value, 0), 6)
+})
 
 test('all 15 existing statistics dimensions belong to exactly one of seven topics', () => {
   const { state } = page()

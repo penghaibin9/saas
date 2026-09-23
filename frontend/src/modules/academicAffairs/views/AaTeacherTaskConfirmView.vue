@@ -218,6 +218,7 @@ export default {
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
     taskColor,
+    statusLabel(status) { return TASK_STATUS[status] || '状态待核对' },
     currentOwner(row) {
       const status = String(row?.status || '').toUpperCase()
       const batch = String(row?.batchStatus || '').toUpperCase()

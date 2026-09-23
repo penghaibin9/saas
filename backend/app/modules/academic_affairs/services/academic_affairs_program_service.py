@@ -22,6 +22,24 @@ def __getattr__(name):
     return getattr(_core, name)
 
 
+def get_program(program_id, user) -> dict:
+    return _core.get_program(program_id, user, review_node_reader=_review_node)
+
+
+def _review_node(db, program, user) -> dict:
+    """Expose the same node/scope decision used by the authoritative review command."""
+    governance._ensure_program_scope(db, user, int(program.id))
+    if program.status not in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW"):
+        return {"canReview": False, "reason": "当前方案不在审核阶段"}
+    try:
+        _assert_program_review_scope(db, user, program)
+    except AppException as error:
+        if error.code != "NO_DATA_SCOPE":
+            raise
+        return {"canReview": False, "reason": error.message}
+    return {"canReview": True, "reason": ""}
+
+
 def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
     """A-W2：按 scope 串行绑定；班级 override 不吞专业年级 fallback。"""
     return authority.bind_grade(program_id, user, grade_year, class_id)

@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -82,8 +82,12 @@ def grade_tasks(
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
+    term: Optional[str] = Query(None, max_length=50),
+    keyword: Optional[str] = Query(None, max_length=100),
 ):
-    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize, task_id=taskId, term_id=termId)
+    items, total = grade_task_read_svc.list_tasks(
+        user, status, page, pageSize, task_id=taskId, term_id=termId, term=term, keyword=keyword,
+    )
     return success(paginate(items, total, page, pageSize))
 
 

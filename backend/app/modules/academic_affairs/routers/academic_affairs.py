@@ -787,6 +787,7 @@ class ProgramUpdate(BaseModel):
 
 
 class ProgramCourseBody(BaseModel):
+    formationMode: Optional[str] = Field(None, pattern="^(ADMIN_FIXED|SELECTABLE)$")
     courseId: Optional[str] = None
     courseName: str = Field(..., min_length=1)
     openTermNo: Optional[int] = None

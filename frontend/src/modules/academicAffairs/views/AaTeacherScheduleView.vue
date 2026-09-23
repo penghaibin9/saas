@@ -41,25 +41,26 @@
       <EmptyState v-else-if="!teacherKey" title="请先输入教师工号" description="或点击「查看本人课表」" />
       <template v-else>
         <AppSectionCard v-if="isSelfView" title="今天的授课安排" class="aa-today-card">
-          <div class="aa-today-head">
+          <ErrorState v-if="todayError" :description="todayError" @retry="load" />
+          <div v-else class="aa-today-head">
             <div>
               <strong>{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</strong>
               <p>{{ todayNote }}</p>
             </div>
             <span v-if="todayDate">{{ todayDate }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
           </div>
-          <div v-if="todayItems.length" class="aa-today-list">
+          <div v-if="!todayError && todayItems.length" class="aa-today-list">
             <button v-for="item in todayItems" :key="item.scheduleItemId" type="button" class="aa-today-item" @click="openTodayItem(item)">
               <b>第{{ item.slotNo }}节</b>
               <span><strong>{{ item.courseName }}</strong><small>{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</small></span>
               <em>查看课位与调停课 ›</em>
             </button>
           </div>
-          <EmptyState v-else title="今天无课" :description="todayNote" />
+          <EmptyState v-else-if="!todayError" title="今天无课" :description="todayNote" />
         </AppSectionCard>
         <div class="aa-summary">
           <span v-if="weeklyHours" class="aa-summary__item">本学期周学时合计（近似）：<b>{{ weeklyHours }}</b></span>
-          <p v-if="note" class="mp-note">{{ note }}</p>
+          <p v-if="note" class="mp-note">课表按正式授课关系及有效周次展示；周学时仅供教学安排参考。</p>
         </div>
         <AppSectionCard :title="`${teacherName || '本人'} · 周课表`">
           <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
@@ -213,6 +214,7 @@ export default {
         this.selectedItem = null
         this.weeklyHours = res.data.weeklyHours || 0
         this.note = res.data.note || ''
+        if (this.isSelfView && todayRes?.code !== 0 && !this.todayError) this.todayError = todayRes?.message || '今日课表读取失败，请重试；下方周课表仍可查看。'
         this.todayItems = todayRes?.code === 0 ? (todayRes.data.todayItems || []) : []
         this.todayDate = todayRes?.code === 0 ? (todayRes.data.todayDate || '') : ''
         this.todayWeek = todayRes?.code === 0 ? (todayRes.data.currentWeek ?? null) : null

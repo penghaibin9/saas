@@ -302,7 +302,7 @@ export default {
           title: '发布结果待确认',
           object: `${formal.data.batchName}（${formal.data.batchId}）`,
           status: headConfirmed ? `已读取到${this.statusLabel(formal.data.status)}，但无法归属到本次请求` : `${this.statusLabel(formal.data.status)}，尚未取得当前正式头`,
-          time: formal.data.activeTruth?.publishedAt || formal.data.publishAt || '',
+          time: pending.kind === 'pub' && this.hasCurrentFormalHead(formal.data) ? (formal.data.activeTruth?.publishedAt || formal.data.publishAt || '') : '',
           next: '请继续只读核对指定批次和当前正式头；确认前不要重复提交。'
         }
         return formal
@@ -312,7 +312,7 @@ export default {
         title: pending.kind === 'pre' ? '课表已进入预发布并核对' : pending.kind === 'void' ? '课表批次已作废并完成正式核对' : '课表已正式发布并核对',
         object: `${formal.data.batchName}（${formal.data.batchId}）`,
         status: this.statusLabel(formal.data.status),
-        time: formal.data.activeTruth?.publishedAt || formal.data.publishAt || '',
+        time: pending.kind === 'pub' ? (formal.data.activeTruth?.publishedAt || formal.data.publishAt || '') : '',
         next: pending.kind === 'pub'
           ? '下一步：师生四端继续读取当前正式课表；后续单课位变更走调停课。'
           : pending.kind === 'void'

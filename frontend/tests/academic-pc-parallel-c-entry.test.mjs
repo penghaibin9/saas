@@ -153,7 +153,7 @@ function mount(api = {}, dynamic = {}, notices = []) {
       return res
     }
   }
-  const options = new Function('academicAffairsApi', 'academicAffairsR10Api', 'academicFileExchangeApi', 'gradeIdentityApi', 'gradeReminderApi', 'toast', 'currentUserFromToken', 'gradeError', ...Object.keys(recovery), script)(api, { getGradeScheme: async () => ({ code: 0, data: { schemeId: '', status: 'DEFAULT' } }), ...dynamic }, {}, {}, {}, { success(m) { notices.push(m) }, error(m) { notices.push(m) } }, () => actor, gradeError, ...Object.values(recovery))
+  const options = new Function('academicAffairsApi', 'academicAffairsR10Api', 'academicFileExchangeApi', 'gradeIdentityApi', 'gradeReminderApi', 'toast', 'currentUserFromToken', 'gradeError', 'systemConfirm', ...Object.keys(recovery), script)(api, { getGradeScheme: async () => ({ code: 0, data: { schemeId: '', status: 'DEFAULT' } }), ...dynamic }, {}, {}, {}, { success(m) { notices.push(m) }, error(m) { notices.push(m) } }, () => actor, gradeError, dynamic.confirmLeave || (async () => false), ...Object.values(recovery))
   const vm = { ...options.data(), identityKey: 'identity-1', formalSchemeMode: 'fixed', $route: { query: {} }, ctx: { currentRole: { roleCode: 'ACADEMIC_TEACHER' }, dataScope: {} } }
   for (const [name, method] of Object.entries(options.methods)) vm[name] = method.bind(vm)
   for (const [name, getter] of Object.entries(options.computed)) if (name !== 'identityKey') Object.defineProperty(vm, name, { get: () => getter.call(vm) })
@@ -172,6 +172,50 @@ test('深链任务不在第一页时仍精确读取，不能静默替换', async
   vm.$route.query.taskId = 'off-page'; await vm.loadTasks()
   assert.equal(vm.task.gradeTaskId, 'off-page')
   assert.ok(calls.some(p => p.taskId === 'off-page' && p.pageSize === 1))
+})
+
+test('创建成绩任务后精确读取正式任务与方案，立即提供可用录入表', async () => {
+  let writes=0, schemes=0
+  const vm=mount({
+    createGradeTask:async()=>{writes++;return {code:0,data:{gradeTaskId:'8737'}}},
+    getGradeTasks:async p=>result(task(p.taskId || '8737','NOT_STARTED')),
+    getGradeRecords:async()=>({code:0,data:{items:[]}})
+  },{getGradeScheme:async()=>{schemes++;return {code:0,data:{status:'DEFAULT'}}}})
+  vm.formalSchemeMode='unknown';vm.form.teachingTaskId='14925'
+  await vm.createTask()
+  assert.equal(writes,1);assert.equal(schemes,1)
+  assert.equal(vm.task.gradeTaskId,'8737');assert.equal(vm.formalSchemeMode,'fixed')
+  assert.equal(vm.creating,false);assert.equal(vm.fixedEditable,true)
+})
+
+test('正式待办携带的大整数单据标识直达成绩任务', async () => {
+  const calls = []
+  const vm = mount({ getGradeTasks: async p => { calls.push(p); return p.taskId ? result(task(p.taskId)) : result(task('first-page')) }, getGradeRecords: async () => ({ code: 0, data: { items: [] } }) })
+  vm.$route.query.recordId = '9007199254740993'
+  await vm.loadTasks()
+  assert.equal(vm.task.gradeTaskId, '9007199254740993')
+  assert.ok(calls.some(p => p.taskId === '9007199254740993' && p.pageSize === 1))
+})
+
+test('取消离开保留未保存的动态成绩，未决命令也不能直接离开', async () => {
+  const vm = dynamicVm()
+  vm.dynamicData.items[0].scores.PROJECT = 91
+  assert.equal(await vm.confirmLeaveTask(), false)
+  assert.equal(vm.dynamicData.items[0].scores.PROJECT, 91)
+  vm.dynamicCommand = { commandKey: 'pending' }
+  assert.equal(await vm.confirmLeaveTask(), false)
+  assert.match(vm.taskError, /结果待核实/)
+})
+
+test('固定成绩只有明确确认放弃后才可离开，空分不变成零', async () => {
+  let prompts = 0
+  const vm = mount({}, { confirmLeave: async () => { prompts++; return true } })
+  vm.rows = [{ usual: 0, midterm: null, final: null, exceptionFlag: 'NORMAL', originalScores: JSON.stringify([null, null, null, 'NORMAL']) }]
+  assert.equal(vm.fixedDirty, true)
+  assert.equal(await vm.confirmLeaveTask(), true)
+  assert.equal(prompts, 1)
+  vm.rows[0].usual = null
+  assert.equal(vm.fixedDirty, false)
 })
 
 test('旧记录响应不覆盖新任务', async () => {
@@ -285,6 +329,17 @@ test('已有动态方案的任务深链自动进入分项，不能走固定写�
   })
   await vm.openTask({ gradeTaskId: 'D' }); assert.equal(vm.dynamicMode, true); assert.equal(vm.fixedEditable, false)
   vm.switchMode(false); assert.equal(vm.dynamicMode, true); await vm.saveRow({studentId:'1'}); vm.openImport(); assert.equal(writes, 0); assert.equal(vm.importVisible, false)
+})
+
+test('已发布动态成绩仍读取正式分项方案，不能误显示成固定两段', async () => {
+  let schemeReads=0
+  const vm=mount({getGradeTasks:async p=>result({...task(p.taskId,'PUBLISHED'),allowedActions:[]})},{
+    getGradeScheme:async()=>{schemeReads++;return {code:0,data:{schemeId:'locked',status:'LOCKED'}}},
+    getDynamicGradeRoster:async()=>({code:0,data:{items:[],canWriteComponents:false,scheme:{schemeId:'locked',status:'LOCKED'}}})
+  })
+  await vm.openTask({gradeTaskId:'P'})
+  assert.equal(schemeReads,1);assert.equal(vm.readOnlyResult,true);assert.equal(vm.dynamicMode,true)
+  assert.equal(vm.editable,false);assert.equal(vm.fixedEditable,false);assert.equal(vm.dynamicWritable,false)
 })
 test('成绩方案核对失败时，不开放固定写入', async () => {
   const vm = mount({ getGradeTasks: async p => result(task(p.taskId)) }, { getGradeScheme: async () => ({code:503001}) })

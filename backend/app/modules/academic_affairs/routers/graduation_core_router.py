@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission, require_permission
@@ -57,8 +57,9 @@ class GradFeeMarkOneBody(BaseModel):
 
 @router.get("/graduation-audit-batches", summary="审核批次列表（附应审/通过/异常/已终审/已归档统计）")
 def grad_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+                 batchId: Optional[int] = Query(None, gt=0),
                  user=Depends(require_any_permission(_GRAD_VIEW, _GRAD_MANAGE))):
-    items, total = grad_svc.list_batches(user, status, page, pageSize)
+    items, total = grad_svc.list_batches(user, status, page, pageSize, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -347,8 +347,9 @@ def task_batches(
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.teachingTask.view")),
+    keyword: Optional[str] = Query(None, max_length=100),
 ):
-    items, total = task_svc.list_batches(user, termId, status, page, pageSize)
+    items, total = task_svc.list_batches(user, termId, status, page, pageSize, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -367,8 +368,10 @@ def task_list(
     page: int = 1,
     pageSize: int = 50,
     user=Depends(require_permission("academicAffairs.teachingTask.view")),
+    keyword: Optional[str] = Query(None, max_length=100),
+    taskId: Optional[int] = Query(None, gt=0),
 ):
-    items, total = task_svc.list_tasks(batchId, user, status, page, pageSize)
+    items, total = task_svc.list_tasks(batchId, user, status, page, pageSize, keyword=keyword, task_id=taskId)
     return success(paginate(items, total, page, pageSize))
 
 

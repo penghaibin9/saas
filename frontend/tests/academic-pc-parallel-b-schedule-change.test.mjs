@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { isDefiniteWriteRejection } from '../src/modules/academicAffairs/components/parallel-b/unconfirmedWrite.js'
 
+test('调课按钮以真实受理人节点为准，待审状态本身不授予审批权', () => {
+  const { state } = setup({}, 'AaScheduleChangeApprovalView')
+  assert.equal(state.canReview({changeId:'a',status:'COLLEGE_REVIEW',version:1}), false)
+  assert.equal(state.canReview({changeId:'a',status:'COLLEGE_REVIEW',version:1,reviewNode:{canReview:false}}), false)
+  assert.equal(state.canReview({changeId:'a',status:'COLLEGE_REVIEW',version:1,reviewNode:{canReview:true}}), true)
+})
+
 function setup(api, name = 'AaScheduleChangeApplyView', markers = new Map()) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
@@ -73,7 +80,7 @@ test('approval pagination requests all pending stages from the server and keeps 
 test('approval confirmation captures the object and version when opened', async () => {
   let approved
   const { state } = setup({ approve: async (...args) => { approved = args; return { code: 1, message: '拒绝测试' } } }, 'AaScheduleChangeApprovalView')
-  const row = { changeId: 'a', version: 2, status: 'SUBMITTED' }
+  const row = { changeId: 'a', version: 2, reviewNode: { canReview: true }, status: 'SUBMITTED' }
   state.askApprove(row)
   row.changeId = 'b'; row.version = 9
   await state.onConfirm()
@@ -96,7 +103,7 @@ test('ledger ignores an older list response after a new search completes', async
 test('approval after identity changes does not send the old confirmation', async () => {
   let calls = 0
   const { state } = setup({ approve: async () => { calls++; return { code: 1 } } }, 'AaScheduleChangeApprovalView')
-  state.askApprove({ changeId: 'a', version: 1, status: 'SUBMITTED' })
+  state.askApprove({ changeId: 'a', version: 1, reviewNode: { canReview: true }, status: 'SUBMITTED' })
   state.ctx.currentRole = { roleCode: 'OTHER' }
   await state.onConfirm()
   assert.equal(calls, 0)
@@ -162,7 +169,7 @@ test('definite conflict rejection allows a corrected request', async () => {
 test('approval 409001 invalidates confirmation, preserves reason and reloads latest list', async () => {
   let writes = 0, reads = 0
   const { state } = setup({ reject: async () => { writes++; return { code: 409001, message: '版本冲突' } }, list: async () => { reads++; return { code: 0, data: { list: [], total: 0 } } } }, 'AaScheduleChangeApprovalView')
-  state.askReject({ changeId: 'a', version: 1, status: 'SUBMITTED' })
+  state.askReject({ changeId: 'a', version: 1, reviewNode: { canReview: true }, status: 'SUBMITTED' })
   await state.onConfirm({ reason: '保留的正式审核意见' })
   await state.onConfirm({ reason: '保留的正式审核意见' })
   assert.equal(writes, 1)
@@ -174,7 +181,7 @@ test('approval 409001 invalidates confirmation, preserves reason and reloads lat
 
 test('POST 403002 invalidates old action and rechecks without declaring read access revoked', async () => {
   let writes = 0, reads = 0
-  const row = { changeId: 'a', version: 1, status: 'SUBMITTED' }
+  const row = { changeId: 'a', version: 1, reviewNode: { canReview: true }, status: 'SUBMITTED' }
   const { state } = setup({ approve: async () => { writes++; return { code: 403002, message: '非当前受理人' } }, list: async () => { reads++; return { code: 0, data: { list: [row], total: 1 } } } }, 'AaScheduleChangeApprovalView')
   state.evidence = row
   state.askApprove(row)
@@ -203,7 +210,7 @@ test('GET 403 clears private evidence and invalidates an older pending list', as
 
 test('STOP final review does not promise a generated lesson or new attendance slot', async () => {
   const { state } = setup({ approve: async () => ({ code: 0, data: { status: 'APPLIED' } }), list: async () => ({ code: 0, data: { list: [], total: 0 } }) }, 'AaScheduleChangeApprovalView')
-  state.askApprove({ changeId: 'a', version: 1, status: 'COLLEGE_REVIEW', changeType: 'STOP' })
+  state.askApprove({ changeId: 'a', version: 1, reviewNode: { canReview: true }, status: 'COLLEGE_REVIEW', changeType: 'STOP' })
   assert.doesNotMatch(state.confirm.message, /生成新课表项/)
   await state.onConfirm()
   assert.doesNotMatch(state.receipt.next, /新课位进入考勤/)

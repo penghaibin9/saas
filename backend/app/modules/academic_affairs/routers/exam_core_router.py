@@ -60,6 +60,12 @@ def exam_batch_create(body: ExamBatchBody, user=Depends(require_permission(_EXAM
     return success(exam_svc.create_batch(user, body), message="已创建")
 
 
+@router.get("/exam/my-invigilation", summary="电脑端本人正式监考安排")
+def exam_my_invigilation(user=Depends(require_permission(_EXAM_VIEW))):
+    from app.modules.academic_affairs.services.academic_affairs_invigilation_workbench_service import my_invigilation_workbench
+    return success(my_invigilation_workbench(user))
+
+
 @router.get("/exam/batches", summary="考试批次列表")
 def exam_batches(
     status: Optional[str] = None,

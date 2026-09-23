@@ -409,7 +409,7 @@ export default {
       if (this.recipe.showSchedule && this.scheduleItems.length) {
         return this.scheduleItems.slice(0, 4).map((s, index) => ({
           key: s.id || `schedule-${index}`,
-          time: s.startTime || s.time || s.slotName || s.slotLabel || `${index + 1}`,
+          time: s.startTime || s.time || s.slotName || s.slotLabel || (s.slotNo ? `第${s.slotNo}节` : '节次待核对'),
           title: this.scheduleTitle(s),
           meta: this.scheduleSlot(s)
         }))
