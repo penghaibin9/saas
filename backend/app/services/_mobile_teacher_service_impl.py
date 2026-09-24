@@ -2107,7 +2107,7 @@ def orientation_dashboard(user: dict) -> dict:
         return {"hasData": False, "kpis": [], "notReported": []}
     d = orientation_service.get_dashboard(user=user)
     batch_id = d.get("batchId")
-    if not batch_id:
+    if not batch_id or d.get("batchStatus") != "ACTIVE":
         return {"hasData": False, "batchId": "", "kpis": [], "notReported": [], "notReportedTotal": 0}
     items, total = orientation_service.list_students(
         1, 30, batch_id=batch_id, pending_arrival=True, user=user,

@@ -118,6 +118,7 @@ export default {
   },
   data() {
     return {
+      readSequence: 0, scopeGeneration: 0, scopeDisposed: false, recalculating: false,
       ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(), confirmVisible: false, confirmRow: null,
       activateVisible: false, activateRow: null, activateStudentNo: '', activating: false,
@@ -126,6 +127,10 @@ export default {
     }
   },
   computed: {
+    routeContextKey() {
+      const q = this.$route.query
+      return JSON.stringify([q.batchId || '', q.orientationStudentId || '', q.queue || '', q.keyword || '', q.tab || ''])
+    },
     roleName() { return this.ctx?.currentRole?.roleName || '' },
     dataScopeName() { return this.ctx?.dataScope?.name || '' },
     perms() { return this.ctx?.permissionActions || {} },
@@ -155,19 +160,57 @@ export default {
   },
   async created() {
     const ctx = await api.getOrientationContext()
-    if (ctx.code === 0) this.ctx = ctx.data
+    if (this.scopeDisposed) return
+      if (ctx.code === 0) this.ctx = ctx.data
     if (this.$route.query.queue) this.filters.queue = String(this.$route.query.queue)
     if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
     await this.load()
   },
-  watch: { '$route.query.keyword'(value) { if (value !== undefined) { this.filters.keyword = String(value); this.search() } } },
+  watch: {
+    routeContextKey: { flush: 'sync', handler() { return this.resetRouteContext() } }
+  },
+  beforeUnmount() {
+    this.scopeDisposed = true
+    this.scopeGeneration++
+    this.readSequence++
+  },
+  beforeRouteUpdate(to, from) {
+    const keys = ['batchId', 'orientationStudentId', 'queue', 'keyword', 'tab']
+    if (keys.some(key => String(to.query[key] || '') !== String(from.query[key] || '')) && (this.activating || this.finalizing || this.disposing || this.recalculating)) {
+      toast.error('当前记录正在保存，请完成后再切换批次或学生')
+      return false
+    }
+  },
   methods: {
+    resetRouteContext() {
+      this.scopeGeneration++
+      this.readSequence++
+      this.rows = []; this.total = 0; this.page = 1; this.error = ''
+      this.filters = EMPTY_FILTERS()
+      this.filters.keyword = String(this.$route.query.keyword || '')
+      this.filters.queue = String(this.$route.query.queue || '')
+      this.confirmVisible = this.activateVisible = this.finalizeVisible = this.dispositionVisible = this.credentialVisible = false
+      this.confirmRow = this.activateRow = this.finalizeRow = this.dispositionRow = this.credential = null
+      this.activateStudentNo = this.finalizeStudentNo = this.dispositionReason = this.activateRequestId = this.finalizeRequestId = ''
+      return this.load()
+    },
     async load() {
-      this.loading = true; this.error = ''
+      if (this.scopeDisposed) return
+      const sequence = ++this.readSequence
+      const scope = this.routeContextKey
+      const current = () => !this.scopeDisposed && sequence === this.readSequence && scope === this.routeContextKey
+      this.loading = true; this.error = ''; this.rows = []; this.total = 0
+
       try {
         const res = await api.getOrientationQualifications({ ...this.filters, batchId: this.$route.query.batchId || undefined, orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
-        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
-      } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
+        if (!current()) return
+        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
+        else this.error = res.message || '加载失败'
+      } catch (e) {
+        if (current()) this.error = e.message || '加载失败'
+      } finally {
+        if (current()) this.loading = false
+      }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
@@ -220,14 +263,21 @@ export default {
         this.finalizeVisible = true
       }
     },
-    async onDisposition() { if (this.disposing || !this.dispositionRow) return; this.disposing = true; try { const r = await api.dispositionOrientationStudent(this.dispositionRow.id, { expectedVersion: this.dispositionRow.version, status: this.dispositionStatus, reason: this.dispositionReason }); if (r.code !== 0) return toast.error(r.message); this.dispositionVisible = false; toast.success('报到安排已更新'); await this.load() } finally { this.disposing = false } },
+    async onDisposition() { const generation = this.scopeGeneration; if (this.disposing || !this.dispositionRow) return; this.disposing = true; try { const r = await api.dispositionOrientationStudent(this.dispositionRow.id, { expectedVersion: this.dispositionRow.version, status: this.dispositionStatus, reason: this.dispositionReason }); if (this.scopeDisposed || generation !== this.scopeGeneration) return; if (r.code !== 0) return toast.error(r.message); this.dispositionVisible = false; toast.success('报到安排已更新'); await this.load() } finally { this.disposing = false } },
     async onConfirm() {
-      const row = this.confirmRow; if (!row) return
-      const res = await api.recalculateOrientationQualification(row.id)
-      if (res && res.code === 0) { toast.success(`办理情况已更新：${this.qualificationText(res.data.verdict)}`); this.confirmVisible = false; await this.load() }
-      else toast.error((res && res.message) || '资格重算失败')
+      const row = this.confirmRow
+      if (!row || this.recalculating) return
+      const generation = this.scopeGeneration
+      this.recalculating = true
+      try {
+        const res = await api.recalculateOrientationQualification(row.id)
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
+        if (res && res.code === 0) { toast.success(`办理情况已更新：${this.qualificationText(res.data.verdict)}`); this.confirmVisible = false; await this.load() }
+        else toast.error((res && res.message) || '资格重算失败')
+      } finally { this.recalculating = false }
     },
     async onActivateConfirm() {
+      const generation = this.scopeGeneration
       if (!this.activateRow || this.activating) return
       this.activating = true
       const clientRequestId = this.activateRequestId
@@ -237,6 +287,7 @@ export default {
           studentNo: this.activateStudentNo.trim(),
           clientRequestId
         })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (!res || res.code !== 0) return toast.error(res?.message || '账号激活失败')
         this.activateVisible = false
         toast.success('学生身份与账号已激活，可登录领取报到凭证')
@@ -248,6 +299,7 @@ export default {
       }
     },
     async onFinalizeConfirm() {
+      const generation = this.scopeGeneration
       if (!this.finalizeRow || this.finalizing) return
       this.finalizing = true
       const clientRequestId = this.finalizeRequestId
@@ -257,6 +309,7 @@ export default {
           studentNo: this.finalizeStudentNo.trim(),
           clientRequestId
         })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (!res || res.code !== 0) return toast.error(res?.message || '学院确认失败')
         this.finalizeVisible = false
         toast.success('学院确认完成，学生已进入正式在读阶段')

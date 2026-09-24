@@ -331,15 +331,16 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
         ]
     # 面向学校的表格使用业务名称；内部枚举仍留在权威业务对象，不进入显示列。
     field_labels = {
-        "authorityPaymentStatus": {**L_PAY, "MISSING": "未同步缴费事实"},
+        "authorityPaymentStatus": {**L_PAY, "WAIVED": "已减免", "MISSING": "未同步缴费事实"},
         "materialType": L_MATTYPE,
-        "applyType": {"STUDENT_LOAN": "助学贷款", "TUITION_DEFERMENT": "学费缓缴",
+        "applyType": {"POVERTY": "家庭经济困难", "DISASTER": "突发灾害",
+                      "STUDENT_LOAN": "助学贷款", "TUITION_DEFERMENT": "学费缓缴",
                       "TUITION_REDUCTION": "学费减免", "INSTALLMENT": "分期缴费",
                       "DEFERRED": "学费缓缴", "OTHER": "其他困难申请"},
         "sourceType": {"FINANCE_SYNC": "财务同步", "MANUAL_VERIFIED": "人工核验", "LEGACY_BACKFILL": "历史数据补录"},
         "method": {"SIGNED_TOKEN": "报到凭证核验"},
-        "exceptionType": L_EXCTYPE, "riskLevel": L_RISK,
-        "status": {"materials": L_MAT, "payment": {**L_PAY, "MISSING": "未同步缴费事实"},
+        "exceptionType": {**L_EXCTYPE, "MATERIAL": "材料异常"}, "riskLevel": L_RISK,
+        "status": {"materials": L_MAT, "payment": {**L_PAY, "WAIVED": "已减免", "MISSING": "未同步缴费事实"},
                    "green-channel": L_GC, "checkin": {"CONFIRMED": "已确认报到"},
                    "exceptions": L_EXCSTATUS}.get(report_type, {}),
     }

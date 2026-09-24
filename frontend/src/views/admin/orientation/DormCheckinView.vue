@@ -111,6 +111,7 @@ export default {
   },
   data() {
     return {
+      readSequence: 0, scopeGeneration: 0, scopeDisposed: false, recalculating: false,
       ctx: null,
       loading: true, requestSequence: 0,
       error: '',
@@ -139,6 +140,10 @@ export default {
     }
   },
   computed: {
+    routeContextKey() {
+      const q = this.$route.query
+      return JSON.stringify([q.batchId || '', q.orientationStudentId || '', q.queue || '', q.keyword || '', q.tab || ''])
+    },
     batchId() { return String(this.$route.query.batchId || '') },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
@@ -187,8 +192,33 @@ export default {
   async created() {
     await this.init()
   },
-  watch: { batchId() { this.page = 1; this.load() } },
+  watch: {
+    routeContextKey: { flush: 'sync', handler() { return this.resetRouteContext() } }
+  },
+  beforeUnmount() {
+    this.scopeDisposed = true
+    this.scopeGeneration++
+    this.readSequence++
+  },
+  beforeRouteUpdate(to, from) {
+    const keys = ['batchId', 'orientationStudentId', 'queue', 'keyword', 'tab']
+    if (keys.some(key => String(to.query[key] || '') !== String(from.query[key] || '')) && (this.submitting)) {
+      toast.error('当前记录正在保存，请完成后再切换批次或学生')
+      return false
+    }
+  },
   methods: {
+    resetRouteContext() {
+      this.scopeGeneration++
+      this.readSequence++
+      this.rows = []; this.total = 0; this.page = 1; this.error = ''
+      this.filters = EMPTY_FILTERS()
+      this.selected = []
+      this.editVisible = this.confirmVisible = this.exceptionVisible = this.exportVisible = this.auditVisible = false
+      this.editing = this.exceptionTarget = null
+      this.auditLogs = []
+      return this.load()
+    },
     openBatchCheckin() { return this.$router.push({path:'/admin/student-affairs/dorm/checkin',query:{workspace:'batch',...(this.batchId ? {orientationBatchId:this.batchId} : {})}}) },
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
@@ -202,6 +232,7 @@ export default {
         api.getBatchActions('dormList'),
         api.getExportOptions('dormList')
       ])
+      if (this.scopeDisposed) return
       if (ctx.code === 0) this.ctx = ctx.data
       if (status.code === 0) this.statusOptions = status.data
       if (filter.code === 0) this.filterOptions = filter.data
@@ -214,21 +245,21 @@ export default {
       await this.load()
     },
     async load() {
-      const sequence = ++this.requestSequence
-      this.loading = true
-      this.error = ''
+      if (this.scopeDisposed) return
+      const sequence = ++this.readSequence
+      const scope = this.routeContextKey
+      const current = () => !this.scopeDisposed && sequence === this.readSequence && scope === this.routeContextKey
+      this.loading = true; this.error = ''; this.rows = []; this.total = 0
       this.selected = []
       try {
         const res = await api.getDormitoryCheckinList({ ...this.filters, ...(this.batchId ? {batchId:this.batchId} : {}), orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
-        if (sequence !== this.requestSequence) return
-        if (res.code === 0) {
-          this.rows = res.data.list
-          this.total = res.data.total
-        } else this.error = res.message
+        if (!current()) return
+        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
+        else this.error = res.message || '加载失败'
       } catch (e) {
-        if (sequence === this.requestSequence) this.error = e.message || '加载失败'
+        if (current()) this.error = e.message || '加载失败'
       } finally {
-        if (sequence === this.requestSequence) this.loading = false
+        if (current()) this.loading = false
       }
     },
     search() {
@@ -271,7 +302,9 @@ export default {
       if (key === 'audit') this.openAudit()
     },
     async openAudit() {
+      const generation = this.scopeGeneration
       const res = await api.getAuditLogs({ bizType: 'DORM' })
+      if (this.scopeDisposed || generation !== this.scopeGeneration) return
       if (res.code === 0) this.auditLogs = res.data.list
       this.auditVisible = true
     },
@@ -280,10 +313,12 @@ export default {
       if (key === 'batchExport') this.exportVisible = true
     },
     async onExceptionConfirm({ reason }) {
+      const generation = this.scopeGeneration
       if (!this.exceptionTarget) return
       this.submitting = true
       try {
         const res = await api.markDormException(this.exceptionTarget.id, { note: reason })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (res.code === 0) {
           toast.success('已标记入住异常，说明已留痕')
           this.exceptionVisible = false

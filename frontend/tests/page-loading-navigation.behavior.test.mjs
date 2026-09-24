@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
+import { restoreOrientationBatch } from '../src/modules/orientation/routeContext.js'
 import { withInternshipBatch } from '../src/modules/internship/navigation.js'
 import { workspaceRouteOwner, activeWorkspacePage } from '../src/components/workspace/workspaceRouting.js'
 
@@ -21,6 +22,7 @@ test('公共菜单、最近访问与跨中心导航使用业务批次解析器',
   const sandbox = {
     pages: { value: [{ id: 'positions', path: '/admin/internship/positions?panel=list' }] },
     destinations: new Map(), route, mobileOpen: { value: true },
+    restoreOrientationBatch, sessionStorage: { getItem: () => null },
     props: { resolveDestination: path => withInternshipBatch(path, '47') },
     router: {
       resolve(to) { return { fullPath: typeof to === 'string' ? to : to.path + (Object.keys(to.query).length ? '?' + new URLSearchParams(to.query) : '') + to.hash } },

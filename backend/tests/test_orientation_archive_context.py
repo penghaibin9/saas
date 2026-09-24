@@ -224,3 +224,9 @@ def test_batch_close_serializes_with_roster_commands(
         assert db.query(OrientationAuditTrail).filter_by(
             tenant_id=TID, biz_type="BATCH", biz_id=batch_id, action="结束迎新批次",
         ).count() == (1 if first_action == "close" else 0)
+
+@pytest.mark.parametrize("batch_id", ["abc", "0", "-1", "1.5", " "])
+def test_archive_batch_id_rejected_by_request_validation(client, auth_headers, batch_id):
+    response = client.get(f"{BASE}/archives", headers=auth_headers, params={"batchId": batch_id})
+    assert response.status_code == 400, response.text
+    assert response.json()["bizCode"] == "VALIDATION_ERROR", response.text

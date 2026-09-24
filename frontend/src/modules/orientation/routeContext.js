@@ -41,6 +41,7 @@ export function restoreOrientationBatch(path, storage, identity, preferRemembere
       const [target, query = ''] = path.split('?')
       const params = new URLSearchParams(query)
       params.delete('batchId')
+      params.delete('orientationStudentId')
       path = params.size ? `${target}?${params}` : target
     }
     return orientationDestination(path, {path:'/admin/orientation',query:{batchId}})

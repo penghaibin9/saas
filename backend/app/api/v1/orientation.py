@@ -381,7 +381,7 @@ def notice_send(nid: str, user=Depends(require_staff)):
 
 @router.get("/archives", summary="迎新归档列表")
 def archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[str] = None,
+             keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = Query(None, ge=1),
              user=Depends(require_staff)):
     items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))

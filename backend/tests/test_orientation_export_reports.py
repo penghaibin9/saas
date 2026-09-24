@@ -71,6 +71,26 @@ def test_orientation_export_workbooks_keep_batch_and_chinese_business_states(cli
                 assert row[column] == value, (report, column, row[column])
         workbook.close()
 
+    # Exercise all supported client values through the real workbook endpoint.
+    for apply_type, expected_label in (("POVERTY", "家庭经济困难"), ("DISASTER", "突发灾害")):
+        with get_sessionmaker()() as db:
+            account = db.scalar(select(OrientationPaymentAccount).where(OrientationPaymentAccount.orientation_student_id == ids['orientationId']))
+            account.status = "WAIVED"
+            application = db.scalar(select(GreenChannelApplication).where(GreenChannelApplication.ori_student_id == ids['orientationId']))
+            application.apply_type = apply_type
+            db.commit()
+        for report, column, expected_label_value in (("green-channel", "申请类型", expected_label), ("payment", "缴费状态", "已减免"), ("students", "缴费事实", "已减免")):
+            created = client.post('/api/v1/export/domain/orientation', headers=auth_headers,
+                                  json={'batchId': batch_id, 'reportType': report, 'purpose': '受支持业务标签台账核验用途'})
+            assert created.status_code == 200, created.text
+            downloaded = client.get(f"/api/v1/export/tasks/{created.json()['data']['taskId']}/download", headers=auth_headers)
+            assert downloaded.status_code == 200, downloaded.text
+            workbook = load_workbook(io.BytesIO(downloaded.content), read_only=True)
+            values = list(workbook.active.values)
+            row = dict(zip(values[1], values[2]))
+            assert row[column] == expected_label_value, (report, column, row[column])
+            workbook.close()
+
     # Absence of a finance fact is not unpaid. Approved green-channel evidence is
     # independent of both finance and the student's compatibility projection.
     with get_sessionmaker()() as db:

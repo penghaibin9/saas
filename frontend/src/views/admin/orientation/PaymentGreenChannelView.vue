@@ -150,6 +150,7 @@ export default {
   },
   data() {
     return {
+      readSequence: 0, scopeGeneration: 0, scopeDisposed: false, recalculating: false,
       ctx: null,
       tab: this.$route.query.tab === 'green' ? 'green' : 'payment',
       loading: true,
@@ -180,6 +181,10 @@ export default {
     }
   },
   computed: {
+    routeContextKey() {
+      const q = this.$route.query
+      return JSON.stringify([q.batchId || '', q.orientationStudentId || '', q.queue || '', q.keyword || '', q.tab || ''])
+    },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -223,10 +228,37 @@ export default {
       ].filter(Boolean)
     }
   },
+  watch: {
+    routeContextKey: { flush: 'sync', handler() { return this.resetRouteContext() } }
+  },
   async created() {
     await this.init()
   },
+  beforeUnmount() {
+    this.scopeDisposed = true
+    this.scopeGeneration++
+    this.readSequence++
+  },
+  beforeRouteUpdate(to, from) {
+    const keys = ['batchId', 'orientationStudentId', 'queue', 'keyword', 'tab']
+    if (keys.some(key => String(to.query[key] || '') !== String(from.query[key] || '')) && (this.submitting)) {
+      toast.error('当前记录正在保存，请完成后再切换批次或学生')
+      return false
+    }
+  },
   methods: {
+    resetRouteContext() {
+      this.scopeGeneration++
+      this.readSequence++
+      this.rows = []; this.total = 0; this.page = 1; this.error = ''
+      this.filters = EMPTY_FILTERS()
+      this.tab = this.$route.query.tab === 'green' ? 'green' : 'payment'
+      this.detailVisible = this.paymentVisible = this.approveVisible = this.rejectVisible = this.returnVisible = this.exportVisible = this.auditVisible = false
+      this.detailTarget = this.paymentTarget = null
+      this.paymentEdit = { payableAmount: 0, paidAmount: 0, status: 'UNPAID', sourceBizId: '' }
+      this.auditLogs = []
+      return this.load()
+    },
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
@@ -246,6 +278,7 @@ export default {
         api.getFieldColumns('greenChannelList'),
         api.getExportOptions('paymentList')
       ])
+      if (this.scopeDisposed) return
       if (ctx.code === 0) this.ctx = ctx.data
       if (status.code === 0) this.statusOptions = status.data
       if (payCols.code === 0) this.paymentColumns = payCols.data
@@ -261,19 +294,22 @@ export default {
       this.load()
     },
     async load() {
-      this.loading = true
-      this.error = ''
+      if (this.scopeDisposed) return
+      const sequence = ++this.readSequence
+      const scope = this.routeContextKey
+      const current = () => !this.scopeDisposed && sequence === this.readSequence && scope === this.routeContextKey
+      this.loading = true; this.error = ''; this.rows = []; this.total = 0
+
       try {
         const fn = this.tab === 'payment' ? api.getPaymentStatusList : api.getGreenChannelApplications
         const res = await fn({ ...this.filters, batchId: this.$route.query.batchId || undefined, orientationStudentId: this.$route.query.orientationStudentId || undefined, page: this.page, pageSize: this.pageSize })
-        if (res.code === 0) {
-          this.rows = res.data.list
-          this.total = res.data.total
-        } else this.error = res.message
+        if (!current()) return
+        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
+        else this.error = res.message || '加载失败'
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (current()) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (current()) this.loading = false
       }
     },
     search() {
@@ -338,14 +374,18 @@ export default {
       if (key === 'audit') this.openAudit()
     },
     async openAudit() {
+      const generation = this.scopeGeneration
       const res = await api.getAuditLogs({ bizType: 'GREEN_CHANNEL' })
+      if (this.scopeDisposed || generation !== this.scopeGeneration) return
       if (res.code === 0) this.auditLogs = res.data.list
       this.auditVisible = true
     },
     async onApprove() {
+      const generation = this.scopeGeneration
       this.submitting = true
       try {
         const res = await api.approveGreenChannel(this.detailTarget.id, { expectedVersion: this.detailTarget.version })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (res.code === 0) {
           toast.success('申请已通过，缴费环节解除阻塞，已留痕')
           this.approveVisible = false
@@ -357,9 +397,11 @@ export default {
       }
     },
     async onReject({ reason }) {
+      const generation = this.scopeGeneration
       this.submitting = true
       try {
         const res = await api.rejectGreenChannel(this.detailTarget.id, { reason, expectedVersion: this.detailTarget.version })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (res.code === 0) {
           toast.success('申请已驳回，原因已通知学生并留痕')
           this.rejectVisible = false
@@ -371,9 +413,11 @@ export default {
       }
     },
     async onReturn({ reason }) {
+      const generation = this.scopeGeneration
       this.submitting = true
       try {
         const res = await api.returnGreenChannel(this.detailTarget.id, { reason, expectedVersion: this.detailTarget.version })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (res.code === 0) {
           toast.success('申请已退回补充，原因已通知学生并留痕')
           this.returnVisible = false
@@ -385,6 +429,7 @@ export default {
       }
     },
     async savePayment() {
+      const generation = this.scopeGeneration
       if (!this.paymentTarget || !this.paymentEdit.sourceBizId || this.submitting) return
       if (this.paymentEdit.status === 'PAID' && Number(this.paymentEdit.paidAmount) < Number(this.paymentEdit.payableAmount)) {
         toast.error('“已缴清”时已缴金额不能小于应缴金额')
@@ -397,6 +442,7 @@ export default {
           sourceType: 'MANUAL_VERIFIED',
           expectedVersion: this.paymentTarget.paymentVersion
         })
+        if (this.scopeDisposed || generation !== this.scopeGeneration) return
         if (res.code === 0) {
           toast.success(`缴费已核验，资格结论：${res.data.qualification.verdictLabel}`)
           this.paymentVisible = false

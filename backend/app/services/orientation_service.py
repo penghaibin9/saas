@@ -1517,6 +1517,7 @@ def get_dashboard(user=None, batch_id=None) -> dict:
         end = (batch.report_end_date or batch.end_date) if batch else None
         return {
             "batchId": str(batch.id) if batch else "",
+            "batchStatus": batch.status if batch else "",
             "batchName": batch.batch_name if batch else "当前无迎新批次",
             "batchPeriod": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}" if start and end else "未配置报到周期",
             "updateTime": _iso(datetime.utcnow()),
