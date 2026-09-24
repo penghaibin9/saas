@@ -218,11 +218,11 @@ export const importTemplates = {
 /* ---------------- 导出配置 ---------------- */
 export const exportOptions = {
   scopes: [
-    { value: 'SCOPE_ALL', label: '当前账号数据范围内全部迎新台账' }
+    { value: 'SCOPE_ALL', label: '当前迎新批次内、本人有权查看的全部台账' }
   ],
   fieldGroups: {
     studentList: [
-      { key: 'ledger', label: '迎新综合台账', fields: ['迎新批次编号', '姓名', '录取编号', '学院', '专业', '班级', '报到状态', '缴费状态', '宿舍状态', '风险'] }
+      { key: 'ledger', label: '迎新综合台账', fields: ['迎新批次编号', '姓名', '录取编号', '学院', '专业', '班级', '报到状态', '缴费事实', '绿色通道审批', '住宿事实', '风险'] }
     ],
     progressList: [{ key: 'ledger', label: '报到进度', fields: ['姓名', '录取编号', '已完成环节', '受阻环节', '现场报到'] }],
     materialList: [{ key: 'ledger', label: '材料审核', fields: ['姓名', '材料类型', '文件名', '审核状态', '审核人', '退回原因'] }],
@@ -235,6 +235,6 @@ export const exportOptions = {
   },
   maskDefault: true,
   idCardPlainForbidden: true,
-  watermarkNote: '服务端固定按当前账号数据范围导出，并写入学校名、操作人、时间和用途水印。',
+  watermarkNote: '导出当前批次台账，不受列表关键词或勾选行影响。文件包含学校、操作人、时间和用途水印。',
   auditNotice: '本次导出行为将被完整记录并可追溯，请确认导出用途合规。'
 }

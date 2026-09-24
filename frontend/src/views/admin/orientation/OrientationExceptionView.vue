@@ -436,7 +436,7 @@ export default {
       }
     },
     exportFn(payload) {
-      return api.createExport('exceptionList', payload)
+      return api.createExport('exceptionList', { ...payload, batchId: this.$route.query.batchId })
     }
   }
 }

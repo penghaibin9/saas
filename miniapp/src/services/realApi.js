@@ -211,7 +211,7 @@ export async function enrichOrientation() {
     },
     payStatus: r.paymentStatus || '', payment: r.payment || {}, materialStatus: r.materialStatus || '',
     qualification: r.qualification || null,
-    greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
+    greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED', greenChannel: r.greenChannel || null,
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
     steps: rawSteps.map((s, index) => ({
       key: s.key, title: orientationStepLabel(s), status: s.status,

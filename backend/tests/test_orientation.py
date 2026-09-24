@@ -124,10 +124,10 @@ def test_green_channel_closed_loop(client, auth_headers, db_mode):
 def test_material_closed_loop(client, auth_headers, db_mode):
     ids = _seed(db_mode)
     bad = client.post(f"/api/v1/orientation/materials/{ids['mat']}/return", headers=auth_headers,
-                      json={"reason": "x"}).json()
+                      json={"expectedVersion": 0, "reason": "x"}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/orientation/materials/{ids['mat']}/approve", headers=auth_headers,
-                     json={}).json()
+                     json={"expectedVersion": 0}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
 
 
@@ -164,7 +164,8 @@ def test_dashboard_and_audit(client, auth_headers, db_mode):
     assert any(k["key"] == "prepared" for k in dash["data"]["kpis"])
     assert len(dash["data"]["stepFunnel"]) == 7
     # 触发一条审计后可查
-    client.post(f"/api/v1/orientation/materials/{ids['mat']}/approve", headers=auth_headers, json={})
+    client.post(f"/api/v1/orientation/materials/{ids['mat']}/approve", headers=auth_headers,
+                json={"expectedVersion": 0})
     audit = client.get("/api/v1/orientation/audit-logs?bizType=MATERIAL", headers=auth_headers).json()
     assert audit["code"] == 0 and audit["data"]["total"] >= 1
 

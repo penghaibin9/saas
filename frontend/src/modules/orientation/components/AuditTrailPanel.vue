@@ -11,8 +11,8 @@
           </div>
           <div class="atp__detail">{{ log.detail }}</div>
           <div class="atp__meta">
-            {{ log.operator }}<template v-if="log.roleName">（{{ log.roleName }}）</template>
-            <template v-if="log.before || log.after"> · {{ log.before || '—' }} → {{ log.after || '—' }}</template>
+            {{ log.operator }}<template v-if="log.roleName">（{{ roleLabel(log.roleName) }}）</template>
+            <template v-if="log.before || log.after"> · {{ stateLabel(log.before) }} → {{ stateLabel(log.after) }}</template>
           </div>
         </div>
       </li>
@@ -35,6 +35,8 @@ export default {
     logs: { type: Array, default: () => [] }
   },
   methods: {
+    roleLabel(value) { return safeLocalizedText({ value, dictionary: { SCHOOL_ADMIN: '学校管理员', STUDENT_AFFAIRS: '学工人员', COUNSELOR: '辅导员', TEACHER: '教师', STUDENT: '学生' }, unknownLabel: '经办人员' }) },
+    stateLabel(value) { return safeLocalizedText({ value, dictionary: { ADMITTED: '已录取', VERIFIED: '已核验', ENROLLED: '已入学', CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '学院已确认', SUBMITTED: '已提交', REVIEWING: '审核中', APPROVED: '已通过', RETURNED: '退回补充', REJECTED: '未通过', DONE: '已完成', TODO: '待办理', CANCELLED: '已取消', NO_SHOW: '未到校', DEFERRED: '已延期' }, unknownLabel: value ? '已更新' : '—' }) },
     actionLabel(log) {
       return log?.actionLabel || safeLocalizedText({ value: log?.action, dictionary: ACTION_LABELS, unknownLabel: '业务操作' })
     }

@@ -1,3 +1,4 @@
+import { orientationNavigation } from '../modules/orientation/workspaces.js'
 import { academicEntry } from '../modules/academicAffairs/config/academicEntryIdentity.js'
 import { WORKBENCH_PAGE_TABS } from '../modules/workbench/config/workbenchNavigation.js'
 import { SYSTEM_MANAGEMENT_CATALOG } from '../modules/system/systemManagementCatalog.js'
@@ -116,29 +117,8 @@ export const NAV_PLAN = [
       I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view'),
       I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
     ]),
-    // 数字迎新：19 个已实现功能页直接作为三级菜单展示。
-    // 此前收敛成单一入口，但迎新模块并没有对应的内部导航，导致真实页面全部失去菜单入口。
-    mod('sa-orientation', '数字迎新', '/admin/orientation', [
-      I('迎新看板', '/admin/orientation', 'studentAffairs.orientation.view'),
-      I('迎新批次与新生名单', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
-      I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
-      I('报到点设置', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
-      I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
-      I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
-      I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
-      I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
-      I('资格与入学确认', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
-      I('新生报到', '/admin/orientation/checkin', 'studentAffairs.orientation.view'),
-      I('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
-      I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
-      I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
-      I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
-      I('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view'),
-      I('新生数据查询', '/admin/orientation/data', 'studentAffairs.orientation.view'),
-      I('迎新统计', '/admin/orientation/statistics', 'studentAffairs.orientation.view'),
-      I('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view')
-    ]),
+    // 数字迎新按任务分组，原功能通过工作区内导航进入。
+    mod('sa-orientation', '数字迎新', '/admin/orientation', orientationNavigation()),
     // 请假销假
     mod('sa-leave', '请假销假', null, [
       I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view'),

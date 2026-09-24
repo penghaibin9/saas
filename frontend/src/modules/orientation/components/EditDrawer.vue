@@ -19,6 +19,16 @@
           :disabled="f.disabled"
           :status="errors[f.key] ? 'error' : 'default'"
         />
+        <AppRemoteSelect
+          v-else-if="f.type === 'remote'"
+          v-model="form[f.key]"
+          :options="f.options || []"
+          :remote-search="f.remoteSearch"
+          :placeholder="f.placeholder || '输入名称搜索'"
+          :search-placeholder="f.placeholder || '输入名称搜索'"
+          :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
+        />
         <AppDatePicker
           v-else-if="f.type === 'date'"
           v-model="form[f.key]"
@@ -84,6 +94,7 @@
  * Emits: submit(formData)
  */
 import { AppDrawer, AppButton } from '@/components/ui'
+import AppRemoteSelect from '@/components/common/picker/AppRemoteSelect.vue'
 import {
   AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea, AppChinaRegionPicker
 } from '@/components/common'
@@ -92,7 +103,7 @@ export default {
   name: 'EditDrawer',
   components: {
     AppDrawer, AppButton, AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea,
-    AppChinaRegionPicker
+    AppChinaRegionPicker, AppRemoteSelect
   },
   props: {
     visible: { type: Boolean, default: false },

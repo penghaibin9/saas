@@ -354,7 +354,7 @@ export default {
       } else toast.error(res.message)
     },
     exportFn(payload) {
-      return api.createExport('progressList', payload)
+      return api.createExport('progressList', { ...payload, batchId: this.batchId })
     }
   }
 }

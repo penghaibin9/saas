@@ -246,14 +246,22 @@ export const roleConfigs = {
     key: ROLE.SCHOOL_ADMIN, label: '学校管理员', side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index', dataScope: 'SCHOOL', dataScopeText: '学校授权范围',
     workbench: ['approval'],
-    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '学工办理', icon: '📋' }],
+    quickActions: [
+      { key: 'todos', label: '我的待办', icon: '✓' },
+      { key: 'affairs', label: '学工办理', icon: '📋' },
+      { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }
+    ],
     permissionActions: ['approval.handle']
   },
   [ROLE.STUDENT_AFFAIRS]: {
     key: ROLE.STUDENT_AFFAIRS, label: '学工管理', side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '学工授权范围',
     workbench: ['approval'],
-    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '学工办理', icon: '📋' }],
+    quickActions: [
+      { key: 'todos', label: '我的待办', icon: '✓' },
+      { key: 'affairs', label: '学工办理', icon: '📋' },
+      { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }
+    ],
     permissionActions: ['approval.handle']
   },
   // 毕设 specialist 身份必须在移动端显式存在。每种身份只呈现其高价值队列，

@@ -229,6 +229,10 @@ export async function voidOrientationStudent(id, { reason }) {
 export async function verifyOrientationStudent(id, { passed = true, reason = '', expectedVersion } = {}) {
   return callData(() => request(`/orientation/students/${id}/verify`, { method: 'POST', body: { passed, reason, expectedVersion } }))
 }
+export async function searchOrientationClasses(keyword) {
+  const result = await request('/student-affairs/classes', { params: { keyword, page: 1, pageSize: 50 } })
+  return (result.items || []).map(row => ({ value: String(row.classId || row.id), label: row.className || row.name }))
+}
 
 export async function batchRemindStudents() {
   return fail('批量提醒能力未配置，操作已禁用', 400003)
@@ -304,23 +308,27 @@ export async function getMaterialReviewList(params = {}) {
   return callList('/orientation/materials', params)
 }
 
-export async function approveOrientationMaterial(id, { comment = '' } = {}) {
-  return callData(() => request(`/orientation/materials/${id}/approve`, { method: 'POST', body: { comment } }))
+export async function approveOrientationMaterial(id, { comment = '', expectedVersion } = {}) {
+  return callData(() => request(`/orientation/materials/${id}/approve`, { method: 'POST', body: { comment, expectedVersion } }))
 }
 
-export async function returnOrientationMaterial(id, { reason }) {
-  return callData(() => request(`/orientation/materials/${id}/return`, { method: 'POST', body: { reason } }))
+export async function returnOrientationMaterial(id, { reason, expectedVersion }) {
+  return callData(() => request(`/orientation/materials/${id}/return`, { method: 'POST', body: { reason, expectedVersion } }))
 }
 
-export async function batchReviewOrientationMaterials(ids = [], { pass, reason = '' } = {}) {
+export async function batchReviewOrientationMaterials(materials = [], { pass, reason = '', shouldContinue = () => true } = {}) {
   if (!pass && (!reason || reason.trim().length < 5)) return fail('批量退回必须填写原因（不少于 5 个字）')
-  for (const id of ids) {
+  if (materials.some(item => !item?.id || !Number.isInteger(item.version) || item.version < 0)) return fail('选中材料缺少审核版本，请刷新后重新选择')
+  const completedIds = []
+  for (const { id, version } of materials) {
+    if (!shouldContinue()) return { ...fail('办理对象已切换，剩余材料未继续处理'), data: { completedIds, failedId: id } }
     const res = pass
-      ? await approveOrientationMaterial(id, { comment: '批量通过' })
-      : await returnOrientationMaterial(id, { reason })
-    if (res.code !== 0) return res
+      ? await approveOrientationMaterial(id, { comment: '批量通过', expectedVersion: version })
+      : await returnOrientationMaterial(id, { reason, expectedVersion: version })
+    if (res.code !== 0) return { ...res, data: { completedIds, failedId: id }, message: `已完成 ${completedIds.length} 份，剩余未处理。${res.message || '审核失败'}；请刷新核对后重新选择。` }
+    completedIds.push(String(id))
   }
-  return envelope({ count: ids.length })
+  return envelope({ count: completedIds.length, completedIds })
 }
 
 /* ---------------- 宿舍入住 ---------------- */
@@ -424,19 +432,18 @@ export async function createExport(listKey, payload = {}) {
   if (!reportType) return fail('当前列表未配置生产台账导出', 400001)
   const purpose = String(payload.purpose || '').trim()
   if (purpose.length < 5) return fail('导出用途必填且不少于 5 个字', 400001)
+  const batchId = String(payload.batchId || '')
+  if (!/^[1-9]\d{0,19}$/.test(batchId) || (typeof payload.batchId === 'number' && !Number.isSafeInteger(payload.batchId))) {
+    return fail('请先选择迎新批次，再导出该批次台账', 400001)
+  }
   return callData(async () => {
-    let batchId = payload.batchId
-    if (!batchId) {
-      const batches = await request('/orientation/batches', { params: { status: 'ACTIVE', page: 1, pageSize: 1 } })
-      batchId = batches?.items?.[0]?.id
-    }
-    if (!batchId) throw new Error('当前没有进行中的迎新批次，无法生成批次台账')
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `orientation-export-${Date.now()}`
     const data = await request('/export/domain/orientation', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: { purpose, batchId, reportType }
     })
+    if (!data?.taskId) throw new Error('导出未返回文件记录，请重试')
     return {
       ...data,
       downloadUrl: `/api/v1/export/tasks/${data.taskId}/download`,

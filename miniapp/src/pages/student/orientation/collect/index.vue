@@ -35,7 +35,7 @@
           <view class="oc__confirm" @click="confirmed = !confirmed"><text>{{ confirmed ? '☑' : '☐' }}</text><text>我确认信息真实有效并用于迎新联络</text></view>
         </view>
 
-        <MobileInlineAlert type="info" description="提交后信息核对环节即完成，可在报到总览中查看后续环节。" />
+        <MobileInlineAlert type="info" description="提交后返回迎新进度；如本次是退回补充，仍需等待老师复核。" />
       </view>
     </MobileGlobalState>
 
