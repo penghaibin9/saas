@@ -8,6 +8,7 @@
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 import { setPermissionPatterns } from '@/security/permissionGate'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function buildCtxKey(ctx, permissionPatterns) {
   const cr = ctx?.currentRole || {}
@@ -367,9 +368,10 @@ export const studentAffairsApi = {
   // ─────────────── 困难认定（P4 · /student-affairs/aid/*，含强敏感家庭经济） ───────────────
 
   /** 认定批次列表。 */
-  getAidBatches({ schoolYear = '', status = '', page = 1, pageSize = 100 } = {}) {
+  getAidBatches({ schoolYear = '', status = '', page = 1, pageSize = 100, keyword = '' } = {}) {
     const params = { page, pageSize }
     if (schoolYear) params.schoolYear = schoolYear
+    if (keyword) params.keyword = keyword
     if (status) params.status = status
     return callStrict(() => request('/student-affairs/aid/batches', { params }))
   },
@@ -377,6 +379,12 @@ export const studentAffairsApi = {
   /** 建/发布认定批次。body: { batchName, schoolYear, applyStart?, applyEnd?, publicityDays?, publish } */
   createAidBatch(body) {
     return callStrict(() => request('/student-affairs/aid/batches', { method: 'POST', body }))
+  },
+  publishAidBatch(batchId, version) {
+    return callStrict(() => request(`/student-affairs/aid/batches/${batchId}/publish`, { method: 'POST', body: { version } }))
+  },
+  getAidBatch(batchId) {
+    return callStrict(() => request(`/student-affairs/aid/batches/${batchId}`))
   },
 
   /** 认定申请列表（家庭经济默认脱敏）。 */
@@ -427,8 +435,8 @@ export const studentAffairsApi = {
   },
 
   /** 动态调整审批。action: APPROVE / REJECT。 */
-  approveAidAdjust(id, action = 'APPROVE', version) {
-    return callStrict(() => request(`/student-affairs/aid/applications/${id}/adjust-approve`, { method: 'POST', body: { action, version } }))
+  approveAidAdjust(id, action = 'APPROVE', version, reason = '') {
+    return callStrict(() => request(`/student-affairs/aid/applications/${id}/adjust-approve`, { method: 'POST', body: { action, version, reason } }))
   },
 
   /**
@@ -480,8 +488,8 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/aid/objections', { params }))
   },
   /** 异议复核。result: SUSTAINED/OVERRULED；opinion≥5。 */
-  reviewAidObjection(objectionId, result, opinion) {
-    return callStrict(() => request(`/student-affairs/aid/objections/${objectionId}/review`, { method: 'POST', body: { result, opinion } }))
+  reviewAidObjection(objectionId, result, opinion, version) {
+    return callStrict(() => request(`/student-affairs/aid/objections/${objectionId}/review`, { method: 'POST', body: { result, opinion, version } }))
   },
 
   /** 困难学生库（APPROVED 最新等级聚合）。 */
@@ -496,9 +504,13 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/aid/stats'))
   },
 
-  /** 奖助统计（按状态/项目类型聚合，计数口径）。 */
+  /** 资助综合统计（奖助、勤工、贷款、减免与发放对账）。 */
   getFundingStats() {
     return callStrict(() => request('/student-affairs/funding/stats'))
+  },
+  /** 资助统计脱敏下钻；只返回当前数据范围内的脱敏学生与来源。 */
+  getFundingStatsDrill({ metric, page = 1, pageSize = 20 } = {}) {
+    return callStrict(() => request('/student-affairs/funding/stats/drill', { params: { metric, page, pageSize } }))
   },
   /** 资助发放台账（金额脱敏，不含卡全号）。 */
   getFundingDisbursements({ batchId = '', bankStatus = '', page = 1, pageSize = 100 } = {}) {
@@ -520,27 +532,30 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/funding/disbursements/${id}/fail`, { method: 'POST', body: { reason, version } }))
   },
   /** 发放概览。 */
-  getDisbursementStats() {
-    return callStrict(() => request('/student-affairs/funding/disbursements/stats'))
+  getDisbursementStats(batchId) {
+    return callStrict(() => request('/student-affairs/funding/disbursements/stats', { params: batchId ? { batchId } : {} }))
   },
 
   // ─────────────── 奖助扩展：勤工/贷款/减免（/work-study /loans /fee-reductions） ───────────────
-  getWorkStudyPosts({ status = '', page = 1, pageSize = 200 } = {}) {
-    const params = { page, pageSize }; if (status) params.status = status
+  getWorkStudyPosts({ status = '', keyword = '', page = 1, pageSize = 200 } = {}) {
+    const params = { page, pageSize }; if (status) params.status = status; if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/work-study/posts', { params }))
   },
   createWorkStudyPost(body) {
     return callStrict(() => request('/student-affairs/work-study/posts', { method: 'POST', body }))
   },
-  getWorkStudyRecords({ postId = '', status = '', page = 1, pageSize = 50 } = {}) {
-    const params = { page, pageSize }; if (postId) params.postId = postId; if (status) params.status = status
+  setWorkStudyPostStatus(postId, action, version) {
+    return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/action`, { method: 'POST', body: { action, version } }))
+  },
+  getWorkStudyRecords({ recordId = '', postId = '', status = '', keyword = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }; if (recordId) params.recordId = recordId; if (postId) params.postId = postId; if (status) params.status = status; if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/work-study/records', { params }))
   },
-  applyWorkStudy(postId, studentId) {
-    return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/apply`, { method: 'POST', body: { studentId } }))
+  applyWorkStudy(postId, studentId, statement = '', availability = '') {
+    return callStrict(() => request(`/student-affairs/work-study/posts/${postId}/apply`, { method: 'POST', body: { studentId, statement, availability } }))
   },
-  actWorkStudy(recordId, action, reason = '', version) {
-    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason, version } }))
+  actWorkStudy(recordId, action, reason = '', version, agreementConfirmed = false) {
+    return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/action`, { method: 'POST', body: { action, reason, version, agreementConfirmed } }))
   },
   getWorkStudyMonthly(recordId) {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`))
@@ -549,8 +564,13 @@ export const studentAffairsApi = {
   addWorkStudyMonthly(recordId, body) {
     return callStrict(() => request(`/student-affairs/work-study/records/${recordId}/monthly`, { method: 'POST', body }))
   },
-  getLoans({ status = '', page = 1, pageSize = 50 } = {}) {
-    const params = { page, pageSize }; if (status) params.status = status
+  getLoans({ status = '', keyword = '', yearCode = '', loanType = '', page = 1, pageSize = 50, recordId } = {}) {
+    const params = { page, pageSize }
+    if (recordId) params.recordId = String(recordId)
+    if (status) params.status = status
+    if (keyword) params.keyword = keyword
+    if (yearCode) params.yearCode = yearCode
+    if (loanType) params.loanType = loanType
     return callStrict(() => request('/student-affairs/loans', { params }))
   },
   registerLoan(body) {
@@ -559,8 +579,13 @@ export const studentAffairsApi = {
   advanceLoan(loanId, version) {
     return callStrict(() => request(`/student-affairs/loans/${loanId}/advance`, { method: 'POST', body: { version } }))
   },
-  getFeeReductions({ itemType = '', status = '', page = 1, pageSize = 50 } = {}) {
+  actionLoan(loanId, body) {
+    return callStrict(() => request(`/student-affairs/loans/${loanId}/action`, { method: 'POST', body }))
+  },
+  getFeeReductions({ itemType = '', status = '', keyword = '', yearCode = '', recordId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }; if (itemType) params.itemType = itemType; if (status) params.status = status
+    if (keyword) params.keyword = keyword; if (yearCode) params.yearCode = yearCode
+    if (recordId) params.recordId = String(recordId)
     return callStrict(() => request('/student-affairs/fee-reductions', { params }))
   },
   submitFeeReduction(body) {
@@ -571,6 +596,9 @@ export const studentAffairsApi = {
   },
   issueFeeReduction(feeId, version) {
     return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/issue`, { method: 'POST', body: { version } }))
+  },
+  actionFeeReduction(feeId, body) {
+    return callStrict(() => request(`/student-affairs/fee-reductions/${feeId}/action`, { method: 'POST', body }))
   },
 
   /** 违纪处分统计（按类型/状态聚合 + 投影对账）。 */
@@ -586,9 +614,11 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/discipline/cases/${caseId}/appeal`, { method: 'POST', body: { reason } }))
   },
   /** 处分申诉列表。 */
-  getDisciplineAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+  getDisciplineAppeals({ status = '', caseId = '', appealId = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
+    if (caseId) params.caseId = caseId
+    if (appealId) params.appealId = appealId
     return callStrict(() => request('/student-affairs/discipline/appeals', { params }))
   },
   /** 申诉复核。result: UPHELD/REVISED/REVOKED；opinion≥5。 */
@@ -649,10 +679,11 @@ export const studentAffairsApi = {
   // ─────────────── 奖助管理（P4 · /student-affairs/funding/*，含资格硬校验） ───────────────
 
   /** 资助项目列表（SCHOLARSHIP 奖学金 / GRANT 助学金）。 */
-  getFundingProjects({ projectType = '', status = '', page = 1, pageSize = 100 } = {}) {
+  getFundingProjects({ projectType = '', status = '', keyword = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
     if (projectType) params.projectType = projectType
     if (status) params.status = status
+    if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/funding/projects', { params }))
   },
 
@@ -661,17 +692,28 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/funding/projects', { method: 'POST', body }))
   },
 
+  /** 启用/停用项目；停用仅阻止新申请，既有流程继续。 */
+  setFundingProjectStatus(projectId, status, version) {
+    return callStrict(() => request(`/student-affairs/funding/projects/${projectId}/status`, { method: 'POST', body: { status, version } }))
+  },
+
   /** 资助批次列表。 */
-  getFundingBatches({ projectId = '', status = '', page = 1, pageSize = 100 } = {}) {
+  getFundingBatches({ projectId = '', status = '', keyword = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
     if (projectId) params.projectId = projectId
     if (status) params.status = status
+    if (keyword) params.keyword = keyword
     return callStrict(() => request('/student-affairs/funding/batches', { params }))
   },
 
   /** 建/发布资助批次。body: { projectId, schoolYear, publicityDays?, quota?, publish } */
   createFundingBatch(body) {
     return callStrict(() => request('/student-affairs/funding/batches', { method: 'POST', body }))
+  },
+
+  /** 批次状态机：草稿发布、开放批次关闭新申请。 */
+  actFundingBatch(batchId, action, version) {
+    return callStrict(() => request(`/student-affairs/funding/batches/${batchId}/action`, { method: 'POST', body: { action, version } }))
   },
 
   /** 资助申请列表（金额按角色脱敏）。 */
@@ -713,8 +755,8 @@ export const studentAffairsApi = {
   },
 
   /** 资助公示扫描（幂等）。 */
-  scanFundingPublicity() {
-    return callStrict(() => request('/student-affairs/funding/scan-publicity', { method: 'POST', body: {} }))
+  scanFundingPublicity(batchId) {
+    return callStrict(() => request('/student-affairs/funding/scan-publicity', { method: 'POST', body: batchId ? { batchId } : {} }))
   },
 
   /** 对公示中资助申请提申诉。 */
@@ -723,9 +765,11 @@ export const studentAffairsApi = {
   },
 
   /** 资助公示申诉列表。 */
-  getFundingAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+  getFundingAppeals({ status = '', page = 1, pageSize = 100, appealId, applicationId } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
+    if (appealId) params.appealId = appealId
+    if (applicationId) params.applicationId = applicationId
     return callStrict(() => request('/student-affairs/funding/appeals', { params }))
   },
 
@@ -796,14 +840,143 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/dorm/occupancy'))
   },
 
+  async downloadDormResourceTemplate() {
+    return callStrict(async () => {
+      const data = await request('/import/domain/dorm/template')
+      downloadXlsxFromApi(data)
+      return data
+    })
+  },
+
+  validateDormResourceFile(file) {
+    return callStrict(() => requestUpload('/import/domain/dorm/validate-file', file))
+  },
+
+  confirmDormResourceImport(batchNo) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-import-${Date.now()}`
+    return callStrict(() => request('/import/domain/confirm', {
+      method: 'POST', headers: { 'Idempotency-Key': key },
+      body: { domain: 'dorm', batchNo }
+    }))
+  },
+
+  async downloadDormImportErrors(batchNo) {
+    try {
+      const blob = await requestBlob(`/import/domain/dorm/batches/${batchNo}/errors.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '宿舍房源导入错误行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
+  exportDormLedger(reportType, purpose) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-export-${Date.now()}`
+    return callStrict(async () => {
+      const data = await request('/export/domain/dorm', {
+        method: 'POST', headers: { 'Idempotency-Key': key },
+        body: { reportType, purpose }
+      })
+      const payload = { ...data, downloadUrl: `/api/v1/export/tasks/${data.taskId}/download` }
+      downloadXlsxFromApi(payload)
+      return payload
+    })
+  },
+
+  /** D3 住宿分配批次：列表、草稿、Dry Run、人工调整与发布。 */
+  listDormAllocationBatches({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { params }))
+  },
+  createDormAllocationBatch(body) {
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { method: 'POST', body }))
+  },
+  getDormAllocationBatch(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}`))
+  },
+  dryRunDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/dry-run`, { method: 'POST', timeoutMs: 120000 }))
+  },
+  manualAssignDorm(batchId, studentId, bedId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/manual-assign`, { method: 'POST', body: { studentId: String(studentId), bedId: String(bedId) } }))
+  },
+  publishDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish`, { method: 'POST', timeoutMs: 120000 }))
+  },
+  queueDormAllocationPublish(batchId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish-jobs`, { method: 'POST', body: { version } }))
+  },
+  getDormAllocationPublishJob(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish-jobs/latest`))
+  },
+  async downloadDormAllocationConflicts(batchId) {
+    try {
+      const blob = await requestBlob(`/student-affairs/dorm/allocation-batches/${batchId}/conflicts.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '住宿分配异常行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
   /** 学生入住某床（回写我的宿舍）。 */
   checkinBed(bedId, studentId) {
     return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId: String(studentId) } }))
   },
 
-  /** 退宿（释放床位）。 */
-  checkoutBed(bedId) {
-    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: {} }))
+  /** 兼容退宿入口：仅发起正式退宿单，不立即释放床位。 */
+  checkoutBed(bedId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: { version } }))
+  },
+
+  createDormCheckout(body) {
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { method: 'POST', body }))
+  },
+
+  listDormCheckouts({ status = '', studentId = '', recordId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    if (recordId) params.recordId = recordId
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { params }))
+  },
+
+  confirmDormCheckout(requestId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/confirm`, { method: 'POST', body: { version } }))
+  },
+
+  cancelDormCheckout(requestId, version, reason) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/cancel`, { method: 'POST', body: { version, reason } }))
+  },
+
+  createDormCheckinBatch(body) {
+    return callStrict(() => request('/student-affairs/dorm/checkin-batches', { method: 'POST', body }))
+  },
+  recentDormCheckinBatches() {
+    return callStrict(() => request('/student-affairs/dorm/checkin-batches'))
+  },
+  getDormCheckinBatch(id, params = {}) {
+    return callStrict(() => request(`/student-affairs/dorm/checkin-batches/${id}`, { params }))
+  },
+  continueDormCheckinBatch(id) {
+    return callStrict(() => request(`/student-affairs/dorm/checkin-batches/${id}/continue`, { method: 'POST', timeoutMs: 120000 }))
+  },
+
+  listDormStays({ status = '', studentId = '', buildingId = '', keyword = '', orientationBatchId = '', classId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (orientationBatchId) params.orientationBatchId = orientationBatchId
+    if (classId) params.classId = classId
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    if (buildingId) params.buildingId = buildingId
+    if (keyword) params.keyword = keyword
+    return callStrict(() => request('/student-affairs/dorm/stays', { params }))
+  },
+  getDormStayFilterOptions(params = {}) {
+    return callStrict(() => request('/student-affairs/dorm/stays/filter-options', { params }))
   },
 
   /** 发起调宿（原床释放/新床占用走审批）。body: { studentId, toBedId, reason } */
@@ -816,12 +989,29 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/transfers/${transferId}/review`, { method: 'POST', body: { action, reason, version } }))
   },
 
-  /** 建宿舍检查任务。body: { taskName, buildingId?, checkType HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE, checkerKey? } */
+  /** 生效宿舍检查模板、证据要求与风险阈值。 */
+  getDormInspectionTemplates() {
+    return callStrict(() => request('/student-affairs/dorm/inspection-templates'))
+  },
+
+  /** 归寝 Provider 与真实健康状态；NONE 必须显示未配置/DISABLED。 */
+  getDormPresenceProvider() {
+    return callStrict(() => request('/student-affairs/dorm/presence/provider'))
+  },
+
+  /** 当前归寝名单；UNKNOWN 与 NOT_RETURNED 严格分开。 */
+  getDormPresence({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/presence', { params }))
+  },
+
+  /** 发布宿舍检查任务，并冻结模板快照。 */
   createDormCheckTask(body) {
     return callStrict(() => request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
   },
 
-  /** 录检查结果（ABNORMAL 异常说明≥5字 → 回写异常表 + 生成风险单）。body: { roomId?, result NORMAL/ABNORMAL, issueType?, detail } */
+  /** 逐房提交模板结果与 FileObject 证据。 */
   submitDormCheckRecord(taskId, body) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
   },
@@ -837,10 +1027,11 @@ export const studentAffairsApi = {
   },
 
   /** 调宿申请列表。 */
-  getDormTransfers({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+  getDormTransfers({ status = '', studentId = '', recordId = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
     if (studentId) params.studentId = studentId
+    if (recordId) params.recordId = recordId
     return callStrict(() => request('/student-affairs/dorm/transfers', { params }))
   },
 
@@ -854,6 +1045,28 @@ export const studentAffairsApi = {
   /** 某检查任务的记录列表。 */
   getDormCheckRecords(taskId, { page = 1, pageSize = 100 } = {}) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { params: { page, pageSize } }))
+  },
+
+  getDormRectifications({ status = '', mine = false, page = 1, pageSize = 50 } = {}) {
+    const params = { mine, page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/rectifications', { params }))
+  },
+
+  getDormRectification(rectificationId) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}`))
+  },
+
+  startDormRectification(rectificationId, expectedVersion) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/start`, { method: 'POST', body: { expectedVersion } }))
+  },
+
+  submitDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/submit`, { method: 'POST', body }))
+  },
+
+  recheckDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/recheck`, { method: 'POST', body }))
   },
 
   /** 宿舍异常列表。 */
@@ -925,8 +1138,8 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/activities/${id}/transition`, { method: 'POST', body: { action, version } }))
   },
   /** 活动名单。 */
-  getActivityParticipants(id) {
-    return callStrict(() => request(`/student-affairs/activities/${id}/participants`))
+  getActivityParticipants(id, { page = 1, pageSize = 20 } = {}) {
+    return callStrict(() => request(`/student-affairs/activities/${id}/participants`, { params: { page, pageSize } }))
   },
   /** 确认名单+生成学时/积分→进360。 */
   confirmActivity(id, version) {

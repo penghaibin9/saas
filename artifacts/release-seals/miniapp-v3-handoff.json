@@ -1,0 +1,33 @@
+{
+  "schema": "miniapp-v3-handoff/1",
+  "generatedAt": "2026-09-16T07:08:09.170Z",
+  "studentMergeSha": "85db75d815e97e376aae7b9e5a90f87073472956",
+  "implementationState": "WORKING_TREE_CANDIDATE",
+  "sourceFingerprint": "4d667cb295dfac8ece9e77a267ea9f80278a577d557468ce7a4f3e3fa7f0de17",
+  "actionSchemaVersion": "1.0.0",
+  "routeInventoryHash": "f32637e23c5a63bcd22fb4177ab9837c8d6c33fbb0d5b30e9c753c4b40ddcdbb",
+  "routeCount": 159,
+  "subpackageHash": "dad5c42f4382dd1d95fd54673a4505377ab1d905172a44b3efacd98917eef0af",
+  "subpackages": [
+    {
+      "root": "pages/student",
+      "pages": 57
+    },
+    {
+      "root": "pages/student-internship",
+      "pages": 20
+    },
+    {
+      "root": "pages/teacher",
+      "pages": 51
+    },
+    {
+      "root": "pages/teacher-internship",
+      "pages": 18
+    }
+  ],
+  "networkPagerVersion": "1.0.0",
+  "attachmentPickerVersion": "1.0.0",
+  "alembicHead": "20260914_aa_opt_candidates",
+  "packageReportSha": "dcdb1c18c0e1c493fa50d02b72bc2be6bd2388034767c164a869682c308661d0"
+}

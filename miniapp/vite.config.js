@@ -1,10 +1,10 @@
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve, sep } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const MOCK_ROOT = resolve(here, 'src', 'mock') + sep
+const MOCK_ROOT = resolve(here, 'src', 'mock').replace(/\\/g, '/') + '/'
 
 /**
  * V3 S1.5：生产构建不得把 mock 数据体打进小程序包。
@@ -30,7 +30,9 @@ function stripMockPayloadInProduction() {
     },
     transform(code, id) {
       if (!active) return null
-      const file = id.split('?')[0]
+      // Vite/Rollup 在 Windows 上可能给出正斜杠模块 id；统一分隔符后再判断，
+      // 否则 MOCK_ROOT 使用反斜杠时 transform 永远不会命中，生产包会完整携带演示数据。
+      const file = id.split('?')[0].replace(/\\/g, '/')
       if (!file.startsWith(MOCK_ROOT)) return null
 
       const named = new Set()
@@ -53,7 +55,39 @@ function stripMockPayloadInProduction() {
   }
 }
 
+/**
+ * 小程序 H5 的 uni.showModal/showActionSheet 默认由运行时控件渲染，
+ * 在部分浏览器与嵌入式预览器中会退化为浏览器级弹层。统一转到当前
+ * 应用文档内的对话服务。转换后的调用必须以标识符开头：若改为
+ * `(hook || uni.showModal)(...)`，上一句未显式分号时会被 JavaScript 解析成
+ * `上一句结果(...)`，例如把字符串“退回”当作函数。invoker 在 H5 启动时安装，
+ * 返回应用内实现或原 uni API，因此既不会触发 ASI，也保留跨端调用约定。
+ */
+function keepDialogsInsideH5App() {
+  return {
+    name: 'miniapp-h5-in-app-dialog-surface',
+    enforce: 'pre',
+    transform(code, id) {
+      if (process.env.UNI_PLATFORM !== 'h5') return null
+      const file = id.split('?')[0].replace(/\\/g, '/')
+      if (!file.includes('/src/') || !/\.(?:[cm]?js|vue)$/.test(file)) return null
+      const transformed = code
+        .replace(/\buni\.showModal\s*\(/g, 'globalThis.__schoolInAppModalInvoker(uni.showModal)(')
+        .replace(/\buni\.showActionSheet\s*\(/g, 'globalThis.__schoolInAppActionSheetInvoker(uni.showActionSheet)(')
+      return transformed === code ? null : { code: transformed, map: null }
+    }
+  }
+}
+
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
 export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()]
+  plugins: [keepDialogsInsideH5App(), stripMockPayloadInProduction(), uni()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true
+      }
+    }
+  }
 })

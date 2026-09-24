@@ -21,10 +21,24 @@ const SAFE_BACKEND_BUSINESS_MESSAGE_CODES = new Set([
 ])
 
 function numericStatus(error) {
-  const raw = error && typeof error === 'object' ? (error.status || error.code) : 0
-  const value = Number(raw)
-  if (value >= 100000) return Math.trunc(value / 1000)
-  return value
+  if (!error || typeof error !== 'object') return 0
+  const values = [error.httpStatus, error.status, error.statusCode, error.response?.status, error.code]
+    .map(Number).filter(Number.isFinite).map(value => value >= 100000 ? Math.trunc(value / 1000) : value)
+  // 显式服务故障不得被过期业务码或文案伪装成权限拒绝。
+  return values.find(value => value >= 500 && value < 600) || values.find(value => value >= 100 && value < 600) || 0
+}
+
+function errorPageState(error, status, bizCode, message) {
+  if (status >= 500) return 'error'
+  if (['NETWORK', 'ERR_NETWORK', 'ECONNABORTED'].includes(error?.code)) return 'offline'
+  if (status === 401 || status === 419) return 'unauthorized'
+  const legacy = !status && !error?.code && !bizCode
+  const denied = status === 403 || ['NO_PERMISSION', 'NO_DATA_SCOPE', 'FORBIDDEN'].includes(bizCode)
+  if ((denied || legacy) && /^(模块未购买或未授权[：:]|本校未开通该模块|当前学校尚未开通该模块)/.test(message)) return 'noLicense'
+  if (denied || (legacy && /^(当前账号(?:没有执行此操作的权限|无权访问)|当前身份无权查看|暂无访问权限|没有权限|权限不足|不在授权范围|当前账号尚未配置可管理范围)/.test(message))) return 'forbidden'
+  if (legacy && /^(登录(?:状态)?已失效|登录已过期|会话已超时)/.test(message)) return 'unauthorized'
+  if (legacy && /^(网络异常|网络请求失败|网络连接失败)/.test(message)) return 'offline'
+  return 'error'
 }
 
 function supportCode(error) {
@@ -47,8 +61,13 @@ export function normalizeUiError(error, context = {}) {
   ).trim()
   const status = numericStatus(error) || Number(context.status || 0)
   const code = supportCode(error)
+  const pageState = errorPageState(error, status, bizCode, rawMessage)
 
   let userMessage = BUSINESS_CODE_MESSAGES[bizCode] || ''
+  if (status >= 500) userMessage = '系统暂时无法完成该操作，请稍后重试'
+  if (pageState === 'noLicense') userMessage = '本校未开通该模块，如需使用请联系学校管理员'
+  if (pageState === 'unauthorized') userMessage = '登录已失效，请重新登录'
+  if (pageState === 'offline') userMessage = '网络异常，请检查网络连接后重试'
   if (
     !userMessage &&
     SAFE_BACKEND_BUSINESS_MESSAGE_CODES.has(bizCode) &&
@@ -75,7 +94,8 @@ export function normalizeUiError(error, context = {}) {
     supportCode: code,
     rawDeveloperDetail: rawMessage,
     bizCode,
-    status
+    status,
+    pageState
   }
 }
 
@@ -89,13 +109,29 @@ export function safeEnumLabel({ value, dictionary = {}, unknownLabel = '待确�
   return dictionary[key] || dictionary[key.toUpperCase()] || unknownLabel
 }
 
+/**
+ * 后端有些审计说明、风险来源既可能返回中文文案，也可能返回英文枚举码。
+ * 已经是中文的业务文案原样保留；未收录的英文码统一收口，避免把技术值展示给用户。
+ */
+export function safeLocalizedText({ value, dictionary = {}, unknownLabel = '待确认' } = {}) {
+  const key = String(value ?? '').trim()
+  if (!key) return '—'
+  const mapped = dictionary[key] || dictionary[key.toUpperCase()]
+  if (mapped) return mapped
+  return /[\u3400-\u9fff]/.test(key) ? key : unknownLabel
+}
+
 const AUDIT_ACTION_LABELS = Object.freeze({
+  PHONE_BINDING_CHANGE: '手机号登录凭据变更', PHONE_CANDIDATE_CHANGE: '待验证手机号登记变更',
+  PHONE_POLICY_CHANGE: '手机号登录与恢复策略变更', PHONE_BINDING_LOOKUP: '完整手机号授权核对',
+  PHONE_LEDGER_EXPORT: '手机号脱敏台账导出', PHONE_VERIFY_REMINDER: '本人手机号验证站内提醒',
   CREATE: '创建', UPDATE: '修改', DELETE: '删除', SUBMIT: '提交',
   APPLY: '提交申请', RESUBMIT: '重新提交',
   APPROVE: '审核通过', REVIEW_APPROVE: '审批通过',
   REJECT: '审核驳回', REVIEW_REJECT: '审批驳回',
   RETURN: '退回修改', REVIEW_RETURN: '退回修改', RETURN_VERSIONED: '办理销假',
-  PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色'
+  PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色',
+  ROLE_CREATE: '创建本校角色', ROLE_COPY: '复制本校角色', ROLE_PERMISSION_SAVE: '修改角色权限', ROLE_ADOPT: '转为本校维护', ROLE_ASSIGNMENT_REGISTER: '补登记历史授权'
 })
 const AUDIT_RESULT_LABELS = Object.freeze({
   SUCCESS: '成功', PASSED: '已通过', COMPLETED: '已完成',

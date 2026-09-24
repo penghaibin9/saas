@@ -356,10 +356,322 @@ def test_grant_validates_input(db_mode):
     assert "晚于" in caught.value.message
 
 
+def test_batch_grant_is_atomic_and_idempotent(db_mode):
+    _make_role("COUNSELOR")
+    first = _make_user("ras_batch_first")
+    second = _make_user("ras_batch_second")
+
+    granted = ras.batch_grant_assignments(
+        [first, second, first],
+        "COUNSELOR",
+        reason="秋季学期批量岗位授权",
+        tenant_id=MAIN_TENANT_ID,
+        user=_system_actor(),
+    )
+    assert granted["requestedCount"] == 2
+    assert granted["addedCount"] == 2
+    assert granted["skippedCount"] == 0
+    assert _user_role_status(first, "COUNSELOR") == "ACTIVE"
+    assert _user_role_status(second, "COUNSELOR") == "ACTIVE"
+
+    repeated = ras.batch_grant_assignments(
+        [first, second],
+        "COUNSELOR",
+        reason="重复提交必须保持幂等",
+        tenant_id=MAIN_TENANT_ID,
+        user=_system_actor(),
+    )
+    assert repeated["addedCount"] == 0
+    assert repeated["skippedCount"] == 2
+
+
+def test_batch_grant_rejects_student_and_rolls_back_all(db_mode):
+    _make_role("COUNSELOR")
+    teacher = _make_user("ras_batch_teacher")
+    student = _make_user("ras_batch_student", user_type="STUDENT")
+
+    with pytest.raises(AppException) as caught:
+        ras.batch_grant_assignments(
+            [teacher, student],
+            "COUNSELOR",
+            reason="非法账号导致整批回滚",
+            tenant_id=MAIN_TENANT_ID,
+            user=_system_actor(),
+        )
+    assert caught.value.code == "VALIDATION_ERROR"
+    assert _user_role_status(teacher, "COUNSELOR") != "ACTIVE"
+
+
+def test_batch_grant_restores_soft_deleted_user_role(db_mode):
+    from app.models import UserRole
+
+    role_id = _make_role("COUNSELOR")
+    user_id = _make_user("ras_batch_restore")
+    with _session() as db:
+        link = UserRole(
+            tenant_id=MAIN_TENANT_ID,
+            user_id=user_id,
+            role_id=role_id,
+            status="DISABLED",
+            is_deleted=True,
+        )
+        db.add(link)
+        db.commit()
+        original_id = int(link.id)
+
+    result = ras.batch_grant_assignments(
+        [user_id],
+        "COUNSELOR",
+        reason="恢复历史软删除角色关系",
+        tenant_id=MAIN_TENANT_ID,
+        user=_system_actor(),
+    )
+    assert result["addedCount"] == 1
+    with _session() as db:
+        restored = db.get(UserRole, original_id)
+        assert restored is not None
+        assert restored.is_deleted is False
+        assert restored.status == "ACTIVE"
+
+
+def test_role_assignment_scope_persists_college_and_enters_auth_claims(db_mode):
+    from sqlalchemy import select
+
+    from app.core.affairs_security import build_affairs_context
+    from app.core.context import set_tenant
+    from app.models import College, DataScopeRule, Role, RoleAssignmentScope, User, UserRole
+    from app.services import auth_service_db as auth
+    from app.services.role_assignment_scope_service import sync_assignment_scopes
+
+    user_id = _make_user("ras_scope_college")
+    with _session() as db:
+        role = Role(
+            tenant_id=MAIN_TENANT_ID,
+            role_code="SCOPE_COLLEGE_TEST",
+            role_name="学院范围测试角色",
+            role_type="CUSTOM",
+            status="ACTIVE",
+        )
+        college = College(
+            tenant_id=MAIN_TENANT_ID,
+            college_name="信息工程学院",
+            code="SCOPE-COLLEGE",
+            status="ACTIVE",
+        )
+        db.add_all([role, college])
+        db.flush()
+        db.add(DataScopeRule(
+            tenant_id=MAIN_TENANT_ID,
+            rule_name="学院范围测试",
+            role_code=role.role_code,
+            scope_type="COLLEGE",
+            status="ACTIVE",
+        ))
+        link = UserRole(
+            tenant_id=MAIN_TENANT_ID,
+            user_id=user_id,
+            role_id=role.id,
+            status="ACTIVE",
+        )
+        db.add(link)
+        db.flush()
+        result = sync_assignment_scopes(
+            db,
+            account=db.get(User, user_id),
+            roles=[role],
+            links_by_role_id={int(role.id): link},
+            raw_assignments=[{
+                "roleCode": role.role_code,
+                "scopeType": "COLLEGE",
+                "scopeIds": [str(college.id)],
+            }],
+            actor=_system_actor(),
+        )
+        db.commit()
+        assert result[0]["scopeIds"] == [str(college.id)]
+        saved = db.scalars(select(RoleAssignmentScope).where(
+            RoleAssignmentScope.user_id == user_id,
+            RoleAssignmentScope.role_code == role.role_code,
+            RoleAssignmentScope.status == "ACTIVE",
+        )).one()
+        assert saved.scope_type == "COLLEGE"
+        assert saved.scope_id == college.id
+
+        claims = {"currentRoleCode": role.role_code, "loginName": "ras_scope_college"}
+        auth._inject_org_scope_claims(db, db.get(User, user_id), claims)
+        assert claims["collegeIds"] == [str(college.id)]
+        set_tenant({"tenantId": MAIN_TENANT_ID})
+        context = build_affairs_context({
+            "userId": f"db-{user_id}",
+            "loginName": "ras_scope_college",
+            "currentRoleCode": role.role_code,
+            "tenantId": str(MAIN_TENANT_ID),
+            "userType": "TEACHER",
+        }, db)
+        assert context.scope_type == "COLLEGE"
+        assert context.college_ids == {int(college.id)}
+
+
+def test_major_assignment_scope_does_not_expand_to_sibling_major(db_mode):
+    from app.core.affairs_security import build_affairs_context
+    from app.core.context import set_tenant
+    from app.models import College, Major, RoleAssignmentScope, SchoolClass, UserRole
+
+    role_id = _make_role("SCOPE_MAJOR_TEST")
+    user_id = _make_user("ras_scope_major")
+    with _session() as db:
+        college = College(
+            tenant_id=MAIN_TENANT_ID,
+            college_name="专业范围测试学院",
+            code="SCOPE-MAJOR-COLLEGE",
+            status="ACTIVE",
+        )
+        db.add(college)
+        db.flush()
+        selected_major = Major(
+            tenant_id=MAIN_TENANT_ID,
+            college_id=int(college.id),
+            major_name="已授权专业",
+            code="SCOPE-MAJOR-SELECTED",
+            status="ACTIVE",
+        )
+        sibling_major = Major(
+            tenant_id=MAIN_TENANT_ID,
+            college_id=int(college.id),
+            major_name="同院未授权专业",
+            code="SCOPE-MAJOR-SIBLING",
+            status="ACTIVE",
+        )
+        db.add_all([selected_major, sibling_major])
+        db.flush()
+        selected_class = SchoolClass(
+            tenant_id=MAIN_TENANT_ID,
+            major_id=int(selected_major.id),
+            class_name="已授权专业班级",
+            status="ACTIVE",
+        )
+        sibling_class = SchoolClass(
+            tenant_id=MAIN_TENANT_ID,
+            major_id=int(sibling_major.id),
+            class_name="同院未授权专业班级",
+            status="ACTIVE",
+        )
+        link = UserRole(
+            tenant_id=MAIN_TENANT_ID,
+            user_id=user_id,
+            role_id=role_id,
+            status="ACTIVE",
+        )
+        db.add_all([selected_class, sibling_class, link])
+        db.flush()
+        db.add(RoleAssignmentScope(
+            tenant_id=MAIN_TENANT_ID,
+            user_role_id=int(link.id),
+            user_id=user_id,
+            role_code="SCOPE_MAJOR_TEST",
+            scope_type="MAJOR",
+            scope_id=int(selected_major.id),
+            scope_name_snapshot="专业范围测试学院 / 已授权专业",
+            status="ACTIVE",
+            # This contract verifies MAJOR isolation, not activation at the
+            # exact wall-clock boundary.  Make the grant unambiguously active
+            # across host/container clock skew on CI runners.
+            effective_at=datetime.utcnow() - timedelta(minutes=1),
+        ))
+        db.commit()
+
+        set_tenant({"tenantId": MAIN_TENANT_ID})
+        ctx = build_affairs_context({
+            "userId": f"db-{user_id}",
+            "loginName": "ras_scope_major",
+            "currentRoleCode": "SCOPE_MAJOR_TEST",
+            "tenantId": str(MAIN_TENANT_ID),
+            "userType": "TEACHER",
+        }, db)
+
+        assert ctx.scope_type == "CLASS"
+        assert ctx.college_ids == set()
+        assert ctx.class_ids == {int(selected_class.id)}
+        assert int(sibling_class.id) not in ctx.allowed_class_ids(db)
+
+
+def test_role_assignment_scope_rejects_cross_tenant_node_atomically(db_mode):
+    from app.models import College, DataScopeRule, Role, User, UserRole
+    from app.services.role_assignment_scope_service import sync_assignment_scopes
+
+    user_id = _make_user("ras_scope_cross")
+    other_tenant = MAIN_TENANT_ID + 902
+    _ensure_tenant(other_tenant)
+    with _session() as db:
+        role = Role(
+            tenant_id=MAIN_TENANT_ID,
+            role_code="SCOPE_CROSS_TEST",
+            role_name="跨校范围测试角色",
+            role_type="CUSTOM",
+            status="ACTIVE",
+        )
+        foreign_college = College(
+            tenant_id=other_tenant,
+            college_name="外校学院",
+            code="FOREIGN-COLLEGE",
+            status="ACTIVE",
+        )
+        db.add_all([role, foreign_college])
+        db.flush()
+        db.add(DataScopeRule(
+            tenant_id=MAIN_TENANT_ID,
+            rule_name="跨校范围测试",
+            role_code=role.role_code,
+            scope_type="COLLEGE",
+            status="ACTIVE",
+        ))
+        link = UserRole(
+            tenant_id=MAIN_TENANT_ID,
+            user_id=user_id,
+            role_id=role.id,
+            status="ACTIVE",
+        )
+        db.add(link)
+        db.flush()
+        with pytest.raises(AppException) as caught:
+            sync_assignment_scopes(
+                db,
+                account=db.get(User, user_id),
+                roles=[role],
+                links_by_role_id={int(role.id): link},
+                raw_assignments=[{
+                    "roleCode": role.role_code,
+                    "scopeType": "COLLEGE",
+                    "scopeIds": [str(foreign_college.id)],
+                }],
+                actor=_system_actor(),
+            )
+        assert caught.value.code == "VALIDATION_ERROR"
+        db.rollback()
+
+
 # ── 接口层 ───────────────────────────────────────────────────────────────────
 def test_http_endpoints(client, auth_headers, db_mode):
-    _make_role("COUNSELOR")
+    role_id = _make_role("COUNSELOR")
     user_id = _make_user("ras_http_01")
+
+    candidates = client.get(
+        f"/api/v1/system/roles/{role_id}/member-candidates",
+        headers=auth_headers,
+        params={"keyword": "ras_http_01", "page": 1, "pageSize": 20},
+    ).json()
+    assert candidates["code"] == 0
+    assert any(item["id"] == str(user_id) for item in candidates["data"]["items"])
+
+    batch_user = _make_user("ras_http_batch")
+    batch = client.post(
+        f"/api/v1/system/roles/{role_id}/members/batch",
+        headers=auth_headers,
+        json={"userIds": [str(batch_user)], "reason": "接口层批量授予验证"},
+    ).json()
+    assert batch["code"] == 0
+    assert batch["data"]["addedCount"] == 1
+    assert _user_role_status(batch_user, "COUNSELOR") == "ACTIVE"
 
     granted = client.post("/api/v1/system/role-assignments", headers=auth_headers,
                           json={"userId": str(user_id), "roleCode": "COUNSELOR",

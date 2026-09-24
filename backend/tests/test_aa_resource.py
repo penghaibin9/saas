@@ -19,7 +19,7 @@ def _mk(client, hdr, building_code="A", room_code="101", **kw):
     body = {"buildingCode": building_code, "buildingName": kw.get("buildingName", "教学A楼"),
             "roomCode": room_code, "capacity": kw.get("capacity", 60),
             "roomType": kw.get("roomType", "MULTIMEDIA")}
-    body.update({k: v for k, v in kw.items() if k in ("roomName", "campusCode", "remark")})
+    body.update({k: v for k, v in kw.items() if k in ("roomName", "campusCode", "remark", "allowBorrow")})
     return client.post(f"{BASE}/classrooms", headers=hdr, json=body)
 
 
@@ -112,7 +112,7 @@ def test_t7_authz_denied(client, db_mode):
 def test_t8_classroom_booking_and_conflict(client, db_mode):
     """教室预约：申请PENDING→审核APPROVED；同教室同时段再审批冲突409。"""
     hdr = _hdr(client, "school_admin01")
-    cid = _mk(client, hdr, room_code="801").json()["data"]["classroomId"]
+    cid = _mk(client, hdr, room_code="801", allowBorrow=True).json()["data"]["classroomId"]
     b1 = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
                      json={"classroomId": str(cid), "bookingDate": "2027-06-20", "slotNo": 1, "purpose": "社团活动"}).json()
     assert b1["code"] == 0 and b1["data"]["status"] == "PENDING"

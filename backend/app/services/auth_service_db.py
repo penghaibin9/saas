@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import secrets
 
 from sqlalchemy import and_, select
 
@@ -34,6 +35,29 @@ LEGACY_DEMO_ROLE_BY_LOGIN = {
     "counselor_demo": ("COUNSELOR", "辅导员", "COUNSELOR_CLASSES", "所带班级学生（演示租户）"),
     "student_demo": ("STUDENT", "学生", "SELF", "本人"),
 }
+
+
+def assert_mini_client_user_type(user, client_type: str | None) -> None:
+    """Reject a mobile surface that does not match the authenticated account plane.
+
+    This guard intentionally lives beside the canonical account/role resolver so
+    password, WeChat and role-switch paths cannot drift into separate mappings.
+    It is not a UI decision: a token issued for one mini-program surface must
+    never be usable as the other surface merely because the client changed a
+    request field.
+    """
+    client = str(client_type or "").strip().upper()
+    if client not in {"STUDENT_MINI", "TEACHER_MINI"}:
+        return
+    user_type = str(
+        getattr(user, "user_type", None)
+        or (user.get("userType") if isinstance(user, dict) else "")
+        or ""
+    ).strip().upper()
+    if client == "STUDENT_MINI" and user_type != "STUDENT":
+        raise AppException("NO_PERMISSION", "当前账号不能进入学生小程序，请从正确入口登录", http_status=403)
+    if client == "TEACHER_MINI" and user_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}:
+        raise AppException("NO_PERMISSION", "当前账号不能进入教师小程序，请从正确入口登录", http_status=403)
 
 
 def _subject_cache_key(user_ctx: dict) -> str:
@@ -65,6 +89,10 @@ def invalidate_tenant_subject_caches(tenant_id: str | int) -> int:
 
 
 def _subject_cache_matches(user_ctx: dict) -> bool:
+    from app.core.auth_hardening_policy import legacy_school_context, strict_security_environment
+    # An older legacy token must recheck DB roles, even if another worker cached it.
+    if strict_security_environment(settings) and legacy_school_context(user_ctx):
+        return False
     if cache_get(_force_revalidate_key(
             user_ctx.get("userId") or "-", user_ctx.get("tenantId") or "0")) == "1":
         return False
@@ -177,7 +205,10 @@ def _role_contexts(db, user) -> list[dict]:
     if contexts:
         return contexts
 
-    # 迁移期只兼容仓库登记的演示账号。新账号无角色必须 fail-closed。
+    # Only explicitly enabled non-production fixtures may use name-based roles.
+    from app.core.auth_hardening_policy import allow_legacy_role_fallback
+    if not allow_legacy_role_fallback(settings):
+        return []
     legacy = LEGACY_DEMO_ROLE_BY_LOGIN.get(user.login_name)
     if legacy:
         return [_public_context(None, legacy[0], legacy[1], legacy[2], legacy[3], legacy=True)]
@@ -275,6 +306,55 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
     配置后须重新登录或切换身份才会进入新令牌。
     """
     role = (claims.get("currentRoleCode") or "").strip().upper()
+    # 新授权链：直接读取与当前 user-role 绑定的稳定范围主键。
+    # 先沿五级树补齐祖先 ID，供各业务域统一做范围判断；没有新范围时再回落历史表。
+    from app.models import Major, RoleAssignmentScope, SchoolClass, StudentProfile
+    now = datetime.now()
+    assigned = db.scalars(select(RoleAssignmentScope).where(
+        RoleAssignmentScope.tenant_id == user.tenant_id,
+        RoleAssignmentScope.user_id == user.id,
+        RoleAssignmentScope.role_code == role,
+        RoleAssignmentScope.status == "ACTIVE",
+        RoleAssignmentScope.is_deleted.is_(False),
+        RoleAssignmentScope.effective_at <= now,
+        (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > now)),
+    )).all()
+    if assigned:
+        college_ids = {int(row.scope_id) for row in assigned if row.scope_type == "COLLEGE"}
+        major_ids = {int(row.scope_id) for row in assigned if row.scope_type == "MAJOR"}
+        class_ids = {int(row.scope_id) for row in assigned if row.scope_type == "CLASS"}
+        student_ids = {int(row.scope_id) for row in assigned if row.scope_type == "STUDENT"}
+        if major_ids:
+            college_ids |= {int(value) for value in db.scalars(select(Major.college_id).where(
+                Major.tenant_id == user.tenant_id, Major.id.in_(major_ids))).all() if value}
+        if class_ids:
+            class_rows = db.execute(select(SchoolClass.id, Major.id, Major.college_id).join(
+                Major, Major.id == SchoolClass.major_id
+            ).where(SchoolClass.tenant_id == user.tenant_id, SchoolClass.id.in_(class_ids))).all()
+            major_ids |= {int(major_id) for _, major_id, _ in class_rows if major_id}
+            college_ids |= {int(college_id) for _, _, college_id in class_rows if college_id}
+        if student_ids:
+            student_rows = db.execute(select(
+                StudentProfile.class_id, StudentProfile.major_id, StudentProfile.college_id
+            ).where(
+                StudentProfile.tenant_id == user.tenant_id,
+                StudentProfile.id.in_(student_ids),
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+            class_ids |= {int(class_id) for class_id, _, _ in student_rows if class_id}
+            major_ids |= {int(major_id) for _, major_id, _ in student_rows if major_id}
+            college_ids |= {int(college_id) for _, _, college_id in student_rows if college_id}
+        for plural, singular, values in (
+            ("collegeIds", "collegeId", college_ids),
+            ("majorIds", "majorId", major_ids),
+            ("classIds", "classId", class_ids),
+            ("studentIds", "studentScopeId", student_ids),
+        ):
+            if values:
+                claims[plural] = [str(value) for value in sorted(values)]
+                claims[singular] = str(sorted(values)[0])
+        return
+
     if role not in {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}:
         return
     from app.models import College, Major, TeacherStudentScope
@@ -349,6 +429,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
         "activeContextId": context["contextId"],
         "currentRoleCode": context["roleCode"],
         "permissionVersion": _permission_version(user, contexts),
+        "credentialVersion": int(getattr(user, "credential_version", 0) or 0),
         "clientType": client_type,
     }
     student_id, student_no = _student_identity(db, user)
@@ -363,6 +444,7 @@ def _claims(db, user, context: dict, contexts: list[dict], client_type: str) -> 
 
 def _login_result(db, user, context: dict, contexts: list[dict], client_type: str) -> dict:
     claims = _claims(db, user, context, contexts, client_type)
+    claims["authSessionId"] = secrets.token_urlsafe(24)
     access_token = create_access_token(claims)
     refresh_token = issue_refresh(dict(claims))
     return {
@@ -523,16 +605,46 @@ def _load_token_user(db, user_ctx: dict):
     return user
 
 
+def validate_credential_epoch(user, user_ctx: dict) -> None:
+    token_credential = user_ctx.get("credentialVersion")
+    current_credential = int(getattr(user, "credential_version", 0) or 0)
+    if token_credential is None:
+        valid = current_credential == 0
+    else:
+        valid = type(token_credential) is int and token_credential == current_credential
+    if not valid:
+        raise AppException("UNAUTHORIZED", "认证凭据已更新，请重新登录")
+
+
+def credential_change_receipt(user, user_ctx: dict) -> dict:
+    """Post-commit cleanup cannot turn a durable security change into a false failure."""
+    cache_ok = refresh_ok = True
+    try:
+        invalidate_subject_cache(f"db-{user.id}", user.tenant_id, user_ctx.get("activeContextId"))
+    except Exception:
+        cache_ok = False
+    try:
+        from app.core.token_store import revoke_refresh_by_user
+        revoke_refresh_by_user(f"db-{user.id}")
+    except Exception:
+        refresh_ok = False
+    return {"success": True, "reloginRequired": True, "runtimeMaterialized": True,
+        "credentialVersion": int(user.credential_version), "cacheInvalidated": cache_ok,
+        "cacheRecoveryRequired": not cache_ok, "refreshCleanupRequired": not refresh_ok,
+        "warning": "安全变更已生效，旧凭据已失效，缓存清理待重试" if not (cache_ok and refresh_ok) else ""}
+
+
 def validate_token_subject(user_ctx: dict) -> dict:
     """对真实账号逐请求复核账号、租户、当前角色和权限版本，角色回收立即生效。"""
     if not db_enabled() or not str((user_ctx or {}).get("userId") or "").startswith("db-"):
         return user_ctx
-    if _subject_cache_matches(user_ctx):
-        return user_ctx
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        validate_credential_epoch(user, user_ctx)
         _ensure_tenant_login_allowed(db, user)
+        if _subject_cache_matches(user_ctx):
+            return user_ctx
         contexts = _role_contexts(db, user)
         current = _pick_context(contexts,
                                 context_id=user_ctx.get("activeContextId"),
@@ -566,6 +678,7 @@ def get_me(user_ctx: dict) -> dict:
             "loginName": user.login_name,
             "realName": user.real_name,
             "userType": user.user_type,
+            "tenantId": str(user.tenant_id),
             "avatarFileId": None,
             "phoneMasked": None,
             "activeContextId": active["contextId"],
@@ -584,6 +697,7 @@ def switch_role(user_ctx: dict, context_id: str, client_type: str) -> dict:
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        assert_mini_client_user_type(user, client_type)
         contexts = _role_contexts(db, user)
         target = _pick_context(contexts, context_id=context_id)
         if target is None or target["contextId"] != context_id:
@@ -642,6 +756,10 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
     db = get_sessionmaker()()
     try:
         user = _load_token_user(db, user_ctx)
+        db.refresh(user, with_for_update=True)
+        validate_credential_epoch(user, user_ctx)
+        if user.is_deleted or user.status != "ACTIVE":
+            raise AppException("UNAUTHORIZED", "账号已停用，请重新登录")
         if not verify_password(old_password or "", user.password_hash):
             count, locked = record_login_failure(lock_key)
             if locked:
@@ -651,16 +769,16 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
+        user.credential_version = int(user.credential_version or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(db, "PASSWORD_CHANGE", f"user:{user.id}",
+            detail={"credentialVersion": user.credential_version}, tenant_id=user.tenant_id,
+            resource_id=str(user.id))
         # 安全版本提交前先设置强制回库标记；版本化旧 token 会在下一请求被 version mismatch 拒绝，
         # 历史无 permissionVersion token 则由 password_change_gate 保持 fail-closed，直到新 token
         # 完成实时校验后写入 JWT-lifetime legacy block。认证存储故障时生产环境直接拒绝本次改密。
         force_subject_revalidation(f"db-{user.id}", user.tenant_id)
         db.commit()
-        invalidate_subject_cache(f"db-{user.id}", user.tenant_id,
-                                 user_ctx.get("activeContextId"))
-        revoke_refresh_by_user(f"db-{user.id}")
-        from app.services import audit_log
-        audit_log.record("PASSWORD_CHANGE", user.login_name, detail={}, result="SUCCESS")
-        return {"success": True, "reloginRequired": True}
+        return credential_change_receipt(user, user_ctx)
     finally:
         db.close()

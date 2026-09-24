@@ -14,6 +14,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipAuditTrail,
     InternshipBatch,
@@ -24,6 +25,7 @@ from app.models import (
     InternshipMakeup,
     InternshipProcessReport,
     InternshipRecord,
+    InternshipStudentEval,
     InternshipVisit,
     StudentProfile,
     WeeklyReport,
@@ -80,6 +82,7 @@ _ADJUSTMENT_ALIASES = {
 }
 
 _legacy_get_score = _score.get_score
+_legacy_list_scores = _score.list_scores
 _legacy_score_freeze = _archive_guard._score_freeze
 
 
@@ -191,6 +194,15 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
         InternshipVisit.is_deleted.is_(False),
     ).order_by(InternshipVisit.id)).all())
     enterprise_eval = _score._approved_enterprise_eval(db, record.id)
+    student_eval = db.scalar(select(InternshipStudentEval).where(
+        InternshipStudentEval.tenant_id == _tid(),
+        InternshipStudentEval.internship_id == record.id,
+        InternshipStudentEval.student_id == record.student_id,
+        InternshipStudentEval.submit_status == "SUBMITTED",
+        InternshipStudentEval.school_review_status == "APPROVED",
+        InternshipStudentEval.advisor_opinion.is_not(None),
+        InternshipStudentEval.is_deleted.is_(False),
+    ).order_by(InternshipStudentEval.id.desc()))
     config = _score._active_config(db, record.batch_id)
 
     monthly_expected = _monthly_expected(record, batch)
@@ -212,7 +224,9 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
         ),
         "monthly": _ratio_score(monthly_expected, monthly_actual),
         "enterprise": _score._enterprise_avg(enterprise_eval),
-        "school": _ratio_score(school_expected, school_actual),
+        # 学校评价数值仍由指导/巡访事实生成，但学生自评、对企业/岗位评价、
+        # 导师意见及学校审核必须形成同一版本链，不能绕过评价流程直接得分。
+        "school": _ratio_score(school_expected, school_actual) if student_eval else None,
     }
     rules = dict(getattr(batch, "rules_config", None) or {})
     weights = {
@@ -301,10 +315,26 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
                 _row_ref(row, method=row.method, visitAt=_iso(row.visit_at) or "")
                 for row in visits
             ],
+            "studentEvaluation": {
+                "id": str(student_eval.id) if student_eval else "",
+                "version": int(student_eval.version or 0) if student_eval else 0,
+                "submitStatus": student_eval.submit_status if student_eval else "MISSING",
+                "reviewStatus": student_eval.school_review_status if student_eval else "MISSING",
+                "enterpriseRating": student_eval.enterprise_rating if student_eval else None,
+                "positionRating": student_eval.position_rating if student_eval else None,
+            },
+            "advisorEvaluation": {
+                "sourceId": str(student_eval.id) if student_eval else "",
+                "sourceVersion": int(student_eval.version or 0) if student_eval else 0,
+                "completed": bool(student_eval and str(student_eval.advisor_opinion or "").strip()),
+            },
         },
         "enterprise": {
             "evaluationId": str(enterprise_eval.id) if enterprise_eval else "",
             "evaluationVersion": int(enterprise_eval.version or 0) if enterprise_eval else 0,
+            "placementSnapshotId": str(enterprise_eval.placement_snapshot_id) if enterprise_eval else "",
+            "enterpriseId": str(enterprise_eval.enterprise_id) if enterprise_eval else "",
+            "positionId": str(enterprise_eval.position_id) if enterprise_eval else "",
             "sourceFileId": (
                 enterprise_eval.source_file_id or enterprise_eval.file_id
             ) if enterprise_eval else "",
@@ -325,6 +355,12 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
         "weights": weights,
         "passLine": pass_line,
         "enterpriseEval": enterprise_eval,
+        "studentEval": student_eval,
+        "sourceReadiness": {
+            "enterpriseEvaluation": bool(enterprise_eval),
+            "studentSelfEvaluation": bool(student_eval),
+            "advisorEvaluation": bool(student_eval and str(student_eval.advisor_opinion or "").strip()),
+        },
         "quantityFacts": quantity,
     }
 
@@ -397,7 +433,7 @@ def _bind_adjustment_evidence(
                 "businessType": "INTERNSHIP_SCORE_ADJUSTMENT",
             },
         )
-        file_obj = db.get(FileObject, int(file_id))
+        file_obj = tenant_get(db, FileObject, int(file_id))
         snapshots.append({
             "fileId": file_id,
             "fileVersion": int(file_obj.version or 0),
@@ -552,6 +588,10 @@ def _compute(user, body) -> dict:
             raise AppException(
                 "DATA_CONFLICT", "历史成绩归档记录必须先走档案更正流程，不能直接重算",
             )
+        if score and score.status == "PENDING_PUBLISH":
+            raise AppException(
+                "DATA_CONFLICT", "成绩已完成复核；如需重算，必须先执行有原因留痕的退回重算",
+            )
         values = {
             **{
                 _COMPONENT_COLUMNS[key]: final_scores[key]
@@ -624,6 +664,7 @@ def _compute(user, body) -> dict:
             "sourceManifest": source_manifest,
             "factSourceHash": facts["factSourceHash"],
             "sourceHash": source_hash,
+            "sourceReadiness": facts["sourceReadiness"],
             "adjustment": {
                 "reason": reason if has_adjustment else "",
                 "evidenceFileIds": evidence_file_ids,
@@ -653,6 +694,7 @@ def _compute(user, body) -> dict:
             if facts["config"] else 0,
             "factSourceHash": facts["factSourceHash"],
             "sourceHash": source_hash,
+            "sourceReadiness": facts["sourceReadiness"],
             "manualAdjustment": has_adjustment,
             "actorUserId": _score._user_id(user),
             "actorRole": _score._role_code(user),
@@ -667,6 +709,7 @@ def _compute(user, body) -> dict:
             "manualAdjustments": adjustments,
             "factSourceHash": facts["factSourceHash"],
             "sourceHash": source_hash,
+            "sourceReadiness": facts["sourceReadiness"],
             "adjustmentReviewStatus": "PENDING" if has_adjustment else "NOT_REQUIRED",
             "incomplete": incomplete,
             "incompleteReason": values["incomplete_reason"],
@@ -682,13 +725,17 @@ def _publish(user, score_id, expected_version=None) -> dict:
     enforce_permission(user or {}, "internship.score.publish")
     _score._assert_reviewer(user, final=True)
     with session() as db:
+        from app.modules.internship.services.internship_audit_service import (
+            assert_high_risk_write_available,
+        )
+        assert_high_risk_write_available(db)
         record, score = _archive_guard._locked_score(db, score_id)
         _archive_guard._student_and_scope(
             db, record, user, "只能发布本人数据范围内的成绩",
         )
         _archive_guard._require_assessing(record, "发布成绩")
-        if score.status != "PENDING_REVIEW":
-            raise AppException("DATA_CONFLICT", "仅待复核成绩可发布")
+        if score.status != "PENDING_PUBLISH":
+            raise AppException("DATA_CONFLICT", "成绩须先完成独立复核，待发布状态方可发布")
         if score.incomplete:
             raise AppException(
                 "DATA_CONFLICT", f"成绩缺项不可发布（{score.incomplete_reason}）",
@@ -717,36 +764,11 @@ def _publish(user, score_id, expected_version=None) -> dict:
         _verify_evidence_snapshot(db, score, evidence)
         adjustments = detail.get("manualAdjustments") or {}
         has_adjustment = any(int(value or 0) != 0 for value in adjustments.values())
-        reviewer_id = _score._user_id(user)
+        actor_id = _score._user_id(user)
         if has_adjustment:
-            adjuster_id = str(
-                (detail.get("adjustment") or {}).get("actorUserId") or ""
-            )
-            if not reviewer_id or not adjuster_id:
-                raise AppException(
-                    "DATA_CONFLICT", "人工调分缺少稳定调整人或复核人 userId",
-                )
-            if reviewer_id == adjuster_id:
-                raise AppException(
-                    "DATA_CONFLICT", "人工调分必须由不同用户复核，调整人不得自行发布",
-                )
-            review = InternshipAuditTrail(
-                tenant_id=_tid(),
-                target_id=score.id,
-                target_type="SCORE",
-                action=_REVIEW_ACTION,
-                operator_name=_score._op_name(user),
-                detail_json={
-                    "computeSnapshotId": str(snapshot.id),
-                    "decision": "APPROVED",
-                    "sourceHash": detail.get("sourceHash"),
-                    "adjusterUserId": adjuster_id,
-                    "reviewerUserId": reviewer_id,
-                    "reviewerRole": _score._role_code(user),
-                },
-                occurred_at=datetime.utcnow(),
-            )
-            db.add(review)
+            review = _latest_review(db, score.id, snapshot.id)
+            if not review:
+                raise AppException("DATA_CONFLICT", "人工调分尚未完成独立复核，禁止发布")
 
         evaluation = evaluate_internship_compliance(
             record.id, "ASSESS", user=user, db=db,
@@ -769,11 +791,9 @@ def _publish(user, score_id, expected_version=None) -> dict:
             expected_version=extract_expected_version(
                 {"expectedVersion": expected_version}
             ),
-            expected_status="PENDING_REVIEW",
+            expected_status="PENDING_PUBLISH",
             values={
                 "status": "PUBLISHED",
-                "reviewed_by_name": _score._op_name(user),
-                "reviewed_at": datetime.utcnow(),
                 "published_by_name": _score._op_name(user),
                 "published_at": datetime.utcnow(),
             },
@@ -787,7 +807,7 @@ def _publish(user, score_id, expected_version=None) -> dict:
             "factSourceHash": detail.get("factSourceHash"),
             "sourceHash": detail.get("sourceHash"),
             "manualAdjustmentReviewed": has_adjustment,
-            "actorUserId": reviewer_id,
+            "actorUserId": actor_id,
             "actorRole": _score._role_code(user),
         }, operator=_score._op_name(user))
         db.commit()
@@ -799,6 +819,68 @@ def _publish(user, score_id, expected_version=None) -> dict:
             "sourceHash": detail.get("sourceHash"),
             "adjustmentReviewStatus": "APPROVED" if has_adjustment else "NOT_REQUIRED",
         }
+
+
+def _review(user, score_id, expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    from app.modules.internship.services.internship_audit_service import (
+        assert_high_risk_write_available,
+    )
+
+    enforce_permission(user or {}, "internship.score.manage")
+    _score._assert_reviewer(user, final=False)
+    with session() as db:
+        assert_high_risk_write_available(db)
+        record, score = _archive_guard._locked_score(db, score_id)
+        _archive_guard._student_and_scope(db, record, user, "只能复核本人数据范围内的成绩")
+        _archive_guard._require_assessing(record, "复核成绩")
+        if score.status != "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", "仅待复核成绩可提交待发布")
+        if score.incomplete:
+            raise AppException("DATA_CONFLICT", f"成绩缺项不可复核（{score.incomplete_reason}）")
+        snapshot = _latest_snapshot(db, score.id)
+        if not snapshot:
+            raise AppException("DATA_CONFLICT", "成绩缺少正式过程事实快照，请重新核算")
+        detail = snapshot.detail_json or {}
+        current_facts = _fact_snapshot(db, record)
+        if current_facts["factSourceHash"] != detail.get("factSourceHash"):
+            raise AppException("DATA_CONFLICT", "成绩来源事实已变化，请重新核算后再复核")
+        evidence = ((detail.get("sourceManifest") or {}).get("manualAdjustmentEvidence") or [])
+        _verify_evidence_snapshot(db, score, evidence)
+        adjustments = detail.get("manualAdjustments") or {}
+        has_adjustment = any(int(value or 0) != 0 for value in adjustments.values())
+        reviewer_id = _score._user_id(user)
+        if has_adjustment:
+            adjuster_id = str((detail.get("adjustment") or {}).get("actorUserId") or "")
+            if not reviewer_id or not adjuster_id:
+                raise AppException("DATA_CONFLICT", "人工调分缺少稳定调整人或复核人 userId")
+            if reviewer_id == adjuster_id:
+                raise AppException("DATA_CONFLICT", "人工调分必须由不同用户复核，调整人不得自行复核")
+            db.add(InternshipAuditTrail(
+                tenant_id=_tid(), target_id=score.id, target_type="SCORE",
+                action=_REVIEW_ACTION, operator_name=_score._op_name(user),
+                detail_json={
+                    "computeSnapshotId": str(snapshot.id), "decision": "APPROVED",
+                    "sourceHash": detail.get("sourceHash"), "adjusterUserId": adjuster_id,
+                    "reviewerUserId": reviewer_id, "reviewerRole": _score._role_code(user),
+                }, occurred_at=datetime.utcnow()))
+        new_version = versioned_update(
+            db, InternshipFinalScore, entity_id=score.id, tenant_id=_tid(),
+            expected_version=extract_expected_version({"expectedVersion": expected_version}),
+            expected_status="PENDING_REVIEW",
+            values={"status": "PENDING_PUBLISH", "reviewed_by_name": _score._op_name(user),
+                    "reviewed_at": datetime.utcnow()},
+        )
+        _score._trail(db, score.id, "REVIEW", {
+            "computeSnapshotId": str(snapshot.id), "sourceHash": detail.get("sourceHash"),
+            "manualAdjustmentReviewed": has_adjustment, "actorUserId": reviewer_id,
+            "actorRole": _score._role_code(user),
+        }, operator=_score._op_name(user))
+        db.commit()
+        return {"id": str(score.id), "status": "PENDING_PUBLISH",
+                "statusLabel": _score.STATUS_LABEL["PENDING_PUBLISH"],
+                "version": new_version, "sourceHash": detail.get("sourceHash"),
+                "adjustmentReviewStatus": "APPROVED" if has_adjustment else "NOT_REQUIRED"}
 
 
 def _get_score(score_id, user=None) -> dict:
@@ -813,6 +895,7 @@ def _get_score(score_id, user=None) -> dict:
                 "factSourceHash": "",
                 "sourceHash": "",
                 "adjustmentReviewStatus": "LEGACY_MISSING",
+                "sourceReadiness": {},
             })
             return result
         detail = snapshot.detail_json or {}
@@ -830,12 +913,52 @@ def _get_score(score_id, user=None) -> dict:
                 "APPROVED" if review
                 else adjustment.get("reviewStatus") or "NOT_REQUIRED"
             ),
+            "sourceReadiness": detail.get("sourceReadiness") or {},
             "adjustedByUserId": adjustment.get("actorUserId") or "",
             "reviewedByUserId": (
                 (review.detail_json or {}).get("reviewerUserId") if review else ""
             ),
         })
         return result
+
+
+def _list_scores(*args, **kwargs):
+    items, total = _legacy_list_scores(*args, **kwargs)
+    score_ids = [int(item["id"]) for item in items if str(item.get("id") or "").isdigit()]
+    if not score_ids:
+        return items, total
+    with session() as db:
+        snapshots = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "SCORE",
+            InternshipAuditTrail.target_id.in_(score_ids),
+            InternshipAuditTrail.action == _SNAPSHOT_ACTION,
+        ).order_by(InternshipAuditTrail.id.desc())).all()
+        latest = {}
+        for snapshot in snapshots:
+            latest.setdefault(int(snapshot.target_id), snapshot)
+        for item in items:
+            snapshot = latest.get(int(item["id"])) if str(item.get("id") or "").isdigit() else None
+            detail = (snapshot.detail_json or {}) if snapshot else {}
+            item["suggestedScores"] = detail.get("suggestedScores") or {}
+            item["manualAdjustments"] = detail.get("manualAdjustments") or {}
+            item["sourceReadiness"] = detail.get("sourceReadiness") or {}
+            if item.get("incomplete"):
+                item["queueStage"] = "MISSING_COMPONENTS"
+                item["nextStep"] = "补齐企业评价、自评/导师评价或过程事实后重新核算"
+            elif item.get("status") in {"PENDING_CALC", "WITHDRAWN"}:
+                item["queueStage"] = "PENDING_CALCULATE"
+                item["nextStep"] = "按当前来源事实重新核算"
+            elif item.get("status") == "PENDING_REVIEW":
+                item["queueStage"] = "PENDING_REVIEW"
+                item["nextStep"] = "授权复核人核对来源快照并提交待发布"
+            elif item.get("status") == "PENDING_PUBLISH":
+                item["queueStage"] = "PENDING_PUBLISH"
+                item["nextStep"] = "学校管理员最终发布"
+            else:
+                item["queueStage"] = item.get("status") or "UNKNOWN"
+                item["nextStep"] = "查看正式成绩与审计留痕"
+    return items, total
 
 
 def _score_freeze(db, score) -> tuple[dict, str]:
@@ -870,7 +993,9 @@ def install() -> None:
     if _INSTALLED:
         return
     _score.compute = _compute
+    _score.review = _review
     _score.publish = _publish
     _score.get_score = _get_score
+    _score.list_scores = _list_scores
     _archive_guard._score_freeze = _score_freeze
     _INSTALLED = True

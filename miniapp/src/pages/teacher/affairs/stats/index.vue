@@ -38,6 +38,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 
 const TALK_TYPE = { LIFE: '生活关怀', STUDY: '学业', PSYCHOLOGY: '心理', CAREER: '就业', DISCIPLINE: '违纪', OTHER: '其他' }
@@ -72,7 +73,7 @@ export default {
       ]).then(([talk, mental]) => {
         this.talk = talk; this.mental = mental
         this.state = (talk || mental) ? 'ready' : 'error'
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     }
   }
 }

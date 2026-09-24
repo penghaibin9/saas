@@ -219,7 +219,7 @@ def _grant_assignment_in_db(
 
     link = db.scalars(select(UserRole).where(
         UserRole.tenant_id == tenant_id, UserRole.user_id == account.id,
-        UserRole.role_id == role.id, UserRole.is_deleted.is_(False)).with_for_update()).first()
+        UserRole.role_id == role.id).with_for_update()).first()
     if link is None:
         link = UserRole(tenant_id=tenant_id, user_id=account.id, role_id=role.id, status="ACTIVE")
         db.add(link)
@@ -231,8 +231,7 @@ def _grant_assignment_in_db(
 
     validity = db.scalars(select(RoleAssignmentValidity).where(
         RoleAssignmentValidity.tenant_id == tenant_id,
-        RoleAssignmentValidity.user_role_id == link.id,
-        RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
+        RoleAssignmentValidity.user_role_id == link.id).with_for_update()).first()
     if validity is None:
         validity = RoleAssignmentValidity(
             tenant_id=tenant_id, user_role_id=int(link.id), user_id=int(account.id),
@@ -242,6 +241,7 @@ def _grant_assignment_in_db(
             created_by=_actor_id(actor), updated_by=_actor_id(actor))
         db.add(validity)
     else:
+        validity.is_deleted = False
         validity.effective_at = start
         validity.expires_at = end
         validity.source_type = source_type
@@ -306,6 +306,132 @@ def grant_assignment(user_id: int, role_code: str, *, reason: str,
 
     _invalidate({int(user_id)}, tid)
     return get_assignment(assignment_id, tenant_id=tid)
+
+
+def batch_grant_assignments(user_ids: list[Any], role_code: str, *, reason: str,
+                            effective_at: Any = None, expires_at: Any = None,
+                            source_type: str = SOURCE_MANUAL,
+                            tenant_id: int | None = None,
+                            user: dict | None = None) -> dict:
+    """按角色批量授予成员；预检、写入和关键审计必须同一事务。"""
+    normalized_ids: list[int] = []
+    for raw in user_ids or []:
+        value = str(raw or "").strip()
+        if not value.isdigit() or int(value) <= 0:
+            raise AppException("VALIDATION_ERROR", "userIds 必须全部是有效账号主键")
+        uid = int(value)
+        if uid not in normalized_ids:
+            normalized_ids.append(uid)
+    if not normalized_ids:
+        raise AppException("VALIDATION_ERROR", "至少选择一位老师")
+    if len(normalized_ids) > 100:
+        raise AppException("VALIDATION_ERROR", "单次最多添加 100 位老师")
+
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "授予原因不少于 5 个字")
+    tid = _tid(tenant_id)
+    start = _parse_dt(effective_at, "effectiveAt") or _now()
+    end = _parse_dt(expires_at, "expiresAt")
+    if end is not None and end <= start:
+        raise AppException("VALIDATION_ERROR", "到期时间必须晚于生效时间")
+
+    from app.models import User, UserRole
+
+    db = get_sessionmaker()()
+    added_ids: list[int] = []
+    skipped_ids: list[int] = []
+    try:
+        role = _role_row(db, tid, str(role_code or "").strip().upper())
+        if str(role.status or "").upper() not in ("ACTIVE", "ENABLED"):
+            raise AppException("VALIDATION_ERROR", "角色已停用，不能继续添加成员")
+        _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
+
+        accounts = list(db.scalars(select(User).where(
+            User.tenant_id == tid,
+            User.id.in_(normalized_ids),
+            User.is_deleted.is_(False),
+        ).with_for_update()).all())
+        by_id = {int(account.id): account for account in accounts}
+        missing = [uid for uid in normalized_ids if uid not in by_id]
+        if missing:
+            raise AppException("DATA_NOT_FOUND", "包含不存在或不属于当前学校的账号")
+        invalid = [uid for uid, account in by_id.items()
+                   if str(account.user_type or "").upper() == "STUDENT"
+                   or str(account.status or "").upper() != "ACTIVE"]
+        if invalid:
+            raise AppException("VALIDATION_ERROR", "只能添加启用中的教职工账号")
+
+        active_ids = set(db.scalars(select(UserRole.user_id).where(
+            UserRole.tenant_id == tid,
+            UserRole.role_id == int(role.id),
+            UserRole.user_id.in_(normalized_ids),
+            UserRole.status == VALIDITY_ACTIVE,
+            UserRole.is_deleted.is_(False),
+        )).all())
+        skipped_ids = [uid for uid in normalized_ids if uid in active_ids]
+
+        assignment_ids: list[int] = []
+        for uid in normalized_ids:
+            if uid in active_ids:
+                continue
+            validity, _, _ = _grant_assignment_in_db(
+                db,
+                user_id=uid,
+                role_code=role.role_code,
+                reason=reason_text,
+                start=start,
+                end=end,
+                source_type=source_type,
+                source_id=None,
+                tenant_id=tid,
+                actor=user,
+            )
+            added_ids.append(uid)
+            assignment_ids.append(int(validity.id))
+
+        if added_ids:
+            from app.services import audit_log
+
+            audit_log.record_critical_in_session(
+                db,
+                "ROLE_ASSIGNMENT_GRANT",
+                f"role:{int(role.id)}:members",
+                detail={
+                    "batch": True,
+                    "roleId": int(role.id),
+                    "roleCode": role.role_code,
+                    "requestedCount": len(normalized_ids),
+                    "addedCount": len(added_ids),
+                    "skippedCount": len(skipped_ids),
+                    "addedUserIds": added_ids,
+                    "assignmentIds": assignment_ids,
+                    "reason": reason_text,
+                    "effectiveAt": str(start),
+                    "expiresAt": str(end or ""),
+                    "sourceType": source_type,
+                    "moduleCode": "systemAdmin",
+                },
+                tenant_id=tid,
+                resource_id=str(role.id),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    if added_ids:
+        _invalidate(set(added_ids), tid)
+    return {
+        "roleCode": str(role_code or "").strip().upper(),
+        "requestedCount": len(normalized_ids),
+        "addedCount": len(added_ids),
+        "skippedCount": len(skipped_ids),
+        "addedUserIds": [str(uid) for uid in added_ids],
+        "skippedUserIds": [str(uid) for uid in skipped_ids],
+    }
 
 
 def _require_expected_version(expected_version: int | None, *, operation: str) -> int:
@@ -626,96 +752,24 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
 
 def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
                      bucket: str = "", page: int = 1, page_size: int = 50) -> dict:
-    """成员列表 + 首屏结论。进来先跑一次回收，页面看到的永远是回收后的真实状态。"""
-    from app.models import User, UserRole
-    from app.models.role_assignment import RoleAssignmentValidity
+    """Reclaim expired grants, then read the requested ledger page in MySQL."""
+    from app.services.role_assignment_query_service import list_page
 
     tid = _tid(tenant_id)
     now = _now()
+    page = max(1, int(page or 1))
+    page_size = min(200, max(1, int(page_size or 50)))
     db = get_sessionmaker()()
+    touched = set()
     try:
         touched = _expire_due(db, tid, now=now)
         if touched:
             _audit_expiry_in_session(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
             db.commit()
-
-        stmt = select(RoleAssignmentValidity).where(
-            RoleAssignmentValidity.tenant_id == tid,
-            RoleAssignmentValidity.is_deleted.is_(False))
-        if role_code.strip():
-            stmt = stmt.where(RoleAssignmentValidity.role_code == role_code.strip().upper())
-        rows = db.scalars(stmt.order_by(RoleAssignmentValidity.id.desc())).all()
-
-        accounts = {int(a.id): a for a in db.scalars(select(User).where(
-            User.tenant_id == tid, User.is_deleted.is_(False))).all()}
-        links = {int(link.id): link for link in db.scalars(select(UserRole).where(
-            UserRole.tenant_id == tid, UserRole.is_deleted.is_(False))).all()}
-
-        items = [
-            _row_dto(row, str(getattr(links.get(int(row.user_role_id)), "status", "") or ""),
-                     getattr(accounts.get(int(row.user_id)), "login_name", ""),
-                     getattr(accounts.get(int(row.user_id)), "real_name", ""), now=now)
-            for row in rows
-        ]
-
-        # 未登记有效期的历史授权：来源不明，必须让学校看见（在会话内取完值再出去）
-        from app.models import Role
-
-        role_by_id = {int(r.id): r.role_code for r in db.scalars(select(Role).where(
-            Role.tenant_id == tid, Role.is_deleted.is_(False))).all()}
-        registered = {int(r.user_role_id) for r in rows}
-        legacy_items = [{
-            "assignmentId": "", "userRoleId": str(link.id), "userId": str(link.user_id),
-            "loginName": getattr(accounts.get(int(link.user_id)), "login_name", ""),
-            "realName": getattr(accounts.get(int(link.user_id)), "real_name", ""),
-            "roleCode": role_by_id.get(int(link.role_id), ""),
-            "status": VALIDITY_ACTIVE, "linkStatus": str(link.status or ""),
-            "effectiveAt": str(link.created_at or "")[:19], "expiresAt": "", "daysLeft": None,
-            "sourceType": SOURCE_UNKNOWN, "sourceId": "", "reason": "",
-            "grantedBy": "", "lastReviewedAt": "", "lastReviewedTerm": "",
-            "transferredToUserId": "", "version": 0,
-        } for link in links.values()
-            if int(link.id) not in registered and str(link.status or "").upper() == "ACTIVE"]
+        result = list_page(db, tenant_id=tid, now=now, role_code=role_code,
+                           bucket=bucket, page=page, page_size=page_size)
+        return {**result, "reclaimedNow": len(touched)}
     finally:
         db.close()
-    if touched:
-        _invalidate(touched, tid)
-
-    all_items = items + legacy_items
-    soon_line = now + timedelta(days=EXPIRING_SOON_DAYS)
-    buckets: dict[str, list[dict]] = {
-        BUCKET_EXPIRING_SOON: [i for i in all_items
-                               if i["status"] == VALIDITY_ACTIVE and i["expiresAt"]
-                               and datetime.strptime(i["expiresAt"], "%Y-%m-%d %H:%M:%S") <= soon_line],
-        BUCKET_EXPIRED_NOT_RECLAIMED: [i for i in all_items
-                                       if i["status"] == VALIDITY_EXPIRED
-                                       and i["linkStatus"] == "ACTIVE"],
-        BUCKET_UNREVIEWED: [i for i in all_items
-                            if i["status"] == VALIDITY_ACTIVE and not i["expiresAt"]
-                            and not i["lastReviewedAt"]],
-        BUCKET_UNKNOWN_SOURCE: [i for i in all_items if i["sourceType"] == SOURCE_UNKNOWN],
-    }
-    holders: dict[str, set[str]] = {}
-    for i in all_items:
-        if i["roleCode"] in HIGH_PRIVILEGE_ROLES and i["status"] == VALIDITY_ACTIVE:
-            holders.setdefault(i["roleCode"], set()).add(i["userId"])
-    buckets[BUCKET_HIGH_PRIV_MULTI] = [
-        {"roleCode": code, "holders": sorted(uids), "count": len(uids)}
-        for code, uids in holders.items() if len(uids) > 1
-    ]
-
-    if bucket:
-        if bucket not in buckets:
-            raise AppException("VALIDATION_ERROR", f"未知的分类：{bucket}")
-        all_items = buckets[bucket]
-
-    page = max(1, int(page or 1))
-    page_size = min(200, max(1, int(page_size or 50)))
-    start = (page - 1) * page_size
-    return {
-        "list": all_items[start:start + page_size],
-        "total": len(all_items),
-        "page": page, "pageSize": page_size,
-        "summary": {k: len(v) for k, v in buckets.items()},
-        "reclaimedNow": len(touched),
-    }
+        if touched:
+            _invalidate(touched, tid)

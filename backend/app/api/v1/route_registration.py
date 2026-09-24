@@ -4,14 +4,14 @@ from __future__ import annotations
 import copy
 import importlib
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from fastapi.routing import APIRoute
 
 from app.core.config import settings
 from app.core.graduation_permissions import require_graduation_request_permission
 from app.core.mobile_graduation_permissions import require_mobile_graduation_request_permission
 from app.core.permissions import require_module
-from app.core.security import require_staff
+from app.core.security import get_current_user, require_staff
 
 
 def _require_aa_route_user(user=Depends(require_module("academicAffairs"))):
@@ -78,6 +78,77 @@ def _prepare_academic_affairs_route_overrides():
     ]
     base_router.router = filtered_router
     return base_router, original_router
+
+
+def _prepare_mobile_risk_version_overrides(mobile_router: APIRouter) -> tuple[APIRouter, APIRouter]:
+    """替换教师移动端风险 PROCESS/CLOSE，使页面可见 version 真正进入核心 CAS 乐观锁。
+
+    历史 mobile.py 路由虽然客户端发送 version，却在调用 mobile_teacher_service 时丢弃；
+    核心 affairs_risk_service 强制 expected_version 非空，因此教师小程序真实写操作必然失败。
+    这里仅替换两条 SA-011 写路由，保留原移动教师身份白名单、核心范围/owner/权限校验、
+    原子 version 竞争和移动端附加审计，不影响其余 mobile 路由。
+    """
+    targets = {
+        ("/mobile/teacher/affairs/risk/{risk_id}/process", frozenset({"POST"})),
+        ("/mobile/teacher/affairs/risk/{risk_id}/close", frozenset({"POST"})),
+    }
+    filtered = copy.copy(mobile_router)
+    filtered.routes = [
+        route for route in mobile_router.routes
+        if not isinstance(route, APIRoute) or _aa_route_signature(route) not in targets
+    ]
+
+    override = APIRouter()
+
+    @override.post("/mobile/teacher/affairs/risk/{risk_id}/process", summary="辅导员·风险处置记录")
+    def teacher_affairs_risk_process_versioned(
+        risk_id: str, body: dict = Body(...), user=Depends(get_current_user),
+    ):
+        from app.services import _mobile_teacher_service_impl as tea_impl
+        from app.services import affairs_risk_service as risk_svc
+        from app.services import mobile_teacher_service as tea
+
+        payload = body or {}
+        u = tea._require_teacher(user)
+        result = risk_svc.process(
+            risk_id,
+            u,
+            content=str(payload.get("content") or ""),
+            expected_version=payload.get("version"),
+        )
+        tea_impl._audit_write(
+            "MOBILE_AFFAIRS_RISK_PROCESS",
+            f"risk:{risk_id}",
+            {"operator": u.get("realName")},
+        )
+        from app.core.response import success
+        return success(result, message="已记录处置")
+
+    @override.post("/mobile/teacher/affairs/risk/{risk_id}/close", summary="辅导员·关闭风险")
+    def teacher_affairs_risk_close_versioned(
+        risk_id: str, body: dict = Body(...), user=Depends(get_current_user),
+    ):
+        from app.services import _mobile_teacher_service_impl as tea_impl
+        from app.services import affairs_risk_service as risk_svc
+        from app.services import mobile_teacher_service as tea
+
+        payload = body or {}
+        u = tea._require_teacher(user)
+        result = risk_svc.close(
+            risk_id,
+            u,
+            conclusion=str(payload.get("conclusion") or ""),
+            expected_version=payload.get("version"),
+        )
+        tea_impl._audit_write(
+            "MOBILE_AFFAIRS_RISK_CLOSE",
+            f"risk:{risk_id}",
+            {"operator": u.get("realName")},
+        )
+        from app.core.response import success
+        return success(result, message="已关闭")
+
+    return filtered, override
 
 
 def register_core_routes(api_router: APIRouter) -> None:
@@ -179,6 +250,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
         national_standards, notification, onboarding, org_directory, stats,
+        platform_integrity,
         student_portal_graduation_guard, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
@@ -186,7 +258,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
     from app.modules.internship.routers import internship_student_selection
+    from app.modules.platform.document_lifecycle.router import router as document_lifecycle_router
     from app.student_portal.router import router as student_portal_router
+    from app.api.v1 import platform_business_forms
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
     api_router.include_router(todo_simple.router, prefix="/todos", tags=["todos"])
@@ -205,7 +279,10 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(audit.alias_router)
     from app.modules.platform.routers import platform_router
     api_router.include_router(platform_router.router)
+    api_router.include_router(platform_business_forms.router)
+    api_router.include_router(document_lifecycle_router)
     api_router.include_router(stats.router)
+    api_router.include_router(platform_integrity.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
 
@@ -221,13 +298,13 @@ def register_platform_routes(api_router: APIRouter) -> None:
     )
     api_router.include_router(mobile_graduation_guard.router)
     from app.core.mobile_internship_permission_gate import enforce_teacher_internship_mobile_permission
-    api_router.include_router(
-        mobile.router,
-        dependencies=[
-            Depends(require_mobile_graduation_request_permission),
-            Depends(enforce_teacher_internship_mobile_permission),
-        ],
-    )
+    mobile_router, mobile_risk_overrides = _prepare_mobile_risk_version_overrides(mobile.router)
+    mobile_deps = [
+        Depends(require_mobile_graduation_request_permission),
+        Depends(enforce_teacher_internship_mobile_permission),
+    ]
+    api_router.include_router(mobile_router, dependencies=mobile_deps)
+    api_router.include_router(mobile_risk_overrides, dependencies=mobile_deps)
     from app.core.student_portal_module_gate import enforce_student_portal_module_access
     from app.student_portal.internship_router import router as student_portal_internship_router
     api_router.include_router(mobile_internship_context.router)

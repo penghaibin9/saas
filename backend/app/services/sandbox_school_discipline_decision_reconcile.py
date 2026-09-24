@@ -178,7 +178,7 @@ def reconcile_discipline_decision_links(db, tenant_id: int) -> dict:
 
 
 def verify_discipline_decision_links(db, tenant_id: int) -> dict:
-    """独立只读对账：EFFECTIVE 主案、ORIGINAL 决定版本、CsDiscipline 必须 1:1:1。"""
+    """独立只读对账：50 条主案必须保持完整的当前决定版本与投影链。"""
     _require_formal_contract(db)
     if not _package11_contract_ready(db):
         return {
@@ -198,6 +198,14 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
            AND c.status = 'EFFECTIVE'
     """), {"tenant_id": tenant_id}).scalar() or 0)
 
+    revoked_cases = int(db.execute(text("""
+        SELECT COUNT(*)
+          FROM t_affairs_discipline_case c
+         WHERE c.tenant_id = :tenant_id
+           AND c.is_deleted = 0
+           AND c.status = 'REVOKED'
+    """), {"tenant_id": tenant_id}).scalar() or 0)
+
     decision_versions = int(db.execute(text("""
         SELECT COUNT(*)
           FROM t_affairs_discipline_decision_version v
@@ -205,11 +213,11 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
             ON c.tenant_id = v.tenant_id
            AND c.id = v.case_id
            AND c.is_deleted = 0
-           AND c.status = 'EFFECTIVE'
+           AND c.status IN ('EFFECTIVE','REVOKED')
          WHERE v.tenant_id = :tenant_id
     """), {"tenant_id": tenant_id}).scalar() or 0)
 
-    linked_triples = int(db.execute(text("""
+    linked_effective = int(db.execute(text("""
         SELECT COUNT(*)
           FROM t_affairs_discipline_case c
           JOIN t_affairs_discipline_decision_version v
@@ -236,6 +244,43 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
            AND v.disc_type = c.disc_type
     """), {"tenant_id": tenant_id}).scalar() or 0)
 
+    linked_revoked = int(db.execute(text("""
+        SELECT COUNT(*)
+          FROM t_affairs_discipline_case c
+          JOIN t_affairs_discipline_decision_version v
+            ON v.tenant_id = c.tenant_id
+           AND v.case_id = c.id
+           AND v.id = c.current_decision_version_id
+           AND v.version_no = c.current_decision_version_no
+          JOIN t_affairs_discipline_decision_version previous
+            ON previous.tenant_id = v.tenant_id
+           AND previous.case_id = v.case_id
+           AND previous.id = v.previous_version_id
+           AND previous.version_no = 1
+           AND previous.decision_kind = 'ORIGINAL'
+           AND previous.previous_version_id IS NULL
+           AND previous.source_type = 'LEGACY_BACKFILL'
+           AND previous.source_id = c.id
+          JOIN t_cs_discipline d
+            ON d.tenant_id = c.tenant_id
+           AND d.id = c.cs_discipline_id
+           AND d.source_case_id = c.id
+           AND d.is_deleted = 0
+           AND d.status = 'REVOKED'
+           AND d.record_status = 'REVOKED'
+           AND d.decision_version_id = v.id
+           AND d.decision_version_no = v.version_no
+         WHERE c.tenant_id = :tenant_id
+           AND c.is_deleted = 0
+           AND c.status = 'REVOKED'
+           AND v.version_no = 2
+           AND v.decision_kind = 'REVOKED'
+           AND v.source_type = 'GRADUATION_CLEARANCE'
+           AND v.source_id = c.student_id
+           AND v.disc_type = c.disc_type
+    """), {"tenant_id": tenant_id}).scalar() or 0)
+    linked_triples = linked_effective + linked_revoked
+
     bad_version_cardinality = int(db.execute(text("""
         SELECT COUNT(*)
           FROM (
@@ -246,9 +291,9 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
                    AND v.case_id = c.id
                  WHERE c.tenant_id = :tenant_id
                    AND c.is_deleted = 0
-                   AND c.status = 'EFFECTIVE'
+                   AND c.status IN ('EFFECTIVE','REVOKED')
                  GROUP BY c.id
-                HAVING COUNT(v.id) <> 1
+                HAVING COUNT(v.id) <> CASE WHEN MAX(c.status)='REVOKED' THEN 2 ELSE 1 END
           ) bad
     """), {"tenant_id": tenant_id}).scalar() or 0)
 
@@ -266,23 +311,32 @@ def verify_discipline_decision_links(db, tenant_id: int) -> dict:
            )
     """), {"tenant_id": tenant_id}).scalar() or 0)
 
+    lifecycle_cases = effective_cases + revoked_cases
+    expected_versions = lifecycle_cases + revoked_cases
     mismatches = (
-        abs(effective_cases - linked_triples)
+        abs(EXPECTED_EFFECTIVE_DISCIPLINE - lifecycle_cases)
+        + abs(expected_versions - decision_versions)
+        + abs(lifecycle_cases - linked_triples)
         + bad_version_cardinality
         + registered_with_versions
     )
     passed = (
-        effective_cases == EXPECTED_EFFECTIVE_DISCIPLINE
-        and decision_versions == EXPECTED_EFFECTIVE_DISCIPLINE
-        and linked_triples == EXPECTED_EFFECTIVE_DISCIPLINE
+        lifecycle_cases == EXPECTED_EFFECTIVE_DISCIPLINE
+        and revoked_cases in (0, 1)
+        and decision_versions == expected_versions
+        and linked_effective == effective_cases
+        and linked_revoked == revoked_cases
         and bad_version_cardinality == 0
         and registered_with_versions == 0
     )
     report = {
         "schema": "package11",
         "effectiveCases": effective_cases,
+        "revokedCases": revoked_cases,
         "decisionVersions": decision_versions,
         "linkedTriples": linked_triples,
+        "linkedEffective": linked_effective,
+        "linkedRevoked": linked_revoked,
         "badVersionCardinality": bad_version_cardinality,
         "registeredCasesWithVersions": registered_with_versions,
         "mismatches": mismatches,

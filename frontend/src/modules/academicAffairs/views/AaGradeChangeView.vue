@@ -1,150 +1,206 @@
 <template>
-  <ModulePageShell
-    title="成绩更正"
-    subtitle="已发布成绩纠错留痕：教师发起 → 学院初审 → 教务处终审生效，原值 append-only 留痕"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <div class="mp-stack">
-      <!-- 发起更正 -->
-      <AppSectionCard title="发起更正申请">
-        <div class="aa-grid2">
-          <label class="aa-field"><span class="req">成绩录入任务</span><AppGradeTaskPicker v-model="reqForm.taskId" /></label>
-          <label class="aa-field"><span class="req">学生成绩记录</span><AppGradeRecordPicker v-model="reqForm.recordId" :query="{ taskId: reqForm.taskId || undefined }" /></label>
-          <label class="aa-field"><span>新平时分</span><input v-model.number="reqForm.newUsualScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
-          <label class="aa-field"><span>新期末分</span><input v-model.number="reqForm.newFinalScore" type="number" min="0" max="100" class="aa-input" placeholder="不改则留空" /></label>
-        </div>
-        <label class="aa-field aa-field--full"><span class="req">更正原因（≥5字）</span>
-          <textarea ref="reasonInput" v-model.trim="reqForm.reason" class="aa-textarea" rows="2" maxlength="500"></textarea>
-          <AppQuickPhrases scene-key="aa.grade.change" @pick="onPickReason" />
-        </label>
-        <div class="aa-actions">
-          <AppButton variant="primary" :loading="requesting" @click="submitRequest">提交更正申请</AppButton>
-        </div>
-        <p class="mp-note">仅已发布成绩可申请更正；已归档学期需线下特批。同一条成绩同时只能有一个在途更正申请。</p>
-      </AppSectionCard>
+  <ModulePageShell title="成绩更正" subtitle="申请只记录拟更正内容，学校终审后追加正式有效版本" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <div class="mp-stack aa-change-page">
+      <section class="aa-flow-note"><strong>正式责任链</strong><span>原成绩任课教师发起 → 学院初审 → 教务终审生效 → 后置扫描与更正留痕</span></section>
+      <section v-if="receipt" :class="['aa-receipt',{verified:receipt.verified}]" role="status">
+        <div><strong>{{ receipt.verified ? '已核对本次命令与正式申请' : '结果待核实' }}</strong><p>{{ receipt.label }}</p><p v-if="receipt.next">{{ receipt.next }}</p><p v-if="receipt.warning" class="aa-danger">{{ receipt.warning }}</p></div>
+        <AppButton v-if="pending" :loading="checking" @click="verifyPending">只读核对原命令</AppButton>
+      </section>
+      <ErrorState v-if="error" :description="error" @retry="retryRead" />
 
-      <!-- 更正审核 -->
-      <AppSectionCard title="更正审核（学院初审 / 教务处终审）">
-        <div class="aa-grid2">
-          <label class="aa-field"><span class="req">成绩录入任务</span><AppGradeTaskPicker v-model="reviewForm.taskId" /></label>
-          <label class="aa-field"><span class="req">学生成绩记录</span><AppGradeRecordPicker v-model="reviewForm.recordId" :query="{ taskId: reviewForm.taskId || undefined }" /></label>
-          <label class="aa-field"><span class="req">审核节点</span>
-            <AppSelect v-model="reviewForm.node" :options="reviewNodeOptions" />
-          </label>
+      <div class="aa-toolbar">
+        <div class="aa-tabs" aria-label="成绩更正队列"><button v-for="item in queueTabs" :key="item.value" type="button" :class="{active:queue===item.value}" :disabled="writeLocked" @click="changeQueue(item.value)">{{ item.label }}</button></div>
+        <label class="aa-filter"><span>状态</span><AppSelect v-model="statusFilter" :options="statusOptions" :disabled="writeLocked" @change="searchQueue" /></label>
+        <span class="aa-grow" /><AppButton v-if="canApplyPermission" variant="primary" :disabled="writeLocked" @click="openApply">发起成绩更正</AppButton>
+      </div>
+
+      <div class="aa-workspace">
+        <AppSectionCard title="责任队列">
+          <LoadingState v-if="queueLoading" />
+          <EmptyState v-else-if="!rows.length" title="当前队列暂无申请" description="读取失败不会显示为0条" />
+          <ul v-else class="aa-queue"><li v-for="row in rows" :key="row.changeRequestId"><button type="button" :class="['aa-queue-item',{active:String(detail?.changeRequestId||'')===String(row.changeRequestId)}]" :disabled="writeLocked" @click="openDetail(row)"><span class="aa-queue-title"><strong>{{ row.studentName||'学生待核对' }} · {{ row.courseName||'课程待核对' }}</strong><AppStatusTag :type="statusColor(row.requestStatus)">{{ statusLabel(row.requestStatus) }}</AppStatusTag></span><span>{{ row.studentNo||'学号待核对' }} · {{ row.termCode||'学期待核对' }}</span><span>{{ currentNodeLabel(row) }} · {{ row.requestStatus==='PENDING'?(row.assigneeName||'下一责任人待解析'):'已结束' }}</span></button></li></ul>
+          <div class="aa-pages"><AppButton variant="ghost" :disabled="pagination.page<=1||writeLocked" @click="changePage(pagination.page-1)">上一页</AppButton><span>{{ pagination.page }} / {{ pageCount }}</span><AppButton variant="ghost" :disabled="pagination.page>=pageCount||writeLocked" @click="changePage(pagination.page+1)">下一页</AppButton></div>
+        </AppSectionCard>
+
+        <div class="mp-stack aa-detail-column">
+          <template v-if="mode==='apply'">
+            <AppSectionCard title="从正式成绩发起更正">
+              <div class="aa-grid"><label class="aa-field"><span>成绩任务</span><AppGradeTaskPicker v-model="selectedTaskId" :disabled="formLocked" @change="onTaskChange" /></label><label class="aa-field"><span>学生成绩记录</span><AppGradeRecordPicker v-model="selectedRecordId" :query="{taskId:selectedTaskId||undefined}" :disabled="formLocked||!selectedTaskId" @change="onRecordChange" /></label></div>
+              <LoadingState v-if="sourceLoading" /><EmptyState v-else-if="!source" title="请选择一条正式成绩" description="页面将精确读取来源记录、版本和成绩方案" />
+            </AppSectionCard>
+            <template v-if="source">
+              <AppSectionCard :title="`${source.studentName||'学生'} · ${source.courseName||'课程'}`">
+                <dl class="aa-facts"><div><dt>学号 / 学期</dt><dd>{{ source.studentNo||'待核对' }} / {{ source.termCode||'待核对' }}</dd></div><div><dt>任务状态</dt><dd>{{ gradeStatusLabel(source.taskStatus) }}</dd></div><div><dt>记录版本</dt><dd>{{ fact(source.recordVersion) }}</dd></div><div><dt>方案类型</dt><dd>{{ schemeLabel(source.schemeMode) }}</dd></div><div><dt>冻结名单</dt><dd>{{ source.authorityEvidence?.rosterVersionNo == null ? '待核对' : '第'+source.authorityEvidence.rosterVersionNo+'版' }}</dd></div><div><dt>生效策略</dt><dd>{{ source.authorityEvidence?.policy?.policyCode === 'LATEST_FORMAL_SOURCE_V1' ? '采用最新正式来源' : '策略待核对' }} · 第{{ fact(source.authorityEvidence?.policy?.policyVersion) }}版</dd></div></dl>
+                <p v-if="String(source.schemeMode).toUpperCase()==='DYNAMIC'" class="aa-muted">按锁定方案逐项更正，总评与通过状态由服务端重新计算。</p>
+                <ul v-if="applyBlockers.length" class="aa-blockers"><li v-for="item in applyBlockers" :key="item">{{ item }}</li></ul>
+                <table class="aa-score-table"><thead><tr><th>成绩项</th><th>权重</th><th>当前正式值</th><th>拟更正值</th></tr></thead><tbody><tr v-for="field in sourceScoreFields" :key="field.key"><td>{{ field.label }}</td><td>{{ ratioText(field.ratio) }}</td><td>{{ score(sourceScoreValue(field)) }}</td><td><input v-model="applyForm[field.key]" type="number" min="0" max="100" :step="source.schemeMode==='DYNAMIC'?'0.01':'1'" :disabled="formLocked||!canSubmitApply" placeholder="不改则留空" /></td></tr><tr><td>总评</td><td>100%</td><td>{{ score(source.totalScore) }}</td><td class="aa-muted">由服务器按正式比例重新计算</td></tr></tbody></table>
+              </AppSectionCard>
+              <AppSectionCard title="更正原因与确认"><label class="aa-field"><span>更正原因（至少5字）</span><textarea v-model="applyForm.reason" rows="3" maxlength="500" :disabled="formLocked||!canSubmitApply" /></label><div class="aa-field"><span>佐证材料（选填）</span><input type="file" :disabled="formLocked||!canSubmitApply" @change="uploadMaterial" /><span v-if="materialBusy">正在核对材料…</span><ul><li v-for="(file,index) in applyForm.attachments" :key="file.fileId">{{ file.fileName }} · {{ file.readyForBusiness?'安全可用':'安全状态待核对' }} <AppButton :disabled="formLocked" @click="refreshMaterial(file)">核对</AppButton><AppButton :disabled="formLocked" @click="applyForm.attachments.splice(index,1)">移除</AppButton></li></ul></div><div class="aa-actions"><AppButton variant="primary" :disabled="!canSubmitApply||writeLocked" @click="openApplyConfirm">确认拟更正内容</AppButton><AppButton variant="ghost" :disabled="writeLocked" @click="returnQueue">返回原队列</AppButton></div></AppSectionCard>
+            </template>
+          </template>
+
+          <template v-else-if="detail">
+            <AppSectionCard :title="`${detail.studentName||'学生'} · ${detail.courseName||'课程'}`">
+              <div class="aa-detail-head"><div><p>{{ detail.studentNo||'学号待核对' }} · {{ detail.termCode||'学期待核对' }}</p><small>申请编号 {{ detail.changeRequestId }}</small></div><AppStatusTag :type="statusColor(detail.requestStatus)">{{ statusLabel(detail.requestStatus) }}</AppStatusTag></div>
+              <dl class="aa-facts"><div><dt>申请人</dt><dd>{{ detail.applicantName||'待解析' }}</dd></div><div><dt>当前节点</dt><dd>{{ currentNodeLabel(detail) }}</dd></div><div><dt>当前受理人</dt><dd>{{ detail.requestStatus==='PENDING'?(detail.assigneeName||'待解析'):'流程已结束' }}</dd></div><div><dt>来源新鲜度</dt><dd>{{ detail.sourceFresh===true?'与当前正式记录一致':detail.sourceFresh===false?'来源已变化':'待核对' }}</dd></div><div><dt>申请时间</dt><dd>{{ timeText(detail.createdAt) }}</dd></div><div><dt>更正生效</dt><dd>{{ detail.effectiveAt?timeText(detail.effectiveAt):'尚未生效' }}</dd></div></dl>
+              <p><strong>申请原因：</strong>{{ detail.reason||'未返回' }}</p><p v-if="String(detail.schemeMode).toUpperCase()==='DYNAMIC'" class="aa-muted">逐项核对原方案、申请新值与当前正式分项；终审通过才更新正式成绩。</p><ul v-if="detailBlockers.length" class="aa-blockers"><li v-for="item in detailBlockers" :key="item">{{ item }}</li></ul>
+            </AppSectionCard>
+            <AppSectionCard title="申请时冻结材料"><p v-if="!detail.evidenceFiles?.length" class="aa-muted">{{ detail.evidenceState==='INVALID'?'材料清单无法核对':'本申请未提交材料' }}</p><ul v-else><li v-for="file in detail.evidenceFiles" :key="file.fileId">{{ file.fileName || '材料' }} · {{ timeText(file.boundAt) }}<AppButton :disabled="writeLocked||detail.evidenceState==='INVALID'" @click="openMaterial(file,'preview')">查看</AppButton><AppButton :disabled="writeLocked||detail.evidenceState==='INVALID'" @click="openMaterial(file,'download')">下载</AppButton></li></ul></AppSectionCard>
+            <AppSectionCard title="原值、申请新值与当前正式值"><table v-if="String(detail.schemeMode).toUpperCase()==='FIXED'" class="aa-score-table"><thead><tr><th>成绩项</th><th>申请前</th><th>申请新值</th><th>当前正式值</th></tr></thead><tbody><tr v-for="field in detailScoreFields" :key="field.key"><td>{{ field.label }}</td><td>{{ score(detail.fixedScores?.before?.[field.key]) }}</td><td>{{ score(detail.fixedScores?.proposed?.[field.key]) }}</td><td>{{ score(detail.fixedScores?.current?.[field.key]) }}</td></tr></tbody></table><table v-else-if="detail.dynamicScores?.before?.length" class="aa-score-table"><thead><tr><th>正式成绩项</th><th>权重</th><th>申请前</th><th>申请新值</th><th>当前正式值</th></tr></thead><tbody><tr v-for="item in detail.dynamicScores.before" :key="item.code"><td>{{ item.name }} · {{ item.code }}</td><td>{{ ratioText(item.weight) }}</td><td>{{ score(item.score) }}</td><td>{{ score(dynamicScore(detail.dynamicScores.proposed,item.code)) }}</td><td>{{ score(dynamicScore(detail.dynamicScores.current,item.code)) }}</td></tr></tbody></table><p v-else class="aa-blocker">原动态分项冻结证据无法核对。</p><p class="aa-muted">申请不会预先覆盖正式成绩；只有终审命令完成后才追加新有效版本。</p></AppSectionCard>
+            <AppSectionCard title="审批历史与下一责任"><ol v-if="detail.workflowHistory?.length" class="aa-history"><li v-for="item in detail.workflowHistory" :key="`${item.taskId}-${item.status}`"><span>{{ timeText(item.actedAt||item.createdAt) }}</span><strong>{{ nodeLabel(item.node) }} · {{ workflowStatusLabel(item.status) }}</strong><p>{{ item.assigneeName||'受理人待解析' }}<template v-if="item.reason"> · {{ item.reason }}</template></p></li></ol><p v-else class="aa-muted">暂无可展示的节点历史。</p><div class="aa-next"><span>下一责任</span><strong>{{ nextResponsibility(detail) }}</strong></div></AppSectionCard>
+            <AppSectionCard v-if="detail.requestStatus==='PENDING'" title="本岗位办理"><p v-if="!canReview" class="aa-muted">当前身份可查看申请，没有成绩更正审核权限。</p><template v-else><label class="aa-field"><span>办理意见（驳回时至少5字）</span><textarea v-model="reviewReason" rows="3" maxlength="500" :disabled="formLocked" /></label><div class="aa-actions"><AppButton v-if="detail.allowedActions?.includes('APPROVE')" variant="primary" :disabled="!canReviewAction('APPROVE')||writeLocked" @click="openReviewConfirm('APPROVE')">通过当前节点</AppButton><AppButton v-if="detail.allowedActions?.includes('REJECT')" variant="ghost" :disabled="!canReviewAction('REJECT')||writeLocked" @click="openReviewConfirm('REJECT')">驳回申请</AppButton><AppButton variant="ghost" :disabled="writeLocked" @click="returnQueue">返回原队列</AppButton></div></template></AppSectionCard>
+            <div v-else class="aa-actions"><AppButton variant="ghost" :disabled="writeLocked" @click="returnQueue">返回原队列</AppButton></div>
+          </template>
+          <LoadingState v-else-if="detailLoading" /><EmptyState v-else title="选择一条成绩更正申请" description="右侧将显示前后值、当前节点、受理人和审批历史" />
         </div>
-        <div class="aa-review-btns">
-          <AppButton variant="primary" :loading="reviewing" @click="doReview('APPROVE')">通过</AppButton>
-          <AppButton variant="danger" :loading="reviewing" @click="openReject">驳回</AppButton>
-        </div>
-        <p class="mp-note">教务处终审通过后：新值生效、原值留痕可查、投影回写成绩台账、联动预警扫描、学生收到通知。驳回后原值不变。</p>
-      </AppSectionCard>
+      </div>
     </div>
 
-    <AppConfirmDialog
-      v-model:visible="rejectDlg.visible"
-      title="驳回更正申请"
-      type="danger"
-      confirm-text="确认驳回"
-      :require-reason="true"
-      phrase-scene-key="aa.grade.changeReject"
-      reason-label="驳回原因"
-      :submitting="rejectDlg.submitting"
-      @confirm="doRejectConfirm"
-    />
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :confirm-text="confirmButtonText" :submitting="busy" @confirm="submitCommand" @cancel="cancelConfirm">
+      <template v-if="command?.operation==='APPLY'"><p>{{ command.source.studentName }} · {{ command.source.courseName }}</p><ul><li v-for="item in command.changes" :key="item.key">{{ item.label }}：{{ score(item.before) }} → {{ item.value }}</li></ul><p>原因：{{ command.reason }}</p><p>佐证材料：{{ (command.attachments||[]).map(file=>file.fileName).join("、") || "未提交材料" }}</p><p>提交申请不等于新成绩生效，服务器将重新核对源记录和版本。</p></template>
+      <template v-else><p>{{ command?.snapshot?.studentName }} · {{ command?.snapshot?.courseName }}</p><p>{{ currentNodeLabel(command?.snapshot) }}：{{ actionLabel(command?.action) }}</p><p>意见：{{ command?.reason||'未填写' }}</p><p>提交前将二次精确读取同一申请、任务和版本；最终结果以写回与回读共同核对为准。</p></template>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
-/** 成绩更正（/admin/academic-affairs/grade-change）：发起+两级审核。 */
-import { ModulePageShell } from '@/components/business'
+/** Page ID: AA-194 成绩更正；详情视角 D10。 */
+import { ModulePageShell, ErrorState, EmptyState, LoadingState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect, AppGradeTaskPicker, AppGradeRecordPicker } from '@/components/common'
-import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+import { AppSectionCard, AppConfirmDialog, AppGradeTaskPicker, AppGradeRecordPicker, AppSelect, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { currentUserFromToken } from '@/services/http/client'
+import { matchPermission } from '@/config/navPlan'
+import { gradeError, gradeStatusLabel } from './parallel-c/grade-review'
+import { createGradeChangeRecovery, findGradeChangeRecovery, gradeChangeIdentityRef, removeGradeChangeRecovery, updateGradeChangeRecovery } from './parallel-c/grade-change-recovery'
 import { toast } from '@/utils/toast'
+import { fileSdk } from '@/services/file/fileSdk'
 
-export default {
-  name: 'AaGradeChangeView',
-  components: { ModulePageShell, AppButton, AppSectionCard, AppConfirmDialog, AppQuickPhrases, AppSelect, AppGradeTaskPicker, AppGradeRecordPicker },
-  props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      reqForm: { taskId: '', recordId: '', newUsualScore: null, newFinalScore: null, reason: '' },
-      requesting: false,
-      reviewForm: { taskId: '', recordId: '', node: 'college' },
-      reviewNodeOptions: [
-        { value: 'college', label: '学院初审' },
-        { value: 'academic', label: '教务处终审' }
-      ],
-      reviewing: false,
-      rejectDlg: { visible: false, submitting: false }
-    }
+const REQUEST_STATUS={PENDING:'审核中',APPROVED:'已终审生效',REJECTED:'已驳回'}
+const NODE_LABEL={COLLEGE_REVIEW:'学院初审',ACADEMIC_REVIEW:'教务终审'}
+const WORKFLOW_STATUS={PENDING:'待办理',APPROVED:'已通过',REJECTED:'已驳回',COMPLETED:'已完成'}
+const EMPTY_APPLY=()=>({newUsualScore:'',newMidtermScore:'',newFinalScore:'',reason:'',attachments:[]})
+const DECISION_FIELDS=['changeRequestId','requestVersion','gradeTaskId','gradeRecordId','requestStatus','currentNode','currentTaskId','currentTaskVersion','assigneeId','expectedGradeVersion','currentRecordVersion','currentGradeId','sourceFresh','schemeMode']
+
+export default{
+ name:'AaGradeChangeView',components:{ModulePageShell,ErrorState,EmptyState,LoadingState,AppButton,AppSectionCard,AppConfirmDialog,AppGradeTaskPicker,AppGradeRecordPicker,AppSelect,AppStatusTag},inject:{academicFlow:{default:null}},props:{ctx:{type:Object,required:true}},
+ data(){return{alive:true,scopeSeq:0,queueSeq:0,detailSeq:0,sourceSeq:0,queueLoading:false,detailLoading:false,sourceLoading:false,materialBusy:false,materialSeq:0,uploadTask:null,busy:false,checking:false,error:'',recoveryBlocked:false,mode:'detail',queue:'MINE',statusFilter:'',rows:[],detail:null,source:null,selectedTaskId:'',selectedRecordId:'',pagination:{page:1,pageSize:20,total:0},applyForm:EMPTY_APPLY(),reviewReason:'',command:null,confirmVisible:false,pending:null,receipt:null,statusOptions:[{label:'全部状态',value:''},...Object.entries(REQUEST_STATUS).map(([value,label])=>({value,label}))]}},
+ computed:{
+  identityKey(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},recoveryIdentity(){return gradeChangeIdentityRef(currentUserFromToken()||{},this.ctx)},routeKey(){return String(this.$route?.fullPath||'')},
+  canApplyPermission(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.gradeChange.apply')},canReview(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.gradeChange.review')},
+  queueTabs(){return[{label:'我发起的',value:'MINE'},...(this.canReview?[{label:'待我办理',value:'PENDING'},{label:'授权范围全部',value:'ALL'}]:[])]},pageCount(){return Math.max(1,Math.ceil(this.pagination.total/this.pagination.pageSize))},writeLocked(){return this.busy||this.checking||this.materialBusy||!!this.pending},formLocked(){return this.writeLocked||this.confirmVisible},
+  sourceScoreFields(){if(this.source?.schemeMode==='DYNAMIC')return(this.source.components||[]).map(item=>({key:'component_'+item.code,source:item.code,code:item.code,label:item.name,ratio:item.weight}));const a=[{key:'newUsualScore',source:'usualScore',label:'平时成绩',ratio:this.source?.usualRatio}];if(Number(this.source?.midtermRatio)>0||this.source?.midtermScore!=null)a.push({key:'newMidtermScore',source:'midtermScore',label:'期中成绩',ratio:this.source?.midtermRatio});a.push({key:'newFinalScore',source:'finalScore',label:'期末成绩',ratio:this.source?.finalRatio});return a},detailScoreFields(){return[{key:'usualScore',label:'平时成绩'},{key:'midtermScore',label:'期中成绩'},{key:'finalScore',label:'期末成绩'},{key:'totalScore',label:'总评'}]},
+  applyBlockers(){const a=Array.isArray(this.source?.blockers)?[...this.source.blockers]:[];if(!this.canApplyPermission)a.push('当前身份没有成绩更正发起权限');if(this.source?.taskStatus!=='PUBLISHED')a.push('只有已发布的正式成绩可发起更正');if(!['FIXED','DYNAMIC'].includes(this.source?.schemeMode))a.push('当前成绩方案无法核对');if(this.source?.schemeMode==='DYNAMIC'&&(!this.source.componentEvidenceHash||!this.source.components?.length))a.push('动态方案或分项证据不完整');if(!this.source?.authorityEvidenceHash)a.push('正式名单与策略证据未返回');if(!this.validVersion(this.source?.recordVersion,1)||!this.exactId(this.source?.currentGradeId))a.push('源成绩版本或当前正式成绩编号未返回');return[...new Set(a.filter(Boolean))]},
+  detailBlockers(){const a=Array.isArray(this.detail?.blockers)?[...this.detail.blockers]:[];if(this.detail?.requestStatus==='PENDING'&&(!this.exactId(this.detail.currentTaskId)||!this.validVersion(this.detail.currentTaskVersion)||!this.validVersion(this.detail.requestVersion)))a.push('当前受理任务或决定版本不完整');return[...new Set(a.filter(Boolean))]},
+  canSubmitApply(){return!!this.source&&this.source.canApply===true&&!this.applyBlockers.length&&!this.recoveryBlocked},confirmTitle(){return this.command?.operation==='APPLY'?'确认发起成绩更正':`确认${this.actionLabel(this.command?.action)}`},confirmButtonText(){return this.command?.operation==='APPLY'?'提交更正申请':this.actionLabel(this.command?.action)}
+ },
+ watch:{identityKey(){this.resetSensitive();this.restoreWithRecovery()},routeKey(){this.cancelMaterialWork();if(this.exactId(this.$route?.query?.taskId)!==this.selectedTaskId||this.exactId(this.$route?.query?.recordId)!==this.selectedRecordId)this.applyForm=EMPTY_APPLY();if(this.pending){this.rebasePendingRoute();return}this.confirmVisible=false;this.command=null;this.restoreRoute()}},created(){this.restoreWithRecovery()},beforeUnmount(){this.cancelMaterialWork();this.alive=false;this.scopeSeq++;this.queueSeq++;this.detailSeq++;this.sourceSeq++},
+ methods:{
+  sourceScoreValue(field){return field.code?this.source?.componentScores?.[field.code]:this.source?.[field.source]},dynamicScore(items,code){return items?.find(item=>item.code===code)?.score},
+  cancelMaterialWork(){this.materialSeq++;this.uploadTask?.cancel();this.uploadTask=null;this.materialBusy=false},
+  async uploadMaterial(event){
+    const file=event.target.files?.[0];event.target.value='';if(!file||this.formLocked||!this.canSubmitApply)return
+    if(this.applyForm.attachments.length>=8){this.error='单次最多选择8份佐证材料';return}
+    const c=this.capture(),seq=++this.materialSeq,valid=()=>this.current(c)&&seq===this.materialSeq
+    this.materialBusy=true
+    try{this.uploadTask=fileSdk.upload(file,{bizType:'TEMP_PRIVATE'});const result=await this.uploadTask.promise;if(!valid())return
+      const meta=await fileSdk.metadata(result.fileId);if(!valid())return
+      if(!this.exactId(result.fileId))throw {code:503}
+      this.applyForm.attachments.push({...meta,fileId:String(result.fileId),fileName:meta.fileName||file.name})
+    }catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'材料上传或安全状态读取失败。')}
+    finally{if(valid()){this.materialBusy=false;this.uploadTask=null}}
   },
-  methods: {
-    onPickReason(text) {
-      const el = this.$refs.reasonInput
-      const { value, selStart, selEnd } = insertAtCursor(el, this.reqForm.reason, text)
-      this.reqForm.reason = value
-      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
-    },
-    async submitRequest() {
-      if (this.requesting) return
-      if (!this.reqForm.taskId || !this.reqForm.recordId) { toast.error('请填写任务ID与记录ID'); return }
-      if (this.reqForm.reason.length < 5) { toast.error('更正原因至少5字'); return }
-      this.requesting = true
-      const res = await academicAffairsApi.requestGradeChange(this.reqForm.taskId, this.reqForm.recordId, {
-        newUsualScore: this.reqForm.newUsualScore != null ? this.reqForm.newUsualScore : undefined,
-        newFinalScore: this.reqForm.newFinalScore != null ? this.reqForm.newFinalScore : undefined,
-        reason: this.reqForm.reason
-      })
-      this.requesting = false
-      if (res.code === 0) {
-        toast.success('更正申请已提交，进入学院初审')
-        this.reqForm = { taskId: '', recordId: '', newUsualScore: null, newFinalScore: null, reason: '' }
-      } else toast.error(res.message || '提交失败')
-    },
-    async doReview(action) {
-      if (this.reviewing) return
-      if (!this.reviewForm.recordId) { toast.error('请填写成绩明细记录ID'); return }
-      this.reviewing = true
-      const fn = this.reviewForm.node === 'college' ? academicAffairsApi.changeCollegeReview : academicAffairsApi.changeAcademicReview
-      const res = await fn(this.reviewForm.recordId, action, '')
-      this.reviewing = false
-      if (res.code === 0) {
-        toast.success(res.data.final ? '教务终审通过，新成绩已生效' : '已处理')
-        this.reviewForm.recordId = ''
-      } else toast.error(res.message || '处理失败')
-    },
-    openReject() {
-      if (!this.reviewForm.recordId) { toast.error('请填写成绩明细记录ID'); return }
-      this.rejectDlg = { visible: true, submitting: false }
-    },
-    async doRejectConfirm(payload) {
-      const reason = (payload && payload.reason) || ''
-      this.rejectDlg.submitting = true
-      const fn = this.reviewForm.node === 'college' ? academicAffairsApi.changeCollegeReview : academicAffairsApi.changeAcademicReview
-      const res = await fn(this.reviewForm.recordId, 'REJECT', reason)
-      this.rejectDlg.submitting = false
-      if (res.code === 0) {
-        this.rejectDlg.visible = false
-        toast.success('已驳回，原成绩保持不变')
-        this.reviewForm.recordId = ''
-      } else toast.error(res.message || '驳回失败')
-    }
-  }
+  async refreshMaterial(file){
+    if(this.formLocked)return;const c=this.capture(),seq=++this.materialSeq,valid=()=>this.current(c)&&seq===this.materialSeq;this.materialBusy=true
+    try{const meta=await fileSdk.metadata(file.fileId);if(valid())Object.assign(file,meta)}catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'材料暂不可读。')}finally{if(valid())this.materialBusy=false}
+  },
+  async openMaterial(file,action){
+    if(this.writeLocked||!this.detail?.evidenceFiles?.some(item=>item.fileId===file.fileId))return
+      const c=this.capture(),seq=++this.materialSeq,requestId=this.detail.changeRequestId,valid=()=>this.current(c)&&seq===this.materialSeq&&this.detail?.changeRequestId===requestId;this.materialBusy=true
+    try{const meta=await fileSdk.metadata(file.fileId);if(!valid())return
+      if(!meta.allowedActions?.includes(action))throw {code:403}
+      if(file.sha256&&meta.sha256!==file.sha256)throw {code:409}
+      if(action==='preview'){
+        const preview=await fileSdk.preview(file.fileId);if(!valid())preview?.close?.()
+        return
+      }
+      const auth=await fileSdk.authorizedUrl(file.fileId);if(!valid())return
+      let url,objectUrl=false
+      if(auth?.delivery==='COS_PRESIGNED'&&/^https:\/\//i.test(auth.url||''))url=auth.url
+      else{const blob=await fileSdk.blob(file.fileId);if(!valid())return;url=URL.createObjectURL(blob);objectUrl=true}
+      const link=document.createElement('a');link.href=url;link.rel='noopener noreferrer';link.download=file.fileName||'材料';document.body.appendChild(link);link.click();link.remove()
+      if(objectUrl)setTimeout(()=>URL.revokeObjectURL(url),60000)
+    }catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'材料不可读或已经失效。')}finally{if(valid())this.materialBusy=false}
+  },
+  gradeStatusLabel,exactId(v){if(!['string','number'].includes(typeof v))return'';const s=String(v??'').trim();return/^[1-9]\d*$/.test(s)?s:''},validVersion(v,min=0){if(v===''||v==null||typeof v==='boolean')return false;const n=Number(v);return Number.isSafeInteger(n)&&n>=min},fact(v){return v===''||v==null?'待核对':String(v)},score(v){return v===''||v==null?'未录入':String(v)},ratioText(v){const n=Number(v);return v!=null&&v!==''&&Number.isFinite(n)?`${n}%`:'待核对'},timeText(v){return v?String(v).replace('T',' ').replace(/\.\d+(Z)?$/,'$1'):'待核对'},statusLabel(v){return REQUEST_STATUS[v]||'状态待核对'},statusColor(v){return v==='APPROVED'?'success':v==='REJECTED'?'danger':v==='PENDING'?'primary':'default'},nodeLabel(v){return NODE_LABEL[v]||'受理节点待核对'},currentNodeLabel(row){return row?.requestStatus==='PENDING'?this.nodeLabel(row.currentNode):`已结束（最后节点：${this.nodeLabel(row?.currentNode)}）`},workflowStatusLabel(v){return WORKFLOW_STATUS[v]||'节点状态待核对'},schemeLabel(v){return String(v||'').toUpperCase()==='FIXED'?'固定分项':String(v||'').toUpperCase()==='DYNAMIC'?'动态分项':'待核对'},actionLabel(v){return v==='APPROVE'?'通过当前节点':v==='REJECT'?'驳回申请':'提交'},
+  nextResponsibility(r){if(r.requestStatus==='APPROVED')return'成绩已追加有效版本；后置扫描结果与更正本身分开核对';if(r.requestStatus==='REJECTED')return'申请已结束，正式成绩保持原状';return`${this.nodeLabel(r.currentNode)} · ${r.assigneeName||'受理人待解析'}`},
+  canReviewAction(action){if(!this.detail||!this.canReview||this.detail.requestStatus!=='PENDING'||!this.detail.allowedActions?.includes(action)||!['COLLEGE_REVIEW','ACADEMIC_REVIEW'].includes(this.detail.currentNode)||!this.exactId(this.detail.currentTaskId)||!this.validVersion(this.detail.currentTaskVersion)||!this.validVersion(this.detail.requestVersion)||this.recoveryBlocked)return false;return action==='REJECT'||(this.detail.sourceFresh===true&&['FIXED','DYNAMIC'].includes(this.detail.schemeMode)&&!this.detailBlockers.length)},
+  capture(extra={}){return{identity:this.identityKey,identityRef:this.recoveryIdentity,route:this.routeKey,scope:this.scopeSeq,...extra}},current(c){return this.alive&&c?.identity===this.identityKey&&c.route===this.routeKey&&c.scope===this.scopeSeq},pendingCurrent(c){return this.current(c)&&this.pending===c&&c.identityRef===this.recoveryIdentity},
+  resetSensitive(){this.cancelMaterialWork();this.scopeSeq++;this.queueSeq++;this.detailSeq++;this.sourceSeq++;Object.assign(this,{queueLoading:false,detailLoading:false,sourceLoading:false,busy:false,checking:false,error:'',recoveryBlocked:false,rows:[],detail:null,source:null,selectedTaskId:'',selectedRecordId:'',applyForm:EMPTY_APPLY(),reviewReason:'',command:null,confirmVisible:false,pending:null,receipt:null});this.pagination={page:1,pageSize:20,total:0}},
+  clearForDenied(message){this.cancelMaterialWork();const p=this.pending;const minimal=p?{...p,source:undefined,snapshot:undefined,changes:undefined,attachments:undefined,ack:null,recovered:true}:null;this.scopeSeq++;this.queueSeq++;this.detailSeq++;this.sourceSeq++;Object.assign(this,{rows:[],detail:null,source:null,selectedTaskId:'',selectedRecordId:'',applyForm:EMPTY_APPLY(),reviewReason:'',queueLoading:false,detailLoading:false,sourceLoading:false,busy:false,checking:false,command:null,confirmVisible:false,error:message});this.pending=minimal?{...minimal,identity:this.identityKey,identityRef:this.recoveryIdentity,route:this.routeKey,scope:this.scopeSeq}:null;this.receipt=this.pending?{verified:false,label:'当前身份无法读取原申请，未决命令的最小恢复引用已保留。'}:null},
+  rebasePendingRoute(){const p=this.pending;this.scopeSeq++;this.queueSeq++;this.detailSeq++;this.sourceSeq++;Object.assign(this,{rows:[],detail:null,source:null,selectedTaskId:'',selectedRecordId:'',applyForm:EMPTY_APPLY(),reviewReason:'',queueLoading:false,detailLoading:false,sourceLoading:false,busy:false,checking:false,command:null,confirmVisible:false});this.pending={...p,identity:this.identityKey,identityRef:this.recoveryIdentity,route:this.routeKey,scope:this.scopeSeq};this.receipt={verified:false,label:'原成绩更正命令仍待核实，路由变化后已清除原成绩与人员展示，不会自动重发。'};this.error='写入保持锁定，请只读核对原命令。'},
+  denied(e){if(!/403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([e?.status,e?.statusCode,e?.bizCode,e?.code].join(' ')))return false;this.clearForDenied(gradeError(e));return true},explicitFailure(e){return/400|403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|NOT_FOUND|CONFLICT|STALE|VALIDATION/.test([e?.status,e?.statusCode,e?.bizCode,e?.code].join(' '))},
+  async navigate(patch){if(this.writeLocked)return;const q={...(this.$route?.query||{}),...patch};Object.keys(q).forEach(k=>{if(q[k]==null||q[k]==='')delete q[k]});const before=this.routeKey;try{await this.$router.replace({path:this.$route.path,query:q})}catch{/* duplicate navigation */}if(before===this.routeKey)this.restoreRoute()},
+  restoreWithRecovery(){const found=findGradeChangeRecovery(this.recoveryIdentity);if(!found.ok){this.recoveryBlocked=true;this.error=`命令恢复记录无法安全读取，本页写入已阻断：${found.error}`;this.restoreRoute(true);return}this.recoveryBlocked=false;if(!found.entry){this.restoreRoute();return}const e=found.entry;this.pending=this.capture({...e,recovered:true,ack:null});this.receipt={verified:false,label:'检测到原身份的未决成绩更正命令，不会自动重发。'};if(!e.changeRequestId){this.mode='apply';this.selectedTaskId=e.gradeTaskId;this.selectedRecordId=e.gradeRecordId;}this.verifyPending()},
+  restoreRoute(keepError=false){if(this.pending||this.busy)return;const q=this.$route?.query||{},queues=new Set(this.queueTabs.map(x=>x.value)),statuses=new Set(this.statusOptions.map(x=>x.value));this.queue=queues.has(String(q.queue||''))?String(q.queue):(this.canReview?'PENDING':'MINE');this.statusFilter=statuses.has(String(q.status||''))?String(q.status||''):'';const page=Number(q.page);this.pagination.page=Number.isInteger(page)&&page>0?page:1;this.mode=q.mode==='apply'?'apply':'detail';this.selectedTaskId=this.exactId(q.taskId);this.selectedRecordId=this.exactId(q.recordId);const detailId=this.exactId(q.changeRequestId);if(!keepError)this.error='';if((q.changeRequestId!=null&&!detailId)||(q.taskId!=null&&!this.selectedTaskId)||(q.recordId!=null&&!this.selectedRecordId))this.error='路由中的申请、任务或记录编号无效，请从队列重新进入。';this.loadQueue();if(this.mode==='apply'){this.detail=null;if(this.selectedTaskId&&this.selectedRecordId)this.loadSource();else this.source=null}else{this.source=null;if(detailId)this.loadDetail(detailId);else this.detail=null}},
+  retryRead(){if(this.pending)return this.verifyPending();if(this.recoveryBlocked)return this.restoreWithRecovery();this.restoreRoute()},changeQueue(v){if(!this.writeLocked&&this.queueTabs.some(x=>x.value===v))this.navigate({queue:v,status:undefined,page:'1',changeRequestId:undefined,mode:undefined,taskId:undefined,recordId:undefined})},searchQueue(){if(!this.writeLocked)this.navigate({queue:this.queue,status:this.statusFilter||undefined,page:'1',changeRequestId:undefined})},changePage(page){if(!this.writeLocked&&page>0)this.navigate({queue:this.queue,status:this.statusFilter||undefined,page:String(page),changeRequestId:undefined})},openDetail(row){const id=this.exactId(row?.changeRequestId);if(id&&!this.writeLocked)this.navigate({queue:this.queue,status:this.statusFilter||undefined,page:String(this.pagination.page),changeRequestId:id,mode:undefined,taskId:undefined,recordId:undefined})},openApply(){if(this.writeLocked||!this.canApplyPermission)return;const token=this.$route?.query?.returnToken||this.academicFlow?.captureReturn?.();this.navigate({mode:'apply',changeRequestId:undefined,...(token?{returnToken:token}:{})})},returnQueue(){if(!this.writeLocked)this.navigate({mode:undefined,changeRequestId:undefined,taskId:undefined,recordId:undefined})},onTaskChange(v){if(this.formLocked)return;this.applyForm=EMPTY_APPLY();this.navigate({mode:'apply',taskId:this.exactId(v)||undefined,recordId:undefined,changeRequestId:undefined})},onRecordChange(v){if(this.formLocked)return;this.applyForm=EMPTY_APPLY();this.navigate({mode:'apply',taskId:this.selectedTaskId||undefined,recordId:this.exactId(v)||undefined,changeRequestId:undefined})},
+  async loadQueue(){if(this.pending)return;const seq=++this.queueSeq,c=this.capture({queue:this.queue,status:this.statusFilter,page:this.pagination.page}),valid=()=>this.current(c)&&seq===this.queueSeq&&c.route===this.routeKey&&c.queue===this.queue&&c.status===this.statusFilter&&c.page===this.pagination.page;this.queueLoading=true;this.rows=[];try{const r=await academicAffairsApi.getGradeChanges({queue:c.queue,status:c.status||undefined,page:c.page,pageSize:this.pagination.pageSize});if(!valid())return;if(r?.code!==0)throw r;const list=r.data?.list,total=r.data?.total;if(!Array.isArray(list)||!Number.isSafeInteger(total)||total<0||list.length>this.pagination.pageSize||list.length>total||new Set(list.map(x=>String(x?.changeRequestId))).size!==list.length||list.some(x=>!this.exactId(x?.changeRequestId)))throw{code:409};this.rows=list;this.pagination.total=total}catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'成绩更正队列读取失败，请重试。')}finally{if(valid())this.queueLoading=false}},
+  async readDetail(id){const exact=this.exactId(id);if(!exact)throw{code:404};const r=await academicAffairsApi.getGradeChangeDetail(exact);if(r?.code!==0)throw r;if(!r.data||String(r.data.changeRequestId||'')!==exact)throw{code:409};return r.data},async loadDetail(id,preserveReason=false){const seq=++this.detailSeq,c=this.capture({id:this.exactId(id)}),valid=()=>this.current(c)&&seq===this.detailSeq&&c.route===this.routeKey;this.detailLoading=true;this.detail=null;if(!preserveReason)this.reviewReason='';try{const d=await this.readDetail(c.id);if(valid())this.replaceDetail(d)}catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'成绩更正详情读取失败。')}finally{if(valid())this.detailLoading=false}},replaceDetail(d){this.detail={...d,workflowHistory:Array.isArray(d.workflowHistory)?d.workflowHistory:[]};const row=this.rows.find(x=>String(x.changeRequestId)===String(d.changeRequestId));if(row)Object.assign(row,d)},
+  async readSource(taskId,recordId){const r=await academicAffairsApi.getGradeChangeSource(taskId,recordId);if(r?.code!==0)throw r;if(!r.data||String(r.data.gradeTaskId||'')!==String(taskId)||String(r.data.gradeRecordId||'')!==String(recordId))throw{code:409};return r.data},async loadSource(){if(this.pending||!this.selectedTaskId||!this.selectedRecordId)return;const seq=++this.sourceSeq,c=this.capture({taskId:this.selectedTaskId,recordId:this.selectedRecordId}),valid=()=>this.current(c)&&seq===this.sourceSeq&&c.route===this.routeKey&&c.taskId===this.selectedTaskId&&c.recordId===this.selectedRecordId;this.sourceLoading=true;this.source=null;try{const s=await this.readSource(c.taskId,c.recordId);if(valid())this.source=s}catch(e){if(valid()&&!this.denied(e))this.error=gradeError(e,'成绩更正来源读取失败。')}finally{if(valid())this.sourceLoading=false}},
+  sameValue(a,b){return String(a??'')===String(b??'')},sameArray(a,b){return JSON.stringify(Array.isArray(a)?a:[])===JSON.stringify(Array.isArray(b)?b:[])},sameSource(a,b){return['gradeTaskId','gradeRecordId','studentId','studentNo','courseName','termId','termCode','taskStatus','recordVersion','currentGradeId','schemeMode','usualScore','midtermScore','finalScore','totalScore','usualRatio','midtermRatio','finalRatio','canApply'].every(k=>this.sameValue(a?.[k],b?.[k]))&&this.sameArray(a?.blockers,b?.blockers)&&this.sameValue(a?.componentEvidenceHash,b?.componentEvidenceHash)&&this.sameValue(a?.authorityEvidenceHash,b?.authorityEvidenceHash)},sameDecision(a,b){return DECISION_FIELDS.every(k=>this.sameValue(a?.[k],b?.[k]))&&this.sameArray(a?.allowedActions,b?.allowedActions)&&this.sameArray(a?.blockers,b?.blockers)&&this.sameValue(a?.authorityEvidenceHash,b?.authorityEvidenceHash)&&this.sameValue(a?.reason,b?.reason)&&this.sameValue(a?.evidenceManifestHash,b?.evidenceManifestHash)&&this.sameValue(a?.evidenceState,b?.evidenceState)&&this.sameArray(a?.evidenceFiles,b?.evidenceFiles)&&JSON.stringify(a?.dynamicScores||null)===JSON.stringify(b?.dynamicScores||null)&&['before','proposed','current'].every(k=>this.sameScores(a?.fixedScores?.[k],b?.fixedScores?.[k]))},sameScores(a,b){return['usualScore','midtermScore','finalScore','totalScore'].every(k=>this.sameValue(a?.[k],b?.[k]))},
+  openApplyConfirm(){if(!this.canSubmitApply||this.writeLocked||this.confirmVisible)return;const changes=[];for(const f of this.sourceScoreFields){const raw=String(this.applyForm[f.key]??'').trim();if(!raw)continue;const value=Number(raw);if(!Number.isFinite(value)||value<0||value>100||(f.code?Math.abs(value*100-Math.round(value*100))>0.000001:!Number.isInteger(value))){toast.error(f.code?'动态分项须为0-100，最多两位小数':'固定分项须为0-100整数');return}if(!this.sameValue(value,this.sourceScoreValue(f)))changes.push({...f,value,before:this.sourceScoreValue(f)})}const reason=this.applyForm.reason.trim();if(!changes.length){toast.error('至少填写一项实际变化');return}if(reason.length<5){toast.error('更正原因至少5字');return}if(this.applyForm.attachments.some(file=>!file.readyForBusiness)){toast.error('请先核对材料安全状态');return}this.command=this.capture({operation:'APPLY',action:'APPLY',source:{...this.source,blockers:[...(this.source.blockers||[])]},changes,reason,attachments:this.applyForm.attachments.map(file=>({...file}))});this.confirmVisible=true},
+  openReviewConfirm(action){if(!this.canReviewAction(action)||this.writeLocked||this.confirmVisible)return;const reason=this.reviewReason.trim();if(action==='REJECT'&&reason.length<5){toast.error('驳回原因至少5字');return}this.command=this.capture({operation:'REVIEW',action,snapshot:{...this.detail,allowedActions:[...(this.detail.allowedActions||[])],blockers:[...(this.detail.blockers||[])]},reason});this.confirmVisible=true},cancelConfirm(){if(!this.busy){this.command=null;this.confirmVisible=false}},submitCommand(){return this.command?.operation==='APPLY'?this.submitApply():this.submitReview()},
+  recoveryInput(c){const s=c.operation==='APPLY'?c.source:c.snapshot;return{identityRef:c.identityRef,operation:c.operation,action:c.action,changeRequestId:s.changeRequestId||null,gradeTaskId:s.gradeTaskId,gradeRecordId:s.gradeRecordId,currentTaskId:s.currentTaskId||null,expectedCurrentGradeId:s.currentGradeId||null,expectedGradeVersion:s.recordVersion??s.expectedGradeVersion,expectedRequestVersion:s.requestVersion??null,expectedTaskVersion:s.currentTaskVersion??null}},async startPending(c){const saved=createGradeChangeRecovery(this.recoveryInput(c));if(!saved.ok){this.confirmVisible=false;this.error=`无法安全保存刷新恢复引用，本次未发送：${saved.error}`;return null}const p=this.capture(saved.existing?{...saved.entry,recovered:true,ack:null}:{...saved.entry,recovered:false,ack:null,source:c.source,snapshot:c.snapshot,changes:c.changes,attachments:c.attachments});this.pending=p;this.receipt={verified:false,label:saved.existing?'当前身份已有未决命令，本次不重复发送。':'命令已进入核对阶段，请勿重复提交。'};return this.pending},
+  async submitApply(){const c=this.command;if(!c||c.operation!=='APPLY'||!this.current(c)||!this.confirmVisible||this.writeLocked||!this.canApplyPermission)return;this.busy=true;this.error='';try{const before=await this.readSource(c.source.gradeTaskId,c.source.gradeRecordId);if(!this.current(c))return;if(!this.sameSource(c.source,before)||before.canApply!==true||!['FIXED','DYNAMIC'].includes(before.schemeMode)||(before.blockers||[]).length){this.source=before;this.confirmVisible=false;this.command=null;this.error='源成绩、方案或版本已变化；已保留填写内容，请重新核对。';return}for(const file of c.attachments||[]){const meta=await fileSdk.metadata(file.fileId);if(!this.current(c))return;if(!meta.readyForBusiness||String(meta.sha256||'')!==String(file.sha256||'')){this.confirmVisible=false;this.command=null;this.error='材料安全状态或内容已变化，请重新核对。';return}}const p=await this.startPending(c);if(!p)return;if(p.recovered){this.confirmVisible=false;this.command=null;await this.verifyPending();return}const body={reason:c.reason,expectedAuthorityHash:before.authorityEvidenceHash,attachmentIds:(c.attachments||[]).map(file=>file.fileId),expectedGradeVersion:Number(before.recordVersion),expectedCurrentGradeId:before.currentGradeId,...(before.schemeMode==='DYNAMIC'?{expectedComponentHash:before.componentEvidenceHash,newComponentScores:{...before.componentScores,...Object.fromEntries(c.changes.map(x=>[x.code,x.value]))}}:Object.fromEntries(c.changes.map(x=>[x.key,x.value])))};let r;try{r=await academicAffairsApi.requestGradeChange(before.gradeTaskId,before.gradeRecordId,body,p.commandKey)}catch(e){r=e}if(!this.pendingCurrent(p))return;this.confirmVisible=false;this.command=null;if(r?.code!==0&&this.explicitFailure(r)){await this.releaseRejected(p,r);return}if(r?.code===0&&this.validApplyAck(r.data,p)){p.ack={...r.data};p.changeRequestId=String(r.data.changeRequestId);const updated=updateGradeChangeRecovery(p.commandKey,p.identityRef,{changeRequestId:r.data.changeRequestId,currentTaskId:r.data.currentTaskId,expectedRequestVersion:r.data.requestVersion,expectedTaskVersion:r.data.currentTaskVersion});if(!updated.ok)this.error=`已收到写回，但恢复引用更新失败，页面保持锁定：${updated.error}`;else Object.assign(p,updated.entry)}await this.verifyPending()}catch(e){if(this.current(c)&&!this.denied(e)){this.confirmVisible=false;this.error=gradeError(e,'发起前未能核对源成绩，本次未发送。')}}finally{if(this.alive&&c.identity===this.identityKey&&c.scope===this.scopeSeq)this.busy=false}},validApplyAck(a,p){return!!a&&this.exactId(a.changeRequestId)&&String(a.recordId||a.gradeRecordId||'')===String(p.gradeRecordId)&&a.requestStatus==='PENDING'&&a.currentNode==='COLLEGE_REVIEW'&&this.exactId(a.currentTaskId)&&this.validVersion(a.requestVersion)&&this.validVersion(a.currentTaskVersion)},
+  async submitReview(){const c=this.command;if(!c||c.operation!=='REVIEW'||!this.current(c)||!this.confirmVisible||this.writeLocked||!this.canReview)return;this.busy=true;this.error='';try{const before=await this.readDetail(c.snapshot.changeRequestId);if(!this.current(c))return;if(!this.sameDecision(c.snapshot,before)||!before.allowedActions?.includes(c.action)||before.requestStatus!=='PENDING'||!this.canFreshReview(c.action,before)){this.replaceDetail(before);this.confirmVisible=false;this.command=null;this.error='申请、当前任务或版本已变化；已保留办理意见，请重新核对。';return}const p=await this.startPending(c);if(!p)return;if(p.recovered){this.confirmVisible=false;this.command=null;await this.verifyPending();return}const identity={changeRequestId:before.changeRequestId,expectedRequestVersion:Number(before.requestVersion),currentTaskId:before.currentTaskId,expectedTaskVersion:Number(before.currentTaskVersion)};let r;try{r=before.currentNode==='COLLEGE_REVIEW'?await academicAffairsApi.changeCollegeReview(before.gradeRecordId,c.action,c.reason,identity,p.commandKey):await academicAffairsApi.changeAcademicReview(before.gradeRecordId,c.action,c.reason,identity,p.commandKey)}catch(e){r=e}if(!this.pendingCurrent(p))return;this.confirmVisible=false;this.command=null;if(r?.code!==0&&this.explicitFailure(r)){await this.releaseRejected(p,r);return}if(r?.code===0&&this.validReviewAck(r.data,p))p.ack={...r.data};await this.verifyPending()}catch(e){if(this.current(c)&&!this.denied(e)){this.confirmVisible=false;this.error=gradeError(e,'办理前未能核对精确申请，本次未发送。')}}finally{if(this.alive&&c.identity===this.identityKey&&c.scope===this.scopeSeq)this.busy=false}},
+  canFreshReview(action,d){return action==='REJECT'||(d.sourceFresh===true&&['FIXED','DYNAMIC'].includes(d.schemeMode)&&!(d.blockers||[]).length)},validReviewAck(a,p){if(!a||String(a.changeRequestId||'')!==String(p.changeRequestId)||String(a.recordId||a.gradeRecordId||'')!==String(p.gradeRecordId)||Number(a.requestVersion)!==Number(p.expectedRequestVersion)+1||!['PENDING','APPROVED','REJECTED'].includes(a.requestStatus))return false;if(p.action==='REJECT')return a.requestStatus==='REJECTED'&&!a.currentTaskId;if((p.snapshot?.currentNode||a.reviewNode)==='COLLEGE_REVIEW')return a.requestStatus==='PENDING'&&a.currentNode==='ACADEMIC_REVIEW'&&this.exactId(a.currentTaskId)&&this.validVersion(a.currentTaskVersion)&&String(a.currentTaskId)!==String(p.currentTaskId);return a.requestStatus==='APPROVED'&&!a.currentTaskId&&!!this.exactId(a.correctedGradeId)},
+  ackMatchesDetail(a,d){return['changeRequestId','requestVersion','requestStatus','currentNode','currentTaskId','currentTaskVersion'].every(k=>this.sameValue(a?.[k],d?.[k]))&&(!a?.correctedGradeId||this.sameValue(a.correctedGradeId,d.correctedGradeId))},applyDetailMatches(p,d){if(String(d.gradeTaskId)!==String(p.gradeTaskId)||String(d.gradeRecordId)!==String(p.gradeRecordId)||String(d.expectedGradeVersion)!==String(p.expectedGradeVersion)||String(d.currentGradeId)!==String(p.expectedCurrentGradeId)||d.requestStatus!=='PENDING')return false;if(p.source.schemeMode==='DYNAMIC'){const expected={...(p.source.componentScores||{})};for(const item of p.changes||[])expected[item.code]=item.value;return this.sameArray(d.dynamicScores?.before,p.source.components)&&this.sameArray((d.dynamicScores?.proposed||[]).map(item=>item.code).sort(),Object.keys(expected).sort())&&(d.dynamicScores?.proposed||[]).every(item=>this.sameValue(item.score,expected[item.code]))&&this.sameArray((p.attachments||[]).map(file=>String(file.fileId)).sort(),(d.evidenceFiles||[]).map(file=>String(file.fileId)).sort())}const expected={usualScore:p.source.usualScore,midtermScore:p.source.midtermScore,finalScore:p.source.finalScore};for(const item of p.changes||[])expected[item.source]=item.value;return this.sameScores(d.fixedScores?.before,{usualScore:p.source.usualScore,midtermScore:p.source.midtermScore,finalScore:p.source.finalScore,totalScore:p.source.totalScore})&&['usualScore','midtermScore','finalScore'].every(k=>this.sameValue(d.fixedScores?.proposed?.[k],expected[k]))&&this.sameArray((p.attachments||[]).map(file=>String(file.fileId)).sort(),(d.evidenceFiles||[]).map(file=>String(file.fileId)).sort())},reviewOutcomeMatches(p,d){if(p.action==='REJECT')return d.requestStatus==='REJECTED'&&!d.currentTaskId;if(p.snapshot?.currentNode==='COLLEGE_REVIEW')return d.requestStatus==='PENDING'&&d.currentNode==='ACADEMIC_REVIEW'&&this.exactId(d.currentTaskId)&&String(d.currentTaskId)!==String(p.currentTaskId);return d.requestStatus==='APPROVED'&&!d.currentTaskId&&!!this.exactId(d.correctedGradeId)},
+  async releaseRejected(p,failure){if(this.denied(failure))return;const removed=removeGradeChangeRecovery(p.commandKey,p.identityRef);if(!removed.ok){this.error=`服务器已明确拒绝本次操作，但本地恢复标记无法清除：${removed.error}`;return}this.pending=null;this.receipt=null;this.error=gradeError(failure,'本次操作未受理，已保留本地填写内容。');if(/409|CONFLICT|STALE/.test([failure?.code,failure?.bizCode].join(' '))){if(p.operation==='REVIEW')this.loadDetail(p.changeRequestId,true);else this.loadSource()}},
+  validStoredAck(a,p){
+    if(p.operation==='APPLY')return this.validApplyAck(a,p)&&this.sameValue(a.gradeTaskId,p.gradeTaskId)&&this.sameValue(a.expectedGradeVersion,p.expectedGradeVersion)&&this.sameValue(a.expectedCurrentGradeId,p.expectedCurrentGradeId)
+    return this.validReviewAck(a,p)&&a.action===p.action&&['COLLEGE_REVIEW','ACADEMIC_REVIEW'].includes(a.reviewNode)&&['changeRequestId','currentTaskId','expectedRequestVersion','expectedTaskVersion'].every(k=>this.sameValue(a.reviewIdentity?.[k],p[k]))
+  },
+  async verifyPending(){
+    const p=this.pending;if(!p||!this.pendingCurrent(p)||this.checking)return
+    this.checking=true
+    try{
+      const operation=p.operation==='APPLY'?'GRADE_CHANGE_APPLY':'GRADE_CHANGE_REVIEW'
+      const response=await academicAffairsApi.getGradeCommandReceipt(p.commandKey,operation)
+      if(!this.pendingCurrent(p))return
+      if(response?.code!==0)throw response
+      const proof=response.data
+      if(proof?.commandKey!==p.commandKey||proof?.operation!==operation||proof?.state!=='SUCCESS'||!this.validStoredAck(proof.result,p)){
+        this.receipt={verified:false,label:'原命令尚无可验证的持久回执。当前记录不能代替原命令结果，页面不会自动重发。'};return
+      }
+      p.ack={...proof.result};p.changeRequestId=String(p.ack.changeRequestId)
+      const d=await this.readDetail(p.changeRequestId)
+      if(!this.pendingCurrent(p))return
+      this.replaceDetail(d);this.mode='detail'
+      const exactObject=this.sameValue(d.changeRequestId,p.changeRequestId)&&this.sameValue(d.gradeTaskId,p.gradeTaskId)&&this.sameValue(d.gradeRecordId,p.gradeRecordId)
+      const versionKnown=this.validVersion(d.requestVersion)&&Number(d.requestVersion)>=Number(p.ack.requestVersion)
+      const sameOrigin=p.operation!=='APPLY'||(this.sameValue(d.expectedGradeVersion,p.expectedGradeVersion)&&this.sameValue(d.currentGradeId,p.expectedCurrentGradeId))
+      const sameRevision=Number(d.requestVersion)===Number(p.ack.requestVersion)
+      if(!exactObject||!versionKnown||!sameOrigin||(sameRevision&&!this.ackMatchesDetail(p.ack,d))){
+        this.receipt={verified:false,label:'原命令回执与精确申请尚未吻合，请只读核对原对象。'};return
+      }
+      if(!p.recovered&&sameRevision&&p.operation==='APPLY'&&!this.applyDetailMatches(p,d)){
+        this.receipt={verified:false,label:'申请分项与原确认内容不一致，保持锁定等待核对。'};return
+      }
+      const removed=removeGradeChangeRecovery(p.commandKey,p.identityRef)
+      if(!removed.ok){this.receipt={verified:true,label:'原命令已确认，但本地恢复标记无法清除，页面保持锁定。'};this.error=removed.error;return}
+      this.pending=null
+      const label=p.operation==='APPLY'?'原更正申请已受理':p.action==='REJECT'?'原驳回命令已完成':p.ack.reviewNode==='COLLEGE_REVIEW'?'原学院初审命令已通过':'原教务终审命令已生效'
+      this.receipt={verified:true,label:label+'；当前申请状态：'+this.statusLabel(d.requestStatus)+(sameRevision?'。':'（其后已有新的办理进展）。'),next:this.nextResponsibility(d),warning:p.ack.warningScanOk===false?'正式成绩已生效，后置扫描结果待核对。':''}
+      this.reviewReason='';this.applyForm=EMPTY_APPLY();this.error='';await this.navigateAfterVerified(d.changeRequestId)
+    }catch(e){if(this.pendingCurrent(p)&&!this.denied(e))this.error=gradeError(e,'原命令回执暂不可读，请稍后只读核对；不会自动重发。')}
+    finally{if(this.alive&&p.identityRef===this.recoveryIdentity)this.checking=false}
+  },
+  async navigateAfterVerified(id){const q={...(this.$route?.query||{}),queue:this.queue,status:this.statusFilter||undefined,page:String(this.pagination.page),changeRequestId:String(id)};delete q.mode;delete q.taskId;delete q.recordId;Object.keys(q).forEach(k=>{if(q[k]==null||q[k]==='')delete q[k]});try{await this.$router.replace({path:this.$route.path,query:q})}catch{/* duplicate navigation */}this.loadQueue()}
+ }
 }
 </script>
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-grid2 { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 14px 24px; }
-.aa-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-top: 14px; }
-.aa-field--full { grid-column: 1 / -1; }
-.aa-field .req::before { content: '*'; color: var(--danger-600, #f53f3f); margin-right: 4px; }
-.aa-input, .aa-textarea { padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
-.aa-input { height: 34px; }
-.aa-textarea { padding: 8px 12px; }
-.aa-actions { margin-top: 16px; }
-.aa-review-btns { margin-top: 16px; display: flex; gap: 12px; }
+.aa-change-page{gap:16px}.aa-flow-note,.aa-receipt{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;border:1px solid var(--border-200,#dfe6ef);border-radius:10px;background:var(--bg-white,#fff)}.aa-flow-note{border-left:4px solid var(--primary-500,#3564b4)}.aa-flow-note span,.aa-receipt p{font-size:13px;color:var(--text-600,#586579);margin:4px 0}.aa-receipt{background:var(--primary-50,#edf4ff)}.aa-receipt.verified{border-color:#a7ddc4;background:#effaf5}.aa-danger,.aa-blocker{color:var(--danger-600,#b42318)!important}.aa-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.aa-tabs{display:flex;gap:6px;padding:4px;background:var(--bg-muted,#f1f4f8);border-radius:8px}.aa-tabs button{border:0;border-radius:6px;padding:8px 12px;background:transparent;color:var(--text-700,#39465a);cursor:pointer}.aa-tabs button.active{background:var(--bg-white,#fff);color:var(--primary-600,#285aab);box-shadow:0 1px 3px #1d293914}.aa-tabs button:disabled{opacity:.5}.aa-filter,.aa-field{display:flex;flex-direction:column;gap:7px;font-size:13px}.aa-filter{min-width:160px}.aa-grow{flex:1}.aa-workspace{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:16px;align-items:start}.aa-detail-column{min-width:0}.aa-queue{list-style:none;margin:0;padding:0}.aa-queue li+li{border-top:1px solid var(--border-200,#e1e7ef)}.aa-queue-item{display:grid;width:100%;gap:7px;padding:14px;text-align:left;border:0;border-left:3px solid transparent;background:transparent;color:inherit;cursor:pointer}.aa-queue-item:hover,.aa-queue-item.active{background:var(--primary-50,#edf4ff);border-left-color:var(--primary-500,#3564b4)}.aa-queue-item:disabled{opacity:.65}.aa-queue-item>span:not(.aa-queue-title){font-size:12px;color:var(--text-600,#667085)}.aa-queue-title,.aa-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.aa-pages,.aa-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.aa-pages{justify-content:space-between;padding-top:12px;border-top:1px solid var(--border-200,#e1e7ef)}.aa-grid,.aa-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.aa-facts{margin:14px 0}.aa-facts div{padding:12px;border:1px solid var(--border-200,#e1e7ef);border-radius:8px;background:var(--bg-muted,#f7f9fc)}.aa-facts dt{font-size:11px;color:var(--text-600,#667085)}.aa-facts dd{margin:5px 0 0;font-size:13px;font-weight:600;overflow-wrap:anywhere}.aa-score-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}.aa-score-table th,.aa-score-table td{padding:12px;text-align:left;border-bottom:1px solid var(--border-200,#e1e7ef)}.aa-score-table th{font-size:12px;color:var(--text-600,#667085);background:var(--bg-muted,#f7f9fc)}.aa-score-table input,textarea{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border-300,#cbd5e1);border-radius:7px;background:var(--bg-white,#fff);color:inherit;font:inherit}.aa-score-table input{min-width:120px}.aa-muted{font-size:12px;line-height:1.7;color:var(--text-600,#667085)}.aa-blocker{padding:12px;border-radius:8px;background:#fff4f2;font-size:13px;line-height:1.7}.aa-blockers{margin:12px 0;padding:12px 12px 12px 30px;border:1px solid #f4c7c3;border-radius:8px;background:#fff8f7;color:var(--danger-600,#b42318);font-size:13px}.aa-blockers li+li{margin-top:6px}.aa-history{list-style:none;padding:0;margin:0}.aa-history li{position:relative;padding:2px 0 16px 22px;border-left:2px solid var(--border-200,#e1e7ef)}.aa-history li:before{content:'';position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--primary-500,#3564b4)}.aa-history li span,.aa-history li strong,.aa-history li p{display:block;margin:0 0 5px}.aa-history li span{font-size:11px;color:var(--text-600,#667085)}.aa-history li p{font-size:12px;color:var(--text-600,#667085)}.aa-next{display:flex;justify-content:space-between;gap:14px;padding:13px;border-radius:8px;background:var(--primary-50,#edf4ff);font-size:13px}.aa-next strong{text-align:right}@media(max-width:980px){.aa-workspace{grid-template-columns:1fr}.aa-grid,.aa-facts{grid-template-columns:1fr}}@media(max-width:640px){.aa-flow-note,.aa-receipt,.aa-detail-head,.aa-next{align-items:flex-start;flex-direction:column}.aa-score-table{display:block;overflow-x:auto}.aa-toolbar>*{width:100%}.aa-grow{display:none}}
 </style>

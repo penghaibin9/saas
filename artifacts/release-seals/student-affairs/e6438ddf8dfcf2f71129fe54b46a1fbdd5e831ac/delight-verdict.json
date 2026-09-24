@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "V6.0",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "verdict": "STUDENT_AFFAIRS_DELIGHT_GO",
+  "score": 95,
+  "threshold": 92,
+  "dimensions": {
+    "roleHomeAndFindWork": 14,
+    "flowClarity": 15,
+    "objectDecisionEfficiency": 14,
+    "operationEase": 14,
+    "recovery": 9,
+    "crossEndContinuity": 10,
+    "performance": 9,
+    "trustSafetyFeedback": 10
+  },
+  "dxP0": 0,
+  "dxP1": 0,
+  "goldenJourneys": {
+    "total": 7,
+    "l4Sealed": 7,
+    "failed": 0
+  },
+  "dGates": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0
+  },
+  "capacity": {
+    "students": 20000,
+    "bounded": true,
+    "explain": "7/7 PASS",
+    "p95Ms": {
+      "studentHome": 161.18,
+      "teacherHome": 80.98,
+      "staffDashboard": 402.37
+    },
+    "queryCount": {
+      "studentHome": 36,
+      "teacherHome": 11,
+      "staffDashboard": "76-78 <= 80"
+    }
+  },
+  "fourEnds": {
+    "staffPC": "PASS",
+    "studentPC": "PASS",
+    "teacherMini": "PASS",
+    "studentMini": "PASS"
+  },
+  "productionBuilds": {
+    "frontend": "PASS",
+    "studentPortal": "PASS",
+    "miniappH5": "PASS",
+    "miniappWeixin": "PASS",
+    "enterprisePortal": "PASS"
+  },
+  "mainMerged": false
+}

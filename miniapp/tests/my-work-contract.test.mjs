@@ -54,7 +54,7 @@ test('S5 每条办理的动作回原业务，不落通用大厅', () => {
   assert.doesNotMatch(listPage, /\/pages\/student\/affairs\/index/)
   // 没有安全入口就不渲染按钮
   assert.match(listPage, /v-if="canRun\(row\.action\)"/)
-  assert.match(detailPage, /v-if="row && canRun\(row\.action\)"/)
+  assert.match(detailPage, /v-if="state === 'ready' && row && canRun\(row\.action\)"/)
 })
 
 test('S5 详情时间线保留每个节点的出处，不在前端合并', () => {

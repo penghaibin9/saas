@@ -18,7 +18,7 @@
         class="ibs__select"
         :value="store.selectedBatchId"
         aria-label="选择实习批次"
-        @change="onSelect($event.target.value)"
+        @change="onSelect($event)"
       >
         <option v-if="store.needsExplicitSelect && !store.selectedBatchId" value="" disabled>请选择批次</option>
         <option v-for="b in store.availableBatches" :key="b.id" :value="String(b.id)">
@@ -45,6 +45,8 @@
  * 仅做批次上下文，不做页面视觉重构。
  */
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { isNavigationFailure } from 'vue-router'
+import { internshipBatchSwitch } from '../../navigation.js'
 
 export default {
   name: 'InternshipBatchStrip',
@@ -61,12 +63,14 @@ export default {
     }
   },
   methods: {
-    onSelect(id) {
-      this.store.selectBatch(id)
-      const q = { ...this.$route.query }
-      if (id) q.batchId = id
-      else delete q.batchId
-      this.$router.replace({ query: q }).catch(() => {})
+    async onSelect(event) {
+      const id = event.target.value
+      try {
+        const failure = await this.$router.replace(internshipBatchSwitch(this.$route.fullPath, id))
+        if (!isNavigationFailure(failure)) this.store.selectBatch(id)
+      } finally {
+        event.target.value = this.store.selectedBatchId
+      }
     },
     reload() {
       this.store.ensureLoaded({

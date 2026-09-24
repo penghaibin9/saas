@@ -1,5 +1,17 @@
 <template>
   <section class="aacw" aria-label="归档后纠错工作区">
+    <section class="aacw-context" aria-label="归档后纠错约束">
+      <div>
+        <span>归档后纠错 · 独立事实链</span>
+        <h3>{{ batch.batchName }}</h3>
+        <p>原归档批次 {{ batch.batchId }} 与 Manifest V1 永久保留；纠错只追加新正式事实和后继版本。</p>
+      </div>
+      <ol>
+        <li><b>1</b><span><strong>申请人提交</strong><small>冻结目标事实、原因与证据</small></span></li>
+        <li><b>2</b><span><strong>不同操作人复核</strong><small>重新核对权限和原 Manifest</small></span></li>
+        <li><b>3</b><span><strong>追加正式事实</strong><small>保留原事实并生成 V(N+1)</small></span></li>
+      </ol>
+    </section>
     <div class="aacw-tabs" role="tablist" aria-label="归档批次工作区">
       <button
         v-for="tab in tabs"
@@ -307,7 +319,7 @@ export default {
       }
     },
     businessLabel(v) { return v === 'GRADE' ? '成绩' : v === 'GRADUATION' ? '毕业结论' : v },
-    statusLabel(v) { return STATUS_LABEL[v] || v },
+    statusLabel(v) { return STATUS_LABEL[v] || (v ? '待确认' : '—') },
     statusType(v) { return v === 'APPLIED' ? 'success' : v === 'REJECTED' ? 'warning' : 'primary' },
     factState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
     factLabel(row) { return FACT_LABEL[this.factState(row)] || '待确认' },
@@ -436,6 +448,7 @@ export default {
   z-index: calc(var(--z-modal) + 1);
 }
 .aacw { margin-top: 14px; min-width: 0; }
+.aacw-context { display:grid; grid-template-columns:minmax(0,1fr) minmax(360px,.9fr); gap:22px; align-items:center; margin-bottom:12px; padding:15px 16px; border:1px solid #dbe5f2; border-left:3px solid var(--primary-color,#2563eb); border-radius:11px; background:var(--surface-color,#fff); }.aacw-context > div > span, .aacw-context p { color:var(--text-secondary,#64748b); font-size:12px; }.aacw-context h3 { margin:4px 0; color:var(--text-primary); font-size:17px; }.aacw-context p { margin:0; line-height:1.6; }.aacw-context ol { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0; padding:0; list-style:none; }.aacw-context li { display:flex; gap:8px; min-width:0; }.aacw-context li b { display:grid; place-items:center; flex:0 0 24px; height:24px; border-radius:50%; color:#fff; background:var(--primary-color,#2563eb); font-size:11px; }.aacw-context li span, .aacw-context li strong, .aacw-context li small { display:block; }.aacw-context li strong { color:var(--text-primary); font-size:12px; }.aacw-context li small { margin-top:3px; color:var(--text-secondary,#64748b); font-size:10px; line-height:1.4; }
 .aacw-tabs { display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 10px; background: var(--fill-light, #f8fafc); overflow-x: auto; }
 .aacw-tab { border: 0; border-radius: 8px; background: transparent; padding: 8px 14px; white-space: nowrap; cursor: pointer; color: var(--text-secondary, #475569); font: inherit; }
 .aacw-tab.is-active { background: var(--surface-color, #fff); color: var(--primary-color, #2563eb); font-weight: 600; box-shadow: 0 1px 2px rgb(15 23 42 / 8%); }
@@ -469,6 +482,6 @@ export default {
 .aacw-compare-card { min-width: 0; border: 1px solid var(--border-color, #e5e7eb); border-radius: 9px; overflow: hidden; }
 .aacw-compare-card h4 { margin: 0; padding: 9px 10px; background: var(--fill-light, #f8fafc); font-size: 13px; }
 .aacw-compare-card pre { margin: 0; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.55; max-height: 320px; overflow: auto; }
-@media (max-width: 980px) { .aacw-kpis, .aacw-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 700px) { .aacw-kpis, .aacw-meta-grid, .aacw-compare { grid-template-columns: 1fr; } }
+@media (max-width: 980px) { .aacw-context { grid-template-columns:1fr; }.aacw-kpis, .aacw-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .aacw-context ol, .aacw-kpis, .aacw-meta-grid, .aacw-compare { grid-template-columns: 1fr; } }
 </style>

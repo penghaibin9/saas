@@ -23,19 +23,6 @@
       @retry="load"
       @back="$router.push('/workbench')"
     >
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前工作范围 · {{ scopeLabel }}</span>
-          <h3 class="sa-summary-strip__title">先处理待办和未关闭风险，再进入各业务台账</h3>
-          <p class="sa-summary-strip__text">{{ riskSummary }} 今日待办、请假审批和重点学生提醒均按当前身份的数据范围汇总。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-            查看未关闭风险
-          </AppPermissionButton>
-        </div>
-      </div>
-
       <div class="sa-grid sa-grid--priority">
         <AppSectionCard title="今日优先处理">
           <ul class="sa-list">

@@ -354,8 +354,13 @@ def portal_weekly_report_submit(
 
 
 @router.get("/context/self-eval", summary="本人当前批次实习自评")
-def portal_self_eval(user=Depends(get_current_user)):
-    return success(student_evals.my_eval(user))
+def portal_self_eval(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(student_evals.my_eval(
+        user, batch_id=batchId, internship_id=internshipId))
 
 
 @router.post("/context/self-eval", summary="按当前批次和版本提交实习自评")

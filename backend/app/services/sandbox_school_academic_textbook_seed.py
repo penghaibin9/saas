@@ -47,6 +47,7 @@ def seed_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
         AaTextbookReviewBatch,
         AaTextbookReviewBatchItem,
         AaTextbookSelection,
+        AffairsAuditTrail,
         College,
         Major,
         SchoolClass,
@@ -215,11 +216,22 @@ def seed_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
     }
 
     order_item_rows = []
+    order_source_rows = []
     expected_total = 0
     arrived_total = 0
     for college_id, rows in selections_by_college.items():
         grouped: dict[int, dict] = {}
         for selection in rows:
+            order_source_rows.append({
+                "tenant_id": tenant_id,
+                "biz_type": "AA_TEXTBOOK_ORDER",
+                "biz_id": int(order_by_college[college_id].id),
+                "action": "TEXTBOOK_ORDER_SOURCE",
+                "detail": f"selectionId={selection.id}",
+                "operator": "sandbox-school-seed",
+                "role_name": "沙箱教材初始化",
+                "occurred_at": REFERENCE_NOW,
+            })
             textbook_id = int(selection.textbook_id)
             item = grouped.setdefault(textbook_id, {
                 "name": selection.textbook_name,
@@ -242,6 +254,7 @@ def seed_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
                 "unit_price_snapshot": textbook.unit_price,
             })
     _bulk_insert(db, AaTextbookOrderItem, order_item_rows, chunk_size=1000)
+    _bulk_insert(db, AffairsAuditTrail, order_source_rows, chunk_size=1000)
     db.commit()
 
     result = validate_school_academic_textbooks_20k(db, tenant_id)
@@ -292,15 +305,22 @@ def validate_school_academic_textbooks_20k(db, tenant_id: int) -> dict:
         "reviewBatches": EXPECTED_REVIEW_BATCHES,
         "reviewItems": EXPECTED_SELECTIONS,
         "orderBatches": EXPECTED_ORDER_BATCHES,
-        "distributionBatches": 0,
-        "distributionRecords": 0,
-        "feeLedgers": 0,
     }
     mismatches = {
         key: {"expected": value, "actual": report[key]}
         for key, value in expected_fixed.items()
         if report[key] != value
     }
+    distribution_tuple = (
+        report["distributionBatches"], report["distributionRecords"], report["feeLedgers"]
+    )
+    # 教材基础种子结束时尚未进入开学发放，完整沙箱核心链随后生成 1 批、2 笔
+    # 签收/排除记录及对应费用台账；两个阶段都必须保持三表同步。
+    if distribution_tuple not in {(0, 0, 0), (1, 2, 2)}:
+        mismatches["distributionFlow"] = {
+            "expected": "(0,0,0) before core flow or (1,2,2) after core flow",
+            "actual": distribution_tuple,
+        }
     if order_qty <= 0 or arrived_qty <= 0 or not (0.79 <= report["arrivalRate"] <= 0.81):
         mismatches["arrival"] = {
             "expected": "ordered>0 and arrivalRate≈80%",

@@ -41,6 +41,7 @@ FIXED_LOGINS = ("admin2", "teacher2", "student2")
 GENERATED_LOGIN_PREFIXES = (
     "2024S", "2025S", "2026S",
     "sbx_t", "sbx_c", "sbx_aa", "sbx_sa", "sbx_im", "sbx_gm",
+    "sandbox-tourism-company-hr",
 )
 
 ROLE_SPECS = (
@@ -265,6 +266,20 @@ def _seed_staff_accounts(db, tenant_id: int, role_ids: dict[str, int]) -> dict[s
             role_by_login[login] = role_code
             global_seq += 1
     assert len(user_rows) == EXPECTED_STAFF_ACCOUNT_COUNT
+    # 企业协同身份属于 20K 学校身份底座，必须在统一主数据构建阶段预置。
+    # 业务过程 seed 只绑定已有账号，不再开辟额外的 User(...) 建号入口。
+    enterprise_phone = "13900000071"
+    user_rows.append({
+        "tenant_id": tenant_id,
+        "login_name": "sandbox-tourism-company-hr",
+        "real_name": "周雯",
+        "password_hash": shared_hash,
+        "user_type": "ENTERPRISE_MENTOR",
+        "phone_encrypted": encrypt_sensitive(enterprise_phone, "phone"),
+        "phone_hash": hash_sensitive(enterprise_phone, "phone"),
+        "status": "ACTIVE",
+        "must_change_password": True,
+    })
     _bulk_insert(db, User, user_rows, chunk_size=500)
     db.flush()
 
@@ -438,7 +453,14 @@ def _synthetic_phone(global_seq: int) -> str:
 
 
 def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int], org: dict) -> dict:
-    from app.models import StudentAccountLink, StudentContact, StudentProfile, User, UserRole
+    from app.models import (
+        StudentAcademicFact,
+        StudentAccountLink,
+        StudentContact,
+        StudentProfile,
+        User,
+        UserRole,
+    )
 
     specs = _student_specs(org)
     profile_rows = []
@@ -463,12 +485,43 @@ def _seed_students_accounts_contacts(db, tenant_id: int, role_ids: dict[str, int
 
     profiles = list(db.execute(select(
         StudentProfile.id, StudentProfile.student_no, StudentProfile.real_name,
+        StudentProfile.enroll_date, StudentProfile.created_at, StudentProfile.student_status,
+        StudentProfile.college_id, StudentProfile.major_id, StudentProfile.class_id, StudentProfile.grade,
     ).where(
         StudentProfile.tenant_id == tenant_id,
         StudentProfile.is_deleted.is_(False),
     )).all())
     profile_by_no = {row.student_no: (int(row.id), row.real_name) for row in profiles}
     assert len(profile_by_no) == EXPECTED_STUDENT_COUNT
+
+    # A master rebuild is authoritative for the sandbox student ledger. Clear any legacy or
+    # prematurely-created facts before materializing exactly one version-1 fact per seeded student.
+    db.execute(delete(StudentAcademicFact).where(StudentAcademicFact.tenant_id == tenant_id))
+    db.flush()
+
+    # StudentProfile is intentionally inserted in bulk for the 20K sandbox.  SQLAlchemy
+    # mapper hooks do not run for Core bulk inserts, so materialize the version-1 academic
+    # ledger explicitly in the same transaction.  Without this, historical consumers such
+    # as selection, transcript and graduation fail closed for every seeded student.
+    fact_rows = [{
+        "tenant_id": tenant_id,
+        "student_id": int(row.id),
+        "version_no": 1,
+        "valid_from": row.enroll_date or row.created_at or datetime.utcnow(),
+        "valid_to": None,
+        "student_status": row.student_status or "NORMAL",
+        "college_id": row.college_id,
+        "major_id": row.major_id,
+        "class_id": row.class_id,
+        "grade": row.grade,
+        "source_type": "BASELINE_BACKFILL",
+        "source_ref_id": None,
+        "source_quality": "INFERRED",
+        "created_at": row.created_at or datetime.utcnow(),
+        "created_by": None,
+    } for row in profiles]
+    written_facts = _bulk_insert(db, StudentAcademicFact, fact_rows, chunk_size=1000)
+    assert written_facts == EXPECTED_STUDENT_COUNT
 
     contact_rows: list[dict] = []
     for item in specs:
@@ -586,7 +639,15 @@ def _seed_teacher_scopes(db, tenant_id: int, staff: dict[str, list[tuple[int, st
 
 def validate_school_master(db, tenant_id: int) -> dict:
     from sqlalchemy import func
-    from app.models import College, Major, SchoolClass, StudentAccountLink, StudentProfile, User
+    from app.models import (
+        College,
+        Major,
+        SchoolClass,
+        StudentAcademicFact,
+        StudentAccountLink,
+        StudentProfile,
+        User,
+    )
 
     def count(model, *extra):
         return int(db.scalar(select(func.count()).select_from(model).where(
@@ -595,6 +656,24 @@ def validate_school_master(db, tenant_id: int) -> dict:
         )) or 0)
 
     students = count(StudentProfile, StudentProfile.is_deleted.is_(False))
+    # Historical transitions append facts; only the open version is current.
+    academic_facts = count(StudentAcademicFact, StudentAcademicFact.valid_to.is_(None))
+    active_fact_counts = select(
+        StudentAcademicFact.student_id,
+        func.count().label("fact_count"),
+    ).where(
+        StudentAcademicFact.tenant_id == tenant_id,
+        StudentAcademicFact.valid_to.is_(None),
+    ).group_by(StudentAcademicFact.student_id).subquery()
+    invalid_fact_students = int(db.scalar(
+        select(func.count()).select_from(StudentProfile).outerjoin(
+            active_fact_counts, active_fact_counts.c.student_id == StudentProfile.id,
+        ).where(
+            StudentProfile.tenant_id == tenant_id,
+            StudentProfile.is_deleted.is_(False),
+            func.coalesce(active_fact_counts.c.fact_count, 0) != 1,
+        )
+    ) or 0)
     colleges = count(College, College.is_deleted.is_(False))
     majors = count(Major, Major.is_deleted.is_(False))
     classes = count(SchoolClass, SchoolClass.is_deleted.is_(False))
@@ -608,6 +687,8 @@ def validate_school_master(db, tenant_id: int) -> dict:
 
     report = {
         "students": students,
+        "studentAcademicFacts": academic_facts,
+        "studentsWithInvalidCurrentFact": invalid_fact_students,
         "colleges": colleges,
         "majors": majors,
         "classes": classes,
@@ -617,6 +698,8 @@ def validate_school_master(db, tenant_id: int) -> dict:
     }
     expected = {
         "students": EXPECTED_STUDENT_COUNT,
+        "studentAcademicFacts": EXPECTED_STUDENT_COUNT,
+        "studentsWithInvalidCurrentFact": 0,
         "colleges": EXPECTED_COLLEGE_COUNT,
         "majors": EXPECTED_MAJOR_COUNT,
         "classes": EXPECTED_CLASS_COUNT,

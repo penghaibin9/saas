@@ -19,7 +19,7 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
     if not rows:
         return _core._result(0, False, "本学期没有课表批次")
 
-    published, formal_archived, voided = [], [], []
+    published, formal_archived, voided, superseded = [], [], [], []
     drafts, pre_published, unknown = [], [], []
     for row in rows:
         status = _status(getattr(row, "status", None))
@@ -30,6 +30,8 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
             (voided if row_id in voided_ids else formal_archived).append(row)
         elif status == "VOIDED":
             voided.append(row)
+        elif status == "SUPERSEDED":
+            superseded.append(row)
         elif status == "DRAFT":
             drafts.append(row)
         elif status == "PRE_PUBLISHED":
@@ -59,10 +61,13 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
             remark += f"；另有历史草稿 {len(drafts)} 个，因已有正式版本不单独阻断"
         if voided and formal:
             remark += f"；另有作废批次 {len(voided)} 个，已有替代正式版本"
+        if superseded and formal:
+            remark += f"；另有被替代批次 {len(superseded)} 个，保留审计但不再阻断"
     else:
         remark = (
             f"正式发布 {len(published)} 个、正式归档 {len(formal_archived)} 个；"
-            f"历史草稿 {len(drafts)} 个、作废批次 {len(voided)} 个不覆盖正式版本"
+            f"历史草稿 {len(drafts)} 个、作废批次 {len(voided)} 个、"
+            f"被替代批次 {len(superseded)} 个不覆盖正式版本"
         )
     return _core._result(len(rows), not blockers, remark)
 

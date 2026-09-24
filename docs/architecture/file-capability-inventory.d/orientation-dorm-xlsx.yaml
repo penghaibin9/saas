@@ -1,0 +1,70 @@
+version: file-capability-inventory/v1
+entries:
+  - module: orientation
+    client: backend
+    route: /api/v1/import/domain/orientation/batches/{batch_no}/errors.xlsx
+    page: backend/app/services/domain_import_service.py
+    action: download-import-errors
+    fileCategory: ORIENTATION_IMPORT_ERROR_XLSX
+    api: GET /api/v1/import/domain/orientation/batches/{batch_no}/errors.xlsx
+    backendService: backend/app/services/domain_import_service.py; backend/app/api/v1/import_export.py
+    storageMode: generated-in-memory-xlsx-from-persisted-shared-import-errors
+    authMode: studentAffairs.orientation.import+batch-owner
+    dataScope: tenant+import-batch-owner
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '4'
+    notes: 迎新名单校验错误来自租户隔离的共享导入批次；下载前复核导入权限与批次创建人，服务端即时生成 XLSX，不暴露跨租户批次。
+
+  - module: student-affairs-dorm
+    client: backend
+    route: /api/v1/import/domain/dorm/batches/{batch_no}/errors.xlsx
+    page: backend/app/services/dorm_resource_import_service.py
+    action: download-resource-import-errors
+    fileCategory: DORM_RESOURCE_IMPORT_ERROR_XLSX
+    api: GET /api/v1/import/domain/dorm/batches/{batch_no}/errors.xlsx
+    backendService: backend/app/services/dorm_resource_import_service.py; backend/app/api/v1/import_export.py
+    storageMode: generated-in-memory-xlsx-from-persisted-shared-import-errors
+    authMode: studentAffairs.dorm.resource.manage+batch-owner
+    dataScope: tenant+import-batch-owner
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '4'
+    notes: 宿舍楼房床导入错误由共享批次持久化，下载时按租户、资源管理权限和批次创建人校验后即时生成 XLSX。
+
+  - module: student-affairs-dorm
+    client: backend
+    route: /api/v1/student-affairs/dorm/allocation-batches/{batchId}/conflicts.xlsx
+    page: backend/app/services/dorm_allocation_service.py
+    action: export-allocation-conflicts
+    fileCategory: DORM_ALLOCATION_CONFLICT_XLSX
+    api: GET /api/v1/student-affairs/dorm/allocation-batches/{batchId}/conflicts.xlsx
+    backendService: backend/app/services/dorm_allocation_service.py; backend/app/api/v1/student_affairs.py
+    storageMode: generated-in-memory-xlsx-from-scoped-current-facts
+    authMode: studentAffairs.dorm.allocation.manage
+    dataScope: tenant+current-role-organization-scope
+    versioned: false
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '4'
+    notes: Dry Run 冲突工作簿只导出当前账号可见学生与未绑定迎新候选，生成后记录宿舍域导出审计，不持久化临时文件。

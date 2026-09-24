@@ -64,7 +64,12 @@ def test_overview_refresh_failure_clears_stale_metrics_before_error_state():
     assert "this.error = ''" in src
     assert 'v-else-if="error"' in src
     assert ':description="error"' in src
-    assert "res.message || '平台总览加载失败'" in src
+    # The wording/optional chaining changed; keep the actual error and stale-result guards.
+    assert "this.error = res?.message" in src
+    assert "epoch !== this.requestEpoch" in src
+    load = src.split("async load()", 1)[1]
+    assert load.index("this.ov = null") < load.index("await platformControlApi.getOverview()")
+    assert "catch (error)" in load and "finally" in load
 
 
 def test_remaining_formal_legacy_routes_are_fail_closed_capability_shells():
@@ -84,7 +89,7 @@ def test_remaining_formal_legacy_routes_are_fail_closed_capability_shells():
 def test_capability_shell_has_no_executable_fake_business_action():
     src = _read(FRONT / "views" / "PlatformCapabilityView.vue")
     assert "capabilityKey" in src
-    assert "未接真实 API 的能力仅展示合同与边界" in src
+    assert "未接真实后端接口的能力仅展示合同与边界" in src
     assert "@click" not in src
     assert "toast." not in src
 

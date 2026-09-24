@@ -110,3 +110,24 @@ def test_aid_list_student_id_filter_and_scope(client, db_mode):
         "batchId": bid, "studentId": str(ids["sb"]), "pageSize": 50
     }).json()["data"]["items"]
     assert out_of_scope == []
+
+def test_pc_affairs_todo_routes_are_record_exact():
+    from app.services.todo_route_registry import resolve_todo_route
+
+    expected = {
+        "LEAVE_CANCEL": ("/admin/student-affairs/leave/followup", "WAIT_CANCEL_LEAVE"),
+        "LEAVE_EXTENSION": ("/admin/student-affairs/leave/followup", "EXTENSION_REVIEW"),
+        "LEAVE_OVERDUE": ("/admin/student-affairs/leave/followup", "OVERDUE"),
+        "LEAVE_APPROVAL": ("/admin/student-affairs/leave", "PENDING"),
+        "AID_APPROVAL": ("/admin/student-affairs/aid", "PENDING"),
+        "FUNDING_APPROVAL": ("/admin/student-affairs/funding", "PENDING"),
+        "DISCIPLINE_APPROVAL": ("/admin/student-affairs/discipline", "PENDING"),
+    }
+    for todo_type, (path_value, status) in expected.items():
+        target = resolve_todo_route(todo_type, 99123, client="pc")
+        assert target is not None
+        assert target["path"] == path_value
+        assert target["query"]["status"] == status
+        assert target["query"]["recordId"] == "99123"
+        assert target["focusMode"] == "LIST_FOCUS"
+        assert target["exact"] is True

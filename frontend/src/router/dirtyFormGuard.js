@@ -1,7 +1,10 @@
+import { systemConfirm } from '../services/systemDialog.js'
+
 // Stage B / B4：统一长表单未保存保护。
 // 先覆盖实习批次/企业，再扩到同域岗位、指导、企业评价、协议模板等长表单；
 // 后续只需追加 route name，不再复制页面级 beforeRouteLeave。
 const DEFAULT_GUARDED_ROUTES = new Set([
+  'internship-plans',
   'internship-batch-new',
   'internship-batch-edit',
   'internship-enterprise-new',
@@ -10,6 +13,10 @@ const DEFAULT_GUARDED_ROUTES = new Set([
   'internship-position-edit',
   'internship-guidance-new',
   'internship-enterprise-eval-new',
+  'internship-recruitment-campaign-new',
+  'internship-recruitment-campaign-edit',
+  'internship-student-detail',
+  'internship-agreement-new',
   'internship-agreement-template-new',
   'internship-agreement-template-edit'
 ])
@@ -32,9 +39,11 @@ export function installDirtyFormGuard(router, options = {}) {
   const message = options.message || '当前表单有未保存修改。离开此页将丢失这些修改，仍要离开吗？'
   let dirty = false
   let pendingDiscardFrom = ''
+  let confirmationHandler = null
 
   const markDirty = (event) => {
     if (!event?.isTrusted || !isGuarded(router.currentRoute.value, guardedRoutes)) return
+    if (routeName(router.currentRoute.value) === 'internship-plans') return
     const target = event.target
     if (!(target instanceof Element) || !target.matches(EDITABLE_SELECTOR)) return
     if (target.closest('[data-dirty-ignore="true"], .advanced-filter, .mp-filter, .app-search')) return
@@ -52,17 +61,28 @@ export function installDirtyFormGuard(router, options = {}) {
   document.addEventListener('change', markDirty, true)
   window.addEventListener('beforeunload', beforeUnload)
 
-  const removeBefore = router.beforeEach((to, from) => {
+  const removeBefore = router.beforeEach(async (to, from) => {
     if (!dirty || !isGuarded(from, guardedRoutes)) {
       pendingDiscardFrom = ''
       return true
     }
     if (String(to?.fullPath || '') === String(from?.fullPath || '')) return true
+    if (routeName(from) === 'internship-plans' && to?.path === from?.path && String(to.query?.batchId || '') === String(from.query?.batchId || '')) return true
+    if (routeName(from) === 'internship-student-detail' && to?.path === from?.path) {
+      const keys = new Set([...Object.keys(to.query || {}), ...Object.keys(from.query || {})])
+      if ([...keys].every((key) => key === 'section' || to.query?.[key] === from.query?.[key])) return true
+    }
 
     // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
     // 用户确认丢弃时也只记录“本次离开已确认”，真正导航成功后才在 afterEach 清理。
     // 若后续权限/业务 guard 取消或导航失败，dirty 必须继续保留，下一次离开仍会提醒。
-    if (window.confirm(message)) {
+    let accepted = false
+    try {
+      accepted = confirmationHandler
+        ? await confirmationHandler(message)
+        : await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+    } catch { accepted = false }
+    if (accepted === true) {
       pendingDiscardFrom = String(from?.fullPath || '')
       return true
     }
@@ -84,6 +104,11 @@ export function installDirtyFormGuard(router, options = {}) {
 
   // 页面在真实保存成功回调里可显式调用 markSaved()；失败回调不要调用。
   window.__SAAS_DIRTY_FORM_GUARD__ = {
+    registerConfirmation: (handler) => {
+      confirmationHandler = handler
+      return () => { if (confirmationHandler === handler) confirmationHandler = null }
+    },
+    handlesRoute: (route) => isGuarded(route, guardedRoutes),
     markDirty: () => {
       if (isGuarded(router.currentRoute.value, guardedRoutes)) {
         dirty = true

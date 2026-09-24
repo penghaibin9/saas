@@ -49,7 +49,7 @@ def test_student_pc_has_task_home_and_independent_academic_routes():
     assert "./router/academicRoutes" in main
     assert "StudentAcademicHomeView.vue" not in shared_router
     assert "Promise.allSettled" in home
-    assert "当前需要我处理" in home
+    assert "我的待办" in home
     assert "academicTab" in wrapper
     assert "AcademicView" in wrapper
     # 兼容工作区只隐藏综合页的第一层主标签，不能误伤子工作区标签。
@@ -83,7 +83,8 @@ def test_teacher_and_student_wechat_academic_homes_are_task_oriented():
     assert "?id=${encodeURIComponent(id)}" in teacher
     assert "点击直达第一条具体任务" in teacher
     assert "taskCues" in student
-    assert "当前需要我处理" in student
+    assert "secondaryTaskCues" in student
+    assert "priorityState" in student
     for route in (
         "/pages/student/academic-affairs/registration",
         "/pages/student/academic-affairs/evaluation",
@@ -121,8 +122,12 @@ def test_teacher_wechat_pages_consume_workbench_task_ids():
 def test_admin_pc_keeps_real_todo_workbench_and_drill_routes():
     root = Path(__file__).resolve().parents[2]
     dashboard = (root / "frontend/src/modules/academicAffairs/views/AaDashboardView.vue").read_text(encoding="utf-8")
+    overview = (root / "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue").read_text(encoding="utf-8")
 
-    assert 'id="adb-todos"' in dashboard
-    assert "点击直达处理页面" in dashboard
-    assert "todo.drillRoute" in dashboard
-    assert "getDashboardReminders" in dashboard
+    assert 'activePanel === \'todos\'' in dashboard
+    assert 'mode="todos"' in dashboard
+    assert "getDashboardRoleQueue" in overview
+    assert "adaptTypedTodoPage" in overview
+    assert "typedRouteTarget" in overview
+    assert "canOpenTodo" in overview
+    assert "继续办理" in overview

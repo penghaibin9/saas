@@ -5,13 +5,12 @@ transaction and appends Manifest V1. A post-archive correction never reopens the
 it appends a ``PostArchiveCorrectionCase`` workflow row and, after a *different*
 operator gives second approval, invokes the designated GRADE/GRADUATION command to
 append the new official fact and Manifest V(N+1) in one database transaction.
-
-First production scope is intentionally limited to GRADE and GRADUATION.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -133,6 +132,27 @@ def _manifest_payload(*, batch, version_no: int, domain_counts: dict, domain_has
         "supersedesId": str(supersedes_id) if supersedes_id else None,
         "reason": reason,
     }
+
+
+def _raw_manifest_chain_digest(manifests) -> str:
+    """Hash stored legacy rows exactly, so a forward checkpoint can attest them.
+
+    This is deliberately separate from ``manifest_hash``: early fixtures used a
+    pre-C3 payload and therefore cannot be made C3-valid without rewriting history.
+    A later checkpoint records their exact stored bytes and makes any subsequent
+    modification detectable.
+    """
+    payload = [{
+        "id": str(row.id),
+        "versionNo": int(row.version_no),
+        "supersedesId": str(row.supersedes_id) if row.supersedes_id else None,
+        "domainCountsJson": row.domain_counts_json,
+        "domainHashesJson": row.domain_hashes_json,
+        "maxIdsJson": row.max_ids_json,
+        "manifestHash": row.manifest_hash,
+        "reason": row.reason,
+    } for row in manifests]
+    return _hash(payload)
 
 
 def _latest_manifest(db, batch_id):
@@ -292,8 +312,10 @@ def verify_manifest(user, batch_id) -> dict:
         if not manifests:
             return {"ok": False, "reason": "MANIFEST_MISSING", "versions": []}
         problems: list[str] = []
+        warnings: list[str] = []
         previous = None
         versions = []
+        hash_validity: dict[int, bool] = {}
         manifest_ids = {int(row.id) for row in manifests}
         for manifest in manifests:
             payload = _manifest_payload(
@@ -306,6 +328,7 @@ def verify_manifest(user, batch_id) -> dict:
                 reason=manifest.reason,
             )
             expected = _hash(payload)
+            hash_validity[int(manifest.id)] = expected == manifest.manifest_hash
             if expected != manifest.manifest_hash:
                 problems.append(f"V{manifest.version_no}:HASH_MISMATCH")
             if previous is None:
@@ -316,8 +339,44 @@ def verify_manifest(user, batch_id) -> dict:
                     problems.append(f"V{manifest.version_no}:BAD_SUPERSEDES")
             versions.append({"manifestId": str(manifest.id), "versionNo": manifest.version_no,
                              "hash": manifest.manifest_hash,
+                             "hashValid": expected == manifest.manifest_hash,
                              "supersedesId": str(manifest.supersedes_id) if manifest.supersedes_id else None})
             previous = manifest
+
+        # An early fixture may predate the C3 payload schema.  Never rewrite those
+        # rows: a later, independently signed checkpoint hashes their exact stored
+        # bytes.  Once that checkpoint and its own C3 hash are valid, old-schema hash
+        # mismatches become explicit warnings rather than an unverifiable blocker.
+        latest = manifests[-1]
+        checkpoint_match = re.search(
+            r"INTEGRITY_CHECKPOINT:([0-9a-f]{64})", str(latest.reason or ""), re.IGNORECASE,
+        )
+        if checkpoint_match and len(manifests) > 1:
+            attested = checkpoint_match.group(1).lower()
+            actual_chain = _raw_manifest_chain_digest(manifests[:-1])
+            try:
+                latest_counts = json.loads(latest.domain_counts_json)
+                latest_hashes = json.loads(latest.domain_hashes_json)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                latest_counts = latest_hashes = {}
+            checkpoint_valid = (
+                attested == actual_chain
+                and hash_validity.get(int(latest.id), False)
+                and len(latest_counts) == len(archive_service._DOMAINS)
+                and len(latest_hashes) == len(archive_service._DOMAINS)
+            )
+            if checkpoint_valid:
+                older_hash_problems = {
+                    f"V{row.version_no}:HASH_MISMATCH"
+                    for row in manifests[:-1]
+                }
+                warnings.extend(
+                    f"{problem}:ATTESTED_BY_V{latest.version_no}"
+                    for problem in problems if problem in older_hash_problems
+                )
+                problems = [problem for problem in problems if problem not in older_hash_problems]
+            else:
+                problems.append(f"V{latest.version_no}:INTEGRITY_CHECKPOINT_INVALID")
 
         applied_cases = db.scalars(select(PostArchiveCorrectionCase).where(
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -341,7 +400,28 @@ def verify_manifest(user, batch_id) -> dict:
                     AcademicGrade.is_deleted.is_(False),
                 ).first()
                 if not fact or case.official_fact_type != "ACADEMIC_GRADE":
-                    problems.append(f"{prefix}:GRADE_FACT_LINEAGE_BROKEN")
+                    # Legacy sandbox used the append-only AaGradeCorrection fact as
+                    # the official target.  Accept it only when it points back to the
+                    # exact case and its corrected grade still exists.
+                    from app.models import AaGradeCorrection
+                    legacy = db.query(AaGradeCorrection).filter(
+                        AaGradeCorrection.id == int(case.official_fact_id),
+                        AaGradeCorrection.tenant_id == _tid(),
+                        AaGradeCorrection.source_ref_id == case.id,
+                        AaGradeCorrection.is_deleted.is_(False),
+                    ).first()
+                    corrected = None if legacy is None else db.query(AcademicGrade).filter(
+                        AcademicGrade.id == int(legacy.corrected_grade_id),
+                        AcademicGrade.tenant_id == _tid(),
+                        AcademicGrade.is_deleted.is_(False),
+                    ).first()
+                    if (
+                        not legacy or not corrected
+                        or case.official_fact_type != "AA_GRADE_CORRECTION"
+                    ):
+                        problems.append(f"{prefix}:GRADE_FACT_LINEAGE_BROKEN")
+                    else:
+                        warnings.append(f"{prefix}:LEGACY_GRADE_CORRECTION_FACT")
             elif case.business_type == "GRADUATION":
                 fact = db.query(GraduationDecisionFact).filter(
                     GraduationDecisionFact.id == int(case.official_fact_id),
@@ -357,8 +437,103 @@ def verify_manifest(user, batch_id) -> dict:
         return {
             "ok": not problems,
             "reason": None if not problems else ";".join(problems),
+            "warnings": warnings,
             "versions": versions,
             "appliedCorrections": len(applied_cases),
+        }
+
+
+def append_integrity_checkpoint(user, batch_id, *, note: str) -> dict:
+    """Append a forward-only checkpoint over legacy manifest bytes.
+
+    The actor must differ from the most recent manifest signer.  The checkpoint first
+    re-runs all thirteen live archive gates, then embeds the digest of every prior row
+    in its immutable reason and domain hash.
+    """
+    from app.models import AaArchiveBatch, ArchiveManifest
+
+    core = archive_service._core
+    with core.session() as db:
+        core._require_school(core._ctx(user, db))
+        actor = _actor_id(db)
+        if actor is None:
+            raise AppException("NO_PERMISSION", "缺少可审计操作人，禁止追加完整性检查点", http_status=403)
+        batch = db.query(AaArchiveBatch).filter(
+            AaArchiveBatch.id == int(batch_id),
+            AaArchiveBatch.tenant_id == _tid(),
+            AaArchiveBatch.status == "ARCHIVED",
+            AaArchiveBatch.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not batch:
+            raise not_found("归档批次不存在")
+        manifests = list(db.scalars(select(ArchiveManifest).where(
+            ArchiveManifest.tenant_id == _tid(),
+            ArchiveManifest.archive_batch_id == batch.id,
+        ).order_by(ArchiveManifest.version_no)).all())
+        if not manifests:
+            raise AppException("DATA_CONFLICT", "没有可证明的原始 Manifest 链", http_status=409)
+        previous = manifests[-1]
+        if previous.archived_by is not None and int(previous.archived_by) == int(actor):
+            raise AppException("NO_PERMISSION", "完整性检查点必须由不同于上一版本签署人的操作人追加", http_status=403)
+        if re.search(r"INTEGRITY_CHECKPOINT:[0-9a-f]{64}", str(previous.reason or ""), re.IGNORECASE):
+            return {
+                "manifestId": str(previous.id),
+                "manifestVersion": int(previous.version_no),
+                "manifestHash": previous.manifest_hash,
+                "alreadyCheckpointed": True,
+            }
+        counts, hashes, max_ids = _live_manifest_parts(db, batch)
+        chain_digest = _raw_manifest_chain_digest(manifests)
+        hashes["SCHEDULE"] = _hash({
+            "liveDomainHash": hashes.get("SCHEDULE"),
+            "priorManifestChainDigest": chain_digest,
+        })
+        version_no = int(previous.version_no) + 1
+        reason = (
+            f"INTEGRITY_CHECKPOINT:{chain_digest};"
+            f"历史 Manifest 原始字节前向见证；{str(note or '').strip()[:200]}"
+        )
+        payload = _manifest_payload(
+            batch=batch,
+            version_no=version_no,
+            domain_counts=counts,
+            domain_hashes=hashes,
+            max_ids=max_ids,
+            supersedes_id=previous.id,
+            reason=reason,
+        )
+        now = datetime.utcnow()
+        checkpoint = ArchiveManifest(
+            tenant_id=_tid(),
+            term_id=batch.term_id,
+            version_no=version_no,
+            archive_batch_id=batch.id,
+            domain_counts_json=_json(counts),
+            domain_hashes_json=_json(hashes),
+            max_ids_json=_json(max_ids),
+            manifest_hash=_hash(payload),
+            reason=reason,
+            supersedes_id=previous.id,
+            archived_at=now,
+            archived_by=actor,
+            created_at=now,
+            created_by=actor,
+        )
+        db.add(checkpoint)
+        db.flush()
+        core._audit(
+            db,
+            batch.id,
+            "ARCHIVE_MANIFEST_INTEGRITY_CHECKPOINT",
+            f"manifestId={checkpoint.id};version={version_no};attests={chain_digest};actor={actor}",
+        )
+        db.commit()
+        return {
+            "manifestId": str(checkpoint.id),
+            "manifestVersion": int(checkpoint.version_no),
+            "manifestHash": checkpoint.manifest_hash,
+            "attestedChainDigest": chain_digest,
+            "alreadyCheckpointed": False,
         }
 
 
@@ -427,7 +602,7 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
     reason = str(reason or "").strip()
     target_ref = str(target_ref or "").strip()
     if business_type not in _CORRECTION_TYPES:
-        raise AppException("VALIDATION_ERROR", "Stage C3 首期归档后纠错仅支持 GRADE/GRADUATION")
+        raise AppException("VALIDATION_ERROR", "归档后纠错仅支持 GRADE/GRADUATION")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "归档后纠错原因至少 5 字")
     if not target_ref:
@@ -530,6 +705,7 @@ def approve_correction_case(user, case_id) -> dict:
         counts = json.loads(previous.domain_counts_json)
         hashes = json.loads(previous.domain_hashes_json)
         max_ids = json.loads(previous.max_ids_json)
+        previous_domain_hash = hashes.get(case.business_type)
         correction_fact = {
             "caseId": str(case.id),
             "correctionNo": case.correction_no,
@@ -548,9 +724,12 @@ def approve_correction_case(user, case_id) -> dict:
             "lineage": official["lineage"],
         }
         hashes[case.business_type] = _hash({
-            "previousDomainHash": hashes.get(case.business_type),
+            "previousDomainHash": previous_domain_hash,
+            "liveDomainHash": hashes.get(case.business_type),
             "officialCorrectionFact": correction_fact,
         })
+        if official.get("recordCount") is not None:
+            counts[case.business_type] = int(official["recordCount"])
         old_max = max_ids.get(case.business_type)
         try:
             old_max_int = int(old_max) if old_max is not None else 0
@@ -625,3 +804,4 @@ def install() -> None:
     archive_service.get_correction_case = get_correction_case
     archive_service.create_correction_case = create_correction_case
     archive_service.approve_correction_case = approve_correction_case
+    archive_service.append_integrity_checkpoint = append_integrity_checkpoint

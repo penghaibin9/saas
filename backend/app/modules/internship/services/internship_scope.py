@@ -1,16 +1,40 @@
 """岗位实习 P2 服务统一数据范围入口。"""
+from sqlalchemy import select
+
 from app.core.exceptions import no_permission, not_found
 from app.models import InternshipRecord, StudentProfile
 from app.services.db_service import _as_id, _tid
 
 
+def lock_internship_record(db, internship_id) -> InternshipRecord:
+    """Lock an existing tenant-scoped owner before any child first-write.
+
+    Retain the lock in the caller's transaction; refresh pre-lock ORM state.
+    This helper does not replace the caller's data-scope or student checks.
+    """
+    record = db.scalar(select(InternshipRecord).where(
+        InternshipRecord.id == _as_id(internship_id),
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.is_deleted.is_(False),
+    ).with_for_update().execution_options(populate_existing=True))
+    if record is None:
+        raise not_found("实习记录不存在")
+    return record
+
+
 def assert_internship_record_scope(db, internship_id, user, action,
-                                   allow_school_admin=True) -> InternshipRecord:
-    rec = db.get(InternshipRecord, _as_id(internship_id))
+                                   allow_school_admin=True, *, lock=False) -> InternshipRecord:
+    rec = lock_internship_record(db, internship_id) if lock else db.get(InternshipRecord, _as_id(internship_id))
     if not rec or rec.is_deleted or rec.tenant_id != _tid():
         raise not_found("实习记录不存在")
     from app.modules.internship.services.internship_student_service import _current_scope, _rec_in_scope
-    stu = db.get(StudentProfile, rec.student_id)
+    stu = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == rec.student_id,
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if stu is None:
+        raise not_found("实习关联的学生档案不存在或不属于当前学校")
     if not _rec_in_scope(_current_scope(user), db, rec, stu):
         raise no_permission(f"该实习学生不在你的数据范围内，不能执行{action}")
     return rec
@@ -32,7 +56,7 @@ def apply_internship_record_scope(query, user):
     if scope.get("mode") != "SCOPED":
         return query
     role = (scope.get("roleCode") or "").upper()
-    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR"}
+    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR"}
     advisor_ids = [int(x) for x in scope.get("advisorUserIds", set()) if str(x).isdigit()]
     if role in advisor_roles:
         # 运行时授权只认稳定 user_id；历史只有 advisor_name 的记录必须先治理数据，
@@ -123,6 +147,4 @@ def apply_internship_record_scope(query, user):
     clauses = []
     if student_clauses:
         clauses.append(InternshipRecord.student_id.in_(student_ids.where(or_(*student_clauses))))
-    if advisor_ids:
-        clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
     return query.where(or_(*clauses) if clauses else false())

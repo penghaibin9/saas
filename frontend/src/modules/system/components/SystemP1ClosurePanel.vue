@@ -13,11 +13,11 @@
     <template v-if="mode === 'role'">
       <template v-if="canGrantRole">
         <div class="p1-form p1-form--role">
-          <label><span>账号 userId</span><input v-model.trim="roleForm.userId" inputmode="numeric" placeholder="数字主键" /></label>
+          <label><span>用户编号</span><input v-model.trim="roleForm.userId" inputmode="numeric" placeholder="数字编号" /></label>
           <label><span>角色</span>
             <select v-model="roleForm.roleCode">
               <option value="">请选择角色</option>
-              <option v-for="role in roles" :key="role.id || role.code" :value="role.code">{{ role.name }}（{{ role.code }}）</option>
+              <option v-for="role in roles" :key="role.id || role.code" :value="role.code">{{ role.name }}</option>
             </select>
           </label>
           <label><span>生效方式</span><input value="立即生效（未来排期暂不开放）" disabled /></label>
@@ -31,13 +31,13 @@
     </template>
 
     <template v-else-if="mode === 'config'">
-      <div v-if="!configOverrides.length && !loading" class="p1-empty">当前 SECURITY 域没有可撤销的学校层覆盖，全部继承平台/套餐/历史配置。</div>
+      <div v-if="!configOverrides.length && !loading" class="p1-empty">当前安全配置域没有可撤销的学校层覆盖，全部继承平台、套餐或历史配置。</div>
       <div v-else class="p1-table-wrap">
         <table>
           <thead><tr><th>配置</th><th>当前/计划值</th><th>覆盖链</th><th>当前生效时间</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="item in configOverrides" :key="item.configKey">
-              <td><b>{{ item.configName }}</b><small>{{ item.configKey }}</small></td>
+              <td><b>{{ item.configName }}</b><small>学校安全配置</small></td>
               <td>{{ displayValue(item.value) }}<small v-if="item.isScheduledOnly">仅有未来计划覆盖</small></td>
               <td>{{ item.overrideCount }} 条学校覆盖<small v-if="item.scheduledCount">其中 {{ item.scheduledCount }} 条待生效</small></td>
               <td>{{ fmt(item.effectiveAt) }}</td>
@@ -49,7 +49,7 @@
       <div v-if="selectedOverride && canRestoreConfig" class="p1-confirm">
         <div>
           <b>撤销 {{ selectedOverride.configName }} 的全部学校层覆盖？</b>
-          <p>后端会锁住并校验 {{ selectedOverride.overrideCount }} 条当前/计划覆盖的完整链与每条 version，单事务撤销并写高危审计；任何并发变化都会整笔拒绝。</p>
+          <p>服务端会锁住并校验 {{ selectedOverride.overrideCount }} 条当前或计划覆盖的完整链与每条版本，单事务撤销并写高危审计；任何并发变化都会整笔拒绝。</p>
         </div>
         <input v-model.trim="overrideReason" placeholder="撤销原因，至少 5 个字" />
         <div class="p1-actions">
@@ -61,21 +61,21 @@
 
     <template v-else-if="mode === 'identity'">
       <div class="p1-inline-search">
-        <input v-model.trim="identityUserId" inputmode="numeric" placeholder="输入账号 userId 查看稳定主体解析" @keyup.enter="resolveIdentity" />
+        <input v-model.trim="identityUserId" inputmode="numeric" placeholder="输入用户编号查看稳定主体解析" @keyup.enter="resolveIdentity" />
         <AppButton variant="primary" :loading="loading" @click="resolveIdentity">解析身份</AppButton>
       </div>
       <div v-if="identity" class="p1-identity">
         <div class="p1-metrics">
-          <article><span>账号</span><strong>{{ identity.realName || identity.loginName }}</strong><small>userId {{ identity.userId }}</small></article>
-          <article><span>主体来源</span><strong>{{ identity.identitySource }}</strong><small>{{ identity.accountType }}</small></article>
+          <article><span>账号</span><strong>{{ identity.realName || identity.loginName }}</strong><small>用户编号 {{ identity.userId }}</small></article>
+          <article><span>主体来源</span><strong>{{ identitySourceLabel(identity.identitySource) }}</strong><small>{{ accountTypeLabel(identity.accountType) }}</small></article>
           <article><span>学籍主体</span><strong>{{ identity.studentId || '未绑定' }}</strong><small>{{ identity.studentNo || '—' }}</small></article>
-          <article><span>绑定记录</span><strong>{{ identity.binding?.linkId || '无' }}</strong><small>{{ identity.binding?.linkStatus || '—' }}</small></article>
+          <article><span>绑定记录</span><strong>{{ identity.binding?.linkId || '无' }}</strong><small>{{ bindingStatusLabel(identity.binding?.linkStatus) }}</small></article>
         </div>
         <div v-if="identity.issues?.length" class="p1-issues">
-          <span v-for="issue in identity.issues" :key="issue.code">{{ issue.severity }} · {{ issue.code }}：{{ issue.message }}</span>
+          <span v-for="issue in identity.issues" :key="issue.code">{{ severityLabel(issue.severity) }} · {{ issueLabel(issue.code) }}：{{ issue.message }}</span>
         </div>
         <div v-if="identity.binding?.linkStatus === 'ACTIVE' && canUnbindIdentity" class="p1-confirm">
-          <div><b>解除当前学籍绑定</b><p>仅把当前 ACTIVE link 标记 REVOKED，历史不物理删除；下一次请求立即按新的主体关系重新解析。</p></div>
+          <div><b>解除当前学籍绑定</b><p>仅把当前生效中的绑定标记为已撤销，历史记录不会物理删除；下一次请求立即按新的主体关系重新解析。</p></div>
           <input v-model.trim="unbindReason" placeholder="解绑原因，至少 5 个字" />
           <div class="p1-actions"><AppButton variant="danger" :loading="saving" @click="unbindIdentity">解除错误绑定</AppButton></div>
         </div>
@@ -83,30 +83,6 @@
       </div>
     </template>
 
-    <template v-else-if="mode === 'org'">
-      <div class="p1-org">
-        <label><span>选择准备停用/作废的组织</span>
-          <select v-model="orgKey" @change="orgImpact = null">
-            <option value="">请选择组织节点</option>
-            <option v-for="node in orgOptions" :key="node.key" :value="node.key">{{ node.label }}</option>
-          </select>
-        </label>
-        <AppButton variant="primary" :loading="loading" @click="previewOrgImpact">执行真实影响预演</AppButton>
-      </div>
-      <div v-if="orgImpact" class="p1-metrics p1-metrics--impact">
-        <article><span>受影响专业</span><strong>{{ orgImpact.affectedMajors }}</strong></article>
-        <article><span>受影响班级</span><strong>{{ orgImpact.affectedClasses }}</strong></article>
-        <article><span>受影响学生</span><strong>{{ orgImpact.affectedStudents }}</strong></article>
-        <article><span>在任任职</span><strong>{{ orgImpact.affectedAssignments }}</strong></article>
-        <div class="p1-impact-ack">
-          <p v-if="orgImpact.canDisable">预演结果由后端签名并绑定当前学校、节点、操作人、version 与影响面；签名 5 分钟有效。下方“作废”提交时后端会重新核对，不能绕过。</p>
-          <p v-else>当前存在真实引用，不能放行作废。请先处理下级组织、学生或在任任职，然后重新预演。</p>
-          <AppButton v-if="orgImpact.canDisable && canManageOrg" variant="warning" @click="permitOrgDeprecation">确认预演结果，放行下一次作废</AppButton>
-          <span v-else-if="!canManageOrg" class="p1-muted">当前角色只有组织查看权限</span>
-        </div>
-      </div>
-      <p v-else class="p1-note">作废不是前端开关：服务端要求同节点的签名预演凭证、expectedVersion 和最新影响面同时成立。</p>
-    </template>
   </section>
 </template>
 
@@ -116,11 +92,6 @@ import { systemApi } from '@/modules/system/api/system.api'
 import { systemP1ClosureApi } from '@/modules/system/api/systemP1Closure.api'
 import { toast } from '@/utils/toast'
 
-const permitStore = new Map()
-let rawDeprecateOrgNode = null
-let guardUsers = 0
-
-function orgPermitKey(type, id) { return `${String(type || '').toUpperCase()}:${String(id)}` }
 function toBackendDateTime(value) {
   if (!value) return null
   const raw = String(value).trim().replace('T', ' ')
@@ -135,39 +106,6 @@ function permissionMatch(pattern, required) {
   if (p.startsWith('*.')) return r.endsWith(p.slice(1))
   return false
 }
-function installOrgGuard() {
-  guardUsers += 1
-  if (rawDeprecateOrgNode) return
-  rawDeprecateOrgNode = systemApi.deprecateOrgNode.bind(systemApi)
-  systemApi.deprecateOrgNode = async (id, options = {}) => {
-    const key = orgPermitKey(options.type, id)
-    const permit = permitStore.get(key)
-    if (!permit || permit.expiresAt < Date.now()) {
-      permitStore.delete(key)
-      return { code: 1, data: null, message: '组织作废前必须先执行真实影响预演并取得有效服务端签名凭证' }
-    }
-    permitStore.delete(key)
-    try {
-      const data = await systemP1ClosureApi.deprecateOrgNodeWithPreview(id, {
-        ...options,
-        previewToken: permit.previewToken,
-        expectedVersion: permit.expectedVersion
-      })
-      return { code: 0, data, message: 'ok' }
-    } catch (error) {
-      return { code: error?.code || 1, bizCode: error?.bizCode || error?.biz, data: null, message: error?.message || '组织作废失败' }
-    }
-  }
-}
-function uninstallOrgGuard() {
-  guardUsers = Math.max(0, guardUsers - 1)
-  if (guardUsers === 0 && rawDeprecateOrgNode) {
-    systemApi.deprecateOrgNode = rawDeprecateOrgNode
-    rawDeprecateOrgNode = null
-    permitStore.clear()
-  }
-}
-
 const emptyRole = () => ({ userId: '', roleCode: '', expiresAt: '', reason: '' })
 
 export default {
@@ -179,8 +117,7 @@ export default {
     return {
       loading: false, saving: false, error: '', roles: [], roleForm: emptyRole(),
       configOverrides: [], selectedOverride: null, overrideReason: '',
-      identityUserId: '', identity: null, unbindReason: '',
-      orgOptions: [], orgKey: '', orgImpact: null, guardInstalled: false
+      identityUserId: '', identity: null, unbindReason: ''
     }
   },
   computed: {
@@ -189,18 +126,16 @@ export default {
       if (p === '/admin/system/role-assignments') return 'role'
       if (p === '/admin/system/login-policy') return 'config'
       if (p === '/admin/system/account-exceptions') return 'identity'
-      if (p === '/admin/system/org') return 'org'
       return ''
     },
     title() {
-      return { role: '正式角色授权闭环', config: '配置继承与恢复', identity: '稳定主体解析与解绑', org: '组织高危变更影响预演' }[this.mode] || ''
+      return { role: '正式角色授权闭环', config: '配置继承与恢复', identity: '稳定主体解析与解绑' }[this.mode] || ''
     },
     subtitle() {
       return {
         role: '在既有角色治理页创建带来源、到期与审计原因的正式授权；高危边界由服务端强制。',
         config: '撤销学校层当前与计划覆盖后恢复后端 Resolver 继承，不手填“默认值”。',
-        identity: '按稳定 userId/studentId 解释账号是谁；有写权限时可留痕解除错误绑定。',
-        org: '停用/作废前先计算专业、班级、学生和任职影响，并取得服务端签名预演凭证。'
+        identity: '按稳定 userId/studentId 解释账号是谁；有写权限时可留痕解除错误绑定。'
       }[this.mode] || ''
     },
     permissionPatterns() {
@@ -211,20 +146,25 @@ export default {
     },
     canGrantRole() { return this.hasAnyPermission('systemAdmin.user.assign', 'systemAdmin.role.config') },
     canRestoreConfig() { return this.hasAnyPermission('systemAdmin.config.manage', 'systemAdmin.security.policy.manage') },
-    canUnbindIdentity() { return this.hasAnyPermission('systemAdmin.user.bind', 'systemAdmin.user.manage') },
-    canManageOrg() { return this.hasAnyPermission('systemAdmin.org.manage') }
+    canUnbindIdentity() { return this.hasAnyPermission('systemAdmin.user.bind', 'systemAdmin.user.manage') }
   },
   created() {
-    if (this.mode === 'org') { installOrgGuard(); this.guardInstalled = true }
     this.load()
   },
-  beforeUnmount() {
-    if (this.guardInstalled) uninstallOrgGuard()
-  },
   methods: {
+    identitySourceLabel(value) { return ({ STUDENT_PROFILE: '学生主档', STAFF_PROFILE: '教职工主档', ACCOUNT: '系统账号', IMPORT: '批量导入', MANUAL: '人工维护' })[value] || (value ? '来源待确认' : '—') },
+    accountTypeLabel(value) { return ({ STUDENT: '学生账号', STAFF: '教职工账号', ADMIN: '管理账号', PLATFORM: '平台账号' })[value] || (value ? '账号类型待确认' : '—') },
+    bindingStatusLabel(value) { return ({ ACTIVE: '生效中', REVOKED: '已撤销', PENDING: '待确认', CONFLICT: '存在冲突' })[value] || (value ? '状态待确认' : '—') },
+    severityLabel(value) { return ({ CRITICAL: '紧急', HIGH: '高风险', MEDIUM: '中风险', LOW: '低风险', WARNING: '警告', ERROR: '异常' })[value] || (value ? '等级待确认' : '—') },
+    issueLabel(value) { return ({ DUPLICATE_BINDING: '存在重复绑定', MISSING_PROFILE: '缺少主体主档', TYPE_MISMATCH: '账号类型不一致', INVALID_BINDING: '绑定关系无效', ORPHAN_ACCOUNT: '账号缺少业务主体' })[value] || (value ? '身份解析异常' : '—') },
     hasAnyPermission(...codes) { return codes.some((code) => this.permissionPatterns.some((pattern) => permissionMatch(pattern, code))) },
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 19) : '—' },
-    displayValue(v) { return typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—') },
+    displayValue(v) {
+      if (v === null || v === undefined || v === '') return '—'
+      if (typeof v === 'boolean') return v ? '是' : '否'
+      if (typeof v === 'object') return `已配置 ${Object.keys(v).length} 项参数`
+      return String(v)
+    },
     async load() {
       this.error = ''
       if (!this.mode) return
@@ -237,10 +177,7 @@ export default {
         } else if (this.mode === 'config') {
           const data = await systemP1ClosureApi.listActiveConfigOverrides('SECURITY')
           this.configOverrides = data.items || []
-        } else if (this.mode === 'org') {
-          const res = await systemApi.getDepartmentTree()
-          if (res.code !== 0) throw new Error(res.message)
-          this.orgOptions = this.flattenOrg(res.data || [])
+
         }
       } catch (error) {
         this.error = error.message || '闭环数据加载失败'
@@ -310,40 +247,8 @@ export default {
       this.unbindReason = ''
       toast.success('错误绑定已解除，历史记录保留')
       this.$emit('refresh-child')
-    },
-    flattenOrg(tree) {
-      const out = []
-      const walk = (nodes, prefix = '') => (nodes || []).forEach((node) => {
-        const label = prefix ? `${prefix} / ${node.name}` : node.name
-        out.push({ key: orgPermitKey(node.type, node.id), type: node.type, id: node.id, label: `${label}（${node.typeLabel || node.type}）` })
-        walk(node.children, label)
-      })
-      walk(tree)
-      return out
-    },
-    selectedOrg() { return this.orgOptions.find((item) => item.key === this.orgKey) || null },
-    async previewOrgImpact() {
-      const node = this.selectedOrg()
-      if (!node) return toast.error('请选择组织节点')
-      this.loading = true
-      const res = await systemApi.getOrgNodeImpact(node.type, node.id)
-      this.loading = false
-      if (res.code !== 0) return toast.error(res.message)
-      this.orgImpact = res.data
-      permitStore.delete(node.key)
-    },
-    permitOrgDeprecation() {
-      const node = this.selectedOrg()
-      if (!node || !this.orgImpact || !this.canManageOrg) return
-      if (!this.orgImpact.canDisable) return toast.error('当前存在真实引用，请先处理影响项')
-      if (!this.orgImpact.previewToken) return toast.error('服务端未返回有效预演凭证，请重新预演')
-      permitStore.set(node.key, {
-        expiresAt: Date.now() + Number(this.orgImpact.previewExpiresIn || 300) * 1000,
-        previewToken: this.orgImpact.previewToken,
-        expectedVersion: this.orgImpact.nodeVersion
-      })
-      toast.success('服务端签名预演凭证已就绪；5 分钟内仅用于该节点下一次作废')
     }
+
   }
 }
 </script>

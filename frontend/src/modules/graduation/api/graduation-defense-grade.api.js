@@ -39,6 +39,21 @@ async function callList(path, params = {}) {
   } catch (e) { return toErr(e) }
 }
 
+// Vue number inputs produce numbers, but the frozen PlagiarismResultRequest
+// transports rate as a string. Normalize once at the API boundary for all callers.
+function plagiarismRateText(rate) {
+  const text = String(rate ?? '').trim().replace(/%$/, '').trim()
+  const value = Number(text)
+  if (!['number', 'string'].includes(typeof rate) || !text
+    || !Number.isFinite(value) || value < 0 || value > 100) {
+    const error = new Error('重复率须填写 0–100 之间的有效数值')
+    error.biz = true
+    error.code = 'VALIDATION_ERROR'
+    throw error
+  }
+  return text
+}
+
 const PLAG = '/graduation/gd-plagiarism'
 const REVIEW = '/graduation/gd-reviews'
 const SCORE = '/graduation/gd-defense-scores'
@@ -59,8 +74,9 @@ export const graduationDefenseGradeApi = {
   setPlagiarismResult(pid, rate, reportUrl) {
     return call(() => {
       requireAction('graduationDesign.plagiarism.result')
+      const rateText = plagiarismRateText(rate)
       return request(`${PLAG}/${pid}/result`, {
-        method: 'POST', params: batchParams(), body: { rate, reportUrl },
+        method: 'POST', params: batchParams(), body: { rate: rateText, reportUrl },
       })
     })
   },

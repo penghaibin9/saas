@@ -14,6 +14,7 @@ cd "$ROOT"
 : "${UPLOAD_DIR:?UPLOAD_DIR is required}"
 : "${E2E_EXPECTED_SHA:?E2E_EXPECTED_SHA is required}"
 : "${E2E_PRODUCT_EXACT_SHA:?E2E_PRODUCT_EXACT_SHA is required}"
+S5_PORT="${S5_PORT:-8000}"
 
 case "${APP_ENV:-}" in
   prod|production) echo "S5 E2E gate refuses APP_ENV=${APP_ENV}" >&2; exit 2 ;;
@@ -51,7 +52,7 @@ trap cleanup EXIT
 wait_health() {
   local log_file="$1"
   for _ in {1..60}; do
-    if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+    if curl -fsS "http://127.0.0.1:${S5_PORT}/health" >/dev/null; then
       return 0
     fi
     sleep 2
@@ -66,7 +67,7 @@ assert_guardian_route_auth_gate() {
   local code
   code="$(curl -sS -o "$body_file" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -X POST --data '{}' "http://127.0.0.1:8000${path}")"
+      -X POST --data '{}' "http://127.0.0.1:${S5_PORT}${path}")"
   case "$code" in
     401|403)
       echo "[s5-route] ${path} registered and auth-gated HTTP=${code}"
@@ -104,7 +105,7 @@ python scripts/bootstrap_control_plane_school_iam_authority.py
 python scripts/e2e_seed_playwright_tenants.py
 python scripts/e2e_seed_control_plane_school_iam.py
 
-nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/s5-bootstrap-backend.log 2>&1 &
+nohup uvicorn app.main:app --host 127.0.0.1 --port "$S5_PORT" > ../e2e/runtime-logs/s5-bootstrap-backend.log 2>&1 &
 BOOT_PID=$!
 popd >/dev/null
 wait_health "e2e/runtime-logs/s5-bootstrap-backend.log"
@@ -139,7 +140,7 @@ test "$(python -m alembic heads | grep -c '(head)')" = "1"
 python -m alembic current
 
 test "${MOCK_LOGIN_ENABLED:-}" = "false"
-nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/s5-final-backend.log 2>&1 &
+nohup uvicorn app.main:app --host 127.0.0.1 --port "$S5_PORT" > ../e2e/runtime-logs/s5-final-backend.log 2>&1 &
 FINAL_PID=$!
 popd >/dev/null
 wait_health "e2e/runtime-logs/s5-final-backend.log"

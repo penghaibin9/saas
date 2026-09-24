@@ -3,6 +3,9 @@
  * 全部经 realFirst() 使用：后端挂了自动回退 mock。
  */
 import { ENV } from '@/config/env'
+import { roleConfigs, roleKeyFromBackendRole } from '@/config/roles.config'
+import { presentLeave } from './leavePresentation'
+import { orientationStepLabel } from './orientationPresentation'
 import { commitNewSessionTokens, realRequest } from './request'
 
 /* 小程序角色 key → 正式演示租户真实账号（demo-school，数据只读，行级隔离）。
@@ -12,8 +15,16 @@ function _holdLogin(data) {
   return data
 }
 
-export const switchRoleReal = (contextId, clientType = 'MP') =>
-  realRequest('/auth/switch-role', { method: 'POST', data: { contextId, clientType } }).then(_holdLogin)
+const MINI_CLIENT_TYPES = new Set(['STUDENT_MINI', 'TEACHER_MINI'])
+
+// 身份切换必须保留当前小程序端类型。旧的通用 MP 值会让服务端无法区分
+// 学生端和教师端令牌，账号跨端切换时也就失去了最后一道身份隔离。
+export const switchRoleReal = (contextId, clientType) => {
+  if (!MINI_CLIENT_TYPES.has(clientType)) {
+    return Promise.reject({ code: 'CLIENT_TYPE_REQUIRED', biz: true, message: '当前登录端无效，请重新登录' })
+  }
+  return realRequest('/auth/switch-role', { method: 'POST', data: { contextId, clientType } }).then(_holdLogin)
+}
 
 export const brand = () => realRequest('/tenant/brand')
 export const me = () => realRequest('/auth/me')
@@ -173,9 +184,11 @@ const NEUTRAL_ORIENTATION = {
   hasData: false, _real: true,
   batch: '', overallStatus: 'NOT_REPORTED', overallText: '暂无迎新报到记录',
   reportCode: { code: '', valid: false, note: '暂无迎新报到记录，如需办理请联系辅导员' },
+  selfService: { available: false, information: {}, arrivalPlan: null, materials: [] },
   greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
-  payStatus: '', materialStatus: '', blocked: null, steps: [], contacts: [],
-  identity: { name: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
+  payStatus: '', payment: {}, materialStatus: '', qualification: null, blocked: null, steps: [], contacts: [],
+  checkin: { completedAt: '', pointName: '' },
+  identity: { name: '', admissionNo: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
     origin: '', phoneMasked: '' }
 }
 
@@ -183,23 +196,40 @@ export async function enrichOrientation() {
   const r = await realRequest('/mobile/orientation/my')
   if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
-    COLLEGE_CONFIRMED: '学院已确认' }
+    COLLEGE_CONFIRMED: '学院已确认', DELAYED: '已延期报到', NO_SHOW: '已登记未到校', CANCELLED: '已取消入学' }
+  const rawSteps = r.steps || []
+  const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
-    hasData: true, _real: true,
-    batch: r.batchName || '迎新报到',
-    overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
-    dorm: { building: r.building || '', room: r.room || '', status: r.dormStatus || '' },
-    payStatus: r.paymentStatus || '', materialStatus: r.materialStatus || '',
-    greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
+    hasData: true, _real: true, stage: r.stage,
+    batch: r.batchName || r.selfService?.batch?.name || '迎新报到',
+    overallStatus: r.reportStatus, overallText: r.stage === 'CANCELLED' ? '已取消入学' : stMap[r.reportStatus] || '报到状态待核实',
+    dorm: {
+      building: r.building || '', room: r.room || '', status: r.dorm?.status || r.dormStatus || '',
+      statusLabel: r.dorm?.housingStatusLabel || r.dorm?.dormStatusLabel || '',
+      label: r.dorm?.label || [r.building, r.room].filter(Boolean).join(' / '),
+      buildingId: r.dorm?.buildingId || '', roomId: r.dorm?.roomId || '', bedId: r.dorm?.bedId || ''
+    },
+    payStatus: r.paymentStatus || '', payment: r.payment || {}, materialStatus: r.materialStatus || '',
+    qualification: r.qualification || null,
+    greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED', greenChannel: r.greenChannel || null,
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
-    steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
-    reportCode: { code: r.admissionNo || '',
-      valid: !!r.reportCodeValid, note: r.reportCodeValid ? '现场核验时出示' : '已完成现场报到，二维码已失效' },
-    identity: { name: r.name || '', gender: r.gender || '', collegeName: r.collegeName || '',
+    steps: rawSteps.map((s, index) => ({
+      key: s.key, title: orientationStepLabel(s), status: s.status,
+      current: index === currentStepIndex
+    })),
+    reportCode: {
+      code: '', valid: r.reportCodeStatus === 'ISSUED',
+      status: r.reportCodeStatus || 'BLOCKED',
+      canIssue: !!r.checkinCredential?.canIssue,
+      expiresAt: r.checkinCredential?.expiresAt || '',
+      note: r.checkinCredential?.note || '正式电子报到凭证尚未签发'
+    },
+    checkin: r.checkin || { completedAt: '', pointName: '' },
+    selfService: r.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] },
+    identity: { name: r.name || '', admissionNo: r.admissionNo || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
       origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
-    // 后端暂不下发辅导员/招生办联系人，绝不用示例姓名电话冒充真实联系人
-    contacts: []
+    contacts: Array.isArray(r.contacts) ? r.contacts : []
   }
 }
 
@@ -210,12 +240,22 @@ export const orientationBatchStatus = () =>
 /** 预报到信息采集 / 绿色通道申请（本人提交，业务错误透出不兜底） */
 export const orientationCollectSubmit = (body) =>
   realRequest('/mobile/orientation/collect', { method: 'POST', data: body || {} })
+export const orientationArrivalSubmit = (body) =>
+  realRequest('/mobile/orientation/arrival', { method: 'PUT', data: body || {} })
+export const orientationMaterialSubmit = (body) =>
+  realRequest('/mobile/orientation/materials', { method: 'POST', data: body || {} })
 export const orientationGreenChannelSubmit = (body) =>
   realRequest('/mobile/orientation/green-channel', { method: 'POST', data: body })
+export const orientationCheckinToken = () =>
+  realRequest('/mobile/orientation/checkin-token', { method: 'POST' })
 
-/** 迎新老师·现场报到核验 / 今日已核验列表 */
-export const teacherOrientationCheckin = (admissionNo) =>
-  realRequest('/mobile/teacher/orientation/checkin', { method: 'POST', data: { admissionNo } })
+/** 迎新老师·签名凭证 preflight → confirm / 今日已核验列表 */
+export const teacherOrientationCheckinPoints = () =>
+  realRequest('/mobile/teacher/orientation/checkin-points')
+export const teacherOrientationCheckinPreflight = (token) =>
+  realRequest('/mobile/teacher/orientation/checkin/preflight', { method: 'POST', data: { token } })
+export const teacherOrientationCheckinConfirm = (token, checkinPointId) =>
+  realRequest('/mobile/teacher/orientation/checkin/confirm', { method: 'POST', data: { token, checkinPointId } })
 export const teacherOrientationTodayCheckins = () =>
   realRequest('/mobile/teacher/orientation/today-checkins')
 export const teacherOrientationDashboard = () =>
@@ -244,8 +284,8 @@ export const teacherLeaveAckReturn = (leaveId, note) =>
 export const teacherInternshipRisks = () => realRequest('/mobile/teacher/internship/risks')
 export const teacherInternshipRiskHandle = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/handle`, { method: 'POST', data: body || {} })
-export const teacherInternshipRiskFollow = (riskId, note) =>
-  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: { note } })
+export const teacherInternshipRiskFollow = (riskId, body) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: body || {} })
 export const teacherInternshipRiskClose = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/close`, { method: 'POST', data: body || {} })
 
@@ -337,9 +377,15 @@ export const teacherFamilyContactReceipt = (contactId, note) =>
 
 /** 学工请假审批链：待审批队列 / 后续处理台账 / 详情 / 审批通过驳回退回 / 销假确认代登记 /
  * 逾期处置 / 续假审批（owner+审批节点校验，真实接口，无 mock 兜底） */
-export const teacherAffairsLeavePending = () => realRequest('/mobile/teacher/affairs/leaves/pending')
-export const teacherAffairsLeaveFollowup = () => realRequest('/mobile/teacher/affairs/leaves/followup')
-export const teacherAffairsLeaveDetail = (leaveId) => realRequest(`/mobile/teacher/affairs/leaves/${leaveId}`)
+export const teacherAffairsLeavePending = async (params = {}) => {
+  const data = await realRequest('/mobile/teacher/affairs/leaves/pending', { data: params })
+  return { ...data, list: (data.list || []).map(presentLeave) }
+}
+export const teacherAffairsLeaveFollowup = async (params = {}) => {
+  const data = await realRequest('/mobile/teacher/affairs/leaves/followup', { data: params })
+  return { ...data, list: (data.list || []).map(presentLeave) }
+}
+export const teacherAffairsLeaveDetail = async (leaveId) => presentLeave(await realRequest(`/mobile/teacher/affairs/leaves/${leaveId}`))
 export const teacherAffairsLeaveApprove = (leaveId, comment) =>
   realRequest(`/mobile/teacher/affairs/leaves/${leaveId}/approve`, { method: 'POST', data: { comment: comment || '' } })
 export const teacherAffairsLeaveReject = (leaveId, reason) =>
@@ -360,14 +406,32 @@ export const teacherAffairsLeaveExtensionApprove = (leaveId, action, reason) =>
     { method: 'POST', data: { action, reason: reason || '' } })
 
 /** 学工待办处置：困难/奖助/处分/风险（复用 PC 服务层校验，真实接口） */
-export const teacherAffairsAidPending = () => realRequest('/mobile/teacher/affairs/aid/pending')
+export const teacherAffairsAidPending = (params = {}) => realRequest('/mobile/teacher/affairs/aid/pending', { data: params })
 export const teacherAffairsAidDetail = (applyId) => realRequest(`/mobile/teacher/affairs/aid/${applyId}`)
 export const teacherAffairsAidReview = (applyId, body) =>
   realRequest(`/mobile/teacher/affairs/aid/${applyId}/review`, { method: 'POST', data: body || {} })
-export const teacherAffairsFundingPending = () => realRequest('/mobile/teacher/affairs/funding/pending')
+export const teacherAffairsFundingPending = (params = {}) => realRequest('/mobile/teacher/affairs/funding/pending', { data: params })
 export const teacherAffairsFundingDetail = (appId) => realRequest(`/mobile/teacher/affairs/funding/${appId}`)
 export const teacherAffairsFundingReview = (appId, body) =>
   realRequest(`/mobile/teacher/affairs/funding/${appId}/review`, { method: 'POST', data: body || {} })
+export const teacherAffairsWorkStudyPosts = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/work-study/posts', { data: params })
+export const teacherAffairsWorkStudyRecords = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/work-study/records', { data: params })
+export const teacherAffairsWorkStudyAction = (recordId, body) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/action`, { method: 'POST', data: body || {} })
+export const teacherAffairsWorkStudyMonthly = (recordId) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/monthly`)
+export const teacherAffairsWorkStudyMonthlyAdd = (recordId, body) =>
+  realRequest(`/mobile/teacher/affairs/work-study/records/${recordId}/monthly`, { method: 'POST', data: body || {} })
+export const teacherAffairsLoans = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/loans', { data: params })
+export const teacherAffairsLoanAction = (loanId, body) =>
+  realRequest(`/mobile/teacher/affairs/loans/${encodeURIComponent(loanId)}/action`, { method: 'POST', data: body || {} })
+export const teacherAffairsFeeReductions = (params = {}) =>
+  realRequest('/mobile/teacher/affairs/fee-reductions', { data: params })
+export const teacherAffairsFeeReductionAction = (feeId, body) =>
+  realRequest(`/mobile/teacher/affairs/fee-reductions/${encodeURIComponent(feeId)}/action`, { method: 'POST', data: body || {} })
 export const teacherAffairsDisciplinePending = () => realRequest('/mobile/teacher/affairs/discipline/pending')
 export const teacherAffairsDisciplineDetail = (caseId) => realRequest(`/mobile/teacher/affairs/discipline/${caseId}`)
 export const teacherAffairsDisciplineReview = (caseId, body) =>
@@ -381,7 +445,7 @@ export const teacherAffairsRiskClose = (riskId, conclusion) =>
 
 /** 班干部任命/免去：我的班级 / 班级学生名单 / 班干部名单 / 任命 / 免去
  * （owner+范围校验，真实接口，无 mock 兜底） */
-export const teacherAffairsDormPending = () => realRequest('/mobile/teacher/affairs/dorm/pending')
+export const teacherAffairsDormPending = (params = {}) => realRequest('/mobile/teacher/affairs/dorm/pending', { data: params })
 export const teacherAffairsDormTransferReview = (transferId, body) =>
   realRequest(`/mobile/teacher/affairs/dorm/transfers/${transferId}/review`, { method: 'POST', data: body || {} })
 export const teacherAffairsDormExceptionHandle = (exceptionId, note) =>
@@ -402,27 +466,36 @@ export const teacherAffairsClassMaterialAdd = (classId, body) =>
 export const teacherAffairsClassMaterialVoid = (materialId, reason) =>
   realRequest(`/mobile/teacher/affairs/classes/materials/${materialId}/void`, { method: 'POST', data: { reason: reason || '' } })
 
-export const teacherAcademicMyTasks = (status) =>
-  realRequest('/mobile/teacher/academic/tasks', { data: status ? { status } : {} })
+export const teacherAcademicMyTasks = (params = {}) =>
+  realRequest('/mobile/teacher/academic/tasks', {
+    data: typeof params === 'string' ? { status: params } : (params || {})
+  })
 export const teacherAcademicTaskAct = (taskId, action, reason) =>
   realRequest(`/mobile/teacher/academic/tasks/${taskId}/act`, { method: 'POST', data: { action, reason: reason || '' } })
 
 export const teacherAcademicMySchedule = (termId, week) =>
-  realRequest('/mobile/teacher/academic/schedule/mine', { data: { termId: termId || '', week: week || '' } })
+  realRequest('/mobile/teacher/academic/schedule/mine', {
+    data: {
+      ...(termId ? { termId } : {}),
+      ...(week ? { week } : {})
+    }
+  })
 export const teacherAcademicScheduleConflictCheck = (body) =>
   realRequest('/mobile/teacher/academic/schedule-changes/conflict-check', { method: 'POST', data: body })
 export const teacherAcademicScheduleSubmit = (body) =>
   realRequest('/mobile/teacher/academic/schedule-changes', { method: 'POST', data: body })
-export const teacherAcademicScheduleChanges = (status) =>
-  realRequest('/mobile/teacher/academic/schedule-changes', { data: status ? { status } : {} })
+export const teacherAcademicScheduleChanges = (status, page = 1, pageSize = 20) =>
+  realRequest('/mobile/teacher/academic/schedule-changes', {
+    data: { ...(status ? { status } : {}), page, pageSize }
+  })
 export const teacherAcademicScheduleChangeDetail = (changeId) =>
   realRequest(`/mobile/teacher/academic/schedule-changes/${changeId}`)
 export const teacherAcademicScheduleCancel = (changeId, reason) =>
   realRequest(`/mobile/teacher/academic/schedule-changes/${changeId}/cancel`, { method: 'POST', data: { reason: reason || '' } })
 
 export const teacherAcademicDeferPending = () => realRequest('/mobile/teacher/academic/defer/pending')
-export const teacherAcademicDeferReview = (deferId, action, reason) =>
-  realRequest(`/mobile/teacher/academic/defer/${deferId}/review`, { method: 'POST', data: { action, reason: reason || '' } })
+export const teacherAcademicDeferReview = (deferId, action, reason, expectedVersion) =>
+  realRequest(`/mobile/teacher/academic/defer/${deferId}/review`, { method: 'POST', data: { action, reason: reason || '', expectedVersion } })
 
 export const teacherAcademicEvaluationBatches = () => realRequest('/mobile/teacher/academic/evaluation/batches')
 export const teacherAcademicEvaluationMyTasks = (evaluatorType, batchId) =>
@@ -597,9 +670,13 @@ export async function enrichGraduation(_unused) {
 
 /* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */
 
-export const gdTopics = (batchId) => realRequest(
-  '/mobile/graduation/topics' + (batchId ? `?batchId=${encodeURIComponent(batchId)}` : '')
-)
+export const gdTopics = (batchOrParams = {}) => {
+  const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+  const query = Object.entries({ pageSize: 20, ...params })
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/graduation/topics${query ? `?${query}` : ''}`)
+}
 export const gdActiveRound = () => realRequest('/mobile/graduation/active-round')
 export const gdSubmitChoices = (roundId, choices) =>
   realRequest('/mobile/graduation/choices', { method: 'POST', data: { roundId, choices } })
@@ -686,15 +763,36 @@ export const teacherMentalStats = () => realRequest('/mobile/teacher/mental-stat
 
 /** 教师·在校服务待处理 & 学业预警待处理列表（真实接口，_domain 结构：{hasData,list,total,module}，范围过滤，无 mock 兜底） */
 export const teacherCampusServicePending = () => realRequest('/mobile/teacher/campus-service')
-export const teacherAcademicWarnings = () => realRequest('/mobile/teacher/academic')
+export const teacherCampusWorkOrders = ({ page = 1, pageSize = 20, keyword, status } = {}) =>
+  realRequest('/mobile/teacher/campus-service/work-orders', { data: { page, pageSize, keyword, status } })
+export const teacherCampusWorkOrderDetail = (workOrderId) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}`)
+export const teacherCampusWorkOrderHandle = (workOrderId, body) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}/handle`, { method: 'POST', data: body })
+export const teacherCampusWorkOrderClose = (workOrderId, body) =>
+  realRequest(`/mobile/teacher/campus-service/work-orders/${encodeURIComponent(workOrderId)}/close`, { method: 'POST', data: body })
+export const teacherAcademicWarnings = ({ page = 1, pageSize = 50, status, level, pendingOnly = false } = {}) =>
+  realRequest('/mobile/teacher/academic/warnings', { data: { page, pageSize, status, level, pendingOnly } })
+export const teacherAcademicWarningSummary = () =>
+  realRequest('/mobile/teacher/academic/warnings/summary')
+export const teacherAcademicWarningDetail = (warningId, params = {}) =>
+  realRequest(`/mobile/teacher/academic/warning/${encodeURIComponent(warningId)}/detail`, { data: params })
+export const teacherAcademicWarningIntervention = (warningId, body, commandKey) =>
+  realRequest(`/mobile/teacher/academic/warning/${encodeURIComponent(warningId)}/interventions`, { method: 'POST', data: body, headers: { 'Idempotency-Key': commandKey } })
+export const teacherAcademicWarningReceipt = (commandKey) =>
+  realRequest(`/mobile/teacher/academic/warnings/commands/${encodeURIComponent(commandKey)}`)
 
 export const employmentMy = () => realRequest('/mobile/employment/my')
 
-export async function enrichCampusService(mock) {
-  const r = await realRequest('/mobile/campus-service/my')
-  if (!r || !r.hasData) return { ...mock, myRecords: null, _real: false }
-  return { ...mock, myRecords: { leaves: r.leaves || [], workOrders: r.workOrders || [],
-    disciplineNotice: r.disciplineNotice, mentalNotice: r.mentalNotice }, _real: true }
+export async function enrichCampusService() {
+  // 完整目录独立于首页阶段推荐；授权读取失败不得用本地菜单回退。
+  const r = await realRequest('/mobile/student/services')
+  if (!r || !Array.isArray(r.categories) || !r.categories.length || !Array.isArray(r.items) ||
+      r.categories.some(c => !c.key || !c.label || !c.action) ||
+      r.items.some(s => !s.id || !s.name || !s.action || !r.categories.some(c => c.key === s.cat))) {
+    throw new Error('服务目录数据格式异常，请重试')
+  }
+  return { ...r, _real: true }
 }
 
 /* 教师端·移动聚合兼容导出 */
@@ -745,24 +843,24 @@ export async function teacherWorkbenchReal(roleKey) {
   const metrics = [
     { key: 'pending', label: '待我处理', value: pending },
     { key: 'overdue', label: '已逾期', value: overdue },
-    { key: 'near', label: '24h到期', value: near },
+    { key: 'near', label: '24小时内到期', value: near },
     { key: 'done', label: '今日完成', value: doneToday }
   ]
   const typeEntries = Object.entries(byType).filter(([, n]) => Number(n) > 0).slice(0, 2)
   if (typeEntries.length) {
     metrics.splice(2, 2, ...typeEntries.map(([key, value]) => ({
-      key, label: key, value: Number(value) || 0
+      key, label: ({ LEAVE: '请假审批', LEAVE_APPROVAL: '请假审批', LEAVE_CANCEL: '返校核实', LEAVE_EXTENSION: '续假审批', MATERIAL_REVIEW: '材料审核', LEAVE_OVERDUE: '逾期跟进' })[key] || '业务待办', value: Number(value) || 0
     })))
   }
   const items = (list && (list.items || list.list)) || []
   return {
-    contextTitle: role,
+    contextTitle: roleConfigs[roleKeyFromBackendRole(role) || role]?.label || '教师',
     metrics,
     pendingTotal: pending,
     dueSoon: (Array.isArray(items) ? items : []).slice(0, 5).map((t) => ({
       id: t.todoId || t.id,
       title: t.title || '',
-      module: t.sourceModule || t.todoType || '',
+      module: ({ 'student-affairs': '学工事务', studentAffairs: '学工事务', internship: '岗位实习', graduation: '毕业设计', 'academic-affairs': '教务学业', academicAffairs: '教务学业', student: '学生事务', orientation: '迎新报到', employment: '就业服务' })[t.sourceModule] || '业务待办',
       student: t.studentName || '',
       deadline: t.dueAt || t.deadline || '',
       status: t.status || 'PENDING',
@@ -799,6 +897,9 @@ export const submitWeeklyReport = (body) =>
   realRequest('/mobile/internship/weekly', { method: 'POST', data: body })
 
 /** 实习每日打卡（真实落库，一天一次，409=今日已打） */
+export const internshipCheckinPreflight = () =>
+  realRequest('/mobile/internship/checkin/preflight', { method: 'POST' })
+
 export const submitCheckin = (body) =>
   realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} })
 
@@ -932,7 +1033,8 @@ export async function enrichProfileReal() {
       idCard: d.idCardMasked || '' },
     contact: { ...contact, phone: d.phoneMasked || '' },
     org: { ...org, college: d.collegeName || '', major: d.majorName || '',
-      className: d.className || '', grade: d.grade || '' },
+      className: d.className || '', grade: d.grade || '',
+      counselorId: d.counselorId || '', counselorName: d.counselorName || '' },
     status: { stageText: STAGE_TEXT[d.stage] || d.stage || '', statusText: d.status || '', enrollStatus: '' },
     editableFields, lockedFields, summaries, credentials: [],
     _identity: { studentId: d.studentId, studentNo: d.studentNo, name: d.name }
@@ -978,7 +1080,7 @@ export async function teacherRiskStudents() {
 }
 
 /** 教师·我的班级 / 我的学生（真实接口，无 mock 兜底） */
-export const teacherMyClasses = () => realRequest('/mobile/teacher/my-classes')
+export const teacherMyClasses = (params = {}) => realRequest('/mobile/teacher/my-classes', { data: params })
 export const teacherMyStudents = (classId) =>
   realRequest('/mobile/teacher/my-students' + (classId ? `?classId=${classId}` : ''))
 
@@ -1004,12 +1106,12 @@ export const teacherMentalList = (level) =>
 export const teacherMentalDetail = (refId, reason) =>
   realRequest(`/mobile/teacher/mental/${refId}` + (reason ? `?reason=${encodeURIComponent(reason)}` : ''))
 export const teacherMentalCreate = (body) => realRequest('/mobile/teacher/mental', { method: 'POST', data: body })
-export const teacherMentalFollow = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content } })
-export const teacherMentalEscalate = (refId, content) =>
-  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content } })
-export const teacherMentalClose = (refId, conclusion) =>
-  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion } })
+export const teacherMentalFollow = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/follow`, { method: 'POST', data: { content, version } })
+export const teacherMentalEscalate = (refId, content, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/escalate`, { method: 'POST', data: { content, version } })
+export const teacherMentalClose = (refId, conclusion, version) =>
+  realRequest(`/mobile/teacher/mental/${refId}/close`, { method: 'POST', data: { conclusion, version } })
 
 /** 教师学生360（权限校验后）→ 页面形状；无权限/不存在由业务错抛出。 */
 export async function teacherStudent360(id) {
@@ -1152,7 +1254,10 @@ export async function teacherApprovalsReal() {
 
 // ── 13A 学工中心（P7 多端收口，学生自视图 + 自选床位；教师待办卡）──
 export const affairsOverview = () => realRequest('/mobile/affairs/overview')
-export const affairsLeaveMy = () => realRequest('/mobile/affairs/leave/my')
+export const affairsLeaveMy = async (page = 1, pageSize = 20) => {
+  const data = await realRequest(`/mobile/affairs/leave/my?page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`)
+  return { ...data, items: (data.items || []).map(presentLeave) }
+}
 export const affairsLeaveApply = (body) =>
   realRequest('/mobile/affairs/leave', { method: 'POST', data: body || {} })
 export const affairsLeaveResubmit = (leaveId, body) =>
@@ -1163,7 +1268,11 @@ export const affairsLeaveExtend = (leaveId, body) =>
   realRequest(`/mobile/affairs/leave/${leaveId}/extension`, { method: 'POST', data: body || {} })
 
 export const affairsAidMy = () => realRequest('/mobile/affairs/aid/my')
-export const affairsAidBatches = () => realRequest('/mobile/affairs/aid/batches')
+export const affairsAidBatches = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/aid/batches${query ? `?${query}` : ''}`)
+}
 export const affairsAidApply = (body) =>
   realRequest('/mobile/affairs/aid/apply', { method: 'POST', data: body || {} })
 
@@ -1171,12 +1280,39 @@ export const affairsAidObjection = (body) =>
   realRequest('/mobile/affairs/aid/objection', { method: 'POST', data: body || {} })
 export const affairsTalkMy = () => realRequest('/mobile/affairs/talk/my')
 export const affairsFundingMy = () => realRequest('/mobile/affairs/funding/my')
-export const affairsFundingBatches = () => realRequest('/mobile/affairs/funding/batches')
+export const affairsFundingDetail = (id) => realRequest(`/mobile/affairs/funding/applications/${encodeURIComponent(id)}`)
+export const affairsFundingBatches = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/funding/batches${query ? `?${query}` : ''}`)
+}
 export const affairsFundingApply = (body) =>
   realRequest('/mobile/affairs/funding/apply', { method: 'POST', data: body || {} })
 
 export const affairsFundingAppeal = (body) =>
   realRequest('/mobile/affairs/funding/appeal', { method: 'POST', data: body || {} })
+export const affairsWorkStudyPosts = (params = {}) => {
+  const query = Object.entries(params).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/affairs/work-study/posts${query ? `?${query}` : ''}`)
+}
+export const affairsWorkStudyMy = () => realRequest('/mobile/affairs/work-study/my')
+export const affairsWorkStudyApply = (postId, body) =>
+  realRequest(`/mobile/affairs/work-study/posts/${encodeURIComponent(postId)}/apply`, { method: 'POST', data: body || {} })
+export const affairsWorkStudyWithdraw = (recordId, version) =>
+  realRequest(`/mobile/affairs/work-study/records/${encodeURIComponent(recordId)}/withdraw`, { method: 'POST', data: { version } })
+export const affairsLoans = () => realRequest('/mobile/affairs/loans')
+export const affairsLoanSubmit = (body) => realRequest('/mobile/affairs/loans', { method: 'POST', data: body || {} })
+export const affairsLoanResubmit = (loanId, body) =>
+  realRequest(`/mobile/affairs/loans/${encodeURIComponent(loanId)}/resubmit`, { method: 'POST', data: body || {} })
+export const affairsLoanWithdraw = (loanId, version) =>
+  realRequest(`/mobile/affairs/loans/${encodeURIComponent(loanId)}/withdraw`, { method: 'POST', data: { version } })
+export const affairsFeeReductions = () => realRequest('/mobile/affairs/fee-reductions')
+export const affairsFeeReductionSubmit = (body) => realRequest('/mobile/affairs/fee-reductions', { method: 'POST', data: body || {} })
+export const affairsFeeReductionResubmit = (feeId, body) =>
+  realRequest(`/mobile/affairs/fee-reductions/${encodeURIComponent(feeId)}/resubmit`, { method: 'POST', data: body || {} })
+export const affairsFeeReductionWithdraw = (feeId, version) =>
+  realRequest(`/mobile/affairs/fee-reductions/${encodeURIComponent(feeId)}/withdraw`, { method: 'POST', data: { version } })
 export const affairsDisciplineMy = () => realRequest('/mobile/affairs/discipline/my')
 export const affairsDisciplineAppeal = (body) =>
   realRequest('/mobile/affairs/discipline/appeal', { method: 'POST', data: body || {} })
@@ -1218,24 +1354,24 @@ export const teacherNotifyPublish = (body) => realRequest('/mobile/teacher/notif
 export const teacherDashboard = () => realRequest('/mobile/teacher/dashboard')
 
 // ── 13B 教务中心（P7 多端收口，学生自视图：课表/成绩/学籍异动/毕业进度；教师课表）──
-export const acadScheduleMy = () => realRequest('/mobile/academic/schedule/my')
-export const acadTranscriptMy = () => realRequest('/mobile/academic/transcript/my')
+export const acadScheduleMy = (params = {}) => realRequest('/mobile/academic/schedule/my', { data: params })
+export const acadTranscriptMy = (params = {}) => realRequest('/mobile/academic/transcript/my', { data: params })
 export const acadTranscriptPrint = (reason) =>
   realRequest('/mobile/academic/transcript/print', { method: 'POST', data: { reason: reason || '个人成绩单' } })
 export const acadSchedulePrint = (reason) =>
   realRequest('/mobile/academic/schedule/print', { method: 'POST', data: { reason: reason || '个人课表' } })
-export const acadTransferOptions = () => realRequest('/mobile/academic/transfer-options')
-export const acadStatusMy = () => realRequest('/mobile/academic/status/my')
+export const acadTransferOptions = (params = {}) => realRequest('/mobile/academic/transfer-options', { data: params })
+export const acadStatusMy = (params = {}) => realRequest('/mobile/academic/status/my', { data: params })
 export const acadStatusChange = (body) =>
   realRequest('/mobile/academic/status-change', { method: 'POST', data: body })
 export const acadGraduationMy = () => realRequest('/mobile/academic/graduation/my')
-export const acadTeacherScheduleMy = () => realRequest('/mobile/academic/teacher-schedule/my')
+export const acadTeacherScheduleMy = (params = {}) => realRequest('/mobile/academic/teacher-schedule/my', { data: params })
 
 /** 学分修读 / 学业预警 / 补考重修 / 网上选课（真实接口，无 mock 兜底，业务错误透出） */
-export const acadCreditsMy = () => realRequest('/mobile/academic/credits/my')
-export const acadWarningMy = () => realRequest('/mobile/academic/warning/my')
-export const acadMakeupMy = () => realRequest('/mobile/academic/makeup/my')
-export const acadMakeupOptions = () => realRequest('/mobile/academic/makeup/options')
+export const acadCreditsMy = (params = {}) => realRequest('/mobile/academic/credits/my', { data: params })
+export const acadWarningMy = (params = {}) => realRequest('/mobile/academic/warning/my', { data: params })
+export const acadMakeupMy = (params = {}) => realRequest('/mobile/academic/makeup/my', { data: params })
+export const acadMakeupOptions = (params = {}) => realRequest('/mobile/academic/makeup/options', { data: params })
 export const acadRetakeApply = (payload, termCode, reason) => {
   const data = typeof payload === 'string'
     ? { courseName: payload, termCode, reason }
@@ -1248,72 +1384,92 @@ export const acadExemptionApply = (payload, termCode, reason) => {
     : (payload || {})
   return realRequest('/mobile/academic/makeup/exemption-apply', { method: 'POST', data })
 }
-export const acadRegistrationMy = () => realRequest('/mobile/academic/registration/my')
+export const acadExemptionResubmit = (exemptionId, payload = {}) =>
+  realRequest(`/mobile/academic/makeup/exemption/${exemptionId}/resubmit`, { method: 'POST', data: payload })
+export const acadRegistrationMy = (params = {}) =>
+  realRequest('/mobile/academic/registration/my', { data: params })
 export const acadRegistrationRegister = (batchId) =>
   realRequest(`/mobile/academic/registration/${batchId}/register`, { method: 'POST' })
 export const acadRegistrationDefer = (batchId, reason, requestedUntil) =>
   realRequest(`/mobile/academic/registration/${batchId}/defer`, { method: 'POST', data: { reason, requestedUntil } })
-export const acadAttendanceMy = () => realRequest('/mobile/academic/attendance/my')
+export const acadAttendanceMy = (params = {}) => realRequest('/mobile/academic/attendance/my', { data: params })
 export const acadCalendarMy = () => realRequest('/mobile/academic/calendar/my')
-export const acadClearanceMy = () => realRequest('/mobile/academic/clearance/my')
+export const acadClearanceMy = (params = {}) => realRequest('/mobile/academic/clearance/my', { data: params })
 export const acadExamTicketPrint = (reason) =>
   realRequest('/mobile/academic/exam/ticket/print', { method: 'POST', data: { reason: reason || '个人准考证' } })
 export const acadStatusChangePrint = (body) =>
   realRequest('/mobile/academic/status-change/print', { method: 'POST', data: body || {} })
-export const teacherAcademicScheduleChangePending = () =>
-  realRequest('/mobile/teacher/academic/schedule-changes/pending')
-export const teacherAcademicScheduleChangeReview = (changeId, action, comment) =>
+export const teacherAcademicScheduleChangePending = (page = 1, pageSize = 20, changeId) =>
+  realRequest('/mobile/teacher/academic/schedule-changes/pending', {
+    data: { page, pageSize, ...(changeId ? { changeId } : {}) }
+  })
+export const teacherAcademicScheduleChangeReview = (changeId, action, comment, expectedVersion) =>
   realRequest(`/mobile/teacher/academic/schedule-changes/${changeId}/review`,
-    { method: 'POST', data: { action, comment } })
+    { method: 'POST', data: { action, comment, expectedVersion } })
 export const teacherAcademicStatusChangePending = () =>
   realRequest('/mobile/teacher/academic/status-changes/pending')
-export const teacherAcademicStatusChangeReview = (changeId, action, reason) =>
+export const teacherAcademicStatusChangeReview = (changeId, action, reason, expectedDecisionVersion) =>
   realRequest(`/mobile/teacher/academic/status-changes/${changeId}/review`,
-    { method: 'POST', data: { action, reason } })
+    { method: 'POST', data: { action, reason, ...(expectedDecisionVersion != null ? { expectedDecisionVersion } : {}) } })
 
 export const acadSelectionCourses = (batchId) =>
   realRequest('/mobile/academic/selection/courses' + (batchId ? `?batch_id=${batchId}` : ''))
+export const acadSelectionBatches = (params = {}) =>
+  realRequest('/mobile/academic/selection/batches', { data: params })
+export const acadSelectionCoursesPage = (params = {}) =>
+  realRequest('/mobile/academic/selection/courses-page', { data: params })
 export const acadSelectionPreflight = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/preflight', { method: 'POST', data: { selectionCourseId } })
+export const acadSelectionDropPreflight = (selectionCourseId) =>
+  realRequest('/mobile/academic/selection/drop-preflight', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionEnroll = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/enroll', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionDrop = (selectionCourseId) =>
   realRequest('/mobile/academic/selection/drop', { method: 'POST', data: { selectionCourseId } })
 export const acadSelectionMy = (batchId) =>
   realRequest('/mobile/academic/selection/my' + (batchId ? `?batch_id=${batchId}` : ''))
+export const acadSelectionMyPage = (params = {}) =>
+  realRequest('/mobile/academic/selection/my-page', { data: params })
 /** 成绩认定/课程替代（学生自助，对标正方 3.16/3.27） */
-export const acadRecognitionMy = () => realRequest('/mobile/academic/recognition/my')
+export const acadRecognitionCourses = (params = {}) =>
+  realRequest('/academic-affairs/grade-recognitions/student/course-options', { data: params })
+export const acadRecognitionMy = (params = {}) => realRequest('/mobile/academic/recognition/my', { data: params })
 export const acadRecognitionSubmit = (body) =>
   realRequest('/mobile/academic/recognition/submit', { method: 'POST', data: body })
 /** 等级考务报名（学生自助，对标正方 3.13） */
-export const acadRecheckMy = () => realRequest('/mobile/academic/grade-recheck/my')
+export const acadRecheckMy = (params = {}) => realRequest('/mobile/academic/grade-recheck/my', { data: params })
+export const acadRecheckEligible = (gradeId) => realRequest(`/mobile/academic/grade-recheck/eligible/${gradeId}`)
 export const acadRecheckSubmit = (body) =>
   realRequest('/mobile/academic/grade-recheck/submit', { method: 'POST', data: body })
-export const acadTextbookMy = () => realRequest('/mobile/academic/textbook/my')
+export const acadTextbookMy = (params = {}) => realRequest('/mobile/academic/textbook/my', { data: params })
 export const acadTextbookSign = (recordId) =>
   realRequest(`/mobile/academic/textbook/${recordId}/sign`, { method: 'POST' })
-export const acadLevelExamMy = () => realRequest('/mobile/academic/level-exam/my')
+export const acadLevelExamMy = (params = {}) => realRequest('/mobile/academic/level-exam/my', { data: params })
 export const acadLevelRegister = (examId) =>
   realRequest(`/mobile/academic/level-exam/${examId}/register`, { method: 'POST' })
 export const acadLevelCancel = (examId) =>
   realRequest(`/mobile/academic/level-exam/${examId}/cancel`, { method: 'POST' })
 /** 专业分流志愿（学生自助） */
-export const acadMajorSplitMy = () => realRequest('/mobile/academic/major-split/my')
+export const acadMajorSplitMy = (params = {}) => realRequest('/mobile/academic/major-split/my', { data: params })
+export const acadMajorSplitOptions = (batchId, params = {}) =>
+  realRequest(`/mobile/academic/major-split/${batchId}/options`, { data: params })
 export const acadMajorSplitSubmit = (batchId, choices) =>
   realRequest('/mobile/academic/major-split/submit', { method: 'POST', data: { batchId, choices } })
-export const acadEvaluationTasks = () => realRequest('/mobile/academic/evaluation/tasks')
+export const acadEvaluationTasks = (params = {}) => realRequest('/mobile/academic/evaluation/tasks', { data: params })
 export const acadEvaluationSubmit = (body) =>
   realRequest('/mobile/academic/evaluation/submit', { method: 'POST', data: body })
 
 /** 我的考试安排 + 缓考申请（考务管理·SM-10） */
-export const acadExamMy = () => realRequest('/mobile/academic/exam/my')
+export const acadExamMy = (params = {}) => realRequest('/mobile/academic/exam/my', { data: params })
 export const acadExamDeferOptions = () => realRequest('/mobile/academic/exam/defer-options')
-export const acadExamDeferMy = (status) =>
-  realRequest('/mobile/academic/exam/defer/my' + (status ? `?status=${status}` : ''))
+export const acadExamDeferMy = (params = {}) =>
+  realRequest('/mobile/academic/exam/defer/my', {
+    data: typeof params === 'string' ? { status: params } : (params || {})
+  })
 export const acadExamDeferApply = (examCourseId, reasonType, reason) =>
   realRequest('/mobile/academic/exam/defer/apply', { method: 'POST', data: { examCourseId, reasonType, reason } })
-export const acadExamDeferResubmit = (deferId) =>
-  realRequest(`/mobile/academic/exam/defer/${deferId}/resubmit`, { method: 'POST' })
+export const acadExamDeferResubmit = (deferId, expectedVersion) =>
+  realRequest(`/mobile/academic/exam/defer/${deferId}/resubmit`, { method: 'POST', data: { expectedVersion } })
 
 /** 教师·成绩录入（真实接口） */
 export const teacherGradeTasks = (status) =>
@@ -1326,18 +1482,22 @@ export const teacherGradeSubmitTask = (taskId) =>
   realRequest(`/mobile/teacher/academic/grade-tasks/${taskId}/submit`, { method: 'POST' })
 
 /** 教师·课堂考勤（真实接口） */
-export const teacherAttendanceSessions = () => realRequest('/mobile/teacher/academic/attendance/sessions')
+export const teacherAttendanceSessions = (params = {}) =>
+  realRequest('/mobile/teacher/academic/attendance/sessions', { data: params })
 export const teacherAttendanceClassOptions = () =>
   realRequest('/mobile/teacher/academic/attendance/class-options')
 export const teacherAttendanceCreate = (body) =>
   realRequest('/mobile/teacher/academic/attendance/sessions', { method: 'POST', data: body })
-export const teacherAttendanceDetail = (sessionId) =>
-  realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}`)
+export const teacherAttendanceDetail = (sessionId, params = {}) =>
+  realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}`, { data: params })
 export const teacherAttendanceMark = (sessionId, studentId, status) =>
   realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/mark`,
     { method: 'POST', data: { studentId, status } })
 export const teacherAttendanceSubmit = (sessionId) =>
   realRequest(`/mobile/teacher/academic/attendance/sessions/${sessionId}/submit`, { method: 'POST' })
-export const teacherWorkloadMy = () => realRequest('/mobile/teacher/academic/workload/my')
+export const teacherWorkloadMy = (params = {}) =>
+  realRequest('/mobile/teacher/academic/workload/my', { data: params })
+export const teacherWorkloadCommandReceipt = (commandKey) =>
+  realRequest(`/mobile/teacher/academic/workload/command-receipts/${encodeURIComponent(commandKey)}`)
 export const teacherWorkloadSubmit = (body) =>
   realRequest('/mobile/teacher/academic/workload/submit', { method: 'POST', data: body })

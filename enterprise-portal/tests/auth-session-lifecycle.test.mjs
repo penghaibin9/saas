@@ -17,9 +17,9 @@ test('expired browser refresh invalidates only local memory state and stale camp
 })
 
 test('temporary refresh network failure does not deliberately clear enterprise auth state',()=>{
-  const refreshBody=request.match(/async function refreshOnce\(\)[\s\S]*?\n}\n\nexport async function restoreEnterpriseSession/)?.[0]||''
+  const refreshBody=request.match(/async function refreshOnce\(\)[\s\S]*?\r?\n}\r?\n\r?\nexport async function restoreEnterpriseSession/)?.[0]||''
   assert.match(refreshBody,/网络不可达，暂时无法刷新企业登录状态/)
-  const networkBlock=refreshBody.match(/catch\{[\s\S]*?error\.network=true;throw error\n    }/)?.[0]||''
+  const networkBlock=refreshBody.match(/catch\{[\s\S]*?error\.network=true;throw error\r?\n    }/)?.[0]||''
   assert.doesNotMatch(networkBlock,/clearEnterpriseSession|clearLocalEnterpriseSession|clearAccessToken|setSelectedCampaignId/)
 })
 

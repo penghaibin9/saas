@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "internship-v8-w8-v1",
+  "wave": "W8_REPORT_GUIDANCE_VISIT",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "scope": [
+    "Staff weekly-report workbench",
+    "weekly resubmit before/after comparison",
+    "process-report decision receipt",
+    "guidance and visit Today First workbench",
+    "guidance-create receipt hydration",
+    "guidance void and visit rectification optimistic concurrency",
+    "truthful persistent action receipts"
+  ],
+  "truthFields": [
+    "id",
+    "status/statusLabel",
+    "version/expectedVersion",
+    "whyHere",
+    "recentChange",
+    "nextActor",
+    "previous report snapshot",
+    "current report body"
+  ],
+  "concurrencyPolicy": "Guidance void, visit rectification and visit-plan transitions carry the version rendered to the user; the server performs a conditional version/status update and returns the new version.",
+  "receiptPolicy": "Report, guidance and visit receipts retain server-returned object id, status and version; batch operations do not invent per-object or audit identifiers.",
+  "verification": {
+    "w8Contract": "6/6 passed",
+    "staffSuite": "648/648 passed",
+    "lint": "0 errors; 2 pre-existing warnings outside internship scope",
+    "productionBuild": "passed; 21 official routes prerendered",
+    "backendSyntax": "router, internship service, guidance, visit and visit-plan modules compiled",
+    "diffCheck": "passed; line-ending notices only"
+  },
+  "runtimeBlocker": "The isolated internship-v8 MySQL container does not complete a fresh connection handshake. Browser/MySQL replay remains pending without substituting SQLite or restarting unrelated Docker workloads."
+}

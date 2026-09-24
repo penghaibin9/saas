@@ -156,6 +156,31 @@ def _key(route) -> tuple[str, str]:
     return (",".join(methods), getattr(route, "path", ""))
 
 
+@_replacements.post('/exports/{job_id}/download-ticket')
+def export_download_ticket(job_id: str, body: _bundle.DownloadTicketRequest,
+    user=Depends(_bundle.require_any_permission_compat(*_bundle.DOWNLOAD_PERMISSIONS, 'systemAdmin.phoneBinding.export'))):
+    _assert_download_capability(job_id, user)
+    return _bundle.export_download_ticket(job_id=job_id, body=body, user=user)
+
+
+@_replacements.get('/exports/{job_id}/download')
+def download_export_file(job_id: str, ticket: str = Query(..., min_length=20),
+    user=Depends(_bundle.require_any_permission_compat(*_bundle.DOWNLOAD_PERMISSIONS, 'systemAdmin.phoneBinding.export'))):
+    _assert_download_capability(job_id, user)
+    return _bundle.download_export_file(job_id=job_id, ticket=ticket, user=user)
+
+
+def _assert_download_capability(job_id, user):
+    from app.core.permissions import has_permission
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.services.data_exchange_job_service import _owned_export
+    with get_sessionmaker()() as db:
+        row = _owned_export(db, job_id, user)
+        if row.export_type != 'PHONE_MASKED_LEDGER' and not any(has_permission(user, code) for code in _bundle.DOWNLOAD_PERMISSIONS):
+            raise AppException('NO_PERMISSION', '手机号台账下载权限不包含其他业务导出', http_status=403)
+
+
 def _compose() -> APIRouter:
     replacement = {_key(route): route for route in _replacements.routes}
     composed = APIRouter()

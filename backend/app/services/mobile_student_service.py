@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import base64
+import binascii
 import random
 import time
 from contextvars import ContextVar
@@ -164,19 +166,86 @@ def _empty(reason="尚未建立你的学生档案或暂无数据"):
     return {"hasData": False, "note": reason}
 
 
-def _orientation_payload(o) -> dict:
+def _orientation_payload(o, db=None) -> dict:
     if not o:
         return _empty("你暂无迎新报到记录")
-    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
-            "materialStatus": o.material_status, "dormStatus": o.dorm_status,
-            "greenChannelStatus": o.green_channel_status,
-            "building": o.building or "", "room": o.room or "",
+    if db is None:
+        raise RuntimeError("orientation payload requires canonical step session")
+    from app.services.orientation_flow_service import student_flow_steps, student_step_projection
+    from app.services.orientation_qualification_service import evaluate
+    steps = student_step_projection(db, o)
+    qualification = evaluate(db, o)
+    from app.services.orientation_checkin_service import _dorm_projection, token_status
+    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord, StudentProfile, SchoolClass
+    profile = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
+    if profile and profile.is_deleted:
+        profile = None
+    class_id = profile.class_id if profile else o.class_id
+    school_class = tenant_get(db, SchoolClass, int(class_id)) if class_id else None
+    if school_class and school_class.is_deleted:
+        school_class = None
+    checkin_credential = token_status(db, o, qualification=qualification)
+    batch = tenant_get(db, OrientationBatch, int(o.batch_id))
+    dorm = _dorm_projection(db, o, for_student=True)
+    if dorm.get("status") == "HIDDEN":
+        qualification.get("facts", {}).get("dorm", {}).pop("bedId", None)
+    contacts = []
+    contact_name = o.counselor or ""
+    contact_phone = ""
+    if school_class:
+        from app.core.field_crypto import decrypt_field
+        from app.models import User
+        if (school_class and not school_class.is_deleted
+                and int(school_class.tenant_id) == int(o.tenant_id)
+                and school_class.counselor_id):
+            counselor = db.get(User, int(school_class.counselor_id))
+            if counselor and not counselor.is_deleted and int(counselor.tenant_id) == int(o.tenant_id):
+                contact_name = counselor.real_name or contact_name
+                contact_phone = decrypt_field(counselor.phone_encrypted) or ""
+    if contact_name:
+        contacts.append({"role": "辅导员", "name": contact_name, "phone": contact_phone})
+    checkin_record = db.scalars(select(OrientationCheckinRecord).where(
+        OrientationCheckinRecord.tenant_id == o.tenant_id,
+        OrientationCheckinRecord.orientation_student_id == o.id,
+        OrientationCheckinRecord.is_deleted.is_(False),
+    ).order_by(OrientationCheckinRecord.id.desc())).first()
+    checkin_point = tenant_get(db, OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
+    from app.models import GreenChannelApplication
+    latest_green = db.scalars(select(GreenChannelApplication).where(
+        GreenChannelApplication.tenant_id == o.tenant_id,
+        GreenChannelApplication.ori_student_id == o.id,
+        GreenChannelApplication.is_deleted.is_(False),
+    ).order_by(GreenChannelApplication.id.desc())).first()
+    green_channel = None if latest_green is None else {
+        "id": str(latest_green.id), "status": latest_green.status,
+        "applyType": latest_green.apply_type, "applyAmount": float(latest_green.apply_amount or 0),
+        "remark": latest_green.remark or "", "rejectReason": latest_green.reject_reason or "",
+    }
+    payment_fact = qualification.get("facts", {}).get("payment", {})
+    payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
+                      else payment_fact.get("status") or "UNAVAILABLE")
+    return {"hasData": True, "orientationStudentId": str(o.id), "stage": o.stage, "batchName": batch.batch_name if batch else "",
+            "reportStatus": o.report_status, "paymentStatus": payment_status,
+            "materialStatus": o.material_status, "dormStatus": dorm["dormStatus"],
+            "greenChannelStatus": o.green_channel_status, "greenChannel": green_channel,
+            "building": dorm["building"], "room": dorm["room"], "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-            "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
+            "steps": [{**step, "status": steps[step["key"]]} for step in student_flow_steps(db, o)],
             "admissionNo": o.admission_no, "name": o.name,
-            "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
+            "qualification": qualification,
+            "payment": payment_fact,
+            # 只返回签发资格/状态；原始一次性 token 仅由显式签发端点返回。
+            "reportCodeValid": checkin_credential["status"] == "ISSUED",
+            "reportCodeStatus": checkin_credential["status"],
+            "checkinCredential": checkin_credential,
+            "checkin": {
+                "completedAt": _iso(checkin_record.checked_in_at) if checkin_record else "",
+                "pointName": checkin_point.name if checkin_point else "",
+            },
+            "contacts": contacts,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
-            "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
+            "className": (school_class.class_name if school_class else o.class_name) or "",
+            "grade": (school_class.grade if school_class else o.grade) or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
 
 
@@ -194,7 +263,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
                     "messageSummary": {"unreadCount": 0, "emergencyPendingCount": 0,
                                        "latestEmergency": None}, **_empty()}
         from app.models import (AcademicStudent, AcademicWarning, EmpStudent, InternshipRecord,
-                                OrientationStudent, UnifiedMessage, UnifiedTodo)
+                                UnifiedMessage, UnifiedTodo)
         sid, name = stu.id, stu.real_name
         # 我的待办（assignee 或与我相关，简化：按 student_id 关联）
         todos = db.scalars(select(UnifiedTodo).where(
@@ -251,7 +320,9 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         _ictx = resolve_student_internship_context(db, student=stu, for_write=False)
         intern = _ictx.record if _ictx.mode in ("active", "history") else None
         class_name, _ = resolve_student_class_college_names(db, stu)
-        ori = _resolve_domain_student(db, OrientationStudent, stu)
+        from app.services.orientation_self_service import read_student_context
+        orientation_context = read_student_context(db, stu)
+        ori = orientation_context[0] if orientation_context else None
         acad = _resolve_domain_student(db, AcademicStudent, stu)
         warn = 0
         if acad:
@@ -311,7 +382,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
             "hasData": True,
         }
         if include_home:
-            result["orientation"] = _orientation_payload(ori)
+            result["orientation"] = _orientation_payload(ori, db)
             result["orientationBatch"] = _orientation_batch_status_db(db)
             # V3 §5.2 学分完成率的真值来源。acad 已在本 session 内解析，不新增查询。
             # required_credits 可为空（培养方案未解析）——此时必须保持 None，
@@ -541,8 +612,10 @@ def my_messages(user: dict) -> dict:
             for wo in db.scalars(select(CsWorkOrder).where(CsWorkOrder.tenant_id == _tid(),
                                  CsWorkOrder.cs_student_id == cs.id, CsWorkOrder.is_deleted.is_(False)
                                  ).order_by(CsWorkOrder.id.desc()).limit(10)).all():
+                status_label = {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                                "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(wo.status, "状态更新中")
                 progress_msgs.append({"id": "wo-" + str(wo.id),
-                                      "title": f"工单「{wo.title}」当前状态：{wo.status}",
+                                      "title": f"工单「{wo.title}」当前状态：{status_label}",
                                       "module": "服务进度", "level": "normal",
                                       "time": None, "deadline": None,
                                       "read": wo.status not in ("PENDING_HANDLE",),
@@ -753,8 +826,19 @@ def orientation_my(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return _empty()
-        from app.models import OrientationStudent
-        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu))
+        from app.services.orientation_self_service import read_student_context
+        context = read_student_context(db, stu)
+        result = _orientation_payload(context[0] if context else None, db)
+    if not result.get("hasData"):
+        return result
+    try:
+        from app.services.orientation_self_service import snapshot
+        result["selfService"] = snapshot(u, orientation_student_id=int(result["orientationStudentId"]))
+    except AppException as exc:
+        if exc.code not in {"NO_PERMISSION", "DATA_NOT_FOUND", "DATA_CONFLICT"}:
+            raise
+        result["selfService"] = {"available": False, "canSubmitMaterials": False, "reason": exc.message}
+    return result
 
 
 def _resolve_orientation_student(db, u: dict):
@@ -767,19 +851,37 @@ def _resolve_orientation_student(db, u: dict):
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
-    """预报到信息采集（学生自助）：确认联系电话/生源地。"""
+    """预报到信息采集（学生自助）：稳定学生主档 + 紧急联系人。"""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
-    with _session() as db:
-        o = _resolve_orientation_student(db, u)
-        if not o:
-            raise AppException("NOT_FOUND", "未找到你的迎新报到记录，请联系辅导员")
-        oid = o.id
-    from app.services.orientation_service import student_submit_collect
-    result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
+    from app.services.orientation_self_service import submit_information
+    result = submit_information(u, body or {})
+    oid = result["id"]
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
+    return result
+
+
+def orientation_arrival_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_arrival_plan
+    result = submit_arrival_plan(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新到校计划", f"orientation-arrival:{result['id']}")
+    return result
+
+
+def orientation_material_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_material
+    result = submit_material(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新材料", f"orientation-material:{result['id']}")
     return result
 
 
@@ -798,6 +900,7 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
     result = student_submit_green_channel(
         oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""),
         file_ids=_attachment_ids(b), actor=u,
+        client_request_id=b.get("clientRequestId", ""),
     )
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
@@ -1003,7 +1106,10 @@ def internship_my(user: dict) -> dict:
                   current=assessing and st != "ARCHIVED"),
         ]
 
+        from app.modules.internship.services.internship_eligibility_result import eligibility_result
         return {"hasData": True,
+                "eligibilityReview": eligibility_result(db, rec),
+                "candidates": ctx.candidates,
                 "historyMode": history_mode,
                 "batchId": str(rec.batch_id or ""),
                 "recordId": str(rec.id),
@@ -1153,15 +1259,70 @@ def _resolve_gd_student(db, u: dict):
 
 
 
-def graduation_topics(user: dict, batch_id: str | None = None) -> list:
-    """选题·浏览可选题目库（已入池「已审核+已确认」且未满员）。"""
+def _encode_topic_cursor(topic_id: int) -> str:
+    return base64.urlsafe_b64encode(f"topic:{int(topic_id)}".encode()).decode().rstrip("=")
+
+
+def _decode_topic_cursor(cursor: str | None) -> int | None:
+    if not cursor:
+        return None
+    try:
+        padded = str(cursor) + "=" * (-len(str(cursor)) % 4)
+        value = base64.urlsafe_b64decode(padded.encode()).decode()
+        prefix, raw_id = value.split(":", 1)
+        if prefix != "topic" or not raw_id.isdigit():
+            raise ValueError
+        return int(raw_id)
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise AppException("VALIDATION_ERROR", "题目分页游标无效，请刷新后重试")
+
+
+def graduation_topics(user: dict, batch_id: str | None = None, *, keyword: str | None = None,
+                      category: str | None = None, advisor: str | None = None,
+                      cursor: str | None = None, page_size: int = 20) -> dict:
+    """选题·可选题目库的真实游标分页；只返回已审核、已确认且仍有余量的题目。"""
     _require_student(user)
     if not db_enabled():
-        return []
-    from app.modules.graduation.services import graduation_topic_service as topic_svc
-    items, _ = topic_svc.list_topics(1, 500, batch_id=batch_id, review_status="APPROVED",
-                                     status="CONFIRMED", is_full=False)
-    return items
+        return {"items": [], "nextCursor": None, "total": 0, "hasMore": False}
+    from app.models import GraduationTopic
+
+    size = min(30, max(1, int(page_size or 20)))
+    cursor_id = _decode_topic_cursor(cursor)
+    with _session() as db:
+        filters = [
+            GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False),
+            GraduationTopic.review_status == "APPROVED", GraduationTopic.status == "CONFIRMED",
+            func.coalesce(GraduationTopic.selected, 0) < func.coalesce(GraduationTopic.capacity, 0),
+        ]
+        if batch_id:
+            filters.append(GraduationTopic.batch_id == int(batch_id))
+        if keyword and keyword.strip():
+            like = f"%{keyword.strip()}%"
+            filters.append(or_(GraduationTopic.title.like(like), GraduationTopic.topic_no.like(like),
+                               GraduationTopic.advisor_name.like(like), GraduationTopic.requirements.like(like)))
+        if category and category.strip():
+            filters.append(GraduationTopic.category == category.strip())
+        if advisor and advisor.strip():
+            filters.append(GraduationTopic.advisor_name.like(f"%{advisor.strip()}%"))
+
+        total = int(db.scalar(select(func.count()).select_from(GraduationTopic).where(*filters)) or 0)
+        page_filters = [*filters]
+        if cursor_id is not None:
+            page_filters.append(GraduationTopic.id < cursor_id)
+        rows = db.scalars(select(GraduationTopic).where(*page_filters).order_by(
+            GraduationTopic.id.desc()).limit(size + 1)).all()
+        has_more = len(rows) > size
+        page_rows = rows[:size]
+        items = [{
+            "id": str(topic.id), "topicNo": topic.topic_no or "", "title": topic.title or "",
+            "advisorName": topic.advisor_name or "导师待定", "category": topic.category or "未分类",
+            "requirements": topic.requirements or "", "capacity": int(topic.capacity or 0),
+            "selected": int(topic.selected or 0),
+            "remaining": max(0, int(topic.capacity or 0) - int(topic.selected or 0)),
+            "sourceType": topic.source_type or "", "sourceLabel": topic.source or "",
+        } for topic in page_rows]
+        next_cursor = _encode_topic_cursor(page_rows[-1].id) if has_more and page_rows else None
+        return {"items": items, "nextCursor": next_cursor, "total": total, "hasMore": has_more}
 
 
 def graduation_active_round(user: dict) -> dict | None:
@@ -1265,15 +1426,37 @@ def graduation_proposal(user: dict) -> dict:
             GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == g.id,
             GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
         ).limit(1)).first() is not None
-        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交
-        can_submit = can_submit_topic and tb_ok and (latest is None or latest.status == "REJECTED")
+        # 无记录 → 可首次提交；最新被驳回 → 可重交；待审/已通过 → 不可提交。
+        # 还必须确认当前批次实际冻结了权威的 PROPOSAL_REPORT 材料。不能只用
+        # topic/taskbook 推导按钮可用，否则配置漂移时学生会填写整页内容后才在
+        # 后端收到 MATERIAL_NOT_IN_BATCH_RULE，形成假入口。
+        proposal_material_ready = False
+        proposal_material_reason = ""
+        if g.batch_id:
+            from app.modules.graduation.materials.rule_service import rule_item
+            try:
+                _, proposal_item = rule_item(db, int(g.batch_id), "PROPOSAL_REPORT")
+                proposal_material_ready = str(proposal_item.owner_role or "").upper() == "STUDENT"
+                if not proposal_material_ready:
+                    proposal_material_reason = "当前批次开题报告材料未配置为学生可提交，请联系毕业设计管理员"
+            except AppException:
+                proposal_material_reason = "当前批次尚未配置开题报告材料，暂不能提交，请联系毕业设计管理员"
+        else:
+            proposal_material_reason = "毕业设计档案缺少有效批次，暂不能提交开题报告"
+        can_submit = (
+            can_submit_topic and tb_ok and proposal_material_ready
+            and (latest is None or latest.status == "REJECTED")
+        )
         reason = ""
         if not can_submit_topic:
             reason = "请先完成选题确认后再提交开题报告"
         elif not tb_ok:
             reason = "请先确认任务书后再提交开题报告"
+        elif not proposal_material_ready:
+            reason = proposal_material_reason
         return {"hasData": True, "topicTitle": g.topic_title or "（未选题）",
                 "canSubmit": can_submit,
+                "proposalMaterialReady": proposal_material_ready,
                 "reason": reason,
                 "latest": None if not latest else {
                     "id": str(latest.id), "version": latest.version or "", "status": latest.status,
@@ -1630,6 +1813,8 @@ def my_profile(user: dict) -> dict:
                 "gender": stu.gender or "", "collegeName": getattr(stu, "_college_name", "") or "",
                 "majorName": getattr(stu, "_major_name", "") or "",
                 "className": getattr(stu, "_class_name", "") or "",
+                "counselorId": str(getattr(stu, "_counselor_id", "") or ""),
+                "counselorName": getattr(stu, "_counselor_name", "") or "",
                 "grade": stu.grade or "",
                 "phoneMasked": _mask_phone(phone_plain) if phone_plain else "",
                 "idCardMasked": mask_id_card_encrypted(stu.id_card_encrypted),
@@ -1682,31 +1867,25 @@ def wechat_subscribe_status(user: dict) -> dict:
     站内消息分类与微信订阅是两条独立渠道，不能用一个开关表示两种东西。
     provider 未配置或用户未授权时，这里如实返回 false —— 绝不在学生端宣称"已开启"。
     """
-    u = _require_student(user)
+    _require_student(user)
     from app.services.notification import wechat_subscribe_service as wechat
 
     status = wechat.provider_status()
-    authorized = False
-    if db_enabled():
-        with _session() as db:
-            from app.models import User
-            uid = _resolve_uid(u)
-            row = tenant_get(db, User, uid) if uid else None
-            authorized = bool(row and getattr(row, "wx_openid", None))
+    # openid 只能证明绑定微信，不能证明用户接受过某个模板的一次性提醒。
+    configured = bool(status["configured"] and status.get("providerReady")
+                      and status.get("authorizationReady") and any(status["templates"].values()))
     return {
         "channel": "WECHAT",
-        # 学校/运维是否配好了微信订阅能力
-        "configured": bool(status["configured"]),
-        # 本人是否授权过（有 openid）
-        "authorized": authorized,
-        # 只有两者都成立，才算这条渠道真的能收到提醒
-        "effective": bool(status["configured"]) and authorized,
+        "configured": configured,
+        "authorized": False,
+        "effective": False,
+        "reason": "微信提醒暂不可用，请在消息中心查看办理通知",
         "scenes": [
             {"key": scene, "label": _SUBSCRIBE_SCENE_LABELS.get(scene, scene),
-             "ready": bool(status["templates"].get(scene))}
+             "templateId": wechat._template_id(scene),
+             "ready": configured and bool(status["templates"].get(scene))}
             for scene in status["scenes"]
         ],
-        # 未配置时给出可诊断信息，供管理端排查；学生端只用它决定文案，不展示内部键名
         "missing": list(status["missing"]),
     }
 
@@ -1739,6 +1918,10 @@ def my_applications(user: dict) -> dict:
             s = (s or "").upper()
             return "done" if s in _done else "rejected" if s in _rej else "processing"
 
+        def _work_order_status_label(status):
+            return {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
+                    "COMPLETED": "已办结", "CLOSED": "已关闭"}.get(status, "状态更新中")
+
         # t_cs_leave 双状态列并行(P0 §4.2 集成①)：13A 新提交只挂 student_id(cs_student_id=0)，
         # 老 campus-service 提交只挂 cs_student_id。按 cs.id 单一条件查会漏掉新提交的请假，
         # 这里补上 student_id 分支，两条线都要查，不能只认其中一条。
@@ -1770,7 +1953,7 @@ def my_applications(user: dict) -> dict:
                                  ).order_by(CsWorkOrder.id.desc())).all():
                 apps.append({"id": "wo-" + str(wo.id), "no": wo.code or ("WO" + str(wo.id)),
                              "name": wo.title, "group": _grp(wo.status), "status": wo.status,
-                             "statusText": wo.status, "applyTime": None, "dept": "服务中心",
+                             "statusText": _work_order_status_label(wo.status), "applyTime": None, "dept": "服务中心",
                              "handler": wo.handler or "待分配", "lastOpinion": "",
                              "hasResult": _grp(wo.status) != "processing", "sourceType": "WORKORDER"})
         return {"hasData": bool(apps), "tabs": tabs, "applications": apps}
@@ -1816,6 +1999,8 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实提交")
     is_leave = service_key.upper() in ("LEAVE", "SV1", "请假")
     if is_leave:
+        if _attachment_ids(body):
+            raise AppException("VALIDATION_ERROR", "请从我的请假办理，并在证明与补交材料中提交附件")
         # 请假必须走正式审批工作流（辅导员/学院/学工处多级节点），不能只落一条脱离
         # WorkflowInstance/affairs_status 的简化记录——否则学生自己的"我的请假"列表
         # 和老师端"待审批"队列都读不到这条申请（两条真相数据断层，分角色测试发现）。
@@ -1927,7 +2112,7 @@ def _file_id(value, *, required=False) -> str | None:
     return fid
 
 
-def internship_checkin_week(user: dict) -> dict:
+def internship_checkin_week(user: dict, *, batch_id=None) -> dict:
     """本周打卡记录（本人，周一~今日；未到的日期不返回）：供打卡页展示正常/迟到(超范围)/缺卡。"""
     u = _require_student(user)
     if not db_enabled():
@@ -1940,7 +2125,7 @@ def internship_checkin_week(user: dict) -> dict:
         stu = resolve_student(db, u)
         if not stu:
             return {"hasData": False, "days": []}
-        rec, _ = _internship_record(db, u)
+        rec, _ = _internship_record(db, u, batch_id=batch_id)
         if not rec:
             return {"hasData": False, "days": []}
         today = _dt.now().date()
@@ -1962,15 +2147,47 @@ def internship_checkin_week(user: dict) -> dict:
         return {"hasData": True, "days": days}
 
 
-def internship_checkin(user: dict, body: dict) -> dict:
+def internship_checkin_preflight(user: dict, *, batch_id=None) -> dict:
+    """Check eligibility and issue a short-lived token before the device requests location."""
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
+    from app.models import InternshipPosition
+    from app.modules.internship.services import internship_checkin_trust_service as trust
+    with _session() as db:
+        rec, stu = _internship_record(db, u, batch_id=batch_id, for_write=True)
+        if not rec or not stu:
+            raise AppException("DATA_NOT_FOUND", "未找到当前实习记录")
+        if rec.status not in {"ONBOARD", "ASSESSING"}:
+            raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
+        today = f"{datetime.now():%Y-%m-%d}"
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
+        rule = trust.resolve_rule(db, rec, position)
+        credential = trust.issue_token(
+            tenant_id=_tid(), student_id=stu.id, internship_id=rec.id, checkin_date=today)
+        return {
+            **credential, "date": today,
+            "rule": {
+                "configured": rule["configured"], "radiusM": rule["radiusM"],
+                "maxAccuracyM": rule["maxAccuracyM"],
+                "coordinateSystem": rule["coordinateSystem"], "source": rule["source"],
+                "place": rec.position_name or rec.enterprise_name or "当前实习岗位",
+            },
+            "privacyNotice": "仅在点击打卡时采集一次定位，不后台持续定位",
+        }
+
+
+def internship_checkin(user: dict, body: dict, *, batch_id=None) -> dict:
     """Persist one daily check-in with server-side geofence/device evidence and retry-safe idempotency."""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实打卡")
     key = str(body.get("idempotencyKey") or "").strip()[:100] or None
-    risk_flag = str(body.get("deviceRiskFlag") or "normal").lower().strip()
-    if risk_flag not in {"normal", "mock", "rooted"}:
+    client_risk_flag = str(body.get("deviceRiskFlag") or "").lower().strip()
+    if client_risk_flag not in {"", "normal", "mock", "rooted"}:
         raise AppException("VALIDATION_ERROR", "deviceRiskFlag 必须是 normal、mock 或 rooted")
+    # A client can report a risk, but "normal" is not trusted proof of device integrity.
+    risk_flag = client_risk_flag if client_risk_flag in {"mock", "rooted"} else "not_available"
     lat, lng = _float_or_none(body.get("lat")), _float_or_none(body.get("lng"))
     accuracy = _float_or_none(body.get("gpsAccuracy"))
     if (lat is None) != (lng is None) or (lat is not None and not (-90 <= lat <= 90 and -180 <= lng <= 180)):
@@ -1981,7 +2198,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
     with _session() as db:
         from datetime import datetime as _dt
         from app.models import AttendanceException, InternshipCheckin, InternshipPosition
-        rec, stu = _internship_record(db, u, for_write=True)
+        from app.modules.internship.services import internship_checkin_trust_service as trust
+        rec, stu = _internship_record(db, u, batch_id=batch_id, for_write=True)
         if rec.status not in {"ONBOARD", "ASSESSING"}:
             raise AppException("DATA_CONFLICT", "仅在岗或考核中的实习学生可以打卡")
         today = f"{_dt.now():%Y-%m-%d}"
@@ -1996,19 +2214,19 @@ def internship_checkin(user: dict, body: dict) -> dict:
 
         # 租户收口：实习岗位是带 tenant_id 的业务表，跨租户命中必须表现为“这行不存在”。
         position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
-        distance_m = radius_m = None
-        if risk_flag != "normal":
+        rule = trust.resolve_rule(db, rec, position)
+        distance_m = None
+        radius_m = rule.get("radiusM") if rule.get("configured") else None
+        if lat is not None:
+            trust.verify_token(str(body.get("checkinToken") or ""), tenant_id=_tid(),
+                               student_id=stu.id, internship_id=rec.id, checkin_date=today)
+        if risk_flag in {"mock", "rooted"}:
             result, exception_type = "MOCK_LOCATION", "MOCK_LOCATION"
-        elif lat is None:
-            result, exception_type = "NO_LOCATION", "MISSING"
-        elif position and position.geofence_lat is not None and position.geofence_lng is not None and position.geofence_radius_m:
-            distance_m = _distance_m(lat, lng, position.geofence_lat, position.geofence_lng)
-            radius_m = position.geofence_radius_m
-            result = "NORMAL" if distance_m <= radius_m else "OUT_OF_RANGE"
-            exception_type = "OUT_OF_RANGE" if result == "OUT_OF_RANGE" else None
         else:
-            # A real coordinate without an approved enterprise fence is evidence, not a false pass.
-            result, exception_type = "RECORDED", None
+            if lat is not None and rule.get("configured"):
+                distance_m = _distance_m(lat, lng, rule["centerLat"], rule["centerLng"])
+            result, exception_type = trust.classify_location(
+                lat=lat, lng=lng, accuracy=accuracy, rule=rule, distance_m=distance_m)
         row = InternshipCheckin(tenant_id=_tid(), internship_id=rec.id, checkin_date=today,
                                 checkin_at=_dt.utcnow(), lat=lat, lng=lng,
                                 address=str(body.get("address") or "")[:300] or None, result=result,
@@ -2045,6 +2263,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
             "message": {
                 "NORMAL": "打卡成功（围栏内）",
                 "OUT_OF_RANGE": "已打卡，但超出企业围栏，已记异常待核验",
+                "LOW_ACCURACY": "已记录，但定位精度不足，已转教师核验",
+                "LOCATION_UNCERTAIN": "已记录，定位误差覆盖围栏边界，已转教师核验",
                 "NO_LOCATION": "已记录打卡时间（无定位，不作作弊认定）",
                 "RECORDED": "已打卡留痕（岗位未配置围栏）",
                 "MOCK_LOCATION": "已打卡，设备风险标记异常，已转异常台",

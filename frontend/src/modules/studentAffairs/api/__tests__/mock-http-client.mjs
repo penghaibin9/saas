@@ -1,6 +1,10 @@
 /** 学工 API 契约测试用 mock http client（由 registerHooks 劫持 @/services/http/client） */
 const calls = globalThis.__SA_API_CONTRACT_CALLS__ || (globalThis.__SA_API_CONTRACT_CALLS__ = [])
 
+export function getToken() {
+  return ''
+}
+
 export async function request(path, { method = 'GET', body, params, forceProbe = false, timeoutMs } = {}) {
   const throwSpec = globalThis.__SA_API_CONTRACT_THROW__
   if (throwSpec) {

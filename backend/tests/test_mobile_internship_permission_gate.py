@@ -6,6 +6,7 @@ import pytest
 
 from app.core.exceptions import AppException
 from app.core.mobile_internship_permission_gate import (
+    _preflight_user,
     _reject_legacy_teacher_write,
     resolve_teacher_internship_permission,
 )
@@ -64,6 +65,27 @@ def test_non_internship_mobile_route_is_ignored():
         "GET", "/api/v1/mobile/orientation/batch-status") is None
 
 
+def test_db_token_preflight_preserves_credential_epoch(monkeypatch):
+    """Phone-login credential rotation must not turn valid internship requests into 401."""
+    import app.core.mobile_internship_permission_gate as gate
+    from app.core import token_store
+    from app.services import auth_service_db
+
+    monkeypatch.setattr(token_store, "jti_blocked", lambda _jti: False)
+    monkeypatch.setattr(gate, "decode_token", lambda _token: {
+        "userId": "db-123", "tenantId": str(TID), "tid": "sandbox-school",
+        "currentRoleCode": "INTERN_MENTOR", "activeContextId": "role:1",
+        "credentialVersion": 7, "jti": "test-jti", "exp": 1234567890,
+    })
+    captured = {}
+    monkeypatch.setattr(auth_service_db, "validate_token_subject", lambda ctx: captured.update(ctx) or ctx)
+
+    user = _preflight_user("Bearer test-token")
+
+    assert user["credentialVersion"] == 7
+    assert captured["credentialVersion"] == 7
+
+
 @pytest.mark.parametrize("path", [
     "/api/v1/mobile/teacher/internship/scores/12/publish",
     "/api/v1/mobile/teacher/internship/agreements/12/school-confirm",
@@ -77,10 +99,12 @@ def test_unregistered_teacher_internship_route_fails_closed(path):
 
 def test_permission_gate_is_installed_on_real_mobile_router():
     source = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
-    start = source.index("api_router.include_router(\n        mobile.router,")
+    start = source.index("mobile_deps = [")
     end = source.index("\n    from app.core.student_portal_module_gate", start)
     registration = source[start:end]
     assert "Depends(enforce_teacher_internship_mobile_permission)" in registration
+    assert "api_router.include_router(mobile_router, dependencies=mobile_deps)" in registration
+    assert "api_router.include_router(mobile_risk_overrides, dependencies=mobile_deps)" in registration
 
 
 def test_view_only_teacher_cannot_review_weekly_report_via_real_route(client, db_mode):
@@ -165,11 +189,11 @@ def test_teacher_pages_append_next_page_on_reach_bottom():
         "internship-score/index.vue",
     ]
     for relative in pages:
-        source = (ROOT.parent / "miniapp/src/pages/teacher" / relative).read_text(encoding="utf-8")
+        source = (ROOT.parent / "miniapp/src/pages/teacher-internship" / relative).read_text(encoding="utf-8")
         assert "onReachBottom()" in source, relative
         assert "hasMore" in source, relative
         assert "loadMore()" in source, relative
-    approval = (ROOT.parent / "miniapp/src/pages/teacher/internship-approval/index.vue").read_text(
+    approval = (ROOT.parent / "miniapp/src/pages/teacher-internship/internship-approval/index.vue").read_text(
         encoding="utf-8"
     )
     assert "onReachBottom()" in approval

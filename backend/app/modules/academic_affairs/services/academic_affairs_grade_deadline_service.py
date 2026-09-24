@@ -209,10 +209,13 @@ def require_submit_within_deadline(task_id: int, user) -> None:
             )
 
 
-def teacher_submit_task(task_id: int, user) -> dict:
-    require_submit_within_deadline(task_id, user)
+def teacher_submit_task(task_id: int, user, *, expected=None, command_key=None) -> dict:
+    # Keyed dynamic submission checks deadline inside the canonical transaction,
+    # after replaying any original committed receipt. Legacy entry keeps its preflight.
+    if command_key is None:
+        require_submit_within_deadline(task_id, user)
     try:
-        return _grade_exec.teacher_submit_task(task_id, user)
+        return _grade_exec.teacher_submit_task(task_id, user, expected=expected, command_key=command_key)
     except DBAPIError as exc:
         # The MySQL trigger closes the preflight→submit TOCTOU window. Translate
         # its intentional SIGNAL back into the same stable business contract.

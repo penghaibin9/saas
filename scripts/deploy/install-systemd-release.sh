@@ -30,6 +30,7 @@ LOCK_FILE="${DEPLOY_LOCK_FILE:-/run/lock/school-lifecycle-release.lock}"
 # 一起带进 release，形成“证据写 A，实际运行 B”的假不可变发布。git 来源现在只允许干净 checkout，
 # 并直接用 git archive 从候选 commit 物化 release；离线发布包仍必须显式提供 RELEASE_COMMIT。
 SOURCE_COMMIT="${RELEASE_COMMIT:-}"
+RELEASE_SNAPSHOT_SHA256="${RELEASE_SNAPSHOT_SHA256:-}"
 SOURCE_IS_GIT=0
 if command -v git >/dev/null 2>&1 && git -C "$SOURCE_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   SOURCE_IS_GIT=1
@@ -49,6 +50,12 @@ fi
   echo "Cannot establish immutable release commit. Use a clean git checkout or set RELEASE_COMMIT for a trusted offline package." >&2
   exit 1
 }
+if [ "$SOURCE_IS_GIT" != "1" ]; then
+  [[ "$RELEASE_SNAPSHOT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Trusted offline packages require RELEASE_SNAPSHOT_SHA256 from their checked manifest." >&2
+    exit 1
+  }
+fi
 
 # 单机发布必须串行。两个终端同时跑 migration/symlink 会破坏“原子发布”的前提。
 exec 9>"$LOCK_FILE"
@@ -87,12 +94,19 @@ if [ "$SOURCE_IS_GIT" = "1" ]; then
   git -C "$SOURCE_ROOT" archive --format=tar "$SOURCE_COMMIT" | tar -xf - -C "$RELEASE_DIR"
 else
   # 可信离线发布包没有 .git；调用方必须显式传 RELEASE_COMMIT，包自身不能靠时间戳冒充版本。
-  # tmp/ 不排除：国标同步脚本仍读取仓库内 tmp/moe-* 源文件。
+  # 国标同步源文件位于受控的 backend/reference-data/moe/，不再依赖临时目录。
   rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'node_modules' --exclude '.env*' \
     --exclude 'dist' "$SOURCE_ROOT/" "$RELEASE_DIR/"
 fi
 printf '%s\n' "$SOURCE_COMMIT" > "$RELEASE_DIR/.release-commit"
 chmod 444 "$RELEASE_DIR/.release-commit"
+if [ "$SOURCE_IS_GIT" != "1" ]; then
+  # A local worktree snapshot can include reviewed, uncommitted release fixes.  Keep
+  # the base commit for lineage, and record the exact checked archive separately so
+  # it is never presented as if it were the unmodified commit tree.
+  printf '%s\n' "$RELEASE_SNAPSHOT_SHA256" > "$RELEASE_DIR/.release-source-sha256"
+  chmod 444 "$RELEASE_DIR/.release-source-sha256"
+fi
 # 从这里开始，所有会影响运行态/迁移/服务单元的脚本都必须取自不可变 RELEASE_DIR，
 # 不能再回到部署期间可能被更新的 SOURCE_ROOT。
 ENV_RUNNER="$RELEASE_DIR/scripts/deploy/run-with-envfile.py"
@@ -324,6 +338,7 @@ APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" bash "$RELEASE_DIR/scripts/deploy/veri
 # 生产主机证据不是 CI 截图：重新从已激活 release 自身执行预检+运行时验收，
 # 并把 commit/主机指纹/受治理备份校验写成 0600 JSON。任何一步失败都不产生 PASS 证据。
 EXPECTED_RELEASE_COMMIT="$SOURCE_COMMIT" BACKUP_FILE="$backup_file" \
+  EXPECTED_RELEASE_SNAPSHOT_SHA256="$RELEASE_SNAPSHOT_SHA256" \
   APP_ROOT="$APP_ROOT" ENV_FILE="$ENV_FILE" \
   bash "$RELEASE_DIR/scripts/deploy/accept-production-release.sh"
 

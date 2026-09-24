@@ -23,40 +23,42 @@
       <div class="login-card">
         <p class="card-eyebrow">STUDENT PORTAL</p>
         <h2>学生登录</h2>
-        <p class="card-intro">使用学校分配的学号、手机号或统一身份账号进入个人服务门户。</p>
-        <div class="entry-note"><span />登录后仅展示本人数据和本人事项</div>
+        <p class="card-intro">{{ identifierType === 'PHONE' ? '使用本人已验证的手机号与原密码登录。' : '使用学校分配的学号或统一账号。' }}</p>
 
         <form @submit.prevent="doLogin">
-          <label for="student-account">学号 / 手机号</label>
-          <input id="student-account" v-model.trim="loginName" autocomplete="username" placeholder="请输入学号或手机号">
+          <div class="login-modes" role="group" aria-label="登录方式">
+            <button v-for="mode in [{ value: 'ACCOUNT', label: '账号登录' }, { value: 'PHONE', label: '手机号登录' }]" :key="mode.value" type="button" :disabled="loading" :aria-pressed="identifierType === mode.value" @click="identifierType = mode.value">{{ mode.label }}</button>
+          </div>
+          <label for="student-account">{{ identifierType === 'PHONE' ? '已验证手机号' : '账号' }}</label>
+          <input :disabled="loading" id="student-account" v-model.trim="loginName" autocomplete="username" :inputmode="identifierType === 'PHONE' ? 'tel' : 'text'" :placeholder="identifierType === 'PHONE' ? '请输入本人已验证的手机号' : '请输入学号或统一账号'">
           <div class="label-row"><label for="student-password">密码</label><button class="text-button" type="button" @click="forgotPassword">忘记密码</button></div>
           <div class="password-field">
-            <input id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
+            <input :disabled="loading" id="student-password" v-model="password" :type="showPwd ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码">
             <button type="button" class="eye-button" :aria-label="showPwd ? '隐藏密码' : '显示密码'" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</button>
           </div>
           <LoginCaptcha :visible="captcha.required" v-model="captcha.code" :image="captcha.image" :loading="captcha.loading" input-id="student-login-captcha" @refresh="refreshCaptcha" />
-          <label class="remember"><input v-model="remember" type="checkbox">记住账号</label>
+          <label class="remember"><input :disabled="loading" v-model="remember" type="checkbox">记住账号</label>
 
           <details class="tenant-details">
             <summary>切换学校或填写学校编码</summary>
             <label for="student-tenant">学校编码 <small>仅多校同账号时填写</small></label>
-            <input id="student-tenant" v-model.trim="tenantCode" autocomplete="organization" placeholder="请输入学校编码">
+            <input :disabled="loading" id="student-tenant" v-model.trim="tenantCode" autocomplete="organization" placeholder="请输入学校编码">
           </details>
 
-          <label class="agreement"><input v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
+          <label class="agreement"><input :disabled="loading" v-model="agree" type="checkbox">我已阅读并同意学校提供的用户协议与隐私政策</label>
           <p v-if="error" class="error" role="alert">{{ error }}</p>
           <button class="submit-button" :disabled="loading" type="submit">{{ loading ? '登录中…' : '进入学生服务门户' }}</button>
         </form>
         <p class="help-text">首次登录、学号更正或账号无法关联本人档案，请联系辅导员或学校管理员。</p>
       </div>
-      <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
+      <footer><span>技术支持：湖南跃科信息工程有限公司</span><a href="https://beian.miit.gov.cn/" rel="noopener noreferrer">湘ICP备2026031107号</a></footer>
     </section>
-    <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" @close="resetVisible = false" @done="resetDone" />
+    <PasswordResetDialog v-if="resetVisible" :login-name="loginName" :tenant-code="tenantCode" :identifier-type="identifierType" @close="resetVisible = false" @done="resetDone" />
   </main>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { usePortalConfigStore } from '../../stores/portalConfig'
@@ -64,8 +66,10 @@ import { useUiStore } from '../../stores/ui'
 import LoginCaptcha from '../../components/auth/LoginCaptcha.vue'
 import PasswordResetDialog from '../../components/auth/PasswordResetDialog.vue'
 import { portalApi } from '../../services/portalApi'
+import { createIdentityCaptcha } from '../../../../shared/identityCaptcha.mjs'
 
 const REMEMBER_KEY = 'student_portal_login_name'
+const TENANT_KEY = 'student_portal_tenant_code'
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
@@ -73,6 +77,7 @@ const cfg = usePortalConfigStore()
 const ui = useUiStore()
 
 const loginName = ref('')
+const identifierType = ref('ACCOUNT')
 const password = ref('')
 const tenantCode = ref(typeof route.query.tenant === 'string' ? route.query.tenant : '')
 const error = ref('')
@@ -81,7 +86,11 @@ const showPwd = ref(false)
 const remember = ref(false)
 const agree = ref(false)
 const resetVisible = ref(false)
-const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: `student-${Date.now()}-${Math.random()}` })
+const captcha = ref({ required: false, id: '', code: '', image: '', loading: false, nonce: '' })
+const captchaFlow = createIdentityCaptcha(captcha.value, { identity: () => ({ scene: 'PASSWORD_LOGIN', tenantCode: tenantCode.value || undefined, identifierType: identifierType.value, identifier: loginName.value, clientType: 'PC' }), issue: portalApi.captcha, error: message => { error.value = message } })
+watch([loginName, tenantCode, identifierType], () => captchaFlow.invalidate(), { flush: 'sync' })
+watch(identifierType, () => { loginName.value = ''; password.value = '' }, { flush: 'sync' })
+onBeforeUnmount(() => { captchaFlow.dispose(); password.value = '' })
 const platformName = computed(() => cfg.brand?.platformName || cfg.portalName || '学生服务门户')
 const brandLogo = computed(() => cfg.brand?.logo || '')
 
@@ -92,16 +101,19 @@ onMounted(() => {
       loginName.value = saved
       remember.value = true
     }
+    if (!tenantCode.value) tenantCode.value = localStorage.getItem(TENANT_KEY) || ''
   } catch {
     // 隐私模式可能禁用本地存储，不影响登录。
   }
 })
 
 function forgotPassword() {
+  if (loading.value) return
   resetVisible.value = true
 }
 
-function resetDone(account) {
+function resetDone(account, kind) {
+  if (kind) identifierType.value = kind
   loginName.value = account || loginName.value
   password.value = ''
   resetVisible.value = false
@@ -109,12 +121,11 @@ function resetDone(account) {
 }
 
 async function refreshCaptcha() {
-  captcha.value.loading = true
-  try { const d = await portalApi.captcha({ scene: 'PASSWORD_LOGIN', tenantCode: tenantCode.value || undefined, loginName: loginName.value, clientNonce: captcha.value.nonce, clientType: 'PC' }); captcha.value.id = d.captchaId; captcha.value.image = d.imageDataUrl; captcha.value.code = '' }
-  catch (e) { error.value = e?.message || '验证码加载失败，请稍后重试' } finally { captcha.value.loading = false }
+  return captchaFlow.load()
 }
 
 async function doLogin() {
+  if (loading.value) return
   error.value = ''
   if (!agree.value) {
     error.value = '请先勾选同意用户协议与隐私政策'
@@ -126,11 +137,14 @@ async function doLogin() {
   }
   loading.value = true
   try {
+    await captchaFlow.ensureNonce()
     if (captcha.value.required && (!captcha.value.id || captcha.value.code.length !== 6)) { error.value = '请输入图中 6 位验证码'; return }
-    await session.login(loginName.value, password.value, tenantCode.value || undefined, { captchaId: captcha.value.id, captchaCode: captcha.value.code, clientNonce: captcha.value.nonce })
+    await session.login(loginName.value, password.value, tenantCode.value || undefined, { captchaId: captcha.value.id, captchaCode: captcha.value.code, clientNonce: captcha.value.nonce, identifierType: identifierType.value })
     try {
-      if (remember.value) localStorage.setItem(REMEMBER_KEY, loginName.value)
+      if (remember.value && identifierType.value === 'ACCOUNT') localStorage.setItem(REMEMBER_KEY, loginName.value)
       else localStorage.removeItem(REMEMBER_KEY)
+      if (tenantCode.value) localStorage.setItem(TENANT_KEY, tenantCode.value)
+      else localStorage.removeItem(TENANT_KEY)
     } catch {
       // 记住账号失败不阻断真实认证链路。
     }
@@ -165,4 +179,14 @@ form > label,.tenant-details label,.label-row label { display: block; margin: 14
 @media (max-width: 980px) { .login-page { grid-template-columns: 1fr; }.brand-panel { display: none; }.form-panel { min-height: 100vh; }.login-card { width: 440px; } }
 @media (max-width: 520px) { .form-panel { width: 100%; min-width: 0; justify-content: flex-start; padding: 28px 16px 18px; }.login-card { width: 100%; padding: 27px 22px 24px; border-radius: 16px; }.login-card h2 { font-size: 23px; }footer { margin-top: auto; flex-direction: column; align-items: center; gap: 3px; } }
 @media (max-height: 780px) and (min-width: 981px) { .brand-copy { margin-top: 55px; }.service-map { bottom: 25px; }.form-panel { padding: 18px 30px; }.login-card { padding-top: 25px; padding-bottom: 22px; }.card-intro,.entry-note { margin-bottom: 12px; }form > label,.tenant-details label,.label-row label { margin-top: 10px; }.tenant-details { margin-top: 10px; }.submit-button { margin-top: 12px; } }
+.login-card { width: min(480px, 100%); }
+.card-intro { margin-bottom: 24px; min-height: 22px; font-size: 14px; }
+.login-modes { display: flex; gap: 4px; padding: 5px; margin-bottom: 22px; border-radius: 14px; background: #eaf8f5; }
+.login-modes button { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #607b78; font: inherit; font-weight: 650; cursor: pointer; }
+.login-modes button[aria-pressed="true"] { background: #fff; color: #0f766e; box-shadow: 0 3px 12px #0f766e12; }
+.login-modes button:focus-visible { outline: 2px solid #15948b; outline-offset: 2px; }
+.login-modes button:disabled { opacity: .6; cursor: wait; }
+form > label,.label-row label { font-size: 14px; }
+input:not([type=checkbox]),.eye-button { height: 50px; }
+.submit-button { height: 50px; font-size: 16px; }
 </style>

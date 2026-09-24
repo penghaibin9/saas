@@ -185,3 +185,110 @@ def test_weekly_context_write_carries_batch_record_and_version(client, db_mode):
     })
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == 409001
+
+
+def test_weekly_context_list_is_paged_and_focus_cannot_escape_the_current_student(client, db_mode):
+    """移动端只能分页读本人周报；修改 URL 的 reportId 不能泄露另一名学生的记录。"""
+    from datetime import datetime
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile, WeeklyReport
+
+    context = _two_batch_records(db_mode)
+    db = get_sessionmaker()()
+    try:
+        for week in range(1, 26):
+            db.add(WeeklyReport(
+                tenant_id=TID,
+                internship_id=context["recordId"],
+                week_number=week,
+                work_content=f"第 {week} 周岗位工作内容足够用于分页验收",
+                harvest_content=f"第 {week} 周岗位收获内容足够用于分页验收",
+                word_count=30,
+                report_version=1,
+                submitted_at=datetime.utcnow(),
+                status="APPROVED",
+            ))
+        foreign_student = StudentProfile(
+            tenant_id=TID, student_no="CTX-FOREIGN", real_name="无关学生",
+            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",
+        )
+        db.add(foreign_student)
+        db.flush()
+        foreign_record = InternshipRecord(
+            tenant_id=TID, student_id=foreign_student.id,
+            batch_id=context["batchId"], status="ONBOARD", eligibility_status="QUALIFIED",
+            destination_type="ASSIGNED", risk_level="NONE",
+        )
+        db.add(foreign_record)
+        db.flush()
+        foreign_report = WeeklyReport(
+            tenant_id=TID, internship_id=foreign_record.id, week_number=1,
+            work_content="无关学生的岗位工作内容不得被其他学生读取",
+            harvest_content="无关学生的岗位收获内容不得被其他学生读取",
+            word_count=30, report_version=1, submitted_at=datetime.utcnow(), status="APPROVED",
+        )
+        db.add(foreign_report)
+        db.commit()
+        foreign_report_id = foreign_report.id
+    finally:
+        db.close()
+
+    headers = _student_headers(context["studentNo"])
+    first_page = client.get(f"{BASE}/weekly-reports", headers=headers, params={
+        "batchId": context["batchId"], "internshipId": context["recordId"],
+        "page": 1, "pageSize": 20,
+    })
+    assert first_page.status_code == 200, first_page.json()
+    first_data = first_page.json()["data"]
+    assert first_data["total"] == 25
+    assert first_data["page"] == 1 and first_data["pageSize"] == 20
+    assert len(first_data["items"]) == 20 and first_data["hasMore"] is True
+
+    second_page = client.get(f"{BASE}/weekly-reports", headers=headers, params={
+        "batchId": context["batchId"], "internshipId": context["recordId"],
+        "page": 2, "pageSize": 20,
+    })
+    second_data = second_page.json()["data"]
+    assert second_page.status_code == 200 and len(second_data["items"]) == 5
+    assert second_data["hasMore"] is False
+
+    own_oldest_id = second_data["items"][-1]["id"]
+    focused = client.get(f"{BASE}/weekly-reports", headers=headers, params={
+        "batchId": context["batchId"], "internshipId": context["recordId"],
+        "page": 1, "pageSize": 20, "focusReportId": own_oldest_id,
+    })
+    assert focused.status_code == 200, focused.json()
+    assert focused.json()["data"]["focusPage"] == 2
+
+    foreign = client.get(f"{BASE}/weekly-reports", headers=headers, params={
+        "batchId": context["batchId"], "internshipId": context["recordId"],
+        "focusReportId": foreign_report_id,
+    })
+    assert foreign.status_code == 404
+
+
+def test_leave_ack_rejects_foreign_or_mismatched_associations_before_writing(monkeypatch):
+    """A school-wide role cannot bypass tenant checks through a stale leave association."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    import pytest
+    from app.core import tenant_scoped
+    from app.core.exceptions import AppException
+    from app.models import InternshipRecord, StudentProfile
+    from app.modules.internship.services import internship_student_leave_context_service as leaves
+
+    monkeypatch.setattr(tenant_scoped, "current_tenant_id_int", lambda: TID)
+    leave = SimpleNamespace(internship_id=71, student_id=81)
+    monkeypatch.setattr(leaves, "_locked", lambda _db, _id: leave)
+    for record_tenant, student_tenant, record_student in ((TID + 1, TID, 81), (TID, TID + 1, 81), (TID, TID, 82)):
+        rows = {
+            InternshipRecord: SimpleNamespace(tenant_id=record_tenant, student_id=record_student),
+            StudentProfile: SimpleNamespace(tenant_id=student_tenant),
+        }
+        # There are deliberately no write methods: denial must happen before any mutation.
+        db = SimpleNamespace(get=lambda model, _id: rows[model])
+        monkeypatch.setattr(leaves, "session", lambda: nullcontext(db))
+        with pytest.raises(AppException) as error:
+            leaves.ack_overdue_return({}, "91", {"note": "确认返校", "expectedVersion": 1})
+        assert error.value.code == "NO_PERMISSION"

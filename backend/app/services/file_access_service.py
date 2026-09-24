@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.core.rbac09_permission_bundles import (
     FILE_GOVERNANCE_VIEW,
     FILE_SCAN_RETRY,
@@ -28,6 +29,7 @@ from app.services.message_identity import resolve_message_user_id
 
 Resolver = Callable[[Any, Any, list[Any], dict, str], bool]
 _RESOLVERS: dict[str, Resolver] = {}
+_BUILTIN_RESOLVERS_LOADED = False
 
 _FILE_VIEW_PERMISSION = {
     "DISCIPLINE": "studentAffairs.discipline.view",
@@ -39,6 +41,7 @@ _FILE_VIEW_PERMISSION = {
     "LOAN": "studentAffairs.funding.view",
     "HOME_SCHOOL": "studentAffairs.homeSchool.view",
     "LEAVE": "studentAffairs.leave.view",
+    "AFFAIRS_LEAVE": "studentAffairs.leave.view",
     "AID": "studentAffairs.aid.view",
     "RISK": "studentAffairs.risk.view",
     "MENTAL": "studentAffairs.risk.view",
@@ -46,6 +49,8 @@ _FILE_VIEW_PERMISSION = {
     "INTERNSHIP": "internship.student.material.view",
     "COURSE_MATERIAL": "academicAffairs.course.view",
     "ATTACHMENT": "studentAffairs.student.view",
+    "ORIENTATION_MATERIAL": "studentAffairs.orientation.view",
+    "ORIENTATION_GREEN_CHANNEL": "studentAffairs.orientation.view",
 }
 
 STATUS_TEXT = {
@@ -71,6 +76,21 @@ def register_file_resolver(*biz_types: str):
         return fn
 
     return decorator
+
+
+def _ensure_builtin_resolvers() -> None:
+    """延迟载入内置 resolver，避免文档派生的 exact-read 端口形成导入环。
+
+    后台 worker 可以先加载 ``ExactFileVersionReadPort``；若它在模块导入期反向
+    导入完整 resolver 注册表，会让 ``DOCUMENT_DERIVATIVE`` 与 exact-read 互相等待。
+    文件真正被授权时再完成一次注册，仍使用同一权威 registry，不放宽任何访问判断。
+    """
+    global _BUILTIN_RESOLVERS_LOADED
+    if _BUILTIN_RESOLVERS_LOADED:
+        return
+    from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
+
+    _BUILTIN_RESOLVERS_LOADED = True
 
 
 def resolver_registry_snapshot() -> dict[str, str]:
@@ -166,8 +186,8 @@ def _default_resolver(db, file_obj, bindings: list[Any], user: dict, action: str
 
 
 @register_file_resolver(
-    "DISCIPLINE", "DISCIPLINE_APPEAL", "LEAGUE", "CLUB", "FUNDING",
-    "REDUCTION", "LOAN", "HOME_SCHOOL",
+    "DISCIPLINE", "DISCIPLINE_APPEAL", "LEAGUE", "CLUB",
+    "HOME_SCHOOL",
 )
 def _student_affairs_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
     """学工 resolver 直接调用权威业务范围校验，不再通过运行时 monkey-patch 改写 file_service。"""
@@ -206,6 +226,7 @@ def _load_file_and_bindings(db, tenant_id: int, file_id: int):
 
 
 def authorize_file_object(file_obj, bindings: list[Any], user: dict, action: str = "meta", db=None) -> bool:
+    _ensure_builtin_resolvers()
     tenant_id = int(current_tenant_id() or 0)
     if not tenant_id or int(file_obj.tenant_id or 0) != tenant_id or file_obj.is_deleted:
         return False
@@ -383,7 +404,7 @@ def list_business_files(biz_type: str, biz_id: str, *, user: dict | None = None)
         ).order_by(FileBinding.version_no.desc(), FileBinding.id.desc())).all()
         results: list[dict[str, Any]] = []
         for binding in bindings:
-            file_obj = db.get(FileObject, binding.file_id)
+            file_obj = tenant_get(db, FileObject, binding.file_id)
             if not file_obj:
                 continue
             file_bindings = [item for item in bindings if item.file_id == binding.file_id]

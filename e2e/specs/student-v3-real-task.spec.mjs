@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
 
 /**
  * 手册 §13 测试矩阵 · Real Task 行的真实点击回放。
@@ -31,11 +32,13 @@ const backendDir = path.join(repoRoot, 'backend')
 const statePath = path.join(backendDir, 'tmp/e2e_student_v3_realtask_state.local.json')
 const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 const apiBase = config.apiBaseUrl
+const pythonExecutable = process.env.E2E_PYTHON || 'python3'
+const truthTokens = new WeakMap()
 // 1x1 透明 PNG：附件内容不重要，重要的是它真的走完上传→扫描→绑定这条链。
 const ONE_PIXEL_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
 function runFixture(command) {
-  execFileSync('python3', ['scripts/e2e_seed_student_v3_realtask.py', command], {
+  execFileSync(pythonExecutable, ['scripts/e2e_seed_student_v3_realtask.py', command], {
     cwd: backendDir,
     env: process.env,
     stdio: 'inherit'
@@ -44,7 +47,7 @@ function runFixture(command) {
     // 正式 publish 允许 best-effort inline delivery；那不能证明外部 Worker 恢复能力。
     // 因此这里只对本 E2E campaign 做可逆故障注入：清掉其已物化消息、把 durable job
     // 重置 PENDING，并追加一个正式 Outbox 事件。此 helper 明确不消费，留给独立 Worker。
-    execFileSync('python3', ['scripts/e2e_force_student_v3_ack_delivery.py'], {
+    execFileSync(pythonExecutable, ['scripts/e2e_force_student_v3_ack_delivery.py'], {
       cwd: backendDir,
       env: process.env,
       stdio: 'inherit'
@@ -53,7 +56,7 @@ function runFixture(command) {
 }
 
 function drainFixtureMessageDelivery() {
-  execFileSync('python3', ['scripts/e2e_drain_student_v3_message_delivery.py'], {
+  execFileSync(pythonExecutable, ['scripts/e2e_drain_student_v3_message_delivery.py'], {
     cwd: backendDir,
     env: process.env,
     stdio: 'inherit'
@@ -66,32 +69,29 @@ function readFixture() {
 
 /** 直接问服务端要真相，不经过被测页面。 */
 async function serverTruth(request, pathname) {
-  const login = await request.post(`${apiBase}/auth/login`, {
-    data: {
-      loginName: config.student.username,
-      password: config.student.password,
-      tenantCode: config.student.tenant
-    }
-  })
-  expect(login.ok()).toBeTruthy()
-  const token = (await login.json()).data.accessToken
+  // A poll reads the same student's state; it must not repeatedly create sessions.
+  let token = truthTokens.get(request)
+  if (!token) {
+    const login = await request.post(`${apiBase}/auth/login`, {
+      data: {
+        loginName: config.student.username,
+        password: config.student.password,
+        tenantCode: config.student.tenant
+      }
+    })
+    expect(login.ok(), `truth login HTTP ${login.status()}`).toBeTruthy()
+    token = (await login.json()).data.accessToken
+    truthTokens.set(request, token)
+  }
   const response = await request.get(`${apiBase}${pathname}`, {
     headers: { Authorization: `Bearer ${token}` }
   })
-  expect(response.ok()).toBeTruthy()
+  expect(response.ok(), `truth ${pathname} HTTP ${response.status()}`).toBeTruthy()
   return (await response.json()).data
 }
 
 async function loginStudentMini(page) {
-  await page.goto(`${miniBase}/#/pages/login/student/index`)
-  const fields = page.getByRole('textbox')
-  await fields.nth(0).fill(config.student.username)
-  await fields.nth(1).fill(config.student.password)
-  await page.getByText('填写', { exact: true }).click()
-  await fields.nth(2).fill(config.student.tenant)
-  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  await page.getByText('进入学生首页', { exact: true }).click()
-  await expect(page).toHaveURL(/pages\/student\/home\/index/, { timeout: 20_000 })
+  await loginMiniH5(page, { baseUrl: miniBase, entry: 'student', account: config.student, timeout: 20_000 })
 }
 
 test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
@@ -137,7 +137,11 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
     await expect(focused.getByText(fixture.leave.returnReason, { exact: false })).toBeVisible()
 
     // 修改重提：改事由 → 保存并重新提交。
-    await focused.getByText('修改后重提', { exact: true }).click()
+    // recordId 深链已自动打开同一申请详情，直接在前景工作区办理。
+    const detail = page.locator('.leave-detail-page')
+    await expect(detail).toBeVisible()
+    await expect(detail.getByText(fixture.leave.returnReason, { exact: false })).toBeVisible()
+    await detail.getByText('修改后重提', { exact: true }).click()
     const sheet = page.locator('.lv__sheet')
     await expect(sheet).toBeVisible()
     const reason = sheet.locator('textarea')
@@ -219,6 +223,20 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
     const form = page.locator('.card', { hasText: '奖学金 / 助学金申请' }).first()
     await expect(form).toBeVisible({ timeout: 20_000 })
 
+    expect(fixture.funding.projectName).toBeTruthy()
+    await form.locator('.batch-search input').fill(fixture.funding.projectName)
+    const search = form.locator('.batch-search uni-button')
+    await expect(search).not.toHaveAttribute('disabled', /.+/)
+    const [batchesResponse] = await Promise.all([
+      page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/mobile/affairs/funding/batches')),
+      search.click()
+    ])
+    expect(batchesResponse.ok()).toBeTruthy()
+    const batches = (await batchesResponse.json()).data.items
+    expect(batches.map(x => String(x.batchId))).toEqual([String(fixture.funding.batchId)])
+    await form.getByText('请选择申请批次', { exact: true }).click()
+    await page.locator('.uni-picker-select .uni-picker-item:visible, .uni-picker-action-confirm:visible').first().click()
+
     // H5 下 uni.chooseMessageFile 不存在，回落到 chooseImage 的隐藏 file input，
     // 所以走 filechooser 事件，并且必须是图片。
     const evidence = path.join(repoRoot, 'e2e/test-results/s9-rt-funding-evidence.png')
@@ -237,14 +255,24 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
     await expect(form.getByText('附件还不能用于提交', { exact: false })).toHaveCount(0)
 
     await form.locator('textarea').first().fill('学业成绩优秀，附成绩与获奖证明材料')
-    await form.getByText('已阅读并确认诚信承诺', { exact: false }).click()
-    await form.getByText('提交奖学金申请', { exact: true }).click()
+    await form.getByText('本人确认所选批次与申请信息真实', { exact: true }).click()
+    const submit = form.locator('uni-button').filter({ hasText: '提交奖学金申请' })
+    await expect(submit).not.toHaveAttribute('disabled', /.+/)
+    const [submitted] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/mobile/affairs/funding/apply') && r.request().method() === 'POST'),
+      submit.click()
+    ])
+    expect(submitted.ok()).toBeTruthy()
+    expect(String(submitted.request().postDataJSON().batchId)).toBe(String(fixture.funding.batchId))
+    const applicationId = (await submitted.json()).data.applicationId
+    expect(applicationId).toBeTruthy()
 
     // 只认 server truth：申请真的落库，且附件真的绑在这笔申请名下。
     await expect.poll(async () => {
       const data = await serverTruth(request, '/mobile/affairs/funding/my')
       const rows = data.items || []
-      return rows.length ? Number(rows[0].attachmentCount || 0) : 0
+      const application = rows.find(x => String(x.applicationId) === String(applicationId))
+      return Number(application?.attachmentCount || 0)
     }, { timeout: 30_000 }).toBeGreaterThan(0)
 
     // 页面也要把它显示出来，不能只有服务端知道。

@@ -70,8 +70,12 @@ test('existing attendance session deep-link is exact, single-use, and never mixe
   assert.match(page, /考勤链接参数冲突，请重新从教师今日课次进入/)
   assert.match(page, /Number\.isInteger\(sessionId\) \|\| sessionId <= 0/)
   assert.match(page, /applySessionSeed\(\)\s*\{[\s\S]*this\.sessionSeed = null[\s\S]*this\.openSession\(\{ sessionId: seed\.sessionId \}\)/)
-  assert.match(page, /load\(\)\s*\{[\s\S]*getAttendanceSessions\(\)[\s\S]*this\.state = 'ready'[\s\S]*this\.applySessionSeed\(\)/)
-  assert.match(page, /teacherApi\.getAttendanceDetail\(session\.sessionId\)/)
+  assert.match(page, /load\(requestedPage = this\.sessionPage \|\| 1\)\s*\{[\s\S]*getAttendanceSessions\(\{ page, pageSize: this\.sessionPageSize \}\)[\s\S]*this\.state = 'ready'[\s\S]*this\.applySessionSeed\(\)/)
+  assert.match(page, /teacherApi\.getAttendanceDetail\(session\.sessionId, \{ page, pageSize: this\.rosterPageSize \}\)/)
+  assert.match(page, /applyRosterPage\(data, fallbackPage = 1\)/)
+  assert.match(page, /visibleStudents\(\) \{ return this\.items \}/)
+  assert.doesNotMatch(page, /items\.slice\(this\.studentPageIndex/)
+  assert.match(page, /rosterSummary/)
 })
 
 test('ADMIN_SPECIAL provenance remains visible and unavailable as an ordinary teacher creation choice', () => {

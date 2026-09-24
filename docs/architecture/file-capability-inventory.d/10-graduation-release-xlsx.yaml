@@ -1,0 +1,69 @@
+entries:
+  - module: graduation
+    client: backend
+    route: /graduation/gd-topics/export
+    page: backend/app/modules/graduation/routers/graduation_topic.py
+    action: topic-ledger-xlsx-export
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/graduation/gd-topics/export
+    backendService: backend/app/modules/graduation/services/graduation_release_topic_export_hardening.py
+    storageMode: MEMORY_BASE64_NO_PERSISTENCE
+    authMode: graduationDesign.topic.export+topic-object-scope
+    dataScope: tenant+graduation-batch+topic-management-scope
+    versioned: false
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 毕业设计题目库与题目操作历史 XLSX 导出使用 write-only Workbook 分块生成并以内存 base64 返回；不落本地持久文件，题目台账要求明确 batchId，数据范围沿题目管理对象级 scope 收敛。
+
+  - module: graduation
+    client: backend
+    route: /graduation/gd-mentors/export
+    page: backend/app/modules/graduation/routers/graduation_mentor.py
+    action: mentor-ledger-xlsx-export
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/graduation/gd-mentors/export
+    backendService: backend/app/modules/graduation/services/graduation_release_mentor_assignment_hardening.py
+    storageMode: MEMORY_BASE64_NO_PERSISTENCE
+    authMode: graduationDesign.student.export+mentor-object-scope
+    dataScope: tenant+mentor-management-scope
+    versioned: false
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 毕业设计导师名单与工作量台账 XLSX 采用 200 行分块读取和 write-only Workbook 内存生成；不落本地持久文件，导出结果继承导师管理对象范围。
+
+  - module: graduation
+    client: backend
+    route: /graduation/gd-taskbooks/export
+    page: backend/app/modules/graduation/routers/graduation_taskbook.py
+    action: taskbook-ledger-xlsx-export
+    fileCategory: XLSX_EXPORT
+    api: POST /api/v1/graduation/gd-taskbooks/export
+    backendService: backend/app/modules/graduation/services/graduation_release_process_hardening.py
+    storageMode: MEMORY_BASE64_NO_PERSISTENCE
+    authMode: graduationDesign.taskbook.export+student-scope
+    dataScope: tenant+graduation-batch+accessible-student-scope
+    versioned: false
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 毕业设计任务书台账 XLSX 要求明确 batchId，按学生数据范围做 SQL 分页并以 write-only Workbook 内存生成；不落本地持久文件。

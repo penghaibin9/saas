@@ -2,7 +2,7 @@
   <view class="page-wrap">
     <view class="ap__hero hero-band is-teacher">
       <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
-      <view class="ap__navbar"><text class="ap__navbar-title">审批中心</text></view>
+      <view class="ap__navbar"><button class="ap__back" aria-label="返回上一页" @click="goBack">‹ 返回</button><text class="ap__navbar-title">审批中心</text></view>
       <view class="ap__search">
         <text class="ap__search-icon">🔍</text>
         <input
@@ -25,18 +25,19 @@
       <view class="ap__subtab" :class="{ 'is-on': sub === 'mine' }" @click="switchTab('mine')">我发起的<text v-if="sub === 'mine'" class="ap__subtab-u" /></view>
     </view>
 
-    <MobileGlobalState :state="state" @retry="load(true)">
+    <MobileGlobalState :state="state" @retry="load(true)" @back="goBack">
       <view class="page-pad">
         <MobileGlobalState
           v-if="!list.length"
           state="empty"
+          @back="goBack"
           :title="emptyTitle"
           :description="keyword ? '当前关键词没有匹配到真实服务端记录，可换姓名、学号或单号重试。' : emptyDescription"
         />
         <template v-else>
           <view class="ap__chips">
             <view class="ap__chip" :class="{ 'is-on': typeFilter === 'all' }" @click="setType('all')">全部</view>
-            <view v-for="t in typeOptions" :key="t" class="ap__chip" :class="{ 'is-on': typeFilter === t }" @click="setType(t)">{{ t }}</view>
+            <view v-for="t in typeOptions" :key="t" class="ap__chip" :class="{ 'is-on': typeFilter === t }" @click="setType(t)">{{ approvalTypeLabel(t) }}</view>
           </view>
 
           <view class="ap__queue-meta">
@@ -49,7 +50,7 @@
               <view class="row-between">
                 <view class="flex-1">
                   <view class="row ap__title-row"><text class="t-md t-bold">{{ a.title }}</text><text v-if="a.level === 'high'" class="ap__urgent">临期</text></view>
-                  <text class="ap__type">{{ a.type }} · #{{ a.taskId }}</text>
+                  <text class="ap__type">{{ a.typeLabel || approvalTypeLabel(a.type) }} · #{{ a.taskId }}</text>
                 </view>
                 <MobileStatusTag :status="a.status" />
               </view>
@@ -94,7 +95,8 @@
 <script>
 import { getApprovalQueue, actApproval } from '@/services/approvalApi'
 import { normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { toast, back } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const PAGE_SIZE = 20
 
@@ -108,7 +110,7 @@ export default {
     }
   },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load(true)
   },
   onPullDownRefresh() {
@@ -136,6 +138,12 @@ export default {
     if (this.searchTimer) clearTimeout(this.searchTimer)
   },
   methods: {
+    goBack() { back('/pages/teacher/workbench/index') },
+    approvalTypeLabel(value) {
+      if (!value) return '业务审批'
+      if (/[一-鿿]/.test(value)) return value
+      return ({ LEAVE: '请假审批', SCHOLARSHIP: '奖助审批', AID: '资助审批', ORIENTATION: '迎新审批', GREEN_CHANNEL: '绿色通道审批', INTERNSHIP: '实习审批', GRADUATION: '毕业审批', EMPLOYMENT: '就业审批', SCHEDULE_CHANGE: '调停课审批' })[value] || `业务类型待确认（${value}）`
+    },
     canAct(task, action) { return Array.isArray(task.allowedActions) && task.allowedActions.includes(action) },
     timeText(a) {
       if (this.sub === 'done' && a.actedTime) return '办理 ' + a.actedTime.slice(5, 16)
@@ -175,7 +183,7 @@ export default {
         this.state = 'ready'
         if (this.typeFilter !== 'all' && !this.typeOptions.includes(this.typeFilter)) this.typeFilter = 'all'
       } catch (e) {
-        this.state = 'error'
+        this.state = normalizeError(e).pageState || 'error'
         const err = normalizeError(e)
         toast(err.text || '审批队列加载失败')
       } finally {
@@ -244,7 +252,9 @@ export default {
 
 <style scoped>
 .ap__hero { padding: 0 var(--page-padding-mobile) var(--space-4); }
-.ap__navbar { height: 40px; display: flex; align-items: center; justify-content: center; }
+.ap__navbar { position: relative; height: 44px; display: flex; align-items: center; justify-content: center; }
+.ap__back { position: absolute; left: 0; min-width: 60px; height: 44px; margin: 0; padding: 0 8px; line-height: 44px; border: none; background: transparent; color: #fff; font-size: var(--font-size-base); }
+.ap__back::after { border: none; }
 .ap__navbar-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #fff; }
 .ap__search { display: flex; align-items: center; gap: var(--space-2); background: rgba(255,255,255,.94); border-radius: var(--radius-md); padding: 8px var(--space-4); margin-top: var(--space-1); color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .ap__search-input { flex: 1; height: 30px; font-size: var(--font-size-sm); color: var(--text-primary); }

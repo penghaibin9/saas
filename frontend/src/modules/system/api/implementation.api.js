@@ -27,7 +27,11 @@ async function validateImplementationIdentityFile(file) {
 
 export const implementationApi = {
   catalog: () => request(`${root}/preset-catalog`),
-  current: () => request(`${root}/projects/current`),
+  async current() {
+    const project = await request(`${root}/projects/current`)
+    // The success envelope serializes an absent current project as {}.
+    return project && Object.keys(project).length ? project : null
+  },
   create: (body) => request(`${root}/projects`, { method: 'POST', body }),
   saveSection: (id, code, body) => request(`${root}/projects/${id}/sections/${code}`, { method: 'PUT', body }),
   preview: (id) => request(`${root}/projects/${id}/preview`, { method: 'POST' }),

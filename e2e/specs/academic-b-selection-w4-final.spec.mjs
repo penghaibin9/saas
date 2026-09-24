@@ -46,10 +46,10 @@ async function createSelectionBatch(testInfo) {
 }
 
 async function selectBatch(page, name) {
-  const item = page.locator('.aasel-batches > .aasel-batch').filter({ hasText: name }).first()
+  const item = page.locator('.aa-selection-batches > .aa-selection-batch').filter({ hasText: name }).first()
   await expect(item).toBeVisible({ timeout: 20_000 })
   await item.click()
-  await expect(page.locator('.aasel-detail')).toContainText(name)
+  await expect(page.locator('.aa-selection-detail')).toContainText(name)
 }
 
 async function openAddCourse(page) {
@@ -59,7 +59,7 @@ async function openAddCourse(page) {
   await expect(drawer.getByText('课程', { exact: true })).toHaveCount(0)
   const taskPicker = drawer.getByRole('combobox').first()
   await expect(taskPicker).toBeVisible()
-  await expect(taskPicker).toContainText('选择当前批次学期的 READY 教学任务')
+  await expect(taskPicker).toContainText('选择当前批次学期的已就绪教学任务')
   return drawer
 }
 

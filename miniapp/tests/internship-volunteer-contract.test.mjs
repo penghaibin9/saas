@@ -15,7 +15,7 @@ import {
   updateMobileStatement
 } from '../src/modules/internshipVolunteerModel.js'
 
-const pageSource = readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8')
+const pageSource = readFileSync(new URL('../src/pages/student-internship/enterprises/index.vue', import.meta.url), 'utf8')
 
 test('A03-10 detail exposes all school internship labor conditions above fixed safe action bar', () => {
   const position = normalizeMobilePositionDetail({

@@ -10,6 +10,7 @@ from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 from app.models.data_exchange import IdentityImportStagingRow, ImportRowError
 from app.models.identity_import_batch import IdentityImportBatch
+from app.services import business_relation_install_service as relations
 from app.services import identity_import_staging_service as staging
 
 TENANT_ID = 95531
@@ -75,6 +76,35 @@ def _stage_rows(job_id: int, count: int = 5):
                 error_count=0,
                 row_digest=staging._row_digest(payload),
             ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _stage_teacher(job_id: int):
+    payload = {
+        "_rowNo": 2,
+        "loginName": "T-STAGING-001",
+        "name": "暂存辅导员",
+        "departmentName": "学生工作处",
+        "positionName": "辅导员",
+        "roleCodes": "COUNSELOR",
+        "scopeType": "CLASS",
+        "scopeRef": "软件2601",
+    }
+    db = get_sessionmaker()()
+    try:
+        db.add(IdentityImportStagingRow(
+            tenant_id=TENANT_ID,
+            import_job_id=job_id,
+            row_no=2,
+            entity_type="TEACHER",
+            natural_key=payload["loginName"],
+            payload_json=payload,
+            validation_status="VALID",
+            error_count=0,
+            row_digest=staging._row_digest(payload),
+        ))
         db.commit()
     finally:
         db.close()
@@ -165,3 +195,36 @@ def test_staging_marker_expands_in_place_without_row_list():
     assert [row["studentNo"] for row in expanded["students"]] == [
         "S0001", "S0002", "S0003", "S0004"
     ]
+
+
+def test_relation_discovery_reopens_canonical_teacher_staging_rows():
+    job_id = 71004
+    _stage_teacher(job_id)
+    count, digest = staging.staging_fingerprint(TENANT_ID, job_id)
+    entry = {
+        "relationships": [],
+        "payload": {
+            "tenantId": str(TENANT_ID),
+            "students": [],
+            "teachers": [],
+            "atomic": True,
+            "_staging": {
+                "tenantId": TENANT_ID,
+                "jobId": job_id,
+                "rows": count,
+                "digest": digest,
+            },
+        },
+    }
+
+    expanded = relations._expand_staging_entry(entry)
+    derived = relations._derived_relations(expanded)
+
+    assert derived == [{
+        "_rowNo": 2,
+        "relationType": "COUNSELOR_CLASS",
+        "subjectRef": "T-STAGING-001",
+        "objectRef": "软件2601",
+        "contextRef": "",
+        "remark": "由教师角色与数据范围自动推导",
+    }]

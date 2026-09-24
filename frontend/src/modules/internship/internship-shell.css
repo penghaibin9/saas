@@ -1,0 +1,266 @@
+/* User reference: C-自定义快捷栏.html. Scoped to internship; reuse the portal identity,
+   search and permission machinery while changing the navigation presentation. */
+#app .base-portal-layout.internship-portal {
+  --ix-header: color-mix(in srgb, var(--pri-bg) 70%, var(--card));
+  --hc-topbar-text: var(--t1);
+  --hc-topbar-muted: var(--t3);
+  --hc-topbar-control-text: var(--t2);
+  --hc-topbar-control-bg: var(--card);
+  --hc-topbar-control-border: var(--card-b);
+  --r: 8px;
+  --rs: 5px;
+}
+#app .base-portal-layout.internship-portal .bpl-topbar {
+  background: var(--ix-header);
+  color: var(--t1);
+  border-bottom: 1px solid var(--card-b);
+  box-shadow: none;
+  min-height: 64px;
+  padding: 0 23px;
+}
+#app .base-portal-layout.internship-portal .bpl-brand__nm {
+  color: var(--t1);
+  font-size: 15px;
+}
+#app .base-portal-layout.internship-portal .bpl-brand__sch,
+#app .base-portal-layout.internship-portal .bpl-scope {
+  color: var(--t3);
+}
+#app .base-portal-layout.internship-portal .bpl-cmdk {
+  background: var(--card);
+  border: 1px solid var(--card-b);
+  color: var(--t3);
+}
+#app .base-portal-layout.internship-portal .bpl-cmdk__input {
+  color: var(--t1);
+}
+#app .base-portal-layout.internship-portal .bpl-cmdk__input::placeholder {
+  color: var(--t3);
+  opacity: 1;
+}
+#app .base-portal-layout.internship-portal .bpl-cmdk kbd {
+  background: var(--bg);
+  color: var(--t3);
+}
+#app .base-portal-layout.internship-portal .bpl-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+}
+#app .base-portal-layout.internship-portal .bpl-rail {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: static;
+  display: flex !important;
+  flex-direction: row;
+  width: 100%;
+  min-height: 0;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--card);
+  border-bottom: 1px solid var(--card-b);
+  box-shadow: none;
+  border-radius: 0;
+}
+#app .base-portal-layout.internship-portal .bpl-rail::after,
+#app .base-portal-layout.internship-portal .bpl-rail__ic,
+#app .base-portal-layout.internship-portal .bpl-rail__sp {
+  display: none;
+}
+#app .base-portal-layout.internship-portal .bpl-rail__item {
+  width: auto;
+  min-width: max-content;
+  flex: none;
+  min-height: 32px;
+  height: 32px;
+  padding: 7px 16px;
+  flex-direction: row;
+  border: 0;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--t2);
+  background: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout.internship-portal .bpl-rail__item.is-on {
+  background: var(--pri-bg);
+  color: var(--pri);
+  box-shadow: none;
+}
+#app .base-portal-layout.internship-portal .bpl-rail__lb {
+  max-width: none;
+}
+#app .base-portal-layout.internship-portal .bpl-rail__item:hover {
+  background: var(--pri-bg);
+  color: var(--pri);
+  border-color: transparent;
+}
+#app .base-portal-layout.internship-portal .bpl-aside {
+  grid-row: 2;
+  grid-column: 1;
+  display: block !important;
+  position: static;
+  width: auto;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--card-b);
+  border-radius: 0;
+  overflow: hidden;
+  background: var(--card);
+}
+#app .base-portal-layout.internship-portal .bpl-main {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  overflow: auto;
+  padding: 0 !important;
+  background: var(--bg);
+}
+#app .base-portal-layout.internship-portal .bpl-mobilehint {
+  display: none !important;
+}
+#app .base-portal-layout.internship-portal .ix-content {
+  padding: 20px 24px 72px;
+  min-width: 0;
+}
+#app .base-portal-layout.internship-portal .ix-content > .mps {
+  min-height: 0;
+}
+#app .base-portal-layout.internship-portal .ix-content > .mps:is(.ix-batch-detail, .isd) {
+  gap: 10px;
+}
+#app .base-portal-layout.internship-portal .mps > .mps__head {
+  min-height: 0;
+  padding: 0 0 15px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 12px;
+}
+#app .base-portal-layout.internship-portal .mps__title-wrap {
+  display: block;
+}
+#app .base-portal-layout.internship-portal .mps__title-wrap::before {
+  display: none;
+}
+#app .base-portal-layout.internship-portal .mps__title {
+  font-size: 22px;
+  color: var(--t1);
+}
+#app .base-portal-layout.internship-portal .mps__subtitle {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--t3);
+}
+/* Existing page-specific Golden rules use multiple :has() selectors. These few
+   structural overrides keep every internship page in the new shell consistently. */
+#app .base-portal-layout.internship-portal .mps > .mps__head {
+  min-height: 0 !important;
+  padding: 0 0 12px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+#app .base-portal-layout.internship-portal .mps > .mps__head::before {
+  display: none !important;
+}
+#app .base-portal-layout.internship-portal .mps__title {
+  font-size: 22px !important;
+}
+#app .base-portal-layout.internship-portal .msr__metric {
+  min-width: 100px !important;
+  min-height: 0 !important;
+  padding: 10px 14px !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+#app .base-portal-layout.internship-portal .msr__metric-val {
+  font-size: 20px !important;
+}
+#app .base-portal-layout.internship-portal .ix-workspace-bar {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+}
+#app .base-portal-layout.internship-portal .mp-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 4px #21355608;
+}
+#app .base-portal-layout.internship-portal .ibs {
+  padding: 10px 24px;
+  background: var(--card);
+  border-bottom: 1px solid var(--card-b);
+}
+#app .base-portal-layout.internship-portal .ibs__select {
+  max-width: min(420px, 100%);
+  border-radius: 5px;
+  min-height: 32px;
+  color: var(--t1);
+  background: var(--card);
+  border-color: var(--card-b);
+}
+#app .base-portal-layout.internship-portal .bpl-clock {
+  font-size: 12px;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 1080px) {
+  #app .base-portal-layout.internship-portal .bpl-cmdk--stu {
+    display: none;
+  }
+  #app .base-portal-layout.internship-portal .bpl-thdots {
+    display: none;
+  }
+  #app .base-portal-layout.internship-portal .ix-content {
+    padding: 16px 16px 72px;
+  }
+}
+@media (max-width: 760px) {
+  #app .base-portal-layout.internship-portal .bpl-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px auto minmax(0, 1fr);
+  }
+  #app .base-portal-layout.internship-portal .bpl-aside {
+    grid-column: 1;
+    grid-row: 2;
+    height: auto;
+    border-bottom: 1px solid var(--card-b);
+  }
+  #app .base-portal-layout.internship-portal .bpl-main {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  #app .base-portal-layout.internship-portal .bpl-rail {
+    padding: 4px 8px;
+    gap: 2px;
+  }
+  #app .base-portal-layout.internship-portal .bpl-rail__item {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  #app .base-portal-layout.internship-portal .bpl-clock,
+  #app .base-portal-layout.internship-portal .bpl-scope {
+    display: none;
+  }
+  #app .base-portal-layout.internship-portal .bpl-topbar {
+    padding: 8px 12px;
+  }
+  #app .base-portal-layout.internship-portal .bpl-brand__nm {
+    font-size: 12px;
+  }
+  #app .base-portal-layout.internship-portal .ibs {
+    padding: 8px 16px;
+  }
+}

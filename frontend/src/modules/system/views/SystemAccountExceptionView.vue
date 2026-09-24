@@ -10,8 +10,10 @@
         <button class="mp-link" :class="{ 'is-active': accountType === 'STAFF' }" @click="switchType('STAFF')">教职工异常</button>
         <button class="mp-link" :class="{ 'is-active': accountType === 'STUDENT' }" @click="switchType('STUDENT')">学生异常</button>
         <button class="mp-link" :class="{ 'is-active': accountType === 'BINDING' }" @click="switchType('BINDING')">身份绑定异常</button>
+        <button class="mp-link" :class="{ 'is-active': accountType === 'PHONE' }" @click="switchType('PHONE')">手机号异常</button>
       </div>
-      <ErrorState v-if="error" :description="error" @retry="load" />
+      <PhoneGovernancePanel v-if="accountType === 'PHONE'" :ctx="ctx" initial-state="CONFLICT" />
+      <ErrorState v-else-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
       <DataTable
@@ -72,6 +74,7 @@
 <script>
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import PhoneGovernancePanel from '@/modules/system/components/PhoneGovernancePanel.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 
@@ -84,7 +87,7 @@ const permissionMatches = (patterns = [], code = '') => (patterns || []).some((p
 
 export default {
   name: 'SystemAccountExceptionView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, PhoneGovernancePanel },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -188,6 +191,7 @@ export default {
       }
     },
     async load() {
+      if (this.accountType === 'PHONE') return
       this.loading = true
       this.error = ''
       const res = this.accountType === 'BINDING'

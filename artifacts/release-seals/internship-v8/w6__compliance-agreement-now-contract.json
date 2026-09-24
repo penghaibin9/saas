@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "wave": "W6",
+  "surfaces": ["Staff compliance", "Staff agreements"],
+  "sourceHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "status": "STATIC_AND_BUILD_GREEN_RUNTIME_DB_PENDING",
+  "outcomes": {
+    "complianceConcreteBeforeMetrics": true,
+    "compliancePriorityLimit": 5,
+    "complianceTabGroups": ["上岗门禁", "事故处置", "例外审批", "监管留痕"],
+    "complianceDeepLinkKeysPreserved": ["overview", "consents", "safety", "filings", "incidents", "exemptions", "evidence"],
+    "onboardAndArchiveBlockerDetailsReturned": true,
+    "complianceSourceVersionReturned": true,
+    "agreementConcreteBeforeMetrics": true,
+    "agreementPriorityLimit": 3,
+    "agreementDossierRemainsCommandOwner": true,
+    "agreementUpdatedAtReturned": true,
+    "authorityExpanded": false
+  },
+  "verification": {
+    "w6Contracts": "4/4 PASS",
+    "w4AndW6Targeted": "6/6 PASS",
+    "staffFullTests": "637/637 PASS",
+    "eslint": "PASS_WITH_2_PREEXISTING_WARNINGS",
+    "productionBuild": "PASS",
+    "backendCompile": "PASS",
+    "backendPytest": "BLOCKED_BEFORE_COLLECTION_BY_REQUIRED_TEST_DATABASE_URL_AND_STALLED_ISOLATED_MYSQL",
+    "browser": "AUTHENTICATED_REPLAY_BLOCKED_BY_ISOLATED_MYSQL_STALL"
+  },
+  "evidence": [
+    "frontend/src/modules/internship/views/InternshipComplianceView.vue",
+    "frontend/src/modules/internship/views/AgreementView.vue",
+    "backend/app/modules/internship/services/internship_compliance_service.py",
+    "backend/app/modules/internship/services/internship_agreement_service.py",
+    "frontend/tests/internship.compliance-agreement-now.contract.test.mjs"
+  ]
+}

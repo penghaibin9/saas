@@ -60,8 +60,13 @@ def _student_org(db, student_id):
     return student, school_class, college
 
 
-def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
-    """Return active, concrete User IDs. An empty result is never a valid assignment."""
+def resolve_assignee_ids(db, node: str, *, student_id=None, role_codes: set[str] | None = None) -> list[int]:
+    """Return active, concrete User IDs. An empty result is never a valid assignment.
+
+    ``role_codes`` is an explicit domain override for a shared node name.  When omitted,
+    the historical shared-node mapping remains authoritative, so one domain cannot widen
+    or narrow another domain merely because both happen to call the node SCHOOL_REVIEW.
+    """
     from app.models import AffairsCounselorAssignment, TeacherStudentScope, User
 
     student, school_class, college = _student_org(db, student_id)
@@ -93,7 +98,8 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
             User.is_deleted.is_(False)
         ))]
 
-    candidates = _active_user_ids_for_roles(db, _NODE_ROLES.get(node, set()))
+    candidate_roles = set(role_codes) if role_codes is not None else _NODE_ROLES.get(node, set())
+    candidates = _active_user_ids_for_roles(db, candidate_roles)
     if node == "COLLEGE_REVIEW":
         if not college:
             return []
@@ -115,8 +121,8 @@ def resolve_assignee_ids(db, node: str, *, student_id=None) -> list[int]:
     return candidates
 
 
-def require_assignee_id(db, node: str, *, student_id=None) -> int:
-    ids = resolve_assignee_ids(db, node, student_id=student_id)
+def require_assignee_id(db, node: str, *, student_id=None, role_codes: set[str] | None = None) -> int:
+    ids = resolve_assignee_ids(db, node, student_id=student_id, role_codes=role_codes)
     if not ids:
         from app.services.db_service import audit_insert
         audit_insert(

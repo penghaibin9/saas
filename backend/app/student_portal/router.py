@@ -119,6 +119,11 @@ def academic_course_preflight(user=Depends(get_current_user), body: dict = Body(
     return success(academic.selection_preflight(user, body))
 
 
+@router.post("/academic/course-selection/drop-preflight", summary="退课纯读预检（本人）")
+def academic_course_drop_preflight(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.selection_drop_preflight(user, body))
+
+
 @router.post("/academic/course-selection/enroll", summary="选课（本人）")
 def academic_course_enroll(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.selection_enroll(user, body))
@@ -170,8 +175,8 @@ def academic_exam_defer_apply(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.post("/academic/exam/defer/{defer_id}/resubmit", summary="缓考退回后补材料重提（本人）")
-def academic_exam_defer_resubmit(defer_id: str, user=Depends(get_current_user)):
-    return success(academic.exam_defer_resubmit(user, defer_id), message="已重提")
+def academic_exam_defer_resubmit(defer_id: str, body: dict = Body(default={}), user=Depends(get_current_user)):
+    return success(academic.exam_defer_resubmit(user, defer_id, body or {}), message="已重提")
 
 
 @router.get("/academic/makeup", summary="我的补考重修与免修（本人）")
@@ -191,6 +196,11 @@ def academic_retake_apply(user=Depends(get_current_user), body: dict = Body(...)
 @router.post("/academic/exemption/apply", summary="发起免修申请（本人）")
 def academic_exemption_apply(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.exemption_apply(user, body))
+
+
+@router.post("/academic/exemption/{exemption_id}/resubmit", summary="修改被退回的免修申请并重新提交（本人）")
+def academic_exemption_resubmit(exemption_id: str, user=Depends(get_current_user), body: dict = Body(default={})):
+    return success(academic.exemption_resubmit(user, exemption_id, body or {}), message="免修申请已重新提交")
 
 
 @router.get("/academic/registration", summary="我的注册批次与自助状态（本人）")
@@ -298,8 +308,9 @@ def academic_credits(user=Depends(get_current_user)):
 
 
 @router.get("/academic/warning", summary="我的学业预警（本人·只读）")
-def academic_warning(user=Depends(get_current_user)):
-    return success(academic.warning(user))
+def academic_warning(user=Depends(get_current_user), page: int = Query(1, ge=1),
+                     page_size: int = Query(50, alias="pageSize", ge=1, le=100)):
+    return success(academic.warning(user, page=page, page_size=page_size))
 
 
 @router.get("/academic/recognition", summary="我的成绩认定/课程替代（本人）")
@@ -356,6 +367,73 @@ def affairs_funding(user=Depends(get_current_user)):
     return success(affairs.funding(user))
 
 
+@router.get("/affairs/funding/applications/{application_id}", summary="我的奖助申请详情与发放结果")
+def affairs_funding_detail(application_id: str, user=Depends(get_current_user)):
+    return success(affairs.funding_detail(user, application_id))
+
+
+@router.get("/affairs/work-study/posts", summary="本人可申请勤工岗位")
+def affairs_work_study_posts(keyword: str = Query("", max_length=100),
+                             page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                             user=Depends(get_current_user)):
+    return success(affairs.work_study_posts(user, keyword, page, pageSize))
+
+
+@router.get("/affairs/work-study/my", summary="本人勤工申请、上岗与月度补贴")
+def affairs_work_study_my(user=Depends(get_current_user)):
+    return success(affairs.work_study_my(user))
+
+
+@router.post("/affairs/work-study/posts/{post_id}/apply", summary="本人申请勤工岗位")
+def affairs_work_study_apply(post_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.work_study_apply(user, post_id, body), message="勤工申请已提交")
+
+
+@router.post("/affairs/work-study/records/{record_id}/withdraw", summary="本人撤回待审核勤工申请")
+def affairs_work_study_withdraw(record_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.work_study_withdraw(user, record_id, body), message="申请已撤回")
+
+
+@router.get("/affairs/loans", summary="我的助学贷款与回执状态（本人）")
+def affairs_loans(user=Depends(get_current_user)):
+    return success(affairs.loans_my(user))
+
+
+@router.post("/affairs/loans", summary="提交助学贷款电子回执（本人）")
+def affairs_loan_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_submit(user, body), message="贷款回执已提交学校核验")
+
+
+@router.post("/affairs/loans/{loan_id}/resubmit", summary="退回后修正并重提贷款回执（本人）")
+def affairs_loan_resubmit(loan_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_resubmit(user, loan_id, body), message="贷款回执已重新提交")
+
+
+@router.post("/affairs/loans/{loan_id}/withdraw", summary="学校核验前撤回贷款回执（本人）")
+def affairs_loan_withdraw(loan_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.loan_withdraw(user, loan_id, body), message="贷款回执已撤回")
+
+
+@router.get("/affairs/fee-reductions", summary="我的学费减免与临时困难补助（本人）")
+def affairs_reductions(user=Depends(get_current_user)):
+    return success(affairs.reductions_my(user))
+
+
+@router.post("/affairs/fee-reductions", summary="提交减免或临时困难补助申请（本人）")
+def affairs_reduction_submit(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_submit(user, body), message="申请已提交学校审核")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/resubmit", summary="补正并重提减免或临补申请（本人）")
+def affairs_reduction_resubmit(fee_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_resubmit(user, fee_id, body), message="申请已重新提交")
+
+
+@router.post("/affairs/fee-reductions/{fee_id}/withdraw", summary="审核前撤回减免或临补申请（本人）")
+def affairs_reduction_withdraw(fee_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    return success(affairs.reduction_withdraw(user, fee_id, body), message="申请已撤回")
+
+
 @router.get("/affairs/aid", summary="我的困难资助等级（本人）")
 def affairs_aid(user=Depends(get_current_user)):
     return success(affairs.aid(user))
@@ -405,8 +483,10 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/affairs/funding/batches", summary="当前开放的奖助勤贷补批次（本人可申请）")
-def affairs_funding_batches(user=Depends(get_current_user)):
-    return success(affairs.funding_batches_open(user))
+def affairs_funding_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           keyword: str = Query("", max_length=100), projectType: str | None = None,
+                           user=Depends(get_current_user)):
+    return success(affairs.funding_batches_open(user, page, pageSize, keyword, projectType))
 
 
 @router.post("/affairs/funding/apply", summary="奖助勤贷补申请（本人·承诺书签署）")
@@ -420,8 +500,9 @@ def affairs_funding_appeal(user=Depends(get_current_user), body: dict = Body(...
 
 
 @router.get("/affairs/aid/batches", summary="当前开放的困难认定批次（本人可申请）")
-def affairs_aid_batches(user=Depends(get_current_user)):
-    return success(affairs.aid_batches_open(user))
+def affairs_aid_batches(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                       keyword: str = Query("", max_length=100), user=Depends(get_current_user)):
+    return success(affairs.aid_batches_open(user, page, pageSize, keyword))
 
 
 @router.post("/affairs/aid/apply", summary="困难认定申请（本人·长表+承诺书签署）")
@@ -651,9 +732,24 @@ def orientation_collect(user=Depends(get_current_user), body: dict = Body(...)):
     return success(orientation.collect(user, body))
 
 
+@router.put("/orientation/arrival", summary="提交到校计划（本人·乐观锁）")
+def orientation_arrival(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(orientation.arrival(user, body), message="到校计划已保存")
+
+
+@router.post("/orientation/materials", summary="提交迎新材料（本人·正式文件版本）")
+def orientation_material(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(orientation.material(user, body), message="材料已提交")
+
+
 @router.post("/orientation/green-channel", summary="绿色通道申请（本人）")
 def orientation_green_channel(user=Depends(get_current_user), body: dict = Body(...)):
     return success(orientation.green_channel(user, body))
+
+
+@router.post("/orientation/checkin-token", summary="签发本人一次性现场报到凭证")
+def orientation_checkin_token(user=Depends(get_current_user)):
+    return success(orientation.checkin_token(user), message="报到凭证已签发")
 
 
 @router.post("/orientation/print", summary="打印迎新报到回执（本人）")

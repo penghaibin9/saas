@@ -22,6 +22,7 @@ academic_affairs_effective_grade_policy_failclosed.install()
 # 其余各域最终公开入口。
 from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
+from . import academic_affairs_attendance_mark_audit_guard
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
 from . import academic_affairs_evaluation_public_service as academic_affairs_evaluation_service
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
@@ -35,6 +36,10 @@ from . import academic_affairs_recognition_public_service as academic_affairs_re
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# AA-010：逐生点名状态变更必须与业务写入同事务留下 before/after MARK 审计证据。
+# 只监听 AttendanceSession.roster_json 的真实状态变化，不接管权限、状态机或考勤事实。
+academic_affairs_attendance_mark_audit_guard.install()
 
 # D6：Selection Final 模块对象仍是唯一公开 owner；这里只安装等价只读优化/范围门禁。
 # AaSelectionRecord 写链、Selection Final 状态机和 TeachingRoster 投影均不在此模块实现。
@@ -138,6 +143,12 @@ from . import academic_affairs_grade_correction_command
 
 academic_affairs_grade_correction_command.install()
 
+# AA-014/AA-015：成绩提交、退回、发布与更正审批必须写结构化 before/after 审计证据。
+# 只包裹 canonical _audit sink，不接管状态机、权限、工作流或正式成绩事实。
+from . import academic_affairs_grade_audit_evidence_guard
+
+academic_affairs_grade_audit_evidence_guard.install()
+
 # 成绩审计普通教师必须按真实任务/记录对象归属裁决，禁止用展示姓名充当身份键。
 from . import academic_affairs_grade_audit_scope_guard
 
@@ -208,3 +219,9 @@ academic_affairs_graduation_stats_scale_guard.install()
 from . import academic_affairs_stats_privacy_guard
 
 academic_affairs_stats_privacy_guard.install()
+
+# AA-003：所有基础/成绩 Authority guard 完成安装后，再把学籍异动受理人解析切到
+# 同一套 School IAM 权限真相；状态机、业务范围、唯一受理人 fail-closed 语义不变。
+from . import academic_affairs_change_assignee_authority_guard
+
+academic_affairs_change_assignee_authority_guard.install()

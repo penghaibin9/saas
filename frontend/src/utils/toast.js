@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { normalizeUiError } from './presentationSafety'
+import { normalizeUiError } from './presentationSafety.js'
 
 /**
  * 轻提示服务（配合 AppToast.vue 使用，App.vue 挂载一次 <AppToast />）

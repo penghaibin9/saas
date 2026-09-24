@@ -4,7 +4,7 @@ import fs from 'node:fs'
 
 import { validateFiles } from '../../scripts/check/check-graduation-v9-scope.mjs'
 
-const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
+const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const truth = read('../src/services/graduationTeacherCountTruth.js')
 const page = read('../src/pages/teacher/graduation-guide/index.vue')
@@ -12,7 +12,9 @@ const request = read('../src/services/request.js')
 const backend = read('../../backend/app/api/v1/mobile_graduation_teacher_context.py')
 
 test('U12 miniapp count uses batch-aware server totals, not loaded queue length', () => {
-  assert.match(truth, /realRequest\('\/mobile\/teacher\/graduation'\)/)
+  assert.match(truth, /function workbenchPath\(options = \{\}\)/)
+  assert.match(truth, /const DEFAULT_PAGE_SIZE = 20/)
+  assert.match(truth, /realRequest\(workbenchPath\(options\)\)/)
   assert.match(truth, /proposalTotal:\s*Number\(d\.proposalTotal \|\| 0\)/)
   assert.match(truth, /finalTotal:\s*Number\(d\.finalTotal \|\| 0\)/)
   assert.doesNotMatch(truth, /mockRequest|realFirst\(/)
@@ -24,13 +26,20 @@ test('U12 miniapp count uses batch-aware server totals, not loaded queue length'
 })
 
 test('U12 proposal and final re-read authoritative count while other queues keep local progression', () => {
-  const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\n    \},\n    _confirm/)
+  const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\r?\n    \},\r?\n    _confirm/)
   assert.ok(afterAction, 'afterAction block missing')
   assert.match(afterAction[0], /if \(kind !== 'proposal' && kind !== 'final'\) \{[\s\S]*?this\.queue\.splice\(this\.queueIndex, 1\)/)
   assert.match(afterAction[0], /graduationTeacherCountTruth\(\)/)
   assert.match(afterAction[0], /this\.applyReviewTruth\(d\)/)
   assert.match(afterAction[0], /this\.queue = kind === 'proposal' \? this\.reviewQueue : this\.finalQueue/)
   assert.match(page, /String\(e && e\.code\)\.startsWith\('409'\)[\s\S]*?this\.afterAction\(\)/)
+})
+
+test('exact graduation todo routes are cleared after a successful review', () => {
+  assert.match(page, /this\._exactTodoRoute = \(kind === 'proposal' \|\| kind === 'final'\) && \/\^\\d\+\$\/.test\(recordId\)/)
+  const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\r?\n    \},\r?\n    _confirm/)
+  assert.ok(afterAction, 'afterAction block missing')
+  assert.match(afterAction[0], /if \(this\._exactTodoRoute\) \{[\s\S]*?uni\.redirectTo\(\{ url: '\/pages\/teacher\/graduation-guide\/index\?tab=review' \}\)/)
 })
 
 test('U12 miniapp and PC count predicates share the selected graduation batch truth', () => {

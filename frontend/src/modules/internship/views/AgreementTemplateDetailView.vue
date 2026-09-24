@@ -2,17 +2,15 @@
   <ModulePageShell
     :title="detail ? `${detail.name} · 模板详情` : '协议模板详情'"
     :subtitle="detail ? [detail.category || '未分类', detail.version].filter(Boolean).join(' · ') : ''"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
     watermark-purpose="实习协议模板管理"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="goBack">← 返回模板库</AppButton>
+      <AppButton variant="ghost" @click="goBack">返回模板库</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
-    <div v-else-if="detail" class="mp-grid-2">
+    <div v-else-if="detail" class="atd-workspace">
       <!-- 左：模板信息 + 模板正文 + 变量清单 -->
       <div class="mp-stack">
         <section class="mp-card">
@@ -52,7 +50,8 @@
               <span class="atd-status__lbl">当前状态</span>
               <AppStatusTag :type="detail.statusTone" dot>{{ detail.statusLabel }}</AppStatusTag>
             </div>
-            <div class="atd-actions">
+            <p class="atd-next">{{ nextStep }}</p>
+            <div v-if="canManage" class="atd-actions">
               <AppButton v-if="detail.status !== 'ARCHIVED'" variant="secondary" @click="goEdit">编辑</AppButton>
               <AppButton v-if="['DRAFT', 'DISABLED'].includes(detail.status)" variant="primary" @click="askStatus('ENABLE')">启用</AppButton>
               <AppButton v-else-if="detail.status === 'ENABLED'" variant="secondary" @click="askStatus('DISABLE')">停用</AppButton>
@@ -77,8 +76,8 @@
 
     <!-- 启用 / 停用 / 归档 / 设默认 二次确认（沿用列表页文案与 reason 规则） -->
     <AppConfirmDialog
-      v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
-      :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
+      v-model:visible="confirm.visible" :title="confirm.title" :content="confirm.message"
+      :danger="confirm.type === 'danger'" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
   </ModulePageShell>
@@ -94,18 +93,19 @@ import { ModulePageShell, LoadingState, ErrorState } from '@/components/business
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppAuditTrail, AppDescriptionList } from '@/components/common'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AgreementTemplateDetailView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppStatusTag, AppConfirmDialog, AppAuditTrail, AppDescriptionList
   },
   data() {
     return {
-      ctx: null,
+      loadTicket: 0,
       loading: true,
       error: '',
       detail: null,
@@ -114,6 +114,8 @@ export default {
     }
   },
   computed: {
+    canManage() { return Array.isArray(this.ctx?.permissionPatterns) && canCode(this.ctx, 'internship.agreement.template.manage') },
+    nextStep() { return ({ DRAFT: '核对正文与适用范围后启用，供教师生成协议时选用。', ENABLED: '当前可供适用学生选用；默认模板在同类型中优先选择。', DISABLED: '模板已暂停选用，核对内容后可重新启用。', ARCHIVED: '模板已归档，保留内容与操作记录供查阅。' })[this.detail?.status] || '请核对模板当前状态。' },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -140,42 +142,46 @@ export default {
     '$route.params.id'(id, oldId) {
       if (!id || id === oldId) return
       this.detail = null
+      this.confirm.visible = false
       this.load()
+      this.focusHeading()
     }
   },
-  created() {
-    internshipApi.getContext().then((res) => {
-      if (res.code === 0) this.ctx = res.data
-    })
-    this.load()
-  },
+  created() { this.load() },
+  mounted() { this.focusHeading() },
+  beforeUnmount() { this.loadTicket++ },
   methods: {
+    focusHeading() {
+      this.$nextTick(() => {
+        const heading = this.$el?.querySelector('h1')
+        if (!heading) return
+        heading.setAttribute('tabindex', '-1'); heading.style.scrollMarginTop = '16px'
+        heading.focus({ preventScroll: true }); heading.scrollIntoView({ block: 'start', behavior: 'instant' })
+      })
+    },
     braced(key) {
       return '{' + '{' + key + '}' + '}'
     },
-    goBack() {
-      // 从列表进入时走历史返回（保留筛选/页码）；深链直入时兜底到模板库列表
-      const back = this.$router.options.history.state && this.$router.options.history.state.back
-      if (typeof back === 'string' && back.startsWith('/admin/internship/agreement-templates')) this.$router.back()
-      else this.$router.push('/admin/internship/agreement-templates')
-    },
+    goBack() { this.$router.push({ path: '/admin/internship/agreement-templates', query: { ...this.$route.query } }) },
     goEdit() {
-      this.$router.push(`/admin/internship/agreement-templates/${this.detail.id}/edit`)
+      this.$router.push({ path: `/admin/internship/agreement-templates/${this.detail.id}/edit`, query: { ...this.$route.query } })
     },
     async load() {
+      const ticket = ++this.loadTicket
       this.loading = true
       this.error = ''
+      this.detail = null
       const id = this.$route.params.id
-      const res = await agreementTemplateApi.getTemplateDetail(id)
-      if (id !== this.$route.params.id) return
-      this.loading = false
-      if (res.code !== 0) {
-        this.error = res.message || '模板不存在或无权查看'
-        return
-      }
-      this.detail = res.data
+      try {
+        const res = await agreementTemplateApi.getTemplateDetail(id)
+        if (ticket !== this.loadTicket || id !== this.$route.params.id) return
+        if (res.code !== 0 || !res.data) throw new Error(res.message || '模板不存在或无权查看')
+        this.detail = res.data
+      } catch (error) { if (ticket === this.loadTicket) this.error = error.message || '模板加载失败，请重试' }
+      finally { if (ticket === this.loadTicket) this.loading = false }
     },
     askStatus(action) {
+      if (!this.detail || !this.canManage || this.submitting) return
       const map = {
         ENABLE: { t: '启用模板', c: '确认启用', type: 'primary', reason: false },
         DISABLE: { t: '停用模板', c: '确认停用', type: 'warning', reason: false },
@@ -185,18 +191,21 @@ export default {
       this.confirm = { visible: true, title: m.t, message: `确认对「${this.detail.name}」执行「${m.t}」？${action === 'ARCHIVE' ? '（归档后不可编辑、不可再启用）' : ''}`, type: m.type, confirmText: m.c, requireReason: m.reason, reasonLabel: '原因', action: 'STATUS_' + action }
     },
     askDefault(on) {
+      if (!this.detail || !this.canManage || this.submitting) return
       this.confirm = { visible: true, title: on ? '设为默认模板' : '取消默认', message: on ? `确认将「${this.detail.name}」设为该类型默认协议模板？（同类型原默认会被替换）` : `确认取消「${this.detail.name}」的默认标记？`, type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: on ? 'DEFAULT_ON' : 'DEFAULT_OFF' }
     },
     async onConfirm({ reason } = {}) {
       const { action } = this.confirm
       const id = this.detail && this.detail.id
-      if (!id) return
+      if (!id || !action || !this.canManage || this.submitting) return
+      const ticket = this.loadTicket
       this.submitting = true
       try {
         let res
         if (action.startsWith('STATUS_')) res = await agreementTemplateApi.setStatus(id, { action: action.slice(7), reason: reason || '' })
         else if (action === 'DEFAULT_ON') res = await agreementTemplateApi.setDefault(id, true)
         else if (action === 'DEFAULT_OFF') res = await agreementTemplateApi.setDefault(id, false)
+        if (ticket !== this.loadTicket || id !== this.detail?.id) return
         if (res && res.code === 0) {
           toast.success('已更新并写入留痕')
           this.confirm.visible = false
@@ -204,6 +213,8 @@ export default {
         } else if (res) {
           toast.error(res.message)
         }
+      } catch (error) {
+        if (ticket === this.loadTicket) toast.error(error.message || '模板更新失败，请重试')
       } finally {
         this.submitting = false
       }
@@ -229,11 +240,10 @@ export default {
   background: var(--bg-subtle, #f8fafc);
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  padding: 12px;
-  font-size: 12.5px;
+  padding: 20px;
+  font-size: 14px;
   line-height: 1.8;
-  max-height: 480px;
-  overflow: auto;
+  font-family: inherit;
   margin: 0;
 }
 .atd-vars {
@@ -270,4 +280,7 @@ export default {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.atd-next { color: var(--t2); font-size: 13px; line-height: 1.8; margin: 0 0 16px; }
+.atd-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 20px; }.atd-workspace > * { min-width: 0; }.atd-workspace > :last-child { position: sticky; top: 16px; }.atd-workspace .mp-card { border-radius: 8px; box-shadow: none; }
+@media (max-width: 980px) { .atd-workspace { grid-template-columns: 1fr; }.atd-workspace > :last-child { position: static; } }
 </style>

@@ -10,6 +10,7 @@
 import { studentApi } from './studentApi'
 import { mockRequest, realFirstStrict, realRequest } from './request'
 import * as M from '@/mock'
+import { presentMessagePage } from './messagePresentation'
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
 
@@ -69,7 +70,7 @@ export function ensureStudentPerformanceApi() {
         `/mobile/performance/student/messages-page?tab=${enc(tab)}&page=${page}&pageSize=${pageSize}`
       ),
       () => mockRequest({ tabs: M.studentMessageTabs, groups: M.studentMessages })
-    )
+    ).then(presentMessagePage)
 
   /**
    * 同一个事件循环里的逐条“已读”调用合并去重后按 READ_BATCH_LIMIT 切片发送。

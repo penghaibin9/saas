@@ -35,8 +35,9 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import { isStaleReadError } from '@/services/latestRead'
 export default {
-  data() { return { d: null, state: 'loading' } },
+  data() { return { d: null, state: 'loading', requestEpoch: 0 } },
   computed: {
     memberNames() {
       return (this.d?.memberNames || this.d?.members || [])
@@ -45,16 +46,20 @@ export default {
     }
   },
   onLoad() { this.load() },
+  onHide() { this.requestEpoch += 1 },
+  onUnload() { this.requestEpoch += 1 },
   methods: {
     load() {
+      const epoch = ++this.requestEpoch
       this.state = 'loading'
       studentApi.getGraduationDefense().then((data) => {
+        if (epoch !== this.requestEpoch) return
         this.d = data
         this.state = 'ready'
       }).catch((error) => {
+        if (epoch !== this.requestEpoch || isStaleReadError(error)) return
         this.d = null
         this.state = 'error'
-        console.error('[graduation-defense] load failed', error)
       })
     }
   }

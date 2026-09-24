@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="文件存储设置" subtitle="论文/材料等附件存哪里：服务器本地磁盘 或 腾讯云对象存储 COS" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="文件存储设置" subtitle="论文、材料等附件存放位置：服务器本地磁盘或腾讯云对象存储" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <LoadingState v-if="loading" text="正在加载存储配置…" />
     <template v-else>
       <!-- 当前状态 -->
@@ -7,9 +7,9 @@
         <AppSectionHeader title="当前存储方式" />
         <div class="fs__now">
           <span class="fs__badge" :class="cfg.backend === 'cos' ? 'fs__badge--cos' : 'fs__badge--local'">
-            {{ cfg.backend === 'cos' ? '腾讯云 COS（对象存储）' : '本地磁盘（服务器 uploads 目录）' }}
+            {{ cfg.backend === 'cos' ? '腾讯云对象存储' : '本地磁盘（服务器上传目录）' }}
           </span>
-          <span class="fs__src">配置来源：{{ cfg.source === 'platform' ? '本页面' : '服务器 .env（尚未在此设置过）' }}</span>
+          <span class="fs__src">配置来源：{{ cfg.source === 'platform' ? '本页面' : '服务器环境配置（尚未在此设置过）' }}</span>
         </div>
       </AppCard>
 
@@ -22,29 +22,29 @@
         </label>
         <label class="fs__radio">
           <input type="radio" value="cos" v-model="cfg.backend" />
-          <span><b>腾讯云 COS</b> —— 文件存到腾讯云，换服务器、多台机器、防丢更稳。需在下方填写四项参数。</span>
+          <span><b>腾讯云对象存储</b> —— 文件存到腾讯云，换服务器、多台机器、防丢更稳。需在下方填写四项参数。</span>
         </label>
       </AppCard>
 
       <!-- COS 参数：仅选 COS 时展开 -->
       <AppCard v-if="cfg.backend === 'cos'" class="fs__panel">
-        <AppSectionHeader title="腾讯云 COS 参数" />
+        <AppSectionHeader title="腾讯云对象存储参数" />
         <div class="fs__grid">
           <label class="fs__field">
-            <span>所在地域 Region</span>
-            <input v-model="cfg.cosRegion" class="fs__input" placeholder="如 ap-guangzhou（广州）" />
+            <span>所在地域</span>
+            <input v-model="cfg.cosRegion" class="fs__input" placeholder="例如：广州地域" />
           </label>
           <label class="fs__field">
-            <span>存储桶名称 Bucket</span>
-            <input v-model="cfg.cosBucket" class="fs__input" placeholder="如 student-files-1250000000" />
+            <span>存储桶名称</span>
+            <input v-model="cfg.cosBucket" class="fs__input" placeholder="请输入存储桶完整名称" />
           </label>
           <label class="fs__field">
-            <span>SecretId <em v-if="cfg.hasSecretId" class="fs__saved">（已保存，留空不改）</em></span>
-            <input v-model="cfg.cosSecretId" class="fs__input" placeholder="腾讯云访问密钥 SecretId" autocomplete="off" />
+            <span>访问密钥标识 <em v-if="cfg.hasSecretId" class="fs__saved">（已保存，留空不改）</em></span>
+            <input v-model="cfg.cosSecretId" class="fs__input" placeholder="腾讯云访问密钥标识" autocomplete="off" />
           </label>
           <label class="fs__field">
-            <span>SecretKey <em v-if="cfg.hasSecretKey" class="fs__saved">（已保存，留空不改）</em></span>
-            <input v-model="cfg.cosSecretKey" class="fs__input" type="password" placeholder="腾讯云访问密钥 SecretKey" autocomplete="new-password" />
+            <span>访问密钥 <em v-if="cfg.hasSecretKey" class="fs__saved">（已保存，留空不改）</em></span>
+            <input v-model="cfg.cosSecretKey" class="fs__input" type="password" placeholder="腾讯云访问密钥" autocomplete="new-password" />
           </label>
         </div>
         <p class="fs__hint">🔒 密钥保存后会加密存储，页面只显示后 4 位，不会明文回显。建议用「子账号」密钥并只授权这一个桶的读写权限。</p>
@@ -63,17 +63,15 @@
 
       <!-- 操作步骤说明 -->
       <AppCard class="fs__panel fs__guide">
-        <AppSectionHeader title="怎么切换到腾讯云 COS（照着做即可）" />
+        <AppSectionHeader title="怎么切换到腾讯云对象存储（照着做即可）" />
         <ol class="fs__steps">
-          <li>登录 <b>腾讯云控制台</b> → 搜索并进入「<b>对象存储 COS</b>」→ 点「创建存储桶」，地域建议选离你服务器最近的（如广州 ap-guangzhou），权限选「私有读写」。创建后记下<b>桶名称</b>和<b>所属地域</b>。</li>
-          <li>进入「<b>访问管理 CAM</b>」→「密钥管理」→「API 密钥管理」，新建一对密钥，拿到 <b>SecretId</b> 和 <b>SecretKey</b>。（更安全的做法：建一个只授权这个桶读写的子账号密钥。）</li>
-          <li>回到本页，上方选「<b>腾讯云 COS</b>」，把<b>地域、桶名、SecretId、SecretKey</b> 四项填进去，点「<b>保存设置</b>」。</li>
+          <li>登录 <b>腾讯云控制台</b> → 搜索并进入「<b>对象存储</b>」→ 点「创建存储桶」，地域建议选离服务器最近的区域，权限选「私有读写」。创建后记下<b>桶名称</b>和<b>所属地域</b>。</li>
+          <li>进入「<b>访问管理</b>」→「密钥管理」→「访问密钥管理」，新建一对密钥，拿到<b>访问密钥标识</b>和<b>访问密钥</b>。（更安全的做法：建一个只授权这个桶读写的子账号密钥。）</li>
+          <li>回到本页，上方选「<b>腾讯云对象存储</b>」，把<b>地域、桶名、访问密钥标识、访问密钥</b>四项填进去，点「<b>保存设置</b>」。</li>
           <li>点「<b>测试连接</b>」。显示「连接成功」就说明通了；失败会告诉你原因（多半是密钥或桶名填错、地域不对）。</li>
-          <li>连接成功后，<b>新上传</b>的论文/材料就会自动存到腾讯云了。<b>以前已上传</b>的老文件还在服务器本地，需要让技术人员在服务器上跑一次搬家命令
-            <code class="fs__code">python scripts/migrate_files_to_cos.py --commit</code> 把老文件一次性搬过去（不影响使用）。</li>
+          <li>连接成功后，<b>新上传</b>的论文或材料会自动存到腾讯云。<b>以前已上传</b>的老文件仍在服务器本地，需要让技术人员运行项目提供的文件搬迁脚本，把老文件一次性搬过去（不影响使用）。</li>
         </ol>
-        <p class="fs__note">说明：切回「本地磁盘」随时可以，不会丢数据。若「测试连接」提示未安装 SDK，请让技术人员在服务器执行一次
-          <code class="fs__code">pip install cos-python-sdk-v5</code>。</p>
+        <p class="fs__note">说明：切回「本地磁盘」随时可以，不会丢数据。若「测试连接」提示未安装对象存储工具包，请让技术人员按项目部署文档安装。</p>
       </AppCard>
     </template>
   </ModulePageShell>

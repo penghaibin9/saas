@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 _LEVEL_ORDER = {"BLOCKER": 0, "WARNING": 1, "INFO": 2}
@@ -45,6 +46,13 @@ def _issue(rule_code, level, message, *, object_id=None, field_path="", suggesti
         "suggestion": suggestion,
         "fixRoute": fix_route,
     }
+
+
+def _course_credit_snapshot_mismatch_message(course_name, plan_credit, catalog_credit) -> str:
+    return (
+        f"课程“{course_name}”方案学分 {_number(plan_credit):g} "
+        f"与课程库 {_number(catalog_credit):g} 不一致"
+    )
 
 
 def _plan_term_no(year_code: str | None, term_no: int | None, grade_year: str | None) -> int | None:
@@ -185,7 +193,8 @@ def validate_program_db(db, program_id: int) -> dict:
                 module_actual[module] += credit
         if catalog and row.credit_snapshot is not None and abs(credit - _number(catalog.credit)) > 0.001:
             issues.append(_issue("COURSE_CREDIT_SNAPSHOT_MISMATCH", "WARNING",
-                                 f"课程“{catalog.course_name}”方案学分 {credit:g} 与课程库 { _number(catalog.credit):g } 不一致",
+                                 _course_credit_snapshot_mismatch_message(
+                                     catalog.course_name, credit, catalog.credit),
                                  object_id=row.id, field_path="credit", suggestion="确认是否保留历史快照或更新课程版本",
                                  fix_route=row_route))
         if catalog:
@@ -430,7 +439,7 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
             for binding in bindings:
                 plan_term = _plan_term_no(term.year_code, term.term_no, binding.grade_year or program.grade_year)
                 if binding.class_id:
-                    target_classes = [db.get(SchoolClass, int(binding.class_id))]
+                    target_classes = [tenant_get(db, SchoolClass, int(binding.class_id), tenant_id=_tid())]
                 else:
                     target_classes = db.query(SchoolClass).filter(
                         SchoolClass.tenant_id == _tid(), SchoolClass.major_id == binding.major_id,
@@ -443,9 +452,12 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
                         target_classes = [row for row in target_classes if int(row.id) in scope.class_ids]
                     elif scope.college_ids:
                         allowed = set(scope.college_ids)
-                        target_classes = [row for row in target_classes if row.major_id and (
-                            (db.get(Major, int(row.major_id))).college_id if db.get(Major, int(row.major_id)) else None
-                        ) in allowed]
+                        scoped_classes = []
+                        for row in target_classes:
+                            major = tenant_get(db, Major, int(row.major_id), tenant_id=_tid()) if row.major_id else None
+                            if major and major.college_id in allowed:
+                                scoped_classes.append(row)
+                        target_classes = scoped_classes
                     else:
                         target_classes = []
                 if not target_classes:
@@ -472,7 +484,7 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
                             "message": "无法根据入学年级和当前学期推导方案学期", "taskIds": [], "teacherName": "",
                         })
                     for pc in selected_courses:
-                        catalog = db.get(AaCourse, int(pc.course_id)) if pc.course_id else None
+                        catalog = tenant_get(db, AaCourse, int(pc.course_id), tenant_id=_tid()) if pc.course_id else None
                         if not pc.course_id or not catalog:
                             item_status = "COURSE_UNRESOLVED"
                             message = "方案课程未关联有效课程库记录"

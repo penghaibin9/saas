@@ -92,7 +92,7 @@ def issue_refresh(claims: dict) -> str:
     return token
 
 
-def consume_refresh(token: str) -> dict | None:
+def consume_refresh(token: str, *, expected_claims: dict | None = None) -> dict | None:
     """校验并轮换：旧 refresh 立即作废，返回 claims；无效/过期返回 None。
     DB 模式用「删除即消费」保证并发下同一 refresh 只能成功一次。
     生产/DB 开启时查询失败不得静默回落内存。"""
@@ -111,9 +111,11 @@ def consume_refresh(token: str) -> dict | None:
             if row is None:
                 # 仅演示模式允许兼容进程内存中的旧 token
                 if not must_persist:
-                    return _consume_refresh_memory(token)
+                    return _consume_refresh_memory(token, expected_claims=expected_claims)
                 return None
             claims = dict(row.claims_json or {})
+            if expected_claims is not None and not _refresh_subject_matches(claims, expected_claims):
+                return None
             expired = row.expires_at < datetime.utcnow()
             res = db.execute(delete(AuthRefreshToken).where(
                 AuthRefreshToken.token_hash == h))
@@ -130,10 +132,10 @@ def consume_refresh(token: str) -> dict | None:
                 pass
             if must_persist:
                 raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503) from e
-            return _consume_refresh_memory(token)
+            return _consume_refresh_memory(token, expected_claims=expected_claims)
         finally:
             db.close()
-    return _consume_refresh_memory(token)
+    return _consume_refresh_memory(token, expected_claims=expected_claims)
 
 
 
@@ -226,7 +228,15 @@ def _consume_refresh_memory_if_matches(
     _refresh.pop(token or "", None)
     return claims
 
-def _consume_refresh_memory(token: str) -> dict | None:
+def _refresh_subject_matches(claims: dict, expected: dict) -> bool:
+    return all(str(claims.get(key) or "") == str(expected.get(key) or "")
+               for key in ("userId", "tenantId", "activeContextId", "clientType", "authSessionId"))
+
+
+def _consume_refresh_memory(token: str, *, expected_claims: dict | None = None) -> dict | None:
+    item = _refresh.get(token or "")
+    if item and expected_claims is not None and not _refresh_subject_matches(item["claims"], expected_claims):
+        return None
     item = _refresh.pop(token or "", None)
     if not item or item["exp"] < _now():
         return None
@@ -371,52 +381,52 @@ def block_jti(jti: str, exp_ts: float | None = None) -> bool:
 
 
 def jti_blocked(jti: str | None) -> bool:
+    """Cache only denials. A missing revocation is not a cacheable authorization.
+
+    Redis contains an optimization, MySQL remains the durable authority. Old
+    Redis "0" entries and process-local allow entries are deliberately ignored.
+    In-flight requests that passed before a revocation commit cannot be recalled;
+    requests checking after that commit must not use an earlier allow snapshot.
+    """
     if not jti:
         return False
+    _allowed_jti.pop(jti, None)  # compatibility cleanup, never used to authorize
     exp = _blocked_jti.get(jti)
     if exp is not None:
-        if exp < _now():
-            _blocked_jti.pop(jti, None)
-            return False
-        return True
-    allowed_until = _allowed_jti.get(jti)
-    if allowed_until is not None:
-        if allowed_until >= _now():
-            return False
-        _allowed_jti.pop(jti, None)
-    from app.core.redis_client import cache_get, cache_set, get_redis
-    cached = cache_get(f"auth:jti:{jti}")
-    if cached == "1":
+        if exp >= _now():
+            return True
+        _blocked_jti.pop(jti, None)  # expired L1 denial requires a fresh lookup
+    from app.core.redis_client import cache_get, cache_set
+    if cache_get(f"auth:jti:{jti}") == "1":
         _blocked_jti[jti] = _now() + 60
         return True
-    if cached == "0":
-        _allowed_jti[jti] = _now() + 60
+
+    from app.core.auth_hardening_policy import strict_security_environment
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+    from app.db.session import db_enabled
+    required = strict_security_environment(settings) or db_enabled()
+    db = _db(required=required)
+    if db is None:
+        if required:
+            raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
         return False
-    db = _db()
-    if db is not None:
-        try:
-            from sqlalchemy import select
-            from app.models import AuthBlockedJti
-            row = db.scalars(select(AuthBlockedJti).where(AuthBlockedJti.jti == jti)).first()
-            if row is not None and row.expires_at >= datetime.utcnow():
-                _blocked_jti[jti] = row.expires_at.timestamp()  # 回填 L1
-                cache_set(f"auth:jti:{jti}", "1", max(1, int(row.expires_at.timestamp() - _now())))
+    try:
+        from sqlalchemy import select
+        from app.models import AuthBlockedJti
+        row = db.scalars(select(AuthBlockedJti).where(AuthBlockedJti.jti == jti)).first()
+        if row is not None:
+            remaining = (row.expires_at - datetime.utcnow()).total_seconds()
+            if remaining > 0:
+                _blocked_jti[jti] = _now() + remaining
+                cache_set(f"auth:jti:{jti}", "1", max(1, int(remaining)))
                 return True
-        except Exception:  # noqa: BLE001 — 查询异常：生产/DB 模式 fail-closed
-            from app.core.config import settings
-            from app.core.exceptions import AppException
-            from app.db.session import db_enabled
-            if settings.is_prod or db_enabled():
-                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503)
-        finally:
-            db.close()
-    # Cache a negative lookup.  Redis overwrites this immediately on logout;
-    # when Redis is unavailable the short L1 TTL bounds the revocation delay.
-    if get_redis() is not None:
-        cache_set(f"auth:jti:{jti}", "0", 7200)
-        _allowed_jti[jti] = _now() + 60
-    else:
-        _allowed_jti[jti] = _now() + 5
+    except Exception as exc:
+        if required:
+            raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储暂时不可用", http_status=503) from exc
+    finally:
+        db.close()
+    # Do not write "0": a concurrent reader must never overwrite a new denial.
     return False
 
 
@@ -506,3 +516,11 @@ def reset_all_for_tests() -> None:
     _allowed_jti.clear()
     _fail.clear()
     _buckets.clear()
+    # The runtime installer replaces rate_limit with the durable authority.
+    # Its non-DB test fallback owns a separate dictionary; reset it as well so
+    # independent pytest cases do not inherit earlier login attempts. Never
+    # change production rate limits or clear shared production stores here.
+    import sys
+    authority = sys.modules.get("app.services.control_plane_auth_service")
+    if authority is not None:
+        authority._DEV_BUCKETS.clear()

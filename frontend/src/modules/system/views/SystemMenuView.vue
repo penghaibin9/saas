@@ -36,7 +36,7 @@
             <tbody>
               <template v-for="mod in tree" :key="mod.id">
                 <tr class="mn-mod" :class="{ 'is-dim': dimmed(mod.code) }">
-                  <td><b>{{ mod.icon }} {{ mod.name }}</b><span class="mp-cell-sub">模块 · {{ mod.moduleCode }}</span></td>
+                  <td><b>{{ mod.icon }} {{ mod.name }}</b><span class="mp-cell-sub">功能模块</span></td>
                   <td class="mp-cell-sub">{{ mod.path }}</td>
                   <td class="mp-cell-sub">—</td>
                   <td><StatusTag :type="mod.status === 'ENABLED' ? 'success' : 'default'" :label="mod.statusLabel" dot /></td>

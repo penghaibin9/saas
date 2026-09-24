@@ -1,0 +1,40 @@
+// Opt-in teacher shell only. Existing student and business detail styles remain scoped.
+$teacher-shell-component: false !default;
+.teacher-shell {
+  --text-primary: #142440; --text-secondary: #62738e; --text-tertiary: #75839a;
+  --brand-primary: #1671f8; --page-padding-mobile: 16px;
+  min-height: 100vh; box-sizing: border-box; background: #f7f9fc; color: #142440;
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  @if not $teacher-shell-component { button, input { font-family: inherit; } }
+  .shell-icon--round { width: 56px !important; height: 56px !important; }
+  .ts-pad { padding: 0 14px; }
+  .ts-panel { padding: 8px 16px; background: #fff; border-radius: 16px; margin-bottom: 14px; }
+  .ts-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 54px; }
+  .ts-title { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 600; line-height: 1.5; }
+  .ts-marker { width: 4px; height: 18px; border-radius: 3px; background: #557eff; flex-shrink: 0; }
+  .ts-count { font-size: 16px; color: #ed5353; font-weight: 500; }
+  .ts-link { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 44px; font-size: 14px; color: #1671f8; flex-shrink: 0; }
+  .ts-plain { padding: 0; margin: 0; background: transparent; border: 0; line-height: inherit; text-align: left; }
+  @if not $teacher-shell-component { .ts-plain::after { border: 0; } }
+  .ts-muted { display: block; font-size: 13px; line-height: 1.65; color: #62738e; }
+  .ts-row { display: flex; align-items: center; gap: 12px; padding: 15px 0; min-height: 56px; }
+  .ts-row + .ts-row { border-top: 1px solid #edf0f5; }
+  .ts-body { flex: 1; min-width: 0; }
+  .ts-row-title { display: block; font-size: 16px; font-weight: 600; line-height: 1.55; overflow-wrap: anywhere; }
+  .ts-search { display: flex; align-items: center; gap: 10px; min-height: 46px; margin-top: 16px; background: #fff; border-radius: 26px; padding: 0 16px; }
+  @if not $teacher-shell-component { .ts-search input { min-width: 0; flex: 1; color: #142440; font-size: 15px; } }
+  .ts-tabs { white-space: nowrap; background: rgba(255,255,255,.7); }
+  .ts-tabs-inner { display: inline-flex; min-width: 100%; box-sizing: border-box; padding: 0 14px; }
+  .ts-tab { position: relative; flex: 1 0 auto; padding: 0 12px; min-height: 52px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; color: #62738e; }
+  .ts-tab.is-active { color: #1671f8; font-weight: 600; }
+  @if not $teacher-shell-component { .ts-tab.is-active::after { content: ''; position: absolute; top: auto; bottom: 4px; left: 14px; right: 14px; width: auto; height: 3px; transform: none; border-radius: 2px; background: #1671f8; } }
+  .ts-empty { padding: 22px 0; color: #62738e; font-size: 14px; line-height: 1.7; }
+  .ts-panel.ts-empty { padding-left: 16px; padding-right: 16px; }
+  .ts-action { margin: 0; padding: 0 14px; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #1671f8; color: #fff; font-size: 14px; line-height: 1.5; }
+  @if not $teacher-shell-component {
+    .ts-action::after { border: 0; }
+    .ts-action[disabled] { color: #75839a; background: #eef1f5; }
+  }
+  .ts-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; color: #9c6414; font-size: 14px; line-height: 1.6; }
+}

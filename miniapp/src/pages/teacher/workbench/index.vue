@@ -1,164 +1,69 @@
 <template>
-  <view class="page-wrap">
-    <MobileGlobalState :state="state" @retry="retryLoad">
-      <view class="wb__hero hero-band is-teacher">
-        <view class="hero-band__orb" />
-        <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
-        <view class="wb__greet">
-          <view class="avatar-badge">{{ (user.name || '老师').slice(0,1) }}</view>
-          <view class="flex-1">
-            <text class="wb__greet-name">{{ user.name || '老师' }}</text>
-            <text class="wb__greet-sub">{{ brand.schoolName }}</text>
+  <view class="teacher-shell">
+    <MobileTeacherHero title="工作台" :subtitle="user.tenantName || brand.schoolName" :role-label="currentRoleTitle" :primary-text="(user.name || '老师') + '，' + greeting" :secondary-text="today" />
+    <MobileGlobalState v-if="state !== 'ready'" :state="state" @retry="retryLoad" />
+    <view v-else-if="wb" class="ts-pad">
+        <MobileInlineAlert v-if="internshipContextError" type="warning" :description="internshipContextError" />
+        <view v-if="selectedInternshipBatch" class="ts-panel wb-batch"><text class="ts-muted">当前岗位实习批次</text><text class="ts-row-title">{{ selectedInternshipBatch.name }}</text><text class="ts-muted">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ internshipBatchStatus(selectedInternshipBatch.status) }}</text></view>
+        <view class="ts-panel">
+          <view class="ts-heading"><view class="ts-title"><view class="ts-marker" /><text>待我处理</text><text class="ts-count">（{{ todoBadge }}）</text></view><button class="ts-link ts-plain" @click="go('/pages/teacher/todos/index')">全部待办<MobileShellIcon name="chevron-right" :size="16" /></button></view>
+          <view v-if="wb.partialFailures && wb.partialFailures.todos" class="ts-error"><text>待办加载失败</text><button class="ts-link ts-plain" @click="retryLoad">重试</button></view>
+          <view v-else-if="!priorityTodos.length" class="ts-empty">暂无待处理事项，新的任务会显示在这里。</view>
+          <view v-else>
+            <view v-for="(t,index) in priorityTodos" :key="t.todoId || t.id" class="ts-row wb-task" @click="handleTodo(t)">
+              <MobileShellIcon :name="visual(t.title).icon" :tone="visual(t.title).tone" :size="26" round />
+              <view class="ts-body"><view class="wb-task-head"><text class="ts-row-title">{{ t.title }}</text><MobileStatusTag :status="t.status" /></view>
+                <text v-if="t.student || t.studentName" class="ts-muted">{{ t.student || t.studentName }}{{ t.className ? ' · ' + t.className : '' }}</text>
+                <text class="ts-muted">{{ messageModuleLabel(t.module || t.sourceModule) }}</text>
+                <view class="wb-task-foot"><text v-if="t.deadline" class="ts-muted" :class="{ 'wb-overdue': isOverdue(t.deadline) }">{{ deadlineText(t.deadline) }}</text>
+                  <button v-if="canOpen(t)" :class="index === 0 ? 'ts-action' : 'ts-link ts-plain'" @click.stop="handleTodo(t)">{{ index === 0 ? '查看办理' : '查看' }}<MobileShellIcon v-if="index !== 0" name="chevron-right" :size="16" /></button>
+                </view><text v-if="!canOpen(t)" class="ts-muted">{{ blockedReason(t) }}</text>
+              </view>
+            </view>
           </view>
-          <view class="wb__bell" @click="go('/pages/teacher/messages/index')">
-            <text class="wb__bell-icon">✉</text>
-          </view>
+          <view v-if="extraMetrics.length" class="wb-metrics"><text v-for="m in extraMetrics" :key="m.key">{{ m.label }} {{ m.value }}</text></view>
         </view>
-        <view class="wb__rolepill" v-if="wb" @click="go('/pages/role-switch/index')">
-          <text class="wb__rolepill-dot" />当前身份：{{ wb.contextTitle }}<text class="wb__rolepill-chev">▾</text>
+        <view v-if="riskCount || wb.partialFailures?.risk" class="ts-panel">
+          <view class="ts-heading"><view class="ts-title"><view class="ts-marker wb-risk-marker" /><text>需要关注</text></view><button class="ts-link ts-plain" @click="goRiskList">风险台账<MobileShellIcon name="chevron-right" :size="16" /></button></view>
+          <view v-if="wb.partialFailures?.risk" class="ts-error"><text>关注事项加载失败</text><button class="ts-link ts-plain" @click="retryLoad">重试</button></view>
+          <view v-for="r in wb.riskStudents" :key="r.id || r.studentId" class="ts-row" @click="openStudent(r)"><MobileShellIcon name="alert-circle" tone="red" :size="24" round /><view class="ts-body"><text class="ts-row-title">{{ r.name }}</text><text class="ts-muted">{{ r.className }} · {{ r.typeLabel || riskTypeLabel(r.type) }}</text></view><button class="ts-link ts-plain" @click.stop="handleRisk(r)">查看</button></view>
         </view>
-        <view class="stat-strip" v-if="wb">
-          <view class="stat-strip__item" v-for="m in wb.metrics" :key="m.key"><text class="stat-strip__val">{{ m.value }}</text><text class="stat-strip__label">{{ m.label }}</text></view>
+        <view class="ts-panel"><MobileTeacherCommonServices ref="commonServices" :services="commonServices" :storage-key="commonServicesStorageKey" :role="roleConfig.key" @open="quick" /></view>
+        <view class="ts-panel"><view class="ts-heading"><view class="ts-title"><view class="ts-marker" /><text>学校通知</text></view><button class="ts-link ts-plain" @click="go('/pages/teacher/messages/index')">更多<MobileShellIcon name="chevron-right" :size="16" /></button></view>
+          <view v-if="noticeState === 'loading' && !notices.length" class="ts-empty">正在加载通知…</view>
+          <view v-else-if="noticeState === 'error'" class="ts-error"><text>通知加载失败</text><button class="ts-link ts-plain" @click="loadNotices()">重试</button></view>
+          <view v-else-if="!notices.length" class="ts-empty">暂无学校通知。</view>
+          <view v-for="n in notices" :key="n.id" class="ts-row" @click="openNotice(n)"><MobileShellIcon name="bell" tone="violet" :size="24" round /><view class="ts-body"><text class="ts-row-title">{{ n.title }}</text><text class="ts-muted">{{ n.module }} · {{ fromNow(n.time || n.eventAt) }}</text></view></view>
         </view>
-      </view>
-
-      <view v-if="wb">
-        <view class="page-pad wb__content" style="padding-top:0;">
-          <MobileInlineAlert v-if="internshipContextError" type="warning" :description="internshipContextError" />
-
-          <view v-if="selectedInternshipBatch" class="wb__batch card">
-            <view class="wb__batch-copy">
-              <text class="wb__batch-label">当前岗位实习批次</text>
-              <text class="wb__batch-name">{{ selectedInternshipBatch.name }}</text>
-              <text class="wb__batch-meta">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ selectedInternshipBatch.studentCount }}人</text>
-            </view>
-            <text class="wb__batch-status">{{ selectedInternshipBatch.status }}</text>
-          </view>
-
-          <view class="card wb__brief">
-            <view class="wb__brief-head">
-              <view>
-                <text class="wb__brief-eyebrow">今日工作结论</text>
-                <text class="wb__brief-title">{{ workbenchConclusion }}</text>
-              </view>
-              <text class="wb__brief-time">下拉可刷新</text>
-            </view>
-            <view class="wb__brief-metrics">
-              <view class="wb__brief-metric" :class="{ 'is-warning': dueSoonCount > 0 }">
-                <text>{{ dueSoonCount }}</text><text>即将超时</text>
-              </view>
-              <view class="wb__brief-metric" :class="{ 'is-danger': riskCount > 0 }">
-                <text>{{ riskCount }}</text><text>风险学生</text>
-              </view>
-              <view class="wb__brief-metric">
-                <text>{{ visibleQuickActions.length }}</text><text>可用操作</text>
-              </view>
-            </view>
-            <view class="wb__brief-next">
-              <text class="wb__brief-next-label">建议先做</text>
-              <text class="wb__brief-next-text">{{ nextActionText }}</text>
-            </view>
-          </view>
-
-          <view class="section-head"><text class="section-head__title">快捷操作</text><text class="wb__section-hint">按当前身份和权限展示</text></view>
-          <view class="card wb__quick-card">
-            <view class="icon-grid">
-              <view v-for="(q, i) in visibleQuickActions" :key="q.key" class="icon-grid__item" @click="quick(q)">
-                <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
-                <text class="icon-grid__label">{{ q.label }}</text>
-              </view>
-            </view>
-            <MobileGlobalState v-if="!visibleQuickActions.length" state="empty" title="当前身份暂无可操作入口"
-              description="快捷操作由服务端角色权限生成；需要更多权限请联系学校管理员。" />
-          </view>
-
-          <view class="section-head">
-            <view><text class="section-head__title">即将超时</text><text class="wb__section-sub">优先处理临近截止或已经逾期的事项</text></view>
-            <text class="section-head__more" @click="go('/pages/teacher/todos/index')">全部待办 ›</text>
-          </view>
-          <view class="stack-sm" v-if="wb.dueSoon && wb.dueSoon.length">
-            <MobileTodoCard
-              v-for="t in wb.dueSoon"
-              :key="t.id"
-              :title="t.title"
-              :source-module="t.module"
-              :student-name="t.student"
-              :deadline="deadlineText(t.deadline)"
-              :status="t.status"
-              :overdue="isOverdue(t.deadline)"
-              action-text="去处理"
-              @handle="handleTodo(t)"
-              @view="handleTodo(t)"
-            />
-          </view>
-          <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无临近超时事项</text><text class="wb__quiet-text">当前待办没有需要立即处理的截止风险。</text></view>
-
-          <view class="section-head">
-            <view><text class="section-head__title">风险学生</text><text class="wb__section-sub">关注高风险和长期未闭环问题</text></view>
-            <text class="section-head__more" @click="goRiskList">风险台账 ›</text>
-          </view>
-          <view class="stack-sm" v-if="wb.riskStudents && wb.riskStudents.length">
-            <view v-for="r in wb.riskStudents" :key="r.id" class="wb__risk card" @click="openStudent(r)">
-              <view class="wb__risk-avatar">{{ r.name.slice(0,1) }}</view>
-              <view class="flex-1 wb__risk-copy">
-                <view class="row" style="gap:6px;">
-                  <text class="t-md t-bold">{{ r.name }}</text>
-                  <MobileRiskTag :level="r.level" />
-                </view>
-                <text class="wb__risk-type">{{ r.className }} · {{ r.type }}</text>
-              </view>
-              <text class="wb__risk-btn" @click.stop="handleRisk(r)">处理</text>
-            </view>
-          </view>
-          <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无风险学生</text><text class="wb__quiet-text">当前工作台未返回需要重点处置的风险记录。</text></view>
-
-          <view class="section-head"><view><text class="section-head__title">最近学生动态</text><text class="wb__section-sub">用于了解近期提交、审批和状态变化</text></view></view>
-          <view class="card stack-sm wb__recent" v-if="wb.recent && wb.recent.length">
-            <view v-for="a in wb.recent" :key="a.id" class="wb__act">
-              <text class="wb__act-dot" />
-              <text class="wb__act-text flex-1"><text class="wb__act-name">{{ a.name }}</text> {{ a.text }}</text>
-              <text class="wb__act-time">{{ fromNow(a.time) }}</text>
-            </view>
-          </view>
-          <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无最新动态</text><text class="wb__quiet-text">学生有新的提交或业务状态变化后会显示在这里。</text></view>
-        </view>
-      </view>
-    </MobileGlobalState>
-
-    <MobileTabBar side="teacher" active="workbench" :badges="{ todo: todoBadge }" />
+        <view v-if="wb.recent && wb.recent.length" class="ts-panel"><view class="ts-heading"><text class="ts-title">最近学生动态</text></view><view v-for="a in wb.recent" :key="a.id" class="ts-row"><view class="ts-body"><text class="ts-row-title">{{ a.name }} {{ a.text }}</text><text class="ts-muted">{{ fromNow(a.time) }}</text></view></view></view>
+    </view>
+    <MobileTeacherTabBar ref="badges" active="workbench" :pending="wb ? todoBadge : null" />
   </view>
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { teacherApi } from '@/services/teacherApi'
+import { me } from '@/services/realApi'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { commonServiceStorageKey } from '@/services/teacherCommonServices.mjs'
 import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
 import { runAction } from '@/services/actionRouter'
+import { canNavigate, disabledReasonOf } from '@/services/actionRouter'
 import { getTeacherWorkbenchVersion } from '@/utils/viewFreshness'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
+import { getTeacherMessagesPage } from '@/services/teacherMessagesV3Api'
+import { messageModuleLabel } from '@/services/messagePresentation'
+import { stashDetail } from '@/utils/msgStash'
+import { teacherServiceRoute, teacherServices, teacherVisual, teacherDateText, teacherGreeting } from '@/services/teacherServiceCatalog.mjs'
 
 const WORKBENCH_TTL_MS = 20_000
-const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
-const INTERNSHIP_PERMISSIONS = {
-  weekly: 'internship.report.review',
-  checkin: 'internship.attendance.review',
-  makeup: 'internship.makeup.review',
-  leave: 'internship.leave.review',
-  guidance: 'internship.guidance.manage',
-  'stu-eval': 'internship.eval.self.view',
-  'ent-eval': 'internship.eval.enterprise.view',
-  insurance: 'internship.insurance.view',
-  'internship-change': 'internship.change.view',
-  'internship-score': 'internship.score.view',
-  'agreement-confirm': 'internship.agreement.view',
-  'process-report': 'internship.report.view',
-  'plan-task': 'internship.task.view',
-  'internship-application': 'internship.application.view',
-  'internship-risk': 'internship.risk.view'
-}
+
+
 
 ensureTeacherPerformanceApi()
 
@@ -166,69 +71,82 @@ export default {
   data() {
     return {
       brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {},
-      statusBarHeight: 20, internshipContextReady: false, internshipContextError: '',
-      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1
+      internshipContextReady: false, internshipContextError: '',
+      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1, notices: [], noticeState: 'loading', today: teacherDateText(), greeting: teacherGreeting()
     }
   },
   computed: {
+    commonServicesStorageKey() { return commonServiceStorageKey(useSessionStore()) },
+    commonServices() {
+      const session = useSessionStore()
+      const context = this.internshipContextReady ? useInternshipContextStore() : null
+      return teacherServices(this.roleConfig, session.currentRole, context).filter(q => q.path && !q.disabledReason)
+    },
+    priorityTodos() { return (this.wb?.dueSoon || []).slice(0,2) },
+    extraMetrics() { return (this.wb?.metrics || []).filter(m => !['pending','todo'].includes(m.key)).map(m => ({ ...m, label: m.label === '24h到期' ? '24小时内到期' : m.label })) },
     todoBadge() {
       if (!this.wb) return 0
-      const m = this.wb.metrics.find((x) => ['todo', 'weekly', 'review', 'warning'].includes(x.key))
+      if (this.wb.pendingTotal != null) return Number(this.wb.pendingTotal) || 0
+      const m = (this.wb.metrics || []).find((x) => ['pending', 'todo', 'weekly', 'review', 'warning'].includes(x.key))
       return m ? Number(m.value) || 0 : 0
-    },
-    visibleQuickActions() {
-      const actions = this.roleConfig.quickActions || []
-      const session = useSessionStore()
-      if (session.currentRole !== 'intern_mentor') return actions
-      if (!this.internshipContextReady) return []
-      const context = useInternshipContextStore()
-      return actions.filter((q) => {
-        const permission = INTERNSHIP_PERMISSIONS[q.key]
-        if (!permission) return false
-        return context.can(permission)
-      })
     },
     selectedInternshipBatch() {
       const session = useSessionStore()
       if (session.currentRole !== 'intern_mentor') return null
       return useInternshipContextStore().selectedBatch
     },
-    dueSoonCount() { return Array.isArray(this.wb?.dueSoon) ? this.wb.dueSoon.length : 0 },
-    riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 },
-    workbenchConclusion() {
-      if (this.riskCount > 0) return `有 ${this.riskCount} 名风险学生需要关注`
-      if (this.dueSoonCount > 0) return `有 ${this.dueSoonCount} 项待办即将超时`
-      return '当前没有紧急风险或临近超时事项'
+    currentRoleTitle() {
+      const title = String(this.wb?.contextTitle || '').trim()
+      return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
     },
-    nextActionText() {
-      if (this.riskCount > 0) return '先进入风险台账，查看高风险学生和未闭环事项。'
-      if (this.dueSoonCount > 0) return '先处理临近截止的审批与批阅任务。'
-      if (this.visibleQuickActions.length > 0) return '按日常工作需要进入快捷操作，或查看最近学生动态。'
-      return '当前身份暂无可执行入口，可查看待办和学生动态。'
-    }
+    riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 }
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
   },
   onShow() {
     this._pageActive = true
-    this.ensureFresh()
+    this.today = teacherDateText(); this.greeting = teacherGreeting()
+    this.ensureFresh().catch(() => {})
+    this.$refs?.badges?.refresh()
   },
   onHide() {
+    this.$refs?.badges?.invalidate()
+    this.$refs?.commonServices?.cancelEdit()
     this._pageActive = false
     this._loadEpoch = (this._loadEpoch || 0) + 1
+    this._workbenchPromise = null
   },
   onUnload() {
     this._pageActive = false
     this._loadEpoch = (this._loadEpoch || 0) + 1
+    this._workbenchPromise = null
   },
   onPullDownRefresh() {
     this.load({ force: true, done: () => uni.stopPullDownRefresh() })
   },
   methods: {
-    go, deadlineText, isOverdue, fromNow,
-    gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
+    internshipBatchStatus(value) { return ({ DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || '状态待确认') },
+    riskTypeLabel(value) { return ({ ACADEMIC: '学业风险', ATTENDANCE: '考勤风险', DISCIPLINE: '纪律风险', MENTAL: '心理关注', FINANCIAL: '资助风险', INTERNSHIP: '实习风险', EMPLOYMENT: '就业风险', SAFETY: '安全风险' }[value] || '风险类型待确认') },
+    go, deadlineText, isOverdue, fromNow, visual: teacherVisual, messageModuleLabel,
+    canOpen(t) { return canNavigate(t?.action, 'teacher') },
+    blockedReason(t) { return disabledReasonOf(t?.action) || '该事项暂不可办理，请进入全部待办查看。' },
+    async loadNotices(contextKey = this.contextKey(useSessionStore())) {
+      const seq = (this._noticeSeq || 0) + 1; this._noticeSeq = seq
+      this.noticeState = 'loading'
+      try {
+        const data = await getTeacherMessagesPage({ tab: 'system', pageSize: 2 })
+        if (!this._pageActive || seq !== this._noticeSeq || contextKey !== this.contextKey(useSessionStore())) return
+        this.notices = data.items || []; this.noticeState = 'ready'
+      } catch (_) {
+        if (this._pageActive && seq === this._noticeSeq && contextKey === this.contextKey(useSessionStore())) this.noticeState = 'error'
+      }
+    },
+    openNotice(message) {
+      stashDetail(message)
+      go('/pages/common/message-detail/index?messageId=' + encodeURIComponent(String(message.messageId || message.id || '')))
+    },
+
     contextKey(session) {
       const identity = session.identity || {}
       const context = useInternshipContextStore()
@@ -248,7 +166,9 @@ export default {
         this.loadedContextKey === contextKey &&
         this.loadedFreshnessVersion === freshness &&
         Date.now() - this.lastLoadedAt < WORKBENCH_TTL_MS
-      if (!fresh) this.load()
+      if (!fresh) return this.load()
+      this.loadNotices(contextKey)
+      return Promise.resolve(this.wb)
     },
     async loadInternshipContext(session, force) {
       this.internshipContextReady = session.currentRole !== 'intern_mentor'
@@ -281,26 +201,34 @@ export default {
         return this._workbenchPromise.finally(() => { if (done) done() })
       }
 
-      const epoch = (this._loadEpoch || 0) + 1
+      const epoch = (this._loadEpoch || 0) + 1, generation = currentSessionGeneration()
       this._loadEpoch = epoch
       this.user = session.mockUser || {}
       this.roleConfig = session.roleConfig
       if (!this.wb || force) this.state = 'loading'
+      if (this.loadedContextKey !== beforeContextKey) { this.wb = null; this.notices = []; this.state = 'loading' }
 
       const pending = (async () => {
+        const identity = await me()
+        if (!this._pageActive || this._loadEpoch !== epoch || generation !== currentSessionGeneration()) return
+        session.applyRealUser(identity)
+        if (!session.isTeacher) { this.state = 'forbidden'; return }
+        this.user = session.mockUser || {}; this.roleConfig = session.roleConfig
         await this.loadInternshipContext(session, force)
+        if (!this._pageActive || this._loadEpoch !== epoch || generation !== currentSessionGeneration()) return
         const contextKey = this.contextKey(session)
         const workbench = await teacherApi.getWorkbench(session.currentRole)
-        if (!this._pageActive || this._loadEpoch !== epoch ||
+        if (!this._pageActive || this._loadEpoch !== epoch || generation !== currentSessionGeneration() ||
             this.contextKey(useSessionStore()) !== contextKey) return workbench
         this.wb = workbench
         this.loadedContextKey = contextKey
         this.loadedFreshnessVersion = freshness
         this.lastLoadedAt = Date.now()
         this.state = 'ready'
+        this.loadNotices(contextKey)
         return workbench
       })().catch((error) => {
-        if (this._pageActive && this._loadEpoch === epoch) this.state = 'error'
+        if (this._pageActive && this._loadEpoch === epoch && generation === currentSessionGeneration()) this.state = normalizeError(error).pageState || 'error'
         throw error
       }).finally(() => {
         if (this._workbenchPromise === pending) this._workbenchPromise = null
@@ -311,75 +239,20 @@ export default {
     },
     quick(q) {
       const session = useSessionStore()
-      const map = {
-        weekly: '/pages/teacher/internship-review/index',
-        'review-open': '/pages/teacher/graduation-guide/index?tab=review&kind=proposal',
-        'review-mid': '/pages/teacher/graduation-guide/index?tab=midterm',
-        'review-result': '/pages/teacher/graduation-guide/index?tab=review&kind=final',
-        checkin: '/pages/teacher/internship-review/index',
-        makeup: '/pages/teacher/internship-approval/index',
-        leave: '/pages/teacher/internship-approval/index?tab=leave',
-        guidance: '/pages/teacher/internship-guidance/index',
-        'stu-eval': '/pages/teacher/student-eval/index',
-        'ent-eval': '/pages/teacher/enterprise-eval/index',
-        insurance: '/pages/teacher/insurance-verify/index',
-        'internship-change': '/pages/teacher/internship-change/index',
-        'internship-score': '/pages/teacher/internship-score/index',
-        'agreement-confirm': '/pages/teacher/agreement-confirm/index',
-        'process-report': '/pages/teacher/process-report-review/index',
-        'plan-task': '/pages/teacher/plan-task-review/index',
-        'internship-application': '/pages/teacher/internship-application/index',
-        'internship-risk': '/pages/teacher/internship-risk/index',
-        approval: '/pages/teacher/approval/index',
-        risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
-        follow: '/pages/teacher/employment-follow/index',
-        recommend: '/pages/teacher/employment-follow/index?tab=unemployed',
-        verify: '/pages/teacher/employment-follow/index?tab=verify',
-        unemployed: '/pages/teacher/employment-follow/index',
-        employmentTransfer: '/pages/teacher/employment-transfer/index',
-        employmentCompany: '/pages/teacher/employment-company/index',
-        warning: '/pages/teacher/academic-warning/index',
-        progress: '/pages/teacher/academic-affairs/index',
-        status: '/pages/teacher/exam-defer/index',
-        'topic-review': '/pages/teacher/graduation-topics/index',
-        taskbook: '/pages/teacher/graduation-taskbook/index',
-        'guide-log': '/pages/teacher/graduation-guide/index',
-        'affairs-stats': '/pages/teacher/affairs/stats/index',
-        'campus-service': '/pages/teacher/campus-service/index',
-        myClasses: '/pages/teacher/my-classes/index',
-        myStudents: '/pages/teacher/my-students/index',
-        talk: '/pages/teacher/affairs/talk/index',
-        mental: '/pages/teacher/affairs/mental/index',
-        affairs: '/pages/teacher/affairs/index',
-        familyContact: '/pages/teacher/family-contact/index',
-        affairsLeave: '/pages/teacher/affairs-leave/index',
-        dormReview: '/pages/teacher/dorm-review/index',
-        classCadre: '/pages/teacher/class-cadre/index',
-        classMaterial: '/pages/teacher/class-material/index',
-        academicTask: '/pages/teacher/academic-task/index',
-        scheduleChange: '/pages/teacher/schedule-change/index',
-        examDefer: '/pages/teacher/exam-defer/index',
-        evaluation: '/pages/teacher/evaluation/index',
-        defenseScore: '/pages/teacher/defense-score/index',
-        notifyPublish: '/pages/teacher/notify-publish/index',
-        overview: '/pages/teacher/dashboard/index',
-        orientationVerify: '/pages/teacher/orientation/verify/index',
-        orientationDashboard: '/pages/teacher/orientation/dashboard/index'
-      }
-      if (q.key === 'risk' && session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
-      if (map[q.key]) return go(map[q.key])
+      const path = teacherServiceRoute(q.key, session.currentRole)
+      if (path) return go(path)
       toast('当前入口尚未配置，请联系管理员')
     },
     goRiskList() {
       const session = useSessionStore()
       go(session.currentRole === 'intern_mentor'
-        ? '/pages/teacher/internship-risk/index'
+        ? '/pages/teacher-internship/internship-risk/index'
         : '/pages/teacher/affairs-review/index?type=RISK_HANDLE')
     },
     handleTodo(t) { return runAction(t && t.action, { side: 'teacher' }) },
     handleRisk(r) {
       const session = useSessionStore()
-      if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
+      if (session.currentRole === 'intern_mentor') return go('/pages/teacher-internship/internship-risk/index')
       if (r && r.actionType === 'RISK_HANDLE') return go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')
       go('/pages/teacher/risk-students/index')
     },
@@ -388,6 +261,16 @@ export default {
 }
 </script>
 
-<style scoped>
-.wb__hero{padding-bottom:var(--space-4)}.wb__greet{position:relative;display:flex;align-items:center;gap:var(--space-3);margin-top:var(--space-3)}.wb__greet-name{display:block;color:#fff;font-size:var(--font-size-lg);font-weight:var(--font-weight-semibold)}.wb__greet-sub{display:block;color:rgba(255,255,255,.85);font-size:var(--font-size-xs);margin-top:3px}.wb__bell{width:38px;height:38px;border-radius:var(--radius-full);background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0}.wb__bell-icon{color:#fff;font-size:18px}.wb__rolepill{position:relative;display:inline-flex;align-items:center;gap:6px;margin-top:var(--space-3);background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:var(--font-size-xs);padding:6px 11px;border-radius:var(--radius-full)}.wb__rolepill-dot{width:6px;height:6px;border-radius:var(--radius-full);background:#3ddc84}.wb__rolepill-chev{font-size:10px}.wb__content{display:flex;flex-direction:column;gap:var(--space-3);padding-bottom:calc(var(--safe-bottom) + 82px)}.wb__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3);margin-top:var(--space-3);background:var(--teacher-50,#eff6ff);border-color:var(--teacher-200,#bfdbfe)}.wb__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.wb__batch-label{font-size:var(--font-size-xs);color:var(--text-tertiary)}.wb__batch-name{font-size:var(--font-size-base);color:var(--text-primary);font-weight:var(--font-weight-semibold);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb__batch-meta{font-size:var(--font-size-xs);color:var(--text-secondary)}.wb__batch-status{flex-shrink:0;padding:5px 9px;border-radius:var(--radius-full);background:var(--bg-card);color:var(--teacher-700);font-size:var(--font-size-xs);font-weight:600}.wb__brief{padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)}.wb__brief-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)}.wb__brief-eyebrow{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.wb__brief-title{display:block;margin-top:4px;font-size:var(--font-size-md);font-weight:700;color:var(--text-primary);line-height:1.45}.wb__brief-time{flex-shrink:0;font-size:10px;color:var(--text-tertiary)}.wb__brief-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.wb__brief-metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:11px 4px;border-left:1px solid var(--border-light)}.wb__brief-metric:first-child{border-left:0}.wb__brief-metric text:first-child{font-size:var(--font-size-xl);font-weight:700;color:var(--teacher-700)}.wb__brief-metric.is-warning text:first-child{color:var(--warning-700)}.wb__brief-metric.is-danger text:first-child{color:var(--danger-600)}.wb__brief-metric text:last-child{font-size:10px;color:var(--text-tertiary)}.wb__brief-next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.wb__brief-next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.wb__brief-next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.wb__section-hint{font-size:var(--font-size-xs);color:var(--text-tertiary)}.wb__section-sub{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.wb__quick-card{padding:var(--space-3)}.wb__risk{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3)}.wb__risk-avatar{width:40px;height:40px;border-radius:var(--radius-full);background:var(--danger-50);color:var(--danger-600);display:flex;align-items:center;justify-content:center;font-weight:600}.wb__risk-copy{min-width:0}.wb__risk-type{display:block;font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:2px;word-break:break-word}.wb__risk-btn{font-size:var(--font-size-sm);color:#fff;background:var(--danger-500);border-radius:var(--radius-md);padding:7px 14px;flex-shrink:0}.wb__recent{padding:var(--space-3)}.wb__act{display:flex;align-items:flex-start;gap:var(--space-2);padding:4px 0}.wb__act-dot{width:6px;height:6px;border-radius:var(--radius-full);background:var(--teacher-500);flex-shrink:0;margin-top:7px}.wb__act-text{font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.5;word-break:break-word}.wb__act-name{color:var(--text-primary);font-weight:var(--font-weight-medium)}.wb__act-time{font-size:var(--font-size-xs);color:var(--text-tertiary);flex-shrink:0;padding-top:2px}.wb__quiet{padding:var(--space-3);background:var(--gray-50)}.wb__quiet-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--text-primary)}.wb__quiet-text{display:block;margin-top:4px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-tertiary)}@media(max-width:360px){.wb__brief-metrics{grid-template-columns:1fr}.wb__brief-metric{border-left:0;border-top:1px solid var(--border-light)}.wb__brief-metric:first-child{border-top:0}.wb__batch{align-items:flex-start}.wb__act{flex-wrap:wrap}.wb__act-time{margin-left:14px}}
+<style lang="scss">
+@import '@/styles/teacher-shell.scss';
+.teacher-shell {
+.wb-task { align-items: flex-start !important; }
+.wb-task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.wb-task-head .ts-row-title { flex: 1; }
+.wb-task-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.wb-task-foot > text { flex: 1; }
+.wb-overdue { color: #dc4545 !important; }.wb-risk-marker { background: #ed5353 !important; }
+.wb-batch { padding-top: 14px !important; padding-bottom: 14px !important; }
+.wb-metrics { display: flex; gap: 6px 14px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid #edf0f5; font-size: 12px; color: #62738e; }
+}
 </style>

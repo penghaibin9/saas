@@ -1,14 +1,20 @@
 import { getSelectedCampaignId, request, requestBinary } from './request.js'
 import { sanitizeCompanyPatch, sanitizePositionPayload } from './enterpriseContract.js'
+import { requireDecimalId } from './evaluationContext.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
 let activeContextMode='NONE'
-let activeCollaborationBatchId=0
+let activeCollaborationBatchId=''
+
+function positiveId(value){
+  const text=String(value??'').trim()
+  return /^[1-9]\d*$/.test(text)?text:''
+}
 
 export function setEnterpriseApiContext(mode='NONE',batchId=0){
   activeContextMode=String(mode||'NONE').toUpperCase()
-  activeCollaborationBatchId=Number(batchId)||0
+  activeCollaborationBatchId=positiveId(batchId)
 }
 
 function recruitmentParams(){
@@ -25,8 +31,8 @@ function requireRecruitmentAccess(){
   return recruitmentParams()
 }
 function collaborationParams(batchId){
-  const value=Number(batchId||activeCollaborationBatchId)
-  if(!Number.isInteger(value)||value<=0)throw new Error('当前实习协同批次不可用，请重新进入学校已开放的协同批次')
+  const value=positiveId(batchId)||activeCollaborationBatchId
+  if(!value)throw new Error('当前实习协同批次不可用，请重新进入学校已开放的协同批次')
   return {batchId:value}
 }
 function requireVersion(value,label='数据'){
@@ -47,6 +53,7 @@ function normalizeApplicantSummary(row={}){
 function normalizeApplicantPage(data={}){return {items:(Array.isArray(data.items)?data.items:[]).map(normalizeApplicantSummary),total:Number.isFinite(Number(data.total))?Number(data.total):0,page:Number.isFinite(Number(data.page))?Number(data.page):1,pageSize:Number.isFinite(Number(data.pageSize))?Number(data.pageSize):20}}
 function evaluationPayload(payload={}){
   const result={attendanceScore:Number(payload.attendanceScore),skillScore:Number(payload.skillScore),attitudeScore:Number(payload.attitudeScore),collaborationScore:Number(payload.collaborationScore),safetyScore:Number(payload.safetyScore),overallComment:String(payload.overallComment||'').trim(),recommendHire:Boolean(payload.recommendHire)}
+  result.expectedPlacementSnapshotId=requireDecimalId(payload.expectedPlacementSnapshotId,'安置快照')
   if(payload.expectedVersion!==null&&payload.expectedVersion!==undefined&&payload.expectedVersion!=='')result.expectedVersion=requireVersion(payload.expectedVersion,'企业评价')
   return result
 }
@@ -56,6 +63,10 @@ export const enterpriseInternshipApi={
   context:(campaignId)=>request(`${AUTH_ROOT}/context`,{params:{campaignId}}),
   collaborationContext:(batchId)=>request(`${AUTH_ROOT}/collaboration-context`,{params:collaborationParams(batchId)}),
   dashboard:()=>request(`${AUTH_ROOT}/dashboard`,{params:requireRecruitmentAccess()}),
+  messages:({readStatus='',page=1,pageSize=20}={})=>request(`${AUTH_ROOT}/messages`,{params:{readStatus,page,pageSize}}),
+  messageCount:()=>request(`${AUTH_ROOT}/messages/count`),
+  message:(id)=>request(`${AUTH_ROOT}/messages/${id}`),
+  readMessage:(id)=>request(`${AUTH_ROOT}/messages/${id}/read`,{method:'POST'}),
   campaigns:()=>request(`${AUTH_ROOT}/campaigns`),
   company:()=>request(`${AUTH_ROOT}/company`),
   updateCompany:(payload={})=>request(`${AUTH_ROOT}/company`,{method:'PUT',body:{...sanitizeCompanyPatch(payload),expectedVersion:requireVersion(payload.expectedVersion,'企业资料')}}),

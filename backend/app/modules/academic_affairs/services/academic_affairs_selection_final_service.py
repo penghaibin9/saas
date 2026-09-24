@@ -24,6 +24,8 @@ from threading import BoundedSemaphore, Lock
 from time import monotonic
 from types import SimpleNamespace
 
+from sqlalchemy import and_, exists, or_, select
+
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_selection_decision_trace as selection_trace
@@ -115,6 +117,95 @@ def _selection_academic_identity(db, student, *, effective_at: datetime):
     return identity, fact
 
 
+def _mobile_page_args(page, page_size, *, default_size=20, max_size=50):
+    """Validate mobile page bounds before the database query."""
+    try:
+        safe_page = int(page if page is not None else 1)
+        safe_size = int(page_size if page_size is not None else default_size)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "分页参数必须为正整数") from exc
+    if isinstance(page, bool) or isinstance(page_size, bool) or safe_page < 1 or not 1 <= safe_size <= max_size:
+        raise AppException("VALIDATION_ERROR", f"分页参数非法，page≥1 且 pageSize≤{max_size}")
+    return safe_page, safe_size
+
+
+def _mobile_selection_id(value, field_name):
+    if isinstance(value, bool):
+        raise AppException("VALIDATION_ERROR", f"{field_name} 必须是正整数")
+    raw = str(value or "")
+    if not raw.isascii() or not raw.isdecimal() or int(raw) < 1:
+        raise AppException("VALIDATION_ERROR", f"{field_name} 必须是正整数")
+    return int(raw)
+
+
+def _mobile_selection_student(db, user):
+    """Resolve only the authenticated account's stable StudentAccountLink."""
+    from app.services.mobile_student_service import _require_student, resolve_student
+
+    student = resolve_student(db, _require_student(user))
+    if not student:
+        raise not_found("当前账号尚未绑定唯一学生档案")
+    return student
+
+
+def _student_batch_catalog_query(db, student):
+    from app.models import AaSelectionBatch, AaSelectionRecord
+
+    has_own_record = exists(select(AaSelectionRecord.id).where(
+        AaSelectionRecord.tenant_id == _base._core._tid(),
+        AaSelectionRecord.student_id == int(student.id),
+        AaSelectionRecord.batch_id == AaSelectionBatch.id,
+        AaSelectionRecord.is_deleted.is_(False),
+    ))
+    return db.query(AaSelectionBatch).filter(
+        AaSelectionBatch.tenant_id == _base._core._tid(),
+        AaSelectionBatch.is_deleted.is_(False),
+        # An open batch may be browsed; other batches are only visible when this
+        # student already has a formal record in them.
+        or_(AaSelectionBatch.status == _base._BATCH_OPEN, has_own_record),
+    )
+
+
+def _mobile_selection_batch(db, student, batch_id):
+    from app.models import AaSelectionBatch, AaSelectionRecord
+
+    batch = db.query(AaSelectionBatch).filter(
+        AaSelectionBatch.id == int(batch_id),
+        AaSelectionBatch.tenant_id == _base._core._tid(),
+        AaSelectionBatch.is_deleted.is_(False),
+    ).first()
+    if not batch:
+        raise not_found("选课批次不存在")
+    has_own_record = db.scalar(select(AaSelectionRecord.id).where(
+        AaSelectionRecord.tenant_id == _base._core._tid(),
+        AaSelectionRecord.student_id == int(student.id),
+        AaSelectionRecord.batch_id == int(batch.id),
+        AaSelectionRecord.is_deleted.is_(False),
+    ).limit(1)) is not None
+    if str(batch.status or "").upper() != _base._BATCH_OPEN and not has_own_record:
+        raise not_found("该选课批次当前不可查看")
+    return batch
+
+
+def student_batch_catalog_page(user, page=1, page_size=20):
+    """Bounded, student-scoped selection batch catalog for mobile navigation."""
+    from app.models import AaSelectionBatch
+
+    safe_page, safe_size = _mobile_page_args(page, page_size)
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        student = _mobile_selection_student(db, user)
+        query = _student_batch_catalog_query(db, student)
+        total = int(query.count() or 0)
+        rows = query.order_by(AaSelectionBatch.id.desc()).offset(
+            (safe_page - 1) * safe_size,
+        ).limit(safe_size).all()
+        return {
+            "items": [_base._core._batch_dto(batch) for batch in rows],
+            "total": total, "page": safe_page, "pageSize": safe_size,
+            "hasMore": safe_page * safe_size < total,
+        }
+
+
 def _normalized_record_status(record) -> str:
     if not record:
         return ""
@@ -136,6 +227,18 @@ def _status_label(status: str) -> str:
         "DROPPED": "已退课",
         "LOCKED": "名单已锁定",
     }.get(str(status or "").upper(), str(status or "待确认"))
+
+
+def _require_open_selection_window(batch, evaluated_at: datetime) -> None:
+    """Make the time window a command gate, not merely a scheduler hint."""
+    if str(getattr(batch, "status", "") or "").upper() != _base._BATCH_OPEN:
+        return
+    starts_at = getattr(batch, "select_start_at", None)
+    ends_at = getattr(batch, "select_end_at", None)
+    if starts_at is not None and evaluated_at < starts_at:
+        raise _base._core._invalid("选课窗口尚未开始")
+    if ends_at is not None and evaluated_at >= ends_at:
+        raise _base._core._invalid("选课窗口已截止")
 
 
 def _first_resolution(trace) -> str:
@@ -206,6 +309,7 @@ def _evaluate_student_course(
 
     try:
         _base._guard_batch_writable(db, batch)
+        _require_open_selection_window(batch, evaluated_at)
         if course.status != _base._COURSE_OPEN:
             raise _base._core._invalid("课程已取消或不可选")
 
@@ -357,6 +461,7 @@ def student_courses(user, batch_id=None):
             AaSelectionCourse.batch_id.in_(batch_ids),
             AaSelectionCourse.is_deleted.is_(False),
         ).order_by(AaSelectionCourse.batch_id, AaSelectionCourse.id).all()
+        schedule_by_task = _student_course_schedule_projection(db, batches, course_rows)
         my_records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
             AaSelectionRecord.student_id == student.id,
@@ -400,6 +505,7 @@ def student_courses(user, batch_id=None):
                     allowed_actions.insert(0, "VIEW")
                 projected_courses.append({
                     **_base._core._course_dto(course),
+                    "scheduleItems": schedule_by_task.get(int(course.teaching_task_id or 0), []),
                     "status": projection["status"],
                     "statusLabel": projection["statusLabel"],
                     "phase": projection["phase"],
@@ -425,6 +531,271 @@ def student_courses(user, batch_id=None):
                 "courses": projected_courses,
             })
         return out
+
+
+def _student_course_schedule_projection(db, batches, courses) -> dict[int, list[dict]]:
+    """Return the published meeting pattern for each selectable teaching task.
+
+    This is read-side context only: it helps a student understand *when* a course meets
+    before choosing it.  Enrollment authority remains in preflight/Command and a missing
+    published timetable is represented by an empty list instead of guessed client data.
+    """
+    from app.models import AaScheduleBatch, AaScheduleItem
+    from . import academic_affairs_schedule_truth_service as schedule_truth
+
+    task_ids = sorted({
+        int(course.teaching_task_id)
+        for course in courses or []
+        if course.teaching_task_id
+    })
+    term_ids = sorted({int(batch.term_id) for batch in batches or [] if batch.term_id})
+    if not task_ids or not term_ids:
+        return {}
+
+    active_by_term = schedule_truth.active_batch_ids_by_term(db, term_ids)
+    missing_terms = [term_id for term_id in term_ids if not active_by_term.get(term_id)]
+    if missing_terms:
+        # Compatibility for tenants created before ScopeHead existed: retain one
+        # newest PUBLISHED batch per SCHOOL/COLLEGE scope, never one per whole term.
+        published_batches = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.tenant_id == _base._core._tid(),
+            AaScheduleBatch.term_id.in_(missing_terms),
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(
+            AaScheduleBatch.term_id,
+            AaScheduleBatch.publish_at.desc(),
+            AaScheduleBatch.id.desc(),
+        ).all()
+        latest_by_scope = {}
+        for batch in published_batches:
+            scope = (
+                int(batch.term_id),
+                "COLLEGE" if batch.college_id else "SCHOOL",
+                int(batch.college_id or 0),
+            )
+            latest_by_scope.setdefault(scope, int(batch.id))
+        for (term_id, _scope_type, _scope_id), batch_id in latest_by_scope.items():
+            active_by_term.setdefault(term_id, []).append(batch_id)
+
+    active_batch_ids = [
+        batch_id
+        for term_id in term_ids
+        for batch_id in active_by_term.get(term_id, [])
+    ]
+    if not active_batch_ids:
+        return {}
+
+    rows = db.query(AaScheduleItem).filter(
+        AaScheduleItem.tenant_id == _base._core._tid(),
+        AaScheduleItem.batch_id.in_(active_batch_ids),
+        AaScheduleItem.task_id.in_(task_ids),
+        AaScheduleItem.status == "EFFECTIVE",
+        AaScheduleItem.is_deleted.is_(False),
+    ).order_by(
+        AaScheduleItem.task_id,
+        AaScheduleItem.weekday,
+        AaScheduleItem.slot_no,
+        AaScheduleItem.start_week,
+    ).all()
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        result.setdefault(int(row.task_id), []).append({
+            "scheduleItemId": str(row.id),
+            "weekday": int(row.weekday),
+            "slotNo": int(row.slot_no),
+            "startWeek": int(row.start_week),
+            "endWeek": int(row.end_week),
+            "weekParity": str(row.week_parity or "ALL"),
+            "classroom": row.classroom_text or "",
+        })
+    return result
+
+
+def _student_course_page_item(
+    db, *, student, academic_identity, academic_fact, batch, course,
+    my_records, active_round, evaluated_at, round_configured, schedule_by_task,
+    course_codes,
+):
+    projection = _evaluate_student_course(
+        db,
+        student=student,
+        academic_identity=academic_identity,
+        academic_fact=academic_fact,
+        batch=batch,
+        course=course,
+        my_records=my_records,
+        active_round=active_round,
+        evaluated_at=evaluated_at,
+        round_configured=round_configured,
+    )
+    allowed_actions = list(projection.get("allowedActions") or [])
+    if "VIEW" not in allowed_actions:
+        allowed_actions.insert(0, "VIEW")
+    return {
+        **_base._core._course_dto(course),
+        "courseCode": course_codes.get(int(course.course_id or 0), ""),
+        "scheduleItems": schedule_by_task.get(int(course.teaching_task_id or 0), []),
+        "status": projection["status"],
+        "statusLabel": projection["statusLabel"],
+        "phase": projection["phase"],
+        "eligibility": projection["eligibility"],
+        "allowedActions": allowed_actions,
+        "reason": projection["reason"],
+        "howToResolve": projection["howToResolve"],
+        "window": projection["window"],
+        "lottery": projection["lottery"],
+        "reselect": projection["reselect"],
+        "decisionTrace": projection.get("decisionTrace"),
+        "evaluatedAt": projection["evaluatedAt"],
+    }
+
+
+def student_courses_page(user, batch_id, keyword="", page=1, page_size=20):
+    """One formal selection batch and one server-filtered mobile course page."""
+    from app.models import AaCourse, AaSelectionCourse, AaSelectionRecord
+
+    safe_batch_id = _mobile_selection_id(batch_id, "batchId")
+    safe_page, safe_size = _mobile_page_args(page, page_size)
+    query_text = str(keyword or "").strip()
+    if len(query_text) > 60:
+        raise AppException("VALIDATION_ERROR", "搜索关键词不能超过60个字符")
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        student = _mobile_selection_student(db, user)
+        batch = _mobile_selection_batch(db, student, safe_batch_id)
+        evaluated_at = datetime.utcnow()
+        academic_identity, academic_fact = _selection_academic_identity(
+            db, student, effective_at=evaluated_at,
+        )
+        query = db.query(AaSelectionCourse).outerjoin(
+            AaCourse,
+            and_(
+                AaCourse.id == AaSelectionCourse.course_id,
+                AaCourse.tenant_id == AaSelectionCourse.tenant_id,
+                AaCourse.is_deleted.is_(False),
+            ),
+        ).filter(
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.batch_id == int(batch.id),
+            AaSelectionCourse.is_deleted.is_(False),
+        )
+        if query_text:
+            needle = f"%{query_text}%"
+            query = query.filter(or_(
+                AaSelectionCourse.course_name.like(needle),
+                AaSelectionCourse.teacher_name.like(needle),
+                AaCourse.course_code.like(needle),
+            ))
+        total = int(query.count() or 0)
+        courses = query.order_by(AaSelectionCourse.id).offset(
+            (safe_page - 1) * safe_size,
+        ).limit(safe_size).all()
+        course_ids = {int(course.course_id) for course in courses if course.course_id}
+        catalog_rows = db.query(AaCourse).filter(
+            AaCourse.tenant_id == _base._core._tid(),
+            AaCourse.id.in_(course_ids or {-1}), AaCourse.is_deleted.is_(False),
+        ).all()
+        course_codes = {int(row.id): str(row.course_code or "") for row in catalog_rows}
+        my_records = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.student_id == int(student.id),
+            AaSelectionRecord.batch_id == int(batch.id),
+            AaSelectionRecord.is_deleted.is_(False),
+        ).all()
+        active_round = _base._active_round(db, int(batch.id))
+        configured_round = int(batch.id) in _configured_round_batch_ids(db, [int(batch.id)])
+        schedule_by_task = _student_course_schedule_projection(db, [batch], courses)
+        items = [
+            _student_course_page_item(
+                db,
+                student=student,
+                academic_identity=academic_identity,
+                academic_fact=academic_fact,
+                batch=batch,
+                course=course,
+                my_records=my_records,
+                active_round=active_round,
+                evaluated_at=evaluated_at,
+                round_configured=configured_round,
+                schedule_by_task=schedule_by_task,
+                course_codes=course_codes,
+            )
+            for course in courses
+        ]
+        return {
+            "batch": _base._core._batch_dto(batch),
+            "items": items, "total": total, "page": safe_page,
+            "pageSize": safe_size, "hasMore": safe_page * safe_size < total,
+        }
+
+
+def _selection_record_page_item(*, batch, record, course_by_id, drop_window_open):
+    item = _base._core._record_dto(record)
+    course = course_by_id.get(int(record.selection_course_id or 0))
+    allowed_actions = ["VIEW"]
+    if drop_window_open:
+        try:
+            if course is None:
+                raise AppException("DATA_CONFLICT", "正式课程已不存在，不能办理退课", http_status=409)
+            _require_drop_record(batch, course, record)
+            allowed_actions.append("DROP")
+        except AppException:
+            pass
+    item["allowedActions"] = allowed_actions
+    return item
+
+
+def student_selection_records_page(user, batch_id, page=1, page_size=20, selection_course_id=None):
+    """Server-paged personal selection history; a course id performs an exact read."""
+    from app.models import AaSelectionCourse, AaSelectionRecord
+
+    safe_batch_id = _mobile_selection_id(batch_id, "batchId")
+    safe_page, safe_size = _mobile_page_args(page, page_size)
+    exact_course_id = None if selection_course_id in (None, "") else _mobile_selection_id(
+        selection_course_id, "selectionCourseId",
+    )
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        student = _mobile_selection_student(db, user)
+        batch = _mobile_selection_batch(db, student, safe_batch_id)
+        query = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.student_id == int(student.id),
+            AaSelectionRecord.batch_id == int(batch.id),
+            AaSelectionRecord.is_deleted.is_(False),
+        )
+        if exact_course_id is not None:
+            query = query.filter(AaSelectionRecord.selection_course_id == exact_course_id)
+        total = int(query.count() or 0)
+        rows = query.order_by(AaSelectionRecord.id.desc()).offset(
+            (safe_page - 1) * safe_size,
+        ).limit(safe_size).all()
+        course_ids = {int(row.selection_course_id) for row in rows if row.selection_course_id}
+        course_rows = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.batch_id == int(batch.id),
+            AaSelectionCourse.id.in_(course_ids or {-1}),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).all()
+        course_by_id = {int(course.id): course for course in course_rows}
+        active_round = _base._active_round(db, int(batch.id))
+        evaluated_at = datetime.utcnow()
+        try:
+            _require_drop_window(db, batch, active_round, evaluated_at)
+            drop_window_open = True
+        except AppException:
+            drop_window_open = False
+        return {
+            "batch": _base._core._batch_dto(batch),
+            "items": [
+                _selection_record_page_item(
+                    batch=batch, record=row, course_by_id=course_by_id,
+                    drop_window_open=drop_window_open,
+                )
+                for row in rows
+            ],
+            "total": total, "page": safe_page, "pageSize": safe_size,
+            "hasMore": safe_page * safe_size < total,
+        }
 
 
 def batch_preflight(user, batch_id, action: str) -> dict:
@@ -674,6 +1045,7 @@ def _student_enroll_guarded(user, body):
                 evaluated_at=selection_effective_at,
                 rule_code="SELECTION_LOCKED",
             )
+        _require_open_selection_window(batch, selection_effective_at)
 
         has_reselect_qualification = any(
             record.status == _base._REC_COURSE_CANCELLED
@@ -793,6 +1165,67 @@ def _student_enroll_guarded(user, body):
         return _base._core._record_dto(record)
 
 
+def _require_drop_window(db, batch, active_round, evaluated_at=None):
+    _base._guard_batch_writable(db, batch)
+    if batch.status != _base._BATCH_OPEN:
+        raise _base._core._invalid("当前不在退课窗口")
+    _require_open_selection_window(batch, evaluated_at or datetime.utcnow())
+    if active_round and not active_round.allow_drop:
+        raise _base._core._invalid("当前轮次不允许退课")
+
+
+def _require_drop_record(batch, course, record):
+    if int(course.batch_id) != int(batch.id) or int(record.batch_id) != int(batch.id):
+        raise AppException("DATA_CONFLICT", "课程和选课记录的批次不一致，请联系教务处", http_status=409)
+    if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:
+        raise _base._core._invalid("当前记录不可退课")
+    if record.status == _base._REC_SELECTED and int(course.selected_count or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "课程人数计数异常，退课已取消，请联系教务处", http_status=409)
+
+
+def student_drop_preflight(user, body):
+    """Pure read of the same DROP gates as the locked command; no enrollment eligibility gate."""
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        student = _base._load_student(db)
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.selection_course_id == int(body.selectionCourseId),
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).first()
+        if not record:
+            raise not_found("选课记录不存在")
+        course = db.query(AaSelectionCourse).filter(
+            AaSelectionCourse.id == int(body.selectionCourseId),
+            AaSelectionCourse.tenant_id == _base._core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).first()
+        batch = db.query(AaSelectionBatch).filter(
+            AaSelectionBatch.id == record.batch_id,
+            AaSelectionBatch.tenant_id == _base._core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).first()
+        if not course or not batch:
+            raise AppException("DATA_CONFLICT", "正式课程或批次已不存在，请联系教务处", http_status=409)
+        active_round = _base._active_round(db, batch.id)
+        allowed, code, reason = True, "", "当前允许退课；正式提交仍将持锁复核"
+        try:
+            _require_drop_window(db, batch, active_round)
+            _require_drop_record(batch, course, record)
+        except AppException as exc:
+            allowed, code, reason = False, str(exc.code), str(exc.message)
+        return {
+            "action": "DROP", "allowed": allowed,
+            "allowedActions": ["VIEW", "DROP"] if allowed else ["VIEW"],
+            "selectionCourseId": str(course.id), "batchId": str(batch.id),
+            "selectionRecordId": str(record.id), "status": _normalized_record_status(record),
+            "courseName": course.course_name, "code": code, "reason": reason, "message": reason,
+            "evaluatedAt": datetime.utcnow().isoformat(),
+        }
+
+
 def student_drop(user, body):
     """兼容既有 EnrollBody：按 selectionCourseId 定位本人记录；锁序统一 course→batch→record。"""
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
@@ -836,12 +1269,8 @@ def student_drop(user, body):
         ).with_for_update().first()
         if not batch:
             raise not_found("选课批次不存在")
-        _base._guard_batch_writable(db, batch)
-        if batch.status != _base._BATCH_OPEN:
-            raise _base._core._invalid("当前不在退课窗口")
         active_round = _base._active_round(db, batch.id)
-        if active_round and not active_round.allow_drop:
-            raise _base._core._invalid("当前轮次不允许退课")
+        _require_drop_window(db, batch, active_round)
 
         record = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.id == int(record_hint.id),
@@ -853,21 +1282,13 @@ def student_drop(user, body):
         ).with_for_update().first()
         if not record:
             raise not_found("选课记录不存在")
-        if record.status not in {_base._REC_SELECTED, _base._REC_PENDING}:
-            raise _base._core._invalid("当前记录不可退课")
+        _require_drop_record(batch, course, record)
 
         previous = record.status
         record.status = _base._REC_DROPPED
         record.dropped_at = datetime.utcnow()
         if previous == _base._REC_SELECTED:
-            selected_count = int(course.selected_count or 0)
-            if selected_count <= 0:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "课程人数计数异常，退课已取消，请联系教务处",
-                    http_status=409,
-                )
-            course.selected_count = selected_count - 1
+            course.selected_count = int(course.selected_count) - 1
 
         _base._core._audit(
             db,

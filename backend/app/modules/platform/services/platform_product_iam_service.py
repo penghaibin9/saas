@@ -31,6 +31,7 @@ from app.models.permission_governance import (
 
 ROOT = Path(__file__).resolve().parents[5]
 MANIFEST_PATH = ROOT / "shared/contracts/module-manifest.json"
+NAVIGATION_PATH = ROOT / "shared/contracts/navigation-surface-contract.json"
 CONFIG_TYPE = "PLATFORM_PRODUCT_IAM_RELEASE"
 
 
@@ -41,6 +42,33 @@ def _hash(payload) -> str:
 
 def _module_manifest() -> dict:
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _navigation_contract() -> dict:
+    return json.loads(NAVIGATION_PATH.read_text(encoding="utf-8"))
+
+
+def _menu_preview(permission_codes: set[str], surfaces: list[dict]) -> list[dict]:
+    preview = []
+    for item in surfaces:
+        if item.get("platformOnly") or item.get("hidden") or item.get("disabled"):
+            continue
+        if str(item.get("status") or "") not in {"implemented", "partial"}:
+            continue
+        key = item.get("permissionKey")
+        any_codes = set(item.get("permissionAny") or [])
+        all_codes = set(item.get("permissionAll") or [])
+        allowed = (
+            (not key and not any_codes and not all_codes)
+            or (bool(key) and key in permission_codes)
+            or (bool(any_codes) and bool(any_codes & permission_codes))
+            or (bool(all_codes) and all_codes <= permission_codes)
+        )
+        if allowed:
+            preview.append({field: item.get(field) for field in (
+                "groupKey", "moduleKey", "workspaceKey", "surfaceKey", "label", "path", "entryType"
+            )})
+    return preview
 
 
 def _published_templates(db) -> list[dict]:
@@ -76,6 +104,7 @@ def _published_templates(db) -> list[dict]:
             "templateVersion": int(item.template_version or 0),
             "permissionCount": len(permissions),
             "permissionDigest": item.permission_digest or _hash(permissions),
+            "permissions": permissions,
         })
     return result
 
@@ -83,6 +112,7 @@ def _published_templates(db) -> list[dict]:
 def source_snapshot() -> dict:
     manifest = _module_manifest()
     catalog = load_permission_catalog()
+    navigation_contract = _navigation_contract()
     modules = manifest.get("modules") or []
     internship = [item for item in modules if item.get("moduleKey") == "internship"]
     forbidden = [
@@ -110,6 +140,12 @@ def source_snapshot() -> dict:
         }
         for item in modules
     ]
+    navigation_surfaces = list(navigation_contract.get("surfaces") or [])
+    for template in templates:
+        permission_codes = set(template.pop("permissions", []))
+        template["permissionCodes"] = sorted(permission_codes)
+        template["menuPreview"] = _menu_preview(permission_codes, navigation_surfaces)
+        template["menuCount"] = len(template["menuPreview"])
     permissions = [
         {k: item.get(k) for k in (
             "permissionCode", "label", "plane", "moduleKey", "featureKey", "riskLevel",
@@ -122,6 +158,8 @@ def source_snapshot() -> dict:
         "modules": modules,
         "permissions": permissions,
         "navigation": navigation,
+        "navigationSurfaces": navigation_surfaces,
+        "navigationDigest": navigation_contract.get("digest") or _hash(navigation_surfaces),
         "roleTemplates": templates,
     }
     snapshot["sourceDigest"] = _hash(snapshot)
@@ -156,10 +194,10 @@ def list_releases() -> list[dict]:
 def create_release_draft(*, reason: str, source_commit_sha: str, actor: dict, request_id: str) -> dict:
     reason = str(reason or "").strip()
     if len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "Product IAM 发布草稿必须填写至少5个字符的原因")
+        raise AppException("VALIDATION_ERROR", "产品身份与权限发布草稿必须填写至少 5 个字符的原因")
     raw_request = str(request_id or "").strip()
     if len(raw_request) < 8:
-        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "创建 Product IAM 草稿必须提供 requestId", http_status=422)
+        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "创建产品身份与权限草稿必须提供请求编号", http_status=422)
     snapshot = source_snapshot()
     key = "product-iam-" + hashlib.sha256(raw_request.encode()).hexdigest()[:32]
     db = get_sessionmaker()()
@@ -173,7 +211,7 @@ def create_release_draft(*, reason: str, source_commit_sha: str, actor: dict, re
         command_digest = _hash({"reason": reason, "sourceCommitSha": source_commit_sha, "sourceDigest": snapshot["sourceDigest"]})
         if existing is not None:
             if (existing.config_json or {}).get("commandDigest") != command_digest:
-                raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 已用于不同 Product IAM 草稿", http_status=409)
+                raise AppException("IDEMPOTENCY_CONFLICT", "相同请求编号已用于不同的产品身份与权限草稿", http_status=409)
             return _row(existing)
         row = PlatformConfig(
             tenant_id=0,
@@ -213,7 +251,7 @@ def impact(release_id: str) -> dict:
             PlatformConfig.is_deleted.is_(False),
         )).first()
         if target is None:
-            raise AppException("DATA_NOT_FOUND", "Product IAM release 不存在", http_status=404)
+            raise AppException("DATA_NOT_FOUND", "产品身份与权限发布版本不存在", http_status=404)
         previous = db.scalars(select(PlatformConfig).where(
             PlatformConfig.tenant_id == 0,
             PlatformConfig.config_type == CONFIG_TYPE,
@@ -259,11 +297,11 @@ def publish_release(release_id: str, *, expected_version: int, actor: dict) -> d
             PlatformConfig.is_deleted.is_(False),
         ).with_for_update()).first()
         if row is None:
-            raise AppException("DATA_NOT_FOUND", "Product IAM release 不存在", http_status=404)
+            raise AppException("DATA_NOT_FOUND", "产品身份与权限发布版本不存在", http_status=404)
         if row.status != "DRAFT":
-            raise AppException("IMMUTABLE_RELEASE", "已发布 Product IAM 版本不可再次修改或发布", http_status=409)
+            raise AppException("IMMUTABLE_RELEASE", "已发布的产品身份与权限版本不可再次修改或发布", http_status=409)
         if int(row.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "Product IAM 草稿已变化，请刷新后重试", http_status=409)
+            raise AppException("DATA_CONFLICT", "产品身份与权限草稿已变化，请刷新后重试", http_status=409)
         data = dict(row.config_json or {})
         if data.get("sourceDigest") != current_source.get("sourceDigest"):
             raise AppException(

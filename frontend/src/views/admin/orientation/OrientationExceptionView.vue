@@ -8,6 +8,7 @@
         </template>
       </ModuleToolbar>
 
+      <p v-if="$route.query.batchId" class="ori-batch-context">当前限定工作台所选批次 <button type="button" @click="$router.push({ path: '/admin/orientation', query: { batchId: $route.query.batchId } })">返回工作台</button></p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <LoadingState v-if="loading" />
@@ -266,12 +267,13 @@ export default {
       return this.perms['orientation.exception.escalate']?.reason || ''
     }
   },
+  watch: { '$route.query.batchId'() { this.page = 1; this.load() } },
   async created() {
     await this.init()
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     perm(key) {
       return this.perms[key] || { allowed: true, visible: true, reason: '' }
@@ -295,19 +297,21 @@ export default {
       await this.load()
     },
     async load() {
+      const serial = this.queueSerial = (this.queueSerial || 0) + 1
       this.loading = true
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getExceptionStudents({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getExceptionStudents({ ...this.filters, page: this.page, pageSize: this.pageSize, batchId: this.$route.query.batchId || undefined })
+        if (serial !== this.queueSerial) return
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
         } else this.error = res.message
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (serial === this.queueSerial) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (serial === this.queueSerial) this.loading = false
       }
     },
     search() {
@@ -432,7 +436,7 @@ export default {
       }
     },
     exportFn(payload) {
-      return api.createExport('exceptionList', payload)
+      return api.createExport('exceptionList', { ...payload, batchId: this.$route.query.batchId })
     }
   }
 }

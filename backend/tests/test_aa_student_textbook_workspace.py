@@ -24,12 +24,13 @@ def test_textbook_workspace_requires_real_record_and_server_refresh():
     assert "record.recordId || record.distributionRecordId || record.id" in source
     assert "await load()" in source
     assert "提交后不可由学生端撤回" in source
-    assert "接口失败时显示成功" in source
+    assert "if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'" in source
     assert "window.prompt" not in source
 
 
 def test_textbook_workspace_never_equates_receipt_with_payment_or_grade():
     source = _read("student-portal/src/views/academic/StudentTextbookView.vue")
 
-    assert "签收仅确认教材实物已交付本人" in source
-    assert "不代表费用已经缴清或课程成绩认定" in source
+    assert "签收表示已实际领取教材，不代表教材费已经支付" in source
+    assert "费用状态不会随签收推断为已付" in source
+    assert "academicGrade" not in source

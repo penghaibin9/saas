@@ -57,7 +57,7 @@ def _ensure_graduation_mentor_rows(db, tenant_id: int, users: list) -> list:
 
 
 def reconcile_graduation_mentor_workload(db, tenant_id: int, users: list) -> dict:
-    from app.models import GraduationMentor, GraduationStudent, GraduationTopic, Major
+    from app.models import GraduationBatch, GraduationMentor, GraduationStudent, GraduationTopic, Major
     from app.services.sandbox_school_professional_catalog import professional_profile
 
     mentor_rows = _ensure_graduation_mentor_rows(db, tenant_id, users)
@@ -81,6 +81,17 @@ def reconcile_graduation_mentor_workload(db, tenant_id: int, users: list) -> dic
     }
     major_name_by_id = {mid: name for name, mid in major_id_by_name.items()}
 
+    # current_count is the live workload of the current graduation batch.  Historical
+    # batches are immutable evidence: including them here both inflates capacity and
+    # rewrites their mentor/topic snapshots whenever the 20K reconcile is replayed.
+    current_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if current_batch_id is None:
+        raise RuntimeError("007 当前毕设批次 GD-2027 不存在")
+
     for _major_code, college_name, major_name in _major_specs():
         profile = professional_profile(major_name)
         for mentor in mentors_by_major[major_name]:
@@ -94,6 +105,7 @@ def reconcile_graduation_mentor_workload(db, tenant_id: int, users: list) -> dic
 
     topics = list(db.scalars(select(GraduationTopic).where(
         GraduationTopic.tenant_id == tenant_id,
+        GraduationTopic.batch_id == int(current_batch_id),
         GraduationTopic.is_deleted.is_(False),
     ).order_by(GraduationTopic.id)).all())
     topic_mentor: dict[int, GraduationMentor] = {}
@@ -109,6 +121,7 @@ def reconcile_graduation_mentor_workload(db, tenant_id: int, users: list) -> dic
 
     students = list(db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == int(current_batch_id),
         GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.student_no)).all())
     selecting_cursor: Counter[str] = Counter()

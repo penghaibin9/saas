@@ -7,11 +7,13 @@ const ROOT = process.cwd()
 const OUTPUT_DIR = path.resolve(ROOT, 'dist/build/mp-weixin')
 const APP_JSON = path.join(OUTPUT_DIR, 'app.json')
 const PROJECT_JSON = path.join(OUTPUT_DIR, 'project.config.json')
+const PROJECT_PRIVATE_JSON = path.join(OUTPUT_DIR, 'project.private.config.json')
 const RELEASE_INFO = path.join(OUTPUT_DIR, 'RELEASE_INFO.txt')
 const PACKAGE_REPORT = path.join(OUTPUT_DIR, 'miniapp-package-report.json')
 const ENV_PRODUCTION = path.resolve(ROOT, '.env.production')
 const SRC_MANIFEST = path.resolve(ROOT, 'src/manifest.json')
 const APPID_PATTERN = /^wx[0-9a-fA-F]{16}$/
+const PERMISSION_DESC_MAX_LENGTH = 30
 /** 微信开发者工具的游客/测试号：可以预览调试，但无法上传代码。 */
 const TOURIST_APPID = 'touristappid'
 const TEXT_EXTENSIONS = new Set(['.js', '.json', '.wxml', '.wxss', '.wxs', '.sjs', '.txt'])
@@ -20,18 +22,28 @@ const MAIN_PACKAGE_LIMIT = 2 * 1024 * 1024
 const TOTAL_PACKAGE_LIMIT = 20 * 1024 * 1024
 
 /**
- * V3 §3.2 内部包体硬预算（不是微信平台上限）。
- * 超预算必须做依赖追踪，禁止通过抬高这里的数字把 CI 修绿。
+ * 2026-09-16 用户决定：不以项目自定包体预算限制功能或阻止发布。
+ * 历史 V3 数值仅作性能提醒；平台大小限制与安全门禁仍为硬校验。
  */
 const V3_PACKAGE_BUDGET = {
   main: 520 * 1024,
   'pages/student': 850 * 1024,
-  'pages/teacher': 950 * 1024
+  'pages/student-internship': 300 * 1024,
+  'pages/teacher': 950 * 1024,
+  'pages/teacher-internship': 380 * 1024
 }
 const TOP_FILE_COUNT = 20
+const WXSS_COMPONENT_TAG_PATTERN = /(^|[\s>+~])(view|text|button|input|textarea|image|scroll-view|swiper|swiper-item|picker|form|label|switch|slider|navigator|web-view|video|canvas|map)(?=$|[\s.:>#\[])/
 
 function fail(message) {
   throw new Error(`[mp-weixin release] ${message}`)
+}
+
+function hasCleartextNetworkAddress(text) {
+  // SVG's xmlns is an identifier, not a network request. Keep real HTTP URLs
+  // (including URLs on w3.org outside this exact attribute) subject to the gate.
+  const networkText = text.replace(/\bxmlns=(\\?["'])http:\/\/www\.w3\.org\/2000\/svg\1/g, '')
+  return /http:\/\/(?!localhost(?=[:/\s"'\\]|$)|127\.0\.0\.1(?=[:/\s"'\\]|$))/i.test(networkText)
 }
 
 async function readJson(file) {
@@ -55,6 +67,24 @@ async function walk(dir) {
 
 function normalizeRelative(file) {
   return path.relative(OUTPUT_DIR, file).split(path.sep).join('/')
+}
+
+function findUnsupportedComponentSelectors(text) {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  const unsupported = new Set()
+  const rulePattern = /(?:^|})\s*([^@{}][^{]*)\{/g
+  let match
+  while ((match = rulePattern.exec(code))) {
+    for (const rawSelector of match[1].split(',')) {
+      const selector = rawSelector.trim()
+      if (!selector) continue
+      const hasUnsupportedPseudo = /:(?!host(?:\b|\())[-a-zA-Z]+/.test(selector)
+      if (selector.includes('#') || selector.includes('[') || hasUnsupportedPseudo || WXSS_COMPONENT_TAG_PATTERN.test(selector)) {
+        unsupported.add(selector)
+      }
+    }
+  }
+  return [...unsupported]
 }
 
 async function readTextOrEmpty(file) {
@@ -114,6 +144,14 @@ async function main() {
   const appConfig = await readJson(APP_JSON)
   const projectConfig = await readJson(PROJECT_JSON)
 
+  for (const [scope, config] of Object.entries(appConfig.permission || {})) {
+    const description = String((config && config.desc) || '').trim()
+    const length = Array.from(description).length
+    if (length > PERMISSION_DESC_MAX_LENGTH) {
+      fail(`${scope}.desc 超过微信 ${PERMISSION_DESC_MAX_LENGTH} 字限制（当前 ${length} 字）`)
+    }
+  }
+
   const { pages, subPackages } = collectPages(appConfig)
   const requiredPages = [
     'pages/login/index',
@@ -138,10 +176,30 @@ async function main() {
   const uploadReady = APPID_PATTERN.test(projectConfig.appid)
   await fs.writeFile(PROJECT_JSON, `${JSON.stringify(projectConfig, null, 2)}\n`, 'utf8')
 
+  // 开发者工具会让 project.private.config.json 覆盖项目配置。若这里保留
+  // urlCheck=false，本地预览会放过未配置的 request 合法域名，直到真机才失败。
+  // 发布构建必须让两份配置保持一致，避免形成上线验证盲区。
+  let hasPrivateConfig = true
+  try {
+    await fs.access(PROJECT_PRIVATE_JSON)
+  } catch (error) {
+    if (error?.code === 'ENOENT') hasPrivateConfig = false
+    else throw error
+  }
+  if (hasPrivateConfig) {
+    const privateConfig = await readJson(PROJECT_PRIVATE_JSON)
+    privateConfig.setting = {
+      ...(privateConfig.setting || {}),
+      urlCheck: true
+    }
+    await fs.writeFile(PROJECT_PRIVATE_JSON, `${JSON.stringify(privateConfig, null, 2)}\n`, 'utf8')
+  }
+
   let files = await walk(OUTPUT_DIR)
   const sourceMaps = files.filter((file) => file.endsWith('.map'))
   await Promise.all(sourceMaps.map((file) => fs.unlink(file)))
-  files = files.filter((file) => !file.endsWith('.map'))
+  // Re-running finalize must not count its own prior report and release note as app code.
+  files = files.filter((file) => !file.endsWith('.map') && file !== PACKAGE_REPORT && file !== RELEASE_INFO)
 
   const textFiles = files.filter((file) => TEXT_EXTENSIONS.has(path.extname(file).toLowerCase()))
   let apiBaseFound = false
@@ -149,11 +207,33 @@ async function main() {
   for (const file of textFiles) {
     const text = await fs.readFile(file, 'utf8')
     if (text.includes(expectedApiBase)) apiBaseFound = true
-    if (/http:\/\/(?!localhost|127\.0\.0\.1)/i.test(text)) cleartextApiFiles.push(normalizeRelative(file))
+    if (hasCleartextNetworkAddress(text)) cleartextApiFiles.push(normalizeRelative(file))
   }
   if (!apiBaseFound) fail(`构建产物未注入正式 API：${expectedApiBase}`)
   if (cleartextApiFiles.length) {
     fail(`构建产物包含非本机 HTTP 明文地址：${[...new Set(cleartextApiFiles)].join(', ')}`)
+  }
+
+  const leakedBuildPathFiles = []
+  for (const file of textFiles) {
+    const text = await fs.readFile(file, 'utf8')
+    if (/VITE_ROOT_DIR|[A-Za-z]:\\\\Users\\\\[^"']+|(?:^|["'\s])\/(?:Users|home)\/[^/]+\//.test(text)) {
+      leakedBuildPathFiles.push(normalizeRelative(file))
+    }
+  }
+  if (leakedBuildPathFiles.length) {
+    fail(`构建产物泄露本机绝对路径：${[...new Set(leakedBuildPathFiles)].join(', ')}`)
+  }
+
+  const mockPayloadFiles = []
+  for (const file of files.filter((item) => normalizeRelative(item).startsWith('mock/') && item.endsWith('.js'))) {
+    const text = await fs.readFile(file, 'utf8')
+    if (!/Object\.freeze\(\[\]\)/.test(text) && text.trim() !== '"use strict";') {
+      mockPayloadFiles.push(normalizeRelative(file))
+    }
+  }
+  if (mockPayloadFiles.length) {
+    fail(`生产包仍包含未剥离的 mock 数据体：${mockPayloadFiles.join(', ')}`)
   }
 
   // WXSS 解析器既不支持省略元素名的伪类（`> :first-child` → error at token `:`），
@@ -174,6 +254,26 @@ async function main() {
     fail(
       '以下 WXSS 含微信不支持的选择器（">" 后直接跟伪类，或使用通配符 "*"）；' +
       `请改写为具体类名选择器：${badSelectorFiles.join(', ')}`
+    )
+  }
+
+  const badComponentSelectors = []
+  for (const jsonFile of files.filter((file) => file.endsWith('.json'))) {
+    let config
+    try { config = JSON.parse(await fs.readFile(jsonFile, 'utf8')) } catch (error) { continue }
+    if (config.component !== true) continue
+    const wxssFile = jsonFile.replace(/\.json$/i, '.wxss')
+    const wxss = await readTextOrEmpty(wxssFile)
+    if (!wxss) continue
+    const selectors = findUnsupportedComponentSelectors(wxss)
+    if (selectors.length) {
+      badComponentSelectors.push(`${normalizeRelative(wxssFile)}: ${selectors.join(', ')}`)
+    }
+  }
+  if (badComponentSelectors.length) {
+    fail(
+      '自定义组件 WXSS 只能使用兼容的类选择器；检测到标签、ID、属性或伪类选择器：' +
+      badComponentSelectors.join('; ')
     )
   }
 
@@ -225,10 +325,15 @@ async function main() {
       fileCount: bucket.fileCount,
       budgetBytes: budgetBytes ?? null,
       overBudget: budgetBytes != null && bucket.bytes > budgetBytes,
+      platformLimitBytes: MAIN_PACKAGE_LIMIT,
+      overPlatformLimit: bucket.bytes > MAIN_PACKAGE_LIMIT,
+      platformHeadroomBytes: MAIN_PACKAGE_LIMIT - bucket.bytes,
       topFiles: [...bucket.files].sort((left, right) => right.bytes - left.bytes).slice(0, TOP_FILE_COUNT)
     }
   })
   const overBudget = budgetRows.filter((row) => row.overBudget)
+  const platformViolations = budgetRows.filter((row) => row.overPlatformLimit)
+  const platformPass = totalBytes <= TOTAL_PACKAGE_LIMIT && platformViolations.length === 0
   const packageReport = {
     schema: 'miniapp-package-report/1',
     generatedAt: new Date().toISOString(),
@@ -237,35 +342,39 @@ async function main() {
     duplicateAssets: duplicateAssets.slice(0, TOP_FILE_COUNT),
     duplicateWastedBytes: duplicateAssets.reduce((sum, item) => sum + item.wastedBytes, 0),
     budgetPass: overBudget.length === 0,
+    budgetMode: 'warning',
+    platformPass,
     platformLimits: {
       mainPackageSplitTrigger: MAIN_PACKAGE_SPLIT_TRIGGER,
       mainPackageLimit: MAIN_PACKAGE_LIMIT,
+      singlePackageLimit: MAIN_PACKAGE_LIMIT,
       totalPackageLimit: TOTAL_PACKAGE_LIMIT
     }
   }
   await fs.writeFile(PACKAGE_REPORT, `${JSON.stringify(packageReport, null, 2)}\n`, 'utf8')
 
   if (overBudget.length) {
-    fail(
-      'V3 内部包体预算未通过：' +
+    console.warn(
+      '[mp-weixin release] 性能参考值提醒（不阻止发布）：' +
       overBudget
         .map((row) => `${row.package} ${(row.bytes / 1024).toFixed(1)} KiB > ${(row.budgetBytes / 1024).toFixed(1)} KiB`)
         .join('；') +
-      '。请做依赖追踪（跨包静态 import、重复大 JSON/图标、非必要组件），禁止抬高预算阈值。'
+      '。按实际加载体验优化，不为满足历史预算删减功能或降低材料清晰度。'
     )
   }
 
   if (totalBytes > TOTAL_PACKAGE_LIMIT) {
     fail(`小程序总包约 ${(totalBytes / 1024 / 1024).toFixed(2)} MiB，超过 20 MiB`)
   }
-  if (mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER) {
-    fail(
-      `主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，达到 1.80 MiB 主动分包线；` +
-      '必须实施 pages.json 分包后再发布'
-    )
+  if (platformViolations.length) {
+    fail('超过微信单个主包/分包 2 MiB 上限：' + platformViolations.map((row) =>
+      `${row.package} ${(row.bytes / 1024 / 1024).toFixed(2)} MiB`).join('；'))
   }
-  if (mainPackageBytes > MAIN_PACKAGE_LIMIT) {
-    fail(`主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，超过 2 MiB`)
+  if (mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER) {
+    console.warn(
+      `[mp-weixin release] 主包约 ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB，达到 1.80 MiB 性能提醒线；` +
+      '尚未超过平台上限，不阻止发布。'
+    )
   }
 
   const apiHost = expectedApiBase.replace(/^https:\/\//i, '')
@@ -278,15 +387,15 @@ async function main() {
     `API: ${expectedApiBase}`,
     `AppID: ${uploadReady ? projectConfig.appid : `${projectConfig.appid}（占位，未配置真实 AppID）`}`,
     `AppID 来源: ${appidSource || '未配置'}`,
-    `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB（主动分包线 1.80 MiB / 上限 2 MiB）`,
+    `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB（平台上限 2 MiB；1.80 MiB 仅提醒）`,
     `总包大小: ${(totalBytes / 1024 / 1024).toFixed(2)} MiB（上限 20 MiB）`,
     `分包数量: ${subPackages.length}`,
     ...budgetRows.map((row) => (
       `  ${row.package}: ${(row.bytes / 1024).toFixed(1)} KiB` +
-      (row.budgetBytes != null ? `（V3 内部预算 ${(row.budgetBytes / 1024).toFixed(1)} KiB）` : '')
+      (row.budgetBytes != null ? `（历史性能参考 ${(row.budgetBytes / 1024).toFixed(1)} KiB，仅提醒）` : '')
     )),
     `跨包重复资产浪费: ${(packageReport.duplicateWastedBytes / 1024).toFixed(1)} KiB`,
-    `包体报告: miniapp-package-report.json（budgetPass=${packageReport.budgetPass}）`,
+    `包体报告: miniapp-package-report.json（platformPass=${packageReport.platformPass}；budgetPass=${packageReport.budgetPass} 仅供性能参考）`,
     '学生端入口: pages/login/student/index',
     '教师端入口: pages/login/teacher/index',
     '',

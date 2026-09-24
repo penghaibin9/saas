@@ -72,7 +72,7 @@
               <tr v-for="a in audits" :key="a.id">
                 <td class="is-who">{{ a.who }} · {{ a.roleName }}</td>
                 <td>{{ a.time }}</td>
-                <td>{{ a.action }}</td>
+                <td>{{ auditActionLabel(a) }}</td>
                 <td>{{ a.target }}</td>
                 <td>{{ a.detail }}</td>
               </tr>
@@ -174,6 +174,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
 import { buildDetailQuery } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 const EMPTY_FILTERS = () => ({ bizType: '', urgency: '', keyword: '', submitDate: '' })
 
@@ -279,6 +280,7 @@ export default {
     this.loadAudits()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)

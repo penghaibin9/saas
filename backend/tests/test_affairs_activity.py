@@ -85,6 +85,103 @@ def test_activity_full_flow_and_credit(client, db_mode):
     assert len(ev) >= 1
 
 
+def test_teacher_mobile_can_finish_activity_and_confirm_credits(client, db_mode):
+    """教师移动端可完成现场状态推进；复用同一活动服务和积分台账。"""
+    hdr = _hdr(client, "school_admin01")
+    sid = db_mode["student"]
+    activity = client.post(f"{BASE}/activities", headers=hdr, json={
+        "activityName": "移动端现场闭环", "activityType": "ACTIVITY",
+        "creditType": "SECOND_CLASS", "creditValue": 1, "quota": 30,
+    }).json()["data"]
+    activity = _publish(client, hdr, activity)
+    aid = activity["activityId"]
+
+    listed = client.get(
+        "/api/v1/mobile/teacher/affairs/activities",
+        headers=hdr,
+        params={"status": "PUBLISHED,ENROLL_CLOSED,ONGOING,FINISHED"},
+    ).json()
+    assert listed["code"] == 0
+    assert any(x["activityId"] == aid and "ENROLL_CLOSE" in x["allowedActions"] for x in listed["data"]["items"])
+
+    for action in ("ENROLL_CLOSE", "START", "FINISH"):
+        moved = client.post(
+            f"/api/v1/mobile/teacher/affairs/activities/{aid}/transition",
+            headers=hdr,
+            json={"action": action, "version": activity["version"]},
+        ).json()
+        assert moved["code"] == 0, (action, moved)
+        activity = moved["data"]
+
+    _seed_checkin(aid, sid)
+    participants = client.get(
+        f"/api/v1/mobile/teacher/affairs/activities/{aid}/participants",
+        headers=hdr,
+    ).json()
+    assert participants["code"] == 0
+    assert any(x["studentId"] == str(sid) and x["signupStatus"] == "CHECKED_IN" for x in participants["data"]["items"])
+
+    confirmed = client.post(
+        f"/api/v1/mobile/teacher/affairs/activities/{aid}/confirm",
+        headers=hdr,
+        json={"version": activity["version"]},
+    ).json()
+    assert confirmed["code"] == 0
+    assert confirmed["data"]["status"] == "CONFIRMED"
+    assert confirmed["data"]["creditsGranted"] == 1
+
+
+def test_participant_pages_share_scope_and_totals_across_pc_and_mobile(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsActivitySignup, StudentProfile, TeacherStudentScope
+
+    hdr = _hdr(client, "school_admin01")
+    activity = client.post(f"{BASE}/activities", headers=hdr, json={
+        "activityName": "名单分页与范围回归", "activityType": "ACTIVITY",
+    }).json()["data"]
+    aid = activity["activityId"]
+    with get_sessionmaker()() as db:
+        students = [StudentProfile(tenant_id=TID, student_no=f"ROSTER-{i}", real_name=f"名单测试{i}",
+                                   current_stage="ENROLLED", student_status="NORMAL", status="ACTIVE") for i in range(23)]
+        foreign = StudentProfile(tenant_id=TID + 1, student_no="FOREIGN-ROSTER", real_name="校外名单测试",
+                                 current_stage="ENROLLED", student_status="NORMAL", status="ACTIVE")
+        db.add_all(students + [foreign]); db.flush()
+        for i, student in enumerate(students):
+            db.add(AffairsActivitySignup(tenant_id=TID, activity_id=int(aid), student_id=student.id,
+                                         signup_status="CANCELLED" if i == 22 else "CHECKED_IN" if i % 2 == 0 else "ENROLLED"))
+        # 即使历史脏关系指向外校学生，也不得返回该名单。
+        db.add(AffairsActivitySignup(tenant_id=TID, activity_id=int(aid), student_id=foreign.id, signup_status="CHECKED_IN"))
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", role_code="COLLEGE_ADMIN",
+                                   scope_type="STUDENT", ref_value=students[0].student_no, status="ACTIVE"))
+        expected_id = str(students[0].id)
+        db.commit()
+
+    urls = [f"{BASE}/activities/{aid}/participants", f"/api/v1/mobile/teacher/affairs/activities/{aid}/participants"]
+    counselor = _hdr(client, "counselor01")
+    scoped_teacher = _hdr(client, "college_admin01")
+    for url in urls:
+        first = client.get(url, headers=hdr, params={"page": 1, "pageSize": 20})
+        assert first.status_code == 200, first.text
+        first = first.json()["data"]
+        second = client.get(url, headers=hdr, params={"page": 2, "pageSize": 20}).json()["data"]
+        assert len(first["items"]) == 20 and len(second["items"]) == 3
+        assert first["total"] == second["total"] == 23
+        assert first["summary"] == second["summary"] == {"total": 22, "checkedIn": 11}
+        assert not ({x["signupId"] for x in first["items"]} & {x["signupId"] for x in second["items"]})
+        assert client.get(url, headers=counselor).status_code == 403
+        limited = client.get(url, headers=scoped_teacher)
+        assert limited.status_code == 200, limited.text
+        limited = limited.json()["data"]
+        assert limited["total"] == 1 and limited["summary"] == {"total": 1, "checkedIn": 1}
+        assert [x["studentId"] for x in limited["items"]] == [expected_id]
+        assert client.get(url, headers=hdr, params={"pageSize": 1000}).status_code == 400
+    with get_sessionmaker()() as db:
+        from app.models import AffairsActivity
+        row = db.get(AffairsActivity, int(aid)); row.tenant_id = TID + 1; db.commit()
+    for url in urls:
+        assert client.get(url, headers=hdr).status_code == 404
+
+
 def test_activity_unconfirm_no_duplicate_credit(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     sid = db_mode["student"]

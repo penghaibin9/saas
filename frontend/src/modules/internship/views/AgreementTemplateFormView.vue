@@ -1,13 +1,12 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell class="atf-page"
     :title="isEdit ? '编辑协议模板' : '新建协议模板'"
     :subtitle="pageSubtitle"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
     watermark-purpose="实习协议模板管理"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="goBack">← 返回模板库</AppButton>
+      <AppButton variant="ghost" :disabled="submitting" @click="goBack">{{ isEdit ? '返回模板详情' : '返回模板库' }}</AppButton>
+      <AppButton v-if="!loading && !error && !readonly" variant="primary" :disabled="!variablesReady" :loading="submitting" @click="onSubmit">{{ isEdit ? '保存修改' : '保存草稿' }}</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="init" />
@@ -17,81 +16,92 @@
         v-if="readonly"
         type="warning"
         title="当前模板不可编辑"
-        :description="`模板当前状态为「${detail.statusLabel}」，已归档模板仅可查看，不可再编辑；本页为只读预览，提交已禁用。`"
+        :description="detail?.status === 'ARCHIVED' ? '模板已归档，仅可查看原有内容。' : '当前身份没有协议模板管理权限。'"
       />
+      <p v-if="saveError" class="atf-error" role="alert">{{ saveError }}。本页输入已保留。</p>
+      <p v-if="variablesError" class="atf-error" role="alert">{{ variablesError }} <AppButton variant="ghost" @click="loadVariables">重试</AppButton></p>
+      <nav class="atf-sections" aria-label="模板编辑分区"><AppButton variant="ghost" @click="focusSection('info')">基本信息与范围</AppButton><AppButton variant="ghost" @click="focusSection('body')">协议正文与变量</AppButton></nav>
 
       <AppForm
+        class="atf-form"
         ref="tplForm"
         :model="form"
         :rules="formRules"
-        layout="horizontal"
+        layout="vertical"
         label-width="112px"
         @submit="onSubmit"
       >
         <!-- 基本信息 -->
-        <section class="mp-card">
+        <section ref="info" class="mp-card" tabindex="-1">
           <div class="mp-card__head"><span class="mp-card__title">基本信息</span></div>
           <div class="mp-card__body">
             <div class="atf-grid">
               <AppFormItem class="atf-grid__full" label="模板名称" prop="name" required>
-                <AppTextInput v-model="form.name" :disabled="readonly" placeholder="如 顶岗实习三方协议" />
+                <AppTextInput v-model="form.name" :disabled="readonly || submitting" placeholder="如 顶岗实习三方协议" />
               </AppFormItem>
               <AppFormItem label="协议类型" prop="category">
-                <AppSelect v-model="form.category" :options="categoryOptions" placeholder="" :disabled="readonly" />
+                <AppSelect v-model="form.category" :options="categoryOptions" placeholder="" :disabled="readonly || submitting" />
               </AppFormItem>
               <AppFormItem label="版本号" prop="version">
-                <AppTextInput v-model="form.version" :disabled="readonly" placeholder="v1.0" />
+                <AppTextInput v-model="form.version" :disabled="readonly || submitting" placeholder="v1.0" />
               </AppFormItem>
-              <AppFormItem label="适用学院ID" prop="scopeCollegeIds">
-                <AppTextInput v-model="form.scopeCollegeIds" :disabled="readonly" placeholder="逗号分隔，留空=全校" />
+              <AppFormItem label="适用学院" prop="scopeCollegeIds">
+                <AppCollegePicker v-model="form.scopeCollegeIds" multiple :disabled="readonly || submitting" placeholder="不限学院" @change="markDirty" />
               </AppFormItem>
-              <AppFormItem label="适用专业ID" prop="scopeMajorIds">
-                <AppTextInput v-model="form.scopeMajorIds" :disabled="readonly" placeholder="逗号分隔，留空=全校" />
+              <AppFormItem label="适用专业" prop="scopeMajorIds">
+                <AppMajorPicker v-model="form.scopeMajorIds" multiple :disabled="readonly || submitting" placeholder="不限专业" @change="markDirty" />
               </AppFormItem>
               <AppFormItem label="适用年级" prop="scopeGrades">
-                <AppTextInput v-model="form.scopeGrades" :disabled="readonly" placeholder="如 2024级,2023级" />
+                <AppGradePicker v-model="form.scopeGrades" multiple :disabled="readonly || submitting" placeholder="不限年级" @change="markDirty" />
               </AppFormItem>
-              <AppFormItem label="适用批次ID" prop="scopeBatchIds">
-                <AppTextInput v-model="form.scopeBatchIds" :disabled="readonly" placeholder="逗号分隔，留空=不限" />
+              <AppFormItem label="适用批次" prop="scopeBatchIds">
+                <AppInternshipBatchPicker v-model="form.scopeBatchIds" multiple :disabled="readonly || submitting" placeholder="不限批次" @change="markDirty" />
               </AppFormItem>
               <AppFormItem class="atf-grid__full" label="备注" prop="remark">
-                <AppTextInput v-model="form.remark" :disabled="readonly" placeholder="备注（可选）" />
+                <AppTextInput v-model="form.remark" :disabled="readonly || submitting" placeholder="备注（可选）" />
               </AppFormItem>
             </div>
           </div>
         </section>
 
-        <!-- 模板正文（核心内容，占满宽度）：条款/变量都是点击插入，不用手打双花括号 -->
-        <section class="mp-card">
+        <!-- 正文为主工作区；插入工具保留当前选区，不要求手打占位符。 -->
+        <section ref="body" class="mp-card" tabindex="-1">
           <div class="mp-card__head">
             <span class="mp-card__title">模板正文</span>
-            <span class="atf-aside">点下方按钮把条款或变量插入正文，光标停在哪就插在哪</span>
+            <span class="atf-aside">在光标处插入条款或变量</span>
           </div>
           <div class="mp-card__body">
             <AppFormItem class="atf-body-item" label="正文内容" prop="body">
-              <div v-if="!readonly" class="atf-chip-row">
-                <span class="atf-chip-row__label">常用条款</span>
+              <details v-if="!readonly" class="atf-insert-group">
+                <summary>常用条款<span>选择后插入正文</span></summary>
                 <AppTemplateChips class="atf-body-chips" :options="AGREEMENT_CLAUSE" size="compact" @pick="onPickClause" />
-              </div>
-              <div v-if="!readonly && variableChipOptions.length" class="atf-chip-row">
-                <span class="atf-chip-row__label">插入变量</span>
+              </details>
+              <details v-if="!readonly && variableChipOptions.length" class="atf-insert-group" open>
+                <summary>插入变量<span>生成协议时自动填入实际信息</span></summary>
                 <AppTemplateChips class="atf-body-chips" :options="variableChipOptions" size="compact" @pick="onPickVariable" />
-              </div>
+              </details>
               <AppTextarea
+                ref="bodyInput"
                 v-model="form.body"
                 class="atf-body"
                 :rows="16"
-                :disabled="readonly"
+                :disabled="readonly || submitting"
                 :placeholder="bodyPlaceholder"
+                @click="rememberBodySelection"
+                @keyup="rememberBodySelection"
+                @select="rememberBodySelection"
+                @blur="rememberBodySelection"
               />
+              <p class="atf-editor-note">{{ (form.body || '').length }} 字<span>保存为草稿后，可在模板详情中核对并启用。</span></p>
             </AppFormItem>
           </div>
         </section>
 
         <AppSubmitBar
+          class="atf-submit"
           :loading="submitting"
-          :disabled="readonly"
-          :submit-text="isEdit ? '保存修改' : '创建模板'"
+          :disabled="readonly || !variablesReady"
+          :submit-text="isEdit ? '保存修改' : '保存草稿'"
           cancel-text="取消"
           @submit="onSubmit"
           @cancel="goBack"
@@ -117,27 +127,29 @@ import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppTemplateChips
 } from '@/components/common'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
-import { internshipApi } from '@/modules/internship/api/internship.api'
+import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { AGREEMENT_CLAUSE } from '@/modules/internship/constants/presetPrompts'
+import { AppCollegePicker, AppMajorPicker, AppGradePicker, AppInternshipBatchPicker } from '@/components/common/picker'
 
 const CATEGORY_OPTS = ['三方协议', '顶岗实习协议', '安全责任书', '实习承诺书', '保密协议']
 const blankForm = () => ({
-  name: '', category: '', version: 'v1.0', scopeCollegeIds: '', scopeMajorIds: '',
-  scopeGrades: '', scopeBatchIds: '', body: '', remark: ''
+  name: '', category: '', version: 'v1.0', scopeCollegeIds: [], scopeMajorIds: [],
+  scopeGrades: [], scopeBatchIds: [], body: '', remark: ''
 })
-const toArr = (s) => (s || '').split(/[,，]/).map((x) => x.trim()).filter(Boolean)
 
 export default {
   name: 'AgreementTemplateFormView',
+  props: { ctx: { type: Object, default: () => ({}) } },
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
+    AppCollegePicker, AppMajorPicker, AppGradePicker, AppInternshipBatchPicker,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppSelect, AppTextarea, AppSubmitBar, AppTemplateChips
   },
   data() {
     return {
       AGREEMENT_CLAUSE,
-      ctx: null,
+      loadTicket: 0, variableTicket: 0, saveError: '', variablesReady: false, variablesError: '', bodySelection: null,
       loading: false,
       error: '',
       submitting: false,
@@ -161,13 +173,13 @@ export default {
       return this.ctx?.dataScope?.name || ''
     },
     readonly() {
-      return this.isEdit && !!this.detail && this.detail.status === 'ARCHIVED'
+      return !Array.isArray(this.ctx?.permissionPatterns) || !canCode(this.ctx, 'internship.agreement.template.manage') || (this.isEdit && !!this.detail && this.detail.status === 'ARCHIVED')
     },
     pageSubtitle() {
       if (this.isEdit) {
         return this.detail ? `${this.detail.name}（${this.detail.category || '未分类'} · ${this.detail.version}）` : ''
       }
-      return '创建实习三方协议 / 安全责任书等模板，支持适用范围 / 版本 / 变量占位'
+      return '设置模板信息与适用范围，编写可复用的协议正文。'
     },
     formRules() {
       return {
@@ -198,37 +210,54 @@ export default {
     }
   },
   created() {
-    internshipApi.getContext().then((res) => {
-      if (res.code === 0) this.ctx = res.data
-    })
-    agreementTemplateApi.getVariablePresets().then((res) => {
-      if (res.code === 0) this.variablePresets = res.data || []
-    })
+    this.loadVariables()
     this.init()
   },
+  beforeUnmount() { this.loadTicket++; this.variableTicket++ },
   methods: {
+    focusSection(key) { this.$refs[key]?.scrollIntoView({ block: 'start', behavior: 'smooth' }); this.$refs[key]?.focus({ preventScroll: true }) },
+    async loadVariables() {
+      const ticket = ++this.variableTicket
+      this.variablesReady = false; this.variablesError = ''
+      try {
+        const res = await agreementTemplateApi.getVariablePresets()
+        if (ticket !== this.variableTicket) return
+        if (res.code !== 0) throw new Error(res.message || '变量列表加载失败，请重试')
+        this.variablePresets = res.data || []; this.variablesReady = true
+      } catch (error) { if (ticket === this.variableTicket) this.variablesError = error.message || '变量列表加载失败，请重试' }
+    },
+    markDirty() { window.__SAAS_DIRTY_FORM_GUARD__?.markDirty() },
     braced(key) {
       return '{' + '{' + key + '}' + '}'
     },
-    onPickClause(text) {
-      if (!text) return
-      const cur = (this.form.body || '').replace(/\n+$/, '')
-      this.form.body = cur ? cur + '\n' + text : text
+    rememberBodySelection(event) {
+      const input = event.target
+      if (input?.tagName !== 'TEXTAREA') return
+      this.bodySelection = { start: input.selectionStart, end: input.selectionEnd }
     },
-    onPickVariable(text) {
-      if (!text) return
-      // 变量占位符直接接在末尾，中间留个空格，方便连续点插多个变量拼一行（如 甲方：{{schoolName}} 乙方：{{companyName}}）
-      const cur = this.form.body || ''
-      this.form.body = cur && !/\s$/.test(cur) ? cur + ' ' + text : cur + text
+    insertBodyText(text, clause = false) {
+      if (!text || this.readonly || this.submitting) return
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
+      const body = this.form.body || ''
+      const start = Math.min(this.bodySelection?.start ?? body.length, body.length)
+      const end = Math.min(this.bodySelection?.end ?? body.length, body.length)
+      const before = body.slice(0, start), after = body.slice(end)
+      const inserted = clause ? `${before && !before.endsWith('\n') ? '\n' : ''}${text}${after && !after.startsWith('\n') ? '\n' : ''}` : text
+      this.form.body = before + inserted + after
+      const caret = start + inserted.length
+      this.bodySelection = { start: caret, end: caret }
+      this.$nextTick(() => {
+        const input = this.$refs.bodyInput?.$el?.querySelector('textarea')
+        input?.focus({ preventScroll: true }); input?.setSelectionRange(caret, caret)
+      })
     },
-    goBack() {
-      // 从列表/详情进入时走历史返回（保留筛选/页码）；深链直入时兜底到模板库列表
-      const back = this.$router.options.history.state && this.$router.options.history.state.back
-      if (typeof back === 'string' && back.startsWith('/admin/internship/agreement-templates')) this.$router.back()
-      else this.$router.push('/admin/internship/agreement-templates')
-    },
+    onPickClause(text) { this.insertBodyText(text, true) },
+    onPickVariable(text) { this.insertBodyText(text) },
+    goBack() { if (!this.submitting) this.$router.push({ path: this.isEdit ? `/admin/internship/agreement-templates/${this.$route.params.id}` : '/admin/internship/agreement-templates', query: { ...this.$route.query } }) },
     async init() {
-      this.error = ''
+      const ticket = ++this.loadTicket
+      this.error = ''; this.saveError = ''
+      this.bodySelection = null
       if (!this.isEdit) {
         this.detail = null
         this.form = blankForm()
@@ -237,26 +266,25 @@ export default {
       }
       this.loading = true
       const id = this.$route.params.id
+      try {
       const res = await agreementTemplateApi.getTemplateDetail(id)
-      if (id !== this.$route.params.id) return
-      this.loading = false
-      if (res.code !== 0) {
-        this.error = res.message || '模板不存在或无权查看'
-        return
-      }
+      if (ticket !== this.loadTicket || id !== this.$route.params.id) return
+      if (res.code !== 0 || !res.data) throw new Error(res.message || '模板不存在或无权查看')
       const d = res.data
       this.detail = d
       this.form = {
         name: d.name || '',
         category: d.category || '',
         version: d.version || 'v1.0',
-        scopeCollegeIds: (d.scopeCollegeIds || []).join(','),
-        scopeMajorIds: (d.scopeMajorIds || []).join(','),
-        scopeGrades: (d.scopeGrades || []).join(','),
-        scopeBatchIds: (d.scopeBatchIds || []).join(','),
+        scopeCollegeIds: (d.scopeCollegeIds || []).map(String),
+        scopeMajorIds: (d.scopeMajorIds || []).map(String),
+        scopeGrades: (d.scopeGrades || []).map(String),
+        scopeBatchIds: (d.scopeBatchIds || []).map(String),
         body: d.body || '',
         remark: d.remark || ''
       }
+      } catch (error) { if (ticket === this.loadTicket) this.error = error.message || '模板加载失败，请重试' }
+      finally { if (ticket === this.loadTicket) this.loading = false }
     },
     _buildBody() {
       // 变量清单不再靠人工勾选：直接扫正文里实际用到了哪些 {{key}}，保证清单与正文永远一致
@@ -266,27 +294,33 @@ export default {
         .map((v) => ({ key: v.key, label: v.label, example: v.example }))
       return {
         name: this.form.name, category: this.form.category || null, version: this.form.version || 'v1.0',
-        scopeCollegeIds: toArr(this.form.scopeCollegeIds), scopeMajorIds: toArr(this.form.scopeMajorIds),
-        scopeGrades: toArr(this.form.scopeGrades), scopeBatchIds: toArr(this.form.scopeBatchIds),
+        scopeCollegeIds: this.form.scopeCollegeIds, scopeMajorIds: this.form.scopeMajorIds,
+        scopeGrades: this.form.scopeGrades, scopeBatchIds: this.form.scopeBatchIds,
         body: this.form.body, variables, remark: this.form.remark
       }
     },
     async onSubmit() {
-      if (this.readonly || this.submitting) return
-      const { valid } = await this.$refs.tplForm.validate()
-      if (!valid) return
+      if (this.readonly || this.submitting || !this.variablesReady || this.loading || this.error) return
+      const ticket = this.loadTicket, id = this.$route.params.id, scope = this.ctx?.ctxKey
       this.submitting = true
+      this.saveError = ''
       try {
+        const { valid } = await this.$refs.tplForm.validate()
+        if (!valid || ticket !== this.loadTicket || scope !== this.ctx?.ctxKey || this.readonly) return
         const payload = this._buildBody()
         const res = this.isEdit
           ? await agreementTemplateApi.updateTemplate(this.$route.params.id, payload)
           : await agreementTemplateApi.createTemplate(payload)
-        if (res.code === 0) {
-          toast.success('已保存并写入留痕')
-          this.goBack()
+        if (ticket !== this.loadTicket || id !== this.$route.params.id || scope !== this.ctx?.ctxKey) return
+        if (res.code === 0 && res.data?.id) {
+          window.__SAAS_DIRTY_FORM_GUARD__?.markSaved()
+          toast.success(this.isEdit ? '模板修改已保存' : '模板草稿已保存，核对后可启用')
+          this.$router.push({ path: `/admin/internship/agreement-templates/${res.data.id}`, query: { ...this.$route.query } })
         } else {
-          toast.error(res.message || '保存失败')
+          this.saveError = res.message || '未能确认保存结果，请到模板库核对'
         }
+      } catch (error) {
+        if (ticket === this.loadTicket) this.saveError = error.message || '保存失败，请重试'
       } finally {
         this.submitting = false
       }
@@ -321,24 +355,23 @@ export default {
   font-size: 13px;
   line-height: 1.8;
 }
-.atf-chip-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-.atf-chip-row__label {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-.atf-chip-row .atf-body-chips {
-  margin-bottom: 0;
-}
+.atf-insert-group { border-bottom: 1px solid var(--card-b); padding: 0 0 10px; margin-bottom: 12px; }
+.atf-insert-group summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-primary); padding: 4px 0; }
+.atf-insert-group summary span { margin-left: 12px; font-weight: 400; font-size: 12px; color: var(--text-secondary); }
+.atf-insert-group[open] summary { margin-bottom: 8px; }
+.atf-insert-group summary:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 3px; }
+.atf-insert-group .atf-body-chips { margin-bottom: 0; }
+.atf-editor-note { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 @media (max-width: 960px) {
   .atf-grid {
     grid-template-columns: 1fr;
   }
 }
+.atf-page .mp-card { border-radius: 8px; box-shadow: none; margin-bottom: 20px; }.atf-page .mp-card__head { padding: 16px 20px; flex-wrap: wrap; gap: 8px; }.atf-page .mp-card__body { padding: 20px; }.atf-grid { gap: 8px 24px; }.atf-body :deep(textarea) { font-size: 14px; line-height: 1.9; min-height: 380px; }.atf-page :deep(.app-submit-bar) { border-radius: 8px; }
+.atf-form { display: grid; grid-template-columns: 320px minmax(0, 1fr); align-items: start; gap: 20px; }
+.atf-form section { scroll-margin-top: 16px; }
+.atf-sections { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--card-b); padding-bottom: 8px; }
+.atf-error { margin: 0; color: var(--danger-700, #b91c1c); background: var(--danger-50, #fef2f2); padding: 12px 16px; border-radius: 6px; font-size: 13px; line-height: 1.8; }
+.atf-form > .mp-card { min-width: 0; margin-bottom: 0; }.atf-form .atf-grid { grid-template-columns: 1fr; }.atf-form > .atf-submit { grid-column: 1 / -1; margin: 0; width: 100%; box-sizing: border-box; bottom: 0; }
+@media (max-width: 1100px) { .atf-form { grid-template-columns: 1fr; } }
 </style>

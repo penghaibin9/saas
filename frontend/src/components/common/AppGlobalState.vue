@@ -28,13 +28,18 @@
     </div>
 
     <!-- 其余状态：图标 + 标题 + 说明 + 操作按钮 -->
-    <div v-else-if="state !== 'ready'" class="ags-panel" :class="`ags-${state}`" role="status">
-      <div class="ags-icon" :class="`ags-icon--${state}`">{{ meta.icon }}</div>
-      <div class="ags-title">{{ title || meta.title }}</div>
-      <div class="ags-desc">{{ description || meta.description }}</div>
-      <div v-if="errorCode && state === 'error'" class="ags-code">错误码：{{ errorCode }}</div>
+    <div v-else-if="state !== 'ready'" class="ags-panel" :class="`ags-${resolvedState}`" role="status">
+      <div class="ags-icon" :class="`ags-icon--${resolvedState}`">{{ meta.icon }}</div>
+      <div class="ags-title">{{ accessBlocked || resolvedState !== state ? meta.title : (title || meta.title) }}</div>
+      <div class="ags-desc">{{ accessBlocked ? meta.description : (resolvedState !== state ? safeError.userMessage : (description || meta.description)) }}</div>
+      <div v-if="errorCode && resolvedState === 'error'" class="ags-code">错误码：{{ errorCode }}</div>
       <div class="ags-actions">
-        <slot name="actions">
+        <template v-if="accessBlocked">
+          <button v-if="resolvedState === 'unauthorized'" type="button" class="ags-btn ags-btn--primary" @click="login">重新登录</button>
+          <button v-else type="button" class="ags-btn" @click="goBack">返回</button>
+          <button v-if="meta.contact && $?.vnode?.props?.onContact" type="button" class="ags-btn" @click="$emit('contact')">{{ meta.contact }}</button>
+        </template>
+        <slot v-else name="actions">
           <button
             v-if="meta.retry"
             type="button"
@@ -43,10 +48,10 @@
           >
             {{ meta.retry }}
           </button>
-          <button v-if="meta.back" type="button" class="ags-btn" @click="$emit('back')">
+          <button v-if="meta.back" type="button" class="ags-btn" @click="goBack">
             {{ meta.back }}
           </button>
-          <button v-if="meta.contact" type="button" class="ags-btn" @click="$emit('contact')">
+          <button v-if="meta.contact && $?.vnode?.props?.onContact" type="button" class="ags-btn" @click="$emit('contact')">
             {{ meta.contact }}
           </button>
         </slot>
@@ -56,6 +61,7 @@
 </template>
 
 <script>
+import { normalizeUiError } from '@/utils/presentationSafety'
 /**
  * AppGlobalState 全局页面状态容器
  * 依据 V2.1 §12：所有 PC 页面必须使用本组件处理页面状态。
@@ -86,10 +92,10 @@ const STATE_META = {
   },
   forbidden: {
     icon: '⊘',
-    title: '当前身份无权查看',
+    title: '暂无访问权限',
     description: '原因：不在授权范围内。建议：切换身份或联系管理员开通权限',
     retry: '',
-    back: '返回首页',
+    back: '返回',
     contact: '联系管理员'
   },
   offline: {
@@ -110,12 +116,13 @@ const STATE_META = {
   },
   noLicense: {
     icon: '◇',
-    title: '模块未开通',
+    title: '本校未开通该模块',
     description: '当前学校尚未开通该模块，如需使用请联系学校管理员',
     retry: '',
     back: '返回',
     contact: '联系学校管理员'
-  }
+  },
+  unauthorized: { icon: '⊘', title: '登录已失效', description: '请重新登录后继续操作', retry: '', back: '返回', contact: '' }
 }
 
 export default {
@@ -133,7 +140,8 @@ export default {
           'forbidden',
           'offline',
           'readonly',
-          'noLicense'
+          'noLicense',
+          'unauthorized'
         ].includes(v)
     },
     title: { type: String, default: '' },
@@ -150,12 +158,26 @@ export default {
   watch: {
     state(value) {
       if (value === 'ready') this.hasReadyContent = true
+    },
+    resolvedState(value) {
+      if (['forbidden', 'noLicense', 'unauthorized'].includes(value)) this.hasReadyContent = false
     }
   },
   computed: {
+    safeError() { return normalizeUiError(this.errorCode ? { code: this.errorCode, message: this.description } : this.description) },
+    resolvedState() { return this.state === 'error' ? this.safeError.pageState : this.state },
+    accessBlocked() { return ['forbidden', 'noLicense', 'unauthorized'].includes(this.resolvedState) },
     meta() {
-      return STATE_META[this.state] || STATE_META.error
+      return STATE_META[this.resolvedState] || STATE_META.error
     }
+  },
+  methods: {
+    goBack() {
+      if (this.$?.vnode?.props?.onBack) this.$emit('back')
+      else if (this.$router?.options?.history?.state?.back) this.$router.back()
+      else this.$router?.push('/workbench')
+    },
+    login() { this.$router?.push(this.$route?.path?.startsWith('/platform') ? '/platform/login' : '/login') }
   }
 }
 </script>

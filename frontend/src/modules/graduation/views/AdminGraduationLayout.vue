@@ -1,5 +1,9 @@
 <template>
   <BasePortalLayout
+    class="graduation-portal"
+    workspace
+    hide-global-workbench
+    :workspace-navigate="resolveWorkspaceDestination"
     :title="brandTitle"
     subtitle="毕业设计中心"
     :ctx="layoutCtx"
@@ -26,28 +30,41 @@
       :description="ctx.scopeHint"
       class="gd-scope-alert"
     />
-    <GraduationBatchStrip v-if="ctx" class="gd-batch-bar" />
 
-    <section v-if="canRenderBusiness" class="gd-page-intro" aria-label="当前页面使用说明">
-      <div class="gd-page-intro__main">
-        <span class="gd-page-intro__eyebrow">当前工作区</span>
-        <strong>{{ pageExperience.title }}</strong>
-        <p>{{ pageExperience.purpose }}</p>
-      </div>
-      <div class="gd-page-intro__next">
-        <span>当前重点</span>
-        <strong>{{ pageExperience.focus }}</strong>
-        <p>{{ pageExperience.next }}</p>
-      </div>
-      <div class="gd-page-intro__scope">
-        <span>{{ ctx.currentRole?.roleName || '当前角色' }}</span>
-        <span>{{ ctx.dataScope?.scopeName || '当前数据范围' }}</span>
-      </div>
-    </section>
+    <div v-if="ctx && !hasBusinessHeader" class="gd-batch-context" aria-label="当前毕业设计批次">
+      <GraduationBatchStrip class="gd-batch-bar" />
+    </div>
 
     <div
       v-if="canRenderBusiness"
       class="gd-business-view"
+      :data-planning-workspace="[
+        'graduation-mentors', 'graduation-mentor-conflicts', 'graduation-topic-lib',
+        'graduation-topic-rounds', 'graduation-topic-changes'
+      ].includes($route.name) || undefined"
+      :data-graduation-process-workspace="
+        $route.name === 'graduation-process' ? 'workbench'
+          : $route.name === 'graduation-process-action' ? 'form' : undefined
+      "
+      :data-graduation-material-workspace="
+        $route.name === 'graduation-material-center' ? 'materials'
+          : $route.name === 'graduation-plagiarism-ledger' ? 'plagiarism'
+          : $route.name === 'graduation-review-tasks' ? 'review' : undefined
+      "
+      :data-graduation-defense-workspace="
+        $route.name === 'graduation-defense' ? 'schedule'
+          : $route.name === 'graduation-defense-scoring' ? 'scoring'
+          : $route.name === 'graduation-defense-confirmation' ? 'confirmation'
+          : $route.name === 'graduation-grade-ledger' ? 'grades' : undefined
+      "
+      :data-graduation-risk-workspace="
+        $route.name === 'graduation-risk-archive' ? String($route.query.panel || 'risk') : undefined
+      "
+      :data-graduation-template-workspace="$route.name === 'graduation-templates' ? 'templates' : undefined"
+      :data-graduation-content-workspace="
+        $route.name === 'graduation-finals' ? 'final'
+          : $route.name === 'graduation-proposals' ? 'proposal' : undefined
+      "
       :class="{ 'gd-student-readonly': isStudentList && !canManageStudents }"
     >
       <AppInlineAlert
@@ -55,13 +72,6 @@
         type="info"
         title="当前为只读名单视图"
         description="你可以查看本数据范围内的毕设学生、进度和材料状态；建档、导师分配、选题、资格认定、分组、答辩组分配与归档仅对具有学生管理权限的角色开放。"
-        class="gd-scope-alert"
-      />
-      <AppInlineAlert
-        v-if="isReminderWorkspace"
-        type="info"
-        title="催交会发送真实站内消息"
-        description="点击催交后，系统会向该学生创建真实站内消息并写入催办留痕；请勿因旧页面缓存而重复电话或微信催办。"
         class="gd-scope-alert"
       />
       <GraduationExtensionAdminPanel v-if="isExtensionWorkspace" :ctx="businessCtx" />
@@ -82,6 +92,7 @@
 </template>
 
 <script>
+import { provideBusinessHeader } from '@/components/business/businessHeader'
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, EmptyState } from '@/components/business'
 import { AppInlineAlert } from '@/components/common'
@@ -93,118 +104,8 @@ import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import GraduationExtensionAdminPanel from './GraduationExtensionAdminPanel.vue'
 import router from '@/router'
 
-const PAGE_EXPERIENCE = {
-  'graduation-dashboard': {
-    title: '毕业设计运营总览',
-    purpose: '查看当前批次整体进度、今日待办和滞后风险。',
-    focus: '先处理待办与高风险',
-    next: '点击待办卡进入对应队列，处理完成后返回总览复核风险变化。'
-  },
-  'graduation-students': {
-    title: '毕设学生与进度',
-    purpose: '按批次查询学生当前阶段、课题导师、材料缺口和风险。',
-    focus: '先筛选异常和缺口',
-    next: '先用页签与筛选缩小范围，再进入学生详情或执行当前允许的操作。'
-  },
-  'graduation-batches': {
-    title: '批次与实施规则',
-    purpose: '维护毕业设计批次、阶段期限和批次规则。',
-    focus: '确认批次状态与阶段期限',
-    next: '修改前先核对当前批次，发布或关闭前再次检查阶段时间轴。'
-  },
-  'graduation-topic-lib': {
-    title: '题目申报与审核',
-    purpose: '维护题目、审核申报并检查容量和题目要求。',
-    focus: '优先处理待审核题目',
-    next: '审核时同时核对导师资格、容量、附件和课题要求。'
-  },
-  'graduation-topic-rounds': {
-    title: '选题轮次与志愿',
-    purpose: '管理选题轮次、学生志愿、导师确认和匹配结果。',
-    focus: '先处理待确认与容量冲突',
-    next: '确认录取前核对志愿顺序、题目容量和学生当前状态。'
-  },
-  'graduation-topics': {
-    title: '学生选题结果',
-    purpose: '查看已匹配课题、导师关系和后续变更状态。',
-    focus: '关注未匹配和变更申请',
-    next: '优先处理没有形成稳定指导关系的学生。'
-  },
-  'graduation-process': {
-    title: '过程指导工作区',
-    purpose: '围绕同一学生连续查看任务书、指导记录、计划、评价和中期检查。',
-    focus: '先选学生，再处理当前节点',
-    next: '按当前阶段进入对应页签，完成后继续处理下一名学生。'
-  },
-  'graduation-proposals': {
-    title: '开题连续批阅',
-    purpose: '集中处理待审、驳回重交和逾期未交的开题材料。',
-    focus: '优先待审与逾期未交',
-    next: '从左侧队列选择材料，批阅后使用自动下一条连续处理。'
-  },
-  'graduation-finals': {
-    title: '成果连续检查',
-    purpose: '核对初稿、定稿、查重摘要、附件和批阅意见。',
-    focus: '先处理待审与查重异常',
-    next: '核对版本和查重状态后通过或退回，处理完成自动进入下一条。'
-  },
-  'graduation-defense': {
-    title: '答辩编排与发布',
-    purpose: '管理答辩分组、时间地点、评委秘书、回避冲突和通知。',
-    focus: '先消除冲突和待定信息',
-    next: '发布前确保人员、时间、地点和回避校验全部完整。'
-  },
-  'graduation-plagiarism-ledger': {
-    title: '查重处理台账',
-    purpose: '查看查重任务、检测结果、超标记录和复查申请。',
-    focus: '优先超标与待复查',
-    next: '选择学生后核对正式成果版本，再执行当前允许的动作。'
-  },
-  'graduation-review-tasks': {
-    title: '论文评阅任务',
-    purpose: '分配并处理正式定稿评阅，查看评分和退回重评状态。',
-    focus: '优先待评阅和被退回任务',
-    next: '确认评阅人回避关系和正式定稿版本后再提交评阅。'
-  },
-  'graduation-defense-scoring': {
-    title: '答辩评分',
-    purpose: '按学生查看评委评分、缺席和本轮确认状态。',
-    focus: '补齐未评分与未确认记录',
-    next: '完成本轮所有评分后再由授权角色确认成绩。'
-  },
-  'graduation-defense-confirmation': {
-    title: '答辩秘书确认',
-    purpose: '核对本轮评委评分完整性并确认答辩成绩。',
-    focus: '先检查缺项和异常评分',
-    next: '确认前逐项核对评委记录、缺席说明和答辩轮次。'
-  },
-  'graduation-grade-ledger': {
-    title: '成绩核算与发布',
-    purpose: '核对导师分、评阅分、答辩分和综合成绩状态。',
-    focus: '优先处理缺项和待复核成绩',
-    next: '按核算、复核、发布顺序办理，不跳过前置状态。'
-  },
-  'graduation-risk-archive': {
-    title: '风险处置与材料归档',
-    purpose: '集中查看风险、材料完整性、归档候选和备案结果。',
-    focus: '先补材料和关闭高风险',
-    next: '归档前完成完整性预检，确认无阻断后再执行归档。'
-  },
-  'graduation-stats-report': {
-    title: '毕业设计统计报表',
-    purpose: '查看当前批次进度、质量、风险和完成情况。',
-    focus: '关注异常趋势而非单一数字',
-    next: '从异常指标下钻到学生名单或对应业务队列。'
-  },
-  'graduation-audit-logs': {
-    title: '毕业设计操作日志',
-    purpose: '按操作者、对象和时间追溯关键业务动作。',
-    focus: '先定位业务对象和时间范围',
-    next: '结合学生档案和业务状态复核操作前后变化。'
-  }
-}
-
 export default {
+  setup() { return { hasBusinessHeader: provideBusinessHeader(GraduationBatchStrip) } },
   name: 'AdminGraduationLayout',
   components: {
     BasePortalLayout, LoadingState, EmptyState, AppInlineAlert,
@@ -225,31 +126,6 @@ export default {
     isReminderWorkspace() { return ['graduation-proposals', 'graduation-finals'].includes(this.$route.name) },
     isExtensionWorkspace() {
       return this.$route.name === 'graduation-dashboard' && ['excellent', 'delay'].includes(String(this.$route.query.extension || ''))
-    },
-    pageExperience() {
-      const extension = String(this.$route.query.extension || '')
-      if (this.isExtensionWorkspace && extension === 'excellent') {
-        return {
-          title: '优秀成果认定',
-          purpose: '处理候选提名、专业复核和学院终审。',
-          focus: '先核对正式定稿与已发布成绩',
-          next: '仅对当前行允许的动作办理，完成后继续处理下一条待办。'
-        }
-      }
-      if (this.isExtensionWorkspace && extension === 'delay') {
-        return {
-          title: '延期答辩审核',
-          purpose: '处理学生申请、导师意见、专业复核、学院审批和重新排期。',
-          focus: '优先临近原答辩日期的申请',
-          next: '按角色顺序办理，学院批准后再安排新的答辩组和日期。'
-        }
-      }
-      return PAGE_EXPERIENCE[this.$route.name] || {
-        title: this.$route.meta?.title || '毕业设计业务页面',
-        purpose: '查看当前批次的业务数据并完成本角色允许的操作。',
-        focus: '先确认批次、状态和待办',
-        next: '使用筛选缩小范围，处理完成后检查页面状态是否已刷新。'
-      }
     },
     canManageStudents() {
       const patterns = this.ctx?.permissionPatterns
@@ -275,7 +151,21 @@ export default {
       immediate: true,
       handler(id) {
         const store = useGraduationBatchStore()
-        store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+        const loading = store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+        // BasePortalLayout owns generic leaf navigation and may complete its
+        // path-only push after this module has emitted a batch-aware target.
+        // Keep the watcher entry synchronous for Vue/test lifecycle safety;
+        // only schedule a repair when the live Graduation route truly lost its
+        // query. Explicit URL batchId always remains authoritative.
+        if (!id && this.$route?.path?.startsWith('/admin/graduation')) {
+          const sourceFullPath = this.$route.fullPath
+          void Promise.resolve(loading)
+            .then(() => {
+              // A delayed repair belongs only to the route that requested it.
+              if (this.$route.fullPath === sourceFullPath) return this.syncBatchToUrl?.()
+            })
+            .catch(() => {})
+        }
       }
     },
     '$route.query.panel': {
@@ -289,6 +179,21 @@ export default {
   },
   async created() { await this.loadContext() },
   methods: {
+    resolveWorkspaceDestination(path) {
+      // The shared frame also navigates to other centers. Only Graduation
+      // destinations inherit this module's batch; explicit deep links win.
+      if (typeof path !== 'string' || !/^\/admin\/graduation(?:[/?#]|$)/.test(path)) return path
+      const hashAt = path.indexOf('#')
+      const target = hashAt < 0 ? path : path.slice(0, hashAt)
+      const hash = hashAt < 0 ? '' : path.slice(hashAt)
+      const queryAt = target.indexOf('?')
+      const query = new URLSearchParams(queryAt < 0 ? '' : target.slice(queryAt + 1))
+      if (query.has('batchId')) return path
+      const batchId = useGraduationBatchStore().selectedBatchId
+      if (!batchId) return path
+      const separator = queryAt < 0 ? '?' : /[?&]$/.test(target) ? '' : '&'
+      return `${target}${separator}batchId=${encodeURIComponent(String(batchId))}${hash}`
+    },
     async loadContext() {
       this.loading = true
       this.contextError = ''
@@ -314,21 +219,22 @@ export default {
       if (!this.permissionReady) this.contextError = res.data.permissionError || '真实权限未加载成功，写操作已禁用'
       const store = useGraduationBatchStore()
       await store.ensureLoaded({ batchIdFromUrl: this.$route.query.batchId || '', force: true })
-      this.syncBatchToUrl()
+      await this.syncBatchToUrl()
     },
-    syncBatchToUrl() {
+    async syncBatchToUrl() {
+      // Context loading may finish after the shared frame leaves this center.
+      if (!/^\/admin\/graduation(?:\/|$)/.test(this.$route?.path || '')) return
       const store = useGraduationBatchStore()
       const cur = this.$route.query.batchId ? String(this.$route.query.batchId) : ''
       const next = store.selectedBatchId || ''
-      if (next && next !== cur) router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
+      if (next && next !== cur) {
+        await router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
+      }
     },
     onMenuSelect(item) {
-      if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {
-        const store = useGraduationBatchStore()
-        const path = item.path
-        const batchQ = store.selectedBatchId ? `batchId=${encodeURIComponent(store.selectedBatchId)}` : ''
-        let target = path
-        if (batchQ && !/[?&]batchId=/.test(path)) target = path.includes('?') ? `${path}&${batchQ}` : `${path}?${batchQ}`
+      if (!item?.path) return
+      const target = this.resolveWorkspaceDestination(item.path)
+      if (target && target !== this.$route.fullPath) {
         router.push(target).catch(() => {})
       }
     }
@@ -338,60 +244,39 @@ export default {
 
 <style scoped>
 .gd-scope-alert { margin: 0 0 var(--space-3); }
-.gd-batch-bar { margin: 0 0 var(--space-3); }
-.gd-student-readonly :deep(.mp-link + .mp-link) { display: none !important; }
-.gd-business-view :deep(.mp-tabs .mp-tab:nth-child(8)) { display: none !important; }
-
-.gd-page-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, .9fr) auto;
-  gap: var(--space-4);
-  align-items: center;
-  margin: 0 0 var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: var(--radius-lg, 12px);
-  background: var(--card, #fff);
-}
-.gd-page-intro__main,
-.gd-page-intro__next { min-width: 0; }
-.gd-page-intro__eyebrow,
-.gd-page-intro__next > span {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--text-tertiary, #64748b);
-  font-size: var(--font-size-xs, 12px);
-}
-.gd-page-intro strong {
-  display: block;
-  color: var(--text-primary, #0f172a);
-  font-size: var(--font-size-base, 14px);
-  line-height: 1.45;
-}
-.gd-page-intro p {
-  margin: 3px 0 0;
-  color: var(--text-secondary, #475569);
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.55;
-}
-.gd-page-intro__next {
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--border-light, #e2e8f0);
-}
-.gd-page-intro__scope {
+.gd-batch-context {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  color: var(--text-secondary, #475569);
+  justify-content: flex-end;
+  min-width: 0;
+  margin: 0 0 var(--space-2);
+}
+.gd-batch-bar {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 4px 9px;
+  border-color: var(--primary-100, #dbeafe);
+  border-radius: var(--radius-lg, 10px);
+  background: linear-gradient(100deg, var(--primary-50, #eff6ff), var(--card, #fff));
+  box-shadow: 0 8px 24px -24px rgba(37, 99, 235, .65);
+}
+.gd-batch-bar :deep(.gbs__label) {
+  color: var(--primary-700, #1d4ed8);
   font-size: var(--font-size-xs, 12px);
-  white-space: nowrap;
+  font-weight: 700;
 }
-.gd-page-intro__scope span {
-  max-width: 210px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.gd-batch-bar :deep(.gbs__select) {
+  min-width: 210px;
+  max-width: min(420px, 48vw);
+  min-height: 34px;
+  font-size: 13px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-color: var(--primary-200, #bfdbfe);
 }
+.gd-batch-bar :deep(.gbs__meta),
+.gd-batch-bar :deep(.gbs__text) { font-size: var(--font-size-xs, 12px); }
+.gd-student-readonly :deep(.mp-link + .mp-link) { display: none !important; }
 
 .gd-business-view { min-width: 0; }
 .gd-business-view :deep(.mp-stack) { gap: var(--space-3); }
@@ -441,9 +326,7 @@ export default {
   line-height: 1.55;
 }
 .gd-business-view :deep(.mp-cell-main),
-.gd-business-view :deep(.mp-cell-sub) {
-  overflow-wrap: anywhere;
-}
+.gd-business-view :deep(.mp-cell-sub) { overflow-wrap: anywhere; }
 .gd-business-view :deep(table) {
   width: 100%;
   border-collapse: separate;
@@ -477,27 +360,340 @@ export default {
   gap: var(--space-2);
 }
 
-@media (max-width: 1180px) {
-  .gd-page-intro { grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr); }
-  .gd-page-intro__scope {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    justify-content: flex-end;
-    border-top: 1px solid var(--border-light, #e2e8f0);
-    padding-top: var(--space-2);
-  }
-}
-
 @media (max-width: 900px) {
-  .gd-page-intro { grid-template-columns: 1fr; gap: var(--space-3); }
-  .gd-page-intro__next {
-    padding: var(--space-3) 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--border-light, #e2e8f0);
-  }
-  .gd-page-intro__scope { justify-content: flex-start; }
+  .gd-batch-context { justify-content: flex-start; }
+  .gd-batch-bar { width: 100%; }
+  .gd-batch-bar :deep(.gbs__select) { min-width: min(210px, 100%); max-width: 100%; }
   .gd-business-view :deep(.mp-card__head),
-  .gd-business-view :deep(.mp-card__body) { padding-left: var(--space-3); padding-right: var(--space-3); }
+  .gd-business-view :deep(.mp-card__body) {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
   .gd-business-view :deep(.mp-grid-2) { grid-template-columns: 1fr; }
 }
+</style>
+
+<style src="@/modules/graduation/styles/graduation-workspaces.css"></style>
+
+<style scoped>
+/* Final graduation-only integration polish. The public shell and business engines remain untouched. */
+.gd-business-view :deep(.gd-scope-alert) {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__content) {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__title),
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__desc) {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gd-business-view :deep(.gd-scope-alert .app-inline-alert__title) { font-size: 13px; }
+
+/* Final submission: compact layout, never compact type. */
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack) { gap: 7px; min-width: 0; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--card, #fff);
+  box-shadow: none;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__copy > span) { font-size: 12px; letter-spacing: .02em; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__copy strong) {
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts) { gap: 5px; flex-wrap: nowrap; overflow-x: auto; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts span) { min-height: 32px; padding: 4px 7px; font-size: 12px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-command__counts b) { font-size: 16px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack > .mp-tabs) {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 3px;
+  overflow-x: auto;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-workbench-stack > .mp-tabs .mp-tab) {
+  min-height: 34px;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-tab-count) { font-size: 12px; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row) { gap: 7px; min-width: 0; }
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row input),
+.gd-business-view[data-graduation-content-workspace='final'] :deep(.fr-filter-row button) { min-height: 34px; font-size: 13px; }
+
+/* Real bundle cascade still resolved a few planning/student controls to 12.5px. */
+.gd-business-view[data-planning-workspace] :deep(.gd-primary-tabs > button),
+.gd-business-view[data-planning-workspace] :deep(.gm-tabs__item),
+.gd-business-view[data-planning-workspace] :deep(.af__control),
+.gd-business-view[data-planning-workspace] :deep(.af__ops button),
+.gd-business-view[data-planning-workspace] :deep(.mp-cell-main),
+.gd-business-view[data-planning-workspace] :deep(.mp-link) { font-size: 13px !important; }
+.gd-business-view :deep(.gd-student-page .gd-primary-tabs button),
+.gd-business-view :deep(.gd-student-page .gd-local-views button),
+.gd-business-view :deep(.gd-student-page .af__control) { font-size: 13px !important; }
+
+/* Proposal workbench: keep the real queue compact without allowing 11px operational copy. */
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__copy > p),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-hero__metrics small),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-list__head small) {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tab),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-pane__nav .mp-link),
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.pr-remind-action button) {
+  min-height: 38px;
+  font-size: 13px !important;
+}
+
+/* Real shared-shell geometry scales proposal tabs below the audit floor at 100%.
+   Keep a 40px logical hit area so the rendered control remains >=33px. */
+.gd-business-view[data-graduation-content-workspace='proposal'] :deep(.mp-tabs .mp-tab) {
+  min-height: 40px !important;
+}
+
+/* At constrained content width, reclaim vertical space from chrome rather than shrinking type. */
+@container gd-planning (max-width: 1080px) {
+  .gd-business-view[data-planning-workspace] :deep(.mps),
+  .gd-business-view[data-planning-workspace] :deep(.mp-stack) { gap: 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.mps__head) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.gm-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-primary-tabs),
+  .gd-business-view[data-planning-workspace] :deep(.gd-local-views) { gap: 4px; padding: 4px; }
+  .gd-business-view[data-planning-workspace] :deep(.af) { gap: 8px; padding: 8px 10px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__fields) { gap: 8px; }
+  .gd-business-view[data-planning-workspace] :deep(.af__field) { gap: 3px; }
+}
+
+@container gd-students (max-width: 1000px) {
+  .gd-business-view :deep(.gd-student-workspace .mps__subtitle) { display: none; }
+  .gd-business-view :deep(.gd-student-page) { gap: 8px; }
+  .gd-business-view :deep(.gd-student-hero) {
+    grid-template-columns: minmax(250px, .8fr) minmax(0, 1.35fr);
+    gap: 10px;
+    padding: 11px 12px;
+  }
+  .gd-business-view :deep(.gd-student-hero__copy) { gap: 3px; }
+  .gd-business-view :deep(.gd-student-hero__metrics) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .gd-business-view :deep(.gd-student-hero__metrics div) { display: flex; padding: 6px 8px; }
+  .gd-business-view :deep(.gd-student-hero__metrics b) { font-size: 18px; }
+  .gd-business-view :deep(.gd-student-page .gd-primary-tabs) {
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 4px;
+    overflow-x: auto;
+  }
+  .gd-business-view :deep(.gd-student-page .gd-primary-tabs .mp-tab) {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+  .gd-business-view :deep(.gd-local-views) {
+    flex-wrap: nowrap;
+    gap: 5px;
+    padding: 5px 8px;
+    overflow-x: auto;
+  }
+  .gd-business-view :deep(.gd-local-views > span),
+  .gd-business-view :deep(.gd-local-views button) { flex: 0 0 auto; }
+  .gd-business-view :deep(.gd-local-views button) { min-height: 34px; padding: 5px 10px; white-space: nowrap; }
+  .gd-business-view :deep(.gd-student-page .af) { gap: 6px; padding: 7px 8px; }
+  .gd-business-view :deep(.gd-student-page .af__fields) { gap: 6px; }
+  .gd-business-view :deep(.gd-student-page .af__field) { gap: 2px; }
+  .gd-business-view :deep(.gd-student-page .af__label) { line-height: 16px; }
+  .gd-business-view :deep(.gd-student-page .af__ops) { gap: 5px; }
+}
+
+/* 1366 / 125%: compact material chrome, never compact typography. */
+@media (min-width: 981px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page) { gap: 8px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero) { padding: 10px 12px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-hero h2) { margin: 2px 0; font-size: 20px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary) { gap: 6px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-summary article) { padding: 7px 9px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-tabs) { gap: 4px; padding: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-page button) { min-height: 34px; padding: 5px 10px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters) {
+    grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters label) { gap: 3px; }
+  .gd-business-view[data-graduation-material-workspace='materials'] :deep(.mc-filters :is(input, select)) { min-height: 34px; padding: 5px 8px; }
+}
+
+/* Risk / archive: restore readable evidence and put the real queue before the rule catalogue. */
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-rules) { order: 20; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command) {
+  min-height: auto;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy) { gap: 4px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline > span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy > span) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline strong),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy strong) { font-size: 16px !important; line-height: 1.5; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__headline small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-command__copy small) {
+  display: block !important;
+  font-size: 12px !important;
+  line-height: 1.55;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics) { gap: 6px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics div) {
+  min-height: 0;
+  padding: 8px 6px !important;
+  border-radius: 8px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics b) { font-size: 20px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-command__metrics span) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules) { padding: 12px !important; border-radius: 10px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head) { margin-bottom: 8px !important; flex-wrap: wrap; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head strong) { font-size: 16px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__head small) { font-size: 12px !important; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid) {
+  display: flex !important;
+  gap: 8px !important;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid > span) {
+  flex: 0 0 auto;
+  padding: 8px !important;
+  border-radius: 7px !important;
+  font-size: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid b) { font-size: 11px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid i),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-rules__grid em) { font-size: 12px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-pane) {
+  padding: 12px !important;
+  border-radius: 12px !important;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head strong) { font-size: 16px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-list__head > span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__sub),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__meta),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-pane__bar),
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-detail__eyebrow),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing-head span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence span),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence small),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt small) { font-size: 12px; line-height: 1.55; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.rk-row__name),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-kv__v),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__name),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-anomaly),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence strong),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt span) { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-card__title),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing-head strong) { font-size: 16px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-btn),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-link),
+.gd-business-view[data-graduation-risk-workspace] :deep(.af__control),
+.gd-business-view[data-graduation-risk-workspace] :deep(.ra-receipt button) { min-height: 36px; font-size: 13px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.af__label),
+.gd-business-view[data-graduation-risk-workspace] :deep(.mp-kv__k) { font-size: 12px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__item) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-missing__name) { flex: 1 1 200px; }
+.gd-business-view[data-graduation-risk-workspace] :deep(.ar-preview-evidence) { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 8px; }
+
+/* 1366 / 125%: keep the real risk queue in the first fold without shrinking type. */
+@media (min-width: 1300px) and (max-width: 1400px) {
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-panel) { gap: 7px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command) {
+    grid-template-columns: minmax(230px, 1fr) minmax(300px, .95fr) auto;
+    gap: 7px !important;
+    padding: 8px 10px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics) {
+    grid-column: auto;
+    gap: 4px !important;
+  }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__metrics div) { padding: 5px 4px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline) { gap: 2px !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.rk-command__headline small) { line-height: 1.4; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.ra-filter) { margin: 0 !important; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af) { gap: 6px; padding: 7px 9px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__fields) { gap: 6px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__field) { gap: 2px; }
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__control),
+  .gd-business-view[data-graduation-risk-workspace='risk'] :deep(.af__ops button) { min-height: 34px; height: 34px; }
+}
+
+/* Templates stay a calm low-frequency configuration list. */
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__title) { font-size: 22px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__subtitle),
+.gd-business-view[data-graduation-template-workspace] :deep(.mps__chip),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-cell-sub),
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types small),
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-readonly) { font-size: 12px; line-height: 1.55; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card, #fff);
+  box-shadow: none;
+}
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command > div:first-child) { flex: 1 1 300px; min-width: 0; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command > div:first-child > span) { font-size: 12px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command strong) { font-size: 16px; line-height: 1.5; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command__facts) { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-command__facts b) { font-size: 16px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types) { display: flex; flex-wrap: wrap; gap: 8px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.gt-types button) {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: left;
+}
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__scroll) { overflow-x: auto; }
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__table) { min-width: 720px; }
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__th),
+.gd-business-view[data-graduation-template-workspace] :deep(.dt__td),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-cell-main),
+.gd-business-view[data-graduation-template-workspace] :deep(.mp-link) { font-size: 13px; line-height: 1.6; }
 </style>

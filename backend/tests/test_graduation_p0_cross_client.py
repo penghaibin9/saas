@@ -53,7 +53,7 @@ def test_high_risk_routes_are_registered_before_legacy_routers():
         "api_router.include_router(graduation.router"
     )
     assert source.index("api_router.include_router(mobile_graduation_guard.router)") < source.index(
-        "mobile.router,"
+        "api_router.include_router(mobile_router, dependencies=mobile_deps)"
     )
     assert source.index("api_router.include_router(student_portal_graduation_guard.router)") < source.index(
         "api_router.include_router(student_portal_router)"

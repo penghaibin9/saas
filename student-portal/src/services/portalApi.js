@@ -1,7 +1,7 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  */
-import { request, uploadFile } from './request'
+import { request } from './request'
 import fileSdk from './fileSdk'
 
 const q = (obj) => {
@@ -19,13 +19,14 @@ export const portalApi = {
   passwordResetVerify: (body) => request('/auth/password-reset/verify', { method: 'POST', auth: false, body }),
   passwordResetConfirm: (body) => request('/auth/password-reset/confirm', { method: 'POST', auth: false, body }),
   login: (loginName, password, tenantCode, challenge = {}) =>
-    request('/auth/login', { method: 'POST', auth: false, body: { loginName, password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
+    request('/auth/login', { method: 'POST', auth: false, body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, ...(tenantCode ? { tenantCode } : {}), clientType: 'PC', captchaId: challenge.captchaId || undefined, captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined } }),
   portalConfig: () => request('/mobile/me/portal-config'),
   overview: () => request('/mobile/me/overview'),
   profile: () => request('/mobile/me/profile'),
   todos: () => request('/mobile/me/todos'),
   messages: () => request('/mobile/me/messages'),
   domainMy: (domain) => request(`/mobile/${domain}/my`),
+  graduationFrozenPackage: () => request('/portal/graduation/frozen-package'),
   // HomeProjection v2：返回 homeVersion/asOf/sections/typed action。
   // 调用方必须自行处理 reject——首页核心真值失败绝不能被吞成空对象当"暂无待办"。
   homeOverview: () => request('/portal/home/overview'),
@@ -42,6 +43,7 @@ export const portalApi = {
   academicSchedulePrint: (body) => request('/portal/academic/schedule/print', { method: 'POST', body }),
   academicCourseSelection: (batchId) => request(`/portal/academic/course-selection${q({ batchId })}`),
   academicSelectionPreflight: (body) => request('/portal/academic/course-selection/preflight', { method: 'POST', body }),
+  academicSelectionDropPreflight: (body) => request('/portal/academic/course-selection/drop-preflight', { method: 'POST', body }),
   academicEnroll: (body) => request('/portal/academic/course-selection/enroll', { method: 'POST', body }),
   academicDrop: (body) => request('/portal/academic/course-selection/drop', { method: 'POST', body }),
   academicSelectionRecords: (batchId) => request(`/portal/academic/course-selection/records${q({ batchId })}`),
@@ -78,7 +80,8 @@ export const portalApi = {
   academicMajorSplit: () => request('/portal/academic/major-split'),
   academicMajorSplitSubmit: (body) => request('/portal/academic/major-split/submit', { method: 'POST', body }),
   academicCredits: () => request('/portal/academic/credits'),
-  academicWarning: () => request('/portal/academic/warning'),
+  academicWarning: (params) => request('/portal/academic/warning' + q(params)),
+  academicRecognitionCourses: (params) => request('/academic-affairs/grade-recognitions/student/course-options' + q(params)),
   academicRecognition: () => request('/portal/academic/recognition'),
   academicRecognitionSubmit: (body) => request('/portal/academic/recognition', { method: 'POST', body }),
 
@@ -91,6 +94,7 @@ export const portalApi = {
   affairsDorm: () => request('/portal/affairs/dorm'),
   affairsTalk: () => request('/portal/affairs/talk'),
   affairsFunding: () => request('/portal/affairs/funding'),
+  affairsFundingDetail: (id) => request(`/portal/affairs/funding/applications/${encodeURIComponent(id)}`),
   affairsAid: () => request('/portal/affairs/aid'),
   affairsDiscipline: () => request('/portal/affairs/discipline'),
   affairsApplications: () => request('/portal/affairs/applications'),
@@ -100,10 +104,22 @@ export const portalApi = {
   affairsPsySubmit: (body) => request('/portal/affairs/psy/submit', { method: 'POST', body }),
   affairsPsyHistory: () => request('/portal/affairs/psy/history'),
   affairsDisciplineAppeal: (body) => request('/portal/affairs/discipline/appeal', { method: 'POST', body }),
-  affairsFundingBatches: () => request('/portal/affairs/funding/batches'),
+  affairsFundingBatches: (params) => request(`/portal/affairs/funding/batches${q(params)}`),
   affairsFundingApply: (body) => request('/portal/affairs/funding/apply', { method: 'POST', body }),
   affairsFundingAppeal: (body) => request('/portal/affairs/funding/appeal', { method: 'POST', body }),
-  affairsAidBatches: () => request('/portal/affairs/aid/batches'),
+  affairsWorkStudyPosts: (params) => request(`/portal/affairs/work-study/posts${q(params)}`),
+  affairsWorkStudyMy: () => request('/portal/affairs/work-study/my'),
+  affairsWorkStudyApply: (postId, body) => request(`/portal/affairs/work-study/posts/${encodeURIComponent(postId)}/apply`, { method: 'POST', body }),
+  affairsWorkStudyWithdraw: (recordId, version) => request(`/portal/affairs/work-study/records/${encodeURIComponent(recordId)}/withdraw`, { method: 'POST', body: { version } }),
+  affairsLoans: () => request('/portal/affairs/loans'),
+  affairsLoanSubmit: (body) => request('/portal/affairs/loans', { method: 'POST', body }),
+  affairsLoanResubmit: (loanId, body) => request(`/portal/affairs/loans/${encodeURIComponent(loanId)}/resubmit`, { method: 'POST', body }),
+  affairsLoanWithdraw: (loanId, version) => request(`/portal/affairs/loans/${encodeURIComponent(loanId)}/withdraw`, { method: 'POST', body: { version } }),
+  affairsFeeReductions: () => request('/portal/affairs/fee-reductions'),
+  affairsFeeReductionSubmit: (body) => request('/portal/affairs/fee-reductions', { method: 'POST', body }),
+  affairsFeeReductionResubmit: (feeId, body) => request(`/portal/affairs/fee-reductions/${encodeURIComponent(feeId)}/resubmit`, { method: 'POST', body }),
+  affairsFeeReductionWithdraw: (feeId, version) => request(`/portal/affairs/fee-reductions/${encodeURIComponent(feeId)}/withdraw`, { method: 'POST', body: { version } }),
+  affairsAidBatches: (params) => request(`/portal/affairs/aid/batches${q(params)}`),
   affairsAidApply: (body) => request('/portal/affairs/aid/apply', { method: 'POST', body }),
   affairsAidObjection: (body) => request('/portal/affairs/aid/objection', { method: 'POST', body }),
   affairsActivities: (page = 1, pageSize = 20) => request(`/portal/affairs/activities${q({ page, pageSize })}`),
@@ -111,6 +127,8 @@ export const portalApi = {
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
   internshipMy: () => request('/portal/internship/my'),
+  businessFormLoad: (body) => request('/business-forms/runtime/load', { method: 'POST', body }),
+  businessFormSubmit: (body) => request('/business-forms/runtime/submit', { method: 'POST', body }),
   internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
   internshipConsents: () => request('/portal/internship/consents'),
   internshipConsentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),
@@ -167,7 +185,11 @@ export const portalApi = {
     fileSdk.download(fileId, fileName),
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
+  orientationArrival: (body) => request('/portal/orientation/arrival', { method: 'PUT', body }),
+  orientationMaterial: (body) => request('/portal/orientation/materials', { method: 'POST', body }),
+  uploadOrientationMaterial: (file) => fileSdk.upload(file, { bizType: 'ORIENTATION_MATERIAL' }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
+  orientationCheckinToken: () => request('/portal/orientation/checkin-token', { method: 'POST' }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
   // SP-M05/M07：待办/通知/服务进度是三个独立 Authority，各自真实数据库分页。
@@ -203,7 +225,14 @@ export const portalApi = {
   rectifyGraduationPeer: (pid, note) => request(`/mobile/graduation/peer/${encodeURIComponent(pid)}/rectify`, { method: 'POST', body: { note } }),
   graduationArchive: () => request('/mobile/graduation/archive'),
   graduationActiveRound: () => request('/mobile/graduation/active-round'),
-  graduationTopics: (batchId) => request(`/mobile/graduation/topics${batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''}`),
+  graduationTopics: (batchOrParams = {}) => {
+    const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+    const query = new URLSearchParams()
+    Object.entries({ pageSize: 20, ...params }).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return request(`/mobile/graduation/topics?${query.toString()}`)
+  },
   submitGraduationChoices: (roundId, choices) => request('/mobile/graduation/choices', { method: 'POST', body: { roundId, choices } }),
   withdrawGraduationChoices: (roundId) => request('/mobile/graduation/withdraw-choices', { method: 'POST', body: { roundId } }),
   requestGraduationTopicChange: (newTopicId, reason) => request('/mobile/graduation/change-request', { method: 'POST', body: { newTopicId, reason } }),

@@ -9,6 +9,23 @@ from app.services.system_role_shadow_service import published_system_role_permis
 TID = 1000000000000000001
 
 
+def test_school_iam_router_rejects_platform_principal_before_workspace_access():
+    from app.core.exceptions import AppException
+    from app.modules.system_admin.routers import school_iam_router
+
+    try:
+        school_iam_router._assert_school_principal({
+            "userId": "db-platform-root",
+            "tenantId": "1000000000000000000",
+            "userType": "PLATFORM_SUPER_ADMIN",
+            "currentRoleCode": "PLATFORM_SUPER_ADMIN",
+        })
+    except AppException as exc:
+        assert exc.code == "NO_PERMISSION"
+    else:
+        raise AssertionError("platform principal must not enter /system/iam/*")
+
+
 def test_school_iam_catalog_never_exposes_enterprise_permissions_as_assignable(monkeypatch):
     monkeypatch.setattr(svc, "load_permission_catalog", lambda: {
         "entries": [

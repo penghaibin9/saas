@@ -45,8 +45,12 @@ test('U9 specialist review/defense forms do not require unrelated grade read per
 
 test('U9 specialist workspace restores student context without grade permission and only reads the active panel', () => {
   assert.match(workspace, /async restoreStudentFromRoute\(\)[\s\S]*gdStudentApi\.getStudentDetail\(sid\)/)
-  assert.doesNotMatch(workspace, /async restoreStudentFromRoute\(\)[\s\S]{0,500}graduationDefenseGradeApi\.getGrade\(sid\)/)
-  assert.match(workspace, /async loadAll\(\)[\s\S]*this\.tab === 'plagiarism'[\s\S]*this\.loadPlagiarism\(\)[\s\S]*this\.tab === 'review'[\s\S]*this\.loadReview\(\)[\s\S]*this\.tab === 'defense'[\s\S]*this\.loadScores\(\)[\s\S]*this\.tab === 'grade'[\s\S]*this\.loadGrade\(\)/)
+  assert.doesNotMatch(workspace, /async restoreStudentFromRoute\(\)[\s\S]{0,700}graduationDefenseGradeApi\.getGrade\(sid\)/)
+  assert.match(workspace, /async loadActivePanel\(\)[\s\S]*if \(!this\.current \|\| !this\.canPanel\(this\.tab\)\) return false/)
+  assert.match(workspace, /if \(this\.tab === 'plagiarism'\) return this\.loadPlagiarism\(\)/)
+  assert.match(workspace, /if \(this\.tab === 'review'\) return this\.loadReview\(\)/)
+  assert.match(workspace, /if \(this\.tab === 'defense'\) return this\.loadScores\(\)/)
+  assert.match(workspace, /if \(this\.tab === 'grade'\) return this\.loadGrade\(\)/)
   assert.doesNotMatch(workspace, /Promise\.all\(\[this\.loadPlagiarism\(\), this\.loadReview\(\), this\.loadScores\(\), this\.loadGrade\(\)\]\)/)
 })
 

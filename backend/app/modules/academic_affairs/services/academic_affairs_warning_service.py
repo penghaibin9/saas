@@ -42,6 +42,7 @@ SOURCE_LABELS = {
     "LOW_GPA": "绩点预警",
     "RETAKE_EXCESS": "补考重修预警",
     "GRAD_ABNORMAL": "毕业风险预警",
+    "ATTENDANCE_ABSENT": "旷课预警",
     "OTHER": "其他预警",  # group_counts() 对 source_code 为空的记录归入字面量 "OTHER" 桶，此前该
                           # key 缺失导致"按来源分布"直接显示未翻译的英文 "OTHER"（见真实交互巡检）。
 }
@@ -95,13 +96,13 @@ def _counselor_of(db, acad_student_id):
     """学业台账生 → 全局学生 → 行政班 → 辅导员 user_id。
     返回 (counselor_user_id, global_student_id)；无绑定则 (0, sid|None)，对齐异动服务同款解析。"""
     from app.models import AcademicStudent, SchoolClass, StudentProfile
-    a = db.get(AcademicStudent, int(acad_student_id))
+    a = db.query(AcademicStudent).filter(AcademicStudent.id == int(acad_student_id), AcademicStudent.tenant_id == _tid()).first()
     if not a or not a.student_id:
         return 0, None
-    s = db.get(StudentProfile, int(a.student_id))
+    s = db.query(StudentProfile).filter(StudentProfile.id == int(a.student_id), StudentProfile.tenant_id == _tid()).first()
     if not s or not s.class_id:
-        return 0, a.student_id
-    c = db.get(SchoolClass, int(s.class_id))
+        return 0, (s.id if s else None)
+    c = db.query(SchoolClass).filter(SchoolClass.id == int(s.class_id), SchoolClass.tenant_id == _tid()).first()
     return (int(c.counselor_id) if c and c.counselor_id else 0), a.student_id
 
 
@@ -620,25 +621,60 @@ def save_rule(user, key, value) -> dict:
 
 # ═══════════ 预警跟进闭环（详情/指派/干预/关闭/升级/作废/提醒） ═══════════
 
-def _warning_or_404(db, warning_id):
+def _warning_or_404(db, warning_id, *, lock=False):
     from app.core.exceptions import not_found
     from app.models import AcademicWarning
-    w = db.get(AcademicWarning, int(warning_id))
+    query = select(AcademicWarning).where(
+        AcademicWarning.id == int(warning_id), AcademicWarning.tenant_id == _tid(),
+        AcademicWarning.is_deleted.is_(False),
+    )
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    w = db.scalar(query)
     if not w or w.is_deleted or w.tenant_id != _tid():
         raise not_found("预警不存在或不在当前数据范围内")
     return w
 
 
-def get_warning_detail(user, warning_id) -> dict:
+def _sync_academic_student_projection(db, warning):
+    """Keep the existing student academic summary aligned with canonical warning writes."""
+    from app.models import AcademicStudent
+    from app.services.academic_service import _sync_student_warning
+
+    student = db.scalar(select(AcademicStudent).where(
+        AcademicStudent.id == int(warning.acad_student_id),
+        AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False),
+    ))
+    if student is not None:
+        _sync_student_warning(db, student)
+
+
+def get_warning_detail(user, warning_id, *, mobile_teacher_scope=False,
+                       intervention_page=1, intervention_page_size=None) -> dict:
     from app.models import AcademicIntervention, AcademicStudent
+    if intervention_page_size is not None and (intervention_page < 1 or not 1 <= intervention_page_size <= 100):
+        raise _bad("跟进记录分页参数非法")
     with session() as db:
         w = _warning_or_404(db, warning_id)
-        _assert_handle_allowed(db, user, w)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w)
+        else:
+            _assert_handle_allowed(db, user, w)
         a = db.get(AcademicStudent, int(w.acad_student_id))
-        itvs = db.scalars(select(AcademicIntervention).where(
+        intervention_query = select(AcademicIntervention).where(
             AcademicIntervention.tenant_id == _tid(), AcademicIntervention.warning_id == w.id,
-        ).order_by(AcademicIntervention.id.desc())).all()
+        )
+        total = int(db.scalar(select(func.count()).select_from(intervention_query.subquery())) or 0)
+        intervention_query = intervention_query.order_by(AcademicIntervention.id.desc())
+        if intervention_page_size is not None:
+            intervention_query = intervention_query.offset((intervention_page - 1) * intervention_page_size).limit(intervention_page_size)
+        itvs = db.scalars(intervention_query).all()
         return {
+            "interventionPage": intervention_page,
+            "interventionPageSize": intervention_page_size or total,
+            "interventionTotal": total,
+            "interventionHasMore": intervention_page_size is not None and intervention_page * intervention_page_size < total,
             "warning": {"warningId": str(w.id), "level": w.level, "status": w.status,
                        "warnType": w.warn_type, "reason": w.reason or "", "sourceCode": w.source_code or "",
                        "sourceLabel": SOURCE_LABELS.get(w.source_code or "", w.source_code or ""),
@@ -663,7 +699,7 @@ def assign_warning(user, warning_id, owner_id, owner_name) -> dict:
     if not owner_name:
         raise _bad("请选择跟进人")
     with session() as db:
-        w = _warning_or_404(db, warning_id)
+        w = _warning_or_404(db, warning_id, lock=True)
         _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法指派")
@@ -686,13 +722,32 @@ def assign_warning(user, warning_id, owner_id, owner_name) -> dict:
         return {"warningId": str(w.id), "owner": owner_name, "status": w.status}
 
 
-def add_intervention(user, warning_id, way, content, result="", next_plan="") -> dict:
+def add_intervention(user, warning_id, way, content, result="", next_plan="", *, mobile_teacher_scope=False, command_key=None) -> dict:
     content = (content or "").strip()
     if len(content) < 5:
         raise _bad("跟进内容不少于 5 个字")
     with session() as db:
-        w = _warning_or_404(db, warning_id)
-        _assert_handle_allowed(db, user, w)
+        from . import academic_affairs_grade_command_receipt as receipts
+        receipt = None
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import _staff
+            from app.core.permissions import has_permission
+            _staff(user)
+            if not has_permission(user, "academicAffairs.warning.handle"):
+                from app.core.exceptions import no_permission
+                raise no_permission("当前身份无权记录预警跟进")
+            if not command_key:
+                raise _bad("缺少本次操作编号，请刷新页面后重新提交")
+            receipt, replay = receipts.begin(db, user, "WARNING_FOLLOW_UP", command_key,
+                {"warningId": str(warning_id), "way": way, "content": content, "result": result, "nextPlan": next_plan})
+            if replay is not None:
+                return replay
+        w = _warning_or_404(db, warning_id, lock=True)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w, writing=True)
+        else:
+            _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法记录跟进")
         from app.models import AcademicIntervention
@@ -704,34 +759,49 @@ def add_intervention(user, warning_id, way, content, result="", next_plan="") ->
         db.add(itv)
         if w.status == "PENDING_HANDLE":
             w.status, w.version = "PROCESSING", w.version + 1
+            _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "INTERVENTION", content[:200])
+        db.flush()
+        response = {"warningId": str(w.id), "interventionId": str(itv.id), "status": w.status}
+        receipts.finish(db, receipt, response)
         db.commit()
-        return {"warningId": str(w.id), "interventionId": str(itv.id), "status": w.status}
+        return response
 
 
-def escalate_warning(user, warning_id, reason) -> dict:
+def escalate_warning(user, warning_id, reason, *, mobile_teacher_scope=False) -> dict:
     reason = (reason or "").strip()
     if len(reason) < 5:
         raise _bad("升级说明不少于 5 个字")
     with session() as db:
-        w = _warning_or_404(db, warning_id)
-        _assert_handle_allowed(db, user, w)
+        w = _warning_or_404(db, warning_id, lock=True)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w, writing=True)
+        else:
+            _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法升级")
+        if w.status == "ESCALATED":
+            raise _conflict("预警已升级，请勿重复处理")
         before = w.status
         w.status, w.level, w.version = "ESCALATED", "HIGH", w.version + 1
+        _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "ESCALATE", reason, before, "ESCALATED")
         db.commit()
         return {"warningId": str(w.id), "status": w.status}
 
 
-def close_warning(user, warning_id, result) -> dict:
+def close_warning(user, warning_id, result, *, mobile_teacher_scope=False) -> dict:
     result = (result or "").strip()
     if len(result) < 5:
         raise _bad("关闭说明不少于 5 个字")
     with session() as db:
-        w = _warning_or_404(db, warning_id)
-        _assert_handle_allowed(db, user, w)
+        w = _warning_or_404(db, warning_id, lock=True)
+        if mobile_teacher_scope:
+            from .mobile_academic_warning_service import require_warning_scope
+            require_warning_scope(db, user, w, writing=True)
+        else:
+            _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED":
             raise _conflict("预警已关闭")
         if w.record_status == "VOIDED":
@@ -739,6 +809,7 @@ def close_warning(user, warning_id, result) -> dict:
         before = w.status
         w.status, w.close_result, w.version = "CLOSED", result, w.version + 1
         mark_todos_done(db, w.id)
+        _sync_academic_student_projection(db, w)
         _audit(db, "ACAD_WARNING", w.id, "CLOSE", result, before, "CLOSED")
         db.commit()
         return {"warningId": str(w.id), "status": w.status}
@@ -749,7 +820,7 @@ def void_warning(user, warning_id, reason) -> dict:
     if len(reason) < 5:
         raise _bad("误报说明不少于 5 个字")
     with session() as db:
-        w = _warning_or_404(db, warning_id)
+        w = _warning_or_404(db, warning_id, lock=True)
         _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED":
             raise _conflict("预警已关闭，无法作废")
@@ -767,7 +838,7 @@ def remind_warning(user, warning_id) -> dict:
     """预警跟进页「提醒」：不再只是计数器，真实向学生本人+责任辅导员各推一条站内通知
     （message_type=ACAD_WARNING_REMIND），与预警首次生成的通知同源可查（见「预警通知」页）。"""
     with session() as db:
-        w = _warning_or_404(db, warning_id)
+        w = _warning_or_404(db, warning_id, lock=True)
         _assert_handle_allowed(db, user, w)
         if w.status == "CLOSED" or w.record_status == "VOIDED":
             raise _conflict("预警已关闭或已作废，无法提醒")

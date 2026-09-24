@@ -15,6 +15,8 @@ from sqlalchemy import func, select
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
+from app.core.security import require_mobile_staff
 from app.services.db_service import _iso, _tid, session
 
 _CATEGORIES = ("TEACHING", "INVIGILATE", "MARKING", "PAPER", "OTHER")
@@ -40,8 +42,8 @@ def _role():
     return str(ctx.get("currentRoleCode") or "")
 
 
-def _tkey():
-    ctx = get_current_user_ctx() or {}
+def _tkey(user=None):
+    ctx = user or get_current_user_ctx() or {}
     uid = str(ctx.get("userId") or "")
     return ctx.get("loginName") or (uid[2:] if uid.startswith("u_") else uid) or uid
 
@@ -58,6 +60,18 @@ def _require_school(user, db):
     if ctx.scope_type != "TENANT_ALL":
         raise no_data_scope("仅教务处可审核工作量申报")
     return ctx
+
+
+def _require_mobile_workload_teacher(user):
+    """教师端读写的服务层身份和职责门。
+
+    路由层的 ``/mobile/teacher`` 前缀不是授权边界：命令回执和未来其它调用者
+    可能直接进入本服务。因此在这里同时校验教师小程序签发端、教职工身份和已存在的
+    教学职责权限，学生、家长及无教学职责的教职工都不能创建或读取教师工作量。
+    """
+    verified = require_mobile_staff(user)
+    enforce_permission(verified, "academicAffairs.grade.input")
+    return verified
 
 
 def _field(body, key, default=None):
@@ -78,7 +92,10 @@ def _dto(r):
 def submit(user, body) -> dict:
     """教师本人申报工作量。"""
     from app.models import AaWorkloadDeclaration
-    tk = _tkey()
+    from . import academic_affairs_grade_command_receipt as receipt
+
+    verified_user = _require_mobile_workload_teacher(user)
+    tk = _tkey(verified_user)
     if not tk:
         raise _bad("无法识别申报教师身份")
     category = (_field(body, "category") or "").upper()
@@ -90,7 +107,22 @@ def submit(user, body) -> dict:
         raise _bad("申报课时必须为数字")
     if hours <= 0 or hours > 9999:
         raise _bad("申报课时须大于 0")
+    command_key = str(_field(body, "commandKey") or "").strip()
+    if not command_key:
+        raise _bad("请求标识缺失，请刷新页面后重新提交")
+    command_payload = {
+        "teacherKey": tk,
+        "category": category,
+        "hours": hours,
+        "termCode": (_field(body, "termCode") or None),
+        "description": (_field(body, "description") or None),
+    }
     with session() as db:
+        command, replay = receipt.begin(
+            db, verified_user, "WORKLOAD_SUBMIT", command_key, command_payload,
+        )
+        if replay is not None:
+            return replay
         r = AaWorkloadDeclaration(tenant_id=_tid(), teacher_key=tk,
                                   teacher_name=(get_current_user_ctx() or {}).get("realName"),
                                   term_code=(_field(body, "termCode") or None), category=category,
@@ -99,18 +131,37 @@ def submit(user, body) -> dict:
         db.add(r)
         db.flush()
         _audit(db, r.id, "WORKLOAD_SUBMIT", f"{_CATEGORY_LABEL.get(category)} {hours}课时")
+        result = _dto(r)
+        receipt.finish(db, command, result)
         db.commit()
-        return _dto(r)
+        return result
 
 
-def my(user):
-    """教师本人工作量申报记录。"""
+def my(user, page=1, page_size=20):
+    """教师本人工作量申报记录（数据库分页）。"""
     from app.models import AaWorkloadDeclaration
+    verified_user = _require_mobile_workload_teacher(user)
+    page_no = max(1, int(page or 1))
+    limit = max(1, min(int(page_size or 20), 50))
     with session() as db:
-        rows = db.query(AaWorkloadDeclaration).filter(
-            AaWorkloadDeclaration.tenant_id == _tid(), AaWorkloadDeclaration.teacher_key == _tkey(),
-            AaWorkloadDeclaration.is_deleted.is_(False)).order_by(AaWorkloadDeclaration.id.desc()).all()
-        return [_dto(r) for r in rows]
+        conditions = (
+            AaWorkloadDeclaration.tenant_id == _tid(),
+            AaWorkloadDeclaration.teacher_key == _tkey(verified_user),
+            AaWorkloadDeclaration.is_deleted.is_(False),
+        )
+        total = int(db.scalar(select(func.count()).select_from(AaWorkloadDeclaration).where(*conditions)) or 0)
+        rows = db.scalars(select(AaWorkloadDeclaration).where(*conditions)
+                          .order_by(AaWorkloadDeclaration.id.desc())
+                          .offset((page_no - 1) * limit).limit(limit)).all()
+        return [_dto(r) for r in rows], total
+
+
+def command_receipt(user, command_key: str) -> dict:
+    """读取原教师自己的工作量命令回执，供网络中断后的只读核对。"""
+    from . import academic_affairs_grade_command_receipt as receipt
+
+    verified_user = _require_mobile_workload_teacher(user)
+    return receipt.read(verified_user, "WORKLOAD_SUBMIT", command_key)
 
 
 def list_all(user, status=None, term_code=None, page=1, page_size=50):
@@ -150,8 +201,12 @@ def review(user, decl_id, action, note="") -> dict:
     from app.models import AaWorkloadDeclaration
     with session() as db:
         _require_school(user, db)
-        r = db.get(AaWorkloadDeclaration, int(decl_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
+        r = db.scalar(select(AaWorkloadDeclaration).where(
+            AaWorkloadDeclaration.id == int(decl_id),
+            AaWorkloadDeclaration.tenant_id == _tid(),
+            AaWorkloadDeclaration.is_deleted.is_(False),
+        ).with_for_update())
+        if not r:
             raise not_found("工作量申报不存在")
         if r.status != "SUBMITTED":
             raise _invalid("仅待审核记录可审核")
@@ -167,6 +222,7 @@ def review(user, decl_id, action, note="") -> dict:
         r.reviewed_by, r.reviewed_at = _op(), datetime.utcnow()
         _audit(db, r.id, f"WORKLOAD_{act}", (note or "")[:100])
         db.commit()
+        db.refresh(r)
         return _dto(r)
 
 

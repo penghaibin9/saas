@@ -10,7 +10,15 @@
  *   - /auth/login|refresh|switch-role are transported through the existing per-tab HttpOnly
  *     browser endpoints;
  *   - explicit local token clearing revokes the browser cookie best-effort.
+ *
+ * manifest.h5.optimization.treeShaking.enable must remain false: uni's API
+ * rewriting otherwise bypasses this runtime adapter and leaves window.uni empty
+ * (also breaking dynamic navigation). This does not disable Vite tree shaking.
  */
+
+// #ifdef H5
+import { uni as h5Uni } from '@dcloudio/uni-h5'
+// #endif
 
 const TOKEN_KEY = 'gx_token_v1'
 const REFRESH_KEY = 'gx_refresh_v1'
@@ -18,13 +26,17 @@ const CHANNEL_KEY = 'gx_h5_browser_channel_v1'
 const SESSION_ID_KEY = 'gx_h5_browser_session_id_v1'
 const REFRESH_SENTINEL = '__HTTPONLY_BROWSER_REFRESH__'
 
-const isH5 = typeof window !== 'undefined' && typeof document !== 'undefined' && typeof uni !== 'undefined'
+const isH5 = typeof window !== 'undefined' && typeof document !== 'undefined' && typeof h5Uni !== 'undefined'
 
 if (isH5) {
-  const originalGet = uni.getStorageSync.bind(uni)
-  const originalSet = uni.setStorageSync.bind(uni)
-  const originalRemove = uni.removeStorageSync?.bind(uni)
-  const originalRequest = uni.request.bind(uni)
+  // In Vite H5 builds `uni` is an imported module binding, not a guaranteed
+  // `window.uni` global. Use the explicit H5 runtime so this early installer
+  // always patches the same request/storage object consumed by application code.
+  const runtimeUni = h5Uni
+  const originalGet = runtimeUni.getStorageSync.bind(runtimeUni)
+  const originalSet = runtimeUni.setStorageSync.bind(runtimeUni)
+  const originalRemove = runtimeUni.removeStorageSync?.bind(runtimeUni)
+  const originalRequest = runtimeUni.request.bind(runtimeUni)
 
   let accessToken = ''
   let apiOrigin = ''
@@ -98,13 +110,13 @@ if (isH5) {
   try { window.localStorage.removeItem(TOKEN_KEY); window.localStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }
   try { window.sessionStorage.removeItem(TOKEN_KEY); window.sessionStorage.removeItem(REFRESH_KEY) } catch { /* ignore */ }
 
-  uni.getStorageSync = (key) => {
+  runtimeUni.getStorageSync = (key) => {
     if (key === TOKEN_KEY) return accessToken
     if (key === REFRESH_KEY) return channel() ? REFRESH_SENTINEL : ''
     return originalGet(key)
   }
 
-  uni.setStorageSync = (key, value) => {
+  runtimeUni.setStorageSync = (key, value) => {
     if (key === TOKEN_KEY) {
       const next = String(value || '')
       if (!next && (accessToken || channel())) revokeBrowserSession()
@@ -119,7 +131,7 @@ if (isH5) {
   }
 
   if (originalRemove) {
-    uni.removeStorageSync = (key) => {
+    runtimeUni.removeStorageSync = (key) => {
       if (key === TOKEN_KEY) {
         if (accessToken || channel()) revokeBrowserSession()
         accessToken = ''
@@ -130,7 +142,7 @@ if (isH5) {
     }
   }
 
-  uni.request = (options = {}) => {
+  runtimeUni.request = (options = {}) => {
     const next = { ...options, header: { ...(options.header || {}) } }
     rememberApiOrigin(next.url)
     const originalUrl = String(next.url || '')

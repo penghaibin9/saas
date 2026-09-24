@@ -17,7 +17,8 @@ def test_student_schedule_uses_seven_days_backend_slots_and_time_bands():
     assert "timeBands" in source
     assert "slotLabel(item)" in source
     assert "按校区作息" in source
-    assert 'v-for="item in dayItems(day.value)"' in source
+    assert 'v-for="item in cellItems(day.value, slot)"' in source
+    assert 'return dayItems(day).filter' in source
     assert "item.weekParity === 'ODD'" in source
     assert "item.weekParity === 'EVEN'" in source
 
@@ -31,9 +32,10 @@ def test_student_grade_query_copy_never_uses_inner_html_or_official_wording():
     assert "textContent" in grades
     assert "innerHTML" not in grades
     assert "Official Academic Transcript" not in grades
-    assert "旧课表、客户端“官方成绩单”和旧评教面板已停用" in legacy
-    assert ".sp-tab:nth-child(5)" in legacy
-    assert ".sp-tab:nth-child(6)" in legacy
+    assert 'RouterLink v-for="item in visibleItems"' in legacy
+    assert ':to="item.to"' in legacy
+    assert 'AcademicView' not in legacy
+    assert 'innerHTML' not in legacy
 
 
 def test_student_section_route_fails_closed_and_hides_legacy_entry():
@@ -60,8 +62,8 @@ def test_makeup_route_uses_dedicated_server_authoritative_workspace():
     assert "portalApi.academicMakeupOptions()" in view
     assert "portalApi.academicRetakeApply" in view
     assert "portalApi.academicExemptionApply" in view
-    assert "报名资格、时间冲突和收费规则以服务器最终校验为准" in view
-    assert "提交申请不等于免修生效，须经学校审核通过" in view
+    assert "是否受理以学校规则为准" in view
+    assert "提交后由学校按各自规则审核，不直接生成正式成绩" in view
     assert "window.prompt" not in view
 
 
@@ -77,7 +79,7 @@ def test_student_registration_uses_dedicated_actionable_workspace():
     assert "batch.blockReason" in view
     assert "batch.canRegister" in view
     assert "batch.canDefer" in view
-    assert "暂缓原因（至少 2 字）" in view
+    assert "暂时无法完成注册的原因（至少 2 字）" in view
     assert "window.prompt" not in view
 
 
@@ -87,15 +89,15 @@ def test_student_selection_uses_dedicated_server_authoritative_workspace():
 
     assert "StudentSelectionView.vue" in router
     assert "academicSection('selection'" not in router
-    assert "portalApi.academicCourseSelection()" in view
-    assert "portalApi.academicSelectionRecords()" in view
+    assert "portalApi.academicCourseSelection(batchId || undefined)" in view
+    assert "portalApi.academicSelectionRecords(batchId || undefined)" in view
     assert "portalApi.academicSelectionPreflight" in view
     assert "portalApi.academicEnroll" in view
     assert "portalApi.academicDrop" in view
     assert "allowedActions" in view
-    assert "await load()" in view
-    assert "正式动作由服务器下发，提交时再次校验" in view
-    for boundary in ("时间冲突", "容量", "选退课窗口"):
+    assert "portalApi.academicSelectionRecords(context.batchId || undefined)" in view
+    assert "提交时服务器重新检查容量、时间和学籍资格" in view
+    for boundary in ("时间", "容量", "办理窗口"):
         assert boundary in view
     assert "window.prompt" not in view
 
@@ -109,8 +111,8 @@ def test_student_recheck_uses_dedicated_published_grade_workspace():
     assert "portalApi.academicGradeRecheck()" in view
     assert "portalApi.academicTranscript()" in view
     assert "portalApi.academicGradeRecheckSubmit" in view
-    assert "grade.gradeId != null" in view
-    assert "同一成绩存在在途申请时不可重复提交" in view
+    assert "exactPositiveDecimalId(grade.gradeId)" in view
+    assert "!inFlightGradeIds.value.has(exactPositiveDecimalId(grade.gradeId))" in view
     assert "RETURNED" not in view
 
 
@@ -124,7 +126,6 @@ def test_student_evaluation_uses_dedicated_secure_workspace():
     assert "task.canSubmit === true" in view
     assert "task.submitted === true" in view
     assert "task.canSubmit !== true || task.submitted === true" in view
-    assert "页面不展示班级累计提交人数" in view
     assert "submittedCount" not in view
     assert "portalApi.academicEvaluationSubmit" in view
 
@@ -135,7 +136,7 @@ def test_student_home_counts_only_real_actionable_states():
     assert "function actionableEvaluationRows(data)" in source
     assert "row.canSubmit === true && row.submitted !== true" in source
     assert "const evaluation = actionableEvaluationRows(val(1))" in source
-    assert "route: '/academic/makeup'" in source
+    assert "route: withQuery('/academic/makeup', { tab: 'retake', optionId })" in source
     assert "portalApi.academicGradeRecheck()" not in source
     assert "修改成绩复查申请" not in source
 

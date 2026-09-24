@@ -33,6 +33,8 @@ class ReturnedLeaveUpdate(BaseModel):
     startTime: Optional[str] = None
     endTime: Optional[str] = None
     reason: Optional[str] = Field(None, max_length=300)
+    # 已正式绑定的历史材料不允许由客户端解绑；这里只接受本次新增的 TEMP_PRIVATE 文件。
+    fileIds: list[str] = Field(default_factory=list, max_length=3)
     version: int = Field(..., description="当前页面看到的乐观锁版本")
 
 
@@ -240,6 +242,7 @@ def leave_update_returned(
         row.days = leave_svc._days(start, end)
         row.reason = reason
         row.version = int(row.version or 0) + 1
+        leave_svc.bind_leave_evidence(db, row, body.fileIds, stu, user)
         after = f"type={leave_type};start={start};end={end};reason={reason}"
         leave_svc._audit(db, row.id, "STUDENT_EDIT_RETURNED", before=before, after=after)
         db.commit()

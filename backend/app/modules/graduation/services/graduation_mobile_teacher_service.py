@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
+from app.core.tenant_scoped import tenant_get
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
     GraduationAuditTrail,
@@ -226,8 +227,8 @@ def _topic_change_review(user: dict, request_id: str, action: str, comment: str 
         if not row or row.is_deleted or row.tenant_id != _tid():
             raise not_found("变更申请不存在")
         if _role(user) not in _ADMIN_ROLES:
-            old_topic = db.get(GraduationTopic, row.old_topic_id)
-            new_topic = db.get(GraduationTopic, row.new_topic_id)
+            old_topic = tenant_get(db, GraduationTopic, row.old_topic_id)
+            new_topic = tenant_get(db, GraduationTopic, row.new_topic_id)
             owner_ids = {
                 int(topic.advisor_mentor_id) for topic in (old_topic, new_topic)
                 if topic and topic.advisor_mentor_id
@@ -252,7 +253,7 @@ def _review_tasks(user: dict) -> list:
         if _role(user) not in _ADMIN_ROLES:
             query = query.where(GraduationReview.reviewer_mentor_id == mentor.id)
         rows = db.scalars(query.order_by(GraduationReview.id.desc())).all()
-        return [svc._review_row(row, db.get(GraduationStudent, row.gd_student_id)) for row in rows]
+        return [svc._review_row(row, tenant_get(db, GraduationStudent, row.gd_student_id)) for row in rows]
 
 
 def _review_submit(user: dict, review_id: str, score, opinion: str | None = None) -> dict:
@@ -268,10 +269,10 @@ def _review_submit(user: dict, review_id: str, score, opinion: str | None = None
     return svc.submit_review(review_id, value, str(opinion).strip())
 
 
-def _stable_judge_pending() -> list[dict]:
+def _stable_judge_pending(user: dict | None = None) -> list[dict]:
     from app.modules.graduation.services import graduation_defense_score_service as svc
     from app.modules.graduation.services import graduation_identity as gid
-    user = get_current_user_ctx() or {}
+    user = user if user is not None else (get_current_user_ctx() or {})
     with session() as db:
         mentor = gid.current_user_mentor(db)
         expert_id = user.get("expertId")
@@ -286,7 +287,7 @@ def _stable_judge_pending() -> list[dict]:
         )).all()
         result = []
         for student in students:
-            group = db.get(GraduationDefenseGroup, student.defense_group_id)
+            group = tenant_get(db, GraduationDefenseGroup, student.defense_group_id)
             if not group or group.is_deleted or not group.published:
                 continue
             seats = gid.judge_panel_seats(group)
@@ -318,6 +319,40 @@ def _stable_judge_pending() -> list[dict]:
         return result
 
 
+def _stable_defense_score_entry(user: dict, gd_student_id: str, body: dict) -> dict:
+    """Mobile defense scoring uses only the authenticated stable judge seat."""
+    from app.modules.graduation.services import graduation_defense_score_service as svc
+    from app.modules.graduation.services import graduation_identity as gid
+
+    payload = body or {}
+    with session() as db:
+        mentor = gid.current_user_mentor(db)
+        expert_id = user.get("expertId")
+        if mentor is None and expert_id in (None, ""):
+            raise no_permission("当前账号未绑定稳定答辩评委身份")
+        student = _student(db, gd_student_id, user)
+        group = tenant_get(db, GraduationDefenseGroup, student.defense_group_id)
+        seat = next((
+            item for item in gid.judge_panel_seats(group)
+            if gid.user_matches_judge_seat(item, mentor=mentor, expert_id=expert_id)
+        ), None)
+        if seat is None:
+            raise no_permission("当前账号不在该生答辩组评委名单中")
+        judge_name = (seat.get("name") or (mentor.teacher_name if mentor else "") or user.get("realName") or "").strip()
+        judge_mentor_id = int(mentor.id) if mentor is not None else None
+
+    return svc.enter_score(
+        gd_student_id,
+        judge_name,
+        score=payload.get("score"),
+        comment=payload.get("comment"),
+        absent=bool(payload.get("absent")),
+        absent_reason=payload.get("absentReason"),
+        expert_id=expert_id,
+        judge_mentor_id=judge_mentor_id,
+    )
+
+
 def _stable_topic_audit(db, biz_id, action, detail=""):
     user = get_current_user_ctx() or {}
     operator = user.get("realName") or user.get("loginName")
@@ -344,4 +379,5 @@ topic_change_review = _topic_change_review
 review_tasks = _review_tasks
 review_submit = _review_submit
 judge_pending = _stable_judge_pending
+defense_score_entry = _stable_defense_score_entry
 topic_audit = _stable_topic_audit

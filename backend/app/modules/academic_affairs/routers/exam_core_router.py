@@ -7,12 +7,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path
 from pydantic import BaseModel
 
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_exam_teacher_lock_guard as exam_teacher_lock_guard
 from app.modules.academic_affairs.services import exam_convenience_service as exam_convenience
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务"])
@@ -33,6 +34,8 @@ DeferApplyBody = legacy.DeferApplyBody
 DeferReviewBody = legacy.DeferReviewBody
 
 exam_svc = legacy.exam_svc
+# 仅在考务路由装配时替换 facade 私有锁 helper；不触碰 services/__init__.py 共享 owner。
+exam_teacher_lock_guard.install(exam_svc)
 autoexam_svc = legacy.autoexam_svc
 _require_student = legacy._require_student
 _EXAM_MANAGE = legacy._EXAM_MANAGE
@@ -55,6 +58,12 @@ class PreviewConfirmBody(BaseModel):
 @router.post("/exam/batches", summary="建考试批次")
 def exam_batch_create(body: ExamBatchBody, user=Depends(require_permission(_EXAM_MANAGE))):
     return success(exam_svc.create_batch(user, body), message="已创建")
+
+
+@router.get("/exam/my-invigilation", summary="电脑端本人正式监考安排")
+def exam_my_invigilation(user=Depends(require_permission(_EXAM_VIEW))):
+    from app.modules.academic_affairs.services.academic_affairs_invigilation_workbench_service import my_invigilation_workbench
+    return success(my_invigilation_workbench(user))
 
 
 @router.get("/exam/batches", summary="考试批次列表")
@@ -359,8 +368,8 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
-def defer_resubmit(deferId: int = Path(...), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId), message="已重提")
+def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
@@ -386,7 +395,7 @@ def defer_counselor_review(
     deferId: int = Path(...),
     user=Depends(require_permission(_DEFER_COUNSELOR)),
 ):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")
 
 
 @router.post("/deferred-exams/{deferId}/review", summary="缓考教师/学院/教务处审批")
@@ -395,4 +404,4 @@ def defer_review(
     deferId: int = Path(...),
     user=Depends(require_permission(_DEFER_REVIEW)),
 ):
-    return success(exam_svc.defer_review(user, deferId, body.action, body.reason), message="已处理")
+    return success(exam_svc.defer_review(user, deferId, body.action, body.reason, body.expectedVersion), message="已处理")

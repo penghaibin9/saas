@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "implementedAt": "2026-08-30T08:32:00Z",
+  "status": "IMPLEMENTED_STATIC_AND_FRONTEND_GATES_GREEN_RUNTIME_DB_PENDING",
+  "scope": "Staff PC Internship Today Work",
+  "authorityReuse": {
+    "todoTableCreated": false,
+    "workflowCreated": false,
+    "permissionSystemCreated": false,
+    "readAuthorities": [
+      "t_weekly_report",
+      "t_attendance_exception",
+      "t_risk_record"
+    ],
+    "writeOwners": [
+      "WeeklyReportDetailView / existing report review endpoint",
+      "AttendanceExceptionDetailView / existing exception handle endpoint",
+      "RiskDisposalView / existing risk state machine"
+    ]
+  },
+  "projection": {
+    "limit": 8,
+    "priority": [
+      "HIGH open risk",
+      "attendance exception with longest streak",
+      "other open risk",
+      "weekly report with risk hint",
+      "other pending weekly report"
+    ],
+    "requiredFields": [
+      "whyHere",
+      "recentChange",
+      "waitingOn",
+      "nextActor",
+      "receipt",
+      "sourceVersion",
+      "resumeKey",
+      "exact object route"
+    ],
+    "dataScope": "The projection reuses the same scoped internship record IDs used by dashboard counts and risk alerts.",
+    "permissionProjection": "Objects are included only when the current context can perform the owning review/handle capability."
+  },
+  "experience": {
+    "todayBeforeKpi": true,
+    "aggregateTodosPreservedForCompatibility": true,
+    "aggregateTodosRenderedAsPrimary": false,
+    "missingBatchIsError": false,
+    "missingBatchRecovery": [
+      "direct batch management",
+      "retry current context"
+    ],
+    "continuousQueue": [
+      "weekly-report",
+      "attendance-exception"
+    ],
+    "riskUsesExistingInPageQueue": true
+  },
+  "verification": [
+    {
+      "gate": "frontend production build",
+      "result": "GREEN"
+    },
+    {
+      "gate": "targeted navigation and Today Work contracts",
+      "result": "26 passed, 0 failed"
+    },
+    {
+      "gate": "full frontend node test suite",
+      "result": "GREEN after making one pre-existing graduation test line-ending agnostic on Windows"
+    },
+    {
+      "gate": "ESLint touched frontend files",
+      "result": "GREEN"
+    },
+    {
+      "gate": "backend Python compile",
+      "result": "GREEN"
+    },
+    {
+      "gate": "backend MySQL integration tests",
+      "result": "RUNTIME_BLOCKED",
+      "reason": "The isolated Docker MySQL engine remains unresponsive; project policy correctly refuses SQLite substitution."
+    }
+  ]
+}

@@ -14,6 +14,7 @@ from app.core.permissions import (
 from app.core.response import success
 from app.models import InternshipBatch, InternshipRecord
 from app.modules.internship.services.internship_scope import apply_internship_record_scope
+from app.modules.internship.schemas.internship_recruitment_campaign import VolunteerLockRelease, VolunteerSchoolConfirm
 from app.services.db_service import _iso, _tid, session
 
 router = APIRouter(
@@ -83,6 +84,88 @@ def teacher_internship_context(
         "batches": batches if healthy else [],
         "defaultBatchId": _choose_default_batch(batches) if healthy else "",
     })
+
+
+@router.get("/volunteer-campaigns", summary="教师指导批次的正式志愿招聘季")
+def teacher_volunteer_campaigns(
+    batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_school_volunteer_service as volunteers
+    return success(volunteers.review_context(batch_id=batchId, user=user))
+
+
+@router.post("/volunteer-groups/{group_id}/confirm", summary="教师按版本确认正式志愿岗位")
+def teacher_volunteer_confirm(
+    group_id: int, body: VolunteerSchoolConfirm,
+    campaignId: int = Query(..., ge=1), batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.application.review")),
+):
+    from app.modules.internship.services import internship_school_volunteer_service as volunteers
+    return success(volunteers.confirm_group(
+        campaign_id=campaignId, group_id=group_id, expected_batch_id=batchId, user=user,
+        application_id=body.applicationId, expected_group_version=body.expectedGroupVersion,
+        expected_record_version=body.expectedRecordVersion,
+        expected_application_version=body.expectedApplicationVersion,
+    ), message="岗位已确认，协议、保险与上岗条件需继续核验")
+
+
+@router.post("/volunteer-groups/{group_id}/return", summary="教师按版本退回正式志愿补正")
+def teacher_volunteer_return(
+    group_id: int, body: VolunteerLockRelease,
+    campaignId: int = Query(..., ge=1), batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.application.review")),
+):
+    from app.modules.internship.services import internship_school_volunteer_service as volunteers
+    return success(volunteers.return_group(
+        campaign_id=campaignId, group_id=group_id, expected_batch_id=batchId, user=user,
+        reason=body.reason, expected_group_version=body.expectedGroupVersion,
+        expected_record_version=body.expectedRecordVersion,
+    ), message="志愿已退回，等待学生补正后重提")
+
+
+@router.get("/volunteer-groups", summary="教师当前招聘季正式志愿队列")
+def teacher_volunteer_groups(
+    campaignId: int = Query(..., ge=1), batchId: int = Query(..., ge=1),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    status: str = Query("PENDING"), keyword: str = Query("", max_length=100),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_school_volunteer_service as volunteers
+    result = volunteers.list_groups(campaign_id=campaignId, expected_batch_id=batchId, user=user,
+        status=status, keyword=keyword, page=page, page_size=pageSize)
+    return success(_paged(result["items"], result["total"], page, pageSize, batchId))
+
+
+@router.get("/volunteer-groups/{group_id}", summary="教师正式志愿、冻结材料及企业处理详情")
+def teacher_volunteer_group_detail(
+    group_id: int, campaignId: int = Query(..., ge=1), batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_school_volunteer_service as volunteers
+    return success(volunteers.get_group(campaign_id=campaignId, group_id=group_id,
+        expected_batch_id=batchId, user=user))
+
+
+@router.get("/positions", summary="教师指导批次岗位核对（只读）")
+def teacher_batch_positions(
+    batchId: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=50),
+    keyword: str = Query('', max_length=100), status: str = Query(''),
+    user=Depends(require_permission("internship.position.view")),
+):
+    from app.modules.internship.services import internship_teacher_position_service as positions
+    items, total = positions.list_positions(user, batch_id=batchId, page=page, page_size=pageSize, keyword=keyword, status=status)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.get("/positions/{position_id}", summary="教师指导批次岗位详情（只读）")
+def teacher_batch_position_detail(
+    position_id: int, batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.position.view")),
+):
+    from app.modules.internship.services import internship_teacher_position_service as positions
+    return success(positions.get_position(user, batch_id=batchId, position_id=position_id))
 
 
 @router.get("/scores", summary="教师当前批次实习成绩列表")
@@ -366,3 +449,33 @@ def teacher_batch_application_review(
         record_expected_version=payload.get("recordExpectedVersion"),
         expected_batch_id=batchId),
         message="正式实习申请审核完成")
+
+
+@router.get("/changes", summary="教师当前批次实习变更待审核队列")
+def teacher_batch_changes(
+    batchId: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("internship.change.view")),
+):
+    from app.modules.internship.services import internship_change_service as changes
+    items, total = changes.list_changes(
+        page, pageSize, status="PENDING", batch_id=batchId, user=user)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.post("/changes/{change_id}/review", summary="教师按申请与学生记录版本审核实习变更")
+def teacher_batch_change_review(
+    change_id: str,
+    batchId: int = Query(..., ge=1),
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.change.review")),
+):
+    from app.modules.internship.services import internship_change_service as changes
+    payload = body or {}
+    return success(changes.review_change(
+        change_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", user=user,
+        expected_version=payload.get("expectedVersion"),
+        record_expected_version=payload.get("recordExpectedVersion"),
+        expected_batch_id=batchId), message="实习变更审核完成")

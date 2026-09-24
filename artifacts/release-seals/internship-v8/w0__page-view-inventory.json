@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "surfaceFileCounts": {
+    "staffPc": 97,
+    "studentPc": 5,
+    "studentMini": 33,
+    "teacherMini": 9,
+    "enterprisePortal": 40
+  },
+  "keyPageMetrics": [
+    {
+      "file": "frontend/src/modules/internship/views/InternshipDashboardView.vue",
+      "lineCount": 353,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 5,
+      "toastHintCount": 0,
+      "loadingHintCount": 8,
+      "errorHintCount": 9
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipStudentListView.vue",
+      "lineCount": 453,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 7,
+      "toastHintCount": 15,
+      "loadingHintCount": 9,
+      "errorHintCount": 41
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipEnterpriseListView.vue",
+      "lineCount": 326,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 0,
+      "toastHintCount": 10,
+      "loadingHintCount": 7,
+      "errorHintCount": 18
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipMatchListView.vue",
+      "lineCount": 602,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 9,
+      "toastHintCount": 23,
+      "loadingHintCount": 7,
+      "errorHintCount": 45
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipApplicationReviewView.vue",
+      "lineCount": 408,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 3,
+      "toastHintCount": 6,
+      "loadingHintCount": 13,
+      "errorHintCount": 22
+    },
+    {
+      "file": "frontend/src/modules/internship/views/AttendanceView.vue",
+      "lineCount": 318,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 1,
+      "toastHintCount": 5,
+      "loadingHintCount": 7,
+      "errorHintCount": 10
+    },
+    {
+      "file": "frontend/src/modules/internship/views/AttendanceExceptionDetailView.vue",
+      "lineCount": 208,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 0,
+      "toastHintCount": 3,
+      "loadingHintCount": 8,
+      "errorHintCount": 16
+    },
+    {
+      "file": "frontend/src/modules/internship/views/LeaveReviewView.vue",
+      "lineCount": 324,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 3,
+      "toastHintCount": 6,
+      "loadingHintCount": 12,
+      "errorHintCount": 15
+    },
+    {
+      "file": "frontend/src/modules/internship/views/WeeklyReportListView.vue",
+      "lineCount": 366,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 5,
+      "toastHintCount": 6,
+      "loadingHintCount": 9,
+      "errorHintCount": 11
+    },
+    {
+      "file": "frontend/src/modules/internship/views/WeeklyReportDetailView.vue",
+      "lineCount": 241,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 1,
+      "toastHintCount": 6,
+      "loadingHintCount": 9,
+      "errorHintCount": 19
+    },
+    {
+      "file": "frontend/src/modules/internship/views/GuidanceVisitView.vue",
+      "lineCount": 592,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 4,
+      "toastHintCount": 9,
+      "loadingHintCount": 13,
+      "errorHintCount": 35
+    },
+    {
+      "file": "frontend/src/modules/internship/views/RiskDisposalView.vue",
+      "lineCount": 494,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 2,
+      "toastHintCount": 5,
+      "loadingHintCount": 17,
+      "errorHintCount": 21
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipComplianceView.vue",
+      "lineCount": 743,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 20,
+      "toastHintCount": 1,
+      "loadingHintCount": 21,
+      "errorHintCount": 83
+    },
+    {
+      "file": "frontend/src/modules/internship/views/ScoreView.vue",
+      "lineCount": 452,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 1,
+      "toastHintCount": 18,
+      "loadingHintCount": 24,
+      "errorHintCount": 18
+    },
+    {
+      "file": "frontend/src/modules/internship/views/ArchiveView.vue",
+      "lineCount": 394,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 2,
+      "toastHintCount": 10,
+      "loadingHintCount": 17,
+      "errorHintCount": 13
+    },
+    {
+      "file": "frontend/src/modules/internship/views/InternshipMaterialCenterView.vue",
+      "lineCount": 372,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 4,
+      "toastHintCount": 9,
+      "loadingHintCount": 13,
+      "errorHintCount": 24
+    },
+    {
+      "file": "student-portal/src/views/internship/InternshipView.vue",
+      "lineCount": 976,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 25,
+      "toastHintCount": 0,
+      "loadingHintCount": 5,
+      "errorHintCount": 9
+    },
+    {
+      "file": "student-portal/src/views/internship/InternshipSelectionView.vue",
+      "lineCount": 504,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 10,
+      "toastHintCount": 0,
+      "loadingHintCount": 19,
+      "errorHintCount": 49
+    },
+    {
+      "file": "miniapp/src/pages/student/internship/index.vue",
+      "lineCount": 197,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 3,
+      "toastHintCount": 4,
+      "loadingHintCount": 2,
+      "errorHintCount": 7
+    },
+    {
+      "file": "miniapp/src/pages/teacher/workbench/index.vue",
+      "lineCount": 393,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 0,
+      "toastHintCount": 2,
+      "loadingHintCount": 2,
+      "errorHintCount": 11
+    },
+    {
+      "file": "miniapp/src/pages/teacher/internship-review/index.vue",
+      "lineCount": 384,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 14,
+      "toastHintCount": 17,
+      "loadingHintCount": 12,
+      "errorHintCount": 11
+    },
+    {
+      "file": "enterprise-portal/src/layouts/EnterprisePortalLayout.vue",
+      "lineCount": 72,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 2,
+      "toastHintCount": 0,
+      "loadingHintCount": 1,
+      "errorHintCount": 2
+    },
+    {
+      "file": "enterprise-portal/src/views/EnterpriseHomeView.vue",
+      "lineCount": 51,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 0,
+      "toastHintCount": 0,
+      "loadingHintCount": 5,
+      "errorHintCount": 5
+    },
+    {
+      "file": "enterprise-portal/src/views/PositionListView.vue",
+      "lineCount": 48,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 4,
+      "toastHintCount": 0,
+      "loadingHintCount": 6,
+      "errorHintCount": 8
+    },
+    {
+      "file": "enterprise-portal/src/views/ApplicantListView.vue",
+      "lineCount": 71,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 4,
+      "toastHintCount": 0,
+      "loadingHintCount": 7,
+      "errorHintCount": 7
+    },
+    {
+      "file": "enterprise-portal/src/views/ApplicantDetailView.vue",
+      "lineCount": 45,
+      "tabPaneTagCount": 0,
+      "buttonTagCount": 0,
+      "toastHintCount": 0,
+      "loadingHintCount": 4,
+      "errorHintCount": 6
+    }
+  ],
+  "interpretation": "Counts are source facts only; Browser decides visual overload and first-screen quality."
+}

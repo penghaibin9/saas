@@ -21,7 +21,7 @@
         <form class="yk-lead-form" @submit.prevent="submitLead" novalidate>
           <label><span>学校名称 *</span><input v-model.trim="leadForm.schoolName" maxlength="80" autocomplete="organization" placeholder="例如：湖南某职业学院" required /></label>
           <div class="yk-lead-form-row"><label><span>联系人</span><input v-model.trim="leadForm.contactName" maxlength="40" autocomplete="name" placeholder="例如：张老师" /></label><label><span>联系电话 *</span><input v-model.trim="leadForm.phone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位手机号" required /></label></div>
-          <label><span>意向产品 *</span><select v-model="leadForm.interest" required><option value="教务系统">教务系统</option><option value="学工中心">学工中心</option><option value="毕业设计">毕业设计</option><option value="岗位实习">岗位实习</option><option value="数字迎新">数字迎新</option><option value="学生全生命周期平台">学生全生命周期平台</option><option value="私有化部署与系统集成">私有化部署与系统集成</option></select></label>
+          <label><span>意向产品 *</span><select v-model="leadForm.interest" required><option value="教务系统">教务系统</option><option value="学工中心">学工中心</option><option value="毕业设计">毕业设计</option><option value="岗位实习">岗位实习</option><option value="高校人事系统">高校人事系统</option><option value="教务与微信小程序">教务与微信小程序</option><option value="整体解决方案">整体解决方案</option><option value="数字迎新">数字迎新</option><option value="学生全生命周期平台">学生全生命周期平台</option><option value="私有化部署与系统集成">私有化部署与系统集成</option></select></label>
           <label><span>想重点了解什么</span><textarea v-model.trim="leadForm.message" maxlength="200" rows="4" placeholder="例如：想了解岗位实习模块、部署方式和报价"></textarea><small>{{ leadForm.message.length }}/200</small></label>
           <label class="yk-lead-honeypot" aria-hidden="true"><span>Website</span><input v-model="leadForm.website" tabindex="-1" autocomplete="off" /></label>
           <button class="yk-button yk-button-primary yk-lead-submit" type="submit" :disabled="leadSubmitting || leadSubmitted">{{ leadSubmitting ? '正在提交…' : leadSubmitted ? '已提交，我们会尽快联系' : '提交并短信通知跃科' }}</button>
@@ -68,7 +68,7 @@ const DEFAULT_POINTS = Object.freeze([
   { mark: '4', title: '安全边界先于便利', desc: '多租户、权限、数据范围和审计继续作为生产底座，官网展示不改变系统已有安全边界。' }
 ])
 const TYPE_COPY = Object.freeze({ solution: { title: '把分散功能收敛成可持续运行的学校工作方式', lead: '解决方案页面重点说明角色怎么协同、业务怎么连续、异常怎么处理，而不是重新罗列菜单。' }, service: { title: '功能上线之后，还要能稳定交付和持续维护', lead: '从学校开通、初始化、数据到运行支持和升级，交付过程同样需要标准化和可追踪。' }, contact: { title: '把需求说清楚，比先选一堆功能更重要', lead: '可以直接从学校当前最难推进的一条流程开始，先判断角色、状态、数据和部署边界，再讨论产品组合。' } })
-const PRODUCT_INTEREST_BY_SLUG = Object.freeze({ 'academic-affairs': '教务系统', 'student-affairs': '学工中心', graduation: '毕业设计', internship: '岗位实习' })
+const PRODUCT_INTEREST_BY_SLUG = Object.freeze({ 'academic-affairs': '教务系统', 'student-affairs': '学工中心', graduation: '毕业设计', internship: '岗位实习', renshi: '高校人事系统', 'wechat-academic': '教务与微信小程序', all: '整体解决方案', platform: '学生全生命周期平台', deployment: '私有化部署与系统集成' })
 
 function safeServerLeadMessage(payload, fallback) {
   const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : ''
@@ -101,6 +101,7 @@ export default {
   methods: {
     evidenceCaption(index) { return index === 0 ? `${this.page.navTitle}核心工作区 · 产品运行界面` : `${this.page.navTitle}业务界面 ${index + 1} · 演示数据` },
     async submitLead() {
+      if (this.leadSubmitting || this.leadSubmitted) return
       this.leadError = ''
       const phone = String(this.leadForm.phone || '').replace(/\D/g, '')
       if (this.leadForm.schoolName.trim().length < 2) { this.leadError = '请填写学校名称'; return }
@@ -108,9 +109,9 @@ export default {
       this.leadSubmitting = true
       const fallback = `提交失败，请直接电话联系 ${this.contact.phone}`
       try {
-        const response = await fetch(`${API_BASE_URL}${API_PREFIX}/notification/website-lead`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ school_name: this.leadForm.schoolName, contact_name: this.leadForm.contactName, phone, interest: this.leadForm.interest, message: this.leadForm.message, website: this.leadForm.website }) })
+        const response = await fetch(`${API_BASE_URL}${API_PREFIX}/notification/website-lead`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ school_name: this.leadForm.schoolName, contact_name: this.leadForm.contactName, phone, interest: this.leadForm.interest, message: this.leadForm.message, website: this.leadForm.website, source_path: this.$route.query.source === 'official-showcase' ? '/#showcase' : '/contact' }) })
         const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(safeServerLeadMessage(payload, fallback))
+        if (!response.ok || payload?.code !== 0 || payload?.data?.accepted !== true) throw new Error(safeServerLeadMessage(payload, fallback))
         this.leadSubmitted = true
       } catch (error) { this.leadError = error instanceof Error && error.message ? error.message : fallback }
       finally { this.leadSubmitting = false }

@@ -62,14 +62,28 @@ const systemRoutes = {
       name: 'system-data-exchange',
       component: () => import('@/modules/system/views/SystemDataExchangeView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '数据交换任务中心', requiresAuth: true,
-        permissionKey: 'systemAdmin.user.import' }
+        permissionKey: 'systemAdmin.dataExchange.viewOwn' }
     },
     {
       path: 'file-storage-governance',
       name: 'system-file-storage-governance',
       component: () => import('@/modules/system/views/SystemFileStorageGovernanceView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '文件存储治理', requiresAuth: true,
-        permissionKey: 'systemAdmin.file.manage' }
+        permissionKey: 'systemAdmin.fileGovernance.view' }
+    },
+    {
+      path: 'platform-integrity',
+      name: 'system-platform-integrity',
+      component: () => import('@/modules/system/views/SystemPlatformIntegrityView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '完整性异常中心', requiresAuth: true,
+        permissionKey: 'systemAdmin.fileGovernance.view' }
+    },
+    {
+      path: 'business-forms',
+      name: 'system-business-forms',
+      component: () => import('@/modules/system/views/SystemBusinessFormsView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '合规与业务表单', requiresAuth: true,
+        permissionKey: 'systemAdmin.config.view' }
     },
     {
       /* 旧的师生混合入口：保留路由避免既有链接 404，直接落到学生导入页。 */
@@ -86,7 +100,7 @@ const systemRoutes = {
       path: 'iam',
       name: 'system-iam-workspace',
       component: () => import('@/modules/system/views/SystemIamWorkspaceView.vue'),
-      meta: { moduleCode: 'SYSTEM', title: '学校 IAM 工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
+      meta: { moduleCode: 'SYSTEM', title: '学校身份权限工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
     },
     {
       path: 'menus',
@@ -255,7 +269,8 @@ const systemRoutes = {
     },
     {
       path: 'dictionaries-fields', name: 'system-dictionaries-fields',
-      redirect: '/admin/system/config?tab=system'
+      component: () => import('@/modules/system/views/SystemDictionariesView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '数据字典', requiresAuth: true, permissionKey: 'systemAdmin.config.view' }
     },
     {
       path: 'process-rules', name: 'system-process-rules',

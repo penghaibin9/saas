@@ -85,7 +85,7 @@
               <tr v-for="a in audits" :key="a.id">
                 <td class="is-who">{{ a.userName }} · {{ a.roleName }}</td>
                 <td>{{ a.time }}</td>
-                <td>{{ a.action }}</td>
+                <td>{{ auditActionLabel(a) }}</td>
                 <td>{{ a.target }}</td>
                 <td>{{ a.detail }}</td>
               </tr>
@@ -168,6 +168,7 @@ import { AppGlobalState, AppConfirmDialog } from '@/components/common'
 import { AppDrawer, AppButton } from '@/components/ui'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 const EMPTY_FILTERS = () => ({ keyword: '', category: '', status: '' })
 const EMPTY_FORM = () => ({
@@ -234,6 +235,7 @@ export default {
     }
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     canEditRow(row) {
       const pa = this.pa.editReport
       return !!(pa && pa.visible && pa.allowed) && ['DRAFT', 'WITHDRAWN'].includes(row.status)

@@ -19,6 +19,8 @@ from app.modules.internship.services import internship_student_leave_context_ser
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
 from app.modules.internship.services import internship_student_eval_service as student_evals
+from app.modules.internship.services import internship_score_appeal_service as score_appeals
+from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_student_context_guard import (
     require_context_fields,
 )
@@ -248,6 +250,21 @@ def my_selected_changes(
         user, batch_id=batchId, internship_id=internshipId))
 
 
+@router.get("/context/changes/target-positions", summary="本人当前批次可申请的真实目标岗位")
+def my_change_target_positions(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    changeType: str = Query(default="CHANGE_POSITION"),
+    keyword: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(changes.list_target_positions(
+        user, batch_id=batchId, internship_id=internshipId,
+        keyword=keyword, change_type=changeType, page=page, page_size=pageSize))
+
+
 @router.post("/context/changes", summary="按当前批次和版本发起实习变更")
 def apply_selected_change(
     body: dict = Body(...),
@@ -290,10 +307,19 @@ def submit_selected_report(
 def my_selected_weekly_reports(
     batchId: int = Query(..., ge=1),
     internshipId: int = Query(..., ge=1),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=50),
+    focusReportId: int | None = Query(default=None, ge=1),
     user=Depends(get_current_user),
 ):
     return success(reports.list_weekly(
-        user, batch_id=batchId, internship_id=internshipId))
+        user,
+        batch_id=batchId,
+        internship_id=internshipId,
+        page=page,
+        page_size=pageSize,
+        focus_report_id=focusReportId,
+    ))
 
 
 @router.post("/context/weekly-reports", summary="按当前批次和版本提交周报")
@@ -308,8 +334,13 @@ def submit_selected_weekly_report(
 
 
 @router.get("/context/self-eval", summary="本人当前批次实习自评")
-def my_selected_self_eval(user=Depends(get_current_user)):
-    return success(student_evals.my_eval(user))
+def my_selected_self_eval(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(student_evals.my_eval(
+        user, batch_id=batchId, internship_id=internshipId))
 
 
 @router.post("/context/self-eval", summary="按当前批次和版本提交实习自评")
@@ -322,3 +353,41 @@ def submit_selected_self_eval(
         student_evals.student_submit(user, body or {}),
         message="实习自评已提交",
     )
+
+
+@router.get("/context/score-appeal", summary="本人当前实习成绩与最近申诉")
+def my_selected_score_appeal(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(score_appeals.my_latest(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/score-appeal", summary="本人对当前实习成绩发起申诉")
+def submit_selected_score_appeal(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(score_appeals.create(user, body or {}), message="成绩申诉已提交")
+
+
+@router.post("/context/help", summary="本人在当前实习记录发起求助")
+def submit_selected_help(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(risks.student_help_report(user, body or {}), message="求助已提交")
+
+
+@router.get("/context/help", summary="本人查看当前实习求助处置进度")
+def my_selected_help(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(risks.my_student_help(
+        user, batch_id=batchId, internship_id=internshipId))

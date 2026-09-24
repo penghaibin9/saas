@@ -131,6 +131,16 @@ def change_student_status(db, student_id, to_status, change_type, reason="", ope
     db.add(StudentStageEvent(tenant_id=_tid(), student_id=int(student_id), from_stage=frm,
                              to_stage=to_status, reason=f"学籍异动（{change_type}）",
                              source_module="academic-affairs"))
+    from app.modules.platform.document_lifecycle.fact_hooks import academic_status_effective
+
+    academic_status_effective(
+        db,
+        student=s,
+        academic_fact_version=fact_version,
+        event_time=applied_at,
+        change_type=change_type,
+        actor_id=(int(operator) if str(operator or "").isdigit() else None),
+    )
     return {"studentId": str(student_id), "fromStatus": frm, "toStatus": to_status,
             "changeType": change_type, "academicFactVersion": fact_version,
             "effectiveAt": applied_at.isoformat()}

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -97,7 +97,7 @@ def _strict_score(value, label: str):
 
 def _task_row(task) -> dict:
     row = _core._task_row(task)
-    row["courseId"] = str(task.course_id or "")
+    row["courseId"] = int(task.course_id) if task.course_id is not None else None
     row["teachingTaskId"] = str(task.teaching_task_id or "")
     row["termId"] = str(task.term_id or "")
     return row
@@ -318,6 +318,8 @@ def enter_score(task_id, user, body) -> dict:
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
+        from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
+        require_fixed_score_entry(db, task)
         if str(task.status or "").upper() not in _EDITABLE:
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         data = _require_ready_roster(db, task)
@@ -511,13 +513,19 @@ def grade_import_confirm(task_id, user, rows) -> dict:
         }
 
 
-def submit_task(task_id, user) -> dict:
+def submit_task(task_id, user, *, expected=None, command_key=None) -> dict:
     """普通教学任务提交学院审核，并在同一事务冻结 R9 正式名单快照。"""
     from app.models import AaGradeRecord, AaGradeTask, WorkflowInstance, WorkflowTask
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
 
+    from . import academic_affairs_dynamic_grade_service as dynamic
+    from . import academic_affairs_grade_command_receipt as receipts
     with _core.session() as db:
+        receipt, previous = receipts.begin(db, user, "GRADE_TASK_SUBMIT", command_key,
+            {"gradeTaskId": str(task_id), "expected": expected})
+        if previous is not None:
+            return previous
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
@@ -531,7 +539,16 @@ def submit_task(task_id, user) -> dict:
                 http_status=409,
             )
 
-        data = resolve_versioned_roster(db, int(task.teaching_task_id))
+        dynamic_mode = expected is not None or dynamic.uses_components(db, task)
+        if dynamic_mode:
+            scheme = dynamic._scheme_row(db, task, lock=True)
+            data = dynamic.formal_roster(db, task, lock=True)
+            dynamic.require_expected_identity(task, scheme, data, expected)
+            report = dynamic.quality_in_session(db, task, data)
+            if not report["canSubmit"]:
+                raise AppException("DATA_CONFLICT", report["summary"], details=report, http_status=409)
+        else:
+            data = resolve_versioned_roster(db, int(task.teaching_task_id))
         roster_ids = {int(value) for value in data.get("studentIds") or []}
         if not roster_ids:
             raise AppException("DATA_CONFLICT", "正式教学名单为空，不可提交成绩任务", http_status=409)
@@ -580,6 +597,7 @@ def submit_task(task_id, user) -> dict:
             db.rollback()
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩任务已提交或状态已变化", http_status=409)
         task.status = "SUBMITTED"
+        task.version = int(task.version or 0) + 1
 
         _name, _role, user_id = _core._op()
         ensure_workflow_enabled(db, _core._tid(), _core._WF_SUBMIT)
@@ -619,13 +637,14 @@ def submit_task(task_id, user) -> dict:
                 f"rosterVersionId={snapshot['rosterVersionId']};snapshotVersion={snapshot['snapshotVersion']}"
             ),
         )
-        db.commit()
-        return {
-            "gradeTaskId": str(task.id),
-            "status": "SUBMITTED",
-            "studentCount": len(roster_ids),
-            "rosterIdentity": snapshot,
+        result = {
+            "gradeTaskId": str(task.id), "taskVersion": task.version,
+            "status": "SUBMITTED", "studentCount": len(roster_ids), "rosterIdentity": snapshot,
+            "workflowInstanceId": str(instance.id), "nextNode": "COLLEGE_REVIEW",
         }
+        receipts.finish(db, receipt, result)
+        db.commit()
+        return result
 
 
 def _refresh_aggregates(db, academic_student) -> None:
@@ -829,20 +848,10 @@ def publish_grades(task_id, user) -> dict:
                 f"rosterVersionId={frozen['rosterVersionId']};snapshotVersion={frozen['snapshotVersion']}"
             ),
         )
+        from .academic_grade_effect_service import enqueue_grade_warning_scan, try_run_effect
+        effect_job_id = enqueue_grade_warning_scan(db, task.id)
         db.commit()
 
-    warning_scan_ok = True
-    warning_scan_error = None
-    try:
-        from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
-
-        scan_warnings(user)
-    except Exception as exc:
-        import logging
-
-        warning_scan_ok = False
-        warning_scan_error = str(exc)[:200]
-        logging.getLogger(__name__).exception("grade publish -> scan_warnings failed")
     return {
         "gradeTaskId": str(task_id),
         "status": "PUBLISHED",
@@ -854,8 +863,7 @@ def publish_grades(task_id, user) -> dict:
         "teachingClassId": frozen["teachingClassId"],
         "rosterVersionId": frozen["rosterVersionId"],
         "snapshotVersion": frozen["snapshotVersion"],
-        "warningScanOk": warning_scan_ok,
-        "warningScanError": warning_scan_error,
+        **try_run_effect(effect_job_id, user),
     }
 
 
@@ -882,10 +890,300 @@ def _scoped_academic_students(db, user):
     return query.all()
 
 
-def transcript(student_id, user) -> dict:
+def _scoped_academic_student_query(db, user):
+    """Build the tenant/scope projection used by large grade read models.
+
+    Loading every ``AcademicStudent`` ORM object made the school-wide 20K grade
+    analysis spend most of its request budget hydrating fields that the report
+    never reads.  Keep the exact same tenant/scope predicate while projecting
+    just the academic-student key and class used by the grouping view.
+    """
+    from app.models import AcademicStudent, StudentProfile
+
+    query = db.query(
+        AcademicStudent.id.label("id"),
+        AcademicStudent.class_id.label("class_id"),
+    ).filter(
+        AcademicStudent.tenant_id == _core._tid(),
+        AcademicStudent.is_deleted.is_(False),
+    )
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role == "COLLEGE_ADMIN":
+        from app.core.affairs_security import build_affairs_context
+
+        context = build_affairs_context(user, db)
+        allowed = context.allowed_class_ids(db)
+        if allowed is not None:
+            profile_ids = select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _core._tid(),
+                StudentProfile.class_id.in_(list(allowed) or [0]),
+                StudentProfile.is_deleted.is_(False),
+            )
+            query = query.filter(AcademicStudent.student_id.in_(profile_ids))
+    return query
+
+
+def _grade_analysis_filters(AcademicGrade, term):
+    filters = [
+        AcademicGrade.tenant_id == _core._tid(),
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    ]
+    if term:
+        filters.append(AcademicGrade.term == term)
+    return filters
+
+
+def _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters) -> bool:
+    """Only use SQL aggregation when it is provably equivalent to code-first identity.
+
+    Non-ASCII or control-character codes go to the existing canonical resolver.
+    A conservative false positive costs time; a false negative can double-count credits.
+    """
+    from sqlalchemy import and_, or_
+    from .academic_affairs_effective_grade_policy_service import VALID_ATTEMPT_STRATEGIES
+
+    code = AcademicGrade.course_code
+    strategy = AcademicGrade.effective_attempt_strategy
+    base = db.query(AcademicGrade.id).select_from(AcademicGrade).join(
+        scoped_students, AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters)
+    unusual = or_(
+        and_(code.is_not(None), or_(
+            func.octet_length(code) != func.char_length(code),
+            code.op("REGEXP")("[[:cntrl:]]"),
+            # The fast grouped probe below uses the stored code directly so
+            # MySQL can use its composite index.  Any value whose raw bytes
+            # differ from Python's strip/upper identity stays on the
+            # canonical resolver instead of relying on collation semantics.
+            func.hex(code) != func.hex(func.upper(func.trim(code))),
+        )),
+        func.hex(AcademicGrade.record_status) != "ACTIVE".encode().hex().upper(),
+        func.hex(AcademicGrade.pass_status).notin_([
+            value.encode().hex().upper() for value in ("PASSED", "FAIL", "FAILED", "PENDING")
+        ]),
+        and_(strategy.is_not(None), func.length(strategy) > 0,
+             func.hex(strategy).notin_([
+                 value.encode().hex().upper() for value in VALID_ATTEMPT_STRATEGIES
+             ])),
+    )
+    if base.filter(unusual).limit(1).first() is not None:
+        return True
+
+    # The guard above proves that raw course_code already equals its Python
+    # strip/upper form.  Grouping by it directly avoids a full temporary-table
+    # expression scan on every ordinary school-wide analysis request.
+    count_query = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
+        scoped_students, AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters)
+    coded = count_query.filter(code.is_not(None), code != "").group_by(
+        AcademicGrade.acad_student_id, code,
+    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
+    if coded is not None:
+        return True
+    uncoded = count_query.filter(
+        or_(code.is_(None), code == ""), AcademicGrade.course_id.is_not(None),
+    ).group_by(
+        AcademicGrade.acad_student_id, AcademicGrade.course_id,
+    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
+    return uncoded is not None
+
+
+def _grade_analysis_aggregate_columns(AcademicGrade):
+    score = AcademicGrade.score
+    return [
+        func.count(AcademicGrade.id).label("total"),
+        func.sum(score).label("score_sum"),
+        func.sum(case((AcademicGrade.pass_status == "PASSED", 1), else_=0)).label("passed"),
+        func.max(score).label("max_score"),
+        func.min(score).label("min_score"),
+        func.sum(case((score >= 90, 1), else_=0)).label("b90"),
+        func.sum(case((score.between(80, 89), 1), else_=0)).label("b80"),
+        func.sum(case((score.between(70, 79), 1), else_=0)).label("b70"),
+        func.sum(case((score.between(60, 69), 1), else_=0)).label("b60"),
+        func.sum(case((score < 60, 1), else_=0)).label("b0"),
+    ]
+
+
+def _grade_analysis_stats_from_parts(*, total, score_sum, passed, max_score, min_score, buckets):
+    total = int(total or 0)
+    normalized = {key: int(value or 0) for key, value in buckets.items()}
+    if not total:
+        return _core._score_stats([], 0)
+    return {
+        "total": total,
+        "passRate": round(int(passed or 0) / total, 3),
+        "excellentRate": round(normalized["90-100"] / total, 3),
+        "goodRate": round(normalized["80-89"] / total, 3),
+        "avgScore": round(float(score_sum or 0) / total, 1),
+        "maxScore": int(max_score or 0),
+        "minScore": int(min_score or 0),
+        "distribution": [
+            {"range": key, "count": normalized[key]}
+            for key in ("90-100", "80-89", "70-79", "60-69", "0-59")
+        ],
+    }
+
+
+def _grade_analysis_stats_from_row(row):
+    return _grade_analysis_stats_from_parts(
+        total=row.total,
+        score_sum=row.score_sum,
+        passed=row.passed,
+        max_score=row.max_score,
+        min_score=row.min_score,
+        buckets={
+            "90-100": row.b90,
+            "80-89": row.b80,
+            "70-79": row.b70,
+            "60-69": row.b60,
+            "0-59": row.b0,
+        },
+    )
+
+
+def _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, dimension):
+    """Aggregate in MySQL when every stable course identity has one active row."""
+    if _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters):
+        return None
+
+    columns = _grade_analysis_aggregate_columns(AcademicGrade)
+    query = db.query(*columns).select_from(AcademicGrade).join(
+        scoped_students,
+        AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters, AcademicGrade.score.is_not(None))
+    if dimension not in {"course", "class"}:
+        return _grade_analysis_stats_from_row(query.one())
+
+    if dimension == "class":
+        group_key = func.coalesce(scoped_students.c.class_id, "未分班")
+    else:
+        group_key = func.coalesce(func.nullif(AcademicGrade.course_code, ""), AcademicGrade.course_name, "未命名课程")
+    rows = query.add_columns(group_key.label("name")).group_by(group_key).all()
+    result_rows = []
+    totals = {
+        "total": 0, "score_sum": 0, "passed": 0,
+        "max_score": None, "min_score": None,
+        "b90": 0, "b80": 0, "b70": 0, "b60": 0, "b0": 0,
+    }
+    for row in rows:
+        stats = _grade_analysis_stats_from_row(row)
+        stats["name"] = str(row.name or "未命名")
+        result_rows.append(stats)
+        totals["total"] += int(row.total or 0)
+        totals["score_sum"] += int(row.score_sum or 0)
+        totals["passed"] += int(row.passed or 0)
+        totals["max_score"] = max(
+            value for value in (totals["max_score"], int(row.max_score or 0)) if value is not None
+        )
+        row_min = int(row.min_score or 0)
+        totals["min_score"] = row_min if totals["min_score"] is None else min(totals["min_score"], row_min)
+        for key in ("b90", "b80", "b70", "b60", "b0"):
+            totals[key] += int(getattr(row, key) or 0)
+    result = _grade_analysis_stats_from_parts(
+        total=totals["total"], score_sum=totals["score_sum"], passed=totals["passed"],
+        max_score=totals["max_score"], min_score=totals["min_score"],
+        buckets={
+            "90-100": totals["b90"], "80-89": totals["b80"], "70-79": totals["b70"],
+            "60-69": totals["b60"], "0-59": totals["b0"],
+        },
+    )
+    result["dimension"] = dimension
+    result["rows"] = sorted(result_rows, key=lambda row: (-row["total"], row["name"]))
+    return result
+
+
+def _transcript_page(db, student_id, page, page_size, *, term=None, pass_status=None):
+    """Page the ordinary unique-course projection; preserve canonical arbitration
+    for historical or competing attempts instead of inventing a SQL policy.
+    """
+    from app.models import AcademicGrade, AcademicStudent
+    from .academic_affairs_effective_grade_policy_service import VALID_ATTEMPT_STRATEGIES
+
+    student = db.scalar(select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _core._tid(), AcademicStudent.student_id == int(student_id),
+        AcademicStudent.is_deleted.is_(False),
+    ))
+    selected_term = str(term or "").strip()
+    selected_status = str(pass_status or "").upper().strip()
+    if selected_status and selected_status not in {"PASSED", "FAIL", "FAILED", "PENDING"}:
+        raise AppException("VALIDATION_ERROR", "成绩状态筛选不合法")
+    meta = {
+        "studentId": str(student_id), "page": page, "pageSize": page_size,
+        "term": selected_term or None, "passStatus": selected_status or None,
+    }
+    if student is None:
+        return {**meta, "items": [], "total": 0, "earnedCredits": 0, "gpa": None,
+                "failCount": 0, "terms": [], "hasMore": False, "note": "无学业记录"}
+    base_conditions = [AcademicGrade.tenant_id == _core._tid(), AcademicGrade.acad_student_id == student.id,
+                       AcademicGrade.record_status == "ACTIVE", func.length(AcademicGrade.record_status) == 6,
+                       AcademicGrade.is_deleted.is_(False)]
+    conditions = list(base_conditions)
+    if selected_term:
+        conditions.append(AcademicGrade.term == selected_term)
+    if selected_status:
+        conditions.append(func.upper(AcademicGrade.pass_status) == selected_status)
+    missing_identity = db.scalar(select(AcademicGrade.id).where(
+        *base_conditions, AcademicGrade.course_id.is_(None),
+    ).limit(1))
+    competing = db.execute(select(AcademicGrade.course_id).where(*base_conditions)
+                           .group_by(AcademicGrade.course_id)
+                           .having(func.count(AcademicGrade.id) > 1).limit(1)).first()
+    # Include bytes in DISTINCT so a case/accent/pad-insensitive DB collation
+    # cannot hide malformed legacy values from canonical Python validation.
+    strategies = [row[0] for row in db.execute(select(
+        AcademicGrade.effective_attempt_strategy, func.hex(AcademicGrade.effective_attempt_strategy),
+    ).where(*base_conditions).distinct())]
+    statuses = [row[0] for row in db.execute(select(
+        AcademicGrade.pass_status, func.hex(AcademicGrade.pass_status),
+    ).where(*base_conditions).distinct())]
+    ordinary = missing_identity is None and competing is None and all(
+        not value or str(value).upper() in VALID_ATTEMPT_STRATEGIES for value in strategies
+    ) and all(str(value or "").upper() in {"PASSED", "FAIL", "FAILED", "PENDING"} for value in statuses)
+    if ordinary:
+        summary = db.execute(select(
+            func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status) == "PASSED", AcademicGrade.credit_value), else_=0)), 0),
+            func.coalesce(func.sum(case((func.upper(AcademicGrade.pass_status).in_(["FAIL", "FAILED"]), 1), else_=0)), 0),
+        ).where(*base_conditions)).one()
+        total = int(db.scalar(select(func.count(AcademicGrade.id)).where(*conditions)) or 0)
+        earned, failures = float(summary[0]), int(summary[1])
+        rows = db.scalars(select(AcademicGrade).where(*conditions).order_by(
+            func.coalesce(AcademicGrade.term, ""),
+            func.coalesce(func.nullif(AcademicGrade.course_code, ""), AcademicGrade.course_name, ""),
+            AcademicGrade.id,
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+    else:
+        # One student's exceptional attempts use the existing frozen policy,
+        # including its 409 on unresolved historical identity/strategy debt.
+        all_effective = sorted(resolve_effective_grade(db.scalars(select(AcademicGrade).where(*base_conditions)).all()),
+                               key=lambda row: (str(row.term or ""), str(row.course_code or row.course_name or ""), int(row.id)))
+        effective = [row for row in all_effective if (
+            (not selected_term or str(row.term or "") == selected_term)
+            and (not selected_status or str(row.pass_status or "").upper() == selected_status)
+        )]
+        total = len(effective)
+        earned = sum(float(row.credit_value or 0) for row in all_effective if str(row.pass_status or "").upper() == "PASSED")
+        failures = sum(1 for row in all_effective if str(row.pass_status or "").upper() in {"FAIL", "FAILED"})
+        rows = effective[(page - 1) * page_size:page * page_size]
+    term_rows = db.scalars(select(AcademicGrade.term).where(*base_conditions).distinct()).all()
+    terms = sorted({str(value).strip() for value in term_rows if str(value or "").strip()}, reverse=True)
+    return {**meta, "total": total, "earnedCredits": earned, "gpa": float(student.gpa or 0),
+            "failCount": failures, "policyCode": "LATEST_FORMAL_SOURCE_V1", "items": [{
+                "gradeId": str(row.id), "courseId": str(row.course_id or ""), "courseCode": row.course_code or "",
+                "courseVersion": row.course_version, "attemptNo": row.attempt_no, "courseName": row.course_name,
+                "term": row.term or "", "credit": float(row.credit_value or 0), "score": row.score,
+                "passStatus": row.pass_status, "source": row.source or "LEGACY",
+            } for row in rows], "terms": terms, "hasMore": page * page_size < total}
+
+
+def transcript(student_id, user, page=None, page_size=50, *, term=None) -> dict:
     from app.models import AcademicGrade, AcademicStudent
 
     with _core.session() as db:
+        if page is not None:
+            if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 200:
+                raise AppException("VALIDATION_ERROR", "成绩单页码须在1至100000、每页条数须在1至200之间")
+            return _transcript_page(db, student_id, int(page), int(page_size), term=term)
         academic_student = db.scalars(select(AcademicStudent).where(
             AcademicStudent.tenant_id == _core._tid(),
             AcademicStudent.student_id == int(student_id),
@@ -932,16 +1230,27 @@ def transcript(student_id, user) -> dict:
         }
 
 
+def passed_courses_page(student_id, user, page=1, page_size=20) -> dict:
+    """学分页的已通过课程真分页，禁止调用方先拉全量成绩再在内存中过滤。"""
+    if isinstance(page, bool) or isinstance(page_size, bool) or not 1 <= int(page) <= 100000 or not 1 <= int(page_size) <= 200:
+        raise AppException("VALIDATION_ERROR", "已通过课程页码须在1至100000、每页条数须在1至200之间")
+    with _core.session() as db:
+        return _transcript_page(
+            db, student_id, int(page), int(page_size), pass_status="PASSED",
+        )
+
+
 def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
     purpose = str(purpose or "").strip()
     if len(purpose) < 5:
         raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
     from app.models import StudentProfile
+    from app.core.tenant_scoped import tenant_get
     from app.services.xlsx_util import build_ledger_xlsx
 
     data = transcript(student_id, user)
     with _core.session() as db:
-        student = db.get(StudentProfile, int(student_id))
+        student = tenant_get(db, StudentProfile, int(student_id), tenant_id=_core._tid())
         label = (
             f"{student.real_name}（学号 {student.student_no}）"
             if student else f"学生ID {student_id}"
@@ -995,6 +1304,8 @@ def fail_list(user, term=None, page=1, page_size=50):
             items.append({
                 "gradeId": str(row.id),
                 "studentName": student.name if student else "",
+                "attemptNo": row.attempt_no,
+                "courseVersion": row.course_version,
                 "studentId": str(student.student_id or "") if student else "",
                 "courseId": str(row.course_id or ""),
                 "courseCode": row.course_code or "",
@@ -1011,17 +1322,37 @@ def grade_analysis(user, term=None, dimension=None):
     from app.models import AcademicGrade
 
     with _core.session() as db:
-        students = _scoped_academic_students(db, user)
-        student_by_id = {int(row.id): row for row in students}
-        query = db.query(AcademicGrade).filter(
-            AcademicGrade.tenant_id == _core._tid(),
-            AcademicGrade.acad_student_id.in_(list(student_by_id) or [0]),
-            AcademicGrade.score.is_not(None),
-            AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False),
-        )
-        if term:
-            query = query.filter(AcademicGrade.term == term)
+        scoped_students = _scoped_academic_student_query(db, user).subquery()
+        filters = _grade_analysis_filters(AcademicGrade, term)
+        fast = _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, dimension)
+        if fast is not None:
+            fast["policyCode"] = "LATEST_FORMAL_SOURCE_V1"
+            return fast
+        # Projection rows retain every attribute used by the effective-grade
+        # policy without constructing tens of thousands of full ORM objects.
+        # Joining the scoped student projection also avoids serialising a 20K
+        # ``IN (...)`` predicate back to MySQL on every dashboard request.
+        query = db.query(
+            AcademicGrade.id,
+            AcademicGrade.acad_student_id,
+            AcademicGrade.course_id,
+            AcademicGrade.course_code,
+            AcademicGrade.course_version,
+            AcademicGrade.course_name,
+            AcademicGrade.nature,
+            AcademicGrade.credit_value,
+            AcademicGrade.score,
+            AcademicGrade.pass_status,
+            AcademicGrade.exam_type,
+            AcademicGrade.record_status,
+            AcademicGrade.source,
+            AcademicGrade.attempt_no,
+            AcademicGrade.effective_attempt_strategy,
+            scoped_students.c.class_id.label("student_class_id"),
+        ).join(
+            scoped_students,
+            AcademicGrade.acad_student_id == scoped_students.c.id,
+        ).filter(*filters)
         effective = [row for row in resolve_effective_grade(query.all()) if row.score is not None]
         all_scores = [int(row.score) for row in effective]
         passed = sum(1 for row in effective if str(row.pass_status or "").upper() == "PASSED")
@@ -1030,8 +1361,7 @@ def grade_analysis(user, term=None, dimension=None):
             groups = {}
             for row in effective:
                 if dimension == "class":
-                    student = student_by_id.get(int(row.acad_student_id))
-                    name = str(getattr(student, "class_id", None) or "未分班")
+                    name = str(row.student_class_id or "未分班")
                 else:
                     name = str(row.course_code or row.course_name or "未命名课程")
                 groups.setdefault(name, []).append(row)
@@ -1092,11 +1422,19 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         return result
 
     from app.models import AaGradeRecord, AcademicGrade, AcademicStudent
+    from app.core.tenant_scoped import tenant_get
 
     with _core.session() as db:
-        record = db.get(AaGradeRecord, int(record_id))
-        grade = db.get(AcademicGrade, int(record.acad_grade_id)) if record and record.acad_grade_id else None
-        academic_student = db.get(AcademicStudent, int(grade.acad_student_id)) if grade and grade.acad_student_id else None
+        tenant_id = _core._tid()
+        record = tenant_get(db, AaGradeRecord, int(record_id), tenant_id=tenant_id)
+        grade = (
+            tenant_get(db, AcademicGrade, int(record.acad_grade_id), tenant_id=tenant_id)
+            if record and record.acad_grade_id else None
+        )
+        academic_student = (
+            tenant_get(db, AcademicStudent, int(grade.acad_student_id), tenant_id=tenant_id)
+            if grade and grade.acad_student_id else None
+        )
         if grade:
             freeze_effective_grade_policy(
                 db,

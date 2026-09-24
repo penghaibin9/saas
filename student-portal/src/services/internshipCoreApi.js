@@ -172,14 +172,21 @@ export const internshipCoreApi = {
   uploadInsurancePolicy(file) {
     return uploadFile('/files?bizType=INTERNSHIP_INSURANCE_POLICY', file)
   },
+  uploadMakeupEvidence(file) {
+    return uploadFile('/files?bizType=INTERNSHIP', file)
+  },
+  uploadLeaveEvidence(file) {
+    return uploadFile('/files?bizType=INTERNSHIP', file)
+  },
   insurance() {
     return request('/portal/internship/insurance')
   },
   saveInsurance(body) {
     return request('/portal/internship/insurance', { method: 'POST', body })
   },
-  selfEval() {
-    return request('/portal/internship/context/self-eval')
+  selfEval(params = {}) {
+    const query = new URLSearchParams(params).toString()
+    return request(`/portal/internship/context/self-eval${query ? `?${query}` : ''}`)
   },
   submitSelfEval(body) {
     return request('/portal/internship/context/self-eval', { method: 'POST', body })

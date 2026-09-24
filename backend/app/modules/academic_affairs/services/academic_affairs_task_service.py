@@ -16,7 +16,7 @@ import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
@@ -137,6 +137,15 @@ def _pending_count(db, batch_id: int) -> int:
 def _summary(tasks) -> dict:
     tasks = [task for task in tasks if str(task.status or "").upper() != "MERGED"]
     by_status = Counter(str(task.status or "UNKNOWN").upper() for task in tasks)
+    missing_teacher_key = sum(
+        1 for task in tasks
+        if str(task.status or "").upper() in {"ASSIGNED", "TEACHER_CONFIRMED", "READY"}
+        and not str(task.teacher_key or "").strip()
+    )
+    return _summary_counts(by_status, missing_teacher_key)
+
+
+def _summary_counts(by_status, missing_teacher_key=0) -> dict:
     blockers = []
     for code, status, route, template in (
         ("UNASSIGNED", "PENDING_ASSIGN", "/admin/academic-affairs/teaching-tasks/assign", "仍有 {count} 条任务未分配教师"),
@@ -149,18 +158,13 @@ def _summary(tasks) -> dict:
                 "code": code, "count": count,
                 "message": template.format(count=count), "route": route,
             })
-    missing_teacher_key = sum(
-        1 for task in tasks
-        if str(task.status or "").upper() in {"ASSIGNED", "TEACHER_CONFIRMED", "READY"}
-        and not str(task.teacher_key or "").strip()
-    )
     if missing_teacher_key:
         blockers.append({
             "code": "TEACHER_KEY_MISSING", "count": missing_teacher_key,
             "message": f"有 {missing_teacher_key} 条任务缺少稳定教师工号",
             "route": "/admin/academic-affairs/teaching-tasks/assign",
         })
-    total = len(tasks)
+    total = sum(by_status.values())
     assigned = sum(by_status.get(status, 0) for status in ("ASSIGNED", "TEACHER_CONFIRMED", "READY"))
     confirmed = sum(by_status.get(status, 0) for status in _READY_STATUSES)
     return {
@@ -176,6 +180,24 @@ def _summary(tasks) -> dict:
         "blockerCount": sum(int(item["count"]) for item in blockers),
         "canAdvance": total > 0 and not blockers,
     }
+
+
+def _batch_summary_map(db, batch_ids, scope):
+    """Aggregate bounded batch summaries in SQL; never load every teaching task."""
+    from app.models import AaTeachingTask as Task
+
+    status = func.upper(func.coalesce(func.nullif(Task.status, ""), "UNKNOWN"))
+    missing_key = case((func.trim(func.coalesce(Task.teacher_key, "")) == "", 1), else_=0)
+    grouped = db.execute(select(Task.batch_id, status, func.count(), func.sum(missing_key)).where(
+        Task.tenant_id == _tid(), Task.batch_id.in_(batch_ids or [-1]),
+        Task.is_deleted.is_(False), status != "MERGED", *_visible_task_conditions(scope, Task),
+    ).group_by(Task.batch_id, status)).all()
+    counts, missing = defaultdict(Counter), Counter()
+    for batch_id, state, count, no_key in grouped:
+        counts[int(batch_id)][state] = int(count)
+        if state in {"ASSIGNED", "TEACHER_CONFIRMED", "READY"}:
+            missing[int(batch_id)] += int(no_key or 0)
+    return {int(batch_id): _summary_counts(counts[int(batch_id)], missing[int(batch_id)]) for batch_id in batch_ids}
 
 
 def _batch_next_action(batch, summary) -> dict:
@@ -321,6 +343,8 @@ def generate_batch(body, user) -> dict:
         precheck = _generation_precheck(db, user, college_id)
         result = generation.generate_batch_tx(db, body, user)
         batch_id = int(result["batchId"])
+        # The session disables autoflush: projection must see every newly generated task.
+        db.flush()
         projection = teaching_class.sync_batch_teaching_classes(db, batch_id)
         db.commit()
         result["programValidation"] = {
@@ -472,8 +496,8 @@ def review_batch(batch_id, user, action, reason="") -> dict:
         return {"batchId": str(batch.id), "status": batch.status}
 
 
-def list_batches(user, term_id=None, status=None, page=1, page_size=20):
-    from app.models import AaTeachingTask, AaTeachingTaskBatch
+def list_batches(user, term_id=None, status=None, page=1, page_size=20, *, keyword=None):
+    from app.models import AaTerm, AaTeachingTaskBatch
 
     with session() as db:
         scope = _scope(user, db)
@@ -485,37 +509,36 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
             conditions.append(AaTeachingTaskBatch.term_id == int(term_id))
         if status:
             conditions.append(AaTeachingTaskBatch.status == status)
+        if keyword and str(keyword).strip():
+            conditions.append(AaTeachingTaskBatch.batch_name.contains(str(keyword).strip(), autoescape=True))
         visible = _visible_batch_ids(db, scope)
         if visible is not None:
             conditions.append(AaTeachingTaskBatch.id.in_(sorted(visible) or [-1]))
+        size = max(1, min(int(page_size), 200))
+        start = (max(1, int(page)) - 1) * size
+        total = int(db.scalar(select(func.count()).select_from(AaTeachingTaskBatch).where(*conditions)) or 0)
         batches = db.scalars(select(AaTeachingTaskBatch).where(*conditions).order_by(
             AaTeachingTaskBatch.id.desc(),
-        )).all()
+        ).offset(start).limit(size)).all()
         batch_ids = [int(batch.id) for batch in batches]
-        tasks = db.scalars(select(AaTeachingTask).where(
-            AaTeachingTask.tenant_id == _tid(),
-            AaTeachingTask.batch_id.in_(batch_ids or [-1]),
-            AaTeachingTask.is_deleted.is_(False),
-            *_visible_task_conditions(scope, AaTeachingTask),
-        )).all()
-        grouped = defaultdict(list)
-        for task in tasks:
-            grouped[int(task.batch_id)].append(task)
+        summaries = _batch_summary_map(db, batch_ids, scope)
+        terms = {int(term.id): f"{term.year_code} 第{term.term_no}学期" for term in db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in batches] or [-1]), AaTerm.is_deleted.is_(False),
+        )).all()}
         output = []
         for batch in batches:
-            summary = _summary(grouped.get(int(batch.id), []))
+            summary = summaries[int(batch.id)]
             output.append({
                 "batchId": str(batch.id), "batchName": batch.batch_name,
                 "termId": str(batch.term_id), "collegeId": str(batch.college_id or ""),
+                "termLabel": terms.get(int(batch.term_id), "学期待核对"),
                 "status": batch.status, **summary,
                 "nextAction": _batch_next_action(batch, summary),
             })
-        total = len(output)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return output[start:start + int(page_size)], total
+        return output, total
 
 
-def list_tasks(batch_id, user, status=None, page=1, page_size=50):
+def list_tasks(batch_id, user, status=None, page=1, page_size=50, *, keyword=None, task_id=None):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
@@ -536,18 +559,27 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50):
         ]
         if status:
             conditions.append(AaTeachingTask.status == status)
+        if task_id is not None:
+            conditions.append(AaTeachingTask.id == int(task_id))
+        if keyword and str(keyword).strip():
+            conditions.append(or_(*[column.contains(str(keyword).strip(), autoescape=True) for column in (
+                AaTeachingTask.course_name, AaTeachingTask.course_code, AaTeachingTask.teaching_class_name,
+                AaTeachingTask.teaching_class_code, AaTeachingTask.teacher_name, AaTeachingTask.teacher_key,
+            )]))
+        size = max(1, min(int(page_size), 200))
+        start = (max(1, int(page)) - 1) * size
+        total = int(db.scalar(select(func.count()).select_from(AaTeachingTask).where(*conditions)) or 0)
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.course_code, AaTeachingTask.teaching_class_code, AaTeachingTask.id,
-        )).all()
+        ).offset(start).limit(size)).all()
         output = [_core._task_row(task) for task in rows]
-        total = len(output)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return output[start:start + int(page_size)], total
+        return output, total
 
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
-                   page=1, page_size=50):
-    from app.models import AaTeachingTask
+                   page=1, page_size=50, task_id=None, *, term_id=None, keyword=None,
+                   formal_mine=False):
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
         conditions = [AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)]
@@ -555,31 +587,74 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             conditions.append(AaTeachingTask.batch_id == int(batch_id))
         if course_id:
             conditions.append(AaTeachingTask.course_id == int(course_id))
+        if term_id not in (None, ""):
+            conditions.append(AaTeachingTask.batch_id.in_(select(AaTeachingTaskBatch.id).where(
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.is_deleted.is_(False),
+                AaTeachingTaskBatch.term_id == int(term_id),
+            )))
+        if str(keyword or "").strip():
+            from sqlalchemy import or_
+            value = str(keyword).strip()
+            conditions.append(or_(
+                AaTeachingTask.course_name.contains(value, autoescape=True),
+                AaTeachingTask.course_code.contains(value, autoescape=True),
+                AaTeachingTask.teacher_name.contains(value, autoescape=True),
+            ))
         if status:
             conditions.append(AaTeachingTask.status == status)
+        if task_id not in (None, ""):
+            try:
+                conditions.append(AaTeachingTask.id == int(task_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "taskId 格式错误")
         if mergeable:
             conditions.extend([
                 AaTeachingTask.status.in_(_core._PRE_CONFIRM_STATUSES),
                 AaTeachingTask.is_merged.is_(False),
                 AaTeachingTask.merged_into_id.is_(None),
             ])
-        if mine:
+        if mine and formal_mine:
+            raise AppException("VALIDATION_ERROR", "mine 与 formalMine 不可同时使用")
+        if formal_mine:
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            formal_scope = teacher_authority.relation_scope(db, user, term_id=term_id)
+            conditions.append(AaTeachingTask.id.in_(sorted(formal_scope.get("taskIds") or []) or [-1]))
+        elif mine:
             keys = _core._user_keys(user)
             conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys) or ["__none__"]))
         else:
             scope = _scope(user, db)
             conditions.extend(_visible_task_conditions(scope, AaTeachingTask))
+        current_page = max(1, int(page or 1))
+        current_page_size = max(1, int(page_size or 50))
+        total = int(db.scalar(
+            select(func.count()).select_from(AaTeachingTask).where(*conditions)
+        ) or 0)
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
-        )).all()
-        output = [_core._task_row(task) for task in rows]
-        total = len(output)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return output[start:start + int(page_size)], total
+        ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
+        batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})
+        batch_status = {}
+        if batch_ids:
+            batch_status = {
+                int(batch.id): str(batch.status or "")
+                for batch in db.scalars(select(AaTeachingTaskBatch).where(
+                    AaTeachingTaskBatch.tenant_id == _tid(),
+                    AaTeachingTaskBatch.id.in_(batch_ids),
+                    AaTeachingTaskBatch.is_deleted.is_(False),
+                )).all()
+            }
+        items = []
+        for task in rows:
+            item = _core._task_row(task)
+            item["batchStatus"] = batch_status.get(int(task.batch_id or 0), "")
+            items.append(item)
+        return items, total
 
 
 def get_batch_workbench(batch_id, user) -> dict:
-    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm
+    from app.models import AaTeachingTaskBatch, AaTerm
 
     with session() as db:
         scope = _scope(user, db)
@@ -591,13 +666,7 @@ def get_batch_workbench(batch_id, user) -> dict:
         if not batch:
             raise not_found("任务批次不存在")
         _ensure_batch_visible(db, batch, scope)
-        tasks = db.scalars(select(AaTeachingTask).where(
-            AaTeachingTask.tenant_id == _tid(),
-            AaTeachingTask.batch_id == batch.id,
-            AaTeachingTask.is_deleted.is_(False),
-            *_visible_task_conditions(scope, AaTeachingTask),
-        )).all()
-        summary = _summary(tasks)
+        summary = _batch_summary_map(db, [int(batch.id)], scope)[int(batch.id)]
         term = tenant_get(db, AaTerm, int(batch.term_id), tenant_id=_tid()) if batch.term_id else None
         role = str((user or {}).get("currentRoleCode") or "").upper()
         school_review = is_super_admin(user) or role in _SCHOOL_REVIEW_ROLES

@@ -11,6 +11,18 @@ def test_direct_activity_and_appeal_routes_do_not_inherit_dashboard_permission()
     assert contract._teacher_permissions(
         "/api/v1/mobile/teacher/affairs/activities/123/checkin-token", "GET",
     ) == ("studentAffairs.activity.publish",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs/activities", "GET",
+    ) == ("studentAffairs.activity.view",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs/activities/123/participants", "GET",
+    ) == ("studentAffairs.activity.view",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs/activities/123/transition", "POST",
+    ) == ("studentAffairs.activity.publish",)
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs/activities/123/confirm", "POST",
+    ) == ("studentAffairs.activity.confirm",)
 
     appeal_codes = contract._teacher_permissions(
         "/api/v1/mobile/teacher/affairs/appeals/AID_OBJECTION", "GET",

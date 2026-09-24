@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "head": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "groups": [
+    {
+      "code": "CP-IX-01",
+      "name": "Batch Context",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_batch_context.py",
+        "frontend/tests/internship.batchContext.contract.test.mjs"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-02",
+      "name": "Student Scope",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_scope.py",
+        "backend/tests/test_internship_scope.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-03",
+      "name": "Enterprise Scope",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_enterprise_auth_service.py",
+        "backend/tests/test_internship_enterprise_auth_context.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-04",
+      "name": "Recruitment/Position",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_recruitment_campaign_service.py",
+        "backend/tests/test_internship_position.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-05",
+      "name": "Application/Selection",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_student_selection_service.py",
+        "backend/tests/test_internship_application_material_snapshot.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-06",
+      "name": "Enterprise Decision",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_enterprise_application_decision_service.py",
+        "backend/tests/test_internship_enterprise_application_decision.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-07",
+      "name": "Placement",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_placement_snapshot_service.py",
+        "backend/tests/test_internship_placement_snapshot.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-08",
+      "name": "Contact Privacy",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_enterprise_access_service.py",
+        "backend/tests/test_internship_enterprise_access.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-09",
+      "name": "Consent/Safety/Insurance",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_consent_service.py",
+        "backend/tests/test_internship_student_compliance.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-10",
+      "name": "Agreement",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_agreement_service.py",
+        "backend/tests/test_internship_agreement.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-11",
+      "name": "Attendance",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_makeup_service.py",
+        "backend/tests/test_internship_attendance.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-12",
+      "name": "Process Reports",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_process_report_service.py",
+        "backend/tests/test_internship_weekly_guidance.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-13",
+      "name": "Guidance/Visit",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_visit_service.py",
+        "backend/tests/test_internship_visit_plan.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-14",
+      "name": "Risk/Complaint/Incident",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_complaint_service.py",
+        "backend/tests/test_internship_complaint.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-15",
+      "name": "Evaluation/Score",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_score_service.py",
+        "backend/tests/test_internship_score.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-16",
+      "name": "File/Material",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_material_center_service.py",
+        "backend/tests/test_internship_material_center.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-17",
+      "name": "Archive",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_archive_service.py",
+        "backend/tests/test_internship_archive.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-18",
+      "name": "Todo/Message/Audit",
+      "evidenceSources": [
+        "backend/app/modules/internship/services/internship_todo_helper.py",
+        "backend/app/modules/internship/services/internship_audit_service.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-19",
+      "name": "4+1 Surface Parity",
+      "evidenceSources": [
+        "enterprise-portal/src/layouts/EnterprisePortalLayout.vue",
+        "miniapp/src/pages/teacher/internship-review/index.vue"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    },
+    {
+      "code": "CP-IX-20",
+      "name": "Release/Recovery",
+      "evidenceSources": [
+        "scripts/check/check-internship-production-contracts.py",
+        "scripts/check/check-internship-source-closure-v2.py"
+      ],
+      "existingSourceCount": 2,
+      "status": "BASELINE_SOURCE_PRESENT",
+      "finalStatus": "PENDING_EXACT_HEAD_VERIFICATION"
+    }
+  ],
+  "warning": "Source presence is not PASS. Final PASS requires exact-head tests, Browser, Server Truth and MySQL where applicable."
+}

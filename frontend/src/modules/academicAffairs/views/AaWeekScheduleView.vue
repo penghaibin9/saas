@@ -1,15 +1,23 @@
 <template>
   <ModulePageShell
-    title="周课表"
-    subtitle="按当前教学周（自动识别，可切换）快速查看班级/教师/教室/学生/教学班课表"
+:title="isAcademicTeacher ? '我的周课表' : '周课表'"
+    :subtitle="isAcademicTeacher ? '默认查看本人本周课程；可切换本人授课班级、教学班和教室' : '按当前教学周（自动识别，可切换）快速查看班级/教师/教室/学生/教学班课表'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
+      <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
+      <AaScheduleObjectBar
+        :name="scheduleObjectName"
+        :identity="`${termId ? `学期 #${termId}` : '学期待选择'} · 第${week || '—'}教学周 · ${currentDim.label}`"
+        source="来源：指定教学周内已经生效的正式课表与批准调整"
+        :status="hasSelection ? '只读正式周课表' : '对象待选择'"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="师生按调整后的正式课次读取"
+      />
       <div class="aa-filter">
         <label class="aa-filter__item">
           学期
@@ -28,7 +36,7 @@
       </div>
 
       <nav class="aa-tabs">
-        <button v-for="t in DIMS" :key="t.key" class="aa-tab" :class="{ 'is-active': dim === t.key }" @click="switchDim(t.key)">{{ t.label }}</button>
+        <button v-for="t in visibleDims" :key="t.key" class="aa-tab" :class="{ 'is-active': dim === t.key }" @click="switchDim(t.key)">{{ t.label }}</button>
       </nav>
 
       <!-- 班级 -->
@@ -36,19 +44,20 @@
         <div class="aa-filter">
           <label class="aa-filter__item aa-filter__item--grow">
             班级
-            <AppClassPicker v-model="classId" placeholder="搜索班级名称" @change="onClassChange" />
+            <AppClassPicker v-model="classId" :query="{ termId: termId || undefined }" placeholder="搜索班级名称" @change="onClassChange" />
           </label>
         </div>
       </div>
       <!-- 教师 -->
       <div v-else-if="dim === 'teacher'" class="aa-dim-body">
         <div class="aa-filter">
-          <label class="aa-filter__item">
+          <label v-if="!isAcademicTeacher" class="aa-filter__item">
             教师
-            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="load" />
+            <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
           </label>
-          <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
-          <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
+          <span v-if="isAcademicTeacher" class="mp-note">当前对象：本人正式任课关系</span>
+          <AppButton v-if="!isAcademicTeacher && selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
+          <AppButton v-if="!isAcademicTeacher" variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
       <!-- 教室 -->
@@ -69,7 +78,7 @@
       <!-- 教学班 -->
       <div v-else-if="dim === 'teachingClass'" class="aa-dim-body">
         <div class="aa-reg-search">
-          <AppTeachingClassPicker v-model="teachingClassCode" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
+          <AppTeachingClassPicker v-model="teachingClassCode" :query="{ termId: termId || undefined }" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
         </div>
       </div>
 
@@ -100,6 +109,7 @@ import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 const DIMS = [
   { key: 'class', label: '班级' }, { key: 'teacher', label: '教师' }, { key: 'room', label: '教室' },
@@ -108,7 +118,7 @@ const DIMS = [
 
 export default {
   name: 'AaWeekScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppStudentPicker, AppTeachingClassPicker, AppTermEntityPicker, AaScheduleGrid, AaScheduleObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     const u = currentUserFromToken() || {}
@@ -117,13 +127,25 @@ export default {
       termId: '', week: 1, currentWeekNo: 0, weekRange: '',
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
-      teacherKey: '', selfKey: String(u.userId || u.loginName || ''),
+      teacherKey: '', teacherName: '', teacherKeyQuery: { valueField: 'loginName' }, selfKey: String(u.loginName || u.userId || ''),
       classroomId: '', classroomText: '',
       studentId: '', studentName: '',
       teachingClassCode: '', teachingClassName: ''
     }
   },
   computed: {
+    isAcademicTeacher() {
+      return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
+    },
+    visibleDims() {
+      return this.isAcademicTeacher
+        ? this.DIMS.filter(item => ['teacher', 'class', 'room', 'teachingClass'].includes(item.key))
+        : this.DIMS
+    },
+    currentDim() { return this.DIMS.find((item) => item.key === this.dim) || this.DIMS[0] },
+    scheduleObjectName() {
+      return ({ class: this.className, teacher: this.teacherName || (this.teacherKey ? `教师 ${this.teacherKey}` : ''), room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '周课表'
+    },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
       if (this.dim === 'teacher') return !!this.teacherKey
@@ -137,19 +159,29 @@ export default {
       return m[this.dim]
     },
     resultTitle() {
-      const name = { class: this.className, teacher: `教师 ${this.teacherKey}`, room: this.classroomText,
+      const name = { class: this.className, teacher: this.teacherName || '本人课表', room: this.classroomText,
                     student: this.studentName, teachingClass: this.teachingClassName }[this.dim]
       return (name ? `${name} · ` : '') + `第 ${this.week} 周课表`
     },
   },
   created() {
     this.loadSlots()
+    if (this.isAcademicTeacher && this.selfKey) {
+      this.dim = 'teacher'
+      this.teacherKey = this.selfKey
+      this.teacherName = '本人课表'
+    }
     this.init()
   },
   methods: {
     switchDim(key) {
+      if (!this.visibleDims.some(item => item.key === key)) return
       this.dim = key
       this.items = []; this.note = ''; this.error = ''
+      if (this.isAcademicTeacher && key === 'teacher') {
+        this.teacherKey = this.selfKey
+        if (this.termId) this.load()
+      }
     },
     async init() {
       const curRes = await academicAffairsApi.getCurrentTerm()
@@ -159,10 +191,17 @@ export default {
       } else {
         this.week = 1
       }
+      if (this.isAcademicTeacher && this.teacherKey) await this.load()
     },
     async onTermChange() {
+      if (this.isAcademicTeacher && this.dim === 'class') {
+        this.classId = ''; this.className = ''; this.items = []; this.note = ''; this.error = ''
+      }
+      if (this.isAcademicTeacher && this.dim === 'teachingClass') {
+        this.teachingClassCode = ''; this.teachingClassName = ''; this.items = []; this.note = ''; this.error = ''
+      }
       if (this.termId) await this.detectCurrentWeek(this.termId)
-      this.load()
+      if (this.hasSelection) this.load()
     },
     async detectCurrentWeek(termId) {
       const res = await academicAffairsApi.getTermWeeks(termId)
@@ -194,6 +233,18 @@ export default {
       if (!value) return
       this.load()
     },
+    onTeacherChange(value, items) {
+      const item = items?.[0]
+      const teacher = item?.raw || item || {}
+      this.teacherName = teacher.realName || teacher.teacherName || item?.label || ''
+      if (!value) return
+      this.load()
+    },
+    showSelfSchedule() {
+      this.teacherKey = this.selfKey
+      this.teacherName = '本人课表'
+      this.load()
+    },
     onTeachingClassChange(value, items) {
       const item = items?.[0]
       const row = item?.raw || item || {}
@@ -205,24 +256,30 @@ export default {
       toast.success(`${it.courseName || ''} · ${it.teacherName || ''} · ${it.classroom || ''} · ${it.startWeek}-${it.endWeek}周`)
     },
     async load() {
+      if (this.isAcademicTeacher && this.dim === 'teacher') this.teacherKey = this.selfKey
       if (!this.hasSelection) return
       this.loading = true
       this.error = ''
       const params = { termId: this.termId || undefined, week: this.week || undefined }
-      let res
-      if (this.dim === 'class') res = await academicAffairsApi.getClassSchedule(this.classId, params)
-      else if (this.dim === 'teacher') res = await academicAffairsApi.getTeacherSchedule(this.teacherKey, params)
-      else if (this.dim === 'room') res = await academicAffairsApi.getRoomSchedule(this.classroomId, params)
-      else if (this.dim === 'student') res = await academicAffairsApi.getStudentSchedule(this.studentId, params)
-      else res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, params)
-      this.loading = false
-      if (res.code === 0) {
-        this.items = res.data.items || []
-        this.note = res.data.note || ''
-      } else {
-        this.error = res.message
+      try {
+        let res
+        if (this.dim === 'class') res = await academicAffairsApi.getClassSchedule(this.classId, params)
+        else if (this.dim === 'teacher') res = await academicAffairsApi.getTeacherSchedule(this.teacherKey, params)
+        else if (this.dim === 'room') res = await academicAffairsApi.getRoomSchedule(this.classroomId, params)
+        else if (this.dim === 'student') res = await academicAffairsApi.getStudentSchedule(this.studentId, params)
+        else res = await academicAffairsApi.getTeachingClassSchedule(this.teachingClassCode, params)
+        if (res.code === 0) {
+          this.items = res.data?.items || []
+          if (res.data?.teacherName) this.teacherName = res.data.teacherName
+          this.note = res.data?.note || ''
+        } else {
+          this.error = res.message || '周课表读取失败'
+          this.items = []
+        }
+      } catch (error) {
+        this.error = error?.message || '网络连接中断，未能读取周课表'
         this.items = []
-      }
+      } finally { this.loading = false }
     }
   }
 }

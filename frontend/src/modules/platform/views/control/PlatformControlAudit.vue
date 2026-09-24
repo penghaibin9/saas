@@ -6,7 +6,7 @@
           <option value="">全部租户</option>
           <option v-for="t in tenants" :key="t.tenantId" :value="t.tenantId">{{ t.tenantName }}</option>
         </select>
-        <input v-model.trim="filters.action" class="pca__input" placeholder="动作，如 LOGIN / PERMISSION_DENIED" @keyup.enter="load(1)" />
+        <input v-model.trim="filters.action" class="pca__input" placeholder="按动作筛选，如登录、权限拒绝" @keyup.enter="load(1)" />
         <input v-model="filters.dateFrom" type="date" class="pca__input" @change="load(1)" />
         <input v-model="filters.dateTo" type="date" class="pca__input" @change="load(1)" />
         <AppButton @click="load(1)">查询</AppButton>
@@ -15,8 +15,9 @@
     <LoadingState v-if="loading" text="正在加载审计…" />
     <template v-else>
       <DataTable :columns="columns" :rows="rows" row-key="auditId" :pagination="{ page, pageSize, total }" @page-change="load">
+        <template #cell-action="{ row }">{{ auditActionLabel(row.action) }}</template>
         <template #cell-result="{ row }">
-          <StatusTag :type="row.result === 'SUCCESS' ? 'success' : row.result === 'DENIED' ? 'danger' : 'warning'" :label="row.result" />
+          <StatusTag :type="row.result === 'SUCCESS' ? 'success' : row.result === 'DENIED' ? 'danger' : 'warning'" :label="platformStatusLabel(row.result)" />
         </template>
         <template #cell-occurredAt="{ row }">{{ (row.occurredAt || '').replace('T', ' ') }}</template>
       </DataTable>
@@ -29,6 +30,8 @@
 import { AppButton } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -49,7 +52,7 @@ export default {
         { key: 'action', title: '动作', width: '160px' },
         { key: 'resource', title: '对象', width: '190px' },
         { key: 'operatorName', title: '操作人', width: '110px' },
-        { key: 'ip', title: 'IP', width: '120px' },
+        { key: 'ip', title: '网络地址', width: '120px' },
         { key: 'result', title: '结果', width: '90px' }
       ]
     }
@@ -58,6 +61,10 @@ export default {
     this.init()
   },
   methods: {
+    platformStatusLabel,
+    auditActionLabel(action) {
+      return presentAuditRecord({ action }).displayAction
+    },
     async init() {
       const t = await platformControlApi.listTenants()
       if (t.code === 0) this.tenants = t.data.list || []

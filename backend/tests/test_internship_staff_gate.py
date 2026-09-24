@@ -67,7 +67,11 @@ def test_staff_not_blocked_by_gate(client, auth_headers, db_mode):
 
 def test_unlicensed_tenant_is_blocked(client, auth_headers, db_mode, monkeypatch):
     from app.services import platform_service
-    monkeypatch.setattr(platform_service, "feature_enabled", lambda tenant_id, key: False)
-    r = client.get("/api/v1/internship/dashboard", headers=auth_headers, params={"batchId": _batch_id()})
+    batch_id = _batch_id()
+    assert client.get("/api/v1/internship/dashboard", headers=auth_headers, params={"batchId": batch_id}).status_code == 200
+    original = platform_service.effective_features
+    monkeypatch.setattr(platform_service, "effective_features",
+                        lambda tenant_id: {**original(tenant_id), "internship": False})
+    r = client.get("/api/v1/internship/dashboard", headers=auth_headers, params={"batchId": batch_id})
     assert r.status_code == 403
     assert r.json()["code"] != 0

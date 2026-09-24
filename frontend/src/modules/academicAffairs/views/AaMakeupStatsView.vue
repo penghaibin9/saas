@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="补考重修缓考免修 · 统计分析"
-    subtitle="四条线人数（批次数）与通过率 · 按学期/学院/维度下钻"
+    subtitle="四类办理记录与结果，按学期和学院查询"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -17,19 +17,20 @@
           <AppSelect v-model="filters.dimension" :options="dimensionOptions" />
         </label>
         <AppButton :loading="loading" @click="search">查询</AppButton>
-        <AppButton variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
+        <AppButton variant="ghost" :disabled="loading || exporting || !stats" @click="openExport">导出 Excel</AppButton>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="search" />
       <LoadingState v-else-if="loading" />
       <template v-else>
+        <p class="aamk-stat-note">重修、免修和缓考比例反映审批结果；补考比例按已录入分数计算，正式成绩以发布台账为准。</p>
         <div class="aamk-cards">
           <AppMetricCard
             v-for="c in cards"
             :key="c.key"
             :title="c.title"
             :value="c.count"
-            unit="人/批次"
+            unit="条记录"
             :description="c.rateText"
             drillable
             :drill-target="c.key"
@@ -53,8 +54,8 @@
         </div>
 
         <AppSectionCard v-if="drillLine" :title="`${drillLineLabel} · 明细`">
-          <EmptyState v-if="!detailRows.length" title="暂无数据" />
-          <DataTable v-else :columns="detailColumns" :rows="detailRows" row-key="rowKey" />
+          <LoadingState v-if="detailLoading" /><EmptyState v-else-if="!detailRows.length" title="暂无数据" />
+          <DataTable v-else :columns="detailColumns" :rows="detailRows" :pagination="pagination" @page-change="page => onDrill(drillLine,page)" row-key="rowKey"><template #cell-status="{row}">{{ academicStatusLabel(row.status) }}</template></DataTable>
         </AppSectionCard>
       </template>
     </div>
@@ -75,7 +76,9 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart, AppTermCodePicker, AppCollegePicker, AppSelect } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 const _LINES = [
   { key: 'makeup', title: '补考' },
@@ -94,9 +97,11 @@ const _DETAIL_COLUMNS = {
 export default {
   name: 'AaMakeupStatsView',
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppMetricCard, AppSectionCard, AppExportConfirm, AppG2Chart, AppTermCodePicker, AppCollegePicker, AppSelect },
+  props:{ctx:{type:Object,required:true}},
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
+      alive:true,seq:0,detailSeq:0,exportSeq:0,optsSeq:0,detailLoading:false,exportCommand:null,
+      pagination:{page:1,pageSize:20,total:0},
       loading: true, error: '',
       filters: { term: '', collegeId: '', dimension: '' },
       opts: { terms: [], colleges: [] },
@@ -106,6 +111,8 @@ export default {
     }
   },
   computed: {
+    identityKey(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope])},
+    queryKey(){return JSON.stringify(this.filters)},
     collegeOptions() {
       return [{ label: '全部学院', value: '' }, ...this.opts.colleges.map((c) => ({ label: c.label, value: c.id }))]
     },
@@ -116,25 +123,32 @@ export default {
       ]
     },
     cards() {
-      if (!this.stats) return _LINES.map((l) => ({ ...l, count: 0, rateText: '暂无数据' }))
+      if (!this.stats) return _LINES.map((l) => ({ ...l, count: null, rateText: '暂无数据' }))
       return _LINES.map((l) => {
-        const d = this.stats[l.key] || { count: 0, passRate: null }
-        const rateText = d.passRate === null || d.passRate === undefined ? '通过率：暂无终态数据' : `通过率：${Math.round(d.passRate * 1000) / 10}%`
-        return { ...l, count: d.count, rateText }
+        const d = this.stats[l.key] || { count: null, passRate: null }
+        const label = l.key === 'makeup' ? '已录分及格比例' : '审批通过比例'
+        const rateText = d.passRate == null ? `${label}：暂无结果` : `${label}：${Math.round(d.passRate * 1000) / 10}%`
+        return { ...l, count: d.count ?? null, rateText }
       })
     },
     dimensionLabel() { return _DIM_LABEL[this.filters.dimension] || '' },
     drillLineLabel() { return (_LINES.find((l) => l.key === this.drillLine) || {}).title || '' },
     detailColumns() { return _DETAIL_COLUMNS[this.drillLine] || [] }
   },
-  async created() {
-    const c = await academicAffairsApi.getContext()
-    if (c.code === 0) this.ctx = c.data
-    const f = await academicAffairsApi.getStatsFilters()
-    if (f.code === 0) this.opts = { terms: f.data.terms || [], colleges: f.data.colleges || [] }
-    this.search()
-  },
+  created(){this.loadOptions();this.search()},
+  watch:{identityKey(){this.invalidate();this.opts={terms:[],colleges:[]};this.loadOptions();this.search()},queryKey:{flush:'sync',handler(){this.invalidate()}}},
+  beforeUnmount(){this.alive=false;this.invalidate()},
   methods: {
+    academicStatusLabel,
+    capture(){return {identity:this.identityKey,query:this.queryKey}},
+    current(c){return this.alive&&c.identity===this.identityKey&&c.query===this.queryKey},
+    invalidate(){this.seq++;this.detailSeq++;this.exportSeq++;this.stats=null;this.groups=null;this.detailRows=[];this.drillLine='';this.loading=false;this.detailLoading=false;this.exporting=false;this.exportVisible=false;this.exportCommand=null;this.pagination={page:1,pageSize:20,total:0};this.error=''},
+    fail(err,fallback='读取失败，请重试。'){if(/403|FORBIDDEN|NO_PERMISSION/.test(String(err?.bizCode||err?.code||''))){this.invalidate();this.opts={terms:[],colleges:[]};this.optsSeq++}this.error=gradeError(err,fallback)},
+    async loadOptions(){
+      const identity=this.identityKey,seq=++this.optsSeq
+      try{const res=await academicAffairsApi.getStatsFilters();if(!this.alive||identity!==this.identityKey||seq!==this.optsSeq)return;if(res?.code!==0)throw res;this.opts={terms:res.data?.terms||[],colleges:res.data?.colleges||[]}}
+      catch(err){if(this.alive&&identity===this.identityKey&&seq===this.optsSeq)this.fail(err)}
+    },
     groupChartSpec(rows) {
       return {
         type: 'interval',
@@ -145,46 +159,29 @@ export default {
       }
     },
     async search() {
-      this.loading = true; this.error = ''; this.drillLine = ''; this.detailRows = []
-      const res = await api.stats({
-        term: this.filters.term || undefined,
-        collegeId: this.filters.collegeId || undefined,
-        dimension: this.filters.dimension || undefined
-      })
-      if (res.code === 0) { this.stats = res.data; this.groups = res.data.groups || null } else this.error = res.message
-      this.loading = false
+      const c=this.capture(),seq=++this.seq,params={term:this.filters.term||undefined,collegeId:this.filters.collegeId||undefined,dimension:this.filters.dimension||undefined}
+      const valid=()=>this.current(c)&&seq===this.seq
+      this.loading=true;this.error='';this.stats=null;this.groups=null;this.drillLine='';this.detailRows=[];this.detailSeq++;this.detailLoading=false
+      try{const res=await api.stats(params);if(!valid())return;if(res?.code!==0)throw res;this.stats=res.data;this.groups=res.data?.groups||null}
+      catch(err){if(valid())this.fail(err)}finally{if(valid())this.loading=false}
     },
-    async onDrill(line) {
-      this.drillLine = line
-      const res = await api.statsDetail({
-        term: this.filters.term || undefined,
-        collegeId: this.filters.collegeId || undefined,
-        line,
-        pageSize: 100
-      })
-      if (res.code === 0) this.detailRows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${line}-${i}` }))
-      else toast.error(res.message)
+    async onDrill(line,page=1) {
+      if(!_LINES.some(l=>l.key===line)||!this.stats||this.loading)return
+      const c=this.capture(),seq=++this.detailSeq
+      const valid=()=>this.current(c)&&seq===this.detailSeq&&this.drillLine===line
+      this.drillLine=line;this.detailRows=[];this.detailLoading=true;this.pagination.page=page;this.pagination.total=0
+      try{const res=await api.statsDetail({term:this.filters.term||undefined,collegeId:this.filters.collegeId||undefined,line,page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.detailRows=(res.data?.list||[]).map((r,i)=>({...r,rowKey:r.makeupId||r.applyId||r.exemptionId||r.deferId||`${line}-${page}-${i}`}));this.pagination.total=res.data?.total??this.detailRows.length}
+      catch(err){if(valid())this.fail(err)}finally{if(valid())this.detailLoading=false}
     },
-    openExport() { this.exportVisible = true },
-    async doExport({ reason }) {
-      this.exporting = true
-      const res = await api.exportStats({
-        term: this.filters.term || undefined,
-        collegeId: this.filters.collegeId || undefined,
-        purpose: reason
-      })
-      this.exporting = false
-      if (res.code !== 0) { toast.error(res.message || '导出失败'); return }
-      this.exportVisible = false
-      const href = URL.createObjectURL(res.data)
-      const a = document.createElement('a')
-      a.href = href
-      a.download = `补考重修缓考免修统计-${Date.now()}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(href)
-      toast.success('导出成功')
+    openExport(){if(this.loading||this.exporting||!this.stats)return;this.exportCommand={...this.capture(),term:this.filters.term||undefined,collegeId:this.filters.collegeId||undefined};this.exportVisible=true},
+    async doExport({reason}) {
+      const c=this.exportCommand;if(!c||!this.current(c)||this.exporting||!String(reason||'').trim())return
+      const seq=++this.exportSeq,valid=()=>this.current(c)&&seq===this.exportSeq
+      this.exporting=true
+      try{
+        const res=await api.exportStats({term:c.term,collegeId:c.collegeId,purpose:reason});if(!valid())return;if(res?.code!==0)throw res
+        const href=URL.createObjectURL(res.data),a=document.createElement('a');a.href=href;a.download=`补考重修缓考免修统计-${Date.now()}.xlsx`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(href);this.exportVisible=false;this.exportCommand=null
+      }catch(err){if(valid())this.fail(err,'导出失败，请重新核对查询范围。')}finally{if(valid())this.exporting=false}
     }
   }
 }

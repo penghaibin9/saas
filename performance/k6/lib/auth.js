@@ -2,6 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import encoding from 'k6/encoding';
 import { SharedArray } from 'k6/data';
+import { identityCounts } from './evidence.js';
 
 const cache = { student: null, teacher: null };
 
@@ -130,6 +131,8 @@ export function identityDistribution() {
   const studentCredentials = arrayEnv('K6_STUDENT_CREDENTIALS_JSON');
   const teacherCredentials = arrayEnv('K6_TEACHER_CREDENTIALS_JSON');
   const teacherEvidence = teacherIdentityEvidence(teacherTokens, teacherCredentials);
+  const studentEvidence = identityCounts(Array.from(studentTokens).slice(0, effectivePoolSize(studentTokens.length)), decodeJwtClaims, 'student');
+  const teacherSubjects = identityCounts(Array.from(teacherTokens).slice(0, effectivePoolSize(teacherTokens.length)), decodeJwtClaims, 'teacher');
   return {
     identityMode: IDENTITY_MODE,
     warmPoolSize: IDENTITY_MODE === 'warm' ? WARM_POOL_SIZE : null,
@@ -137,8 +140,12 @@ export function identityDistribution() {
     teacherTokensAvailable: teacherTokens.length,
     studentCredentialsAvailable: studentCredentials.length,
     teacherCredentialsAvailable: teacherCredentials.length,
-    uniqueStudentTokens: effectivePoolSize(studentTokens.length || studentCredentials.length),
-    uniqueTeacherTokens: effectivePoolSize(teacherTokens.length || teacherCredentials.length),
+    uniqueStudentTokens: studentEvidence.tokens,
+    uniqueTeacherTokens: teacherSubjects.tokens,
+    uniqueStudentSubjects: studentEvidence.identities,
+    uniqueTeacherSubjects: teacherSubjects.identities,
+    identityClaimsComplete: studentEvidence.invalid === 0 && teacherSubjects.invalid === 0,
+    syntheticIdentityPool: studentEvidence.synthetic || teacherSubjects.synthetic,
     ...teacherEvidence,
   };
 }

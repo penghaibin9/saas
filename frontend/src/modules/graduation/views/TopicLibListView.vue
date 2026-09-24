@@ -1,10 +1,13 @@
 <template>
   <ModulePageShell
+    compact
     title="题目库"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <template #title-meta><span class="gd-topic-total">共 {{ total }} 条</span></template>
+    <template #context><GraduationBatchStrip class="gd-topic-batch" /></template>
     <template #actions>
       <div class="gd-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
@@ -15,26 +18,33 @@
       </div>
     </template>
 
-    <div v-if="activePanel === 'category' && categoryStats.length" class="mp-stats">
-      <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="mp-stat" @click="drillCategory(c.category)">
-        <div class="mp-stat__val">{{ c.count }}</div>
-        <div class="mp-stat__lbl">{{ c.category }}</div>
-        <div class="mp-stat__sub">入池 {{ c.inPool }} · 满员 {{ c.full }}</div>
-      </button>
-    </div>
-    <div v-if="activePanel === 'capacity' && libStats" class="mp-stats">
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.inPool }}</div><div class="mp-stat__lbl">在池题目</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.availableCount }}</div><div class="mp-stat__lbl">可选余量</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.fullCount }}</div><div class="mp-stat__lbl">已满员</div></div>
-      <div class="mp-stat"><div class="mp-stat__val">{{ libStats.uncategorized }}</div><div class="mp-stat__lbl">未分类</div></div>
-    </div>
+    <template #summary>
+      <template v-if="activePanel === 'category'">
+        <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="gd-inline-stat" :title="`入池 ${c.inPool} · 满员 ${c.full}`" @click="drillCategory(c.category)">
+          <span>{{ c.category }}</span><strong>{{ c.count }}</strong>
+        </button>
+      </template>
+      <template v-else-if="activePanel === 'capacity' && libStats">
+        <span v-for="(label, key) in { inPool: '在池题目', availableCount: '可选余量', fullCount: '已满员', uncategorized: '未分类' }" :key="key" class="gd-inline-stat">{{ label }} <strong>{{ libStats[key] }}</strong></span>
+      </template>
+    </template>
 
     <div class="mp-stack">
-      <div class="mp-tabs">
+      <div class="mp-tabs gd-primary-tabs" aria-label="题目主视图">
         <button
-          v-for="p in panelTabs"
-          :key="p.key"
+          v-for="g in primaryGroups"
+          :key="g.key"
           class="mp-tab"
+          :class="{ 'is-active': activeGroupKey === g.key }"
+          @click="switchGroup(g)"
+        >{{ g.label }}</button>
+      </div>
+      <div v-if="activeGroupPanels.length > 1" class="gd-local-views" aria-label="当前主视图的细分任务">
+        <span>当前视图</span>
+        <button
+          v-for="p in activeGroupPanels"
+          :key="p.key"
+          type="button"
           :class="{ 'is-active': activePanel === p.key }"
           @click="switchPanel(p.key)"
         >{{ p.label }}</button>
@@ -225,6 +235,7 @@ import {
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { buildTopicLibQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
+import GraduationBatchStrip from './_shared/GraduationBatchStrip.vue'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const EMPTY_FILTERS = () => ({
@@ -260,6 +271,14 @@ const PANEL_TABS = [
   { key: 'attachments', label: '待挂附件' },
   { key: 'history', label: '操作历史' },
   { key: 'archive', label: '已归档' }
+]
+
+const PRIMARY_GROUPS = [
+  { key: 'library', label: '题目库', defaultPanel: 'list', panels: ['list', 'teacher-apply', 'enterprise', 'student-proposed'] },
+  { key: 'review', label: '审核', defaultPanel: 'pending', panels: ['pending'] },
+  { key: 'quality', label: '质量治理', defaultPanel: 'category', panels: ['category', 'requirements', 'attachments'] },
+  { key: 'capacity', label: '容量', defaultPanel: 'capacity', panels: ['capacity'] },
+  { key: 'history', label: '历史', defaultPanel: 'history', panels: ['history', 'archive'] }
 ]
 
 const PANEL_HINTS = {
@@ -334,13 +353,14 @@ const TOPIC_LIB_INLINE_ROUTES = new Set([
 
 export default {
   name: 'TopicLibListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { GraduationBatchStrip, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY,
       batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'list',
+      primaryGroups: PRIMARY_GROUPS,
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       categoryStats: [], libStats: null,
@@ -349,6 +369,13 @@ export default {
     }
   },
   computed: {
+    activeGroupKey() {
+      return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'library'
+    },
+    activeGroupPanels() {
+      const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]
+      return group.panels.map((key) => PANEL_TABS.find((panel) => panel.key === key)).filter(Boolean)
+    },
     permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
     canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
     canTopicCreate() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.create') },
@@ -530,6 +557,10 @@ export default {
     }
   },
   methods: {
+    switchGroup(group) {
+      if (!group || group.key === this.activeGroupKey) return
+      this.switchPanel(group.defaultPanel)
+    },
     truncate(s, n) {
       if (!s) return ''
       return s.length <= n ? s : `${s.slice(0, n)}…`
@@ -733,6 +764,15 @@ export default {
 </script>
 
 <style scoped>
+.gd-topic-total { color: var(--t3); font-size: 13px; white-space: nowrap; }
+.gd-topic-batch { margin-left: auto; padding: 0; border: 0; background: transparent; max-width: 65%; }
+.gd-topic-batch :deep(.gbs__select) { min-width: 0; width: 300px; max-width: 100%; }
+.gd-topic-batch :deep(.gbs__meta) { display: none; }
+.gd-inline-stat { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 0; border-right: 1px solid var(--line, #dce5f3); background: transparent; color: var(--t3); white-space: nowrap; font: inherit; font-size: 13px; }
+button.gd-inline-stat { cursor: pointer; }
+.gd-inline-stat strong { font-size: 18px; color: var(--pri); }
+@media(max-width: 1000px) { .gd-topic-batch { max-width: 100%; } }
+
 @import '@/styles/module-page.css';
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .mp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
@@ -744,4 +784,9 @@ export default {
 .mp-stat__val { font-size: calc(var(--font-size-xl) + 2px); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .mp-stat__lbl { color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); margin-top: var(--space-1); }
 .mp-stat__sub { color: var(--color-text-tertiary); font-size: var(--font-size-xs); margin-top: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gd-primary-tabs { overflow: visible; }
+.gd-local-views { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--gray-50, #f8fafc); }
+.gd-local-views > span { margin-right: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gd-local-views button { padding: 5px 10px; border: 1px solid transparent; border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.gd-local-views button.is-active { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-weight: 600; }
 </style>

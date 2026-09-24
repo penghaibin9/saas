@@ -92,7 +92,7 @@ jobs:
               assert token in runtime, token
           assert '绑定真实 SupportTicket' in router
           assert 'requestId: requestId()' in view
-          assert 'SupportTicket 数字 ID' in view
+          assert '支持工单编号' in view
           assert 'tenant.context.read' in view
           assert 'tenant.health' not in view
           print('B2 PAM source authority contract OK')

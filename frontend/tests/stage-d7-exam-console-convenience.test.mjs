@@ -22,7 +22,6 @@ test('D7-U 发布 readiness 只能提示，不能取得 canonical publish 的否
   assert.match(source, /@click="lc\('publishBatch', '发布'\)"/)
   assert.match(source, /仍以正式发布校验为准/)
   assert.match(source, /仍可尝试发布，由正式门禁最终判定/)
-  assert.match(source, /可点击发布，由正式门禁最终判定/)
 })
 
 test('D7-U 新建考试批次必须选择正式学期并提交 termId', async () => {

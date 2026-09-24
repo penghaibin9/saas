@@ -1,6 +1,6 @@
 <template>
   <div class="wf-page">
-    <AppSectionHeader title="权限点管理" subtitle="module.resource.action 三段式权限点，供菜单/页面/按钮/数据四级控制消费" />
+    <AppSectionHeader title="权限点管理" subtitle="按“模块·资源·动作”三段式权限点，对菜单、页面、按钮和数据进行四级控制" />
 
     <div class="wf-page__filters">
       <select v-model="filters.moduleCode" @change="load">
@@ -11,7 +11,7 @@
         <option value="">全部类型</option>
         <option v-for="(label, code) in typeOptions" :key="code" :value="code">{{ label }}</option>
       </select>
-      <input v-model.trim="filters.keyword" placeholder="搜索权限点 key / 名称" @keyup.enter="load" />
+      <input v-model.trim="filters.keyword" placeholder="搜索权限点编码或名称" @keyup.enter="load" />
       <AppButton variant="secondary" @click="load">查询</AppButton>
     </div>
 
@@ -94,7 +94,7 @@ export default {
   methods: {
     moduleLabel: getModuleLabel,
     typeLabel(t) {
-      return PERMISSION_TYPE_LABELS[t] || t
+      return PERMISSION_TYPE_LABELS[t] || '其他权限类型'
     },
     async load() {
       this.loading = true

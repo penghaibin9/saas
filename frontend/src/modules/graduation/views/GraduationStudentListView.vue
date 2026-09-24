@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    class="gd-student-workspace"
     :title="pageTitle"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
@@ -12,22 +13,52 @@
       </div>
     </template>
 
-    <div class="mp-stack">
-      <!-- 页内视图页签：同一名单的不同工作视图（原三级菜单入口收口至此，?panel= 深链不变） -->
-      <div class="mp-tabs">
+    <div class="mp-stack gd-student-page">
+      <section v-if="hasBatch" class="gd-student-hero" aria-label="毕设学生工作结论">
+        <div class="gd-student-hero__copy">
+          <span>当前视图结论</span>
+          <strong>{{ workConclusion }}</strong>
+          <p>{{ workHint }}</p>
+        </div>
+        <div class="gd-student-hero__metrics" aria-label="当前批次学生统计">
+          <div v-for="metric in heroMetrics" :key="metric.label">
+            <b>{{ metric.value }}</b><span>{{ metric.label }}</span>
+          </div>
+        </div>
+      </section>
+
+
+      <section v-if="hasBatch && activePanel === 'grad-qual'" class="gd-readonly-banner" role="status">
+        <div><strong>毕业资格是教务只读镜像</strong><span>毕设中心只展示教务侧最新预审结果与说明，不提供“通过/不通过”写入，避免形成第二套毕业资格主档。</span></div>
+        <small>需要更正时请在教务毕业资格流程处理，回到本页刷新结果。</small>
+      </section>
+
+      <div class="mp-tabs gd-primary-tabs" aria-label="学生主视图">
         <button
-          v-for="p in panelTabs"
-          :key="p.key"
+          v-for="group in primaryGroups"
+          :key="group.key"
+          type="button"
+          :aria-pressed="activeGroupKey === group.key"
           class="mp-tab"
-          :class="{ 'is-active': activePanel === p.key }"
-          @click="switchPanel(p.key)"
-        >{{ p.label }}</button>
+          :class="{ 'is-active': activeGroupKey === group.key }"
+          @click="switchGroup(group)"
+        >{{ group.label }}</button>
       </div>
+      <div v-if="activeGroupPanels.length > 1" class="gd-local-views" aria-label="当前主视图的细分任务">
+        <span>当前视图</span>
+        <button
+          v-for="panel in activeGroupPanels"
+          :key="panel.key"
+          type="button"
+          :aria-pressed="activePanel === panel.key"
+          :class="{ 'is-active': activePanel === panel.key }"
+          @click="switchPanel(panel.key)"
+        >{{ panel.label }}</button>
+      </div>
+
       <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <!-- 名单页签且非筛选态才给「怎么开始」的出路：其余页签的空态多是好消息（没缺口/没待办），
-           给按钮反而误导。动作直接复用 onToolbar，不另起一套跳转。 -->
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showRosterEmptyActions" #actions>
           <button class="mp-btn mp-btn--primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</button>
@@ -50,98 +81,49 @@
           <div class="mp-cell-sub"><AppSensitiveText :value="row.studentNo" type="generic" /> · {{ row.className }}</div>
         </template>
         <template #cell-batch="{ row }">
-          <span v-if="row.batchName">{{ row.batchName }}</span>
-          <span v-else class="mp-note">未关联批次</span>
+          <span v-if="row.batchName">{{ row.batchName }}</span><span v-else class="mp-note">未关联批次</span>
         </template>
         <template #cell-topic="{ row }">
           <template v-if="row.topicId">
-            <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.topicTitle }}</div>
+            <div class="mp-cell-main gd-topic-title">{{ row.topicTitle }}</div>
             <div class="mp-cell-sub">指导教师：{{ row.advisorName || '—' }}</div>
           </template>
           <span v-else class="mp-note">未选题</span>
         </template>
-        <template #cell-stage="{ row }">
-          <StatusTag :type="row.stageTone || stageTone(row.stage)" :label="row.stageLabel" dot />
-        </template>
-        <template #cell-risk="{ row }">
-          <RiskTag v-if="row.riskLevel !== 'NONE'" :level="row.riskLevel" />
-          <span v-else class="mp-note">无</span>
-        </template>
-        <template #cell-eligibility="{ row }">
-          <StatusTag :type="row.eligibilityTone || eligTone(row.eligibilityStatus)" :label="row.eligibilityLabel" />
-        </template>
-        <template #cell-group="{ row }">
-          <span v-if="row.studentGroup">{{ row.studentGroup }}</span>
-          <span v-else class="mp-note">未分组</span>
-        </template>
+        <template #cell-stage="{ row }"><StatusTag :type="row.stageTone || stageTone(row.stage)" :label="row.stageLabel" dot /></template>
+        <template #cell-risk="{ row }"><RiskTag v-if="row.riskLevel !== 'NONE'" :level="row.riskLevel" /><span v-else class="mp-note">无</span></template>
+        <template #cell-eligibility="{ row }"><StatusTag :type="row.eligibilityTone || eligTone(row.eligibilityStatus)" :label="row.eligibilityLabel" /></template>
+        <template #cell-group="{ row }"><span v-if="row.studentGroup">{{ row.studentGroup }}</span><span v-else class="mp-note">未分组</span></template>
         <template #cell-materials="{ row }">
           <div class="mp-cell-main">开题：{{ row.proposalStatusLabel }}</div>
           <div class="mp-cell-sub">成果：{{ row.finalStatusLabel }} · 缺口：{{ row.materialGap }}</div>
         </template>
-        <template #cell-defense="{ row }">
-          <template v-if="row.defenseGroupId">
-            <div class="mp-cell-main">{{ row.defenseGroup }}</div>
-          </template>
-          <span v-else class="mp-note">未分配答辩组</span>
-        </template>
+        <template #cell-defense="{ row }"><span v-if="row.defenseGroupId">{{ row.defenseGroup }}</span><span v-else class="mp-note">未分配答辩组</span></template>
         <template #cell-gradQual="{ row }">
           <StatusTag :type="row.gradQualTone || gradQualTone(row.gradQualStatus)" :label="row.gradQualLabel" />
-          <div v-if="row.gradQualNote" class="mp-cell-sub">{{ row.gradQualNote }}</div>
+          <div class="mp-cell-sub">教务只读镜像<template v-if="row.gradQualNote"> · {{ row.gradQualNote }}</template></div>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/graduation/students/' + row.id)">详情</button>
+          <button class="mp-link" @click="openDetail(row)">详情</button>
           <template v-if="activePanel === 'roster' || activePanel === 'topic' || activePanel === 'mentor'">
-            <button
-              v-if="row.stage !== 'ARCHIVED'"
-              class="mp-link"
-              style="margin-left: var(--space-2)"
-              @click="openAssignTopic(row)"
-            >{{ row.topicId ? '调题' : '分配选题' }}</button>
-            <button
-              v-if="row.stage !== 'ARCHIVED' && !row.advisorName"
-              class="mp-link"
-              style="margin-left: var(--space-2)"
-              @click="openAdvisor(row)"
-            >分配导师</button>
+            <button v-if="row.stage !== 'ARCHIVED'" class="mp-link gd-row-action" @click="openAssignTopic(row)">{{ row.topicId ? '调题' : '分配选题' }}</button>
+            <button v-if="row.stage !== 'ARCHIVED' && !row.advisorName" class="mp-link gd-row-action" @click="openAdvisor(row)">分配导师</button>
           </template>
           <template v-if="activePanel === 'eligibility' && row.stage !== 'ARCHIVED'">
-            <button
-              v-if="row.eligibilityStatus !== 'QUALIFIED'"
-              class="mp-link"
-              style="margin-left: var(--space-2)"
-              @click="askEligibility(row, 'QUALIFIED')"
-            >认定合格</button>
-            <button
-              v-if="row.eligibilityStatus !== 'UNQUALIFIED'"
-              class="mp-link"
-              style="margin-left: var(--space-2)"
-              @click="askEligibility(row, 'UNQUALIFIED')"
-            >认定不合格</button>
+            <button v-if="row.eligibilityStatus !== 'QUALIFIED'" class="mp-link gd-row-action" @click="askEligibility(row, 'QUALIFIED')">认定合格</button>
+            <button v-if="row.eligibilityStatus !== 'UNQUALIFIED'" class="mp-link gd-row-action" @click="askEligibility(row, 'UNQUALIFIED')">认定不合格</button>
           </template>
-          <button
-            v-if="activePanel === 'grouping' && row.stage !== 'ARCHIVED'"
-            class="mp-link"
-            style="margin-left: var(--space-2)"
-            @click="openGroup(row)"
-          >设置分组</button>
-          <button
-            v-if="activePanel === 'defense' && row.stage !== 'ARCHIVED'"
-            class="mp-link"
-            style="margin-left: var(--space-2)"
-            @click="openDefense(row)"
-          >分配答辩组</button>
-          <template v-if="activePanel === 'grad-qual' && row.stage !== 'ARCHIVED'">
-            <button class="mp-link" style="margin-left: var(--space-2)" @click="askGradQual(row, 'PASS')">联动通过</button>
-            <button class="mp-link" style="margin-left: var(--space-2)" @click="askGradQual(row, 'FAIL')">联动不通过</button>
-          </template>
-          <button
-            v-if="activePanel === 'archive' && row.stage !== 'ARCHIVED'"
-            class="mp-link"
-            style="margin-left: var(--space-2)"
-            @click="askArchiveOne(row)"
-          >归档</button>
+          <button v-if="activePanel === 'grouping' && row.stage !== 'ARCHIVED'" class="mp-link gd-row-action" @click="openGroup(row)">设置分组</button>
+          <button v-if="activePanel === 'defense' && row.stage !== 'ARCHIVED'" class="mp-link gd-row-action" @click="openDefense(row)">分配答辩组</button>
+          <span v-if="activePanel === 'grad-qual'" class="gd-readonly-action">教务只读</span>
+          <button v-if="activePanel === 'archive' && row.stage !== 'ARCHIVED'" class="mp-link gd-row-action" @click="askArchiveOne(row)">归档</button>
         </template>
       </DataTable>
+      <section v-if="hasBatch && activePanel === 'roster'" class="gd-import-contract" aria-label="学生导入四步闭环">
+        <span>名单导入</span>
+        <ol><li>下载模板</li><li>上传并预览</li><li>下载错误行</li><li>确认导入并留痕</li></ol>
+      </section>
+      <p v-if="hasBatch" class="mp-note">列表、统计、导出均绑定当前批次与当前数据范围；页码和关键词写入 URL，返回时恢复原工作位置。</p>
     </div>
 
     <AppExcelImportDrawer
@@ -163,13 +145,12 @@
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-students" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 毕设学生列表：多 panel 生产级（名单/进度/风险/导师/选题/资格/分组/材料/答辩组/毕业资格/归档） */
+/** 毕设学生列表：真实学生主档投影；毕业资格为教务只读镜像。 */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, RiskTag, LoadingState, ErrorState, EmptyState
@@ -191,7 +172,6 @@ const EMPTY_FILTERS = () => ({
   eligibility: '', studentGroup: '', hasDefenseGroup: '', gradQualStatus: '',
   materialComplete: '', archiveView: '', dateStart: '', dateEnd: ''
 })
-
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
   progress: () => ({ ...EMPTY_FILTERS(), stage: 'GUIDING' }),
@@ -205,93 +185,70 @@ const PANEL_PRESETS = {
   'grad-qual': () => ({ ...EMPTY_FILTERS(), gradQualStatus: 'UNKNOWN' }),
   archive: () => ({ ...EMPTY_FILTERS(), archiveView: 'candidates' })
 }
-
-/** 页内视图页签（与 PANEL_PRESETS 一一对应；风险/导师视图保留在页内供跨模块联动） */
 const PANEL_TABS = [
-  { key: 'roster', label: '学生名单' },
-  { key: 'progress', label: '学生进度' },
-  { key: 'topic', label: '未选题' },
-  { key: 'eligibility', label: '资格认定' },
-  { key: 'grouping', label: '过程分组' },
-  { key: 'materials', label: '材料缺口' },
-  { key: 'defense', label: '答辩组' },
-  { key: 'grad-qual', label: '毕业资格联动' },
-  { key: 'archive', label: '归档' },
-  { key: 'risk', label: '风险学生' },
+  { key: 'roster', label: '学生名单' }, { key: 'progress', label: '学生进度' },
+  { key: 'topic', label: '未选题' }, { key: 'eligibility', label: '资格认定' },
+  { key: 'grouping', label: '过程分组' }, { key: 'materials', label: '材料缺口' },
+  { key: 'defense', label: '答辩组' }, { key: 'grad-qual', label: '毕业资格联动' },
+  { key: 'archive', label: '归档' }, { key: 'risk', label: '风险学生' },
   { key: 'mentor', label: '已选题导师' }
 ]
-
+const PRIMARY_GROUPS = [
+  { key: 'roster', label: '名单', defaultPanel: 'roster', panels: ['roster'] },
+  { key: 'progress', label: '进度与风险', defaultPanel: 'progress', panels: ['progress', 'risk'] },
+  { key: 'relations', label: '选题 / 导师 / 资格', defaultPanel: 'topic', panels: ['topic', 'mentor', 'eligibility', 'grouping'] },
+  { key: 'materials', label: '材料 / 答辩', defaultPanel: 'materials', panels: ['materials', 'defense'] },
+  { key: 'closure', label: '毕业资格 / 归档', defaultPanel: 'grad-qual', panels: ['grad-qual', 'archive'] }
+]
 const PANEL_HINTS = {
-  roster: '建档、导入、导出全量名单',
-  progress: '按节点状态筛选（默认指导中）',
-  risk: '筛选高风险学生',
-  mentor: '筛选已选题学生（含导师）',
-  topic: '筛选未选题学生，可「分配选题」',
-  eligibility: '毕设资格认定（待认定默认可筛）',
-  grouping: '过程分组维护，支持批量分组',
-  materials: '开题/成果材料缺口一览',
-  defense: '答辩组分配（未分配默认可筛）',
-  'grad-qual': '与教务毕业资格预审联动状态',
-  archive: '待归档/已归档学生管理'
+  roster: '建档、导入、导出全量名单', progress: '按真实节点查看推进情况', risk: '处理高风险学生',
+  mentor: '查看已选题学生与导师关系', topic: '处理未选题学生', eligibility: '进行毕设资格认定',
+  grouping: '维护过程分组', materials: '核对开题与成果缺口', defense: '处理未分配答辩组学生',
+  'grad-qual': '只读查看教务毕业资格预审', archive: '处理待归档与已归档学生'
 }
-
 const COLUMN_PRESETS = {
   default: [
-    { key: 'student', title: '学生' },
-    { key: 'batch', title: '批次' },
-    { key: 'topic', title: '课题 / 导师' },
-    { key: 'stage', title: '节点状态' },
-    { key: 'risk', title: '风险' },
-    { key: 'actions', title: '操作', width: '220px' }
+    { key: 'student', title: '学生' }, { key: 'batch', title: '批次' },
+    { key: 'topic', title: '课题 / 导师' }, { key: 'stage', title: '节点状态' },
+    { key: 'risk', title: '风险' }, { key: 'actions', title: '操作', width: '220px' }
   ],
   eligibility: [
-    { key: 'student', title: '学生' },
-    { key: 'batch', title: '批次' },
-    { key: 'eligibility', title: '毕设资格' },
-    { key: 'stage', title: '节点状态' },
+    { key: 'student', title: '学生' }, { key: 'batch', title: '批次' },
+    { key: 'eligibility', title: '毕设资格' }, { key: 'stage', title: '节点状态' },
     { key: 'actions', title: '操作', width: '240px' }
   ],
   grouping: [
-    { key: 'student', title: '学生' },
-    { key: 'group', title: '过程分组' },
-    { key: 'batch', title: '批次' },
-    { key: 'topic', title: '课题' },
+    { key: 'student', title: '学生' }, { key: 'group', title: '过程分组' },
+    { key: 'batch', title: '批次' }, { key: 'topic', title: '课题' },
     { key: 'actions', title: '操作', width: '160px' }
   ],
   materials: [
-    { key: 'student', title: '学生' },
-    { key: 'materials', title: '材料状态' },
-    { key: 'stage', title: '节点' },
-    { key: 'batch', title: '批次' },
+    { key: 'student', title: '学生' }, { key: 'materials', title: '材料状态' },
+    { key: 'stage', title: '节点' }, { key: 'batch', title: '批次' },
     { key: 'actions', title: '操作', width: '100px' }
   ],
   defense: [
-    { key: 'student', title: '学生' },
-    { key: 'defense', title: '答辩组' },
-    { key: 'stage', title: '节点' },
-    { key: 'batch', title: '批次' },
+    { key: 'student', title: '学生' }, { key: 'defense', title: '答辩组' },
+    { key: 'stage', title: '节点' }, { key: 'batch', title: '批次' },
     { key: 'actions', title: '操作', width: '160px' }
   ],
   'grad-qual': [
-    { key: 'student', title: '学生' },
-    { key: 'gradQual', title: '毕业资格联动' },
-    { key: 'eligibility', title: '毕设资格' },
-    { key: 'stage', title: '节点' },
-    { key: 'actions', title: '操作', width: '240px' }
+    { key: 'student', title: '学生' }, { key: 'gradQual', title: '教务毕业资格镜像' },
+    { key: 'eligibility', title: '毕设资格' }, { key: 'stage', title: '节点' },
+    { key: 'actions', title: '操作', width: '120px' }
   ],
   archive: [
-    { key: 'student', title: '学生' },
-    { key: 'stage', title: '节点' },
-    { key: 'materials', title: '材料' },
-    { key: 'gradQual', title: '毕业资格' },
+    { key: 'student', title: '学生' }, { key: 'stage', title: '节点' },
+    { key: 'materials', title: '材料' }, { key: 'gradQual', title: '毕业资格' },
     { key: 'actions', title: '操作', width: '120px' }
   ]
 }
-
 const STAGE_TONE = {
-  TOPIC_SELECTING: 'default', TASKBOOK_CONFIRM: 'info', GUIDING: 'processing',
-  MIDTERM: 'warning', FINAL_CHECK: 'processing', DEFENSE: 'warning', COMPLETED: 'info', ARCHIVED: 'success'
+  TOPIC_SELECTING: 'default', TASKBOOK_CONFIRM: 'info', GUIDING: 'processing', MIDTERM: 'warning',
+  FINAL_CHECK: 'processing', DEFENSE: 'warning', COMPLETED: 'info', ARCHIVED: 'success'
 }
+
+function errorText(error, fallback) { return error?.message || fallback }
 
 export default {
   name: 'GraduationStudentListView',
@@ -300,49 +257,32 @@ export default {
   data() {
     return {
       batchStore: useGraduationBatchStore(),
-      loading: true, error: '', submitting: false, activePanel: 'roster',
-      panelTabs: PANEL_TABS,
+      loading: true, error: '', submitting: false, activePanel: 'roster', routeReady: false,
+      primaryGroups: PRIMARY_GROUPS, panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      selectedIds: [],
-      groupOpts: [],
-      importVisible: false,
-      gdStudentApi,
+      stats: null, statsError: '', loadToken: 0, statsToken: 0,
+      selectedIds: [], groupOpts: [], importVisible: false, gdStudentApi,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, payload: null }
     }
   },
   computed: {
-    hasBatch() {
-      return !!this.batchStore.selectedBatchId
+    activeGroupKey() { return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'roster' },
+    activeGroupPanels() {
+      const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]
+      return group.panels.map((key) => PANEL_TABS.find((panel) => panel.key === key)).filter(Boolean)
     },
-    writeEnabled() {
-      return this.ctx.writeEnabled !== false
-    },
-    /** 是否处于筛选态（archiveView 是页签自带的视图切换，不算用户筛选） */
-    filtered() {
-      const f = this.filters
-      return Object.keys(f).some((k) => k !== 'archiveView' && f[k])
-    },
-    /** 只有「学生名单」页签、且不是筛选没结果时，空态才给建档/导入的出路 */
-    showRosterEmptyActions() {
-      return this.hasBatch && this.activePanel === 'roster' && !this.filtered
-    },
-    columns() {
-      return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default
-    },
-    selectablePanel() {
-      return this.activePanel === 'grouping' || this.activePanel === 'archive'
-    },
+    activePanelLabel() { return PANEL_TABS.find((panel) => panel.key === this.activePanel)?.label || '学生名单' },
+    hasBatch() { return !!this.batchStore.selectedBatchId },
+    writeEnabled() { return this.ctx.writeEnabled !== false },
+    filtered() { return Object.keys(this.filters).some((key) => key !== 'archiveView' && this.filters[key]) },
+    showRosterEmptyActions() { return this.hasBatch && this.activePanel === 'roster' && !this.filtered },
+    columns() { return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default },
+    selectablePanel() { return this.activePanel === 'grouping' || this.activePanel === 'archive' },
     filterFields() {
-      const groupOpts = this.groupOpts.map((g) => ({ value: g, label: g }))
-      const base = [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' }
-      ]
+      const groupOpts = this.groupOpts.map((group) => ({ value: group, label: group }))
+      const base = [{ key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' }]
       const panelFields = {
-        roster: [
-          { key: 'stage', label: '节点状态', type: 'select', options: GD_STAGE },
-          { key: 'riskLevel', label: '风险等级', type: 'select', options: GD_RISK_LEVEL },
-          { key: 'hasTopic', label: '选题', type: 'select', options: HAS_TOPIC }
-        ],
+        roster: [{ key: 'stage', label: '节点状态', type: 'select', options: GD_STAGE }, { key: 'riskLevel', label: '风险等级', type: 'select', options: GD_RISK_LEVEL }, { key: 'hasTopic', label: '选题', type: 'select', options: HAS_TOPIC }],
         progress: [{ key: 'stage', label: '节点状态', type: 'select', options: GD_STAGE }],
         risk: [{ key: 'riskLevel', label: '风险等级', type: 'select', options: GD_RISK_LEVEL }],
         mentor: [{ key: 'hasTopic', label: '选题', type: 'select', options: HAS_TOPIC }],
@@ -358,233 +298,255 @@ export default {
     },
     toolbarActions() {
       const writeOff = !this.writeEnabled
-      const base = []
-      if (this.activePanel === 'roster') {
-        base.push(
-          { key: 'create', label: '＋ 建档', variant: 'primary', disabled: writeOff },
-          { key: 'import', label: '导入 Excel', disabled: writeOff }
-        )
-      }
-      if (this.activePanel === 'grouping') {
-        base.push({ key: 'batchGroup', label: '批量分组', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
-      }
-      if (this.activePanel === 'archive' && this.filters.archiveView !== 'archived') {
-        base.push({ key: 'batchArchive', label: '批量归档', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
-      }
-      return base
+      const actions = []
+      if (this.activePanel === 'roster') actions.push({ key: 'create', label: '＋ 建档', variant: 'primary', disabled: writeOff }, { key: 'import', label: '导入 Excel', disabled: writeOff })
+      if (this.activePanel === 'grouping') actions.push({ key: 'batchGroup', label: '批量分组', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
+      if (this.activePanel === 'archive' && this.filters.archiveView !== 'archived') actions.push({ key: 'batchArchive', label: '批量归档', variant: 'primary', disabled: writeOff || !this.selectedIds.length })
+      return actions
     },
-    exportVisible() {
-      if (!this.hasBatch) return false
-      if (this.activePanel === 'grouping' || this.activePanel === 'archive') return false
-      return true
-    },
-    pageTitle() {
-      const name = this.batchStore.selectedBatchName
-      return name ? `毕设学生 · ${name}` : '毕设学生'
-    },
+    exportVisible() { return this.hasBatch && this.activePanel !== 'grouping' && this.activePanel !== 'archive' },
+    pageTitle() { return this.batchStore.selectedBatchName ? `毕设学生 · ${this.batchStore.selectedBatchName}` : '毕设学生' },
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
-      const hint = PANEL_HINTS[this.activePanel] || ''
-      const sel = this.selectablePanel && this.selectedIds.length ? ` · 已选 ${this.selectedIds.length}` : ''
-      return `${this.batchStore.selectedBatchName || '当前批次'} · 共 ${this.total} 人 · ${hint}${sel} · 学号默认脱敏`
+      const selected = this.selectablePanel && this.selectedIds.length ? ` · 已选 ${this.selectedIds.length}` : ''
+      return `${this.batchStore.selectedBatchName || '当前批次'} · ${this.activePanelLabel} ${this.total} 人${selected} · 学号默认脱敏`
+    },
+    heroMetrics() {
+      const stats = this.stats || {}
+      return [
+        { label: '批次学生', value: stats.total ?? '—' },
+        { label: '未选题', value: stats.withoutTopic ?? '—' },
+        { label: '高风险', value: stats.highRisk ?? '—' },
+        { label: '待认定', value: stats.pendingEligibility ?? '—' },
+        { label: '未分答辩组', value: stats.withoutDefenseGroup ?? '—' },
+        { label: '已归档', value: stats.archived ?? '—' }
+      ]
+    },
+    workConclusion() {
+      const stats = this.stats || {}
+      if (this.statsError) return `当前查看「${this.activePanelLabel}」${this.total} 人；全量统计暂未读取。`
+      const map = {
+        roster: `当前批次共 ${stats.total ?? this.total} 名学生，名单是后续选题、导师、材料和答辩的唯一入口。`,
+        progress: `当前进度视图 ${this.total} 人；按服务端节点筛选处理，不用当前页推导全量。`,
+        risk: `当前批次高风险 ${stats.highRisk ?? this.total} 人，优先进入真实风险处置。`,
+        topic: `当前批次未选题 ${stats.withoutTopic ?? this.total} 人，应先建立真实选题关系。`,
+        mentor: `当前查看已选题学生与导师关系 ${this.total} 人。`,
+        eligibility: `当前批次待毕设资格认定 ${stats.pendingEligibility ?? this.total} 人。`,
+        grouping: `当前查看过程分组 ${this.total} 人，可选择后批量分组。`,
+        materials: `当前材料缺口队列 ${this.total} 人，逐人进入详情核验。`,
+        defense: `当前批次未分答辩组 ${stats.withoutDefenseGroup ?? this.total} 人。`,
+        'grad-qual': '毕业资格只读展示教务预审真值，本页不写入、不维护第二套主档。',
+        archive: `当前查看归档队列 ${this.total} 人；归档仍受材料备案和未关闭风险校验。`
+      }
+      return map[this.activePanel] || `当前查看 ${this.total} 人。`
+    },
+    workHint() {
+      if (this.activePanel === 'grad-qual') return '刷新只会重新读取教务镜像；结果更正必须回到教务资格流程。'
+      return `${PANEL_HINTS[this.activePanel] || '处理当前学生队列'}；列表数据来自服务端分页。`
     },
     emptyTitle() {
       if (!this.hasBatch) return '请先选择或创建毕设批次'
-      const m = { eligibility: '暂无待认定学生', materials: '暂无材料缺口学生', defense: '暂无待分配答辩组学生', archive: '暂无归档记录' }
-      return m[this.activePanel] || '暂无毕设学生'
+      const labels = { eligibility: '暂无待认定学生', materials: '暂无材料缺口学生', defense: '暂无待分配答辩组学生', archive: '暂无归档记录', risk: '暂无高风险学生', topic: '暂无未选题学生' }
+      return labels[this.activePanel] || '暂无毕设学生'
     },
     emptyDesc() {
       if (!this.hasBatch) return '顶部批次条选择当前工作批次后，再查看本页名单与进度。'
-      // 按钮已经写了「做什么」，描述就该讲「为什么」和「注意什么」，不重复按钮文字。
-      if (this.activePanel === 'roster') {
-        return this.filtered
-          ? '当前筛选条件下没有学生。可以放宽条件，或清空筛选看全部。'
-          : '名单是毕设的起点——没有名单，选题、导师分配、答辩都无从谈起。人多建议用 Excel 导入，传之前系统会先给你看一遍预览，有问题的行会告诉你第几行错在哪。'
-      }
-      return '可调整筛选条件或从其他入口建档'
+      if (this.activePanel === 'roster') return this.filtered ? '当前筛选条件下没有学生，可放宽条件或清空筛选。' : '名单是毕设起点；人多时使用 Excel 模板、预览、错误行和确认导入闭环。'
+      return '当前队列为空，可调整筛选条件或切换其他工作视图。'
     }
   },
   watch: {
-    '$route.query.panel': {
-      immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'roster').toString())
+    '$route.query': {
+      deep: true,
+      handler(query) {
+        if (!this.routeReady) return
+        this.applyRouteState(query)
       }
     },
-    'batchStore.selectedBatchId'() {
+    'batchStore.selectedBatchId'(batchId) {
       this.page = 1
       this.selectedIds = []
+      void this.replaceListQuery({ batchId: batchId ? String(batchId) : undefined, page: '1' })
+      this.loadStats()
       this.load()
     }
   },
   created() {
+    this.applyInitialRouteState(this.$route.query)
+    this.routeReady = true
     this.loadGroupOpts()
+    this.loadStats()
+    this.load()
+  },
+  beforeUnmount() {
+    ++this.loadToken
+    ++this.statsToken
   },
   methods: {
-    /** 页内页签切换：改路由 query，由 $route.query.panel watcher 统一应用视图 */
-    switchPanel(p) {
-      if (p === this.activePanel) return
-      this.$router.replace({ query: { ...this.$route.query, panel: p } })
+    routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
+    normalizePanel(value) { const panel = this.routeText(value); return PANEL_PRESETS[panel] ? panel : 'roster' },
+    normalizePage(value) { const page = Number.parseInt(this.routeText(value), 10); return Number.isFinite(page) && page > 0 ? page : 1 },
+    applyInitialRouteState(query) {
+      const rawPanel = this.routeText(query.panel)
+      if (rawPanel === 'create') {
+        this.$router.replace({ path: '/admin/graduation/students/create', query: this.studentReturnQuery('roster') }).catch(() => {})
+      }
+      this.activePanel = this.normalizePanel(rawPanel)
+      this.filters = { ...(PANEL_PRESETS[this.activePanel] || PANEL_PRESETS.roster)(), keyword: this.routeText(query.keyword) }
+      this.page = this.normalizePage(query.page)
     },
-    applyPanel(panel) {
-      const key = PANEL_PRESETS[panel] ? panel : 'roster'
-      this.activePanel = key
-      this.filters = (PANEL_PRESETS[key] || PANEL_PRESETS.roster)()
-      this.selectedIds = []
-      this.page = 1
-      if (panel === 'create') {
-        this.$router.push({ path: '/admin/graduation/students/create', query: { returnPanel: key } })
+    applyRouteState(query) {
+      const rawPanel = this.routeText(query.panel)
+      if (rawPanel === 'create') {
+        this.$router.replace({ path: '/admin/graduation/students/create', query: this.studentReturnQuery('roster') }).catch(() => {})
         return
       }
+      const panel = this.normalizePanel(rawPanel)
+      const page = this.normalizePage(query.page)
+      const keyword = this.routeText(query.keyword)
+      if (panel === this.activePanel && page === this.page && keyword === String(this.filters.keyword || '')) return
+      this.activePanel = panel
+      this.filters = { ...(PANEL_PRESETS[panel] || PANEL_PRESETS.roster)(), keyword }
+      this.page = page
+      this.selectedIds = []
       this.load()
     },
-    studentReturnQuery() {
-      return { returnPanel: this.activePanel }
+    buildListQuery(overrides = {}) {
+      const keyword = String(this.filters.keyword || '').trim()
+      const query = {
+        ...this.$route.query,
+        batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined,
+        panel: this.activePanel,
+        page: String(this.page),
+        keyword: keyword || undefined,
+        ...overrides
+      }
+      Object.keys(query).forEach((key) => { if (query[key] == null || query[key] === '') delete query[key] })
+      return query
+    },
+    replaceListQuery(overrides = {}) { return this.$router.replace({ query: this.buildListQuery(overrides) }).catch(() => {}) },
+    currentListPath(panel = this.activePanel) {
+      return this.$router.resolve({ path: '/admin/graduation/students', query: this.buildListQuery({ panel }) }).fullPath
+    },
+    studentReturnQuery(panel = this.activePanel) {
+      return { returnPanel: panel, batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined, returnTo: this.currentListPath(panel) }
+    },
+    switchGroup(group) { if (group && group.key !== this.activeGroupKey) this.switchPanel(group.defaultPanel) },
+    switchPanel(panel) {
+      if (!PANEL_PRESETS[panel] || panel === this.activePanel) return
+      const keyword = String(this.filters.keyword || '')
+      this.activePanel = panel
+      this.filters = { ...(PANEL_PRESETS[panel] || PANEL_PRESETS.roster)(), keyword }
+      this.page = 1
+      this.selectedIds = []
+      void this.replaceListQuery({ panel, page: '1', keyword: keyword || undefined })
+      this.load()
     },
     stageTone(stage) { return STAGE_TONE[stage] || 'default' },
-    eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
-    gradQualTone(s) { return s === 'PASS' ? 'success' : (s === 'FAIL' ? 'danger' : (s === 'PENDING' ? 'warning' : 'default')) },
+    eligTone(status) { return status === 'QUALIFIED' ? 'success' : (status === 'UNQUALIFIED' ? 'danger' : 'warning') },
+    gradQualTone(status) { return status === 'PASS' ? 'success' : (status === 'FAIL' ? 'danger' : (status === 'PENDING' ? 'warning' : 'default')) },
     async loadGroupOpts() {
-      const g = await gdStudentApi.getStudentGroups()
-      if (g.code === 0) this.groupOpts = g.data || []
+      try { const result = await gdStudentApi.getStudentGroups(); if (result.code === 0) this.groupOpts = result.data || [] } catch { this.groupOpts = [] }
     },
-    buildQueryParams() {
-      return buildStudentQuery(this.filters, {
-        page: this.page,
-        pageSize: this.pageSize,
-        batchId: this.batchStore.selectedBatchId
-      })
-    },
-    async load() {
-      if (!this.batchStore.selectedBatchId) {
-        this.loading = false
-        this.error = ''
-        this.rows = []
-        this.total = 0
-        return
+    async loadStats() {
+      const batchId = this.batchStore.selectedBatchId
+      const token = ++this.statsToken
+      if (!batchId) { this.stats = null; this.statsError = ''; return false }
+      this.statsError = ''
+      try {
+        const result = await gdStudentApi.getStats({ batchId })
+        if (token !== this.statsToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
+        if (result.code === 0) { this.stats = result.data || {}; return true }
+        this.stats = null; this.statsError = result.message || '学生统计加载失败'; return false
+      } catch (error) {
+        if (token === this.statsToken) { this.stats = null; this.statsError = errorText(error, '学生统计加载失败') }
+        return false
       }
-      this.loading = true
-      this.error = ''
-      const res = await gdStudentApi.getStudents(this.buildQueryParams())
-      if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
-      this.loading = false
     },
-    search() { this.page = 1; this.load() },
+    buildQueryParams() { return buildStudentQuery(this.filters, { page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId }) },
+    async load() {
+      const batchId = this.batchStore.selectedBatchId
+      const token = ++this.loadToken
+      if (!batchId) {
+        this.loading = false; this.error = ''; this.rows = []; this.total = 0
+        return false
+      }
+      this.loading = true; this.error = ''
+      try {
+        const result = await gdStudentApi.getStudents(this.buildQueryParams())
+        if (token !== this.loadToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
+        if (result.code === 0) {
+          this.rows = Array.isArray(result.data?.list) ? result.data.list : []
+          this.total = Number(result.data?.total) || 0
+          return true
+        }
+        this.rows = []; this.total = 0; this.error = result.message || '学生列表加载失败'
+        return false
+      } catch (error) {
+        if (token === this.loadToken) { this.rows = []; this.total = 0; this.error = errorText(error, '学生列表加载失败') }
+        return false
+      } finally { if (token === this.loadToken) this.loading = false }
+    },
+    search() { this.page = 1; void this.replaceListQuery({ page: '1', keyword: String(this.filters.keyword || '').trim() || undefined }); this.load() },
     reset() {
       this.filters = (PANEL_PRESETS[this.activePanel] || PANEL_PRESETS.roster)()
       this.page = 1
+      void this.replaceListQuery({ page: '1', keyword: undefined })
       this.load()
     },
-    turnPage(p) { this.page = p; this.load() },
+    turnPage(page) { this.page = page; void this.replaceListQuery({ page: String(page) }); this.load() },
     onToolbar(key) {
       if (!this.writeEnabled && ['create', 'import', 'batchGroup', 'batchArchive'].includes(key)) return
-      if (key === 'create') {
-        this.$router.push({ path: '/admin/graduation/students/create', query: this.studentReturnQuery() })
-      }
-      if (key === 'import') { this.importVisible = true }
-      if (key === 'batchGroup') {
-        this.$router.push({
-          path: '/admin/graduation/students/_batch/group',
-          query: { ids: this.selectedIds.join(','), ...this.studentReturnQuery() }
-        })
-      }
+      if (key === 'create') this.$router.push({ path: '/admin/graduation/students/create', query: this.studentReturnQuery() })
+      if (key === 'import') this.importVisible = true
+      if (key === 'batchGroup') this.$router.push({ path: '/admin/graduation/students/_batch/group', query: { ids: this.selectedIds.join(','), ...this.studentReturnQuery() } })
       if (key === 'batchArchive') this.askBatchArchive()
     },
-    openAssignTopic(row) {
-      this.$router.push({
-        path: `/admin/graduation/students/${row.id}/assign-topic`,
-        query: this.studentReturnQuery()
-      })
-    },
-    openAdvisor(row) {
-      this.$router.push(`/admin/graduation/mentors/assign/${row.id}`)
-    },
+    openDetail(row) { this.$router.push({ path: `/admin/graduation/students/${row.id}`, query: this.studentReturnQuery() }) },
+    openAssignTopic(row) { this.$router.push({ path: `/admin/graduation/students/${row.id}/assign-topic`, query: this.studentReturnQuery() }) },
+    openAdvisor(row) { this.$router.push({ path: `/admin/graduation/mentors/assign/${row.id}`, query: this.studentReturnQuery() }) },
+    openGroup(row) { this.$router.push({ path: `/admin/graduation/students/${row.id}/group`, query: this.studentReturnQuery() }) },
+    openDefense(row) { this.$router.push({ path: `/admin/graduation/students/${row.id}/defense-group`, query: this.studentReturnQuery() }) },
     askEligibility(row, status) {
       const label = status === 'QUALIFIED' ? '资格合格' : '资格不合格'
-      this.confirm = {
-        visible: true, title: '毕设资格认定', message: `确认将「${row.name}」认定为「${label}」？`,
-        type: status === 'QUALIFIED' ? 'primary' : 'danger', confirmText: label,
-        requireReason: true, reasonLabel: '认定意见', action: 'ELIGIBILITY', row, payload: { status }
-      }
-    },
-    openGroup(row) {
-      this.$router.push({
-        path: `/admin/graduation/students/${row.id}/group`,
-        query: this.studentReturnQuery()
-      })
-    },
-    openDefense(row) {
-      this.$router.push({
-        path: `/admin/graduation/students/${row.id}/defense-group`,
-        query: this.studentReturnQuery()
-      })
-    },
-    askGradQual(row, status) {
-      const label = status === 'PASS' ? '毕业资格通过' : '毕业资格不通过'
-      this.confirm = {
-        visible: true, title: '毕业资格联动', message: `确认将「${row.name}」教务毕业资格联动为「${label}」？`,
-        type: status === 'PASS' ? 'primary' : 'danger', confirmText: label,
-        requireReason: true, reasonLabel: '联动说明', action: 'GRAD_QUAL', row, payload: { status }
-      }
+      this.confirm = { visible: true, title: '毕设资格认定', message: `确认将「${row.name}」认定为「${label}」？`, type: status === 'QUALIFIED' ? 'primary' : 'danger', confirmText: label, requireReason: true, reasonLabel: '认定意见', action: 'ELIGIBILITY', row, payload: { status } }
     },
     askArchiveOne(row) {
-      this.confirm = {
-        visible: true, title: '毕设归档', message: `确认归档「${row.name}」？归档后不可再编辑业务数据。`,
-        type: 'warning', confirmText: '确认归档', requireReason: true, reasonLabel: '归档说明',
-        action: 'ARCHIVE_ONE', row
-      }
+      this.confirm = { visible: true, title: '毕设归档', message: `确认归档「${row.name}」？归档后不可再编辑业务数据。`, type: 'warning', confirmText: '确认归档', requireReason: true, reasonLabel: '归档说明', action: 'ARCHIVE_ONE', row, payload: null }
     },
     askBatchArchive() {
-      this.confirm = {
-        visible: true, title: '批量归档',
-        message: `确认归档已选 ${this.selectedIds.length} 名学生？仅材料已备案且无未关闭风险的学生会归档，其余将跳过。`,
-        type: 'warning', confirmText: '批量归档', requireReason: true, reasonLabel: '归档说明',
-        action: 'ARCHIVE_BATCH', row: null
-      }
+      this.confirm = { visible: true, title: '批量归档', message: `确认归档已选 ${this.selectedIds.length} 名学生？仅材料已备案且无未关闭风险的学生会归档，其余将跳过。`, type: 'warning', confirmText: '批量归档', requireReason: true, reasonLabel: '归档说明', action: 'ARCHIVE_BATCH', row: null, payload: null }
     },
     async onConfirm({ reason } = {}) {
+      if (this.submitting) return
       const { action, row, payload } = this.confirm
       this.submitting = true
       try {
-        let res
-        if (action === 'ELIGIBILITY') {
-          res = await gdStudentApi.setEligibility(row.id, { status: payload.status, reason: reason || '' })
-        }
-        if (action === 'GRAD_QUAL') {
-          res = await gdStudentApi.setGradQual(row.id, { status: payload.status, note: reason || '', reason: reason || '' })
-        }
-        if (action === 'ARCHIVE_ONE') {
-          res = await gdStudentApi.setStage(row.id, { action: 'ARCHIVE', reason: reason || '' })
-        }
-        if (action === 'ARCHIVE_BATCH') {
-          res = await gdStudentApi.batchArchive({ recordIds: this.selectedIds, reason: reason || '' })
-        }
-        if (res && res.code === 0) {
-          toast.success(action === 'ARCHIVE_BATCH'
-            ? `已归档 ${res.data.archived ?? 0} 人，跳过 ${res.data.skipped ?? 0} 人（缺备案或未关闭风险）`
-            : '已更新')
+        let result
+        if (action === 'ELIGIBILITY') result = await gdStudentApi.setEligibility(row.id, { status: payload.status, reason: reason || '' })
+        else if (action === 'ARCHIVE_ONE') result = await gdStudentApi.setStage(row.id, { action: 'ARCHIVE', reason: reason || '' })
+        else if (action === 'ARCHIVE_BATCH') result = await gdStudentApi.batchArchive({ recordIds: this.selectedIds, reason: reason || '' })
+        else return
+        if (result?.code === 0) {
+          toast.success(action === 'ARCHIVE_BATCH' ? `已归档 ${result.data.archived ?? 0} 人，跳过 ${result.data.skipped ?? 0} 人` : '已更新')
           this.confirm.visible = false
           this.selectedIds = []
-          this.load()
-        } else if (res) toast.error(res.message)
-      } finally { this.submitting = false }
+          await Promise.all([this.load(), this.loadStats()])
+        } else if (result) toast.error(result.message || '操作失败')
+      } catch (error) { toast.error(errorText(error, '操作失败')) }
+      finally { this.submitting = false }
     },
     onImported(data) {
       toast.success(`已导入 ${data?.created ?? 0} 人`)
-      this.load()
+      Promise.all([this.load(), this.loadStats()])
     },
     exportStudentsFn() {
-      const tab = PANEL_TABS.find((p) => p.key === this.activePanel)
+      const tab = PANEL_TABS.find((panel) => panel.key === this.activePanel)
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, tab?.label || '毕设学生')
-      const p = {
-        ...buildStudentQuery(this.filters, { batchId: this.batchStore.selectedBatchId }),
-        filenameHint: hint
-      }
-      return gdStudentApi.exportStudents(p).then((res) => {
-        if (res.code === 0 && res.data) {
-          res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
-        }
-        return res
+      const params = { ...buildStudentQuery(this.filters, { batchId: this.batchStore.selectedBatchId }), filenameHint: hint }
+      return gdStudentApi.exportStudents(params).then((result) => {
+        if (result.code === 0 && result.data) result.data = { ...result.data, filename: result.data.filename || `${hint}.xlsx` }
+        return result
       })
     }
   }
@@ -593,9 +555,88 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.mp-tabs { overflow-x: auto; scrollbar-width: thin; flex-wrap: nowrap; padding-bottom: 1px; }
-.mp-tab { flex: 0 0 auto; white-space: nowrap; }
-.mp-tab:hover:not(.is-active) { color: var(--text-primary); background: var(--gray-50, #f8fafc); border-radius: var(--radius-sm); }
-@media (max-width: 700px) { .gd-actions { width: 100%; justify-content: space-between; } }
+/* The existing page owns its presentation; shared shell and business components stay unchanged. */
+.gd-student-workspace { container: gd-students / inline-size; min-width: 0; color: var(--text-primary); }
+.gd-student-workspace :deep(.mps__title) { font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; }
+.gd-student-workspace :deep(.mps__subtitle) { font-size: 12px; line-height: 1.5; }
+.gd-student-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; font-size: 13px; line-height: 1.5; }
+.gd-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gd-actions :deep(button) { min-height: 36px; font-size: 13px; }
+.gd-student-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 1.2fr); align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--primary-100, #dbeafe); border-radius: 12px; background: var(--bg-card, #fff); }
+.gd-student-hero__copy { display: grid; gap: 6px; min-width: 0; }
+.gd-student-hero__copy > span { color: var(--primary-600, #2563eb); font-size: 12px; font-weight: 700; }
+.gd-student-hero__copy strong { color: var(--text-primary); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-student-hero__copy p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.gd-student-hero__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.gd-student-hero__metrics div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-section, #f8fafc); }
+.gd-student-hero__metrics b { color: var(--primary-700, #1d4ed8); font-size: 20px; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gd-student-hero__metrics span { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.gd-import-contract { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.gd-import-contract > span { color: var(--text-primary); font-size: 13px; font-weight: 650; }
+.gd-import-contract ol { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; counter-reset: step; list-style: none; }
+.gd-import-contract li { color: var(--text-secondary); font-size: 12px; }
+.gd-import-contract li::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); font-size: 12px; font-weight: 700; }
+.gd-student-page .gd-primary-tabs { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-section, #f8fafc); overflow: visible; }
+.gd-student-page .gd-primary-tabs .mp-tab { flex: 1 1 auto; min-height: 36px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px; color: var(--text-secondary); background: transparent; font-size: 13px; line-height: 20px; white-space: normal; cursor: pointer; }
+.gd-student-page .gd-primary-tabs .mp-tab.is-active { border-color: var(--primary-100, #dbeafe); color: var(--primary-700, #1d4ed8); background: var(--bg-card, #fff); font-weight: 700; box-shadow: none; }
+.gd-local-views { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-left: 3px solid var(--primary-500, #2563eb); border-radius: 0 8px 8px 0; background: var(--bg-card, #fff); }
+.gd-local-views > span { color: var(--text-secondary); font-size: 12px; }
+.gd-local-views button { min-height: 34px; padding: 5px 12px; border: 1px solid var(--border-light); border-radius: 7px; color: var(--text-secondary); background: var(--bg-card, #fff); font-size: 13px; line-height: 22px; cursor: pointer; }
+.gd-local-views button.is-active { border-color: var(--primary-500, #2563eb); color: var(--primary-700, #1d4ed8); background: var(--primary-50, #eff6ff); font-weight: 650; }
+.gd-primary-tabs button:focus-visible,
+.gd-local-views button:focus-visible,
+.gd-student-page :deep(.mp-link:focus-visible) { outline: 2px solid var(--primary-500, #2563eb); outline-offset: 2px; }
+.gd-student-page :deep(.af) { min-width: 0; gap: 10px; padding: 12px; border-radius: 10px; box-shadow: none; }
+.gd-student-page :deep(.af__fields) { display: grid; grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(120px, 1fr)); gap: 10px; min-width: 0; flex: 1 1 510px; }
+.gd-student-page :deep(.af__field) { min-width: 0; gap: 5px; }
+.gd-student-page :deep(.af__label) { font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.gd-student-page :deep(.af__control) { width: 100%; min-width: 0; min-height: 36px; height: 36px; padding: 0 10px; background: var(--field-bg, var(--bg-card, #fff)); color: var(--text-primary); border-color: var(--border-base); font-size: 13px; }
+.gd-student-page :deep(.af__ops) { flex-wrap: wrap; gap: 8px; }
+.gd-student-page :deep(.af__ops button) { min-height: 36px; font-size: 13px; }
+/* Keep the real DataTable and its selection/pagination; only the table may scroll horizontally. */
+.gd-student-page :deep(.dt) { min-width: 0; max-width: 100%; border-radius: 10px; box-shadow: none; }
+.gd-student-page :deep(.dt__scroll) { min-width: 0; max-width: 100%; overflow-x: auto; }
+.gd-student-page :deep(.dt__table) { min-width: 900px; }
+.gd-student-page :deep(.dt__th) { padding: 10px 12px; background: var(--bg-section, #f8fafc); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.gd-student-page :deep(.dt__td) { padding: 10px 12px; color: var(--text-primary); font-size: 13px; line-height: 1.55; }
+.gd-student-page :deep(.dt__tr:hover) { background: var(--bg-hover, #eff6ff); }
+.gd-student-page :deep(.dt__batch) { background: var(--primary-50, #eff6ff); color: var(--text-primary); }
+.gd-student-page :deep(.dt__batch-clear) { min-height: 34px; color: var(--primary-700, #1d4ed8); font-size: 13px; }
+.gd-student-page :deep(.dt__pager) { padding: 10px 12px; background: var(--bg-card, #fff); }
+.gd-student-page :deep(.mp-cell-main) { color: var(--text-primary); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.gd-student-page :deep(.mp-cell-sub),
+.gd-student-page :deep(.mp-note) { font-size: 12px; line-height: 1.55; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gd-student-page :deep(.mp-link),
+.gd-student-page :deep(.mp-btn) { min-height: 34px; padding: 6px 8px; font-size: 13px; line-height: 22px; }
+.gd-student-page :deep(.mp-link) { color: var(--primary-700, #1d4ed8); }
+.gd-row-action { margin-left: 4px; }
+.gd-readonly-banner { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid var(--primary-100, #dbeafe); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.gd-readonly-banner > div { display: grid; flex: 1 1 320px; gap: 6px; min-width: 0; }
+.gd-readonly-banner strong { font-size: 13px; color: var(--text-primary); }
+.gd-readonly-banner span,
+.gd-readonly-banner small { font-size: 12px; line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
+.gd-readonly-banner small { flex: 0 1 260px; }
+.gd-readonly-action { display: inline-block; margin-left: 4px; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--bg-section, #f8fafc); color: var(--text-secondary); font-size: 12px; }
+@container gd-students (max-width: 1000px) {
+  .gd-student-hero { grid-template-columns: 1fr; gap: 12px; }
+  .gd-student-hero__metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .gd-student-hero__metrics div { display: grid; justify-content: stretch; padding: 8px; }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(100px, 1fr)); }
+}
+@container gd-students (max-width: 650px) {
+  .gd-student-hero__metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); flex-basis: 100%; }
+  .gd-student-page :deep(.af__ops) { justify-content: flex-end; width: 100%; }
+}
+@container gd-students (max-width: 420px) {
+  .gd-student-hero { padding: 12px; }
+  .gd-student-hero__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gd-student-page :deep(.af__fields) { grid-template-columns: minmax(0, 1fr); }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 1200px) {
+    .gd-student-hero { grid-template-columns: 1fr; }
+    .gd-student-page :deep(.af__fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}
 </style>

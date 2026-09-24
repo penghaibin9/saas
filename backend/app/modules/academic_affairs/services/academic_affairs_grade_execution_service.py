@@ -43,9 +43,9 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
     never a reason to fall back to the stale grade-task snapshot.
 
     ``lock_owner`` pins the teaching-task row for the surrounding transaction.
-    The execution adapter uses it while delegating writes to the canonical grade
-    service, preventing a teacher replacement from racing between live-owner
-    validation and the canonical score/status mutation.
+    Writes use a shared row lock: concurrent teacher-assignment UPDATE remains
+    blocked, while the canonical grade transaction may still read the same row.
+    This avoids cross-session self-blocking without reopening the ownership race.
     """
     if _is_scope_admin(user):
         return None
@@ -63,7 +63,7 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
         AaTeachingTask.is_deleted.is_(False),
     )
     if lock_owner:
-        query = query.with_for_update()
+        query = query.with_for_update(read=True)
     teaching_task = query.first()
     if not teaching_task:
         raise AppException(
@@ -140,6 +140,9 @@ def _record_map(db, task_id: int):
 
 
 def _quality_report_in_session(db, task, roster: dict) -> dict:
+    from . import academic_affairs_dynamic_grade_service as dynamic
+    if dynamic.uses_components(db, task):
+        return dynamic.quality_in_session(db, task, roster)
     roster_items = list(roster.get("items") or [])
     records = _record_map(db, int(task.id))
     roster_ids = {
@@ -257,7 +260,8 @@ def teacher_grade_quality_report(task_id: int, user) -> dict:
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id))
         _require_live_teacher(db, task, user)
-        roster = _grade._require_ready_roster(db, task)
+        from . import academic_affairs_dynamic_grade_service as dynamic
+        roster = dynamic.formal_roster(db, task) if dynamic.uses_components(db, task) else _grade._require_ready_roster(db, task)
         return _quality_report_in_session(db, task, roster)
 
 
@@ -376,10 +380,10 @@ def teacher_enter_score(task_id: int, user, body) -> dict:
         return _grade.enter_score(task_id, delegated_user, body)
 
 
-def teacher_submit_task(task_id: int, user) -> dict:
+def teacher_submit_task(task_id: int, user, *, expected=None, command_key=None) -> dict:
     """Canonical submit guarded by the live teaching-task owner."""
     with _canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
-        return _grade.submit_task(task_id, delegated_user)
+        return _grade.submit_task(task_id, delegated_user, expected=expected, command_key=command_key)
 
 
 def teacher_roster(task_id: int, user) -> dict:

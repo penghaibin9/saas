@@ -19,9 +19,12 @@ def install() -> None:
 
     previous = service.dry_run
 
-    def dry_run(domain, rows, *, namespace=None, user=None):
+    def dry_run(domain, rows, *, namespace=None, user=None, orientation_batch_id=None):
+        if orientation_batch_id is not None and domain != "orientation":
+            raise AppException("VALIDATION_ERROR", "迎新批次仅适用于新生名单导入")
         if domain != "student-affairs":
-            return previous(domain, rows, namespace=namespace, user=user)
+            return previous(domain, rows, namespace=namespace, user=user,
+                            orientation_batch_id=orientation_batch_id)
         # 直接调用原始学工预检函数，绕开上一层“成功批次持久化”包装。
         result = service._dry_run_student_affairs(rows, namespace=namespace, user=user)
         batch_no = result["batchNo"]

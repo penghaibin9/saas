@@ -27,6 +27,23 @@ def _stu_token(real_name, student_no):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
+def _stu_mini_token(real_name, student_no):
+    """正式学生小程序会话；不能用旧泛移动端 MP 令牌代替。"""
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-mini-{student_no}", "realName": real_name, "studentNo": student_no,
+        "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
+
+
+def _retake_identity(client, headers, apply_id):
+    response = client.get(f"{BASE}/retake/applies", headers=headers, params={"applyId": apply_id})
+    assert response.status_code == 200, response.text
+    row = next(item for item in response.json()["data"]["items"] if item["applyId"] == str(apply_id))
+    return {"expectedVersion": row["applicationVersion"],
+            "expectedSourceEvidenceHash": row["sourceEvidenceHash"]}
+
+
 def _seed(db_mode):
     """种子必须给全稳定课程身份：当前办理学期 + 课程库版本行 + 带 courseId/版本/修读次数的正式成绩。
 
@@ -154,20 +171,23 @@ def test_m2_retake_apply_and_maxcount(client, db_mode):
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 409
     # 教务处审批通过：APPROVED 仍算在途（还没编入跟班），因此依然不能再报
     assert client.post(f"{BASE}/retake/applies/{aid}/review", headers=admin,
-                       json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+                       json={"action": "APPROVE", **_retake_identity(client, admin, aid)}).json()["data"]["status"] == "APPROVED"
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 409
     # 编入真实教学任务后才脱离在途，并生成正式教学班名单版本
     enrolled = client.post(f"{BASE}/retake/applies/{aid}/enroll", headers=admin,
-                           json={"teachingTaskRef": str(ids["taskMath"])}).json()
+                           json={"teachingTaskRef": str(ids["taskMath"]), **_retake_identity(client, admin, aid)}).json()
     assert enrolled["code"] == 0 and enrolled["data"]["status"] == "ENROLLED"
     assert enrolled["data"]["rosterVersionId"]
     # 第2次报名（不在途，len(history)=1<2 可报）
     r2 = client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).json()
     assert r2["code"] == 0
     aid2 = r2["data"]["applyId"]
-    client.post(f"{BASE}/retake/applies/{aid2}/review", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/retake/applies/{aid2}/enroll", headers=admin,
-                json={"teachingTaskRef": str(ids["taskMath"])})
+    reviewed2 = client.post(f"{BASE}/retake/applies/{aid2}/review", headers=admin,
+                           json={"action": "APPROVE", **_retake_identity(client, admin, aid2)})
+    assert reviewed2.status_code == 200, reviewed2.text
+    enrolled2 = client.post(f"{BASE}/retake/applies/{aid2}/enroll", headers=admin,
+                           json={"teachingTaskRef": str(ids["taskMath"]), **_retake_identity(client, admin, aid2)})
+    assert enrolled2.status_code == 200, enrolled2.text
     # 第3次：无在途，但已达上限2 → 400（本项目校验错误统一 400）
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 400
 
@@ -211,6 +231,154 @@ def test_m3b_exemption_rejects_legacy_body(client, db_mode):
     db.close()
 
 
+def test_m3c_exemption_duplicate_and_return_resubmit_reuse_one_record(client, db_mode):
+    """双击、旧页面重试和退回补正都只能围绕同一张免修申请办理。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    stu = _stu_token("补甲", "MK2401")
+    applied = client.post(f"{BASE}/exemption/apply", headers=stu, json={
+        "courseId": str(ids["courseLin"]), "reason": "已获得对应专业竞赛证书",
+    })
+    assert applied.status_code == 200, applied.text
+    first = applied.json()["data"]
+    exemption_id = first["exemptionId"]
+
+    # 常见双击/网络重试必须由后端状态和学生行锁兜住，不能再次创建单据。
+    duplicate = client.post(f"{BASE}/exemption/apply", headers=stu, json={
+        "courseId": str(ids["courseLin"]), "reason": "重复点击不应新建",
+    })
+    assert duplicate.status_code == 409
+
+    returned = client.post(f"{BASE}/exemption/applies/{exemption_id}/review", headers=admin, json={
+        "action": "RETURN", "reason": "请补充竞赛证书的有效编号",
+        "expectedVersion": first["exemptionVersion"],
+        "expectedStatus": first["status"],
+        "expectedEvidenceManifestHash": first["evidenceManifestHash"],
+    })
+    assert returned.status_code == 200, returned.text
+    returned_data = returned.json()["data"]
+    assert returned_data["status"] == "SUBMITTED"
+    assert returned_data["currentNode"] == "STUDENT_RESUBMIT"
+
+    # 退回状态仍禁止重新建第二单；只能更新原单。伪造 courseId 也不会改目标课程。
+    assert client.post(f"{BASE}/exemption/apply", headers=stu, json={
+        "courseId": str(ids["courseLin"]), "reason": "退回后也不能新建第二单",
+    }).status_code == 409
+    resubmitted = client.post(f"{BASE}/exemption/applies/{exemption_id}/resubmit", headers=stu, json={
+        "reason": "已补充有效编号，请老师复核", "courseId": str(ids["courseMath"]),
+    })
+    assert resubmitted.status_code == 200, resubmitted.text
+    resubmitted_data = resubmitted.json()["data"]
+    assert resubmitted_data["exemptionId"] == exemption_id
+    assert resubmitted_data["courseId"] == str(ids["courseLin"])
+    assert resubmitted_data["status"] == "TEACHER_REVIEW"
+    assert resubmitted_data["returnReason"] is None
+    # 已被重新送回教师后，旧页面再次提交只能得到冲突，不能重复审计或推进状态。
+    assert client.post(f"{BASE}/exemption/applies/{exemption_id}/resubmit", headers=stu,
+                       json={"reason": "旧页面再次提交"}).status_code == 409
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaExemption, AffairsAuditTrail
+    db = get_sessionmaker()()
+    try:
+        rows = db.query(AaExemption).filter(
+            AaExemption.tenant_id == TID,
+            AaExemption.student_id == ids["student"],
+            AaExemption.course_id == ids["courseLin"],
+            AaExemption.is_deleted.is_(False),
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].id == int(exemption_id)
+        audits = db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == TID,
+            AffairsAuditTrail.biz_type == "AA_EXEMPTION",
+            AffairsAuditTrail.biz_id == int(exemption_id),
+            AffairsAuditTrail.action == "EXEMPTION_RESUBMIT",
+        ).count()
+        assert audits == 1
+    finally:
+        db.close()
+
+
+def test_mobile_exemption_return_resubmit_uses_same_formal_record(client, db_mode):
+    """学生小程序必须复用正式免修状态机，而非另建移动端申请或前端拼状态。"""
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    student = _stu_mini_token("补甲", "MK2401")
+    mobile_base = "/api/v1/mobile/academic"
+
+    # 先从移动端权威候选读取 courseId，不能由客户端编造课程或学期。
+    options = client.get(f"{mobile_base}/makeup/options", headers=student)
+    assert options.status_code == 200, options.text
+    option = next(item for item in options.json()["data"]["exemptionOptions"]
+                  if item["courseId"] == str(ids["courseMath"]))
+    assert option["identityReady"] is True
+
+    applied = client.post(f"{mobile_base}/makeup/exemption-apply", headers=student, json={
+        "courseId": option["courseId"],
+        "reason": "已补齐相关能力证明，请按正式流程审核",
+        "materialFileIds": [],
+    })
+    assert applied.status_code == 200, applied.text
+    first = applied.json()["data"]
+    exemption_id = first["exemptionId"]
+    assert first["courseId"] == str(ids["courseMath"])
+    assert first["status"] == "TEACHER_REVIEW"
+
+    # 教师/教务退回后，小程序列表要将“当前节点”呈现为学生可补正的原单。
+    returned = client.post(f"{BASE}/exemption/applies/{exemption_id}/review", headers=admin, json={
+        "action": "RETURN", "reason": "请补充证明的有效编号",
+        "expectedVersion": first["exemptionVersion"],
+        "expectedStatus": first["status"],
+        "expectedEvidenceManifestHash": first["evidenceManifestHash"],
+    })
+    assert returned.status_code == 200, returned.text
+    before_resubmit = client.get(f"{mobile_base}/makeup/my", headers=student, params={
+        "retakePage": 1, "retakePageSize": 20, "exemptionPage": 1, "exemptionPageSize": 20,
+    })
+    assert before_resubmit.status_code == 200, before_resubmit.text
+    listed = next(item for item in before_resubmit.json()["data"]["exemptions"]
+                  if item["exemptionId"] == exemption_id)
+    assert listed["status"] == "SUBMITTED"
+    assert listed["currentNode"] == "STUDENT_RESUBMIT"
+    assert listed["canResubmit"] is True
+    assert listed["returnReason"] == "请补充证明的有效编号"
+
+    # 课程、办理学期不接受移动端重写；只能更新原单的理由和证据，再送回教师节点。
+    resubmitted = client.post(f"{mobile_base}/makeup/exemption/{exemption_id}/resubmit", headers=student, json={
+        "reason": "已补充有效编号，请老师继续审核",
+        "courseId": str(ids["courseLin"]),
+    })
+    assert resubmitted.status_code == 200, resubmitted.text
+    reloaded = resubmitted.json()["data"]
+    assert reloaded["exemptionId"] == exemption_id
+    assert reloaded["courseId"] == str(ids["courseMath"])
+    assert reloaded["status"] == "TEACHER_REVIEW"
+    assert reloaded["returnReason"] is None
+    assert client.post(f"{mobile_base}/makeup/exemption/{exemption_id}/resubmit", headers=student,
+                       json={"reason": "旧页面重复提交"}).status_code == 409
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaExemption, AffairsAuditTrail
+    db = get_sessionmaker()()
+    try:
+        rows = db.query(AaExemption).filter(
+            AaExemption.tenant_id == TID,
+            AaExemption.student_id == ids["student"],
+            AaExemption.course_id == ids["courseMath"],
+            AaExemption.is_deleted.is_(False),
+        ).all()
+        assert [row.id for row in rows] == [int(exemption_id)]
+        assert db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == TID,
+            AffairsAuditTrail.biz_type == "AA_EXEMPTION",
+            AffairsAuditTrail.biz_id == int(exemption_id),
+            AffairsAuditTrail.action == "EXEMPTION_RESUBMIT",
+        ).count() == 1
+    finally:
+        db.close()
+
+
 def test_m4_exemption_three_level_approval(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -221,9 +389,15 @@ def test_m4_exemption_three_level_approval(client, db_mode):
     assert e["data"]["courseId"] == str(ids["courseLin"]) and e["data"]["courseName"] == "线性代数"
     eid = e["data"]["exemptionId"]
     # 三级：教师→学院→教务处
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "COLLEGE_REVIEW"
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "ACADEMIC_REVIEW"
-    assert client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+    current = e["data"]
+    for expected_status in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW", "APPROVED"):
+        response = client.post(f"{BASE}/exemption/applies/{eid}/review", headers=admin, json={
+            "action": "APPROVE", "expectedVersion": current["exemptionVersion"],
+            "expectedStatus": current["status"], "expectedEvidenceManifestHash": current["evidenceManifestHash"],
+        })
+        assert response.status_code == 200, response.text
+        current = response.json()["data"]
+        assert current["status"] == expected_status
 
 
 def test_m5_deferred_merge_requires_frozen_roster(client, db_mode):

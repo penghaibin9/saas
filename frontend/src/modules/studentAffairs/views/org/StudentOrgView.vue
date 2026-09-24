@@ -1,52 +1,14 @@
 <template>
   <AppPageShell
     title="学生干部与组织"
-    subtitle="校/院学生组织建制与任职管理；干部履历汇总组织任职与班级班干部，供推优评先只读引用。"
+    subtitle="组织建制与干部任期"
     role-name="团委 / 学工处"
     data-scope-name="按租户（团委全校）"
     watermark-purpose="学生干部与组织管理"
   >
+    <template #actions><AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="openForm">建组织</AppPermissionButton></template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载学生组织..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">组织与干部履历</span>
-          <h2 class="sa-summary-strip__title">当前页共 {{ items.length }} 个组织；选择组织后维护在任成员、职务和任期</h2>
-          <p class="sa-summary-strip__text">组织任职会进入学生干部履历，供推优评先只读引用。任命前应核对组织状态、学生身份、职务名称和任期；卸任后历史记录继续保留。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="openForm">新建组织</AppPermissionButton>
-        </div>
-      </section>
-
-      <div class="sa-workflow-strip" aria-label="学生组织管理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>建立组织</strong><br>设置名称、类型、级别和指导老师</div>
-        <div class="sa-workflow-step" data-step="2"><strong>选择组织</strong><br>查看当前组织状态与在任成员</div>
-        <div class="sa-workflow-step" data-step="3"><strong>任命干部</strong><br>登记学生、职务和任期</div>
-        <div class="sa-workflow-step" data-step="4"><strong>卸任留痕</strong><br>结束当前任职，历史履历继续保留</div>
-      </div>
-
-      <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="openForm">建组织</AppPermissionButton>
-      </div>
-
-      <AppSectionCard v-if="formVisible" title="新建学生组织">
-        <div class="og-form-note">先明确组织名称、类型与级别。指导老师可选填，组织建立后再在右侧维护在任成员。</div>
-        <div class="og-grid">
-          <label class="og-field og-field--wide"><span>组织名称 *</span><AppTextInput v-model="form.orgName" placeholder="如：校学生会 / 信息工程学院学生会" /></label>
-          <label class="og-field"><span>类型</span><AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>级别</span><AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
-          <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" placeholder="选填" /></label>
-        </div>
-        <p v-if="form.error" class="og-error">{{ form.error }}</p>
-        <div class="og-actions">
-          <button type="button" class="og-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存组织</AppPermissionButton>
-        </div>
-      </AppSectionCard>
 
       <div class="og-layout">
         <AppSectionCard title="组织列表" class="og-list">
@@ -94,15 +56,30 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+
+    <AppDrawer v-model:visible="formVisible" title="新建学生组织" mode="modal" size="large">
+      <div class="og-grid">
+        <label class="og-field og-field--wide"><span>组织名称 *</span><AppTextInput v-model="form.orgName" placeholder="如：校学生会 / 信息工程学院学生会" /></label>
+        <label class="og-field"><span>类型</span><AppSelect v-model="form.orgType" :options="TYPE_OPTIONS" placeholder="" /></label>
+        <label class="og-field"><span>级别</span><AppSelect v-model="form.level" :options="LEVEL_OPTIONS" placeholder="" /></label>
+        <label class="og-field"><span>指导老师</span><AppTextInput v-model="form.advisorName" placeholder="选填" /></label>
+      </div>
+      <p v-if="form.error" class="og-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.org.manage')" code="studentAffairs.org.manage" :loading="saving" @click="save">保存组织</AppPermissionButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
 import {
-  AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
+  AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
   AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -121,7 +98,7 @@ export default {
   name: 'StudentOrgView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
+    AppButton, AppDrawer, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard, AppSelect,
     StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {

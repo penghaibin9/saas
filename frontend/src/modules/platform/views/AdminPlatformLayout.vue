@@ -1,11 +1,12 @@
 <template>
   <BasePortalLayout
-    title="SaaS 运营平台"
-    product-name="SaaS 运营平台"
+    title="平台运营中心"
+    product-name="平台运营中心"
     subtitle="平台运营控制面"
     :menus="menus"
     :active-key="activeKey"
     :ctx="ctx"
+    workspace
     @menu-select="onMenuSelect"
   >
     <ErrorState v-if="error" :description="error" @retry="loadContext" />

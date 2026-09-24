@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T11:43:26.9902921Z",
+  "wave": "W15",
+  "gateCoverage": ["D-GATE-IX-54", "D-GATE-IX-55", "D-GATE-IX-56", "D-GATE-IX-57", "D-GATE-IX-58"],
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_20K_MYSQL_BROWSER_PENDING",
+  "outcome": "岗位实习高频读路径已从整批 Python/前端物化改为 SQL 范围、聚合与服务端分页：Staff Today Work 只读取最终 4/5/8 个对象，周报和异常队列按页读取，材料中心一次聚合当前 FileVersion，归档台账只读已提交快照并在单生详情按需预检。Teacher Mini 支持独立周报/异常续页并区分服务端总数与已加载风险提示；Student PC 只预取协议、保险、计划和当前页签；Enterprise 继续保持 Applicant 50、Position 20 的服务端分页。关键 Staff/Student PC/Teacher Mini 交互补齐 tab、progressbar、aria-current、aria-pressed 和真实 button 语义。",
+  "invariants": [
+    "Staff Dashboard 的数据范围、流程计数、去向缺项、风险/周报/异常计数均在 SQL 中完成；只加载最多 5 条风险和各 4 条周报/异常，再合并最多 8 个 Today Work 对象。",
+    "周报与打卡异常通过 InternshipRecord、StudentProfile、SchoolClass 联表完成租户、批次、业务范围、关键字、COUNT、ORDER、OFFSET 和 LIMIT，不再先取整批 record ids 或 Python 切页。",
+    "材料中心按当前 FileBinding/FileAsset/FileVersion/FileObject 一次分组聚合，四类对象分别验证 tenant，安全状态筛选、COUNT 和分页均在 SQL 中完成。",
+    "归档列表不为每名学生重跑全量合规规则；列表只呈现已提交 Archive snapshot，未知完整度明确显示待预检，详情/预检才计算当前规则。",
+    "批次与企业归档统计由一次 committed snapshot GROUP BY 生成，查询数不随学生数线性增长。",
+    "Teacher Mini 的 weeklyPage、exceptionPage、pageSize 由服务端接收并上限 50；分页查询直接携带当前 user scope，不再先取 50 条再按导师姓名做本地过滤。",
+    "Teacher Mini 显示 weeklyPendingTotal、weeklyOverdueTotal 和 exceptionTotal 服务端真值；仅当前页可知的内容风险明确标为已加载风险提示。",
+    "Student PC 首屏只并行预取 agreement、insurance、plan 与当前 tab，其他历史域按用户打开页签再读取。",
+    "Enterprise Applicant pageSize 50、Position pageSize 20 的既有服务端分页保持不变。",
+    "409 冲突保留处理意见/原因并读取最新事实；422/普通校验失败不清空其他输入；未知写结果标 UNKNOWN、重新读取服务端且不自动重放。",
+    "共享 Mini 分段控件使用 button/tab/aria-selected；连续办理切换使用 aria-pressed；Staff 归档和看板、Student PC 分组导航具备可操作语义。",
+    "20K 运行探针在真实批次低于 20000 条时拒绝出证，记录每个热路径 query count、EXPLAIN、p50/p95、payload 和 Python peak memory；独立 Playwright 探针记录每端 long task、资源 payload 与 JS heap。"
+  ],
+  "hotPaths": {
+    "staffDashboard": "backend/app/modules/internship/services/internship_service.py#get_dashboard_summary",
+    "weeklyQueue": "backend/app/modules/internship/services/internship_service.py#list_weekly_reports",
+    "exceptionQueue": "backend/app/modules/internship/services/internship_service.py#list_attendance_exceptions",
+    "materialCenter": "backend/app/modules/internship/services/internship_material_center_service.py#list_center",
+    "archiveLedger": "backend/app/modules/internship/services/internship_archive_service.py#list_by_student",
+    "archiveAggregate": "backend/app/modules/internship/services/internship_archive_service.py#_aggregate_committed_archive",
+    "teacherMiniService": "backend/app/services/_mobile_teacher_service_impl.py#internship",
+    "teacherMiniPage": "miniapp/src/pages/teacher/internship-review/index.vue",
+    "studentPc": "student-portal/src/views/internship/InternshipView.vue"
+  },
+  "runtimeProbes": {
+    "serviceAndExplain": "backend/scripts/measure_internship_v8_scale.py",
+    "browserLongTaskAndMemory": "e2e/tools/measure-internship-v8-browser.mjs"
+  },
+  "verification": [
+    {
+      "command": "Python py_compile for modified W15 services, mobile route and 20K probe",
+      "result": "PASS"
+    },
+    {
+      "command": "pytest --noconftest for W15 scale/accessibility plus W14 recovery contracts",
+      "cwd": "backend",
+      "result": "PASS 11/11; no database access"
+    },
+    {
+      "command": "node --test W15 plus W14 Staff contracts",
+      "cwd": "frontend",
+      "result": "PASS 9/9"
+    },
+    {
+      "command": "npm test",
+      "cwd": "frontend",
+      "result": "PASS 671/671"
+    },
+    {
+      "command": "targeted ESLint for W15 Staff views and contract",
+      "cwd": "frontend",
+      "result": "PASS 0 errors"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "PASS; 3165 modules, 21 official routes prerendered; only pre-existing CSS import-order and chunk warnings"
+    },
+    {
+      "command": "npm test && npm run build:h5 && npm run build:mp-weixin",
+      "cwd": "miniapp",
+      "result": "PASS 215/215; H5 and Weixin production builds pass"
+    },
+    {
+      "command": "npm test && targeted ESLint && npm run build",
+      "cwd": "student-portal",
+      "result": "PASS 108/108; lint and production build pass"
+    },
+    {
+      "command": "npm test && npm run build",
+      "cwd": "enterprise-portal",
+      "result": "PASS 97/97; production build pass"
+    },
+    {
+      "command": "node --check e2e/tools/measure-internship-v8-browser.mjs",
+      "result": "PASS"
+    }
+  ],
+  "runtimePending": {
+    "reason": "The isolated internship-v8-mysql container on 127.0.0.1:43327 still does not complete MySQL handshakes and Docker Engine previously returned HTTP 500 for a targeted container restart. Static/build evidence cannot substitute for the required 20K MySQL and authenticated browser measurements.",
+    "requiredReplay": [
+      "Run measure_internship_v8_scale.py against an isolated MySQL batch containing at least 20000 internship records; retain dataset, per-service query counts, EXPLAIN keys/rows, p50/p95, payload and peak-memory artifact.",
+      "Use EXPLAIN evidence to decide whether a targeted migration/index is needed; never add an index from model intuition alone, and rerun before/after evidence if one is added.",
+      "Run measure-internship-v8-browser.mjs with signed-in storage states for Staff PC, Student PC, Teacher Mini H5, Student Mini H5 and Enterprise Portal; retain long-task, resource payload and JS-heap evidence.",
+      "Browser keyboard-traverse Staff archive tabs/workspace, Student PC grouped navigation and Teacher Mini H5 segments/continuous-processing controls at desktop and 390px.",
+      "Replay 409, 422 and transport-unknown command outcomes against MySQL and prove inputs/other fields remain intact and no command is blindly replayed."
+    ]
+  }
+}

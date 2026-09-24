@@ -12,7 +12,7 @@
     </view>
     <view class="mac-right">
       <slot name="action">
-        <button v-if="actionText" class="mac-btn" :disabled="disabled" @click.stop="onAction">
+        <button v-if="actionText" class="mac-btn" :class="{ 'mac-btn--disabled': disabled }" :disabled="disabled" plain @click.stop="onAction">
           {{ actionText }}
         </button>
         <text v-else class="mac-arrow">›</text>
@@ -99,6 +99,6 @@ export default {
   color: var(--text-inverse);
   font-size: var(--font-size-base);
 }
-.mac-btn[disabled] { background: var(--gray-300); }
+.mac-btn--disabled { background: var(--gray-300); }
 .mac-arrow { font-size: var(--font-size-2xl); color: var(--text-tertiary); }
 </style>

@@ -311,6 +311,8 @@ def _finalize_staged_job(
             "roleTemplateVersion": batch_result.get("roleTemplateVersion"),
             "parseMode": "NORMALIZED_STAGING",
             "stagingAuthority": True,
+            "phoneSummary": batch_result.get('phoneSummary') or {},
+            "warnings": batch_result.get('warnings') or [],
             "stagingChunkSize": STAGING_CHUNK_SIZE,
             "stagingRows": int(staged.get("totalRows") or 0),
             "stagingDigest": staged.get("stagingDigest"),

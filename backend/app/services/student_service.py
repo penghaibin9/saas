@@ -32,16 +32,18 @@ def _require_db() -> None:
 
 def _supported_actions() -> list[str]:
     user = get_current_user_ctx() or {}
+    # 只在本次响应内复用：同一身份的基础全权判定会读取授权表，不必为每个动作重复解析。
+    full_access = has_permission(user, "*")
     result: list[str] = []
-    if has_permission(user, "*") or has_permission(user, "student.profile.view"):
+    if full_access or has_permission(user, "student.profile.view"):
         result.append("VIEW")
-    if has_permission(user, "*") or has_permission(user, "student.profile.manage") or has_permission(user, "student.profile.update"):
+    if full_access or has_permission(user, "student.profile.manage") or has_permission(user, "student.profile.update"):
         result.extend(["EDIT_IDENTITY", "VOID"])
-    if has_permission(user, "*") or has_permission(user, "student.profile.create") or has_permission(user, "student.profile.manage"):
+    if full_access or has_permission(user, "student.profile.create") or has_permission(user, "student.profile.manage"):
         result.append("CREATE")
-    if has_permission(user, "*") or has_permission(user, "student.profile.restore"):
+    if full_access or has_permission(user, "student.profile.restore"):
         result.append("RESTORE")
-    if has_permission(user, "*") or has_permission(user, "student.export"):
+    if full_access or has_permission(user, "student.export"):
         result.append("EXPORT")
     return sorted(set(result))
 

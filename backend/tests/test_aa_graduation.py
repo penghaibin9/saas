@@ -14,6 +14,21 @@ BASE = "/api/v1/academic-affairs"
 _REVIEW_NOTE = "已完成人工核验并留存学院初审意见"
 
 
+def test_legacy_item_evidence_map_is_normalized_for_list_and_filter_reads():
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _item_results
+
+    legacy = json.dumps({
+        "CREDIT": {"result": "PASS", "evidence": "已得 120/120 学分"},
+        "FEE": "UNKNOWN",
+        "BROKEN": 7,
+    }, ensure_ascii=False)
+    assert _item_results(legacy) == [
+        {"result": "PASS", "evidence": "已得 120/120 学分", "item": "CREDIT"},
+        {"item": "FEE", "result": "UNKNOWN"},
+    ]
+    assert _item_results('{bad json') == []
+
+
 def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
                        json={"loginName": login_name, "password": "any"}).json()["data"]

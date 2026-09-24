@@ -5,7 +5,7 @@
 ============  ==========================================  ============================
 状态          含义                                        权威源
 ============  ==========================================  ============================
-entitled      平台是否把这个能力卖给了这所学校            platform_service.feature_enabled
+entitled      平台是否把这个能力卖给了这所学校            platform_service.effective_features
 enabled       学校是否在已购范围内自己打开了它            t_tenant_capability_setting
 ready         依赖是否齐、启用期限是否还在                本服务按 manifest 依赖图推导
 allowed       最终能不能用（= entitled ∧ enabled ∧ ready） 本服务
@@ -168,19 +168,32 @@ def _is_expired(text: str) -> bool:
 # ── 四态推导 ─────────────────────────────────────────────────────────────────
 def capability_states(tenant_id: int | None = None) -> dict[str, dict]:
     """返回全部学校可见能力的四态。任一读取环节失败都会向上抛 503（fail-closed）。"""
-    from app.services.platform_service import feature_enabled
+    from app.core.module_registry import resolve_feature_key
+    from app.services.platform_defaults import FEATURE_KEYS
+    from app.services.platform_service import effective_features
 
     tid = _tid(tenant_id)
     reg = capability_registry()
     rows = _load_rows(tid)
     legacy = _legacy_enabled(tid)
+    # All capabilities use the same commercial authority snapshot for this call.
+    # Do not repeat its tenant/package/paid-order reads once per module, or cache
+    # across calls: revocations and school switches must be observed immediately.
+    features = {}
+    if tid:
+        try:
+            features = effective_features(tid)
+        except Exception:
+            # Preserve feature_enabled's fail-closed commercial read semantics.
+            features = {}
 
     states: dict[str, dict] = {}
     for key, mod in reg.items():
         feature_key = mod.get("featureKey") or key
         entitled = True
         if mod.get("entitlementRequired", True) and tid:
-            entitled = bool(feature_enabled(tid, feature_key))
+            resolved_feature = resolve_feature_key(feature_key) or feature_key
+            entitled = resolved_feature in FEATURE_KEYS and bool(features.get(resolved_feature, False))
         # tid==0 只出现在无租户上下文的 mock 模式（沿用改造前语义：不叠加套餐判断）。
         # 真实请求的 tenant_id 由中间件写入上下文，永远非 0。
         row = rows.get(key)

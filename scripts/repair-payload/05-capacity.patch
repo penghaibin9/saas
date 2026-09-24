@@ -1,0 +1,397 @@
+diff --git a/.github/workflows/capacity-load-gates.yml b/.github/workflows/capacity-load-gates.yml
+--- a/.github/workflows/capacity-load-gates.yml
++++ b/.github/workflows/capacity-load-gates.yml
+@@ -128,0 +129 @@
++      CAPACITY_EPHEMERAL_ACK: student_lifecycle_test
+@@ -280 +281 @@
+-            grafana/k6:0.54.0 run performance/k6/capacity.js
++            grafana/k6:0.54.0 run performance/k6/capacity.js 2>&1 | tee performance/results/k6-console.log
+@@ -417 +418 @@
+-            grafana/k6:0.54.0 run performance/k6/capacity.js
++            grafana/k6:0.54.0 run performance/k6/capacity.js 2>&1 | tee performance/results/k6-console.log
+diff --git a/performance/k6/capacity.js b/performance/k6/capacity.js
+--- a/performance/k6/capacity.js
++++ b/performance/k6/capacity.js
+@@ -2,0 +3,2 @@
++import { Counter } from 'k6/metrics';
++import { BUSINESS_BUCKETS, STATUS_BUCKETS, classifyResponse, routeEvidence, missingMeasuredRoutes } from './lib/evidence.js';
+@@ -10 +12,17 @@
+-export const options = configuredOptions;
++const ALL_ROUTES = Object.keys(configuredOptions.thresholds)
++  .map(key => /^http_req_duration\{route:([^}]+)\}$/.exec(key)?.[1]).filter(Boolean);
++const attempts = new Counter('capacity_route_attempts');
++const successes = new Counter('capacity_route_successes');
++const httpCounters = Object.fromEntries(STATUS_BUCKETS.map(bucket => [bucket, new Counter(`capacity_http_${bucket}`)]));
++const businessCounters = Object.fromEntries(BUSINESS_BUCKETS.map(bucket => [bucket, new Counter(`capacity_business_${bucket}`)]));
++const sampleThresholds = {};
++for (const route of ALL_ROUTES) {
++  for (const metric of ['capacity_route_attempts', 'capacity_route_successes',
++    ...STATUS_BUCKETS.map(b => `capacity_http_${b}`), ...BUSINESS_BUCKETS.map(b => `capacity_business_${b}`)]) {
++    sampleThresholds[`${metric}{route:${route}}`] = ['count>=0'];
++  }
++}
++export const options = {...configuredOptions, thresholds: {...configuredOptions.thresholds, ...sampleThresholds}};
++let preflight = false;
++let preflightFailures = [];
++let preflightSeen = new Set();
+@@ -17,0 +36,10 @@
++  const outcome = classifyResponse(response);
++  if (preflight) {
++    if (outcome.success) preflightSeen.add(route);
++    else preflightFailures.push({route, status: outcome.statusBucket, business: outcome.businessBucket});
++  } else {
++    attempts.add(1, {route});
++    successes.add(outcome.success ? 1 : 0, {route});
++    httpCounters[outcome.statusBucket].add(1, {route});
++    businessCounters[outcome.businessBucket].add(1, {route});
++  }
+@@ -26,2 +54,2 @@
+-        const body = res.json();
+-        return body && Number(body.code) === 0;
++        res.json();
++        return outcome.success;
+@@ -196 +224,2 @@
+-  const missing = required.filter((route) => !routes[route]);
++  const evidence = routeEvidence(metrics, ALL_ROUTES);
++  const missing = missingMeasuredRoutes(evidence, required);
+@@ -213,0 +243,17 @@
++/** Fail before high load on wrong permissions, missing fixture objects or broken routes.
++ * These requests do not enter measurement counters and cannot fake load route coverage.
++ */
++export function setup() {
++  preflight = true;
++  preflightFailures = [];
++  preflightSeen = new Set();
++  if (SCENARIO !== 'teacher') studentRead();
++  if (SCENARIO !== 'student') teacherRead();
++  const missing = requiredRoutes().filter(route => !preflightSeen.has(route));
++  if (preflightFailures.length || missing.length) {
++    throw new Error(`capacity preflight rejected: ${JSON.stringify({failures:preflightFailures, missingRoutes:missing})}`);
++  }
++  preflight = false;
++  return {preflightPassed:true};
++}
++
+@@ -220,2 +266,3 @@
+-  const missingStudentV3Routes = REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]);
+-  const missingTeacherV3Routes = REQUIRED_TEACHER_V3_ROUTES.filter((route) => !routes[route]);
++  const measuredRoutes = routeEvidence(metrics, ALL_ROUTES);
++  const missingStudentV3Routes = missingMeasuredRoutes(measuredRoutes, REQUIRED_STUDENT_V3_ROUTES);
++  const missingTeacherV3Routes = missingMeasuredRoutes(measuredRoutes, REQUIRED_TEACHER_V3_ROUTES);
+@@ -236 +283,3 @@
+-    missingRoutes: required.filter((route) => !routes[route]),
++    measuredRoutes,
++    measurementSchema: 2,
++    missingRoutes: missingMeasuredRoutes(measuredRoutes, required),
+@@ -245 +294 @@
+-    stdout: compactSummary(data),
++    stdout: compactSummary(data) + `redacted_route_results=${JSON.stringify(measuredRoutes)}\n`,
+diff --git a/performance/k6/lib/auth.js b/performance/k6/lib/auth.js
+--- a/performance/k6/lib/auth.js
++++ b/performance/k6/lib/auth.js
+@@ -4,0 +5 @@
++import { identityCounts } from './evidence.js';
+@@ -132,0 +134,2 @@
++  const studentEvidence = identityCounts(Array.from(studentTokens).slice(0, effectivePoolSize(studentTokens.length)), decodeJwtClaims, 'student');
++  const teacherSubjects = identityCounts(Array.from(teacherTokens).slice(0, effectivePoolSize(teacherTokens.length)), decodeJwtClaims, 'teacher');
+@@ -140,2 +143,6 @@
+-    uniqueStudentTokens: effectivePoolSize(studentTokens.length || studentCredentials.length),
+-    uniqueTeacherTokens: effectivePoolSize(teacherTokens.length || teacherCredentials.length),
++    uniqueStudentTokens: studentEvidence.tokens,
++    uniqueTeacherTokens: teacherSubjects.tokens,
++    uniqueStudentSubjects: studentEvidence.identities,
++    uniqueTeacherSubjects: teacherSubjects.identities,
++    identityClaimsComplete: studentEvidence.invalid === 0 && teacherSubjects.invalid === 0,
++    syntheticIdentityPool: studentEvidence.synthetic || teacherSubjects.synthetic,
+diff --git a/performance/k6/lib/evidence.js b/performance/k6/lib/evidence.js
+new file mode 100644
+--- /dev/null
++++ b/performance/k6/lib/evidence.js
+@@ -0,0 +1,47 @@
++/** Pure, bounded, redacted evidence. Shared by k6 and Node behavior tests. */
++export const STATUS_BUCKETS = ['transport', '200', 'other2xx', '3xx', '400', '401', '403', '404', '409', '422', '429', 'other4xx', '5xx', 'other']
++export const BUSINESS_BUCKETS = ['ok', 'http', 'invalid_json', 'missing_code', 'unauthorized', 'forbidden', 'conflict', 'validation', 'other']
++export function classifyResponse(response) {
++  const status=Number(response?.status || 0)
++  let statusBucket=String(status)
++  if (!STATUS_BUCKETS.includes(statusBucket)) statusBucket=status===0?'transport':status<200?'other':status<300?'other2xx':status<400?'3xx':status<500?'other4xx':'5xx'
++  if(status!==200)return {statusBucket,businessBucket:'http',success:false}
++  let body
++  try{body=response.json()}catch{return {statusBucket,businessBucket:'invalid_json',success:false}}
++  if(!body||typeof body!=='object'||!Object.prototype.hasOwnProperty.call(body,'code')||body.code===null||body.code==='')return {statusBucket,businessBucket:'missing_code',success:false}
++  if(Number(body.code)===0)return {statusBucket,businessBucket:'ok',success:true}
++  const code=Number(body.code)
++  const businessBucket=code===401001?'unauthorized':code===403001?'forbidden':code===409001?'conflict':[400001,422001].includes(code)?'validation':'other'
++  return {statusBucket,businessBucket,success:false}
++}
++function count(metrics,name){const n=Number(metrics[name]?.values?.count);return Number.isSafeInteger(n)&&n>=0?n:0}
++export function routeEvidence(metrics,routes) {
++  const result={}
++  for(const route of routes){
++    const attempts=count(metrics,`capacity_route_attempts{route:${route}}`)
++    const successes=count(metrics,`capacity_route_successes{route:${route}}`)
++    result[route]={attempts,successes,failures:Math.max(0,attempts-successes),statuses:{},business:{}}
++    for(const bucket of STATUS_BUCKETS)result[route].statuses[bucket]=count(metrics,`capacity_http_${bucket}{route:${route}}`)
++    for(const bucket of BUSINESS_BUCKETS)result[route].business[bucket]=count(metrics,`capacity_business_${bucket}{route:${route}}`)
++  }
++  return result
++}
++export function missingMeasuredRoutes(evidence,required){
++  return required.filter(route=>!evidence[route]||evidence[route].attempts<=0||evidence[route].successes<=0)
++}
++export function identityCounts(tokens,decode,role) {
++  const identities=new Set(),contexts=new Set(),uniqueTokens=new Set()
++  let synthetic=false,invalid=0
++  for(const token of tokens){
++    if(typeof token!=='string'||!token){invalid+=1;continue}
++    uniqueTokens.add(token)
++    const claims=decode(token)||{}
++    const tenant=String(claims.tenantId||'')
++    const subject=String(role==='student'?(claims.studentId||claims.studentNo||''):(claims.userId||''))
++    if(!tenant||!subject){invalid+=1;continue}
++    identities.add(JSON.stringify([tenant,subject]))
++    if(claims.activeContextId)contexts.add(JSON.stringify([tenant,String(claims.activeContextId)]))
++    if(claims.capacitySynthetic===true||claims.tid==='perf-local'||String(claims.loginName||'').startsWith('PERF-'))synthetic=true
++  }
++  return {tokens:uniqueTokens.size,identities:identities.size,contexts:contexts.size,synthetic,invalid}
++}
+diff --git a/performance/tools/ephemeral_capacity_guard.py b/performance/tools/ephemeral_capacity_guard.py
+new file mode 100644
+--- /dev/null
++++ b/performance/tools/ephemeral_capacity_guard.py
+@@ -0,0 +1,22 @@
++"""Only the exact local disposable schema may be seeded; no network/DB imports."""
++from urllib.parse import urlsplit, unquote, parse_qs
++
++
++def assert_ephemeral_target(env):
++    if env.get("APP_ENV") != "test" or env.get("DEPLOYMENT_MODE") != "development":
++        raise ValueError("capacity seed requires APP_ENV=test and DEPLOYMENT_MODE=development")
++    if env.get("CAPACITY_EPHEMERAL_ACK") != "student_lifecycle_test":
++        raise ValueError("explicit CAPACITY_EPHEMERAL_ACK=student_lifecycle_test required")
++    raw=env.get("DATABASE_URL", "")
++    if not raw or raw != env.get("TEST_DATABASE_URL"):
++        raise ValueError("DATABASE_URL must equal the explicit TEST_DATABASE_URL")
++    try:
++        url=urlsplit(raw)
++        valid=(url.scheme == "mysql+pymysql" and url.hostname in {"127.0.0.1", "localhost", "::1"}
++               and url.port in {None,3306} and unquote(url.path)=="/student_lifecycle_test"
++               and not url.fragment and set(parse_qs(url.query)).issubset({"charset"}))
++    except ValueError:
++        valid=False
++    if not valid:
++        raise ValueError("capacity seed refuses non-local, alternate schema, socket or connection overrides")
++    return True
+diff --git a/performance/tools/evaluate_capacity_result.py b/performance/tools/evaluate_capacity_result.py
+--- a/performance/tools/evaluate_capacity_result.py
++++ b/performance/tools/evaluate_capacity_result.py
+@@ -31,0 +32,22 @@
++REQUIRED_STUDENT = {"student_home", "student_messages", "student_agenda", "student_cases", "student_search"}
++REQUIRED_TEACHER = {"teacher_workbench", "teacher_todos", "teacher_risk_students", "teacher_my_students",
++                    "teacher_student360", "teacher_messages", "teacher_visit", "teacher_employment_verification"}
++
++
++def measured_route_failures(v3):
++    scenario = v3.get("scenario")
++    if scenario not in {"student", "teacher", "mixed"}:
++        return ["INVALID_SCENARIO"]
++    required = (REQUIRED_STUDENT if scenario == "student" else REQUIRED_TEACHER if scenario == "teacher"
++                else REQUIRED_STUDENT | REQUIRED_TEACHER)
++    evidence = v3.get("measuredRoutes") or {}
++    missing = []
++    for route in sorted(required):
++        row = evidence.get(route) or {}
++        attempts, successes = row.get("attempts"), row.get("successes")
++        if type(attempts) is not int or type(successes) is not int or not 0 < successes <= attempts:
++            missing.append(route)
++    if v3.get("measurementSchema") != 2:
++        missing.append("MEASUREMENT_SCHEMA_REQUIRED")
++    return missing
++
+@@ -104,0 +127,4 @@
++        "uniqueStudentSubjects": int(_number(identity.get("uniqueStudentSubjects"), default=0)),
++        "uniqueTeacherSubjects": int(_number(identity.get("uniqueTeacherSubjects"), default=0)),
++        "identityClaimsComplete": identity.get("identityClaimsComplete") is True,
++        "syntheticIdentityPool": identity.get("syntheticIdentityPool") is True,
+@@ -122,2 +148,3 @@
+-        (not student_needed or actual["uniqueStudentTokens"] >= peak)
+-        and (not teacher_needed or actual["uniqueTeacherTokens"] >= peak)
++        actual["identityClaimsComplete"]
++        and (not student_needed or (actual["uniqueStudentTokens"] >= peak and actual["uniqueStudentSubjects"] >= peak))
++        and (not teacher_needed or (actual["uniqueTeacherTokens"] >= peak and actual["uniqueTeacherSubjects"] >= peak))
+@@ -162 +189 @@
+-    missing_routes = list(v3.get("missingRoutes") or []) if v3 else []
++    missing_routes = measured_route_failures(v3)
+@@ -171,0 +199,4 @@
++    measured = v3.get("measuredRoutes") or {}
++    measured_attempts = sum(_number(row.get("attempts"), default=0) for row in measured.values())
++    measured_successes = sum(_number(row.get("successes"), default=0) for row in measured.values())
++    measured_business_rate = measured_successes / measured_attempts if measured_attempts > 0 else 0
+@@ -172,0 +204,4 @@
++        {"key": "measuredBusinessSuccessRate", "passed": measured_business_rate > 0.995 and measured_successes <= measured_attempts,
++         "enforced": True, "actual": measured_business_rate, "limit": 0.995},
++        {"key": "measuredProfileMatches", "passed": v3.get("profile") == args.profile,
++         "enforced": True, "actual": v3.get("profile"), "limit": args.profile},
+@@ -239 +274 @@
+-            "enforced": args.v3 is not None,
++            "enforced": True,
+@@ -246 +281 @@
+-            "enforced": args.v3 is not None,
++            "enforced": True,
+@@ -253 +288 @@
+-            "enforced": args.v3 is not None,
++            "enforced": True,
+@@ -260 +295 @@
+-            "enforced": args.v3 is not None and args.identity_mode == "cold",
++            "enforced": args.identity_mode == "cold",
+@@ -271,0 +307 @@
++        and not identity_actual.get("syntheticIdentityPool", True)
+diff --git a/performance/tools/seed_local_capacity_env.py b/performance/tools/seed_local_capacity_env.py
+--- a/performance/tools/seed_local_capacity_env.py
++++ b/performance/tools/seed_local_capacity_env.py
+@@ -18,0 +19,2 @@
++import os
++from ephemeral_capacity_guard import assert_ephemeral_target
+@@ -28,3 +29,0 @@
+-from app.core.security import create_access_token
+-from app.db.session import get_sessionmaker
+-from app.models import EmpStudent, StudentProfile, UnifiedMessage
+@@ -46,0 +46,10 @@
++    assert_ephemeral_target(os.environ)
++    if not 1 <= token_count <= 1000:
++        raise ValueError("token-count must be between 1 and 1000")
++    from app.core.config import settings
++    assert_ephemeral_target({**os.environ, "DATABASE_URL": settings.DATABASE_URL,
++        "TEST_DATABASE_URL": settings.TEST_DATABASE_URL, "APP_ENV": settings.APP_ENV,
++        "DEPLOYMENT_MODE": settings.DEPLOYMENT_MODE})
++    from app.db.session import get_sessionmaker
++    from app.models import EmpStudent, StudentProfile, UnifiedMessage
++
+@@ -49,4 +58,6 @@
+-        student = db.scalar(
+-            select(StudentProfile).where(
+-                StudentProfile.tenant_id == TENANT_ID,
+-                StudentProfile.student_no == STUDENT_NO,
++        for index in range(1, token_count + 1):
++            student = db.scalar(
++                select(StudentProfile).where(
++                    StudentProfile.tenant_id == TENANT_ID,
++                    StudentProfile.student_no == _student_no(index),
++                )
+@@ -54,10 +65,19 @@
+-        )
+-        if student is None:
+-            student = StudentProfile(
+-                tenant_id=TENANT_ID,
+-                student_no=STUDENT_NO,
+-                real_name="容量测试学生",
+-                grade="2026",
+-                current_stage="ON_CAMPUS",
+-                student_status="NORMAL",
+-                status="ACTIVE",
++            if student is None:
++                student = StudentProfile(
++                    tenant_id=TENANT_ID,
++                    student_no=_student_no(index),
++                    real_name="容量测试学生",
++                    grade="2026",
++                    current_stage="ON_CAMPUS",
++                    student_status="NORMAL",
++                    status="ACTIVE",
++                )
++                db.add(student)
++                db.flush()
++
++            employment = db.scalar(
++                select(EmpStudent).where(
++                    EmpStudent.tenant_id == TENANT_ID,
++                    EmpStudent.student_id == student.id,
++                    EmpStudent.is_deleted.is_(False),
++                )
+@@ -65,28 +85,18 @@
+-            db.add(student)
+-            db.flush()
+-
+-        employment = db.scalar(
+-            select(EmpStudent).where(
+-                EmpStudent.tenant_id == TENANT_ID,
+-                EmpStudent.student_id == student.id,
+-                EmpStudent.is_deleted.is_(False),
+-            )
+-        )
+-        if employment is None:
+-            # EmpStudent is a domain model, not a CommonMixin status-bearing row. Keep the seed
+-            # aligned to the real ORM contract: lifecycle truth is record_status/verify_status.
+-            employment = EmpStudent(
+-                tenant_id=TENANT_ID,
+-                student_id=student.id,
+-                student_no=student.student_no,
+-                name=student.real_name,
+-                grade=student.grade,
+-                destination_type="EMPLOYED",
+-                company_name="容量测试企业",
+-                job_title="容量测试岗位",
+-                verify_status="PENDING_VERIFY",
+-                material_status="SUBMITTED",
+-                record_status="ACTIVE",
+-            )
+-            db.add(employment)
+-            db.flush()
++            if employment is None:
++                # EmpStudent is a domain model, not a CommonMixin status-bearing row. Keep the seed
++                # aligned to the real ORM contract: lifecycle truth is record_status/verify_status.
++                employment = EmpStudent(
++                    tenant_id=TENANT_ID,
++                    student_id=student.id,
++                    student_no=student.student_no,
++                    name=student.real_name,
++                    grade=student.grade,
++                    destination_type="EMPLOYED",
++                    company_name="容量测试企业",
++                    job_title="容量测试岗位",
++                    verify_status="PENDING_VERIFY",
++                    material_status="SUBMITTED",
++                    record_status="ACTIVE",
++                )
++                db.add(employment)
++                db.flush()
+@@ -134,0 +145,4 @@
++def _student_no(index: int) -> str:
++    return f"PERF-STU-{int(index):04d}"
++
++
+@@ -135,0 +150,2 @@
++    assert_ephemeral_target(os.environ)
++    from app.core.security import create_access_token
+@@ -139 +155 @@
+-            "loginName": STUDENT_NO,
++            "loginName": _student_no(index),
+@@ -142,0 +159 @@
++            "capacitySynthetic": True,
+@@ -147 +164 @@
+-            "studentNo": STUDENT_NO,
++            "studentNo": _student_no(index),
+@@ -153,0 +171,2 @@
++    assert_ephemeral_target(os.environ)
++    from app.core.security import create_access_token
+@@ -165,0 +185 @@
++            "capacitySynthetic": True,
+@@ -175,0 +196 @@
++    assert_ephemeral_target(os.environ)
+@@ -194,0 +216 @@
++    assert_ephemeral_target(os.environ)
+@@ -200 +222 @@
+-        f"seeded_student=1 student_id={student_id} employment_id={employment_id} "
++        f"seeded_students={args.token_count} synthetic_identity_pool=true "
+diff --git a/performance/uvicorn-capacity-log.json b/performance/uvicorn-capacity-log.json
+--- a/performance/uvicorn-capacity-log.json
++++ b/performance/uvicorn-capacity-log.json
+@@ -18 +18 @@
+-    "level": "ERROR"
++    "level": "INFO"
+@@ -23 +23 @@
+-      "level": "ERROR",
++      "level": "INFO",
+@@ -28 +28 @@
+-      "level": "ERROR",
++      "level": "INFO",

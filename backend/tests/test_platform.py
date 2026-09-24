@@ -85,6 +85,48 @@ def _tenant_action(client, headers: dict, tenant_id: int | str, action: str, **p
     )
 
 
+def _buy_package(client, headers: dict, tenant_id: int | str, package_code: str) -> dict:
+    order = client.post("/api/v1/platform/orders", headers=headers, json={
+        "tenantId": str(tenant_id), "packageCode": package_code, "amount": 49800,
+    }).json()
+    assert order["code"] == 0, order
+    paid = client.post(
+        f"/api/v1/platform/orders/{order['data']['orderNo']}/mark-paid",
+        headers=headers,
+        json={"expectedVersion": order["data"]["version"], "reason": "测试确认订单已完成支付"},
+    ).json()
+    assert paid["code"] == 0, paid
+    assert paid["data"]["tenantActivated"] is True, paid
+    return paid["data"]
+
+
+def _put_rules(client, headers, tenant_id, rules):
+    snapshot = client.get(f"/api/v1/platform/tenants/{tenant_id}/rules", headers=headers).json()
+    assert snapshot["code"] == 0, snapshot
+    return client.put(f"/api/v1/platform/tenants/{tenant_id}/rules", headers=headers, json={
+        "rules": rules, "expectedVersion": snapshot["data"]["overrideVersion"],
+        "reason": "平台规则真实消费验收",
+    }).json()
+
+
+def _set_paid_package_feature(client, headers, feature, enabled):
+    # The test school already owns an activated paid professional order. Change
+    # its package catalog through the real governed endpoint, not tenant FEATURES.
+    projection = client.get(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=headers).json()
+    assert projection["code"] == 0, projection
+    assert projection["data"]["authoritySource"] == "PAID_ORDER", projection
+    code = projection["data"]["packageCode"]
+    packages = client.get("/api/v1/platform/packages", headers=headers).json()
+    assert packages["code"] == 0, packages
+    package = next(row for row in packages["data"]["list"] if row["packageCode"] == code)
+    changed = client.put(f"/api/v1/platform/packages/{code}", headers=headers, json={
+        "features": {feature: enabled}, "expectedVersion": package["version"],
+        "reason": "已购套餐功能闸门消费验收",
+    }).json()
+    assert changed["code"] == 0, changed
+    assert changed["data"]["features"][feature] is enabled, changed
+
+
 # ── §一 强校验：非平台超管一律 403，拒绝写审计 ──
 
 def test_platform_requires_login(client):
@@ -112,6 +154,11 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
     body = client.get("/api/v1/platform/overview", headers=h).json()
     assert body["code"] == 0 and body["data"]["tenantTotal"] >= 0
 
+    bypass = client.post("/api/v1/platform/tenants", headers=h, json={
+        "tenantCode": "t-paid-bypass", "tenantName": "禁止直开正式套餐", "packageCode": "standard",
+    }).json()
+    assert bypass["code"] == 422001
+
     created = client.post("/api/v1/platform/tenants", headers=h, json={
         "tenantCode": "t-life", "tenantName": "生命周期测试学院", "packageCode": "trial",
         "province": "广东省", "city": "东莞市", "contactName": "张三", "contactPhone": "13800001111",
@@ -126,12 +173,25 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
     ext = _tenant_action(client, h, tid, "extend-trial", days=30).json()
     assert ext["code"] == 0
 
-    paid = _tenant_action(client, h, tid, "convert-to-paid", packageCode="standard").json()
+    direct = _tenant_action(client, h, tid, "convert-to-paid", packageCode="standard").json()
+    assert direct["code"] == 409001 and direct["bizCode"] == "COMMERCIAL_ORDER_REQUIRED"
+    invalid_exception = _tenant_action(
+        client, h, tid, "convert-to-paid", packageCode="not-a-package",
+        exceptionGrantType="GIFT", approvalRef="APPROVAL-INVALID-PACKAGE",
+    ).json()
+    assert invalid_exception["code"] == 422001
+
+    _buy_package(client, h, tid, "standard")
+    paid = client.get(f"/api/v1/platform/tenants/{tid}", headers=h).json()
     assert paid["code"] == 0 and paid["data"]["status"] == "active" \
         and paid["data"]["packageCode"] == "standard"
 
+    quota_before = paid["data"]["maxStudents"]
     quota = _tenant_action(client, h, tid, "quota", maxStudents=500).json()
-    assert quota["code"] == 0 and quota["data"]["maxStudents"] == 500
+    assert quota["bizCode"] == "COMMERCIAL_ORDER_REQUIRED", quota
+    unchanged = client.get(f"/api/v1/platform/tenants/{tid}", headers=h).json()
+    assert unchanged["code"] == 0, unchanged
+    assert unchanged["data"]["maxStudents"] == quota_before
 
     off = _tenant_action(client, h, tid, "disable").json()
     assert off["code"] == 0 and off["data"]["status"] == "disabled"
@@ -173,7 +233,7 @@ def test_expired_tenant_readonly(client, auth_headers, db_mode):
                         json={"studentNo": "RO2026001", "realName": "只读测试"}).json()
     assert write["code"] == 403001 and write["bizCode"] == "MODULE_EXPIRED_READONLY"
 
-    _tenant_action(client, h, MAIN_TID, "convert-to-paid", packageCode="professional")
+    _buy_package(client, h, MAIN_TID, "professional")
     class_id = _seed_main_org_class()
     write2 = client.post("/api/v1/students", headers=auth_headers,
                          json={"studentNo": "RO2026001", "realName": "只读测试",
@@ -208,14 +268,14 @@ def test_feature_toggle_blocks_import(client, auth_headers, db_mode):
 
     put = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
                      json={"studentImport": False}).json()
-    assert put["code"] == 0 and put["data"]["features"]["studentImport"] is False
+    assert put["bizCode"] == "COMMERCIAL_AUTHORITY_REQUIRED", put
+    _set_paid_package_feature(client, h, "studentImport", False)
 
     denied = client.post("/api/v1/system/identity-import/students/validate-file",
                          headers=auth_headers, files=files).json()
     assert denied["code"] == 403001 and denied["bizCode"] == "MODULE_NOT_AUTHORIZED"
 
-    client.put(f"/api/v1/platform/tenants/{MAIN_TID}/features", headers=h,
-               json={"studentImport": True})
+    _set_paid_package_feature(client, h, "studentImport", True)
     files = {"file": ("students.xlsx", _student_xlsx(),
                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     ok = client.post("/api/v1/system/identity-import/students/validate-file",
@@ -230,8 +290,7 @@ def test_rules_reject_reason_min_length(client, auth_headers, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
     tid_task = db_mode["task"]
-    put = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-                     json={"approval": {"rejectReasonMinLength": 10}}).json()
+    put = _put_rules(client, h, MAIN_TID, {"approval": {"rejectReasonMinLength": 10}})
     assert put["code"] == 0 and put["data"]["rules"]["approval"]["rejectReasonMinLength"] == 10
 
     task = client.get(f"/api/v1/approvals/tasks/{tid_task}", headers=auth_headers).json()
@@ -250,8 +309,8 @@ def test_rules_reject_reason_min_length(client, auth_headers, db_mode):
 def test_rules_export_purpose_min_length(client, auth_headers, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
-    client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-               json={"export": {"exportPurposeMinLength": 12}})
+    put = _put_rules(client, h, MAIN_TID, {"export": {"exportPurposeMinLength": 12}})
+    assert put["code"] == 0, put
     short = client.post("/api/v1/export/students", headers=auth_headers,
                         json={"purpose": "迎新名册用途"}).json()
     assert short["code"] == 422001 and "12" in short["message"]
@@ -260,8 +319,7 @@ def test_rules_export_purpose_min_length(client, auth_headers, db_mode):
 def test_rules_validation_rejects_unknown(client, db_mode):
     _ensure_main_tenant()
     h = _owner_headers()
-    bad = client.put(f"/api/v1/platform/tenants/{MAIN_TID}/rules", headers=h,
-                     json={"approval": {"noSuchRule": 1}}).json()
+    bad = _put_rules(client, h, MAIN_TID, {"approval": {"noSuchRule": 1}})
     assert bad["code"] == 422001
 
 
@@ -307,6 +365,68 @@ def test_order_mark_paid_activates_tenant(client, db_mode):
 
     got = client.get(f"/api/v1/platform/tenants/{t['tenantId']}", headers=h).json()["data"]
     assert got["status"] == "active" and got["packageCode"] == "standard"
+
+    first_expire = got["expireAt"]
+    _buy_package(client, h, t["tenantId"], "standard")
+    renewed = client.get(f"/api/v1/platform/tenants/{t['tenantId']}", headers=h).json()["data"]
+    assert renewed["expireAt"] > first_expire  # 续费从现有服务期末顺延，不吞掉剩余天数
+
+
+def test_order_rejects_noncommercial_amount_and_unimplemented_addon(client, db_mode):
+    h = _owner_headers()
+    tenant = client.post("/api/v1/platform/tenants", headers=h, json={
+        "tenantCode": "t-order-validation", "tenantName": "订单校验学院", "packageCode": "trial",
+    }).json()["data"]
+    for payload in (
+        {"tenantId": tenant["tenantId"], "packageCode": "standard", "amount": 0},
+        {"tenantId": tenant["tenantId"], "packageCode": "standard", "amount": -1},
+        {"tenantId": tenant["tenantId"], "packageCode": "standard", "amount": 100, "orderType": "ADDON"},
+    ):
+        response = client.post("/api/v1/platform/orders", headers=h, json=payload).json()
+        assert response["code"] == 422001, response
+
+
+def test_paid_order_activation_failure_has_real_repair_path(client, db_mode, monkeypatch):
+    from app.services import tenant_effective_state_service as lifecycle
+
+    h = _owner_headers()
+    tenant = client.post("/api/v1/platform/tenants", headers=h, json={
+        "tenantCode": "t-order-repair", "tenantName": "订单修复学院", "packageCode": "trial",
+    }).json()["data"]
+    order = client.post("/api/v1/platform/orders", headers=h, json={
+        "tenantId": tenant["tenantId"], "packageCode": "standard", "amount": 49800,
+    }).json()["data"]
+
+    original_apply = lifecycle.apply_transition
+    monkeypatch.setattr(lifecycle, "apply_transition", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("forced activation failure")))
+    paid = client.post(
+        f"/api/v1/platform/orders/{order['orderNo']}/mark-paid", headers=h,
+        json={"expectedVersion": order["version"], "reason": "测试支付后强制激活失败"},
+    ).json()
+    assert paid["code"] == 0, paid
+    assert paid["data"]["tenantActivated"] is False
+    assert paid["data"]["repairTaskRequired"] is True
+    assert paid["data"]["version"] == 2
+
+    listed = client.get("/api/v1/platform/orders", headers=h).json()["data"]["list"]
+    pending = next(item for item in listed if item["orderNo"] == order["orderNo"])
+    assert pending["activationState"] == "REPAIR_REQUIRED"
+    assert pending["repairTaskRequired"] is True
+
+    monkeypatch.setattr(lifecycle, "apply_transition", original_apply)
+    repaired = client.post(
+        f"/api/v1/platform/orders/{order['orderNo']}/repair-activation", headers=h,
+        json={"expectedVersion": pending["version"], "reason": "测试执行已支付订单激活修复"},
+    ).json()
+    assert repaired["code"] == 0, repaired
+    assert repaired["data"]["tenantActivated"] is True
+    assert repaired["data"]["repairTaskRequired"] is False
+    assert repaired["data"]["version"] == 3
+
+    listed_after = client.get("/api/v1/platform/orders", headers=h).json()["data"]["list"]
+    active = next(item for item in listed_after if item["orderNo"] == order["orderNo"])
+    assert active["activationState"] == "ACTIVE"
+    assert active["repairTaskRequired"] is False
 
 
 # ── §十二 公告 ──

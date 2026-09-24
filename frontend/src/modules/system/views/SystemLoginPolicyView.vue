@@ -42,7 +42,7 @@
                     <span v-else class="lp-warn">暂无消费者，改了不会有行为变化</span>
                   </td>
                   <td>
-                    <button class="mp-link" :disabled="!c.schoolEditable" @click="openEdit(c)">编辑</button>
+                    <button class="mp-link" :disabled="!c.schoolEditable || (isPhone(c.configKey) && !canPhonePolicy)" @click="openEdit(c)">编辑</button>
                     <button class="mp-link" @click="openHistory(c)">历史</button>
                   </td>
                 </tr>
@@ -83,8 +83,9 @@
       <label class="lp-label">配置值<span class="lp-required">*</span></label>
       <input v-model="edit.value" class="mp-input" />
 
-      <label class="lp-label">生效时间（留空=立即）</label>
-      <input v-model="edit.effectiveAt" type="datetime-local" class="mp-input" />
+      <template v-if="!isPhone(edit.configKey)"><label class="lp-label">生效时间（留空=立即）</label>
+      <input v-model="edit.effectiveAt" type="datetime-local" class="mp-input" /></template>
+      <p v-else class="lp-tip">仅本校立即生效；原账号登录不可关闭。当前版本 {{ edit.expectedVersion }}，0=关闭，1=启用。</p>
 
       <label class="lp-label">变更原因<span class="lp-required">*</span></label>
       <textarea v-model="edit.reason" class="mp-textarea" rows="2" placeholder="至少 5 个字" />
@@ -92,7 +93,7 @@
       <div v-if="edit.error" class="mp-form-err">{{ edit.error }}</div>
       <template #footer>
         <AppButton variant="ghost" @click="edit.open = false">取消</AppButton>
-        <AppButton variant="primary" :loading="edit.submitting" @click="submitEdit">保存并留痕</AppButton>
+        <AppButton variant="primary" :loading="edit.submitting" :disabled="edit.uncertain" @click="submitEdit">保存并留痕</AppButton>
       </template>
     </AppDrawer>
 
@@ -126,6 +127,9 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { phoneGovernanceApi } from '../api/phoneGovernance.api'
+import { contextFingerprint } from '../utils/workspaceContract'
+import { matchPermission } from '@/config/navPlan'
 
 const SOURCE_LABEL = {
   PLATFORM_FLOOR: '平台底线',
@@ -142,6 +146,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      epoch: 0,
       loading: true,
       error: '',
       configs: [],
@@ -153,10 +158,17 @@ export default {
       history: { open: false, loading: false, name: '', items: [] }
     }
   },
+  computed: {
+    contextKey() { return contextFingerprint(this.ctx) },
+    canPhonePolicy() { return matchPermission(this.ctx.permissionPatterns || [], 'systemAdmin.phoneBinding.policy.manage') }
+  },
+  watch: { contextKey() { this.epoch += 1; this.edit.open = false; this.edit.value = ''; this.edit.reason = ''; this.detail = null; this.history.open = false; this.configs = []; this.load() } },
   created() { this.load() },
+  beforeUnmount() { this.epoch += 1 },
   methods: {
+    isPhone(key) { return ['SEC_PHONE_LOGIN_ENABLED', 'SEC_PHONE_RECOVERY_ENABLED'].includes(key) },
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-    sourceLabel(s) { return SOURCE_LABEL[s] || s || '—' },
+    sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
     sourceTagType(s) {
       if (s === 'TENANT' || s === 'ORG_UNIT' || s === 'TERM') return 'processing'
       if (s === 'TENANT_LEGACY') return 'info'
@@ -171,35 +183,49 @@ export default {
     },
 
     async load() {
+      const stamp = ++this.epoch
       this.loading = true
       this.error = ''
       const res = await systemApi.getEffectiveConfig({ domain: 'SECURITY' })
+      if (stamp !== this.epoch) return
       if (res.code === 0) this.configs = (res.data || {}).items || []
       else this.error = res.message
       this.loading = false
     },
 
     openEdit(c) {
+      if (this.isPhone(c.configKey) && !this.canPhonePolicy) return
       this.edit = {
         open: true, configKey: c.configKey, name: c.configName || c.configKey,
         value: String(c.value ?? ''), floor: c.platformFloor,
-        effectiveAt: '', reason: '', error: '', submitting: false
+        effectiveAt: '', reason: '', error: '', submitting: false, uncertain: false, expectedVersion: c.policyVersion
       }
       this.detail = c
     },
 
     async submitEdit() {
+      if (this.edit.submitting || this.edit.uncertain) return
+      const phone = this.isPhone(this.edit.configKey)
+      if (phone && (!this.canPhonePolicy || !/^[01]$/.test(this.edit.value))) { this.edit.error = '请核对权限，并填 0 或 1'; return }
       if (!String(this.edit.value).trim()) { this.edit.error = '请填写配置值'; return }
       if (this.edit.reason.trim().length < 5) { this.edit.error = '变更原因不少于 5 个字'; return }
       this.edit.submitting = true
       this.edit.error = ''
-      const res = await systemApi.setConfigOverride({
+      const stamp = this.epoch
+      let res
+      if (phone) {
+        try {
+          res = { code: 0, data: await phoneGovernanceApi.setPolicy({ configKey: this.edit.configKey,
+            value: Number(this.edit.value), expectedVersion: this.edit.expectedVersion, reason: this.edit.reason.trim() }) }
+        } catch (error) { res = { code: 1, message: error.message || '策略结果未取得' } }
+      } else res = await systemApi.setConfigOverride({
         configKey: this.edit.configKey,
         value: this.edit.value,
         scopeType: 'TENANT',
         effectiveAt: this.edit.effectiveAt ? new Date(this.edit.effectiveAt).toISOString() : null,
         reason: this.edit.reason.trim()
       })
+      if (stamp !== this.epoch) return
       this.edit.submitting = false
       if (res.code === 0) {
         toast.success('安全策略已保存并写入审计')
@@ -209,6 +235,7 @@ export default {
       } else {
         // 越过平台底线时后端返回明确错误码与允许区间，直接展示给管理员
         this.edit.error = res.message
+        if (phone) { this.edit.uncertain = true; this.edit.error += '；输入已保留，请关闭窗口、重新读取策略后核对，不会自动覆盖新版本。' }
       }
     },
 

@@ -4,7 +4,7 @@
 
 <script>
 /** LoadingState — 加载骨架状态（AppGlobalState 的语义化别名）。 */
-import { AppGlobalState } from '@/components/common'
+import AppGlobalState from '@/components/common/AppGlobalState.vue'
 
 export default {
   name: 'LoadingState',

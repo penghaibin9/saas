@@ -115,7 +115,7 @@ export default {
       // 无 typed action 的历史/本地条目：只允许回消息详情，不猜业务落点。
       if (row.stashed) {
         stashDetail(row.stashed)
-        go('/pages/common/message-detail/index')
+        go('/pages/common/message-detail/index?messageId=' + encodeURIComponent(String(row.stashed.messageId || row.stashed.id || '')))
       }
     }
   }

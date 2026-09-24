@@ -12,14 +12,14 @@
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
-const OUTPUT = resolve(REPO, 'miniapp-v3-handoff.json')
+const OUTPUT = resolve(REPO, 'artifacts/release-seals/miniapp-v3-handoff.json')
 const SEAL_SUBJECT = 'chore(miniapp-v3): seal exact-head handoff'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
@@ -78,8 +78,7 @@ function contractVersion(file, marker) {
 function alembicHead() {
   const dir = resolve(REPO, 'backend/alembic/versions')
   if (!existsSync(dir)) return ''
-  try {
-    return execFileSync('python3', ['-c', `
+  const script = `
 import ast, os
 d = ${JSON.stringify(dir)}
 revs, downs = {}, {}
@@ -102,10 +101,16 @@ for r, p in downs.items():
     elif p: parents.update(p)
 heads = sorted(r for r in revs if r not in parents)
 print(','.join(heads))
-`], { cwd: REPO }).toString().trim()
-  } catch (error) {
-    return ''
+`
+  for (const executable of ['python3', 'python']) {
+    try {
+      const head = execFileSync(executable, ['-c', script], { cwd: REPO }).toString().trim()
+      if (head) return head
+    } catch (error) {
+      // Try the next common executable name (Windows commonly exposes only `python`).
+    }
   }
+  return ''
 }
 
 function packageReportSha() {
@@ -114,12 +119,30 @@ function packageReportSha() {
   return sha256(read(report))
 }
 
+function sourceFingerprint() {
+  const files = []
+  function walk(dir) {
+    for (const item of readdirSync(dir, { withFileTypes: true })) {
+      const name = resolve(dir, item.name)
+      if (item.isDirectory()) walk(name)
+      else if (item.isFile()) files.push(name)
+    }
+  }
+  walk(resolve(MINIAPP, 'src'))
+  walk(resolve(MINIAPP, 'scripts'))
+  for (const name of ['package.json', 'package-lock.json', 'vite.config.js']) files.push(resolve(MINIAPP, name))
+  return sha256(files.map(name => [name.slice(REPO.length + 1).split(String.fromCharCode(92)).join('/'), sha256(readFileSync(name))].join(':')).sort().join('\n'))
+}
+
 export function buildHandoff() {
   const inventory = routeInventory()
   return {
     schema: 'miniapp-v3-handoff/1',
     generatedAt: new Date().toISOString(),
     studentMergeSha: implementationSha(),
+    // An uncommitted repair is a working-tree candidate, not an exact committed release.
+    implementationState: git('status', '--porcelain', '--', 'miniapp/src', 'miniapp/scripts', 'miniapp/package.json', 'miniapp/package-lock.json', 'miniapp/vite.config.js') ? 'WORKING_TREE_CANDIDATE' : 'COMMITTED',
+    sourceFingerprint: sourceFingerprint(),
     actionSchemaVersion: contractVersion('src/services/actionRouterCore.mjs', 'ACTION_SCHEMA_VERSION'),
     routeInventoryHash: sha256(inventory.routes.join('\n')),
     routeCount: inventory.routes.length,
@@ -135,12 +158,12 @@ export function buildHandoff() {
 const REQUIRED_FIELDS = [
   'studentMergeSha', 'actionSchemaVersion', 'routeInventoryHash',
   'subpackageHash', 'networkPagerVersion', 'attachmentPickerVersion', 'alembicHead',
-  'packageReportSha'
+  'packageReportSha', 'sourceFingerprint'
 ]
 
 function verify() {
   if (!existsSync(OUTPUT)) {
-    console.error('[handoff] 缺少 miniapp-v3-handoff.json，先运行生成命令')
+    console.error('[handoff] 缺少 artifacts/release-seals/miniapp-v3-handoff.json，先运行生成命令')
     return 1
   }
   const stored = JSON.parse(read(OUTPUT))
@@ -162,7 +185,7 @@ function verify() {
     for (const line of drift) console.error('  -', line)
     return 1
   }
-  console.log(`[handoff] OK impl=${current.studentMergeSha} routes=${current.routeCount} alembicHead=${current.alembicHead}`)
+  console.log(`[handoff] OK state=${current.implementationState} impl=${current.studentMergeSha} routes=${current.routeCount} alembicHead=${current.alembicHead}`)
   return 0
 }
 

@@ -13,7 +13,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
@@ -213,9 +213,31 @@ def _state(row: RecoveryRun | None, *, freshness: timedelta, now: datetime) -> d
     return {"status": status, "stale": stale, "lastRun": _dto(row)}
 
 
+def _schema_missing_health() -> dict:
+    unavailable = {"status": "UNKNOWN", "stale": True, "lastRun": None}
+    return {
+        "status": "UNKNOWN",
+        "authority": "MACHINE_ONLY",
+        "manualEvidenceHealthEligible": False,
+        "schemaReady": False,
+        "reasonCode": "RECOVERY_EVIDENCE_SCHEMA_MISSING",
+        "message": "机器灾备证据表尚未完成数据库迁移，当前健康状态不可判定",
+        "backup": dict(unavailable),
+        "restore": dict(unavailable),
+        "pitr": dict(unavailable),
+        "backupFreshnessHours": int(BACKUP_FRESHNESS.total_seconds() // 3600),
+        "restoreFreshnessDays": RESTORE_FRESHNESS.days,
+    }
+
+
 def machine_health() -> dict:
     now = _utcnow()
     with _session() as db:
+        # Rolling deploys and historically stamped development databases can run
+        # new application code before t_recovery_run exists. Fail closed as
+        # UNKNOWN instead of turning the whole DR page into an HTTP 500.
+        if not inspect(db.get_bind()).has_table(RecoveryRun.__tablename__):
+            return _schema_missing_health()
         backup = _state(_latest(db, "BACKUP"), freshness=BACKUP_FRESHNESS, now=now)
         restore = _state(_latest(db, "RESTORE"), freshness=RESTORE_FRESHNESS, now=now)
         pitr_row = _latest(db, "PITR")
@@ -234,6 +256,7 @@ def machine_health() -> dict:
         "status": overall,
         "authority": "MACHINE_ONLY",
         "manualEvidenceHealthEligible": False,
+        "schemaReady": True,
         "backup": backup,
         "restore": restore,
         "pitr": pitr,

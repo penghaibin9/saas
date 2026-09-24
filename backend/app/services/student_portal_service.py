@@ -42,9 +42,11 @@ _DANGEROUS = ("javascript:", "data:", "vbscript:", "<", ">")
 
 # ─────────────────────────── 读取覆盖配置 ───────────────────────────
 
-def _load_override(tenant_id: int) -> dict:
-    """读取租户覆盖配置（无库/无行/异常 → 空 dict，绝不抛错）。"""
+def _load_override(tenant_id: int, *, strict: bool = False) -> dict:
+    """学生读沿用兼容默认；管理端严格区分无配置行与数据库读取失败。"""
     if not db_enabled():
+        if strict:
+            raise AppException("SERVER_ERROR", "门户配置读取需启用数据库")
         return {}
     try:
         from sqlalchemy import select
@@ -57,7 +59,9 @@ def _load_override(tenant_id: int) -> dict:
             return dict(row.config_json or {}) if row else {}
         finally:
             db.close()
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise AppException("SERVER_ERROR", "门户配置读取失败，请重试") from exc
         return {}
 
 
@@ -130,13 +134,13 @@ def _merge(override: dict, brand: dict) -> dict:
     }
 
 
-def get_config(tenant_id: int) -> dict:
+def get_config(tenant_id: int, *, strict: bool = False) -> dict:
     """下发给学生门户的最终配置（安全默认，绝不 500，绝不跨租户）。"""
     tid = int(tenant_id or 0)
     if not tid:
         # 无租户上下文：返回未开通安全态，不泄露、不 500
         return _merge({"enabled": False}, {})
-    return _merge(_load_override(tid), _load_brand(tid))
+    return _merge(_load_override(tid, strict=True) if strict else _load_override(tid), _load_brand(tid))
 
 
 # ─────────────────────────── 校验 + 落库 ───────────────────────────
@@ -233,7 +237,8 @@ def update_config(tenant_id: int, body: dict, operator: dict | None = None) -> d
                                  "package": pkg_code})
     except Exception:
         pass
-    return get_config(tid)
+    # Return this accepted write rather than a second best-effort override read.
+    return _merge(override, _load_brand(tid))
 
 
 # ─────────────────────────── 后端功能开关强校验 ───────────────────────────

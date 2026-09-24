@@ -77,6 +77,36 @@ def _patch_aid_student_lookup() -> None:
     aid._students_by_ids = students_by_ids
 
 
+def _patch_aid_audit_namespace() -> None:
+    """批次与申请可能拥有相同数字 ID，审计主键必须使用不同业务命名空间。"""
+    from app.models import AffairsAuditTrail
+    from app.services import affairs_aid_service as aid
+
+    previous = aid._audit
+    if getattr(previous, "_aid_batch_namespace_patched", False):
+        return
+
+    def audit(db, biz_id, action, detail="", before="", after=""):
+        if not str(action or "").startswith("BATCH_"):
+            return previous(db, biz_id, action, detail, before, after)
+        name, role, user_id = aid._op()
+        db.add(AffairsAuditTrail(
+            tenant_id=_tid(),
+            biz_type="AID_BATCH",
+            biz_id=int(biz_id) if biz_id else None,
+            action=action,
+            operator=name or user_id,
+            role_name=role,
+            detail=detail,
+            before_val=before,
+            after_val=after,
+            occurred_at=aid.datetime.utcnow(),
+        ))
+
+    audit._aid_batch_namespace_patched = True
+    aid._audit = audit
+
+
 def _patch_student_profile() -> None:
     from app.models import AffairsRiskRecord, DisciplineCase, DormBed, DormBuilding, DormRoom
     from app.services import affairs_profile_service as profile
@@ -149,5 +179,6 @@ def install() -> None:
     _patch_student_overview()
     _patch_decimal_boundaries()
     _patch_aid_student_lookup()
+    _patch_aid_audit_namespace()
     _patch_student_profile()
     _INSTALLED = True

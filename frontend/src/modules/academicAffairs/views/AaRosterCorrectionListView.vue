@@ -4,8 +4,10 @@
     subtitle="学号 / 姓名 / 性别 / 证件号 / 年级录入错误据实更正 · 单步审核后同步主档（不产生学籍状态迁移）"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <template #actions>
+      <AppButton v-if="internshipReturn" variant="ghost" :disabled="submitting || materialBusy || acting || createVisible" @click="$router.push(internshipReturn)">返回上岗核验</AppButton>
       <AppButton variant="primary" @click="openCreate">＋ 发起更正</AppButton>
     </template>
 
@@ -15,38 +17,87 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无学籍信息更正申请" description="点击右上角「＋ 发起更正」创建，或从「学籍名册」学生详情发起" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="correctionId"
-                 :pagination="pagination" @page-change="onPageChange">
-        <template #cell-student="{ row }">
-          <div class="mp-cell-main">{{ row.realName }}</div>
-          <div class="mp-cell-sub">学号 {{ row.studentNo || '—' }} · {{ row.fieldLabel }}</div>
-        </template>
-        <template #cell-diff="{ row }">
-          <span class="aa-diff-old">{{ row.oldValue || '—' }}</span>
-          <span class="aa-diff-arrow">→</span>
-          <span class="aa-diff-new">{{ row.newValue }}</span>
-          <span v-if="row.sensitive" class="aa-sensitive">敏感</span>
-        </template>
-        <template #cell-reason="{ row }">{{ row.reason }}</template>
-        <template #cell-status="{ row }">
-          <AppStatusTag :type="statusColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
-          <div v-if="row.reviewNote" class="mp-cell-sub">{{ row.reviewNote }}</div>
-        </template>
-        <template #cell-actions="{ row }">
-          <template v-if="row.status === 'PENDING'">
-            <button class="mp-link" :disabled="acting" @click="approve(row)">通过</button>
-            <button class="mp-link" :disabled="acting" @click="reject(row)">驳回</button>
-          </template>
-          <button class="mp-link" @click="goRoster(row)">学籍档案</button>
-        </template>
-      </DataTable>
+      <div v-else class="aa-correction-workspace">
+        <section class="aa-object-summary">
+          <div>
+            <h2>{{ selectedRow.realName || '姓名待核实' }}</h2>
+            <p>学籍信息更正 · {{ selectedRow.correctionId }} · {{ selectedRow.studentNo || '学号待核实' }}</p>
+            <small>来源：当前对象已由其来源岗位建立；本入口只办理所列动作，不重复创建上游对象</small>
+          </div>
+          <dl>
+            <div><dt>当前责任</dt><dd>学籍专员</dd></div>
+            <div><dt>下一责任</dt><dd>{{ selectedRow.status === 'PENDING' ? '学籍核验岗' : '返回原队列' }}</dd></div>
+          </dl>
+        </section>
+
+        <ol class="aa-stage-rail" aria-label="学籍信息更正办理阶段">
+          <li class="is-complete"><span>✓</span><div><strong>权威学生主档</strong><small>上游事实可回查</small></div></li>
+          <li class="is-complete"><span>✓</span><div><strong>注册与异动</strong><small>历史事实可回查</small></div></li>
+          <li class="is-current"><span>3</span><div><strong>正式身份</strong><small>当前设计视角</small></div></li>
+          <li><span>4</span><div><strong>历史档案</strong><small>按真实状态解锁</small></div></li>
+        </ol>
+
+        <AppInlineAlert type="info" description="申请只记录拟更正内容，不先改正式事实；按当前审核节点处理，已归档场景进入受控纠错。" />
+
+        <div class="aa-correction-layout">
+          <aside class="aa-responsibility-queue" aria-label="学籍信息更正责任队列">
+            <h3>责任队列</h3>
+            <button v-for="row in rows" :key="row.correctionId" type="button"
+                    :class="['aa-queue-item', { 'is-active': row.correctionId === selectedCorrectionId }]"
+                    @click="selectedCorrectionId = row.correctionId">
+              <strong>{{ row.realName || '姓名待核实' }}</strong>
+              <small>{{ row.fieldLabel }} · {{ row.correctionId }}</small>
+              <span><AppStatusTag :type="statusColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></span>
+            </button>
+            <div class="aa-queue-pager">
+              <button class="mp-link" :disabled="pagination.page <= 1" @click="onPageChange(pagination.page - 1)">上一页</button>
+              <span>第 {{ pagination.page }} 页 · 共 {{ pagination.total }} 条</span>
+              <button class="mp-link" :disabled="pagination.page * pagination.pageSize >= pagination.total" @click="onPageChange(pagination.page + 1)">下一页</button>
+            </div>
+          </aside>
+
+          <main class="aa-correction-detail">
+            <section class="aa-detail-card">
+              <h3>原值与申请新值</h3>
+              <div class="aa-value-grid">
+                <div class="aa-value-column">
+                  <small>{{ selectedRow.fieldLabel }} · 当前正式值</small>
+                  <strong class="aa-diff-old">{{ selectedRow.oldValue || '—' }}</strong>
+                </div>
+                <div class="aa-value-column is-new">
+                  <small>{{ selectedRow.fieldLabel }} · 拟更正值</small>
+                  <strong class="aa-diff-new">{{ selectedRow.newValue || '—' }}</strong>
+                </div>
+              </div>
+              <p class="mp-note">{{ selectedRow.sensitive ? '敏感字段按授权脱敏展示；审核时仍须核对证明材料。' : '动态字段从当前正式主档与本次申请读取，不使用固定演示值。' }}</p>
+            </section>
+
+            <section class="aa-detail-card">
+              <h3>本岗位办理</h3>
+              <dl class="aa-review-facts">
+                <div><dt>申请原因</dt><dd>{{ selectedRow.reason || '未填写' }}</dd></div>
+                <div><dt>当前状态</dt><dd><AppStatusTag :type="statusColor(selectedRow.status)" dot>{{ statusLabel(selectedRow.status) }}</AppStatusTag></dd></div>
+                <div v-if="selectedRow.reviewNote"><dt>审核意见</dt><dd>{{ selectedRow.reviewNote }}</dd></div>
+              </dl>
+              <div class="aa-detail-actions">
+                <template v-if="selectedRow.status === 'PENDING'">
+                  <AppButton variant="primary" :disabled="acting" @click="approve(selectedRow)">通过并同步主档</AppButton>
+                  <AppButton variant="ghost" :disabled="acting" @click="reject(selectedRow)">驳回申请</AppButton>
+                </template>
+                <AppButton variant="ghost" @click="goRoster(selectedRow)">查看学籍档案</AppButton>
+              </div>
+              <p class="mp-note">审核命令返回后重新读取正式更正记录；最终事实以学生主档为准。</p>
+            </section>
+          </main>
+        </div>
+      </div>
       <p class="mp-note">仅支持学号/姓名/性别/证件号/年级四类身份数据纠错；学籍状态、院系专业班级变更须走「学籍异动」。</p>
     </div>
 
-    <AppDrawer :visible="createVisible" title="发起学籍信息更正" mode="modal" size="large" @close="createVisible = false">
-      <div class="aa-form">
+    <AppDrawer :visible="createVisible" title="发起学籍信息更正" mode="modal" size="large" @close="closeCreate">
+      <fieldset class="aa-form" :disabled="submitting">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="form.studentId" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
+          <AppStudentPicker v-model="form.studentId" :disabled="submitting || materialBusy" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
         </AppFormItem>
 
         <AppFormItem label="更正字段" required>
@@ -62,11 +113,26 @@
           <AppTextarea v-model="form.reason" :rows="3" :maxlength="500" show-count placeholder="如：迎新录入笔误，据学生身份证原件核实更正" />
         </AppFormItem>
 
+        <AppFormItem label="证明材料" :required="materialRequired" :hint="materialRequired ? '姓名、性别、证件号更正须附户籍或公安部门出具的证明材料。' : '可上传用于核对的相关材料。'">
+          <FileUploader v-if="createVisible" :key="materialScope" biz-type="AA_STUDENT_CORRECTION"
+            :disabled="!form.studentId || submitting || materialBusy || materialFiles.length >= 10"
+            button-text="上传证明材料" @progress="materialBusy = true"
+            @uploaded="onMaterialUploaded" @error="onMaterialError" @cancelled="materialBusy = false" />
+          <div v-for="file in materialFiles" :key="file.fileId" class="rc-material">
+            <FilePreviewer :file="file" @error="onMaterialError" />
+            <div class="rc-material__actions">
+              <button v-if="!file.readyForBusiness" class="mp-link" :disabled="submitting" @click="refreshMaterial(file.fileId)">刷新安全状态</button>
+              <button class="mp-link" :disabled="submitting || materialBusy" @click="removeMaterial(file.fileId)">移除</button>
+            </div>
+          </div>
+          <p class="mp-note">最多 10 份；材料安全可用后再提交。上传失败不会清空已填写内容。</p>
+        </AppFormItem>
+
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
-      </div>
+      </fieldset>
       <template #footer>
-        <AppButton variant="ghost" :disabled="submitting" @click="createVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="submitting" @click="submitCreate">提交</AppButton>
+        <AppButton variant="ghost" :disabled="submitting" @click="closeCreate">取消</AppButton>
+        <AppButton variant="primary" :loading="submitting" :disabled="materialBusy" @click="submitCreate">提交更正申请</AppButton>
       </template>
     </AppDrawer>
 
@@ -75,9 +141,22 @@
       v-model:visible="approveDialog.visible" title="通过学籍更正申请" type="warning"
       confirm-text="确认通过并同步主档"
       description="通过后立即写入学籍主档，该动作不可撤销。请先核对下方新旧值。"
-      :submitting="acting" @confirm="doApprove"
+      :submitting="acting" :confirm-disabled="!reviewMaterialsReady" @confirm="doApprove"
     >
       <AppDescriptionList v-if="approveDialog.row" :items="approveItems" :columns="1" bordered />
+      <section class="rc-review-materials" aria-label="更正证明材料" :aria-busy="reviewMaterialsLoading">
+        <h3>证明材料</h3>
+        <p v-if="reviewMaterialsLoading">正在读取本申请的证明材料…</p>
+        <AppInlineAlert v-else-if="reviewMaterialsError" type="warning" :description="reviewMaterialsError">
+          <template #actions><AppButton size="sm" :disabled="acting" @click="loadReviewMaterials">重新读取材料</AppButton></template>
+        </AppInlineAlert>
+        <template v-else>
+          <FilePreviewer v-for="file in reviewMaterials" :key="file.fileId" :file="file" @error="reviewMaterialsError = $event?.message || '材料打开失败，请重试'" />
+          <p v-if="!reviewMaterials.length">此类更正未附证明材料，请核对申请信息后办理。</p>
+          <p v-else-if="!reviewMaterialsReady" role="alert">材料暂不可预览或下载，请确认安全状态与访问权限后重新读取。</p>
+          <AppButton v-if="reviewMaterials.length && !reviewMaterialsReady" size="sm" :disabled="acting" @click="loadReviewMaterials">重新读取材料</AppButton>
+        </template>
+      </section>
       <p v-if="approveDialog.row && approveDialog.row.sensitive" class="rc-mask-note">
         证件号按敏感字段脱敏显示，与列表页一致；如需核对完整号码请查阅申请人上传的证明材料。
       </p>
@@ -101,11 +180,14 @@
  * 通过与驳回均走 AppConfirmDialog：通过虽无原因入参，但会立即写学籍主档且不可撤销，
  * 故仍需正规弹窗把新旧值摆出来核对（原为 window.confirm，与学工中心同类动作不一致）。
  */
-import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
 import { AppStatusTag, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppConfirmDialog, AppDescriptionList, AppStudentPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import FileUploader from '@/components/file/FileUploader.vue'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
+import { fileSdk } from '@/services/file/fileSdk'
 
 const FIELD_LABEL = { STUDENT_NO: '学号', REAL_NAME: '姓名', GENDER: '性别', ID_CARD: '证件号', GRADE: '年级' }
 const STATUS_LABEL = { PENDING: '待审核', APPROVED: '已通过', REJECTED: '已驳回' }
@@ -118,18 +200,20 @@ function emptyForm() {
 
 export default {
   name: 'AaRosterCorrectionListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag,
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AdvancedFilter, AppStatusTag,
                AppFormItem, AppTextInput, AppTextarea, AppSelect, AppInlineAlert, AppButton, AppDrawer,
-               AppConfirmDialog, AppDescriptionList, AppStudentPicker },
+               AppConfirmDialog, AppDescriptionList, AppStudentPicker, FileUploader, FilePreviewer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       FIELD_LABEL,
       approveDialog: { visible: false, row: null },
+      reviewMaterials: [], reviewMaterialsLoading: false, reviewMaterialsError: '', reviewMaterialsSeq: 0,
       rejectDialog: { visible: false, row: null },
       loading: true,
       error: '',
       rows: [],
+      selectedCorrectionId: '',
       filters: { status: this.$route.query.status || '', fieldKey: '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
@@ -142,11 +226,23 @@ export default {
       acting: false,
       createVisible: false,
       submitting: false,
-      formError: '',
+      formError: '', materialFiles: [], materialBusy: false, materialScope: 0,
       form: emptyForm()
     }
   },
   computed: {
+    internshipReturn() {
+      const target = this.$route.query.returnTo
+      return typeof target === 'string' && /^\/admin\/internship\/compliance(?:\?|$)/.test(target) ? target : ''
+    },
+    reviewMaterialsReady() {
+      const row = this.approveDialog.row
+      if (!row || this.reviewMaterialsLoading || this.reviewMaterialsError) return false
+      const required = row.materialRequired || ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(row.fieldKey)
+      const ids = row.materialFileIds || []
+      return (!required || ids.length > 0) && this.reviewMaterials.length === ids.length && this.reviewMaterials.every(file => file.readyForBusiness && (file.canPreview || file.canDownload))
+    },
+    materialRequired() { return ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(this.form.fieldKey) },
     fieldOptions() {
       return Object.keys(FIELD_LABEL).map((k) => ({ label: FIELD_LABEL[k], value: k }))
     },
@@ -189,6 +285,9 @@ export default {
         { label: '原值', value: r.oldValue || '—' },
         { label: '新值', value: r.newValue || '—' }
       ]
+    },
+    selectedRow() {
+      return this.rows.find((row) => row.correctionId === this.selectedCorrectionId) || this.rows[0] || {}
     }
   },
   created() {
@@ -199,13 +298,36 @@ export default {
       this.openCreate()
       this.form.studentId = this.$route.query.studentId
       this.form.studentName = this.$route.query.name || ''
+      if (this.$route.query.fieldKey === 'ID_CARD') this.form.fieldKey = 'ID_CARD'
     }
   },
+  beforeUnmount() { this.reviewMaterialsSeq++; this.materialScope++ },
   methods: {
+    closeCreate() { if (!this.submitting && !this.materialBusy) this.createVisible = false },
+    onMaterialUploaded(file) {
+      this.materialBusy = false
+      const normalized = fileSdk.normalize(file || {})
+      if (!normalized.fileId) { this.formError = '上传未返回有效材料，请重试'; return }
+      if (!this.materialFiles.some(item => String(item.fileId) === String(normalized.fileId))) this.materialFiles.push(normalized)
+    },
+    onMaterialError(error) { this.materialBusy = false; this.formError = error?.message || '材料读取或上传失败，请重试' },
+    removeMaterial(fileId) {
+      if (this.submitting || this.materialBusy) return
+      this.materialFiles = this.materialFiles.filter(file => String(file.fileId) !== String(fileId))
+    },
+    async refreshMaterial(fileId) {
+      const scope = this.materialScope
+      try {
+        const latest = await fileSdk.metadata(fileId)
+        if (scope !== this.materialScope) return
+        const index = this.materialFiles.findIndex(file => String(file.fileId) === String(fileId))
+        if (index >= 0) this.materialFiles.splice(index, 1, latest)
+      } catch (error) { if (scope === this.materialScope) this.onMaterialError(error) }
+    },
     // 本模块 getContext().permissionActions 恒为 {}（真实权限边界始终以后端为准，见 API 文件头注释）；
     // 不做客户端按钮级权限遮蔽，越权由后端 403 + toast 提示（与本模块其余真实页面口径一致）。
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
-    statusText(s) { return STUDENT_STATUS_TEXT[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
+    statusText(s) { return STUDENT_STATUS_TEXT[s] || (s ? '状态待确认' : '') },
     statusColor(s) {
       if (s === 'APPROVED') return 'success'
       if (s === 'REJECTED') return 'danger'
@@ -217,50 +339,78 @@ export default {
     resetFilters() { this.filters.status = ''; this.filters.fieldKey = ''; this.search() },
     onFieldChange() { this.form.newValue = '' },
     openCreate() {
+      if (this.submitting || this.materialBusy) return
+      this.materialScope++; this.materialFiles = []; this.materialBusy = false
       this.form = emptyForm()
       this.formError = ''
       this.createVisible = true
     },
     onStudentChange(value, items) {
+      this.materialScope++; this.materialFiles = []; this.materialBusy = false
       const item = items?.[0]
       const student = item?.raw || item || {}
       this.form.studentName = student.realName || student.studentName || item?.label || ''
     },
     async submitCreate() {
+      if (this.submitting || this.materialBusy) return
       this.formError = ''
       if (!this.form.studentId) { this.formError = '请先选择学生'; return }
       if (!this.form.fieldKey) { this.formError = '请选择更正字段'; return }
-      if (!this.form.newValue || !this.form.newValue.trim()) { this.formError = '更正后的值不能为空'; return }
+      if (!this.form.newValue?.trim()) { this.formError = '更正后的值不能为空'; return }
       if (!this.form.reason || this.form.reason.trim().length < 5) { this.formError = '更正原因必填且不少于5字'; return }
+      if (this.materialRequired && !this.materialFiles.length) { this.formError = '请上传户籍或公安部门出具的证明材料'; return }
+      if (this.materialFiles.some(file => !file.readyForBusiness)) { this.formError = '材料尚未安全可用，请刷新安全状态或移除后重新上传'; return }
       this.submitting = true
-      const res = await academicAffairsApi.createRosterCorrection({
-        studentId: this.form.studentId, fieldKey: this.form.fieldKey,
-        newValue: this.form.newValue.trim(), reason: this.form.reason.trim()
-      })
-      this.submitting = false
-      if (res.code === 0) {
-        toast.success('更正申请已提交，待审核')
-        this.createVisible = false
-        this.load()
-      } else {
-        this.formError = res.message
-      }
+      try {
+        const res = await academicAffairsApi.createRosterCorrection({
+          studentId: String(this.form.studentId), fieldKey: this.form.fieldKey,
+          newValue: this.form.newValue.trim(), reason: this.form.reason.trim(),
+          materialFileIds: this.materialFiles.map(file => String(file.fileId))
+        })
+        if (res.code === 0) {
+          toast.success('更正申请已提交，待审核')
+          this.createVisible = false
+          this.load()
+        } else this.formError = res.message || '提交失败，请重试'
+      } catch (error) { this.formError = error?.message || '提交失败，已保留填写内容' }
+      finally { this.submitting = false }
     },
     approve(row) {
-      if (this.acting) return
+      if (this.acting || row.status !== 'PENDING') return
       this.approveDialog = { visible: true, row }
+      this.loadReviewMaterials()
+    },
+    async loadReviewMaterials() {
+      if (this.acting) return
+      const row = this.approveDialog.row
+      if (!row) return
+      const seq = ++this.reviewMaterialsSeq
+      this.reviewMaterials = []; this.reviewMaterialsError = ''; this.reviewMaterialsLoading = true
+      try {
+        const ids = row.materialFileIds || []
+        if (!ids.length && (row.materialRequired || ['REAL_NAME', 'GENDER', 'ID_CARD'].includes(row.fieldKey))) {
+          throw new Error('该申请缺少必需证明材料，请取消通过并退回补齐。')
+        }
+        const files = await Promise.all(ids.map(id => fileSdk.metadata(String(id))))
+        if (seq !== this.reviewMaterialsSeq || this.approveDialog.row !== row) return
+        this.reviewMaterials = files
+      } catch (error) {
+        if (seq === this.reviewMaterialsSeq && this.approveDialog.row === row) this.reviewMaterialsError = error?.message || '证明材料读取失败，请重试'
+      } finally { if (seq === this.reviewMaterialsSeq) this.reviewMaterialsLoading = false }
     },
     async doApprove() {
       const row = this.approveDialog.row
-      if (!row) return
+      if (!row || this.acting || row.status !== 'PENDING' || !this.reviewMaterialsReady) return
       this.acting = true
-      const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'APPROVE', '')
-      this.acting = false
-      if (res.code === 0) {
-        this.approveDialog.visible = false
-        toast.success('已通过，主档已同步')
-        this.load()
-      } else toast.error(res.message)
+      try {
+        const res = await academicAffairsApi.reviewRosterCorrection(row.correctionId, 'APPROVE', '')
+        if (res.code === 0) {
+          this.approveDialog.visible = false
+          toast.success('已通过，主档已同步')
+          this.load()
+        } else toast.error(res.message)
+      } catch (error) { toast.error(error?.message || '审核失败，请重试') }
+      finally { this.acting = false }
     },
     reject(row) {
       if (this.acting) return
@@ -290,6 +440,9 @@ export default {
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
+        if (!this.rows.some((row) => row.correctionId === this.selectedCorrectionId)) {
+          this.selectedCorrectionId = this.rows[0]?.correctionId || ''
+        }
       } else {
         this.error = res.message
       }
@@ -301,6 +454,11 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.rc-review-materials { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border, #e2e8f0); }
+.rc-review-materials h3 { font-size: 14px; margin: 0 0 10px; }
+fieldset.aa-form { border: 0; min-width: 0; margin: 0; }
+.rc-material { margin-top: 12px; padding: 12px; border: 1px solid var(--color-border, #e2e8f0); border-radius: 8px; }
+.rc-material__actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .aa-filter { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
@@ -315,4 +473,43 @@ export default {
 .aa-cand-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 13px; }
 .aa-cand-item:last-child { border-bottom: none; }
 .rc-mask-note { margin: 12px 0 0; color: var(--text-tertiary); font-size: 13px; }
+.aa-correction-workspace { display: grid; gap: 16px; }
+.aa-object-summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 18px; border: 1px solid var(--border-200, #e5eaf3); border-left: 3px solid var(--primary-600, #2f65c8); border-radius: 10px; background: #fff; }
+.aa-object-summary h2 { margin: 0 0 4px; font-size: 17px; }
+.aa-object-summary p, .aa-object-summary small { margin: 0; color: var(--text-500, #667085); }
+.aa-object-summary dl { display: grid; grid-template-columns: repeat(2, minmax(120px, auto)); gap: 24px; margin: 0; }
+.aa-object-summary dl div { display: grid; gap: 4px; }
+.aa-object-summary dt { color: var(--text-500, #667085); font-size: 12px; }
+.aa-object-summary dd { margin: 0; font-weight: 700; color: var(--text-900, #172b4d); }
+.aa-stage-rail { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 14px 16px; list-style: none; border: 1px solid var(--border-200, #e5eaf3); border-radius: 10px; background: #fff; }
+.aa-stage-rail li { display: flex; align-items: center; gap: 10px; color: var(--text-500, #667085); }
+.aa-stage-rail li > span { display: grid; width: 24px; height: 24px; place-items: center; border: 1px solid #dbe3ef; border-radius: 50%; background: #fff; font-size: 12px; }
+.aa-stage-rail li div { display: grid; gap: 2px; }
+.aa-stage-rail li small { font-size: 11px; }
+.aa-stage-rail li.is-complete > span { border-color: #b9dfcc; background: #eef9f3; color: #22865b; }
+.aa-stage-rail li.is-current { color: var(--primary-700, #2458b8); }
+.aa-stage-rail li.is-current > span { border-color: var(--primary-600, #2f65c8); background: var(--primary-600, #2f65c8); color: #fff; }
+.aa-correction-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+.aa-responsibility-queue, .aa-detail-card { overflow: hidden; border: 1px solid var(--border-200, #e5eaf3); border-radius: 10px; background: #fff; }
+.aa-responsibility-queue h3, .aa-detail-card h3 { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border-200, #e5eaf3); font-size: 15px; }
+.aa-queue-item { display: grid; width: 100%; gap: 5px; padding: 13px 14px; border: 0; border-bottom: 1px solid var(--border-100, #eef1f5); background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.aa-queue-item small { color: var(--text-500, #667085); }
+.aa-queue-item.is-active { background: #edf4ff; box-shadow: inset 3px 0 var(--primary-600, #2f65c8); }
+.aa-queue-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-size: 12px; color: var(--text-500, #667085); }
+.aa-correction-detail { display: grid; gap: 16px; }
+.aa-value-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; }
+.aa-value-column { display: grid; gap: 8px; padding: 14px; border: 1px solid #dfe6f0; border-radius: 8px; background: #f7f9fc; }
+.aa-value-column.is-new { background: #fff; }
+.aa-value-column small { color: var(--text-500, #667085); }
+.aa-detail-card > .mp-note { margin: 0; padding: 0 16px 16px; }
+.aa-review-facts { display: grid; gap: 12px; margin: 0; padding: 16px; }
+.aa-review-facts div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; }
+.aa-review-facts dt { color: var(--text-500, #667085); }
+.aa-review-facts dd { margin: 0; color: var(--text-900, #172b4d); }
+.aa-detail-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px 16px; }
+@media (max-width: 980px) {
+  .aa-object-summary { align-items: flex-start; flex-direction: column; }
+  .aa-correction-layout { grid-template-columns: 1fr; }
+  .aa-stage-rail { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
 </style>

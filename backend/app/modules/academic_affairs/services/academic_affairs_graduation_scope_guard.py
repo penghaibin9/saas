@@ -26,7 +26,7 @@ def graduation_college_scope_ids(db, user) -> set[int] | None:
 graduation_college_scope_ids._graduation_scope_guard = True
 
 
-def graduation_list_batches(user, status=None, page=1, page_size=50):
+def graduation_list_batches(user, status=None, page=1, page_size=50, *, batch_id=None):
     """Return scope-safe batch counters with one grouped aggregate query per page.
 
     The legacy implementation loaded every result row once per batch. Graduation season
@@ -40,7 +40,7 @@ def graduation_list_batches(user, status=None, page=1, page_size=50):
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
 
     page = max(1, int(page or 1))
-    page_size = max(1, int(page_size or 50))
+    page_size = min(200, max(1, int(page_size or 50)))
     with service.session() as db:
         scope = graduation_college_scope_ids(db, user)
         if scope is not None and not scope:
@@ -53,6 +53,8 @@ def graduation_list_batches(user, status=None, page=1, page_size=50):
         ]
         if status:
             batch_conds.append(AaGraduationAuditBatch.status == status)
+        if batch_id is not None:
+            batch_conds.append(AaGraduationAuditBatch.id == int(batch_id))
 
         student_join = and_(
             StudentProfile.id == AaGraduationAuditResult.student_id,

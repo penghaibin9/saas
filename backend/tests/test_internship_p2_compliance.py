@@ -207,14 +207,24 @@ def test_safety_cannot_bypass_with_passed_true(client, auth_headers, db_mode):
 
 
 def test_incident_cannot_close_from_reported(client, auth_headers, db_mode):
+    import io
+
     h = auth_headers
     bid = _mk_batch(client, h)
     internship_id = _mk_intern(client, h, bid)
+    uploaded = client.post(
+        "/api/v1/files",
+        headers=h,
+        files={"file": ("incident-evidence.txt", io.BytesIO(b"incident-evidence"), "text/plain")},
+        data={"bizType": "ATTACHMENT"},
+    ).json()
+    assert uploaded["code"] == 0, uploaded
+    file_id = uploaded["data"]["fileId"]
     key = _uniq("idem")
     rep = client.post(f"{CMP}/incidents", headers=h, json={
         "batchId": bid, "internshipId": internship_id,
         "summary": "现场受伤测试", "severity": "HIGH",
-        "idempotencyKey": key, "fileIds": ["f1"],
+        "idempotencyKey": key, "fileIds": [file_id],
     }).json()
     assert rep["code"] == 0, rep
     iid = rep["data"]["id"]
@@ -240,7 +250,7 @@ def test_incident_cannot_close_from_reported(client, auth_headers, db_mode):
         "investigationConclusion": "责任认定完成",
         "rectificationPlan": "整改并复查",
         "responsibilityConclusion": "企业现场安全管理不到位，已通报整改",
-        "fileIds": ["f1", "f2"],
+        "fileIds": [file_id],
     }).json()
     assert closed["code"] == 0, closed
 
@@ -374,6 +384,7 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
     })
     pos = client.post(POS, headers=h, json={
         "companyId": eid, "title": _uniq("岗"), "headcount": 2, "batchId": bid,
+        "geofenceLat": 31.23, "geofenceLng": 121.47, "geofenceRadiusM": 300,
         "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,
         "overtimeAllowed": False, "restDaysPerWeek": 2, "remunerationType": "MONTHLY",
         "accommodationProvided": True, "mealProvided": True, "hazardousFlag": False,

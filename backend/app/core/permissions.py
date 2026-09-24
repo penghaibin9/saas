@@ -149,7 +149,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 课表异议/教材选用）逐条核对过端点 summary 与既有测试后保留。
     "ACADEMIC_TEACHER": {
         *_WORKBENCH_SELF,
-        # 基础只读：看板/学期/校历/作息/课程库/培养方案/名册（敏感字段另由 roster.viewSensitive 控制，不授予）
+        # 基础只读：dashboard 仅用于兼容旧 API；service 对普通教师返回本人安全视图，不返回全校聚合。
+        # 教师 PC 默认仍进入 /teacher/today，不展示管理员教务看板。
         "academicAffairs.dashboard.view",
         "academicAffairs.term.view", "academicAffairs.calendar.view",
         "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view",
@@ -253,7 +254,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
     "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
-    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
+    # 本班范围内广读 + 操作班级/请假/风险/谈话/家校；资助仅开放本人 COUNSELOR_REVIEW 初审节点。
+    # 资助后续学院/学校节点仍由 service 的 scope + WorkflowTask assignee 双重收敛；处分仅冻结解除子流程初审例外。
     "COUNSELOR": {
         *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view",
@@ -261,8 +263,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.student.view",
         "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
         "studentAffairs.homeSchool.*",
-        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
+        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.funding.approve", "studentAffairs.discipline.view",
+        "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 宿舍调宿：仅开放本班学生调宿入口/发起/审批能力；列表范围与审批节点仍由
+        # affairs_dorm_transfer_scope_guard + affairs_dorm_node_guard 双重 fail-closed 收敛。
+        "studentAffairs.dorm.view", "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
         # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
         # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
@@ -286,6 +292,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
         # 越权（非本班 classId / 教师课表 / 教室课表）一律 403002，不额外放大到排课管理/规则/冲突。
         "academicAffairs.schedule.view",
+        # 学业预警：辅导员只可查看并处置本人负责班级或正式分配给本人的预警；
+        # mobile_academic_warning_service 仍以租户、正式账号、数据范围、待办和状态机逐层裁决。
+        "academicAffairs.warning.view", "academicAffairs.warning.handle",
         # 消息中心：本班普通/重要通知发布（范围由受众服务按负责班级收敛）
         "workbench.message.publish",
         "workbench.message.class.publish",
@@ -350,7 +359,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,
-        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予批次配置或写操作。
+        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予任何批次配置或写操作。
         "internship.guide.*", "internship.dashboard.view", "internship.batch.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",
@@ -384,7 +393,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
         *_WORKBENCH_SELF,
-        "employment.*", "internship.dashboard.view",
+        "employment.*", "internship.dashboard.view", "internship.batch.view",
         "internship.employment.view", "internship.archive.view", "internship.archive.package",
         "internship.stats.view", "internship.stats.enterprise.view",
         "internship.stats.position.view", "internship.stats.score.view",
@@ -420,7 +429,7 @@ def _granted(role: str) -> set[str]:
     return ROLE_PERMISSIONS.get(normalized, set())
 
 
-def _db_granted(user: dict) -> set[str] | None:
+def _db_granted(user: dict, *, strict: bool = False) -> set[str] | None:
     """DB 角色上下文：SYSTEM 只读发布版 RoleTemplate，CUSTOM 只读 t_role_permission。"""
     context_id = str(user.get("activeContextId") or "")
     tenant_id = str(user.get("tenantId") or "")
@@ -453,6 +462,8 @@ def _db_granted(user: dict) -> set[str] | None:
             db.close()
     except Exception:
         # 鉴权 Authority 读取异常默认拒绝，绝不回落为更宽的静态内置授权。
+        if strict:
+            raise
         return set()
 
 
@@ -477,7 +488,7 @@ def _covers_school_permission_universe(patterns: Iterable[str]) -> bool:
     return bool(universe) and all(_match(code, normalized) for code in universe)
 
 
-def get_base_permission_patterns(user: dict) -> list[str]:
+def get_base_permission_patterns(user: dict, *, strict: bool = False) -> list[str]:
     """不含临时授权的基础权限。
 
     临时授权创建时必须用本函数校验授权上限，禁止把别人临时授予的权限
@@ -485,7 +496,7 @@ def get_base_permission_patterns(user: dict) -> list[str]:
     """
     if is_super_admin(user):
         return ["*"]
-    database_patterns = _db_granted(user)
+    database_patterns = _db_granted(user, strict=True) if strict else _db_granted(user)
     if database_patterns is not None:
         return sorted(set(database_patterns))
     role = _role_of(user)
@@ -550,15 +561,17 @@ def assert_delegable_permission_codes(user: dict | None, permission_codes: Itera
         )
 
 
-def get_effective_permission_patterns(user: dict) -> list[str]:
+def get_effective_permission_patterns(user: dict, *, strict: bool = False) -> list[str]:
     """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""
     if is_super_admin(user):
         return ["*"]
-    patterns = set(get_base_permission_patterns(user))
+    patterns = set(get_base_permission_patterns(user, strict=True) if strict else get_base_permission_patterns(user))
     try:
         from app.services import system_governance_service as gov
         patterns.update(gov.active_delegation_permission_patterns(user) or [])
     except Exception:
+        if strict:
+            raise
         pass
     return sorted(patterns)
 
@@ -580,8 +593,36 @@ def has_permission(user: dict, code: str) -> bool:
     return _match(code, patterns)
 
 
-def get_effective_access_context(user: dict) -> dict:
-    """前后端共用的访问上下文：权限模式 + 模块四态摘要 + 版本戳。"""
+def permission_decisions(user: dict, codes: Iterable[str]) -> dict[str, bool]:
+    """Resolve multiple non-mutating permission checks from one authority snapshot.
+
+    A page context commonly needs dozens of button decisions.  Fetching the same role
+    template and delegation set for every code turns that harmless projection into a
+    database hot path.  This helper intentionally keeps the snapshot request-local:
+    every new HTTP request re-reads authority, so a revocation takes effect immediately.
+    Deny exceptions and the legacy ``*`` probe retain the canonical per-code path.
+    """
+    requested = tuple(dict.fromkeys(str(code or "").strip() for code in codes if str(code or "").strip()))
+    if not requested:
+        return {}
+    patterns = get_effective_permission_patterns(user)
+    denied = ROLE_PERMISSION_DENY.get(_role_of(user), ())
+    return {
+        code: (
+            has_permission(user, code)
+            if code == "*" or (code in denied and "*" not in patterns)
+            else _match(code, patterns)
+        )
+        for code in requested
+    }
+
+
+def get_effective_access_context(
+    user: dict,
+    *,
+    module_keys: Iterable[str] | None = None,
+) -> dict:
+    """前后端共用的访问上下文；Access Explain 可只读取目标模块。"""
     patterns = get_effective_permission_patterns(user)
     role = _role_of(user)
     tenant_id = int(user.get("tenantId") or 0) or None
@@ -598,7 +639,12 @@ def get_effective_access_context(user: dict) -> dict:
         try:
             from app.core.module_registry import all_module_keys
             from app.services.module_access_service import module_access_state
-            for mk in all_module_keys():
+            requested_module_keys = (
+                tuple(sorted({str(key).strip() for key in module_keys if str(key).strip()}))
+                if module_keys is not None
+                else tuple(all_module_keys())
+            )
+            for mk in requested_module_keys:
                 st = module_access_state(tenant_id, mk)
                 module_states[mk] = st
                 if st.get("entitled") and st.get("enabled"):

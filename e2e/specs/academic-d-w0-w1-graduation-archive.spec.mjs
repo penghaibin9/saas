@@ -142,7 +142,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/graduation/audit-console?tab=results&batchId=${batch.batchId}`)
     await dismissPageGuide(page)
-    await expect(page.getByText('审核结果', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '审核结果', level: 1 })).toBeVisible()
     const abnormalIdentity = abnormal.realName || abnormal.studentId
     const abnormalRow = page.locator('tr').filter({ hasText: abnormalIdentity }).filter({ hasText: '系统异常' }).first()
     await expect(abnormalRow).toBeVisible({ timeout: 10000 })
@@ -166,17 +166,19 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownBatchName = `D-W1待治理正式归档-${suffix}`
     const notApplicableBatchName = `D-W1不适用正式归档-${suffix}`
 
+    const unknownYear = 2070 + testInfo.retry * 4
+    const notApplicableYear = unknownYear + 2
     const unknownTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `U${suffix}`,
+      yearCode: `${unknownYear}-${unknownYear + 1}`,
       termNo: 1,
       termName: unknownName
     }), 'create W1 missing-date term')
     const notApplicableTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `N${suffix}`,
+      yearCode: `${notApplicableYear}-${notApplicableYear + 1}`,
       termNo: 2,
       termName: notApplicableName,
-      startDate: '2098-02-01',
-      endDate: '2098-07-31'
+      startDate: `${notApplicableYear}-02-01`,
+      endDate: `${notApplicableYear}-07-31`
     }), 'create W1 no-business term')
 
     const unknownPrecheck = await expectApiOk(await browserApi(
@@ -255,7 +257,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownCard = page.locator('.aapc-card').filter({ hasText: '毕业资格' }).first()
     await expect(unknownCard).toContainText('待治理')
     await expect(unknownCard).toContainText('GRADUATION_TERM_DATES_UNKNOWN')
-    await expect(page.getByText(/UNKNOWN 不会被当成 PASS/)).toBeVisible()
+    await expect(page.getByText(/“待治理”表示证据不足/)).toBeVisible()
 
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1280, 720, unknownCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1440, 900, unknownCard)
