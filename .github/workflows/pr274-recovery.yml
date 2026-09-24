@@ -4,7 +4,7 @@ on:
     branches: [codex/pr274-recovery-20260924]
     paths:
       - .github/workflows/pr274-recovery.yml
-      - scripts/dev/pr274-recovery.py
+      - scripts/dev/pr274-region-followup.py
 permissions:
   contents: read
 concurrency:
@@ -14,10 +14,14 @@ jobs:
   prepare:
     if: github.repository == 'penghaibin9/saas'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: read
+    env:
+      CI: 'true'
+      VITE_API_BASE_URL: https://school-ci.invalid
+      VITE_USE_MOCK: 'false'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,9 +29,8 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: dcd08ea1311150e146cc7375c80ffcfeeaeae9c4
+          ref: 32e0a8deb86ca23e3575b73e500ba0b166f14c5e
           path: source
-          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -35,59 +38,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply exact reviewed repairs to isolated source
+      - name: Install locked miniapp dependencies
+        working-directory: source
+        run: npm --prefix miniapp ci
+      - name: Reproduce external reset failures before changing the component
+        working-directory: source
+        run: python ../tooling/scripts/dev/pr274-region-followup.py reproduce
+      - name: Apply only the region component correction
+        working-directory: source
+        run: python ../tooling/scripts/dev/pr274-region-followup.py apply
+      - name: Validate all miniapp contracts and both production targets
         working-directory: source
         run: |
           set -euo pipefail
-          git config core.quotepath false
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('../tooling/scripts/dev/pr274-recovery.py')
-          s = p.read_text(encoding='utf-8')
-          old = "replace(path, '.mrp__text {', '''.mrp--web"
-          new = "replace(path, '\\n.mrp__text {', '''\n.mrp--web"
-          assert s.count(old) == 1
-          s = s.replace(old, new)
-          old = "        Path(path).write_text(text[:start] + load + text[end:], encoding='utf-8', newline='\\n')"
-          new = "        load = '\\n'.join(line.rstrip() for line in load.splitlines()) + '\\n'\n" + old
-          assert s.count(old) == 1
-          s = s.replace(old, new)
-          compile(s, str(p), 'exec')
-          p.write_text(s, encoding='utf-8')
-          PY
-          python ../tooling/scripts/dev/pr274-recovery.py apply
-      - name: Install locked frontend dependencies
-        working-directory: source
-        run: |
-          npm --prefix frontend ci
-          npm --prefix miniapp ci
-          npm --prefix student-portal ci
-      - name: Validate complete frontend contracts and code style
-        working-directory: source
-        run: |
-          set -euo pipefail
-          npm --prefix frontend run lint
-          npm --prefix frontend test > ../frontend-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../frontend-repair-tests.log; tail -15 ../frontend-repair-tests.log; exit 1; }
-          tail -12 ../frontend-repair-tests.log
-          npm --prefix miniapp test > ../miniapp-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../miniapp-repair-tests.log; tail -15 ../miniapp-repair-tests.log; exit 1; }
-          tail -12 ../miniapp-repair-tests.log
-          npm --prefix student-portal test > ../student-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../student-repair-tests.log; tail -15 ../student-repair-tests.log; exit 1; }
-          tail -12 ../student-repair-tests.log
-          python -B backend/tests/test_module_commercial_boundaries.py -v
-          git diff --check
-      - name: Create candidate Git objects without moving any branch
+          npm --prefix miniapp test > ../region-after-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../region-after-repair-tests.log; tail -15 ../region-after-repair-tests.log; exit 1; }
+          tail -12 ../region-after-repair-tests.log
+          npm --prefix miniapp run build:h5 > ../region-h5-build.log 2>&1 || { tail -80 ../region-h5-build.log; exit 1; }
+          tail -4 ../region-h5-build.log
+          npm --prefix miniapp run build:mp-weixin > ../region-weixin-build.log 2>&1 || { tail -80 ../region-weixin-build.log; exit 1; }
+          tail -4 ../region-weixin-build.log
+          git diff --cached --check
+      - name: Create candidate objects without changing branches
         working-directory: source
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python ../tooling/scripts/dev/pr274-recovery.py publish
-      - name: Preserve repair evidence
+        run: python ../tooling/scripts/dev/pr274-region-followup.py publish
+      - name: Preserve before and after verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr274-isolated-repair-${{ github.run_id }}
+          name: pr274-region-followup-${{ github.run_id }}
           path: |
-            *-repair-tests.log
-            source/repair-candidate.json
-            source/repair-reviewed.diff
+            region-*.log
+            source/region-candidate.json
+            source/region-reviewed.diff
           if-no-files-found: warn
           retention-days: 7
