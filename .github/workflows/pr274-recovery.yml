@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,7 +27,7 @@ jobs:
         with:
           ref: dcd08ea1311150e146cc7375c80ffcfeeaeae9c4
           path: source
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -36,7 +37,25 @@ jobs:
           python-version: '3.12'
       - name: Apply exact reviewed repairs to isolated source
         working-directory: source
-        run: python ../tooling/scripts/dev/pr274-recovery.py apply
+        run: |
+          set -euo pipefail
+          git config core.quotepath false
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('../tooling/scripts/dev/pr274-recovery.py')
+          s = p.read_text(encoding='utf-8')
+          old = "replace(path, '.mrp__text {', '''.mrp--web"
+          new = "replace(path, '\\n.mrp__text {', '''\n.mrp--web"
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          old = "        Path(path).write_text(text[:start] + load + text[end:], encoding='utf-8', newline='\\n')"
+          new = "        load = '\\n'.join(line.rstrip() for line in load.splitlines()) + '\\n'\n" + old
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          compile(s, str(p), 'exec')
+          p.write_text(s, encoding='utf-8')
+          PY
+          python ../tooling/scripts/dev/pr274-recovery.py apply
       - name: Install locked frontend dependencies
         working-directory: source
         run: |
@@ -48,11 +67,11 @@ jobs:
         run: |
           set -euo pipefail
           npm --prefix frontend run lint
-          npm --prefix frontend test > ../frontend-repair-tests.log 2>&1 || { tail -100 ../frontend-repair-tests.log; exit 1; }
+          npm --prefix frontend test > ../frontend-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../frontend-repair-tests.log; tail -15 ../frontend-repair-tests.log; exit 1; }
           tail -12 ../frontend-repair-tests.log
-          npm --prefix miniapp test > ../miniapp-repair-tests.log 2>&1 || { tail -100 ../miniapp-repair-tests.log; exit 1; }
+          npm --prefix miniapp test > ../miniapp-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../miniapp-repair-tests.log; tail -15 ../miniapp-repair-tests.log; exit 1; }
           tail -12 ../miniapp-repair-tests.log
-          npm --prefix student-portal test > ../student-repair-tests.log 2>&1 || { tail -100 ../student-repair-tests.log; exit 1; }
+          npm --prefix student-portal test > ../student-repair-tests.log 2>&1 || { grep -A35 '^not ok' ../student-repair-tests.log; tail -15 ../student-repair-tests.log; exit 1; }
           tail -12 ../student-repair-tests.log
           python -B backend/tests/test_module_commercial_boundaries.py -v
           git diff --check
