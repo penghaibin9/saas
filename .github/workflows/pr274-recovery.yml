@@ -1,0 +1,74 @@
+name: PR274 isolated repair preparation
+on:
+  push:
+    branches: [codex/pr274-recovery-20260924]
+    paths:
+      - .github/workflows/pr274-recovery.yml
+      - scripts/dev/pr274-recovery.py
+permissions:
+  contents: read
+concurrency:
+  group: pr274-isolated-repair-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'penghaibin9/saas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dcd08ea1311150e146cc7375c80ffcfeeaeae9c4
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply exact reviewed repairs to isolated source
+        working-directory: source
+        run: python ../tooling/scripts/dev/pr274-recovery.py apply
+      - name: Install locked frontend dependencies
+        working-directory: source
+        run: |
+          npm --prefix frontend ci
+          npm --prefix miniapp ci
+          npm --prefix student-portal ci
+      - name: Validate complete frontend contracts and code style
+        working-directory: source
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend test > ../frontend-repair-tests.log 2>&1 || { tail -100 ../frontend-repair-tests.log; exit 1; }
+          tail -12 ../frontend-repair-tests.log
+          npm --prefix miniapp test > ../miniapp-repair-tests.log 2>&1 || { tail -100 ../miniapp-repair-tests.log; exit 1; }
+          tail -12 ../miniapp-repair-tests.log
+          npm --prefix student-portal test > ../student-repair-tests.log 2>&1 || { tail -100 ../student-repair-tests.log; exit 1; }
+          tail -12 ../student-repair-tests.log
+          python -B backend/tests/test_module_commercial_boundaries.py -v
+          git diff --check
+      - name: Create candidate Git objects without moving any branch
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python ../tooling/scripts/dev/pr274-recovery.py publish
+      - name: Preserve repair evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr274-isolated-repair-${{ github.run_id }}
+          path: |
+            *-repair-tests.log
+            source/repair-candidate.json
+            source/repair-reviewed.diff
+          if-no-files-found: warn
+          retention-days: 7
