@@ -25,3 +25,61 @@ test('municipality label round trips and legacy free text is retained',()=>{
   assert.equal(vm.cityCode,'110100'); assert.equal(vm.countyCode,'110105')
   assert.equal(view('历史生源地').modelValue,'历史生源地')
 })
+
+test('external form clear removes the previous region from every selector', () => {
+  const vm = view('浙江省 杭州市 西湖区')
+  assert.equal(vm.countyCode, '330106')
+  vm.modelValue = ''
+  component.watch.modelValue.handler.call(vm, '')
+  assert.equal(vm.provinceCode, '')
+  assert.equal(vm.cityCode, '')
+  assert.equal(vm.countyCode, '')
+  assert.deepEqual(vm.events, [])
+})
+
+test('a completed selection can be cleared externally without preserving an internal draft', () => {
+  const vm = view('湖南省 长沙市 岳麓区')
+  vm.chooseProvince('330000'); vm.chooseCity('330100'); vm.chooseCounty('330106')
+  assert.equal(vm.modelValue, '浙江省 杭州市 西湖区')
+  vm.modelValue = ''
+  component.watch.modelValue.handler.call(vm, '')
+  assert.equal(vm.provinceCode + vm.cityCode + vm.countyCode, '')
+})
+
+test('disabled region selection never changes a value or emits a native confirmation', () => {
+  const vm = view('浙江省 杭州市 西湖区')
+  vm.disabled = true
+  vm.chooseProvince('430000'); vm.chooseCity('430100'); vm.chooseCounty('430104')
+  vm.onConfirm({ detail: { value: ['湖南省', '长沙市', '岳麓区'], code: ['430000', '430100', '430104'] } })
+  assert.equal(vm.modelValue, '浙江省 杭州市 西湖区')
+  assert.equal(vm.countyCode, '330106')
+  assert.deepEqual(vm.events, [])
+})
+
+import { createRenderer, h, nextTick, ref } from 'vue'
+
+test('Vue prop updates distinguish internal cascading edits from an external clear', async () => {
+  const renderer = createRenderer({
+    createElement: tag => ({ tag, children: [] }), createText: text => ({ text }), createComment: text => ({ text }),
+    insert(child, parent) { child.parent = parent; (parent.children ||= []).push(child) }, remove() {},
+    parentNode: node => node.parent, nextSibling: () => null, patchProp() {},
+    setText(node, text) { node.text = text }, setElementText(node, text) { node.text = text }
+  })
+  const model = ref('浙江省 杭州市 西湖区')
+  const definition = { ...component, render: () => null }
+  let region
+  const app = renderer.createApp({ setup: () => () => h(definition, {
+    modelValue: model.value, 'onUpdate:modelValue': value => { model.value = value }, ref: value => { region = value }
+  }) })
+  app.mount({ children: [] })
+  try {
+    region.chooseProvince('430000'); await nextTick()
+    assert.equal(model.value, ''); assert.equal(region.provinceCode, '430000')
+    region.chooseCity('430100'); await nextTick()
+    assert.equal(region.cityCode, '430100')
+    region.chooseCounty('430104'); await nextTick()
+    assert.equal(region.countyCode, '430104'); assert.notEqual(model.value, '')
+    model.value = ''; await nextTick()
+    assert.equal(region.provinceCode + region.cityCode + region.countyCode, '')
+  } finally { app.unmount() }
+})

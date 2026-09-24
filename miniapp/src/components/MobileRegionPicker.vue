@@ -46,9 +46,14 @@ export default {
   },
   emits: ['update:modelValue', 'change'],
   // #ifdef H5
-  data() { return { provinceCode: '', cityCode: '', countyCode: '' } },
+  data() { return { provinceCode: '', cityCode: '', countyCode: '', pendingSelectionClear: false } },
   watch: { modelValue: { immediate: true, handler(value) {
-    if (!value) return
+    if (!value) {
+      if (this.pendingSelectionClear) { this.pendingSelectionClear = false; return }
+      this.provinceCode = ''; this.cityCode = ''; this.countyCode = ''
+      return
+    }
+    this.pendingSelectionClear = false
     const names = String(value).trim().split(/\s+/)
     this.provinceCode = this.provinces.find(item => item.name === names[0])?.code || ''
     this.cityCode = this.cities.find(item => names.includes(item.name))?.code || ''
@@ -71,12 +76,19 @@ export default {
   },
   methods: {
     // #ifdef H5
-    chooseProvince(code) { if (this.disabled) return; this.provinceCode = code; this.cityCode = ''; this.countyCode = ''; this.$emit('update:modelValue', '') },
-    chooseCity(code) { if (this.disabled) return; this.cityCode = code; this.countyCode = ''; this.$emit('update:modelValue', '') },
+    clearModelForSelection() {
+      // Internal cascade edits clear the submitted value, not the new selection.
+      // The marker lasts through Vue's prop update, never through a later reset.
+      this.pendingSelectionClear = true
+      this.$emit('update:modelValue', '')
+      this.$nextTick?.(() => { this.pendingSelectionClear = false })
+    },
+    chooseProvince(code) { if (this.disabled) return; this.provinceCode = code; this.cityCode = ''; this.countyCode = ''; this.clearModelForSelection() },
+    chooseCity(code) { if (this.disabled) return; this.cityCode = code; this.countyCode = ''; this.clearModelForSelection() },
     chooseCounty(code) {
       if (this.disabled) return
       this.countyCode = code
-      if (!code) { this.$emit('update:modelValue', ''); return }
+      if (!code) { this.clearModelForSelection(); return }
       const codes = [this.provinceCode, this.cityCode, code]
       const names = [areaList.province_list[codes[0]], areaList.city_list[codes[1]], areaList.county_list[codes[2]]]
       this.onConfirm({ detail: { value: names, code: codes } })
