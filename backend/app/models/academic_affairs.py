@@ -624,11 +624,14 @@ class AaGraduationAuditBatch(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_graduation_audit_batch"
 
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, comment="所属学期；历史批次未自动回填")
     grade_year: Mapped[str | None] = mapped_column(String(20), index=True, comment="毕业年级")
     major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     scope_json: Mapped[str | None] = mapped_column(String(2000))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     generate_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (Index("ix_aa_grad_batch_tenant_term", "tenant_id", "term_id"),)
 
 
 class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):

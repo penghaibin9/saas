@@ -2076,6 +2076,7 @@ _GRAD_FINAL = "academicAffairs.graduation.final"
 
 class GradAuditBatchCreate(BaseModel):
     batchName: str = Field(..., min_length=1)
+    termId: str = Field(..., pattern=r"^[1-9][0-9]{0,18}$", description="所属正式学期")
     gradeYear: Optional[str] = None
     majorId: Optional[str] = None
 
