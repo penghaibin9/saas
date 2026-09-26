@@ -16,8 +16,9 @@ test('O1 student ledger selects a real batch for list, create and export', () =>
   assert.match(view, /this\.batches\.find\(\(row\) => row\.status !== 'CLOSED'\)/)
   assert.match(view, /batchId: this\.filters\.batchId/)
   assert.match(view, /请先在筛选条件中选择一个迎新批次/)
-  assert.match(api, /request\('\/orientation\/batches', \{ params: \{ status: 'ACTIVE', page: 1, pageSize: 1 \} \}\)/)
-  assert.match(api, /if \(!batchId\) throw new Error\('当前没有进行中的迎新批次，无法生成批次台账'/)
+  const exportBody = api.slice(api.indexOf('export async function createExport'), api.indexOf('export async function getAuditLogs'))
+  assert.ok(exportBody.includes('payload.batchId'))
+  assert.ok(!exportBody.includes("request('/orientation/batches'"))
   assert.match(api, /body: \{ purpose, batchId, reportType \}/)
 })
 

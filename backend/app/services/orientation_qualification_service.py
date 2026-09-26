@@ -454,7 +454,7 @@ def _scope_query(q, user):
     return q
 
 
-def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None, queue=None, user=None):
+def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None, queue=None, user=None, batch_id=None, orientation_student_id=None):
     with session() as db:
         q = select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(),
@@ -462,6 +462,10 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
             OrientationStudent.record_status == "ACTIVE",
         )
         q = _scope_query(q, user)
+        if batch_id is not None:
+            q = q.where(OrientationStudent.batch_id == int(batch_id))
+        if orientation_student_id is not None:
+            q = q.where(OrientationStudent.id == int(orientation_student_id))
         if keyword:
             value = f"%{str(keyword).strip()}%"
             q = q.where(
@@ -507,7 +511,7 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
                     continue
                 student_no, class_name = profiles.get(str(row.student_id), (row.student_no or "", row.class_name or ""))
                 items.append({
-                    "id": str(row.id), "name": row.name, "admissionNo": row.admission_no,
+                    "id": str(row.id), "batchId": str(row.batch_id), "name": row.name, "admissionNo": row.admission_no,
                     "className": class_name or row.class_name or "", "reportStatus": row.report_status,
                     "stage": row.stage, "version": int(row.version or 0),
                     "profileStudentId": str(row.student_id or ""), "studentNo": student_no,

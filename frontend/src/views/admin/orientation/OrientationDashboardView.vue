@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="迎新看板" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="迎新看板查阅">
+  <ModulePageShell title="迎新工作台" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="迎新看板查阅">
     <template #actions>
       <div class="board-toolbar">
         <label for="orientation-workspace-batch">迎新批次</label>
@@ -13,6 +13,16 @@
     <LoadingState v-if="loading" text="正在读取本批次迎新情况…" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="board">
+      <section class="board-section" aria-labelledby="orientation-todo-title">
+        <div class="board-section__head"><h2 id="orientation-todo-title">现在需要处理</h2><span>按当前批次与我的数据范围统计</span></div>
+        <div class="board-todos">
+          <button v-for="t in board.todos" :key="t.id" type="button" :class="{ 'has-pending': Number(t.value) > 0 }" @click="goLink(t.label.includes('绿色通道') ? '/admin/orientation/green-channels' : t.link)">
+            <span>{{ t.label }}</span><strong>{{ t.value }}<small> 项</small></strong>
+            <span class="board-todos__action">{{ Number(t.value) > 0 ? '进入处理' : '暂无待处理 · 查看记录' }}</span>
+          </button>
+        </div>
+        <p v-if="!board.todos?.length" class="board-empty">当前没有待处理事项。</p>
+      </section>
       <section class="board-overview" aria-label="当前批次与下一步">
         <div>
           <div class="board-eyebrow">当前工作批次 <span v-if="currentBatch">{{ currentBatch.statusLabel }}</span></div>
@@ -37,16 +47,6 @@
           <span v-if="item.trend" class="board-metric__note">{{ item.trend }}</span>
         </div>
       </dl>
-      <section class="board-section" aria-labelledby="orientation-todo-title">
-        <div class="board-section__head"><h2 id="orientation-todo-title">现在需要处理</h2><span>按当前批次与我的数据范围统计</span></div>
-        <div class="board-todos">
-          <button v-for="t in board.todos" :key="t.id" type="button" :class="{ 'has-pending': Number(t.value) > 0 }" @click="goLink(t.label.includes('绿色通道') ? '/admin/orientation/green-channels' : t.link)">
-            <span>{{ t.label }}</span><strong>{{ t.value }}<small> 项</small></strong>
-            <span class="board-todos__action">{{ Number(t.value) > 0 ? '进入处理' : '暂无待处理 · 查看记录' }}</span>
-          </button>
-        </div>
-        <p v-if="!board.todos?.length" class="board-empty">当前没有待处理事项。</p>
-      </section>
       <div class="board-columns">
         <section class="board-section" aria-labelledby="orientation-progress-title">
           <div class="board-section__head"><h2 id="orientation-progress-title">报到环节进度</h2><button type="button" class="board-link" @click="go('/admin/orientation/progress')">查看办理进度</button></div>
@@ -78,7 +78,7 @@
           <progress :aria-label="c.name + '预报到完成率'" :value="c.rate" max="100" />
         </div>
       </section>
-      <p class="board-footer">统计来自服务器最新回读。<span v-if="board.updateTime">更新于 {{ board.updateTime }}</span></p>
+      <p class="board-footer">统计来自服务器最新回读。<span v-if="board.updateTime">更新于 {{ formatDateTime(board.updateTime) }}</span></p>
     </template>
   </ModulePageShell>
 </template>
@@ -86,10 +86,11 @@
 <script>
 import { ModulePageShell, LoadingState, ErrorState, RiskTag } from '@/components/business'
 import { getOrientationContext, getOrientationDashboard, getOrientationBatches } from '@/modules/orientation/api/orientation.api'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const LINKS = { students: '/admin/orientation/students', progress: '/admin/orientation/progress', payment: '/admin/orientation/payment', materials: '/admin/orientation/materials', dorm: '/admin/orientation/dorm', exceptions: '/admin/orientation/exceptions' }
 // Only these destinations consume batchId in their real read API.
-const BATCH_PAGES = new Set(['students', 'verify', 'progress', 'materials', 'green-channels', 'exceptions', 'dorm', 'no-show', 'statistics'].map(key => '/admin/orientation/' + key))
+const BATCH_PAGES = new Set(['students', 'verify', 'qualification', 'payment', 'dorm-preassign', 'progress', 'materials', 'green-channels', 'exceptions', 'dorm', 'no-show', 'statistics'].map(key => '/admin/orientation/' + key))
 
 export default {
   name: 'OrientationDashboardView',
@@ -111,13 +112,14 @@ export default {
     nextHint() {
       if (!this.board?.batchId) return '先创建迎新批次，再设置本批次的新生名单。'
       if (this.currentBatch?.status === 'CLOSED') return '该批次已结束，可查阅历史名单和办理结果。'
-      return this.totalStudents ? '先处理下方待办，再跟进尚未完成报到的学生。' : '下一步：新增或导入本批次新生，再进行信息核验。'
+      return this.totalStudents ? '先处理待办，再跟进尚未完成报到的学生。' : '下一步：新增或导入本批次新生，再进行信息核验。'
     }
   },
   created() { this.selectedBatch = String(this.$route.query.batchId || ''); this.load() },
   beforeUnmount() { ++this.requestSerial },
   watch: { '$route.query.batchId'(value) { this.selectedBatch = String(value || ''); this.load() } },
   methods: {
+    formatDateTime,
     changeBatch() { this.$router.replace({ query: { ...this.$route.query, batchId: this.selectedBatch || undefined } }) },
     openRoster() {
       this.$router.push(this.board?.batchId ? { path: '/admin/orientation/batches', query: { batchId: String(this.board.batchId), panel: 'students' } } : '/admin/orientation/batches')
@@ -146,6 +148,9 @@ export default {
         this.ctx = ctxRes.data
         if (boardRes.code !== 0 || !boardRes.data) throw new Error(boardRes.message || '看板读取失败')
         this.board = boardRes.data
+        if (!this.$route.query.batchId && this.board.batchId) {
+          this.$router.replace({ query: { ...this.$route.query, batchId: String(this.board.batchId) } })
+        }
       } catch (e) { if (serial === this.requestSerial) this.error = e.message || '加载失败' }
       finally { if (serial === this.requestSerial) this.loading = false }
     }

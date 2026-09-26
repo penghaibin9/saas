@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell flat title="现场报到" watermark-purpose="现场报到核验">
-    <template #actions><AppButton variant="secondary" @click="$router.push('/admin/orientation/qualification')">学院确认</AppButton><AppButton variant="ghost" @click="load">刷新记录</AppButton></template>
+    <template #actions><AppButton variant="secondary" @click="$router.push({path:'/admin/orientation/qualification',query:{...($route.query.batchId ? {batchId:$route.query.batchId} : {})}})">学院确认</AppButton><AppButton variant="ghost" @click="load">刷新记录</AppButton></template>
     <p v-if="error" class="checkin-error" role="alert">{{ error }}</p>
     <div class="checkin-workspace">
       <section class="checkin-entry">
@@ -21,12 +21,13 @@ import { ModulePageShell, DataTable } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppConfirmDialog } from '@/components/common'
 import { request } from '@/services/http/client'
+import { formatDateTime } from '@/utils/dateUtils'
 export default {
   components: { ModulePageShell, DataTable, AppButton, AppConfirmDialog },
   data() { return { points: [], pointId: '', token: '', preview: null, receipt: null, records: [], busy: false, error: '', confirmVisible: false, columns: [{ key: 'name', title: '学生' }, { key: 'className', title: '班级' }, { key: 'checkinPointName', title: '报到点' }, { key: 'time', title: '报到时间' }] } },
   mounted() { this.load() },
   methods: {
-    formatTime(v) { return String(v || '').replace('T', ' ').slice(0, 19) },
+    formatTime(v) { return formatDateTime(v) },
     async load() { this.error = ''; try { const [p, r] = await Promise.all([request('/mobile/teacher/orientation/checkin-points'), request('/mobile/teacher/orientation/today-checkins')]); this.points = p.items || []; this.records = r.list || r.items || []; if (!this.points.some(p => String(p.id) === this.pointId)) this.pointId = String(this.points[0]?.id || '') } catch (e) { this.error = e.message } },
     async preflight() { if (this.busy || !this.token || !this.pointId) return; this.busy = true; this.error = ''; this.preview = null; this.receipt = null; try { this.preview = await request('/mobile/teacher/orientation/checkin/preflight', { method: 'POST', body: { token: this.token } }) } catch (e) { this.error = e.message } finally { this.busy = false } },
     async confirm() { if (this.busy || !this.preview || !this.pointId) return; this.busy = true; this.error = ''; try { this.receipt = await request('/mobile/teacher/orientation/checkin/confirm', { method: 'POST', body: { token: this.token, checkinPointId: this.pointId } }); this.confirmVisible = false; this.token = ''; this.preview = null; await this.load() } catch (e) { this.error = e.message } finally { this.busy = false } }

@@ -7,10 +7,11 @@
           <text class="oq__guide">{{ completed ? '现场核验已完成，无需再次出示报到码' : '到校后打开本页，请辅导员或现场核验人员扫码' }}</text>
           <view v-if="!completed" class="oq__code-box">
             <image v-if="credential.qrDataUrl" class="oq__qr" :src="credential.qrDataUrl" mode="aspectFit" />
-            <text v-else class="oq__code">{{ issuing ? '签发中…' : '尚未签发' }}</text>
+            <text v-else class="oq__code">{{ issuing ? '签发中…' : credential.token ? '二维码暂不可显示，可复制凭证交给核验老师' : '尚未签发' }}</text>
           </view>
           <text class="oq__note">{{ credential.token ? '二维码仅用于本人本次报到，扫码确认后自动失效' : o.reportCode.note }}</text>
-          <text v-if="credential.expiresAt" class="oq__expires">有效至 {{ credential.expiresAt.replace('T', ' ').slice(0, 19) }}</text>
+          <text v-if="credential.expiresAt" class="oq__expires">有效至 {{ formatDateTime(credential.expiresAt) }}</text>
+          <button v-if="credential.token && !completed" class="oq__issue" @click="copyCredential">复制报到凭证</button>
           <button v-if="!completed" class="btn-primary oq__issue" :disabled="issuing || !o.reportCode.canIssue" @click="issue(false)">
             {{ credential.token ? '二维码过期了？重新生成' : '生成报到二维码' }}
           </button>
@@ -34,6 +35,7 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { toast } from '@/utils/nav'
+import { formatDateTime } from '@/utils/format'
 export default {
   data() { return { o: null, state: 'loading', issuing: false, credential: { token: '', qrDataUrl: '', expiresAt: '' } } },
   onLoad() { this.load() },
@@ -41,6 +43,11 @@ export default {
     completed() { return ['CHECKED_IN', 'COLLEGE_CONFIRMED', 'REGISTERED'].includes(this.o?.overallStatus) },
   },
   methods: {
+    formatDateTime,
+    copyCredential() {
+      if (!this.credential.token || this.completed) return
+      uni.setClipboardData({ data: this.credential.token, success: () => toast('已复制，仅交给现场核验老师'), fail: () => toast('复制未完成，请重试') })
+    },
     async load() {
       this.state = 'loading'
       try {

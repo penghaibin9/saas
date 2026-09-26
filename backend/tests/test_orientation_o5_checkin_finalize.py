@@ -7,6 +7,50 @@ from pathlib import Path
 from test_orientation_o4_qualification import TID, _seed, _student_headers
 
 
+def test_o5_stopped_or_closed_orientation_rejects_activation_without_side_effects(client, db_mode, auth_headers):
+    from sqlalchemy import func, select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationBatch, OrientationStudent, StudentProfile, User, StudentAccountLink
+
+    ids = _seed(db_mode)
+    def counts(db):
+        return tuple(db.scalar(select(func.count()).select_from(model)) for model in (User, StudentProfile, StudentAccountLink))
+    with get_sessionmaker()() as db:
+        original = counts(db)
+    for linked in (False, True):
+        for stage, record_status, batch_status in (
+            ('CANCELLED', 'ACTIVE', 'ACTIVE'), ('NO_SHOW', 'ACTIVE', 'ACTIVE'),
+            ('DEFERRED', 'ACTIVE', 'ACTIVE'), ('ADMITTED', 'VOIDED', 'ACTIVE'),
+            ('ADMITTED', 'ACTIVE', 'CLOSED'),
+        ):
+            with get_sessionmaker()() as db:
+                student = db.get(OrientationStudent, ids['orientation'])
+                student.stage = stage; student.record_status = record_status
+                student.student_id = ids['profile'] if linked else None
+                student.identity_status = 'LINKED' if linked else 'UNLINKED'
+                db.get(OrientationBatch, student.batch_id).status = batch_status
+                version = student.version
+                db.commit()
+            response = client.post(f"/api/v1/orientation/students/{ids['orientation']}/activate", headers=auth_headers,
+                json={'expectedVersion': version, 'studentNo': ids['studentNo'], 'clientRequestId': 'stopped-activation-rejection'})
+            assert response.status_code >= 400, (stage, record_status, batch_status, response.text)
+            with get_sessionmaker()() as db:
+                assert counts(db) == original
+                student = db.get(OrientationStudent, ids['orientation'])
+                assert student.version == version and student.stage == stage
+                assert student.student_id == (ids['profile'] if linked else None)
+    # A normal linked record still supports the established safe replay contract.
+    with get_sessionmaker()() as db:
+        student = db.get(OrientationStudent, ids['orientation'])
+        student.stage = 'ADMITTED'; student.record_status = 'ACTIVE'
+        db.get(OrientationBatch, student.batch_id).status = 'ACTIVE'
+        db.commit()
+    response = client.post(f"/api/v1/orientation/students/{ids['orientation']}/activate", headers=auth_headers,
+        json={'expectedVersion': version, 'studentNo': ids['studentNo'], 'clientRequestId': 'active-activation-safe-replay'})
+    assert response.status_code == 200, response.text
+    assert response.json()['data']['idempotent'] is True
+
+
 def test_o5_imported_candidate_activates_identity_before_signed_checkin(
     client, db_mode, auth_headers,
 ):

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
+import { orientationNavigation } from '../src/modules/orientation/workspaces.js'
 
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
 const api = read('../src/modules/orientation/api/orientation.api.js')
@@ -38,7 +39,12 @@ test('A1 routes and navigation use the canonical backend orientation view permis
   assert.match(routes, /permissionKey: 'studentAffairs\.orientation\.view'/)
   assert.doesNotMatch(routes, /permissionKey: 'orientation\./)
   const orientationNav = navPlan.slice(navPlan.indexOf("mod('sa-orientation'"), navPlan.indexOf("mod('sa-leave'"))
-  assert.match(orientationNav, /studentAffairs\.orientation\.view/)
+  assert.match(orientationNav, /orientationNavigation\(\)/)
+  const workspaces = orientationNavigation()
+  assert.ok(workspaces.length > 0)
+  for (const workspace of workspaces) {
+    assert.equal(workspace.permissionKey, 'studentAffairs.orientation.view', workspace.label)
+  }
   assert.doesNotMatch(orientationNav, /'orientation\./)
 })
 

@@ -16,12 +16,12 @@
           </view>
         </view>
 
-        <view class="card od__entry" @click="goWorklist"><text class="t-md t-bold">新生办理与学院确认</text><text class="od__entry-arrow">›</text></view>
+        <view class="card od__entry" @click="goWorklist()"><text class="t-md t-bold">新生办理与学院确认</text><text class="od__entry-arrow">›</text></view>
         <view class="card od__entry" @click="goVerify"><text class="t-md t-bold">现场扫码报到</text><text class="od__entry-arrow">›</text></view>
         <view class="card od__entry" @click="goGc">
           <view class="flex-1">
             <text class="t-md t-bold">绿色通道审核</text>
-            <text class="od__entry-sub">审核学生缓缴 / 减免申请，通过后自动解除缴费卡点</text>
+            <text class="od__entry-sub">办理本批次缓缴 / 减免申请，查看审核结果</text>
           </view>
           <text class="od__entry-arrow">›</text>
         </view>
@@ -30,9 +30,9 @@
           <text class="section-head__title">未报到新生</text>
           <text class="section-head__more">{{ d.notReportedTotal }} 人</text>
         </view>
-        <MobileGlobalState v-if="!d.notReported.length" state="empty" title="新生均已报到" description="当前没有未报到的新生记录。" />
+        <MobileGlobalState v-if="!d.notReported.length" state="empty" title="本批次暂无未报到新生" description="当前批次没有待跟进的到校记录。" />
         <view v-else class="card stack-sm">
-          <view v-for="s in d.notReported" :key="s.id" class="od__row">
+          <view v-for="s in d.notReported" :key="s.id" class="od__row" @click="goWorklist(s.id)">
             <view class="od__row-avatar">{{ s.name.slice(0,1) }}</view>
             <view class="flex-1">
               <text class="t-md">{{ s.name }}</text>
@@ -50,19 +50,33 @@
 import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 export default {
-  data() { return { d: null, state: 'loading' } },
-  onShow() { this.load() },
+  data() { return { d: null, state: 'loading', loadSerial: 0 } },
+  onShow() { return this.load() },
+  onHide() { this.loadSerial++ },
+  onUnload() { this.loadSerial++ },
   methods: {
-    goWorklist() { uni.navigateTo({ url: '/pages/teacher/orientation/worklist/index' }) },
+    goWorklist(studentId) {
+      if (!this.d?.batchId) return
+      const params = `batchId=${encodeURIComponent(this.d.batchId)}&batchName=${encodeURIComponent(this.d.batchName || '')}`
+      const target = studentId ? `&orientationStudentId=${encodeURIComponent(studentId)}` : ''
+      uni.navigateTo({ url: `/pages/teacher/orientation/worklist/index?${params}${target}` })
+    },
     goVerify() { uni.navigateTo({ url: '/pages/teacher/orientation/verify/index' }) },
-    goGc() { uni.navigateTo({ url: '/pages/teacher/orientation/green-channel/index' }) },
-    load() {
-      this.state = 'loading'
-      teacherApi.getOrientationDashboard().then((data) => {
+    goGc() {
+      if (!this.d?.batchId) return
+      uni.navigateTo({ url: `/pages/teacher/orientation/green-channel/index?batchId=${encodeURIComponent(this.d.batchId)}&batchName=${encodeURIComponent(this.d.batchName || '')}` })
+    },
+    async load() {
+      const serial = ++this.loadSerial
+      this.state = 'loading'; this.d = null
+      try {
+        const data = await teacherApi.getOrientationDashboard()
+        if (serial !== this.loadSerial) return
         if (!data || !data.hasData) { this.state = 'empty'; return }
-        this.d = data
-        this.state = 'ready'
-      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' })
+        this.d = data; this.state = 'ready'
+      } catch (error) {
+        if (serial === this.loadSerial) this.state = normalizeError(error).pageState || 'error'
+      }
     }
   }
 }

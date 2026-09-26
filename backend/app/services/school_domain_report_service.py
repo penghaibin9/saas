@@ -68,7 +68,15 @@ def _orientation_students(user: dict, batch_id: int) -> list[dict]:
     ))
 
 
+def _orientation_label(value, labels: dict) -> str:
+    text = str(value or "")
+    if text in labels:
+        return labels[text]
+    return text if any("\u4e00" <= char <= "\u9fff" for char in text) else ("待确认" if text else "")
+
+
 def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
+    from app.services.orientation_service import L_PAY, L_MAT, L_MATTYPE, L_GC, L_EXCTYPE, L_EXCSTATUS, L_RISK
     if report_type not in ORIENTATION_REPORTS:
         raise AppException(
             "VALIDATION_ERROR", f"未知迎新报表类型：{report_type}",
@@ -92,7 +100,7 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
     # 综合台账/未报到/住宿安排只读 canonical process facts，不以 OrientationStudent
     # 的兼容投影自行裁决。
     from app.models import (DormBed, DormBuilding, DormRoom, DormStay,
-                            OrientationCheckinRecord, OrientationPaymentAccount)
+                            OrientationCheckinRecord, OrientationPaymentAccount, GreenChannelApplication)
     with session() as db:
         payment_by_student = {
             int(row.orientation_student_id): row.status
@@ -102,6 +110,12 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
                 OrientationPaymentAccount.is_deleted.is_(False),
             )).all()
         }
+        approved_green_ids = set(db.scalars(select(GreenChannelApplication.ori_student_id).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(ids or [-1]),
+            GreenChannelApplication.status == "APPROVED",
+            GreenChannelApplication.is_deleted.is_(False),
+        )).all()) if report_type == "students" else set()
         checked_in_ids = set(db.scalars(select(OrientationCheckinRecord.orientation_student_id).where(
             OrientationCheckinRecord.tenant_id == _tid(),
             OrientationCheckinRecord.orientation_student_id.in_(ids or [-1]),
@@ -133,7 +147,8 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
                 "authorityDormStatus": "已入住" if stay.status == "ACTIVE" else "已预留",
             }
     for sid, row in by_id.items():
-        row["authorityPaymentStatus"] = payment_by_student.get(sid, "UNPAID")
+        row["authorityPaymentStatus"] = payment_by_student.get(sid, "MISSING")
+        row["authorityGreenChannelStatus"] = "已通过" if sid in approved_green_ids else "暂无通过记录"
         row["hasSignedCheckin"] = sid in {int(value) for value in checked_in_ids}
         row.update(dorm_by_orientation.get(sid, {
             "authorityBuilding": "", "authorityRoom": "", "authorityBed": "",
@@ -145,18 +160,23 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
             ("迎新批次编号", "batchNo"), ("姓名", "name"), ("录取编号", "admissionNo"),
             ("学院", "collegeName"), ("专业", "majorName"), ("班级", "className"),
             ("签名现场报到", "signedCheckinLabel"), ("缴费事实", "authorityPaymentStatus"),
+            ("绿色通道审批", "authorityGreenChannelStatus"),
             ("住宿事实", "authorityDormStatus"), ("风险", "riskLabel"),
         ]
         items = [{**row, "batchNo": batch_no,
                   "signedCheckinLabel": "已报到" if row["hasSignedCheckin"] else "未报到"} for row in base]
     elif report_type == "progress":
-        from app.models import OrientationStudentStep
+        from app.models import OrientationStudentStep, OrientationFlowStep
         with session() as db:
             steps = db.scalars(select(OrientationStudentStep).where(
                 OrientationStudentStep.tenant_id == _tid(),
                 OrientationStudentStep.orientation_student_id.in_(ids or [-1]),
                 OrientationStudentStep.is_deleted.is_(False),
             ).order_by(OrientationStudentStep.orientation_student_id, OrientationStudentStep.id)).all()
+            step_names = dict(db.execute(select(OrientationFlowStep.id, OrientationFlowStep.step_name).where(
+                OrientationFlowStep.tenant_id == _tid(),
+                OrientationFlowStep.id.in_({step.flow_step_id for step in steps} or {-1}),
+            )).all())
         grouped = defaultdict(list)
         for step in steps:
             grouped[int(step.orientation_student_id)].append(step)
@@ -168,7 +188,7 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
                 **student, "batchNo": batch_no, "doneSteps": done,
                 "totalSteps": len(student_steps),
                 "blockedSteps": "；".join(
-                    f"{step.step_key}:{step.blocked_reason or '受阻'}"
+                    f"{step_names.get(step.flow_step_id, '办理环节')}：{step.blocked_reason or '受阻'}"
                     for step in student_steps if step.status == "BLOCKED"
                 ),
             })
@@ -248,7 +268,7 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
             ("迎新批次编号", "batchNo"), ("姓名", "name"), ("录取编号", "admissionNo"),
             ("申请类型", "applyType"), ("申请金额", "applyAmount"), ("状态", "status"),
             ("提交时间", "submitTime"), ("审核人", "reviewer"), ("审核时间", "reviewTime"),
-            ("驳回原因", "rejectReason"),
+            ("退回或驳回原因", "rejectReason"),
         ]
     elif report_type == "dorm":
         items = [{**row, "batchNo": batch_no} for row in base]
@@ -309,6 +329,25 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
             ("异常类型", "exceptionType"), ("异常说明", "description"), ("风险等级", "riskLevel"),
             ("状态", "status"), ("处理人", "handler"), ("最近跟进", "lastFollowTime"),
         ]
+    # 面向学校的表格使用业务名称；内部枚举仍留在权威业务对象，不进入显示列。
+    field_labels = {
+        "authorityPaymentStatus": {**L_PAY, "WAIVED": "已减免", "MISSING": "未同步缴费事实"},
+        "materialType": L_MATTYPE,
+        "applyType": {"POVERTY": "家庭经济困难", "DISASTER": "突发灾害",
+                      "STUDENT_LOAN": "助学贷款", "TUITION_DEFERMENT": "学费缓缴",
+                      "TUITION_REDUCTION": "学费减免", "INSTALLMENT": "分期缴费",
+                      "DEFERRED": "学费缓缴", "OTHER": "其他困难申请"},
+        "sourceType": {"FINANCE_SYNC": "财务同步", "MANUAL_VERIFIED": "人工核验", "LEGACY_BACKFILL": "历史数据补录"},
+        "method": {"SIGNED_TOKEN": "报到凭证核验"},
+        "exceptionType": {**L_EXCTYPE, "MATERIAL": "材料异常"}, "riskLevel": L_RISK,
+        "status": {"materials": L_MAT, "payment": {**L_PAY, "WAIVED": "已减免", "MISSING": "未同步缴费事实"},
+                   "green-channel": L_GC, "checkin": {"CONFIRMED": "已确认报到"},
+                   "exceptions": L_EXCSTATUS}.get(report_type, {}),
+    }
+    for row in items:
+        for _, key in columns:
+            if key in field_labels:
+                row[key] = _orientation_label(row.get(key), field_labels[key])
     _bounded(items)
     return {"title": title, "fileName": filename, "columns": columns, "items": items,
             "scopeLabel": f"迎新批次 {batch_no} + 当前角色学生范围"}

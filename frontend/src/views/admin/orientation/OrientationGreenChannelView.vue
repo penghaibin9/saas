@@ -30,10 +30,29 @@
         <template #cell-status="{ row }">
           <StatusTag :type="statusTagType[row.status] || 'default'" :label="row.statusLabel" dot />
         </template>
+        <template #cell-submitTime="{ row }">{{ formatDateTime(row.submitTime) }}</template>
+        <template #cell-remark="{ row }"><span>{{ row.remark || '未填写说明' }}</span><p v-if="row.rejectReason">审核意见：{{ row.rejectReason }}</p></template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
       </DataTable>
+
+      <AppDrawer v-model:visible="reviewVisible" :title="reviewTarget ? `申请核对 · ${reviewTarget.name}` : '申请核对'" mode="modal" size="large">
+        <template v-if="reviewTarget">
+          <p>{{ reviewTarget.applyType }} · ¥ {{ reviewTarget.applyAmount }} · {{ reviewTarget.statusLabel }}</p>
+          <h3>学生说明</h3><p>{{ reviewTarget.remark || '未填写说明' }}</p>
+          <p v-if="reviewTarget.rejectReason">审核意见：{{ reviewTarget.rejectReason }}</p>
+          <h3>证明材料</h3>
+          <LoadingState v-if="proofLoading" />
+          <ErrorState v-else-if="proofError" :description="proofError" @retry="loadProofs(reviewTarget)" />
+          <p v-else-if="!proofFiles.length">未附证明材料</p>
+          <template v-else>
+            <nav aria-label="申请证明材料"><button v-for="file in proofFiles" :key="file.fileId" type="button" :aria-pressed="proofFile?.fileId === file.fileId" @click="proofFile = file">{{ file.fileName }}</button></nav>
+            <FilePreviewer v-if="proofFile" :key="proofFile.fileId" :file="proofFile" @error="proofError = $event.message || '材料打开失败，请重试'" />
+          </template>
+        </template>
+        <template #footer><button type="button" @click="reviewVisible = false">关闭核对</button></template>
+      </AppDrawer>
 
       <AppConfirmDialog
         v-model:visible="confirmVisible"
@@ -45,7 +64,14 @@
         :submitting="confirmSubmitting"
         :reason-label="confirmConf.reasonLabel"
         @confirm="onConfirm"
-      />
+      >
+        <dl v-if="confirmRow" class="ori-review-summary">
+          <dt>申请类型与金额</dt><dd>{{ confirmRow.applyType }} · ¥ {{ confirmRow.applyAmount }}</dd>
+          <dt>学生说明</dt><dd>{{ confirmRow.remark || '未填写说明' }}</dd>
+          <template v-if="confirmRow.rejectReason"><dt>此前审核意见</dt><dd>{{ confirmRow.rejectReason }}</dd></template>
+          <dt>证明材料</dt><dd>{{ confirmRow.attachments?.length ? confirmRow.attachments.join('、') : '未附证明材料' }}</dd>
+        </dl>
+      </AppConfirmDialog>
     </template>
   </ModulePageShell>
 </template>
@@ -54,6 +80,10 @@
 /** /admin/orientation/green-channels 绿色通道审核（通过 / 退回 / 驳回；真实走后端 /orientation/green-channels）。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
+import { fileSdk } from '@/services/file/fileSdk'
+import { formatDateTime } from '@/utils/dateUtils'
 import { TableActionColumn, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { toast } from '@/utils/toast'
@@ -71,13 +101,14 @@ export default {
   name: 'OrientationGreenChannelView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
-    EmptyState, LoadingState, ErrorState, AppConfirmDialog, TableActionColumn, NoPermissionState
+    EmptyState, LoadingState, ErrorState, AppConfirmDialog, AppDrawer, FilePreviewer, TableActionColumn, NoPermissionState
   },
   data() {
     return {
       ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(),
       confirmVisible: false, confirmMode: '', confirmRow: null, confirmSubmitting: false,
+      reviewVisible: false, reviewTarget: null, proofFiles: [], proofFile: null, proofLoading: false, proofError: '', proofSerial: 0,
       statusTagType: { SUBMITTED: 'warning', REVIEWING: 'primary', APPROVED: 'success', RETURNED: 'warning', REJECTED: 'danger' }
     }
   },
@@ -85,6 +116,7 @@ export default {
     roleName() { return this.ctx?.currentRole?.roleName || '' },
     dataScopeName() { return this.ctx?.dataScope?.name || '' },
     perms() { return this.ctx?.permissionActions || {} },
+    reviewAllowed() { return this.perms['orientation.greenchannel.review']?.allowed === true },
     noPermission() { const p = this.perms['orientation.student.view']; return p ? !p.allowed : false },
     filterFields() {
       return [
@@ -98,6 +130,7 @@ export default {
         { key: 'className', title: '班级' },
         { key: 'applyType', title: '申请类型' },
         { key: 'applyAmount', title: '申请金额' },
+        { key: 'remark', title: '申请说明与意见' },
         { key: 'submitTime', title: '提交时间' },
         { key: 'status', title: '审核状态' },
         { key: 'reviewer', title: '审核人' },
@@ -120,6 +153,17 @@ export default {
     await this.load()
   },
   methods: {
+    formatDateTime,
+    async loadProofs(row) {
+      const serial = ++this.proofSerial
+      this.proofLoading = true; this.proofError = ''; this.proofFiles = []; this.proofFile = null
+      try {
+        const files = await fileSdk.list({bizType:'ORIENTATION_GREEN_CHANNEL',bizId:row.id})
+        if (serial !== this.proofSerial) return
+        this.proofFiles = files; this.proofFile = files[0] || null
+      } catch (e) { if (serial === this.proofSerial) this.proofError = e.message || '材料读取失败，请重试' }
+      finally { if (serial === this.proofSerial) this.proofLoading = false }
+    },
     async load() {
       const serial = this.queueSerial = (this.queueSerial || 0) + 1
       this.loading = true; this.error = ''
@@ -133,15 +177,16 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     rowActions(row) {
-      const pending = ['SUBMITTED', 'REVIEWING'].includes(row.status)
-      const dr = pending ? '' : '该申请已审结'
+      const pending = this.reviewAllowed && ['SUBMITTED', 'REVIEWING'].includes(row.status)
+      const dr = !this.reviewAllowed ? '当前岗位没有绿色通道审核权限' : pending ? '' : '该申请已审结'
       return [
+        { key: 'view', label: '查看申请' },
         { key: 'approve', label: '通过', disabled: !pending, disabledReason: dr },
         { key: 'return', label: '退回', disabled: !pending, disabledReason: dr },
         { key: 'reject', label: '驳回', disabled: !pending, disabledReason: dr }
       ]
     },
-    onRowAction(key, row) { this.confirmMode = key; this.confirmRow = row; this.confirmVisible = true },
+    onRowAction(key, row) { if (key === 'view') { this.reviewTarget = row; this.reviewVisible = true; this.loadProofs(row); return }; this.confirmMode = key; this.confirmRow = row; this.confirmVisible = true },
     async onConfirm({ reason = '' } = {}) {
       const row = this.confirmRow; if (!row || this.confirmSubmitting) return
       this.confirmSubmitting = true

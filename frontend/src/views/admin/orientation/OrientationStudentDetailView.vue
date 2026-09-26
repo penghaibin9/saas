@@ -11,6 +11,7 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
       <ModuleToolbar :actions="toolbarActions" :hint="detail.student.recordStatus === 'VOIDED' ? `该记录已作废：${detail.student.voidReason}` : '编辑与作废操作全程留痕'" @action="onToolbar" />
+      <p v-if="arrangementHint" role="status">{{ arrangementHint }} <button type="button" class="ori-act" @click="openStudentTask('qualification')">查看报到安排</button></p>
 
       <!-- 报到环节进度 -->
       <section class="ori-section">
@@ -26,7 +27,7 @@
           当前卡点：{{ stepLabel(detail.student.blockedStep) }} — {{ detail.student.blockedReason }}
         </div>
         <!-- 就地动作：信息核验 + 卡点管理（无需跳转到其它页面） -->
-        <div v-if="detail.student.recordStatus !== 'VOIDED'" class="ori-actbar">
+        <div v-if="canContinue" class="ori-actbar">
           <button
             v-if="detail.student.steps.INFO !== 'DONE'"
             type="button"
@@ -80,7 +81,7 @@
           <section class="ori-section" style="margin-top: var(--space-4)">
             <div class="ori-section__head">
               <h3 class="ori-section__title">缴费与绿色通道</h3>
-              <button type="button" class="ori-section__more" @click="$router.push('/admin/orientation/payment')">前往缴费管理 →</button>
+              <button type="button" class="ori-section__more" @click="openStudentTask('payment')">前往缴费管理 →</button>
             </div>
             <div class="ori-kv">
               <div class="ori-kv__item"><span class="ori-kv__label">应缴金额</span><span class="ori-kv__value">¥{{ detail.student.payableAmount }}</span></div>
@@ -98,12 +99,12 @@
               <b>{{ g.applyType }}</b>（¥{{ g.applyAmount }}）· 提交于 {{ g.submitTime }}
               <StatusTag :type="greenTagType[g.status] || 'default'" :label="labelOf('greenChannelStatus', g.status)" />
               <span
-                v-if="detail.student.recordStatus !== 'VOIDED' && ['SUBMITTED', 'REVIEWING', 'RETURNED'].includes(g.status) && !isHidden('orientation.payment.view')"
+                v-if="canContinue && ['SUBMITTED', 'REVIEWING'].includes(g.status) && !isHidden('orientation.greenchannel.review')"
                 class="ori-rowact"
               >
-                <button type="button" class="ori-act ori-act--primary" :disabled="submitting || isDenied('orientation.payment.view')" @click="approveGreen(g)">通过</button>
-                <button type="button" class="ori-act" :disabled="submitting || isDenied('orientation.payment.view')" @click="returnGreen(g)">退回补充</button>
-                <button type="button" class="ori-act ori-act--danger" :disabled="submitting || isDenied('orientation.payment.view')" @click="rejectGreen(g)">驳回</button>
+                <button type="button" class="ori-act ori-act--primary" :disabled="submitting || isDenied('orientation.greenchannel.review')" @click="approveGreen(g)">通过</button>
+                <button type="button" class="ori-act" :disabled="submitting || isDenied('orientation.greenchannel.review')" @click="returnGreen(g)">退回补充</button>
+                <button type="button" class="ori-act ori-act--danger" :disabled="submitting || isDenied('orientation.greenchannel.review')" @click="rejectGreen(g)">驳回</button>
               </span>
               <div v-if="g.rejectReason" class="ori-inline-note">意见：{{ g.rejectReason }}</div>
             </div>
@@ -112,7 +113,7 @@
           <section class="ori-section" style="margin-top: var(--space-4)">
             <div class="ori-section__head">
               <h3 class="ori-section__title">迎新材料</h3>
-              <button type="button" class="ori-section__more" @click="$router.push('/admin/orientation/materials')">前往材料审核 →</button>
+              <button type="button" class="ori-section__more" @click="openStudentTask('materials')">前往材料审核 →</button>
             </div>
             <EmptyState v-if="!detail.materials.length" title="暂无上传材料" />
             <table v-else class="ori-mat-table">
@@ -127,7 +128,7 @@
                   <td><StatusTag :type="materialTagType[m.status] || 'default'" :label="labelOf('materialStatus', m.status)" /></td>
                   <td class="ori-inline-note">{{ m.returnReason || '—' }}</td>
                   <td v-if="showMaterialActions">
-                    <span v-if="['UPLOADED', 'RETURNED'].includes(m.status)" class="ori-rowact">
+                    <span v-if="m.isCurrent !== false && m.status === 'UPLOADED'" class="ori-rowact">
                       <button type="button" class="ori-act ori-act--primary" :disabled="submitting || isDenied('orientation.material.review')" @click="approveMaterial(m)">通过</button>
                       <button type="button" class="ori-act" :disabled="submitting || isDenied('orientation.material.review')" @click="returnMaterial(m)">退回</button>
                     </span>
@@ -152,7 +153,7 @@
               <div class="ori-kv__item"><span class="ori-kv__label">入住时间</span><span class="ori-kv__value">{{ detail.student.checkinTime || '—' }}</span></div>
             </div>
             <div v-if="detail.student.exceptionNote" class="ori-blocked-box" style="margin-top: var(--space-3)">
-              宿舍异常：{{ detail.student.exceptionNote }}
+              迎新异常备注：{{ detail.student.exceptionNote }}
             </div>
             <div v-if="detail.student.recordStatus !== 'VOIDED' && !isHidden('orientation.dorm.confirm')" class="ori-actbar" style="margin-top: var(--space-3)">
               <button
@@ -169,7 +170,7 @@
                 :disabled="submitting || isDenied('orientation.dorm.confirm')"
                 @click="dormException"
               >标记入住异常</button>
-              <button type="button" class="ori-act" @click="$router.push('/admin/orientation/dorm')">前往宿舍入住管理 →</button>
+              <button type="button" class="ori-act" @click="openStudentTask('dorm')">前往宿舍入住管理 →</button>
             </div>
           </section>
 
@@ -251,6 +252,13 @@ export default {
     }
   },
   computed: {
+    arrangementHint() {
+      return ({ CANCELLED: '已取消入学，保留历史记录；如需继续请先恢复报到。', NO_SHOW: '已登记未到校；确认继续入学后，请先恢复报到。', DEFERRED: '已延期报到；确认到校计划后恢复办理。' })[this.detail?.student?.stage] || ''
+    },
+    canContinue() {
+      const student = this.detail?.student
+      return !!student && student.recordStatus !== 'VOIDED' && !['ENROLLED', 'CANCELLED', 'NO_SHOW', 'DEFERRED'].includes(student.stage)
+    },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -299,7 +307,7 @@ export default {
       ]
     },
     showMaterialActions() {
-      return this.detail?.student?.recordStatus !== 'VOIDED' && !this.isHidden('orientation.material.review')
+      return this.canContinue && !this.isHidden('orientation.material.review')
     },
     /* ---------------- 待办队列：上一个/下一个流水线导航 ---------------- */
     wlIndex() {
@@ -320,13 +328,17 @@ export default {
   },
   watch: {
     '$route.params.studentId'(id) {
+      this.actionDrawer.visible = this.editVisible = this.voidVisible = false
+      this.actionDrawer.handler = null
       if (id) this.load()
     }
   },
+  beforeUnmount() { this.detailSerial = (this.detailSerial || 0) + 1 },
   created() {
     this.load()
   },
   methods: {
+    openStudentTask(page) { this.$router.push({ path: '/admin/orientation/' + page, query: { batchId: this.detail.student.batchId, orientationStudentId: this.detail.student.id } }) },
     returnToList() {
       if (this.$route.query.from === 'batch' && this.$route.query.batchId) {
         this.$router.push({ path: '/admin/orientation/batches', query: { batchId: String(this.$route.query.batchId), panel: 'students' } })
@@ -342,22 +354,25 @@ export default {
       return STEP_STATE_LABEL[state || 'TODO']
     },
     async load() {
+      const serial = this.detailSerial = (this.detailSerial || 0) + 1
       this.loading = true
       this.error = ''
+      this.detail = null
       try {
         const [ctx, status, detail] = await Promise.all([
           api.getOrientationContext(),
           api.getStatusOptions(),
           api.getOrientationStudentDetail(this.$route.params.studentId)
         ])
+        if (serial !== this.detailSerial) return
         if (ctx.code === 0) this.ctx = ctx.data
         if (status.code === 0) this.statusOptions = status.data
         if (detail.code === 0) this.detail = detail.data
         else this.error = detail.message
       } catch (e) {
-        this.error = e.message || '加载失败'
+        if (serial === this.detailSerial) this.error = e.message || '加载失败'
       } finally {
-        this.loading = false
+        if (serial === this.detailSerial) this.loading = false
       }
     },
     onToolbar(key) {
@@ -401,9 +416,12 @@ export default {
     },
     /* ---------------- 就地动作：统一执行 + 填原因抽屉 ---------------- */
     async runApi(fn, okMsg) {
+      if (this.submitting) return
+      const serial = this.detailSerial
       this.submitting = true
       try {
         const res = await fn()
+        if (serial !== this.detailSerial) return
         if (res.code === 0) {
           toast.success(okMsg)
           this.actionDrawer.visible = false
@@ -426,12 +444,13 @@ export default {
       this.runApi(() => api.verifyOrientationStudent(this.detail.student.id, { passed: true, expectedVersion: this.detail.student.version }), '信息核验已通过')
     },
     verifyReturn() {
-      const id = this.detail.student.id
+        const id = this.detail.student.id
+        const version = this.detail.student.version
       this.openReason({
         title: '信息核验退回',
         submitText: '确认退回',
         fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需重新核对的内容（不少于5字）' }],
-        handler: (f) => this.runApi(() => api.verifyOrientationStudent(id, { passed: false, reason: f.reason, expectedVersion: this.detail.student.version }), '已退回，学生需重新核对信息')
+        handler: (f) => this.runApi(() => api.verifyOrientationStudent(id, { passed: false, reason: f.reason, expectedVersion: version }), '已退回，学生需重新核对信息')
       })
     },
     markBlock() {
@@ -451,26 +470,26 @@ export default {
     },
     /* ---------------- 就地动作：材料审核 ---------------- */
     approveMaterial(m) {
-      this.runApi(() => api.approveOrientationMaterial(m.id, { comment: '' }), '材料已通过')
+      this.runApi(() => api.approveOrientationMaterial(m.id, { comment: '', expectedVersion: m.version }), '材料已通过')
     },
     returnMaterial(m) {
       this.openReason({
         title: '退回材料',
         submitText: '确认退回',
         fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需补充的内容（不少于5字）' }],
-        handler: (f) => this.runApi(() => api.returnOrientationMaterial(m.id, { reason: f.reason }), '材料已退回')
+        handler: (f) => this.runApi(() => api.returnOrientationMaterial(m.id, { reason: f.reason, expectedVersion: m.version }), '材料已退回')
       })
     },
     /* ---------------- 就地动作：绿色通道 ---------------- */
     approveGreen(g) {
-      this.runApi(() => api.approveGreenChannel(g.id, { remark: '' }), '绿色通道已通过')
+      this.runApi(() => api.approveGreenChannel(g.id, { expectedVersion: g.version, remark: '' }), '绿色通道已通过')
     },
     returnGreen(g) {
       this.openReason({
         title: '退回绿色通道申请',
         submitText: '确认退回',
         fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请说明需补充的内容（不少于5字）' }],
-        handler: (f) => this.runApi(() => api.returnGreenChannel(g.id, { reason: f.reason }), '已退回申请人补充')
+        handler: (f) => this.runApi(() => api.returnGreenChannel(g.id, { expectedVersion: g.version, reason: f.reason }), '已退回申请人补充')
       })
     },
     rejectGreen(g) {
@@ -478,7 +497,7 @@ export default {
         title: '驳回绿色通道申请',
         submitText: '确认驳回',
         fields: [{ key: 'reason', label: '驳回原因', type: 'textarea', required: true, placeholder: '请说明驳回理由（不少于5字）' }],
-        handler: (f) => this.runApi(() => api.rejectGreenChannel(g.id, { reason: f.reason }), '已驳回该绿色通道申请')
+        handler: (f) => this.runApi(() => api.rejectGreenChannel(g.id, { expectedVersion: g.version, reason: f.reason }), '已驳回该绿色通道申请')
       })
     },
     /* ---------------- 就地动作：宿舍入住 ---------------- */

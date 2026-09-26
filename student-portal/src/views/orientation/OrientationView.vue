@@ -17,15 +17,16 @@
           <div><strong style="color:#B42318">有环节受阻</strong><p class="sp-muted" style="margin:5px 0 0">{{ stepLabel(my.blockedStep) }}：{{ my.blockedReason }}</p></div>
         </section>
         <section class="sp-card">
-          <div class="sp-panel__head">必办事项进度 <StatusTag :text="arrivalHold ? (my.stage === 'CANCELLED' ? '已停止' : '暂缓办理') : allDone ? '事项齐备' : '待办齐'" :tone="allDone ? 'success' : 'warn'" /></div>
+          <div class="sp-panel__head">迎新办理进度 <StatusTag :text="arrivalHold ? (my.stage === 'CANCELLED' ? '已停止' : '暂缓办理') : my.checkinCredential?.status === 'FINALIZED' ? '入学手续已完成' : allDone ? '事项齐备' : '待办齐'" :tone="allDone ? 'success' : 'warn'" /></div>
           <FlowSteps :steps="flowSteps" />
         </section>
         <section v-if="!arrivalHold && my.checkinCredential?.status !== 'FINALIZED'" class="sp-card">
-          <div class="sp-panel__head">待办核对 <StatusTag :text="qualificationText" :tone="qualificationTone" /></div>
-          <p class="sp-muted">完成以下必办事项后，由学院确认入学。现场报到进度请查看报到码。</p>
+          <div class="sp-panel__head">入学手续核对 <StatusTag :text="qualificationText" :tone="qualificationTone" /></div>
+          <p class="sp-muted">{{ qualificationHint }}</p>
           <ul v-if="my.qualification?.blockers?.length" class="qualification-blockers">
-            <li v-for="item in my.qualification.blockers" :key="`${item.code}-${item.step}`">{{ item.message }}</li>
+            <li v-for="item in my.qualification.blockers" :key="`${item.code}-${item.step}-${item.message}`">{{ item.message }}</li>
           </ul>
+          <button v-if="selfService.canSubmitMaterials && my.qualification?.blockers?.some(item => item.step === 'MATERIAL')" class="sp-btn" @click="router.push('/orientation/materials')">查看与补交材料</button>
         </section>
         <section v-if="!arrivalHold && my.checkinCredential?.status !== 'FINALIZED'" class="sp-card checkin-card">
           <div>
@@ -110,7 +111,11 @@
             <select v-model="materialForm.materialType" class="sp-inp">
               <option value="ID_CARD">身份证明</option><option value="ADMISSION_LETTER">录取通知书</option><option value="PHOTO">证件照</option><option value="ARCHIVE">纸质档案凭证</option>
             </select>
-            <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt" @change="pickMaterial" />
+            <div class="material-picker">
+              <input ref="materialFileInput" type="file" hidden accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt" @change="pickMaterial" />
+              <button type="button" class="sp-btn" :disabled="busy || !selfService.canSubmitMaterials" @click="materialFileInput?.click()">选择材料文件</button>
+              <span class="sp-muted material-file-name">{{ materialFile?.name || '尚未选择文件' }}</span>
+            </div>
             <button class="sp-btn" :disabled="busy || !materialFile || !selfService.canSubmitMaterials" @click="submitMaterial">上传并提交</button>
           </div>
           <div v-if="selfService.materials?.length" class="material-list">
@@ -176,6 +181,7 @@ const collectForm = reactive({ phone: '', origin: '', emergencyContactName: '', 
 const arrivalForm = reactive({ arrivalMode: 'TRAIN', plannedArrivalDate: '', plannedArrivalTime: '', stationName: '', transportNo: '', pickupRequired: false, companionCount: 0, expectedVersion: 0 })
 const materialForm = reactive({ materialType: 'ID_CARD' })
 const materialFile = ref(null)
+const materialFileInput = ref(null)
 const materialUploaded = ref(null)
 const materialRequestId = ref('')
 const greenForm = reactive({ type: 'POVERTY', reason: '' })
@@ -193,19 +199,22 @@ const arrivalHold = computed(() => ({
   CANCELLED: { title: '已取消入学', description: '本次迎新办理已停止，原预留床位已释放。如登记有误，请联系学校核实。' },
 })[my.value.stage] || null)
 const studentName = computed(() => session.user?.realName || '同学')
-const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '注册确认', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '住宿安排', ACTIVATE: '账号激活' }
+const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '学院确认入学', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '住宿安排', ACTIVATE: '账号激活', IDENTITY: '身份核验', FINANCE: '缴费核验' }
 const PAY = { MISSING: '尚未登记缴费', UNAVAILABLE: '缴费信息暂不可用', PAID: '已缴费', UNPAID: '待缴费', PARTIAL: '部分缴费', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道' }
 const MAT = { APPROVED: '已通过', UPLOADED: '待审核', PENDING: '待审核', RETURNED: '已退回', REJECTED: '已驳回', NOT_UPLOADED: '未提交', NONE: '未提交' }
 const GC = { NOT_APPLIED: '未申请', PENDING: '审核中', SUBMITTED: '待审核', REVIEWING: '审核中', RETURNED: '已退回', WITHDRAWN: '已撤回', APPROVED: '已通过', REJECTED: '已退回' }
-function stepLabel(k) { return STEP_LABELS[k] || k || '' }
-function payText(s) { return PAY[s] || s || '—' }
-function matText(s) { return MAT[s] || s || '—' }
-function gcText(s) { return GC[s] || s || '—' }
+function stepLabel(k) { return my.value.steps?.find(step => step.key === k)?.label || STEP_LABELS[k] || '待确认环节' }
+function payText(s) { return PAY[s] || (s ? '状态待确认' : '—') }
+function matText(s) { return MAT[s] || (s ? '状态待确认' : '—') }
+function gcText(s) { return GC[s] || (s ? '状态待确认' : '—') }
 
 const terminalStep = (status) => ['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(status)
 const flowSteps = computed(() => { const steps = my.value.steps || []; const current = steps.findIndex(s => !terminalStep(s.status)); return steps.map((s, index) => ({ name: stepLabel(s.key), state: terminalStep(s.status) ? 'done' : index === current ? 'current' : 'todo' })) })
 const allDone = computed(() => (my.value.steps || []).length > 0 && (my.value.steps || []).every((s) => terminalStep(s.status)))
-const qualificationText = computed(() => my.value.qualification?.verdictLabel || '资格待计算')
+const qualificationText = computed(() => ({ QUALIFIED: '手续齐全，待学院确认', NOT_QUALIFIED: '仍需补办', MANUAL_REVIEW: '需学校核查' })[my.value.qualification?.verdict] || '办理情况待核实')
+const qualificationHint = computed(() => my.value.checkinCredential?.status === 'CHECKED_IN'
+  ? '已完成现场报到。补齐以下事项后，由学院确认入学。'
+  : '完成以下必办事项后，由学院确认入学。现场报到另在报到点核验。')
 const qualificationTone = computed(() => ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warn' })[my.value.qualification?.verdict] || 'default')
 const credentialStatusText = computed(() => ({
   BLOCKED: '暂不可签发', ELIGIBLE: '可签发', ISSUED: '已签发',
@@ -250,14 +259,14 @@ function pickMaterial(event) {
   materialRequestId.value = materialFile.value ? createRequestId('orientation-material') : ''
 }
 async function submitMaterial() {
-  if (!materialFile.value) return
+  if (busy.value || !materialFile.value) return
   busy.value = true
   try {
     const uploaded = materialUploaded.value || await portalApi.uploadOrientationMaterial(materialFile.value)
     materialUploaded.value = uploaded
     if (!materialRequestId.value) materialRequestId.value = createRequestId('orientation-material')
     await portalApi.orientationMaterial({ materialType: materialForm.materialType, fileId: uploaded.fileId, clientSubmissionId: materialRequestId.value })
-    ui.notify('材料已提交'); materialFile.value = null; materialUploaded.value = null; materialRequestId.value = ''; await load()
+    ui.notify('材料已提交'); materialFile.value = null; materialUploaded.value = null; materialRequestId.value = ''; if (materialFileInput.value) materialFileInput.value.value = ''; await load()
   } catch (e) { ui.notify(e?.message || '材料提交失败') } finally { busy.value = false }
 }
 async function submitGreen() {
@@ -292,6 +301,8 @@ onMounted(load)
 .confirm { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:13px; color:var(--t2); }
 .confirm.compact { align-self:end; min-height:40px; margin:0; }
 .material-submit { display:grid; grid-template-columns:180px 1fr auto; align-items:center; gap:12px; margin:16px 0; }
+.material-picker { display:grid; justify-items:start; gap:6px; min-width:0; }
+.material-file-name { max-width:100%; overflow-wrap:anywhere; }
 .material-list { border-top:1px solid var(--line); }
 .material-row { display:flex; justify-content:space-between; gap:20px; padding:14px 0; border-bottom:1px solid var(--line); }
 .return-reason { max-width:280px; margin-top:6px; color:#B42318; font-size:12px; text-align:right; }

@@ -23,7 +23,7 @@ def _token(*, user_id: int, student_id: int | None, student_no: str, name: str) 
     return {"Authorization": "Bearer " + create_access_token(payload)}
 
 
-def _seed_o3(db_mode):
+def _seed_o3(db_mode, *, include_payment=False):
     from app.db.session import get_sessionmaker
     from app.models import (
         OrientationBatch, OrientationFlowStep, OrientationFlowVersion,
@@ -51,10 +51,10 @@ def _seed_o3(db_mode):
         status="PUBLISHED", source_type="MANUAL", published_at=datetime.utcnow(),
     )
     db.add(flow); db.flush()
-    for order, key in enumerate(("INFO", "MATERIAL", "CHECKIN")):
+    for order, key in enumerate(("INFO", "MATERIAL", *(("PAYMENT",) if include_payment else ()), "CHECKIN")):
         db.add(OrientationFlowStep(
             tenant_id=TID, flow_version_id=flow.id, step_key=key,
-            step_name={"INFO": "信息采集", "MATERIAL": "材料上传", "CHECKIN": "现场报到"}[key],
+            step_name={"INFO": "信息采集", "MATERIAL": "材料上传", "PAYMENT": "缴费办理", "CHECKIN": "现场报到"}[key],
             enabled=True, required=True, sort_order=order,
         ))
     db.flush()
@@ -202,10 +202,20 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
     from app.db.session import get_sessionmaker
     from app.models import OrientationMaterial
     from app.models.file import FileAsset, FileBinding, FileVersion
-    db = get_sessionmaker()()
-    old = db.get(OrientationMaterial, int(first_data["id"]))
-    old.status = "RETURNED"
-    db.commit(); db.close()
+    before_return = client.get(
+        f"/api/v1/orientation/students/{ids['orientationId']}", headers=auth_headers,
+    ).json()["data"]["materials"][0]
+    returned = client.post(
+        f"/api/v1/orientation/materials/{first_data['id']}/return", headers=auth_headers,
+        json={"expectedVersion": before_return["version"], "reason": "身份证明图片模糊，请重新提交"},
+    )
+    assert returned.status_code == 200, returned.text
+    returned_version = returned.json()["data"]["version"]
+    bypass_resubmission = client.post(
+        f"/api/v1/orientation/materials/{first_data['id']}/approve", headers=auth_headers,
+        json={"expectedVersion": returned_version},
+    )
+    assert bypass_resubmission.status_code == 409
 
     second = client.post(f"{PORTAL}/materials", headers=headers, json={
         "materialType": "ID_CARD", "fileId": second_file,
@@ -214,6 +224,11 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
     assert second.status_code == 200, second.text
     second_data = second.json()["data"]
     assert second_data["submissionNo"] == 2
+    historical_approval = client.post(
+        f"/api/v1/orientation/materials/{first_data['id']}/approve", headers=auth_headers,
+        json={"expectedVersion": returned_version},
+    )
+    assert historical_approval.status_code == 409
 
     review_queue = client.get(
         "/api/v1/orientation/materials",
@@ -226,6 +241,8 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
         if row["id"] == second_data["id"]
     )
     assert review_row["fileId"] == second_file
+    assert review_row["status"] == "UPLOADED"
+    assert review_row["fileStatus"] == "AVAILABLE"
     assert review_row["fileVersionId"] == second_data["fileVersionId"]
     assert review_row["canPreview"] is True
     assert review_row["canDownload"] is True
@@ -249,7 +266,7 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
     approved = client.post(
         f"/api/v1/orientation/materials/{second_data['id']}/approve",
         headers=auth_headers,
-        json={"comment": "O3 file-version approval"},
+        json={"expectedVersion": review_row["version"], "comment": "材料重交后审核通过"},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["data"]["status"] == "APPROVED"

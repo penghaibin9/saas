@@ -20,7 +20,7 @@ test('O4 qualification screens only render the server verdict and blockers', () 
   assert.match(qualification, /recalculateOrientationQualification/)
   // 展示层可翻译已取消等终态，但不能再按 blockedStep 自行推导资格。
   assert.doesNotMatch(qualification, /blockedStep\s*===/)
-  assert.match(studentPc, /my\.value\.qualification\?\.verdictLabel/)
+  assert.match(studentPc, /my\.value\.qualification\?\.verdict\b/)
   assert.match(studentPc, /my\.qualification\.blockers/)
   assert.match(miniStudent, /o\.qualification\.verdict/)
   assert.match(miniStudent, /qualificationBlockers/)

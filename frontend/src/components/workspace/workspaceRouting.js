@@ -1,5 +1,5 @@
 import { findActiveInPlan, NAV_PLAN, navRefMatches } from '../../config/navPlan.js'
-import { resolveWorkspacePageId } from './teacherWorkspace.js'
+import { resolveWorkspacePageId, workspaceCurrentPage } from './teacherWorkspace.js'
 import { academicObjectParentPath } from '../../modules/academicAffairs/config/academicNavigation.js'
 
 export function usesAcademicWorkspace(path, fullPath = path) {
@@ -8,6 +8,9 @@ export function usesAcademicWorkspace(path, fullPath = path) {
 }
 
 export function activeWorkspacePage(pages, route, activeModule) {
+  if (/^\/admin\/orientation(?:\/|$)/.test(route.path || route.fullPath.split('?')[0])) {
+    return workspaceCurrentPage(pages.filter(page => page.moduleKey === 'sa-orientation'), route.fullPath, activeModule)
+  }
   const entry = route.query?._workspace
   const explicitId = resolveWorkspacePageId(entry, pages.filter(page => workspacePageMatches(route.fullPath, page.path)))
   const explicit = pages.find(page => page.id === explicitId && workspacePageMatches(route.fullPath, page.path))
