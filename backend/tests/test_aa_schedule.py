@@ -6,7 +6,7 @@ S6 发布通知；S7 三视图；S8 作废重发。
 历史版本硬编码 termId="1" 并且隐式依赖别的测试/别的会话在共享 MySQL 测试库里遗留的
 教学任务行来让 `_resolve_task()` 模糊匹配命中——这在长期复用的 student_lifecycle_test
 库上并不成立（自增计数器早已远超 1，也没有任何持久遗留的 READY 教学任务）。本文件改为
-自建学期 + 教学任务批次 + 五个 READY 教学任务，覆盖全部用例实际用到的
+自建学期 + 教学任务批次 + 两个真实行政班的四个 READY 教学任务，覆盖全部用例实际用到的
 (课程, 教师, 行政班) 组合，测试自身完全自包含。
 """
 from __future__ import annotations
@@ -39,15 +39,20 @@ def _seed(db_mode, term_id: str):
     (courseName=高数, teacherKey, classId) 组合各一条 READY 教学任务。"""
     from app.db.session import get_sessionmaker
     from app.models import (AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot, College,
-                            SchoolClass, StudentProfile)
+                            Major, SchoolClass, StudentProfile)
     db = get_sessionmaker()()
     for slot_no in range(1, 6):
         db.add(AaTimeSlot(tenant_id=TID, slot_no=slot_no, slot_name=f"第{slot_no}节",
                           start_time="00:00", end_time="23:59", enabled=True, status="ENABLED"))
     col = College(tenant_id=TID, college_name="课表回归测试学院", status="ACTIVE")
     db.add(col); db.flush()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2601", grade="2026", status="ACTIVE")
-    db.add(a); db.flush()
+    major = Major(tenant_id=TID, college_id=col.id, major_name="课表回归测试专业", status="ACTIVE")
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id,
+                    class_name="软件2601", grade="2026", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major.id,
+                    class_name="软件2602", grade="2026", status="ACTIVE")
+    db.add_all([a, b]); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="SC001", real_name="课表甲", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
     db.add(s); db.flush()
@@ -65,17 +70,58 @@ def _seed(db_mode, term_id: str):
             status="READY", weekly_hours=8, total_hours=144, start_week=1, end_week=18,
         ))
 
-    # 覆盖全部用例实际用到的 (teacherKey, classId) 组合。
-    _task("T1", "王老师", 100, "软件2601")
-    _task("T1", "王老师", 200, "软件2602")
-    _task("T2", "李老师", 100, "软件2601")
-    _task("T2", "李老师", 200, "软件2602")
-    _task("T1", "王老师", a.id, "软件2601")  # test_s7 用真实行政班 id
+    # 每个组合只保留一个真实任务，不能把固定 100/200 与自增班级编号混用。
+    # 否则完整回归恰好生成班级 100 时，首条排课就会因任务匹配歧义返回 409。
+    _task("T1", "王老师", a.id, a.class_name)
+    _task("T1", "王老师", b.id, b.class_name)
+    _task("T2", "李老师", a.id, a.class_name)
+    _task("T2", "李老师", b.id, b.class_name)
     db.flush()
-    ids = {"class": a.id, "student": s.id}
+    ids = {"class": a.id, "other_class": b.id, "student": s.id}
     db.commit()
     db.close()
     return ids
+
+
+def test_seed_uses_unique_real_class_tasks_even_at_legacy_ids(monkeypatch):
+    """不连接数据库：重现完整回归中班级自增值恰好达到旧固定编号的场景。"""
+    from collections import defaultdict
+    from app.db import session as db_session
+    from app.models import AaTeachingTask, SchoolClass
+
+    for first_class_id in (100, 200):
+        rows = []
+        next_ids = defaultdict(lambda: 1)
+        next_ids[SchoolClass] = first_class_id
+
+        class SeedSession:
+            def add(self, row):
+                row.id = next_ids[type(row)]
+                next_ids[type(row)] += 1
+                rows.append(row)
+
+            def add_all(self, values):
+                for row in values:
+                    self.add(row)
+
+            def flush(self):
+                pass
+
+            def commit(self):
+                pass
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(db_session, "get_sessionmaker", lambda: SeedSession)
+        ids = _seed(None, "1")
+        actual_classes = {row.id for row in rows if isinstance(row, SchoolClass)}
+        tasks = [row for row in rows if isinstance(row, AaTeachingTask)]
+        pairs = [(row.teacher_key, row.class_id) for row in tasks]
+        assert actual_classes == {first_class_id, first_class_id + 1}
+        assert {ids["class"], ids["other_class"]} == actual_classes
+        assert len(pairs) == len(set(pairs)) == 4
+        assert set(pairs) == {(teacher, class_id) for teacher in ("T1", "T2") for class_id in actual_classes}
 
 
 def _batch(client, hdr, term_id: str):
@@ -84,8 +130,9 @@ def _batch(client, hdr, term_id: str):
 
 def _item(client, hdr, bid, **kw):
     body = {"weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
-            "teacherKey": "T1", "teacherName": "王老师", "classId": "100", "className": "软件2601",
+            "teacherKey": "T1", "teacherName": "王老师", "className": "软件2601",
             "classroom": "A101", "courseName": "高数", **kw}
+    assert body.get("classId"), "排课夹具必须显式使用当前场景的真实行政班编号"
     return client.post(f"{BASE}/schedule-batches/{bid}/items", headers=hdr, json=body)
 
 
@@ -99,7 +146,7 @@ def _setup(client, db_mode):
 
 def _seed_single_publishable_task(term_id: str) -> int:
     """预发布关卡要求批次学期下全部 READY 教学任务都排满 weekly_hours——S1-S5 共用的
-    5 个任务(weekly_hours=8)只排 1 节课必然"漏排"。S6/S8 需要独立的、weekly_hours=1
+    4 个任务(weekly_hours=8)只排 1 节课必然"漏排"。S6/S8 需要独立的、weekly_hours=1
     且只有这一条任务的最小化数据，才能让批次真正达到可发布状态；同时挂一个真实行政班
     +学生，"发布通知"才有真实接收对象（notified>=1），不是排到一个查无此人的假班级号。"""
     from app.db.session import get_sessionmaker
@@ -187,42 +234,45 @@ def _setup_publishable(client, db_mode):
 
 
 def test_s1_teacher_conflict(client, db_mode):
-    hdr, bid, _ids = _setup(client, db_mode)
-    assert _item(client, hdr, bid).status_code == 200
+    hdr, bid, ids = _setup(client, db_mode)
+    first = _item(client, hdr, bid, classId=str(ids["class"]))
+    assert first.status_code == 200, first.json()
     # 同教师同时段，换班换教室 → 教师冲突
-    r = _item(client, hdr, bid, classId="200", classroom="B202")
+    r = _item(client, hdr, bid, classId=str(ids["other_class"]), classroom="B202")
     assert r.status_code == 409 and "TEACHER" in r.json()["message"]
 
 
 def test_s2_class_conflict(client, db_mode):
-    hdr, bid, _ids = _setup(client, db_mode)
-    _item(client, hdr, bid)
-    r = _item(client, hdr, bid, teacherKey="T2", teacherName="李老师", classroom="B202")
+    hdr, bid, ids = _setup(client, db_mode)
+    first = _item(client, hdr, bid, classId=str(ids["class"]))
+    assert first.status_code == 200, first.json()
+    r = _item(client, hdr, bid, teacherKey="T2", teacherName="李老师", classId=str(ids["class"]), classroom="B202")
     assert r.status_code == 409 and "CLASS" in r.json()["message"]
 
 
 def test_s3_classroom_conflict(client, db_mode):
-    hdr, bid, _ids = _setup(client, db_mode)
-    _item(client, hdr, bid)
-    r = _item(client, hdr, bid, teacherKey="T2", teacherName="李老师", classId="200", className="X")
+    hdr, bid, ids = _setup(client, db_mode)
+    first = _item(client, hdr, bid, classId=str(ids["class"]))
+    assert first.status_code == 200, first.json()
+    r = _item(client, hdr, bid, teacherKey="T2", teacherName="李老师", classId=str(ids["other_class"]), className="软件2602")
     assert r.status_code == 409 and "CLASSROOM" in r.json()["message"]
 
 
 def test_s4_parity_no_conflict(client, db_mode):
-    hdr, bid, _ids = _setup(client, db_mode)
+    hdr, bid, ids = _setup(client, db_mode)
     # 单周排 T1，双周同时段同教师排 → 不冲突（单双周错开）
-    assert _item(client, hdr, bid, weekParity="ODD").status_code == 200
-    assert _item(client, hdr, bid, weekParity="EVEN").status_code == 200
+    assert _item(client, hdr, bid, classId=str(ids["class"]), weekParity="ODD").status_code == 200
+    assert _item(client, hdr, bid, classId=str(ids["class"]), weekParity="EVEN").status_code == 200
     # 但单周再排同教师 → 冲突
-    assert _item(client, hdr, bid, weekParity="ODD").status_code == 409
+    assert _item(client, hdr, bid, classId=str(ids["class"]), weekParity="ODD").status_code == 409
 
 
 def test_s5_import_reports_conflicts(client, db_mode):
     """默认 atomic=True：整批中 1 行冲突则整批不写入（P1 批次B——ATOMIC/PARTIAL 契约默认从严）。"""
-    hdr, bid, _ids = _setup(client, db_mode)
+    hdr, bid, ids = _setup(client, db_mode)
     r = client.post(f"{BASE}/schedule-batches/{bid}/import", headers=hdr, json={"items": [
-        {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": "100", "classroom": "A101"},
-        {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": "200", "classroom": "B202"},  # 教师冲突
+        {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": str(ids["class"]), "classroom": "A101"},
+        {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": str(ids["other_class"]), "classroom": "B202"},  # 教师冲突
     ]}).json()
     assert r["data"]["imported"] == 0 and len(r["data"]["conflicts"]) == 1
     assert r["data"]["atomic"] is True and r["data"]["committed"] is False
@@ -233,12 +283,12 @@ def test_s5_import_reports_conflicts(client, db_mode):
 
 def test_s5b_import_partial_mode_commits_valid_rows(client, db_mode):
     """显式 atomic=False：允许逐行尽力导入，成功行落库、失败行进 conflicts。"""
-    hdr, bid, _ids = _setup(client, db_mode)
+    hdr, bid, ids = _setup(client, db_mode)
     r = client.post(f"{BASE}/schedule-batches/{bid}/import", headers=hdr, json={
         "atomic": False,
         "items": [
-            {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": "100", "classroom": "A101"},
-            {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": "200", "classroom": "B202"},  # 教师冲突
+            {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": str(ids["class"]), "classroom": "A101"},
+            {"courseName": "高数", "weekday": 2, "slotNo": 1, "teacherKey": "T1", "classId": str(ids["other_class"]), "classroom": "B202"},  # 教师冲突
         ],
     }).json()
     assert r["data"]["imported"] == 1 and len(r["data"]["conflicts"]) == 1
