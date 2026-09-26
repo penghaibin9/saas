@@ -142,6 +142,17 @@ def get_correction_case(user, case_id) -> dict:
             "proposedOfficialFact": _proposed_fact_snapshot(original, correction) if case.status == _PENDING else None,
             "resultingOfficialFact": resulting,
         })
+        base["reviewAction"] = {"allowed": False, "reason": "当前纠错单不在待二次复核阶段"}
+        if case.status == _PENDING:
+            try:
+                actor = core._require_archive_operator(db, user)
+                core._require_historical_archive_actor(db, case.created_by)
+                if int(case.created_by) == actor:
+                    raise AppException("NO_PERMISSION", "归档后纠错必须由不同操作人二次复核", http_status=403)
+            except AppException as error:
+                base["reviewAction"]["reason"] = error.message
+            else:
+                base["reviewAction"] = {"allowed": True, "reason": ""}
         return base
 
 

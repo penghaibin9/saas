@@ -98,6 +98,9 @@ def test_mysql_archive_expiry_and_permission_revocation_preserve_all_facts(db_mo
 
         before = snapshot()
         assert public.get_batch(operator, ready_id)["confirmAction"]["allowed"] is True
+        assert public.get_batch(operator, batch_id)["correctionAction"]["allowed"] is True
+        assert review.get_correction_case(operator, case["caseId"])["reviewAction"]["allowed"] is True
+        assert review.get_correction_case(creator, case["caseId"])["reviewAction"]["allowed"] is False
         for invalidation in ("expired", "revoked"):
             with get_sessionmaker()() as db:
                 appointment = db.scalar(select(StaffAssignment).where(StaffAssignment.tenant_id == TID,
@@ -108,6 +111,8 @@ def test_mysql_archive_expiry_and_permission_revocation_preserve_all_facts(db_mo
                 grant.status = "DISABLED" if invalidation == "revoked" else "ACTIVE"
                 db.commit()
             assert public.get_batch(operator, ready_id)["confirmAction"]["allowed"] is False
+            assert public.get_batch(operator, batch_id)["correctionAction"]["allowed"] is False
+            assert review.get_correction_case(operator, case["caseId"])["reviewAction"]["allowed"] is False
             for command in _commands(operator, ready_id, int(case["caseId"])):
                 with pytest.raises(AppException) as denied:
                     command()
@@ -129,6 +134,7 @@ def test_mysql_archive_expiry_and_permission_revocation_preserve_all_facts(db_mo
         with get_sessionmaker()() as db:
             db.get(PostArchiveCorrectionCase, int(case["caseId"])).created_by = legacy_actor
             db.commit()
+        assert review.get_correction_case(operator, case["caseId"])["reviewAction"]["allowed"] is False
         for command in (
             lambda: public.approve_correction_case(operator, case["caseId"]),
             lambda: review.reject_correction_case(operator, case["caseId"], reason="历史签署身份待核验"),

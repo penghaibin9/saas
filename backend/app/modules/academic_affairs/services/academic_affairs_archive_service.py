@@ -203,14 +203,16 @@ def get_batch(user, batch_id):
         result = _scoped_batch_dto(batch, ctx, items=_items_dto(db, batch.id) if ctx.scope_type == "TENANT_ALL" else None)
         result["responsibility"] = resolve_school(db, permission_code="academicAffairs.archive.manage") if batch.status not in {"ARCHIVED", "CANCELLED"} else None
         result["confirmAction"] = {"allowed": False, "reason": "仅完整性检查通过的批次可确认归档"}
-        if batch.status == "READY":
+        result["correctionAction"] = {"allowed": False, "reason": "仅正式归档后可发起受控纠错"}
+        if batch.status in {"READY", "ARCHIVED"}:
             from app.core.exceptions import AppException
+            action = "confirmAction" if batch.status == "READY" else "correctionAction"
             try:
                 _core._require_archive_operator(db, user)
             except AppException as error:
-                result["confirmAction"]["reason"] = error.message
+                result[action]["reason"] = error.message
             else:
-                result["confirmAction"] = {"allowed": True, "reason": ""}
+                result[action] = {"allowed": True, "reason": ""}
         result["nextStep"] = None
         return result
 
