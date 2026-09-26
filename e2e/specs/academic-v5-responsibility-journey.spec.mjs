@@ -273,9 +273,9 @@ if (process.env.E2E_V5_CHILD === '1') {
   // step parameters. No trace, video, storageState, headers or auth bodies are saved.
   await runScenarioA().catch(() => { process.exitCode = 1 })
 } else {
+  test.use({ trace: 'off', video: 'off', screenshot: 'off' })
   test.describe('V5 场景 A：学校学期基础与六角色责任范围', () => {
     test.describe.configure({ mode: 'serial', retries: 0 })
-    test.use({ trace: 'off', video: 'off', screenshot: 'off' })
     test('正式表单建立学期、校历与作息，六角色独立登录进入并刷新', async ({}, testInfo) => {
       test.setTimeout(1_200_000)
       const resultFile = ignoredFile(`${ignoredFile(process.env.E2E_V5_STATE)}.journey.json`)
