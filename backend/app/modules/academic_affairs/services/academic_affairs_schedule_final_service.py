@@ -1012,16 +1012,7 @@ def publish(batch_id, user) -> dict:
     from . import academic_affairs_schedule_resource_guard as resource_guard
 
     with _base.session() as db:
-        from app.core.affairs_security import build_affairs_context, no_data_scope
-        from app.core.permissions import _match
-        from .academic_affairs_grade_correction_command import _current_user_id
-        from . import academic_affairs_responsibility_service as responsibility
-        ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
-            raise no_data_scope("正式课表须由校教务统筹发布，学院负责本单位编排与预发布核对")
-        actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
-        if not _match("academicAffairs.schedule.edit", ctx.permission_codes) or not actor["resolved"] or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]:
-            raise no_data_scope("当前账号不是有效的学校课表发布责任人，请核对校级任职与排课权限")
+        _base._require_school_schedule_operator(db, user)
         resource_guard.lock_formal_authority(db)
         batch = _load_batch(db, batch_id)
         # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，

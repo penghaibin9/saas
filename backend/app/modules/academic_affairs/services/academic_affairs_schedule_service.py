@@ -24,6 +24,26 @@ from app.services.db_service import _iso, _tid, session
 WEEKDAYS = range(1, 8)
 PARITIES = ("ALL", "ODD", "EVEN")
 
+
+def _require_school_schedule_operator(db, user, *, require_archive=False):
+    """正式课表生命周期共用实时校级权限、范围与责任任职。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from . import academic_affairs_responsibility_service as responsibility
+
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type != "TENANT_ALL":
+        raise no_data_scope("正式课表须由校教务统筹发布、作废与归档，学院负责本单位编排与预发布核对")
+    if require_archive and not _match("academicAffairs.schedule.archive", ctx.permission_codes):
+        raise no_data_scope("当前身份没有正式课表作废与归档权限")
+    actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+    if (not _match("academicAffairs.schedule.edit", ctx.permission_codes)
+            or not actor["resolved"]
+            or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
+        raise no_data_scope("当前账号不是有效的学校课表责任人，请核对校级任职与排课权限")
+    return ctx
+
+
 # ── 07号卡·自动排课预留：结果导入(Excel)通道表头（不写算法本体，仅结果落地） ──
 IMPORT_HEADERS = ["星期(1-7)", "节次", "课程名称", "教师姓名", "教师工号", "班级ID", "班级名称",
                   "教室", "起始周", "结束周", "单双周(ALL/ODD/EVEN)", "教学任务ID"]
@@ -362,8 +382,14 @@ def void_and_reissue(batch_id, user, reason="") -> dict:
     with session() as db:
         from app.models import AaScheduleBatch, AaSchedulePublish
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再作废重发
         if b.status != "PUBLISHED":
@@ -384,8 +410,14 @@ def archive(batch_id, user) -> dict:
     审计事件为 ARCHIVE，不要求填写原因，归档后数据只读，供教务归档包（R7）统一打包消费。"""
     with session() as db:
         from app.models import AaScheduleBatch
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         if b.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布批次可归档")
