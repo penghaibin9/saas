@@ -135,6 +135,7 @@ def test_grade_teacher_buttons_match_command_permissions(status, permissions, ex
 
 def test_grade_overdue_recipients_require_matching_scope_and_permission(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_grade_deadline_scheduler_service as scheduler
+    monkeypatch.setattr(scheduler.grade_core, "_tid", lambda: 1000000000000000001)
     rows = [(SimpleNamespace(id=i, login_name=str(i), user_type="TEACHER"),
              SimpleNamespace(id=i, role_code="CUSTOM")) for i in range(1, 5)]
     contexts = {

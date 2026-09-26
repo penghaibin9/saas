@@ -117,6 +117,7 @@ def _admin_scopes(db) -> dict[int, set[int] | None]:
             continue
         role_code = str(role_row.role_code or "").upper()
         scope = build_affairs_context({
+            "tenantId": str(grade_core._tid()),
             "userId": str(uid),
             "activeContextId": f"role:{role_row.id}",
             "loginName": user_row.login_name or "",
