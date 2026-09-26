@@ -246,7 +246,7 @@ def test_mysql_new_graduation_batch_api_requires_real_current_tenant_term_and_re
 
 def test_mysql_archived_explicit_term_rejects_all_graduation_writes_without_partial_facts(client, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (AaGraduationAuditResult, AffairsAuditTrail, GraduationDecisionFact,
+    from app.models import (AaGraduationAuditResult, AffairsAuditTrail, College, GraduationDecisionFact,
                             GraduationEvaluationRun, StudentProfile)
     from tests.support_graduation_review_identity import seed_graduation_review_identity
 
@@ -266,9 +266,17 @@ def test_mysql_archived_explicit_term_rejects_all_graduation_writes_without_part
         db.add(final_batch); db.flush()
         final_result = AaGraduationAuditResult(tenant_id=TID, batch_id=final_batch.id, student_id=student.id,
             overall="SYSTEM_PASSED", status="ACADEMIC_REVIEW", item_results_json="[]")
-        db.add_all([college_result, final_result]); db.commit()
+        other_college = College(tenant_id=TID, college_name="封存范围测试外院", status="ACTIVE")
+        db.add(other_college); db.flush()
+        other_student = StudentProfile(tenant_id=TID, student_no="V5_GRAD_SEALED_OTHER", real_name="外院封存测试",
+            college_id=other_college.id, current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
+        db.add(other_student); db.flush()
+        other_result = AaGraduationAuditResult(tenant_id=TID, batch_id=batch.id, student_id=other_student.id,
+            overall="SYSTEM_PASSED", status="SYSTEM_PASSED", item_results_json="[]")
+        db.add_all([college_result, final_result, other_result]); db.commit()
         tid, bid, sid = str(term.id), str(batch.id), str(student.id)
         college_result_id, final_result_id = str(college_result.id), str(final_result.id)
+        other_result_id = str(other_result.id)
 
     headers = {}
     for key, login_name in (("school", "school_admin01"), ("college", "college_admin01")):
@@ -304,4 +312,12 @@ def test_mysql_archived_explicit_term_rejects_all_graduation_writes_without_part
         response = client.post(base + path, headers=headers[actor], json=body)
         assert response.status_code == 409, (path, response.text)
         assert response.json().get("bizCode") == "TERM_ARCHIVED", (path, response.text)
+        assert snapshot() == before
+
+    # 外院和学校代学院请求先拒绝责任/范围，不暴露封存状态，也不发生业务写入。
+    for actor, result_id in (("college", other_result_id), ("school", college_result_id)):
+        response = client.post(f"{base}/graduation-results/{result_id}/college-review",
+                               headers=headers[actor], json={"action": "APPROVE"})
+        assert response.status_code == 403, response.text
+        assert "归档" not in response.json()["message"] and "封存" not in response.json()["message"]
         assert snapshot() == before

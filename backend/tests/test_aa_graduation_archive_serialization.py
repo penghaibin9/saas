@@ -329,3 +329,71 @@ def test_mysql_existing_session_cannot_reuse_cached_unsealed_term(db_mode):
             assert error.value.code == "TERM_ARCHIVED"
     finally:
         set_tenant(None)
+
+
+@pytest.mark.parametrize("denied_by", ["scope", "authority"])
+@pytest.mark.parametrize("denied_on", [1, 2])
+def test_college_review_authorizes_before_locks_and_rechecks_after_wait(monkeypatch, denied_by, denied_on):
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
+    from app.modules.academic_affairs.services import academic_affairs_graduation_scope_guard as authority
+
+    # 验证已正式装配的命令，不仅验证内部守卫函数。
+    assert service.college_review is immutable.college_review
+    result = AaGraduationAuditResult(id=31, tenant_id=TID, batch_id=21,
+                                    status="ARCHIVED", is_deleted=False)
+    events, counts = [], {"scope": 0, "authority": 0}
+
+    class Query(_Query):
+        def with_for_update(self):
+            raise AssertionError("身份预核验不得锁定业务行")
+
+    class Db(_Db):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def connection(self, *, execution_options):
+            assert execution_options == {"isolation_level": "READ COMMITTED"}
+            assert self.queries == 0
+
+        def query(self, model):
+            self.queries += 1
+            return Query(model, self.rows[model])
+
+    db = Db()
+    db.rows[AaGraduationAuditResult] = [result]
+
+    def check(kind):
+        def verify(_db, _user, actual):
+            assert actual is result
+            counts[kind] += 1
+            events.append(kind)
+            if kind == denied_by and counts[kind] == denied_on:
+                raise AppException("NO_PERMISSION", "无当前学院初审权限", http_status=403)
+        return verify
+
+    def lock(_db, result_id):
+        assert result_id == 31
+        events.append("lock")
+        return result
+
+    monkeypatch.setattr(service, "session", lambda: db)
+    monkeypatch.setattr(service, "_assert_result_in_scope", check("scope"))
+    monkeypatch.setattr(authority, "assert_college_review_authority", check("authority"))
+    monkeypatch.setattr(scope, "guard_result_term_writable", lock)
+    set_tenant({"tenantId": str(TID)})
+    try:
+        with pytest.raises(AppException) as error:
+            service.college_review(31, {"currentRoleCode": "COLLEGE_ADMIN"}, "APPROVE")
+        assert error.value.http_status == 403
+        if denied_on == 1:
+            assert "lock" not in events
+        else:
+            assert events[:3] == ["scope", "authority", "lock"]
+            assert counts[denied_by] == 2
+        assert result.status == "ARCHIVED"
+    finally:
+        set_tenant(None)

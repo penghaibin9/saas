@@ -447,10 +447,21 @@ def college_review(result_id, user, action, note="") -> dict:
         # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
         db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditResult
-        from .academic_affairs_graduation_term_scope import guard_result_term_writable
-        r = guard_result_term_writable(db, result_id)
+        r = db.query(AaGraduationAuditResult).filter(
+            AaGraduationAuditResult.id == int(result_id),
+            AaGraduationAuditResult.tenant_id == _tid(),
+            AaGraduationAuditResult.is_deleted.is_(False),
+        ).first()
+        if not r:
+            raise not_found("预审结果不存在")
         _assert_result_in_scope(db, user, r)
         from .academic_affairs_graduation_scope_guard import assert_college_review_authority
+        assert_college_review_authority(db, user, r)
+
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        r = guard_result_term_writable(db, result_id)
+        # 等待业务锁期间身份或对象可能变化，锁后仍按当前事实复核。
+        _assert_result_in_scope(db, user, r)
         assert_college_review_authority(db, user, r)
         if r.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
