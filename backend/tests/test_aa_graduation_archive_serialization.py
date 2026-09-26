@@ -67,7 +67,7 @@ def _seed(client):
         term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=2, term_name="封存竞争学期",
                       start_date=datetime(2026, 2, 1), end_date=datetime(2026, 7, 31), status="PUBLISHED")
         db.add(term); db.flush()
-        batch = AaArchiveBatch(tenant_id=TID, term_id=term.id, term_code="2025-2026-2",
+        batch = AaArchiveBatch(tenant_id=TID, term_id=term.id, term_code="2025-2026-2", batch_name="并发封存测试批次",
                                status="READY", missing_count=0)
         db.add(batch); db.commit()
         ids = (term.id, batch.id)
