@@ -30,6 +30,7 @@ ENTRY_YEAR = 2023
 GRADUATE_YEAR = 2026
 IDENTITIES = {
     "school": ("校教务处测试员", "ACADEMIC_ADMIN", None),
+    "schoolReviewer": ("校教务处独立复核员", "ACADEMIC_ADMIN", None),
     "collegeA": ("甲学院教学秘书", "COLLEGE_ADMIN", "A"),
     "collegeB": ("乙学院教学秘书", "COLLEGE_ADMIN", "B"),
     "teacherA": ("甲学院任课教师", "ACADEMIC_TEACHER", "A"),
